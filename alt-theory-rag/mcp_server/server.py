@@ -30,6 +30,7 @@ import json
 import re
 import threading
 import time
+import yaml
 from collections import OrderedDict
 from datetime import datetime
 from pathlib import Path
@@ -1612,24 +1613,24 @@ def search_knowledge(query: str, max_results: int = 5, category: str = None, hyb
     )
 
 
-@mcp.tool()
-def get_document(filepath: str) -> str:
-    """
-    Get the full content of a specific document.
-
-    Args:
-        filepath: Path to the document file
-
-    Returns:
-        JSON string with document content and metadata
-    """
-    orchestrator = get_orchestrator()
-    doc = orchestrator.get_document(filepath)
-
-    if not doc:
-        return json.dumps({"status": "error", "message": f"Document not found: {filepath}"})
-
-    return json.dumps({"status": "success", "document": doc}, indent=2, ensure_ascii=False)
+# @mcp.tool()
+# def get_document(filepath: str) -> str:
+#     """
+#     Get the full content of a specific document.
+#
+#     Args:
+#         filepath: Path to the document file
+#
+#     Returns:
+#         JSON string with document content and metadata
+#     """
+#     orchestrator = get_orchestrator()
+#     doc = orchestrator.get_document(filepath)
+#
+#     if not doc:
+#         return json.dumps({"status": "error", "message": f"Document not found: {filepath}"})
+#
+#     return json.dumps({"status": "success", "document": doc}, indent=2, ensure_ascii=False)
 
 
 @mcp.tool()
@@ -1660,38 +1661,79 @@ def reindex_documents(force: bool = False, full_rebuild: bool = False) -> str:
 
 
 @mcp.tool()
-def list_categories() -> str:
-    """List all document categories with their document counts."""
-    orchestrator = get_orchestrator()
-    categories = orchestrator.list_categories()
-    return json.dumps(
-        {"status": "success", "categories": categories, "total_documents": sum(categories.values())}, indent=2
-    )
+def list_domains() -> str:
+    """List available knowledge base domains."""
+    base_dir = Path(__file__).parent.parent
+    domains = [d.name.replace("documents-", "")
+               for d in base_dir.iterdir()
+               if d.is_dir() and d.name.startswith("documents-")]
+    cfg = load_yaml_config()
+    active = cfg.get("domain", {}).get("active", "unknown")
+    return json.dumps({"active": active, "available": sorted(domains)}, indent=2)
 
 
 @mcp.tool()
-def list_documents(category: str = None) -> str:
+def switch_domain(domain: str) -> str:
     """
-    List all indexed documents, optionally filtered by category.
-
-    Args:
-        category: Optional category filter
+    Switch active knowledge base domain.
+    Validates domain exists, updates config.yaml, triggers reindex.
     """
-    orchestrator = get_orchestrator()
-    docs = orchestrator.list_documents(category=category)
-    return json.dumps(
-        {"status": "success", "filter": category or "all", "count": len(docs), "documents": docs},
-        indent=2,
-        ensure_ascii=False,
-    )
+    config_path = Path(__file__).parent.parent / "config.yaml"
+    if not config_path.exists():
+        return json.dumps({"status": "error", "message": "config.yaml not found"})
+    cfg = yaml.safe_load(config_path.read_text())
+
+    # Validate domain directory exists
+    domain_dir = config_path.parent / f"documents-{domain}"
+    if not domain_dir.exists():
+        domains = [d.name.replace("documents-", "")
+                   for d in config_path.parent.iterdir()
+                   if d.is_dir() and d.name.startswith("documents-")]
+        available = sorted(domains) if domains else []
+        return json.dumps({
+            "status": "error",
+            "message": f"Domain '{domain}' not found",
+            "available": available,
+        })
+
+    # Update config
+    if "domain" not in cfg:
+        cfg["domain"] = {}
+    cfg["domain"]["active"] = domain
+    config_path.write_text(yaml.dump(cfg, default_flow_style=False))
+
+    # Trigger reindex with new domain
+    result = reindex_documents(force=True)
+    return json.dumps({
+        "status": "success",
+        "message": f"Switched to domain '{domain}'",
+        "reindex": json.loads(result),
+    }, indent=2, ensure_ascii=False)
 
 
-@mcp.tool()
-def get_index_stats() -> str:
-    """Get statistics about the knowledge base index."""
-    orchestrator = get_orchestrator()
-    stats = orchestrator.get_stats()
-    return json.dumps({"status": "success", "stats": stats}, indent=2)
+# @mcp.tool()
+# def list_documents(category: str = None) -> str:
+#     """
+#     List all indexed documents, optionally filtered by category.
+#
+#     Args:
+#         category: Optional category filter
+#     """
+#     orchestrator = get_orchestrator()
+#     docs = orchestrator.list_documents(category=category)
+#     return json.dumps(
+#         {"status": "success", "filter": category or "all", "count": len(docs), "documents": docs},
+#         indent=2,
+#         ensure_ascii=False,
+#     )
+
+
+# @mcp.tool()
+# def get_index_stats() -> str:
+#     """Get statistics about the knowledge base index."""
+#     orchestrator = get_orchestrator()
+#     stats = orchestrator.get_stats()
+#     return json.dumps({"status": "success", "stats": stats}, indent=2)
 
 
 # =============================================================================
@@ -1699,169 +1741,169 @@ def get_index_stats() -> str:
 # =============================================================================
 
 
-@mcp.tool()
-def add_document(content: str, filepath: str, category: str = "general") -> str:
-    """
-    Add a new document to the knowledge base from raw content.
-
-    Saves the content to the documents directory and indexes it immediately.
-
-    Args:
-        content: Full text content of the document
-        filepath: Relative path within documents dir (e.g., "security/new-technique.md")
-        category: Document category (security, ctf, logscale, development, general)
-
-    Returns:
-        JSON string with indexing results
-    """
-    if not content or not content.strip():
-        return json.dumps({"status": "error", "message": "Content cannot be empty"})
-    if not filepath or not filepath.strip():
-        return json.dumps({"status": "error", "message": "Filepath cannot be empty"})
-
-    orchestrator = get_orchestrator()
-    result = orchestrator.add_document_from_content(content.strip(), filepath.strip(), category)
-
-    if "error" in result:
-        return json.dumps({"status": "error", "message": result["error"]})
-
-    return json.dumps({"status": "success", **result}, indent=2)
-
-
-@mcp.tool()
-def update_document(filepath: str, content: str) -> str:
-    """
-    Update an existing document in the knowledge base.
-
-    Removes old chunks and re-indexes with new content.
-
-    Args:
-        filepath: Full path to the document file
-        content: New content for the document
-
-    Returns:
-        JSON string with update results
-    """
-    if not filepath:
-        return json.dumps({"status": "error", "message": "Filepath required"})
-    if not content or not content.strip():
-        return json.dumps({"status": "error", "message": "Content cannot be empty"})
-
-    orchestrator = get_orchestrator()
-    result = orchestrator.update_document_content(filepath, content.strip())
-
-    if "error" in result:
-        return json.dumps({"status": "error", "message": result["error"]})
-
-    return json.dumps({"status": "success", **result}, indent=2)
+# @mcp.tool()
+# def add_document(content: str, filepath: str, category: str = "general") -> str:
+#     """
+#     Add a new document to the knowledge base from raw content.
+#
+#     Saves the content to the documents directory and indexes it immediately.
+#
+#     Args:
+#         content: Full text content of the document
+#         filepath: Relative path within documents dir (e.g., "security/new-technique.md")
+#         category: Document category (security, ctf, logscale, development, general)
+#
+#     Returns:
+#         JSON string with indexing results
+#     """
+#     if not content or not content.strip():
+#         return json.dumps({"status": "error", "message": "Content cannot be empty"})
+#     if not filepath or not filepath.strip():
+#         return json.dumps({"status": "error", "message": "Filepath cannot be empty"})
+#
+#     orchestrator = get_orchestrator()
+#     result = orchestrator.add_document_from_content(content.strip(), filepath.strip(), category)
+#
+#     if "error" in result:
+#         return json.dumps({"status": "error", "message": result["error"]})
+#
+#     return json.dumps({"status": "success", **result}, indent=2)
 
 
-@mcp.tool()
-def remove_document(filepath: str, delete_file: bool = False) -> str:
-    """
-    Remove a document from the knowledge base index.
-
-    Args:
-        filepath: Path to the document file
-        delete_file: If True, also delete the file from disk (default: False)
-
-    Returns:
-        JSON string with removal results
-    """
-    if not filepath:
-        return json.dumps({"status": "error", "message": "Filepath required"})
-
-    orchestrator = get_orchestrator()
-    result = orchestrator.remove_document_by_path(filepath, delete_file=delete_file)
-
-    if "error" in result:
-        return json.dumps({"status": "error", "message": result["error"]})
-
-    return json.dumps({"status": "success", **result}, indent=2)
-
-
-@mcp.tool()
-def add_from_url(url: str, category: str = "general", title: str = None) -> str:
-    """
-    Fetch content from a URL and add it to the knowledge base.
-
-    Fetches the page, strips HTML, converts to markdown, and indexes.
-
-    Args:
-        url: URL to fetch content from
-        category: Document category (default: general)
-        title: Optional title for the document (auto-detected if not provided)
-
-    Returns:
-        JSON string with indexing results
-    """
-    if not url or not url.strip():
-        return json.dumps({"status": "error", "message": "URL cannot be empty"})
-
-    orchestrator = get_orchestrator()
-    result = orchestrator.add_from_url(url.strip(), category, title)
-
-    if "error" in result:
-        return json.dumps({"status": "error", "message": result["error"]})
-
-    return json.dumps({"status": "success", **result}, indent=2)
+# @mcp.tool()
+# def update_document(filepath: str, content: str) -> str:
+#     """
+#     Update an existing document in the knowledge base.
+#
+#     Removes old chunks and re-indexes with new content.
+#
+#     Args:
+#         filepath: Full path to the document file
+#         content: New content for the document
+#
+#     Returns:
+#         JSON string with update results
+#     """
+#     if not filepath:
+#         return json.dumps({"status": "error", "message": "Filepath required"})
+#     if not content or not content.strip():
+#         return json.dumps({"status": "error", "message": "Content cannot be empty"})
+#
+#     orchestrator = get_orchestrator()
+#     result = orchestrator.update_document_content(filepath, content.strip())
+#
+#     if "error" in result:
+#         return json.dumps({"status": "error", "message": result["error"]})
+#
+#     return json.dumps({"status": "success", **result}, indent=2)
 
 
-@mcp.tool()
-def search_similar(filepath: str, max_results: int = 5) -> str:
-    """
-    Find documents similar to a given document.
-
-    Uses the document's embedding to find semantically similar documents.
-
-    Args:
-        filepath: Path to the reference document
-        max_results: Number of similar documents to return (default: 5)
-
-    Returns:
-        JSON string with list of similar documents and similarity scores
-    """
-    if not filepath:
-        return json.dumps({"status": "error", "message": "Filepath required"})
-
-    max_results = max(1, min(max_results or 5, 20))
-
-    orchestrator = get_orchestrator()
-    results = orchestrator.search_similar(filepath, max_results=max_results)
-
-    if not results:
-        return json.dumps({"status": "no_results", "message": "No similar documents found or document not indexed"})
-
-    return json.dumps(
-        {"status": "success", "reference": filepath, "count": len(results), "similar_documents": results},
-        indent=2,
-        ensure_ascii=False,
-    )
+# @mcp.tool()
+# def remove_document(filepath: str, delete_file: bool = False) -> str:
+#     """
+#     Remove a document from the knowledge base index.
+#
+#     Args:
+#         filepath: Path to the document file
+#         delete_file: If True, also delete the file from disk (default: False)
+#
+#     Returns:
+#         JSON string with removal results
+#     """
+#     if not filepath:
+#         return json.dumps({"status": "error", "message": "Filepath required"})
+#
+#     orchestrator = get_orchestrator()
+#     result = orchestrator.remove_document_by_path(filepath, delete_file=delete_file)
+#
+#     if "error" in result:
+#         return json.dumps({"status": "error", "message": result["error"]})
+#
+#     return json.dumps({"status": "success", **result}, indent=2)
 
 
-@mcp.tool()
-def evaluate_retrieval(test_cases: str) -> str:
-    """
-    Evaluate retrieval quality with test queries.
+# @mcp.tool()
+# def add_from_url(url: str, category: str = "general", title: str = None) -> str:
+#     """
+#     Fetch content from a URL and add it to the knowledge base.
+#
+#     Fetches the page, strips HTML, converts to markdown, and indexes.
+#
+#     Args:
+#         url: URL to fetch content from
+#         category: Document category (default: general)
+#         title: Optional title for the document (auto-detected if not provided)
+#
+#     Returns:
+#         JSON string with indexing results
+#     """
+#     if not url or not url.strip():
+#         return json.dumps({"status": "error", "message": "URL cannot be empty"})
+#
+#     orchestrator = get_orchestrator()
+#     result = orchestrator.add_from_url(url.strip(), category, title)
+#
+#     if "error" in result:
+#         return json.dumps({"status": "error", "message": result["error"]})
+#
+#     return json.dumps({"status": "success", **result}, indent=2)
 
-    Args:
-        test_cases: JSON string of test cases. Format: [{"query": "search term", "expected_filepath": "path/to/doc.md"}, ...]
 
-    Returns:
-        JSON string with MRR@5, Recall@5, and per-query results
-    """
-    try:
-        cases = json.loads(test_cases) if isinstance(test_cases, str) else test_cases
-    except json.JSONDecodeError:
-        return json.dumps({"status": "error", "message": "Invalid JSON for test_cases"})
+# @mcp.tool()
+# def search_similar(filepath: str, max_results: int = 5) -> str:
+#     """
+#     Find documents similar to a given document.
+#
+#     Uses the document's embedding to find semantically similar documents.
+#
+#     Args:
+#         filepath: Path to the reference document
+#         max_results: Number of similar documents to return (default: 5)
+#
+#     Returns:
+#         JSON string with list of similar documents and similarity scores
+#     """
+#     if not filepath:
+#         return json.dumps({"status": "error", "message": "Filepath required"})
+#
+#     max_results = max(1, min(max_results or 5, 20))
+#
+#     orchestrator = get_orchestrator()
+#     results = orchestrator.search_similar(filepath, max_results=max_results)
+#
+#     if not results:
+#         return json.dumps({"status": "no_results", "message": "No similar documents found or document not indexed"})
+#
+#     return json.dumps(
+#         {"status": "success", "reference": filepath, "count": len(results), "similar_documents": results},
+#         indent=2,
+#         ensure_ascii=False,
+#     )
 
-    if not isinstance(cases, list) or not cases:
-        return json.dumps({"status": "error", "message": "test_cases must be a non-empty JSON array"})
 
-    orchestrator = get_orchestrator()
-    results = orchestrator.evaluate_retrieval(cases)
-
-    return json.dumps({"status": "success", **results}, indent=2)
+# @mcp.tool()
+# def evaluate_retrieval(test_cases: str) -> str:
+#     """
+#     Evaluate retrieval quality with test queries.
+#
+#     Args:
+#         test_cases: JSON string of test cases. Format: [{"query": "search term", "expected_filepath": "path/to/doc.md"}, ...]
+#
+#     Returns:
+#         JSON string with MRR@5, Recall@5, and per-query results
+#     """
+#     try:
+#         cases = json.loads(test_cases) if isinstance(test_cases, str) else test_cases
+#     except json.JSONDecodeError:
+#         return json.dumps({"status": "error", "message": "Invalid JSON for test_cases"})
+#
+#     if not isinstance(cases, list) or not cases:
+#         return json.dumps({"status": "error", "message": "test_cases must be a non-empty JSON array"})
+#
+#     orchestrator = get_orchestrator()
+#     results = orchestrator.evaluate_retrieval(cases)
+#
+#     return json.dumps({"status": "success", **results}, indent=2)
 
 
 # =============================================================================

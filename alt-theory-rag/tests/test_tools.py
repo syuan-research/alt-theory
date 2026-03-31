@@ -72,74 +72,80 @@ class TestSearchKnowledge:
         assert r["result_count"] == 1
 
 
-class TestAddDocument:
-    def test_empty_content_error(self, mock_orch):
-        from mcp_server.server import add_document
+# ---------------------------------------------------------------------------
+# The following tool tests are commented out — these tools are deferred to Phase 2.
+# Tools removed for Phase 1: add_document, update_document, remove_document,
+# add_from_url, search_similar, evaluate_retrieval
+# ---------------------------------------------------------------------------
 
-        r = json.loads(add_document("", "test.md", "general"))
-        assert r["status"] == "error"
-
-    def test_empty_filepath_error(self, mock_orch):
-        from mcp_server.server import add_document
-
-        r = json.loads(add_document("content", "", "general"))
-        assert r["status"] == "error"
-
-
-class TestUpdateDocument:
-    def test_empty_content_error(self, mock_orch):
-        from mcp_server.server import update_document
-
-        r = json.loads(update_document("somefile.md", ""))
-        assert r["status"] == "error"
-
-    def test_missing_filepath_error(self, mock_orch):
-        from mcp_server.server import update_document
-
-        r = json.loads(update_document("", "content"))
-        assert r["status"] == "error"
-
-
-class TestRemoveDocument:
-    def test_empty_filepath_error(self, mock_orch):
-        from mcp_server.server import remove_document
-
-        r = json.loads(remove_document(""))
-        assert r["status"] == "error"
-
-
-class TestAddFromUrl:
-    def test_empty_url_error(self, mock_orch):
-        from mcp_server.server import add_from_url
-
-        r = json.loads(add_from_url(""))
-        assert r["status"] == "error"
-
-    def test_file_scheme_blocked(self, mock_orch):
-        from mcp_server.server import add_from_url
-
-        mock_orch.add_from_url.return_value = {"error": "Only http:// and https:// URLs are supported"}
-        r = json.loads(add_from_url("file:///etc/passwd"))
-        assert r["status"] == "error"
-
-
-class TestSearchSimilar:
-    def test_empty_filepath_error(self, mock_orch):
-        from mcp_server.server import search_similar
-
-        r = json.loads(search_similar(""))
-        assert r["status"] == "error"
-
-
-class TestEvaluateRetrieval:
-    def test_invalid_json_error(self, mock_orch):
-        from mcp_server.server import evaluate_retrieval
-
-        r = json.loads(evaluate_retrieval("not json"))
-        assert r["status"] == "error"
-
-    def test_empty_array_error(self, mock_orch):
-        from mcp_server.server import evaluate_retrieval
-
-        r = json.loads(evaluate_retrieval("[]"))
-        assert r["status"] == "error"
+# class TestAddDocument:
+#     def test_empty_content_error(self, mock_orch):
+#         from mcp_server.server import add_document
+#
+#         r = json.loads(add_document("", "test.md", "general"))
+#         assert r["status"] == "error"
+#
+#     def test_empty_filepath_error(self, mock_orch):
+#         from mcp_server.server import add_document
+#
+#         r = json.loads(add_document("content", "", "general"))
+#         assert r["status"] == "error"
+#
+#
+# class TestUpdateDocument:
+#     def test_empty_content_error(self, mock_orch):
+#         from mcp_server.server import update_document
+#
+#         r = json.loads(update_document("somefile.md", ""))
+#         assert r["status"] == "error"
+#
+#     def test_missing_filepath_error(self, mock_orch):
+#         from mcp_server.server import update_document
+#
+#         r = json.loads(update_document("", "content"))
+#         assert r["status"] == "error"
+#
+#
+# class TestRemoveDocument:
+#     def test_empty_filepath_error(self, mock_orch):
+#         from mcp_server.server import remove_document
+#
+#         r = json.loads(remove_document(""))
+#         assert r["status"] == "error"
+#
+#
+# class TestAddFromUrl:
+#     def test_empty_url_error(self, mock_orch):
+#         from mcp_server.server import add_from_url
+#
+#         r = json.loads(add_from_url(""))
+#         assert r["status"] == "error"
+#
+#     def test_file_scheme_blocked(self, mock_orch):
+#         from mcp_server.server import add_from_url
+#
+#         mock_orch.add_from_url.return_value = {"error": "Only http:// and https:// URLs are supported"}
+#         r = json.loads(add_from_url("file:///etc/passwd"))
+#         assert r["status"] == "error"
+#
+#
+# class TestSearchSimilar:
+#     def test_empty_filepath_error(self, mock_orch):
+#         from mcp_server.server import search_similar
+#
+#         r = json.loads(search_similar(""))
+#         assert r["status"] == "error"
+#
+#
+# class TestEvaluateRetrieval:
+#     def test_invalid_json_error(self, mock_orch):
+#         from mcp_server.server import evaluate_retrieval
+#
+#         r = json.loads(evaluate_retrieval("not json"))
+#         assert r["status"] == "error"
+#
+#     def test_empty_array_error(self, mock_orch):
+#         from mcp_server.server import evaluate_retrieval
+#
+#         r = json.loads(evaluate_retrieval("[]"))
+#         assert r["status"] == "error"
