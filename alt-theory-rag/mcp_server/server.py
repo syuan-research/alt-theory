@@ -853,10 +853,14 @@ class KnowledgeOrchestrator:
             if hybrid_alpha > 0:
                 try:
                     n_candidates = min(max_results * 3, config.max_results)
+                    # Combine category filter with chunk_type=child filter
+                    combined_where = {"chunk_type": "child"}
+                    if where_filter:
+                        combined_where.update(where_filter)
                     results = self.collection.query(
                         query_texts=[query_text],
                         n_results=n_candidates,
-                        where=where_filter,
+                        where=combined_where,
                         include=["documents", "metadatas", "distances"],
                     )
                     if results["ids"] and results["ids"][0]:
@@ -997,8 +1001,27 @@ class KnowledgeOrchestrator:
                 }
             )
 
-        # Adjacent Chunk Retrieval — expand content with surrounding chunks for context
-        formatted = self._expand_with_adjacent_chunks(formatted)
+        # Parent context attachment — batch-fetch parents for all child results
+        parent_ids = set()
+        for r in formatted:
+            pid = r.get("parent_id")
+            if pid:
+                parent_ids.add(pid)
+        parent_lookup = {}
+        if parent_ids:
+            try:
+                parents = self.collection.get(ids=list(parent_ids))
+                for i, pid in enumerate(parents["ids"]):
+                    parent_lookup[pid] = parents["documents"][i]
+            except Exception as e:
+                print(f"[WARN] Parent fetch failed: {e}")
+        for r in formatted:
+            pid = r.get("parent_id")
+            if pid and pid in parent_lookup:
+                r["parent_content"] = parent_lookup[pid]
+
+        # Adjacent Chunk Retrieval — SKIPPED: parent context is now attached via parent-child search
+        # formatted = self._expand_with_adjacent_chunks(formatted)
 
         self.query_cache.put(query_text, max_results, category_filter, hybrid_alpha, formatted)
         return formatted
@@ -1560,6 +1583,20 @@ def search_knowledge(query: str, max_results: int = 5, category: str = None, hyb
     if not results:
         return json.dumps({"status": "no_results", "query": query, "message": "No relevant documents found."})
 
+    # Dify-compatible result template (spec Section 3.8)
+    def format_dify_results(results):
+        formatted = []
+        for r in results:
+            doc_name = r.get("title") or r.get("source_file") or r.get("filename") or "unknown"
+            theory_name = r.get("theory", "unknown")
+            content = r.get("content", "")
+            formatted.append(
+                f"### doc: {doc_name}\n### theory name: {theory_name}\nquotation: {content}\n---"
+            )
+        return "\n\n".join(formatted)
+
+    formatted_output = format_dify_results(results)
+
     return json.dumps(
         {
             "status": "success",
@@ -1568,6 +1605,7 @@ def search_knowledge(query: str, max_results: int = 5, category: str = None, hyb
             "result_count": len(results),
             "cache_hit_rate": orchestrator.query_cache.stats()["hit_rate"],
             "results": results,
+            "formatted": formatted_output,
         },
         indent=2,
         ensure_ascii=False,
