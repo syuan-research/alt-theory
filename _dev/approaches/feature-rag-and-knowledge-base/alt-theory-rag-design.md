@@ -1,9 +1,10 @@
 # Alt Theory RAG System — Technical Design Document
 
-> Status: Draft v0.4 | Date: 2026-03-31
-> v0.3 → v0.4 changes: incorporated Opus v0.3 review spec gaps (factory function, chunk content boundaries, parent context attachment, alias lookup, domain switching behavior, result template fields), separated build plan into build-plan.md, added search logging
+> Status: Draft v0.5 | Date: 2026-04-01
+> v0.4 → v0.5 changes: post-implementation review fixes — Provider Protocol expanded to 4 methods, chunk ID format specified, parent_chunk_id replaces parent_id, parent embedding behavior corrected, metadata passthrough with blacklist, result format redefined, search logging formalized, ChromaDB constraints documented
+> Implementation status: v0.3-integration (all 8 tasks done, 64/64 tests pass, parent-child search verified)
 > Companion docs: [build-plan.md](build-plan.md) (detailed implementation steps), [roadmap.md](roadmap.md) (project stages)
-> Previous: see git history for v0.1, v0.2, v0.3
+> Previous: see git history for v0.1, v0.2, v0.3, v0.4
 
 ---
 
@@ -91,7 +92,7 @@ Based on comparative analysis of agent-brain (~5000+ lines, over-engineered) vs 
 │  │          Storage Layer                    │
 │  │  ChromaDB (single collection per domain)  │
 │  │  - chunk_type metadata: "parent" | "child"│
-│  │  - parent_id links child → parent         │
+│  │  - parent_chunk_id: full ID for lookup    │
 │  │  BM25 Index (in-memory, rebuilt on start) │
 │  │  Metadata JSON (per domain)               │
 │  └──────────────────────────────────────────┘
@@ -127,12 +128,13 @@ Based on comparative analysis of agent-brain (~5000+ lines, over-engineered) vs 
 ```python
 class EmbeddingProvider(Protocol):
     """Pluggable embedding provider interface.
-    Must match ChromaDB embedding_function interface:
-    __call__(input: List[str]) -> List[List[float]]
-    name() -> str
+    ChromaDB v1.4.0+ requires all four methods.
+    embed_query and embed_documents are aliases for __call__.
     """
     def __call__(self, input: List[str]) -> List[List[float]]: ...
     def name(self) -> str: ...
+    def embed_query(self, input=None, **kwargs) -> List[List[float]]: ...
+    def embed_documents(self, documents: List[str]) -> List[List[float]]: ...
 
 class FastEmbedProvider:
     """Default: FastEmbed ONNX in-process."""
@@ -147,6 +149,17 @@ class FastEmbedProvider:
     def name(self) -> str:
         return f"fastembed-{self.model_name}"
 
+    def embed_query(self, input=None, **kwargs) -> List[List[float]]:
+        """ChromaDB calls this for query_texts. Alias for __call__."""
+        if isinstance(input, list): texts = input
+        elif input is not None: texts = [input]
+        else: texts = [kwargs.get("query", "")]
+        return self(texts)
+
+    def embed_documents(self, documents: List[str]) -> List[List[float]]:
+        """ChromaDB calls this for document embedding. Alias for __call__."""
+        return self(documents)
+
 class FlagEmbeddingProvider:
     """Future: BGE-M3 via FlagEmbedding (PyTorch)."""
     def __init__(self, model_name: str):
@@ -158,7 +171,7 @@ class OnlineAPIProvider:
     def __init__(self, api_url: str, api_key: str, model_name: str): ...
 ```
 
-**Why `__call__()` not `embed()`**: ChromaDB's embedding_function interface requires `__call__(input: List[str])` and `name() -> str` (confirmed by reading knowledge-rag server.py:149-168). The Protocol must match this or provider swapping breaks at runtime.
+**Why four methods**: ChromaDB v1.4.0+ internally calls `embed_query()` when processing `query_texts` and `embed_documents()` when indexing. The `__call__()` + `name()` interface is the documented public API, but without the aliases, ChromaDB raises `AttributeError` at runtime (confirmed during integration testing). `embed_query` and `embed_documents` can delegate to `__call__` — no duplicate logic needed.
 
 **Provider instantiation** (factory function):
 
@@ -267,26 +280,41 @@ Single ChromaDB collection per domain:
 
 ```
 Parent chunk:
+  chunk_id = "{doc_id}_0"
   content = full document body AFTER frontmatter removal (no JSON/YAML header)
   metadata = all normalized frontmatter fields + {chunk_type: "parent", parent_id: doc_id}
-  → NOT embedded for search (only stored for context retrieval)
+  → Embedded and stored in ChromaDB (required by ChromaDB — cannot store without embedding)
+  → Filtered out during search via where={"chunk_type": "child"}
+  → Only retrieved for context attachment, never returned as search results
 
 Child chunk:
+  chunk_id = "{doc_id}_{index}"  where index starts at 1 (parent is 0)
   content = section text INCLUDING the section header
     e.g. "## Key Concept: Directed Attention\n\nNatural language explanation..."
-  metadata = all normalized frontmatter fields + {chunk_type: "child", parent_id: doc_id, section_header: "## Key Concept: Directed Attention"}
+  metadata = all normalized frontmatter fields + {
+      chunk_type: "child",
+      parent_id: doc_id,
+      parent_chunk_id: "{doc_id}_0",  ← FULL ChromaDB chunk ID, set at index time
+      section_header: "## Key Concept: Directed Attention"
+  }
   → Embedded for search
 ```
 
-**Parent context attachment** (Method A: secondary query):
+**Chunk ID format** (applied in `_index_document()`, not in parsers.py):
+- Parent: `{doc_id}_0` (always index 0, since parent chunk is first in list)
+- Children: `{doc_id}_1`, `{doc_id}_2`, ... (sequential index)
+- `parent_chunk_id` is injected at index time by `_index_document()`, not by the parser. This is because the chunk ID is generated in `_index_document()` using `f"{doc.id}_{chunk.index}"`, and the parser does not know the final ID format.
+
+**Parent context attachment** (Method A: secondary query using `parent_chunk_id`):
 
 ```python
 # In search_knowledge():
 # 1. Query ChromaDB: where={"chunk_type": "child"} → get matching child chunks
-# 2. Extract unique parent_ids from results
-# 3. Batch fetch parents: collection.get(ids=unique_parent_ids, where={"chunk_type": "parent"})
-# 4. Build parent_id → parent_content lookup dict
-# 5. For each child result: attach parent_content from lookup
+# 2. Extract unique parent_chunk_id values from child metadata (full ID, e.g. "doc123_0")
+# 3. Batch fetch parents: collection.get(ids=unique_parent_chunk_ids)
+# 4. Build parent_chunk_id → parent_content lookup dict
+# 5. For each child result: attach parent_content using parent_chunk_id as key
+# Note: No suffix derivation needed — parent_chunk_id is the exact ChromaDB chunk ID
 # Note: batch fetch (step 3) avoids N+1 queries
 ```
 
@@ -309,7 +337,7 @@ chunking:
 **Search behavior**:
 - Search hits **child chunks** (fine-grained matching, filter `chunk_type="child"`)
 - Return **child + parent metadata** (theory_name, author, year, etc.)
-- Parent context always attached to results via `parent_id` lookup
+- Parent context always attached to results via `parent_chunk_id` lookup
 
 ### 3.3 Configurable Metadata Extraction (Dual Format: v0.1 + v0.2)
 
@@ -348,7 +376,10 @@ def parse_frontmatter(content: str) -> Tuple[dict, str]:
 
 ```python
 def extract_metadata(frontmatter: dict, field_config: list) -> dict:
-    """Normalize metadata: try canonical name first, then aliases."""
+    """Normalize metadata: try canonical name first, then aliases.
+    Missing required fields log warnings but don't crash — allows ingestion to continue.
+    Falls back to filename parsing if all frontmatter metadata is missing.
+    """
     result = {}
     for field in field_config:
         canonical = field['name']
@@ -358,9 +389,11 @@ def extract_metadata(frontmatter: dict, field_config: list) -> dict:
                 result[canonical] = frontmatter[key]
                 break
         if field.get('required') and canonical not in result:
-            print(f"[WARN] Required field '{canonical}' missing")
+            print(f"[WARN] Required field '{canonical}' missing from frontmatter")
     return result
 ```
+
+**ChromaDB metadata constraint**: All metadata values must be primitives (str, int, float, bool) or flat lists of primitives. No nested dicts, no lists of dicts. If frontmatter contains nested structures (e.g., `topics: [{"name": "ART", "weight": 0.8}]`), the parser must flatten or serialize them before storing in ChromaDB. Simple string lists (e.g., `topics: ["ART", "SRT"]`) are supported directly.
 
 **Filename fallback** (when frontmatter is missing/malformed):
 - Split filename stem by `-`, expect 4 parts: `{theory}-{author}-{year}-{type}`
@@ -503,12 +536,12 @@ domain:
   # To switch: change this value and reindex
 ```
 
-**switch_domain behavior** (explicit runtime behavior):
-1. Validate requested domain exists in `data/collections/`
-2. Update `config.yaml` → `domain.active` to new domain name
-3. Trigger `reindex_documents` to load the new domain's collection
-4. Rebuild BM25 index from new collection
-5. Return success message with domain name and document count
+**switch_domain behavior** (verified from code — server.py lines 1711-1746):
+1. Read `config.yaml`
+2. Validate `documents-{domain}` directory exists; if not, return error with available domains
+3. Update `config.yaml` → `domain.active` to new domain name
+4. Call `reindex_documents(force=True)` to rebuild index from new domain's documents
+5. Return JSON: `{status: "success", message: "Switched to domain '{domain}'", reindex: {stats}}`
 
 Builder should NOT implement switch_domain as "only change config file" — this would leave stale data in memory.
 
@@ -539,27 +572,86 @@ keyword_routes:
 ```yaml
 # config.yaml
 search:
-  default_top_k: 3             # Match Dify's top_k=3
+  default_top_k: 3
   max_top_k: 20
-  hybrid_alpha: 0.7            # Match Dify: 0.7 vector, 0.3 keyword
+  hybrid_alpha: 0.7            # 0.7 vector, 0.3 keyword
   # score_threshold: 0.5       # Phase 2 feature — not in first version
 ```
 
-### 3.8 Retrieval Result Template
+### 3.8 Retrieval Result Format
 
-Match the Dify template format for compatibility:
+**Metadata passthrough strategy**: All frontmatter metadata fields flow through to results automatically. Only a small blacklist of internal keys is excluded.
 
 ```python
-result_template = """### doc: {document_name}
-### theory name: {theory_name}
-quotation: {content}
+# Internal keys excluded from results (not useful for MCP consumer)
+INTERNAL_META_KEYS = {"content_hash", "chunk_index", "doc_id"}
+
+# Build result: passthrough all metadata except internal keys
+result = {k: v for k, v in metadata.items() if k not in INTERNAL_META_KEYS}
+result["content"] = chunk_document_text
+result["score"] = normalized_score
+result["search_method"] = "hybrid" | "semantic" | "keyword"
+# Optional: semantic_rank, bm25_rank, reranker_score if available
+```
+
+**Why passthrough not whitelist**: The previous whitelist approach required updating the formatter every time a new metadata field was added. This caused two bugs during development (parent-child fields missing, then theory fields missing). Passthrough with blacklist is forward-compatible — new KB v0.2 fields automatically appear without code changes.
+
+**Result fields in practice** (verified by integration test):
+
+| Field | Source | Example |
+|-------|--------|---------|
+| `content` | Chunk document text | "## Key Concept: Directed Attention\n\n..." |
+| `theory` | Frontmatter (aliased) | "attention_restoration_theory" |
+| `author` | Frontmatter | "Stephen Kaplan" |
+| `year` | Frontmatter | 1995 |
+| `title` | Frontmatter | "The Restorative Benefits of Nature..." |
+| `chunk_type` | Derived | "child" |
+| `parent_chunk_id` | Injected at index | "835af7c752b8266b_0" |
+| `section_header` | Parsed from content | "## Key Concept: Directed Attention" |
+| `parent_content` | Attached post-search | Full parent document text |
+| `score` | Normalized RRF | 0.847 |
+| `search_method` | Derived | "hybrid" |
+| `topics` | Frontmatter | ["Empirical Studies", "Restorative Environments"] |
+
+**Alt Theory result template** (for structured display to LLM consumer):
+
+```python
+def format_result(result: dict) -> str:
+    """Format a single result for LLM consumption."""
+    return f"""### doc: {result.get('title', result.get('filename', 'unknown'))}
+### theory name: {result.get('theory', 'unknown')}
+quotation: {result.get('content', '')}
 ---"""
 ```
 
-**Template field sources**:
-- `{document_name}`: frontmatter `title` field; if missing, use filename stem (without extension)
-- `{theory_name}`: normalized `theory` field (after alias resolution, so `theoryname` → `theory`)
-- `{content}`: child chunk's `content` field (section text including header)
+This template formats results for readability when consumed by Claude Code or other LLM tools. It is NOT a Dify constraint — it is an Alt Theory design choice for structured theory citation display.
+
+### 3.9 Search Logging
+
+All searches are logged to `data/search_log.jsonl` for retrieval quality analysis during Stage 2a testing.
+
+**Log format** (one JSON object per line):
+
+```json
+{
+  "timestamp": "2026-03-31T14:30:00.123456+08:00",
+  "query": "attention restoration",
+  "top_k": 3,
+  "hybrid_alpha": 0.7,
+  "category_filter": null,
+  "result_count": 3,
+  "top_results": ["attention_restoration_theory", "stress_reduction_theory", "biophilia_hypothesis"]
+}
+```
+
+**Fields**:
+- `timestamp`: ISO 8601 with timezone
+- `query`: original query string
+- `top_k`: requested result count
+- `hybrid_alpha`: vector/keyword weight ratio
+- `category_filter`: applied category filter (null if none)
+- `result_count`: number of results returned
+- `top_results`: theory names of first 3 results (for quick quality scanning)
 
 ---
 
@@ -636,11 +728,14 @@ Step 8: Test with v0.1 KB docs ◄── all above ─────────�
 ### Key constraints for builder
 
 - **Parent-child chunking is NOT optional** — it's the core value. Without it, grep is better.
-- **`__call__()` interface** — ChromaDB requires this, not `embed()`. See Section 3.1.
+- **Provider Protocol requires 4 methods** — `__call__()`, `name()`, `embed_query()`, `embed_documents()`. The last two can alias `__call__`. Without them, ChromaDB raises `AttributeError` at runtime.
+- **Dimension validation** — after first embedding, verify `len(embedding) == config.dimension`. Raise error on mismatch.
 - **Single collection** — use `chunk_type` metadata filter, not two collections.
-- **Method A for parent context** — secondary ChromaDB query by `parent_id`. See Section 3.2.
+- **parent_chunk_id, not parent_id** — child metadata stores full ChromaDB chunk ID (e.g., `"doc123_0"`), not bare doc ID. Set in `_index_document()`, not in parsers.py.
+- **Metadata passthrough** — result formatter uses passthrough + blacklist, not whitelist. New metadata fields must appear automatically.
+- **ChromaDB metadata constraints** — all metadata values must be str/int/float/bool or flat list of str. No nested dicts. Parser must flatten.
 - **Config YAML escaping** — regex patterns in config.yaml use `\\s*` (double backslash). Python loads via YAML parser which handles unescaping automatically. Do NOT add extra escaping in code.
-- **Error handling** — wrap model loading, JSON/YAML parsing, and file I/O in try-except with clear messages. Don't crash silently.
+- **Error handling** — wrap model loading, JSON/YAML parsing, and file I/O in try-except with clear messages. Don't crash silently. Missing required metadata fields log warnings but don't block ingestion.
 
 ---
 
@@ -656,8 +751,8 @@ Step 8: Test with v0.1 KB docs ◄── all above ─────────�
 | Q4: Initial embedding model | paraphrase-multilingual-MiniLM (384D, ~420MB) — start small, upgrade later |
 | Q5: KB format transition | Parser handles both v0.1 and v0.2 formats — no batch conversion needed |
 | Q6: bge-reranker-base Chinese support | Unvalidated. If poor: disable reranker for Phase 1. |
-| Q7: Search logging | Confirmed: log to `data/search_log.jsonl`. Format: `{timestamp, query, top_k, results: [{id, score, theory, section_header}], latency_ms}` |
-| Q8: Parent context attachment | Method A: secondary ChromaDB query by parent_id (confirmed by user). Future optimization: embed parent metadata in child chunks (documented in [build-plan.md](build-plan.md) "Future optimizations"). |
+| Q7: Search logging | Moved to spec Section 3.9. Format: `{timestamp, query, top_k, hybrid_alpha, category_filter, result_count, top_results}` |
+| Q8: Parent context attachment | Method A: secondary ChromaDB query by `parent_chunk_id` (full chunk ID stored in child metadata). Future optimization: embed parent metadata in child chunks (documented in [build-plan.md](build-plan.md) "Future optimizations"). |
 
 ### No remaining open questions
 
@@ -703,3 +798,4 @@ Source: `resources/Knowledge base docs v0.1/`
 |------|----------|----------|-------------|
 | 2026-03-31 | Claude Opus 4.6 | v0.2 → review prompt v0.2 | 4 critical issues, 4 concerns. Led to v0.3: ChromaDB storage model, interface fix, dual-format parser, lean MCP tools, model change. See `design-iterations/20260331-review-response-by-claude-opus-4-6.txt` |
 | 2026-03-31 | Claude Opus 4.6 | v0.3 → review prompt v0.3 | Spec gap analysis + build plan. 5 sections need clarification (3.1, 3.2, 3.3, 3.5, 3.8), 3 sections ready. Led to v0.4: factory function, chunk content boundaries, parent context Method A, alias lookup, domain switching behavior, result template fields, search logging, separated build plan. See `design-iterations/20260331-review-v0.3.3-updated-full-response-by-claude-opus-4-6.txt` |
+| 2026-04-01 | Claude Opus 4.6 | v0.4 → post-implementation review | 8 spec-to-code gaps, 2 design decisions. Provider Protocol missing embed_query (Gap 1), parent chunks incorrectly documented as "NOT embedded" (Gap 2), chunk ID format unspecified (Gap 3), metadata error handling wrong (Gap 4), result template never implemented (Gap 6). Led to v0.5: 4-method Protocol, parent_chunk_id, passthrough with blacklist, search logging formalized. See `design-iterations/20260331-review-v0.4.2-ful-Post-Implementation Review-by-claude-opus-4-6.txt` |

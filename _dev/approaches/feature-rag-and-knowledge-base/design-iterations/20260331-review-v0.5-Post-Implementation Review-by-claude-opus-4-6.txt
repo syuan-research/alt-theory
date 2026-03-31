@@ -1,0 +1,284 @@
+# Alt Theory RAG Spec v0.5 Review
+# Reviewer: Claude Opus 4.6
+# Date: 2026-04-01
+# Purpose: Verify v0.4→v0.5 changes address post-implementation review findings
+
+================================================================================
+EXECUTIVE SUMMARY
+================================================================================
+
+Status: ✅ APPROVED - Spec v0.5 is ready for use
+
+All 8 gaps and 2 design decisions from v0.4 review have been addressed correctly.
+No critical issues found. Minor clarifications recommended but not blocking.
+
+Key improvements in v0.5:
+- Provider Protocol expanded to 4 methods (fixes runtime failure)
+- parent_chunk_id replaces parent_id (fixes lookup bug)
+- Metadata passthrough with blacklist (prevents future bugs)
+- Parent embedding behavior corrected (ChromaDB constraint documented)
+- Search logging formalized
+- ChromaDB metadata constraints documented
+
+================================================================================
+REVIEW QUESTION 1: COMPLETENESS
+================================================================================
+
+Did we address all 8 gaps and both design decisions?
+
+✅ YES - All addressed. Mapping:
+
+Gap 1: Provider interface missing embed_query/embed_documents
+→ Fixed in Section 3.1, lines 129-174
+→ Protocol now shows all 4 methods with explanation
+
+Gap 2: Parent chunk embedding unclear
+→ Fixed in Section 3.2, lines 286-288
+→ Now explicitly states: "Embedded and stored in ChromaDB (required by ChromaDB)"
+→ Clarifies: "Filtered out during search via where={'chunk_type': 'child'}"
+
+Gap 3: Chunk ID format not specified
+→ Fixed in Section 3.2, lines 283-306
+→ Specifies: Parent = {doc_id}_0, Children = {doc_id}_1+
+→ Documents parent_chunk_id injection at index time
+
+Gap 4: Metadata alias error handling
+→ Fixed in Section 3.3 (verified by reading lines 349-440)
+→ Pseudocode updated to show warnings not exceptions
+
+Gap 5: Search logging format not specified
+→ Fixed in new Section 3.9, lines 629-655
+→ Full JSONL format documented with field definitions
+
+Gap 6: Result template incomplete
+→ Fixed in Section 3.8, lines 581-627
+→ Replaced template string with full result dict structure
+→ Documents passthrough strategy
+→ Includes result field table
+
+Gap 7: Domain switching behavior unclear
+→ Fixed in Section 3.5, lines 539-546
+→ Full 5-step behavior specified with code line references
+
+Gap 8: BM25 rebuild not documented
+→ Addressed in Architecture diagram line 96
+→ States: "BM25 Index (in-memory, rebuilt on start)"
+
+Design Q1: Chunk ID naming (Option C - store full parent_chunk_id)
+→ Implemented in Section 3.2, lines 294-299
+→ Child metadata includes parent_chunk_id: "{doc_id}_0"
+→ Parent context attachment pseudocode updated (lines 308-319)
+
+Design Q2: Metadata passthrough strategy
+→ Implemented in Section 3.8, lines 583-598
+→ Passthrough with blacklist documented
+→ Rationale explained (forward compatibility)
+
+Missing from spec (behaviors code implements):
+→ Dimension validation: Added to Section 3.1, line 200
+→ ChromaDB metadata constraints: Added to Section 3.3 (need to verify exact location)
+
+
+================================================================================
+REVIEW QUESTION 2: CORRECTNESS
+================================================================================
+
+Are the v0.5 changes technically accurate? Do they match the implementation?
+
+✅ YES - All changes are technically accurate. Verified by cross-referencing:
+
+Section 3.1 (Provider Protocol):
+- 4-method Protocol matches providers.py implementation (lines 12-16, 54-66)
+- Dimension validation documented, matches providers.py lines 41-48
+- Factory function documented, matches providers.py lines 69-84
+- Error handling guidance matches try-except in providers.py lines 23-31
+
+Section 3.2 (Parent-Child Chunking):
+- Chunk ID format {doc_id}_0 for parent matches server.py _index_document
+- parent_chunk_id in child metadata matches implementation
+- Parent embedding behavior "embedded but filtered" is correct per ChromaDB constraints
+- Parent context attachment pseudocode matches server.py lines 1015-1032 (after fixes)
+
+Section 3.3 (Metadata Extraction):
+- Warning-based error handling matches parsers.py implementation
+- ChromaDB constraint documented at line 396 - accurate (no nested dicts)
+- Alias lookup pseudocode matches implementation logic
+
+Section 3.5 (Domain Switching):
+- 5-step behavior matches server.py lines 1711-1746 (as stated in spec)
+- Correctly notes that reindex_documents(force=True) is called
+
+Section 3.8 (Result Format):
+- Passthrough with blacklist matches server.py result formatter
+- Result field table matches actual fields returned by integration test
+- INTERNAL_META_KEYS blacklist is accurate
+
+Section 3.9 (Search Logging):
+- JSONL format matches server.py logging implementation
+- Field definitions match actual log entries
+
+No technical inaccuracies found.
+
+
+================================================================================
+REVIEW QUESTION 3: CONSISTENCY
+================================================================================
+
+Are there any contradictions within the spec?
+
+✅ MOSTLY CONSISTENT - Found 1 minor inconsistency:
+
+Issue 1: Section 3.2 line 261 still uses old field name
+- Line 261: "parent_id: str          # Link to parent document"
+- This is in the Chunk dataclass definition
+- Should be updated to match the new naming convention
+- However, this may be intentional if parent_id (bare doc_id) is still stored
+  alongside parent_chunk_id (full ChromaDB ID)
+
+Clarification needed: Does Chunk dataclass have BOTH fields?
+- parent_id: bare doc_id (e.g., "835af7c752b8266b")
+- parent_chunk_id: full ChromaDB ID (e.g., "835af7c752b8266b_0")
+
+If so, the spec should clarify this distinction. If not, line 261 should be updated.
+
+Recommendation: Add note at line 261:
+```python
+parent_id: str          # Bare document ID (for reference)
+parent_chunk_id: str    # Full ChromaDB chunk ID (for lookup) - added at index time
+```
+
+All other references correctly use parent_chunk_id:
+- Architecture diagram line 95: ✅ "parent_chunk_id: full ID for lookup"
+- Section 3.2 line 297: ✅ "parent_chunk_id: '{doc_id}_0'"
+- Section 3.8 line 609: ✅ "parent_chunk_id" in result field table
+
+No other contradictions found.
+
+
+================================================================================
+REVIEW QUESTION 4: ANYTHING NEW
+================================================================================
+
+Based on reading v0.5, are there additional issues not in v0.4 review?
+
+✅ NO CRITICAL ISSUES - Found 2 minor clarifications:
+
+Minor Issue 1: Section 3.2 line 275 - metadata field inconsistency
+- Line 275: "Each child has parent_id in metadata"
+- Should say: "Each child has parent_id AND parent_chunk_id in metadata"
+- Or update to only mention parent_chunk_id if parent_id is deprecated
+
+Minor Issue 2: Section 6 builder constraints reference
+- Line 727 mentions "Section 6 builder constraints"
+- But Section 6 is "Build Roadmap", not "builder constraints"
+- The actual builder constraints are in the pseudocode examples throughout Section 3
+- This is a documentation structure issue, not a technical issue
+
+Positive findings (things done well):
+1. Architecture diagram updated correctly (line 95)
+2. Open Questions section updated to reference new sections (Q7→3.9, Q8→parent_chunk_id)
+3. Appendix C includes v0.4 review entry
+4. Version history clearly documents v0.4→v0.5 changes (line 4)
+5. Implementation status noted (line 5)
+
+No new technical issues found.
+
+
+================================================================================
+REVIEW QUESTION 5: IMPLEMENTATION READINESS
+================================================================================
+
+If a builder reads v0.5 from scratch, can they implement correctly?
+
+✅ YES - Spec v0.5 is implementation-ready with minor clarifications recommended.
+
+Strengths:
+1. Provider Protocol is complete (4 methods, dimension validation, factory pattern)
+2. Parent-child chunking is well-specified (chunk IDs, content boundaries, attachment logic)
+3. Metadata extraction is clear (dual format, aliases, error handling)
+4. Result format is explicit (passthrough strategy, field table)
+5. Search logging is formalized (JSONL format, field definitions)
+6. ChromaDB constraints are documented (no nested dicts)
+
+Areas that are clear enough:
+- A builder can implement the provider abstraction correctly
+- A builder can implement parent-child chunking correctly
+- A builder can implement metadata extraction with aliases correctly
+- A builder can implement the result formatter correctly
+
+Minor ambiguities (non-blocking):
+1. Chunk dataclass field naming (parent_id vs parent_chunk_id) - see Q3
+2. Whether parent_id is still needed alongside parent_chunk_id
+3. Section 6 reference to "builder constraints" is unclear
+
+Recommendation: Add a brief note in Section 3.2 clarifying:
+"The Chunk dataclass retains parent_id (bare doc_id) for reference, but 
+parent_chunk_id (full ChromaDB ID) is added at index time for lookup. 
+Search uses parent_chunk_id exclusively."
+
+Overall verdict: A competent builder (even GLM-5.1) can implement correctly 
+from v0.5 spec. The ambiguities are minor and won't cause implementation errors.
+
+
+================================================================================
+FINAL VERDICT & RECOMMENDATIONS
+================================================================================
+
+VERDICT: ✅ SPEC v0.5 APPROVED FOR USE
+
+Summary:
+- All 8 gaps from v0.4 review addressed ✅
+- Both design decisions (Q1, Q2) implemented ✅
+- Technical accuracy verified ✅
+- Consistency good (1 minor clarification needed) ✅
+- Implementation readiness confirmed ✅
+
+Recommended Actions (Priority Order):
+
+HIGH PRIORITY (clarify before next implementation):
+1. Clarify Chunk dataclass fields (Section 3.2, line 261)
+   - Add note distinguishing parent_id vs parent_chunk_id
+   - Or remove parent_id if deprecated
+
+LOW PRIORITY (documentation cleanup):
+2. Update Section 3.2 line 275 to mention both parent_id and parent_chunk_id
+3. Fix Section 6 reference to "builder constraints" (line 727)
+
+OPTIONAL (future improvement):
+4. Consider adding a "Common Pitfalls" section based on v0.4 implementation issues
+   - Pitfall 1: Forgetting to add embed_query/embed_documents to custom providers
+   - Pitfall 2: Using parent_id instead of parent_chunk_id for lookup
+   - Pitfall 3: Whitelisting metadata fields instead of passthrough
+
+================================================================================
+COMPARISON: v0.4 vs v0.5
+================================================================================
+
+What improved:
++ Provider Protocol: 2 methods → 4 methods (fixes runtime failure)
++ Parent-child: parent_id → parent_chunk_id (fixes lookup bug)
++ Result format: whitelist → passthrough (prevents future bugs)
++ Parent embedding: "NOT embedded" → "embedded but filtered" (accurate)
++ Search logging: Q7 → Section 3.9 (formalized)
++ ChromaDB constraints: undocumented → documented (prevents errors)
+
+What stayed good:
+✓ Dual-format parser (JSON v0.1 + YAML v0.2)
+✓ Metadata aliases (theoryname → theory)
+✓ Domain switching behavior
+✓ Config-driven architecture
+✓ Provider abstraction pattern
+
+================================================================================
+SIGN-OFF
+================================================================================
+
+Reviewer: Claude Opus 4.6
+Date: 2026-04-01
+Spec Version Reviewed: v0.5
+Implementation Version: v0.3-integration (64/64 tests pass)
+
+Recommendation: Proceed to Stage 2a (RAG testing) with spec v0.5.
+
+Minor clarifications above are recommended but NOT blocking.
+

@@ -1,0 +1,176 @@
+  Alt Theory RAG v0.4 Post-Implementation Review
+
+  Part 1: Design Question 1 — Chunk ID Naming
+
+  Recommendation: Option C (Store full parent chunk ID in metadata)
+
+  Rationale:
+
+  The current inconsistency is a design flaw, not just a bug. The problem:
+  - parent_id in metadata = {doc_id} (bare)
+  - Parent chunk ID in ChromaDB = {doc_id}_0
+  - This requires runtime suffix derivation (f"{pid}_0"), which is fragile and
+  error-prone
+
+  Why Option C is best:
+
+  1. Eliminates derivation logic: No need to guess the suffix at query time
+  2. Self-documenting: parent_chunk_id: "835af7c752b8266b_0" is explicit
+  3. Future-proof: If parent ID format changes (e.g., _parent instead of _0), only
+  ingestion code changes, not query code
+  4. Minimal blast radius: Change only affects parsers.py (where chunks are created)
+   and server.py:_index_document() (where metadata is stored)
+
+  Implementation:
+  # In parsers.py or ingestion.py, when creating child chunks:
+  child_chunk.metadata["parent_chunk_id"] = f"{doc_id}_0"  # Full ID, not bare
+  doc_id
+
+  # In server.py query(), line 1020:
+  parent_ids.add(r.get("parent_chunk_id"))  # No suffix derivation needed
+
+  # In server.py query(), line 1031:
+  parent_chunk_id = r.get("parent_chunk_id")
+  if parent_chunk_id and parent_chunk_id in parent_lookup:
+      r["parent_content"] = parent_lookup[parent_chunk_id]
+
+  Why not Option A or B:
+  - Option A (fix matching): Band-aid fix. The _0 convention remains undocumented
+  and fragile. Next developer won't know why _0 is special.
+  - Option B (use parsers.py naming): Better than A, but parsers.py generates
+  chunk_id that gets ignored by server.py. This creates two sources of truth. Option
+   C makes the parent chunk ID explicit in metadata, eliminating the confusion.
+
+  Spec update needed: Section 3.2 should specify that child chunk metadata includes
+  parent_chunk_id (full ChromaDB ID), not just parent_id (bare doc ID).
+
+  ---
+  Part 2: Design Question 2 — Metadata Passthrough Strategy
+
+  Recommendation: Passthrough with blacklist
+
+  Rationale:
+
+  The whitelist approach is a recurring bug pattern. Every new metadata field
+  requires a formatter update. This already happened twice:
+  1. Parent-child fields (chunk_type, parent_id, section_header) were missing
+  2. Theory fields (theory, author, year, title) were missing
+
+  Why passthrough is better:
+
+  1. Forward compatibility: New metadata fields (e.g., environment, population)
+  automatically appear in results
+  2. Less maintenance: No need to update formatter when KB format evolves
+  3. Matches user expectation: If metadata is in frontmatter, user expects it in
+  search results
+
+  Implementation:
+  # Blacklist internal keys that shouldn't leak to MCP consumer
+  INTERNAL_KEYS = {"_distance", "_chunk_hash", "_embedding"}
+
+  # Build result dict
+  result = {k: v for k, v in metadata.items() if k not in INTERNAL_KEYS}
+  result["content"] = doc_content
+  result["score"] = score
+  result["distance"] = distance  # Explicitly add if needed
+
+  Concerns addressed:
+
+  - "Unstructured metadata leakage": The blacklist prevents internal ChromaDB fields
+   from leaking. User-defined metadata (from frontmatter) is intentionally passed
+  through.
+  - "What does MCP consumer need?": Claude Code / Dify need ALL frontmatter fields
+  for context. Filtering them out is counterproductive.
+  - "Forward compatibility": When KB v0.2 adds new fields (e.g., related_theories),
+  they automatically appear in results without code changes.
+
+  Spec update needed: Section 3.8 should specify passthrough strategy with a
+  blacklist of internal keys.
+
+  ---
+  Part 3: Spec-to-Code Gaps Analysis
+
+  耦合声明: 以下分析基于 Q1 选择 Option C（store full parent_chunk_id）和 Q2 选择 passthrough
+  策略。如果你选择其他方案，部分建议需要调整。
+
+  ---
+  Gap 1: Provider interface — embed_query not in spec
+
+  Spec says (Section 3.1, lines 127-134):
+  class EmbeddingProvider(Protocol):
+      def __call__(self, input: List[str]) -> List[List[float]]: ...
+      def name(self) -> str: ...
+
+  Code does (providers.py, lines 54-66):
+  def embed_query(self, input=None, **kwargs) -> List[List[float]]: ...
+  def embed_documents(self, documents: List[str]) -> List[List[float]]: ...
+
+  Impact: Spec v0.4 says Protocol only needs __call__() and name(), but ChromaDB actually requires embed_query()
+  and embed_documents() for compatibility. This caused Issue 1 (runtime failure).
+
+  Recommended action: Update spec Section 3.1 to include these methods in the Protocol:
+  class EmbeddingProvider(Protocol):
+      def __call__(self, input: List[str]) -> List[List[float]]: ...
+      def name(self) -> str: ...
+      def embed_query(self, input=None, **kwargs) -> List[List[float]]: ...
+      def embed_documents(self, documents: List[str]) -> List[List[float]]: ...
+
+  Add note: "ChromaDB v1.4.0+ requires all four methods. embed_query and embed_documents can be aliases for
+  __call__."
+
+  ---
+  Gap 2: Parent chunk embedding — spec unclear
+
+  Spec says (Section 3.2, line 245):
+  Parent chunk:
+    → NOT embedded for search (only stored for context retrieval)
+
+  Code does (server.py, line ~667 in _index_document):
+  Parent chunks ARE embedded and added to ChromaDB collection with chunk_type="parent".
+
+  Impact: Spec says parent chunks shouldn't be embedded, but code embeds them. This wastes embedding computation
+  and storage. However, ChromaDB requires embeddings for all documents in a collection.
+
+  Recommended action: Update spec Section 3.2 to clarify:
+  Parent chunk:
+    → Embedded and stored in ChromaDB (required by ChromaDB schema)
+    → Filtered out during search via where={"chunk_type": "child"}
+    → Only retrieved for context attachment, never returned as search results
+
+  The key insight: ChromaDB doesn't support "store without embedding", so we embed parents but filter them out
+  during search.
+
+  ---
+  Gap 3: Chunk ID format — spec doesn't specify
+
+  Spec says (Section 3.2): No mention of chunk ID format.
+
+  Code does (server.py, line ~667):
+  chunk_id = f"{doc.id}_{chunk.index}"  # e.g., "835af7c752b8266b_0", "_1", "_2"
+
+  Impact: The _0 convention for parent chunks is implicit. This caused the parent lookup bug (Q1).
+
+  Recommended action: Add to spec Section 3.2:
+  Chunk ID format:
+    Parent: {doc_id}_0
+    Children: {doc_id}_1, {doc_id}_2, ...
+
+  Child metadata includes parent_chunk_id: "{doc_id}_0" (full ID for direct lookup)
+
+  ---
+  Gap 4: Metadata alias lookup — spec has pseudocode but missing error handling
+
+  Spec says (Section 3.3, lines 300-314): Pseudocode for extract_metadata() with alias lookup.
+
+  Code does (parsers.py): Implements the alias lookup correctly, but adds warning logs for missing required fields
+  instead of raising errors.
+
+  Impact: Spec pseudocode shows raise ValueError for missing required fields, but code logs warnings. This is
+  actually better (more forgiving), but spec should reflect this.
+
+  Recommended action: Update spec Section 3.3 pseudocode line 312:
+  if field.get('required') and canonical not in result:
+      print(f"[WARN] Required field '{canonical}' missing")  # Don't crash, log warning
+
+  Add note: "Missing required fields log warnings but don't block ingestion. Use filename fallback if frontmatter
+  is incomplete."

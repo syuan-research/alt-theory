@@ -1,0 +1,20 @@
+  新 session 启动 prompt：
+
+  执行 superpowers 实现计划。
+
+  Plan 文件：<private-workspace>\llm-theo-v0.2\_dev\approaches\feature-rag-and-knowledge-base\docs\superpowers\plans\2026-03-31-
+  alt-theory-rag.md
+
+  执行方式：subagent-driven（每个 Task 一个 subagent，task 之间 review）
+
+  前置检查：
+  - 确认 tmp/knowledge-rag/ 存在（Plan Task 1 fork 来源）
+  - 确认 git 已初始化且有 GitHub remote
+  - 读 Plan 文件，从 Task 1 开始逐 task 执行
+
+  重要：
+  - Plan 文件包含完整代码，直接复制使用，不要"参考"或"改写"
+  - 每个 Task 完成后 commit
+  - 遇到 Plan 不明确的地方，停下来问我，不要自行发挥
+
+  用 superpowers:subagent-driven-development skill 开始。
