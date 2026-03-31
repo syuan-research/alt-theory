@@ -53,7 +53,7 @@ from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
 # Local imports
-from .config import config
+from .config import config, load_yaml_config
 from .ingestion import Document, DocumentParser
 from .providers import create_embedding_provider
 
@@ -415,12 +415,9 @@ class KnowledgeOrchestrator:
     def __init__(self):
         self.parser = DocumentParser()
 
-        # Embedding provider via factory (from config or fallback to legacy config)
-        try:
-            cfg = self._load_yaml_config()
-        except (FileNotFoundError, AttributeError):
-            cfg = {"embedding": {"provider": "fastembed", "model": config.embedding_model, "dimension": config.embedding_dim}}
-        self.embed_fn = create_embedding_provider(cfg)
+        # Embedding provider via YAML config
+        self._yaml_config = load_yaml_config()
+        self.embed_fn = create_embedding_provider(self._yaml_config)
 
         # Initialize ChromaDB with persistent storage (new API v1.4.0+)
         self.chroma_client = chromadb.PersistentClient(path=str(config.chroma_dir))

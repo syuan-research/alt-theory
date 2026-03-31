@@ -290,5 +290,19 @@ class Config:
         self.documents_dir.mkdir(parents=True, exist_ok=True)
 
 
+def load_yaml_config(config_path: str = None) -> dict:
+    """Load configuration from YAML file."""
+    import yaml
+
+    if config_path is None:
+        config_path = Path(__file__).parent.parent / "config.yaml"
+    else:
+        config_path = Path(config_path)
+    if not config_path.exists():
+        raise FileNotFoundError(f"Config file not found: {config_path}")
+    with open(config_path, "r", encoding="utf-8") as f:
+        return yaml.safe_load(f)
+
+
 # Global config instance
 config = Config()
