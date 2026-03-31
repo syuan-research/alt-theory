@@ -13,64 +13,6 @@ import mcp_server.providers as providers_mod
 
 
 @pytest.fixture
-def mock_fastembed(monkeypatch):
-    """Mock TextEmbedding class to avoid ONNX model download.
-
-    Patches at the lookup site inside the providers module where
-    FastEmbedProvider imports TextEmbedding locally (inside __init__).
-    Since the import is local, we patch on the fastembed package itself.
-    """
-    import sys
-    # Pre-create a mock fastembed module if not present
-    mock_fe = MagicMock()
-    mock_model_instance = MagicMock()
-    mock_model_instance.embed.return_value = [np.array([0.1] * 384)]
-    mock_fe.TextEmbedding.return_value = mock_model_instance
-
-    # Install mock module
-    sys.modules["fastembed"] = mock_fe
-
-    yield mock_fe, mock_model_instance
-
-    # Restore — don't remove 'fastembed' in case it was already loaded
-    # Just restore the original if it existed
-    if "fastembed" in sys.modules and sys.modules["fastembed"] is not mock_fe:
-        pass  # already restored by something else
-
-
-@pytest.fixture
-def fastembed_provider():
-    """Create a FastEmbedProvider with mocked backend.
-
-    Uses a fixture-level approach: monkey-patch the local import path
-    by injecting a mock into sys.modules before the module is imported.
-    """
-    import sys
-    mock_fe = MagicMock()
-    mock_model_instance = MagicMock()
-    mock_model_instance.embed.return_value = [np.array([0.1] * 384)]
-    mock_fe.TextEmbedding.return_value = mock_model_instance
-
-    original = sys.modules.get("fastembed")
-    sys.modules["fastembed"] = mock_fe
-
-    # Reload providers module so it picks up the mock
-    reload(providers_mod)
-
-    from mcp_server.providers import FastEmbedProvider
-    provider = FastEmbedProvider(model_name="BAAI/bge-small-en-v1.5", dim=384)
-
-    yield provider, mock_fe, mock_model_instance
-
-    # Restore
-    if original is not None:
-        sys.modules["fastembed"] = original
-    else:
-        sys.modules.pop("fastembed", None)
-    reload(providers_mod)
-
-
-@pytest.fixture
 def providers():
     """Import providers with mocked fastembed."""
     import sys
