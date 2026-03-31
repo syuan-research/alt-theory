@@ -1,0 +1,25 @@
+{
+  "name": "knowledge-rag",
+  "display_name": "Knowledge RAG",
+  "description": "Local RAG system for Claude Code with hybrid search (semantic + BM25), cross-encoder reranking, markdown-aware chunking, query expansion, file watcher, and 12 MCP tools. Zero external servers.",
+  "author": "Lyon.",
+  "repository": "https://github.com/lyonzin/knowledge-rag",
+  "homepage": "https://pypi.org/project/knowledge-rag/",
+  "license": "MIT",
+  "runtime": "python",
+  "tags": ["rag", "search", "knowledge-base", "embeddings", "reranking", "claude-code", "local-ai", "mcp"],
+  "categories": ["Knowledge & Memory", "Search", "Developer Tools"],
+  "features": [
+    "Hybrid search (semantic + BM25 with RRF fusion)",
+    "Cross-encoder reranking (ms-marco-MiniLM-L-6-v2)",
+    "Markdown-aware chunking (splits by section headers)",
+    "Query expansion (54 security/technical term synonyms)",
+    "File watcher (auto-reindex on document changes)",
+    "MMR result diversification",
+    "9 file formats (MD, PDF, DOCX, XLSX, PPTX, CSV, TXT, PY, JSON)",
+    "12 MCP tools (search, CRUD, URL ingestion, similarity, evaluation)",
+    "Incremental indexing with content-hash deduplication",
+    "Zero external servers (ONNX in-process via FastEmbed)"
+  ],
+  "install": "pip install knowledge-rag"
+}
