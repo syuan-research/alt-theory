@@ -1550,6 +1550,33 @@ def get_orchestrator() -> KnowledgeOrchestrator:
 # =============================================================================
 
 
+def _log_search(query: str, top_k: int, results: list):
+    """Log search query to JSONL file for monitoring.
+
+    Each entry: timestamp, query text, top_k, results summary, latency.
+    """
+    import time
+    from datetime import datetime, timezone
+
+    log_path = Path(__file__).parent.parent / "data" / "search_log.jsonl"
+    log_path.parent.mkdir(exist_ok=True)
+
+    start_time = time.time()
+
+    log_entry = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "query": query,
+        "top_k": top_k,
+        "results": [
+            {"id": r.get("id"), "score": r.get("score"), "theory": r.get("theory", "?")}
+            for r in results
+        ],
+        "latency_ms": int(start_time * 1000),
+    }
+    with open(log_path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
+
+
 @mcp.tool()
 def search_knowledge(query: str, max_results: int = 5, category: str = None, hybrid_alpha: float = 0.3) -> str:
     """
@@ -1597,6 +1624,12 @@ def search_knowledge(query: str, max_results: int = 5, category: str = None, hyb
         return "\n\n".join(formatted)
 
     formatted_output = format_dify_results(results)
+
+    # Search logging — JSONL log for monitoring search usage (log-ai-rules.md)
+    try:
+        _log_search(query, max_results, results)
+    except Exception as e:
+        print(f"[WARN] Search logging failed: {e}")
 
     return json.dumps(
         {
