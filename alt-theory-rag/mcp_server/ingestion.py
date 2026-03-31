@@ -46,6 +46,7 @@ import csv
 import io
 
 from .config import config
+from .parsers import parse_frontmatter, create_parent_child_chunks, ParsedDocument
 
 
 @dataclass
@@ -57,6 +58,9 @@ class Chunk:
     start_char: int
     end_char: int
     metadata: Dict[str, Any] = field(default_factory=dict)
+    chunk_type: str = "child"          # "parent" | "child"
+    parent_id: str = ""                # Links child to parent
+    section_header: str = ""           # e.g. "## Key Concept: Directed Attention"
 
 
 @dataclass
@@ -143,7 +147,7 @@ class DocumentParser:
 
         # Chunk the content (markdown-aware for .md files)
         if suffix == ".md":
-            doc.chunks = self._chunk_markdown(content, metadata)
+            doc.chunks = self._chunk_markdown_with_parent_child(doc, content, metadata)
         else:
             doc.chunks = self._chunk_text(content, metadata)
 
@@ -194,12 +198,11 @@ class DocumentParser:
         else:
             metadata["title"] = filepath.stem
 
-        # Extract frontmatter if present (YAML between ---)
-        frontmatter_match = re.match(r"^---\n(.*?)\n---\n", content, re.DOTALL)
-        if frontmatter_match:
+        # Extract frontmatter using dual-format parser (JSON v0.1 + YAML v0.2)
+        frontmatter, content = parse_frontmatter(content)
+        if frontmatter:
             metadata["has_frontmatter"] = True
-            # Remove frontmatter from content for cleaner indexing
-            content = content[frontmatter_match.end() :]
+            metadata["frontmatter"] = frontmatter
 
         return content, metadata
 
@@ -427,6 +430,61 @@ class DocumentParser:
     # =========================================================================
     # Chunking
     # =========================================================================
+
+    def _chunk_markdown_with_parent_child(
+        self, doc: Document, content: str, metadata: Dict
+    ) -> List[Chunk]:
+        """Create parent-child chunks using parsers.create_parent_child_chunks.
+
+        Parent: full document body with chunk_type='parent'.
+        Children: sections split by configured separators with chunk_type='child'.
+
+        Converts ParsedChunk -> Chunk to maintain compatibility with existing pipeline.
+        """
+        separators = config.chunk_separators if hasattr(config, "chunk_separators") else [r"^##\s+"]
+
+        # Build a temporary ParsedDocument for the chunker
+        parsed_doc = ParsedDocument(
+            doc_id=doc.id,
+            content=content,
+            metadata=metadata,
+            source_path=str(doc.source),
+            filename=doc.filename,
+        )
+
+        # Create chunks using the new parser
+        raw_chunks = create_parent_child_chunks(parsed_doc, separator_patterns=separators)
+
+        # Convert ParsedChunk -> Chunk for pipeline compatibility
+        chunks = []
+        for i, pc in enumerate(raw_chunks):
+            # Map start/end char positions (approximate for parent-child chunks)
+            start_idx = content.find(pc.content) if pc.content else 0
+            if start_idx >= 0:
+                end_idx = start_idx + len(pc.content)
+            else:
+                start_idx = 0
+                end_idx = len(pc.content)
+
+            # Build merged metadata dict (Chunk.metadata + fields already in the dict)
+            chunk_meta = {**pc.metadata}
+            chunk_meta["chunk_type"] = pc.chunk_type
+            chunk_meta["parent_id"] = pc.parent_id
+            chunk_meta["section_header"] = pc.section_header
+
+            chunk = Chunk(
+                content=pc.content,
+                index=i,
+                start_char=start_idx,
+                end_char=end_idx,
+                metadata=chunk_meta,
+                chunk_type=pc.chunk_type,
+                parent_id=pc.parent_id,
+                section_header=pc.section_header,
+            )
+            chunks.append(chunk)
+
+        return chunks
 
     def _chunk_text(self, text: str, metadata: Dict) -> List[Chunk]:
         """Split text into overlapping chunks for embedding"""

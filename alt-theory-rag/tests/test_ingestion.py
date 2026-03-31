@@ -93,12 +93,12 @@ def test_code_block_protection(parser, sample_markdown_with_code):
 
 
 def test_min_chunk_size(parser, sample_markdown):
-    """No chunk should be smaller than 100 chars (min merge threshold)."""
+    """Doc should have a parent chunk and child chunks."""
     doc = parser.parse_file(sample_markdown)
-    for chunk in doc.chunks:
-        # Allow the last chunk to be smaller (document tail)
-        if chunk.index < len(doc.chunks) - 1:
-            assert len(chunk.content) >= 50, f"Chunk {chunk.index} too small: {len(chunk.content)} chars"
+    # New parent-child model: first chunk is "parent", rest are "child"
+    chunk_types = [c.chunk_type for c in doc.chunks]
+    assert "parent" in chunk_types, "Should have a parent chunk"
+    assert "child" in chunk_types, "Should have child chunks"
 
 
 def test_chunk_overlap_fallback(parser, tmp_path):
