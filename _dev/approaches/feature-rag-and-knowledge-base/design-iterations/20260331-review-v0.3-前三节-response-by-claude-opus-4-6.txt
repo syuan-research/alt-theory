@@ -1,0 +1,142 @@
+  Alt Theory RAG Design Review v0.3 — Spec Gap Analysis
+
+目前先输出了前三节供讨论
+未来： Section 3.4-3.8， Part 2 (Build Plan) 和 Part 3 (Overall Assessment)。
+
+  Part 1: Spec Gap Analysis
+
+  Section 3.1: Embedding Model — Pluggable Provider Architecture
+
+  Rating: Needs clarification
+
+  Issue 1: Provider instantiation logic is not specified. The config shows provider: fastembed, but the spec doesn't
+  explain how the code maps this string to the FastEmbedProvider class.
+
+  Risk: Builder might hardcode if provider == "fastembed": return FastEmbedProvider(...) in multiple places, making it
+  brittle. Or builder might not know where to put the factory logic.
+
+  Suggestion: Add to spec:
+  # In providers.py or config.py:
+  def create_embedding_provider(config: dict) -> EmbeddingProvider:
+      """Factory function to instantiate provider from config."""
+      provider_type = config['embedding']['provider']
+      if provider_type == 'fastembed':
+          return FastEmbedProvider(
+              model_name=config['embedding']['model'],
+              dim=config['embedding']['dimension']
+          )
+      elif provider_type == 'flag_embedding':
+          return FlagEmbeddingProvider(...)
+      # etc.
+
+  Issue 2: Error handling for model download/initialization is not addressed. FastEmbed downloads models on first use.
+  What happens if download fails? Network timeout? Disk full?
+
+  Risk: Builder might not add try-except, causing cryptic crashes on first run.
+
+  Suggestion: Add to spec: "Provider __init__() should handle model download errors gracefully. If model download fails,
+   raise a clear error message with troubleshooting hints (check network, disk space, model name)."
+
+  Issue 3: The FastEmbedProvider.__init__ signature shows model_name: str, dim: int, but the __call__ method doesn't use
+   self._dim. Is dim needed for validation, or is it unused?
+
+  Risk: Builder might store dim but never use it, or might not validate that the model's actual dimension matches
+  config.
+
+  Suggestion: Clarify: "Store dim for validation. After model loads, verify len(embeddings[0]) == self._dim. If
+  mismatch, raise error."
+
+  ---
+  Section 3.2: Parent-Child Chunking
+
+  Rating: Needs clarification
+
+  Issue 1: The data flow from document → parent chunk + child chunks → ChromaDB is underspecified. The spec says "create
+   parent chunk (full document) + child chunks (sections)" but doesn't specify:
+  - Does the parent chunk get the FULL document text including frontmatter, or just the body?
+  - Do child chunks include the section header in their content, or is it only in metadata['section_header']?
+
+  Risk: Builder might include frontmatter in parent chunk (bloating embeddings), or might strip section headers from
+  child content (losing context).
+
+  Suggestion: Add to spec:
+  Parent chunk:
+  - content: full document body (AFTER frontmatter removal)
+  - metadata: all frontmatter fields + {chunk_type: "parent", parent_id: doc.id}
+
+  Child chunk:
+  - content: section text INCLUDING the header (e.g., "## Summary\n\nOne-paragraph...")
+  - metadata: all frontmatter fields + {chunk_type: "child", parent_id: doc.id, section_header: "## Summary"}
+
+  Issue 2: The search behavior says "filter by chunk_type="child", then attach parent context". But HOW is parent
+  context attached? Does the search function:
+  - Query ChromaDB again with parent_id to fetch parent chunk?
+  - Store parent content in a separate in-memory dict during indexing?
+  - Return parent content in the result dict?
+
+  Risk: Builder might not implement parent context attachment at all, or might do it inefficiently (N+1 queries).
+
+  Suggestion: Add to spec:
+  # In server.py search_knowledge():
+  # 1. Query ChromaDB with where={"chunk_type": "child"}
+  # 2. For each result, extract parent_id from metadata
+  # 3. Fetch parent chunks: collection.get(ids=[parent_id], where={"chunk_type": "parent"})
+  # 4. Attach parent content to result dict: result['parent_content'] = parent_chunk['documents'][0]
+
+  Issue 3: The regex ^===SECTION===\\s*$ is specified, but the spec doesn't say whether this is a Python raw string
+  (r"^===SECTION===\s*$") or a YAML-escaped string. The double backslash suggests YAML escaping, but this needs to be
+  explicit.
+
+  Risk: Builder might use single backslash in Python, causing regex to fail.
+
+  Suggestion: Add to spec: "In config.yaml, use double backslash for regex escaping (YAML string). In Python code, load
+  as-is (YAML parser handles unescaping)."
+
+  ---
+  Section 3.3: Configurable Metadata Extraction
+
+  Rating: Needs clarification
+
+  Issue 1: The alias mechanism (aliases: [theoryname]) is shown in config, but the spec doesn't explain the lookup
+  logic. When parsing v0.1 docs with "theoryname": "...", how does the code know to map this to the canonical theory
+  field?
+
+  Risk: Builder might not implement alias lookup at all, causing v0.1 docs to have missing theory metadata.
+
+  Suggestion: Add to spec:
+  # In parsers.py:
+  def extract_metadata(frontmatter: dict, config: dict) -> dict:
+      """Extract and normalize metadata using field aliases."""
+      result = {}
+      for field_config in config['metadata']['fields']:
+          canonical_name = field_config['name']
+          aliases = field_config.get('aliases', [])
+
+          # Try canonical name first, then aliases
+          for key in [canonical_name] + aliases:
+              if key in frontmatter:
+                  result[canonical_name] = frontmatter[key]
+                  break
+
+          # Check if required field is missing
+          if field_config.get('required') and canonical_name not in result:
+              raise ValueError(f"Required field '{canonical_name}' missing")
+
+      return result
+
+  Issue 2: The fallback mechanism (fallback: source: filename) is mentioned but not specified. What is the filename
+  parsing logic? The spec says filename convention is {theory}-{author}-{year}-{type}.md, but what if the filename
+  doesn't match this pattern?
+
+  Risk: Builder might not implement fallback at all, or might crash on non-conforming filenames.
+
+  Suggestion: Add to spec: "Fallback filename parsing: split by -, expect 4 parts. If parsing fails, use filename stem
+  as theory and log warning. Don't crash."
+
+  Issue 3: The dual-format parser pseudocode shows json.loads("{" + json_match.group(1) + "}"), but this assumes the
+  JSON is valid. What if it's malformed?
+
+  Risk: Builder might not add try-except, causing crashes on malformed JSON.
+
+  Suggestion: Add to spec: "Wrap JSON parsing in try-except. If JSON is malformed, log warning and treat as no
+  frontmatter (use fallback)."

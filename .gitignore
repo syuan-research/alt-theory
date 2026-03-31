@@ -1,0 +1,26 @@
+# Git whitelist: only track the RAG folder
+# Strategy: ignore root items with /*, then step-by-step unignore the path
+
+# Ignore all top-level files and directories
+/*
+
+# Keep .gitignore itself
+!.gitignore
+
+# Allow _dev directory to be traversed
+!_dev/
+
+# Ignore everything in _dev except approaches
+_dev/*
+!_dev/approaches/
+
+# Ignore everything in approaches except feature-rag-and-knowledge-base
+_dev/approaches/*
+!_dev/approaches/feature-rag-and-knowledge-base/
+
+# Allow all contents inside feature-rag-and-knowledge-base
+!_dev/approaches/feature-rag-and-knowledge-base/**
+
+# Allow the RAG server code (created by plan Task 1: fork from tmp/knowledge-rag)
+!alt-theory-rag/
+!alt-theory-rag/**
