@@ -46,7 +46,7 @@ import csv
 import io
 
 from .config import config
-from .parsers import parse_frontmatter, create_parent_child_chunks, ParsedDocument
+from .parsers import parse_frontmatter, extract_metadata, create_parent_child_chunks, ParsedDocument
 
 
 @dataclass
@@ -184,15 +184,19 @@ class DocumentParser:
             "modified": datetime.fromtimestamp(filepath.stat().st_mtime).isoformat(),
         }
 
-        # Extract headers hierarchy
+        # Extract headers hierarchy — store as flat strings for ChromaDB compatibility
+        # (ChromaDB rejects lists of dicts in metadata)
         header_pattern = r"^(#{1,6})\s+(.+)$"
+        parsed_headers = []  # Internal: list of {"level": N, "title": "..."}
         for match in re.finditer(header_pattern, content, re.MULTILINE):
             level = len(match.group(1))
             title = match.group(2).strip()
-            metadata["headers"].append({"level": level, "title": title})
+            entry = {"level": level, "title": title}
+            parsed_headers.append(entry)
+            metadata["headers"].append(f"{'#' * level} {title}")  # flat string list
 
         # Extract title from first H1 or filename
-        h1_headers = [h for h in metadata["headers"] if h["level"] == 1]
+        h1_headers = [h for h in parsed_headers if h["level"] == 1]
         if h1_headers:
             metadata["title"] = h1_headers[0]["title"]
         else:
@@ -202,7 +206,30 @@ class DocumentParser:
         frontmatter, content = parse_frontmatter(content)
         if frontmatter:
             metadata["has_frontmatter"] = True
-            metadata["frontmatter"] = frontmatter
+            # Apply metadata normalization with field aliases from config
+            field_config = [
+                {"name": "theory", "required": True, "aliases": ["theoryname"]},
+                {"name": "author", "required": True},
+                {"name": "year", "type": "int"},
+                {"name": "type"},
+                {"name": "title"},
+                {"name": "topics", "type": "list"},
+                {"name": "environment", "type": "list"},
+                {"name": "population", "type": "list"},
+            ]
+            normalized = extract_metadata(frontmatter, field_config)
+            # Override title if not set by extract_metadata
+            if "title" not in normalized:
+                try:
+                    normalized["title"] = metadata.get("title", filepath.stem)
+                except Exception:
+                    normalized["title"] = filepath.stem
+            # Add normalized fields to metadata (ChromaDB-safe flat format)
+            for key, val in normalized.items():
+                if isinstance(val, (str, int, float, bool)):
+                    metadata[key] = val
+                elif isinstance(val, list):
+                    metadata[key] = ", ".join(str(v) for v in val)
 
         return content, metadata
 
