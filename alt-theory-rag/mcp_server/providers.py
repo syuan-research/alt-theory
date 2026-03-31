@@ -2,6 +2,8 @@
 
 Interface aligned with ChromaDB v1.4.0+ embedding_function:
   __call__(input: List[str]) -> List[List[float]]
+  embed_query(input, **kwargs) -> List[List[float]]
+  embed_documents(documents: List[str]) -> List[List[float]]
   name() -> str
 """
 from typing import List, Protocol, runtime_checkable
@@ -48,6 +50,20 @@ class FastEmbedProvider:
 
     def name(self) -> str:
         return f"fastembed-{self.model_name}"
+
+    def embed_query(self, input=None, **kwargs) -> List[List[float]]:
+        """Embed a single query string (ChromaDB compatibility)."""
+        if isinstance(input, list):
+            texts = input
+        elif input is not None:
+            texts = [input]
+        else:
+            texts = [kwargs.get("query", "")]
+        return self(texts)
+
+    def embed_documents(self, documents: List[str]) -> List[List[float]]:
+        """Embed multiple documents (ChromaDB compatibility, alias for __call__)."""
+        return self(documents)
 
 
 def create_embedding_provider(config: dict) -> EmbeddingProvider:

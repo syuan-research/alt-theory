@@ -662,6 +662,8 @@ class KnowledgeOrchestrator:
         unique_metas = []
         dedup_skipped = 0
 
+        parent_chunk_id = f"{doc.id}_0"  # Parent is always chunk index 0
+
         for chunk in doc.chunks:
             content_hash = hashlib.sha256(chunk.content.encode("utf-8")).hexdigest()[:20]
             chunk_id = f"{doc.id}_{chunk.index}"
@@ -673,19 +675,24 @@ class KnowledgeOrchestrator:
             self._chunk_hashes[content_hash] = chunk_id
             unique_ids.append(chunk_id)
             unique_docs.append(chunk.content)
-            unique_metas.append(
-                {
-                    "doc_id": doc.id,
-                    "source": str(doc.source),
-                    "filename": doc.filename,
-                    "category": doc.category,
-                    "format": doc.format,
-                    "chunk_index": chunk.index,
-                    "keywords": ",".join(doc.keywords[:10]),
-                    "content_hash": content_hash,
-                    **chunk.metadata,
-                }
-            )
+
+            # Build metadata: ChromaDB only accepts primitive values (str/int/float/bool)
+            chunk_meta = {
+                "doc_id": doc.id,
+                "source": str(doc.source),
+                "filename": doc.filename,
+                "category": doc.category,
+                "format": doc.format,
+                "chunk_index": chunk.index,
+                "keywords": ",".join(doc.keywords[:10]),
+                "content_hash": content_hash,
+                **chunk.metadata,
+            }
+            # Inject full parent chunk ID for direct lookup at query time
+            if chunk_meta.get("chunk_type") == "child":
+                chunk_meta["parent_chunk_id"] = parent_chunk_id
+
+            unique_metas.append(chunk_meta)
 
         if unique_ids:
             self.collection.add(ids=unique_ids, documents=unique_docs, metadatas=unique_metas)
@@ -968,6 +975,9 @@ class KnowledgeOrchestrator:
         if len(sorted_results) > max_results:
             sorted_results = self._apply_mmr(sorted_results, max_results, lambda_param=0.7)
 
+        # Internal keys that should not leak to MCP consumer
+        _INTERNAL_META_KEYS = {"content_hash", "chunk_index", "doc_id"}
+
         formatted = []
         for chunk_id, data in sorted_results[:max_results]:
             metadata = data.get("metadata", {})
@@ -984,30 +994,22 @@ class KnowledgeOrchestrator:
             raw = data.get("reranker_score", data.get("rrf_score", 0))
             normalized_score = (raw - min_score) / score_range if score_range > 0 else 1.0
 
-            formatted.append(
-                {
-                    "content": data.get("document", ""),
-                    "source": metadata.get("source", ""),
-                    "filename": metadata.get("filename", ""),
-                    "category": metadata.get("category", ""),
-                    "chunk_index": metadata.get("chunk_index", 0),
-                    "score": round(normalized_score, 4),
-                    "raw_rrf_score": round(data.get("rrf_score", 0), 6),
-                    "reranker_score": round(data.get("reranker_score", 0), 6) if "reranker_score" in data else None,
-                    "semantic_rank": s_rank,
-                    "bm25_rank": b_rank,
-                    "search_method": search_method,
-                    "keywords": metadata.get("keywords", "").split(","),
-                    "routed_by": routed_category if routed_category else "none",
-                }
-            )
+            # Passthrough: all metadata except internal keys
+            result = {k: v for k, v in metadata.items() if k not in _INTERNAL_META_KEYS}
+            result["content"] = data.get("document", "")
+            result["score"] = round(normalized_score, 4)
+            result["search_method"] = search_method
+            if s_rank: result["semantic_rank"] = s_rank
+            if b_rank: result["bm25_rank"] = b_rank
+            if routed_category: result["routed_by"] = routed_category
+            formatted.append(result)
 
         # Parent context attachment — batch-fetch parents for all child results
         parent_ids = set()
         for r in formatted:
-            pid = r.get("parent_id")
-            if pid:
-                parent_ids.add(pid)
+            pcid = r.get("parent_chunk_id")
+            if pcid:
+                parent_ids.add(pcid)
         parent_lookup = {}
         if parent_ids:
             try:
@@ -1017,9 +1019,9 @@ class KnowledgeOrchestrator:
             except Exception as e:
                 print(f"[WARN] Parent fetch failed: {e}")
         for r in formatted:
-            pid = r.get("parent_id")
-            if pid and pid in parent_lookup:
-                r["parent_content"] = parent_lookup[pid]
+            pcid = r.get("parent_chunk_id")
+            if pcid and pcid in parent_lookup:
+                r["parent_content"] = parent_lookup[pcid]
 
         # Adjacent Chunk Retrieval — SKIPPED: parent context is now attached via parent-child search
         # formatted = self._expand_with_adjacent_chunks(formatted)
