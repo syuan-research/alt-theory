@@ -26,6 +26,7 @@ const PORT = parseInt(process.env.PORT ?? "3000", 10);
 
 // Resolve paths relative to project root (cwd)
 const PROJECT_ROOT = process.cwd();
+const TUI_DIR = resolve(PROJECT_ROOT, "alt-theory-app", "tui");  // AGENTS.md + .pi/prompts 在这里
 const KB_DIR = resolve(PROJECT_ROOT, "alt-theory-app", "web-server", "assets", "kb");
 const PUBLIC_DIR = resolve(PROJECT_ROOT, "alt-theory-app", "web-server", "public");
 
@@ -61,7 +62,7 @@ wss.on("connection", async (ws: WebSocket) => {
 
   // --- Create PI session ---
   let { session } = await createAltTheorySession({
-    rootDir: PROJECT_ROOT,
+    rootDir: TUI_DIR,
     kbDir: KB_DIR,
     readOnly: true,
   });
@@ -88,60 +89,63 @@ wss.on("connection", async (ws: WebSocket) => {
   // --- Send session_opened ---
   send({ type: "session_opened", payload: snapshot() });
 
-  // --- PI SDK events → WebSocket ---
-  const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
-    switch (event.type) {
-      case "agent_start":
-        send({ type: "session_updated", payload: snapshot({ status: "running" }) });
-        break;
+  // --- PI SDK events → WebSocket (extracted for reuse in new_session) ---
+  let unsubscribe = subscribeSession(session);
 
-      case "message_update":
-        if (event.assistantMessageEvent?.type === "text_delta") {
+  function subscribeSession(s: AgentSession) {
+    return s.subscribe((event: AgentSessionEvent) => {
+      console.log(`[event] ${event.type}`);
+      switch (event.type) {
+        case "agent_start":
+          send({ type: "session_updated", payload: snapshot({ status: "running" }) });
+          break;
+
+        case "message_update":
+          if (event.assistantMessageEvent?.type === "text_delta") {
+            send({
+              type: "assistant_delta",
+              payload: { text: event.assistantMessageEvent.delta ?? "" },
+            });
+          }
+          break;
+
+        case "tool_execution_start":
           send({
-            type: "assistant_delta",
-            payload: { text: event.assistantMessageEvent.delta ?? "" },
+            type: "tool_started",
+            payload: { toolName: event.toolName, callId: event.toolCallId },
           });
+          break;
+
+        case "tool_execution_update":
+          send({
+            type: "tool_updated",
+            payload: { callId: event.toolCallId },
+          });
+          break;
+
+        case "tool_execution_end":
+          send({
+            type: "tool_finished",
+            payload: {
+              callId: event.toolCallId,
+              success: !event.isError,
+            },
+          });
+          break;
+
+        case "agent_end": {
+          const error = session.state.errorMessage;
+          if (error) {
+            send({ type: "run_failed", payload: { error } });
+          } else {
+            messageCount++;
+            send({ type: "run_completed", payload: snapshot({ status: "idle" }) });
+          }
+          break;
         }
-        break;
-
-      case "tool_execution_start":
-        send({
-          type: "tool_started",
-          payload: { toolName: event.toolName, callId: event.toolCallId },
-        });
-        break;
-
-      case "tool_execution_update":
-        send({
-          type: "tool_updated",
-          payload: { callId: event.toolCallId },
-        });
-        break;
-
-      case "tool_execution_end":
-        send({
-          type: "tool_finished",
-          payload: {
-            callId: event.toolCallId,
-            success: !event.isError,
-            output: event.result,
-          },
-        });
-        break;
-
-      case "agent_end": {
-        // agent_end has no success/error field — check state.errorMessage
-        const error = session.state.errorMessage;
-        if (error) {
-          send({ type: "run_failed", payload: { error } });
-        } else {
-          messageCount++;
-          send({ type: "run_completed", payload: snapshot({ status: "idle" }) });
-        }
-        break;
       }
-    }
-  });
+    });
+  }
 
   // --- WebSocket → PI SDK ---
   ws.on("message", async (data) => {
@@ -186,15 +190,15 @@ wss.on("connection", async (ws: WebSocket) => {
         break;
 
       case "new_session": {
-        // Unsubscribe from old session, create new one
         unsubscribe();
         const result = await createAltTheorySession({
-          rootDir: PROJECT_ROOT,
+          rootDir: TUI_DIR,
           kbDir: KB_DIR,
           readOnly: true,
         });
         session = result.session;
         messageCount = 0;
+        unsubscribe = subscribeSession(session);
         send({ type: "session_opened", payload: snapshot() });
         console.log(`[ws] New session created: ${session.sessionId}`);
         break;

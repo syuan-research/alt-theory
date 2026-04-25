@@ -86,6 +86,7 @@ ws.onmessage = (event) => {
         ls: "Listing resources…",
       }[msg.payload.toolName] || "Processing…";
       toolStatusEl.textContent = `⏳ ${toolText}`;
+      toolStatusEl.dataset.currentTool = toolText;
       break;
     }
 
@@ -94,10 +95,7 @@ ws.onmessage = (event) => {
       break;
 
     case "tool_finished":
-      toolStatusEl.textContent = "✓ Done";
-      setTimeout(() => {
-        toolStatusEl.textContent = "";
-      }, 2000);
+      toolStatusEl.textContent = `✓ ${toolStatusEl.dataset.currentTool || "Done"}`;
       break;
 
     // --- Run completion ---
@@ -107,6 +105,7 @@ ws.onmessage = (event) => {
       sendBtn.style.display = "inline";
       stopBtn.style.display = "none";
       sessionStatusEl.textContent = "Ready";
+      toolStatusEl.textContent = "";
       break;
     }
 
