@@ -1,5 +1,4 @@
-# Git whitelist: only track the RAG folder
-# Strategy: ignore root items with /*, then step-by-step unignore the path
+# Git whitelist strategy: ignore root items with /*, then step-by-step unignore
 
 # Ignore all top-level files and directories
 /*
@@ -7,20 +6,38 @@
 # Keep .gitignore itself
 !.gitignore
 
-# Allow _dev directory to be traversed
+# ========================================
+# _dev directory
+# ========================================
 !_dev/
 
 # Ignore everything in _dev except approaches
 _dev/*
 !_dev/approaches/
 
-# Ignore everything in approaches except feature-rag-and-knowledge-base
+# Ignore everything in approaches except specific ones
 _dev/approaches/*
-!_dev/approaches/feature-rag-and-knowledge-base/
 
-# Allow all contents inside feature-rag-and-knowledge-base
+# RAG approach (original)
+!_dev/approaches/feature-rag-and-knowledge-base/
 !_dev/approaches/feature-rag-and-knowledge-base/**
 
-# Allow the RAG server code (created by plan Task 1: fork from tmp/knowledge-rag)
+# PI agent harness approach (Phase 3: spec, plans, research, reviews)
+!_dev/approaches/migrate-to-agent-harness-architecture/
+!_dev/approaches/migrate-to-agent-harness-architecture/**
+
+# ========================================
+# alt-theory-rag (RAG server)
+# ========================================
 !alt-theory-rag/
 !alt-theory-rag/**
+
+# ========================================
+# alt-theory-app (PI agent app)
+# ========================================
+!alt-theory-app/
+!alt-theory-app/**
+
+# Ignore node_modules inside alt-theory-app
+alt-theory-app/**/node_modules/
+alt-theory-app/**/node_modules/**
