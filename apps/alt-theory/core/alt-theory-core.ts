@@ -2,7 +2,7 @@
  * Alt Theory Core Layer
  *
  * Provides `createAltTheorySession(config)` — the unified API for all Alt Theory frontends.
- * Handles: system prompt assembly, profile injection, KB path binding, tool selection.
+ * Handles: system prompt assembly, agent profile injection, KB path binding, tool selection.
  *
  * @module alt-theory-core
  */
@@ -21,11 +21,11 @@ import { resolve } from "path";
 // ---------------------------------------------------------------------------
 
 export interface AltTheoryConfig {
-  /** Root directory containing kb/, profiles/, sessions/ — used as session cwd */
+  /** Root directory containing runtime agent files — used as session cwd */
   rootDir: string;
   /** KB root directory (search path for read-only/coding tools) */
   kbDir: string;
-  /** Profile file path (optional, appended to system prompt) */
+  /** Agent profile/soul file path (optional, appended to system prompt) */
   profilePath?: string;
   /** Read-only mode: only read/search tools; coding mode: full read/write/edit/bash */
   readOnly: boolean;
@@ -46,17 +46,17 @@ export async function createAltTheorySession(config: AltTheoryConfig) {
   const resolvedKbDir = resolve(kbDir);
   const agentDir = getAgentDir();
 
-  // --- 1. Read profile content (if any) ---
+  // --- 1. Read agent profile content (if any) ---
   const profileContent =
     config.profilePath && existsSync(config.profilePath)
       ? readFileSync(config.profilePath, "utf-8")
       : "";
 
   // --- 2. Assemble appendSystemPromptOverride ---
-  //    Order: profile → KB path declaration
+  //    Order: agent profile → KB path declaration
   const appendContent: string[] = [];
   if (profileContent) {
-    appendContent.push(`## User Profile\n${profileContent}`);
+    appendContent.push(`## Agent Profile\n${profileContent}`);
   }
   appendContent.push(
     `## Knowledge Base\nYour knowledge base is at: ${resolvedKbDir}`

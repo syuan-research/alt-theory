@@ -1,6 +1,6 @@
 /**
  * Alt Theory Core Layer Test Script
- * Verifies: createAltTheorySession(), system prompt contains profile + KB path
+ * Verifies: createAltTheorySession(), system prompt contains agent profile + KB path
  *
  * Usage: npx tsx apps/alt-theory/core/test-core.ts
  */
@@ -30,12 +30,19 @@ async function main() {
     console.log(`  Session ID: ${session.sessionId}`);
 
     // Verify system prompt
-    // Note: system prompt structure depends on PI internals
-    // Check if we can access it through the session API
+    // Note: system prompt structure depends on PI internals.
     const state = session.agent?.state;
     if (state) {
-      const sp = JSON.stringify(state).substring(0, 500);
+      const stateJson = JSON.stringify(state);
+      if (!stateJson.includes("## Agent Profile")) {
+        throw new Error("Agent profile heading was not injected into session state");
+      }
+      if (!stateJson.includes("problem space may still be forming")) {
+        throw new Error("Default agent profile content was not injected into session state");
+      }
+      const sp = stateJson.substring(0, 500);
       console.log(`\n  System prompt preview:\n  ${sp}`);
+      console.log("\n  Agent profile injection verified");
     }
 
     console.log("\n=== Core layer test passed ===");
