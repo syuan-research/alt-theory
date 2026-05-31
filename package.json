@@ -1,5 +1,11 @@
 {
+  "name": "llm-theo",
+  "private": true,
   "type": "module",
+  "scripts": {
+    "dev:web": "tsx apps/alt-theory/web/server/server.ts",
+    "smoke:core": "tsx apps/alt-theory/core/test-core.ts"
+  },
   "dependencies": {
     "@mariozechner/pi-ai": "0.70.2",
     "@mariozechner/pi-coding-agent": "0.70.2",
@@ -10,6 +16,7 @@
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
-    "@types/ws": "^8.18.1"
+    "@types/ws": "^8.18.1",
+    "tsx": "^4.22.4"
   }
 }
