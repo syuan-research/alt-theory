@@ -5,6 +5,8 @@
 
 # Keep .gitignore itself
 !.gitignore
+!package.json
+!package-lock.json
 
 # ========================================
 # _dev directory
@@ -41,3 +43,35 @@ _dev/approaches/*
 # Ignore node_modules inside alt-theory-app
 alt-theory-app/**/node_modules/
 alt-theory-app/**/node_modules/**
+
+# ========================================
+# v0.3 clean worktree structure
+# ========================================
+!apps/
+!apps/**
+
+!agent-assets/
+!agent-assets/**
+
+!project/
+!project/**
+
+!references/
+!references/*.md
+
+!tools/
+!tools/**
+
+# Generated / dependency-heavy paths for v0.3
+node_modules/
+**/node_modules/
+dist/
+build/
+.cache/
+coverage/
+__pycache__/
+.pytest_cache/
+*.pyc
+*.log
+**/data/chroma_db/
+**/chroma_db/
