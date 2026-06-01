@@ -68,6 +68,12 @@ project/foundation/*
 project/plan-records/*
 !project/plan-records/reorg-v0.3/
 !project/plan-records/reorg-v0.3/**
+!project/plan-records/cs-swe-v0-2-adaptation/
+!project/plan-records/cs-swe-v0-2-adaptation/**
+!project/plan-records/cs-swe-v0-3-handoff/
+!project/plan-records/cs-swe-v0-3-handoff/**
+!project/plan-records/cs-swe-v0-3-design/
+!project/plan-records/cs-swe-v0-3-design/**
 !project/research/
 project/research/*
 !project/research/candidate-skills/
@@ -80,6 +86,8 @@ project/architecture/*
 !project/workstreams/
 project/workstreams/*
 !project/workstreams/*.md
+!project/workstreams/cs-swe-v0-3-handoff/
+!project/workstreams/cs-swe-v0-3-handoff/**
 !project/workstreams/swe/
 !project/workstreams/swe/**
 !project/workstreams/agent-harness/
@@ -116,3 +124,7 @@ __pycache__/
 *.log
 **/data/chroma_db/
 **/chroma_db/
+
+# Local ignored snapshots / archives
+_archives/
+_archives/**

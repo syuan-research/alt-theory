@@ -12,6 +12,7 @@
     "@mariozechner/pi-web-ui": "0.70.2",
     "dotenv": "^16.4.7",
     "express": "^5.2.1",
+    "opencode-goal-plugin": "^0.1.10",
     "ws": "^8.20.0"
   },
   "devDependencies": {

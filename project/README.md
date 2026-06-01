@@ -9,7 +9,7 @@ Current policy:
 - `foundation/` stores selected project identity and legacy/foundation indexes.
 - `architecture/` stores current structure and architecture rationale.
 - `workstreams/` stores active or near-active workstream briefs and imported current-status docs.
-- `project/workstreams/swe/` stores CodeStable-derived SWE feature/issue/refactor artifacts when actual coding work needs stronger process guardrails. Broader `features/`, `issues/`, `roadmaps/`, and `compound/` areas outside SWE remain possible future areas; introduce them only when a concrete non-SWE task needs them.
+- `project/workstreams/swe/` stores CodeStable-derived SWE feature/issue/refactor/`swe-plan` artifacts when actual coding work needs stronger process guardrails. Broader `features/`, `issues/`, `roadmaps/`, and `compound/` areas outside SWE remain possible future areas; introduce them only when a concrete non-SWE task needs them.
 
 Important distinctions:
 
@@ -37,14 +37,18 @@ Use `%LLM_THEO_DEV_ROOT%` for runnable Node/npm development. Do not run npm inst
 
 This project is not using a full `.codestable/` skeleton yet.
 
-Use `agent-assets/skills/cs-modified-v0-1/SKILL.md` as the current lightweight CodeStable adaptation when deciding where to place project records, whether something is current architecture versus future roadmap, and how to avoid turning discussion or imported evidence into hard policy. For actual SWE feature / issue / refactor coding work, use `agent-assets/skills/cs-swe-v0-2/SKILL.md` and its sibling `cs-swe-*` skills instead.
+For actual SWE feature / issue / refactor / multi-feature `swe-plan` coding work, use `agent-assets/skills/cs-swe-v0-3/SKILL.md`.
 
-The main local adaptation is:
+Do not use `cs-modified-v0-1` as a current rule. It was an incorrect intermediate artifact from an earlier mistaken assumption that CodeStable should be adapted mainly at a high conceptual level. If that history matters, recover it from plan-records; do not present it to future agents as a skill.
 
-- keep CodeStable's separation between capability vision, current architecture, planning, decisions, and reusable learning;
+The current local CodeStable adaptation is:
+
+- keep CodeStable's concrete SWE guardrails for features, issues, refactors, and multi-feature `swe-plan`;
 - do not require `.codestable/attention.md` or its full directory tree;
-- use the current `project/`, `evals/`, and `agent-assets/` layout;
-- keep folder/rule changes small and explain why they are needed.
+- use the current `project/workstreams/swe/`, `project/architecture/`, and `agent-assets/skills/` layout;
+- rename CodeStable raw roadmap mechanics to `swe-plan`;
+- keep requirements as references unless the user opens a separate requirement workflow;
+- make plan-record / brainstorm / architecture boundaries explicit.
 
 ## Evaluation Priority
 

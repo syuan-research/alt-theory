@@ -24,7 +24,7 @@ Read:
 2. `agent-assets/skills/cs-swe-v0-2/references/shared-conventions.md`
 3. The specific downstream skill for the task.
 
-If the task is not clearly SWE, stop using CS-SWE and route to ordinary project docs, `cs-modified-v0-1`, or the relevant eval/research plan-record.
+If the task is not clearly SWE, stop using CS-SWE and route to ordinary project docs, the plan-record skill/rules, or the relevant eval/research record. Do not route to `cs-modified-v0-1`; that was an incorrect intermediate artifact and is not an active skill.
 
 ## Route
 

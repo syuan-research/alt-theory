@@ -1,12 +1,13 @@
 # SWE Workstream
 
-Status: active root for CS-SWE v0.2 workflow artifacts.
+Status: active root for CS-SWE v0.3 workflow artifacts.
 
-This folder is for software-engineering workflow records produced by the project-owned CodeStable-derived skills under `agent-assets/skills/cs-swe-v0-2`.
+This folder is for software-engineering workflow records produced by `agent-assets/skills/cs-swe-v0-3`.
 
 Initial subareas are created on demand:
 
 ```text
+plans/
 brainstorms/
 features/
 issues/
