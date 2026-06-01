@@ -82,6 +82,10 @@ Asking all 5 simultaneously lets users skip the hard ones. One at a time prevent
 
 User says "skip" or "not sure" on any → skip that question.
 
+### User Log Collection
+
+When user-reported logs are needed, provide a structured prompt asking for: steps to reproduce, expected vs actual behavior, error messages, timestamps, environment info.
+
 ### Report Template
 
 ```markdown
@@ -147,7 +151,12 @@ Do not skip to fix. Root cause analysis prevents patching symptoms.
 | config | Wrong default, missing config, environment-specific |
 | missing-guard | Missing null check, missing error handling, missing boundary check |
 
-**Step 4: Impact assessment** — what other code depends on this? Does fixing it risk breaking something else? List touched files expected for fix
+**Step 4: Impact assessment** — what other code depends on this? Does fixing it risk breaking something else? List touched files expected for fix. Assess across four dimensions:
+
+- **Impact scope (影响范围)**: which modules/features affected
+- **Potential victims (潜在受害者)**: which users/systems impacted
+- **Data integrity (数据完整性)**: any data corruption risk
+- **Severity review (严重程度复核)**: confirm severity after full assessment
 
 **Step 5: Fix options** — present 1-3 options with tradeoffs. Don't self-select — let user decide. Each option should state: approach, files touched, risk level
 
@@ -232,110 +241,9 @@ Fix addresses the recorded root cause. Stays within analyzed scope. Side discove
 
 Same reflection triggers as feature implementation, plus: if reflection fires "should split" but current analysis didn't plan for it, **default is NOT to refactor in this PR**. Only exception: can't cleanly fix without the refactoring. In that case, stop and discuss with user first.
 
-### Log-Debugging Protocol
+### Fix-Phase Reference
 
-When first fix attempt fails:
-
-1. Declare failure to user: "first fix didn't resolve, switching to logging"
-2. Determine log points (minimal, focused on failure path)
-3. Add logging, user runs, captures output
-4. Analyze logs → update root cause hypothesis
-5. Clean up logging (remove debug logs)
-6. Re-enter fix with new hypothesis
-
-**2-round limit**: after 2 rounds of log-debugging without resolution, return to analyze phase instead of piling on patches. User prompt: "Two debugging rounds haven't resolved. Recommend returning to analysis to re-examine root cause."
-
-### Per-Change Report Template (Standard Path)
-
-```markdown
-## Fix Changes
-
-### Files Changed
-{file:line — what changed}
-
-### Scope Check
-{Did fix touch files outside analyzed scope? Yes/No + why}
-
-### New Concepts Introduced?
-{Any new types/functions not in analysis? Yes/No + why}
-
-### Reproduction Verification
-{How was the fix verified? Steps + result}
-```
-
-### Fix-Note Templates
-
-**Standard path** (simpler):
-
-```markdown
----
-doc_type: issue-fix
-issue: YYYY-MM-DD-{slug}
-path: standard
-fix_date: YYYY-MM-DD
-tags: []
----
-
-# {slug} Fix Note
-
-## 1. Problem
-
-## 2. Root Cause
-
-## 3. Fix
-
-## 4. Files Changed
-
-## 5. Verification
-
-## 6. Follow-Up Observations
-```
-
-**Fast track** (more context needed since no separate report/analysis):
-
-```markdown
----
-doc_type: issue-fix
-issue: YYYY-MM-DD-{slug}
-path: fast-track
-fix_date: YYYY-MM-DD
-root_cause_type: {category}
-severity: {P0-P3}
-tags: []
----
-
-# {slug} Fix Note (Fast Track)
-
-## 1. Problem
-
-{Observed behavior}
-
-## 2. Expected Behavior
-
-{What should happen}
-
-## 3. Root Cause
-
-{Root cause + category}
-
-## 4. Fix
-
-{What was changed}
-
-## 5. Files Changed
-
-{file:line — what changed}
-
-## 6. Verification
-
-{How verified}
-
-## 7. Reproduction Steps
-
-{Steps to reproduce original issue, for future reference}
-
-## 8. Follow-Up Observations
-```
+Fix-note template and log-debugging protocol: `references/issue-fix-reference.md`
 
 ---
 

@@ -30,6 +30,10 @@ This file records where v0.3 came from. It is not part of the runtime workflow.
 | `references/workflows/explore.md` | Adapts cs-explore + reference.md. Three types, Phase 1-5, evidence discipline. |
 | `references/workflows/trick.md` | Adapts cs-trick + reference.md. Three types, Phase 1-6, mandatory code investigation. |
 | `references/workflows/arch.md` | Adapts cs-arch + reference.md. All three modes (update/check/backfill), Phase 1-6, 18 check coverage items. |
+| `references/feature-design-template.md` | Extracted from feature.md. Design document structure template (sections 0-4 writing requirements). |
+| `references/issue-fix-reference.md` | Extracted from issue.md. Fix-note templates, log-debugging protocol, per-change report template. |
+| `references/swe-plan-items-format.md` | Extracted from swe-plan.md. Items.yaml format, field rules, state machine, lifecycle, child feature handoff. |
+| `references/arch-check-reference.md` | Extracted from arch.md. Check mode 18 coverage items, check report template, check-mode common errors. |
 
 ## Historical / Non-Active
 

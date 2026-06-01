@@ -84,7 +84,7 @@ Scan using the 4-layer method library as template:
 - **L3 Structural split**: component > 300 lines / file doing multiple things / container and presentation mixed / same logic written separately in multiple components (frontend); Controller directly calling DB / Service missing / Repository bypassed (backend)
 - **L4 Performance**: repeated computation (memoizable) / N+1 queries / list without virtualization or pagination / event listeners not cleaned up / large objects with deep reactivity (Vue)
 
-Full method library in `references/refactor-methods.md`. Load entire library during scan as matching table.
+Full method library in `references/refactor/methods.md`. Load entire library during scan as matching table.
 
 ### Scan Output Format
 

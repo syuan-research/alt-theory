@@ -72,6 +72,8 @@ refactors/
     {slug}-apply-notes.md
 compound/                        # project-level, not under artifact_root
   YYYY-MM-DD-{doc_type}-{slug}.md
+brainstorms/                    # project-level, for case 4 central creative records
+  YYYY-MM-DD-{slug}.md
 ```
 
 Compound is project-level (`project/compound/`) because decisions, learnings, and explore records are project-wide assets, not SWE-workstream-specific. Other non-SWE agents also need to read/write compound.
