@@ -23,7 +23,7 @@ This file records where v0.3 came from. It is not part of the runtime workflow.
 | `references/refactor/methods.md` | Copied from cs-refactor/reference/methods.md. L1-L4 method library (394 lines). No adaptation needed (universal methodology). |
 | `references/refactor/refusal-routing.md` | Copied from cs-refactor/reference/refusal-routing.md. Pre-scan checks (143 lines). |
 | `references/refactor/scan-checklist-format.md` | Copied from cs-refactor/reference/scan-checklist-format.md. Scan item format (164 lines). |
-| `references/workflows/swe-plan.md` | Adapts cs-roadmap + reference.md. Phase 1-6, decomposition discipline, self-check, boundaries, update mode, lifecycle. |
+| `references/workflows/swe-plan.md` | Lightweight adaptation: document structure, drafting discipline, optional items.yaml, child feature handoff. Does NOT prescribe CS raw's 6-phase pipeline — design decision: flexible, not forced. |
 | `references/workflows/brainstorm.md` | Adapts cs-brainstorm + reference.md. v0.3 anchors preserved as design decision. Added grill mode, spike rules, conversation rhythm. |
 | `references/workflows/decide.md` | Adapts cs-decide + reference.md. Four categories, Phase 1-5, update/supersede. |
 | `references/workflows/learn.md` | Adapts cs-learn + reference.md. Pitfall/knowledge tracks, Phase 1-5, update/supersede. |
@@ -32,7 +32,6 @@ This file records where v0.3 came from. It is not part of the runtime workflow.
 | `references/workflows/arch.md` | Adapts cs-arch + reference.md. All three modes (update/check/backfill), Phase 1-6, 18 check coverage items. |
 | `references/feature-design-template.md` | Extracted from feature.md. Design document structure template (sections 0-4 writing requirements). |
 | `references/issue-fix-reference.md` | Extracted from issue.md. Fix-note templates, log-debugging protocol, per-change report template. |
-| `references/swe-plan-items-format.md` | Extracted from swe-plan.md. Items.yaml format, field rules, state machine, lifecycle, child feature handoff. |
 | `references/arch-check-reference.md` | Extracted from arch.md. Check mode 18 coverage items, check report template, check-mode common errors. |
 
 ## Historical / Non-Active

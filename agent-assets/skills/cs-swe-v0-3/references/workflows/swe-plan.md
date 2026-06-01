@@ -2,14 +2,6 @@
 
 This adapts CodeStable raw `roadmap` mechanics under the v0.3 term `swe-plan`.
 
-`swe-plan` is the project's planning layer — each subdirectory carries one large requirement, consisting of three parts:
-
-1. **Conceptual design**: how to build this large requirement, which modules/components to split into, each responsibility
-2. **Architecture-level detailed design**: interface contracts between modules, shared data structures, cross-feature protocols
-3. **Child feature decomposition**: break the plan into a series of child feature seeds with dependency relationships, each consumed by one feature workflow run
-
-All three parts **together** serve as shared constraints for all child features — when any child feature enters feature design, the interface contracts in part 2 are its **hard constraint input** (cannot be violated; to change, go back to swe-plan update first).
-
 ## When To Use
 
 Use `swe-plan` when at least one is true:
@@ -21,21 +13,6 @@ Use `swe-plan` when at least one is true:
 - child feature acceptance should update a shared plan.
 
 Do not use it for a single feature, bug, refactor, research plan, or long-horizon project roadmap.
-
-## Mode Routing
-
-| What user says | Mode |
-|---|---|
-| "split X requirement", "open a swe-plan for X", "I want an X system" | `new` |
-| "add child feature to {existing plan}", "reorder", "mark dropped" | `update` |
-
-Cannot determine → ask user.
-
-## Single Target Rule
-
-Each run targets exactly one swe-plan. "I want X and Y" → pick one, the other next time. Same reasoning as architecture — producing multiple plans in one run means user cannot review them all.
-
----
 
 ## Inputs
 
@@ -49,6 +26,8 @@ Read:
 
 ## Output Path
 
+Use:
+
 ```text
 {artifact_root}/plans/{swe-plan-slug}/
   {swe-plan-slug}-swe-plan.md
@@ -56,127 +35,150 @@ Read:
   drafts/                       # optional
 ```
 
-`{swe-plan-slug}` — lowercase letters / numbers / hyphens, matching the large requirement (e.g. `permission-system`, `notification-center`). Flat layout, no nested epic/sub-epic. `drafts/` created on demand, AI does not force archiving.
+## Main Document Structure
 
+```markdown
+---
+doc_type: swe-plan
+slug: {slug}
+status: active
+created: YYYY-MM-DD
+last_reviewed: YYYY-MM-DD
+workstream: {workstream}
+artifact_root: {artifact_root}
+items_yaml: true | false
+source_plan_records: []
+source_brainstorms: []
+requirement_refs: []
+architecture_refs: []
+tags: []
 ---
 
-Full items.yaml format, field rules, state machine, plan document structure template, lifecycle, child feature handoff, and common errors: [`references/swe-plan-items-format.md`](swe-plan-items-format.md)
+# {Title}
 
----
+## 1. Background
 
-## Workflow
+## 2. Scope And Non-Goals
 
-### Phase 1: Lock Target
+## 3. Module / Component Decomposition
 
-Mode + target + scope. `new` mode first settle an English slug (following existing slug conventions).
+## 4. Interface Contracts / Shared Protocols
 
-### Phase 2: Read Materials
+## 5. Child Feature Seeds
 
-**Common required reads**: `../shared-conventions.md` + `../record-boundaries.md` + user source material + `plans/` other swe-plans (prevent duplication) + relevant architecture docs + relevant workstream notes.
+## 6. Minimal Runnable Loop
 
-**Contextual reads**:
-- Related compound artifacts: `python {skill_dir}\tools\search-yaml.py --dir project/compound --query "{keyword}"`
-- Existing related feature designs
+## 7. Observations / Risks
 
-**Update additional**: current main document full text + items.yaml current state + launched/completed child feature design/acceptance docs.
+## 8. Acceptance And Writeback
+```
 
-### Phase 3: Decompose and Draft
+## Drafting Discipline
 
-Write **complete first draft** per main document structure and items.yaml format — do not output in batches. (Full template in [`references/swe-plan-items-format.md`](swe-plan-items-format.md))
+Do module/component thinking before child-feature splitting. Without clear architecture first, each feature reinvents wheels and interfaces don't align.
 
-**Decomposition Discipline** (7 rules):
+Interface contracts must be specific enough for feature design to treat them as hard input:
 
-1. **Architecture before features** — sequence: think module decomposition (section 3) → module interfaces/data structures/protocols (section 4) → then break into child features (section 5). **Architecture unclear when decomposing features results in each feature reinventing its own wheel, interfaces misaligned**
-2. **Interface contracts must be executable-level** — function signatures / data structures / protocol fields / error codes at this level. Cannot reach this level → go back and think harder. No cross-module interface (e.g. pure frontend style adjustment) → explicitly write "no cross-module interface"
-3. **Each child feature must be independently runnable** — can go through feature design / implementation / acceptance independently. Cannot → granularity is wrong
-4. **Dependency graph must be a DAG** — A depends on B, write it clearly, no cycles
-5. **Dependency reasons must be concrete** — "B depends on A because A provides XX table structure" not "A goes first"
-6. **Mark the minimal runnable loop first** — after completion, the narrowest path that runs end-to-end is marked as the first item
-7. **Explicit non-goals** — user's mental "permission system" may include audit logging / data masking; if not covering, write into "explicitly out of scope"
+- function signatures (with parameter types and return types);
+- API routes and fields (request/response shapes, error codes);
+- event payloads (schema, required vs optional fields);
+- data/state schema (constraints like "reason must be null when allowed=true");
+- component props/events;
+- file protocol;
+- behavioral constraints (e.g., "caller must ensure user_id is authenticated", "event must be consumed idempotently");
+- or explicit "no cross-feature interface" (never blank or "待定" — if no interface exists, say so explicitly).
 
-Additionally: **do not decide product priority for the user** — ordering beyond technical dependencies lets the user decide.
+Each child feature must be independently designable, implementable, acceptable, and **verifiable** — can you write "after completion, {specific observable phenomenon}"?
 
-### Phase 4: Self-Check List
+Dependency reasons must name the artifact supplied by the dependency. Avoid "A before B" without saying why. Dependency graph must be acyclic — no A→B→A loops.
 
-Before user review, self-run this 12-item check:
+Don't prioritize for the user beyond technical dependencies. Let the user decide ordering that isn't driven by dependency.
 
-1. Module decomposition clear? Each module's responsibility expressible in one sentence?
-2. Interface contracts at executable level? Feature design can follow without coming back to ask?
-3. Each child feature slug standard? (grep `{artifact_root}/features/` to confirm no conflicts)
-4. Each description one clear sentence? Cannot express clearly → not decomposed enough or scope too vague
-5. Dependency graph is DAG? No self-reference or A→B→A loops?
-6. Minimal loop truly minimal? First item done can independently demo something?
-7. "Explicitly out of scope" written? If none, say "no explicit non-goals"
-8. Conflicts with existing architecture / requirements? If yes, write "conflicts with {doc}, pending user decision" — do not silently pick a side
-9. Shared data structures / persistence / global state listed?
-10. Should this be a requirement change instead of a feature?
-11. **Update-specific**: every new/changed item has source evidence? Fabricating "add one to look more complete" is scope drift
-12. **Update-specific**: if interface contracts changed, are in-progress/done child features affected? List affected ones as "observation items" and alert user
+## Per-Module Guidance
 
-### Phase 5: User Review
+When writing section 3 (Module / Component Decomposition), each module should state:
 
-Present main document + items.yaml in full to user. Revise until user explicitly says "looks good".
+- one-sentence responsibility;
+- which child features it carries;
+- which existing code/modules it touches.
 
-**Review prompt**:
+If decomposition is unnecessary (pure internal behavior change to one module), write explicitly: "This demand completes within existing module X" and skip section 4.
 
-> swe-plan drafted, please review as a whole. **Read architecture design first, then feature decomposition** — if architecture changes, all downstream must be re-ordered:
->
-> **Architecture layer**
-> 1. Module decomposition correct? Boundaries reasonable? Merge/split needed?
-> 2. Interface contracts specific enough? Feature design can follow directly? Any "negotiate between sides" ambiguity?
-> 3. Shared data structures / protocol fields / error codes missing?
->
-> **Feature decomposition layer**
-> 4. Decomposition granularity appropriate? Each can independently become a feature?
-> 5. Each mapped to correct module?
-> 6. Dependencies correct? Missing prerequisites or unnecessary dependencies?
-> 7. Minimal loop chosen correctly? First item done can truly demo something end-to-end?
-> 8. "Explicitly out of scope" complete?
-> 9. Order matches your product priorities?
+## Minimal Runnable Loop
 
-### Phase 6: Persist
+Section 6 should identify the **narrowest end-to-end path**, not the easiest item. Ask: is this truly the narrowest path that runs end-to-end, or just the one with least effort?
 
-**new**: Create `{artifact_root}/plans/{swe-plan-slug}/`; write main document (`status: active`, `created` / `last_reviewed` today); write items.yaml (each item `status: planned`, `feature: null`); `validate-yaml.py` validate.
+## Non-Goals
 
-**update**: Modify main document (`last_reviewed` today, structural changes add changelog entry at end); modify items.yaml corresponding items (dropped items not deleted, `status: dropped` with reason preserved); re-validate yaml.
+Each non-goal in section 2 should state a reason or point to another plan/requirement. Don't just list items without context.
 
-**Do not modify requirements / architecture** — swe-plan is the planning layer, those layers only describe current state. Issues found during decomposition go into "observations" for user, do not modify on the side.
+## Observations / Risks
 
----
+Use section 7 for:
 
-## Update Mode
+- conflicts with existing requirements or architecture (surface them, don't silently pick a side);
+- discoveries that might affect other child features;
+- technical risks visible at plan level.
 
-When adding or changing items in an existing swe-plan:
+Do not use the plan to modify requirements or architecture. If a conflict exists, record it and flag for user decision.
 
-- **Add child features**: new items follow decomposition discipline rules; confirm slug does not conflict with existing features
-- **Reorder**: only reorder items without dependencies; dependency-constrained items maintain their order
-- **Mark dropped**: do not delete — set `status: dropped`, write drop reason in `notes`
-- **Interface contract changes**: mandatory impact assessment — list all in-progress/done child features affected by the contract change; present to user for decision before proceeding
+## Optional Items YAML
 
----
+Use only when useful:
 
-## Hard Boundaries
+```yaml
+swe_plan: {slug}
+created: YYYY-MM-DD
+workstream: {workstream}
+artifact_root: {artifact_root}
 
-1. **No single-feature implementation details** — swe-plan stops at "module boundaries / interface contracts / shared protocols"; single-module internal implementation belongs to feature design. Criterion: **shared by multiple features** → swe-plan; **used within one feature** → feature design
-2. **No modifying vision or structure archives** — do not modify requirements / architecture / code / existing features on the side. Issues go into "observations"
-3. **No deciding product priority for user** — ordering beyond technical dependencies lets user decide
-4. **Single target** — one swe-plan per run
-5. **No scope expansion** — issues outside user scope go into observations, do not expand
-6. **Interface contracts either executable-level or explicitly "no cross-module interface"** — "TBD / figure it out later" is not allowed. Ambiguous contracts cause each feature to fill them independently, guaranteed inconsistency
+items:
+  - slug: {child-feature-slug}
+    description: {one sentence}
+    depends_on: []
+    dependency_reason: null
+    status: planned        # planned | in-progress | done | dropped
+    feature: null
+    minimal_loop: true
+    notes: null
+```
 
----
+Validate when present:
 
-## Exit Conditions Checklist
+```powershell
+python {skill_dir}\tools\validate-yaml.py --file {path-to-items-yaml} --yaml-only
+```
 
-- [ ] Locked single mode + single target
-- [ ] Main document frontmatter complete (`doc_type: swe-plan` / `slug` / `status` / `created` / `last_reviewed` / `tags`)
-- [ ] Main document contains: background / scope and explicit non-goals / **module decomposition** / **interface contracts** / child feature seeds / progression rationale / observations
-- [ ] Module decomposition section: each module's responsibility in one sentence
-- [ ] Interface contracts section at executable level (function signatures / data structures / protocol fields / error codes) or explicitly "no cross-module interface"
-- [ ] items.yaml each item has `slug` / `description` / `depends_on` / `dependency_reason` / `status` / `feature`
-- [ ] Dependency graph is DAG with no cycles
-- [ ] Minimal runnable loop item marked
-- [ ] items.yaml passes `validate-yaml.py` validation
-- [ ] Phase 4 self-check list run item by item and reported
-- [ ] User review passed
-- [ ] No side modifications to requirements / architecture / code / existing features
+## Child Feature Handoff
+
+When starting a child feature:
+
+1. Read the `swe-plan` main document.
+2. Read `items.yaml` if it exists.
+3. Treat interface contracts as hard design input.
+4. Use feature design frontmatter:
+
+```yaml
+swe_plan: {swe-plan-slug}
+swe_plan_item: {child-feature-slug}
+swe_plan_path: {artifact_root}/plans/{swe-plan-slug}/
+```
+
+If `items.yaml` exists, feature design marks the item `in-progress`; feature acceptance marks it `done`.
+
+If the plan contract is wrong or missing, update the `swe-plan`; do not bypass it inside a child feature.
+
+## Update Considerations
+
+When updating an existing swe-plan (add/reorder/drop child features):
+
+- New or changed items must trace to source material. Don't add items just to "look more complete" — that's scope drift.
+- If interface contracts change, assess impact on in-progress or done child features. Flag affected items as observations for the user.
+- Dropped items must include a reason. Don't silently delete — preserve the rationale.
+- Discovery during feature-design that scope is actually multi-feature: step back to swe-plan, decompose, then continue.
+
+## Common Mistakes
+
+- **Grain mismatch**: one item holds three independent features, another only changes a config. If so, re-split.
+- **Plan drifts into single-feature detail**: the plan defines shared constraints and child seeds. Single-feature implementation details belong in feature design, not swe-plan.
+- **Missing requirement-disguised items**: "change the boundary of capability X" is a requirement change, not a feature. Redirect to requirement workflow.
