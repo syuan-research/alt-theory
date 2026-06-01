@@ -19,6 +19,8 @@ Fast path is allowed only when:
 
 Otherwise use the standard path.
 
+**Fast track gate**: only the report phase startup check makes the formal determination (standard vs fast). Once in standard path, no re-judgment to fast track later — prevents different phases disagreeing on path.
+
 ## Paths
 
 ```text
@@ -28,55 +30,253 @@ Otherwise use the standard path.
   {slug}-fix-note.md
 ```
 
-## Report
+Date is when the issue was discovered/reported, fixed once set. Slug should be recognizable (e.g. `auth-token-leak`, `null-pointer-on-empty-list`).
 
-Capture:
+`{slug}-fix-note.md` is a **required output** regardless of path complexity. Without it, future similar issues can only be reconstructed from git diff.
 
-- observed behavior;
-- expected behavior;
-- reproduction steps;
-- environment/context;
-- related files/logs/screenshots if available;
-- whether this is a regression.
+---
 
-If reproduction is unclear, do not guess a fix. First narrow the reproduction path.
+## Routing
 
-## Analyze
+Enter this workflow, first glob `{artifact_root}/issues/` to detect existing files:
 
-Analyze before fixing:
+| Current state | Trigger which phase |
+|---|---|
+| Just discovered, no files | Report phase (determines standard vs fast there) |
+| `report.md` exists, no `analysis.md` | Analyze phase |
+| `analysis.md` exists, code not changed | Fix phase |
+| Code changed, no fix verification record | Fix phase (verification) |
+| Uncertain | Read existing files and match table above |
 
-- inspect relevant code;
-- identify likely root cause;
-- distinguish root cause from symptoms;
-- list touched files expected for the fix;
-- note out-of-scope discoveries.
+User describes **new feature requirement, not a bug** → tell user to use feature workflow.
 
-If the investigation changes the issue boundary, update the analysis instead of patching around it.
+## Feature-Issue Boundary
 
-## Fix
+- Issue: something that should work is broken — existing code bug / unexpected behavior / doc error / performance problem
+- Feature: something that never existed needs adding — new capability
 
-The fix should:
+Gray area: fixing an issue reveals new capability is needed → **complete issue workflow first (report + analysis)**, then open feature separately. Don't mix new capability into issue fix — same reason features don't hide bug fixes.
 
-- address the recorded root cause;
-- stay within the analyzed scope;
-- avoid side refactors;
-- include verification evidence;
-- record touched files and actual change.
+---
 
-If the first fix fails, use logging or targeted probes, then revise the root-cause hypothesis. After repeated failure, return to analysis instead of piling on patches.
+## Report Phase
 
-## Fix Note Template
+Core principle: **record phenomena, not root cause**. Root cause belongs to analyze phase. Mixing them loses the separation between "what was observed" and "what was diagnosed".
+
+### Questions (ask one at a time, not all at once)
+
+Asking all 5 simultaneously lets users skip the hard ones. One at a time prevents this:
+
+1. **"What did you observe?"** — expected: concrete behavior description. Vague signals ("it doesn't work") → follow up: "what specifically happened? error message? unexpected output? which screen?" Still unclear → ask for screenshot/log
+2. **"What did you expect?"** — expected: contrast with observed. If same as #1 → rephrase: "if it worked correctly, what would you see?"
+3. **"Can you reproduce it? How?"** — expected: steps. If can't reproduce → don't guess fix, first narrow reproduction path
+4. **"Is this a regression? Did it work before?"** — expected: yes/no + when it changed. If regression → identify commit range
+5. **"How severe?"** — present severity levels:
+
+| Level | Meaning | Example |
+|---|---|---|
+| P0 | System unusable / data loss / security | Production down, data corruption |
+| P1 | Core functionality broken, no workaround | Login fails for all users |
+| P2 | Feature broken, workaround exists | Export fails but copy-paste works |
+| P3 | Minor inconvenience / cosmetic | Wrong tooltip text, alignment off |
+
+User says "skip" or "not sure" on any → skip that question.
+
+### Report Template
+
+```markdown
+---
+doc_type: issue-report
+issue: YYYY-MM-DD-{slug}
+status: open
+severity: P0 | P1 | P2 | P3
+summary: {one-sentence description}
+tags: []
+---
+
+# {slug} Report
+
+## 1. Observed Behavior
+
+## 2. Expected Behavior
+
+## 3. Reproduction Steps
+
+## 4. Environment / Context
+
+## 5. Related Files / Logs / Screenshots
+
+## 6. Regression? (yes/no + when)
+```
+
+### Report Phase Exit Conditions
+
+- [ ] All 5 questions asked (one at a time)
+- [ ] Severity classified P0-P3
+- [ ] Report file saved with complete frontmatter
+- [ ] Fast track determination made and recorded
+- [ ] If standard path: user confirmed report content
+
+---
+
+## Analyze Phase
+
+Do not skip to fix. Root cause analysis prevents patching symptoms.
+
+### Startup
+
+1. Read `{slug}-report.md` full text
+2. Read relevant code files mentioned in report
+3. Breakpoint recovery: if `analysis.md` exists and partially filled → resume from next section, report "last completed section X"
+4. Context sweep: glob `project/architecture/`, search `project/compound/` for related tricks/explores/learnings that might inform analysis
+
+### Analysis Structure (5 steps)
+
+**Step 1: Locate code** — identify which files/functions are involved in the observed behavior. Record file:line references
+
+**Step 2: Reproduce failure path** — trace the code path from trigger to failure point. Record the chain
+
+**Step 3: Confirm root cause** — distinguish root cause from symptoms. Root cause classification:
+
+| Category | Meaning |
+|---|---|
+| logic | Wrong condition, wrong branch, missing case |
+| state-pollution | Stale state, shared mutable state, race condition |
+| data-format | Unexpected input format, missing validation, encoding |
+| concurrency | Race, deadlock, ordering assumption |
+| config | Wrong default, missing config, environment-specific |
+| missing-guard | Missing null check, missing error handling, missing boundary check |
+
+**Step 4: Impact assessment** — what other code depends on this? Does fixing it risk breaking something else? List touched files expected for fix
+
+**Step 5: Fix options** — present 1-3 options with tradeoffs. Don't self-select — let user decide. Each option should state: approach, files touched, risk level
+
+### Analysis Template
+
+```markdown
+---
+doc_type: issue-analysis
+issue: YYYY-MM-DD-{slug}
+status: analyzed
+root_cause_type: logic | state-pollution | data-format | concurrency | config | missing-guard
+path: standard
+tags: []
+---
+
+# {slug} Analysis
+
+## 1. Problem Location
+
+| File | Function/Line | Role |
+|---|---|---|
+| {path} | {function}:{line} | {what it does in failure path} |
+
+## 2. Failure Path
+
+{Step-by-step trace from trigger to failure}
+
+## 3. Root Cause
+
+{Root cause description + category}
+
+## 4. Impact Assessment
+
+{What else depends on this, fix risk}
+
+## 5. Fix Options
+
+| Option | Approach | Files | Risk |
+|---|---|---|---|
+| A | {description} | {list} | {high/medium/low} |
+```
+
+### Checkpoint Before Fix
+
+After analysis complete, **orally summarize root cause and recommended option** for user. Don't hand the whole document — one-sentence root cause + one-sentence recommendation + ask for confirmation. User confirms → proceed to fix.
+
+### Analyze Phase Exit Conditions
+
+- [ ] Root cause identified and categorized
+- [ ] Failure path traced with file:line references
+- [ ] Impact assessed
+- [ ] Fix options presented to user
+- [ ] User selected fix option
+- [ ] Out-of-scope discoveries recorded
+
+---
+
+## Fix Phase
+
+### Standard Path Entry
+
+1. Read `{slug}-analysis.md`
+2. Confirm scope with user (which option, which files)
+3. Search `project/compound/` for tricks and explores related to fix approach
+
+### Fast Track Entry
+
+1. State root cause clearly (must be obvious, file:line level certainty)
+2. State fix plan
+3. User confirms
+4. Then search compound for related knowledge
+
+### Scope Discipline
+
+Fix addresses the recorded root cause. Stays within analyzed scope. Side discoveries recorded, not fixed:
+
+```markdown
+> Side discovery: {file:line} {problem summary}. Not in this fix scope, recorded for future issue.
+```
+
+### Reflection Triggers (Issue-Fix Specific)
+
+Same reflection triggers as feature implementation, plus: if reflection fires "should split" but current analysis didn't plan for it, **default is NOT to refactor in this PR**. Only exception: can't cleanly fix without the refactoring. In that case, stop and discuss with user first.
+
+### Log-Debugging Protocol
+
+When first fix attempt fails:
+
+1. Declare failure to user: "first fix didn't resolve, switching to logging"
+2. Determine log points (minimal, focused on failure path)
+3. Add logging, user runs, captures output
+4. Analyze logs → update root cause hypothesis
+5. Clean up logging (remove debug logs)
+6. Re-enter fix with new hypothesis
+
+**2-round limit**: after 2 rounds of log-debugging without resolution, return to analyze phase instead of piling on patches. User prompt: "Two debugging rounds haven't resolved. Recommend returning to analysis to re-examine root cause."
+
+### Per-Change Report Template (Standard Path)
+
+```markdown
+## Fix Changes
+
+### Files Changed
+{file:line — what changed}
+
+### Scope Check
+{Did fix touch files outside analyzed scope? Yes/No + why}
+
+### New Concepts Introduced?
+{Any new types/functions not in analysis? Yes/No + why}
+
+### Reproduction Verification
+{How was the fix verified? Steps + result}
+```
+
+### Fix-Note Templates
+
+**Standard path** (simpler):
 
 ```markdown
 ---
 doc_type: issue-fix
 issue: YYYY-MM-DD-{slug}
-path: standard | fast-track
+path: standard
 fix_date: YYYY-MM-DD
 tags: []
 ---
 
-# {Issue} Fix Note
+# {slug} Fix Note
 
 ## 1. Problem
 
@@ -90,3 +290,73 @@ tags: []
 
 ## 6. Follow-Up Observations
 ```
+
+**Fast track** (more context needed since no separate report/analysis):
+
+```markdown
+---
+doc_type: issue-fix
+issue: YYYY-MM-DD-{slug}
+path: fast-track
+fix_date: YYYY-MM-DD
+root_cause_type: {category}
+severity: {P0-P3}
+tags: []
+---
+
+# {slug} Fix Note (Fast Track)
+
+## 1. Problem
+
+{Observed behavior}
+
+## 2. Expected Behavior
+
+{What should happen}
+
+## 3. Root Cause
+
+{Root cause + category}
+
+## 4. Fix
+
+{What was changed}
+
+## 5. Files Changed
+
+{file:line — what changed}
+
+## 6. Verification
+
+{How verified}
+
+## 7. Reproduction Steps
+
+{Steps to reproduce original issue, for future reference}
+
+## 8. Follow-Up Observations
+```
+
+---
+
+## Post-Fix Recommendations
+
+After fix-note written, prompt each item individually (user says "no" → skip immediately):
+
+1. **Learning**: "Record this pitfall? (cs-learn)"
+2. **Decision**: "Record any long-term constraint discovered? (cs-decide)"
+3. **Commit**: "Scoped-commit this fix?"
+
+---
+
+## Common Errors
+
+- Writing root cause in report — report is for phenomena, analyze is for diagnosis
+- Asking all report questions at once — user skips hard ones
+- Guessing fix without analysis — patches symptom, root cause remains
+- Mixing new feature into issue fix — can't tell what fixed what
+- Side discoveries secretly fixed — not in scope, can't verify
+- "Tests all pass" → tests passing ≠ issue resolved, verify against original reproduction
+- Fix-note not written — "just a one-liner" → next similar issue has no reference
+- Only changing items.yaml without syncing main doc — two files inconsistent
+- Piling patches after repeated fix failures → return to analysis instead
