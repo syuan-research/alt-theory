@@ -1,6 +1,6 @@
 ---
 name: cs-swe-v0-2
-description: CodeStable-derived SWE workflow router and shared context for Alt Theory v0.3. Use for software-engineering feature, bug/issue, and refactor work when future coding agents need strong process guardrails, design/implementation/acceptance separation, issue report/analyze/fix discipline, scoped changes, or CS-raw SWE taste adapted to project paths. Do not use for research, evaluation design, content work, or agent-asset authoring unless that work includes actual code changes.
+description: Historical CS-SWE v0.2 artifact kept for comparison only. Do not use for current Alt Theory work; use cs-swe-v0-3 instead.
 ---
 
 # CS-SWE v0.2

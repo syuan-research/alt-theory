@@ -168,7 +168,7 @@ python {skill_dir}\tools\search-yaml.py --dir project/compound --filter doc_type
 
 Shared archival rules per `../shared-conventions.md` section 6. This skill's specific rules:
 
-1. **Don't mix into spec** — learning doesn't go into `features/` or `issues/`; spec doesn't go into `compound/`
+1. **Don't mix into spec** — learning doesn't go into `features/` or `issues/`; spec doesn't go into `project/compound/`
 2. **Only recognize own doc_type** — only read/write `doc_type: learning`
 3. **Don't write rationale for user** — user cannot articulate why solution works → write "rationale to be supplemented", don't fabricate
 4. **Encourage recording failed attempts** — "what didn't work" is often more valuable than "what worked"

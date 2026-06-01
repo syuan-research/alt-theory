@@ -1,6 +1,6 @@
 ---
 name: cs-swe-feat-design-v0-2
-description: feature 流程阶段 1——为新功能起草 {slug}-design.md 作为后续实现和验收的唯一输入，拍板后抽出 checklist。触发：用户说"开始设计方案"、"写 design doc"、"准备实现 XX"，前提是已知道做什么、为谁、怎么算成功。
+description: Historical CS-SWE v0.2 artifact kept for comparison only. Do not use for current Alt Theory work; use cs-swe-v0-3 instead.
 ---
 
 # cs-swe-feat-design-v0-2

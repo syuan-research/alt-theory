@@ -5,6 +5,7 @@
 
 # Keep .gitignore itself
 !.gitignore
+!AGENTS.md
 !package.json
 !package-lock.json
 
@@ -60,6 +61,7 @@ project/*
 project/foundation/*
 !project/foundation/legacy-index.md
 !project/foundation/local-development-rules.md
+!project/foundation/gitignore-policy.md
 !project/foundation/origin/
 !project/foundation/origin/**
 !project/foundation/legacy-process/
@@ -74,6 +76,10 @@ project/plan-records/*
 !project/plan-records/cs-swe-v0-3-handoff/**
 !project/plan-records/cs-swe-v0-3-design/
 !project/plan-records/cs-swe-v0-3-design/**
+!project/compound/
+!project/compound/**
+!project/brainstorms/
+!project/brainstorms/**
 !project/research/
 project/research/*
 !project/research/candidate-skills/
@@ -85,6 +91,11 @@ project/architecture/*
 !project/architecture/*.md
 !project/workstreams/
 project/workstreams/*
+!project/workstreams/*/
+project/workstreams/*/*
+!project/workstreams/*/README.md
+!project/workstreams/*/notes-and-status/
+!project/workstreams/*/notes-and-status/**
 !project/workstreams/*.md
 !project/workstreams/cs-swe-v0-3-handoff/
 !project/workstreams/cs-swe-v0-3-handoff/**
@@ -94,6 +105,11 @@ project/workstreams/*
 !project/workstreams/agent-harness/**
 !project/workstreams/kb-search/
 !project/workstreams/kb-search/**
+!project/cross-workstream/
+project/cross-workstream/*
+!project/cross-workstream/README.md
+!project/cross-workstream/notes-and-status/
+!project/cross-workstream/notes-and-status/**
 project/private/
 project/private/**
 

@@ -173,7 +173,7 @@ Each structural assertion followed by `file:line` anchor, or anchors collected i
 
 ## 4. Key Decisions
 
-Not decision full text, but **references** — one or two lines each: conclusion in one sentence + reference (`compound/YYYY-MM-DD-decision-{slug}.md` or user quote source) + why referenced in this doc.
+Not decision full text, but **references** — one or two lines each: conclusion in one sentence + reference (`project/compound/YYYY-MM-DD-decision-{slug}.md` or user quote source) + why referenced in this doc.
 
 No archived decisions → omit, or note `TODO: {decision} should be captured as decide document`.
 
@@ -216,7 +216,7 @@ Each item targets a specific AI default mistake. Run all 7 before Phase 5:
 1. **Can every structural assertion anchor to code?** — cannot → delete or mark `TODO: to be confirmed`
 2. **Did you decide for the user?** — "key decisions" section references existing decisions / user quotes, or is AI-invented selection rationale? The latter is never allowed
 3. **Did it become code restatement?** — each section has at least one sentence "why split this way"; sections without this are basically `ls` in text form
-4. **Terminology conflict check done?** — newly introduced architecture terms grep (code, all documents under `architecture/`, `compound/`). Conflict → rename or distinguish in section 0
+4. **Terminology conflict check done?** — newly introduced architecture terms grep (code, all documents under `architecture/`, `project/compound/`). Conflict → rename or distinguish in section 0
 5. **Conflicts with existing architecture / decisions?** — found conflict → cannot "write your own version", must reference or stop and ask user
 6. **Single section length** — exceeds one screen → cut or split
 7. **update-specific**: do all new/changed paragraphs have code changes as basis? Fabricating "add a more complete-sounding description" is the start of content drifting from reality

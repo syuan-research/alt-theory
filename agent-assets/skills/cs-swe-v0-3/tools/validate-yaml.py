@@ -11,7 +11,7 @@ Designed for AI agent use: structured output, exit code reflects pass/fail,
 no required external dependencies (falls back to builtin parser if PyYAML unavailable).
 
 Usage examples:
-  # Validate all .md files under codestable/features
+  # Validate all .md files under a feature artifact directory
   python {skill_dir}/tools/validate-yaml.py --dir project/workstreams/swe/features
 
   # Validate a single file
@@ -313,7 +313,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-
-
 

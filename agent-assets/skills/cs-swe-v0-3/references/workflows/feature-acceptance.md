@@ -143,7 +143,7 @@ Check against design frontmatter `swe_plan` / `swe_plan_item`:
 
 - [ ] Both fields empty (feature not from swe-plan) → skip, write "not swe-plan originated"
 - [ ] Both have values:
-  - Open `{artifact_root}/plans/{swe-plan-slug}/{swe-plan-slug}-items.yaml`
+  - Open `swe_plan_items_path` if present, otherwise the matching `{record_root}/notes-and-status/*-swe-plan-items.yaml`
   - Find `slug: {swe_plan_item}`, verify current `status: in-progress` + `feature: {directory name}` — mismatch → stop and investigate
   - Change `status: done`, validate with validate-yaml.py
   - Sync main document section 5 child feature checklist corresponding item status

@@ -1,6 +1,6 @@
 ---
 name: cs-swe-feat-accept-v0-2
-description: feature 流程阶段 3——验收闭环：对照 design 核实现 + 回写 architecture / requirement / roadmap，最后产出 {slug}-acceptance.md。触发：用户说"功能写完了验收一下"、"做最后检查"、"准备 merge"、"出验收报告"。前置依赖 cs-swe-feat-impl-v0-2 完成。
+description: Historical CS-SWE v0.2 artifact kept for comparison only. Do not use for current Alt Theory work; use cs-swe-v0-3 instead.
 ---
 
 # cs-swe-feat-accept-v0-2

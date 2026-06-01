@@ -27,9 +27,9 @@ Cases can change during discussion. Case 2 may grow into case 3/4; case 3 may ne
 
 Every brainstorm run performs these 4 steps:
 
-1. **Scan the repo** — glob `{artifact_root}/` to discover architecture / features / plans / brainstorms / compound; read architecture index; check existing features and plans and brainstorms; search compound for related learnings (`--filter doc_type=learning`); grep user description keywords for terminology conflicts
+1. **Scan the repo** — glob `{artifact_root}/`, `project/brainstorms/`, and `project/compound/`; read architecture index; check existing features, `swe-plan` records, and brainstorms; search compound for related learnings (`--filter doc_type=learning`); grep user description keywords for terminology conflicts
 2. **Is this a continuation?**:
-   - `features/` has a similar-named brainstorm? `plans/` has a similar subdirectory? `project/brainstorms/` has related creative records?
+   - `features/` has a similar-named brainstorm? `notes-and-status/` has a related swe-plan? `project/brainstorms/` has related creative records?
    - No → treat as new discussion
    - Brainstorm content is from an interrupted session → read and report "last time we discussed {…}, continue or start over?"
    - Same-name design.md exists → tell user design is already open, maybe wrong entry point
@@ -241,6 +241,13 @@ slug: {slug}
 created: YYYY-MM-DD
 status: active
 summary: {one sentence on what to explore}
+anchors:
+  - type: workstream
+    target: project/workstreams/{workstream}/
+    note: Natural-language explanation of why this brainstorm belongs here.
+  - type: open-question
+    target: {main unresolved question}
+    note: What remains unresolved and why it matters.
 tags: [...]
 ---
 

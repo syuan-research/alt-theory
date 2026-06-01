@@ -1,6 +1,6 @@
 ---
 name: cs-swe-feat-v0-2
-description: 新功能开发的子流程入口，把"加个 X 能力"从想法走到验收闭环。触发：用户说"做新功能"、"加个 X"、"实现 XX"。只做路由，根据已有产物决定走 brainstorm / design / fastforward / implement / acceptance。不处理 bug。
+description: Historical CS-SWE v0.2 artifact kept for comparison only. Do not use for current Alt Theory work; use cs-swe-v0-3 instead.
 ---
 
 # cs-swe-feat-v0-2

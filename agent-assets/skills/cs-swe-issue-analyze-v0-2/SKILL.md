@@ -1,6 +1,6 @@
 ---
 name: cs-swe-issue-analyze-v0-2
-description: issue 流程阶段 2——读 report + 读代码定位根因、评估风险，给用户 2-3 个修复方案让 TA 拍板。这一步不改代码。触发：用户说"分析这个 bug"、"找根因"、"定位问题"，且已有 {slug}-report.md。
+description: Historical CS-SWE v0.2 artifact kept for comparison only. Do not use for current Alt Theory work; use cs-swe-v0-3 instead.
 ---
 
 # cs-swe-issue-analyze-v0-2

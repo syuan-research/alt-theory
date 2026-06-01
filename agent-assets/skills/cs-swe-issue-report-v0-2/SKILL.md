@@ -1,6 +1,6 @@
 ---
 name: cs-swe-issue-report-v0-2
-description: issue 流程阶段 1——通过对话把问题落成可复现、可追溯的 {slug}-report.md，并判定走标准路径还是快速通道。只问现象不猜根因。触发：用户说"提个 issue"、"记录这个 bug"、"我发现一个问题"。issue 工作流的起点。
+description: Historical CS-SWE v0.2 artifact kept for comparison only. Do not use for current Alt Theory work; use cs-swe-v0-3 instead.
 ---
 
 # cs-swe-issue-report-v0-2

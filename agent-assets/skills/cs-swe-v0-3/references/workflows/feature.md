@@ -81,7 +81,7 @@ summary: {one-sentence requirement}
 ```yaml
 swe_plan: {swe-plan-slug}
 swe_plan_item: {child-feature-slug}
-swe_plan_path: {artifact_root}/plans/{swe-plan-slug}/
+swe_plan_path: {record_root}/notes-and-status/YYYY-MM-DD-{swe-plan-slug}-swe-plan.md
 ```
 
 6. On design approval, writeback items.yaml: corresponding item `status: in-progress` + `feature: YYYY-MM-DD-{slug}`, validate yaml
@@ -172,7 +172,7 @@ Before drafting, verify minimum input contains: user goal / core behavior / succ
    - design `status=approved` → don't overwrite by default, ask user whether to continue or new slug
 3. **Global input scan** — Glob `{artifact_root}/` for available directories and document types:
    - `architecture/` → read ARCHITECTURE.md + index + relevant subsystem docs, focus on noun reuse and flow constraints
-   - `compound/` → search for related decisions/explores/tricks/learnings; conflicting decisions must be addressed
+   - `project/compound/` → search for related decisions/explores/tricks/learnings; conflicting decisions must be addressed
    - `features/` → search historical designs for similar features
 4. **Read relevant code** — which files to read determined by requirement signals
 5. **Confirm entry mode with user** — standard / initialization / from swe-plan

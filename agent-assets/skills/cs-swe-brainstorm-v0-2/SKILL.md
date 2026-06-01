@@ -1,6 +1,6 @@
 ---
 name: cs-swe-brainstorm-v0-2
-description: 想法还模糊时的讨论入口，做分诊后路由到 feature-design / feature-brainstorm / roadmap。AI 是思考伙伴不是记录员。触发：用户说"有个想法还没想清楚"、"先 brainstorm 一下"、"聊一聊这块"、"方向还在摇摆"。不处理 bug 和重构。
+description: Historical CS-SWE v0.2 artifact kept for comparison only. Do not use for current Alt Theory work; use cs-swe-v0-3 instead.
 ---
 
 # cs-swe-brainstorm-v0-2

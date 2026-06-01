@@ -1,9 +1,12 @@
 ---
 name: cs-swe-v0-3
+version: 0.3.1-repair
 description: Active Alt Theory v0.3 CodeStable-derived software-engineering skill bundle. Use for coding features, bugs/issues, behavior-preserving refactors, and multi-feature SWE plans when the agent needs concrete design, implementation, acceptance, issue, refactor, or swe-plan guardrails. Do not use for research/eval planning, theory notes, prompt/KB authoring, agent soul/profile work, or general session continuity unless the immediate task includes code-level SWE work.
 ---
 
 # CS-SWE v0.3
+
+Current revision: v0.3.1 repair. The folder name stays `cs-swe-v0-3` so internal relative paths and existing references remain stable.
 
 This skill folder is the bundle. Internal files are referenced by relative paths inside this folder, not by versioned project paths that embed the bundle name.
 

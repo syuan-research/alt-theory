@@ -19,39 +19,54 @@ Do not write versioned project paths for internal bundle files. A future version
 Project artifacts are different. They are files this workflow creates or reads in the repo, such as:
 
 ```text
+project/workstreams/swe/notes-and-status/
 project/workstreams/swe/features/
-project/workstreams/swe/plans/
+project/compound/
+project/brainstorms/
 project/architecture/
 ```
 
-## 2. Artifact Root
+## 2. Record Root And Artifact Root
 
-Pick one artifact root before creating SWE artifacts.
+Pick one record root before creating plan/status/notes. Pick one artifact root before creating code workflow artifacts.
 
-Default current SWE root:
+Default current SWE workstream:
 
 ```text
-project/workstreams/swe/
+record_root:   project/workstreams/swe/
+artifact_root: project/workstreams/swe/
 ```
 
-Domain workstream root, when the user or project already separates a lane:
+Domain workstream, when the user or project already separates a lane:
 
 ```text
-project/workstreams/{workstream}/swe/
+record_root:   project/workstreams/{workstream}/
+artifact_root: project/workstreams/{workstream}/swe/
+```
+
+Cross-workstream coordination:
+
+```text
+record_root: project/cross-workstream/
 ```
 
 Older `track` and current `workstream` are equivalent container-level concepts in this project. Use `workstream` in v0.3 files.
 
 ## 3. Standard Project Artifact Paths
 
+Relative to `{record_root}`:
+
+```text
+notes-and-status/
+  STATUS.md
+  YYYY-MM-DD-{slug}-plan-record-v{n}.md
+  YYYY-MM-DD-{swe-plan-slug}-swe-plan.md
+  YYYY-MM-DD-{swe-plan-slug}-swe-plan-items.yaml    # optional
+```
+
 Relative to `{artifact_root}`:
 
 ```text
-plans/
-  {swe-plan-slug}/
-    {swe-plan-slug}-swe-plan.md
-    {swe-plan-slug}-items.yaml    # optional
-    drafts/                       # optional
 features/
   YYYY-MM-DD-{slug}/
     {slug}-intent.md
@@ -70,13 +85,21 @@ refactors/
     {slug}-refactor-design.md
     {slug}-checklist.yaml
     {slug}-apply-notes.md
-compound/                        # project-level, not under artifact_root
-  YYYY-MM-DD-{doc_type}-{slug}.md
-brainstorms/                    # project-level, for case 4 central creative records
-  YYYY-MM-DD-{slug}.md
 ```
 
-Compound is project-level (`project/compound/`) because decisions, learnings, and explore records are project-wide assets, not SWE-workstream-specific. Other non-SWE agents also need to read/write compound.
+Project-level:
+
+```text
+project/compound/
+  YYYY-MM-DD-{doc_type}-{slug}.md
+project/brainstorms/
+  {slug}/
+    brainstorm.md
+```
+
+`notes-and-status/` is the shared container for workstream-local continuity and plan artifacts, especially plan-record and `swe-plan`. It is not a replacement for `project/compound/` or `project/brainstorms/`.
+
+Compound is project-level (`project/compound/`) because decisions, learnings, tricks, and explore records are project-wide assets, not SWE-workstream-specific. Other non-SWE agents also need to read/write compound.
 
 ## 4. Shared Metadata Standards
 

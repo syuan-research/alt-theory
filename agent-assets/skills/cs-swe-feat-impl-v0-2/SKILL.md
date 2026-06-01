@@ -1,6 +1,6 @@
 ---
 name: cs-swe-feat-impl-v0-2
-description: feature 流程阶段 2——按 {slug}-checklist.yaml 里 design 切好的 paradigm 维度 steps 推进，每步具体改哪个文件由 implement 自决，写完用统一格式汇报。触发：用户说"方案确认了开始实现"、"按方案写代码"、"开工"。前提是 design 已 approved 且有 checklist。遇到方案外情况要回方案谈不要硬冲。
+description: Historical CS-SWE v0.2 artifact kept for comparison only. Do not use for current Alt Theory work; use cs-swe-v0-3 instead.
 ---
 
 # cs-swe-feat-impl-v0-2

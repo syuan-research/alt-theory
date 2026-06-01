@@ -7,13 +7,13 @@ This folder is for software-engineering workflow records produced by `agent-asse
 Initial subareas are created on demand:
 
 ```text
-plans/
-brainstorms/
+notes-and-status/
 features/
 issues/
 refactors/
-compound/
 ```
+
+Project-wide compound records live under `project/compound/`. Central/open brainstorm records live under `project/brainstorms/`. Feature-local brainstorms stay inside the relevant feature directory.
 
 Do not use this folder for evaluation research, sim-user content, KB/prompt authoring, or general project planning unless the task includes actual code-level SWE work.
 

@@ -2,6 +2,8 @@
 
 This file records where v0.3 came from. It is not part of the runtime workflow.
 
+Current revision: v0.3.1 repair. The bundle folder remains `cs-swe-v0-3`; revision is tracked in metadata and notes instead of renaming the folder.
+
 ## Sources
 
 - CodeStable raw repo: `https://github.com/liuzhengdongfortest/CodeStable`

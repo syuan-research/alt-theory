@@ -12,21 +12,21 @@ Filter syntax (--filter flag, repeatable, AND logic):
   key~=a|b      Substring/list match against any candidate value (OR)
 
 Usage examples:
-  # Search project/workstreams/swe/compound (learning / trick / decision / explore docs share this dir)
-  python {skill_dir}/tools/search-yaml.py --dir project/workstreams/swe/compound --filter doc_type=learning --filter track=pitfall
-  python {skill_dir}/tools/search-yaml.py --dir project/workstreams/swe/compound --filter "doc_type=decision|explore|learning"
-  python {skill_dir}/tools/search-yaml.py --dir project/workstreams/swe/compound --filter doc_type=trick --filter tags~=prisma
-  python {skill_dir}/tools/search-yaml.py --dir project/workstreams/swe/compound --filter doc_type=decision --filter status=active --full
+  # Search project/compound (learning / trick / decision / explore docs share this dir)
+  python {skill_dir}/tools/search-yaml.py --dir project/compound --filter doc_type=learning --filter track=pitfall
+  python {skill_dir}/tools/search-yaml.py --dir project/compound --filter "doc_type=decision|explore|learning"
+  python {skill_dir}/tools/search-yaml.py --dir project/compound --filter doc_type=trick --filter tags~=prisma
+  python {skill_dir}/tools/search-yaml.py --dir project/compound --filter doc_type=decision --filter status=active --full
 
   # Full-text search in body + frontmatter values
-  python {skill_dir}/tools/search-yaml.py --dir project/workstreams/swe/compound --query "shadow database"
+  python {skill_dir}/tools/search-yaml.py --dir project/compound --query "shadow database"
 
   # JSON output for AI agent consumption
-  python {skill_dir}/tools/search-yaml.py --dir project/workstreams/swe/compound --filter doc_type=learning --filter track=knowledge --json
+  python {skill_dir}/tools/search-yaml.py --dir project/compound --filter doc_type=learning --filter track=knowledge --json
 
   # Sort by a frontmatter date field (works on any ISO-8601 date string, YAML date, or sortable value)
   python {skill_dir}/tools/search-yaml.py --dir project/workstreams/swe/library-docs-deferred --sort-by last_reviewed --order asc   # oldest first (stalest)
-  python {skill_dir}/tools/search-yaml.py --dir project/workstreams/swe/compound --sort-by date --order desc              # newest first
+  python {skill_dir}/tools/search-yaml.py --dir project/compound --sort-by date --order desc              # newest first
 
   # Works on any yaml-frontmatter markdown directory
   python {skill_dir}/tools/search-yaml.py --dir docs/decisions --filter status=accepted

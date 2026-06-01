@@ -1,6 +1,6 @@
 ---
 name: cs-swe-issue-v0-2
-description: 修 bug 的子流程入口，把"发现问题"走到验证修复闭环，留下 report / analysis / fix-note 三份文件。触发：用户说"修 bug"、"有个问题"、"修复 XX"。只做路由，根据已有产物走 report / analyze / fix。简单问题走快速通道。
+description: Historical CS-SWE v0.2 artifact kept for comparison only. Do not use for current Alt Theory work; use cs-swe-v0-3 instead.
 ---
 
 # cs-swe-issue-v0-2

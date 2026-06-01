@@ -21,18 +21,17 @@ Read:
 - `../shared-conventions.md`
 - `../record-boundaries.md`
 - relevant current architecture docs;
-- relevant workstream notes or plan-records only for context and problem evolution;
-- any brainstorm or requirement-like source material that the user points to.
+- relevant workstream `notes-and-status/` records only for context and problem evolution;
+- relevant `project/brainstorms/` records;
+- any requirement-like source material that the user points to.
 
 ## Output Path
 
 Use:
 
 ```text
-{artifact_root}/plans/{swe-plan-slug}/
-  {swe-plan-slug}-swe-plan.md
-  {swe-plan-slug}-items.yaml    # optional
-  drafts/                       # optional
+{record_root}/notes-and-status/YYYY-MM-DD-{swe-plan-slug}-swe-plan.md
+{record_root}/notes-and-status/YYYY-MM-DD-{swe-plan-slug}-swe-plan-items.yaml    # optional
 ```
 
 ## Main Document Structure
@@ -46,6 +45,7 @@ created: YYYY-MM-DD
 last_reviewed: YYYY-MM-DD
 workstream: {workstream}
 artifact_root: {artifact_root}
+record_root: {record_root}
 items_yaml: true | false
 source_plan_records: []
 source_brainstorms: []
@@ -131,6 +131,7 @@ swe_plan: {slug}
 created: YYYY-MM-DD
 workstream: {workstream}
 artifact_root: {artifact_root}
+record_root: {record_root}
 
 items:
   - slug: {child-feature-slug}
@@ -161,7 +162,8 @@ When starting a child feature:
 ```yaml
 swe_plan: {swe-plan-slug}
 swe_plan_item: {child-feature-slug}
-swe_plan_path: {artifact_root}/plans/{swe-plan-slug}/
+swe_plan_path: {record_root}/notes-and-status/YYYY-MM-DD-{swe-plan-slug}-swe-plan.md
+swe_plan_items_path: {record_root}/notes-and-status/YYYY-MM-DD-{swe-plan-slug}-swe-plan-items.yaml
 ```
 
 If `items.yaml` exists, feature design marks the item `in-progress`; feature acceptance marks it `done`.
