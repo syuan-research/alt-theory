@@ -8,12 +8,18 @@ Use this file when deciding whether to write a CS-SWE artifact, a plan-record, a
 |---|---|---|
 | Plan-record | session/few-session continuity, co-evolution, action-for-reflection, reframing, context recovery | feature design, checklist, acceptance, issue fix, refactor apply, child-feature state |
 | `swe-plan` | multi-feature SWE decomposition, interface/protocol contracts, child feature seeds, optional dependency/state tracking | long-horizon project roadmap, current architecture, general research plan |
-| Feature artifacts | single feature promise, design, implementation checklist, acceptance evidence | broad session history, unrelated bug fixes, product roadmap |
+| Feature design | feature promise, design document, checklist | implementation details, test framework, acceptance report |
+| Feature implementation | code changes per checklist, completion report | design decisions, scope expansion, acceptance verification |
+| Feature acceptance | verification against design, architecture/req/swe-plan writeback | new design decisions, code changes |
 | Issue artifacts | bug report, root-cause analysis, fix note, verification | new feature scope, unrelated refactor goals |
 | Refactor artifacts | behavior-preserving scan/design/apply and verification | behavior change, bug fix, new capability |
 | Brainstorm | exploratory thinking, alternatives, problem/solution co-evolution input | mandatory implementation commitment or universal status tracker |
-| Architecture | current/accepted system structure | future target plan before implementation |
+| Architecture | current/accepted system structure (update/check/backfill) | future target plan before implementation |
 | Requirement references | source material for capability and boundary thinking | full requirement ontology/status machine |
+| Decision | settled tech choices, constraints, conventions, architecture decisions | unsettled discussion, implementation details |
+| Learning | pitfalls, best practices, knowledge from coding work | spec content, unsettled discussion |
+| Explore | evidence-based code exploration records | implementation plans, design decisions |
+| Trick | reusable patterns, library usage, techniques | spec content, one-time fixes |
 | `_archives/` | local ignored snapshots for comparison/recovery | active skill surface or Git version history |
 
 ## Routing Rules

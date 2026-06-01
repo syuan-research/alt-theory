@@ -13,13 +13,23 @@ This file records where v0.3 came from. It is not part of the runtime workflow.
 | v0.3 file | Source / adaptation |
 |---|---|
 | `SKILL.md` | Router and project-specific boundary entry. |
-| `references/shared-conventions.md` | v0.3 path conventions and relative internal-reference rule. |
+| `references/shared-conventions.md` | v0.3 path conventions, relative internal-reference rule, compound read/write cycle, archive rules, reflection triggers. |
 | `references/record-boundaries.md` | Boundary between plan-record, CS-SWE artifacts, brainstorm, architecture, and requirements references. |
-| `references/workflows/swe-plan.md` | Adapts CodeStable raw `cs-roadmap` mechanics under the term `swe-plan`. |
-| `references/workflows/feature.md` | Compresses CodeStable feature router/design/impl/accept flow into one internal workflow reference. |
-| `references/workflows/issue.md` | Compresses CodeStable issue report/analyze/fix flow. |
-| `references/workflows/refactor.md` | Compresses CodeStable refactor scan/design/apply flow. |
-| `references/workflows/brainstorm.md` | Adapts CodeStable brainstorm cases and user's non-false-binary grill direction. |
+| `references/workflows/feature.md` | Adapts cs-feat-design + reference.md. Design gate, entry modes, document structure, section 2.5, startup check, review. |
+| `references/workflows/feature-impl.md` | Adapts cs-feat-impl. Three stances, startup check, reflection triggers, completion report. |
+| `references/workflows/feature-acceptance.md` | Adapts cs-feat-accept + reference.md. 9-section verification, mount point reverse grep, architecture/req/swe-plan writeback. |
+| `references/workflows/issue.md` | Adapts cs-issue (router) + cs-issue-report + cs-issue-analyze + cs-issue-fix + fix reference.md. Full report/analyze/fix phases with templates. |
+| `references/workflows/refactor.md` | Adapts cs-refactor + cs-refactor-ff. 7 refusal checks, scan/design/apply phases, fast-forward mode. |
+| `references/refactor/methods.md` | Copied from cs-refactor/reference/methods.md. L1-L4 method library (394 lines). No adaptation needed (universal methodology). |
+| `references/refactor/refusal-routing.md` | Copied from cs-refactor/reference/refusal-routing.md. Pre-scan checks (143 lines). |
+| `references/refactor/scan-checklist-format.md` | Copied from cs-refactor/reference/scan-checklist-format.md. Scan item format (164 lines). |
+| `references/workflows/swe-plan.md` | Adapts cs-roadmap + reference.md. Phase 1-6, decomposition discipline, self-check, boundaries, update mode, lifecycle. |
+| `references/workflows/brainstorm.md` | Adapts cs-brainstorm + reference.md. v0.3 anchors preserved as design decision. Added grill mode, spike rules, conversation rhythm. |
+| `references/workflows/decide.md` | Adapts cs-decide + reference.md. Four categories, Phase 1-5, update/supersede. |
+| `references/workflows/learn.md` | Adapts cs-learn + reference.md. Pitfall/knowledge tracks, Phase 1-5, update/supersede. |
+| `references/workflows/explore.md` | Adapts cs-explore + reference.md. Three types, Phase 1-5, evidence discipline. |
+| `references/workflows/trick.md` | Adapts cs-trick + reference.md. Three types, Phase 1-6, mandatory code investigation. |
+| `references/workflows/arch.md` | Adapts cs-arch + reference.md. All three modes (update/check/backfill), Phase 1-6, 18 check coverage items. |
 
 ## Historical / Non-Active
 
