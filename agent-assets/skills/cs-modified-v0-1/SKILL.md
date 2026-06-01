@@ -5,7 +5,7 @@ description: Lightweight project-specific adaptation of CodeStable for Alt Theor
 
 # CS Modified v0.1
 
-This is a project-scoped skill for Alt Theory v0.3. It adapts CodeStable ideas without adopting the full `.codestable/` directory tree.
+This is a project-scoped skill for Alt Theory v0.3. It adapts CodeStable ideas without adopting the full `.codestable/` directory tree. For actual SWE feature / issue / refactor coding work, use `agent-assets/skills/cs-swe-v0-2/SKILL.md`; this skill is for project records, migration placement, and broad CodeStable-inspired organization.
 
 ## Startup
 
@@ -25,7 +25,7 @@ If these files disagree, treat the newer, more specific current doc as the worki
 
 Keep CodeStable's useful separations:
 
-- capability vision: what ability the system should provide and why;
+- capability vision: what ability the system should provide in the future and why, and keep this separated from the current objectives;
 - current architecture: what the system currently is;
 - roadmap/planning: possible future implementation path;
 - feature/issue work: a concrete action;

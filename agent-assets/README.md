@@ -9,6 +9,7 @@ Current first-slice layout:
 - `kb/ep-core/` is the current runtime KB copy used for the first v0.3 smoke-test path. It is not yet declared the long-term KB source-of-truth.
 - `profiles/default.md` is the current lightweight agent profile. It is closer to a `SOUL.md` than to a simulated user profile.
 - `skills/cs-modified-v0-1/` is the current project-scoped lightweight CodeStable adaptation. It is not a full `.codestable/` install.
+- `skills/cs-swe-v0-2/` and sibling `cs-swe-*` skills are the SWE-only CodeStable-derived workflow set for feature / issue / refactor coding work.
 
 Future topics, not solved in this slice:
 

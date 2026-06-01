@@ -9,7 +9,7 @@ Current policy:
 - `foundation/` stores selected project identity and legacy/foundation indexes.
 - `architecture/` stores current structure and architecture rationale.
 - `workstreams/` stores active or near-active workstream briefs and imported current-status docs.
-- `features/`, `issues/`, `roadmaps/`, and `compound/` are possible future areas. Introduce them only when a concrete task needs them.
+- `project/workstreams/swe/` stores CodeStable-derived SWE feature/issue/refactor artifacts when actual coding work needs stronger process guardrails. Broader `features/`, `issues/`, `roadmaps/`, and `compound/` areas outside SWE remain possible future areas; introduce them only when a concrete non-SWE task needs them.
 
 Important distinctions:
 
@@ -37,7 +37,7 @@ Use `%LLM_THEO_DEV_ROOT%` for runnable Node/npm development. Do not run npm inst
 
 This project is not using a full `.codestable/` skeleton yet.
 
-Use `agent-assets/skills/cs-modified-v0-1/SKILL.md` as the current lightweight CodeStable adaptation when deciding where to place project records, whether something is current architecture versus future roadmap, and how to avoid turning discussion or imported evidence into hard policy.
+Use `agent-assets/skills/cs-modified-v0-1/SKILL.md` as the current lightweight CodeStable adaptation when deciding where to place project records, whether something is current architecture versus future roadmap, and how to avoid turning discussion or imported evidence into hard policy. For actual SWE feature / issue / refactor coding work, use `agent-assets/skills/cs-swe-v0-2/SKILL.md` and its sibling `cs-swe-*` skills instead.
 
 The main local adaptation is:
 
@@ -49,3 +49,4 @@ The main local adaptation is:
 ## Evaluation Priority
 
 `evals/` is lightweight but important. Sim-user and evaluation work is near-term and conference-relevant. The old sim-user profiles are not runtime agent profiles; they are a partly successful test-system attempt to revisit when the evaluation stream resumes.
+
