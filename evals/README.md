@@ -9,6 +9,7 @@ Evaluation is not a side workstream. It can change product direction, including 
 ## Current Contents
 
 - `eval-framework-origin-20260304.md`: text version of an early evaluation framework originally embedded as an image in a March 2026 status document.
+- `sim-user-eval-startup.md`: startup brief for the next sim-user/evaluation stream.
 
 ## Current Scope
 
@@ -24,6 +25,8 @@ Likely future materials:
 
 Raw dialogue, friend testing data, human-subject data, or identifiable transcripts should not be tracked by Git by default.
 
+Sim-user work is not optional background for v0.3. It is likely one of the heaviest near-term streams because conference-oriented testing needs evidence. The folder is lightweight because the method should evolve with literature review and small test slices, not because evaluation is low priority.
+
 Current ignored/private locations:
 
 ```text
@@ -33,4 +36,3 @@ project/private/
 ```
 
 Create these only when needed. If a result should be committed, prefer a cleaned summary, rubric, protocol, or anonymized aggregate rather than raw data.
-

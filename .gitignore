@@ -95,8 +95,7 @@ project/private/**
 
 !evals/
 evals/*
-!evals/README.md
-!evals/eval-framework-origin-20260304.md
+!evals/*.md
 evals/raw-data/
 evals/raw-data/**
 evals/runs/raw/
