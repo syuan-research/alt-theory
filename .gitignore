@@ -60,6 +60,10 @@ project/*
 project/foundation/*
 !project/foundation/legacy-index.md
 !project/foundation/local-development-rules.md
+!project/foundation/origin/
+!project/foundation/origin/**
+!project/foundation/legacy-process/
+!project/foundation/legacy-process/**
 !project/plan-records/
 project/plan-records/*
 !project/plan-records/reorg-v0.3/
@@ -68,9 +72,18 @@ project/plan-records/*
 project/research/*
 !project/research/candidate-skills/
 !project/research/candidate-skills/**
+!project/research/agent-harness/
+!project/research/agent-harness/**
 !project/architecture/
 project/architecture/*
-!project/architecture/repo-structure-v0.3.md
+!project/architecture/*.md
+!project/workstreams/
+project/workstreams/*
+!project/workstreams/*.md
+!project/workstreams/agent-harness/
+!project/workstreams/agent-harness/**
+!project/workstreams/kb-search/
+!project/workstreams/kb-search/**
 project/private/
 project/private/**
 
