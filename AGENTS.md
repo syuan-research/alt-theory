@@ -6,7 +6,7 @@ Use it to find the right project docs, active skill bundle, recovery files, and 
 
 ## Project Purpose
 
-This worktree is the clean `v0.3` reorganization lane for Alt Theory.
+This worktree is the clean `v0.3` reorganization lane for Alt Theory. Alt Theory is an academic research project on the use of 2026 advanced agentic AI tool for social science education, with both swe and empirical research. 
 
 Current emphasis:
 
@@ -52,7 +52,7 @@ Start with:
 3. the relevant workstream under `project/workstreams/`
 4. the relevant workstream-local or cross-workstream file under `notes-and-status/`
 
-For SWE coding work, read:
+For software coding work, read:
 
 1. `agent-assets/skills/cs-swe-v0-3/SKILL.md`
 2. `agent-assets/skills/cs-swe-v0-3/references/shared-conventions.md`
@@ -99,23 +99,21 @@ Project-wide durable notes live in:
 
 ## Uncertainty And Questions
 
-Do not ask the user to answer questions that can be resolved by reading local docs, checking files, running safe inspection commands, or looking at prior plan-records.
+Do not ask the user to answer questions that can be resolved by reading local docs, codes, checking files, running safe inspection commands, or looking at prior plan-records.
 
-When a real uncertainty remains, give 2-4 realistic best guesses or options. Avoid false binaries, extreme framings, and arbitrary parameter choices. Each option should say:
+When a real uncertainty remains, give 2-4 realistic best guesses or options. Avoid false binaries, extreme framings, and arbitrary parameter choices. Each option should say what evidence, framing, or assumptions supports it; and be transparent about assumptions.
 
-- what evidence supports it;
-- what would make it wrong;
-- what it changes for the next step.
+If the uncertainty is high-fidelity or requiring a very complex answer:
 
-If the uncertainty is high-fidelity, inspect first. If it still cannot be resolved, present a small option tree with useful branches already pruned. Do not force the user to own a premature solution.
+- Inspect first. 
+- If it still cannot be resolved, present a small option tree with useful branches already pruned. 
+- Do not force the user to own/offer a premature/detailed solution. Instead discuss the dependencies/prerequisite/timing to resolve or re-define it.
 
 When an assumption is needed to keep moving, state it as an assumption and prefer reversible actions.
 
 ## Reference Repositories
 
-Reference clones should live outside OneDrive when practical.
-
-Current reference repo root:
+Reference clones should live outside OneDrive when practical. Current reference repo root:
 
 ```text
 D:\reference-repo
@@ -123,7 +121,7 @@ D:\reference-repo
 
 Do not treat reference repos as the project source of truth. They are external inputs and comparison material.
 
-Do not move, delete, or rewrite reference repos automatically unless the user explicitly asks.
+Never move, delete, or rewrite reference repos.
 
 ## Archives And Snapshots
 
