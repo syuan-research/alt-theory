@@ -1,5 +1,48 @@
 # AGENTS.md
 
+Keep this file short. It is the map, not the encyclopedia.
+
+Use it to find the right project docs, active skill bundle, recovery files, and safety rules. Deeper detail belongs in the linked files under `project/` and `agent-assets/`.
+
+## Project Purpose
+
+This worktree is the clean `v0.3` reorganization lane for Alt Theory.
+
+Current emphasis:
+
+- keep the old `llm-theo-v0.2` repo intact while building a cleaner `v0.3` structure;
+- use `cs-swe-v0-3` as the active SWE-only skill bundle;
+- separate project records, agent assets, evaluation work, and reference repositories more cleanly;
+- keep OneDrive-safe project history while moving dependency-heavy or reference-heavy material outside OneDrive when needed.
+
+## Quick Tree
+
+```text
+project/
+  README.md
+  architecture/
+  foundation/
+  plan-records/
+  research/
+  workstreams/
+  compound/
+  brainstorms/
+  cross-workstream/
+
+agent-assets/
+  README.md
+  kb/
+  profiles/
+  prompts/
+  runtime/
+  skills/
+
+alt-theory-app/
+alt-theory-rag/
+evals/
+_archives/               # local ignored snapshots only
+```
+
 ## Read First
 
 Start with:
@@ -7,9 +50,52 @@ Start with:
 1. `project/README.md`
 2. `agent-assets/README.md`
 3. the relevant workstream under `project/workstreams/`
-4. the relevant plan-record or handoff under that workstream's `notes-and-status/`
+4. the relevant workstream-local or cross-workstream file under `notes-and-status/`
 
-For SWE coding work, read `agent-assets/skills/cs-swe-v0-3/SKILL.md`.
+For SWE coding work, read:
+
+1. `agent-assets/skills/cs-swe-v0-3/SKILL.md`
+2. `agent-assets/skills/cs-swe-v0-3/references/shared-conventions.md`
+3. the matching workflow file under `agent-assets/skills/cs-swe-v0-3/references/workflows/`
+
+For branch/recovery context, also check:
+
+- `project/cross-workstream/notes-and-status/2026-06-02-v0-3-recovery-todo.md`
+
+## Source Of Truth Pointers
+
+- `project/` is the source of truth for project structure, recovery, plans, research notes, and architecture.
+- `agent-assets/` is the source of truth for runtime-facing assets, profiles, prompts, KB copies, and skills.
+- `agent-assets/skills/cs-swe-v0-3/` is the active SWE skill bundle.
+- `cs-swe-v0-2/` and sibling `cs-swe-*` v0.2 folders are historical comparison material only.
+
+## Plan-Records And Workstreams
+
+Default workstream-local records live in:
+
+```text
+project/workstreams/{workstream}/notes-and-status/
+  STATUS.md
+  {YYYYMMDD}-{name}-plan-record-v{n}.md
+  {YYYYMMDD}-{name}-swe-plan.md
+  {YYYYMMDD}-{name}-swe-plan-items.yaml
+  {YYYYMMDD}-handoff-{description}.md
+```
+
+Cross-workstream records live in:
+
+```text
+project/cross-workstream/notes-and-status/
+```
+
+Use top-level `project/plan-records/` only for migration-level, repository-level, or legacy records.
+
+`swe-plan` may share the same `notes-and-status/` container as plan-records, but it is still a distinct artifact type.
+
+Project-wide durable notes live in:
+
+- `project/compound/` for decisions, learnings, tricks, and explores
+- `project/brainstorms/` for central/open brainstorm records
 
 ## Uncertainty And Questions
 
@@ -25,53 +111,53 @@ If the uncertainty is high-fidelity, inspect first. If it still cannot be resolv
 
 When an assumption is needed to keep moving, state it as an assumption and prefer reversible actions.
 
-## Plan-Records And Workstreams
-
-Default placement is workstream-local:
-
-```text
-project/workstreams/{workstream}/notes-and-status/
-  STATUS.md
-  {YYYYMMDD}-{name}-plan-record-v{n}.md
-  {YYYYMMDD}-{name}-swe-plan.md
-  {YYYYMMDD}-{name}-swe-plan-items.yaml
-  {YYYYMMDD}-handoff-{description}.md
-```
-
-Use `project/cross-workstream/notes-and-status/` for records that explicitly coordinate multiple workstreams.
-
-Use top-level `project/plan-records/` only for migration-level, repository-level, or legacy records that do not belong cleanly inside one workstream or the cross-workstream area.
-
-A plan-record preserves session/few-session continuity, context recovery, action-for-reflection, and problem/solution co-evolution. It does not replace concrete workflow artifacts such as feature design, issue analysis, refactor scan/apply notes, brainstorm records, compound records, or eval outputs. `swe-plan` can share the same `notes-and-status/` container, but it remains a distinct artifact type.
-
-## CodeStable-Derived SWE Work
-
-Use `agent-assets/skills/cs-swe-v0-3/SKILL.md` for code-level feature, issue, refactor, architecture, and `swe-plan` work.
-
-Do not use v0.2 CS-SWE folders or `cs-modified-v0-1` as active rules. They are historical evidence only.
-
-`roadmap` is not the active SWE workflow term here. Use `swe-plan` for CodeStable raw roadmap-like multi-feature engineering plans.
-
-Use `project/compound/` for CodeStable-derived decision, learning, trick, and explore records. Use `project/brainstorms/` for central/open brainstorm records; feature-local brainstorms remain inside their feature directory.
-
 ## Reference Repositories
 
-Reference clones should live outside OneDrive sync when practical. Current chosen location:
+Reference clones should live outside OneDrive when practical.
+
+Current reference repo root:
 
 ```text
 D:\reference-repo
 ```
 
-Do not move, delete, or rewrite cloned repos automatically. Report candidates and let the user move them manually unless explicitly asked.
+Do not treat reference repos as the project source of truth. They are external inputs and comparison material.
 
-Project-scoped runnable worktrees should also stay outside OneDrive when they have dependency folders, build caches, or long-running dev servers.
+Do not move, delete, or rewrite reference repos automatically unless the user explicitly asks.
+
+## Archives And Snapshots
+
+`_archives/` is local and ignored by Git. Use it for directly openable snapshots or backups that the user wants available in the current file tree without turning them into active tracked assets.
+
+Current relevant local snapshot:
+
+```text
+_archives/agent-assets/skills/cs-swe-v0-3-before-repair-1129b96/
+```
 
 ## Version-Control Safety
 
 Before broad edits, inspect branch and status.
 
+Current workflow expectation:
+
+- do repair work on a focused branch;
+- merge accepted repair work back into the intended development branch;
+- do not leave a temporary `fix/...` branch as the permanent main working line by accident.
+
+For the current CS-SWE repair:
+
+- active repair branch: `fix/cs-swe-v0-3-repair`
+- intended development branch: `reorg/v0.3-dev-run`
+
 Do not run destructive git commands or irreversible filesystem moves without explicit approval.
 
-Prefer branch/commit checkpoints for recoverability. If a repair branch is accepted, merge it back into the intended development branch rather than copying files by hand.
+Prefer branch/commit checkpoints for recoverability.
 
 Keep unrelated untracked files separate from the current task.
+
+## Local Development Notes
+
+- OneDrive-synced project folders should not host active npm installs that create real `node_modules/` trees.
+- Runnable dependency-heavy worktrees should stay outside OneDrive.
+- See `project/foundation/local-development-rules.md` and `project/foundation/gitignore-policy.md` for the current machine and Git policy details.
