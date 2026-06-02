@@ -47,6 +47,7 @@ _archives/               # local ignored snapshots only
 
 Start with:
 
+- Check [%LLM_THEO_WORKTREES_ROOT%/README.md](file:///%LLM_THEO_WORKTREES_ROOT%/README.md) to identify active worktree paths and branch mappings.
 1. `project/README.md`
 2. `agent-assets/README.md`
 3. the relevant workstream under `project/workstreams/`
@@ -57,6 +58,7 @@ For software coding work, read:
 1. `agent-assets/skills/cs-swe-v0-3/SKILL.md`
 2. `agent-assets/skills/cs-swe-v0-3/references/shared-conventions.md`
 3. the matching workflow file under `agent-assets/skills/cs-swe-v0-3/references/workflows/`
+4. relevant system architecture maps under `project/architecture/` (e.g., `repo-structure-v0.3.md`, `core-session-engine.md`)
 
 For branch/recovery context, also check:
 
