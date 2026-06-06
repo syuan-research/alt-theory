@@ -99,8 +99,8 @@ project/workstreams/*/*
 !project/workstreams/*.md
 !project/workstreams/cs-swe-v0-3-handoff/
 !project/workstreams/cs-swe-v0-3-handoff/**
-!project/workstreams/swe/
-!project/workstreams/swe/**
+!project/workstreams/cs-swe-adaptation/
+!project/workstreams/cs-swe-adaptation/**
 !project/workstreams/agent-harness/
 !project/workstreams/agent-harness/**
 !project/workstreams/kb-search/
