@@ -47,11 +47,11 @@ _archives/               # local ignored snapshots only
 
 Start with:
 
-- Check [%LLM_THEO_WORKTREES_ROOT%/README.md](file:///%LLM_THEO_WORKTREES_ROOT%/README.md) to identify active worktree paths and branch mappings.
-1. `project/README.md`
-2. `agent-assets/README.md`
-3. the relevant workstream under `project/workstreams/`
-4. the relevant workstream-local or cross-workstream file under `notes-and-status/`
+1. [%LLM_THEO_WORKTREES_ROOT%/README.md](file:///%LLM_THEO_WORKTREES_ROOT%/README.md) for active worktree paths and branch mappings
+2. `project/README.md`
+3. `agent-assets/README.md`
+4. the relevant workstream under `project/workstreams/`
+5. the relevant workstream-local or cross-workstream file under `notes-and-status/`
 
 For software coding work, read:
 
@@ -63,6 +63,7 @@ For software coding work, read:
 For branch/recovery context, also check:
 
 - `project/cross-workstream/notes-and-status/2026-06-02-v0-3-recovery-todo.md`
+- `project/cross-workstream/notes-and-status/2026-06-06-worktree-consolidation-plan-record-v1.md`
 
 ## Source Of Truth Pointers
 
@@ -141,14 +142,11 @@ Before broad edits, inspect branch and status.
 
 Current workflow expectation:
 
-- do repair work on a focused branch;
-- merge accepted repair work back into the intended development branch;
-- do not leave a temporary `fix/...` branch as the permanent main working line by accident.
-
-For the current CS-SWE repair:
-
-- active repair branch: `fix/cs-swe-v0-3-repair`
-- intended development branch: `reorg/v0.3-dev-run`
+- `reorg/v0.3-dev-run` in `%LLM_THEO_WORKTREES_ROOT%/llm-theo-v0.3-dev` is the current integration line;
+- `feature/electron-bundle-verification` remains a focused packaging-verification lane;
+- create another worktree only when concurrent work needs a separate checkout, dependency environment, runnable state, or risk boundary;
+- merge accepted focused work back into the intended integration branch;
+- do not leave a temporary feature or repair branch as the permanent main working line by accident.
 
 Do not run destructive git commands or irreversible filesystem moves without explicit approval.
 
