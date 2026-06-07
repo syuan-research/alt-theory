@@ -1,0 +1,30 @@
+feature: 2026-06-07-session-workspace-and-runtime-records
+created: 2026-06-07
+
+steps:
+  - action: "Directory contract: make workspace the write target and add recordsDir"
+    exit_signal: "Directory unit test confirms workspace/history/records and no notes directory"
+    status: done
+  - action: "Record placement: move manifest and metrics into records"
+    exit_signal: "Core/server tests resolve both files under recordsDir"
+    status: done
+  - action: "Runtime events: add bounded JSONL writer and lifecycle emission"
+    exit_signal: "Tests parse expected event types and confirm message bodies are absent"
+    status: done
+  - action: "Regression verification: run the backend test suite"
+    exit_signal: "All backend tests pass"
+    status: done
+
+checks:
+  - item: "SessionDirectories exposes recordsDir and writeDir equals sessionCwd"
+    source: design
+    status: done
+  - item: "Manifest and metrics are Alt Theory records, not workspace output"
+    source: design
+    status: done
+  - item: "Runtime events contain no conversation message bodies"
+    source: design
+    status: done
+  - item: "No filesystem sandbox is claimed or implemented by this feature"
+    source: design
+    status: done

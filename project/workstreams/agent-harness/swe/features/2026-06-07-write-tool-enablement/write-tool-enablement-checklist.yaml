@@ -1,0 +1,22 @@
+feature: 2026-06-07-write-tool-enablement
+created: 2026-06-07
+steps:
+  - action: Add explicit write-enabled tool policy and prompt guidance
+    exit_signal: Core session exposes only the five intended tools
+    status: done
+  - action: Verify read-only regression and write-enabled configuration
+    exit_signal: Automated assertions cover both modes
+    status: done
+  - action: Run controlled write smoke
+    exit_signal: A markdown file is created in the notes directory
+    status: done
+checks:
+  - item: Write mode excludes edit and bash
+    source: design
+    status: passed
+  - item: Prompt names the session notes directory
+    source: design
+    status: passed
+  - item: Read-only mode remains unchanged
+    source: design
+    status: passed

@@ -6,27 +6,35 @@
  */
 
 import { createAltTheorySession } from "./alt-theory-core.js";
+import { createSessionDirs, resolveDataDir } from "./data-dir.js";
 import { resolve } from "path";
 
 async function main() {
   console.log("=== Alt Theory Core Layer Test ===\n");
 
-  const rootDir = resolve(import.meta.dirname, "..");
-  const kbDir = resolve(rootDir, "assets", "kb");
+  const projectRoot = resolve(import.meta.dirname, "..", "..");
+  const runtimeDir = resolve(projectRoot, "agent-assets", "runtime", "pi-tui");
+  const kbDir = resolve(projectRoot, "alt-theory-app", "web-server", "assets", "kb");
+  const profilePath = resolve(projectRoot, "agent-assets", "profiles", "default.md");
+  const sessionDirs = createSessionDirs(resolveDataDir());
 
-  console.log(`rootDir: ${rootDir}`);
+  console.log(`sessionCwd: ${sessionDirs.sessionCwd}`);
   console.log(`kbDir:   ${kbDir}`);
 
   try {
-    const { session } = await createAltTheorySession({
-      rootDir,
+    const { session, manifest } = await createAltTheorySession({
+      ...sessionDirs,
       kbDir,
-      profilePath: resolve(rootDir, "assets", "profiles", "default.md"),
+      profilePath,
+      runtimeDir,
       readOnly: true,
     });
 
     console.log("\n✓ Session created successfully");
     console.log(`  Session ID: ${session.sessionId}`);
+    console.log(`  Session file: ${session.sessionFile}`);
+    console.log(`  Runtime assets: ${runtimeDir}`);
+    console.log(`  Manifest: ${JSON.stringify(manifest, null, 2)}`);
 
     // Verify system prompt
     // Note: system prompt structure depends on PI internals
@@ -38,6 +46,7 @@ async function main() {
     }
 
     console.log("\n=== Core layer test passed ===");
+    session.dispose();
   } catch (err) {
     console.error("\n✗ Core layer test failed:", err);
     process.exit(1);

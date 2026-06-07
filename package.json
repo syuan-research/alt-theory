@@ -3,8 +3,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev:web": "tsx apps/alt-theory/web/server/server.ts",
-    "smoke:core": "tsx apps/alt-theory/core/test-core.ts"
+    "dev:web": "tsx alt-theory-app/web-server/server.ts",
+    "smoke:core": "tsx alt-theory-app/core/test-core.ts",
+    "smoke:resume": "tsx alt-theory-app/core/smoke-resume.ts",
+    "smoke:backend": "tsx alt-theory-app/web-server/smoke-backend.ts",
+    "test:backend": "tsx --test alt-theory-app/**/*.test.ts"
   },
   "dependencies": {
     "@mariozechner/pi-ai": "0.70.2",

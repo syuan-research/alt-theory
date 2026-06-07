@@ -1,103 +1,151 @@
 ---
 doc_type: architecture
 slug: core-session-engine
-scope: Alt Theory Core Session Engine and Pi Coding Agent integration logic
-summary: Provides the unified backend session orchestration API (createAltTheorySession) for all Alt Theory clients
+scope: Alt Theory core session engine and Pi Coding Agent integration
+summary: Creates persistent, asset-configured Pi sessions and exposes connection-scoped backend state
 status: current
-last_reviewed: 2026-06-02
+last_reviewed: 2026-06-07
 tags: [core, backend, pi-agent, session]
 depends_on: []
-implements: []
+implements:
+  - backend-v2-infrastructure
 ---
 
 # Architecture: Core Session Engine
 
 ## 0. Terminology
 
-* **Pi Coding Agent (`@mariozechner/pi-coding-agent`)**: The underlying LLM agent framework which provides native tools, resource loaders, and session managers.
-* **Resource Loader (`DefaultResourceLoader`)**: A Pi Coding Agent class responsible for reading, reloading, and dynamically assembling system prompt assets and configuration states.
-* **Agent Profile**: The personality, instructions, or soul overrides injected into the LLM system prompt template before runtime.
-* **Read-Only Mode**: A safety mode that restricts the agent's available tools to search-only and read-only tools, disabling code writing or execution capabilities.
-* **Coding Mode**: Full-capabilities execution mode where the agent has write, edit, and bash tool execution access.
+- **Session**: one Pi conversation owned by one live WebSocket connection.
+- **Session workspace**: Pi tool `cwd`.
+- **Pi session directory**: storage for Pi's timestamped JSONL history.
+- **Write directory**: the session workspace; agent-authored notes and summaries
+  live directly under Pi's `cwd`.
+- **Records directory**: Alt Theory-owned manifest, metrics, and runtime events.
+- **Assembly manifest**: immutable provenance record for runtime assets, profile,
+  core-soul selection, paths, model, and provider.
+- **Session metrics**: mutable counters plus Pi token/cost/context statistics.
+- **Session events**: append-only Alt Theory control/outcome events without
+  conversation bodies.
 
----
-
-## 1. Positioning and Audience
-
-* **Coverage**: Wraps and configures the raw Pi Coding Agent API specifically for Alt Theory backend and frontend clients (`apps/alt-theory/core/alt-theory-core.ts`).
-* **Audience**: Backend developers, feature designers, and future agents writing features that interact with the agent session or add frontend interactions.
-* **Usage**: Explains how system prompts, tool restrictions, and directory scopes are injected at runtime during session initialization.
-
----
-
-## 2. Structure and Interaction
-
-The core session engine orchestrates inputs from files and runtime parameters to spawn a secure, localized LLM coding agent session.
+## 1. Structure
 
 ```mermaid
-graph TD
-    Config[AltTheoryConfig] -->|Injected via createAltTheorySession| Core[Alt Theory Core Session Engine]
-    
-    subgraph Core Setup [apps/alt-theory/core/alt-theory-core.ts]
-        Core -->|1. Read Stance| Profile[Agent Profile Path]
-        Core -->|2. Assemble Prompts| Loader[DefaultResourceLoader]
-        Core -->|3. Restrict Tools if readOnly| SessionOpts[Session Options]
-    end
-    
-    Profile --> Loader
-    Loader -->|Load Prompt & KB Path| SessionOpts
-    SessionOpts -->|Instantiate| Pi[Pi Agent Session Instance]
+flowchart LR
+  WS[WebSocket connection] --> State[ConnectionState]
+  State --> Dirs[data-dir.ts]
+  State --> Core[createAltTheorySession]
+  Core --> Assets[core-soul + profile + runtime AGENTS/prompts]
+  Core --> Pi[Pi AgentSession]
+  Pi --> JSONL[history/*.jsonl]
+  Core --> Manifest[records/assembly-manifest.json]
+  Pi --> Metrics[records/session-metrics.json]
+  State --> Events[records/session-events.jsonl]
+  REST[Static REST] --> Registry[asset-registry.ts]
 ```
 
-### Flow and Interaction Sequence:
-1. **Configuration Resolution**: The caller invokes [createAltTheorySession()](file:///%LLM_THEO_WORKTREES_ROOT%/llm-theo-v0.3-dev/apps/alt-theory/core/alt-theory-core.ts#L41) with paths for `rootDir`, `kbDir`, and an optional `profilePath`.
-2. **Profile Injection**: If `profilePath` exists, the file is read synchronously and appended as `## Agent Profile` to the system prompt override list.
-3. **Knowledge Base Binding**: The absolute path of the `kbDir` is resolved and appended as `## Knowledge Base` to the system prompt to declare the coding search directory.
-4. **Tool Restraints**: 
-   * If `readOnly` is true, the session is instantiated with `noTools: "all"` and a restricted whitelist: `["read", "ls", "grep", "find"]`.
-   * Otherwise, the full suite of default read-write-execute coding tools is loaded.
+Code anchors:
 
----
+- `alt-theory-app/core/data-dir.ts`: data-root and session-directory ownership.
+- `alt-theory-app/core/core-soul.ts`: module parsing, selection, validation, and
+  deterministic assembly.
+- `alt-theory-app/core/alt-theory-core.ts`: resource loader, tool policy,
+  persistent Pi session creation, and manifest.
+- `alt-theory-app/web-server/asset-registry.ts`: safe profile/KB slugs.
+- `alt-theory-app/web-server/server.ts`: REST routes and per-connection
+  WebSocket lifecycle.
+- `alt-theory-app/web-server/session-metrics.ts`: Pi-native metric mapping and
+  atomic snapshot persistence.
+- `alt-theory-app/web-server/session-events.ts`: bounded append-only runtime
+  event persistence.
+- `alt-theory-app/web-server/websocket-protocol.ts`: shared transport types.
 
-## 3. Data and State
+## 2. Session Creation
 
-### AltTheoryConfig Interface
-Declared at [alt-theory-core.ts:L23-32](file:///%LLM_THEO_WORKTREES_ROOT%/llm-theo-v0.3-dev/apps/alt-theory/core/alt-theory-core.ts#L23-32):
-* `rootDir`: Root directory path where runtime agent files live; used as the working directory.
-* `kbDir`: Path of the read-only Knowledge Base used for agent searching and reference.
-* `profilePath`: Optional path to an agent profile configuration markdown file.
-* `readOnly`: Boolean flag triggering tool reduction (read-only) vs full-write mode.
+1. Alt Theory generates a UUID and creates:
+   `sessions/{id}/workspace`, `history`, and `records`.
+2. The core creates `SessionManager.create(sessionCwd, piSessionDir)` and sets
+   the same session ID.
+3. `DefaultResourceLoader` explicitly loads runtime `AGENTS.md` and prompt
+   templates because the per-session workspace is not the runtime asset root.
+4. Prompt layers are appended in this order: core-soul, profile, KB
+   declaration, optional write policy.
+5. Pi returns the reserved timestamped JSONL path. Pi physically writes it once
+   an assistant message is present.
+6. Alt Theory atomically writes `records/assembly-manifest.json` and appends
+   session/runtime events to `records/session-events.jsonl`.
 
-### State Ownership
-* **Session Manager**: The session is instantiated with `SessionManager.inMemory()`. State (conversation history, token consumption, memory) is preserved in-memory for the duration of the Node process and is not persisted to disk.
+## 3. Tool Policy
 
----
+- Read-only: `read`, `ls`, `grep`, `find`.
+- Write-enabled: the same tools plus `write`.
+- `edit` and `bash` are not enabled by the backend.
+- The workspace path restriction is prompt-based guidance, not a hard
+  filesystem sandbox. Pi's built-in write tool accepts absolute paths.
 
-## 4. Key Decisions
+## 4. Connection Ownership
 
-* **Wrapper-Based Decoupling**: Rather than directly calling `@mariozechner/pi-coding-agent` in the web controller layers, the wrapper separates the framework package dependency from application-level routes.
-* **In-Memory Lifetimes**: The decision to use in-memory SessionManager keeps the server stateless and avoids disk pollution for transient chat runs.
-* **Read-Only vs Coding Tool Whitelists**: Whitelists are hardcoded locally to guarantee that the LLM cannot invoke hidden tool capabilities when in preview/read-only user modes.
+Every WebSocket connection owns one `ConnectionState`: session, subscription,
+manifest, selected profile/domain, and counters.
 
----
+- Connect creates a session.
+- `new_session` aborts when needed, unsubscribes, disposes, and replaces only
+  that connection's session.
+- Close cleans up only the owned session.
+- Profile and KB values are client-safe slugs resolved against server roots.
+- Session metadata and metrics use WebSocket; static discovery uses REST.
 
-## 5. Code Anchors
+## 5. Discovery And Introspection
 
-* `apps/alt-theory/core/alt-theory-core.ts:createAltTheorySession` — Main session factory endpoint.
-* `apps/alt-theory/core/alt-theory-core.ts:READONLY_TOOLS` — Whitelisted tools for secure user execution.
-* `apps/alt-theory/core/test-core.ts` — Core integration test suite.
+REST:
 
----
+- `GET /api/profiles`
+- `GET /api/kb-domains`
 
-## 6. Known Constraints / Edge Cases
+Both return sorted `{ slug, displayName }` arrays without filesystem paths.
 
-* **Hardcoded Whitelist**: The `READONLY_TOOLS` array is static. Custom read-only tools cannot be injected dynamically without changing the code.
-* **Synchronous File Reads**: The agent profile file is read using `readFileSync` during initialization. Large profile files will block the main Node loop during session start.
-* **Single CWD Lock**: The workspace path is resolved absolutely during startup and cannot be changed dynamically once the session is active.
+WebSocket:
 
----
+- server: `session_metadata`, `session_metrics`
+- client: `get_session_metadata`, `get_session_metrics`
 
-## 7. Related Documents
+Metrics include message/turn/tool counts, token totals, cost, and nullable
+context usage. Successful runs atomically update
+`records/session-metrics.json`.
 
-* [repo-structure-v0.3.md](file:///%LLM_THEO_WORKTREES_ROOT%/llm-theo-v0.3-dev/project/architecture/repo-structure-v0.3.md)
-* [pi-alt-theory-spec-v0.6.imported.md](file:///%LLM_THEO_WORKTREES_ROOT%/llm-theo-v0.3-dev/project/architecture/pi-alt-theory-spec-v0.6.imported.md)
+Runtime events currently cover session creation, KB/profile selection, and run
+completion/failure/abort. Pi JSONL remains the conversation record; event files
+do not duplicate message bodies.
+
+## 6. Model Configuration
+
+The core may receive an explicit Pi `models.json` path plus provider/model
+selection and a runtime-only API key. `ModelRegistry` loads custom model
+definitions independently of Pi's built-in model catalog. Runtime keys use
+`AuthStorage.setRuntimeApiKey()` and are not persisted by Alt Theory.
+
+The tracked runtime model configuration currently includes Xiaomi MiMo Token
+Plan through its Anthropic-compatible endpoint. Model entries can be updated
+without upgrading Pi. Its zero cost fields mean no comparable per-token price
+is configured; they are not a billing claim.
+
+## 7. Known Constraints
+
+- Session list/resume is not implemented.
+- Profile changes apply to the next new session; KB domain changes affect the
+  next prompt prefix.
+- Pi-native resume has been verified to preserve JSONL history and cwd while a
+  newly created runtime can apply a new profile/system prompt. Alt Theory does
+  not yet expose or event-log that transition.
+- Core-soul activation is configured by backend environment/config, not UI.
+- Hard write-path enforcement, thinking events, compaction/retry events, and
+  provider/auth UI are deferred.
+- Frontend consumption of the new APIs is a separate workstream.
+
+## 8. Verification
+
+- `npm run test:backend`: local unit and integration suite.
+- `npm run smoke:core`: real Pi initialization without an external model turn.
+- `npm run smoke:backend`: three-turn MiMo live test covering identity,
+  KB retrieval, workspace write, metrics, events, and JSONL persistence.
+- `npm run smoke:resume`: Pi-native resume probe with a changed resume-time
+  profile. Both live commands require explicit external-provider approval.

@@ -1,0 +1,25 @@
+feature: 2026-06-07-session-metrics-and-introspection
+created: 2026-06-07
+steps:
+  - action: Extend shared session introspection protocol
+    exit_signal: Metadata and metrics messages are type-defined
+    status: done
+  - action: Build metrics from connection counters and Pi native statistics
+    exit_signal: Zero and populated metric snapshots are deterministic
+    status: done
+  - action: Wire request push and atomic persistence flows
+    exit_signal: Creation requests and successful runs expose current data
+    status: done
+  - action: Complete integration verification and JSONL inspection
+    exit_signal: Protocol and persisted evidence satisfy all scenarios
+    status: done
+checks:
+  - item: Session-scoped introspection uses WebSocket only
+    source: design
+    status: passed
+  - item: Metrics include event counters and Pi token/context data
+    source: design
+    status: passed
+  - item: Successful runs push and atomically persist metrics
+    source: design
+    status: passed

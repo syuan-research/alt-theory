@@ -182,7 +182,7 @@ kbSelect.addEventListener("change", (e) => {
 
 // Profile switch
 profileSelect.addEventListener("change", (e) => {
-  ws.send(JSON.stringify({ type: "switch_profile", payload: { profilePath: e.target.value } }));
+  ws.send(JSON.stringify({ type: "switch_profile", payload: { profileSlug: e.target.value } }));
 });
 
 // New session
