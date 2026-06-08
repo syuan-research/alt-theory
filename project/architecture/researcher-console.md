@@ -2,7 +2,7 @@
 doc_type: architecture
 slug: researcher-console
 scope: Current browser console used by the researcher to run, inspect, compare, and later annotate Alt Theory sessions
-summary: The current researcher console is a temporary vanilla frontend seed that exposes live backend sessions and loaded agent assets but does not yet support historical session work.
+summary: The current researcher console is a temporary vanilla frontend seed that exposes live backend sessions, loaded agent assets, and historical session browse/resume.
 status: current
 last_reviewed: 2026-06-08
 tags: [frontend, researcher-console, session, runtime-inspection]
@@ -32,8 +32,8 @@ core session engine. Future frontend agents should read this before treating
 the temporary frontend as either disposable UI or final product design.
 
 The console's current purpose is to support real user interaction as design and
-research evidence. That includes live conversation, runtime inspection, and
-soon session comparison/resume, annotation, and export.
+research evidence. That includes live conversation, runtime inspection,
+historical session browse/resume, and later comparison, annotation, and export.
 
 ## 2. Structure And Interaction
 
@@ -54,7 +54,9 @@ flowchart LR
   Browser --> WS[WebSocket session]
   REST --> RolePresets[role presets list]
   REST --> KBDomains[KB domain list]
+  REST --> SessionCatalog[session list + detail]
   WS --> Session[Connection-scoped session]
+  WS --> OpenSession[open_session]
   Session --> Inspector[metadata + metrics + paths]
   Session --> Chat[streaming chat + tool status]
 ```
@@ -63,6 +65,8 @@ The left panel currently owns:
 
 - new session button;
 - session ID/status summary;
+- historical session list/detail/preview;
+- resume/open selected session control;
 - KB selector;
 - role-preset selector;
 - provider/model display.
@@ -99,15 +103,18 @@ Code anchors:
 ## 3. Data And State
 
 Current console state is browser-local and tied to one live WebSocket
-connection. The browser does not yet own a durable session index or local
-project state.
+connection. The browser reads a durable session index from the backend data
+directory but does not own or persist that index locally.
 
 Current backend-facing state:
 
 - discovery lists from `GET /api/role-presets` and `GET /api/kb-domains`;
 - legacy compatibility alias from `GET /api/profiles`;
+- historical session list and detail from `GET /api/sessions` and
+  `GET /api/sessions/{sessionId}`;
 - current live session metadata from `session_metadata`;
 - current live session metrics from `session_metrics`;
+- session resume/open over WebSocket `open_session`;
 - streaming output and tool events over WebSocket;
 - selected KB domain in the current connection;
 - selected role-preset slug for the next `new_session`.
@@ -122,15 +129,18 @@ Current persistence belongs to the backend data directory, not the browser:
     records/
 ```
 
-The console can display paths from the manifest but cannot yet list historical
-sessions, resume them, tag them, annotate them, or export them.
+The console can display paths from the manifest, list historical sessions,
+inspect selected-session detail/preview, and resume/open a selected session.
+It cannot yet tag, annotate, compare, or export sessions.
 
 ## 4. Current Capabilities
 
 - Opens a live backend session on WebSocket connect.
 - Populates KB and role-preset selectors from REST discovery.
+- Populates historical session list/detail from REST.
 - Sends prompts and abort requests.
 - Starts a new session within the same browser connection.
+- Resumes/opens an existing session within the same browser connection.
 - Displays streaming assistant text.
 - Displays tool started/updated/finished states.
 - Displays manifest, loaded asset paths, and metrics in the runtime inspector.
@@ -138,14 +148,13 @@ sessions, resume them, tag them, annotate them, or export them.
 
 ## 5. Known Constraints / Edge Cases
 
-- Historical session list is not implemented.
-- Resume/open previous session is not implemented.
 - Provider/model switching is not implemented in the console.
 - Core-soul module switching is not implemented in the console.
 - Role-preset switching is implemented for the next new session; current-session
   prompt mutation is not implemented.
 - Tags and annotations are not implemented.
 - Export is not implemented.
+- Historical session comparison is not implemented.
 - Runtime config visibility is still partial: the console shows active
   provider/model and loaded asset paths, while full startup source and
   provider/auth selection UI are not implemented.
@@ -166,3 +175,6 @@ sessions, resume them, tag them, annotate them, or export them.
 
 - 2026-06-08: Created current-state architecture for the researcher console
   seed.
+- 2026-06-08: Updated after session browser/resume-open slice. Console now
+  lists historical sessions, shows selected detail/preview, and sends
+  WebSocket `open_session`.

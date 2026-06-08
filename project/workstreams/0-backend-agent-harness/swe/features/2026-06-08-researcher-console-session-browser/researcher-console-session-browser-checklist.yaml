@@ -1,0 +1,36 @@
+feature: 2026-06-08-researcher-console-session-browser
+created: 2026-06-08
+
+steps:
+  - action: "Static UI structure: add left-panel session browser markup and styles"
+    exit_signal: "Page has stable session-list/detail containers"
+    status: done
+  - action: "REST state wiring: fetch/render session list and detail"
+    exit_signal: "Local server shows historical rows from /api/sessions"
+    status: done
+  - action: "Resume/Open interaction: send open_session, clear chat, refresh list on session_opened"
+    exit_signal: "Manual/non-live smoke resumes an existing session ID in the inspector"
+    status: done
+  - action: "Plan writeback and verification"
+    exit_signal: "Checklist and SWE-plan item are updated; backend tests and local server smoke pass"
+    status: done
+
+checks:
+  - item: "Browser fetches and renders historical sessions"
+    source: design
+    status: passed
+  - item: "Selecting a session shows detail facts, warnings, and bounded preview"
+    source: design
+    status: passed
+  - item: "Resume/Open sends open_session and updates runtime inspector to selected session ID"
+    source: design
+    status: passed
+  - item: "New session and successful open refresh the session list"
+    source: design
+    status: passed
+  - item: "UI handles empty list and REST/WebSocket errors without layout breakage"
+    source: design
+    status: passed
+  - item: "Feature does not introduce tags, annotations, export, comparison, asset editing, provider/auth UI, or live prompt"
+    source: design
+    status: passed

@@ -30,6 +30,16 @@
         <div id="session-status" class="muted"></div>
       </div>
 
+      <div class="panel-section" id="session-browser-section">
+        <div class="panel-header compact-header">
+          <span class="section-label inline-label">Sessions</span>
+          <button id="session-refresh-btn" class="small-btn" title="Refresh sessions" disabled>&#8635;</button>
+        </div>
+        <div id="session-list" class="session-list small-text"></div>
+        <div id="session-detail" class="session-detail small-text"></div>
+        <button id="resume-session-btn" class="full-width-btn" disabled>Resume / Open</button>
+      </div>
+
       <div class="panel-section">
         <label for="kb-select" class="section-label">Knowledge Base</label>
         <select id="kb-select" disabled>

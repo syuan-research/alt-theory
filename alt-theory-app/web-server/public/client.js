@@ -20,6 +20,10 @@ const sessionStatusEl = document.getElementById("session-status");
 const kbSelect = document.getElementById("kb-select");
 const rolePresetSelect = document.getElementById("role-preset-select");
 const providerInfoEl = document.getElementById("provider-info");
+const sessionRefreshBtn = document.getElementById("session-refresh-btn");
+const sessionListEl = document.getElementById("session-list");
+const sessionDetailEl = document.getElementById("session-detail");
+const resumeSessionBtn = document.getElementById("resume-session-btn");
 
 // ---------------------------------------------------------------------------
 // DOM refs — Chat
@@ -85,6 +89,10 @@ let currentRolePresetSlug = "";
 let sessionReady = false;
 let latestManifest = null;
 let pendingConfirmAction = null;
+let sessionCatalog = [];
+let selectedHistoricalSessionId = "";
+let selectedSessionDetail = null;
+let pendingOpenSessionId = "";
 let activeToolNames = {};  // callId -> { name, el }
 
 // ---------------------------------------------------------------------------
@@ -115,6 +123,150 @@ async function fetchDiscovery() {
     rolePresetSelect.dataset.hasOptions = "false";
     setControlsEnabled(!isRunning);
   }
+}
+
+async function fetchSessions() {
+  try {
+    const res = await fetch("/api/sessions");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    sessionCatalog = Array.isArray(data.sessions) ? data.sessions : [];
+    renderSessionList();
+    if (
+      selectedHistoricalSessionId &&
+      sessionCatalog.some((session) => session.sessionId === selectedHistoricalSessionId)
+    ) {
+      await fetchSessionDetail(selectedHistoricalSessionId);
+    } else if (sessionCatalog.length > 0) {
+      await fetchSessionDetail(sessionCatalog[0].sessionId);
+    } else {
+      selectedHistoricalSessionId = "";
+      selectedSessionDetail = null;
+      renderSessionDetail();
+    }
+  } catch (err) {
+    console.error("[sessions] Failed:", err);
+    sessionCatalog = [];
+    selectedHistoricalSessionId = "";
+    selectedSessionDetail = null;
+    sessionListEl.innerHTML = '<div class="session-error">Could not load sessions.</div>';
+    renderSessionDetail();
+  }
+}
+
+async function fetchSessionDetail(sessionId) {
+  if (!sessionId) return;
+  selectedHistoricalSessionId = sessionId;
+  renderSessionList();
+  sessionDetailEl.innerHTML = '<div class="session-empty">Loading...</div>';
+  resumeSessionBtn.disabled = true;
+  try {
+    const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    selectedSessionDetail = await res.json();
+    renderSessionDetail();
+  } catch (err) {
+    console.error("[sessions] Detail failed:", err);
+    selectedSessionDetail = null;
+    sessionDetailEl.innerHTML = '<div class="session-error">Could not load session detail.</div>';
+    resumeSessionBtn.disabled = true;
+  }
+}
+
+function renderSessionList() {
+  sessionListEl.innerHTML = "";
+  if (sessionCatalog.length === 0) {
+    sessionListEl.innerHTML = '<div class="session-empty">No saved sessions.</div>';
+    return;
+  }
+
+  for (const session of sessionCatalog) {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "session-row";
+    if (session.sessionId === selectedHistoricalSessionId) {
+      row.classList.add("selected");
+    }
+    row.onclick = () => fetchSessionDetail(session.sessionId);
+
+    const title = document.createElement("div");
+    title.className = "session-row-title";
+    const id = document.createElement("span");
+    id.textContent = shortId(session.sessionId);
+    const status = document.createElement("span");
+    status.className = session.warnings?.length ? "session-warning" : "";
+    status.textContent = session.status || "unknown";
+    title.appendChild(id);
+    title.appendChild(status);
+
+    const meta = document.createElement("div");
+    meta.className = "session-row-meta";
+    meta.textContent = [
+      session.kbDomain || "no-kb",
+      session.rolePresetSlug || "no-role",
+      formatProviderModel(session),
+      fmtTime(session.updatedAt || session.createdAt),
+    ].filter(Boolean).join(" | ");
+
+    row.appendChild(title);
+    row.appendChild(meta);
+    sessionListEl.appendChild(row);
+  }
+}
+
+function renderSessionDetail() {
+  sessionDetailEl.innerHTML = "";
+  const detail = selectedSessionDetail;
+  if (!detail) {
+    resumeSessionBtn.disabled = true;
+    return;
+  }
+
+  const session = detail.session || {};
+  const rows = [
+    ["ID", session.sessionId || "—"],
+    ["Updated", fmtTime(session.updatedAt || session.createdAt)],
+    ["KB", session.kbDomain || "—"],
+    ["Role", session.rolePresetSlug || "—"],
+    ["Model", formatProviderModel(session) || "—"],
+    ["Turns", session.turnCount ?? "—"],
+    ["Messages", session.messageCount ?? "—"],
+  ];
+
+  for (const [label, value] of rows) {
+    const row = document.createElement("div");
+    row.className = "session-detail-row";
+    const key = document.createElement("div");
+    key.className = "session-detail-key";
+    key.textContent = label;
+    const val = document.createElement("div");
+    val.textContent = value;
+    row.appendChild(key);
+    row.appendChild(val);
+    sessionDetailEl.appendChild(row);
+  }
+
+  const warnings = [
+    ...(session.warnings || []),
+    ...(detail.warnings || []),
+  ].filter((value, index, array) => value && array.indexOf(value) === index);
+  if (warnings.length > 0) {
+    const warningEl = document.createElement("div");
+    warningEl.className = "session-warning";
+    warningEl.textContent = warnings.join(" | ");
+    sessionDetailEl.appendChild(warningEl);
+  }
+
+  const previewText = renderPreviewText(detail.transcriptPreview || []);
+  if (previewText) {
+    const preview = document.createElement("div");
+    preview.className = "session-preview";
+    preview.textContent = previewText;
+    sessionDetailEl.appendChild(preview);
+  }
+
+  resumeSessionBtn.disabled =
+    !session.hasSessionFile || !session.sessionId || ws.readyState !== WebSocket.OPEN;
 }
 
 function populateSelect(select, items, defaultSlug) {
@@ -154,6 +306,43 @@ function syncSessionSelectors() {
 function fmtNum(n) {
   if (n == null) return "—";
   return n.toLocaleString();
+}
+
+function shortId(id) {
+  if (!id) return "—";
+  return id.length > 12 ? `${id.slice(0, 8)}...` : id;
+}
+
+function fmtTime(value) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleString([], {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function formatProviderModel(session) {
+  const model = session?.model;
+  const provider = session?.provider;
+  if (model && provider) return `${model} (${provider})`;
+  return model || provider || "";
+}
+
+function renderPreviewText(messages) {
+  return messages
+    .slice(-4)
+    .map((message) => {
+      const role = message.role || "other";
+      const text = (message.text || "").trim();
+      if (!text) return "";
+      return `${role}: ${text}`;
+    })
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 function copyToClipboard(text, el) {
@@ -196,6 +385,7 @@ ws.onopen = () => {
   console.log("[ws] Connected");
   setConnStatus("idle", "Connected");
   fetchDiscovery();
+  fetchSessions();
 };
 
 ws.onclose = () => {
@@ -209,6 +399,7 @@ ws.onclose = () => {
   currentAssistantEl = null;
   toolStatusEl.textContent = "Disconnected";
   sessionStatusEl.textContent = "Disconnected";
+  resumeSessionBtn.disabled = true;
 };
 
 ws.onerror = (err) => {
@@ -404,6 +595,13 @@ ws.onmessage = (event) => {
   switch (msg.type) {
     // --- Session lifecycle ---
     case "session_opened":
+      if (
+        pendingOpenSessionId &&
+        msg.payload.sessionId === pendingOpenSessionId
+      ) {
+        clearChatSurface();
+        pendingOpenSessionId = "";
+      }
       currentSessionId = msg.payload.sessionId;
       currentDomain = msg.payload.currentDomain || "";
       currentRolePresetSlug =
@@ -418,6 +616,7 @@ ws.onmessage = (event) => {
       setControlsEnabled(true);
       setConnStatus("idle", "Ready");
       console.log("[ws] Session opened:", msg.payload.sessionId);
+      fetchSessions();
       break;
 
     case "session_updated":
@@ -539,6 +738,12 @@ ws.onmessage = (event) => {
       messagesEl.appendChild(errEl);
       // Also show in composer tool status
       toolStatusEl.textContent = `⚠ ${msg.payload.error}`;
+      if (pendingOpenSessionId) {
+        pendingOpenSessionId = "";
+        isRunning = false;
+        sessionStatusEl.textContent = "Ready";
+        setControlsEnabled(true);
+      }
       break;
     }
   }
@@ -574,9 +779,22 @@ function setControlsEnabled(enabled) {
   inputEl.disabled = !interactive;
   newSessionBtn.disabled = !interactive;
   refreshMetricsBtn.disabled = !interactive;
+  sessionRefreshBtn.disabled = !connected;
+  resumeSessionBtn.disabled =
+    !interactive ||
+    !selectedSessionDetail?.session?.hasSessionFile ||
+    !selectedSessionDetail?.session?.sessionId;
   kbSelect.disabled = !interactive || kbSelect.dataset.hasOptions !== "true";
   rolePresetSelect.disabled =
     !interactive || rolePresetSelect.dataset.hasOptions !== "true";
+}
+
+function clearChatSurface() {
+  messagesEl.innerHTML = "";
+  currentAssistantEl = null;
+  hasMessages = false;
+  activeToolNames = {};
+  toolStatusEl.textContent = "";
 }
 
 // ---------------------------------------------------------------------------
@@ -662,17 +880,48 @@ newSessionBtn.onclick = () => {
 function doNewSession() {
   if (!wsSafeSend(JSON.stringify({ type: "new_session" }))) return;
 
-  // Clear chat
-  messagesEl.innerHTML = "";
-  currentAssistantEl = null;
-  hasMessages = false;
-  activeToolNames = {};
-  toolStatusEl.textContent = "";
+  clearChatSurface();
 
   // Disable controls during session replacement
   isRunning = true;
   setControlsEnabled(false);
   sessionStatusEl.textContent = "Replacing session…";
+}
+
+sessionRefreshBtn.onclick = () => {
+  fetchSessions();
+};
+
+resumeSessionBtn.onclick = () => {
+  const sessionId = selectedSessionDetail?.session?.sessionId;
+  if (!sessionId || isRunning) return;
+  if (hasMessages) {
+    showConfirm(
+      "Resume selected session? Current chat view will be cleared.",
+      () => doOpenSession(sessionId)
+    );
+  } else {
+    doOpenSession(sessionId);
+  }
+};
+
+function doOpenSession(sessionId) {
+  pendingOpenSessionId = sessionId;
+  if (
+    !wsSafeSend(
+      JSON.stringify({
+        type: "open_session",
+        payload: { sessionId },
+      })
+    )
+  ) {
+    pendingOpenSessionId = "";
+    return;
+  }
+  isRunning = true;
+  setControlsEnabled(false);
+  sessionStatusEl.textContent = "Opening session…";
+  toolStatusEl.textContent = "Opening selected session…";
 }
 
 // Refresh metadata/metrics
