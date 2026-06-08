@@ -6,11 +6,11 @@ Status: active draft. This records the current folder strategy; it is not a comp
 
 | Path | Role | Git policy |
 |---|---|---|
-| `apps/` | Runnable app code. Current app: `apps/alt-theory/`. | Tracked. |
+| `alt-theory-app/` | Current runnable app code. It is temporarily inconsistent with the manually cleaned asset tree and needs backend repair before live testing. | Tracked. |
 | `agent-assets/` | Assets read by Alt Theory or future agent/plugin runtimes: prompts, KB, runtime context, profiles, future soul/instructions. | Tracked unless explicitly ignored. |
-| `project/` | Project planning, architecture, foundation docs, workstream records, research notes, migration records. | Explicit whitelist. Only named files/subtrees are tracked. `project/private/` is ignored. |
-| `evals/` | Evaluation planning and adopted evaluation materials for Alt Theory. Lightweight for now. | Explicit whitelist. Only current entry files are tracked. Raw/private data areas are ignored. |
-| `references/` | Legacy or external references that are useful but not current source-of-truth. | Tracked for curated markdown only. |
+| `project/` | Project planning, architecture, foundation docs, workstream records, cross-workstream records, and migration records. | Tracked for curated project records. Private/raw research material should stay outside this dev repo unless explicitly reviewed. |
+| `references-to-legacy-materials/` | Curated pointers or retained legacy material that should not be treated as active architecture. | Tracked only when intentionally selected. |
+| external research tree | Bulk academic research notes, simulated-user/evaluation material, and private research artifacts. Current candidate: `<external-research-tree>`. | Outside this repo; likely private Git or disk/OneDrive sync. |
 | `node_modules/` | Local generated dependency tree. | Ignored. Only use outside OneDrive runnable worktrees. |
 
 ## Harness Instructions vs Alt Theory Runtime Instructions
@@ -27,14 +27,20 @@ They should explain how to work in this repo. They are not the Alt Theory runtim
 
 Alt Theory itself also needs agent-facing instructions. Those belong under `agent-assets/`.
 
-Current direction:
+Current direction before the 2026-06-08 cleanup:
 
 ```text
 agent-assets/
   profiles/default.md   # transitional lightweight agent profile
+  prompts/pi/           # current centralized prompt assets
+  kb/ep-core/           # current centralized KB copy
   soul.md               # future durable personality / stance
   AGENTS.md             # future Alt Theory runtime working instructions
 ```
+
+The previous `agent-assets/runtime/pi-tui/` duplicate runtime context has been
+removed. Backend code still references that removed path and must be repaired
+to use the centralized asset layout.
 
 The old `agent/agent.md` is a mixed legacy runtime-agent document. It should eventually be split by content:
 
@@ -45,33 +51,34 @@ Do not merge old `agent/agent.md` into root `AGENTS.md` or root `CLAUDE.md`. Tho
 
 Future `memory.md` / `user.md` alignment with Hermes/OpenClaw is intentionally deferred. The pattern is relevant and mainstream enough to keep in view, but v0.3 does not need to lock a full memory injection system before the runtime needs it.
 
-## Evaluation Area
+## Evaluation And Research Area
 
-`evals/` is a first-class project area because evaluation will drive product direction before conference/user testing.
+Evaluation remains first-class because it will drive product direction before
+conference/user testing. The storage boundary changed on 2026-06-08:
 
-Current lightweight structure:
+Current dev-repo structure:
 
 ```text
-evals/
+project/workstreams/1-eval-env/
   README.md
-  eval-framework-origin-20260304.md
+  notes-and-status/
 ```
 
-Do not create detailed subdirectories until they are needed. Possible future areas include simulated users, LLM-as-judge rubrics, automated/headless harnesses, user-study protocols, reports, and raw data handling.
+`1-eval-env` is evaluation environment and harness development. Evaluation
+corpora, simulated-user material, broad academic research notes, and raw/private
+data belong outside this dev repo unless deliberately curated back in.
 
-Important priority note: evaluation is not a minor future appendix. Before the conference-oriented phase, sim-user testing, LLM-as-judge evaluation, evaluation-plan iteration, and human/friend testing are likely to become one of the heaviest work areas. The current lightweight `evals/` shape is deliberately small because the testing method is still evolving with new literature and benchmark research, not because evaluation is low priority.
+Important priority note: evaluation is not a minor future appendix. Before the
+conference-oriented phase, sim-user testing, LLM-as-judge evaluation,
+evaluation-plan iteration, and human/friend testing are likely to become one of
+the heaviest work areas. The dev repo keeps only the engineering surface needed
+to support that work.
 
 Raw dialogue, friend testing data, human-subject data, or identifiable transcripts should not be tracked by Git by default.
 
-Current ignore policy:
-
-```text
-project/private/
-evals/raw-data/
-evals/runs/raw/
-```
-
-These locations may exist locally, but contents should remain private unless explicitly reviewed and anonymized. The repo uses whitelist-style tracking, so new project/eval files should not be assumed tracked just because they are under `project/` or `evals/`.
+External research storage needs its own privacy/Git/sync policy. Do not assume
+material outside this repo is shareable just because a development worktree
+points at it.
 
 ## External Clones, Skills, And Plugins
 
@@ -79,7 +86,7 @@ External cloned repos should not be mixed into the main project by accident.
 
 Common cases:
 
-- External reference repos, such as CodeStable, agent-brain, pi-gui, or knowledge-rag, are recorded in `references/external-index.md`.
+- External reference repos, such as CodeStable, agent-brain, pi-gui, or knowledge-rag, should be recorded in a curated reference index when needed.
 - Active dependency-heavy clones that need package install/build/test output should live outside OneDrive when possible.
 - Project-scoped skills/plugins can live inside the project when local harnesses need to read them directly. This is acceptable when they are mostly markdown/text and do not create heavy dependency trees.
 - Heavy skills/plugins should be treated like active dev clones, or reduced to curated/adapted skill files before entering the project.
@@ -121,10 +128,15 @@ Do not create a full `.codestable/` skeleton yet.
 The current adapted split is:
 
 - `project/architecture/`: current structure, runtime architecture, and architecture rationale;
-- `project/plan-records/`: short-term or few-session living plans;
+- `project/plan-records/`: migration-level, repository-level, or legacy plan-records;
 - `project/workstreams/`: active or near-active streams that may involve code, research, or evaluation;
+- `project/workstreams/{workstream}/notes-and-status/`: ordinary workstream-local plan-records, status files, handoffs, and `swe-plan` records;
 - `project/foundation/`: durable origin, principles, and legacy orientation;
 - `project/foundation/legacy-index.md`: finding aid and migration triage for old materials;
-- `project/workstreams/parallel-development-brief.md`: high-level brief for parallel agents.
+- `project/cross-workstream/`: coordination records that genuinely span multiple workstreams.
+
+Do not create a generic `project/workstreams/swe/` container. When code work
+becomes active, place its records in the concrete backend, frontend, packaging,
+evaluation implementation, or other named workstream.
 
 This borrows the useful CodeStable distinction between architecture, roadmap/plan, decisions, and compound learning without adopting its whole process before the local workflow stabilizes.

@@ -7,12 +7,11 @@ Current policy:
 - `plan-records/` stores migration-level, repository-level, or legacy plan-records. Default workstream-local plan-records and `swe-plan` records should live under `project/workstreams/{workstream}/notes-and-status/`.
 - `compound/` stores CodeStable-derived decision, learning, trick, and explore records.
 - `brainstorms/` stores central/open brainstorm records that are not feature-local.
-- `research/` stores active research used for project decisions.
 - `foundation/` stores selected project identity and legacy/foundation indexes.
 - `architecture/` stores current structure and architecture rationale.
 - `workstreams/` stores active or near-active workstream briefs, workstream-local `notes-and-status/`, and imported current-status docs.
 - `cross-workstream/` stores records and outputs that explicitly coordinate multiple workstreams.
-- `project/workstreams/swe/` stores CodeStable-derived SWE feature/issue/refactor artifacts and workstream-local `notes-and-status/` records when actual coding work needs stronger process guardrails. Broader `features/`, `issues/`, and `roadmaps/` areas outside SWE remain possible future areas; introduce them only when a concrete non-SWE task needs them.
+- Code-level SWE records belong in the concrete workstream they concern. Create a specific workstream such as backend, frontend, packaging, or evaluation implementation when that work becomes active; do not add a generic `project/workstreams/swe/` wrapper.
 
 Important distinctions:
 
@@ -21,16 +20,19 @@ Important distinctions:
 - Architecture should describe the current system after decisions are stable or implemented.
 - Compound-style records are for durable decisions, learnings, tricks, and explorations after they are worth preserving beyond the current session.
 
-The first v0.3 migration slice is intentionally copy-only. The old `llm-theo-v0.2` workspace remains intact.
+After the 2026-06-08 manual cleanup, this dev repo is no longer a copy-only
+mirror of all research material. Bulk research/evaluation material is being
+split out of this Git worktree, while this repo keeps software, architecture,
+runtime-facing assets, and dev workstream records.
 
 ## Current Recovery Order
 
 For a new agent, start with:
 
 1. `project/architecture/repo-structure-v0.3.md`
-2. `project/workstreams/parallel-development-brief.md`
-3. `project/foundation/legacy-index.md`
-4. the relevant workstream-local file under `project/workstreams/{workstream}/notes-and-status/`, `project/cross-workstream/notes-and-status/` for cross-workstream coordination, or `project/plan-records/` only for migration/repository-level records
+2. `project/cross-workstream/folder-and-worktree-management/notes-and-status/2026-06-08-manual-restructure-stage0-1-plan-record.md`
+3. `%LLM_THEO_WORKTREES_ROOT%/README.md`
+4. the relevant workstream-local file under `project/workstreams/{workstream}/notes-and-status/`, a named cross-workstream domain such as `project/cross-workstream/folder-and-worktree-management/notes-and-status/`, or `project/plan-records/` only for migration/repository-level records
 
 Use `%LLM_THEO_DEV_ROOT%` for runnable Node/npm development. Do not run npm installs or long dev-server work in the OneDrive worktree.
 
@@ -48,12 +50,17 @@ The current local CodeStable adaptation is:
 
 - keep CodeStable's concrete SWE guardrails for features, issues, refactors, and multi-feature `swe-plan`;
 - do not require `.codestable/attention.md` or its full directory tree;
-- use the current `project/workstreams/swe/`, `project/architecture/`, and `agent-assets/skills/` layout;
+- keep SWE records inside the relevant concrete `project/workstreams/{workstream}/` area, with `project/architecture/` and `agent-assets/skills/` serving their existing roles;
 - rename CodeStable raw roadmap mechanics to `swe-plan`;
 - keep requirements as references unless the user opens a separate requirement workflow;
 - make plan-record / brainstorm / architecture boundaries explicit.
 
-## Evaluation Priority
+## Evaluation And Research Split
 
-`evals/` is lightweight but important. Sim-user and evaluation work is near-term and conference-relevant. The old sim-user profiles are not runtime agent profiles; they are a partly successful test-system attempt to revisit when the evaluation stream resumes.
+`project/workstreams/1-eval-env/` is for evaluation environment and harness
+development. It is not the evaluation corpus itself.
+
+Evaluation data, simulated-user material, and broader academic research notes
+are moving outside this dev repo. Treat that external research tree as a
+separate source with its own privacy/Git/sync policy.
 

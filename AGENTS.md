@@ -22,8 +22,6 @@ project/
   README.md
   architecture/
   foundation/
-  plan-records/
-  research/
   workstreams/
   compound/
   brainstorms/
@@ -34,12 +32,10 @@ agent-assets/
   kb/
   profiles/
   prompts/
-  runtime/
   skills/
 
 alt-theory-app/
-alt-theory-rag/
-evals/
+references-to-legacy-materials/
 _archives/               # local ignored snapshots only
 ```
 
@@ -53,6 +49,11 @@ Start with:
 4. the relevant workstream under `project/workstreams/`
 5. the relevant workstream-local or cross-workstream file under `notes-and-status/`
 
+Current manual-restructure note: after the 2026-06-08 cleanup, this dev
+worktree intentionally keeps software/dev records and runtime-facing assets,
+while bulk research/evaluation material is being split out of this repo. Some
+backend runtime asset paths are known to be stale until the next backend repair.
+
 For software coding work, read:
 
 1. `agent-assets/skills/cs-swe-v0-3/SKILL.md`
@@ -62,12 +63,12 @@ For software coding work, read:
 
 For branch/recovery context, also check:
 
-- `project/cross-workstream/notes-and-status/2026-06-02-v0-3-recovery-todo.md`
-- `project/cross-workstream/notes-and-status/2026-06-06-worktree-consolidation-plan-record-v1.md`
+- `project/cross-workstream/folder-and-worktree-management/notes-and-status/2026-06-02-v0-3-recovery-todo.md`
+- `project/cross-workstream/folder-and-worktree-management/notes-and-status/2026-06-06-worktree-consolidation-plan-record-v1.md`
 
 ## Source Of Truth Pointers
 
-- `project/` is the source of truth for project structure, recovery, plans, research notes, and architecture.
+- `project/` is the source of truth for project structure, recovery, plans, dev-facing workstream records, and architecture.
 - `agent-assets/` is the source of truth for runtime-facing assets, profiles, prompts, KB copies, and skills.
 - `agent-assets/skills/cs-swe-v0-3/` is the active SWE skill bundle.
 - `cs-swe-v0-2/` and sibling `cs-swe-*` v0.2 folders are historical comparison material only.
@@ -85,10 +86,14 @@ project/workstreams/{workstream}/notes-and-status/
   {YYYYMMDD}-handoff-{description}.md
 ```
 
-Cross-workstream records live in:
+Cross-workstream records must live inside a named cross-workstream domain. Do
+not create a `notes-and-status/` container directly under `cross-workstream/`.
+
+Current named cross-workstream domains include:
 
 ```text
-project/cross-workstream/notes-and-status/
+project/cross-workstream/folder-and-worktree-management/notes-and-status/
+project/cross-workstream/skill-cs-swe-adaptation/notes-and-status/
 ```
 
 Use top-level `project/plan-records/` only for migration-level, repository-level, or legacy records.
@@ -153,6 +158,28 @@ Do not run destructive git commands or irreversible filesystem moves without exp
 Prefer branch/commit checkpoints for recoverability.
 
 Keep unrelated untracked files separate from the current task.
+
+## Git Ignore Policy
+
+Use `.gitignore` as a safety filter, not as the project structure rule.
+
+Current policy:
+
+- default to tracking normal repository source, docs, architecture, curated
+  assets, config templates, and workstream records;
+- ignore generated dependencies, build/cache/test output, logs, local scratch
+  files, secrets, local environment files, runtime/session data, local archives,
+  and private/raw research or user data;
+- do not use a root-level whitelist that silently hides new valid directories;
+- do not use ignore rules to hide invalid folder placement. If a file is in the
+  wrong project area, move it or record the issue instead;
+- before broad commits, check both `git status --short` and ignored files when
+  relevant, and use `git check-ignore -v <path>` when a file expected for Git is
+  missing.
+
+External research trees such as a future `llm-theo-research` directory need
+their own Git/privacy/sync policy. Do not assume material is shareable or
+tracked just because another coding-agent workdir can read it.
 
 ## Local Development Notes
 

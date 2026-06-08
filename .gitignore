@@ -1,146 +1,71 @@
-# Git whitelist strategy: ignore root items with /*, then step-by-step unignore
+# Minimal explicit ignore policy.
+#
+# Default: track normal repository source, docs, architecture, curated assets,
+# and config templates. Do not use .gitignore as a folder whitelist.
 
-# Ignore all top-level files and directories
-/*
-
-# Keep .gitignore itself
-!.gitignore
-!AGENTS.md
-!package.json
-!package-lock.json
-
-# ========================================
-# _dev directory
-# ========================================
-!_dev/
-
-# Ignore everything in _dev except approaches
-_dev/*
-!_dev/approaches/
-
-# Ignore everything in approaches except specific ones
-_dev/approaches/*
-
-# RAG approach (original)
-!_dev/approaches/feature-rag-and-knowledge-base/
-!_dev/approaches/feature-rag-and-knowledge-base/**
-
-# PI agent harness approach (Phase 3: spec, plans, research, reviews)
-!_dev/approaches/migrate-to-agent-harness-architecture/
-!_dev/approaches/migrate-to-agent-harness-architecture/**
-
-# ========================================
-# alt-theory-rag (RAG server)
-# ========================================
-!alt-theory-rag/
-!alt-theory-rag/**
-
-# ========================================
-# alt-theory-app (PI agent app)
-# ========================================
-!alt-theory-app/
-!alt-theory-app/**
-
-# Ignore node_modules inside alt-theory-app
-alt-theory-app/**/node_modules/
-alt-theory-app/**/node_modules/**
-
-# ========================================
-# v0.3 clean worktree structure
-# ========================================
-!apps/
-!apps/**
-
-!agent-assets/
-!agent-assets/**
-
-!project/
-project/*
-!project/README.md
-!project/foundation/
-project/foundation/*
-!project/foundation/legacy-index.md
-!project/foundation/local-development-rules.md
-!project/foundation/gitignore-policy.md
-!project/foundation/origin/
-!project/foundation/origin/**
-!project/foundation/legacy-process/
-!project/foundation/legacy-process/**
-!project/plan-records/
-project/plan-records/*
-!project/plan-records/reorg-v0.3/
-!project/plan-records/reorg-v0.3/**
-!project/plan-records/cs-swe-v0-2-adaptation/
-!project/plan-records/cs-swe-v0-2-adaptation/**
-!project/plan-records/cs-swe-v0-3-handoff/
-!project/plan-records/cs-swe-v0-3-handoff/**
-!project/plan-records/cs-swe-v0-3-design/
-!project/plan-records/cs-swe-v0-3-design/**
-!project/compound/
-!project/compound/**
-!project/brainstorms/
-!project/brainstorms/**
-!project/research/
-project/research/*
-!project/research/candidate-skills/
-!project/research/candidate-skills/**
-!project/research/agent-harness/
-!project/research/agent-harness/**
-!project/architecture/
-project/architecture/*
-!project/architecture/*.md
-!project/workstreams/
-project/workstreams/*
-!project/workstreams/*/
-project/workstreams/*/*
-!project/workstreams/*/README.md
-!project/workstreams/*/notes-and-status/
-!project/workstreams/*/notes-and-status/**
-!project/workstreams/*.md
-!project/workstreams/cs-swe-v0-3-handoff/
-!project/workstreams/cs-swe-v0-3-handoff/**
-!project/workstreams/cs-swe-adaptation/
-!project/workstreams/cs-swe-adaptation/**
-!project/workstreams/agent-harness/
-!project/workstreams/agent-harness/**
-!project/workstreams/kb-search/
-!project/workstreams/kb-search/**
-!project/cross-workstream/
-project/cross-workstream/*
-!project/cross-workstream/README.md
-!project/cross-workstream/notes-and-status/
-!project/cross-workstream/notes-and-status/**
-project/private/
-project/private/**
-
-!references/
-!references/*.md
-
-!tools/
-!tools/**
-
-!evals/
-evals/*
-!evals/*.md
-evals/raw-data/
-evals/raw-data/**
-evals/runs/raw/
-evals/runs/raw/**
-
-# Generated / dependency-heavy paths for v0.3
+# Dependencies
 node_modules/
 **/node_modules/
+.pnpm-store/
+.yarn/
+.npm/
+
+# Build, cache, and test output
 dist/
 build/
+out/
 .cache/
 coverage/
+.next/
+.vite/
+*.tsbuildinfo
+
+# Python/local tool caches
 __pycache__/
 .pytest_cache/
-*.pyc
-*.log
-**/data/chroma_db/
-**/chroma_db/
+.ruff_cache/
+.mypy_cache/
+*.py[cod]
+.venv/
+venv/
 
-# Local ignored snapshots / archives
-_archives/
-_archives/**
+# Logs and scratch files
+*.log
+*.tmp
+*.bak
+tmp-*
+.DS_Store
+Thumbs.db
+
+# Environment and credentials
+.env
+.env.*
+!.env.example
+!.env.template
+auth.json
+credentials.json
+secrets.json
+**/auth.json
+**/credentials.json
+**/secrets.json
+
+# Local Alt Theory runtime/session data
+/.alt-theory/
+/alt-theory-data/
+/data/sessions/
+/data/history/
+/data/records/
+*.jsonl
+!*.example.jsonl
+!**/fixtures/**/*.jsonl
+
+# Private/raw research and user data
+/private/
+/project/private/
+/raw-data/
+/human-data/
+/runs/raw/
+/eval-runs/raw/
+
+# Local snapshots and backups
+/_archives/
