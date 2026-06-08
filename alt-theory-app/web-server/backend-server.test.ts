@@ -588,6 +588,174 @@ test("session catalog and detail expose complete and incomplete sessions", async
   }
 });
 
+test("WebSocket open_session replaces current state with an existing session", async () => {
+  const root = mkdtempSync(join(tmpdir(), "alt-theory-ws-open-session-"));
+  const dataDir = join(root, "data");
+  const rolePresets = join(root, "role-presets");
+  const kb = join(root, "kb");
+  const appContextPath = join(root, "ALTTHEORY.md");
+  const soulPath = join(root, "soul.md");
+
+  mkdirSync(join(kb, "ep-core"), { recursive: true });
+  mkdirSync(rolePresets, { recursive: true });
+  writeFileSync(appContextPath, "WS open app context", "utf-8");
+  writeFileSync(soulPath, "WS open soul", "utf-8");
+  writeFileSync(join(rolePresets, "default.md"), "Default role", "utf-8");
+
+  const existingDirs = createSessionDirs(dataDir, "session-ws-open");
+  const existing = await createAltTheorySession({
+    ...existingDirs,
+    appContextPath,
+    soulPath,
+    rolePresetPath: join(rolePresets, "default.md"),
+    rolePresetSlug: "default",
+    kbDir: kb,
+    kbDomain: "ep-core",
+    readOnly: true,
+  });
+  try {
+    existing.session.sessionManager.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: "websocket existing context" }],
+      api: "openai-completions",
+      provider: "test",
+      model: "test",
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          total: 0,
+        },
+      },
+      stopReason: "stop",
+      timestamp: Date.now(),
+    });
+    persistSessionMetrics(existingDirs.recordsDir, {
+      turnCount: 1,
+      toolCallCount: 0,
+      messageCount: 1,
+      tokens: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        total: 0,
+      },
+      cost: 0,
+      contextUsage: null,
+    });
+  } finally {
+    existing.session.dispose();
+  }
+
+  const instance = createAltTheoryServer({
+    dataDir,
+    appContextPath,
+    soulPath,
+    rolePresetsDir: rolePresets,
+    kbDir: kb,
+    readOnly: true,
+  });
+  await new Promise<void>((resolveListen) => {
+    instance.httpServer.listen(0, "127.0.0.1", resolveListen);
+  });
+  const address = instance.httpServer.address();
+  assert.ok(address && typeof address === "object");
+
+  function waitForType(ws: WebSocket, type: string): Promise<any> {
+    return new Promise((resolveMessage, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error(`Timed out waiting for ${type}`)),
+        10_000
+      );
+      const listener = (data: WebSocket.RawData) => {
+        const message = JSON.parse(data.toString());
+        if (message.type === type) {
+          clearTimeout(timer);
+          ws.off("message", listener);
+          resolveMessage(message);
+        }
+      };
+      ws.on("message", listener);
+    });
+  }
+
+  const ws = new WebSocket(`ws://127.0.0.1:${address.port}`);
+  const initialOpenedPromise = waitForType(ws, "session_opened");
+  const initialMetadataPromise = waitForType(ws, "session_metadata");
+  const initialMetricsPromise = waitForType(ws, "session_metrics");
+
+  try {
+    const initialOpened = await initialOpenedPromise;
+    await initialMetadataPromise;
+    await initialMetricsPromise;
+    assert.notEqual(initialOpened.payload.sessionId, "session-ws-open");
+    const sessionRootsAfterConnect = readdirSync(join(dataDir, "sessions"));
+
+    const missingErrorPromise = waitForType(ws, "error");
+    ws.send(
+      JSON.stringify({
+        type: "open_session",
+        payload: { sessionId: "missing-session" },
+      })
+    );
+    const missingError = await missingErrorPromise;
+    assert.match(missingError.payload.error, /Unknown session id/);
+
+    const stillCurrentPromise = waitForType(ws, "session_metadata");
+    ws.send(JSON.stringify({ type: "get_session_metadata" }));
+    const stillCurrent = await stillCurrentPromise;
+    assert.equal(stillCurrent.payload.sessionId, initialOpened.payload.sessionId);
+
+    const openedPromise = waitForType(ws, "session_opened");
+    const metadataPromise = waitForType(ws, "session_metadata");
+    const metricsPromise = waitForType(ws, "session_metrics");
+    ws.send(
+      JSON.stringify({
+        type: "open_session",
+        payload: { sessionId: "session-ws-open" },
+      })
+    );
+    const opened = await openedPromise;
+    const metadata = await metadataPromise;
+    const metrics = await metricsPromise;
+
+    assert.equal(opened.payload.sessionId, "session-ws-open");
+    assert.equal(opened.payload.openedFrom, "existing");
+    assert.equal(metadata.payload.sessionId, "session-ws-open");
+    assert.equal(metadata.payload.openedFrom, "existing");
+    assert.equal(metrics.payload.messageCount, 1);
+    assert.deepEqual(
+      readdirSync(join(dataDir, "sessions")).sort(),
+      sessionRootsAfterConnect.sort()
+    );
+
+    const eventTypes = readFileSync(
+      join(existingDirs.recordsDir, "session-events.jsonl"),
+      "utf-8"
+    )
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line).type);
+    assert.ok(eventTypes.includes("session_opened_existing"));
+    assert.ok(eventTypes.includes("session_resumed"));
+  } finally {
+    ws.close();
+    await new Promise<void>((resolveClose) => {
+      instance.wss.close(() => {
+        instance.httpServer.close(() => resolveClose());
+      });
+    });
+  }
+});
+
 test("REST discovery and WebSocket sessions are connection-local", async () => {
   const root = mkdtempSync(join(tmpdir(), "alt-theory-server-"));
   const rolePresets = join(root, "role-presets");

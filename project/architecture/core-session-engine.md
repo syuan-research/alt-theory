@@ -49,7 +49,7 @@ and Pi adapter prompt templates from `agent-assets/prompts/pi/`.
 flowchart LR
   WS[WebSocket connection] --> State[ConnectionState]
   State --> Dirs[data-dir.ts]
-  State --> Core[createAltTheorySession]
+  State --> Core[create/open AltTheorySession]
   Core --> Assets[ALTTHEORY + soul + role preset + KB + Pi prompts]
   Core --> Pi[Pi AgentSession]
   State --> Prefix[per-turn KB context prefix]
@@ -59,6 +59,7 @@ flowchart LR
   Pi --> Metrics[records/session-metrics.json]
   State --> Events[records/session-events.jsonl]
   REST[Static REST] --> Registry[asset-registry.ts]
+  REST --> Store[session-store.ts]
 ```
 
 Code anchors:
@@ -69,7 +70,7 @@ Code anchors:
 - `alt-theory-app/core/core-soul.ts`: module parsing, selection, validation, and
   deterministic assembly.
 - `alt-theory-app/core/alt-theory-core.ts`: resource loader, tool policy,
-  persistent Pi session creation, and manifest.
+  persistent Pi session creation/opening, and manifest.
 - `alt-theory-app/web-server/asset-registry.ts`: safe role-preset/KB slugs.
 - `alt-theory-app/web-server/server.ts`: REST routes and per-connection
   WebSocket lifecycle.
@@ -77,6 +78,8 @@ Code anchors:
   atomic snapshot persistence.
 - `alt-theory-app/web-server/session-events.ts`: bounded append-only runtime
   event persistence.
+- `alt-theory-app/web-server/session-store.ts`: historical session catalog,
+  detail inspection, Pi JSONL discovery, and bounded preview.
 - `alt-theory-app/web-server/websocket-protocol.ts`: shared transport types.
 
 ## 2. Session Creation
@@ -94,6 +97,31 @@ Code anchors:
    an assistant message is present.
 6. Alt Theory atomically writes `records/assembly-manifest.json` and appends
    session/runtime events to `records/session-events.jsonl`.
+
+## 2.1 Session Catalog And Open
+
+The backend also exposes the current data directory as a historical session
+catalog:
+
+- `GET /api/sessions` lists `sessions/{id}` roots without exposing filesystem
+  paths in each summary.
+- `GET /api/sessions/{id}` returns bounded detail: manifest, metrics, event
+  tail, Pi JSONL info, context counts, and a small transcript preview.
+
+WebSocket `open_session` makes an existing session the current live session for
+that connection. The server reads the detail record, opens the existing Pi JSONL
+with `openAltTheorySession()`, then sends the same metadata triplet used after a
+fresh session:
+
+```text
+session_opened
+session_metadata
+session_metrics
+```
+
+The original `records/assembly-manifest.json` is not overwritten on resume.
+Resume-time active runtime facts are written to `records/resume-manifest.json`,
+and drift warnings are returned in the active manifest/snapshot.
 
 ## 3. Prompt Assembly And Injection
 
@@ -160,14 +188,18 @@ Code anchor:
 ## 5. Connection Ownership
 
 Every WebSocket connection owns one `ConnectionState`: session, subscription,
-manifest, selected profile/domain, and counters.
+manifest, selected role-preset/domain, open mode, resume warnings, and counters.
 
 - Connect creates a session.
 - `new_session` aborts when needed, unsubscribes, disposes, and replaces only
   that connection's session.
+- `open_session` validates an existing session ID, opens its Pi JSONL, and
+  replaces only that connection's session after the replacement is ready. Open
+  failure sends an error and keeps the previous state.
 - Close cleans up only the owned session.
 - Role-preset and KB values are client-safe slugs resolved against server roots.
-- Session metadata and metrics use WebSocket; static discovery uses REST.
+- Session metadata and metrics use WebSocket; static discovery and historical
+  session catalog/detail use REST.
 
 ## 6. Discovery And Introspection
 
@@ -176,21 +208,27 @@ REST:
 - `GET /api/role-presets`
 - `GET /api/profiles` legacy compatibility alias
 - `GET /api/kb-domains`
+- `GET /api/sessions`
+- `GET /api/sessions/{sessionId}`
 
-Both return sorted `{ slug, displayName }` arrays without filesystem paths.
+Asset discovery routes return sorted `{ slug, displayName }` arrays without
+filesystem paths. Session list returns path-free summaries; session detail may
+include local paths because the current researcher console is a local runtime
+inspection tool.
 
 WebSocket:
 
 - server: `session_metadata`, `session_metrics`
-- client: `get_session_metadata`, `get_session_metrics`
+- client: `get_session_metadata`, `get_session_metrics`, `open_session`
 
 Metrics include message/turn/tool counts, token totals, cost, and nullable
 context usage. Successful runs atomically update
 `records/session-metrics.json`.
 
-Runtime events currently cover session creation, KB/profile selection, and run
-completion/failure/abort. Pi JSONL remains the conversation record; event files
-do not duplicate message bodies.
+Runtime events currently cover session creation, existing-session open/resume,
+resume warnings, KB/role-preset selection, and run completion/failure/abort. Pi
+JSONL remains the conversation record; event files do not duplicate message
+bodies.
 
 ## 7. Model Configuration
 
@@ -206,8 +244,8 @@ is configured; they are not a billing claim.
 
 ## 8. Known Constraints
 
-- Session list/resume is not implemented, but it is now considered mandatory
-  for the researcher console.
+- Backend REST session list/detail and WebSocket `open_session` are
+  implemented. Browser session-list UI is still pending.
 - Role-preset changes apply to the next new session; KB domain changes affect
   the next prompt prefix.
 - The per-turn KB context prefix is a temporary hardcoded hook substitute.
@@ -217,9 +255,9 @@ is configured; they are not a billing claim.
 - Runtime config is easy to mislaunch: generic Anthropic-compatible environment
   variables do not select the tracked Alt Theory provider/model unless the
   `ALT_THEORY_MODEL_*` and `ALT_THEORY_MODELS_PATH` values are set.
-- Pi-native resume has been verified to preserve JSONL history and cwd while a
-  newly created runtime can apply a new profile/system prompt. Alt Theory does
-  not yet expose or event-log that transition.
+- Existing-session open uses Pi JSONL history and current Alt Theory asset
+  assembly. Cross-machine cwd mismatch is warning-only; there is no cwd rewrite
+  or migration layer yet.
 - Soul is loaded from `agent-assets/soul.md`; optional core-soul module
   activation remains configured by backend environment/config, not UI.
 - Hard write-path enforcement, thinking events, compaction/retry events, and
@@ -243,6 +281,8 @@ is configured; they are not a billing claim.
 - 2026-06-08: Updated after minimal agent-asset loading repair. Backend now
   loads `ALTTHEORY.md`, `soul.md`, `role-presets/default.md`,
   `agent-assets/kb/`, and `agent-assets/prompts/pi/`.
+- 2026-06-08: Added backend session catalog/detail and WebSocket
+  `open_session` for existing persisted sessions.
 
 ## Related Documents
 

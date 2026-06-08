@@ -17,6 +17,8 @@ export interface SessionSnapshot {
   rolePresetSlug: string;
   /** Deprecated compatibility field; use rolePresetSlug. */
   profileSlug?: string;
+  openedFrom?: "new" | "existing";
+  resumeWarnings?: string[];
   messageCount: number;
 }
 
@@ -50,6 +52,7 @@ export type ClientMessage =
   | { type: "switch_role_preset"; payload: { rolePresetSlug: string } }
   | { type: "switch_profile"; payload: { profileSlug: string } }
   | { type: "new_session" }
+  | { type: "open_session"; payload: { sessionId: string } }
   | { type: "get_session_metadata" }
   | { type: "get_session_metrics" };
 

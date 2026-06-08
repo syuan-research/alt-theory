@@ -4,6 +4,9 @@ import { join, resolve } from "path";
 
 export type SessionEventType =
   | "session_created"
+  | "session_opened_existing"
+  | "session_resumed"
+  | "resume_warning"
   | "kb_selected"
   | "role_preset_selected_next_session"
   | "profile_selected_next_session"

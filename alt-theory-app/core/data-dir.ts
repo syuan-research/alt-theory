@@ -64,6 +64,27 @@ export function createSessionDirs(
   };
 }
 
+export function getSessionDirs(
+  dataDir: string,
+  sessionId: string
+): SessionDirectories | null {
+  const sessionRoot = resolveSessionRoot(dataDir, sessionId);
+  if (!sessionRoot) return null;
+  const sessionCwd = join(sessionRoot, "workspace");
+  const piSessionDir = join(sessionRoot, "history");
+  const recordsDir = join(sessionRoot, "records");
+  const writeDir = sessionCwd;
+
+  return {
+    sessionId,
+    sessionRoot,
+    sessionCwd,
+    piSessionDir,
+    recordsDir,
+    writeDir,
+  };
+}
+
 export function resolveSessionsRoot(dataDir: string): string {
   return join(resolve(dataDir), "sessions");
 }

@@ -19,10 +19,12 @@ import type {
 import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
 import {
   createAltTheorySession,
+  openAltTheorySession,
   type AssemblyManifest,
 } from "../core/alt-theory-core.js";
 import {
   createSessionDirs,
+  getSessionDirs,
   resolveDataDir,
 } from "../core/data-dir.js";
 import {
@@ -66,6 +68,8 @@ interface ConnectionState {
   manifest: AssemblyManifest;
   currentDomain: string;
   currentRolePresetSlug: string;
+  openedFrom: "new" | "existing";
+  resumeWarnings: string[];
   messageCount: number;
   toolCallCount: number;
   turnCount: number;
@@ -201,6 +205,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       unsubscribe: () => {},
       currentDomain,
       currentRolePresetSlug,
+      openedFrom: "new",
+      resumeWarnings: [],
       messageCount: 0,
       toolCallCount: 0,
       turnCount: 0,
@@ -215,6 +221,119 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         provider: state.manifest.provider,
       },
     });
+    return state;
+  }
+
+  async function createExistingState(
+    sessionId: string,
+    fallbackRolePresetSlug: string,
+    fallbackDomain: string
+  ): Promise<ConnectionState> {
+    const root = getSessionRootForRequest(dataDir, sessionId);
+    if (root.status === "invalid") {
+      throw new Error(`Invalid session id: ${sessionId}`);
+    }
+    if (root.status === "missing") {
+      throw new Error(`Unknown session id: ${sessionId}`);
+    }
+
+    const detail = readSessionDetail(dataDir, sessionId);
+    if (!detail?.pi.sessionFile) {
+      throw new Error(`Session cannot be opened because Pi JSONL is missing: ${sessionId}`);
+    }
+
+    const sessionDirs = getSessionDirs(dataDir, sessionId);
+    if (!sessionDirs) {
+      throw new Error(`Invalid session id: ${sessionId}`);
+    }
+
+    const originalRolePresetSlug = detail.manifest?.rolePreset?.slug ?? null;
+    const activeRolePresetSlug =
+      originalRolePresetSlug &&
+      resolveRolePresetSlug(rolePresetsDir, originalRolePresetSlug)
+        ? originalRolePresetSlug
+        : fallbackRolePresetSlug;
+    const rolePresetPath = resolveRolePresetSlug(
+      rolePresetsDir,
+      activeRolePresetSlug
+    );
+    if (!rolePresetPath) {
+      throw new Error(`Unknown role preset slug: ${activeRolePresetSlug}`);
+    }
+
+    const originalDomain =
+      detail.manifest?.kb?.domain ?? detail.manifest?.kbDomain ?? null;
+    const activeDomain =
+      originalDomain && isKnownKbDomain(kbDir, originalDomain)
+        ? originalDomain
+        : fallbackDomain;
+
+    const result = await openAltTheorySession({
+      ...sessionDirs,
+      sessionFile: detail.pi.sessionFile,
+      originalManifest: detail.manifest,
+      appContextPath: assetPaths.appContextPath,
+      soulPath: assetPaths.soulPath,
+      rolePresetPath,
+      rolePresetSlug: activeRolePresetSlug,
+      kbDir,
+      kbDomain: activeDomain,
+      piPromptTemplatesDir: assetPaths.piPromptTemplatesDir,
+      coreSoulPath:
+        options.coreSoulPath ?? process.env.ALT_THEORY_CORE_SOUL_PATH,
+      coreSoulModulesDir:
+        options.coreSoulModulesDir ??
+        process.env.ALT_THEORY_CORE_SOUL_MODULES_DIR,
+      coreSoulModules: options.coreSoulModules ?? parseCoreSoulModules(),
+      modelProvider,
+      modelId,
+      modelsPath: modelsPath ?? undefined,
+      runtimeApiKey:
+        options.runtimeApiKey ?? process.env.ALT_THEORY_MODEL_API_KEY,
+      thinkingLevel: options.thinkingLevel,
+      readOnly,
+    });
+
+    const state: ConnectionState = {
+      ...result,
+      unsubscribe: () => {},
+      currentDomain: activeDomain,
+      currentRolePresetSlug: activeRolePresetSlug,
+      openedFrom: "existing",
+      resumeWarnings: result.resumeWarnings,
+      messageCount: detail.metrics?.messageCount ?? 0,
+      toolCallCount: detail.metrics?.toolCallCount ?? 0,
+      turnCount: detail.metrics?.turnCount ?? 0,
+    };
+
+    appendSessionEvent(state.manifest.recordsDir, {
+      sessionId: state.session.sessionId,
+      type: "session_opened_existing",
+      details: {
+        requestedSessionId: sessionId,
+        kbDomain: activeDomain,
+        rolePresetSlug: activeRolePresetSlug,
+        warningCount: state.resumeWarnings.length,
+      },
+    });
+    appendSessionEvent(state.manifest.recordsDir, {
+      sessionId: state.session.sessionId,
+      type: "session_resumed",
+      details: {
+        model: state.manifest.model,
+        provider: state.manifest.provider,
+      },
+    });
+    if (state.resumeWarnings.length > 0) {
+      appendSessionEvent(state.manifest.recordsDir, {
+        sessionId: state.session.sessionId,
+        type: "resume_warning",
+        details: {
+          warningCount: state.resumeWarnings.length,
+          warnings: state.resumeWarnings.join(" | "),
+        },
+      });
+    }
     return state;
   }
 
@@ -259,6 +378,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       currentDomain: current.currentDomain,
       rolePresetSlug: current.currentRolePresetSlug,
       profileSlug: current.currentRolePresetSlug,
+      openedFrom: current.openedFrom,
+      resumeWarnings: current.resumeWarnings,
       messageCount: current.messageCount,
       ...overrides,
     });
@@ -476,6 +597,42 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               },
             });
             ws.close(1011, "Session replacement failed");
+          }
+          break;
+        }
+        case "open_session": {
+          const previousState = state;
+          try {
+            if (previousState.session.isStreaming) {
+              await previousState.session.abort();
+              appendSessionEvent(previousState.manifest.recordsDir, {
+                sessionId: previousState.session.sessionId,
+                type: "run_aborted",
+                details: { reason: "open_session" },
+              });
+            }
+            const replacementState = await createExistingState(
+              msg.payload.sessionId,
+              previousState.currentRolePresetSlug,
+              previousState.currentDomain
+            );
+            if (closed) {
+              await disposeState(replacementState);
+              return;
+            }
+            await disposeState(previousState);
+            state = replacementState;
+            state.unsubscribe = subscribeSession(state);
+            send({ type: "session_opened", payload: snapshot(state) });
+            send({ type: "session_metadata", payload: state.manifest });
+            send({ type: "session_metrics", payload: buildMetrics(state) });
+          } catch (error) {
+            send({
+              type: "error",
+              payload: {
+                error: error instanceof Error ? error.message : String(error),
+              },
+            });
           }
           break;
         }
