@@ -7,6 +7,7 @@
 
 import "dotenv/config";
 import express from "express";
+import { existsSync } from "fs";
 import { createServer } from "http";
 import { resolve } from "path";
 import { fileURLToPath } from "url";
@@ -25,10 +26,14 @@ import {
   resolveDataDir,
 } from "../core/data-dir.js";
 import {
+  resolveAgentAssetPaths,
+  type AgentAssetPaths,
+} from "../core/agent-assets.js";
+import {
   isKnownKbDomain,
   listKbDomains,
-  listProfiles,
-  resolveProfileSlug,
+  listRolePresets,
+  resolveRolePresetSlug,
 } from "./asset-registry.js";
 import type {
   ClientMessage,
@@ -43,20 +48,6 @@ import {
 import { appendSessionEvent } from "./session-events.js";
 
 const PROJECT_ROOT = process.cwd();
-const RUNTIME_DIR = resolve(
-  PROJECT_ROOT,
-  "agent-assets",
-  "runtime",
-  "pi-tui"
-);
-const PROFILES_DIR = resolve(PROJECT_ROOT, "agent-assets", "profiles");
-const KB_DIR = resolve(
-  PROJECT_ROOT,
-  "alt-theory-app",
-  "web-server",
-  "assets",
-  "kb"
-);
 const PUBLIC_DIR = resolve(
   PROJECT_ROOT,
   "alt-theory-app",
@@ -69,16 +60,22 @@ interface ConnectionState {
   unsubscribe: () => void;
   manifest: AssemblyManifest;
   currentDomain: string;
-  currentProfileSlug: string;
+  currentRolePresetSlug: string;
   messageCount: number;
   toolCallCount: number;
   turnCount: number;
 }
 
 export interface AltTheoryServerOptions {
+  agentAssetsDir?: string;
+  appContextPath?: string;
+  soulPath?: string;
   dataDir?: string;
   kbDir?: string;
+  rolePresetsDir?: string;
+  /** Deprecated compatibility option; use rolePresetsDir. */
   profilesDir?: string;
+  piPromptTemplatesDir?: string;
   publicDir?: string;
   readOnly?: boolean;
   coreSoulPath?: string;
@@ -102,49 +99,70 @@ function parseCoreSoulModules(): string[] | undefined {
 
 export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   const dataDir = resolve(options.dataDir ?? resolveDataDir());
-  const kbDir = resolve(options.kbDir ?? KB_DIR);
-  const profilesDir = resolve(options.profilesDir ?? PROFILES_DIR);
+  const assetPaths: AgentAssetPaths = resolveAgentAssetPaths(PROJECT_ROOT, {
+    agentAssetsDir: options.agentAssetsDir,
+    appContextPath: options.appContextPath,
+    soulPath: options.soulPath,
+    rolePresetsDir: options.rolePresetsDir ?? options.profilesDir,
+    kbDir: options.kbDir,
+    piPromptTemplatesDir: options.piPromptTemplatesDir,
+    modelsPath: options.modelsPath,
+  });
+  const kbDir = assetPaths.kbDir;
+  const rolePresetsDir = assetPaths.rolePresetsDir;
   const publicDir = resolve(options.publicDir ?? PUBLIC_DIR);
   const readOnly = options.readOnly ?? false;
+  const modelProvider =
+    options.modelProvider ?? process.env.ALT_THEORY_MODEL_PROVIDER;
+  const modelId = options.modelId ?? process.env.ALT_THEORY_MODEL_ID;
+  const modelsPath = assetPaths.modelsPath;
 
   const app = express();
   const httpServer = createServer(app);
   const wss = new WebSocketServer({ server: httpServer });
 
   app.use(express.static(publicDir));
+  app.get("/api/role-presets", (_req, res) => {
+    res.json({ rolePresets: listRolePresets(rolePresetsDir) });
+  });
   app.get("/api/profiles", (_req, res) => {
-    res.json({ profiles: listProfiles(profilesDir) });
+    res.json({ profiles: listRolePresets(rolePresetsDir) });
   });
   app.get("/api/kb-domains", (_req, res) => {
     res.json({ domains: listKbDomains(kbDir) });
   });
 
   async function createState(
-    currentProfileSlug: string,
+    currentRolePresetSlug: string,
     currentDomain: string
   ): Promise<ConnectionState> {
-    const profilePath = resolveProfileSlug(profilesDir, currentProfileSlug);
-    if (!profilePath) {
-      throw new Error(`Unknown profile slug: ${currentProfileSlug}`);
+    const rolePresetPath = resolveRolePresetSlug(
+      rolePresetsDir,
+      currentRolePresetSlug
+    );
+    if (!rolePresetPath) {
+      throw new Error(`Unknown role preset slug: ${currentRolePresetSlug}`);
     }
 
     const sessionDirs = createSessionDirs(dataDir);
     const result = await createAltTheorySession({
       ...sessionDirs,
+      appContextPath: assetPaths.appContextPath,
+      soulPath: assetPaths.soulPath,
+      rolePresetPath,
+      rolePresetSlug: currentRolePresetSlug,
       kbDir,
       kbDomain: currentDomain,
-      profilePath,
-      runtimeDir: RUNTIME_DIR,
+      piPromptTemplatesDir: assetPaths.piPromptTemplatesDir,
       coreSoulPath:
         options.coreSoulPath ?? process.env.ALT_THEORY_CORE_SOUL_PATH,
       coreSoulModulesDir:
         options.coreSoulModulesDir ??
         process.env.ALT_THEORY_CORE_SOUL_MODULES_DIR,
       coreSoulModules: options.coreSoulModules ?? parseCoreSoulModules(),
-      modelProvider:
-        options.modelProvider ?? process.env.ALT_THEORY_MODEL_PROVIDER,
-      modelId: options.modelId ?? process.env.ALT_THEORY_MODEL_ID,
-      modelsPath: options.modelsPath ?? process.env.ALT_THEORY_MODELS_PATH,
+      modelProvider,
+      modelId,
+      modelsPath: modelsPath ?? undefined,
       runtimeApiKey:
         options.runtimeApiKey ?? process.env.ALT_THEORY_MODEL_API_KEY,
       thinkingLevel: options.thinkingLevel,
@@ -155,7 +173,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       ...result,
       unsubscribe: () => {},
       currentDomain,
-      currentProfileSlug,
+      currentRolePresetSlug,
       messageCount: 0,
       toolCallCount: 0,
       turnCount: 0,
@@ -165,7 +183,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       type: "session_created",
       details: {
         kbDomain: currentDomain,
-        profileSlug: currentProfileSlug,
+        rolePresetSlug: currentRolePresetSlug,
         model: state.manifest.model,
         provider: state.manifest.provider,
       },
@@ -212,7 +230,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       sessionId: current.session.sessionId,
       status: current.session.isStreaming ? "running" : "idle",
       currentDomain: current.currentDomain,
-      profileSlug: current.currentProfileSlug,
+      rolePresetSlug: current.currentRolePresetSlug,
+      profileSlug: current.currentRolePresetSlug,
       messageCount: current.messageCount,
       ...overrides,
     });
@@ -382,31 +401,37 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             details: { kbDomain: msg.payload.domain },
           });
           break;
-        case "switch_profile":
-          if (!resolveProfileSlug(profilesDir, msg.payload.profileSlug)) {
+        case "switch_role_preset":
+        case "switch_profile": {
+          const rolePresetSlug =
+            msg.type === "switch_role_preset"
+              ? msg.payload.rolePresetSlug
+              : msg.payload.profileSlug;
+          if (!resolveRolePresetSlug(rolePresetsDir, rolePresetSlug)) {
             send({
               type: "error",
               payload: {
-                error: `Unknown profile slug: ${msg.payload.profileSlug}`,
+                error: `Unknown role preset slug: ${rolePresetSlug}`,
               },
             });
             break;
           }
-          state.currentProfileSlug = msg.payload.profileSlug;
+          state.currentRolePresetSlug = rolePresetSlug;
           appendSessionEvent(state.manifest.recordsDir, {
             sessionId: state.session.sessionId,
-            type: "profile_selected_next_session",
-            details: { profileSlug: msg.payload.profileSlug },
+            type: "role_preset_selected_next_session",
+            details: { rolePresetSlug },
           });
           break;
+        }
         case "new_session": {
-          const profileSlug = state.currentProfileSlug;
+          const rolePresetSlug = state.currentRolePresetSlug;
           const domain = state.currentDomain;
           const previousState = state;
           state = null;
           await disposeState(previousState);
           try {
-            const replacementState = await createState(profileSlug, domain);
+            const replacementState = await createState(rolePresetSlug, domain);
             if (closed) {
               await disposeState(replacementState);
               return;
@@ -441,7 +466,17 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     app,
     httpServer,
     wss,
-    config: { dataDir, kbDir, profilesDir, publicDir, readOnly },
+    config: {
+      dataDir,
+      assetPaths,
+      kbDir,
+      rolePresetsDir,
+      publicDir,
+      readOnly,
+      modelProvider,
+      modelId,
+      modelsPath,
+    },
   };
 }
 
@@ -451,10 +486,47 @@ const isMain = process.argv[1]
 
 if (isMain) {
   const port = Number.parseInt(process.env.PORT ?? "3000", 10);
+  const host = process.env.HOST ?? "127.0.0.1";
   const instance = createAltTheoryServer();
-  instance.httpServer.listen(port, () => {
-    console.log(`Alt Theory server running on http://localhost:${port}`);
-    console.log(`  Data dir: ${instance.config.dataDir}`);
-    console.log(`  KB dir:   ${instance.config.kbDir}`);
+  instance.httpServer.listen(port, host, () => {
+    const { assetPaths } = instance.config;
+    const explicitModelSelection = Boolean(
+      instance.config.modelProvider &&
+        instance.config.modelId &&
+        instance.config.modelsPath
+    );
+    console.log(`Alt Theory server running on http://${host}:${port}`);
+    console.log(`  Data dir:          ${instance.config.dataDir}`);
+    console.log(`  Agent assets:      ${assetPaths.rootDir}`);
+    console.log(
+      `  App context:       ${assetPaths.appContextPath} (${existsSync(assetPaths.appContextPath) ? "found" : "missing"})`
+    );
+    console.log(
+      `  Soul:              ${assetPaths.soulPath} (${existsSync(assetPaths.soulPath) ? "found" : "missing"})`
+    );
+    console.log(
+      `  Role presets:      ${assetPaths.rolePresetsDir} (${existsSync(assetPaths.rolePresetsDir) ? "found" : "missing"})`
+    );
+    console.log(
+      `  KB root:           ${instance.config.kbDir} (${existsSync(instance.config.kbDir) ? "found" : "missing"})`
+    );
+    console.log(
+      `  Pi prompts:        ${assetPaths.piPromptTemplatesDir} (${existsSync(assetPaths.piPromptTemplatesDir) ? "found" : "missing"})`
+    );
+    console.log(`  Models path:       ${instance.config.modelsPath ?? "(Pi default)"}`);
+    console.log(
+      `  Provider/model:    ${instance.config.modelProvider ?? "(Pi default)"} / ${instance.config.modelId ?? "(Pi default)"}`
+    );
+    console.log(
+      `  Model selection:   ${explicitModelSelection ? "explicit" : "Pi default or incomplete"}`
+    );
+    if (
+      (process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_BASE_URL) &&
+      !explicitModelSelection
+    ) {
+      console.warn(
+        "  Warning: ANTHROPIC_* env vars are set, but ALT_THEORY_MODEL_PROVIDER, ALT_THEORY_MODEL_ID, or ALT_THEORY_MODELS_PATH is missing. Alt Theory may launch with Pi defaults instead of the intended provider/model."
+      );
+    }
   });
 }

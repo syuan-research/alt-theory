@@ -14,8 +14,8 @@ function displayName(slug: string): string {
     .join(" ");
 }
 
-export function listProfiles(profilesDir: string): DiscoveredAsset[] {
-  const root = resolve(profilesDir);
+export function listRolePresets(rolePresetsDir: string): DiscoveredAsset[] {
+  const root = resolve(rolePresetsDir);
   if (!existsSync(root)) {
     return [];
   }
@@ -32,6 +32,9 @@ export function listProfiles(profilesDir: string): DiscoveredAsset[] {
     .map((slug) => ({ slug, displayName: displayName(slug) }));
 }
 
+/** Deprecated compatibility alias. Use listRolePresets. */
+export const listProfiles = listRolePresets;
+
 export function listKbDomains(kbDir: string): DiscoveredAsset[] {
   const root = resolve(kbDir);
   if (!existsSync(root)) {
@@ -45,15 +48,18 @@ export function listKbDomains(kbDir: string): DiscoveredAsset[] {
     .map((slug) => ({ slug, displayName: displayName(slug) }));
 }
 
-export function resolveProfileSlug(
-  profilesDir: string,
+export function resolveRolePresetSlug(
+  rolePresetsDir: string,
   slug: string
 ): string | null {
-  if (!listProfiles(profilesDir).some((profile) => profile.slug === slug)) {
+  if (!listRolePresets(rolePresetsDir).some((preset) => preset.slug === slug)) {
     return null;
   }
-  return resolve(profilesDir, `${slug}.md`);
+  return resolve(rolePresetsDir, `${slug}.md`);
 }
+
+/** Deprecated compatibility alias. Use resolveRolePresetSlug. */
+export const resolveProfileSlug = resolveRolePresetSlug;
 
 export function isKnownKbDomain(kbDir: string, slug: string): boolean {
   return (

@@ -1,11 +1,12 @@
 /**
  * Alt Theory Core Layer Test Script
- * Verifies: createAltTheorySession(), system prompt contains profile + KB path
+ * Verifies: createAltTheorySession(), system prompt contains app/soul/role + KB path
  *
  * Usage: npx tsx alt-theory-app/core/test-core.ts
  */
 
 import { createAltTheorySession } from "./alt-theory-core.js";
+import { resolveAgentAssetPaths } from "./agent-assets.js";
 import { createSessionDirs, resolveDataDir } from "./data-dir.js";
 import { resolve } from "path";
 
@@ -13,27 +14,33 @@ async function main() {
   console.log("=== Alt Theory Core Layer Test ===\n");
 
   const projectRoot = resolve(import.meta.dirname, "..", "..");
-  const runtimeDir = resolve(projectRoot, "agent-assets", "runtime", "pi-tui");
-  const kbDir = resolve(projectRoot, "alt-theory-app", "web-server", "assets", "kb");
-  const profilePath = resolve(projectRoot, "agent-assets", "profiles", "default.md");
+  const assetPaths = resolveAgentAssetPaths(projectRoot);
+  const rolePresetPath = resolve(
+    assetPaths.rolePresetsDir,
+    "default.md"
+  );
   const sessionDirs = createSessionDirs(resolveDataDir());
 
   console.log(`sessionCwd: ${sessionDirs.sessionCwd}`);
-  console.log(`kbDir:   ${kbDir}`);
+  console.log(`kbDir:   ${assetPaths.kbDir}`);
 
   try {
     const { session, manifest } = await createAltTheorySession({
       ...sessionDirs,
-      kbDir,
-      profilePath,
-      runtimeDir,
+      appContextPath: assetPaths.appContextPath,
+      soulPath: assetPaths.soulPath,
+      rolePresetPath,
+      rolePresetSlug: "default",
+      kbDir: assetPaths.kbDir,
+      piPromptTemplatesDir: assetPaths.piPromptTemplatesDir,
       readOnly: true,
     });
 
     console.log("\n✓ Session created successfully");
     console.log(`  Session ID: ${session.sessionId}`);
     console.log(`  Session file: ${session.sessionFile}`);
-    console.log(`  Runtime assets: ${runtimeDir}`);
+    console.log(`  Agent assets: ${assetPaths.rootDir}`);
+    console.log(`  Pi prompts: ${assetPaths.piPromptTemplatesDir}`);
     console.log(`  Manifest: ${JSON.stringify(manifest, null, 2)}`);
 
     // Verify system prompt

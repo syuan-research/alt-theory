@@ -30,7 +30,7 @@ project/
 agent-assets/
   README.md
   kb/
-  profiles/
+  role-presets/
   prompts/
   skills/
 
@@ -52,8 +52,8 @@ Start with:
 
 Current manual-restructure note: after the 2026-06-08 cleanup, this dev
 worktree intentionally keeps software/dev records and runtime-facing assets,
-while bulk research/evaluation material is being split out of this repo. Some
-backend runtime asset paths are known to be stale until the next backend repair.
+while bulk research/evaluation material is being split out of this repo. The
+backend now loads current runtime-facing assets from `agent-assets/`.
 
 For software coding work, read:
 
@@ -70,7 +70,7 @@ For branch/recovery context, also check:
 ## Source Of Truth Pointers
 
 - `project/` is the source of truth for project structure, recovery, plans, dev-facing workstream records, and architecture.
-- `agent-assets/` is the source of truth for runtime-facing assets, profiles, prompts, KB copies, and skills.
+- `agent-assets/` is the source of truth for runtime-facing assets, role presets, prompts, KB copies, and skills.
 - `agent-assets/skills/cs-swe-v0-4/` is the active SWE skill bundle.
 - `agent-assets/skills/cs-swe-v0-3/` is the previous active bundle and should
   be treated as comparison/history unless the user explicitly asks to inspect

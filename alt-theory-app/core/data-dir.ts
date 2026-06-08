@@ -61,13 +61,19 @@ export function createSessionDirs(
   };
 }
 
-export function resolveProfilesDir(dataDir: string, fallbackDir?: string): string {
-  const userProfilesDir = join(resolve(dataDir), "profiles");
-  if (existsSync(userProfilesDir) || !fallbackDir) {
-    return userProfilesDir;
+export function resolveRolePresetsDir(
+  dataDir: string,
+  fallbackDir?: string
+): string {
+  const userRolePresetsDir = join(resolve(dataDir), "role-presets");
+  if (existsSync(userRolePresetsDir) || !fallbackDir) {
+    return userRolePresetsDir;
   }
   return resolve(fallbackDir);
 }
+
+/** Deprecated compatibility alias. Use resolveRolePresetsDir. */
+export const resolveProfilesDir = resolveRolePresetsDir;
 
 export function writeJsonAtomic(path: string, value: unknown): void {
   const resolvedPath = resolve(path);

@@ -9,6 +9,7 @@ import {
 import { tmpdir } from "os";
 import { join, resolve } from "path";
 import WebSocket from "ws";
+import { resolveAgentAssetPaths } from "../core/agent-assets.js";
 import { createAltTheoryServer } from "./server.js";
 
 function waitForType(
@@ -61,15 +62,32 @@ async function main() {
   assert.ok(apiKey, "MIMO_API_KEY is required for the live smoke test");
 
   const projectRoot = process.cwd();
+  const assetPaths = resolveAgentAssetPaths(projectRoot);
+  assert.ok(
+    assetPaths.modelsPath,
+    "ALT_THEORY_MODELS_PATH is required for the live smoke test"
+  );
   const root = mkdtempSync(join(tmpdir(), "alt-theory-mimo-live-"));
   const dataDir = join(root, "data");
-  const profilesDir = join(root, "profiles");
+  const rolePresetsDir = join(root, "role-presets");
   const kbDir = join(root, "kb");
   const coreSoulDir = join(root, "core-soul");
-  mkdirSync(profilesDir, { recursive: true });
+  const appContextPath = join(root, "ALTTHEORY.md");
+  const soulPath = join(root, "soul.md");
+  mkdirSync(rolePresetsDir, { recursive: true });
   mkdirSync(join(kbDir, "ep-core"), { recursive: true });
   mkdirSync(coreSoulDir, { recursive: true });
 
+  writeFileSync(
+    appContextPath,
+    "Alt Theory live smoke session. Loaded assets and session paths should be explicit.\n",
+    "utf-8"
+  );
+  writeFileSync(
+    soulPath,
+    "Maintain a stable identity as an Alt Theory research assistant.\n",
+    "utf-8"
+  );
   const coreSoulPath = join(coreSoulDir, "core-soul.md");
   writeFileSync(
     coreSoulPath,
@@ -77,7 +95,7 @@ async function main() {
     "utf-8"
   );
   writeFileSync(
-    join(profilesDir, "default.md"),
+    join(rolePresetsDir, "default.md"),
     [
       "Keep responses concise.",
       "Prioritize knowledge-base evidence before relying on general knowledge.",
@@ -97,17 +115,14 @@ async function main() {
 
   const instance = createAltTheoryServer({
     dataDir,
-    profilesDir,
+    appContextPath,
+    soulPath,
+    rolePresetsDir,
     kbDir,
     coreSoulPath,
     coreSoulModulesDir: coreSoulDir,
-    modelsPath: resolve(
-      projectRoot,
-      "agent-assets",
-      "runtime",
-      "pi-tui",
-      "models.json"
-    ),
+    piPromptTemplatesDir: assetPaths.piPromptTemplatesDir,
+    modelsPath: assetPaths.modelsPath,
     modelProvider: "xiaomi-mimo-token-plan",
     modelId: "mimo-v2.5-pro",
     runtimeApiKey: apiKey,

@@ -4,20 +4,30 @@ This folder contains document-like assets that shape agent behavior and user exp
 
 Current first-slice layout:
 
-- `prompts/pi/` is the current centralized copy of PI prompt assets for review and future organization.
+- `ALTTHEORY.md` is the application/session context loaded by Alt Theory runtime sessions.
+- `soul.md` is the current lightweight personality / stance seed.
+- `role-presets/default.md` is the default role/style/behavior preset. It replaces the old `profiles/default.md` naming because these files describe the agent role, not the user.
+- `prompts/pi/` is the current Pi adapter prompt-template area for review and future organization.
 - `kb/ep-core/` is the current runtime KB copy used for the first v0.3 smoke-test path. It is not yet declared the long-term KB source-of-truth.
-- `profiles/default.md` is the current lightweight agent profile. It is closer to a `SOUL.md` than to a simulated user profile.
-- `skills/cs-swe-v0-3/` is the active SWE-only CodeStable-derived skill bundle for feature / issue / refactor / `swe-plan` coding work. It keeps its internal workflow/reference files inside the same folder and uses relative internal links.
+- `models.example.json` is an uncredentialed example for custom provider/model configuration. Runtime keys stay in environment/config, not Git.
+- `skills/cs-swe-v0-4/` is the active SWE-only CodeStable-derived skill bundle for feature / issue / refactor / `swe-plan` coding work. It keeps its internal workflow/reference files inside the same folder and uses relative internal links.
 
 2026-06-08 cleanup status:
 
 - The old `runtime/pi-tui/` duplicate runtime context was removed during manual
   folder cleanup.
-- Backend code and architecture notes may still reference that removed runtime
-  path until the next backend repair.
-- Do not recreate duplicate prompt/KB/profile copies just to make the current
-  app run. First choose a single runtime asset layout, then point the backend at
-  it.
+- Backend code now loads the current runtime-facing assets from `agent-assets/`.
+- Do not recreate duplicate prompt/KB/role-preset copies just to make the app
+  run. Keep the backend pointed at the single layout above.
+
+2026-06-08 backend repair decisions:
+
+- Do not use root `AGENTS.md` as an Alt Theory runtime personality file. Root
+  `AGENTS.md` is for development harnesses.
+- Do not restore `alt-theory-app/web-server/assets/kb/` as a duplicate KB copy.
+- Do not use `profiles/` for agent behavior. Use `role-presets/`.
+- Treat `prompts/pi/` as Pi adapter prompt templates, not as the semantic asset
+  root.
 
 Removed from active skill surface:
 

@@ -3,7 +3,7 @@ doc_type: architecture
 slug: core-session-engine
 scope: Alt Theory core session engine and Pi Coding Agent integration
 summary: Creates persistent, asset-configured Pi sessions and exposes connection-scoped backend state
-status: current-with-known-path-breakage
+status: current
 last_reviewed: 2026-06-08
 tags: [core, backend, pi-agent, session]
 depends_on: []
@@ -13,18 +13,15 @@ implements:
 
 # Architecture: Core Session Engine
 
-## Current Consistency Warning
+## Current Asset Loading Note
 
-This document records the backend v2 session-engine behavior, including prompt
-assembly and the hardcoded per-turn KB prefix. After the 2026-06-08 manual
-folder cleanup, the file tree no longer contains the old
-`agent-assets/runtime/pi-tui/` runtime context or the duplicate
-`alt-theory-app/web-server/assets/kb/` KB copy. The current backend code still
-references those removed paths.
+This document records the current backend session-engine behavior after the
+2026-06-08 agent-asset loading repair. The backend no longer depends on the
+removed `agent-assets/runtime/pi-tui/` context or the duplicate
+`alt-theory-app/web-server/assets/kb/` copy.
 
-So this architecture is behavior-current but path-inconsistent. The next backend
-repair should choose one runtime asset layout, point the server and smoke tests
-at it, and then update this document again.
+The current session creation path loads semantic assets from `agent-assets/`
+and Pi adapter prompt templates from `agent-assets/prompts/pi/`.
 
 ## 0. Terminology
 
@@ -34,8 +31,9 @@ at it, and then update this document again.
 - **Write directory**: the session workspace; agent-authored notes and summaries
   live directly under Pi's `cwd`.
 - **Records directory**: Alt Theory-owned manifest, metrics, and runtime events.
-- **Assembly manifest**: immutable provenance record for runtime assets, profile,
-  core-soul selection, paths, model, and provider.
+- **Assembly manifest**: immutable provenance record for application context,
+  soul, role preset, KB selection, Pi adapter prompts, paths, model, and
+  provider.
 - **Prompt assembly**: the full set of backend-controlled model-visible
   instructions assembled at session creation.
 - **Per-turn context prefix**: current hardcoded backend text prepended to user
@@ -52,7 +50,7 @@ flowchart LR
   WS[WebSocket connection] --> State[ConnectionState]
   State --> Dirs[data-dir.ts]
   State --> Core[createAltTheorySession]
-  Core --> Assets[runtime AGENTS/prompts + core-soul + profile]
+  Core --> Assets[ALTTHEORY + soul + role preset + KB + Pi prompts]
   Core --> Pi[Pi AgentSession]
   State --> Prefix[per-turn KB context prefix]
   Prefix --> Pi
@@ -66,11 +64,13 @@ flowchart LR
 Code anchors:
 
 - `alt-theory-app/core/data-dir.ts`: data-root and session-directory ownership.
+- `alt-theory-app/core/agent-assets.ts`: centralized agent-asset path resolver
+  and loaded-file hash references.
 - `alt-theory-app/core/core-soul.ts`: module parsing, selection, validation, and
   deterministic assembly.
 - `alt-theory-app/core/alt-theory-core.ts`: resource loader, tool policy,
   persistent Pi session creation, and manifest.
-- `alt-theory-app/web-server/asset-registry.ts`: safe profile/KB slugs.
+- `alt-theory-app/web-server/asset-registry.ts`: safe role-preset/KB slugs.
 - `alt-theory-app/web-server/server.ts`: REST routes and per-connection
   WebSocket lifecycle.
 - `alt-theory-app/web-server/session-metrics.ts`: Pi-native metric mapping and
@@ -85,11 +85,11 @@ Code anchors:
    `sessions/{id}/workspace`, `history`, and `records`.
 2. The core creates `SessionManager.create(sessionCwd, piSessionDir)` and sets
    the same session ID.
-3. `DefaultResourceLoader` explicitly loads runtime `AGENTS.md` and prompt
-   templates because the per-session workspace is not the runtime asset root.
-   The current path binding is stale after the manual cleanup.
-4. Prompt layers are appended in this order: core-soul, profile, KB
-   declaration, optional write policy.
+3. `DefaultResourceLoader` loads Pi adapter prompt templates from
+   `agent-assets/prompts/pi/`.
+4. Prompt layers are appended in this order: Alt Theory application context,
+   soul, optional core-soul modules, selected role preset, KB declaration,
+   optional write policy.
 5. Pi returns the reserved timestamped JSONL path. Pi physically writes it once
    an assistant message is present.
 6. Alt Theory atomically writes `records/assembly-manifest.json` and appends
@@ -103,31 +103,27 @@ Current model-visible content has two levels.
 
 `createAltTheorySession()` creates a `DefaultResourceLoader` with:
 
-- runtime prompt templates from `agent-assets/runtime/pi-tui/.pi/prompts`;
-- runtime `AGENTS.md` appended through `agentsFilesOverride`;
+- Pi adapter prompt templates from `agent-assets/prompts/pi/`;
+- no Alt Theory runtime `AGENTS.md` file;
 - `appendSystemPromptOverride` layers in this order:
-  1. core-soul content, when configured;
-  2. selected profile content, when configured;
-  3. KB root declaration;
-  4. write policy when write tools are enabled.
+  1. `agent-assets/ALTTHEORY.md`;
+  2. `agent-assets/soul.md`;
+  3. optional core-soul module content, when configured;
+  4. selected `agent-assets/role-presets/{slug}.md`;
+  5. KB root declaration;
+  6. write policy when write tools are enabled.
 
-Those runtime paths reflect the backend implementation before the 2026-06-08
-cleanup and now point at removed files. The centralized surviving prompt assets
-are under `agent-assets/prompts/pi/`; a replacement runtime instruction target
-has not yet been chosen.
-
-The assembly manifest records the selected paths, core-soul modules,
-provider/model, session directories, and Pi JSONL path. It does not yet hash or
-snapshot all runtime-facing content.
+The assembly manifest records the selected paths, existence flags, and SHA-256
+hashes for app context, soul, and role preset. It also records KB root/domain,
+Pi prompt-template directory, provider/model, session directories, and Pi JSONL
+path. Full content snapshots are deferred.
 
 Code anchors:
 
 - `alt-theory-app/core/alt-theory-core.ts`: `DefaultResourceLoader`,
   `agentsFilesOverride`, and `appendSystemPromptOverride`.
-- `alt-theory-app/core/alt-theory-core.ts` currently expects a runtime
-  `AGENTS.md` and `.pi/prompts` directory.
-- `agent-assets/prompts/pi/` is the surviving centralized prompt copy after the
-  cleanup.
+- `alt-theory-app/core/agent-assets.ts`: asset root resolution and file hashes.
+- `agent-assets/prompts/pi/`: Pi adapter prompt-template directory.
 
 ### Per-Turn Context Prefix
 
@@ -170,14 +166,15 @@ manifest, selected profile/domain, and counters.
 - `new_session` aborts when needed, unsubscribes, disposes, and replaces only
   that connection's session.
 - Close cleans up only the owned session.
-- Profile and KB values are client-safe slugs resolved against server roots.
+- Role-preset and KB values are client-safe slugs resolved against server roots.
 - Session metadata and metrics use WebSocket; static discovery uses REST.
 
 ## 6. Discovery And Introspection
 
 REST:
 
-- `GET /api/profiles`
+- `GET /api/role-presets`
+- `GET /api/profiles` legacy compatibility alias
 - `GET /api/kb-domains`
 
 Both return sorted `{ slug, displayName }` arrays without filesystem paths.
@@ -211,21 +208,20 @@ is configured; they are not a billing claim.
 
 - Session list/resume is not implemented, but it is now considered mandatory
   for the researcher console.
-- Backend runtime asset paths are stale after the 2026-06-08 manual cleanup:
-  the code still references removed runtime and KB duplicate directories.
-- Profile changes apply to the next new session; KB domain changes affect the
-  next prompt prefix.
+- Role-preset changes apply to the next new session; KB domain changes affect
+  the next prompt prefix.
 - The per-turn KB context prefix is a temporary hardcoded hook substitute.
   There is no explicit hook/context-policy layer yet.
-- The assembly manifest records selected paths and modules, but does not yet
-  hash or snapshot all injected content.
+- The assembly manifest hashes selected app context, soul, and role-preset
+  files, but does not yet snapshot all injected content.
 - Runtime config is easy to mislaunch: generic Anthropic-compatible environment
   variables do not select the tracked Alt Theory provider/model unless the
   `ALT_THEORY_MODEL_*` and `ALT_THEORY_MODELS_PATH` values are set.
 - Pi-native resume has been verified to preserve JSONL history and cwd while a
   newly created runtime can apply a new profile/system prompt. Alt Theory does
   not yet expose or event-log that transition.
-- Core-soul activation is configured by backend environment/config, not UI.
+- Soul is loaded from `agent-assets/soul.md`; optional core-soul module
+  activation remains configured by backend environment/config, not UI.
 - Hard write-path enforcement, thinking events, compaction/retry events, and
   provider/auth UI are deferred.
 - Frontend consumption of the new APIs is a separate workstream.
@@ -237,12 +233,16 @@ is configured; they are not a billing claim.
 - `npm run smoke:backend`: three-turn MiMo live test covering identity,
   KB retrieval, workspace write, metrics, events, and JSONL persistence.
 - `npm run smoke:resume`: Pi-native resume probe with a changed resume-time
-  profile. Both live commands require explicit external-provider approval.
+  role preset marker. Both live commands require explicit external-provider
+  approval.
 
 ## Change Log
 
 - 2026-06-08: Added current prompt assembly and per-turn context-prefix
   architecture, including the known hardcoded hook-substitute constraint.
+- 2026-06-08: Updated after minimal agent-asset loading repair. Backend now
+  loads `ALTTHEORY.md`, `soul.md`, `role-presets/default.md`,
+  `agent-assets/kb/`, and `agent-assets/prompts/pi/`.
 
 ## Related Documents
 

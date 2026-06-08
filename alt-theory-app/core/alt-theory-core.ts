@@ -2,7 +2,7 @@
  * Alt Theory Core Layer
  *
  * Provides `createAltTheorySession(config)` — the unified API for all Alt Theory frontends.
- * Handles: system prompt assembly, profile injection, KB path binding, tool selection.
+ * Handles: system prompt assembly, role-preset injection, KB path binding, tool selection.
  *
  * @module alt-theory-core
  */
@@ -16,13 +16,18 @@ import {
   SessionManager,
 } from "@mariozechner/pi-coding-agent";
 import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
-import { existsSync, readFileSync } from "fs";
+import { existsSync } from "fs";
 import { join, resolve } from "path";
 import {
   writeJsonAtomic,
   type SessionDirectories,
 } from "./data-dir.js";
 import { assembleCoreSoul } from "./core-soul.js";
+import {
+  fileRef,
+  readRequiredTextAsset,
+  type LoadedAssetFileRef,
+} from "./agent-assets.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -38,13 +43,29 @@ export interface CoreSoulModule {
 export interface AssemblyManifest {
   sessionId: string;
   createdAt: string;
+  appContext: LoadedAssetFileRef;
+  soul: LoadedAssetFileRef;
+  rolePreset: LoadedAssetFileRef & {
+    slug: string;
+  };
   coreSoul: {
     basePath: string | null;
     modules: CoreSoulModule[];
   };
+  /** Deprecated compatibility field; use rolePreset.path instead. */
   profilePath: string | null;
   runtimeDir: string | null;
+  piAdapter: {
+    promptTemplatesDir: string | null;
+    promptTemplatesExist: boolean;
+  };
   kbDomain: string;
+  kb: {
+    rootDir: string;
+    domain: string;
+    domainPath: string | null;
+    domainExists: boolean;
+  };
   sessionCwd: string;
   piSessionDir: string;
   piSessionFile: string | null;
@@ -55,13 +76,23 @@ export interface AssemblyManifest {
 }
 
 export interface AltTheoryConfig extends SessionDirectories {
+  /** Application/session context loaded into the system prompt */
+  appContextPath: string;
+  /** Durable agent stance/personality seed */
+  soulPath: string;
+  /** Agent role/style preset file */
+  rolePresetPath: string;
+  /** Agent role/style preset slug */
+  rolePresetSlug: string;
   /** KB root directory (search path for read-only/coding tools) */
   kbDir: string;
   /** Active KB domain recorded in the session manifest */
   kbDomain?: string;
-  /** Pi-compatible runtime assets containing AGENTS.md and .pi/prompts */
+  /** Pi adapter prompt templates */
+  piPromptTemplatesDir?: string;
+  /** Deprecated compatibility field for older runtimeDir callers */
   runtimeDir?: string;
-  /** Profile file path (optional, appended to system prompt) */
+  /** Deprecated compatibility field; use rolePresetPath */
   profilePath?: string;
   /** Core-soul base file path */
   coreSoulPath?: string;
@@ -107,21 +138,31 @@ export async function createAltTheorySession(config: AltTheoryConfig) {
   const resolvedWriteDir = resolve(writeDir);
   const resolvedRecordsDir = resolve(recordsDir);
   const resolvedKbDir = resolve(kbDir);
+  const resolvedAppContextPath = resolve(config.appContextPath);
+  const resolvedSoulPath = resolve(config.soulPath);
+  const resolvedRolePresetPath = resolve(
+    config.rolePresetPath ?? config.profilePath ?? ""
+  );
+  const resolvedPiPromptTemplatesDir = config.piPromptTemplatesDir
+    ? resolve(config.piPromptTemplatesDir)
+    : config.runtimeDir
+      ? resolve(config.runtimeDir, ".pi", "prompts")
+      : null;
   const resolvedRuntimeDir = config.runtimeDir
     ? resolve(config.runtimeDir)
     : null;
   const agentDir = getAgentDir();
 
-  // --- 1. Read profile content (if any) ---
-  const resolvedProfilePath = config.profilePath
-    ? resolve(config.profilePath)
-    : null;
-  if (resolvedProfilePath && !existsSync(resolvedProfilePath)) {
-    throw new Error(`Profile file not found: ${resolvedProfilePath}`);
-  }
-  const profileContent = resolvedProfilePath
-    ? readFileSync(resolvedProfilePath, "utf-8")
-    : "";
+  // --- 1. Read semantic assets ---
+  const appContextContent = readRequiredTextAsset(
+    resolvedAppContextPath,
+    "ALTTHEORY.md"
+  );
+  const soulContent = readRequiredTextAsset(resolvedSoulPath, "soul.md");
+  const rolePresetContent = readRequiredTextAsset(
+    resolvedRolePresetPath,
+    "role preset"
+  );
 
   if (config.coreSoulPath && !config.coreSoulModulesDir) {
     throw new Error("coreSoulModulesDir is required when coreSoulPath is set");
@@ -135,14 +176,14 @@ export async function createAltTheorySession(config: AltTheoryConfig) {
     : null;
 
   // --- 2. Assemble appendSystemPromptOverride ---
-  //    Order: core-soul → profile → KB path declaration
+  //    Order: app context -> soul -> optional core-soul modules -> role preset -> KB path declaration
   const appendContent: string[] = [];
+  appendContent.push(`## Alt Theory Application Context\n${appContextContent}`);
+  appendContent.push(`## Soul\n${soulContent}`);
   if (coreSoul) {
     appendContent.push(`## Core Soul\n${coreSoul.content}`);
   }
-  if (profileContent) {
-    appendContent.push(`## User Profile\n${profileContent}`);
-  }
+  appendContent.push(`## Role Preset\n${rolePresetContent}`);
   appendContent.push(
     `## Knowledge Base\nYour knowledge base is at: ${resolvedKbDir}`
   );
@@ -151,7 +192,7 @@ export async function createAltTheorySession(config: AltTheoryConfig) {
       [
         "## Write Policy",
         `Write user-facing notes and summaries only under: ${resolvedWriteDir}`,
-        "Treat the knowledge base, profiles, prompts, and system files as read-only.",
+        "Treat the knowledge base, role presets, prompts, and system files as read-only.",
       ].join("\n")
     );
   }
@@ -159,25 +200,10 @@ export async function createAltTheorySession(config: AltTheoryConfig) {
   const loader = new DefaultResourceLoader({
     cwd,
     agentDir,
-    additionalPromptTemplatePaths: resolvedRuntimeDir
-      ? [resolve(resolvedRuntimeDir, ".pi", "prompts")]
+    additionalPromptTemplatePaths: resolvedPiPromptTemplatesDir
+      ? [resolvedPiPromptTemplatesDir]
       : [],
-    agentsFilesOverride: (base) => {
-      if (!resolvedRuntimeDir) return base;
-      const runtimeAgentsPath = resolve(resolvedRuntimeDir, "AGENTS.md");
-      if (!existsSync(runtimeAgentsPath)) {
-        throw new Error(`Runtime AGENTS.md not found: ${runtimeAgentsPath}`);
-      }
-      return {
-        agentsFiles: [
-          ...base.agentsFiles,
-          {
-            path: runtimeAgentsPath,
-            content: readFileSync(runtimeAgentsPath, "utf-8"),
-          },
-        ],
-      };
-    },
+    agentsFilesOverride: (base) => base,
     appendSystemPromptOverride: (base: string[]) => [...base, ...appendContent],
   });
   await loader.reload();
@@ -231,13 +257,37 @@ export async function createAltTheorySession(config: AltTheoryConfig) {
   const manifest: AssemblyManifest = {
     sessionId: session.sessionId,
     createdAt,
+    appContext: fileRef(resolvedAppContextPath),
+    soul: fileRef(resolvedSoulPath),
+    rolePreset: {
+      ...fileRef(resolvedRolePresetPath),
+      slug: config.rolePresetSlug,
+    },
     coreSoul: {
       basePath: coreSoul?.basePath ?? null,
       modules: coreSoul?.modules ?? [],
     },
-    profilePath: resolvedProfilePath,
+    profilePath: resolvedRolePresetPath,
     runtimeDir: resolvedRuntimeDir,
+    piAdapter: {
+      promptTemplatesDir: resolvedPiPromptTemplatesDir,
+      promptTemplatesExist: resolvedPiPromptTemplatesDir
+        ? existsSync(resolvedPiPromptTemplatesDir)
+        : false,
+    },
     kbDomain: config.kbDomain ?? "all",
+    kb: {
+      rootDir: resolvedKbDir,
+      domain: config.kbDomain ?? "all",
+      domainPath:
+        (config.kbDomain ?? "all") === "all"
+          ? null
+          : resolve(resolvedKbDir, config.kbDomain ?? "all"),
+      domainExists:
+        (config.kbDomain ?? "all") === "all"
+          ? true
+          : existsSync(resolve(resolvedKbDir, config.kbDomain ?? "all")),
+    },
     sessionCwd: cwd,
     piSessionDir: resolvedPiSessionDir,
     piSessionFile: session.sessionFile ?? null,

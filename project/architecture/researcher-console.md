@@ -2,7 +2,7 @@
 doc_type: architecture
 slug: researcher-console
 scope: Current browser console used by the researcher to run, inspect, compare, and later annotate Alt Theory sessions
-summary: The current researcher console is a temporary vanilla frontend seed that exposes live backend sessions but does not yet support historical session work.
+summary: The current researcher console is a temporary vanilla frontend seed that exposes live backend sessions and loaded agent assets but does not yet support historical session work.
 status: current
 last_reviewed: 2026-06-08
 tags: [frontend, researcher-console, session, runtime-inspection]
@@ -20,7 +20,7 @@ implements: []
 - **Runtime inspector**: the right-side information surface showing current
   session metadata, metrics, paths, provider/model, and selected assets.
 - **Session/config panel**: the left-side control surface for creating a new
-  session and selecting KB/profile.
+  session and selecting KB/role preset.
 - **Temporary frontend seed**: the current vanilla HTML/CSS/JS implementation.
   It is functional enough for live testing but not yet a complete researcher
   console.
@@ -52,7 +52,7 @@ Browser interaction shape:
 flowchart LR
   Browser[Researcher console] --> REST[REST discovery]
   Browser --> WS[WebSocket session]
-  REST --> Profiles[profiles list]
+  REST --> RolePresets[role presets list]
   REST --> KBDomains[KB domain list]
   WS --> Session[Connection-scoped session]
   Session --> Inspector[metadata + metrics + paths]
@@ -64,7 +64,7 @@ The left panel currently owns:
 - new session button;
 - session ID/status summary;
 - KB selector;
-- profile selector;
+- role-preset selector;
 - provider/model display.
 
 The center panel currently owns:
@@ -79,10 +79,11 @@ The right runtime inspector currently owns:
 
 - full session ID;
 - connection status;
-- active KB/profile;
+- active KB/role preset;
 - provider/model;
 - counters, tokens, context usage, cost;
 - key runtime paths;
+- loaded app context, soul, role preset, KB, and Pi prompt-template paths;
 - core-soul modules when present.
 
 Code anchors:
@@ -103,12 +104,13 @@ project state.
 
 Current backend-facing state:
 
-- discovery lists from `GET /api/profiles` and `GET /api/kb-domains`;
+- discovery lists from `GET /api/role-presets` and `GET /api/kb-domains`;
+- legacy compatibility alias from `GET /api/profiles`;
 - current live session metadata from `session_metadata`;
 - current live session metrics from `session_metrics`;
 - streaming output and tool events over WebSocket;
 - selected KB domain in the current connection;
-- selected profile slug for the next `new_session`.
+- selected role-preset slug for the next `new_session`.
 
 Current persistence belongs to the backend data directory, not the browser:
 
@@ -126,12 +128,12 @@ sessions, resume them, tag them, annotate them, or export them.
 ## 4. Current Capabilities
 
 - Opens a live backend session on WebSocket connect.
-- Populates KB/profile selectors from REST discovery.
+- Populates KB and role-preset selectors from REST discovery.
 - Sends prompts and abort requests.
 - Starts a new session within the same browser connection.
 - Displays streaming assistant text.
 - Displays tool started/updated/finished states.
-- Displays manifest and metrics in the runtime inspector.
+- Displays manifest, loaded asset paths, and metrics in the runtime inspector.
 - Passed a user-run browser + live LLM smoke on 2026-06-08.
 
 ## 5. Known Constraints / Edge Cases
@@ -140,10 +142,13 @@ sessions, resume them, tag them, annotate them, or export them.
 - Resume/open previous session is not implemented.
 - Provider/model switching is not implemented in the console.
 - Core-soul module switching is not implemented in the console.
+- Role-preset switching is implemented for the next new session; current-session
+  prompt mutation is not implemented.
 - Tags and annotations are not implemented.
 - Export is not implemented.
-- Runtime config visibility is incomplete: the console shows active
-  provider/model but not full startup source, `modelsPath`, or data-dir source.
+- Runtime config visibility is still partial: the console shows active
+  provider/model and loaded asset paths, while full startup source and
+  provider/auth selection UI are not implemented.
 - The console does not yet show prompt assembly, hook/context policy, or
   injected transcript components clearly.
 - The current frontend is a researcher-console seed, not final product UI.

@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "fs";
+import { existsSync } from "fs";
 import { resolve } from "path";
+import {
+  readRequiredTextAsset,
+  resolveAgentAssetPaths,
+} from "./agent-assets.js";
 import {
   AuthStorage,
   createAgentSession,
@@ -18,37 +22,39 @@ async function main() {
   assert.ok(existsSync(sessionFile), `Session file not found: ${sessionFile}`);
 
   const projectRoot = process.cwd();
+  const assetPaths = resolveAgentAssetPaths(projectRoot);
+  assert.ok(
+    assetPaths.modelsPath,
+    "ALT_THEORY_MODELS_PATH is required for the live resume smoke test"
+  );
   const sessionManager = SessionManager.open(sessionFile);
   const cwd = sessionManager.getCwd();
   const beforeContext = sessionManager.buildSessionContext();
-  const marker = "RESUME-PROFILE-ACTIVE";
-  const runtimeDir = resolve(
-    projectRoot,
-    "agent-assets",
-    "runtime",
-    "pi-tui"
+  const marker = "RESUME-ROLE-PRESET-ACTIVE";
+  const rolePresetPath = resolve(assetPaths.rolePresetsDir, "default.md");
+  const appContextContent = readRequiredTextAsset(
+    assetPaths.appContextPath,
+    "ALTTHEORY.md"
+  );
+  const soulContent = readRequiredTextAsset(assetPaths.soulPath, "soul.md");
+  const rolePresetContent = readRequiredTextAsset(
+    rolePresetPath,
+    "role preset"
   );
 
   const loader = new DefaultResourceLoader({
     cwd,
     agentDir: getAgentDir(),
-    additionalPromptTemplatePaths: [
-      resolve(runtimeDir, ".pi", "prompts"),
-    ],
-    agentsFilesOverride: (base) => ({
-      agentsFiles: [
-        ...base.agentsFiles,
-        {
-          path: resolve(runtimeDir, "AGENTS.md"),
-          content: readFileSync(resolve(runtimeDir, "AGENTS.md"), "utf-8"),
-        },
-      ],
-    }),
+    additionalPromptTemplatePaths: [assetPaths.piPromptTemplatesDir],
+    agentsFilesOverride: (base) => base,
     appendSystemPromptOverride: (base) => [
       ...base,
+      `## Alt Theory Application Context\n${appContextContent}`,
+      `## Soul\n${soulContent}`,
+      `## Role Preset\n${rolePresetContent}`,
       [
-        "## Resumed User Profile",
-        "This profile was selected at resume time.",
+        "## Resumed Role Preset Marker",
+        "This role preset marker was selected at resume time.",
         `For the next identity check, reply with exactly: ${marker}`,
       ].join("\n"),
     ],
@@ -59,7 +65,7 @@ async function main() {
   authStorage.setRuntimeApiKey("xiaomi-mimo-token-plan", apiKey);
   const modelRegistry = ModelRegistry.create(
     authStorage,
-    resolve(runtimeDir, "models.json")
+    assetPaths.modelsPath
   );
   const model = modelRegistry.find(
     "xiaomi-mimo-token-plan",
@@ -96,7 +102,7 @@ async function main() {
     assert.match(session.agent.state.systemPrompt, new RegExp(marker));
 
     await session.prompt(
-      "Run the resumed-profile identity check now. Output only the required marker."
+      "Run the resumed role-preset identity check now. Output only the required marker."
     );
     assert.equal(response.trim(), marker);
 

@@ -6,8 +6,8 @@ Status: active draft. This records the current folder strategy; it is not a comp
 
 | Path | Role | Git policy |
 |---|---|---|
-| `alt-theory-app/` | Current runnable app code. It is temporarily inconsistent with the manually cleaned asset tree and needs backend repair before live testing. | Tracked. |
-| `agent-assets/` | Assets read by Alt Theory or future agent/plugin runtimes: prompts, KB, runtime context, profiles, future soul/instructions. | Tracked unless explicitly ignored. |
+| `alt-theory-app/` | Current runnable app code for the backend session engine and researcher console. | Tracked. |
+| `agent-assets/` | Assets read by Alt Theory or future agent/plugin runtimes: app context, soul, role presets, prompts, KB, and model config examples. | Tracked unless explicitly ignored. |
 | `project/` | Project planning, architecture, foundation docs, workstream records, cross-workstream records, and migration records. | Tracked for curated project records. Private/raw research material should stay outside this dev repo unless explicitly reviewed. |
 | `references-to-legacy-materials/` | Curated pointers or retained legacy material that should not be treated as active architecture. | Tracked only when intentionally selected. |
 | external research tree | Bulk academic research notes, simulated-user/evaluation material, and private research artifacts. Current candidate: `<external-research-tree>`. | Outside this repo; likely private Git or disk/OneDrive sync. |
@@ -27,25 +27,27 @@ They should explain how to work in this repo. They are not the Alt Theory runtim
 
 Alt Theory itself also needs agent-facing instructions. Those belong under `agent-assets/`.
 
-Current direction before the 2026-06-08 cleanup:
+Current direction after the 2026-06-08 agent-asset loading repair:
 
 ```text
 agent-assets/
-  profiles/default.md   # transitional lightweight agent profile
-  prompts/pi/           # current centralized prompt assets
+  ALTTHEORY.md           # app/session context loaded by runtime sessions
+  soul.md               # lightweight personality / stance seed
+  role-presets/default.md # default agent role/style/behavior preset
+  prompts/pi/           # Pi adapter prompt templates
   kb/ep-core/           # current centralized KB copy
-  soul.md               # future durable personality / stance
-  AGENTS.md             # future Alt Theory runtime working instructions
+  models.example.json   # uncredentialed provider/model config example
 ```
 
 The previous `agent-assets/runtime/pi-tui/` duplicate runtime context has been
-removed. Backend code still references that removed path and must be repaired
-to use the centralized asset layout.
+removed. Backend code now uses the centralized asset layout above.
 
 The old `agent/agent.md` is a mixed legacy runtime-agent document. It should eventually be split by content:
 
 - personality, stance, worldview, boundaries -> `agent-assets/soul.md`;
-- project-specific runtime behavior, methods, and operating instructions -> `agent-assets/AGENTS.md`.
+- application/session context and filesystem/runtime framing ->
+  `agent-assets/ALTTHEORY.md`;
+- agent role/style/behavior presets -> `agent-assets/role-presets/`.
 
 Do not merge old `agent/agent.md` into root `AGENTS.md` or root `CLAUDE.md`. Those root files are for development harnesses.
 

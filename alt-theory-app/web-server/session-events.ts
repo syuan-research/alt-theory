@@ -5,6 +5,7 @@ import { join, resolve } from "path";
 export type SessionEventType =
   | "session_created"
   | "kb_selected"
+  | "role_preset_selected_next_session"
   | "profile_selected_next_session"
   | "run_completed"
   | "run_failed"

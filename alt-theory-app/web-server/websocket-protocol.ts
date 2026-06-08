@@ -14,7 +14,9 @@ export interface SessionSnapshot {
   sessionId: string;
   status: "idle" | "running" | "error";
   currentDomain: string;
-  profileSlug: string;
+  rolePresetSlug: string;
+  /** Deprecated compatibility field; use rolePresetSlug. */
+  profileSlug?: string;
   messageCount: number;
 }
 
@@ -45,6 +47,7 @@ export type ClientMessage =
   | { type: "prompt"; payload: string }
   | { type: "abort" }
   | { type: "switch_kb"; payload: { domain: string } }
+  | { type: "switch_role_preset"; payload: { rolePresetSlug: string } }
   | { type: "switch_profile"; payload: { profileSlug: string } }
   | { type: "new_session" }
   | { type: "get_session_metadata" }

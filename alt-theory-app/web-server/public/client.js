@@ -6,7 +6,7 @@
  *   center: chat
  *   right: runtime inspector
  *
- * REST discovery populates KB and profile selectors.
+ * REST discovery populates KB and role-preset selectors.
  * WebSocket handles all live session state, streaming, tools, and metrics.
  */
 
@@ -18,7 +18,7 @@ const newSessionBtn = document.getElementById("new-session-btn");
 const sessionIdEl = document.getElementById("session-id");
 const sessionStatusEl = document.getElementById("session-status");
 const kbSelect = document.getElementById("kb-select");
-const profileSelect = document.getElementById("profile-select");
+const rolePresetSelect = document.getElementById("role-preset-select");
 const providerInfoEl = document.getElementById("provider-info");
 
 // ---------------------------------------------------------------------------
@@ -38,7 +38,7 @@ const toolStatusEl = document.getElementById("tool-status");
 const rtSessionId = document.getElementById("rt-session-id");
 const rtConnStatus = document.getElementById("rt-conn-status");
 const rtKb = document.getElementById("rt-kb");
-const rtProfile = document.getElementById("rt-profile");
+const rtRolePreset = document.getElementById("rt-role-preset");
 const rtModel = document.getElementById("rt-model");
 const rtProvider = document.getElementById("rt-provider");
 const rtTurns = document.getElementById("rt-turns");
@@ -81,7 +81,7 @@ let isRunning = false;
 let hasMessages = false;
 let currentSessionId = "";
 let currentDomain = "";
-let currentProfileSlug = "";
+let currentRolePresetSlug = "";
 let sessionReady = false;
 let latestManifest = null;
 let pendingConfirmAction = null;
@@ -93,24 +93,26 @@ let activeToolNames = {};  // callId -> { name, el }
 
 async function fetchDiscovery() {
   try {
-    const [profilesRes, domainsRes] = await Promise.all([
-      fetch("/api/profiles"),
+    const [rolePresetsRes, domainsRes] = await Promise.all([
+      fetch("/api/role-presets"),
       fetch("/api/kb-domains"),
     ]);
 
-    const profiles = profilesRes.ok ? (await profilesRes.json()).profiles : [];
+    const rolePresets = rolePresetsRes.ok
+      ? (await rolePresetsRes.json()).rolePresets
+      : [];
     const domains = domainsRes.ok ? (await domainsRes.json()).domains : [];
 
     populateSelect(kbSelect, domains, "ep-core");
-    populateSelect(profileSelect, profiles, "default");
+    populateSelect(rolePresetSelect, rolePresets, "default");
     syncSessionSelectors();
     setControlsEnabled(!isRunning);
   } catch (err) {
     console.error("[discovery] Failed:", err);
     kbSelect.innerHTML = '<option value="">Error loading</option>';
-    profileSelect.innerHTML = '<option value="">Error loading</option>';
+    rolePresetSelect.innerHTML = '<option value="">Error loading</option>';
     kbSelect.dataset.hasOptions = "false";
-    profileSelect.dataset.hasOptions = "false";
+    rolePresetSelect.dataset.hasOptions = "false";
     setControlsEnabled(!isRunning);
   }
 }
@@ -142,7 +144,7 @@ function selectIfAvailable(select, value) {
 
 function syncSessionSelectors() {
   selectIfAvailable(kbSelect, currentDomain);
-  selectIfAvailable(profileSelect, currentProfileSlug);
+  selectIfAvailable(rolePresetSelect, currentRolePresetSlug);
 }
 
 // ---------------------------------------------------------------------------
@@ -237,11 +239,9 @@ function renderManifest(manifest) {
   rtSessionId.title = manifest.sessionId;
   rtSessionId.onclick = () => copyToClipboard(manifest.sessionId, rtSessionId);
 
-  // KB / Profile
-  rtKb.textContent = manifest.kbDomain || "—";
-  rtProfile.textContent = manifest.profilePath
-    ? manifest.profilePath.split(/[/\\]/).pop().replace(/\.md$/, "")
-    : "—";
+  // KB / Role preset
+  rtKb.textContent = manifest.kb?.domain || manifest.kbDomain || "—";
+  rtRolePreset.textContent = manifest.rolePreset?.slug || "—";
 
   // Model / Provider
   const model = manifest.model || "—";
@@ -265,7 +265,12 @@ function renderPaths(manifest) {
     ["Session File", manifest.piSessionFile],
     ["Records", manifest.recordsDir],
     ["Write Dir", manifest.writeDir],
-    ["Profile", manifest.profilePath],
+    ["App Context", manifest.appContext?.path],
+    ["Soul", manifest.soul?.path],
+    ["Role Preset", manifest.rolePreset?.path],
+    ["KB Root", manifest.kb?.rootDir],
+    ["KB Domain", manifest.kb?.domainPath],
+    ["Pi Prompts", manifest.piAdapter?.promptTemplatesDir],
     ["Runtime", manifest.runtimeDir],
     ["Core-Soul", manifest.coreSoul?.basePath],
   ];
@@ -401,13 +406,14 @@ ws.onmessage = (event) => {
     case "session_opened":
       currentSessionId = msg.payload.sessionId;
       currentDomain = msg.payload.currentDomain || "";
-      currentProfileSlug = msg.payload.profileSlug || "";
+      currentRolePresetSlug =
+        msg.payload.rolePresetSlug || msg.payload.profileSlug || "";
       sessionReady = true;
       isRunning = false;
       sessionIdEl.textContent = `Session: ${msg.payload.sessionId.slice(0, 8)}…`;
       sessionStatusEl.textContent = "Ready";
       rtKb.textContent = currentDomain || "—";
-      rtProfile.textContent = currentProfileSlug || "—";
+      rtRolePreset.textContent = currentRolePresetSlug || "—";
       syncSessionSelectors();
       setControlsEnabled(true);
       setConnStatus("idle", "Ready");
@@ -423,9 +429,12 @@ ws.onmessage = (event) => {
         sessionStatusEl.textContent = msg.payload.status || "Ready";
       }
       currentDomain = msg.payload.currentDomain || currentDomain;
-      currentProfileSlug = msg.payload.profileSlug || currentProfileSlug;
+      currentRolePresetSlug =
+        msg.payload.rolePresetSlug ||
+        msg.payload.profileSlug ||
+        currentRolePresetSlug;
       rtKb.textContent = currentDomain || rtKb.textContent;
-      rtProfile.textContent = currentProfileSlug || rtProfile.textContent;
+      rtRolePreset.textContent = currentRolePresetSlug || rtRolePreset.textContent;
       syncSessionSelectors();
       break;
 
@@ -566,7 +575,8 @@ function setControlsEnabled(enabled) {
   newSessionBtn.disabled = !interactive;
   refreshMetricsBtn.disabled = !interactive;
   kbSelect.disabled = !interactive || kbSelect.dataset.hasOptions !== "true";
-  profileSelect.disabled = !interactive || profileSelect.dataset.hasOptions !== "true";
+  rolePresetSelect.disabled =
+    !interactive || rolePresetSelect.dataset.hasOptions !== "true";
 }
 
 // ---------------------------------------------------------------------------
@@ -620,10 +630,20 @@ kbSelect.addEventListener("change", (e) => {
   }
 });
 
-// Profile switch — takes effect on next new session
-profileSelect.addEventListener("change", (e) => {
+// Role preset switch — takes effect on next new session
+rolePresetSelect.addEventListener("change", (e) => {
   if (!e.target.value) return;
-  wsSafeSend(JSON.stringify({ type: "switch_profile", payload: { profileSlug: e.target.value } }));
+  if (
+    wsSafeSend(
+      JSON.stringify({
+        type: "switch_role_preset",
+        payload: { rolePresetSlug: e.target.value },
+      })
+    )
+  ) {
+    currentRolePresetSlug = e.target.value;
+    rtRolePreset.textContent = currentRolePresetSlug;
+  }
 });
 
 // New session — confirm if chat has messages

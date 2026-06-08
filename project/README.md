@@ -36,13 +36,15 @@ For a new agent, start with:
 
 Use `%LLM_THEO_DEV_ROOT%` for runnable Node/npm development. Do not run npm installs or long dev-server work in the OneDrive worktree.
 
-`npm run smoke:core` passed on 2026-06-01. This only verifies core session/context assembly and agent-profile injection. Full backend/frontend app testing is still a future backend or integration-session task.
+`npm run smoke:core` passed on 2026-06-08 after the agent-asset loading repair.
+This verifies core session/context assembly and role-preset injection. Live
+provider backend smoke still requires explicit provider/model configuration.
 
 ## Current Adapted CodeStable Rule
 
 This project is not using a full `.codestable/` skeleton yet.
 
-For actual SWE feature / issue / refactor / multi-feature `swe-plan` coding work, use `agent-assets/skills/cs-swe-v0-3/SKILL.md`.
+For actual SWE feature / issue / refactor / multi-feature `swe-plan` coding work, use `agent-assets/skills/cs-swe-v0-4/SKILL.md`.
 
 Do not use `cs-modified-v0-1` as a current rule. It was an incorrect intermediate artifact from an earlier mistaken assumption that CodeStable should be adapted mainly at a high conceptual level. If that history matters, recover it from plan-records; do not present it to future agents as a skill.
 
