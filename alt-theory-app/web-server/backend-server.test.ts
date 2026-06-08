@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   writeFileSync,
 } from "fs";
@@ -10,7 +11,10 @@ import { join, resolve } from "path";
 import test from "node:test";
 import { mkdtempSync } from "fs";
 import WebSocket from "ws";
-import { createAltTheorySession } from "../core/alt-theory-core.js";
+import {
+  createAltTheorySession,
+  openAltTheorySession,
+} from "../core/alt-theory-core.js";
 import { createSessionDirs } from "../core/data-dir.js";
 import {
   isKnownKbDomain,
@@ -178,6 +182,153 @@ test("write-enabled core exposes write without edit/bash and writes notes", asyn
     );
   } finally {
     result.session.dispose();
+  }
+});
+
+test("openAltTheorySession opens existing JSONL and reports runtime drift", async () => {
+  const root = mkdtempSync(join(tmpdir(), "alt-theory-open-existing-"));
+  const dataDir = join(root, "data");
+  const rolePresets = join(root, "role-presets");
+  const kb = join(root, "kb");
+  const appContextPath = join(root, "ALTTHEORY.md");
+  const soulPath = join(root, "soul.md");
+  const modelsPath = join(root, "models.json");
+
+  mkdirSync(join(kb, "ep-core"), { recursive: true });
+  mkdirSync(rolePresets, { recursive: true });
+  writeFileSync(appContextPath, "Open existing app context", "utf-8");
+  writeFileSync(soulPath, "Open existing soul", "utf-8");
+  writeFileSync(join(rolePresets, "default.md"), "Default role", "utf-8");
+  writeFileSync(join(rolePresets, "alternate.md"), "Alternate role", "utf-8");
+  writeFileSync(
+    modelsPath,
+    JSON.stringify({
+      providers: {
+        "test-provider": {
+          baseUrl: "https://example.invalid/anthropic",
+          api: "anthropic-messages",
+          apiKey: "TEST_PROVIDER_API_KEY",
+          models: [
+            {
+              id: "test-model",
+              reasoning: false,
+              input: ["text"],
+              contextWindow: 4096,
+              maxTokens: 1024,
+              cost: {
+                input: 0,
+                output: 0,
+                cacheRead: 0,
+                cacheWrite: 0,
+              },
+            },
+          ],
+        },
+      },
+    }),
+    "utf-8"
+  );
+
+  const dirs = createSessionDirs(dataDir, "session-open-existing");
+  const fresh = await createAltTheorySession({
+    ...dirs,
+    appContextPath,
+    soulPath,
+    rolePresetPath: join(rolePresets, "default.md"),
+    rolePresetSlug: "default",
+    kbDir: kb,
+    kbDomain: "ep-core",
+    modelsPath,
+    modelProvider: "test-provider",
+    modelId: "test-model",
+    runtimeApiKey: "runtime-only-test-key",
+    readOnly: true,
+  });
+
+  const sessionFile = fresh.session.sessionFile;
+  assert.ok(sessionFile);
+  try {
+    fresh.session.sessionManager.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: "existing session context" }],
+      api: "openai-completions",
+      provider: "test-provider",
+      model: "test-model",
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          total: 0,
+        },
+      },
+      stopReason: "stop",
+      timestamp: Date.now(),
+    });
+  } finally {
+    fresh.session.dispose();
+  }
+
+  const manifestPath = join(dirs.recordsDir, "assembly-manifest.json");
+  const originalManifestText = readFileSync(manifestPath, "utf-8");
+  const originalManifest = JSON.parse(originalManifestText);
+  const sessionRootEntriesBefore = readdirSync(join(dataDir, "sessions"));
+
+  const opened = await openAltTheorySession({
+    ...dirs,
+    sessionFile,
+    originalManifest,
+    appContextPath,
+    soulPath,
+    rolePresetPath: join(rolePresets, "alternate.md"),
+    rolePresetSlug: "alternate",
+    kbDir: kb,
+    kbDomain: "all",
+    modelsPath,
+    modelProvider: "test-provider",
+    modelId: "test-model",
+    runtimeApiKey: "runtime-only-test-key",
+    readOnly: true,
+  });
+
+  try {
+    assert.equal(opened.session.sessionId, "session-open-existing");
+    const context = opened.session.sessionManager.buildSessionContext();
+    assert.equal(
+      context.messages.at(-1)?.content?.[0]?.text,
+      "existing session context"
+    );
+    assert.equal(opened.manifest.openedFrom, "existing");
+    assert.equal(opened.manifest.rolePreset.slug, "alternate");
+    assert.equal(opened.manifest.kb.domain, "all");
+    assert.ok(
+      opened.resumeWarnings.some((warning) =>
+        warning.includes("role preset differs")
+      )
+    );
+    assert.ok(
+      opened.resumeWarnings.some((warning) =>
+        warning.includes("KB domain differs")
+      )
+    );
+    assert.equal(readFileSync(manifestPath, "utf-8"), originalManifestText);
+    const resumeManifest = JSON.parse(
+      readFileSync(join(dirs.recordsDir, "resume-manifest.json"), "utf-8")
+    );
+    assert.equal(resumeManifest.openedFrom, "existing");
+    assert.equal(resumeManifest.resumedFrom.rolePresetSlug, "default");
+    assert.deepEqual(
+      readdirSync(join(dataDir, "sessions")),
+      sessionRootEntriesBefore
+    );
+  } finally {
+    opened.session.dispose();
   }
 });
 

@@ -43,6 +43,16 @@ export interface CoreSoulModule {
 export interface AssemblyManifest {
   sessionId: string;
   createdAt: string;
+  openedFrom?: "new" | "existing";
+  resumedFrom?: {
+    sessionId: string | null;
+    createdAt: string | null;
+    rolePresetSlug: string | null;
+    kbDomain: string | null;
+    provider: string | null;
+    model: string | null;
+  };
+  resumeWarnings?: string[];
   appContext: LoadedAssetFileRef;
   soul: LoadedAssetFileRef;
   rolePreset: LoadedAssetFileRef & {
@@ -112,6 +122,13 @@ export interface AltTheoryConfig extends SessionDirectories {
   thinkingLevel?: ThinkingLevel;
 }
 
+export interface AltTheoryOpenExistingConfig extends AltTheoryConfig {
+  /** Existing Pi JSONL file to open */
+  sessionFile: string;
+  /** Original assembly manifest, when available, used for drift warnings */
+  originalManifest?: AssemblyManifest | null;
+}
+
 /** Read-only tool allowlist (no write/edit/bash) */
 const READONLY_TOOLS = ["read", "ls", "grep", "find"];
 /** Conference-stage note mode: read/search plus write, without edit or bash. */
@@ -122,6 +139,44 @@ const WRITE_ENABLED_TOOLS = [...READONLY_TOOLS, "write"];
 // ---------------------------------------------------------------------------
 
 export async function createAltTheorySession(config: AltTheoryConfig) {
+  const sessionManager = SessionManager.create(
+    resolve(config.sessionCwd),
+    resolve(config.piSessionDir)
+  );
+  sessionManager.newSession({ id: config.sessionId });
+  return createAltTheorySessionWithManager(config, sessionManager, {
+    openedFrom: "new",
+    manifestFileName: "assembly-manifest.json",
+    originalManifest: null,
+    initialWarnings: [],
+  });
+}
+
+export async function openAltTheorySession(
+  config: AltTheoryOpenExistingConfig
+) {
+  const sessionManager = SessionManager.open(
+    resolve(config.sessionFile),
+    resolve(config.piSessionDir)
+  );
+  return createAltTheorySessionWithManager(config, sessionManager, {
+    openedFrom: "existing",
+    manifestFileName: "resume-manifest.json",
+    originalManifest: config.originalManifest ?? null,
+    initialWarnings: [],
+  });
+}
+
+async function createAltTheorySessionWithManager(
+  config: AltTheoryConfig,
+  sessionManager: SessionManager,
+  openMode: {
+    openedFrom: "new" | "existing";
+    manifestFileName: string;
+    originalManifest: AssemblyManifest | null;
+    initialWarnings: string[];
+  }
+) {
   const {
     sessionId,
     sessionCwd,
@@ -211,9 +266,6 @@ export async function createAltTheorySession(config: AltTheoryConfig) {
   // --- 3. Create session ---
   //    readOnly: use tool name allowlist (only read/ls/grep/find)
   //    coding: default tools (all built-in enabled)
-  const sessionManager = SessionManager.create(cwd, resolvedPiSessionDir);
-  sessionManager.newSession({ id: sessionId });
-
   const sessionOpts: Parameters<typeof createAgentSession>[0] = {
     cwd,
     resourceLoader: loader,
@@ -250,13 +302,16 @@ export async function createAltTheorySession(config: AltTheoryConfig) {
 
   const { session } = await createAgentSession(sessionOpts);
   const createdAt = new Date().toISOString();
-  session.sessionManager.appendCustomEntry("alt-theory-session-created", {
-    createdAt,
-  });
+  if (openMode.openedFrom === "new") {
+    session.sessionManager.appendCustomEntry("alt-theory-session-created", {
+      createdAt,
+    });
+  }
 
   const manifest: AssemblyManifest = {
     sessionId: session.sessionId,
     createdAt,
+    openedFrom: openMode.openedFrom,
     appContext: fileRef(resolvedAppContextPath),
     soul: fileRef(resolvedSoulPath),
     rolePreset: {
@@ -297,7 +352,119 @@ export async function createAltTheorySession(config: AltTheoryConfig) {
     provider: session.model?.provider ?? null,
   };
 
-  writeJsonAtomic(join(resolvedRecordsDir, "assembly-manifest.json"), manifest);
+  const resumeWarnings =
+    openMode.openedFrom === "existing"
+      ? uniqueWarnings([
+          ...openMode.initialWarnings,
+          ...compareResumeManifest(
+            openMode.originalManifest,
+            manifest,
+            sessionManager.getCwd(),
+            cwd
+          ),
+        ])
+      : [];
+  if (openMode.openedFrom === "existing") {
+    manifest.resumedFrom = summarizeOriginalManifest(openMode.originalManifest);
+    manifest.resumeWarnings = resumeWarnings;
+  }
 
-  return { session, manifest };
+  writeJsonAtomic(join(resolvedRecordsDir, openMode.manifestFileName), manifest);
+
+  return { session, manifest, resumeWarnings };
+}
+
+function summarizeOriginalManifest(
+  manifest: AssemblyManifest | null
+): AssemblyManifest["resumedFrom"] {
+  if (!manifest) {
+    return {
+      sessionId: null,
+      createdAt: null,
+      rolePresetSlug: null,
+      kbDomain: null,
+      provider: null,
+      model: null,
+    };
+  }
+  return {
+    sessionId: manifest.sessionId ?? null,
+    createdAt: manifest.createdAt ?? null,
+    rolePresetSlug: manifest.rolePreset?.slug ?? null,
+    kbDomain: manifest.kb?.domain ?? manifest.kbDomain ?? null,
+    provider: manifest.provider ?? null,
+    model: manifest.model ?? null,
+  };
+}
+
+function compareResumeManifest(
+  original: AssemblyManifest | null,
+  active: AssemblyManifest,
+  originalCwd: string,
+  activeCwd: string
+): string[] {
+  const warnings: string[] = [];
+  if (!original) {
+    warnings.push("original assembly manifest is missing");
+    return warnings;
+  }
+
+  compareField(
+    warnings,
+    "provider",
+    original.provider ?? null,
+    active.provider ?? null
+  );
+  compareField(warnings, "model", original.model ?? null, active.model ?? null);
+  compareField(
+    warnings,
+    "role preset",
+    original.rolePreset?.slug ?? null,
+    active.rolePreset?.slug ?? null
+  );
+  compareField(
+    warnings,
+    "KB domain",
+    original.kb?.domain ?? original.kbDomain ?? null,
+    active.kb?.domain ?? active.kbDomain ?? null
+  );
+  compareField(
+    warnings,
+    "app context hash",
+    original.appContext?.sha256 ?? null,
+    active.appContext?.sha256 ?? null
+  );
+  compareField(
+    warnings,
+    "soul hash",
+    original.soul?.sha256 ?? null,
+    active.soul?.sha256 ?? null
+  );
+  compareField(
+    warnings,
+    "role preset hash",
+    original.rolePreset?.sha256 ?? null,
+    active.rolePreset?.sha256 ?? null
+  );
+
+  if (resolve(originalCwd) !== resolve(activeCwd)) {
+    warnings.push("session cwd differs from current session workspace");
+  }
+
+  return warnings;
+}
+
+function compareField(
+  warnings: string[],
+  label: string,
+  original: string | null,
+  active: string | null
+) {
+  if (original !== active) {
+    warnings.push(`${label} differs from original session`);
+  }
+}
+
+function uniqueWarnings(warnings: string[]): string[] {
+  return [...new Set(warnings)];
 }
