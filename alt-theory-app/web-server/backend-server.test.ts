@@ -24,6 +24,11 @@ import {
   persistSessionMetrics,
 } from "./session-metrics.js";
 import { appendSessionEvent } from "./session-events.js";
+import {
+  getSessionRootForRequest,
+  listSessionSummaries,
+  readSessionDetail,
+} from "./session-store.js";
 
 test("asset registry lists safe sorted slugs and resolves known assets", () => {
   const root = mkdtempSync(join(tmpdir(), "alt-theory-assets-"));
@@ -240,6 +245,196 @@ test("session events are append-only structured records without message bodies",
   );
   assert.equal(raw.includes("message"), false);
   assert.ok(events.every((event) => event.eventId && event.timestamp));
+});
+
+test("session catalog and detail expose complete and incomplete sessions", async () => {
+  const root = mkdtempSync(join(tmpdir(), "alt-theory-session-catalog-"));
+  const dataDir = join(root, "data");
+  const assetRoot = join(root, "assets");
+  const rolePresets = join(assetRoot, "role-presets");
+  const kb = join(assetRoot, "kb");
+  const appContextPath = join(assetRoot, "ALTTHEORY.md");
+  const soulPath = join(assetRoot, "soul.md");
+  const modelsPath = join(root, "models.json");
+
+  mkdirSync(join(kb, "ep-core"), { recursive: true });
+  mkdirSync(rolePresets, { recursive: true });
+  writeFileSync(appContextPath, "Catalog test app context", "utf-8");
+  writeFileSync(soulPath, "Catalog test soul", "utf-8");
+  writeFileSync(join(rolePresets, "default.md"), "Default role", "utf-8");
+  writeFileSync(
+    modelsPath,
+    JSON.stringify({
+      providers: {
+        "test-provider": {
+          baseUrl: "https://example.invalid/anthropic",
+          api: "anthropic-messages",
+          apiKey: "TEST_PROVIDER_API_KEY",
+          models: [
+            {
+              id: "test-model",
+              reasoning: false,
+              input: ["text"],
+              contextWindow: 4096,
+              maxTokens: 1024,
+              cost: {
+                input: 0,
+                output: 0,
+                cacheRead: 0,
+                cacheWrite: 0,
+              },
+            },
+          ],
+        },
+      },
+    }),
+    "utf-8"
+  );
+
+  const completeDirs = createSessionDirs(dataDir, "session-complete");
+  const complete = await createAltTheorySession({
+    ...completeDirs,
+    appContextPath,
+    soulPath,
+    rolePresetPath: join(rolePresets, "default.md"),
+    rolePresetSlug: "default",
+    kbDir: kb,
+    kbDomain: "ep-core",
+    modelsPath,
+    modelProvider: "test-provider",
+    modelId: "test-model",
+    runtimeApiKey: "runtime-only-test-key",
+    readOnly: true,
+  });
+  try {
+    complete.session.sessionManager.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: "catalog preview text" }],
+      api: "openai-completions",
+      provider: "test-provider",
+      model: "test-model",
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          total: 0,
+        },
+      },
+      stopReason: "stop",
+      timestamp: Date.now(),
+    });
+    persistSessionMetrics(completeDirs.recordsDir, {
+      turnCount: 1,
+      toolCallCount: 0,
+      messageCount: 1,
+      tokens: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        total: 0,
+      },
+      cost: 0,
+      contextUsage: null,
+    });
+    appendSessionEvent(completeDirs.recordsDir, {
+      sessionId: "session-complete",
+      type: "session_created",
+      details: { kbDomain: "ep-core" },
+    });
+  } finally {
+    complete.session.dispose();
+  }
+
+  mkdirSync(join(dataDir, "sessions", "session-incomplete"), {
+    recursive: true,
+  });
+
+  const summaries = listSessionSummaries(dataDir).sessions;
+  const completeSummary = summaries.find(
+    (session) => session.sessionId === "session-complete"
+  );
+  const incompleteSummary = summaries.find(
+    (session) => session.sessionId === "session-incomplete"
+  );
+  assert.equal(completeSummary?.status, "available");
+  assert.equal(completeSummary?.rolePresetSlug, "default");
+  assert.equal(completeSummary?.kbDomain, "ep-core");
+  assert.equal(completeSummary?.provider, "test-provider");
+  assert.equal(completeSummary?.model, "test-model");
+  assert.equal(completeSummary?.messageCount, 1);
+  assert.equal(incompleteSummary?.status, "incomplete");
+  assert.equal(incompleteSummary?.hasManifest, false);
+  assert.equal(incompleteSummary?.hasSessionFile, false);
+  assert.equal(
+    getSessionRootForRequest(dataDir, ".bad").status,
+    "invalid"
+  );
+
+  const directDetail = readSessionDetail(dataDir, "session-complete");
+  assert.equal((directDetail?.pi.entryCount ?? 0) > 0, true);
+  assert.equal(directDetail?.pi.contextMessageCount, 1);
+  assert.equal(
+    directDetail?.transcriptPreview.at(-1)?.text,
+    "catalog preview text"
+  );
+  assert.equal(directDetail?.events.count, 1);
+
+  const instance = createAltTheoryServer({
+    dataDir,
+    appContextPath,
+    soulPath,
+    rolePresetsDir: rolePresets,
+    kbDir: kb,
+    readOnly: true,
+  });
+  await new Promise<void>((resolveListen) => {
+    instance.httpServer.listen(0, "127.0.0.1", resolveListen);
+  });
+  const address = instance.httpServer.address();
+  assert.ok(address && typeof address === "object");
+  const baseUrl = `http://127.0.0.1:${address.port}`;
+
+  try {
+    const listResponse = await fetch(`${baseUrl}/api/sessions`);
+    const listJson = await listResponse.json();
+    assert.equal(listJson.sessions.length >= 2, true);
+    assert.ok(
+      listJson.sessions.some(
+        (session: any) => session.sessionId === "session-complete"
+      )
+    );
+
+    const detailResponse = await fetch(
+      `${baseUrl}/api/sessions/session-complete`
+    );
+    const detailJson = await detailResponse.json();
+    assert.equal(detailJson.session.sessionId, "session-complete");
+    assert.equal(detailJson.pi.contextMessageCount, 1);
+    assert.equal(
+      detailJson.transcriptPreview.at(-1).text,
+      "catalog preview text"
+    );
+
+    const invalidResponse = await fetch(`${baseUrl}/api/sessions/.bad`);
+    assert.equal(invalidResponse.status, 400);
+
+    const missingResponse = await fetch(`${baseUrl}/api/sessions/missing`);
+    assert.equal(missingResponse.status, 404);
+  } finally {
+    await new Promise<void>((resolveClose) => {
+      instance.wss.close(() => {
+        instance.httpServer.close(() => resolveClose());
+      });
+    });
+  }
 });
 
 test("REST discovery and WebSocket sessions are connection-local", async () => {

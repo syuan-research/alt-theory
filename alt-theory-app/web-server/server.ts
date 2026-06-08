@@ -46,6 +46,11 @@ import {
   persistSessionMetrics,
 } from "./session-metrics.js";
 import { appendSessionEvent } from "./session-events.js";
+import {
+  getSessionRootForRequest,
+  listSessionSummaries,
+  readSessionDetail,
+} from "./session-store.js";
 
 const PROJECT_ROOT = process.cwd();
 const PUBLIC_DIR = resolve(
@@ -130,6 +135,28 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   });
   app.get("/api/kb-domains", (_req, res) => {
     res.json({ domains: listKbDomains(kbDir) });
+  });
+  app.get("/api/sessions", (_req, res) => {
+    res.json(listSessionSummaries(dataDir));
+  });
+  app.get("/api/sessions/:sessionId", (req, res) => {
+    const sessionId = req.params.sessionId;
+    const root = getSessionRootForRequest(dataDir, sessionId);
+    if (root.status === "invalid") {
+      res.status(400).json({ error: `Invalid session id: ${sessionId}` });
+      return;
+    }
+    if (root.status === "missing") {
+      res.status(404).json({ error: `Unknown session id: ${sessionId}` });
+      return;
+    }
+
+    const detail = readSessionDetail(dataDir, sessionId);
+    if (!detail) {
+      res.status(404).json({ error: `Unknown session id: ${sessionId}` });
+      return;
+    }
+    res.json(detail);
   });
 
   async function createState(

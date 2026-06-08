@@ -7,7 +7,7 @@ import {
   writeFileSync,
 } from "fs";
 import { homedir } from "os";
-import { dirname, join, resolve } from "path";
+import { dirname, isAbsolute, join, relative, resolve } from "path";
 
 export interface SessionDirectories {
   sessionId: string;
@@ -36,7 +36,10 @@ export function createSessionDirs(
   sessionId = randomUUID()
 ): SessionDirectories {
   const resolvedDataDir = resolve(dataDir);
-  const sessionRoot = join(resolvedDataDir, "sessions", sessionId);
+  const sessionRoot = resolveSessionRoot(resolvedDataDir, sessionId);
+  if (!sessionRoot) {
+    throw new Error(`Invalid session id: ${sessionId}`);
+  }
 
   if (existsSync(sessionRoot)) {
     throw new Error(`Session directory already exists: ${sessionRoot}`);
@@ -59,6 +62,31 @@ export function createSessionDirs(
     recordsDir,
     writeDir,
   };
+}
+
+export function resolveSessionsRoot(dataDir: string): string {
+  return join(resolve(dataDir), "sessions");
+}
+
+export function resolveSessionRoot(
+  dataDir: string,
+  sessionId: string
+): string | null {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(sessionId)) {
+    return null;
+  }
+
+  const sessionsRoot = resolveSessionsRoot(dataDir);
+  const sessionRoot = resolve(sessionsRoot, sessionId);
+  const relativePath = relative(sessionsRoot, sessionRoot);
+  if (
+    !relativePath ||
+    relativePath.startsWith("..") ||
+    isAbsolute(relativePath)
+  ) {
+    return null;
+  }
+  return sessionRoot;
 }
 
 export function resolveRolePresetsDir(

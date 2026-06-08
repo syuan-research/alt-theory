@@ -1,0 +1,36 @@
+feature: 2026-06-08-session-catalog-and-detail-api
+created: 2026-06-08
+
+steps:
+  - action: "Catalog nouns: add safe session-root and session-store types/helpers"
+    exit_signal: "Helper unit coverage handles empty, complete, and incomplete session roots"
+    status: done
+  - action: "Detail preview: add Pi JSONL discovery and bounded context preview"
+    exit_signal: "Detail response reports Pi entry/context counts when JSONL exists and warning/null values when it does not"
+    status: done
+  - action: "REST wiring: mount list/detail routes"
+    exit_signal: "Backend server test fetches both routes successfully"
+    status: done
+  - action: "Plan writeback and verification"
+    exit_signal: "Checklist and SWE-plan item are updated; backend tests pass"
+    status: done
+
+checks:
+  - item: "Empty or missing sessions/ returns an empty sessions list"
+    source: design
+    status: passed
+  - item: "Complete sessions list newest first with role preset, KB domain, provider/model, metrics counts, and availability"
+    source: design
+    status: passed
+  - item: "Incomplete sessions list with status incomplete and warnings instead of crashing"
+    source: design
+    status: passed
+  - item: "Detail response includes manifest, metrics, event tail, Pi file info, context counts, and bounded transcript preview when available"
+    source: design
+    status: passed
+  - item: "Unsafe or missing IDs return explicit HTTP errors"
+    source: design
+    status: passed
+  - item: "Feature does not introduce WebSocket resume/open, frontend panel, export, tags, or live prompt"
+    source: design
+    status: passed
