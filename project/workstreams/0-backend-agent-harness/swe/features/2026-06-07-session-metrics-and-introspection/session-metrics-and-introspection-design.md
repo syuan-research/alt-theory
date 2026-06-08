@@ -6,8 +6,8 @@ summary: Expose and persist connection-local run counts plus Pi-native token and
 tags: [backend, websocket, metrics]
 swe_plan: backend-v2-infrastructure
 swe_plan_item: session-metrics-and-introspection
-swe_plan_path: project/workstreams/agent-harness/notes-and-status/2026-06-07-backend-v2-infrastructure-swe-plan.md
-swe_plan_items_path: project/workstreams/agent-harness/notes-and-status/2026-06-07-backend-v2-infrastructure-swe-plan-items.yaml
+swe_plan_path: project/workstreams/0-backend-agent-harness/notes-and-status/2026-06-07-backend-v2-infrastructure-swe-plan.md
+swe_plan_items_path: project/workstreams/0-backend-agent-harness/notes-and-status/2026-06-07-backend-v2-infrastructure-swe-plan-items.yaml
 requirement: null
 ---
 

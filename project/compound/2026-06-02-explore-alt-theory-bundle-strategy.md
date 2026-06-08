@@ -51,7 +51,7 @@ graph TD
 2. **[C:/Program Files/Open Design Preview/resources/app/main.cjs:1-5](file:///C:/Program%20Files/Open%20Design%20Preview/resources/app/main.cjs#L1-L5)**: Shows that the Electron main script dynamically imports `./prebundled/packaged-main.mjs`, illustrating a prebundled compilation step for the Electron main process.
 3. **[C:/Program Files/Open Design Preview/resources/open-design-web-standalone/apps/web/server.js:1-44](file:///C:/Program%20Files/Open%20Design%20Preview/resources/open-design-web-standalone/apps/web/server.js#L1-L44)**: Shows that the standalone web component in Open Design Preview is a Next.js server configured for production standalone output (`output: "standalone"`), which runs via `startServer` on a designated port. Supporting the conclusion that the Electron app embeds a complete local web server rather than loading purely static client files.
 4. **[D:/reference-repo/alvinunreal__oh-my-opencode-slim/package.json:75-84](file:///D:/reference-repo/alvinunreal__oh-my-opencode-slim/package.json#L75-L84)**: Lists `@opencode-ai/plugin` and `@opencode-ai/sdk` as core dependencies. Supporting the conclusion that this plugin relies entirely on the OpenCode system CLI environment to execute rather than creating its own window interface.
-5. **[%LLM_THEO_WORKTREES_ROOT%/llm-theo-v0.3-dev/references/external-index.md:21](file:///%LLM_THEO_WORKTREES_ROOT%/llm-theo-v0.3-dev/references/external-index.md#L21)**: Identifies `C:\Program Files\Open Design Preview\resources\open-design` as the reference folder for design systems, prompts, skills, and craft docs. Supporting the conclusion that the assets are kept unpacked in the resources folder for runtime lookup.
+5. **[%LLM_THEO_WORKTREES_ROOT%/llm-theo-v0.3-dev/references/external-index.md:21](file:///%LLM_THEO_WORKTREES_ROOT%/llm-theo-v0.3-dev/references-to-legacy-materials/external-index.md#L21)**: Identifies `C:\Program Files\Open Design Preview\resources\open-design` as the reference folder for design systems, prompts, skills, and craft docs. Supporting the conclusion that the assets are kept unpacked in the resources folder for runtime lookup.
 
 ## Detail
 
@@ -77,4 +77,4 @@ This repository is an orchestration plugin for OpenCode. It uses `bun build` to 
 ## Related Documents
 
 - [AGENTS.md](file:///%LLM_THEO_WORKTREES_ROOT%/llm-theo-v0.3-dev/AGENTS.md)
-- [external-index.md](file:///%LLM_THEO_WORKTREES_ROOT%/llm-theo-v0.3-dev/references/external-index.md)
+- [external-index.md](file:///%LLM_THEO_WORKTREES_ROOT%/llm-theo-v0.3-dev/references-to-legacy-materials/external-index.md)

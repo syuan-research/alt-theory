@@ -338,8 +338,8 @@ All paths are local to the user's workspace, verified during this research sessi
 - `packages/agent/src/agent.ts` — Agent class source (per `agent.d.ts` sourcemap)
 
 ### Project context (not re-researched, only re-confirmed)
-- `evals/sim-user-eval-startup.md` — current sim-user workstream brief
-- `evals/eval-framework-origin-20260304.md` — original eval framework thinking
+- `evals/sim-user-eval-startup.md` — current sim-user workstream brief  # now at project/workstreams/1-eval-env-dev/notes-and-status/2026-06-01-sim-user-eval-startup.md
+- `evals/eval-framework-origin-20260304.md` — original eval framework thinking  # now at project/foundation/origin/eval-framework-origin-20260304.md
 - `_dev/sim-users/` — historical v0.1 sim-user work
 - `_dev/approaches/migrate-to-agent-harness-architecture/pi-alt-theory-spec-v0.6.md` — current Alt Theory spec
 

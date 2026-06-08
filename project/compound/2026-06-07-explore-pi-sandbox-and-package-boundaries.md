@@ -72,5 +72,5 @@ block the controlled live-provider experiment on that future design.
 
 ## Related Documents
 
-- `project/workstreams/agent-harness/swe/issues/2026-06-07-pi-write-outside-workspace/`
-- `project/workstreams/agent-harness/notes-and-status/2026-06-07-backend-v2-plan-record-v1.md`
+- `project/workstreams/0-backend-agent-harness/swe/issues/2026-06-07-pi-write-outside-workspace/`
+- `project/workstreams/0-backend-agent-harness/notes-and-status/2026-06-07-backend-v2-plan-record-v1.md`

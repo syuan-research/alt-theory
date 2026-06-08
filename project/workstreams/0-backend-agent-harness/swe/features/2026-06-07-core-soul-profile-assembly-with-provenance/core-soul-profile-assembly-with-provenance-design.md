@@ -6,8 +6,8 @@ summary: Assemble selected core-soul modules and an optional profile in determin
 tags: [backend, prompt-assembly, provenance]
 swe_plan: backend-v2-infrastructure
 swe_plan_item: core-soul-profile-assembly-with-provenance
-swe_plan_path: project/workstreams/agent-harness/notes-and-status/2026-06-07-backend-v2-infrastructure-swe-plan.md
-swe_plan_items_path: project/workstreams/agent-harness/notes-and-status/2026-06-07-backend-v2-infrastructure-swe-plan-items.yaml
+swe_plan_path: project/workstreams/0-backend-agent-harness/notes-and-status/2026-06-07-backend-v2-infrastructure-swe-plan.md
+swe_plan_items_path: project/workstreams/0-backend-agent-harness/notes-and-status/2026-06-07-backend-v2-infrastructure-swe-plan-items.yaml
 requirement: null
 ---
 

@@ -6,8 +6,8 @@ summary: Give every WebSocket connection an independent Pi session, selections, 
 tags: [backend, websocket, session]
 swe_plan: backend-v2-infrastructure
 swe_plan_item: per-connection-state-isolation
-swe_plan_path: project/workstreams/agent-harness/notes-and-status/2026-06-07-backend-v2-infrastructure-swe-plan.md
-swe_plan_items_path: project/workstreams/agent-harness/notes-and-status/2026-06-07-backend-v2-infrastructure-swe-plan-items.yaml
+swe_plan_path: project/workstreams/0-backend-agent-harness/notes-and-status/2026-06-07-backend-v2-infrastructure-swe-plan.md
+swe_plan_items_path: project/workstreams/0-backend-agent-harness/notes-and-status/2026-06-07-backend-v2-infrastructure-swe-plan-items.yaml
 requirement: null
 ---
 

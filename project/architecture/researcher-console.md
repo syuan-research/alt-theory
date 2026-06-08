@@ -152,9 +152,9 @@ sessions, resume them, tag them, annotate them, or export them.
 
 - `project/architecture/core-session-engine.md`: backend session, prompt
   assembly, persistence, and WebSocket architecture.
-- `project/workstreams/agent-harness/notes-and-status/2026-06-08-researcher-console-issue-pool-plan-record-v1.md`:
+- `project/workstreams/0-backend-agent-harness/notes-and-status/2026-06-08-researcher-console-issue-pool-plan-record-v1.md`:
   current issue pool and implementation priority discussion.
-- `project/workstreams/frontend-prototype-research/notes-and-status/2026-06-07-temporary-frontend-implementation-report.md`:
+- `project/workstreams/0-frontend-and-research-console/notes-and-status/2026-06-07-temporary-frontend-implementation-report.md`:
   implementation report and live-turn smoke record for the temporary frontend.
 
 ## Change Log

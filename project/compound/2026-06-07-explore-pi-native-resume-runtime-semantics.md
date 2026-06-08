@@ -66,5 +66,5 @@ Use this evidence in a future Alt Theory session-list/resume feature design.
 
 ## Related Documents
 
-- `project/workstreams/agent-harness/notes-and-status/2026-06-07-backend-v2-plan-record-v1.md`
+- `project/workstreams/0-backend-agent-harness/notes-and-status/2026-06-07-backend-v2-plan-record-v1.md`
 - `project/architecture/core-session-engine.md`
