@@ -11,7 +11,7 @@ This worktree is the clean `v0.3` reorganization lane for Alt Theory. Alt Theory
 Current emphasis:
 
 - keep the old `llm-theo-v0.2` repo intact while building a cleaner `v0.3` structure;
-- use `cs-swe-v0-3` as the active SWE-only skill bundle;
+- use `cs-swe-v0-4` as the active SWE-only skill bundle;
 - separate project records, agent assets, evaluation work, and reference repositories more cleanly;
 - keep OneDrive-safe project history while moving dependency-heavy or reference-heavy material outside OneDrive when needed.
 
@@ -43,11 +43,12 @@ _archives/               # local ignored snapshots only
 
 Start with:
 
-1. [%LLM_THEO_WORKTREES_ROOT%/README.md](file:///%LLM_THEO_WORKTREES_ROOT%/README.md) for active worktree paths and branch mappings
-2. `project/README.md`
-3. `agent-assets/README.md`
-4. the relevant workstream under `project/workstreams/`
-5. the relevant workstream-local or cross-workstream file under `notes-and-status/`
+1. [%LLM_THEO_WORKTREES_ROOT%/AGENTS.md](file:///%LLM_THEO_WORKTREES_ROOT%/AGENTS.md) for top-level tree routing
+2. [%LLM_THEO_WORKTREES_ROOT%/README.md](file:///%LLM_THEO_WORKTREES_ROOT%/README.md) for worktree path and branch context
+3. `project/README.md`
+4. `agent-assets/README.md`
+5. the relevant workstream under `project/workstreams/`
+6. the relevant workstream-local or cross-workstream file under `notes-and-status/`
 
 Current manual-restructure note: after the 2026-06-08 cleanup, this dev
 worktree intentionally keeps software/dev records and runtime-facing assets,
@@ -56,9 +57,9 @@ backend runtime asset paths are known to be stale until the next backend repair.
 
 For software coding work, read:
 
-1. `agent-assets/skills/cs-swe-v0-3/SKILL.md`
-2. `agent-assets/skills/cs-swe-v0-3/references/shared-conventions.md`
-3. the matching workflow file under `agent-assets/skills/cs-swe-v0-3/references/workflows/`
+1. `agent-assets/skills/cs-swe-v0-4/SKILL.md`
+2. `agent-assets/skills/cs-swe-v0-4/references/shared-conventions.md`
+3. the matching workflow file under `agent-assets/skills/cs-swe-v0-4/references/workflows/`
 4. relevant system architecture maps under `project/architecture/` (e.g., `repo-structure-v0.3.md`, `core-session-engine.md`)
 
 For branch/recovery context, also check:
@@ -70,7 +71,10 @@ For branch/recovery context, also check:
 
 - `project/` is the source of truth for project structure, recovery, plans, dev-facing workstream records, and architecture.
 - `agent-assets/` is the source of truth for runtime-facing assets, profiles, prompts, KB copies, and skills.
-- `agent-assets/skills/cs-swe-v0-3/` is the active SWE skill bundle.
+- `agent-assets/skills/cs-swe-v0-4/` is the active SWE skill bundle.
+- `agent-assets/skills/cs-swe-v0-3/` is the previous active bundle and should
+  be treated as comparison/history unless the user explicitly asks to inspect
+  it.
 - `cs-swe-v0-2/` and sibling `cs-swe-*` v0.2 folders are historical comparison material only.
 
 ## Plan-Records And Workstreams
@@ -177,9 +181,10 @@ Current policy:
   relevant, and use `git check-ignore -v <path>` when a file expected for Git is
   missing.
 
-External research trees such as a future `llm-theo-research` directory need
-their own Git/privacy/sync policy. Do not assume material is shareable or
-tracked just because another coding-agent workdir can read it.
+The external research tree `<external-research-tree>` has its own
+Git/privacy/sync policy and may later have its own `AGENTS.md`. Do not assume
+material is shareable or tracked just because another coding-agent workdir can
+read it.
 
 ## Local Development Notes
 
