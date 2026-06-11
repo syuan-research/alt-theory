@@ -45,9 +45,11 @@ Thumbs.db
 auth.json
 credentials.json
 secrets.json
+models.json
 **/auth.json
 **/credentials.json
 **/secrets.json
+**/models.json
 
 # Local Alt Theory runtime/session data
 /.alt-theory/
@@ -58,6 +60,15 @@ secrets.json
 *.jsonl
 !*.example.jsonl
 !**/fixtures/**/*.jsonl
+
+# Workstream-local test runs (dev-acceptance scripts, screenshots, logs)
+/runs/
+**/output/*-run-*/
+/**/output/*-cdp/
+/**/output/*-smoke-*/
+server.log
+server.log.err
+playwright-mcp.log
 
 # Private/raw research and user data
 /private/

@@ -12,6 +12,19 @@ Current first-slice layout:
 - `models.example.json` is an uncredentialed example for custom provider/model configuration. Runtime keys stay in environment/config, not Git.
 - `skills/cs-swe-v0-4/` is the active SWE-only CodeStable-derived skill bundle for feature / issue / refactor / `swe-plan` coding work. It keeps its internal workflow/reference files inside the same folder and uses relative internal links.
 
+## Adding Runtime Assets
+
+- New role presets go in `role-presets/{slug}.md`; prefer lowercase
+  kebab-case. The slug is the filename without `.md`.
+- New KB domains go in `kb/{domain-slug}/`; prefer lowercase kebab-case for
+  the directory name. Put ordinary markdown files inside the domain directory.
+- New Pi adapter prompt templates go in `prompts/pi/{template}.md` only when
+  the Pi adapter prompt layer itself is being changed. Do not use this folder
+  for ordinary semantic KB or role-preset material.
+- Local provider/model config should copy from `models.example.json` to an
+  ignored local `models.json` or another ignored path. The `apiKey` field is an
+  environment-variable name, not the plaintext key.
+
 2026-06-08 cleanup status:
 
 - The old `runtime/pi-tui/` duplicate runtime context was removed during manual

@@ -186,8 +186,39 @@ Git/privacy/sync policy and may later have its own `AGENTS.md`. Do not assume
 material is shareable or tracked just because another coding-agent workdir can
 read it.
 
+## Public-Branch Privacy
+
+Treat tracked files in this dev tree as future public-branch material.
+
+- In plan-records, acceptance reports, architecture docs, README files, and
+  compound records, replace personal absolute paths with variables or
+  placeholders before considering a file ready for commit.
+- Keep project-internal paths when they are useful, but prefer repo-relative
+  paths where practical. For machine-local paths use placeholders such as
+  `%USERPROFILE%`, `%APPDATA%`, `%LOCALAPPDATA%`, `%TEMP%`,
+  `%LLM_THEO_DEV_ROOT%`, `%LLM_THEO_RESEARCH_ROOT%`, `<INSTITUTION>`, or
+  `<external-research-tree>`.
+- Do not record plaintext keys, tokens, account identifiers, institution
+  details, user names, private transcript text, or personal directory names
+  unless the user explicitly says that exact detail is safe to publish.
+- Evidence generated from browser/UAT, live model calls, local logs, screenshots,
+  JSONL transcripts, or external folders should stay ignored by default. Track a
+  sanitized summary or acceptance note instead of the raw evidence unless the
+  user explicitly asks to curate and sanitize the raw artifact.
+- If raw evidence should be kept privately for later local recovery, archive it
+  under `_archives/private-evidence/{workstream}/{YYYYMMDD}-{slug}/` and record
+  only a sanitized local archive pointer in tracked docs. See
+  `project/foundation/private-evidence-policy.md`.
+- Before broad commits that touch records, scan for obvious personal path and
+  secret patterns such as `C:\Users\`, `%USERPROFILE%` expansions,
+  institution OneDrive names, `api_key`, `token`, and local paths outside this
+  repo.
+
 ## Local Development Notes
 
 - OneDrive-synced project folders should not host active npm installs that create real `node_modules/` trees.
 - Runnable dependency-heavy worktrees should stay outside OneDrive.
-- See `project/foundation/local-development-rules.md` and `project/foundation/gitignore-policy.md` for the current machine and Git policy details.
+- See `project/foundation/local-development-rules.md`,
+  `project/foundation/gitignore-policy.md`, and
+  `project/foundation/private-evidence-policy.md` for the current machine, Git,
+  and private evidence policy details.
