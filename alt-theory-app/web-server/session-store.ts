@@ -12,7 +12,7 @@ import {
   resolveSessionsRoot,
 } from "../core/data-dir.js";
 import type { SessionEvent } from "./session-events.js";
-import type { SessionMetrics } from "./websocket-protocol.js";
+import type { SessionMetrics, TranscriptMessage } from "./websocket-protocol.js";
 
 export interface SessionSummary {
   sessionId: string;
@@ -35,12 +35,6 @@ export interface SessionListResponse {
   sessions: SessionSummary[];
 }
 
-export interface DisplayMessage {
-  role: "user" | "assistant" | "system" | "tool" | "other";
-  text: string;
-  timestamp: string | null;
-}
-
 export interface SessionDetailResponse {
   session: SessionSummary;
   manifest: AssemblyManifest | null;
@@ -55,7 +49,8 @@ export interface SessionDetailResponse {
     contextMessageCount: number | null;
     cwd: string | null;
   };
-  transcriptPreview: DisplayMessage[];
+  transcript: TranscriptMessage[];
+  transcriptPreview: TranscriptMessage[];
   warnings: string[];
 }
 
@@ -103,6 +98,7 @@ export function readSessionDetail(
   const session = buildSummary(sessionId, parts);
   const events = readSessionEvents(parts.recordsDir, parts.state);
   const pi = readPiInfo(parts.sessionFile, parts.historyDir, parts.state);
+  const transcriptPreview = pi.transcript.slice(-12);
 
   return {
     session,
@@ -113,7 +109,8 @@ export function readSessionDetail(
       tail: events.slice(-20),
     },
     pi: pi.info,
-    transcriptPreview: pi.preview,
+    transcript: pi.transcript,
+    transcriptPreview,
     warnings: uniqueWarnings([...session.warnings, ...parts.state.warnings]),
   };
 }
@@ -276,7 +273,7 @@ function readPiInfo(
   state: ReadState
 ): {
   info: SessionDetailResponse["pi"];
-  preview: DisplayMessage[];
+  transcript: TranscriptMessage[];
 } {
   if (!sessionFile) {
     return {
@@ -286,7 +283,7 @@ function readPiInfo(
         contextMessageCount: null,
         cwd: null,
       },
-      preview: [],
+      transcript: [],
     };
   }
 
@@ -295,6 +292,13 @@ function readPiInfo(
     const entries = sessionManager.getEntries();
     const context = sessionManager.buildSessionContext();
     const messages = Array.isArray(context.messages) ? context.messages : [];
+    const transcript = messages
+      .map(toDisplayMessage)
+      .filter(
+        (message) =>
+          (message.role === "user" || message.role === "assistant") &&
+          message.text.trim().length > 0
+      );
     return {
       info: {
         sessionFile,
@@ -302,7 +306,7 @@ function readPiInfo(
         contextMessageCount: messages.length,
         cwd: sessionManager.getCwd(),
       },
-      preview: messages.slice(-12).map(toDisplayMessage),
+      transcript,
     };
   } catch {
     state.hasError = true;
@@ -314,12 +318,12 @@ function readPiInfo(
         contextMessageCount: null,
         cwd: null,
       },
-      preview: [],
+      transcript: [],
     };
   }
 }
 
-function toDisplayMessage(message: unknown): DisplayMessage {
+function toDisplayMessage(message: unknown): TranscriptMessage {
   const value = message as {
     role?: string;
     content?: unknown;
@@ -332,7 +336,7 @@ function toDisplayMessage(message: unknown): DisplayMessage {
   };
 }
 
-function normalizeRole(role: string | undefined): DisplayMessage["role"] {
+function normalizeRole(role: string | undefined): TranscriptMessage["role"] {
   if (
     role === "user" ||
     role === "assistant" ||
@@ -345,9 +349,10 @@ function normalizeRole(role: string | undefined): DisplayMessage["role"] {
 }
 
 function extractText(content: unknown): string {
-  if (typeof content === "string") return content;
+  if (typeof content === "string") return stripContextPrefix(content);
   if (Array.isArray(content)) {
-    return content
+    return stripContextPrefix(
+      content
       .map((part) => {
         if (typeof part === "string") return part;
         if (part && typeof part === "object" && "text" in part) {
@@ -356,12 +361,17 @@ function extractText(content: unknown): string {
         return "";
       })
       .filter(Boolean)
-      .join("\n");
+        .join("\n")
+    );
   }
   if (content && typeof content === "object" && "text" in content) {
-    return String((content as { text?: unknown }).text ?? "");
+    return stripContextPrefix(String((content as { text?: unknown }).text ?? ""));
   }
   return "";
+}
+
+function stripContextPrefix(text: string): string {
+  return text.replace(/^\[Context: [^\]]+\]\r?\n/, "");
 }
 
 function normalizeTimestamp(timestamp: string | number | undefined): string | null {

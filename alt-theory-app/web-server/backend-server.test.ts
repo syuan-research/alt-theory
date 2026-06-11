@@ -185,6 +185,51 @@ test("write-enabled core exposes write without edit/bash and writes notes", asyn
   }
 });
 
+test("core records resource discovery mode in the assembly manifest", async () => {
+  const root = mkdtempSync(join(tmpdir(), "alt-theory-resources-"));
+  const dirs = createSessionDirs(root);
+  const appContextPath = join(root, "ALTTHEORY.md");
+  const soulPath = join(root, "soul.md");
+  const rolePresets = join(root, "role-presets");
+  const kb = join(root, "kb");
+  const skillsDir = join(root, "skills");
+  mkdirSync(rolePresets, { recursive: true });
+  mkdirSync(join(kb, "ep-core"), { recursive: true });
+  mkdirSync(skillsDir, { recursive: true });
+  writeFileSync(appContextPath, "Test app context", "utf-8");
+  writeFileSync(soulPath, "Test soul", "utf-8");
+  writeFileSync(join(rolePresets, "default.md"), "Default role", "utf-8");
+
+  const result = await createAltTheorySession({
+    ...dirs,
+    appContextPath,
+    soulPath,
+    rolePresetPath: join(rolePresets, "default.md"),
+    rolePresetSlug: "default",
+    kbDir: kb,
+    kbDomain: "ep-core",
+    readOnly: true,
+    resourceDiscovery: "internal",
+    skillsDir,
+  });
+
+  try {
+    assert.deepEqual(result.manifest.resourceDiscovery, {
+      mode: "internal",
+      skillsDir: resolve(skillsDir),
+    });
+    const manifest = JSON.parse(
+      readFileSync(join(dirs.recordsDir, "assembly-manifest.json"), "utf-8")
+    );
+    assert.deepEqual(manifest.resourceDiscovery, {
+      mode: "internal",
+      skillsDir: resolve(skillsDir),
+    });
+  } finally {
+    result.session.dispose();
+  }
+});
+
 test("openAltTheorySession opens existing JSONL and reports runtime drift", async () => {
   const root = mkdtempSync(join(tmpdir(), "alt-theory-open-existing-"));
   const dataDir = join(root, "data");
@@ -615,6 +660,21 @@ test("WebSocket open_session replaces current state with an existing session", a
   });
   try {
     existing.session.sessionManager.appendMessage({
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: "[Context: Search in /tmp/kb/ep-core/ unless user says otherwise.]\nhello before resume",
+        },
+      ],
+      timestamp: Date.now(),
+    });
+    existing.session.sessionManager.appendMessage({
+      role: "tool",
+      content: [{ type: "text", text: "large tool output should not render" }],
+      timestamp: Date.now(),
+    } as any);
+    existing.session.sessionManager.appendMessage({
       role: "assistant",
       content: [{ type: "text", text: "websocket existing context" }],
       api: "openai-completions",
@@ -640,7 +700,7 @@ test("WebSocket open_session replaces current state with an existing session", a
     persistSessionMetrics(existingDirs.recordsDir, {
       turnCount: 1,
       toolCallCount: 0,
-      messageCount: 1,
+      messageCount: 2,
       tokens: {
         input: 0,
         output: 0,
@@ -715,6 +775,7 @@ test("WebSocket open_session replaces current state with an existing session", a
     assert.equal(stillCurrent.payload.sessionId, initialOpened.payload.sessionId);
 
     const openedPromise = waitForType(ws, "session_opened");
+    const transcriptPromise = waitForType(ws, "session_transcript");
     const metadataPromise = waitForType(ws, "session_metadata");
     const metricsPromise = waitForType(ws, "session_metrics");
     ws.send(
@@ -724,6 +785,7 @@ test("WebSocket open_session replaces current state with an existing session", a
       })
     );
     const opened = await openedPromise;
+    const transcript = await transcriptPromise;
     const metadata = await metadataPromise;
     const metrics = await metricsPromise;
 
@@ -731,7 +793,23 @@ test("WebSocket open_session replaces current state with an existing session", a
     assert.equal(opened.payload.openedFrom, "existing");
     assert.equal(metadata.payload.sessionId, "session-ws-open");
     assert.equal(metadata.payload.openedFrom, "existing");
-    assert.equal(metrics.payload.messageCount, 1);
+    assert.deepEqual(
+      transcript.payload.messages.map((message: any) => ({
+        role: message.role,
+        text: message.text,
+      })),
+      [
+        { role: "user", text: "hello before resume" },
+        { role: "assistant", text: "websocket existing context" },
+      ]
+    );
+    assert.equal(
+      transcript.payload.messages.some((message: any) =>
+        message.text.includes("large tool output")
+      ),
+      false
+    );
+    assert.equal(metrics.payload.messageCount, 2);
     assert.deepEqual(
       readdirSync(join(dataDir, "sessions")).sort(),
       sessionRootsAfterConnect.sort()

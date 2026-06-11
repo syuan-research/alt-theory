@@ -41,6 +41,12 @@ export interface SessionMetrics {
   } | null;
 }
 
+export interface TranscriptMessage {
+  role: "user" | "assistant" | "system" | "tool" | "other";
+  text: string;
+  timestamp: string | null;
+}
+
 // ---------------------------------------------------------------------------
 // Client → Server
 // ---------------------------------------------------------------------------
@@ -65,6 +71,7 @@ export type ServerMessage =
   | { type: "session_updated"; payload: SessionSnapshot }
   | { type: "session_metadata"; payload: AssemblyManifest }
   | { type: "session_metrics"; payload: SessionMetrics }
+  | { type: "session_transcript"; payload: { messages: TranscriptMessage[] } }
   | { type: "assistant_delta"; payload: { text: string } }
   | { type: "tool_started"; payload: { toolName: string; callId: string } }
   | { type: "tool_updated"; payload: { callId: string; text?: string; progress?: number } }

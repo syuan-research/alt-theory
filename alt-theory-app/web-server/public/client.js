@@ -345,6 +345,24 @@ function renderPreviewText(messages) {
     .join("\n\n");
 }
 
+function appendChatMessage(role, text) {
+  const value = (text || "").trim();
+  if (!value) return null;
+  const el = document.createElement("div");
+  if (role === "user") {
+    el.className = "message user";
+  } else if (role === "assistant") {
+    el.className = "message assistant";
+  } else if (role === "tool") {
+    el.className = "message tool-status finished";
+  } else {
+    el.className = "message system";
+  }
+  el.textContent = value;
+  messagesEl.appendChild(el);
+  return el;
+}
+
 function copyToClipboard(text, el) {
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(text).then(() => {
@@ -645,6 +663,19 @@ ws.onmessage = (event) => {
       renderMetrics(msg.payload);
       break;
 
+    case "session_transcript": {
+      clearChatSurface();
+      const messages = Array.isArray(msg.payload.messages)
+        ? msg.payload.messages
+        : [];
+      for (const message of messages) {
+        appendChatMessage(message.role, message.text);
+      }
+      hasMessages = messages.length > 0;
+      currentAssistantEl = null;
+      break;
+    }
+
     // --- Streaming text ---
     case "assistant_delta": {
       if (!currentAssistantEl) {
@@ -808,10 +839,7 @@ function sendMessage() {
   if (!wsSafeSend(JSON.stringify({ type: "prompt", payload: text }))) return;
 
   // Render user message
-  const userEl = document.createElement("div");
-  userEl.className = "message user";
-  userEl.textContent = text;
-  messagesEl.appendChild(userEl);
+  appendChatMessage("user", text);
   hasMessages = true;
 
   inputEl.value = "";

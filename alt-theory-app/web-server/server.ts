@@ -21,6 +21,7 @@ import {
   createAltTheorySession,
   openAltTheorySession,
   type AssemblyManifest,
+  type ResourceDiscoveryMode,
 } from "../core/alt-theory-core.js";
 import {
   createSessionDirs,
@@ -42,6 +43,7 @@ import type {
   ServerMessage,
   SessionMetrics,
   SessionSnapshot,
+  type TranscriptMessage,
 } from "./websocket-protocol.js";
 import {
   buildSessionMetrics,
@@ -73,6 +75,7 @@ interface ConnectionState {
   messageCount: number;
   toolCallCount: number;
   turnCount: number;
+  transcript: TranscriptMessage[];
 }
 
 export interface AltTheoryServerOptions {
@@ -95,6 +98,8 @@ export interface AltTheoryServerOptions {
   modelsPath?: string;
   runtimeApiKey?: string;
   thinkingLevel?: ThinkingLevel;
+  resourceDiscovery?: ResourceDiscoveryMode;
+  skillsDir?: string;
 }
 
 function parseCoreSoulModules(): string[] | undefined {
@@ -104,6 +109,20 @@ function parseCoreSoulModules(): string[] | undefined {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function parseResourceDiscoveryMode(
+  value: string | undefined
+): ResourceDiscoveryMode {
+  if (value === "clean" || value === "internal" || value === "dev-debug") {
+    return value;
+  }
+  if (value) {
+    console.warn(
+      `Unknown ALT_THEORY_RESOURCE_DISCOVERY '${value}', using dev-debug`
+    );
+  }
+  return "dev-debug";
 }
 
 export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
@@ -125,6 +144,15 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     options.modelProvider ?? process.env.ALT_THEORY_MODEL_PROVIDER;
   const modelId = options.modelId ?? process.env.ALT_THEORY_MODEL_ID;
   const modelsPath = assetPaths.modelsPath;
+  const resourceDiscovery = parseResourceDiscoveryMode(
+    options.resourceDiscovery ?? process.env.ALT_THEORY_RESOURCE_DISCOVERY
+  );
+  const skillsDir =
+    options.skillsDir ??
+    process.env.ALT_THEORY_SKILLS_DIR ??
+    (resourceDiscovery === "internal"
+      ? resolve(assetPaths.rootDir, "skills")
+      : undefined);
 
   const app = express();
   const httpServer = createServer(app);
@@ -197,6 +225,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       runtimeApiKey:
         options.runtimeApiKey ?? process.env.ALT_THEORY_MODEL_API_KEY,
       thinkingLevel: options.thinkingLevel,
+      resourceDiscovery,
+      skillsDir,
       readOnly,
     });
 
@@ -210,6 +240,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       messageCount: 0,
       toolCallCount: 0,
       turnCount: 0,
+      transcript: [],
     };
     appendSessionEvent(state.manifest.recordsDir, {
       sessionId: state.session.sessionId,
@@ -291,6 +322,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       runtimeApiKey:
         options.runtimeApiKey ?? process.env.ALT_THEORY_MODEL_API_KEY,
       thinkingLevel: options.thinkingLevel,
+      resourceDiscovery,
+      skillsDir,
       readOnly,
     });
 
@@ -304,6 +337,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       messageCount: detail.metrics?.messageCount ?? 0,
       toolCallCount: detail.metrics?.toolCallCount ?? 0,
       turnCount: detail.metrics?.turnCount ?? 0,
+      transcript: detail.transcript,
     };
 
     appendSessionEvent(state.manifest.recordsDir, {
@@ -624,6 +658,10 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             state = replacementState;
             state.unsubscribe = subscribeSession(state);
             send({ type: "session_opened", payload: snapshot(state) });
+            send({
+              type: "session_transcript",
+              payload: { messages: state.transcript },
+            });
             send({ type: "session_metadata", payload: state.manifest });
             send({ type: "session_metrics", payload: buildMetrics(state) });
           } catch (error) {
@@ -660,6 +698,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       modelProvider,
       modelId,
       modelsPath,
+      resourceDiscovery,
+      skillsDir,
     },
   };
 }
@@ -703,6 +743,9 @@ if (isMain) {
     );
     console.log(
       `  Model selection:   ${explicitModelSelection ? "explicit" : "Pi default or incomplete"}`
+    );
+    console.log(
+      `  Resources:         ${instance.config.resourceDiscovery}${instance.config.skillsDir ? ` (${instance.config.skillsDir})` : ""}`
     );
     if (
       (process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_BASE_URL) &&

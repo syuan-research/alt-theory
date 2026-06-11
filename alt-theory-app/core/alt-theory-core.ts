@@ -12,6 +12,7 @@ import {
   createAgentSession,
   DefaultResourceLoader,
   getAgentDir,
+  loadSkillsFromDir,
   ModelRegistry,
   SessionManager,
 } from "@mariozechner/pi-coding-agent";
@@ -83,7 +84,13 @@ export interface AssemblyManifest {
   writeDir: string | null;
   model: string | null;
   provider: string | null;
+  resourceDiscovery: {
+    mode: ResourceDiscoveryMode;
+    skillsDir: string | null;
+  };
 }
+
+export type ResourceDiscoveryMode = "clean" | "internal" | "dev-debug";
 
 export interface AltTheoryConfig extends SessionDirectories {
   /** Application/session context loaded into the system prompt */
@@ -120,6 +127,8 @@ export interface AltTheoryConfig extends SessionDirectories {
   /** Runtime-only API key; never persisted by Alt Theory */
   runtimeApiKey?: string;
   thinkingLevel?: ThinkingLevel;
+  resourceDiscovery?: ResourceDiscoveryMode;
+  skillsDir?: string;
 }
 
 export interface AltTheoryOpenExistingConfig extends AltTheoryConfig {
@@ -207,6 +216,8 @@ async function createAltTheorySessionWithManager(
     ? resolve(config.runtimeDir)
     : null;
   const agentDir = getAgentDir();
+  const resourceDiscovery = config.resourceDiscovery ?? "dev-debug";
+  const resolvedSkillsDir = config.skillsDir ? resolve(config.skillsDir) : null;
 
   // --- 1. Read semantic assets ---
   const appContextContent = readRequiredTextAsset(
@@ -258,7 +269,19 @@ async function createAltTheorySessionWithManager(
     additionalPromptTemplatePaths: resolvedPiPromptTemplatesDir
       ? [resolvedPiPromptTemplatesDir]
       : [],
-    agentsFilesOverride: (base) => base,
+    noContextFiles: resourceDiscovery !== "dev-debug",
+    skillsOverride:
+      resourceDiscovery === "clean"
+        ? () => ({ skills: [], diagnostics: [] })
+        : resourceDiscovery === "internal"
+          ? () =>
+              resolvedSkillsDir
+                ? loadSkillsFromDir({
+                    dir: resolvedSkillsDir,
+                    source: "alt-theory-internal",
+                  })
+                : { skills: [], diagnostics: [] }
+          : undefined,
     appendSystemPromptOverride: (base: string[]) => [...base, ...appendContent],
   });
   await loader.reload();
@@ -350,6 +373,10 @@ async function createAltTheorySessionWithManager(
     writeDir: readOnly ? null : resolvedWriteDir,
     model: session.model?.id ?? null,
     provider: session.model?.provider ?? null,
+    resourceDiscovery: {
+      mode: resourceDiscovery,
+      skillsDir: resolvedSkillsDir,
+    },
   };
 
   const resumeWarnings =
