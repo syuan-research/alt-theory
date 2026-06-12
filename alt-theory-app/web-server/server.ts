@@ -450,6 +450,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               payload: {
                 toolName: event.toolName,
                 callId: event.toolCallId,
+                path: extractToolPathFromEvent(event),
               },
             });
             break;
@@ -658,11 +659,11 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             state = replacementState;
             state.unsubscribe = subscribeSession(state);
             send({ type: "session_opened", payload: snapshot(state) });
+            send({ type: "session_metadata", payload: state.manifest });
             send({
               type: "session_transcript",
               payload: { messages: state.transcript },
             });
-            send({ type: "session_metadata", payload: state.manifest });
             send({ type: "session_metrics", payload: buildMetrics(state) });
           } catch (error) {
             send({
@@ -702,6 +703,32 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       skillsDir,
     },
   };
+}
+
+function extractToolPathFromEvent(event: AgentSessionEvent): string | null {
+  const args = (event as { args?: unknown }).args;
+  if (!args || typeof args !== "object") return null;
+  const value = args as {
+    path?: unknown;
+    file?: unknown;
+    filePath?: unknown;
+    file_path?: unknown;
+    dir?: unknown;
+    directory?: unknown;
+  };
+  for (const candidate of [
+    value.path,
+    value.file,
+    value.filePath,
+    value.file_path,
+    value.dir,
+    value.directory,
+  ]) {
+    if (typeof candidate === "string" && candidate.trim()) {
+      return candidate;
+    }
+  }
+  return null;
 }
 
 const isMain = process.argv[1]

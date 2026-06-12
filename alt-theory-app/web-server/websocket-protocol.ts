@@ -45,6 +45,9 @@ export interface TranscriptMessage {
   role: "user" | "assistant" | "system" | "tool" | "other";
   text: string;
   timestamp: string | null;
+  toolName?: string;
+  toolPath?: string | null;
+  success?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -73,7 +76,7 @@ export type ServerMessage =
   | { type: "session_metrics"; payload: SessionMetrics }
   | { type: "session_transcript"; payload: { messages: TranscriptMessage[] } }
   | { type: "assistant_delta"; payload: { text: string } }
-  | { type: "tool_started"; payload: { toolName: string; callId: string } }
+  | { type: "tool_started"; payload: { toolName: string; callId: string; path?: string | null } }
   | { type: "tool_updated"; payload: { callId: string; text?: string; progress?: number } }
   | { type: "tool_finished"; payload: { callId: string; success: boolean; output?: unknown } }
   | { type: "run_completed"; payload: SessionSnapshot }

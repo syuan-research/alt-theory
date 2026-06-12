@@ -292,13 +292,7 @@ function readPiInfo(
     const entries = sessionManager.getEntries();
     const context = sessionManager.buildSessionContext();
     const messages = Array.isArray(context.messages) ? context.messages : [];
-    const transcript = messages
-      .map(toDisplayMessage)
-      .filter(
-        (message) =>
-          (message.role === "user" || message.role === "assistant") &&
-          message.text.trim().length > 0
-      );
+    const transcript = buildTranscriptFromEntries(entries);
     return {
       info: {
         sessionFile,
@@ -323,17 +317,87 @@ function readPiInfo(
   }
 }
 
-function toDisplayMessage(message: unknown): TranscriptMessage {
-  const value = message as {
-    role?: string;
-    content?: unknown;
-    timestamp?: string | number;
+function buildTranscriptFromEntries(entries: unknown[]): TranscriptMessage[] {
+  const transcript: TranscriptMessage[] = [];
+  for (const entry of entries) {
+    const value = entry as {
+      type?: string;
+      timestamp?: string | number;
+      message?: {
+        role?: string;
+        content?: unknown;
+        timestamp?: string | number;
+      };
+    };
+    if (value.type !== "message" || !value.message) continue;
+
+    const role = normalizeRole(value.message.role);
+    const timestamp = normalizeTimestamp(value.message.timestamp ?? value.timestamp);
+    if (role === "user") {
+      const text = extractText(value.message.content).trim();
+      if (text) transcript.push({ role: "user", text, timestamp });
+      continue;
+    }
+    if (role === "assistant") {
+      transcript.push(...assistantContentToTranscript(value.message.content, timestamp));
+    }
+  }
+  return transcript;
+}
+
+function assistantContentToTranscript(
+  content: unknown,
+  timestamp: string | null
+): TranscriptMessage[] {
+  if (typeof content === "string") {
+    const text = stripContextPrefix(content).trim();
+    return text ? [{ role: "assistant", text, timestamp }] : [];
+  }
+
+  if (!Array.isArray(content)) {
+    const text = extractText(content).trim();
+    return text ? [{ role: "assistant", text, timestamp }] : [];
+  }
+
+  const messages: TranscriptMessage[] = [];
+  let textBuffer: string[] = [];
+  const flushText = () => {
+    const text = textBuffer.join("\n").trim();
+    if (text) messages.push({ role: "assistant", text, timestamp });
+    textBuffer = [];
   };
-  return {
-    role: normalizeRole(value.role),
-    text: extractText(value.content),
-    timestamp: normalizeTimestamp(value.timestamp),
-  };
+
+  for (const part of content) {
+    if (typeof part === "string") {
+      textBuffer.push(part);
+      continue;
+    }
+    if (!part || typeof part !== "object") continue;
+    const typedPart = part as {
+      type?: string;
+      text?: unknown;
+      name?: unknown;
+      arguments?: unknown;
+    };
+    if (typedPart.type === "text") {
+      textBuffer.push(String(typedPart.text ?? ""));
+      continue;
+    }
+    if (typedPart.type === "toolCall") {
+      flushText();
+      const toolName = String(typedPart.name ?? "tool");
+      messages.push({
+        role: "tool",
+        text: toolName,
+        toolName,
+        toolPath: extractToolPath(typedPart.arguments),
+        success: true,
+        timestamp,
+      });
+    }
+  }
+  flushText();
+  return messages;
 }
 
 function normalizeRole(role: string | undefined): TranscriptMessage["role"] {
@@ -353,14 +417,14 @@ function extractText(content: unknown): string {
   if (Array.isArray(content)) {
     return stripContextPrefix(
       content
-      .map((part) => {
-        if (typeof part === "string") return part;
-        if (part && typeof part === "object" && "text" in part) {
-          return String((part as { text?: unknown }).text ?? "");
-        }
-        return "";
-      })
-      .filter(Boolean)
+        .map((part) => {
+          if (typeof part === "string") return part;
+          if (part && typeof part === "object" && "text" in part) {
+            return String((part as { text?: unknown }).text ?? "");
+          }
+          return "";
+        })
+        .filter(Boolean)
         .join("\n")
     );
   }
@@ -368,6 +432,31 @@ function extractText(content: unknown): string {
     return stripContextPrefix(String((content as { text?: unknown }).text ?? ""));
   }
   return "";
+}
+
+function extractToolPath(args: unknown): string | null {
+  if (!args || typeof args !== "object") return null;
+  const value = args as {
+    path?: unknown;
+    file?: unknown;
+    filePath?: unknown;
+    file_path?: unknown;
+    dir?: unknown;
+    directory?: unknown;
+  };
+  for (const candidate of [
+    value.path,
+    value.file,
+    value.filePath,
+    value.file_path,
+    value.dir,
+    value.directory,
+  ]) {
+    if (typeof candidate === "string" && candidate.trim()) {
+      return candidate;
+    }
+  }
+  return null;
 }
 
 function stripContextPrefix(text: string): string {

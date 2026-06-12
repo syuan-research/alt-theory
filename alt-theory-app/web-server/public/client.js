@@ -93,7 +93,7 @@ let sessionCatalog = [];
 let selectedHistoricalSessionId = "";
 let selectedSessionDetail = null;
 let pendingOpenSessionId = "";
-let activeToolNames = {};  // callId -> { name, el }
+let activeToolNames = {};  // callId -> { name, path, el }
 
 // ---------------------------------------------------------------------------
 // REST discovery
@@ -345,7 +345,7 @@ function renderPreviewText(messages) {
     .join("\n\n");
 }
 
-function appendChatMessage(role, text) {
+function appendChatMessage(role, text, options = {}) {
   const value = (text || "").trim();
   if (!value) return null;
   const el = document.createElement("div");
@@ -354,7 +354,14 @@ function appendChatMessage(role, text) {
   } else if (role === "assistant") {
     el.className = "message assistant";
   } else if (role === "tool") {
-    el.className = "message tool-status finished";
+    const success = options.success !== false;
+    el.className = `message tool-status ${success ? "finished" : "failed"}`;
+    el.textContent = `${success ? "✓" : "✗"} ${toolLabel(
+      options.toolName || value,
+      options.path
+    )}`;
+    messagesEl.appendChild(el);
+    return el;
   } else {
     el.className = "message system";
   }
@@ -561,16 +568,45 @@ function renderMetrics(metrics) {
 // Tool status display
 // ---------------------------------------------------------------------------
 
-const TOOL_LABELS = {
-  read: "Reading knowledge base…",
-  grep: "Searching for relevant theories…",
-  find: "Locating files…",
-  ls: "Listing resources…",
-  write: "Writing notes…",
-};
+function normalizePathForCompare(path) {
+  return path ? path.replace(/\\/g, "/").toLowerCase() : "";
+}
 
-function toolLabel(name) {
-  return TOOL_LABELS[name] || `${name}…`;
+function pathStartsWith(path, base) {
+  const normalizedPath = normalizePathForCompare(path);
+  const normalizedBase = normalizePathForCompare(base);
+  return Boolean(
+    normalizedPath &&
+      normalizedBase &&
+      (normalizedPath === normalizedBase ||
+        normalizedPath.startsWith(`${normalizedBase.replace(/\/$/, "")}/`))
+  );
+}
+
+function isKbPath(path) {
+  if (!path || !latestManifest?.kb) return false;
+  return (
+    pathStartsWith(path, latestManifest.kb.domainPath) ||
+    pathStartsWith(path, latestManifest.kb.rootDir)
+  );
+}
+
+function toolLabel(name, path) {
+  const kbPath = isKbPath(path);
+  if (name === "read") {
+    return kbPath ? "Reading knowledge base…" : "Reading file…";
+  }
+  if (name === "grep") {
+    return kbPath ? "Searching for relevant theories…" : "Searching files…";
+  }
+  if (name === "find") {
+    return kbPath ? "Locating knowledge base files…" : "Locating files…";
+  }
+  if (name === "ls") {
+    return kbPath ? "Listing knowledge base…" : "Listing resources…";
+  }
+  if (name === "write") return "Writing notes…";
+  return `${name}…`;
 }
 
 /** Finalize any tool indicators that never received tool_finished. */
@@ -579,7 +615,10 @@ function finalizeStaleTools(success = true) {
     const entry = activeToolNames[callId];
     if (entry?.el) {
       entry.el.className = `message tool-status ${success ? "finished" : "failed"}`;
-      entry.el.textContent = `${success ? "✓" : "✗"} ${toolLabel(entry.name)}`;
+      entry.el.textContent = `${success ? "✓" : "✗"} ${toolLabel(
+        entry.name,
+        entry.path
+      )}`;
     }
   }
 }
@@ -669,7 +708,11 @@ ws.onmessage = (event) => {
         ? msg.payload.messages
         : [];
       for (const message of messages) {
-        appendChatMessage(message.role, message.text);
+        appendChatMessage(message.role, message.text, {
+          toolName: message.toolName,
+          path: message.toolPath,
+          success: message.success,
+        });
       }
       hasMessages = messages.length > 0;
       currentAssistantEl = null;
@@ -689,8 +732,8 @@ ws.onmessage = (event) => {
 
     // --- Tool calls ---
     case "tool_started": {
-      const { toolName, callId } = msg.payload;
-      const label = toolLabel(toolName);
+      const { toolName, callId, path } = msg.payload;
+      const label = toolLabel(toolName, path);
 
       // Inline tool indicator in chat
       const toolEl = document.createElement("div");
@@ -698,7 +741,7 @@ ws.onmessage = (event) => {
       toolEl.textContent = `⏳ ${label}`;
       toolEl.dataset.callId = callId;
       messagesEl.appendChild(toolEl);
-      activeToolNames[callId] = { name: toolName, el: toolEl };
+      activeToolNames[callId] = { name: toolName, path, el: toolEl };
 
       // Composer tool bar
       toolStatusEl.textContent = `⏳ ${label}`;
@@ -710,7 +753,10 @@ ws.onmessage = (event) => {
       if (entry?.el) {
         // Keep showing, maybe update progress text if provided
         if (msg.payload.text) {
-          entry.el.textContent = `⏳ ${toolLabel(entry.name)} — ${msg.payload.text}`;
+          entry.el.textContent = `⏳ ${toolLabel(
+            entry.name,
+            entry.path
+          )} — ${msg.payload.text}`;
         }
       }
       break;
@@ -721,7 +767,10 @@ ws.onmessage = (event) => {
       if (entry?.el) {
         const success = msg.payload.success;
         entry.el.className = `message tool-status ${success ? "finished" : "failed"}`;
-        entry.el.textContent = `${success ? "✓" : "✗"} ${toolLabel(entry.name)}`;
+        entry.el.textContent = `${success ? "✓" : "✗"} ${toolLabel(
+          entry.name,
+          entry.path
+        )}`;
       }
       delete activeToolNames[msg.payload.callId];
       // Clear composer tool status if no more active tools
