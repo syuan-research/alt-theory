@@ -9,6 +9,8 @@ Current policy:
 - `brainstorms/` stores central/open brainstorm records that are not feature-local.
 - `foundation/` stores selected project identity and legacy/foundation indexes.
 - `architecture/` stores current structure and architecture rationale.
+- `roadmap/` stores roadmap-facing references. It currently starts with a
+  retrospective version reference, not a full roadmap process.
 - `workstreams/` stores active or near-active workstream briefs, workstream-local `notes-and-status/`, and imported current-status docs.
 - `cross-workstream/` stores records and outputs that explicitly coordinate multiple workstreams.
 - Code-level SWE records belong in the concrete workstream they concern. Create a specific workstream such as backend, frontend, packaging, or evaluation implementation when that work becomes active; do not add a generic `project/workstreams/swe/` wrapper.
@@ -31,10 +33,11 @@ For a new agent, start with:
 
 1. `project/architecture/repo-structure-v0.3.md`
 2. `project/cross-workstream/folder-and-worktree-management/notes-and-status/2026-06-08-manual-restructure-stage0-1-plan-record.md`
-3. `%LLM_THEO_WORKTREES_ROOT%/README.md`
+3. the workspace-level worktree map, if present
 4. the relevant workstream-local file under `project/workstreams/{workstream}/notes-and-status/`, a named cross-workstream domain such as `project/cross-workstream/folder-and-worktree-management/notes-and-status/`, or `project/plan-records/` only for migration/repository-level records
 
-Use `%LLM_THEO_DEV_ROOT%` for runnable Node/npm development. Do not run npm installs or long dev-server work in the OneDrive worktree.
+Use `%LLM_THEO_DEV_ROOT%` for runnable Node/npm development. Do not run npm
+installs or long dev-server work in a synced historical checkout.
 
 `npm run smoke:core` passed on 2026-06-08 after the agent-asset loading repair.
 This verifies core session/context assembly and role-preset injection. Live
