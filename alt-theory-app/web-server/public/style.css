@@ -200,6 +200,7 @@ html, body {
 /* --- Selects --- */
 
 #kb-select,
+#soul-select,
 #role-preset-select {
   width: 100%;
   background: var(--bg-mid);
@@ -213,17 +214,20 @@ html, body {
 }
 
 #kb-select:hover,
+#soul-select:hover,
 #role-preset-select:hover {
   border-color: var(--text-muted);
 }
 
 #kb-select:disabled,
+#soul-select:disabled,
 #role-preset-select:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
 
 #kb-select:focus-visible,
+#soul-select:focus-visible,
 #role-preset-select:focus-visible {
   border-color: var(--accent-dim);
   outline: 1px solid var(--accent-dim);

@@ -20,7 +20,7 @@ implements: []
 - **Runtime inspector**: the right-side information surface showing current
   session metadata, metrics, paths, provider/model, and selected assets.
 - **Session/config panel**: the left-side control surface for creating a new
-  session and selecting KB/role preset.
+  session and selecting KB, soul, and role preset.
 - **Temporary frontend seed**: the current vanilla HTML/CSS/JS implementation.
   It is functional enough for live testing but not yet a complete researcher
   console.
@@ -53,6 +53,7 @@ flowchart LR
   Browser[Researcher console] --> REST[REST discovery]
   Browser --> WS[WebSocket session]
   REST --> RolePresets[role presets list]
+  REST --> Souls[soul variants list]
   REST --> KBDomains[KB domain list]
   REST --> SessionCatalog[session list + detail]
   WS --> Session[Connection-scoped session]
@@ -68,6 +69,7 @@ The left panel currently owns:
 - historical session list/detail/preview;
 - resume/open selected session control;
 - KB selector;
+- soul selector;
 - role-preset selector;
 - provider/model display.
 
@@ -83,7 +85,7 @@ The right runtime inspector currently owns:
 
 - full session ID;
 - connection status;
-- active KB/role preset;
+- active KB, soul, and role preset;
 - provider/model;
 - counters, tokens, context usage, cost;
 - key runtime paths;
@@ -108,7 +110,8 @@ directory but does not own or persist that index locally.
 
 Current backend-facing state:
 
-- discovery lists from `GET /api/role-presets` and `GET /api/kb-domains`;
+- discovery lists from `GET /api/role-presets`, `GET /api/souls`, and
+  `GET /api/kb-domains`;
 - legacy compatibility alias from `GET /api/profiles`;
 - historical session list and detail from `GET /api/sessions` and
   `GET /api/sessions/{sessionId}`;
@@ -117,7 +120,8 @@ Current backend-facing state:
 - session resume/open over WebSocket `open_session`;
 - streaming output and tool events over WebSocket;
 - selected KB domain in the current connection;
-- selected role-preset slug for the next `new_session`.
+- selected soul slug or `None` in the current connection;
+- selected role-preset slug or `None` in the current connection.
 
 Current persistence belongs to the backend data directory, not the browser:
 
@@ -136,11 +140,15 @@ It cannot yet tag, annotate, compare, or export sessions.
 ## 4. Current Capabilities
 
 - Opens a live backend session on WebSocket connect.
-- Populates KB and role-preset selectors from REST discovery.
+- Populates KB, soul, and role-preset selectors from REST discovery.
 - Populates historical session list/detail from REST.
 - Sends prompts and abort requests.
 - Starts a new session within the same browser connection.
 - Resumes/opens an existing session within the same browser connection.
+- Switches soul and role preset immediately by rebuilding the active backend
+  session for the current connection. When the current session has no Pi
+  history yet, the rebuild reuses the same session id/directory; after history
+  exists, the rebuild creates a new session boundary.
 - Displays streaming assistant text.
 - Displays tool started/updated/finished states.
 - Displays manifest, loaded asset paths, and metrics in the runtime inspector.
@@ -150,8 +158,8 @@ It cannot yet tag, annotate, compare, or export sessions.
 
 - Provider/model switching is not implemented in the console.
 - Core-soul module switching is not implemented in the console.
-- Role-preset switching is implemented for the next new session; current-session
-  prompt mutation is not implemented.
+- Role-preset and soul switching rebuild the backend session rather than
+  mutating an in-flight model prompt.
 - Tags and annotations are not implemented.
 - Export is not implemented.
 - Historical session comparison is not implemented.
@@ -178,3 +186,6 @@ It cannot yet tag, annotate, compare, or export sessions.
 - 2026-06-08: Updated after session browser/resume-open slice. Console now
   lists historical sessions, shows selected detail/preview, and sends
   WebSocket `open_session`.
+- 2026-06-12: Updated after researcher-console asset switching alignment.
+  Console now exposes soul and role `None` selectors, immediate backend
+  rebuild, and no-history session-id reuse.

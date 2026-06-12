@@ -5,8 +5,13 @@ This folder contains document-like assets that shape agent behavior and user exp
 Current first-slice layout:
 
 - `ALTTHEORY.md` is the application/session context loaded by Alt Theory runtime sessions.
-- `soul.md` is the current lightweight personality / stance seed.
-- `role-presets/default.md` is the default role/style/behavior preset. It replaces the old `profiles/default.md` naming because these files describe the agent role, not the user.
+- `soul/` contains selectable soul/personality stance seeds. Runtime default
+  selection prefers `soul/soul-latest.md`, then `soul/soul.md`; if neither
+  exists, sessions run with no soul layer.
+- `role-presets/` contains selectable role/style/behavior presets. If
+  `role-presets/default.md` exists, it is the default role; otherwise sessions
+  run with no role preset layer until one is selected. This replaces the old
+  `profiles/` naming because these files describe the agent role, not the user.
 - `prompts/pi/` is the current Pi adapter prompt-template area for review and future organization.
 - `kb/ep-core/` is the current runtime KB copy used for the first v0.3 smoke-test path. It is not yet declared the long-term KB source-of-truth.
 - `models.example.json` is an uncredentialed example for custom provider/model configuration. Runtime keys stay in environment/config, not Git.
@@ -15,7 +20,12 @@ Current first-slice layout:
 ## Adding Runtime Assets
 
 - New role presets go in `role-presets/{slug}.md`; prefer lowercase
-  kebab-case. The slug is the filename without `.md`.
+  kebab-case. The slug is the filename without `.md`. The researcher console
+  can also select `None`, which means no role preset layer is injected.
+- New soul variants go in `soul/{slug}.md`; prefer lowercase kebab-case. Use
+  `soul-latest.md` for the default experimental soul, or `soul.md` as the
+  fallback default. The researcher console can also select `None`, which means
+  no soul layer is injected.
 - New KB domains go in `kb/{domain-slug}/`; prefer lowercase kebab-case for
   the directory name. Put ordinary markdown files inside the domain directory.
 - New Pi adapter prompt templates go in `prompts/pi/{template}.md` only when
@@ -53,7 +63,7 @@ Local ignored archive convention:
 
 Future topics, not solved in this slice:
 
-- `soul.md` / `user.md` / `memory.md` alignment with OpenClaw and Hermes patterns.
+- `user.md` / `memory.md` alignment with OpenClaw and Hermes patterns.
 - Asset authoring versus runtime/test/release bundles.
 - Source-of-truth rules for KB and prompt versions.
 - Session-level agent instructions.

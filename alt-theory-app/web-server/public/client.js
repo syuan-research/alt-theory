@@ -6,7 +6,7 @@
  *   center: chat
  *   right: runtime inspector
  *
- * REST discovery populates KB and role-preset selectors.
+ * REST discovery populates KB, soul, and role-preset selectors.
  * WebSocket handles all live session state, streaming, tools, and metrics.
  */
 
@@ -16,6 +16,7 @@
 
 const newSessionBtn = document.getElementById("new-session-btn");
 const kbSelect = document.getElementById("kb-select");
+const soulSelect = document.getElementById("soul-select");
 const rolePresetSelect = document.getElementById("role-preset-select");
 const providerInfoEl = document.getElementById("provider-info");
 const sessionRefreshBtn = document.getElementById("session-refresh-btn");
@@ -40,6 +41,7 @@ const toolStatusEl = document.getElementById("tool-status");
 const rtSessionId = document.getElementById("rt-session-id");
 const rtConnStatus = document.getElementById("rt-conn-status");
 const rtKb = document.getElementById("rt-kb");
+const rtSoul = document.getElementById("rt-soul");
 const rtRolePreset = document.getElementById("rt-role-preset");
 const rtModel = document.getElementById("rt-model");
 const rtProvider = document.getElementById("rt-provider");
@@ -83,7 +85,8 @@ let isRunning = false;
 let hasMessages = false;
 let currentSessionId = "";
 let currentDomain = "";
-let currentRolePresetSlug = "";
+let currentRolePresetSlug = null;
+let currentSoulSlug = null;
 let sessionReady = false;
 let latestManifest = null;
 let pendingConfirmAction = null;
@@ -91,7 +94,9 @@ let sessionCatalog = [];
 let selectedHistoricalSessionId = "";
 let selectedSessionDetail = null;
 let pendingOpenSessionId = "";
+let pendingAssetSwitch = false;
 let activeToolNames = {};  // callId -> { name, path, el }
+const NONE_VALUE = "__none__";
 
 // ---------------------------------------------------------------------------
 // REST discovery
@@ -99,25 +104,32 @@ let activeToolNames = {};  // callId -> { name, path, el }
 
 async function fetchDiscovery() {
   try {
-    const [rolePresetsRes, domainsRes] = await Promise.all([
+    const [rolePresetsRes, soulsRes, domainsRes] = await Promise.all([
       fetch("/api/role-presets"),
+      fetch("/api/souls"),
       fetch("/api/kb-domains"),
     ]);
 
     const rolePresets = rolePresetsRes.ok
       ? (await rolePresetsRes.json()).rolePresets
       : [];
+    const souls = soulsRes.ok ? (await soulsRes.json()).souls : [];
     const domains = domainsRes.ok ? (await domainsRes.json()).domains : [];
 
     populateSelect(kbSelect, domains, "ep-core");
-    populateSelect(rolePresetSelect, rolePresets, "default");
+    populateSelect(soulSelect, souls, currentSoulSlug, { includeNone: true });
+    populateSelect(rolePresetSelect, rolePresets, currentRolePresetSlug || "default", {
+      includeNone: true,
+    });
     syncSessionSelectors();
     setControlsEnabled(!isRunning);
   } catch (err) {
     console.error("[discovery] Failed:", err);
     kbSelect.innerHTML = '<option value="">Error loading</option>';
+    soulSelect.innerHTML = '<option value="">Error loading</option>';
     rolePresetSelect.innerHTML = '<option value="">Error loading</option>';
     kbSelect.dataset.hasOptions = "false";
+    soulSelect.dataset.hasOptions = "false";
     rolePresetSelect.dataset.hasOptions = "false";
     setControlsEnabled(!isRunning);
   }
@@ -267,10 +279,20 @@ function renderSessionDetail() {
     !session.hasSessionFile || !session.sessionId || ws.readyState !== WebSocket.OPEN;
 }
 
-function populateSelect(select, items, defaultSlug) {
+function populateSelect(select, items, defaultSlug, options = {}) {
   select.innerHTML = "";
-  select.dataset.hasOptions = String(items.length > 0);
-  if (items.length === 0) {
+  const includeNone = Boolean(options.includeNone);
+  select.dataset.hasOptions = String(items.length > 0 || includeNone);
+
+  if (includeNone) {
+    const none = document.createElement("option");
+    none.value = NONE_VALUE;
+    none.textContent = "None";
+    if (!defaultSlug) none.selected = true;
+    select.appendChild(none);
+  }
+
+  if (items.length === 0 && !includeNone) {
     const opt = document.createElement("option");
     opt.value = "";
     opt.textContent = "— none found —";
@@ -287,14 +309,23 @@ function populateSelect(select, items, defaultSlug) {
 }
 
 function selectIfAvailable(select, value) {
-  if (!value) return;
-  const hasValue = Array.from(select.options).some((option) => option.value === value);
-  if (hasValue) select.value = value;
+  const target = value || NONE_VALUE;
+  const hasValue = Array.from(select.options).some((option) => option.value === target);
+  if (hasValue) select.value = target;
 }
 
 function syncSessionSelectors() {
   selectIfAvailable(kbSelect, currentDomain);
+  selectIfAvailable(soulSelect, currentSoulSlug);
   selectIfAvailable(rolePresetSelect, currentRolePresetSlug);
+}
+
+function selectedSlug(value) {
+  return value && value !== NONE_VALUE ? value : null;
+}
+
+function displaySlug(value) {
+  return value || "none";
 }
 
 // ---------------------------------------------------------------------------
@@ -456,9 +487,10 @@ function renderManifest(manifest) {
   rtSessionId.title = manifest.sessionId;
   rtSessionId.onclick = () => copyToClipboard(manifest.sessionId, rtSessionId);
 
-  // KB / Role preset
+  // KB / Soul / Role preset
   rtKb.textContent = manifest.kb?.domain || manifest.kbDomain || "—";
-  rtRolePreset.textContent = manifest.rolePreset?.slug || "—";
+  rtSoul.textContent = displaySlug(manifest.soul?.slug);
+  rtRolePreset.textContent = displaySlug(manifest.rolePreset?.slug);
 
   // Model / Provider
   const model = manifest.model || "—";
@@ -666,14 +698,20 @@ ws.onmessage = (event) => {
         clearChatSurface();
         pendingOpenSessionId = "";
       }
+      if (pendingAssetSwitch) {
+        clearChatSurface();
+        pendingAssetSwitch = false;
+      }
       currentSessionId = msg.payload.sessionId;
       currentDomain = msg.payload.currentDomain || "";
       currentRolePresetSlug =
-        msg.payload.rolePresetSlug || msg.payload.profileSlug || "";
+        msg.payload.rolePresetSlug ?? msg.payload.profileSlug ?? null;
+      currentSoulSlug = msg.payload.soulSlug ?? null;
       sessionReady = true;
       isRunning = false;
       rtKb.textContent = currentDomain || "—";
-      rtRolePreset.textContent = currentRolePresetSlug || "—";
+      rtSoul.textContent = displaySlug(currentSoulSlug);
+      rtRolePreset.textContent = displaySlug(currentRolePresetSlug);
       syncSessionSelectors();
       setControlsEnabled(true);
       setConnStatus("idle", "Ready");
@@ -689,11 +727,13 @@ ws.onmessage = (event) => {
       }
       currentDomain = msg.payload.currentDomain || currentDomain;
       currentRolePresetSlug =
-        msg.payload.rolePresetSlug ||
-        msg.payload.profileSlug ||
+        msg.payload.rolePresetSlug ??
+        msg.payload.profileSlug ??
         currentRolePresetSlug;
+      currentSoulSlug = msg.payload.soulSlug ?? currentSoulSlug;
       rtKb.textContent = currentDomain || rtKb.textContent;
-      rtRolePreset.textContent = currentRolePresetSlug || rtRolePreset.textContent;
+      rtSoul.textContent = displaySlug(currentSoulSlug);
+      rtRolePreset.textContent = displaySlug(currentRolePresetSlug);
       syncSessionSelectors();
       break;
 
@@ -827,6 +867,11 @@ ws.onmessage = (event) => {
         isRunning = false;
         setControlsEnabled(true);
       }
+      if (pendingAssetSwitch) {
+        pendingAssetSwitch = false;
+        isRunning = false;
+        setControlsEnabled(true);
+      }
       break;
     }
   }
@@ -868,6 +913,8 @@ function setControlsEnabled(enabled) {
     !selectedSessionDetail?.session?.hasSessionFile ||
     !selectedSessionDetail?.session?.sessionId;
   kbSelect.disabled = !interactive || kbSelect.dataset.hasOptions !== "true";
+  soulSelect.disabled =
+    !interactive || soulSelect.dataset.hasOptions !== "true";
   rolePresetSelect.disabled =
     !interactive || rolePresetSelect.dataset.hasOptions !== "true";
 }
@@ -927,19 +974,44 @@ kbSelect.addEventListener("change", (e) => {
   }
 });
 
-// Role preset switch — takes effect on next new session
-rolePresetSelect.addEventListener("change", (e) => {
-  if (!e.target.value) return;
+function requestAssetSwitch(message, label) {
+  pendingAssetSwitch = true;
+  if (!wsSafeSend(JSON.stringify(message))) {
+    pendingAssetSwitch = false;
+    return false;
+  }
+  isRunning = true;
+  setControlsEnabled(false);
+  setConnStatus("running", "Switching...");
+  toolStatusEl.textContent = label;
+  return true;
+}
+
+// Soul switch — replaces the active backend session immediately
+soulSelect.addEventListener("change", (e) => {
+  const soulSlug = selectedSlug(e.target.value);
   if (
-    wsSafeSend(
-      JSON.stringify({
-        type: "switch_role_preset",
-        payload: { rolePresetSlug: e.target.value },
-      })
+    requestAssetSwitch(
+      { type: "switch_soul", payload: { soulSlug } },
+      "Switching soul..."
     )
   ) {
-    currentRolePresetSlug = e.target.value;
-    rtRolePreset.textContent = currentRolePresetSlug;
+    currentSoulSlug = soulSlug;
+    rtSoul.textContent = displaySlug(currentSoulSlug);
+  }
+});
+
+// Role preset switch — replaces the active backend session immediately
+rolePresetSelect.addEventListener("change", (e) => {
+  const rolePresetSlug = selectedSlug(e.target.value);
+  if (
+    requestAssetSwitch(
+      { type: "switch_role_preset", payload: { rolePresetSlug } },
+      "Switching role preset..."
+    )
+  ) {
+    currentRolePresetSlug = rolePresetSlug;
+    rtRolePreset.textContent = displaySlug(currentRolePresetSlug);
   }
 });
 

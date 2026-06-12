@@ -14,8 +14,8 @@ function displayName(slug: string): string {
     .join(" ");
 }
 
-export function listRolePresets(rolePresetsDir: string): DiscoveredAsset[] {
-  const root = resolve(rolePresetsDir);
+function listMarkdownAssets(dir: string): DiscoveredAsset[] {
+  const root = resolve(dir);
   if (!existsSync(root)) {
     return [];
   }
@@ -32,8 +32,27 @@ export function listRolePresets(rolePresetsDir: string): DiscoveredAsset[] {
     .map((slug) => ({ slug, displayName: displayName(slug) }));
 }
 
+export function listRolePresets(rolePresetsDir: string): DiscoveredAsset[] {
+  return listMarkdownAssets(rolePresetsDir);
+}
+
 /** Deprecated compatibility alias. Use listRolePresets. */
 export const listProfiles = listRolePresets;
+
+export function listSouls(
+  soulDir: string,
+  legacySoulPath?: string | null
+): DiscoveredAsset[] {
+  const discovered = listMarkdownAssets(soulDir);
+  if (
+    discovered.length === 0 &&
+    legacySoulPath &&
+    existsSync(resolve(legacySoulPath))
+  ) {
+    return [{ slug: "soul", displayName: "Soul" }];
+  }
+  return discovered;
+}
 
 export function listKbDomains(kbDir: string): DiscoveredAsset[] {
   const root = resolve(kbDir);
@@ -60,6 +79,27 @@ export function resolveRolePresetSlug(
 
 /** Deprecated compatibility alias. Use resolveRolePresetSlug. */
 export const resolveProfileSlug = resolveRolePresetSlug;
+
+export function resolveSoulSlug(
+  soulDir: string,
+  slug: string,
+  legacySoulPath?: string | null
+): string | null {
+  if (!listSouls(soulDir, legacySoulPath).some((soul) => soul.slug === slug)) {
+    return null;
+  }
+
+  const candidate = resolve(soulDir, `${slug}.md`);
+  if (existsSync(candidate)) {
+    return candidate;
+  }
+
+  if (slug === "soul" && legacySoulPath && existsSync(resolve(legacySoulPath))) {
+    return resolve(legacySoulPath);
+  }
+
+  return null;
+}
 
 export function isKnownKbDomain(kbDir: string, slug: string): boolean {
   return (

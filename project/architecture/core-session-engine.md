@@ -26,13 +26,16 @@ and Pi adapter prompt templates from `agent-assets/prompts/pi/`.
 ## 0. Terminology
 
 - **Session**: one Pi conversation owned by one live WebSocket connection.
+- **Session ID**: Alt Theory-owned identifier generated before Pi session
+  creation. The current implementation uses a UUID; Pi receives that id via
+  `SessionManager.newSession({ id })`.
 - **Session workspace**: Pi tool `cwd`.
 - **Pi session directory**: storage for Pi's timestamped JSONL history.
 - **Write directory**: the session workspace; agent-authored notes and summaries
   live directly under Pi's `cwd`.
 - **Records directory**: Alt Theory-owned manifest, metrics, and runtime events.
 - **Assembly manifest**: immutable provenance record for application context,
-  soul, role preset, KB selection, Pi adapter prompts, paths, model, and
+  optional soul, optional role preset, KB selection, Pi adapter prompts, paths, model, and
   provider.
 - **Prompt assembly**: the full set of backend-controlled model-visible
   instructions assembled at session creation.
@@ -50,7 +53,7 @@ flowchart LR
   WS[WebSocket connection] --> State[ConnectionState]
   State --> Dirs[data-dir.ts]
   State --> Core[create/open AltTheorySession]
-  Core --> Assets[ALTTHEORY + soul + role preset + KB + Pi prompts]
+  Core --> Assets[ALTTHEORY + optional soul + optional role preset + KB + Pi prompts]
   Core --> Pi[Pi AgentSession]
   State --> Prefix[per-turn KB context prefix]
   Prefix --> Pi
@@ -91,8 +94,8 @@ Code anchors:
 3. `DefaultResourceLoader` loads Pi adapter prompt templates from
    `agent-assets/prompts/pi/`.
 4. Prompt layers are appended in this order: Alt Theory application context,
-   soul, optional core-soul modules, selected role preset, KB declaration,
-   optional write policy.
+   selected soul when present, optional core-soul modules, selected role preset
+   when present, KB declaration, optional write policy.
 5. Pi returns the reserved timestamped JSONL path. Pi physically writes it once
    an assistant message is present.
 6. Alt Theory atomically writes `records/assembly-manifest.json` and appends
@@ -135,16 +138,18 @@ Current model-visible content has two levels.
 - no Alt Theory runtime `AGENTS.md` file;
 - `appendSystemPromptOverride` layers in this order:
   1. `agent-assets/ALTTHEORY.md`;
-  2. `agent-assets/soul.md`;
+  2. selected `agent-assets/soul/{slug}.md`, when a soul is selected;
   3. optional core-soul module content, when configured;
-  4. selected `agent-assets/role-presets/{slug}.md`;
+  4. selected `agent-assets/role-presets/{slug}.md`, when a role preset is
+     selected;
   5. KB root declaration;
   6. write policy when write tools are enabled.
 
 The assembly manifest records the selected paths, existence flags, and SHA-256
-hashes for app context, soul, and role preset. It also records KB root/domain,
-Pi prompt-template directory, provider/model, session directories, and Pi JSONL
-path. Full content snapshots are deferred.
+hashes for app context, soul when present, and role preset when present. It
+also records selected soul/role slugs, including `null` for `None`, plus KB
+root/domain, Pi prompt-template directory, provider/model, session directories,
+and Pi JSONL path. Full content snapshots are deferred.
 
 Code anchors:
 
@@ -192,7 +197,12 @@ manifest, selected role-preset/domain, open mode, resume warnings, and counters.
 
 - Connect creates a session.
 - `new_session` aborts when needed, unsubscribes, disposes, and replaces only
-  that connection's session.
+  that connection's session. When the current session has no Pi history, the
+  replacement reuses the same session id and directories to avoid empty
+  experiment sessions.
+- Soul and role-preset switching use the same replacement path. With no Pi
+  history they rebuild in place; after history exists they create a new session
+  boundary.
 - `open_session` validates an existing session ID, opens its Pi JSONL, and
   replaces only that connection's session after the replacement is ready. Open
   failure sends an error and keeps the previous state.
@@ -206,6 +216,7 @@ manifest, selected role-preset/domain, open mode, resume warnings, and counters.
 REST:
 
 - `GET /api/role-presets`
+- `GET /api/souls`
 - `GET /api/profiles` legacy compatibility alias
 - `GET /api/kb-domains`
 - `GET /api/sessions`
@@ -246,8 +257,11 @@ is configured; they are not a billing claim.
 
 - Backend REST session list/detail and WebSocket `open_session` are
   implemented. Browser session-list UI is still pending.
-- Role-preset changes apply to the next new session; KB domain changes affect
-  the next prompt prefix.
+- Role-preset and soul changes from the researcher console immediately replace
+  the active connection's backend session with a newly assembled session using
+  the selected assets. The browser also offers `None` for both layers, which
+  injects no role/soul prompt section. KB domain changes affect the next prompt
+  prefix.
 - The per-turn KB context prefix is a temporary hardcoded hook substitute.
   There is no explicit hook/context-policy layer yet.
 - The assembly manifest hashes selected app context, soul, and role-preset
@@ -258,8 +272,10 @@ is configured; they are not a billing claim.
 - Existing-session open uses Pi JSONL history and current Alt Theory asset
   assembly. Cross-machine cwd mismatch is warning-only; there is no cwd rewrite
   or migration layer yet.
-- Soul is loaded from `agent-assets/soul.md`; optional core-soul module
-  activation remains configured by backend environment/config, not UI.
+- Default soul discovery prefers `agent-assets/soul/soul-latest.md`, then
+  `agent-assets/soul/soul.md`; if neither exists, no soul layer is injected.
+  Optional core-soul module activation remains configured by backend
+  environment/config, not UI.
 - Hard write-path enforcement, thinking events, compaction/retry events, and
   provider/auth UI are deferred.
 - Frontend consumption of the new APIs is a separate workstream.
@@ -279,7 +295,7 @@ is configured; they are not a billing claim.
 - 2026-06-08: Added current prompt assembly and per-turn context-prefix
   architecture, including the known hardcoded hook-substitute constraint.
 - 2026-06-08: Updated after minimal agent-asset loading repair. Backend now
-  loads `ALTTHEORY.md`, `soul.md`, `role-presets/default.md`,
+  loads `ALTTHEORY.md`, selected soul/role assets when present,
   `agent-assets/kb/`, and `agent-assets/prompts/pi/`.
 - 2026-06-08: Added backend session catalog/detail and WebSocket
   `open_session` for existing persisted sessions.

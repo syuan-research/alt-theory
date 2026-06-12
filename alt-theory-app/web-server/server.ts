@@ -28,6 +28,7 @@ import {
   createSessionDirs,
   getSessionDirs,
   resolveDataDir,
+  type SessionDirectories,
 } from "../core/data-dir.js";
 import {
   resolveAgentAssetPaths,
@@ -37,7 +38,9 @@ import {
   isKnownKbDomain,
   listKbDomains,
   listRolePresets,
+  listSouls,
   resolveRolePresetSlug,
+  resolveSoulSlug,
 } from "./asset-registry.js";
 import type {
   ClientMessage,
@@ -70,7 +73,8 @@ interface ConnectionState {
   unsubscribe: () => void;
   manifest: AssemblyManifest;
   currentDomain: string;
-  currentRolePresetSlug: string;
+  currentRolePresetSlug: string | null;
+  currentSoulSlug: string | null;
   openedFrom: "new" | "existing";
   resumeWarnings: string[];
   messageCount: number;
@@ -82,6 +86,7 @@ interface ConnectionState {
 export interface AltTheoryServerOptions {
   agentAssetsDir?: string;
   appContextPath?: string;
+  soulDir?: string;
   soulPath?: string;
   dataDir?: string;
   kbDir?: string;
@@ -142,6 +147,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   const assetPaths: AgentAssetPaths = resolveAgentAssetPaths(PROJECT_ROOT, {
     agentAssetsDir: options.agentAssetsDir,
     appContextPath: options.appContextPath,
+    soulDir: options.soulDir,
     soulPath: options.soulPath,
     rolePresetsDir: options.rolePresetsDir ?? options.profilesDir,
     kbDir: options.kbDir,
@@ -150,6 +156,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   });
   const kbDir = assetPaths.kbDir;
   const rolePresetsDir = assetPaths.rolePresetsDir;
+  const soulDir = assetPaths.soulDir;
+  const legacySoulPath = assetPaths.soulPath;
   const publicDir = resolve(options.publicDir ?? PUBLIC_DIR);
   const readOnly = options.readOnly ?? false;
   const modelProvider =
@@ -176,6 +184,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   app.use(express.static(publicDir));
   app.get("/api/role-presets", (_req, res) => {
     res.json({ rolePresets: listRolePresets(rolePresetsDir) });
+  });
+  app.get("/api/souls", (_req, res) => {
+    res.json({ souls: listSouls(soulDir, legacySoulPath) });
   });
   app.get("/api/profiles", (_req, res) => {
     res.json({ profiles: listRolePresets(rolePresetsDir) });
@@ -206,23 +217,87 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     res.json(detail);
   });
 
+  function defaultRolePresetSlug(): string | null {
+    return resolveRolePresetSlug(rolePresetsDir, "default") ? "default" : null;
+  }
+
+  function defaultSoulSlug(): string | null {
+    if (resolveSoulSlug(soulDir, "soul-latest", legacySoulPath)) {
+      return "soul-latest";
+    }
+    if (resolveSoulSlug(soulDir, "soul", legacySoulPath)) {
+      return "soul";
+    }
+    return null;
+  }
+
+  function optionalSlug(value: string | null | undefined): string | null {
+    return value && value.trim() ? value : null;
+  }
+
+  function resolveOptionalRolePresetPath(slug: string | null): string | null {
+    if (!slug) return null;
+    const path = resolveRolePresetSlug(rolePresetsDir, slug);
+    if (!path) {
+      throw new Error(`Unknown role preset slug: ${slug}`);
+    }
+    return path;
+  }
+
+  function resolveOptionalSoulPath(slug: string | null): string | null {
+    if (!slug) return null;
+    const path = resolveSoulSlug(soulDir, slug, legacySoulPath);
+    if (!path) {
+      throw new Error(`Unknown soul slug: ${slug}`);
+    }
+    return path;
+  }
+
+  function activeOptionalSlug(
+    original: string | null | undefined,
+    fallback: string | null,
+    resolvePath: (slug: string | null) => string | null
+  ): string | null {
+    if (original === null) return null;
+    if (typeof original === "string") {
+      try {
+        if (resolvePath(original)) return original;
+      } catch {
+        // Fall through to the current selector fallback.
+      }
+    }
+    return fallback;
+  }
+
   async function createState(
-    currentRolePresetSlug: string,
-    currentDomain: string
+    currentRolePresetSlug: string | null,
+    currentDomain: string,
+    currentSoulSlug: string | null
   ): Promise<ConnectionState> {
-    const rolePresetPath = resolveRolePresetSlug(
-      rolePresetsDir,
+    return createStateFromDirs(
+      createSessionDirs(dataDir),
+      currentRolePresetSlug,
+      currentDomain,
+      currentSoulSlug
+    );
+  }
+
+  async function createStateFromDirs(
+    sessionDirs: SessionDirectories,
+    currentRolePresetSlug: string | null,
+    currentDomain: string,
+    currentSoulSlug: string | null
+  ): Promise<ConnectionState> {
+    const rolePresetPath = resolveOptionalRolePresetPath(
       currentRolePresetSlug
     );
-    if (!rolePresetPath) {
-      throw new Error(`Unknown role preset slug: ${currentRolePresetSlug}`);
-    }
+    const soulPath = resolveOptionalSoulPath(currentSoulSlug);
 
-    const sessionDirs = createSessionDirs(dataDir);
     const result = await createAltTheorySession({
       ...sessionDirs,
       appContextPath: assetPaths.appContextPath,
-      soulPath: assetPaths.soulPath,
+      soulPath,
+      soulSlug: currentSoulSlug,
       rolePresetPath,
       rolePresetSlug: currentRolePresetSlug,
       kbDir,
@@ -251,6 +326,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       unsubscribe: () => {},
       currentDomain,
       currentRolePresetSlug,
+      currentSoulSlug,
       openedFrom: "new",
       resumeWarnings: [],
       messageCount: 0,
@@ -264,6 +340,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       details: {
         kbDomain: currentDomain,
         rolePresetSlug: currentRolePresetSlug,
+        soulSlug: currentSoulSlug,
         model: state.manifest.model,
         provider: state.manifest.provider,
       },
@@ -271,10 +348,22 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     return state;
   }
 
+  function hasSessionHistory(current: ConnectionState): boolean {
+    try {
+      const context = current.session.sessionManager.buildSessionContext();
+      return Array.isArray(context.messages) && context.messages.length > 0;
+    } catch {
+      return Boolean(
+        current.session.sessionFile && existsSync(current.session.sessionFile)
+      );
+    }
+  }
+
   async function createExistingState(
     sessionId: string,
-    fallbackRolePresetSlug: string,
-    fallbackDomain: string
+    fallbackRolePresetSlug: string | null,
+    fallbackDomain: string,
+    fallbackSoulSlug: string | null
   ): Promise<ConnectionState> {
     const root = getSessionRootForRequest(dataDir, sessionId);
     if (root.status === "invalid") {
@@ -294,19 +383,21 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       throw new Error(`Invalid session id: ${sessionId}`);
     }
 
-    const originalRolePresetSlug = detail.manifest?.rolePreset?.slug ?? null;
-    const activeRolePresetSlug =
-      originalRolePresetSlug &&
-      resolveRolePresetSlug(rolePresetsDir, originalRolePresetSlug)
-        ? originalRolePresetSlug
-        : fallbackRolePresetSlug;
-    const rolePresetPath = resolveRolePresetSlug(
-      rolePresetsDir,
-      activeRolePresetSlug
+    const originalRolePresetSlug = detail.manifest?.rolePreset?.slug;
+    const activeRolePresetSlug = activeOptionalSlug(
+      originalRolePresetSlug,
+      fallbackRolePresetSlug,
+      resolveOptionalRolePresetPath
     );
-    if (!rolePresetPath) {
-      throw new Error(`Unknown role preset slug: ${activeRolePresetSlug}`);
-    }
+    const rolePresetPath = resolveOptionalRolePresetPath(activeRolePresetSlug);
+
+    const originalSoulSlug = detail.manifest?.soul?.slug;
+    const activeSoulSlug = activeOptionalSlug(
+      originalSoulSlug,
+      fallbackSoulSlug,
+      resolveOptionalSoulPath
+    );
+    const soulPath = resolveOptionalSoulPath(activeSoulSlug);
 
     const originalDomain =
       detail.manifest?.kb?.domain ?? detail.manifest?.kbDomain ?? null;
@@ -320,7 +411,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       sessionFile: detail.pi.sessionFile,
       originalManifest: detail.manifest,
       appContextPath: assetPaths.appContextPath,
-      soulPath: assetPaths.soulPath,
+      soulPath,
+      soulSlug: activeSoulSlug,
       rolePresetPath,
       rolePresetSlug: activeRolePresetSlug,
       kbDir,
@@ -349,6 +441,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       unsubscribe: () => {},
       currentDomain: activeDomain,
       currentRolePresetSlug: activeRolePresetSlug,
+      currentSoulSlug: activeSoulSlug,
       openedFrom: "existing",
       resumeWarnings: result.resumeWarnings,
       messageCount: detail.metrics?.messageCount ?? 0,
@@ -364,6 +457,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         requestedSessionId: sessionId,
         kbDomain: activeDomain,
         rolePresetSlug: activeRolePresetSlug,
+        soulSlug: activeSoulSlug,
         warningCount: state.resumeWarnings.length,
       },
     });
@@ -429,6 +523,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       currentDomain: current.currentDomain,
       rolePresetSlug: current.currentRolePresetSlug,
       profileSlug: current.currentRolePresetSlug,
+      soulSlug: current.currentSoulSlug,
       openedFrom: current.openedFrom,
       resumeWarnings: current.resumeWarnings,
       messageCount: current.messageCount,
@@ -518,8 +613,52 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         }
       });
 
+    async function replaceCurrentState(
+      rolePresetSlug: string | null,
+      domain: string,
+      soulSlug: string | null,
+      abortReason: string
+    ): Promise<void> {
+      const previousState = state;
+      if (!previousState) return;
+      const reuseCurrentSession = !hasSessionHistory(previousState);
+
+      if (previousState.session.isStreaming) {
+        await previousState.session.abort();
+        appendSessionEvent(previousState.manifest.recordsDir, {
+          sessionId: previousState.session.sessionId,
+          type: "run_aborted",
+          details: { reason: abortReason },
+        });
+      }
+
+      const replacementState = reuseCurrentSession
+        ? await createStateFromDirs(
+            getSessionDirs(dataDir, previousState.session.sessionId)!,
+            rolePresetSlug,
+            domain,
+            soulSlug
+          )
+        : await createState(rolePresetSlug, domain, soulSlug);
+      if (closed) {
+        await disposeState(replacementState);
+        return;
+      }
+
+      await disposeState(previousState);
+      state = replacementState;
+      state.unsubscribe = subscribeSession(state);
+      send({ type: "session_opened", payload: snapshot(state) });
+      send({ type: "session_metadata", payload: state.manifest });
+      send({ type: "session_metrics", payload: buildMetrics(state) });
+    }
+
     try {
-      const initialState = await createState("default", "ep-core");
+      const initialState = await createState(
+        defaultRolePresetSlug(),
+        "ep-core",
+        defaultSoulSlug()
+      );
       if (closed) {
         await disposeState(initialState);
         return;
@@ -605,9 +744,12 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         case "switch_profile": {
           const rolePresetSlug =
             msg.type === "switch_role_preset"
-              ? msg.payload.rolePresetSlug
-              : msg.payload.profileSlug;
-          if (!resolveRolePresetSlug(rolePresetsDir, rolePresetSlug)) {
+              ? optionalSlug(msg.payload.rolePresetSlug)
+              : optionalSlug(msg.payload.profileSlug);
+          if (
+            rolePresetSlug &&
+            !resolveRolePresetSlug(rolePresetsDir, rolePresetSlug)
+          ) {
             send({
               type: "error",
               payload: {
@@ -616,31 +758,67 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             });
             break;
           }
-          state.currentRolePresetSlug = rolePresetSlug;
           appendSessionEvent(state.manifest.recordsDir, {
             sessionId: state.session.sessionId,
-            type: "role_preset_selected_next_session",
+            type: "role_preset_selected",
             details: { rolePresetSlug },
           });
+          try {
+            await replaceCurrentState(
+              rolePresetSlug,
+              state.currentDomain,
+              state.currentSoulSlug,
+              "role_preset_switch"
+            );
+          } catch (error) {
+            send({
+              type: "error",
+              payload: {
+                error: error instanceof Error ? error.message : String(error),
+              },
+            });
+          }
+          break;
+        }
+        case "switch_soul": {
+          const soulSlug = optionalSlug(msg.payload.soulSlug);
+          if (soulSlug && !resolveSoulSlug(soulDir, soulSlug, legacySoulPath)) {
+            send({
+              type: "error",
+              payload: { error: `Unknown soul slug: ${soulSlug}` },
+            });
+            break;
+          }
+          appendSessionEvent(state.manifest.recordsDir, {
+            sessionId: state.session.sessionId,
+            type: "soul_selected",
+            details: { soulSlug },
+          });
+          try {
+            await replaceCurrentState(
+              state.currentRolePresetSlug,
+              state.currentDomain,
+              soulSlug,
+              "soul_switch"
+            );
+          } catch (error) {
+            send({
+              type: "error",
+              payload: {
+                error: error instanceof Error ? error.message : String(error),
+              },
+            });
+          }
           break;
         }
         case "new_session": {
-          const rolePresetSlug = state.currentRolePresetSlug;
-          const domain = state.currentDomain;
-          const previousState = state;
-          state = null;
-          await disposeState(previousState);
           try {
-            const replacementState = await createState(rolePresetSlug, domain);
-            if (closed) {
-              await disposeState(replacementState);
-              return;
-            }
-            state = replacementState;
-            state.unsubscribe = subscribeSession(state);
-            send({ type: "session_opened", payload: snapshot(state) });
-            send({ type: "session_metadata", payload: state.manifest });
-            send({ type: "session_metrics", payload: buildMetrics(state) });
+            await replaceCurrentState(
+              state.currentRolePresetSlug,
+              state.currentDomain,
+              state.currentSoulSlug,
+              "new_session"
+            );
           } catch (error) {
             send({
               type: "error",
@@ -666,7 +844,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             const replacementState = await createExistingState(
               msg.payload.sessionId,
               previousState.currentRolePresetSlug,
-              previousState.currentDomain
+              previousState.currentDomain,
+              previousState.currentSoulSlug
             );
             if (closed) {
               await disposeState(replacementState);
@@ -711,6 +890,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       assetPaths,
       kbDir,
       rolePresetsDir,
+      soulDir,
       publicDir,
       readOnly,
       modelProvider,
@@ -771,7 +951,10 @@ if (isMain) {
       `  App context:       ${assetPaths.appContextPath} (${existsSync(assetPaths.appContextPath) ? "found" : "missing"})`
     );
     console.log(
-      `  Soul:              ${assetPaths.soulPath} (${existsSync(assetPaths.soulPath) ? "found" : "missing"})`
+      `  Soul dir:          ${assetPaths.soulDir} (${existsSync(assetPaths.soulDir) ? "found" : "missing"})`
+    );
+    console.log(
+      `  Default soul:      ${assetPaths.soulPath ?? "(none)"} (${assetPaths.soulPath && existsSync(assetPaths.soulPath) ? "found" : "not loaded"})`
     );
     console.log(
       `  Role presets:      ${assetPaths.rolePresetsDir} (${existsSync(assetPaths.rolePresetsDir) ? "found" : "missing"})`

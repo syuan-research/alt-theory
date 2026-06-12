@@ -32,8 +32,8 @@ Current direction after the 2026-06-08 agent-asset loading repair:
 ```text
 agent-assets/
   ALTTHEORY.md           # app/session context loaded by runtime sessions
-  soul.md               # lightweight personality / stance seed
-  role-presets/default.md # default agent role/style/behavior preset
+  soul/                 # selectable personality / stance seeds
+  role-presets/          # selectable agent role/style/behavior presets
   prompts/pi/           # Pi adapter prompt templates
   kb/ep-core/           # current centralized KB copy
   models.example.json   # uncredentialed provider/model config example
@@ -44,7 +44,7 @@ removed. Backend code now uses the centralized asset layout above.
 
 The old `agent/agent.md` is a mixed legacy runtime-agent document. It should eventually be split by content:
 
-- personality, stance, worldview, boundaries -> `agent-assets/soul.md`;
+- personality, stance, worldview, boundaries -> `agent-assets/soul/`;
 - application/session context and filesystem/runtime framing ->
   `agent-assets/ALTTHEORY.md`;
 - agent role/style/behavior presets -> `agent-assets/role-presets/`.

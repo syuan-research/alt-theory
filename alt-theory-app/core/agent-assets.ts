@@ -5,7 +5,8 @@ import { resolve } from "path";
 export interface AgentAssetPaths {
   rootDir: string;
   appContextPath: string;
-  soulPath: string;
+  soulDir: string;
+  soulPath: string | null;
   rolePresetsDir: string;
   kbDir: string;
   piPromptTemplatesDir: string;
@@ -15,6 +16,7 @@ export interface AgentAssetPaths {
 export interface AgentAssetPathOverrides {
   agentAssetsDir?: string;
   appContextPath?: string;
+  soulDir?: string;
   soulPath?: string;
   rolePresetsDir?: string;
   kbDir?: string;
@@ -23,9 +25,16 @@ export interface AgentAssetPathOverrides {
 }
 
 export interface LoadedAssetFileRef {
-  path: string;
+  path: string | null;
   exists: boolean;
   sha256: string | null;
+}
+
+function firstExisting(paths: string[]): string | null {
+  for (const path of paths) {
+    if (existsSync(path)) return path;
+  }
+  return null;
 }
 
 export function resolveAgentAssetPaths(
@@ -39,6 +48,20 @@ export function resolveAgentAssetPaths(
       process.env.ALT_THEORY_AGENT_ASSETS_DIR ??
       resolve(projectRoot, "agent-assets")
   );
+  const soulDir = resolve(
+    overrides.soulDir ??
+      process.env.ALT_THEORY_SOUL_DIR ??
+      resolve(rootDir, "soul")
+  );
+  const explicitSoulPath =
+    overrides.soulPath ?? process.env.ALT_THEORY_SOUL_PATH ?? null;
+  const defaultSoulPath = explicitSoulPath
+    ? resolve(explicitSoulPath)
+    : firstExisting([
+        resolve(soulDir, "soul-latest.md"),
+        resolve(soulDir, "soul.md"),
+        resolve(rootDir, "soul.md"),
+      ]);
 
   return {
     rootDir,
@@ -47,11 +70,8 @@ export function resolveAgentAssetPaths(
         process.env.ALT_THEORY_APP_CONTEXT_PATH ??
         resolve(rootDir, "ALTTHEORY.md")
     ),
-    soulPath: resolve(
-      overrides.soulPath ??
-        process.env.ALT_THEORY_SOUL_PATH ??
-        resolve(rootDir, "soul.md")
-    ),
+    soulDir,
+    soulPath: defaultSoulPath,
     rolePresetsDir: resolve(
       overrides.rolePresetsDir ??
         process.env.ALT_THEORY_ROLE_PRESETS_DIR ??
@@ -82,6 +102,10 @@ export function fileRef(path: string): LoadedAssetFileRef {
     exists: true,
     sha256: createHash("sha256").update(content).digest("hex"),
   };
+}
+
+export function emptyFileRef(): LoadedAssetFileRef {
+  return { path: null, exists: false, sha256: null };
 }
 
 export function readRequiredTextAsset(path: string, label: string): string {

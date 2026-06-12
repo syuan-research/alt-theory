@@ -1,6 +1,6 @@
 /**
  * Alt Theory Core Layer Test Script
- * Verifies: createAltTheorySession(), system prompt contains app/soul/role + KB path
+ * Verifies: createAltTheorySession(), system prompt contains configured app/role/Soul + KB path
  *
  * Usage: npx tsx alt-theory-app/core/test-core.ts
  */
@@ -8,17 +8,22 @@
 import { createAltTheorySession } from "./alt-theory-core.js";
 import { resolveAgentAssetPaths } from "./agent-assets.js";
 import { createSessionDirs, resolveDataDir } from "./data-dir.js";
-import { resolve } from "path";
+import { existsSync } from "fs";
+import { basename, extname, resolve } from "path";
 
 async function main() {
   console.log("=== Alt Theory Core Layer Test ===\n");
 
   const projectRoot = resolve(import.meta.dirname, "..", "..");
   const assetPaths = resolveAgentAssetPaths(projectRoot);
-  const rolePresetPath = resolve(
-    assetPaths.rolePresetsDir,
-    "default.md"
-  );
+  const defaultRolePresetPath = resolve(assetPaths.rolePresetsDir, "default.md");
+  const rolePresetPath = existsSync(defaultRolePresetPath)
+    ? defaultRolePresetPath
+    : null;
+  const rolePresetSlug = rolePresetPath ? "default" : null;
+  const soulSlug = assetPaths.soulPath
+    ? basename(assetPaths.soulPath, extname(assetPaths.soulPath))
+    : null;
   const sessionDirs = createSessionDirs(resolveDataDir());
 
   console.log(`sessionCwd: ${sessionDirs.sessionCwd}`);
@@ -29,8 +34,9 @@ async function main() {
       ...sessionDirs,
       appContextPath: assetPaths.appContextPath,
       soulPath: assetPaths.soulPath,
+      soulSlug,
       rolePresetPath,
-      rolePresetSlug: "default",
+      rolePresetSlug,
       kbDir: assetPaths.kbDir,
       piPromptTemplatesDir: assetPaths.piPromptTemplatesDir,
       readOnly: true,

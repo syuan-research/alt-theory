@@ -14,9 +14,10 @@ export interface SessionSnapshot {
   sessionId: string;
   status: "idle" | "running" | "error";
   currentDomain: string;
-  rolePresetSlug: string;
+  rolePresetSlug: string | null;
   /** Deprecated compatibility field; use rolePresetSlug. */
-  profileSlug?: string;
+  profileSlug?: string | null;
+  soulSlug: string | null;
   openedFrom?: "new" | "existing";
   resumeWarnings?: string[];
   messageCount: number;
@@ -58,8 +59,9 @@ export type ClientMessage =
   | { type: "prompt"; payload: string }
   | { type: "abort" }
   | { type: "switch_kb"; payload: { domain: string } }
-  | { type: "switch_role_preset"; payload: { rolePresetSlug: string } }
-  | { type: "switch_profile"; payload: { profileSlug: string } }
+  | { type: "switch_role_preset"; payload: { rolePresetSlug: string | null } }
+  | { type: "switch_profile"; payload: { profileSlug: string | null } }
+  | { type: "switch_soul"; payload: { soulSlug: string | null } }
   | { type: "new_session" }
   | { type: "open_session"; payload: { sessionId: string } }
   | { type: "get_session_metadata" }

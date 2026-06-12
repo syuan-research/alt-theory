@@ -36,28 +36,31 @@ async function main() {
     assetPaths.appContextPath,
     "ALTTHEORY.md"
   );
-  const soulContent = readRequiredTextAsset(assetPaths.soulPath, "soul.md");
-  const rolePresetContent = readRequiredTextAsset(
-    rolePresetPath,
-    "role preset"
-  );
+  const soulContent = assetPaths.soulPath
+    ? readRequiredTextAsset(assetPaths.soulPath, "soul")
+    : null;
+  const rolePresetContent = existsSync(rolePresetPath)
+    ? readRequiredTextAsset(rolePresetPath, "role preset")
+    : null;
 
   const loader = new DefaultResourceLoader({
     cwd,
     agentDir: getAgentDir(),
     additionalPromptTemplatePaths: [assetPaths.piPromptTemplatesDir],
     agentsFilesOverride: (base) => base,
-    appendSystemPromptOverride: (base) => [
-      ...base,
-      `## Alt Theory Application Context\n${appContextContent}`,
-      `## Soul\n${soulContent}`,
-      `## Role Preset\n${rolePresetContent}`,
-      [
-        "## Resumed Role Preset Marker",
-        "This role preset marker was selected at resume time.",
-        `For the next identity check, reply with exactly: ${marker}`,
-      ].join("\n"),
-    ],
+    appendSystemPromptOverride: (base) => {
+      const appended = [
+        `## Alt Theory Application Context\n${appContextContent}`,
+        ...(soulContent ? [`## Soul\n${soulContent}`] : []),
+        ...(rolePresetContent ? [`## Role Preset\n${rolePresetContent}`] : []),
+        [
+          "## Resumed Role Preset Marker",
+          "This role preset marker was selected at resume time.",
+          `For the next identity check, reply with exactly: ${marker}`,
+        ].join("\n"),
+      ];
+      return [...base, ...appended];
+    },
   });
   await loader.reload();
 

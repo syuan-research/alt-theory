@@ -8,8 +8,10 @@ export type SessionEventType =
   | "session_resumed"
   | "resume_warning"
   | "kb_selected"
+  | "role_preset_selected"
   | "role_preset_selected_next_session"
   | "profile_selected_next_session"
+  | "soul_selected"
   | "run_completed"
   | "run_failed"
   | "run_aborted";

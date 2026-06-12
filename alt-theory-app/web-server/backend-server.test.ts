@@ -20,7 +20,9 @@ import {
   isKnownKbDomain,
   listKbDomains,
   listRolePresets,
+  listSouls,
   resolveRolePresetSlug,
+  resolveSoulSlug,
 } from "./asset-registry.js";
 import { createAltTheoryServer } from "./server.js";
 import {
@@ -37,14 +39,20 @@ import {
 test("asset registry lists safe sorted slugs and resolves known assets", () => {
   const root = mkdtempSync(join(tmpdir(), "alt-theory-assets-"));
   const rolePresets = join(root, "role-presets");
+  const souls = join(root, "soul");
   const kb = join(root, "kb");
   mkdirSync(join(kb, "urban"), { recursive: true });
   mkdirSync(join(kb, ".hidden"), { recursive: true });
   mkdirSync(rolePresets, { recursive: true });
+  mkdirSync(souls, { recursive: true });
   writeFileSync(join(rolePresets, "zeta_role.md"), "z", "utf-8");
   writeFileSync(join(rolePresets, "alpha.md"), "a", "utf-8");
   writeFileSync(join(rolePresets, ".hidden.md"), "h", "utf-8");
   writeFileSync(join(rolePresets, "ignore.txt"), "x", "utf-8");
+  writeFileSync(join(souls, "soul-latest.md"), "latest", "utf-8");
+  writeFileSync(join(souls, "soul.md"), "base", "utf-8");
+  writeFileSync(join(souls, ".hidden.md"), "h", "utf-8");
+  writeFileSync(join(souls, "ignore.txt"), "x", "utf-8");
 
   assert.deepEqual(listRolePresets(rolePresets), [
     { slug: "alpha", displayName: "Alpha" },
@@ -53,11 +61,20 @@ test("asset registry lists safe sorted slugs and resolves known assets", () => {
   assert.deepEqual(listKbDomains(kb), [
     { slug: "urban", displayName: "Urban" },
   ]);
+  assert.deepEqual(listSouls(souls), [
+    { slug: "soul", displayName: "Soul" },
+    { slug: "soul-latest", displayName: "Soul Latest" },
+  ]);
   assert.equal(
     resolveRolePresetSlug(rolePresets, "alpha"),
     join(rolePresets, "alpha.md")
   );
   assert.equal(resolveRolePresetSlug(rolePresets, "../alpha"), null);
+  assert.equal(
+    resolveSoulSlug(souls, "soul-latest"),
+    join(souls, "soul-latest.md")
+  );
+  assert.equal(resolveSoulSlug(souls, "../soul"), null);
   assert.equal(isKnownKbDomain(kb, "urban"), true);
   assert.equal(isKnownKbDomain(kb, "all"), true);
   assert.equal(isKnownKbDomain(kb, "../urban"), false);
@@ -66,7 +83,16 @@ test("asset registry lists safe sorted slugs and resolves known assets", () => {
 test("write-enabled core exposes write without edit/bash and writes notes", async () => {
   const root = mkdtempSync(join(tmpdir(), "alt-theory-write-"));
   const dirs = createSessionDirs(root);
+  const appContextPath = join(root, "ALTTHEORY.md");
+  const soulPath = join(root, "soul.md");
+  const rolePresets = join(root, "role-presets");
+  const kb = join(root, "kb");
   const modelsPath = join(root, "models.json");
+  mkdirSync(rolePresets, { recursive: true });
+  mkdirSync(join(kb, "ep-core"), { recursive: true });
+  writeFileSync(appContextPath, "Write test app context", "utf-8");
+  writeFileSync(soulPath, "Write test soul", "utf-8");
+  writeFileSync(join(rolePresets, "default.md"), "Write test role", "utf-8");
   writeFileSync(
     modelsPath,
     JSON.stringify({
@@ -98,16 +124,11 @@ test("write-enabled core exposes write without edit/bash and writes notes", asyn
   const projectRoot = process.cwd();
   const result = await createAltTheorySession({
     ...dirs,
-    appContextPath: resolve(projectRoot, "agent-assets", "ALTTHEORY.md"),
-    soulPath: resolve(projectRoot, "agent-assets", "soul.md"),
-    rolePresetPath: resolve(
-      projectRoot,
-      "agent-assets",
-      "role-presets",
-      "default.md"
-    ),
+    appContextPath,
+    soulPath,
+    rolePresetPath: join(rolePresets, "default.md"),
     rolePresetSlug: "default",
-    kbDir: resolve(projectRoot, "agent-assets", "kb"),
+    kbDir: kb,
     piPromptTemplatesDir: resolve(projectRoot, "agent-assets", "prompts", "pi"),
     modelsPath,
     modelProvider: "test-provider",
@@ -295,6 +316,42 @@ test("alt-only prompt mode replaces Pi base system prompt", async () => {
     assert.doesNotMatch(prompt, /Pi documentation/i);
     assert.doesNotMatch(prompt, /Available skills/i);
     assert.equal(result.manifest.promptMode, "alt-only");
+  } finally {
+    result.session.dispose();
+  }
+});
+
+test("core allows no soul and no role preset prompt layers", async () => {
+  const root = mkdtempSync(join(tmpdir(), "alt-theory-no-soul-role-"));
+  const dirs = createSessionDirs(root);
+  const appContextPath = join(root, "ALTTHEORY.md");
+  const kb = join(root, "kb");
+  mkdirSync(join(kb, "ep-core"), { recursive: true });
+  writeFileSync(appContextPath, "No optional layers app context", "utf-8");
+
+  const result = await createAltTheorySession({
+    ...dirs,
+    appContextPath,
+    soulPath: null,
+    soulSlug: null,
+    rolePresetPath: null,
+    rolePresetSlug: null,
+    kbDir: kb,
+    kbDomain: "ep-core",
+    readOnly: true,
+    promptMode: "alt-only",
+    resourceDiscovery: "clean",
+  });
+
+  try {
+    const prompt = result.session.agent.state.systemPrompt;
+    assert.match(prompt, /Alt Theory Application Context/);
+    assert.doesNotMatch(prompt, /## Soul/);
+    assert.doesNotMatch(prompt, /## Role Preset/);
+    assert.equal(result.manifest.soul.slug, null);
+    assert.equal(result.manifest.soul.path, null);
+    assert.equal(result.manifest.rolePreset.slug, null);
+    assert.equal(result.manifest.rolePreset.path, null);
   } finally {
     result.session.dispose();
   }
@@ -907,23 +964,30 @@ test("WebSocket open_session replaces current state with an existing session", a
 test("REST discovery and WebSocket sessions are connection-local", async () => {
   const root = mkdtempSync(join(tmpdir(), "alt-theory-server-"));
   const rolePresets = join(root, "role-presets");
+  const souls = join(root, "soul");
   const kb = join(root, "kb");
   const appContextPath = join(root, "ALTTHEORY.md");
-  const soulPath = join(root, "soul.md");
   mkdirSync(join(kb, "ep-core"), { recursive: true });
   mkdirSync(rolePresets, { recursive: true });
+  mkdirSync(souls, { recursive: true });
   writeFileSync(appContextPath, "Test app context", "utf-8");
-  writeFileSync(soulPath, "Test soul", "utf-8");
+  writeFileSync(join(souls, "soul-latest.md"), "Latest soul", "utf-8");
+  writeFileSync(join(souls, "soul-test.md"), "Test soul", "utf-8");
   writeFileSync(
     join(rolePresets, "default.md"),
     "Default role preset",
+    "utf-8"
+  );
+  writeFileSync(
+    join(rolePresets, "alternate.md"),
+    "Alternate role preset",
     "utf-8"
   );
 
   const instance = createAltTheoryServer({
     dataDir: join(root, "data"),
     appContextPath,
-    soulPath,
+    soulDir: souls,
     rolePresetsDir: rolePresets,
     kbDir: kb,
     readOnly: true,
@@ -962,7 +1026,17 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
   try {
     const rolePresetsResponse = await fetch(`${baseUrl}/api/role-presets`);
     assert.deepEqual(await rolePresetsResponse.json(), {
-      rolePresets: [{ slug: "default", displayName: "Default" }],
+      rolePresets: [
+        { slug: "alternate", displayName: "Alternate" },
+        { slug: "default", displayName: "Default" },
+      ],
+    });
+    const soulsResponse = await fetch(`${baseUrl}/api/souls`);
+    assert.deepEqual(await soulsResponse.json(), {
+      souls: [
+        { slug: "soul-latest", displayName: "Soul Latest" },
+        { slug: "soul-test", displayName: "Soul Test" },
+      ],
     });
     const domainsResponse = await fetch(`${baseUrl}/api/kb-domains`);
     assert.deepEqual(await domainsResponse.json(), {
@@ -974,6 +1048,8 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
       opened2Promise,
     ]);
     assert.notEqual(opened1.payload.sessionId, opened2.payload.sessionId);
+    assert.equal(opened1.payload.rolePresetSlug, "default");
+    assert.equal(opened1.payload.soulSlug, "soul-latest");
 
     const metadataPromise = waitForType(ws1, "session_metadata");
     ws1.send(JSON.stringify({ type: "get_session_metadata" }));
@@ -999,13 +1075,24 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
     ws1.send(
       JSON.stringify({ type: "switch_kb", payload: { domain: "all" } })
     );
+
+    const soulOpenedPromise = waitForType(ws1, "session_opened");
+    const soulMetadataPromise = waitForType(ws1, "session_metadata");
     ws1.send(
       JSON.stringify({
-        type: "switch_role_preset",
-        payload: { rolePresetSlug: "default" },
+        type: "switch_soul",
+        payload: { soulSlug: null },
       })
     );
-    await new Promise((resolveDelay) => setTimeout(resolveDelay, 20));
+    const soulOpened = await soulOpenedPromise;
+    const soulMetadata = await soulMetadataPromise;
+    assert.equal(soulOpened.payload.sessionId, opened1.payload.sessionId);
+    assert.equal(soulOpened.payload.currentDomain, "all");
+    assert.equal(soulOpened.payload.rolePresetSlug, "default");
+    assert.equal(soulOpened.payload.soulSlug, null);
+    assert.equal(soulMetadata.payload.soul.slug, null);
+    assert.equal(soulMetadata.payload.soul.path, null);
+
     const eventText = readFileSync(
       join(metadata.payload.recordsDir, "session-events.jsonl"),
       "utf-8"
@@ -1016,7 +1103,39 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
       .map((line) => JSON.parse(line).type);
     assert.ok(eventTypes.includes("session_created"));
     assert.ok(eventTypes.includes("kb_selected"));
-    assert.ok(eventTypes.includes("role_preset_selected_next_session"));
+    assert.ok(eventTypes.includes("soul_selected"));
+
+    const roleOpenedPromise = waitForType(ws1, "session_opened");
+    const roleMetadataPromise = waitForType(ws1, "session_metadata");
+    ws1.send(
+      JSON.stringify({
+        type: "switch_role_preset",
+        payload: { rolePresetSlug: "alternate" },
+      })
+    );
+    const roleOpened = await roleOpenedPromise;
+    const roleMetadata = await roleMetadataPromise;
+    assert.equal(roleOpened.payload.sessionId, soulOpened.payload.sessionId);
+    assert.equal(roleOpened.payload.currentDomain, "all");
+    assert.equal(roleOpened.payload.rolePresetSlug, "alternate");
+    assert.equal(roleOpened.payload.soulSlug, null);
+    assert.equal(roleMetadata.payload.rolePreset.slug, "alternate");
+
+    const roleEventTypes = readFileSync(
+      join(soulMetadata.payload.recordsDir, "session-events.jsonl"),
+      "utf-8"
+    )
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line).type);
+    assert.ok(roleEventTypes.includes("role_preset_selected"));
+
+    const ws2MetadataPromise = waitForType(ws2, "session_metadata");
+    ws2.send(JSON.stringify({ type: "get_session_metadata" }));
+    const ws2Metadata = await ws2MetadataPromise;
+    assert.equal(ws2Metadata.payload.sessionId, opened2.payload.sessionId);
+    assert.equal(ws2Metadata.payload.rolePreset.slug, "default");
+    assert.equal(ws2Metadata.payload.soul.slug, "soul-latest");
 
     const reopened1Promise = waitForType(ws1, "session_opened");
     ws1.send(JSON.stringify({ type: "new_session" }));
@@ -1027,8 +1146,13 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
     const reopened2 = await reopened2Promise;
 
     assert.equal(reopened1.payload.currentDomain, "all");
-    assert.equal(reopened1.payload.rolePresetSlug, "default");
+    assert.equal(reopened1.payload.rolePresetSlug, "alternate");
+    assert.equal(reopened1.payload.soulSlug, null);
+    assert.equal(reopened1.payload.sessionId, opened1.payload.sessionId);
     assert.equal(reopened2.payload.currentDomain, "ep-core");
+    assert.equal(reopened2.payload.rolePresetSlug, "default");
+    assert.equal(reopened2.payload.soulSlug, "soul-latest");
+    assert.equal(reopened2.payload.sessionId, opened2.payload.sessionId);
     assert.notEqual(reopened1.payload.sessionId, reopened2.payload.sessionId);
   } finally {
     ws1.close();

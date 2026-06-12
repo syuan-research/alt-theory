@@ -43,11 +43,19 @@
       </div>
 
       <div class="panel-section">
+        <label for="soul-select" class="section-label">Soul</label>
+        <select id="soul-select" disabled>
+          <option value="">Loading...</option>
+        </select>
+        <div id="soul-hint" class="hint highlight-hint">Applies immediately.</div>
+      </div>
+
+      <div class="panel-section">
         <label for="role-preset-select" class="section-label">Role Preset</label>
         <select id="role-preset-select" disabled>
           <option value="">Loading...</option>
         </select>
-        <div id="role-preset-hint" class="hint highlight-hint">Selected role preset applies when you start the next session.</div>
+        <div id="role-preset-hint" class="hint highlight-hint">Applies immediately.</div>
       </div>
 
       <div class="panel-section panel-footer">
@@ -89,8 +97,9 @@
       </div>
 
       <div class="panel-section">
-        <div class="section-label">Active KB / Role Preset</div>
+        <div class="section-label">Active KB / Soul / Role</div>
         <div id="rt-kb" class="small-text">—</div>
+        <div id="rt-soul" class="small-text">—</div>
         <div id="rt-role-preset" class="small-text">—</div>
       </div>
 

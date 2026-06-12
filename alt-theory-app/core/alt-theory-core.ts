@@ -28,6 +28,7 @@ import {
 } from "./data-dir.js";
 import { assembleCoreSoul } from "./core-soul.js";
 import {
+  emptyFileRef,
   fileRef,
   readRequiredTextAsset,
   type LoadedAssetFileRef,
@@ -58,9 +59,11 @@ export interface AssemblyManifest {
   };
   resumeWarnings?: string[];
   appContext: LoadedAssetFileRef;
-  soul: LoadedAssetFileRef;
+  soul: LoadedAssetFileRef & {
+    slug: string | null;
+  };
   rolePreset: LoadedAssetFileRef & {
-    slug: string;
+    slug: string | null;
   };
   coreSoul: {
     basePath: string | null;
@@ -102,11 +105,13 @@ export interface AltTheoryConfig extends SessionDirectories {
   /** Application/session context loaded into the system prompt */
   appContextPath: string;
   /** Durable agent stance/personality seed */
-  soulPath: string;
+  soulPath?: string | null;
+  /** Durable agent stance/personality seed slug */
+  soulSlug?: string | null;
   /** Agent role/style preset file */
-  rolePresetPath: string;
+  rolePresetPath?: string | null;
   /** Agent role/style preset slug */
-  rolePresetSlug: string;
+  rolePresetSlug?: string | null;
   /** KB root directory (search path for read-only/coding tools) */
   kbDir: string;
   /** Active KB domain recorded in the session manifest */
@@ -214,10 +219,11 @@ async function createAltTheorySessionWithManager(
     config.writableAssetDir ?? "runs/local-assets"
   );
   const resolvedAppContextPath = resolve(config.appContextPath);
-  const resolvedSoulPath = resolve(config.soulPath);
-  const resolvedRolePresetPath = resolve(
-    config.rolePresetPath ?? config.profilePath ?? ""
-  );
+  const resolvedSoulPath = config.soulPath ? resolve(config.soulPath) : null;
+  const configuredRolePresetPath = config.rolePresetPath ?? config.profilePath;
+  const resolvedRolePresetPath = configuredRolePresetPath
+    ? resolve(configuredRolePresetPath)
+    : null;
   const resolvedPiPromptTemplatesDir = config.piPromptTemplatesDir
     ? resolve(config.piPromptTemplatesDir)
     : config.runtimeDir
@@ -236,11 +242,12 @@ async function createAltTheorySessionWithManager(
     resolvedAppContextPath,
     "ALTTHEORY.md"
   );
-  const soulContent = readRequiredTextAsset(resolvedSoulPath, "soul.md");
-  const rolePresetContent = readRequiredTextAsset(
-    resolvedRolePresetPath,
-    "role preset"
-  );
+  const soulContent = resolvedSoulPath
+    ? readRequiredTextAsset(resolvedSoulPath, "soul")
+    : null;
+  const rolePresetContent = resolvedRolePresetPath
+    ? readRequiredTextAsset(resolvedRolePresetPath, "role preset")
+    : null;
 
   if (config.coreSoulPath && !config.coreSoulModulesDir) {
     throw new Error("coreSoulModulesDir is required when coreSoulPath is set");
@@ -254,14 +261,18 @@ async function createAltTheorySessionWithManager(
     : null;
 
   // --- 2. Assemble appendSystemPromptOverride ---
-  //    Order: app context -> soul -> optional core-soul modules -> role preset -> KB path declaration
+  //    Order: app context -> optional soul -> optional core-soul modules -> optional role preset -> KB path declaration
   const appendContent: string[] = [];
   appendContent.push(`## Alt Theory Application Context\n${appContextContent}`);
-  appendContent.push(`## Soul\n${soulContent}`);
+  if (soulContent) {
+    appendContent.push(`## Soul\n${soulContent}`);
+  }
   if (coreSoul) {
     appendContent.push(`## Core Soul\n${coreSoul.content}`);
   }
-  appendContent.push(`## Role Preset\n${rolePresetContent}`);
+  if (rolePresetContent) {
+    appendContent.push(`## Role Preset\n${rolePresetContent}`);
+  }
   appendContent.push(
     `## Knowledge Base\nYour knowledge base is at: ${resolvedKbDir}`
   );
@@ -382,10 +393,15 @@ async function createAltTheorySessionWithManager(
     createdAt,
     openedFrom: openMode.openedFrom,
     appContext: fileRef(resolvedAppContextPath),
-    soul: fileRef(resolvedSoulPath),
+    soul: {
+      ...(resolvedSoulPath ? fileRef(resolvedSoulPath) : emptyFileRef()),
+      slug: config.soulSlug ?? null,
+    },
     rolePreset: {
-      ...fileRef(resolvedRolePresetPath),
-      slug: config.rolePresetSlug,
+      ...(resolvedRolePresetPath
+        ? fileRef(resolvedRolePresetPath)
+        : emptyFileRef()),
+      slug: config.rolePresetSlug ?? null,
     },
     coreSoul: {
       basePath: coreSoul?.basePath ?? null,
