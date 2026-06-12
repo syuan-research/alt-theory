@@ -491,6 +491,12 @@ function renderPaths(manifest) {
     ["Runtime", manifest.runtimeDir],
     ["Core-Soul", manifest.coreSoul?.basePath],
   ];
+  const writableRoots = Array.isArray(manifest.writableRoots)
+    ? manifest.writableRoots
+    : [];
+  writableRoots.forEach((path, index) => {
+    pathEntries.push([`Writable Root ${index + 1}`, path]);
+  });
   for (const [label, path] of pathEntries) {
     if (!path) continue;
     const row = document.createElement("div");

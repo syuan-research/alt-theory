@@ -10,15 +10,18 @@
 import {
   AuthStorage,
   createAgentSession,
+  createWriteToolDefinition,
   DefaultResourceLoader,
   getAgentDir,
   loadSkillsFromDir,
   ModelRegistry,
   SessionManager,
+  type WriteOperations,
 } from "@mariozechner/pi-coding-agent";
 import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
 import { existsSync } from "fs";
-import { join, resolve } from "path";
+import { mkdir, realpath, writeFile } from "fs/promises";
+import { dirname, isAbsolute, join, relative, resolve } from "path";
 import {
   writeJsonAtomic,
   type SessionDirectories,
@@ -82,6 +85,7 @@ export interface AssemblyManifest {
   piSessionFile: string | null;
   recordsDir: string;
   writeDir: string | null;
+  writableRoots: string[];
   model: string | null;
   provider: string | null;
   promptMode: PromptMode;
@@ -129,6 +133,7 @@ export interface AltTheoryConfig extends SessionDirectories {
   /** Runtime-only API key; never persisted by Alt Theory */
   runtimeApiKey?: string;
   thinkingLevel?: ThinkingLevel;
+  writableAssetDir?: string;
   promptMode?: PromptMode;
   resourceDiscovery?: ResourceDiscoveryMode;
   skillsDir?: string;
@@ -205,6 +210,9 @@ async function createAltTheorySessionWithManager(
   const resolvedWriteDir = resolve(writeDir);
   const resolvedRecordsDir = resolve(recordsDir);
   const resolvedKbDir = resolve(kbDir);
+  const resolvedWritableAssetDir = resolve(
+    config.writableAssetDir ?? "runs/local-assets"
+  );
   const resolvedAppContextPath = resolve(config.appContextPath);
   const resolvedSoulPath = resolve(config.soulPath);
   const resolvedRolePresetPath = resolve(
@@ -257,11 +265,30 @@ async function createAltTheorySessionWithManager(
   appendContent.push(
     `## Knowledge Base\nYour knowledge base is at: ${resolvedKbDir}`
   );
+  appendContent.push(
+    [
+      "## Alt Theory Tool Harness",
+      "You are operating inside the Pi harness as the tool runtime for Alt Theory.",
+      "This describes your tool environment, not your identity; do not describe yourself as Pi.",
+      "Available tools:",
+      "- read: read file contents",
+      "- ls: list directory contents",
+      "- grep: search file contents for patterns",
+      "- find: find files by glob pattern",
+      ...(readOnly
+        ? []
+        : [
+            "- write: create or overwrite files only inside Alt Theory writable roots",
+          ]),
+    ].join("\n")
+  );
   if (!readOnly) {
+    const writableRoots = [resolvedWriteDir, resolvedWritableAssetDir];
     appendContent.push(
       [
         "## Write Policy",
-        `Write user-facing notes and summaries only under: ${resolvedWriteDir}`,
+        "The write tool is hard-limited to these writable roots:",
+        ...writableRoots.map((root) => `- ${root}`),
         "Treat the knowledge base, role presets, prompts, and system files as read-only.",
       ].join("\n")
     );
@@ -332,6 +359,15 @@ async function createAltTheorySessionWithManager(
 
   sessionOpts.noTools = "all";
   sessionOpts.tools = readOnly ? READONLY_TOOLS : WRITE_ENABLED_TOOLS;
+  if (!readOnly) {
+    const writableRoots = [resolvedWriteDir, resolvedWritableAssetDir];
+    await Promise.all(writableRoots.map((root) => mkdir(root, { recursive: true })));
+    sessionOpts.customTools = [
+      createWriteToolDefinition(cwd, {
+        operations: createGuardedWriteOperations(writableRoots),
+      }),
+    ];
+  }
 
   const { session } = await createAgentSession(sessionOpts);
   const createdAt = new Date().toISOString();
@@ -381,6 +417,7 @@ async function createAltTheorySessionWithManager(
     piSessionFile: session.sessionFile ?? null,
     recordsDir: resolvedRecordsDir,
     writeDir: readOnly ? null : resolvedWriteDir,
+    writableRoots: readOnly ? [] : [resolvedWriteDir, resolvedWritableAssetDir],
     model: session.model?.id ?? null,
     provider: session.model?.provider ?? null,
     promptMode,
@@ -433,6 +470,72 @@ function summarizeOriginalManifest(
     provider: manifest.provider ?? null,
     model: manifest.model ?? null,
   };
+}
+
+function createGuardedWriteOperations(writableRoots: string[]): WriteOperations {
+  const roots = writableRoots.map((root) => resolve(root));
+  return {
+    async mkdir(dir: string): Promise<void> {
+      await assertWritablePath(dir, roots);
+      await mkdir(dir, { recursive: true });
+    },
+    async writeFile(path: string, content: string): Promise<void> {
+      await assertWritablePath(path, roots);
+      await writeFile(path, content, "utf-8");
+    },
+  };
+}
+
+async function assertWritablePath(path: string, writableRoots: string[]): Promise<void> {
+  const resolvedPath = resolve(path);
+  const lexicalRoot = writableRoots.find((root) => isPathInside(root, resolvedPath));
+  if (!lexicalRoot) {
+    throw new Error(
+      `Write blocked: ${resolvedPath} is outside Alt Theory writable roots.`
+    );
+  }
+
+  const realRoots = await Promise.all(writableRoots.map((root) => realpath(root)));
+  const realRoot = realRoots.find((root) => isPathInside(root, resolvedPath));
+  if (!realRoot) {
+    const lexicalIndex = writableRoots.indexOf(lexicalRoot);
+    const fallbackRoot = realRoots[lexicalIndex];
+    if (!fallbackRoot) {
+      throw new Error(`Write blocked: writable root is unavailable: ${lexicalRoot}`);
+    }
+  }
+
+  const existingPath = await nearestExistingPath(resolvedPath);
+  const realExistingPath = await realpath(existingPath);
+  if (!realRoots.some((root) => isPathInside(root, realExistingPath))) {
+    throw new Error(
+      `Write blocked: ${resolvedPath} resolves outside Alt Theory writable roots.`
+    );
+  }
+}
+
+async function nearestExistingPath(path: string): Promise<string> {
+  let current = resolve(path);
+  while (!existsSync(current)) {
+    const parent = dirname(current);
+    if (parent === current) return current;
+    current = parent;
+  }
+  return current;
+}
+
+function isPathInside(root: string, target: string): boolean {
+  const resolvedRoot = normalizePath(resolve(root));
+  const resolvedTarget = normalizePath(resolve(target));
+  const relativePath = relative(resolvedRoot, resolvedTarget);
+  return (
+    relativePath === "" ||
+    (!relativePath.startsWith("..") && !isAbsolute(relativePath))
+  );
+}
+
+function normalizePath(path: string): string {
+  return process.platform === "win32" ? path.toLowerCase() : path;
 }
 
 function compareResumeManifest(

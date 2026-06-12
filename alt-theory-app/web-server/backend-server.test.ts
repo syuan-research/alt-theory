@@ -177,6 +177,32 @@ test("write-enabled core exposes write without edit/bash and writes notes", asyn
       content: "# Backend write smoke\n",
     });
     assert.equal(readFileSync(notePath, "utf-8"), "# Backend write smoke\n");
+    assert.ok(result.manifest.writableRoots.includes(resolve(dirs.writeDir)));
+    assert.ok(result.manifest.writableRoots.includes(resolve("runs/local-assets")));
+    await assert.rejects(
+      () =>
+        writeTool.execute("write-outside", {
+          path: join(root, "outside.md"),
+          content: "outside",
+        }),
+      /outside Alt Theory writable roots/
+    );
+    await assert.rejects(
+      () =>
+        writeTool.execute("write-escape", {
+          path: join(dirs.writeDir, "..", "escape.md"),
+          content: "escape",
+        }),
+      /outside Alt Theory writable roots|resolves outside Alt Theory writable roots/
+    );
+    await assert.rejects(
+      () =>
+        writeTool.execute("write-source", {
+          path: resolve("alt-theory-app", "core", "alt-theory-core.ts"),
+          content: "source overwrite attempt",
+        }),
+      /outside Alt Theory writable roots|resolves outside Alt Theory writable roots/
+    );
     assert.ok(
       existsSync(join(dirs.recordsDir, "assembly-manifest.json"))
     );
@@ -262,6 +288,9 @@ test("alt-only prompt mode replaces Pi base system prompt", async () => {
     assert.match(prompt, /Test app context/);
     assert.match(prompt, /Soul/);
     assert.match(prompt, /Role Preset/);
+    assert.match(prompt, /operating inside the Pi harness/);
+    assert.match(prompt, /do not describe yourself as Pi/);
+    assert.match(prompt, /read: read file contents/);
     assert.doesNotMatch(prompt, /expert coding assistant operating inside pi/i);
     assert.doesNotMatch(prompt, /Pi documentation/i);
     assert.doesNotMatch(prompt, /Available skills/i);
