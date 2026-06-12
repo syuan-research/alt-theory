@@ -197,19 +197,6 @@ html, body {
   cursor: not-allowed;
 }
 
-/* --- Session Info --- */
-
-#session-id {
-  font-size: 12px;
-  font-family: monospace;
-  word-break: break-all;
-}
-
-#session-status {
-  font-size: 12px;
-  margin-top: 2px;
-}
-
 /* --- Selects --- */
 
 #kb-select,

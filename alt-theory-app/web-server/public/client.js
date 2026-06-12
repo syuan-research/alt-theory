@@ -15,8 +15,6 @@
 // ---------------------------------------------------------------------------
 
 const newSessionBtn = document.getElementById("new-session-btn");
-const sessionIdEl = document.getElementById("session-id");
-const sessionStatusEl = document.getElementById("session-status");
 const kbSelect = document.getElementById("kb-select");
 const rolePresetSelect = document.getElementById("role-preset-select");
 const providerInfoEl = document.getElementById("provider-info");
@@ -332,6 +330,10 @@ function formatProviderModel(session) {
   return model || provider || "";
 }
 
+function isInterruptedError(error) {
+  return /aborted|abort|interrupted/i.test(error || "");
+}
+
 function renderPreviewText(messages) {
   return messages
     .slice(-4)
@@ -423,7 +425,6 @@ ws.onclose = () => {
   activeToolNames = {};
   currentAssistantEl = null;
   toolStatusEl.textContent = "Disconnected";
-  sessionStatusEl.textContent = "Disconnected";
   resumeSessionBtn.disabled = true;
 };
 
@@ -665,8 +666,6 @@ ws.onmessage = (event) => {
         msg.payload.rolePresetSlug || msg.payload.profileSlug || "";
       sessionReady = true;
       isRunning = false;
-      sessionIdEl.textContent = `Session: ${msg.payload.sessionId.slice(0, 8)}…`;
-      sessionStatusEl.textContent = "Ready";
       rtKb.textContent = currentDomain || "—";
       rtRolePreset.textContent = currentRolePresetSlug || "—";
       syncSessionSelectors();
@@ -679,10 +678,8 @@ ws.onmessage = (event) => {
     case "session_updated":
       if (msg.payload.status === "running") {
         setConnStatus("running", "Running");
-        sessionStatusEl.textContent = "Running…";
       } else {
         setConnStatus("idle", msg.payload.status || "Ready");
-        sessionStatusEl.textContent = msg.payload.status || "Ready";
       }
       currentDomain = msg.payload.currentDomain || currentDomain;
       currentRolePresetSlug =
@@ -789,23 +786,24 @@ ws.onmessage = (event) => {
       hasMessages = true;
       setControlsEnabled(true);
       setConnStatus("idle", "Ready");
-      sessionStatusEl.textContent = "Ready";
       toolStatusEl.textContent = "";
       activeToolNames = {};
       break;
     }
 
     case "run_failed": {
+      const interrupted = isInterruptedError(msg.payload.error);
       finalizeStaleTools(false);
       const errEl = document.createElement("div");
-      errEl.className = "message error";
-      errEl.textContent = `Run failed: ${msg.payload.error}`;
+      errEl.className = interrupted ? "message system" : "message error";
+      errEl.textContent = `${
+        interrupted ? "Run interrupted" : "Run failed"
+      }: ${msg.payload.error}`;
       messagesEl.appendChild(errEl);
       currentAssistantEl = null;
       isRunning = false;
       setControlsEnabled(true);
-      setConnStatus("error", "Error");
-      sessionStatusEl.textContent = "Error";
+      setConnStatus(interrupted ? "idle" : "error", interrupted ? "Ready" : "Error");
       toolStatusEl.textContent = "";
       activeToolNames = {};
       break;
@@ -821,7 +819,6 @@ ws.onmessage = (event) => {
       if (pendingOpenSessionId) {
         pendingOpenSessionId = "";
         isRunning = false;
-        sessionStatusEl.textContent = "Ready";
         setControlsEnabled(true);
       }
       break;
@@ -896,7 +893,6 @@ function sendMessage() {
   // Toggle controls
   isRunning = true;
   setControlsEnabled(false);
-  sessionStatusEl.textContent = "Thinking…";
   setConnStatus("running", "Thinking…");
 }
 
@@ -962,7 +958,6 @@ function doNewSession() {
   // Disable controls during session replacement
   isRunning = true;
   setControlsEnabled(false);
-  sessionStatusEl.textContent = "Replacing session…";
 }
 
 sessionRefreshBtn.onclick = () => {
@@ -997,7 +992,6 @@ function doOpenSession(sessionId) {
   }
   isRunning = true;
   setControlsEnabled(false);
-  sessionStatusEl.textContent = "Opening session…";
   toolStatusEl.textContent = "Opening selected session…";
 }
 

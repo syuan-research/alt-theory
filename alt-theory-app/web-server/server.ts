@@ -21,6 +21,7 @@ import {
   createAltTheorySession,
   openAltTheorySession,
   type AssemblyManifest,
+  type PromptMode,
   type ResourceDiscoveryMode,
 } from "../core/alt-theory-core.js";
 import {
@@ -98,6 +99,7 @@ export interface AltTheoryServerOptions {
   modelsPath?: string;
   runtimeApiKey?: string;
   thinkingLevel?: ThinkingLevel;
+  promptMode?: PromptMode;
   resourceDiscovery?: ResourceDiscoveryMode;
   skillsDir?: string;
 }
@@ -125,6 +127,16 @@ function parseResourceDiscoveryMode(
   return "dev-debug";
 }
 
+function parsePromptMode(value: string | undefined): PromptMode {
+  if (value === "pi-default" || value === "alt-only") {
+    return value;
+  }
+  if (value) {
+    console.warn(`Unknown ALT_THEORY_PROMPT_MODE '${value}', using pi-default`);
+  }
+  return "pi-default";
+}
+
 export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   const dataDir = resolve(options.dataDir ?? resolveDataDir());
   const assetPaths: AgentAssetPaths = resolveAgentAssetPaths(PROJECT_ROOT, {
@@ -144,6 +156,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     options.modelProvider ?? process.env.ALT_THEORY_MODEL_PROVIDER;
   const modelId = options.modelId ?? process.env.ALT_THEORY_MODEL_ID;
   const modelsPath = assetPaths.modelsPath;
+  const promptMode = parsePromptMode(
+    options.promptMode ?? process.env.ALT_THEORY_PROMPT_MODE
+  );
   const resourceDiscovery = parseResourceDiscoveryMode(
     options.resourceDiscovery ?? process.env.ALT_THEORY_RESOURCE_DISCOVERY
   );
@@ -225,6 +240,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       runtimeApiKey:
         options.runtimeApiKey ?? process.env.ALT_THEORY_MODEL_API_KEY,
       thinkingLevel: options.thinkingLevel,
+      promptMode,
       resourceDiscovery,
       skillsDir,
       readOnly,
@@ -322,6 +338,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       runtimeApiKey:
         options.runtimeApiKey ?? process.env.ALT_THEORY_MODEL_API_KEY,
       thinkingLevel: options.thinkingLevel,
+      promptMode,
       resourceDiscovery,
       skillsDir,
       readOnly,
@@ -699,6 +716,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       modelProvider,
       modelId,
       modelsPath,
+      promptMode,
       resourceDiscovery,
       skillsDir,
     },
@@ -771,6 +789,7 @@ if (isMain) {
     console.log(
       `  Model selection:   ${explicitModelSelection ? "explicit" : "Pi default or incomplete"}`
     );
+    console.log(`  Prompt mode:       ${instance.config.promptMode}`);
     console.log(
       `  Resources:         ${instance.config.resourceDiscovery}${instance.config.skillsDir ? ` (${instance.config.skillsDir})` : ""}`
     );

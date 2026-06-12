@@ -230,6 +230,47 @@ test("core records resource discovery mode in the assembly manifest", async () =
   }
 });
 
+test("alt-only prompt mode replaces Pi base system prompt", async () => {
+  const root = mkdtempSync(join(tmpdir(), "alt-theory-prompt-mode-"));
+  const dirs = createSessionDirs(root);
+  const appContextPath = join(root, "ALTTHEORY.md");
+  const soulPath = join(root, "soul.md");
+  const rolePresets = join(root, "role-presets");
+  const kb = join(root, "kb");
+  mkdirSync(rolePresets, { recursive: true });
+  mkdirSync(join(kb, "ep-core"), { recursive: true });
+  writeFileSync(appContextPath, "Test app context", "utf-8");
+  writeFileSync(soulPath, "Test soul", "utf-8");
+  writeFileSync(join(rolePresets, "default.md"), "Default role", "utf-8");
+
+  const result = await createAltTheorySession({
+    ...dirs,
+    appContextPath,
+    soulPath,
+    rolePresetPath: join(rolePresets, "default.md"),
+    rolePresetSlug: "default",
+    kbDir: kb,
+    kbDomain: "ep-core",
+    readOnly: true,
+    promptMode: "alt-only",
+    resourceDiscovery: "clean",
+  });
+
+  try {
+    const prompt = result.session.agent.state.systemPrompt;
+    assert.match(prompt, /Alt Theory Application Context/);
+    assert.match(prompt, /Test app context/);
+    assert.match(prompt, /Soul/);
+    assert.match(prompt, /Role Preset/);
+    assert.doesNotMatch(prompt, /expert coding assistant operating inside pi/i);
+    assert.doesNotMatch(prompt, /Pi documentation/i);
+    assert.doesNotMatch(prompt, /Available skills/i);
+    assert.equal(result.manifest.promptMode, "alt-only");
+  } finally {
+    result.session.dispose();
+  }
+});
+
 test("openAltTheorySession opens existing JSONL and reports runtime drift", async () => {
   const root = mkdtempSync(join(tmpdir(), "alt-theory-open-existing-"));
   const dataDir = join(root, "data");

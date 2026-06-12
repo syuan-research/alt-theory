@@ -84,6 +84,7 @@ export interface AssemblyManifest {
   writeDir: string | null;
   model: string | null;
   provider: string | null;
+  promptMode: PromptMode;
   resourceDiscovery: {
     mode: ResourceDiscoveryMode;
     skillsDir: string | null;
@@ -91,6 +92,7 @@ export interface AssemblyManifest {
 }
 
 export type ResourceDiscoveryMode = "clean" | "internal" | "dev-debug";
+export type PromptMode = "pi-default" | "alt-only";
 
 export interface AltTheoryConfig extends SessionDirectories {
   /** Application/session context loaded into the system prompt */
@@ -127,6 +129,7 @@ export interface AltTheoryConfig extends SessionDirectories {
   /** Runtime-only API key; never persisted by Alt Theory */
   runtimeApiKey?: string;
   thinkingLevel?: ThinkingLevel;
+  promptMode?: PromptMode;
   resourceDiscovery?: ResourceDiscoveryMode;
   skillsDir?: string;
 }
@@ -216,6 +219,7 @@ async function createAltTheorySessionWithManager(
     ? resolve(config.runtimeDir)
     : null;
   const agentDir = getAgentDir();
+  const promptMode = config.promptMode ?? "pi-default";
   const resourceDiscovery = config.resourceDiscovery ?? "dev-debug";
   const resolvedSkillsDir = config.skillsDir ? resolve(config.skillsDir) : null;
 
@@ -262,6 +266,7 @@ async function createAltTheorySessionWithManager(
       ].join("\n")
     );
   }
+  const altTheorySystemPrompt = appendContent.join("\n\n");
 
   const loader = new DefaultResourceLoader({
     cwd,
@@ -270,6 +275,8 @@ async function createAltTheorySessionWithManager(
       ? [resolvedPiPromptTemplatesDir]
       : [],
     noContextFiles: resourceDiscovery !== "dev-debug",
+    systemPromptOverride:
+      promptMode === "alt-only" ? () => altTheorySystemPrompt : undefined,
     skillsOverride:
       resourceDiscovery === "clean"
         ? () => ({ skills: [], diagnostics: [] })
@@ -282,7 +289,10 @@ async function createAltTheorySessionWithManager(
                   })
                 : { skills: [], diagnostics: [] }
           : undefined,
-    appendSystemPromptOverride: (base: string[]) => [...base, ...appendContent],
+    appendSystemPromptOverride:
+      promptMode === "alt-only"
+        ? () => []
+        : (base: string[]) => [...base, ...appendContent],
   });
   await loader.reload();
 
@@ -373,6 +383,7 @@ async function createAltTheorySessionWithManager(
     writeDir: readOnly ? null : resolvedWriteDir,
     model: session.model?.id ?? null,
     provider: session.model?.provider ?? null,
+    promptMode,
     resourceDiscovery: {
       mode: resourceDiscovery,
       skillsDir: resolvedSkillsDir,
