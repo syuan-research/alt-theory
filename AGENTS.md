@@ -149,6 +149,11 @@ _archives/agent-assets/skills/cs-swe-v0-3-before-repair-1129b96/
 
 Before broad edits, inspect branch and status.
 
+If using Codex in this linked-worktree repo, prefer unsandboxed/escalated Git
+commands for operations that touch index or objects. Sandboxed Codex Git may
+leave a zero-byte `index.lock` under the bare git store and cause repeated lock
+warnings even when no real Git process is running.
+
 Current workflow expectation:
 
 - `reorg/v0.3-dev-run` in `%LLM_THEO_WORKTREES_ROOT%/llm-theo-v0.3-dev` is the current integration line;
