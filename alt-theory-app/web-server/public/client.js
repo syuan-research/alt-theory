@@ -36,6 +36,9 @@ const stopBtn = document.getElementById("stop");
 const toolStatusEl = document.getElementById("tool-status");
 const skillSelect = document.getElementById("skill-select");
 const invokeSkillBtn = document.getElementById("invoke-skill");
+const reviseLatestBtn = document.getElementById("revise-latest");
+const forkPurposeSelect = document.getElementById("fork-purpose");
+const forkSessionBtn = document.getElementById("fork-session");
 const viewToggleBtns = Array.from(document.querySelectorAll(".view-toggle"));
 
 // ---------------------------------------------------------------------------
@@ -95,6 +98,7 @@ let currentAssistantEl = null;
 let isRunning = false;
 let hasMessages = false;
 let currentSessionId = "";
+let currentBranchId = "main";
 let currentDomain = "";
 let currentRolePresetSlug = null;
 let currentSoulSlug = null;
@@ -756,6 +760,7 @@ function renderManifest(manifest) {
 function renderDraftSession(payload) {
   latestManifest = null;
   currentSessionId = "";
+  currentBranchId = "main";
   currentDomain = payload.currentDomain || "";
   currentRolePresetSlug = payload.rolePresetSlug ?? payload.profileSlug ?? null;
   currentSoulSlug = payload.soulSlug ?? null;
@@ -1000,6 +1005,7 @@ ws.onmessage = (event) => {
         pendingAssetSwitch = false;
       }
       currentSessionId = msg.payload.sessionId;
+      currentBranchId = msg.payload.branchId || "main";
       currentDomain = msg.payload.currentDomain || "";
       currentRolePresetSlug =
         msg.payload.rolePresetSlug ?? msg.payload.profileSlug ?? null;
@@ -1221,6 +1227,10 @@ function setControlsEnabled(enabled) {
   skillSelect.disabled =
     !interactive || skillSelect.dataset.hasOptions !== "true";
   invokeSkillBtn.disabled = !interactive || !skillSelect.value;
+  reviseLatestBtn.disabled =
+    !interactive || !currentSessionId || !hasMessages || !inputEl.value.trim();
+  forkPurposeSelect.disabled = !interactive || !currentSessionId;
+  forkSessionBtn.disabled = !interactive || !currentSessionId;
 }
 
 function clearChatSurface() {
@@ -1320,6 +1330,10 @@ rolePresetSelect.addEventListener("change", (e) => {
   }
 });
 
+inputEl.addEventListener("input", () => {
+  setControlsEnabled(!isRunning);
+});
+
 instructionSelect.addEventListener("change", (e) => {
   const customInstructionRef = selectedSlug(e.target.value);
   if (
@@ -1354,6 +1368,35 @@ invokeSkillBtn.onclick = () => {
   hasMessages = true;
   setControlsEnabled(false);
   setConnStatus("running", "Thinking...");
+};
+
+reviseLatestBtn.onclick = () => {
+  const text = inputEl.value.trim();
+  if (!text || isRunning || !currentSessionId) return;
+  if (
+    !wsSafeSend(
+      JSON.stringify({ type: "revise_latest", payload: { text } })
+    )
+  ) return;
+  inputEl.value = "";
+  isRunning = true;
+  setControlsEnabled(false);
+  setConnStatus("running", "Revising...");
+  toolStatusEl.textContent = `Revising latest turn on ${currentBranchId}...`;
+};
+
+forkSessionBtn.onclick = () => {
+  if (isRunning || !currentSessionId) return;
+  const purpose = forkPurposeSelect.value;
+  if (
+    !wsSafeSend(
+      JSON.stringify({ type: "fork_session", payload: { purpose } })
+    )
+  ) return;
+  isRunning = true;
+  setControlsEnabled(false);
+  setConnStatus("running", "Forking...");
+  toolStatusEl.textContent = `Creating ${purpose} fork...`;
 };
 
 // New session — confirm if chat has messages

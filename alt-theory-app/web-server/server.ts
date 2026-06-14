@@ -587,6 +587,47 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           }
           break;
         }
+        case "revise_latest": {
+          if (!attachedSessionId) {
+            sendError(send, new Error("A materialized session is required"));
+            break;
+          }
+          try {
+            const run = sessionService.reviseLatest(
+              attachedSessionId,
+              msg.payload.text
+            );
+            await run.completion;
+          } catch (error) {
+            sendServiceError(send, error);
+          }
+          break;
+        }
+        case "fork_session": {
+          if (!attachedSessionId) {
+            sendError(send, new Error("A materialized session is required"));
+            break;
+          }
+          try {
+            const forked = await sessionService.forkSession(
+              attachedSessionId,
+              msg.payload.purpose,
+              msg.payload.forkPointEntryId
+            );
+            if (!closed) {
+              attachToSession(forked.sessionId);
+              send({
+                type: "session_transcript",
+                payload: {
+                  messages: sessionService.getTranscript(forked.sessionId),
+                },
+              });
+            }
+          } catch (error) {
+            sendServiceError(send, error);
+          }
+          break;
+        }
         case "new_session": {
           if (attachedSessionId) {
             draftSelectors = sessionService.getSelectors(attachedSessionId);

@@ -166,6 +166,9 @@ export sessions.
 - Populates KB, soul, and role-preset selectors from REST discovery.
 - Populates historical session list/detail from REST.
 - Sends prompts and abort requests.
+- Revises the latest user turn on the same logical branch using replacement
+  text from the composer.
+- Creates an explicit collaboration or comparison Fork from the current point.
 - Starts a new draft within the same browser connection without creating an
   empty session.
 - Resumes/opens an existing session within the same browser connection.
@@ -202,6 +205,10 @@ export sessions.
 - Tags and annotations are not implemented.
 - Export is not implemented.
 - Historical session comparison is not implemented.
+- Branch-tree browsing and switching back to an older branch are not yet
+  implemented. The new Fork becomes active immediately.
+- Revision/Fork does not roll back tool or file side effects. Comparison Fork
+  copies only the selected branch workspace at Fork time.
 - Model-comparison prompts across multiple providers are not implemented.
 - The Session Records editor is plain text only. It has no Markdown preview,
   diff, autosave, conflict handling, or new-file UI.
@@ -223,6 +230,9 @@ export sessions.
 
 ## Change Log
 
+- 2026-06-14: Added minimal latest-turn revision and explicit
+  collaboration/comparison Fork controls. Full branch browsing remains
+  deferred to later workbench UI.
 - 2026-06-14: Added custom-instruction selection and explicit Alt Theory skill
   invocation near the composer. Unified visual UAT remains scheduled for the
   later consolidated frontend checkpoint.

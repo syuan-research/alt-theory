@@ -9,6 +9,7 @@ import { createSessionDirs } from "../core/data-dir.js";
 import { SessionBusyError, SessionService } from "./session-service.js";
 import { readSessionDetail } from "./session-store.js";
 import { readConfigEvents } from "./config-events.js";
+import { latestRunSnapshots, readRunRecords } from "./lineage-records.js";
 
 function setupFixture() {
   const root = mkdtempSync(join(tmpdir(), "alt-theory-session-service-"));
@@ -136,6 +137,267 @@ test("SessionService creates managed sessions with v0.4 foundation records", asy
       readConfigEvents(manifest.recordsDir).map((event) => event.reason),
       ["creation"]
     );
+  } finally {
+    await service.disposeAll();
+  }
+});
+
+test("SessionService records ordinary run trajectory and Pi entry mappings", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const created = await service.createSession({
+    rolePresetSlug: "default",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const managed = (
+    service as unknown as {
+      sessions: Map<string, {
+        session: {
+          prompt(text: string): Promise<void>;
+          sessionManager: { appendMessage(message: unknown): string };
+        };
+      }>;
+    }
+  ).sessions.get(created.sessionId)!;
+  managed.session.prompt = async (text: string) => {
+    managed.session.sessionManager.appendMessage({
+      role: "user",
+      content: [{ type: "text", text }],
+      timestamp: Date.now(),
+    });
+    managed.session.sessionManager.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: "answer" }],
+      timestamp: Date.now(),
+    });
+  };
+
+  try {
+    const run = service.runPrompt(created.sessionId, "question");
+    await run.completion;
+    const recordsDir = service.getManifest(created.sessionId).recordsDir;
+    assert.equal(readRunRecords(recordsDir).length, 2);
+    const latest = latestRunSnapshots(recordsDir)[0];
+    assert.equal(latest.status, "completed");
+    assert.equal(latest.branchId, "main");
+    assert.match(latest.userEntryId ?? "", /^[a-f0-9-]+$/);
+    assert.equal(latest.assistantEntryIds.length, 1);
+    assert.deepEqual(run.ids, {
+      sessionId: created.sessionId,
+      branchId: "main",
+      turnId: "turn-000001",
+      revisionId: "rev-000001",
+      runId: "run-000001",
+    });
+  } finally {
+    await service.disposeAll();
+  }
+});
+
+test("SessionService revises only the latest turn without creating a branch", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const created = await service.createSession({
+    rolePresetSlug: "default",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const managed = (
+    service as unknown as {
+      sessions: Map<string, {
+        session: {
+          prompt(text: string): Promise<void>;
+          sessionManager: {
+            appendMessage(message: unknown): string;
+            buildSessionContext(): { messages: Array<{ content: Array<{ type: string; text: string }> }> };
+            getEntry(id: string): unknown;
+          };
+        };
+      }>;
+    }
+  ).sessions.get(created.sessionId)!;
+  managed.session.prompt = async (text: string) => {
+    managed.session.sessionManager.appendMessage({
+      role: "user",
+      content: [{ type: "text", text }],
+      timestamp: Date.now(),
+    });
+    managed.session.sessionManager.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: `answer:${text}` }],
+      timestamp: Date.now(),
+    });
+  };
+
+  try {
+    const original = service.runPrompt(created.sessionId, "original");
+    await original.completion;
+    const recordsDir = service.getManifest(created.sessionId).recordsDir;
+    const originalRecord = latestRunSnapshots(recordsDir)[0];
+    const revised = service.reviseLatest(created.sessionId, "revised");
+    await revised.completion;
+
+    assert.equal(revised.ids.sessionId, original.ids.sessionId);
+    assert.equal(revised.ids.branchId, "main");
+    assert.equal(revised.ids.turnId, original.ids.turnId);
+    assert.notEqual(revised.ids.revisionId, original.ids.revisionId);
+    assert.notEqual(revised.ids.runId, original.ids.runId);
+    assert.ok(
+      managed.session.sessionManager.getEntry(originalRecord.userEntryId!)
+    );
+    const latest = latestRunSnapshots(recordsDir);
+    assert.equal(
+      latest.find((run) => run.runId === original.ids.runId)?.status,
+      "superseded"
+    );
+    assert.equal(
+      latest.find((run) => run.runId === revised.ids.runId)?.supersedesRunId,
+      original.ids.runId
+    );
+    const text = managed.session.sessionManager
+      .buildSessionContext()
+      .messages.map((message) =>
+        message.content
+          .filter((part) => part.type === "text")
+          .map((part) => part.text)
+          .join("")
+      )
+      .join("\n");
+    assert.match(text, /revised/);
+    assert.doesNotMatch(text, /original/);
+    const branchIndex = JSON.parse(
+      readFileSync(join(recordsDir, "branch-index.json"), "utf-8")
+    );
+    assert.deepEqual(
+      branchIndex.branches.map((branch: { branchId: string }) => branch.branchId),
+      ["main"]
+    );
+  } finally {
+    await service.disposeAll();
+  }
+});
+
+test("SessionService explicit forks preserve logical session identity and workspace policy", async () => {
+  async function runCase(purpose: "collaboration" | "comparison") {
+    const fixture = setupFixture();
+    const service = createTestService(fixture);
+    const created = await service.createSession({
+      rolePresetSlug: "default",
+      kbDomain: "ep-core",
+      soulSlug: "soul-latest",
+    });
+    const manifest = service.getManifest(created.sessionId);
+    writeFileSync(join(manifest.sessionCwd, "shared-note.txt"), "source", "utf-8");
+    const managed = (
+      service as unknown as {
+        sessions: Map<string, {
+          session: {
+            sessionManager: {
+              appendMessage(message: unknown): string;
+              getLeafId(): string | null;
+            };
+          };
+        }>;
+      }
+    ).sessions.get(created.sessionId)!;
+    managed.session.sessionManager.appendMessage({
+      role: "user",
+      content: [{ type: "text", text: "fork source" }],
+      timestamp: Date.now(),
+    });
+    const forkPoint = managed.session.sessionManager.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: "fork answer" }],
+      timestamp: Date.now(),
+    });
+
+    try {
+      const forked = await service.forkSession(
+        created.sessionId,
+        purpose,
+        forkPoint
+      );
+      const activeManifest = service.getManifest(created.sessionId);
+      const detail = readSessionDetail(fixture.dataDir, created.sessionId);
+      assert.equal(forked.sessionId, created.sessionId);
+      assert.equal(detail?.activeBranch?.branchId, "fork-001");
+      assert.equal(detail?.activeBranch?.purpose, purpose);
+      assert.notEqual(
+        detail?.activeBranch?.activePiSessionFile,
+        manifest.piSessionFile
+      );
+      if (purpose === "collaboration") {
+        assert.equal(detail?.activeBranch?.workspaceMode, "shared");
+        assert.equal(detail?.activeBranch?.workspaceRef, manifest.sessionCwd);
+      } else {
+        assert.equal(detail?.activeBranch?.workspaceMode, "copied");
+        assert.notEqual(detail?.activeBranch?.workspaceRef, manifest.sessionCwd);
+        assert.equal(
+          readFileSync(
+            join(detail!.activeBranch!.workspaceRef, "shared-note.txt"),
+            "utf-8"
+          ),
+          "source"
+        );
+        assert.equal(
+          activeManifest.sessionCwd,
+          detail?.activeBranch?.workspaceRef
+        );
+      }
+    } finally {
+      await service.disposeAll();
+    }
+  }
+
+  await runCase("collaboration");
+  await runCase("comparison");
+});
+
+test("SessionService cleans unactivated comparison fork artifacts", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const created = await service.createSession({
+    rolePresetSlug: "default",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const managed = (service as any).sessions.get(created.sessionId);
+  managed.session.sessionManager.appendMessage({
+    role: "user",
+    content: [{ type: "text", text: "fork source" }],
+    timestamp: Date.now(),
+  });
+  const forkPoint = managed.session.sessionManager.appendMessage({
+    role: "assistant",
+    content: [{ type: "text", text: "fork answer" }],
+    timestamp: Date.now(),
+  });
+  const forkFile = join(fixture.root, "failed-fork.jsonl");
+  writeFileSync(forkFile, "partial", "utf-8");
+  managed.session.sessionManager.createBranchedSession = () => forkFile;
+  (service as any).openManagedRuntime = async () => {
+    throw new Error("forced fork open failure");
+  };
+
+  try {
+    await assert.rejects(
+      () => service.forkSession(created.sessionId, "comparison", forkPoint),
+      /forced fork open failure/
+    );
+    const detail = readSessionDetail(fixture.dataDir, created.sessionId);
+    const comparisonWorkspace = join(
+      fixture.dataDir,
+      "sessions",
+      created.sessionId,
+      "branches",
+      "fork-001",
+      "workspace"
+    );
+    assert.equal(existsSync(forkFile), false);
+    assert.equal(existsSync(comparisonWorkspace), false);
+    assert.equal(detail?.branchIndex?.activeBranchId, "main");
+    assert.equal(detail?.branchIndex?.branches.length, 1);
   } finally {
     await service.disposeAll();
   }
@@ -438,6 +700,14 @@ test("SessionService rejects concurrent same-session prompt mutations with sessi
           },
           "busy_role_switch"
         ),
+      (error) => error instanceof SessionBusyError && error.code === "session_busy"
+    );
+    assert.throws(
+      () => service.reviseLatest(snapshot.sessionId, "revised"),
+      (error) => error instanceof SessionBusyError && error.code === "session_busy"
+    );
+    await assert.rejects(
+      () => service.forkSession(snapshot.sessionId, "collaboration"),
       (error) => error instanceof SessionBusyError && error.code === "session_busy"
     );
     assert.ok(resolvePrompt);

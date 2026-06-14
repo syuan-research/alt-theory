@@ -276,7 +276,25 @@ records/branch-index.json   # schemaVersion: 1, activeBranchId: main
 ```
 
 These records are thin indexes around Pi JSONL. They do not duplicate
-conversation bodies and do not yet implement revision/fork operations.
+conversation bodies. `branch-index.json` is the authoritative active logical
+branch pointer; Pi's internal fork session ID remains an implementation detail
+and does not replace the Alt Theory `sessionId`.
+
+Ordinary runs append accepted and terminal snapshots to `records/runs.jsonl`.
+Each run maps `sessionId`, `branchId`, `turnId`, `revisionId`, and `runId` to
+the Pi session file and user/assistant entry IDs. Latest-turn revision moves
+the Pi leaf to the latest user entry's parent, appends a new path with the same
+turn ID, and marks the prior run `superseded`; it does not create a logical
+branch or delete old Pi evidence.
+
+Only explicit Fork creates `fork-NNN`:
+
+- collaboration Fork uses the shared session `workspace/`;
+- comparison Fork copies the source branch workspace to
+  `branches/{branchId}/workspace/`;
+- both use a separate Pi JSONL with parent linkage and preserve the Alt Theory
+  session ID;
+- tool/file side effects before revision or Fork are not rolled back.
 
 Service-created sessions also append a `creation` config event. Supported
 idle-time KB/role/soul changes append `user_change` config events. Opening an
@@ -284,9 +302,9 @@ existing session whose original role/soul/KB cannot resolve falls back
 automatically to the current selectors and appends a `resume_fallback` config
 event with warnings. Resume never blocks on a confirmation dialog.
 
-Role and soul changes now rebuild the internal Pi runtime against the same
-session root and Pi JSONL. They keep the same Alt Theory `sessionId`,
-`branchId=main`, workspace, and history. KB changes update the selector and
+Role, soul, and custom-instruction changes rebuild the internal Pi runtime
+against the active branch's Pi JSONL and workspace. They keep the same Alt
+Theory `sessionId` and logical branch. KB changes update the selector and
 per-turn context policy without rebuilding the runtime. Busy sessions reject
 config changes with `session_busy`.
 
@@ -325,6 +343,7 @@ WebSocket:
 - server: `session_draft`
 - server: `session_metadata`, `session_metrics`
 - client: `get_session_metadata`, `get_session_metrics`, `open_session`
+- client: `revise_latest`, `fork_session`
 
 `session_draft` contains only selector state and no session ID. The browser may
 enable input/config controls in draft, but records, paths, and metrics remain
@@ -410,6 +429,9 @@ is configured; they are not a billing claim.
 
 ## Change Log
 
+- 2026-06-14: Added append-only run lineage, same-branch latest-turn revision,
+  and explicit collaboration/comparison Fork with shared/copied workspace
+  policies. Alt Theory and Pi session identities are now explicitly separate.
 - 2026-06-14: Added content-validated custom instructions, three-mode skill
   composition, Alt Theory-only skill discovery, explicit skill invocation, and
   the minimal `conversation-summary` runtime skill.

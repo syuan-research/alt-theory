@@ -460,6 +460,19 @@ html, body {
   gap: 8px;
 }
 
+#lineage-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+#lineage-actions button,
+#fork-purpose {
+  padding: 4px 8px;
+  font-size: 11px;
+}
+
 #skill-select {
   width: 150px;
   flex: 0 0 150px;

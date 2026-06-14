@@ -1,4 +1,4 @@
-import { existsSync } from "fs";
+import { cpSync, existsSync, rmSync } from "fs";
 import type {
   AgentSession,
   AgentSessionEvent,
@@ -31,6 +31,8 @@ import {
 } from "./session-metrics.js";
 import { readSessionDetail, getSessionRootForRequest } from "./session-store.js";
 import {
+  readBranchIndex,
+  resolveBranchWorkspace,
   writeFoundationRecords,
 } from "./session-records.js";
 import {
@@ -38,6 +40,14 @@ import {
   buildEffectiveConfig,
 } from "./config-events.js";
 import { loadInstructionAsset } from "./instruction-assets.js";
+import {
+  addAndActivateBranch,
+  allocateBranchId,
+  appendRunRecord,
+  latestRunSnapshots,
+  type RunRecord,
+  updateBranchHead,
+} from "./lineage-records.js";
 import type {
   SessionMetrics,
   SessionSnapshot,
@@ -83,10 +93,12 @@ export interface SessionSelectors {
   customInstructionRef?: string | null;
 }
 
+export type ForkPurpose = "collaboration" | "comparison";
+
 export interface RunHandle {
   ids: {
     sessionId: string;
-    branchId: "main";
+    branchId: string;
     turnId: string;
     revisionId: string;
     runId: string;
@@ -122,6 +134,7 @@ interface ManagedSession {
   nextTurnIndex: number;
   nextRevisionIndex: number;
   nextRunIndex: number;
+  branchId: string;
 }
 
 export class SessionService {
@@ -139,9 +152,10 @@ export class SessionService {
       createSessionDirs(this.config.dataDir, sessionId),
       selectors
     );
-    this.sessions.set(managed.session.sessionId, managed);
+    this.sessions.set(managed.manifest.sessionId, managed);
     appendConfigEvent(managed.manifest.recordsDir, {
-      sessionId: managed.session.sessionId,
+      sessionId: managed.manifest.sessionId,
+      branchId: managed.branchId,
       reason: "creation",
       effective: buildEffectiveConfig(managed.manifest),
       changedFields: [],
@@ -158,7 +172,7 @@ export class SessionService {
       sessionId,
       fallbackSelectors
     );
-    this.sessions.set(managed.session.sessionId, managed);
+    this.sessions.set(managed.manifest.sessionId, managed);
     return this.snapshot(managed);
   }
 
@@ -173,38 +187,39 @@ export class SessionService {
     }
     if (selectors.rolePresetSlug !== previous.selectors.rolePresetSlug) {
       appendSessionEvent(previous.manifest.recordsDir, {
-        sessionId: previous.session.sessionId,
+        sessionId: previous.manifest.sessionId,
         type: "role_preset_selected",
         details: { rolePresetSlug: selectors.rolePresetSlug },
       });
     }
     if (selectors.soulSlug !== previous.selectors.soulSlug) {
       appendSessionEvent(previous.manifest.recordsDir, {
-        sessionId: previous.session.sessionId,
+        sessionId: previous.manifest.sessionId,
         type: "soul_selected",
         details: { soulSlug: selectors.soulSlug },
       });
     }
-    const dirs = getSessionDirs(this.config.dataDir, previous.session.sessionId);
+    const dirs = getSessionDirs(this.config.dataDir, previous.manifest.sessionId);
     if (!dirs) {
-      throw new Error(`Invalid session id: ${previous.session.sessionId}`);
+      throw new Error(`Invalid session id: ${previous.manifest.sessionId}`);
     }
 
     const replacement = this.hasSessionHistory(previous)
       ? await this.createManagedFromExistingWithSelectors(
-          previous.session.sessionId,
+          previous.manifest.sessionId,
           selectors,
           previous
         )
       : await this.createManagedFromDirs(dirs, selectors);
-    this.sessions.set(replacement.session.sessionId, replacement);
+    this.sessions.set(replacement.manifest.sessionId, replacement);
     await this.disposeManaged(previous);
     appendConfigEvent(replacement.manifest.recordsDir, {
-      sessionId: replacement.session.sessionId,
+      sessionId: replacement.manifest.sessionId,
       reason: "user_change",
       effective: buildEffectiveConfig(replacement.manifest),
       changedFields: configChangedFields(previous.selectors, selectors),
       warnings: [],
+      branchId: replacement.branchId,
     });
     return this.snapshot(replacement);
   }
@@ -245,12 +260,12 @@ export class SessionService {
     }
     managed.selectors.kbDomain = domain;
     appendSessionEvent(managed.manifest.recordsDir, {
-      sessionId: managed.session.sessionId,
+      sessionId: managed.manifest.sessionId,
       type: "kb_selected",
       details: { kbDomain: domain },
     });
     appendConfigEvent(managed.manifest.recordsDir, {
-      sessionId: managed.session.sessionId,
+      sessionId: managed.manifest.sessionId,
       reason: "user_change",
       effective: buildEffectiveConfig({
         ...managed.manifest,
@@ -262,28 +277,277 @@ export class SessionService {
       }),
       changedFields: ["kbDomain"],
       warnings: [],
+      branchId: managed.branchId,
     });
     return this.snapshot(managed);
   }
 
   runPrompt(sessionId: string, text: string): RunHandle {
     const managed = this.requireSession(sessionId);
+    return this.runPromptWithLineage(managed, text);
+  }
+
+  reviseLatest(sessionId: string, text: string): RunHandle {
+    const managed = this.requireSession(sessionId);
+    if (managed.busy || managed.session.isStreaming) {
+      throw new SessionBusyError(sessionId);
+    }
+    const latest = latestRunSnapshots(managed.manifest.recordsDir)
+      .filter(
+        (run) =>
+          run.branchId === managed.branchId &&
+          run.status === "completed" &&
+          run.userEntryId
+      )
+      .at(-1);
+    if (!latest?.userEntryId) {
+      throw new Error("No completed latest user turn is available to revise");
+    }
+    const activeUserEntries = managed.session.sessionManager
+      .getBranch()
+      .filter(
+        (entry) =>
+          entry.type === "message" &&
+          (entry.message as { role?: string }).role === "user"
+      );
+    if (activeUserEntries.at(-1)?.id !== latest.userEntryId) {
+      throw new Error("Only the active branch latest user turn can be revised");
+    }
+    const userEntry = managed.session.sessionManager.getEntry(latest.userEntryId);
+    if (!userEntry) {
+      throw new Error("Latest user entry is missing from Pi history");
+    }
+    if (userEntry.parentId) {
+      managed.session.sessionManager.branch(userEntry.parentId);
+    } else {
+      managed.session.sessionManager.resetLeaf();
+    }
+    appendRunRecord(managed.manifest.recordsDir, {
+      ...runRecordBody(latest),
+      status: "superseded",
+      completedAt: new Date().toISOString(),
+    });
+    return this.runPromptWithLineage(managed, text, {
+      turnId: latest.turnId,
+      supersedesRunId: latest.runId,
+    });
+  }
+
+  async forkSession(
+    sessionId: string,
+    purpose: ForkPurpose,
+    forkPointEntryId?: string
+  ): Promise<SessionSnapshot> {
+    const previous = this.requireSession(sessionId);
+    if (previous.busy || previous.session.isStreaming) {
+      throw new SessionBusyError(sessionId);
+    }
+    const leafId =
+      forkPointEntryId ?? previous.session.sessionManager.getLeafId();
+    if (!leafId) {
+      throw new Error("Fork requires an existing conversation entry");
+    }
+    if (
+      !previous.session.sessionManager
+        .getBranch()
+        .some((entry) => entry.id === leafId)
+    ) {
+      throw new Error("Fork point must be on the active branch");
+    }
+    const dirs = getSessionDirs(this.config.dataDir, sessionId);
+    if (!dirs) throw new Error(`Invalid session id: ${sessionId}`);
+    const branchIndex = readBranchIndex(previous.manifest.recordsDir);
+    if (!branchIndex) throw new Error("v0.4 branch index is required");
+    const branchId = allocateBranchId(branchIndex);
+    const sourceBranch = branchIndex.branches.find(
+      (branch) => branch.branchId === previous.branchId
+    );
+    if (!sourceBranch) {
+      throw new Error(`Unknown active branch: ${previous.branchId}`);
+    }
+    const workspaceRef =
+      purpose === "collaboration"
+        ? dirs.sessionCwd
+        : resolveBranchWorkspace(dirs.sessionRoot, branchId);
+    const forkFile =
+      previous.session.sessionManager.createBranchedSession(leafId);
+    if (!forkFile) {
+      throw new Error("Pi did not create a persisted fork session");
+    }
+    let copiedWorkspace = false;
+    let activated = false;
+    try {
+      if (purpose === "comparison") {
+        cpSync(sourceBranch.workspaceRef, workspaceRef, {
+          recursive: true,
+          errorOnExist: true,
+        });
+        copiedWorkspace = true;
+      }
+      const result = await this.openManagedRuntime({
+        sessionId,
+        sessionFile: forkFile,
+        sessionDirs: { ...dirs, sessionCwd: workspaceRef },
+        selectors: previous.selectors,
+        originalManifest: previous.manifest,
+        branchId,
+        openedFrom: previous.openedFrom,
+        resumeWarnings: previous.resumeWarnings,
+        counters: previous.counters,
+        transcript: previous.transcript,
+        overrideSessionCwd: true,
+      });
+      const sourceRun = latestRunSnapshots(previous.manifest.recordsDir).find(
+        (run) =>
+          run.branchId === previous.branchId &&
+          run.status === "completed" &&
+          (run.userEntryId === leafId ||
+            run.assistantEntryIds.includes(leafId))
+      );
+      addAndActivateBranch(previous.manifest.recordsDir, {
+        branchId,
+        parentBranchId: previous.branchId,
+        forkPointEntryId: leafId,
+        forkPointTurnId: sourceRun?.turnId ?? null,
+        purpose,
+        workspaceMode: purpose === "comparison" ? "copied" : "shared",
+        workspaceRef,
+        activePiSessionFile: forkFile,
+        activeLeafEntryId: leafId,
+        createdAt: new Date().toISOString(),
+      });
+      activated = true;
+      result.nextTurnIndex = previous.nextTurnIndex;
+      result.nextRevisionIndex = previous.nextRevisionIndex;
+      result.nextRunIndex = previous.nextRunIndex;
+      result.transcript =
+        readSessionDetail(this.config.dataDir, sessionId)?.transcript ??
+        result.transcript;
+      this.sessions.set(sessionId, result);
+      await this.disposeManaged(previous);
+      appendSessionEvent(result.manifest.recordsDir, {
+        sessionId,
+        type: "session_forked",
+        details: {
+          branchId,
+          parentBranchId: previous.branchId,
+          purpose,
+          workspaceMode: purpose === "comparison" ? "copied" : "shared",
+        },
+      });
+      return this.snapshot(result);
+    } catch (error) {
+      if (!activated && copiedWorkspace && existsSync(workspaceRef)) {
+        rmSync(workspaceRef, { recursive: true, force: true });
+      }
+      if (!activated && existsSync(forkFile)) {
+        rmSync(forkFile, { force: true });
+      }
+      throw error;
+    }
+  }
+
+  private runPromptWithLineage(
+    managed: ManagedSession,
+    text: string,
+    options: {
+      turnId?: string;
+      supersedesRunId?: string | null;
+    } = {}
+  ): RunHandle {
+    const sessionId = managed.manifest.sessionId;
     if (managed.busy || managed.session.isStreaming) {
       throw new SessionBusyError(sessionId);
     }
 
     managed.busy = true;
     managed.counters.messageCount++;
-    const turnId = formatCounter("turn", managed.nextTurnIndex++);
+    const turnId =
+      options.turnId ?? formatCounter("turn", managed.nextTurnIndex++);
     const revisionId = formatCounter("rev", managed.nextRevisionIndex++);
     const runId = formatCounter("run", managed.nextRunIndex++);
+    const acceptedAt = new Date().toISOString();
+    const beforeEntryIds = new Set(
+      managed.session.sessionManager.getEntries().map((entry) => entry.id)
+    );
     const contextPrefix =
       managed.selectors.kbDomain !== "all"
         ? `[Context: Search in ${this.config.kbDir}/${managed.selectors.kbDomain}/ unless user says otherwise.]\n`
         : "";
 
+    appendRunRecord(managed.manifest.recordsDir, {
+      sessionId,
+      branchId: managed.branchId,
+      turnId,
+      revisionId,
+      runId,
+      status: "accepted",
+      piSessionFile: managed.session.sessionFile ?? null,
+      userEntryId: null,
+      assistantEntryIds: [],
+      supersedesRunId: options.supersedesRunId ?? null,
+      acceptedAt,
+      completedAt: null,
+    });
+
     const completion = managed.session
       .prompt(contextPrefix + text)
+      .then(() => {
+        const entries = managed.session.sessionManager
+          .getEntries()
+          .filter((entry) => !beforeEntryIds.has(entry.id));
+        const userEntryId =
+          entries.find(
+            (entry) =>
+              entry.type === "message" &&
+              (entry.message as { role?: string }).role === "user"
+          )?.id ?? null;
+        const assistantEntryIds = entries
+          .filter(
+            (entry) =>
+              entry.type === "message" &&
+              (entry.message as { role?: string }).role === "assistant"
+          )
+          .map((entry) => entry.id);
+        appendRunRecord(managed.manifest.recordsDir, {
+          sessionId,
+          branchId: managed.branchId,
+          turnId,
+          revisionId,
+          runId,
+          status: "completed",
+          piSessionFile: managed.session.sessionFile ?? null,
+          userEntryId,
+          assistantEntryIds,
+          supersedesRunId: options.supersedesRunId ?? null,
+          acceptedAt,
+          completedAt: new Date().toISOString(),
+        });
+        updateBranchHead(managed.manifest.recordsDir, managed.branchId, {
+          activePiSessionFile: managed.session.sessionFile ?? null,
+          activeLeafEntryId:
+            managed.session.sessionManager.getLeafId() ?? null,
+        });
+      })
+      .catch((error) => {
+        appendRunRecord(managed.manifest.recordsDir, {
+          sessionId,
+          branchId: managed.branchId,
+          turnId,
+          revisionId,
+          runId,
+          status: /abort|interrupt/i.test(String(error))
+            ? "aborted"
+            : "failed",
+          piSessionFile: managed.session.sessionFile ?? null,
+          userEntryId: null,
+          assistantEntryIds: [],
+          supersedesRunId: options.supersedesRunId ?? null,
+          acceptedAt,
+          completedAt: new Date().toISOString(),
+        });
+        throw error;
+      })
       .finally(() => {
         managed.busy = false;
       });
@@ -291,7 +555,7 @@ export class SessionService {
     return {
       ids: {
         sessionId,
-        branchId: "main",
+        branchId: managed.branchId,
         turnId,
         revisionId,
         runId,
@@ -306,7 +570,7 @@ export class SessionService {
     await managed.session.abort();
     managed.busy = false;
     appendSessionEvent(managed.manifest.recordsDir, {
-      sessionId: managed.session.sessionId,
+      sessionId: managed.manifest.sessionId,
       type: "run_aborted",
       details: reason ? { reason } : undefined,
     });
@@ -402,7 +666,7 @@ export class SessionService {
       transcript: [],
     });
     appendSessionEvent(managed.manifest.recordsDir, {
-      sessionId: managed.session.sessionId,
+      sessionId: managed.manifest.sessionId,
       type: "session_created",
       details: {
         kbDomain: selectors.kbDomain,
@@ -460,8 +724,12 @@ export class SessionService {
     );
     const instruction = this.resolveOptionalInstruction(activeInstructionRef);
 
-    const result = await openAltTheorySession({
+    const activeSessionDirs = {
       ...sessionDirs,
+      sessionCwd: detail.activeBranch?.workspaceRef ?? sessionDirs.sessionCwd,
+    };
+    const result = await openAltTheorySession({
+      ...activeSessionDirs,
       sessionFile: detail.pi.sessionFile,
       originalManifest: detail.manifest,
       appContextPath: this.config.assetPaths.appContextPath,
@@ -506,9 +774,10 @@ export class SessionService {
         turnCount: detail.metrics?.turnCount ?? 0,
       },
       transcript: detail.transcript,
+      branchId: detail.activeBranch?.branchId ?? "main",
     });
     appendSessionEvent(managed.manifest.recordsDir, {
-      sessionId: managed.session.sessionId,
+      sessionId: managed.manifest.sessionId,
       type: "session_opened_existing",
       details: {
         requestedSessionId: sessionId,
@@ -519,7 +788,7 @@ export class SessionService {
       },
     });
     appendSessionEvent(managed.manifest.recordsDir, {
-      sessionId: managed.session.sessionId,
+      sessionId: managed.manifest.sessionId,
       type: "session_resumed",
       details: {
         model: managed.manifest.model,
@@ -528,7 +797,7 @@ export class SessionService {
     });
     if (managed.resumeWarnings.length > 0) {
       appendSessionEvent(managed.manifest.recordsDir, {
-        sessionId: managed.session.sessionId,
+        sessionId: managed.manifest.sessionId,
         type: "resume_warning",
         details: {
           warningCount: managed.resumeWarnings.length,
@@ -548,11 +817,12 @@ export class SessionService {
     );
     if (fallbackChangedFields.length > 0) {
       appendConfigEvent(managed.manifest.recordsDir, {
-        sessionId: managed.session.sessionId,
+        sessionId: managed.manifest.sessionId,
         reason: "resume_fallback",
         effective: buildEffectiveConfig(managed.manifest),
         changedFields: fallbackChangedFields,
         warnings: managed.resumeWarnings,
+        branchId: managed.branchId,
       });
     }
     return managed;
@@ -575,8 +845,15 @@ export class SessionService {
       throw new Error(`Invalid session id: ${sessionId}`);
     }
 
-    const result = await openAltTheorySession({
+    const activeSessionDirs = {
       ...sessionDirs,
+      sessionCwd:
+        detail?.activeBranch?.workspaceRef ??
+        previous.manifest.sessionCwd ??
+        sessionDirs.sessionCwd,
+    };
+    const result = await openAltTheorySession({
+      ...activeSessionDirs,
       sessionFile,
       originalManifest: detail?.manifest ?? previous.manifest,
       appContextPath: this.config.assetPaths.appContextPath,
@@ -605,6 +882,7 @@ export class SessionService {
       runLabel: this.config.runLabel,
       testBatch: this.config.testBatch,
       readOnly: this.config.readOnly,
+      overrideSessionCwd: true,
     });
 
     return this.createManaged({
@@ -614,6 +892,67 @@ export class SessionService {
       resumeWarnings: result.resumeWarnings,
       counters: previous.counters,
       transcript: previous.transcript,
+      branchId: previous.branchId,
+    });
+  }
+
+  private async openManagedRuntime(args: {
+    sessionId: string;
+    sessionFile: string;
+    sessionDirs: SessionDirectories;
+    selectors: SessionSelectors;
+    originalManifest: AssemblyManifest;
+    branchId: string;
+    openedFrom: "new" | "existing";
+    resumeWarnings: string[];
+    counters: SessionCounters;
+    transcript: TranscriptMessage[];
+    overrideSessionCwd: boolean;
+  }): Promise<ManagedSession> {
+    const instruction = this.resolveOptionalInstruction(
+      args.selectors.customInstructionRef
+    );
+    const result = await openAltTheorySession({
+      ...args.sessionDirs,
+      sessionId: args.sessionId,
+      sessionFile: args.sessionFile,
+      originalManifest: args.originalManifest,
+      overrideSessionCwd: args.overrideSessionCwd,
+      appContextPath: this.config.assetPaths.appContextPath,
+      soulPath: this.resolveOptionalSoulPath(args.selectors.soulSlug),
+      soulSlug: args.selectors.soulSlug,
+      rolePresetPath: this.resolveOptionalRolePresetPath(
+        args.selectors.rolePresetSlug
+      ),
+      rolePresetSlug: args.selectors.rolePresetSlug,
+      customInstructionPath: instruction?.path ?? null,
+      customInstructionRef: instruction?.ref ?? null,
+      kbDir: this.config.kbDir,
+      kbDomain: args.selectors.kbDomain,
+      piPromptTemplatesDir: this.config.assetPaths.piPromptTemplatesDir,
+      coreSoulPath: this.config.coreSoulPath,
+      coreSoulModulesDir: this.config.coreSoulModulesDir,
+      coreSoulModules: this.config.coreSoulModules,
+      modelProvider: this.config.modelProvider,
+      modelId: this.config.modelId,
+      modelsPath: this.config.modelsPath,
+      runtimeApiKey: this.config.runtimeApiKey,
+      thinkingLevel: this.config.thinkingLevel,
+      promptMode: this.config.promptMode,
+      resourceDiscovery: this.config.resourceDiscovery,
+      skillsDir: this.config.skillsDir,
+      runLabel: this.config.runLabel,
+      testBatch: this.config.testBatch,
+      readOnly: this.config.readOnly,
+    });
+    return this.createManaged({
+      ...result,
+      selectors: args.selectors,
+      openedFrom: args.openedFrom,
+      resumeWarnings: args.resumeWarnings,
+      counters: args.counters,
+      transcript: args.transcript,
+      branchId: args.branchId,
     });
   }
 
@@ -625,15 +964,24 @@ export class SessionService {
     resumeWarnings: string[];
     counters: SessionCounters;
     transcript: TranscriptMessage[];
+    branchId?: string;
   }): ManagedSession {
+    const persistedRuns = latestRunSnapshots(args.manifest.recordsDir);
     const managed: ManagedSession = {
       ...args,
       listeners: new Set(),
       internalUnsubscribe: () => {},
       busy: false,
-      nextTurnIndex: Math.max(1, args.counters.turnCount + 1),
-      nextRevisionIndex: 1,
-      nextRunIndex: 1,
+      nextTurnIndex: Math.max(
+        1,
+        args.counters.turnCount + 1,
+        maxCounter(persistedRuns.map((run) => run.turnId), "turn") + 1
+      ),
+      nextRevisionIndex:
+        maxCounter(persistedRuns.map((run) => run.revisionId), "rev") + 1,
+      nextRunIndex:
+        maxCounter(persistedRuns.map((run) => run.runId), "run") + 1,
+      branchId: args.branchId ?? "main",
     };
     managed.internalUnsubscribe = managed.session.subscribe((event) =>
       this.handleAgentEvent(managed, event)
@@ -688,7 +1036,7 @@ export class SessionService {
         const error = managed.session.state.errorMessage;
         if (error) {
           appendSessionEvent(managed.manifest.recordsDir, {
-            sessionId: managed.session.sessionId,
+            sessionId: managed.manifest.sessionId,
             type: "run_failed",
             details: { error },
           });
@@ -697,7 +1045,7 @@ export class SessionService {
           managed.counters.turnCount++;
           const metrics = this.persistMetrics(managed);
           appendSessionEvent(managed.manifest.recordsDir, {
-            sessionId: managed.session.sessionId,
+            sessionId: managed.manifest.sessionId,
             type: "run_completed",
             details: {
               turnCount: managed.counters.turnCount,
@@ -726,7 +1074,7 @@ export class SessionService {
     overrides?: Partial<SessionSnapshot>
   ): SessionSnapshot {
     return {
-      sessionId: managed.session.sessionId,
+      sessionId: managed.manifest.sessionId,
       status: managed.session.isStreaming ? "running" : "idle",
       currentDomain: managed.selectors.kbDomain,
       rolePresetSlug: managed.selectors.rolePresetSlug,
@@ -845,6 +1193,25 @@ export class SessionService {
 
 function formatCounter(prefix: string, value: number): string {
   return `${prefix}-${String(value).padStart(6, "0")}`;
+}
+
+function maxCounter(values: string[], prefix: string): number {
+  return values.reduce((max, value) => {
+    const match = new RegExp(`^${prefix}-(\\d+)$`).exec(value);
+    return match ? Math.max(max, Number.parseInt(match[1], 10)) : max;
+  }, 0);
+}
+
+function runRecordBody(
+  record: RunRecord
+): Omit<RunRecord, "schemaVersion" | "recordType" | "status"> {
+  const {
+    schemaVersion: _schemaVersion,
+    recordType: _recordType,
+    status: _status,
+    ...body
+  } = record;
+  return body;
 }
 
 function configChangedFields(

@@ -1,0 +1,45 @@
+feature: 2026-06-14-conversation-revision-and-fork
+created: 2026-06-14
+
+steps:
+  - action: "Lineage persistence: add append-only run records and branch-index mutation helpers"
+    exit_signal: "Unit tests cover run snapshots, supersession, and branch updates"
+    status: done
+  - action: "Ordinary run instrumentation: map trajectory IDs to Pi entries and outcomes"
+    exit_signal: "Service tests persist accepted and terminal run records"
+    status: done
+  - action: "Latest-turn revision: move active Pi leaf and append a new revision on the same branch"
+    exit_signal: "Active transcript changes while branch/turn identity remains stable"
+    status: done
+  - action: "Explicit Fork: implement collaboration/shared and comparison/copied workspaces"
+    exit_signal: "Branch index and physical workspace behavior match fork purpose"
+    status: done
+  - action: "Transport, detail, minimal UI, acceptance, and architecture writeback"
+    exit_signal: "Integration suite passes and plan records are current"
+    status: done
+
+checks:
+  - item: "Ordinary runs persist trajectory-to-Pi mappings"
+    source: design
+    status: passed
+  - item: "Latest-turn revision keeps session/branch/turn and supersedes the old run"
+    source: design
+    status: passed
+  - item: "Superseded Pi entries remain durable while active transcript follows the new revision"
+    source: design
+    status: passed
+  - item: "Collaboration Fork uses shared workspace and a separate Pi file"
+    source: design
+    status: passed
+  - item: "Comparison Fork uses copied workspace and a separate Pi file"
+    source: design
+    status: passed
+  - item: "Session detail exposes branch index, active branch, and run history"
+    source: design
+    status: passed
+  - item: "Busy/invalid operations do not partially activate lineage changes"
+    source: design
+    status: passed
+  - item: "No edit-created branch, arbitrary historical edit, workspace merge, or automatic Fork"
+    source: design
+    status: passed

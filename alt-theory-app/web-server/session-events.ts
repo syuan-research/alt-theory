@@ -13,6 +13,7 @@ export type SessionEventType =
   | "profile_selected_next_session"
   | "soul_selected"
   | "skill_invoked"
+  | "session_forked"
   | "run_completed"
   | "run_failed"
   | "run_aborted";

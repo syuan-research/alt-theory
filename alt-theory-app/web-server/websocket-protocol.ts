@@ -12,6 +12,7 @@ import type { AssemblyManifest } from "../core/alt-theory-core.js";
 
 export interface SessionSnapshot {
   sessionId: string;
+  branchId?: string;
   status: "idle" | "running" | "error";
   currentDomain: string;
   rolePresetSlug: string | null;
@@ -84,6 +85,14 @@ export type ClientMessage =
   | {
       type: "invoke_skill";
       payload: { skillName: string; userText?: string };
+    }
+  | { type: "revise_latest"; payload: { text: string } }
+  | {
+      type: "fork_session";
+      payload: {
+        purpose: "collaboration" | "comparison";
+        forkPointEntryId?: string;
+      };
     }
   | { type: "new_session" }
   | { type: "open_session"; payload: { sessionId: string } }

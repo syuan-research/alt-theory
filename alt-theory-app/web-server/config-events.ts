@@ -34,7 +34,7 @@ export interface ConfigEvent {
   recordType: "config-event";
   eventId: string;
   sessionId: string;
-  branchId: "main";
+  branchId: string;
   at: string;
   reason: "creation" | "user_change" | "resume_fallback";
   effective: EffectiveSessionConfig;
@@ -72,6 +72,7 @@ export function appendConfigEvent(
     effective: EffectiveSessionConfig;
     changedFields?: string[];
     warnings?: string[];
+    branchId?: string;
   }
 ): ConfigEvent {
   const event: ConfigEvent = {
@@ -79,7 +80,7 @@ export function appendConfigEvent(
     recordType: "config-event",
     eventId: randomUUID(),
     sessionId: args.sessionId,
-    branchId: "main",
+    branchId: args.branchId ?? "main",
     at: new Date().toISOString(),
     reason: args.reason,
     effective: args.effective,

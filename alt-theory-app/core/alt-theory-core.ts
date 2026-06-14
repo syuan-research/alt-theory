@@ -168,6 +168,8 @@ export interface AltTheoryOpenExistingConfig extends AltTheoryConfig {
   sessionFile: string;
   /** Original assembly manifest, when available, used for drift warnings */
   originalManifest?: AssemblyManifest | null;
+  /** Override the Pi header cwd for a copied comparison workspace. */
+  overrideSessionCwd?: boolean;
 }
 
 /** Read-only tool allowlist (no write/edit/bash) */
@@ -198,7 +200,8 @@ export async function openAltTheorySession(
 ) {
   const sessionManager = SessionManager.open(
     resolve(config.sessionFile),
-    resolve(config.piSessionDir)
+    resolve(config.piSessionDir),
+    config.overrideSessionCwd ? resolve(config.sessionCwd) : undefined
   );
   return createAltTheorySessionWithManager(config, sessionManager, {
     openedFrom: "existing",
@@ -418,7 +421,7 @@ async function createAltTheorySessionWithManager(
   }
 
   const manifest: AssemblyManifest = {
-    sessionId: session.sessionId,
+    sessionId: config.sessionId,
     createdAt,
     openedFrom: openMode.openedFrom,
     appContext: fileRef(resolvedAppContextPath),

@@ -28,6 +28,7 @@ import {
   type ConfigEvent,
   type EffectiveSessionConfig,
 } from "./config-events.js";
+import { readRunRecords, type RunRecord } from "./lineage-records.js";
 
 export interface SessionSummary {
   sessionId: string;
@@ -69,6 +70,9 @@ export interface SessionDetailResponse {
   transcriptPreview: TranscriptMessage[];
   effectiveConfig: EffectiveSessionConfig | null;
   configEvents: ConfigEvent[];
+  branchIndex: BranchIndexRecord | null;
+  activeBranch: BranchIndexRecord["branches"][number] | null;
+  runs: RunRecord[];
   warnings: string[];
 }
 
@@ -129,6 +133,7 @@ export function readSessionDetail(
   const session = buildSummary(sessionId, parts);
   const events = readSessionEvents(parts.recordsDir, parts.state);
   const configEvents = readConfigEvents(parts.recordsDir);
+  const runs = readRunRecords(parts.recordsDir);
   const pi = readPiInfo(parts.sessionFile, parts.historyDir, parts.state);
   const transcriptPreview = pi.transcript.slice(-12);
 
@@ -147,6 +152,12 @@ export function readSessionDetail(
       configEvents.at(-1)?.effective ??
       (parts.manifest ? buildEffectiveConfig(parts.manifest) : null),
     configEvents,
+    branchIndex: parts.branchIndex,
+    activeBranch:
+      parts.branchIndex?.branches.find(
+        (branch) => branch.branchId === parts.branchIndex?.activeBranchId
+      ) ?? null,
+    runs,
     warnings: uniqueWarnings([...session.warnings, ...parts.state.warnings]),
   };
 }

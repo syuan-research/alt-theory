@@ -14,7 +14,7 @@ export interface V4SessionHeader extends RecordEnvelope {
   recordType: "session";
   sessionId: string;
   createdAt: string;
-  activeBranchId: "main";
+  activeBranchId: string;
   recordModel: "v0.4";
 }
 
@@ -33,7 +33,7 @@ export interface BranchRecord {
 
 export interface BranchIndexRecord extends RecordEnvelope {
   recordType: "branch-index";
-  activeBranchId: "main";
+  activeBranchId: string;
   branches: BranchRecord[];
 }
 
@@ -111,6 +111,20 @@ export function readBranchIndex(recordsDir: string): BranchIndexRecord | null {
     return record;
   }
   return null;
+}
+
+export function writeBranchIndex(
+  recordsDir: string,
+  branchIndex: BranchIndexRecord
+): void {
+  writeJsonAtomic(join(recordsDir, "branch-index.json"), branchIndex);
+}
+
+export function writeSessionHeader(
+  recordsDir: string,
+  session: V4SessionHeader
+): void {
+  writeJsonAtomic(join(recordsDir, "session.json"), session);
 }
 
 function readJson<T>(path: string): T | null {

@@ -80,6 +80,14 @@
       <div id="messages"></div>
       <div id="composer">
         <div id="tool-status"></div>
+        <div id="lineage-actions">
+          <button id="revise-latest" title="Replace the latest user turn without creating a branch" disabled>Revise latest</button>
+          <select id="fork-purpose" title="Fork workspace behavior" disabled>
+            <option value="collaboration">Collaboration</option>
+            <option value="comparison">Comparison</option>
+          </select>
+          <button id="fork-session" title="Create an explicit branch from the current point" disabled>Fork</button>
+        </div>
         <div id="input-row">
           <select id="skill-select" title="Alt Theory skill" disabled>
             <option value="">Skill</option>
