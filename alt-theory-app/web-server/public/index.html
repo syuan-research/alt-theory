@@ -66,6 +66,10 @@
 
     <!-- Center: Chat -->
     <main id="chat-panel">
+      <div id="transcript-toolbar">
+        <button class="view-toggle" data-view="user" title="Show only user-visible conversation">User</button>
+        <button class="view-toggle selected" data-view="developer" title="Show thinking, tool calls, and collapsed tool results">Developer</button>
+      </div>
       <div id="messages"></div>
       <div id="composer">
         <div id="tool-status"></div>
@@ -77,80 +81,110 @@
       </div>
     </main>
 
-    <!-- Right: Runtime Inspector -->
+    <!-- Right: Inspector -->
     <aside id="right-panel" class="side-panel">
-      <div class="panel-section">
+      <div class="panel-section right-tab-header">
         <div class="panel-header">
-          <span class="panel-title">Runtime Inspector</span>
-          <button id="refresh-metrics" class="small-btn" title="Refresh metadata &amp; metrics" disabled>&#8635;</button>
+          <span class="panel-title">Inspector</span>
+        </div>
+        <div id="right-tabs" class="right-tabs">
+          <button class="right-tab selected" data-right-tab="records">Records</button>
+          <button class="right-tab" data-right-tab="runtime">Runtime</button>
+          <button class="right-tab" data-right-tab="paths">Paths</button>
         </div>
       </div>
 
-      <div class="panel-section">
-        <div class="section-label">Session ID</div>
-        <div id="rt-session-id" class="copyable muted small-text">—</div>
-      </div>
-
-      <div class="panel-section">
-        <div class="section-label">Connection Status</div>
-        <div id="rt-conn-status" class="small-text">—</div>
-      </div>
-
-      <div class="panel-section">
-        <div class="section-label">Active KB / Soul / Role</div>
-        <div id="rt-kb" class="small-text">—</div>
-        <div id="rt-soul" class="small-text">—</div>
-        <div id="rt-role-preset" class="small-text">—</div>
-      </div>
-
-      <div class="panel-section">
-        <div class="section-label">Model / Provider</div>
-        <div id="rt-model" class="small-text">—</div>
-        <div id="rt-provider" class="small-text">—</div>
-      </div>
-
-      <div class="panel-section">
-        <div class="section-label">Counters</div>
-        <div class="metrics-grid">
-          <span class="metric-key">Turns</span><span id="rt-turns" class="metric-val">0</span>
-          <span class="metric-key">Messages</span><span id="rt-messages" class="metric-val">0</span>
-          <span class="metric-key">Tool Calls</span><span id="rt-tool-calls" class="metric-val">0</span>
+      <div class="right-tab-panel active" data-right-panel="records">
+        <div class="panel-section">
+          <div class="panel-header compact-header">
+            <span class="section-label inline-label">Session Records</span>
+            <button id="records-refresh-btn" class="small-btn" title="Refresh records" disabled>&#8635;</button>
+          </div>
+          <div id="records-list" class="records-list small-text"></div>
+          <textarea id="record-editor" spellcheck="false" disabled></textarea>
+          <div class="record-actions">
+            <span id="record-status" class="hint"></span>
+            <button id="record-save-btn" class="small-btn" disabled>Save</button>
+          </div>
         </div>
       </div>
 
-      <div class="panel-section">
-        <div class="section-label">Tokens</div>
-        <div class="metrics-grid">
-          <span class="metric-key">Input</span><span id="rt-tok-input" class="metric-val">—</span>
-          <span class="metric-key">Output</span><span id="rt-tok-output" class="metric-val">—</span>
-          <span class="metric-key">Cache Read</span><span id="rt-tok-cache-r" class="metric-val">—</span>
-          <span class="metric-key">Cache Write</span><span id="rt-tok-cache-w" class="metric-val">—</span>
-          <span class="metric-key">Total</span><span id="rt-tok-total" class="metric-val">—</span>
+      <div class="right-tab-panel" data-right-panel="runtime">
+        <div class="panel-section">
+          <div class="panel-header compact-header">
+            <span class="section-label inline-label">Runtime</span>
+            <button id="refresh-metrics" class="small-btn" title="Refresh metadata &amp; metrics" disabled>&#8635;</button>
+          </div>
+        </div>
+
+        <div class="panel-section">
+          <div class="section-label">Session ID</div>
+          <div id="rt-session-id" class="copyable muted small-text">—</div>
+        </div>
+
+        <div class="panel-section">
+          <div class="section-label">Connection Status</div>
+          <div id="rt-conn-status" class="small-text">—</div>
+        </div>
+
+        <div class="panel-section">
+          <div class="section-label">Active KB / Soul / Role</div>
+          <div id="rt-kb" class="small-text">—</div>
+          <div id="rt-soul" class="small-text">—</div>
+          <div id="rt-role-preset" class="small-text">—</div>
+        </div>
+
+        <div class="panel-section">
+          <div class="section-label">Model / Provider</div>
+          <div id="rt-model" class="small-text">—</div>
+          <div id="rt-provider" class="small-text">—</div>
+        </div>
+
+        <div class="panel-section">
+          <div class="section-label">Counters</div>
+          <div class="metrics-grid">
+            <span class="metric-key">Turns</span><span id="rt-turns" class="metric-val">0</span>
+            <span class="metric-key">Messages</span><span id="rt-messages" class="metric-val">0</span>
+            <span class="metric-key">Tool Calls</span><span id="rt-tool-calls" class="metric-val">0</span>
+          </div>
+        </div>
+
+        <div class="panel-section">
+          <div class="section-label">Tokens</div>
+          <div class="metrics-grid">
+            <span class="metric-key">Input</span><span id="rt-tok-input" class="metric-val">—</span>
+            <span class="metric-key">Output</span><span id="rt-tok-output" class="metric-val">—</span>
+            <span class="metric-key">Cache Read</span><span id="rt-tok-cache-r" class="metric-val">—</span>
+            <span class="metric-key">Cache Write</span><span id="rt-tok-cache-w" class="metric-val">—</span>
+            <span class="metric-key">Total</span><span id="rt-tok-total" class="metric-val">—</span>
+          </div>
+        </div>
+
+        <div class="panel-section">
+          <div class="section-label">Context</div>
+          <div class="metrics-grid">
+            <span class="metric-key">Tokens</span><span id="rt-ctx-tokens" class="metric-val">—</span>
+            <span class="metric-key">Window</span><span id="rt-ctx-window" class="metric-val">—</span>
+            <span class="metric-key">Usage</span><span id="rt-ctx-pct" class="metric-val">—</span>
+          </div>
+        </div>
+
+        <div class="panel-section">
+          <div class="section-label">Cost</div>
+          <div id="rt-cost" class="small-text">—</div>
+        </div>
+
+        <div class="panel-section">
+          <div class="section-label">Core-Soul Modules</div>
+          <div id="rt-core-soul" class="small-text"></div>
         </div>
       </div>
 
-      <div class="panel-section">
-        <div class="section-label">Context</div>
-        <div class="metrics-grid">
-          <span class="metric-key">Tokens</span><span id="rt-ctx-tokens" class="metric-val">—</span>
-          <span class="metric-key">Window</span><span id="rt-ctx-window" class="metric-val">—</span>
-          <span class="metric-key">Usage</span><span id="rt-ctx-pct" class="metric-val">—</span>
+      <div class="right-tab-panel" data-right-panel="paths">
+        <div class="panel-section">
+          <div class="section-label">Paths</div>
+          <div id="rt-paths" class="paths-list small-text"></div>
         </div>
-      </div>
-
-      <div class="panel-section">
-        <div class="section-label">Cost</div>
-        <div id="rt-cost" class="small-text">—</div>
-      </div>
-
-      <div class="panel-section">
-        <div class="section-label">Paths</div>
-        <div id="rt-paths" class="paths-list small-text"></div>
-      </div>
-
-      <div class="panel-section">
-        <div class="section-label">Core-Soul Modules</div>
-        <div id="rt-core-soul" class="small-text"></div>
       </div>
     </aside>
   </div>

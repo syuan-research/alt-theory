@@ -45,6 +45,9 @@ and Pi adapter prompt templates from `agent-assets/prompts/pi/`.
 - **Session metrics**: mutable counters plus Pi token/cost/context statistics.
 - **Session events**: append-only Alt Theory control/outcome events without
   conversation bodies.
+- **Run label / test batch**: optional launch-time metadata recorded in
+  manifests for grouping manual UAT sessions without changing provider/model
+  identity.
 
 ## 1. Structure
 
@@ -63,6 +66,7 @@ flowchart LR
   State --> Events[records/session-events.jsonl]
   REST[Static REST] --> Registry[asset-registry.ts]
   REST --> Store[session-store.ts]
+  REST --> SessionFiles[session records/workspace text files]
 ```
 
 Code anchors:
@@ -100,6 +104,8 @@ Code anchors:
    an assistant message is present.
 6. Alt Theory atomically writes `records/assembly-manifest.json` and appends
    session/runtime events to `records/session-events.jsonl`.
+7. If provided, `ALT_THEORY_RUN_LABEL` and `ALT_THEORY_TEST_BATCH` are recorded
+   in the manifest as `runLabel` and `testBatch`.
 
 ## 2.1 Session Catalog And Open
 
@@ -221,11 +227,19 @@ REST:
 - `GET /api/kb-domains`
 - `GET /api/sessions`
 - `GET /api/sessions/{sessionId}`
+- `GET /api/sessions/{sessionId}/files`
+- `GET /api/sessions/{sessionId}/files/content`
+- `PUT /api/sessions/{sessionId}/files/content`
 
 Asset discovery routes return sorted `{ slug, displayName }` arrays without
 filesystem paths. Session list returns path-free summaries; session detail may
 include local paths because the current researcher console is a local runtime
 inspection tool.
+
+Session file routes expose only `.md`, `.txt`, and `.json` files under a
+session's `records/` or `workspace/` roots. Requests must resolve inside the
+selected root, and large files are rejected. The routes support lightweight
+researcher record inspection/editing, not arbitrary filesystem browsing.
 
 WebSocket:
 
@@ -278,7 +292,9 @@ is configured; they are not a billing claim.
   environment/config, not UI.
 - Hard write-path enforcement, thinking events, compaction/retry events, and
   provider/auth UI are deferred.
-- Frontend consumption of the new APIs is a separate workstream.
+- Transcript detail now preserves assistant thinking and distinguishes tool
+  calls from tool results so the researcher console can switch between User,
+  Researcher, and Evidence views.
 
 ## 9. Verification
 
@@ -299,6 +315,8 @@ is configured; they are not a billing claim.
   `agent-assets/kb/`, and `agent-assets/prompts/pi/`.
 - 2026-06-08: Added backend session catalog/detail and WebSocket
   `open_session` for existing persisted sessions.
+- 2026-06-12: Added optional run grouping metadata, transcript thinking/tool
+  result preservation, and session-local records/workspace text-file routes.
 
 ## Related Documents
 

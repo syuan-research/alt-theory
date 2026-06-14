@@ -6,7 +6,7 @@
  */
 
 import "dotenv/config";
-import express from "express";
+import express, { type Response } from "express";
 import { existsSync } from "fs";
 import { createServer } from "http";
 import { resolve } from "path";
@@ -56,8 +56,11 @@ import {
 import { appendSessionEvent } from "./session-events.js";
 import {
   getSessionRootForRequest,
+  listSessionTextFiles,
   listSessionSummaries,
+  readSessionTextFile,
   readSessionDetail,
+  writeSessionTextFile,
 } from "./session-store.js";
 
 const PROJECT_ROOT = process.cwd();
@@ -107,6 +110,8 @@ export interface AltTheoryServerOptions {
   promptMode?: PromptMode;
   resourceDiscovery?: ResourceDiscoveryMode;
   skillsDir?: string;
+  runLabel?: string | null;
+  testBatch?: string | null;
 }
 
 function parseCoreSoulModules(): string[] | undefined {
@@ -176,11 +181,16 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     (resourceDiscovery === "internal"
       ? resolve(assetPaths.rootDir, "skills")
       : undefined);
+  const runLabel =
+    options.runLabel ?? process.env.ALT_THEORY_RUN_LABEL ?? null;
+  const testBatch =
+    options.testBatch ?? process.env.ALT_THEORY_TEST_BATCH ?? null;
 
   const app = express();
   const httpServer = createServer(app);
   const wss = new WebSocketServer({ server: httpServer });
 
+  app.use(express.json({ limit: "600kb" }));
   app.use(express.static(publicDir));
   app.get("/api/role-presets", (_req, res) => {
     res.json({ rolePresets: listRolePresets(rolePresetsDir) });
@@ -215,6 +225,56 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       return;
     }
     res.json(detail);
+  });
+  app.get("/api/sessions/:sessionId/files", (req, res) => {
+    const sessionId = req.params.sessionId;
+    const rootName =
+      typeof req.query.root === "string" ? req.query.root : undefined;
+    try {
+      res.json(listSessionTextFiles(dataDir, sessionId, rootName));
+    } catch (error) {
+      sendFileApiError(res, error);
+    }
+  });
+  app.get("/api/sessions/:sessionId/files/content", (req, res) => {
+    const sessionId = req.params.sessionId;
+    const rootName = typeof req.query.root === "string" ? req.query.root : "";
+    const requestedPath =
+      typeof req.query.path === "string" ? req.query.path : "";
+    try {
+      res.json(readSessionTextFile(dataDir, sessionId, rootName, requestedPath));
+    } catch (error) {
+      sendFileApiError(res, error);
+    }
+  });
+  app.put("/api/sessions/:sessionId/files/content", (req, res) => {
+    const sessionId = req.params.sessionId;
+    const body = req.body as {
+      root?: unknown;
+      path?: unknown;
+      content?: unknown;
+    };
+    if (
+      typeof body?.root !== "string" ||
+      typeof body.path !== "string" ||
+      typeof body.content !== "string"
+    ) {
+      res.status(400).json({ error: "root, path, and content are required" });
+      return;
+    }
+    try {
+      res.json(
+        writeSessionTextFile(
+          dataDir,
+          sessionId,
+          body.root,
+          body.path,
+          body.content
+        )
+      );
+    } catch (error) {
+      sendFileApiError(res, error);
+    }
   });
 
   function defaultRolePresetSlug(): string | null {
@@ -318,6 +378,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       promptMode,
       resourceDiscovery,
       skillsDir,
+      runLabel,
+      testBatch,
       readOnly,
     });
 
@@ -433,6 +495,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       promptMode,
       resourceDiscovery,
       skillsDir,
+      runLabel,
+      testBatch,
       readOnly,
     });
 
@@ -899,8 +963,20 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       promptMode,
       resourceDiscovery,
       skillsDir,
+      runLabel,
+      testBatch,
     },
   };
+}
+
+function sendFileApiError(res: Response, error: unknown): void {
+  const message = error instanceof Error ? error.message : String(error);
+  const status = /Unknown session/.test(message)
+    ? 404
+    : /Invalid|inside|allowed|required|large/.test(message)
+      ? 400
+      : 500;
+  res.status(status).json({ error: message });
 }
 
 function extractToolPathFromEvent(event: AgentSessionEvent): string | null {
@@ -976,6 +1052,8 @@ if (isMain) {
     console.log(
       `  Resources:         ${instance.config.resourceDiscovery}${instance.config.skillsDir ? ` (${instance.config.skillsDir})` : ""}`
     );
+    console.log(`  Run label:         ${instance.config.runLabel ?? "(none)"}`);
+    console.log(`  Test batch:        ${instance.config.testBatch ?? "(none)"}`);
     if (
       (process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_BASE_URL) &&
       !explicitModelSelection

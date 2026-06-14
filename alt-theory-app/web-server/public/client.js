@@ -33,6 +33,7 @@ const inputEl = document.getElementById("input");
 const sendBtn = document.getElementById("send");
 const stopBtn = document.getElementById("stop");
 const toolStatusEl = document.getElementById("tool-status");
+const viewToggleBtns = Array.from(document.querySelectorAll(".view-toggle"));
 
 // ---------------------------------------------------------------------------
 // DOM refs — Right panel (runtime inspector)
@@ -60,6 +61,13 @@ const rtCost = document.getElementById("rt-cost");
 const rtPaths = document.getElementById("rt-paths");
 const rtCoreSoul = document.getElementById("rt-core-soul");
 const refreshMetricsBtn = document.getElementById("refresh-metrics");
+const recordsRefreshBtn = document.getElementById("records-refresh-btn");
+const recordsListEl = document.getElementById("records-list");
+const recordEditorEl = document.getElementById("record-editor");
+const recordSaveBtn = document.getElementById("record-save-btn");
+const recordStatusEl = document.getElementById("record-status");
+const rightTabBtns = Array.from(document.querySelectorAll(".right-tab"));
+const rightTabPanels = Array.from(document.querySelectorAll(".right-tab-panel"));
 
 // ---------------------------------------------------------------------------
 // DOM refs — Mobile / overlay / dialog
@@ -96,6 +104,10 @@ let selectedSessionDetail = null;
 let pendingOpenSessionId = "";
 let pendingAssetSwitch = false;
 let activeToolNames = {};  // callId -> { name, path, el }
+let transcriptMessages = [];
+let transcriptView = "developer";
+let sessionRecordFiles = [];
+let selectedRecordFile = null;
 const NONE_VALUE = "__none__";
 
 // ---------------------------------------------------------------------------
@@ -183,6 +195,99 @@ async function fetchSessionDetail(sessionId) {
   }
 }
 
+async function refreshCurrentTranscript() {
+  if (!currentSessionId) return;
+  try {
+    const res = await fetch(`/api/sessions/${encodeURIComponent(currentSessionId)}`);
+    if (!res.ok) return;
+    const detail = await res.json();
+    transcriptMessages = Array.isArray(detail.transcript) ? detail.transcript : [];
+    if (transcriptMessages.length) {
+      renderTranscriptMessages();
+    }
+  } catch (err) {
+    console.error("[transcript] Refresh failed:", err);
+  }
+}
+
+async function fetchSessionRecords() {
+  if (!currentSessionId) {
+    renderRecordsList([]);
+    return;
+  }
+  recordsRefreshBtn.disabled = true;
+  recordStatusEl.textContent = "Loading...";
+  try {
+    const res = await fetch(`/api/sessions/${encodeURIComponent(currentSessionId)}/files`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    sessionRecordFiles = Array.isArray(data.files) ? data.files : [];
+    renderRecordsList(sessionRecordFiles);
+    recordStatusEl.textContent = sessionRecordFiles.length ? "" : "No records.";
+  } catch (err) {
+    console.error("[records] Failed:", err);
+    sessionRecordFiles = [];
+    renderRecordsList([]);
+    recordStatusEl.textContent = "Could not load records.";
+  } finally {
+    recordsRefreshBtn.disabled = !sessionReady;
+  }
+}
+
+async function openSessionRecord(file) {
+  if (!currentSessionId || !file) return;
+  selectedRecordFile = file;
+  renderRecordsList(sessionRecordFiles);
+  recordEditorEl.disabled = true;
+  recordSaveBtn.disabled = true;
+  recordStatusEl.textContent = "Opening...";
+  const qs = new URLSearchParams({ root: file.root, path: file.path });
+  try {
+    const res = await fetch(
+      `/api/sessions/${encodeURIComponent(currentSessionId)}/files/content?${qs}`
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    selectedRecordFile = { root: data.root, path: data.path };
+    recordEditorEl.value = data.content || "";
+    recordEditorEl.disabled = false;
+    recordSaveBtn.disabled = false;
+    recordStatusEl.textContent = `${data.root}/${data.path}`;
+  } catch (err) {
+    console.error("[records] Open failed:", err);
+    recordStatusEl.textContent = "Could not open record.";
+  }
+}
+
+async function saveSessionRecord() {
+  if (!currentSessionId || !selectedRecordFile) return;
+  recordSaveBtn.disabled = true;
+  recordStatusEl.textContent = "Saving...";
+  try {
+    const res = await fetch(
+      `/api/sessions/${encodeURIComponent(currentSessionId)}/files/content`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          root: selectedRecordFile.root,
+          path: selectedRecordFile.path,
+          content: recordEditorEl.value,
+        }),
+      }
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    recordStatusEl.textContent = `Saved ${data.root}/${data.path}`;
+    await fetchSessionRecords();
+  } catch (err) {
+    console.error("[records] Save failed:", err);
+    recordStatusEl.textContent = "Could not save record.";
+  } finally {
+    recordSaveBtn.disabled = !selectedRecordFile;
+  }
+}
+
 function renderSessionList() {
   sessionListEl.innerHTML = "";
   if (sessionCatalog.length === 0) {
@@ -221,6 +326,40 @@ function renderSessionList() {
     row.appendChild(title);
     row.appendChild(meta);
     sessionListEl.appendChild(row);
+  }
+}
+
+function renderRecordsList(files) {
+  recordsListEl.innerHTML = "";
+  if (!files.length) {
+    recordsListEl.innerHTML = '<div class="session-empty">No editable records.</div>';
+    recordEditorEl.value = "";
+    recordEditorEl.disabled = true;
+    recordSaveBtn.disabled = true;
+    selectedRecordFile = null;
+    return;
+  }
+
+  for (const file of files) {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "record-row";
+    if (
+      selectedRecordFile?.root === file.root &&
+      selectedRecordFile?.path === file.path
+    ) {
+      row.classList.add("selected");
+    }
+    row.onclick = () => openSessionRecord(file);
+
+    const path = document.createElement("span");
+    path.textContent = file.path;
+    const root = document.createElement("span");
+    root.className = "record-root";
+    root.textContent = file.root;
+    row.appendChild(path);
+    row.appendChild(root);
+    recordsListEl.appendChild(row);
   }
 }
 
@@ -378,6 +517,45 @@ function renderPreviewText(messages) {
     .join("\n\n");
 }
 
+function renderTranscriptMessages() {
+  messagesEl.innerHTML = "";
+  for (const message of transcriptMessages) {
+    renderTranscriptMessage(message);
+  }
+  hasMessages = transcriptMessages.length > 0;
+}
+
+function renderTranscriptMessage(message) {
+  if (!message) return;
+  if (transcriptView === "user") {
+    if (message.role === "user" || message.role === "assistant") {
+      appendChatMessage(message.role, message.text);
+    }
+    return;
+  }
+
+  if (message.role === "assistant" && message.thinking) {
+    appendThinkingMessage(message.thinking);
+  }
+
+  if (message.role === "tool") {
+    if (message.toolType === "result") {
+      if (transcriptView === "developer") {
+        appendToolResultMessage(message);
+      }
+      return;
+    }
+    appendChatMessage("tool", message.text, {
+      toolName: message.toolName,
+      path: message.toolPath,
+      success: message.success,
+    });
+    return;
+  }
+
+  appendChatMessage(message.role, message.text);
+}
+
 function appendChatMessage(role, text, options = {}) {
   const value = (text || "").trim();
   if (!value) return null;
@@ -399,6 +577,35 @@ function appendChatMessage(role, text, options = {}) {
     el.className = "message system";
   }
   el.textContent = value;
+  messagesEl.appendChild(el);
+  return el;
+}
+
+function appendThinkingMessage(text) {
+  const value = (text || "").trim();
+  if (!value) return null;
+  const el = document.createElement("div");
+  el.className = "message thinking";
+  const label = document.createElement("span");
+  label.className = "message-label";
+  label.textContent = "Thinking";
+  const body = document.createElement("span");
+  body.textContent = value;
+  el.appendChild(label);
+  el.appendChild(body);
+  messagesEl.appendChild(el);
+  return el;
+}
+
+function appendToolResultMessage(message) {
+  const el = document.createElement("details");
+  el.className = "message tool-result";
+  const summary = document.createElement("summary");
+  summary.textContent = `Tool result: ${toolLabel(message.toolName || "tool", message.toolPath)}`;
+  const pre = document.createElement("pre");
+  pre.textContent = message.text || "";
+  el.appendChild(summary);
+  el.appendChild(pre);
   messagesEl.appendChild(el);
   return el;
 }
@@ -715,6 +922,9 @@ ws.onmessage = (event) => {
       syncSessionSelectors();
       setControlsEnabled(true);
       setConnStatus("idle", "Ready");
+      selectedRecordFile = null;
+      recordEditorEl.value = "";
+      fetchSessionRecords();
       console.log("[ws] Session opened:", msg.payload.sessionId);
       fetchSessions();
       break;
@@ -746,18 +956,10 @@ ws.onmessage = (event) => {
       break;
 
     case "session_transcript": {
-      clearChatSurface();
-      const messages = Array.isArray(msg.payload.messages)
+      transcriptMessages = Array.isArray(msg.payload.messages)
         ? msg.payload.messages
         : [];
-      for (const message of messages) {
-        appendChatMessage(message.role, message.text, {
-          toolName: message.toolName,
-          path: message.toolPath,
-          success: message.success,
-        });
-      }
-      hasMessages = messages.length > 0;
+      renderTranscriptMessages();
       currentAssistantEl = null;
       break;
     }
@@ -834,6 +1036,8 @@ ws.onmessage = (event) => {
       setConnStatus("idle", "Ready");
       toolStatusEl.textContent = "";
       activeToolNames = {};
+      refreshCurrentTranscript();
+      fetchSessionRecords();
       break;
     }
 
@@ -907,6 +1111,8 @@ function setControlsEnabled(enabled) {
   inputEl.disabled = !interactive;
   newSessionBtn.disabled = !interactive;
   refreshMetricsBtn.disabled = !interactive;
+  recordsRefreshBtn.disabled = !interactive;
+  recordSaveBtn.disabled = !interactive || !selectedRecordFile;
   sessionRefreshBtn.disabled = !connected;
   resumeSessionBtn.disabled =
     !interactive ||
@@ -924,6 +1130,7 @@ function clearChatSurface() {
   currentAssistantEl = null;
   hasMessages = false;
   activeToolNames = {};
+  transcriptMessages = [];
   toolStatusEl.textContent = "";
 }
 
@@ -1078,6 +1285,41 @@ refreshMetricsBtn.onclick = () => {
   wsSafeSend(JSON.stringify({ type: "get_session_metadata" }));
   wsSafeSend(JSON.stringify({ type: "get_session_metrics" }));
 };
+
+recordsRefreshBtn.onclick = () => {
+  fetchSessionRecords();
+};
+
+recordSaveBtn.onclick = () => {
+  saveSessionRecord();
+};
+
+for (const button of viewToggleBtns) {
+  button.onclick = () => {
+    transcriptView = button.dataset.view || "developer";
+    for (const item of viewToggleBtns) {
+      item.classList.toggle("selected", item === button);
+    }
+    if (transcriptMessages.length) {
+      renderTranscriptMessages();
+    }
+  };
+}
+
+for (const button of rightTabBtns) {
+  button.onclick = () => {
+    const tab = button.dataset.rightTab || "records";
+    for (const item of rightTabBtns) {
+      item.classList.toggle("selected", item === button);
+    }
+    for (const panel of rightTabPanels) {
+      panel.classList.toggle("active", panel.dataset.rightPanel === tab);
+    }
+    if (tab === "records") {
+      fetchSessionRecords();
+    }
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Confirm dialog

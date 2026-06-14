@@ -96,6 +96,8 @@ export interface AssemblyManifest {
     mode: ResourceDiscoveryMode;
     skillsDir: string | null;
   };
+  runLabel: string | null;
+  testBatch: string | null;
 }
 
 export type ResourceDiscoveryMode = "clean" | "internal" | "dev-debug";
@@ -139,6 +141,8 @@ export interface AltTheoryConfig extends SessionDirectories {
   runtimeApiKey?: string;
   thinkingLevel?: ThinkingLevel;
   writableAssetDir?: string;
+  runLabel?: string | null;
+  testBatch?: string | null;
   promptMode?: PromptMode;
   resourceDiscovery?: ResourceDiscoveryMode;
   skillsDir?: string;
@@ -441,6 +445,8 @@ async function createAltTheorySessionWithManager(
       mode: resourceDiscovery,
       skillsDir: resolvedSkillsDir,
     },
+    runLabel: config.runLabel ?? null,
+    testBatch: config.testBatch ?? null,
   };
 
   const resumeWarnings =

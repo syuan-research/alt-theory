@@ -124,6 +124,41 @@ html, body {
   min-width: var(--right-width);
   border-left: 1px solid var(--border);
   border-right: none;
+  overflow: hidden;
+}
+
+.right-tab-header {
+  flex-shrink: 0;
+}
+
+.right-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  margin-top: 10px;
+}
+
+.right-tab {
+  padding: 5px 6px;
+  font-size: 11px;
+}
+
+.right-tab.selected {
+  color: var(--text-primary);
+  border-color: var(--accent-dim);
+  background: var(--bg-light);
+}
+
+.right-tab-panel {
+  display: none;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.right-tab-panel.active {
+  display: block;
 }
 
 /* --- Panel Sections --- */
@@ -259,6 +294,27 @@ html, body {
   background: var(--bg-darkest);
 }
 
+#transcript-toolbar {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 10px 32px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-dark);
+  flex-shrink: 0;
+}
+
+.view-toggle {
+  padding: 5px 10px;
+  font-size: 12px;
+}
+
+.view-toggle.selected {
+  color: var(--text-primary);
+  border-color: var(--accent-dim);
+  background: var(--bg-light);
+}
+
 #messages {
   flex: 1;
   overflow-y: auto;
@@ -287,6 +343,28 @@ html, body {
   align-self: flex-start;
   color: var(--text-primary);
   white-space: pre-wrap;
+}
+
+.message.thinking {
+  align-self: flex-start;
+  max-width: 760px;
+  color: var(--text-secondary);
+  border-left: 2px solid var(--warning);
+  background: rgba(200, 184, 138, 0.05);
+  border-radius: 0 4px 4px 0;
+  padding: 8px 10px;
+  white-space: pre-wrap;
+  font-size: 13px;
+}
+
+.message.thinking .message-label,
+.message.tool-result .message-label {
+  display: block;
+  color: var(--text-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 4px;
 }
 
 .message.assistant p {
@@ -329,6 +407,30 @@ html, body {
   color: var(--error);
   border-left-color: var(--error);
   background: rgba(200, 138, 138, 0.06);
+}
+
+.message.tool-result {
+  align-self: flex-start;
+  max-width: 760px;
+  color: var(--text-secondary);
+  border-left: 2px solid var(--accent-dim);
+  background: rgba(138, 180, 200, 0.05);
+  border-radius: 0 4px 4px 0;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.message.tool-result summary {
+  cursor: pointer;
+  color: var(--accent);
+}
+
+.message.tool-result pre {
+  margin-top: 8px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 260px;
+  overflow: auto;
 }
 
 /* --- Composer --- */
@@ -614,6 +716,62 @@ button:hover {
 
 .path-value[title] {
   /* full path in title attr */
+}
+
+.records-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 240px;
+  overflow: auto;
+  margin-bottom: 8px;
+}
+
+.record-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  padding: 5px 7px;
+  font-size: 12px;
+}
+
+.record-row.selected {
+  color: var(--text-primary);
+  border-color: var(--accent-dim);
+  background: var(--bg-light);
+}
+
+.record-root {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+#record-editor {
+  width: 100%;
+  min-height: 360px;
+  resize: vertical;
+  background: var(--bg-mid);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  font-family: Consolas, "SFMono-Regular", monospace;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+#record-editor:disabled {
+  opacity: 0.55;
+}
+
+.record-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
 }
 
 .core-soul-module {

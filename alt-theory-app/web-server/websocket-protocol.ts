@@ -46,9 +46,13 @@ export interface TranscriptMessage {
   role: "user" | "assistant" | "system" | "tool" | "other";
   text: string;
   timestamp: string | null;
+  thinking?: string;
+  toolType?: "call" | "result";
+  toolCallId?: string;
   toolName?: string;
   toolPath?: string | null;
   success?: boolean;
+  truncated?: boolean;
 }
 
 // ---------------------------------------------------------------------------

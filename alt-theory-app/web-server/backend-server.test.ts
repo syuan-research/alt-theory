@@ -32,8 +32,11 @@ import {
 import { appendSessionEvent } from "./session-events.js";
 import {
   getSessionRootForRequest,
+  listSessionTextFiles,
   listSessionSummaries,
+  readSessionTextFile,
   readSessionDetail,
+  writeSessionTextFile,
 } from "./session-store.js";
 
 test("asset registry lists safe sorted slugs and resolves known assets", () => {
@@ -134,6 +137,8 @@ test("write-enabled core exposes write without edit/bash and writes notes", asyn
     modelProvider: "test-provider",
     modelId: "test-model",
     runtimeApiKey: "runtime-only-test-key",
+    runLabel: "manual-uat-qwen",
+    testBatch: "2026-06-12-smoke",
     readOnly: false,
   });
 
@@ -159,6 +164,8 @@ test("write-enabled core exposes write without edit/bash and writes notes", asyn
     assert.ok(result.session.sessionFile);
     assert.equal(result.manifest.provider, "test-provider");
     assert.equal(result.manifest.model, "test-model");
+    assert.equal(result.manifest.runLabel, "manual-uat-qwen");
+    assert.equal(result.manifest.testBatch, "2026-06-12-smoke");
     assert.equal(result.manifest.appContext.exists, true);
     assert.equal(result.manifest.soul.exists, true);
     assert.equal(result.manifest.rolePreset.slug, "default");
@@ -679,6 +686,16 @@ test("session catalog and detail expose complete and incomplete sessions", async
   mkdirSync(join(dataDir, "sessions", "session-incomplete"), {
     recursive: true,
   });
+  writeFileSync(
+    join(completeDirs.recordsDir, "discussion-summary.md"),
+    "# Summary\n",
+    "utf-8"
+  );
+  writeFileSync(
+    join(completeDirs.writeDir, "workspace-note.txt"),
+    "workspace note",
+    "utf-8"
+  );
 
   const summaries = listSessionSummaries(dataDir).sessions;
   const completeSummary = summaries.find(
@@ -709,6 +726,42 @@ test("session catalog and detail expose complete and incomplete sessions", async
     "catalog preview text"
   );
   assert.equal(directDetail?.events.count, 1);
+  const directFiles = listSessionTextFiles(dataDir, "session-complete").files;
+  assert.ok(
+    directFiles.some(
+      (file) => file.root === "records" && file.path === "discussion-summary.md"
+    )
+  );
+  assert.equal(
+    readSessionTextFile(
+      dataDir,
+      "session-complete",
+      "workspace",
+      "workspace-note.txt"
+    ).content,
+    "workspace note"
+  );
+  assert.equal(
+    writeSessionTextFile(
+      dataDir,
+      "session-complete",
+      "records",
+      "discussion-summary.md",
+      "# Updated\n"
+    ).content,
+    "# Updated\n"
+  );
+  assert.throws(
+    () =>
+      writeSessionTextFile(
+        dataDir,
+        "session-complete",
+        "records",
+        "../escape.md",
+        "bad"
+      ),
+    /inside the selected session root/
+  );
 
   const instance = createAltTheoryServer({
     dataDir,
@@ -751,6 +804,54 @@ test("session catalog and detail expose complete and incomplete sessions", async
 
     const missingResponse = await fetch(`${baseUrl}/api/sessions/missing`);
     assert.equal(missingResponse.status, 404);
+
+    const filesResponse = await fetch(
+      `${baseUrl}/api/sessions/session-complete/files?root=records`
+    );
+    const filesJson = await filesResponse.json();
+    assert.ok(
+      filesJson.files.some(
+        (file: any) => file.path === "discussion-summary.md"
+      )
+    );
+
+    const contentResponse = await fetch(
+      `${baseUrl}/api/sessions/session-complete/files/content?root=records&path=discussion-summary.md`
+    );
+    const contentJson = await contentResponse.json();
+    assert.equal(contentJson.content, "# Updated\n");
+
+    const saveResponse = await fetch(
+      `${baseUrl}/api/sessions/session-complete/files/content`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          root: "records",
+          path: "discussion-summary.md",
+          content: "# Saved over REST\n",
+        }),
+      }
+    );
+    assert.equal(saveResponse.status, 200);
+    assert.equal(
+      readFileSync(join(completeDirs.recordsDir, "discussion-summary.md"), "utf-8"),
+      "# Saved over REST\n"
+    );
+
+    const escapeResponse = await fetch(
+      `${baseUrl}/api/sessions/session-complete/files/content`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          root: "records",
+          path: "../escape.md",
+          content: "bad",
+        }),
+      }
+    );
+    assert.equal(escapeResponse.status, 400);
   } finally {
     await new Promise<void>((resolveClose) => {
       instance.wss.close(() => {
@@ -803,7 +904,10 @@ test("WebSocket open_session replaces current state with an existing session", a
     } as any);
     existing.session.sessionManager.appendMessage({
       role: "assistant",
-      content: [{ type: "text", text: "websocket existing context" }],
+      content: [
+        { type: "thinking", thinking: "resume hidden reasoning" },
+        { type: "text", text: "websocket existing context" },
+      ],
       api: "openai-completions",
       provider: "test",
       model: "test",
@@ -924,17 +1028,31 @@ test("WebSocket open_session replaces current state with an existing session", a
       transcript.payload.messages.map((message: any) => ({
         role: message.role,
         text: message.text,
+        toolType: message.toolType,
       })),
       [
-        { role: "user", text: "hello before resume" },
-        { role: "assistant", text: "websocket existing context" },
+        { role: "user", text: "hello before resume", toolType: undefined },
+        {
+          role: "tool",
+          text: "large tool output should not render",
+          toolType: "result",
+        },
+        {
+          role: "assistant",
+          text: "websocket existing context",
+          toolType: undefined,
+        },
       ]
     );
     assert.equal(
-      transcript.payload.messages.some((message: any) =>
-        message.text.includes("large tool output")
-      ),
-      false
+      transcript.payload.messages.find((message: any) => message.role === "tool")
+        ?.toolType,
+      "result"
+    );
+    assert.equal(
+      transcript.payload.messages.find((message: any) => message.role === "assistant")
+        ?.thinking,
+      "resume hidden reasoning"
     );
     assert.equal(metrics.payload.messageCount, 2);
     assert.deepEqual(

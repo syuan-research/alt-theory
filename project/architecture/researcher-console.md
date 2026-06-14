@@ -88,7 +88,7 @@ The right runtime inspector currently owns:
 - active KB, soul, and role preset;
 - provider/model;
 - counters, tokens, context usage, cost;
-- key runtime paths;
+- key runtime paths under a dedicated Paths tab;
 - loaded app context, soul, role preset, KB, and Pi prompt-template paths;
 - core-soul modules when present.
 
@@ -122,6 +122,10 @@ Current backend-facing state:
 - selected KB domain in the current connection;
 - selected soul slug or `None` in the current connection;
 - selected role-preset slug or `None` in the current connection.
+- loaded transcript view state in the browser, switchable between User and
+  Developer views;
+- session-local record files read through REST for files under `records/` and
+  `workspace/`.
 
 Current persistence belongs to the backend data directory, not the browser:
 
@@ -134,8 +138,10 @@ Current persistence belongs to the backend data directory, not the browser:
 ```
 
 The console can display paths from the manifest, list historical sessions,
-inspect selected-session detail/preview, and resume/open a selected session.
-It cannot yet tag, annotate, compare, or export sessions.
+inspect selected-session detail/preview, resume/open a selected session, switch
+loaded transcripts between User/Developer views, and lightly edit
+allowed session-local text records. It cannot yet tag, annotate, compare, or
+export sessions.
 
 ## 4. Current Capabilities
 
@@ -151,7 +157,14 @@ It cannot yet tag, annotate, compare, or export sessions.
   exists, the rebuild creates a new session boundary.
 - Displays streaming assistant text.
 - Displays tool started/updated/finished states.
-- Displays manifest, loaded asset paths, and metrics in the runtime inspector.
+- Displays manifest and metrics in the Runtime inspector tab.
+- Displays loaded asset paths in the Paths inspector tab.
+- Displays resumed/history transcripts in two hot-switchable views: User hides
+  thinking and tool events; Developer shows thinking, tool calls, and collapsed
+  tool results.
+- Provides a right-panel Records tab with a text editor for path-contained
+  `.md`, `.txt`, and `.json` files under the active session's `records/` and
+  `workspace/`.
 - Passed a user-run browser + live LLM smoke on 2026-06-08.
 
 ## 5. Known Constraints / Edge Cases
@@ -163,6 +176,9 @@ It cannot yet tag, annotate, compare, or export sessions.
 - Tags and annotations are not implemented.
 - Export is not implemented.
 - Historical session comparison is not implemented.
+- Model-comparison prompts across multiple providers are not implemented.
+- The Session Records editor is plain text only. It has no Markdown preview,
+  diff, autosave, conflict handling, or new-file UI.
 - Runtime config visibility is still partial: the console shows active
   provider/model and loaded asset paths, while full startup source and
   provider/auth selection UI are not implemented.
@@ -189,3 +205,6 @@ It cannot yet tag, annotate, compare, or export sessions.
 - 2026-06-12: Updated after researcher-console asset switching alignment.
   Console now exposes soul and role `None` selectors, immediate backend
   rebuild, and no-history session-id reuse.
+- 2026-06-12: Updated after UAT data-management implementation. Console now
+  has transcript User/Developer views and right-panel Records/Runtime/Paths
+  tabs.

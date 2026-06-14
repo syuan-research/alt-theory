@@ -1,11 +1,14 @@
 import { SessionManager } from "@mariozechner/pi-coding-agent";
 import {
   existsSync,
+  mkdirSync,
   readdirSync,
   readFileSync,
+  renameSync,
   statSync,
+  writeFileSync,
 } from "fs";
-import { basename, extname, isAbsolute, join, relative, resolve } from "path";
+import { basename, dirname, extname, isAbsolute, join, relative, resolve } from "path";
 import type { AssemblyManifest } from "../core/alt-theory-core.js";
 import {
   resolveSessionRoot,
@@ -52,6 +55,17 @@ export interface SessionDetailResponse {
   transcript: TranscriptMessage[];
   transcriptPreview: TranscriptMessage[];
   warnings: string[];
+}
+
+export interface SessionTextFile {
+  root: "records" | "workspace";
+  path: string;
+  size: number;
+  updatedAt: string | null;
+}
+
+export interface SessionTextFileContent extends SessionTextFile {
+  content: string;
 }
 
 interface ReadState {
@@ -125,12 +139,158 @@ export function getSessionRootForRequest(
   return { status: "ok", sessionRoot };
 }
 
+export function listSessionTextFiles(
+  dataDir: string,
+  sessionId: string,
+  rootName?: string
+): { files: SessionTextFile[] } {
+  const roots = selectTextFileRoots(dataDir, sessionId, rootName);
+  const files = roots.flatMap(({ root, path }) => listTextFilesInRoot(root, path));
+  files.sort((a, b) => a.path.localeCompare(b.path) || a.root.localeCompare(b.root));
+  return { files };
+}
+
+export function readSessionTextFile(
+  dataDir: string,
+  sessionId: string,
+  rootName: string,
+  requestedPath: string
+): SessionTextFileContent {
+  const target = resolveSessionTextFile(dataDir, sessionId, rootName, requestedPath);
+  const stats = statSync(target.path);
+  if (!stats.isFile()) {
+    throw new Error("Requested path is not a file");
+  }
+  if (stats.size > MAX_TEXT_FILE_BYTES) {
+    throw new Error(`File is too large to read: ${target.relativePath}`);
+  }
+  return {
+    root: target.root,
+    path: target.relativePath,
+    size: stats.size,
+    updatedAt: stats.mtime.toISOString(),
+    content: readFileSync(target.path, "utf-8"),
+  };
+}
+
+export function writeSessionTextFile(
+  dataDir: string,
+  sessionId: string,
+  rootName: string,
+  requestedPath: string,
+  content: string
+): SessionTextFileContent {
+  if (Buffer.byteLength(content, "utf-8") > MAX_TEXT_FILE_BYTES) {
+    throw new Error(`File is too large to write: ${MAX_TEXT_FILE_BYTES} byte limit`);
+  }
+  const target = resolveSessionTextFile(dataDir, sessionId, rootName, requestedPath);
+  mkdirSync(dirname(target.path), { recursive: true });
+  const tempPath = `${target.path}.${Date.now()}.tmp`;
+  try {
+    writeFileSync(tempPath, content, "utf-8");
+    renameSync(tempPath, target.path);
+  } catch (error) {
+    throw error;
+  }
+  return readSessionTextFile(dataDir, sessionId, rootName, target.relativePath);
+}
+
 function readSessionSummary(
   dataDir: string,
   sessionId: string
 ): SessionSummary | null {
   const parts = readSessionParts(dataDir, sessionId);
   return parts ? buildSummary(sessionId, parts) : null;
+}
+
+const TEXT_FILE_ROOTS = ["records", "workspace"] as const;
+const ALLOWED_TEXT_FILE_EXTENSIONS = new Set([".md", ".txt", ".json"]);
+const MAX_TEXT_FILE_BYTES = 512 * 1024;
+
+function selectTextFileRoots(
+  dataDir: string,
+  sessionId: string,
+  rootName?: string
+): Array<{ root: "records" | "workspace"; path: string }> {
+  const sessionRoot = resolveSessionRoot(dataDir, sessionId);
+  if (!sessionRoot || !existsSync(sessionRoot)) {
+    throw new Error(`Unknown session id: ${sessionId}`);
+  }
+  const names =
+    rootName && rootName.trim()
+      ? [assertTextFileRoot(rootName)]
+      : [...TEXT_FILE_ROOTS];
+  return names.map((root) => ({ root, path: resolve(sessionRoot, root) }));
+}
+
+function assertTextFileRoot(rootName: string): "records" | "workspace" {
+  if (rootName === "records" || rootName === "workspace") return rootName;
+  throw new Error(`Invalid file root: ${rootName}`);
+}
+
+function listTextFilesInRoot(
+  root: "records" | "workspace",
+  rootPath: string
+): SessionTextFile[] {
+  if (!existsSync(rootPath)) return [];
+  const files: SessionTextFile[] = [];
+  const visit = (dir: string) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name.startsWith(".")) continue;
+      const fullPath = resolve(dir, entry.name);
+      const relPath = relative(rootPath, fullPath).replace(/\\/g, "/");
+      if (entry.isDirectory()) {
+        visit(fullPath);
+        continue;
+      }
+      if (!entry.isFile() || !isAllowedTextFile(relPath)) continue;
+      const stats = statSync(fullPath);
+      if (stats.size > MAX_TEXT_FILE_BYTES) continue;
+      files.push({
+        root,
+        path: relPath,
+        size: stats.size,
+        updatedAt: stats.mtime.toISOString(),
+      });
+    }
+  };
+  visit(rootPath);
+  return files;
+}
+
+function resolveSessionTextFile(
+  dataDir: string,
+  sessionId: string,
+  rootName: string,
+  requestedPath: string
+): { root: "records" | "workspace"; path: string; relativePath: string } {
+  const root = assertTextFileRoot(rootName);
+  if (!requestedPath || isAbsolute(requestedPath)) {
+    throw new Error("Invalid file path");
+  }
+  const sessionRoot = resolveSessionRoot(dataDir, sessionId);
+  if (!sessionRoot || !existsSync(sessionRoot)) {
+    throw new Error(`Unknown session id: ${sessionId}`);
+  }
+  const rootPath = resolve(sessionRoot, root);
+  const target = resolve(rootPath, requestedPath);
+  const relativePath = relative(rootPath, target);
+  if (
+    !relativePath ||
+    relativePath.startsWith("..") ||
+    isAbsolute(relativePath)
+  ) {
+    throw new Error("File path must stay inside the selected session root");
+  }
+  const normalizedRelative = relativePath.replace(/\\/g, "/");
+  if (!isAllowedTextFile(normalizedRelative)) {
+    throw new Error("Only .md, .txt, and .json files are allowed");
+  }
+  return { root, path: target, relativePath: normalizedRelative };
+}
+
+function isAllowedTextFile(path: string): boolean {
+  return ALLOWED_TEXT_FILE_EXTENSIONS.has(extname(path).toLowerCase());
 }
 
 function readSessionParts(
@@ -327,6 +487,8 @@ function buildTranscriptFromEntries(entries: unknown[]): TranscriptMessage[] {
         role?: string;
         content?: unknown;
         timestamp?: string | number;
+        toolCallId?: unknown;
+        toolName?: unknown;
       };
     };
     if (value.type !== "message" || !value.message) continue;
@@ -340,6 +502,27 @@ function buildTranscriptFromEntries(entries: unknown[]): TranscriptMessage[] {
     }
     if (role === "assistant") {
       transcript.push(...assistantContentToTranscript(value.message.content, timestamp));
+      continue;
+    }
+    if (role === "tool" || value.message.role === "toolResult") {
+      const text = extractText(value.message.content).trim();
+      const toolName = String(
+        (value.message as { toolName?: unknown }).toolName ?? "tool"
+      );
+      const toolCallId =
+        typeof (value.message as { toolCallId?: unknown }).toolCallId === "string"
+          ? ((value.message as { toolCallId?: string }).toolCallId ?? undefined)
+          : undefined;
+      transcript.push({
+        role: "tool",
+        toolType: "result",
+        text,
+        toolName,
+        toolCallId,
+        success: true,
+        truncated: false,
+        timestamp,
+      });
     }
   }
   return transcript;
@@ -361,10 +544,20 @@ function assistantContentToTranscript(
 
   const messages: TranscriptMessage[] = [];
   let textBuffer: string[] = [];
-  const flushText = () => {
+  let thinkingBuffer: string[] = [];
+  const flushAssistant = () => {
     const text = textBuffer.join("\n").trim();
-    if (text) messages.push({ role: "assistant", text, timestamp });
+    const thinking = thinkingBuffer.join("\n").trim();
+    if (text || thinking) {
+      messages.push({
+        role: "assistant",
+        text,
+        thinking: thinking || undefined,
+        timestamp,
+      });
+    }
     textBuffer = [];
+    thinkingBuffer = [];
   };
 
   for (const part of content) {
@@ -378,26 +571,60 @@ function assistantContentToTranscript(
       text?: unknown;
       name?: unknown;
       arguments?: unknown;
+      id?: unknown;
     };
+    const thinking = extractThinkingText(typedPart);
+    if (thinking) {
+      thinkingBuffer.push(thinking);
+      continue;
+    }
     if (typedPart.type === "text") {
       textBuffer.push(String(typedPart.text ?? ""));
       continue;
     }
     if (typedPart.type === "toolCall") {
-      flushText();
+      flushAssistant();
       const toolName = String(typedPart.name ?? "tool");
       messages.push({
         role: "tool",
+        toolType: "call",
         text: toolName,
         toolName,
+        toolCallId:
+          typeof typedPart.id === "string" ? typedPart.id : undefined,
         toolPath: extractToolPath(typedPart.arguments),
         success: true,
         timestamp,
       });
     }
   }
-  flushText();
+  flushAssistant();
   return messages;
+}
+
+function extractThinkingText(part: { type?: string; text?: unknown; thinking?: unknown; summary?: unknown }): string {
+  if (part.type === "thinking" && typeof part.thinking === "string") {
+    return part.thinking;
+  }
+  if (part.type === "reasoning" && typeof part.text === "string") {
+    return part.text;
+  }
+  if (part.type === "reasoning" && Array.isArray(part.summary)) {
+    return part.summary
+      .map((item) => {
+        if (typeof item === "string") return item;
+        if (item && typeof item === "object" && "text" in item) {
+          return String((item as { text?: unknown }).text ?? "");
+        }
+        if (item && typeof item === "object" && "summary_text" in item) {
+          return String((item as { summary_text?: unknown }).summary_text ?? "");
+        }
+        return "";
+      })
+      .filter(Boolean)
+      .join("\n");
+  }
+  return "";
 }
 
 function normalizeRole(role: string | undefined): TranscriptMessage["role"] {
