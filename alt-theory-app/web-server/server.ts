@@ -49,6 +49,8 @@ import {
   type SessionServiceEvent,
 } from "./session-service.js";
 import { listProjects, upsertProject } from "./projects.js";
+import { listInstructionAssets } from "./instruction-assets.js";
+import { listAltTheorySkills } from "./skill-assets.js";
 
 const PROJECT_ROOT = process.cwd();
 const PUBLIC_DIR = resolve(
@@ -62,6 +64,8 @@ const PUBLIC_DIR = resolve(
 export interface AltTheoryServerOptions {
   agentAssetsDir?: string;
   appContextPath?: string;
+  instructionsDir?: string;
+  skillsDir?: string;
   soulDir?: string;
   soulPath?: string;
   dataDir?: string;
@@ -82,7 +86,6 @@ export interface AltTheoryServerOptions {
   thinkingLevel?: ThinkingLevel;
   promptMode?: PromptMode;
   resourceDiscovery?: ResourceDiscoveryMode;
-  skillsDir?: string;
   runLabel?: string | null;
   testBatch?: string | null;
 }
@@ -125,6 +128,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   const assetPaths: AgentAssetPaths = resolveAgentAssetPaths(PROJECT_ROOT, {
     agentAssetsDir: options.agentAssetsDir,
     appContextPath: options.appContextPath,
+    instructionsDir: options.instructionsDir,
+    skillsDir: options.skillsDir,
     soulDir: options.soulDir,
     soulPath: options.soulPath,
     rolePresetsDir: options.rolePresetsDir ?? options.profilesDir,
@@ -151,9 +156,13 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   const skillsDir =
     options.skillsDir ??
     process.env.ALT_THEORY_SKILLS_DIR ??
-    (resourceDiscovery === "internal"
-      ? resolve(assetPaths.rootDir, "skills")
-      : undefined);
+    (resourceDiscovery === "clean"
+      ? undefined
+      : assetPaths.skillsDir ?? resolve(assetPaths.rootDir, "skills"));
+  const instructionsDir =
+    options.instructionsDir ??
+    assetPaths.instructionsDir ??
+    resolve(assetPaths.rootDir, "instructions");
   const runLabel =
     options.runLabel ?? process.env.ALT_THEORY_RUN_LABEL ?? null;
   const testBatch =
@@ -176,6 +185,17 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   });
   app.get("/api/kb-domains", (_req, res) => {
     res.json({ domains: listKbDomains(kbDir) });
+  });
+  app.get("/api/instruction-assets", (_req, res) => {
+    res.json({ instructions: listInstructionAssets(instructionsDir) });
+  });
+  app.get("/api/skills", (_req, res) => {
+    res.json({
+      skills:
+        resourceDiscovery === "clean" || !skillsDir
+          ? []
+          : listAltTheorySkills(skillsDir),
+    });
   });
   app.get("/api/projects", (_req, res) => {
     res.json(listProjects(dataDir));
@@ -299,6 +319,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     promptMode,
     resourceDiscovery,
     skillsDir,
+    instructionsDir,
     runLabel,
     testBatch,
     coreSoulPath:
@@ -368,6 +389,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       rolePresetSlug: defaultRolePresetSlug(),
       kbDomain: "ep-core",
       soulSlug: defaultSoulSlug(),
+      customInstructionRef: null,
     };
   }
 
@@ -383,6 +405,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         rolePresetSlug: selectors.rolePresetSlug,
         profileSlug: selectors.rolePresetSlug,
         soulSlug: selectors.soulSlug,
+        customInstructionRef: selectors.customInstructionRef ?? null,
       },
     });
   }
@@ -524,6 +547,46 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           }
           break;
         }
+        case "switch_instruction": {
+          const customInstructionRef = optionalSlug(
+            msg.payload.customInstructionRef
+          );
+          if (!attachedSessionId) {
+            draftSelectors = { ...draftSelectors, customInstructionRef };
+            sendDraft(send, draftSelectors);
+            break;
+          }
+          const selectors = sessionService.getSelectors(attachedSessionId);
+          try {
+            const replacement = await sessionService.replaceSession(
+              attachedSessionId,
+              { ...selectors, customInstructionRef },
+              "instruction_switch"
+            );
+            if (!closed) attachToSession(replacement.sessionId);
+          } catch (error) {
+            sendServiceError(send, error);
+          }
+          break;
+        }
+        case "invoke_skill": {
+          try {
+            if (!attachedSessionId) {
+              const initial = await sessionService.createSession(draftSelectors);
+              if (closed) return;
+              attachToSession(initial.sessionId);
+            }
+            const run = sessionService.invokeSkill(
+              attachedSessionId,
+              msg.payload.skillName,
+              msg.payload.userText
+            );
+            await run.completion;
+          } catch (error) {
+            sendServiceError(send, error);
+          }
+          break;
+        }
         case "new_session": {
           if (attachedSessionId) {
             draftSelectors = sessionService.getSelectors(attachedSessionId);
@@ -595,6 +658,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       promptMode,
       resourceDiscovery,
       skillsDir,
+      instructionsDir,
       runLabel,
       testBatch,
     },

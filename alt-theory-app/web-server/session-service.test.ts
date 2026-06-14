@@ -17,6 +17,7 @@ function setupFixture() {
   const soulDir = join(root, "soul");
   const kbDir = join(root, "kb");
   const skillsDir = join(root, "skills");
+  const instructionsDir = join(root, "instructions");
   const appContextPath = join(root, "ALTTHEORY.md");
   const piPromptTemplatesDir = resolve("agent-assets", "prompts", "pi");
 
@@ -24,11 +25,22 @@ function setupFixture() {
   mkdirSync(soulDir, { recursive: true });
   mkdirSync(join(kbDir, "ep-core"), { recursive: true });
   mkdirSync(skillsDir, { recursive: true });
+  mkdirSync(instructionsDir, { recursive: true });
   writeFileSync(appContextPath, "Session service app context", "utf-8");
   writeFileSync(join(rolePresetsDir, "default.md"), "Default role", "utf-8");
   writeFileSync(join(rolePresetsDir, "alternate.md"), "Alternate role", "utf-8");
   writeFileSync(join(soulDir, "soul-latest.md"), "Latest soul", "utf-8");
   writeFileSync(join(soulDir, "soul-test.md"), "Test soul", "utf-8");
+  writeFileSync(
+    join(instructionsDir, "research.rules"),
+    "Do not overextend.",
+    "utf-8"
+  );
+  writeFileSync(
+    join(skillsDir, "summary.md"),
+    "---\nname: conversation-summary\ndescription: Test summary\n---\nSummarize.",
+    "utf-8"
+  );
 
   return {
     root,
@@ -37,6 +49,7 @@ function setupFixture() {
     soulDir,
     kbDir,
     skillsDir,
+    instructionsDir,
     appContextPath,
     piPromptTemplatesDir,
   };
@@ -48,6 +61,8 @@ function createTestService(fixture: ReturnType<typeof setupFixture>) {
     assetPaths: {
       rootDir: fixture.root,
       appContextPath: fixture.appContextPath,
+      instructionsDir: fixture.instructionsDir,
+      skillsDir: fixture.skillsDir,
       soulDir: fixture.soulDir,
       soulPath: join(fixture.soulDir, "soul-latest.md"),
       rolePresetsDir: fixture.rolePresetsDir,
@@ -62,6 +77,7 @@ function createTestService(fixture: ReturnType<typeof setupFixture>) {
     readOnly: true,
     promptMode: "alt-only",
     resourceDiscovery: "clean",
+    instructionsDir: fixture.instructionsDir,
     runLabel: null,
     testBatch: null,
   });
@@ -205,6 +221,120 @@ test("SessionService switches role and soul inside the same materialized session
         { reason: "user_change", changedFields: ["soulSlug"] },
       ]
     );
+  } finally {
+    await service.disposeAll();
+  }
+});
+
+test("SessionService switches custom instruction inside the same materialized session", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const created = await service.createSession({
+    rolePresetSlug: "default",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+    customInstructionRef: null,
+  });
+
+  try {
+    const session = (
+      service as unknown as {
+        sessions: Map<string, { session: { sessionManager: { appendMessage(message: unknown): void } } }>;
+      }
+    ).sessions.get(created.sessionId)!.session;
+    session.sessionManager.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: "existing history" }],
+      timestamp: Date.now(),
+    });
+
+    const before = service.getManifest(created.sessionId);
+    const changed = await service.replaceSession(
+      created.sessionId,
+      {
+        ...service.getSelectors(created.sessionId),
+        customInstructionRef: "research.rules",
+      },
+      "instruction_switch"
+    );
+    const after = service.getManifest(created.sessionId);
+    const detail = readSessionDetail(fixture.dataDir, created.sessionId);
+
+    assert.equal(changed.sessionId, created.sessionId);
+    assert.equal(after.piSessionFile, before.piSessionFile);
+    assert.equal(after.customInstruction.ref, "research.rules");
+    assert.match(after.customInstruction.sha256 ?? "", /^[a-f0-9]{64}$/);
+    assert.equal(detail?.effectiveConfig.customInstruction.ref, "research.rules");
+    assert.deepEqual(
+      detail?.configEvents.at(-1)?.changedFields,
+      ["customInstructionRef"]
+    );
+  } finally {
+    await service.disposeAll();
+  }
+});
+
+test("SessionService validates explicit skill invocation against active Alt Theory skills", async () => {
+  const fixture = setupFixture();
+  const service = new SessionService({
+    ...(
+      createTestService(fixture) as unknown as {
+        config: ConstructorParameters<typeof SessionService>[0];
+      }
+    ).config,
+    resourceDiscovery: "internal",
+    skillsDir: fixture.skillsDir,
+  });
+  const created = await service.createSession({
+    rolePresetSlug: "default",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+
+  try {
+    assert.deepEqual(
+      service.getManifest(created.sessionId).skills.map((skill) => skill.name),
+      ["conversation-summary"]
+    );
+    assert.throws(
+      () => service.invokeSkill(created.sessionId, "debug-only"),
+      /Unknown Alt Theory skill/
+    );
+    const managed = (
+      service as unknown as {
+        sessions: Map<string, { session: { prompt(text: string): Promise<void> } }>;
+      }
+    ).sessions.get(created.sessionId)!;
+    let promptText = "";
+    managed.session.prompt = async (text: string) => {
+      promptText = text;
+    };
+    const run = service.invokeSkill(
+      created.sessionId,
+      "conversation-summary",
+      "Focus on decisions"
+    );
+    await run.completion;
+    assert.ok(
+      promptText.endsWith(
+        "/skill:conversation-summary Focus on decisions"
+      )
+    );
+    const events = readFileSync(
+      join(
+        fixture.dataDir,
+        "sessions",
+        created.sessionId,
+        "records",
+        "session-events.jsonl"
+      ),
+      "utf-8"
+    )
+      .trim()
+      .split(/\r?\n/)
+      .map((line) => JSON.parse(line) as { type: string; details?: { skillName?: string } });
+    assert.equal(events.at(-1)?.type, "skill_invoked");
+    assert.equal(events.at(-1)?.details?.skillName, "conversation-summary");
   } finally {
     await service.disposeAll();
   }

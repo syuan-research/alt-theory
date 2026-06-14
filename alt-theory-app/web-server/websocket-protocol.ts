@@ -18,6 +18,7 @@ export interface SessionSnapshot {
   /** Deprecated compatibility field; use rolePresetSlug. */
   profileSlug?: string | null;
   soulSlug: string | null;
+  customInstructionRef?: string | null;
   openedFrom?: "new" | "existing";
   resumeWarnings?: string[];
   messageCount: number;
@@ -30,6 +31,7 @@ export interface SessionDraftSnapshot {
   /** Deprecated compatibility field; use rolePresetSlug. */
   profileSlug?: string | null;
   soulSlug: string | null;
+  customInstructionRef?: string | null;
 }
 
 export interface SessionMetrics {
@@ -75,6 +77,14 @@ export type ClientMessage =
   | { type: "switch_role_preset"; payload: { rolePresetSlug: string | null } }
   | { type: "switch_profile"; payload: { profileSlug: string | null } }
   | { type: "switch_soul"; payload: { soulSlug: string | null } }
+  | {
+      type: "switch_instruction";
+      payload: { customInstructionRef: string | null };
+    }
+  | {
+      type: "invoke_skill";
+      payload: { skillName: string; userText?: string };
+    }
   | { type: "new_session" }
   | { type: "open_session"; payload: { sessionId: string } }
   | { type: "get_session_metadata" }

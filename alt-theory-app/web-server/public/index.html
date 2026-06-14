@@ -58,6 +58,13 @@
         <div id="role-preset-hint" class="hint highlight-hint">Applies immediately.</div>
       </div>
 
+      <div class="panel-section">
+        <label for="instruction-select" class="section-label">Custom Instruction</label>
+        <select id="instruction-select" disabled>
+          <option value="">Loading...</option>
+        </select>
+      </div>
+
       <div class="panel-section panel-footer">
         <div class="section-label">Provider / Model</div>
         <div id="provider-info" class="muted small-text">—</div>
@@ -74,6 +81,10 @@
       <div id="composer">
         <div id="tool-status"></div>
         <div id="input-row">
+          <select id="skill-select" title="Alt Theory skill" disabled>
+            <option value="">Skill</option>
+          </select>
+          <button id="invoke-skill" title="Invoke selected skill" disabled>Invoke</button>
           <input type="text" id="input" placeholder="Ask Alt Theory..." autocomplete="off" disabled>
           <button id="send" disabled>Send</button>
           <button id="stop" style="display:none" disabled>Stop</button>

@@ -236,7 +236,9 @@ html, body {
 
 #kb-select,
 #soul-select,
-#role-preset-select {
+#role-preset-select,
+#instruction-select,
+#skill-select {
   width: 100%;
   background: var(--bg-mid);
   color: var(--text-secondary);
@@ -250,20 +252,26 @@ html, body {
 
 #kb-select:hover,
 #soul-select:hover,
-#role-preset-select:hover {
+#role-preset-select:hover,
+#instruction-select:hover,
+#skill-select:hover {
   border-color: var(--text-muted);
 }
 
 #kb-select:disabled,
 #soul-select:disabled,
-#role-preset-select:disabled {
+#role-preset-select:disabled,
+#instruction-select:disabled,
+#skill-select:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
 
 #kb-select:focus-visible,
 #soul-select:focus-visible,
-#role-preset-select:focus-visible {
+#role-preset-select:focus-visible,
+#instruction-select:focus-visible,
+#skill-select:focus-visible {
   border-color: var(--accent-dim);
   outline: 1px solid var(--accent-dim);
   outline-offset: -1px;
@@ -450,6 +458,15 @@ html, body {
 #input-row {
   display: flex;
   gap: 8px;
+}
+
+#skill-select {
+  width: 150px;
+  flex: 0 0 150px;
+}
+
+#invoke-skill {
+  padding: 8px 10px;
 }
 
 #input {
@@ -960,6 +977,15 @@ button:hover {
 
   #composer {
     padding: 8px 16px 12px;
+  }
+
+  #input-row {
+    flex-wrap: wrap;
+  }
+
+  #input {
+    min-width: 100%;
+    order: -1;
   }
 }
 

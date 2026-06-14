@@ -5,6 +5,8 @@ import { resolve } from "path";
 export interface AgentAssetPaths {
   rootDir: string;
   appContextPath: string;
+  instructionsDir?: string;
+  skillsDir?: string;
   soulDir: string;
   soulPath: string | null;
   rolePresetsDir: string;
@@ -16,6 +18,8 @@ export interface AgentAssetPaths {
 export interface AgentAssetPathOverrides {
   agentAssetsDir?: string;
   appContextPath?: string;
+  instructionsDir?: string;
+  skillsDir?: string;
   soulDir?: string;
   soulPath?: string;
   rolePresetsDir?: string;
@@ -69,6 +73,16 @@ export function resolveAgentAssetPaths(
       overrides.appContextPath ??
         process.env.ALT_THEORY_APP_CONTEXT_PATH ??
         resolve(rootDir, "ALTTHEORY.md")
+    ),
+    instructionsDir: resolve(
+      overrides.instructionsDir ??
+        process.env.ALT_THEORY_INSTRUCTIONS_DIR ??
+        resolve(rootDir, "instructions")
+    ),
+    skillsDir: resolve(
+      overrides.skillsDir ??
+        process.env.ALT_THEORY_SKILLS_DIR ??
+        resolve(rootDir, "skills")
     ),
     soulDir,
     soulPath: defaultSoulPath,

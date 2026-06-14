@@ -15,7 +15,9 @@ import {
   getAgentDir,
   loadSkillsFromDir,
   ModelRegistry,
+  type ResourceDiagnostic,
   SessionManager,
+  type Skill,
   type WriteOperations,
 } from "@mariozechner/pi-coding-agent";
 import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
@@ -65,6 +67,15 @@ export interface AssemblyManifest {
   rolePreset: LoadedAssetFileRef & {
     slug: string | null;
   };
+  customInstruction: LoadedAssetFileRef & {
+    ref: string | null;
+  };
+  skills: Array<{
+    name: string;
+    path: string;
+    sha256: string | null;
+    source: "alt-theory";
+  }>;
   coreSoul: {
     basePath: string | null;
     modules: CoreSoulModule[];
@@ -114,6 +125,10 @@ export interface AltTheoryConfig extends SessionDirectories {
   rolePresetPath?: string | null;
   /** Agent role/style preset slug */
   rolePresetSlug?: string | null;
+  /** Optional independent text instruction asset */
+  customInstructionPath?: string | null;
+  /** Stable reference inside the configured instruction root */
+  customInstructionRef?: string | null;
   /** KB root directory (search path for read-only/coding tools) */
   kbDir: string;
   /** Active KB domain recorded in the session manifest */
@@ -228,6 +243,9 @@ async function createAltTheorySessionWithManager(
   const resolvedRolePresetPath = configuredRolePresetPath
     ? resolve(configuredRolePresetPath)
     : null;
+  const resolvedCustomInstructionPath = config.customInstructionPath
+    ? resolve(config.customInstructionPath)
+    : null;
   const resolvedPiPromptTemplatesDir = config.piPromptTemplatesDir
     ? resolve(config.piPromptTemplatesDir)
     : config.runtimeDir
@@ -251,6 +269,9 @@ async function createAltTheorySessionWithManager(
     : null;
   const rolePresetContent = resolvedRolePresetPath
     ? readRequiredTextAsset(resolvedRolePresetPath, "role preset")
+    : null;
+  const customInstructionContent = resolvedCustomInstructionPath
+    ? readRequiredTextAsset(resolvedCustomInstructionPath, "custom instruction")
     : null;
 
   if (config.coreSoulPath && !config.coreSoulModulesDir) {
@@ -276,6 +297,9 @@ async function createAltTheorySessionWithManager(
   }
   if (rolePresetContent) {
     appendContent.push(`## Role Preset\n${rolePresetContent}`);
+  }
+  if (customInstructionContent) {
+    appendContent.push(`## Custom Instruction\n${customInstructionContent}`);
   }
   appendContent.push(
     `## Knowledge Base\nYour knowledge base is at: ${resolvedKbDir}`
@@ -309,6 +333,13 @@ async function createAltTheorySessionWithManager(
     );
   }
   const altTheorySystemPrompt = appendContent.join("\n\n");
+  const altTheorySkills =
+    resourceDiscovery !== "clean" && resolvedSkillsDir
+      ? loadSkillsFromDir({
+          dir: resolvedSkillsDir,
+          source: "alt-theory",
+        })
+      : { skills: [], diagnostics: [] };
 
   const loader = new DefaultResourceLoader({
     cwd,
@@ -323,14 +354,8 @@ async function createAltTheorySessionWithManager(
       resourceDiscovery === "clean"
         ? () => ({ skills: [], diagnostics: [] })
         : resourceDiscovery === "internal"
-          ? () =>
-              resolvedSkillsDir
-                ? loadSkillsFromDir({
-                    dir: resolvedSkillsDir,
-                    source: "alt-theory-internal",
-                  })
-                : { skills: [], diagnostics: [] }
-          : undefined,
+          ? () => altTheorySkills
+          : (current) => mergeSkills(current, altTheorySkills),
     appendSystemPromptOverride:
       promptMode === "alt-only"
         ? () => []
@@ -407,6 +432,25 @@ async function createAltTheorySessionWithManager(
         : emptyFileRef()),
       slug: config.rolePresetSlug ?? null,
     },
+    customInstruction: {
+      ...(resolvedCustomInstructionPath
+        ? fileRef(resolvedCustomInstructionPath)
+        : emptyFileRef()),
+      ref: config.customInstructionRef ?? null,
+    },
+    skills: loader
+      .getSkills()
+      .skills.filter((skill) =>
+        resolvedSkillsDir
+          ? isPathInside(resolvedSkillsDir, skill.filePath)
+          : false
+      )
+      .map((skill) => ({
+        name: skill.name,
+        path: resolve(skill.filePath),
+        sha256: fileRef(skill.filePath).sha256,
+        source: "alt-theory" as const,
+      })),
     coreSoul: {
       basePath: coreSoul?.basePath ?? null,
       modules: coreSoul?.modules ?? [],
@@ -560,6 +604,20 @@ function normalizePath(path: string): string {
   return process.platform === "win32" ? path.toLowerCase() : path;
 }
 
+function mergeSkills(
+  current: { skills: Skill[]; diagnostics: ResourceDiagnostic[] },
+  altTheory: { skills: Skill[]; diagnostics: ResourceDiagnostic[] }
+) {
+  const byName = new Map(current.skills.map((skill) => [skill.name, skill]));
+  for (const skill of altTheory.skills) {
+    byName.set(skill.name, skill);
+  }
+  return {
+    skills: [...byName.values()],
+    diagnostics: [...current.diagnostics, ...altTheory.diagnostics],
+  };
+}
+
 function compareResumeManifest(
   original: AssemblyManifest | null,
   active: AssemblyManifest,
@@ -596,6 +654,12 @@ function compareResumeManifest(
     "app context hash",
     original.appContext?.sha256 ?? null,
     active.appContext?.sha256 ?? null
+  );
+  compareField(
+    warnings,
+    "custom instruction hash",
+    original.customInstruction?.sha256 ?? null,
+    active.customInstruction?.sha256 ?? null
   );
   compareField(
     warnings,

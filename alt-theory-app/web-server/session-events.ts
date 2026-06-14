@@ -12,6 +12,7 @@ export type SessionEventType =
   | "role_preset_selected_next_session"
   | "profile_selected_next_session"
   | "soul_selected"
+  | "skill_invoked"
   | "run_completed"
   | "run_failed"
   | "run_aborted";

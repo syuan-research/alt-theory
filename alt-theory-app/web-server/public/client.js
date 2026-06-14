@@ -18,6 +18,7 @@ const newSessionBtn = document.getElementById("new-session-btn");
 const kbSelect = document.getElementById("kb-select");
 const soulSelect = document.getElementById("soul-select");
 const rolePresetSelect = document.getElementById("role-preset-select");
+const instructionSelect = document.getElementById("instruction-select");
 const providerInfoEl = document.getElementById("provider-info");
 const sessionRefreshBtn = document.getElementById("session-refresh-btn");
 const sessionListEl = document.getElementById("session-list");
@@ -33,6 +34,8 @@ const inputEl = document.getElementById("input");
 const sendBtn = document.getElementById("send");
 const stopBtn = document.getElementById("stop");
 const toolStatusEl = document.getElementById("tool-status");
+const skillSelect = document.getElementById("skill-select");
+const invokeSkillBtn = document.getElementById("invoke-skill");
 const viewToggleBtns = Array.from(document.querySelectorAll(".view-toggle"));
 
 // ---------------------------------------------------------------------------
@@ -95,6 +98,7 @@ let currentSessionId = "";
 let currentDomain = "";
 let currentRolePresetSlug = null;
 let currentSoulSlug = null;
+let currentInstructionRef = null;
 let sessionReady = false;
 let latestManifest = null;
 let pendingConfirmAction = null;
@@ -116,10 +120,12 @@ const NONE_VALUE = "__none__";
 
 async function fetchDiscovery() {
   try {
-    const [rolePresetsRes, soulsRes, domainsRes] = await Promise.all([
+    const [rolePresetsRes, soulsRes, domainsRes, instructionsRes, skillsRes] = await Promise.all([
       fetch("/api/role-presets"),
       fetch("/api/souls"),
       fetch("/api/kb-domains"),
+      fetch("/api/instruction-assets"),
+      fetch("/api/skills"),
     ]);
 
     const rolePresets = rolePresetsRes.ok
@@ -127,12 +133,18 @@ async function fetchDiscovery() {
       : [];
     const souls = soulsRes.ok ? (await soulsRes.json()).souls : [];
     const domains = domainsRes.ok ? (await domainsRes.json()).domains : [];
+    const instructions = instructionsRes.ok
+      ? (await instructionsRes.json()).instructions
+      : [];
+    const skills = skillsRes.ok ? (await skillsRes.json()).skills : [];
 
     populateSelect(kbSelect, domains, "ep-core");
     populateSelect(soulSelect, souls, currentSoulSlug, { includeNone: true });
     populateSelect(rolePresetSelect, rolePresets, currentRolePresetSlug || "default", {
       includeNone: true,
     });
+    populateReferenceSelect(instructionSelect, instructions, currentInstructionRef);
+    populateSkillSelect(skills);
     syncSessionSelectors();
     setControlsEnabled(!isRunning);
   } catch (err) {
@@ -143,6 +155,8 @@ async function fetchDiscovery() {
     kbSelect.dataset.hasOptions = "false";
     soulSelect.dataset.hasOptions = "false";
     rolePresetSelect.dataset.hasOptions = "false";
+    instructionSelect.dataset.hasOptions = "false";
+    skillSelect.dataset.hasOptions = "false";
     setControlsEnabled(!isRunning);
   }
 }
@@ -447,6 +461,31 @@ function populateSelect(select, items, defaultSlug, options = {}) {
   }
 }
 
+function populateReferenceSelect(select, items, selectedRef) {
+  select.innerHTML = '<option value="__none__">None</option>';
+  select.dataset.hasOptions = "true";
+  for (const item of items) {
+    const option = document.createElement("option");
+    option.value = item.ref;
+    option.textContent = item.displayName;
+    option.selected = item.ref === selectedRef;
+    select.appendChild(option);
+  }
+  if (!selectedRef) select.value = NONE_VALUE;
+}
+
+function populateSkillSelect(skills) {
+  skillSelect.innerHTML = '<option value="">Skill</option>';
+  for (const skill of skills) {
+    const option = document.createElement("option");
+    option.value = skill.name;
+    option.textContent = skill.name;
+    option.title = skill.description || skill.name;
+    skillSelect.appendChild(option);
+  }
+  skillSelect.dataset.hasOptions = String(skills.length > 0);
+}
+
 function selectIfAvailable(select, value) {
   const target = value || NONE_VALUE;
   const hasValue = Array.from(select.options).some((option) => option.value === target);
@@ -457,6 +496,7 @@ function syncSessionSelectors() {
   selectIfAvailable(kbSelect, currentDomain);
   selectIfAvailable(soulSelect, currentSoulSlug);
   selectIfAvailable(rolePresetSelect, currentRolePresetSlug);
+  selectIfAvailable(instructionSelect, currentInstructionRef);
 }
 
 function selectedSlug(value) {
@@ -719,6 +759,7 @@ function renderDraftSession(payload) {
   currentDomain = payload.currentDomain || "";
   currentRolePresetSlug = payload.rolePresetSlug ?? payload.profileSlug ?? null;
   currentSoulSlug = payload.soulSlug ?? null;
+  currentInstructionRef = payload.customInstructionRef ?? null;
   sessionReady = true;
   isRunning = false;
   pendingAssetSwitch = false;
@@ -963,6 +1004,7 @@ ws.onmessage = (event) => {
       currentRolePresetSlug =
         msg.payload.rolePresetSlug ?? msg.payload.profileSlug ?? null;
       currentSoulSlug = msg.payload.soulSlug ?? null;
+      currentInstructionRef = msg.payload.customInstructionRef ?? null;
       sessionReady = true;
       isRunning = false;
       rtKb.textContent = currentDomain || "—";
@@ -990,6 +1032,8 @@ ws.onmessage = (event) => {
         msg.payload.profileSlug ??
         currentRolePresetSlug;
       currentSoulSlug = msg.payload.soulSlug ?? currentSoulSlug;
+      currentInstructionRef =
+        msg.payload.customInstructionRef ?? currentInstructionRef;
       rtKb.textContent = currentDomain || rtKb.textContent;
       rtSoul.textContent = displaySlug(currentSoulSlug);
       rtRolePreset.textContent = displaySlug(currentRolePresetSlug);
@@ -1172,6 +1216,11 @@ function setControlsEnabled(enabled) {
     !interactive || soulSelect.dataset.hasOptions !== "true";
   rolePresetSelect.disabled =
     !interactive || rolePresetSelect.dataset.hasOptions !== "true";
+  instructionSelect.disabled =
+    !interactive || instructionSelect.dataset.hasOptions !== "true";
+  skillSelect.disabled =
+    !interactive || skillSelect.dataset.hasOptions !== "true";
+  invokeSkillBtn.disabled = !interactive || !skillSelect.value;
 }
 
 function clearChatSurface() {
@@ -1270,6 +1319,42 @@ rolePresetSelect.addEventListener("change", (e) => {
     rtRolePreset.textContent = displaySlug(currentRolePresetSlug);
   }
 });
+
+instructionSelect.addEventListener("change", (e) => {
+  const customInstructionRef = selectedSlug(e.target.value);
+  if (
+    requestAssetSwitch(
+      { type: "switch_instruction", payload: { customInstructionRef } },
+      "Switching instruction..."
+    )
+  ) {
+    currentInstructionRef = customInstructionRef;
+  }
+});
+
+skillSelect.addEventListener("change", () => {
+  setControlsEnabled(!isRunning);
+});
+
+invokeSkillBtn.onclick = () => {
+  const skillName = skillSelect.value;
+  if (!skillName || isRunning) return;
+  const userText = inputEl.value.trim();
+  if (
+    !wsSafeSend(
+      JSON.stringify({
+        type: "invoke_skill",
+        payload: { skillName, ...(userText ? { userText } : {}) },
+      })
+    )
+  ) return;
+  appendChatMessage("user", userText || `Invoke ${skillName}`);
+  inputEl.value = "";
+  isRunning = true;
+  hasMessages = true;
+  setControlsEnabled(false);
+  setConnStatus("running", "Thinking...");
+};
 
 // New session — confirm if chat has messages
 newSessionBtn.onclick = () => {

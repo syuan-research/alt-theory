@@ -170,11 +170,16 @@ Current model-visible content has two levels.
   3. optional core-soul module content, when configured;
   4. selected `agent-assets/role-presets/{slug}.md`, when a role preset is
      selected;
-  5. KB root declaration;
-  6. write policy when write tools are enabled.
+  5. selected custom instruction text asset, when present;
+  6. KB root declaration;
+  7. write policy when write tools are enabled.
 
 The assembly manifest records the selected paths, existence flags, and SHA-256
-hashes for app context, soul when present, and role preset when present. It
+hashes for app context, soul, role preset, and custom instruction when present.
+It also records Alt Theory skills loaded from the configured skill directory.
+Skill discovery follows three modes: `clean` loads none, `internal` loads only
+Alt Theory skills, and `dev-debug` merges Alt Theory skills with Pi's normal
+global/project discovery while preferring Alt Theory on name collision. It
 also records selected soul/role slugs, including `null` for `None`, plus KB
 root/domain, Pi prompt-template directory, provider/model, session directories,
 and Pi JSONL path. Full content snapshots are deferred.
@@ -185,6 +190,13 @@ Code anchors:
   `agentsFilesOverride`, and `appendSystemPromptOverride`.
 - `alt-theory-app/core/agent-assets.ts`: asset root resolution and file hashes.
 - `agent-assets/prompts/pi/`: Pi adapter prompt-template directory.
+- `agent-assets/instructions/`: default custom-instruction catalog root.
+- `agent-assets/skills/`: configured Alt Theory skill root.
+
+Custom instruction changes rebuild the runtime against the same Pi JSONL and
+Alt Theory session ID. Explicit visual skill invocation is validated against
+the active Alt Theory skills, sent through Pi's native `/skill:name` command,
+and recorded as `skill_invoked`.
 
 ### Per-Turn Context Prefix
 
@@ -379,9 +391,9 @@ is configured; they are not a billing claim.
   environment/config, not UI.
 - Hard write-path enforcement, thinking events, compaction/retry events, and
   provider/auth UI are deferred.
-- Model selector UI, custom instruction loading, and visual skill invocation
-  remain deferred. Current config events include placeholder fields for those
-  later capabilities but do not implement them.
+- Model selector UI remains deferred. Custom instruction loading and visual
+  Alt Theory skill invocation are implemented; the normal skill picker excludes
+  Pi global/project debug skills.
 - Transcript detail now preserves assistant thinking and distinguishes tool
   calls from tool results so the researcher console can switch between User,
   Researcher, and Evidence views.
@@ -398,6 +410,9 @@ is configured; they are not a billing claim.
 
 ## Change Log
 
+- 2026-06-14: Added content-validated custom instructions, three-mode skill
+  composition, Alt Theory-only skill discovery, explicit skill invocation, and
+  the minimal `conversation-summary` runtime skill.
 - 2026-06-14: Updated after project-config/live-switching implementation.
   Added optional project records, effective config events, automatic
   resume-fallback records, and same-session KB/role/soul switching.

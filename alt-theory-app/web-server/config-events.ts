@@ -54,11 +54,11 @@ export function buildEffectiveConfig(
     provider: manifest.provider ?? null,
     model: manifest.model ?? null,
     customInstruction: {
-      ref: null,
-      path: null,
-      sha256: null,
+      ref: manifest.customInstruction?.ref ?? null,
+      path: manifest.customInstruction?.path ?? null,
+      sha256: manifest.customInstruction?.sha256 ?? null,
     },
-    skills: [],
+    skills: manifest.skills ?? [],
     promptMode: manifest.promptMode,
     resourceDiscovery: manifest.resourceDiscovery.mode,
   };

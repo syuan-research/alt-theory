@@ -248,12 +248,19 @@ test("core records resource discovery mode in the assembly manifest", async () =
   const rolePresets = join(root, "role-presets");
   const kb = join(root, "kb");
   const skillsDir = join(root, "skills");
+  const instructionPath = join(root, "study.rules");
   mkdirSync(rolePresets, { recursive: true });
   mkdirSync(join(kb, "ep-core"), { recursive: true });
   mkdirSync(skillsDir, { recursive: true });
   writeFileSync(appContextPath, "Test app context", "utf-8");
   writeFileSync(soulPath, "Test soul", "utf-8");
   writeFileSync(join(rolePresets, "default.md"), "Default role", "utf-8");
+  writeFileSync(
+    join(skillsDir, "summary.md"),
+    "---\nname: summary-test\ndescription: Test summary skill\n---\nSummarize.",
+    "utf-8"
+  );
+  writeFileSync(instructionPath, "Do not overextend.", "utf-8");
 
   const result = await createAltTheorySession({
     ...dirs,
@@ -266,6 +273,8 @@ test("core records resource discovery mode in the assembly manifest", async () =
     readOnly: true,
     resourceDiscovery: "internal",
     skillsDir,
+    customInstructionPath: instructionPath,
+    customInstructionRef: "study.rules",
   });
 
   try {
@@ -273,6 +282,14 @@ test("core records resource discovery mode in the assembly manifest", async () =
       mode: "internal",
       skillsDir: resolve(skillsDir),
     });
+    assert.equal(result.manifest.customInstruction.ref, "study.rules");
+    assert.match(result.manifest.customInstruction.sha256 ?? "", /^[a-f0-9]{64}$/);
+    assert.deepEqual(
+      result.manifest.skills.map((skill) => skill.name),
+      ["summary-test"]
+    );
+    assert.match(result.session.agent.state.systemPrompt, /Do not overextend/);
+    assert.match(result.session.agent.state.systemPrompt, /summary-test/);
     const manifest = JSON.parse(
       readFileSync(join(dirs.recordsDir, "assembly-manifest.json"), "utf-8")
     );
@@ -1112,10 +1129,14 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
   const rolePresets = join(root, "role-presets");
   const souls = join(root, "soul");
   const kb = join(root, "kb");
+  const instructions = join(root, "instructions");
+  const skills = join(root, "skills");
   const appContextPath = join(root, "ALTTHEORY.md");
   mkdirSync(join(kb, "ep-core"), { recursive: true });
   mkdirSync(rolePresets, { recursive: true });
   mkdirSync(souls, { recursive: true });
+  mkdirSync(instructions, { recursive: true });
+  mkdirSync(skills, { recursive: true });
   writeFileSync(appContextPath, "Test app context", "utf-8");
   writeFileSync(join(souls, "soul-latest.md"), "Latest soul", "utf-8");
   writeFileSync(join(souls, "soul-test.md"), "Test soul", "utf-8");
@@ -1129,6 +1150,12 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
     "Alternate role preset",
     "utf-8"
   );
+  writeFileSync(join(instructions, "study.rules"), "Stay bounded.", "utf-8");
+  writeFileSync(
+    join(skills, "summary.md"),
+    "---\nname: conversation-summary\ndescription: Summary\n---\nSummarize.",
+    "utf-8"
+  );
 
   const instance = createAltTheoryServer({
     dataDir: join(root, "data"),
@@ -1136,6 +1163,9 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
     soulDir: souls,
     rolePresetsDir: rolePresets,
     kbDir: kb,
+    instructionsDir: instructions,
+    skillsDir: skills,
+    resourceDiscovery: "internal",
     readOnly: true,
   });
 
@@ -1188,6 +1218,25 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
     assert.deepEqual(await domainsResponse.json(), {
       domains: [{ slug: "ep-core", displayName: "Ep Core" }],
     });
+    const instructionsResponse = await fetch(`${baseUrl}/api/instruction-assets`);
+    assert.deepEqual(await instructionsResponse.json(), {
+      instructions: [
+        {
+          ref: "study.rules",
+          displayName: "study.rules",
+          size: Buffer.byteLength("Stay bounded."),
+        },
+      ],
+    });
+    const skillsResponse = await fetch(`${baseUrl}/api/skills`);
+    const skillsJson = await skillsResponse.json();
+    assert.deepEqual(
+      skillsJson.skills.map((skill: any) => ({
+        name: skill.name,
+        source: skill.source,
+      })),
+      [{ name: "conversation-summary", source: "alt-theory" }]
+    );
     const emptyProjectsResponse = await fetch(`${baseUrl}/api/projects`);
     assert.deepEqual(await emptyProjectsResponse.json(), { projects: [] });
     const projectResponse = await fetch(
@@ -1306,4 +1355,39 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
     });
   }
   assert.equal(existsSync(join(root, "data", "sessions")), false);
+});
+
+test("dev-debug composes configured Alt Theory skills with Pi discovery", async () => {
+  const root = mkdtempSync(join(tmpdir(), "alt-theory-debug-skills-"));
+  const dirs = createSessionDirs(root);
+  const appContextPath = join(root, "ALTTHEORY.md");
+  const kb = join(root, "kb");
+  const skillsDir = join(root, "skills");
+  mkdirSync(join(kb, "ep-core"), { recursive: true });
+  mkdirSync(skillsDir, { recursive: true });
+  writeFileSync(appContextPath, "Debug skill context", "utf-8");
+  writeFileSync(
+    join(skillsDir, "summary.md"),
+    "---\nname: alt-summary\ndescription: Alt summary\n---\nSummarize.",
+    "utf-8"
+  );
+
+  const result = await createAltTheorySession({
+    ...dirs,
+    appContextPath,
+    kbDir: kb,
+    kbDomain: "ep-core",
+    readOnly: true,
+    resourceDiscovery: "dev-debug",
+    skillsDir,
+  });
+  try {
+    assert.deepEqual(
+      result.manifest.skills.map((skill) => skill.name),
+      ["alt-summary"]
+    );
+    assert.match(result.session.agent.state.systemPrompt, /alt-summary/);
+  } finally {
+    result.session.dispose();
+  }
 });

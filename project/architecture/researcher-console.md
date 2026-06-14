@@ -72,6 +72,7 @@ The left panel currently owns:
 - KB selector;
 - soul selector;
 - role-preset selector;
+- custom-instruction asset selector;
 - provider/model display.
 
 The center panel currently owns:
@@ -80,6 +81,7 @@ The center panel currently owns:
 - streaming assistant text;
 - inline tool status;
 - prompt input;
+- Alt Theory skill selector and explicit Invoke action;
 - send/stop controls.
 
 The right runtime inspector currently owns:
@@ -107,7 +109,7 @@ Code anchors:
 
 Current console attachment state is browser-local and tied to one live
 WebSocket connection. A new connection starts in draft state with selected KB,
-soul, and role preset but no session ID. The active backend runtime is
+  soul, role preset, and optional custom instruction but no session ID. The active backend runtime is
 application-owned by `SessionService` only after a draft is materialized by the
 first prompt or an existing session is opened. Closing the browser socket
 detaches the listener rather than aborting a materialized session. The browser
@@ -118,6 +120,8 @@ Current backend-facing state:
 
 - discovery lists from `GET /api/role-presets`, `GET /api/souls`, and
   `GET /api/kb-domains`;
+- content-validated instruction catalog from `GET /api/instruction-assets`;
+- active Alt Theory-only skill catalog from `GET /api/skills`;
 - legacy compatibility alias from `GET /api/profiles`;
 - historical session list and detail from `GET /api/sessions` and
   `GET /api/sessions/{sessionId}`;
@@ -190,6 +194,9 @@ export sessions.
 - Role-preset and soul switching rebuild the backend runtime rather than
   mutating an in-flight model prompt after a session has materialized. In
   draft, those controls only update the pending launch selectors.
+- Custom-instruction switching uses the same same-session rebuild behavior.
+- The skill picker exposes only configured Alt Theory skills, even when the
+  backend is in `dev-debug`; Pi debug/global skills remain outside the picker.
 - Project records exist at the backend/API layer, but the current frontend does
   not yet expose full project creation or selection UI.
 - Tags and annotations are not implemented.
@@ -216,6 +223,9 @@ export sessions.
 
 ## Change Log
 
+- 2026-06-14: Added custom-instruction selection and explicit Alt Theory skill
+  invocation near the composer. Unified visual UAT remains scheduled for the
+  later consolidated frontend checkpoint.
 - 2026-06-14: Updated after project-config/live-switching implementation.
   Materialized KB/role/soul changes now remain inside the same Alt Theory
   session and config provenance is available through session detail.

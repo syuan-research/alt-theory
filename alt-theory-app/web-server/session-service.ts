@@ -37,6 +37,7 @@ import {
   appendConfigEvent,
   buildEffectiveConfig,
 } from "./config-events.js";
+import { loadInstructionAsset } from "./instruction-assets.js";
 import type {
   SessionMetrics,
   SessionSnapshot,
@@ -67,6 +68,7 @@ export interface SessionServiceConfig {
   promptMode: PromptMode;
   resourceDiscovery: ResourceDiscoveryMode;
   skillsDir?: string;
+  instructionsDir?: string;
   runLabel: string | null;
   testBatch: string | null;
   coreSoulPath?: string;
@@ -78,6 +80,7 @@ export interface SessionSelectors {
   rolePresetSlug: string | null;
   kbDomain: string;
   soulSlug: string | null;
+  customInstructionRef?: string | null;
 }
 
 export interface RunHandle {
@@ -206,6 +209,32 @@ export class SessionService {
     return this.snapshot(replacement);
   }
 
+  invokeSkill(
+    sessionId: string,
+    skillName: string,
+    userText?: string
+  ): RunHandle {
+    const managed = this.requireSession(sessionId);
+    if (managed.busy || managed.session.isStreaming) {
+      throw new SessionBusyError(sessionId);
+    }
+    const skill = managed.manifest.skills?.find(
+      (candidate) => candidate.name === skillName
+    );
+    if (!skill) {
+      throw new Error(`Unknown Alt Theory skill: ${skillName}`);
+    }
+    appendSessionEvent(managed.manifest.recordsDir, {
+      sessionId,
+      type: "skill_invoked",
+      details: { skillName, skillPath: skill.path },
+    });
+    return this.runPrompt(
+      sessionId,
+      `/skill:${skillName}${userText?.trim() ? ` ${userText.trim()}` : ""}`
+    );
+  }
+
   setKbDomain(sessionId: string, domain: string): SessionSnapshot {
     if (!isKnownKbDomain(this.config.kbDir, domain)) {
       throw new Error(`Unknown KB domain: ${domain}`);
@@ -328,6 +357,9 @@ export class SessionService {
       selectors.rolePresetSlug
     );
     const soulPath = this.resolveOptionalSoulPath(selectors.soulSlug);
+    const instruction = this.resolveOptionalInstruction(
+      selectors.customInstructionRef
+    );
     const result = await createAltTheorySession({
       ...sessionDirs,
       appContextPath: this.config.assetPaths.appContextPath,
@@ -335,6 +367,8 @@ export class SessionService {
       soulSlug: selectors.soulSlug,
       rolePresetPath,
       rolePresetSlug: selectors.rolePresetSlug,
+      customInstructionPath: instruction?.path ?? null,
+      customInstructionRef: instruction?.ref ?? null,
       kbDir: this.config.kbDir,
       kbDomain: selectors.kbDomain,
       piPromptTemplatesDir: this.config.assetPaths.piPromptTemplatesDir,
@@ -420,6 +454,11 @@ export class SessionService {
       originalDomain && isKnownKbDomain(this.config.kbDir, originalDomain)
         ? originalDomain
         : fallbackSelectors.kbDomain;
+    const activeInstructionRef = this.activeInstructionRef(
+      detail.manifest?.customInstruction?.ref,
+      fallbackSelectors.customInstructionRef
+    );
+    const instruction = this.resolveOptionalInstruction(activeInstructionRef);
 
     const result = await openAltTheorySession({
       ...sessionDirs,
@@ -430,6 +469,8 @@ export class SessionService {
       soulSlug: activeSoulSlug,
       rolePresetPath: this.resolveOptionalRolePresetPath(activeRolePresetSlug),
       rolePresetSlug: activeRolePresetSlug,
+      customInstructionPath: instruction?.path ?? null,
+      customInstructionRef: instruction?.ref ?? null,
       kbDir: this.config.kbDir,
       kbDomain: activeDomain,
       piPromptTemplatesDir: this.config.assetPaths.piPromptTemplatesDir,
@@ -455,6 +496,7 @@ export class SessionService {
         rolePresetSlug: activeRolePresetSlug,
         kbDomain: activeDomain,
         soulSlug: activeSoulSlug,
+        customInstructionRef: activeInstructionRef,
       },
       openedFrom: "existing",
       resumeWarnings: result.resumeWarnings,
@@ -499,6 +541,8 @@ export class SessionService {
         rolePresetSlug: detail.manifest?.rolePreset?.slug ?? null,
         kbDomain: originalDomain ?? fallbackSelectors.kbDomain,
         soulSlug: detail.manifest?.soul?.slug ?? null,
+        customInstructionRef:
+          detail.manifest?.customInstruction?.ref ?? null,
       },
       managed.selectors
     );
@@ -540,6 +584,10 @@ export class SessionService {
       soulSlug: selectors.soulSlug,
       rolePresetPath: this.resolveOptionalRolePresetPath(selectors.rolePresetSlug),
       rolePresetSlug: selectors.rolePresetSlug,
+      customInstructionPath: this.resolveOptionalInstruction(
+        selectors.customInstructionRef
+      )?.path,
+      customInstructionRef: selectors.customInstructionRef ?? null,
       kbDir: this.config.kbDir,
       kbDomain: selectors.kbDomain,
       piPromptTemplatesDir: this.config.assetPaths.piPromptTemplatesDir,
@@ -684,6 +732,7 @@ export class SessionService {
       rolePresetSlug: managed.selectors.rolePresetSlug,
       profileSlug: managed.selectors.rolePresetSlug,
       soulSlug: managed.selectors.soulSlug,
+      customInstructionRef: managed.selectors.customInstructionRef ?? null,
       openedFrom: managed.openedFrom,
       resumeWarnings: managed.resumeWarnings,
       messageCount: managed.counters.messageCount,
@@ -750,6 +799,33 @@ export class SessionService {
     return path;
   }
 
+  private resolveOptionalInstruction(ref: string | null | undefined) {
+    return ref
+      ? loadInstructionAsset(
+          this.config.instructionsDir ??
+            this.config.assetPaths.instructionsDir ??
+            `${this.config.assetPaths.rootDir}/instructions`,
+          ref
+        )
+      : null;
+  }
+
+  private activeInstructionRef(
+    original: string | null | undefined,
+    fallback: string | null | undefined
+  ): string | null {
+    if (original === null) return null;
+    if (original) {
+      try {
+        this.resolveOptionalInstruction(original);
+        return original;
+      } catch {
+        // Fall through to the current selector fallback.
+      }
+    }
+    return fallback ?? null;
+  }
+
   private activeOptionalSlug(
     original: string | null | undefined,
     fallback: string | null,
@@ -781,6 +857,12 @@ function configChangedFields(
     fields.push("rolePresetSlug");
   }
   if (before.soulSlug !== after.soulSlug) fields.push("soulSlug");
+  if (
+    (before.customInstructionRef ?? null) !==
+    (after.customInstructionRef ?? null)
+  ) {
+    fields.push("customInstructionRef");
+  }
   return fields;
 }
 
