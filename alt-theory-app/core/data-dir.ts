@@ -64,6 +64,56 @@ export function createSessionDirs(
   };
 }
 
+export interface ReadableSessionIdParts {
+  rolePresetSlug?: string | null;
+  soulSlug?: string | null;
+  modelId?: string | null;
+}
+
+export function allocateReadableSessionId(
+  dataDir: string,
+  parts: ReadableSessionIdParts,
+  now = new Date()
+): string {
+  const base = [
+    formatLocalSessionTimestamp(now),
+    normalizeSessionIdPart(parts.rolePresetSlug ?? null, "none"),
+    normalizeSessionIdPart(parts.soulSlug ?? null, "none"),
+    normalizeSessionIdPart(parts.modelId ?? null, "default"),
+  ].join("__");
+
+  let candidate = base;
+  let suffix = 2;
+  while (true) {
+    const sessionRoot = resolveSessionRoot(dataDir, candidate);
+    if (!sessionRoot || !existsSync(sessionRoot)) return candidate;
+    candidate = `${base}-${suffix}`;
+    suffix++;
+  }
+}
+
+function formatLocalSessionTimestamp(date: Date): string {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return [
+    date.getFullYear(),
+    pad(date.getMonth() + 1),
+    pad(date.getDate()),
+    "-",
+    pad(date.getHours()),
+    pad(date.getMinutes()),
+    pad(date.getSeconds()),
+  ].join("");
+}
+
+function normalizeSessionIdPart(value: string | null, fallback: string): string {
+  const normalized = (value ?? fallback)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 24);
+  return normalized || fallback;
+}
+
 export function getSessionDirs(
   dataDir: string,
   sessionId: string

@@ -1,0 +1,42 @@
+feature: 2026-06-14-lineage-runtime-feasibility
+created: 2026-06-14
+
+steps:
+  - action: "Evidence scaffold: add focused core test file and synthetic message helpers"
+    exit_signal: "Tests can create persisted Pi JSONL without live model calls"
+    status: done
+  - action: "Pi tree/revision probe: assert same-file branch/revision behavior and restart recovery"
+    exit_signal: "Reopened manager returns the revised active path and keeps superseded entries"
+    status: done
+  - action: "Physical fork probe: assert createBranchedSession file, path, and parent behavior"
+    exit_signal: "Forked JSONL reopens with only the fork-point path and parent linkage"
+    status: done
+  - action: "Runtime rebuild probe: assert Alt Theory reopen with changed prompt resources preserves history"
+    exit_signal: "Same sessionId/Pi file/history with changed system prompt and resume warnings"
+    status: done
+  - action: "Candidate ID probe and validation: assert readable ID shape/path length and run backend tests"
+    exit_signal: "npm run test:backend passes and checklist checks have direct evidence"
+    status: done
+
+checks:
+  - item: "Latest-turn revision candidate keeps one Pi file, reopens to the replacement active path, and retains superseded entries"
+    source: design
+    status: passed
+  - item: "Explicit Fork candidate creates a separate Pi JSONL with parentSession pointing to the source and only the fork-point path active"
+    source: design
+    status: passed
+  - item: "Restart recovery uses the reopened leaf/context rather than newest-directory inference"
+    source: design
+    status: passed
+  - item: "Changed soul/role/resource assembly can reopen the same JSONL and preserve prior context"
+    source: design
+    status: passed
+  - item: "Custom message entries persist and participate in context after reopen"
+    source: design
+    status: passed
+  - item: "Candidate readable session IDs are filesystem-safe and bounded for realistic role/soul/model slugs"
+    source: design
+    status: passed
+  - item: "No product SessionService, branch-index, config-event, REST, or WebSocket behavior is implemented"
+    source: design
+    status: passed

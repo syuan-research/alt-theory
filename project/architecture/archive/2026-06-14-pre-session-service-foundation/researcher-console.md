@@ -1,3 +1,13 @@
+<!--
+Archived pre-session-service foundation snapshot.
+Source path: project/architecture/
+researcher-console.md
+Archived on: 2026-06-14
+Superseded by: project/architecture/
+researcher-console.md
+Note: frontmatter below is preserved from the source snapshot and may say status: current relative to its original date.
+-->
+
 ---
 doc_type: architecture
 slug: researcher-console
@@ -56,8 +66,7 @@ flowchart LR
   REST --> Souls[soul variants list]
   REST --> KBDomains[KB domain list]
   REST --> SessionCatalog[session list + detail]
-  WS --> Draft[connection-local draft]
-  Draft --> Session[first prompt materializes session]
+  WS --> Session[Connection-scoped session]
   WS --> OpenSession[open_session]
   Session --> Inspector[metadata + metrics + paths]
   Session --> Chat[streaming chat + tool status]
@@ -105,14 +114,9 @@ Code anchors:
 
 ## 3. Data And State
 
-Current console attachment state is browser-local and tied to one live
-WebSocket connection. A new connection starts in draft state with selected KB,
-soul, and role preset but no session ID. The active backend runtime is
-application-owned by `SessionService` only after a draft is materialized by the
-first prompt or an existing session is opened. Closing the browser socket
-detaches the listener rather than aborting a materialized session. The browser
-reads a durable session index from the backend data directory but does not own
-or persist that index locally.
+Current console state is browser-local and tied to one live WebSocket
+connection. The browser reads a durable session index from the backend data
+directory but does not own or persist that index locally.
 
 Current backend-facing state:
 
@@ -123,10 +127,8 @@ Current backend-facing state:
   `GET /api/sessions/{sessionId}`;
 - current live session metadata from `session_metadata`;
 - current live session metrics from `session_metrics`;
-- connection-local draft state from `session_draft`;
 - session resume/open over WebSocket `open_session`;
 - streaming output and tool events over WebSocket;
-- stable `session_busy` errors when a same-session mutation is already active;
 - selected KB domain in the current connection;
 - selected soul slug or `None` in the current connection;
 - selected role-preset slug or `None` in the current connection.
@@ -153,14 +155,11 @@ export sessions.
 
 ## 4. Current Capabilities
 
-- Opens to an unpersisted draft on WebSocket connect.
-- Materializes the draft into one readable-ID backend session when the first
-  prompt is sent.
+- Opens a live backend session on WebSocket connect.
 - Populates KB, soul, and role-preset selectors from REST discovery.
 - Populates historical session list/detail from REST.
 - Sends prompts and abort requests.
-- Starts a new draft within the same browser connection without creating an
-  empty session.
+- Starts a new session within the same browser connection.
 - Resumes/opens an existing session within the same browser connection.
 - Switches soul and role preset immediately by rebuilding the active backend
   session for the current connection. When the current session has no Pi
@@ -176,7 +175,6 @@ export sessions.
 - Provides a right-panel Records tab with a text editor for path-contained
   `.md`, `.txt`, and `.json` files under the active session's `records/` and
   `workspace/`.
-- Disables records/paths/metrics surfaces while the connection is still draft.
 - Passed a user-run browser + live LLM smoke on 2026-06-08.
 
 ## 5. Known Constraints / Edge Cases
@@ -184,8 +182,7 @@ export sessions.
 - Provider/model switching is not implemented in the console.
 - Core-soul module switching is not implemented in the console.
 - Role-preset and soul switching rebuild the backend session rather than
-  mutating an in-flight model prompt after a session has materialized. In
-  draft, those controls only update the pending launch selectors.
+  mutating an in-flight model prompt.
 - Tags and annotations are not implemented.
 - Export is not implemented.
 - Historical session comparison is not implemented.
@@ -210,9 +207,6 @@ export sessions.
 
 ## Change Log
 
-- 2026-06-14: Updated after draft-first-send implementation. Console opens in
-  `session_draft`, first prompt materializes the session, and records/paths/
-  metrics remain unavailable while draft.
 - 2026-06-08: Created current-state architecture for the researcher console
   seed.
 - 2026-06-08: Updated after session browser/resume-open slice. Console now

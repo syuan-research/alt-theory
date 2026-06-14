@@ -38,6 +38,7 @@ import {
   readSessionDetail,
   writeSessionTextFile,
 } from "./session-store.js";
+import { writeFoundationRecords } from "./session-records.js";
 
 test("asset registry lists safe sorted slugs and resolves known assets", () => {
   const root = mkdtempSync(join(tmpdir(), "alt-theory-assets-"));
@@ -686,6 +687,30 @@ test("session catalog and detail expose complete and incomplete sessions", async
   mkdirSync(join(dataDir, "sessions", "session-incomplete"), {
     recursive: true,
   });
+  const emptyV4Dirs = createSessionDirs(dataDir, "session-v4-empty");
+  const emptyV4 = await createAltTheorySession({
+    ...emptyV4Dirs,
+    appContextPath,
+    soulPath,
+    rolePresetPath: join(rolePresets, "default.md"),
+    rolePresetSlug: "default",
+    kbDir: kb,
+    kbDomain: "ep-core",
+    modelsPath,
+    modelProvider: "test-provider",
+    modelId: "test-model",
+    runtimeApiKey: "runtime-only-test-key",
+    readOnly: true,
+  });
+  try {
+    writeFoundationRecords({
+      sessionRoot: emptyV4Dirs.sessionRoot,
+      recordsDir: emptyV4Dirs.recordsDir,
+      manifest: emptyV4.manifest,
+    });
+  } finally {
+    emptyV4.session.dispose();
+  }
   writeFileSync(
     join(completeDirs.recordsDir, "discussion-summary.md"),
     "# Summary\n",
@@ -704,6 +729,9 @@ test("session catalog and detail expose complete and incomplete sessions", async
   const incompleteSummary = summaries.find(
     (session) => session.sessionId === "session-incomplete"
   );
+  const emptyV4Summary = summaries.find(
+    (session) => session.sessionId === "session-v4-empty"
+  );
   assert.equal(completeSummary?.status, "available");
   assert.equal(completeSummary?.rolePresetSlug, "default");
   assert.equal(completeSummary?.kbDomain, "ep-core");
@@ -713,6 +741,7 @@ test("session catalog and detail expose complete and incomplete sessions", async
   assert.equal(incompleteSummary?.status, "incomplete");
   assert.equal(incompleteSummary?.hasManifest, false);
   assert.equal(incompleteSummary?.hasSessionFile, false);
+  assert.equal(emptyV4Summary, undefined);
   assert.equal(
     getSessionRootForRequest(dataDir, ".bad").status,
     "invalid"
@@ -979,16 +1008,15 @@ test("WebSocket open_session replaces current state with an existing session", a
   }
 
   const ws = new WebSocket(`ws://127.0.0.1:${address.port}`);
-  const initialOpenedPromise = waitForType(ws, "session_opened");
-  const initialMetadataPromise = waitForType(ws, "session_metadata");
-  const initialMetricsPromise = waitForType(ws, "session_metrics");
+  const initialDraftPromise = waitForType(ws, "session_draft");
 
   try {
-    const initialOpened = await initialOpenedPromise;
-    await initialMetadataPromise;
-    await initialMetricsPromise;
-    assert.notEqual(initialOpened.payload.sessionId, "session-ws-open");
+    const initialDraft = await initialDraftPromise;
+    assert.equal(initialDraft.payload.status, "draft");
+    assert.equal(initialDraft.payload.rolePresetSlug, "default");
+    assert.equal(initialDraft.payload.currentDomain, "ep-core");
     const sessionRootsAfterConnect = readdirSync(join(dataDir, "sessions"));
+    assert.deepEqual(sessionRootsAfterConnect, ["session-ws-open"]);
 
     const missingErrorPromise = waitForType(ws, "error");
     ws.send(
@@ -1000,10 +1028,10 @@ test("WebSocket open_session replaces current state with an existing session", a
     const missingError = await missingErrorPromise;
     assert.match(missingError.payload.error, /Unknown session id/);
 
-    const stillCurrentPromise = waitForType(ws, "session_metadata");
+    const stillCurrentPromise = waitForType(ws, "session_draft");
     ws.send(JSON.stringify({ type: "get_session_metadata" }));
     const stillCurrent = await stillCurrentPromise;
-    assert.equal(stillCurrent.payload.sessionId, initialOpened.payload.sessionId);
+    assert.equal(stillCurrent.payload.status, "draft");
 
     const openedPromise = waitForType(ws, "session_opened");
     const transcriptPromise = waitForType(ws, "session_transcript");
@@ -1138,8 +1166,8 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
 
   const ws1 = new WebSocket(`ws://127.0.0.1:${address.port}`);
   const ws2 = new WebSocket(`ws://127.0.0.1:${address.port}`);
-  const opened1Promise = waitForType(ws1, "session_opened");
-  const opened2Promise = waitForType(ws2, "session_opened");
+  const draft1Promise = waitForType(ws1, "session_draft");
+  const draft2Promise = waitForType(ws2, "session_draft");
 
   try {
     const rolePresetsResponse = await fetch(`${baseUrl}/api/role-presets`);
@@ -1161,117 +1189,69 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
       domains: [{ slug: "ep-core", displayName: "Ep Core" }],
     });
 
-    const [opened1, opened2] = await Promise.all([
-      opened1Promise,
-      opened2Promise,
+    const [draft1, draft2] = await Promise.all([
+      draft1Promise,
+      draft2Promise,
     ]);
-    assert.notEqual(opened1.payload.sessionId, opened2.payload.sessionId);
-    assert.equal(opened1.payload.rolePresetSlug, "default");
-    assert.equal(opened1.payload.soulSlug, "soul-latest");
+    assert.equal(draft1.payload.status, "draft");
+    assert.equal(draft2.payload.status, "draft");
+    assert.equal(draft1.payload.rolePresetSlug, "default");
+    assert.equal(draft1.payload.soulSlug, "soul-latest");
+    assert.equal(existsSync(join(root, "data", "sessions")), false);
 
-    const metadataPromise = waitForType(ws1, "session_metadata");
-    ws1.send(JSON.stringify({ type: "get_session_metadata" }));
-    const metadata = await metadataPromise;
-    assert.equal(metadata.payload.sessionId, opened1.payload.sessionId);
-    assert.ok(
-      existsSync(join(metadata.payload.recordsDir, "assembly-manifest.json"))
-    );
-
-    const metricsPromise = waitForType(ws1, "session_metrics");
-    ws1.send(JSON.stringify({ type: "get_session_metrics" }));
-    const metrics = await metricsPromise;
-    assert.deepEqual(
-      {
-        turnCount: metrics.payload.turnCount,
-        toolCallCount: metrics.payload.toolCallCount,
-        messageCount: metrics.payload.messageCount,
-      },
-      { turnCount: 0, toolCallCount: 0, messageCount: 0 }
-    );
-    assert.equal(typeof metrics.payload.tokens.total, "number");
-
+    const kbDraftPromise = waitForType(ws1, "session_draft");
     ws1.send(
       JSON.stringify({ type: "switch_kb", payload: { domain: "all" } })
     );
+    const kbDraft = await kbDraftPromise;
+    assert.equal(kbDraft.payload.currentDomain, "all");
 
-    const soulOpenedPromise = waitForType(ws1, "session_opened");
-    const soulMetadataPromise = waitForType(ws1, "session_metadata");
+    const soulDraftPromise = waitForType(ws1, "session_draft");
     ws1.send(
       JSON.stringify({
         type: "switch_soul",
         payload: { soulSlug: null },
       })
     );
-    const soulOpened = await soulOpenedPromise;
-    const soulMetadata = await soulMetadataPromise;
-    assert.equal(soulOpened.payload.sessionId, opened1.payload.sessionId);
-    assert.equal(soulOpened.payload.currentDomain, "all");
-    assert.equal(soulOpened.payload.rolePresetSlug, "default");
-    assert.equal(soulOpened.payload.soulSlug, null);
-    assert.equal(soulMetadata.payload.soul.slug, null);
-    assert.equal(soulMetadata.payload.soul.path, null);
+    const soulDraft = await soulDraftPromise;
+    assert.equal(soulDraft.payload.currentDomain, "all");
+    assert.equal(soulDraft.payload.rolePresetSlug, "default");
+    assert.equal(soulDraft.payload.soulSlug, null);
 
-    const eventText = readFileSync(
-      join(metadata.payload.recordsDir, "session-events.jsonl"),
-      "utf-8"
-    );
-    const eventTypes = eventText
-      .trim()
-      .split("\n")
-      .map((line) => JSON.parse(line).type);
-    assert.ok(eventTypes.includes("session_created"));
-    assert.ok(eventTypes.includes("kb_selected"));
-    assert.ok(eventTypes.includes("soul_selected"));
-
-    const roleOpenedPromise = waitForType(ws1, "session_opened");
-    const roleMetadataPromise = waitForType(ws1, "session_metadata");
+    const roleDraftPromise = waitForType(ws1, "session_draft");
     ws1.send(
       JSON.stringify({
         type: "switch_role_preset",
         payload: { rolePresetSlug: "alternate" },
       })
     );
-    const roleOpened = await roleOpenedPromise;
-    const roleMetadata = await roleMetadataPromise;
-    assert.equal(roleOpened.payload.sessionId, soulOpened.payload.sessionId);
-    assert.equal(roleOpened.payload.currentDomain, "all");
-    assert.equal(roleOpened.payload.rolePresetSlug, "alternate");
-    assert.equal(roleOpened.payload.soulSlug, null);
-    assert.equal(roleMetadata.payload.rolePreset.slug, "alternate");
+    const roleDraft = await roleDraftPromise;
+    assert.equal(roleDraft.payload.currentDomain, "all");
+    assert.equal(roleDraft.payload.rolePresetSlug, "alternate");
+    assert.equal(roleDraft.payload.soulSlug, null);
 
-    const roleEventTypes = readFileSync(
-      join(soulMetadata.payload.recordsDir, "session-events.jsonl"),
-      "utf-8"
-    )
-      .trim()
-      .split("\n")
-      .map((line) => JSON.parse(line).type);
-    assert.ok(roleEventTypes.includes("role_preset_selected"));
-
-    const ws2MetadataPromise = waitForType(ws2, "session_metadata");
+    const ws2DraftPromise = waitForType(ws2, "session_draft");
     ws2.send(JSON.stringify({ type: "get_session_metadata" }));
-    const ws2Metadata = await ws2MetadataPromise;
-    assert.equal(ws2Metadata.payload.sessionId, opened2.payload.sessionId);
-    assert.equal(ws2Metadata.payload.rolePreset.slug, "default");
-    assert.equal(ws2Metadata.payload.soul.slug, "soul-latest");
+    const ws2Draft = await ws2DraftPromise;
+    assert.equal(ws2Draft.payload.currentDomain, "ep-core");
+    assert.equal(ws2Draft.payload.rolePresetSlug, "default");
+    assert.equal(ws2Draft.payload.soulSlug, "soul-latest");
 
-    const reopened1Promise = waitForType(ws1, "session_opened");
+    const reopened1Promise = waitForType(ws1, "session_draft");
     ws1.send(JSON.stringify({ type: "new_session" }));
     const reopened1 = await reopened1Promise;
 
-    const reopened2Promise = waitForType(ws2, "session_opened");
+    const reopened2Promise = waitForType(ws2, "session_draft");
     ws2.send(JSON.stringify({ type: "new_session" }));
     const reopened2 = await reopened2Promise;
 
     assert.equal(reopened1.payload.currentDomain, "all");
     assert.equal(reopened1.payload.rolePresetSlug, "alternate");
     assert.equal(reopened1.payload.soulSlug, null);
-    assert.equal(reopened1.payload.sessionId, opened1.payload.sessionId);
     assert.equal(reopened2.payload.currentDomain, "ep-core");
     assert.equal(reopened2.payload.rolePresetSlug, "default");
     assert.equal(reopened2.payload.soulSlug, "soul-latest");
-    assert.equal(reopened2.payload.sessionId, opened2.payload.sessionId);
-    assert.notEqual(reopened1.payload.sessionId, reopened2.payload.sessionId);
+    assert.equal(existsSync(join(root, "data", "sessions")), false);
   } finally {
     ws1.close();
     ws2.close();
@@ -1281,6 +1261,5 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
       });
     });
   }
-
-  assert.ok(existsSync(join(root, "data", "sessions")));
+  assert.equal(existsSync(join(root, "data", "sessions")), false);
 });

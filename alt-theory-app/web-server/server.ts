@@ -2,7 +2,7 @@
  * Alt Theory Web Server
  *
  * Express + WebSocket backend. Static discovery uses REST; live session state
- * remains scoped to each WebSocket connection.
+ * is owned by SessionService and WebSocket connections attach as clients.
  */
 
 import "dotenv/config";
@@ -12,24 +12,12 @@ import { createServer } from "http";
 import { resolve } from "path";
 import { fileURLToPath } from "url";
 import WebSocket, { WebSocketServer } from "ws";
-import type {
-  AgentSession,
-  AgentSessionEvent,
-} from "@mariozechner/pi-coding-agent";
 import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
 import {
-  createAltTheorySession,
-  openAltTheorySession,
-  type AssemblyManifest,
   type PromptMode,
   type ResourceDiscoveryMode,
 } from "../core/alt-theory-core.js";
-import {
-  createSessionDirs,
-  getSessionDirs,
-  resolveDataDir,
-  type SessionDirectories,
-} from "../core/data-dir.js";
+import { resolveDataDir } from "../core/data-dir.js";
 import {
   resolveAgentAssetPaths,
   type AgentAssetPaths,
@@ -45,15 +33,7 @@ import {
 import type {
   ClientMessage,
   ServerMessage,
-  SessionMetrics,
-  SessionSnapshot,
-  type TranscriptMessage,
 } from "./websocket-protocol.js";
-import {
-  buildSessionMetrics,
-  persistSessionMetrics,
-} from "./session-metrics.js";
-import { appendSessionEvent } from "./session-events.js";
 import {
   getSessionRootForRequest,
   listSessionTextFiles,
@@ -62,6 +42,12 @@ import {
   readSessionDetail,
   writeSessionTextFile,
 } from "./session-store.js";
+import {
+  SessionBusyError,
+  SessionService,
+  type SessionSelectors,
+  type SessionServiceEvent,
+} from "./session-service.js";
 
 const PROJECT_ROOT = process.cwd();
 const PUBLIC_DIR = resolve(
@@ -71,20 +57,6 @@ const PUBLIC_DIR = resolve(
   "public"
 );
 
-interface ConnectionState {
-  session: AgentSession;
-  unsubscribe: () => void;
-  manifest: AssemblyManifest;
-  currentDomain: string;
-  currentRolePresetSlug: string | null;
-  currentSoulSlug: string | null;
-  openedFrom: "new" | "existing";
-  resumeWarnings: string[];
-  messageCount: number;
-  toolCallCount: number;
-  turnCount: number;
-  transcript: TranscriptMessage[];
-}
 
 export interface AltTheoryServerOptions {
   agentAssetsDir?: string;
@@ -295,282 +267,109 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     return value && value.trim() ? value : null;
   }
 
-  function resolveOptionalRolePresetPath(slug: string | null): string | null {
-    if (!slug) return null;
-    const path = resolveRolePresetSlug(rolePresetsDir, slug);
-    if (!path) {
-      throw new Error(`Unknown role preset slug: ${slug}`);
+
+  const sessionService = new SessionService({
+    dataDir,
+    assetPaths,
+    kbDir,
+    rolePresetsDir,
+    soulDir,
+    legacySoulPath,
+    readOnly,
+    modelProvider,
+    modelId,
+    modelsPath: modelsPath ?? undefined,
+    runtimeApiKey:
+      options.runtimeApiKey ?? process.env.ALT_THEORY_MODEL_API_KEY,
+    thinkingLevel: options.thinkingLevel,
+    promptMode,
+    resourceDiscovery,
+    skillsDir,
+    runLabel,
+    testBatch,
+    coreSoulPath:
+      options.coreSoulPath ?? process.env.ALT_THEORY_CORE_SOUL_PATH,
+    coreSoulModulesDir:
+      options.coreSoulModulesDir ??
+      process.env.ALT_THEORY_CORE_SOUL_MODULES_DIR,
+    coreSoulModules: options.coreSoulModules ?? parseCoreSoulModules(),
+  });
+
+  function forwardServiceEvent(
+    send: (msg: ServerMessage) => void,
+    event: SessionServiceEvent
+  ): void {
+    switch (event.type) {
+      case "snapshot":
+        send({ type: "session_updated", payload: event.payload });
+        break;
+      case "assistant_delta":
+        send({ type: "assistant_delta", payload: event.payload });
+        break;
+      case "tool_started":
+        send({ type: "tool_started", payload: event.payload });
+        break;
+      case "tool_updated":
+        send({ type: "tool_updated", payload: event.payload });
+        break;
+      case "tool_finished":
+        send({ type: "tool_finished", payload: event.payload });
+        break;
+      case "run_completed":
+        send({ type: "run_completed", payload: event.payload });
+        break;
+      case "run_failed":
+        send({ type: "run_failed", payload: event.payload });
+        break;
+      case "session_metrics":
+        send({ type: "session_metrics", payload: event.payload });
+        break;
     }
-    return path;
   }
 
-  function resolveOptionalSoulPath(slug: string | null): string | null {
-    if (!slug) return null;
-    const path = resolveSoulSlug(soulDir, slug, legacySoulPath);
-    if (!path) {
-      throw new Error(`Unknown soul slug: ${slug}`);
-    }
-    return path;
-  }
-
-  function activeOptionalSlug(
-    original: string | null | undefined,
-    fallback: string | null,
-    resolvePath: (slug: string | null) => string | null
-  ): string | null {
-    if (original === null) return null;
-    if (typeof original === "string") {
-      try {
-        if (resolvePath(original)) return original;
-      } catch {
-        // Fall through to the current selector fallback.
-      }
-    }
-    return fallback;
-  }
-
-  async function createState(
-    currentRolePresetSlug: string | null,
-    currentDomain: string,
-    currentSoulSlug: string | null
-  ): Promise<ConnectionState> {
-    return createStateFromDirs(
-      createSessionDirs(dataDir),
-      currentRolePresetSlug,
-      currentDomain,
-      currentSoulSlug
-    );
-  }
-
-  async function createStateFromDirs(
-    sessionDirs: SessionDirectories,
-    currentRolePresetSlug: string | null,
-    currentDomain: string,
-    currentSoulSlug: string | null
-  ): Promise<ConnectionState> {
-    const rolePresetPath = resolveOptionalRolePresetPath(
-      currentRolePresetSlug
-    );
-    const soulPath = resolveOptionalSoulPath(currentSoulSlug);
-
-    const result = await createAltTheorySession({
-      ...sessionDirs,
-      appContextPath: assetPaths.appContextPath,
-      soulPath,
-      soulSlug: currentSoulSlug,
-      rolePresetPath,
-      rolePresetSlug: currentRolePresetSlug,
-      kbDir,
-      kbDomain: currentDomain,
-      piPromptTemplatesDir: assetPaths.piPromptTemplatesDir,
-      coreSoulPath:
-        options.coreSoulPath ?? process.env.ALT_THEORY_CORE_SOUL_PATH,
-      coreSoulModulesDir:
-        options.coreSoulModulesDir ??
-        process.env.ALT_THEORY_CORE_SOUL_MODULES_DIR,
-      coreSoulModules: options.coreSoulModules ?? parseCoreSoulModules(),
-      modelProvider,
-      modelId,
-      modelsPath: modelsPath ?? undefined,
-      runtimeApiKey:
-        options.runtimeApiKey ?? process.env.ALT_THEORY_MODEL_API_KEY,
-      thinkingLevel: options.thinkingLevel,
-      promptMode,
-      resourceDiscovery,
-      skillsDir,
-      runLabel,
-      testBatch,
-      readOnly,
+  function sendError(
+    send: (msg: ServerMessage) => void,
+    error: unknown,
+    code?: string
+  ): void {
+    send({
+      type: "error",
+      payload: {
+        error: error instanceof Error ? error.message : String(error),
+        ...(code ? { code } : {}),
+      },
     });
+  }
 
-    const state: ConnectionState = {
-      ...result,
-      unsubscribe: () => {},
-      currentDomain,
-      currentRolePresetSlug,
-      currentSoulSlug,
-      openedFrom: "new",
-      resumeWarnings: [],
-      messageCount: 0,
-      toolCallCount: 0,
-      turnCount: 0,
-      transcript: [],
+  function createDraftSelectors(): SessionSelectors {
+    return {
+      rolePresetSlug: defaultRolePresetSlug(),
+      kbDomain: "ep-core",
+      soulSlug: defaultSoulSlug(),
     };
-    appendSessionEvent(state.manifest.recordsDir, {
-      sessionId: state.session.sessionId,
-      type: "session_created",
-      details: {
-        kbDomain: currentDomain,
-        rolePresetSlug: currentRolePresetSlug,
-        soulSlug: currentSoulSlug,
-        model: state.manifest.model,
-        provider: state.manifest.provider,
+  }
+
+  function sendDraft(
+    send: (msg: ServerMessage) => void,
+    selectors: SessionSelectors
+  ): void {
+    send({
+      type: "session_draft",
+      payload: {
+        status: "draft",
+        currentDomain: selectors.kbDomain,
+        rolePresetSlug: selectors.rolePresetSlug,
+        profileSlug: selectors.rolePresetSlug,
+        soulSlug: selectors.soulSlug,
       },
     });
-    return state;
-  }
-
-  function hasSessionHistory(current: ConnectionState): boolean {
-    try {
-      const context = current.session.sessionManager.buildSessionContext();
-      return Array.isArray(context.messages) && context.messages.length > 0;
-    } catch {
-      return Boolean(
-        current.session.sessionFile && existsSync(current.session.sessionFile)
-      );
-    }
-  }
-
-  async function createExistingState(
-    sessionId: string,
-    fallbackRolePresetSlug: string | null,
-    fallbackDomain: string,
-    fallbackSoulSlug: string | null
-  ): Promise<ConnectionState> {
-    const root = getSessionRootForRequest(dataDir, sessionId);
-    if (root.status === "invalid") {
-      throw new Error(`Invalid session id: ${sessionId}`);
-    }
-    if (root.status === "missing") {
-      throw new Error(`Unknown session id: ${sessionId}`);
-    }
-
-    const detail = readSessionDetail(dataDir, sessionId);
-    if (!detail?.pi.sessionFile) {
-      throw new Error(`Session cannot be opened because Pi JSONL is missing: ${sessionId}`);
-    }
-
-    const sessionDirs = getSessionDirs(dataDir, sessionId);
-    if (!sessionDirs) {
-      throw new Error(`Invalid session id: ${sessionId}`);
-    }
-
-    const originalRolePresetSlug = detail.manifest?.rolePreset?.slug;
-    const activeRolePresetSlug = activeOptionalSlug(
-      originalRolePresetSlug,
-      fallbackRolePresetSlug,
-      resolveOptionalRolePresetPath
-    );
-    const rolePresetPath = resolveOptionalRolePresetPath(activeRolePresetSlug);
-
-    const originalSoulSlug = detail.manifest?.soul?.slug;
-    const activeSoulSlug = activeOptionalSlug(
-      originalSoulSlug,
-      fallbackSoulSlug,
-      resolveOptionalSoulPath
-    );
-    const soulPath = resolveOptionalSoulPath(activeSoulSlug);
-
-    const originalDomain =
-      detail.manifest?.kb?.domain ?? detail.manifest?.kbDomain ?? null;
-    const activeDomain =
-      originalDomain && isKnownKbDomain(kbDir, originalDomain)
-        ? originalDomain
-        : fallbackDomain;
-
-    const result = await openAltTheorySession({
-      ...sessionDirs,
-      sessionFile: detail.pi.sessionFile,
-      originalManifest: detail.manifest,
-      appContextPath: assetPaths.appContextPath,
-      soulPath,
-      soulSlug: activeSoulSlug,
-      rolePresetPath,
-      rolePresetSlug: activeRolePresetSlug,
-      kbDir,
-      kbDomain: activeDomain,
-      piPromptTemplatesDir: assetPaths.piPromptTemplatesDir,
-      coreSoulPath:
-        options.coreSoulPath ?? process.env.ALT_THEORY_CORE_SOUL_PATH,
-      coreSoulModulesDir:
-        options.coreSoulModulesDir ??
-        process.env.ALT_THEORY_CORE_SOUL_MODULES_DIR,
-      coreSoulModules: options.coreSoulModules ?? parseCoreSoulModules(),
-      modelProvider,
-      modelId,
-      modelsPath: modelsPath ?? undefined,
-      runtimeApiKey:
-        options.runtimeApiKey ?? process.env.ALT_THEORY_MODEL_API_KEY,
-      thinkingLevel: options.thinkingLevel,
-      promptMode,
-      resourceDiscovery,
-      skillsDir,
-      runLabel,
-      testBatch,
-      readOnly,
-    });
-
-    const state: ConnectionState = {
-      ...result,
-      unsubscribe: () => {},
-      currentDomain: activeDomain,
-      currentRolePresetSlug: activeRolePresetSlug,
-      currentSoulSlug: activeSoulSlug,
-      openedFrom: "existing",
-      resumeWarnings: result.resumeWarnings,
-      messageCount: detail.metrics?.messageCount ?? 0,
-      toolCallCount: detail.metrics?.toolCallCount ?? 0,
-      turnCount: detail.metrics?.turnCount ?? 0,
-      transcript: detail.transcript,
-    };
-
-    appendSessionEvent(state.manifest.recordsDir, {
-      sessionId: state.session.sessionId,
-      type: "session_opened_existing",
-      details: {
-        requestedSessionId: sessionId,
-        kbDomain: activeDomain,
-        rolePresetSlug: activeRolePresetSlug,
-        soulSlug: activeSoulSlug,
-        warningCount: state.resumeWarnings.length,
-      },
-    });
-    appendSessionEvent(state.manifest.recordsDir, {
-      sessionId: state.session.sessionId,
-      type: "session_resumed",
-      details: {
-        model: state.manifest.model,
-        provider: state.manifest.provider,
-      },
-    });
-    if (state.resumeWarnings.length > 0) {
-      appendSessionEvent(state.manifest.recordsDir, {
-        sessionId: state.session.sessionId,
-        type: "resume_warning",
-        details: {
-          warningCount: state.resumeWarnings.length,
-          warnings: state.resumeWarnings.join(" | "),
-        },
-      });
-    }
-    return state;
-  }
-
-  async function disposeState(state: ConnectionState): Promise<void> {
-    state.unsubscribe();
-    if (state.session.isStreaming) {
-      await state.session.abort();
-    }
-    state.session.dispose();
-  }
-
-  function buildMetrics(state: ConnectionState): SessionMetrics {
-    return buildSessionMetrics(state.session, {
-      turnCount: state.turnCount,
-      toolCallCount: state.toolCallCount,
-      messageCount: state.messageCount,
-    });
-  }
-
-  function persistMetrics(state: ConnectionState): SessionMetrics {
-    const metrics = buildMetrics(state);
-    persistSessionMetrics(state.manifest.recordsDir, metrics);
-    return metrics;
   }
 
   wss.on("connection", async (ws: WebSocket) => {
-    let state: ConnectionState | null = null;
+    let attachedSessionId: string | null = null;
+    let detach = () => {};
     let closed = false;
+    let draftSelectors = createDraftSelectors();
 
     const send = (msg: ServerMessage) => {
       if (ws.readyState === WebSocket.OPEN) {
@@ -578,174 +377,27 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       }
     };
 
-    const snapshot = (
-      current: ConnectionState,
-      overrides?: Partial<SessionSnapshot>
-    ): SessionSnapshot => ({
-      sessionId: current.session.sessionId,
-      status: current.session.isStreaming ? "running" : "idle",
-      currentDomain: current.currentDomain,
-      rolePresetSlug: current.currentRolePresetSlug,
-      profileSlug: current.currentRolePresetSlug,
-      soulSlug: current.currentSoulSlug,
-      openedFrom: current.openedFrom,
-      resumeWarnings: current.resumeWarnings,
-      messageCount: current.messageCount,
-      ...overrides,
-    });
+    const attachToSession = (sessionId: string) => {
+      detach();
+      attachedSessionId = sessionId;
+      detach = sessionService.attach(sessionId, (event) => {
+        forwardServiceEvent(send, event);
+      });
+      send({ type: "session_opened", payload: sessionService.getSnapshot(sessionId) });
+      send({ type: "session_metadata", payload: sessionService.getManifest(sessionId) });
+      send({ type: "session_metrics", payload: sessionService.getMetrics(sessionId) });
+    };
 
-    ws.on("close", async () => {
+    ws.on("close", () => {
       closed = true;
-      if (state) {
-        const ownedState = state;
-        state = null;
-        await disposeState(ownedState);
-      }
+      detach();
+      detach = () => {};
+      attachedSessionId = null;
     });
 
-    const subscribeSession = (current: ConnectionState) =>
-      current.session.subscribe((event: AgentSessionEvent) => {
-        switch (event.type) {
-          case "agent_start":
-            send({
-              type: "session_updated",
-              payload: snapshot(current, { status: "running" }),
-            });
-            break;
-          case "message_update":
-            if (event.assistantMessageEvent?.type === "text_delta") {
-              send({
-                type: "assistant_delta",
-                payload: { text: event.assistantMessageEvent.delta ?? "" },
-              });
-            }
-            break;
-          case "tool_execution_start":
-            send({
-              type: "tool_started",
-              payload: {
-                toolName: event.toolName,
-                callId: event.toolCallId,
-                path: extractToolPathFromEvent(event),
-              },
-            });
-            break;
-          case "tool_execution_update":
-            send({
-              type: "tool_updated",
-              payload: { callId: event.toolCallId },
-            });
-            break;
-          case "tool_execution_end":
-            current.toolCallCount++;
-            send({
-              type: "tool_finished",
-              payload: {
-                callId: event.toolCallId,
-                success: !event.isError,
-              },
-            });
-            break;
-          case "agent_end": {
-            const error = current.session.state.errorMessage;
-            if (error) {
-              appendSessionEvent(current.manifest.recordsDir, {
-                sessionId: current.session.sessionId,
-                type: "run_failed",
-                details: { error },
-              });
-              send({ type: "run_failed", payload: { error } });
-            } else {
-              current.turnCount++;
-              const metrics = persistMetrics(current);
-              appendSessionEvent(current.manifest.recordsDir, {
-                sessionId: current.session.sessionId,
-                type: "run_completed",
-                details: {
-                  turnCount: current.turnCount,
-                  toolCallCount: current.toolCallCount,
-                },
-              });
-              send({
-                type: "run_completed",
-                payload: snapshot(current, { status: "idle" }),
-              });
-              send({ type: "session_metrics", payload: metrics });
-            }
-            break;
-          }
-        }
-      });
-
-    async function replaceCurrentState(
-      rolePresetSlug: string | null,
-      domain: string,
-      soulSlug: string | null,
-      abortReason: string
-    ): Promise<void> {
-      const previousState = state;
-      if (!previousState) return;
-      const reuseCurrentSession = !hasSessionHistory(previousState);
-
-      if (previousState.session.isStreaming) {
-        await previousState.session.abort();
-        appendSessionEvent(previousState.manifest.recordsDir, {
-          sessionId: previousState.session.sessionId,
-          type: "run_aborted",
-          details: { reason: abortReason },
-        });
-      }
-
-      const replacementState = reuseCurrentSession
-        ? await createStateFromDirs(
-            getSessionDirs(dataDir, previousState.session.sessionId)!,
-            rolePresetSlug,
-            domain,
-            soulSlug
-          )
-        : await createState(rolePresetSlug, domain, soulSlug);
-      if (closed) {
-        await disposeState(replacementState);
-        return;
-      }
-
-      await disposeState(previousState);
-      state = replacementState;
-      state.unsubscribe = subscribeSession(state);
-      send({ type: "session_opened", payload: snapshot(state) });
-      send({ type: "session_metadata", payload: state.manifest });
-      send({ type: "session_metrics", payload: buildMetrics(state) });
-    }
-
-    try {
-      const initialState = await createState(
-        defaultRolePresetSlug(),
-        "ep-core",
-        defaultSoulSlug()
-      );
-      if (closed) {
-        await disposeState(initialState);
-        return;
-      }
-      state = initialState;
-      state.unsubscribe = subscribeSession(state);
-      send({ type: "session_opened", payload: snapshot(state) });
-      send({ type: "session_metadata", payload: state.manifest });
-      send({ type: "session_metrics", payload: buildMetrics(state) });
-    } catch (error) {
-      send({
-        type: "error",
-        payload: {
-          error: error instanceof Error ? error.message : String(error),
-        },
-      });
-      ws.close(1011, "Session creation failed");
-      return;
-    }
+    sendDraft(send, draftSelectors);
 
     ws.on("message", async (data) => {
-      if (!state) return;
-
       let msg: ClientMessage;
       try {
         msg = JSON.parse(data.toString()) as ClientMessage;
@@ -756,53 +408,55 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
 
       switch (msg.type) {
         case "prompt": {
-          const contextPrefix =
-            state.currentDomain !== "all"
-              ? `[Context: Search in ${kbDir}/${state.currentDomain}/ unless user says otherwise.]\n`
-              : "";
-          state.messageCount++;
           try {
-            await state.session.prompt(contextPrefix + msg.payload);
+            if (!attachedSessionId) {
+              const initial = await sessionService.createSession(draftSelectors);
+              if (closed) return;
+              attachToSession(initial.sessionId);
+            }
+            const currentSessionId = attachedSessionId;
+            const run = sessionService.runPrompt(currentSessionId, msg.payload);
+            await run.completion;
           } catch (error) {
-            send({
-              type: "run_failed",
-              payload: {
-                error: error instanceof Error ? error.message : String(error),
-              },
-            });
+            if (error instanceof SessionBusyError) {
+              sendError(send, error, error.code);
+            } else {
+              send({
+                type: "run_failed",
+                payload: {
+                  error: error instanceof Error ? error.message : String(error),
+                },
+              });
+            }
           }
           break;
         }
         case "abort":
+          if (!attachedSessionId) {
+            sendDraft(send, draftSelectors);
+            break;
+          }
           try {
-            await state.session.abort();
-            appendSessionEvent(state.manifest.recordsDir, {
-              sessionId: state.session.sessionId,
-              type: "run_aborted",
-            });
+            await sessionService.abort(attachedSessionId);
           } catch (error) {
-            send({
-              type: "error",
-              payload: {
-                error: error instanceof Error ? error.message : String(error),
-              },
-            });
+            sendError(send, error);
           }
           break;
         case "switch_kb":
-          if (!isKnownKbDomain(kbDir, msg.payload.domain)) {
-            send({
-              type: "error",
-              payload: { error: `Unknown KB domain: ${msg.payload.domain}` },
-            });
+          if (!attachedSessionId) {
+            if (!isKnownKbDomain(kbDir, msg.payload.domain)) {
+              sendError(send, new Error(`Unknown KB domain: ${msg.payload.domain}`));
+              break;
+            }
+            draftSelectors = { ...draftSelectors, kbDomain: msg.payload.domain };
+            sendDraft(send, draftSelectors);
             break;
           }
-          state.currentDomain = msg.payload.domain;
-          appendSessionEvent(state.manifest.recordsDir, {
-            sessionId: state.session.sessionId,
-            type: "kb_selected",
-            details: { kbDomain: msg.payload.domain },
-          });
+          try {
+            sessionService.setKbDomain(attachedSessionId, msg.payload.domain);
+          } catch (error) {
+            sendError(send, error);
+          }
           break;
         case "switch_role_preset":
         case "switch_profile": {
@@ -810,141 +464,97 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             msg.type === "switch_role_preset"
               ? optionalSlug(msg.payload.rolePresetSlug)
               : optionalSlug(msg.payload.profileSlug);
-          if (
-            rolePresetSlug &&
-            !resolveRolePresetSlug(rolePresetsDir, rolePresetSlug)
-          ) {
-            send({
-              type: "error",
-              payload: {
-                error: `Unknown role preset slug: ${rolePresetSlug}`,
-              },
-            });
+          if (!attachedSessionId) {
+            draftSelectors = { ...draftSelectors, rolePresetSlug };
+            sendDraft(send, draftSelectors);
             break;
           }
-          appendSessionEvent(state.manifest.recordsDir, {
-            sessionId: state.session.sessionId,
-            type: "role_preset_selected",
-            details: { rolePresetSlug },
-          });
+          const selectors = sessionService.getSelectors(attachedSessionId);
           try {
-            await replaceCurrentState(
-              rolePresetSlug,
-              state.currentDomain,
-              state.currentSoulSlug,
+            const replacement = await sessionService.replaceSession(
+              attachedSessionId,
+              { ...selectors, rolePresetSlug },
               "role_preset_switch"
             );
+            if (!closed) attachToSession(replacement.sessionId);
           } catch (error) {
-            send({
-              type: "error",
-              payload: {
-                error: error instanceof Error ? error.message : String(error),
-              },
-            });
+            sendError(send, error);
           }
           break;
         }
         case "switch_soul": {
           const soulSlug = optionalSlug(msg.payload.soulSlug);
-          if (soulSlug && !resolveSoulSlug(soulDir, soulSlug, legacySoulPath)) {
-            send({
-              type: "error",
-              payload: { error: `Unknown soul slug: ${soulSlug}` },
-            });
+          if (!attachedSessionId) {
+            draftSelectors = { ...draftSelectors, soulSlug };
+            sendDraft(send, draftSelectors);
             break;
           }
-          appendSessionEvent(state.manifest.recordsDir, {
-            sessionId: state.session.sessionId,
-            type: "soul_selected",
-            details: { soulSlug },
-          });
+          const selectors = sessionService.getSelectors(attachedSessionId);
           try {
-            await replaceCurrentState(
-              state.currentRolePresetSlug,
-              state.currentDomain,
-              soulSlug,
+            const replacement = await sessionService.replaceSession(
+              attachedSessionId,
+              { ...selectors, soulSlug },
               "soul_switch"
             );
+            if (!closed) attachToSession(replacement.sessionId);
           } catch (error) {
-            send({
-              type: "error",
-              payload: {
-                error: error instanceof Error ? error.message : String(error),
-              },
-            });
+            sendError(send, error);
           }
           break;
         }
         case "new_session": {
-          try {
-            await replaceCurrentState(
-              state.currentRolePresetSlug,
-              state.currentDomain,
-              state.currentSoulSlug,
-              "new_session"
-            );
-          } catch (error) {
-            send({
-              type: "error",
-              payload: {
-                error: error instanceof Error ? error.message : String(error),
-              },
-            });
-            ws.close(1011, "Session replacement failed");
+          if (attachedSessionId) {
+            draftSelectors = sessionService.getSelectors(attachedSessionId);
           }
+          detach();
+          detach = () => {};
+          attachedSessionId = null;
+          sendDraft(send, draftSelectors);
           break;
         }
         case "open_session": {
-          const previousState = state;
+          const selectors = attachedSessionId
+            ? sessionService.getSelectors(attachedSessionId)
+            : draftSelectors;
           try {
-            if (previousState.session.isStreaming) {
-              await previousState.session.abort();
-              appendSessionEvent(previousState.manifest.recordsDir, {
-                sessionId: previousState.session.sessionId,
-                type: "run_aborted",
-                details: { reason: "open_session" },
-              });
-            }
-            const replacementState = await createExistingState(
+            const opened = await sessionService.openSession(
               msg.payload.sessionId,
-              previousState.currentRolePresetSlug,
-              previousState.currentDomain,
-              previousState.currentSoulSlug
+              selectors
             );
-            if (closed) {
-              await disposeState(replacementState);
-              return;
-            }
-            await disposeState(previousState);
-            state = replacementState;
-            state.unsubscribe = subscribeSession(state);
-            send({ type: "session_opened", payload: snapshot(state) });
-            send({ type: "session_metadata", payload: state.manifest });
+            if (closed) return;
+            attachToSession(opened.sessionId);
             send({
               type: "session_transcript",
-              payload: { messages: state.transcript },
+              payload: { messages: sessionService.getTranscript(opened.sessionId) },
             });
-            send({ type: "session_metrics", payload: buildMetrics(state) });
           } catch (error) {
-            send({
-              type: "error",
-              payload: {
-                error: error instanceof Error ? error.message : String(error),
-              },
-            });
+            sendError(send, error);
           }
           break;
         }
         case "get_session_metadata":
-          send({ type: "session_metadata", payload: state.manifest });
+          if (!attachedSessionId) {
+            sendDraft(send, draftSelectors);
+            break;
+          }
+          send({
+            type: "session_metadata",
+            payload: sessionService.getManifest(attachedSessionId),
+          });
           break;
         case "get_session_metrics":
-          send({ type: "session_metrics", payload: buildMetrics(state) });
+          if (!attachedSessionId) {
+            sendDraft(send, draftSelectors);
+            break;
+          }
+          send({
+            type: "session_metrics",
+            payload: sessionService.getMetrics(attachedSessionId),
+          });
           break;
       }
     });
   });
-
   return {
     app,
     httpServer,
@@ -977,32 +587,6 @@ function sendFileApiError(res: Response, error: unknown): void {
       ? 400
       : 500;
   res.status(status).json({ error: message });
-}
-
-function extractToolPathFromEvent(event: AgentSessionEvent): string | null {
-  const args = (event as { args?: unknown }).args;
-  if (!args || typeof args !== "object") return null;
-  const value = args as {
-    path?: unknown;
-    file?: unknown;
-    filePath?: unknown;
-    file_path?: unknown;
-    dir?: unknown;
-    directory?: unknown;
-  };
-  for (const candidate of [
-    value.path,
-    value.file,
-    value.filePath,
-    value.file_path,
-    value.dir,
-    value.directory,
-  ]) {
-    if (typeof candidate === "string" && candidate.trim()) {
-      return candidate;
-    }
-  }
-  return null;
 }
 
 const isMain = process.argv[1]

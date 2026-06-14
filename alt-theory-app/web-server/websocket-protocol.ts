@@ -23,6 +23,15 @@ export interface SessionSnapshot {
   messageCount: number;
 }
 
+export interface SessionDraftSnapshot {
+  status: "draft";
+  currentDomain: string;
+  rolePresetSlug: string | null;
+  /** Deprecated compatibility field; use rolePresetSlug. */
+  profileSlug?: string | null;
+  soulSlug: string | null;
+}
+
 export interface SessionMetrics {
   turnCount: number;
   toolCallCount: number;
@@ -76,6 +85,7 @@ export type ClientMessage =
 // ---------------------------------------------------------------------------
 
 export type ServerMessage =
+  | { type: "session_draft"; payload: SessionDraftSnapshot }
   | { type: "session_opened"; payload: SessionSnapshot }
   | { type: "session_updated"; payload: SessionSnapshot }
   | { type: "session_metadata"; payload: AssemblyManifest }
@@ -87,4 +97,4 @@ export type ServerMessage =
   | { type: "tool_finished"; payload: { callId: string; success: boolean; output?: unknown } }
   | { type: "run_completed"; payload: SessionSnapshot }
   | { type: "run_failed"; payload: { error: string } }
-  | { type: "error"; payload: { error: string } };
+  | { type: "error"; payload: { error: string; code?: string } };

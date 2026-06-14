@@ -5,7 +5,12 @@ import { dirname, join } from "path";
 import test from "node:test";
 import { mkdtempSync } from "fs";
 import { assembleCoreSoul } from "./core-soul.js";
-import { createSessionDirs, writeJsonAtomic } from "./data-dir.js";
+import {
+  allocateReadableSessionId,
+  createSessionDirs,
+  resolveSessionRoot,
+  writeJsonAtomic,
+} from "./data-dir.js";
 
 test("createSessionDirs creates workspace, history, and records", () => {
   const root = mkdtempSync(join(tmpdir(), "alt-theory-data-"));
@@ -30,6 +35,58 @@ test("writeJsonAtomic writes complete JSON", () => {
   writeJsonAtomic(path, { value: 42 });
 
   assert.deepEqual(JSON.parse(readFileSync(path, "utf-8")), { value: 42 });
+});
+
+test("allocateReadableSessionId formats metadata and suffixes collisions", () => {
+  const root = mkdtempSync(join(tmpdir(), "alt-theory-readable-id-"));
+  const now = new Date(2026, 5, 14, 15, 30, 45);
+
+  const first = allocateReadableSessionId(
+    root,
+    {
+      rolePresetSlug: "Default Role",
+      soulSlug: "Soul Latest",
+      modelId: "Mimo/V2.5 Pro!",
+    },
+    now
+  );
+  assert.equal(
+    first,
+    "20260614-153045__default-role__soul-latest__mimo-v2-5-pro"
+  );
+
+  const firstRoot = resolveSessionRoot(root, first);
+  assert.ok(firstRoot);
+  mkdirSync(firstRoot, { recursive: true });
+  assert.equal(
+    allocateReadableSessionId(
+      root,
+      {
+        rolePresetSlug: "Default Role",
+        soulSlug: "Soul Latest",
+        modelId: "Mimo/V2.5 Pro!",
+      },
+      now
+    ),
+    `${first}-2`
+  );
+
+  assert.equal(
+    allocateReadableSessionId(root, {}, now),
+    "20260614-153045__none__none__default"
+  );
+  assert.equal(
+    allocateReadableSessionId(
+      root,
+      {
+        rolePresetSlug: "../../Unsafe Role With Many Many Characters",
+        soulSlug: "",
+        modelId: " ",
+      },
+      now
+    ),
+    "20260614-153045__unsafe-role-with-many-ma__none__default"
+  );
 });
 
 test("assembleCoreSoul selects and sorts modules with provenance", () => {

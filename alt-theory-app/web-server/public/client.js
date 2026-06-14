@@ -230,7 +230,7 @@ async function fetchSessionRecords() {
     renderRecordsList([]);
     recordStatusEl.textContent = "Could not load records.";
   } finally {
-    recordsRefreshBtn.disabled = !sessionReady;
+    recordsRefreshBtn.disabled = !sessionReady || !currentSessionId;
   }
 }
 
@@ -713,6 +713,51 @@ function renderManifest(manifest) {
   renderCoreSoul(manifest.coreSoul);
 }
 
+function renderDraftSession(payload) {
+  latestManifest = null;
+  currentSessionId = "";
+  currentDomain = payload.currentDomain || "";
+  currentRolePresetSlug = payload.rolePresetSlug ?? payload.profileSlug ?? null;
+  currentSoulSlug = payload.soulSlug ?? null;
+  sessionReady = true;
+  isRunning = false;
+  pendingAssetSwitch = false;
+  pendingOpenSessionId = "";
+
+  rtSessionId.textContent = "draft";
+  rtSessionId.title = "Draft session";
+  rtSessionId.onclick = null;
+  rtKb.textContent = currentDomain || "—";
+  rtSoul.textContent = displaySlug(currentSoulSlug);
+  rtRolePreset.textContent = displaySlug(currentRolePresetSlug);
+  rtModel.textContent = "—";
+  rtProvider.textContent = "—";
+  providerInfoEl.textContent = "Draft";
+  rtTurns.textContent = "—";
+  rtMessages.textContent = "—";
+  rtToolCalls.textContent = "—";
+  rtTokInput.textContent = "—";
+  rtTokOutput.textContent = "—";
+  rtTokCacheR.textContent = "—";
+  rtTokCacheW.textContent = "—";
+  rtTokTotal.textContent = "—";
+  rtCtxTokens.textContent = "—";
+  rtCtxWindow.textContent = "—";
+  rtCtxPct.textContent = "—";
+  rtCost.textContent = "—";
+  rtPaths.textContent = "—";
+  rtCoreSoul.textContent = "—";
+  selectedRecordFile = null;
+  sessionRecordFiles = [];
+  recordEditorEl.value = "";
+  renderRecordsList([]);
+  recordStatusEl.textContent = "No materialized session.";
+  syncSessionSelectors();
+  setControlsEnabled(true);
+  setConnStatus("idle", "Ready");
+  fetchSessions();
+}
+
 function renderPaths(manifest) {
   rtPaths.innerHTML = "";
   const pathEntries = [
@@ -897,6 +942,10 @@ ws.onmessage = (event) => {
 
   switch (msg.type) {
     // --- Session lifecycle ---
+    case "session_draft":
+      renderDraftSession(msg.payload);
+      break;
+
     case "session_opened":
       if (
         pendingOpenSessionId &&
@@ -1110,9 +1159,9 @@ function setControlsEnabled(enabled) {
   stopBtn.disabled = !isRunning || !connected;
   inputEl.disabled = !interactive;
   newSessionBtn.disabled = !interactive;
-  refreshMetricsBtn.disabled = !interactive;
-  recordsRefreshBtn.disabled = !interactive;
-  recordSaveBtn.disabled = !interactive || !selectedRecordFile;
+  refreshMetricsBtn.disabled = !interactive || !currentSessionId;
+  recordsRefreshBtn.disabled = !interactive || !currentSessionId;
+  recordSaveBtn.disabled = !interactive || !currentSessionId || !selectedRecordFile;
   sessionRefreshBtn.disabled = !connected;
   resumeSessionBtn.disabled =
     !interactive ||

@@ -1,8 +1,18 @@
+<!--
+Archived pre-session-service foundation snapshot.
+Source path: project/architecture/
+core-session-engine.md
+Archived on: 2026-06-14
+Superseded by: project/architecture/
+core-session-engine.md
+Note: frontmatter below is preserved from the source snapshot and may say status: current relative to its original date.
+-->
+
 ---
 doc_type: architecture
 slug: core-session-engine
 scope: Alt Theory core session engine and Pi Coding Agent integration
-summary: Creates persistent, asset-configured Pi sessions through an application-owned service used by WebSocket adapters
+summary: Creates persistent, asset-configured Pi sessions and exposes connection-scoped backend state
 status: current
 last_reviewed: 2026-06-08
 tags: [core, backend, pi-agent, session]
@@ -25,13 +35,10 @@ and Pi adapter prompt templates from `agent-assets/prompts/pi/`.
 
 ## 0. Terminology
 
-- **Session**: one materialized Pi conversation owned by `SessionService`.
-- **Draft session**: connection-local launch state containing selected KB,
-  role preset, and soul before the first prompt. Drafts are not persisted.
+- **Session**: one Pi conversation owned by one live WebSocket connection.
 - **Session ID**: Alt Theory-owned identifier generated before Pi session
-  creation. New v0.4 sessions use
-  `YYYYMMDD-HHmmss__{role}__{soul}__{model}` with a numeric collision suffix.
-  Pi receives that id via `SessionManager.newSession({ id })`.
+  creation. The current implementation uses a UUID; Pi receives that id via
+  `SessionManager.newSession({ id })`.
 - **Session workspace**: Pi tool `cwd`.
 - **Pi session directory**: storage for Pi's timestamped JSONL history.
 - **Write directory**: the session workspace; agent-authored notes and summaries
@@ -56,18 +63,17 @@ and Pi adapter prompt templates from `agent-assets/prompts/pi/`.
 
 ```mermaid
 flowchart LR
-  WS[WebSocket connection] --> Service[SessionService]
-  Service --> Dirs[data-dir.ts]
-  Service --> Core[create/open AltTheorySession]
+  WS[WebSocket connection] --> State[ConnectionState]
+  State --> Dirs[data-dir.ts]
+  State --> Core[create/open AltTheorySession]
   Core --> Assets[ALTTHEORY + optional soul + optional role preset + KB + Pi prompts]
   Core --> Pi[Pi AgentSession]
-  Service --> Prefix[per-turn KB context prefix]
+  State --> Prefix[per-turn KB context prefix]
   Prefix --> Pi
   Pi --> JSONL[history/*.jsonl]
   Core --> Manifest[records/assembly-manifest.json]
   Pi --> Metrics[records/session-metrics.json]
-  Service --> Events[records/session-events.jsonl]
-  Service --> V4Records[records/session.json + branch-index.json]
+  State --> Events[records/session-events.jsonl]
   REST[Static REST] --> Registry[asset-registry.ts]
   REST --> Store[session-store.ts]
   REST --> SessionFiles[session records/workspace text files]
@@ -89,33 +95,26 @@ Code anchors:
   atomic snapshot persistence.
 - `alt-theory-app/web-server/session-events.ts`: bounded append-only runtime
   event persistence.
-- `alt-theory-app/web-server/session-service.ts`: application-owned session
-  runtime lifecycle, WebSocket subscriptions, prompt/abort operations, and
-  single-process mutation guard.
-- `alt-theory-app/web-server/session-records.ts`: schema-versioned v0.4
-  foundation records and branch-aware path helpers.
 - `alt-theory-app/web-server/session-store.ts`: historical session catalog,
-  detail inspection, v0.4/legacy projection, Pi JSONL discovery, and bounded preview.
+  detail inspection, Pi JSONL discovery, and bounded preview.
 - `alt-theory-app/web-server/websocket-protocol.ts`: shared transport types.
 
 ## 2. Session Creation
 
-1. WebSocket connect creates only an unpersisted draft selector set and sends
-   `session_draft`. It does not create a `sessions/{id}` directory.
-2. The first `prompt` allocates a readable session ID, then creates
+1. Alt Theory generates a UUID and creates:
    `sessions/{id}/workspace`, `history`, and `records`.
-3. The core creates `SessionManager.create(sessionCwd, piSessionDir)` and sets
+2. The core creates `SessionManager.create(sessionCwd, piSessionDir)` and sets
    the same session ID.
-4. `DefaultResourceLoader` loads Pi adapter prompt templates from
+3. `DefaultResourceLoader` loads Pi adapter prompt templates from
    `agent-assets/prompts/pi/`.
-5. Prompt layers are appended in this order: Alt Theory application context,
+4. Prompt layers are appended in this order: Alt Theory application context,
    selected soul when present, optional core-soul modules, selected role preset
    when present, KB declaration, optional write policy.
-6. Pi returns the reserved timestamped JSONL path. Pi physically writes it once
+5. Pi returns the reserved timestamped JSONL path. Pi physically writes it once
    an assistant message is present.
-7. Alt Theory atomically writes `records/assembly-manifest.json` and appends
+6. Alt Theory atomically writes `records/assembly-manifest.json` and appends
    session/runtime events to `records/session-events.jsonl`.
-8. If provided, `ALT_THEORY_RUN_LABEL` and `ALT_THEORY_TEST_BATCH` are recorded
+7. If provided, `ALT_THEORY_RUN_LABEL` and `ALT_THEORY_TEST_BATCH` are recorded
    in the manifest as `runLabel` and `testBatch`.
 
 ## 2.1 Session Catalog And Open
@@ -207,53 +206,26 @@ Code anchor:
 - The workspace path restriction is prompt-based guidance, not a hard
   filesystem sandbox. Pi's built-in write tool accepts absolute paths.
 
-## 5. Application-Owned Session Service
+## 5. Connection Ownership
 
-The backend now owns live runtime state through `SessionService`, not through a
-per-WebSocket `ConnectionState`. A WebSocket connection attaches to a managed
-session and receives forwarded runtime events.
+Every WebSocket connection owns one `ConnectionState`: session, subscription,
+manifest, selected role-preset/domain, open mode, resume warnings, and counters.
 
-`SessionService` owns:
-
-- the current Pi `AgentSession` for each managed session;
-- assembly manifest, selected KB/role/soul, open mode, resume warnings,
-  counters, and transcript cache;
-- a single internal Pi subscription per managed session;
-- attached WebSocket listeners;
-- prompt and abort operations;
-- one process-local mutation guard per managed session.
-
-Current behavior:
-
-- WebSocket connect sends `session_draft` and creates no persisted session.
-- The first WebSocket `prompt` materializes the draft through
-  `SessionService.createSession()`, attaches the socket, sends the normal
-  `session_opened` / `session_metadata` / `session_metrics` triplet, then runs
-  the prompt.
-- `new_session` detaches from any current materialized session and returns the
-  connection to draft state using the current selectors. It does not allocate a
-  zero-turn replacement session.
-- Soul and role-preset switching in draft mutates only draft selectors. After a
-  session is materialized, these switches still call service replacement until
-  the later live-configuration feature changes that behavior.
-- `open_session` validates and opens an existing Pi JSONL through the service.
-- WebSocket close detaches the listener only. It does not abort or dispose the
-  service-owned runtime. Explicit `abort` remains the cancellation operation.
-- A concurrent same-session mutation returns stable `session_busy` instead of
-  exposing Pi's raw in-flight prompt error.
+- Connect creates a session.
+- `new_session` aborts when needed, unsubscribes, disposes, and replaces only
+  that connection's session. When the current session has no Pi history, the
+  replacement reuses the same session id and directories to avoid empty
+  experiment sessions.
+- Soul and role-preset switching use the same replacement path. With no Pi
+  history they rebuild in place; after history exists they create a new session
+  boundary.
+- `open_session` validates an existing session ID, opens its Pi JSONL, and
+  replaces only that connection's session after the replacement is ready. Open
+  failure sends an error and keeps the previous state.
+- Close cleans up only the owned session.
 - Role-preset and KB values are client-safe slugs resolved against server roots.
-- Session metadata and metrics still use WebSocket; static discovery and
-  historical session catalog/detail still use REST.
-
-New service-created sessions also write minimal v0.4 foundation records:
-
-```text
-records/session.json        # schemaVersion: 1, recordType: session
-records/branch-index.json   # schemaVersion: 1, activeBranchId: main
-```
-
-These records are thin indexes around Pi JSONL. They do not duplicate
-conversation bodies and do not yet implement revision/fork operations.
+- Session metadata and metrics use WebSocket; static discovery and historical
+  session catalog/detail use REST.
 
 ## 6. Discovery And Introspection
 
@@ -281,13 +253,8 @@ researcher record inspection/editing, not arbitrary filesystem browsing.
 
 WebSocket:
 
-- server: `session_draft`
 - server: `session_metadata`, `session_metrics`
 - client: `get_session_metadata`, `get_session_metrics`, `open_session`
-
-`session_draft` contains only selector state and no session ID. The browser may
-enable input/config controls in draft, but records, paths, and metrics remain
-unavailable until materialization.
 
 Metrics include message/turn/tool counts, token totals, cost, and nullable
 context usage. Successful runs atomically update
@@ -297,10 +264,6 @@ Runtime events currently cover session creation, existing-session open/resume,
 resume warnings, KB/role-preset selection, and run completion/failure/abort. Pi
 JSONL remains the conversation record; event files do not duplicate message
 bodies.
-
-The normal catalog hides v0.4 roots that have a committed header but no Pi
-session file, no metrics, and no durable run event. Legacy incomplete roots
-remain visible as `legacy-v0.3` incomplete projections for recovery.
 
 ## 7. Model Configuration
 
@@ -319,10 +282,10 @@ is configured; they are not a billing claim.
 - Backend REST session list/detail and WebSocket `open_session` are
   implemented. Browser session-list UI is still pending.
 - Role-preset and soul changes from the researcher console immediately replace
-  the active backend session after materialization. Before the first prompt,
-  the same controls update draft state only. The browser also offers `None`
-  for both layers, which injects no role/soul prompt section. KB domain changes
-  affect the next prompt prefix.
+  the active connection's backend session with a newly assembled session using
+  the selected assets. The browser also offers `None` for both layers, which
+  injects no role/soul prompt section. KB domain changes affect the next prompt
+  prefix.
 - The per-turn KB context prefix is a temporary hardcoded hook substitute.
   There is no explicit hook/context-policy layer yet.
 - The assembly manifest hashes selected app context, soul, and role-preset
@@ -333,12 +296,6 @@ is configured; they are not a billing claim.
 - Existing-session open uses Pi JSONL history and current Alt Theory asset
   assembly. Cross-machine cwd mismatch is warning-only; there is no cwd rewrite
   or migration layer yet.
-- Existing v0.3 sessions without `records/session.json` are read as
-  `legacy-v0.3` projection. The catalog does not fabricate v0.4 trajectory
-  IDs for them.
-- Opening and abandoning the console does not create a session root. If a v0.4
-  zero-turn root is encountered, the normal catalog suppresses it instead of
-  offering a user-facing empty conversation.
 - Default soul discovery prefers `agent-assets/soul/soul-latest.md`, then
   `agent-assets/soul/soul.md`; if neither exists, no soul layer is injected.
   Optional core-soul module activation remains configured by backend
@@ -361,10 +318,6 @@ is configured; they are not a billing claim.
 
 ## Change Log
 
-- 2026-06-14: Updated after draft-first-send implementation. WebSocket connect
-  now creates only `session_draft`; first prompt materializes a readable-ID
-  session; `new_session` returns to draft; v0.4 zero-turn roots are hidden from
-  the normal catalog.
 - 2026-06-08: Added current prompt assembly and per-turn context-prefix
   architecture, including the known hardcoded hook-substitute constraint.
 - 2026-06-08: Updated after minimal agent-asset loading repair. Backend now

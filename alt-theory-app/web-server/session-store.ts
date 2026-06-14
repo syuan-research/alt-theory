@@ -16,6 +16,12 @@ import {
 } from "../core/data-dir.js";
 import type { SessionEvent } from "./session-events.js";
 import type { SessionMetrics, TranscriptMessage } from "./websocket-protocol.js";
+import {
+  readBranchIndex,
+  readV4SessionHeader,
+  type BranchIndexRecord,
+  type V4SessionHeader,
+} from "./session-records.js";
 
 export interface SessionSummary {
   sessionId: string;
@@ -30,6 +36,7 @@ export interface SessionSummary {
   turnCount: number | null;
   hasManifest: boolean;
   hasSessionFile: boolean;
+  recordModel: "v0.4" | "legacy-v0.3";
   warnings: string[];
 }
 
@@ -79,6 +86,8 @@ interface SessionParts {
   historyDir: string;
   manifest: AssemblyManifest | null;
   metrics: SessionMetrics | null;
+  v4Session: V4SessionHeader | null;
+  branchIndex: BranchIndexRecord | null;
   sessionFile: string | null;
   state: ReadState;
 }
@@ -200,7 +209,17 @@ function readSessionSummary(
   sessionId: string
 ): SessionSummary | null {
   const parts = readSessionParts(dataDir, sessionId);
-  return parts ? buildSummary(sessionId, parts) : null;
+  if (!parts) return null;
+  const summary = buildSummary(sessionId, parts);
+  if (
+    summary.recordModel === "v0.4" &&
+    !summary.hasSessionFile &&
+    !parts.metrics &&
+    !hasDurableRunEvent(parts)
+  ) {
+    return null;
+  }
+  return summary;
 }
 
 const TEXT_FILE_ROOTS = ["records", "workspace"] as const;
@@ -315,7 +334,15 @@ function readSessionParts(
     state,
     { warnMissing: false }
   );
-  const sessionFile = findSessionJsonl(sessionRoot, historyDir, manifest, state);
+  const v4Session = readV4SessionHeader(recordsDir);
+  const branchIndex = readBranchIndex(recordsDir);
+  const sessionFile = findSessionJsonl(
+    sessionRoot,
+    historyDir,
+    manifest,
+    branchIndex,
+    state
+  );
 
   return {
     sessionRoot,
@@ -323,6 +350,8 @@ function readSessionParts(
     historyDir,
     manifest,
     metrics,
+    v4Session,
+    branchIndex,
     sessionFile,
     state,
   };
@@ -356,6 +385,7 @@ function buildSummary(sessionId: string, parts: SessionParts): SessionSummary {
     turnCount: parts.metrics?.turnCount ?? null,
     hasManifest: Boolean(parts.manifest),
     hasSessionFile: Boolean(parts.sessionFile),
+    recordModel: parts.v4Session ? "v0.4" : "legacy-v0.3",
     warnings: uniqueWarnings(warnings),
   };
 }
@@ -364,8 +394,22 @@ function findSessionJsonl(
   sessionRoot: string,
   historyDir: string,
   manifest: AssemblyManifest | null,
+  branchIndex: BranchIndexRecord | null,
   state: ReadState
 ): string | null {
+  const activeBranch = branchIndex?.branches.find(
+    (branch) => branch.branchId === branchIndex.activeBranchId
+  );
+  if (activeBranch?.activePiSessionFile) {
+    const activePath = resolve(activeBranch.activePiSessionFile);
+    if (isPathInside(historyDir, activePath) && existsSync(activePath)) {
+      return activePath;
+    }
+    state.warnings.push(
+      "branch index active Pi session file is missing or outside current history dir"
+    );
+  }
+
   if (manifest?.piSessionFile) {
     const manifestPath = resolve(manifest.piSessionFile);
     if (isPathInside(historyDir, manifestPath) && existsSync(manifestPath)) {
@@ -425,6 +469,12 @@ function readSessionEvents(
     }
   }
   return events;
+}
+
+function hasDurableRunEvent(parts: SessionParts): boolean {
+  return readSessionEvents(parts.recordsDir, parts.state).some((event) =>
+    ["run_completed", "run_failed", "run_aborted"].includes(event.type)
+  );
 }
 
 function readPiInfo(
