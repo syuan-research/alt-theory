@@ -14,6 +14,7 @@ export interface V4SessionHeader extends RecordEnvelope {
   recordType: "session";
   sessionId: string;
   createdAt: string;
+  projectId: string | null;
   activeBranchId: string;
   recordModel: "v0.4";
 }
@@ -41,6 +42,7 @@ export function writeFoundationRecords(args: {
   sessionRoot: string;
   recordsDir: string;
   manifest: AssemblyManifest;
+  projectId?: string | null;
 }): { session: V4SessionHeader; branchIndex: BranchIndexRecord } {
   const createdAt = args.manifest.createdAt ?? new Date().toISOString();
   const session: V4SessionHeader = {
@@ -48,6 +50,7 @@ export function writeFoundationRecords(args: {
     recordType: "session",
     sessionId: args.manifest.sessionId,
     createdAt,
+    projectId: args.projectId ?? null,
     activeBranchId: "main",
     recordModel: "v0.4",
   };

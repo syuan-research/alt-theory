@@ -29,11 +29,18 @@ import {
   type EffectiveSessionConfig,
 } from "./config-events.js";
 import { readRunRecords, type RunRecord } from "./lineage-records.js";
+import {
+  readDeletedSessionRecord,
+  writeDeletedSessionRecord,
+  type DeletedSessionRecord,
+} from "./session-deletion.js";
 
 export interface SessionSummary {
   sessionId: string;
+  projectId: string | null;
   createdAt: string | null;
   updatedAt: string | null;
+  deletedAt: string | null;
   status: "available" | "incomplete" | "error";
   rolePresetSlug: string | null;
   kbDomain: string | null;
@@ -100,6 +107,7 @@ interface SessionParts {
   metrics: SessionMetrics | null;
   v4Session: V4SessionHeader | null;
   branchIndex: BranchIndexRecord | null;
+  deleted: DeletedSessionRecord | null;
   sessionFile: string | null;
   state: ReadState;
 }
@@ -150,7 +158,7 @@ export function readSessionDetail(
     transcriptPreview,
     effectiveConfig:
       configEvents.at(-1)?.effective ??
-      (parts.manifest ? buildEffectiveConfig(parts.manifest) : null),
+      inferEffectiveConfig(parts.manifest),
     configEvents,
     branchIndex: parts.branchIndex,
     activeBranch:
@@ -162,6 +170,16 @@ export function readSessionDetail(
   };
 }
 
+function inferEffectiveConfig(
+  manifest: AssemblyManifest | null
+): EffectiveSessionConfig | null {
+  if (!manifest) return null;
+  if (!manifest.promptMode || !manifest.resourceDiscovery?.mode) {
+    return null;
+  }
+  return buildEffectiveConfig(manifest);
+}
+
 export function getSessionRootForRequest(
   dataDir: string,
   sessionId: string
@@ -170,6 +188,19 @@ export function getSessionRootForRequest(
   if (!sessionRoot) return { status: "invalid" };
   if (!existsSync(sessionRoot)) return { status: "missing" };
   return { status: "ok", sessionRoot };
+}
+
+export function softDeleteSession(
+  dataDir: string,
+  sessionId: string
+): DeletedSessionRecord {
+  const parts = readSessionParts(dataDir, sessionId);
+  if (!parts) throw new Error(`Unknown session id: ${sessionId}`);
+  const summary = buildSummary(sessionId, parts);
+  if (!isDurableCatalogSession(summary, parts)) {
+    throw new Error(`Session is not available for deletion: ${sessionId}`);
+  }
+  return writeDeletedSessionRecord(parts.recordsDir, sessionId);
 }
 
 export function listSessionTextFiles(
@@ -235,14 +266,7 @@ function readSessionSummary(
   const parts = readSessionParts(dataDir, sessionId);
   if (!parts) return null;
   const summary = buildSummary(sessionId, parts);
-  if (
-    summary.recordModel === "v0.4" &&
-    !summary.hasSessionFile &&
-    !parts.metrics &&
-    !hasDurableRunEvent(parts)
-  ) {
-    return null;
-  }
+  if (parts.deleted || !isDurableCatalogSession(summary, parts)) return null;
   return summary;
 }
 
@@ -360,6 +384,7 @@ function readSessionParts(
   );
   const v4Session = readV4SessionHeader(recordsDir);
   const branchIndex = readBranchIndex(recordsDir);
+  const deleted = readDeletedSessionRecord(recordsDir);
   const sessionFile = findSessionJsonl(
     sessionRoot,
     historyDir,
@@ -376,6 +401,7 @@ function readSessionParts(
     metrics,
     v4Session,
     branchIndex,
+    deleted,
     sessionFile,
     state,
   };
@@ -388,6 +414,10 @@ function buildSummary(sessionId: string, parts: SessionParts): SessionSummary {
 
   return {
     sessionId,
+    projectId:
+      parts.v4Session?.projectId ??
+      readConfigEvents(parts.recordsDir).at(-1)?.effective.projectId ??
+      null,
     createdAt: parts.manifest?.createdAt ?? null,
     updatedAt: newestTimestamp([
       parts.sessionRoot,
@@ -411,7 +441,20 @@ function buildSummary(sessionId: string, parts: SessionParts): SessionSummary {
     hasSessionFile: Boolean(parts.sessionFile),
     recordModel: parts.v4Session ? "v0.4" : "legacy-v0.3",
     warnings: uniqueWarnings(warnings),
+    deletedAt: parts.deleted?.deletedAt ?? null,
   };
+}
+
+function isDurableCatalogSession(
+  summary: SessionSummary,
+  parts: SessionParts
+): boolean {
+  return !(
+    summary.recordModel === "v0.4" &&
+    !summary.hasSessionFile &&
+    !parts.metrics &&
+    !hasDurableRunEvent(parts)
+  );
 }
 
 function findSessionJsonl(

@@ -1,0 +1,48 @@
+feature: 2026-06-14-workbench-session-management
+created: 2026-06-14
+
+steps:
+  - action: "Session metadata and soft delete: persist project assignment and add recoverable deletion marker"
+    exit_signal: "Backend tests cover assignment, catalog exclusion, and direct recovery detail"
+    status: done
+  - action: "Project orchestration: apply supported project defaults to drafts and reassign existing sessions without config changes"
+    exit_signal: "WebSocket/service tests cover draft defaults and same-session reassignment"
+    status: done
+  - action: "Workbench catalog and panes: add grouped search/delete plus desktop resize/collapse"
+    exit_signal: "Browser controls consume stable catalog/detail contracts without mobile layout regression"
+    status: done
+  - action: "Markdown and Provenance: safely render conversation Markdown and expose compact lineage/config inspection"
+    exit_signal: "Loaded and streaming output share safe rendering and inspector data is non-blocking"
+    status: done
+  - action: "Consolidated validation, acceptance, architecture, and swe-plan writeback"
+    exit_signal: "Automated checks and desktop/mobile browser UAT pass"
+    status: done
+
+checks:
+  - item: "Draft project selection is optional and applies supported defaults"
+    source: design
+    status: passed
+  - item: "Materialized project assignment is durable and analysis-visible"
+    source: design
+    status: passed
+  - item: "Existing project reassignment changes grouping only"
+    source: design
+    status: passed
+  - item: "Catalog is grouped and searchable"
+    source: design
+    status: passed
+  - item: "Soft delete hides without removing recoverable data"
+    source: design
+    status: passed
+  - item: "Desktop panes resize/collapse and mobile drawers remain usable"
+    source: design
+    status: passed
+  - item: "Markdown rendering is safe for loaded and streaming messages"
+    source: design
+    status: passed
+  - item: "Provenance is inspectable without blocking prompts"
+    source: design
+    status: passed
+  - item: "No Trash UI, fallback dialog, model selector, project admin, or framework migration"
+    source: design
+    status: passed

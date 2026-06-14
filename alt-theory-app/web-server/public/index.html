@@ -20,7 +20,10 @@
       <div class="panel-section">
         <div class="panel-header">
           <h1>Alt Theory</h1>
-          <button id="new-session-btn" title="New session" disabled>+ New</button>
+          <div class="header-actions">
+            <button id="collapse-left" class="icon-btn desktop-only" title="Collapse sessions">&#9664;</button>
+            <button id="new-session-btn" title="New session" disabled>+ New</button>
+          </div>
         </div>
       </div>
 
@@ -29,47 +32,33 @@
           <span class="section-label inline-label">Sessions</span>
           <button id="session-refresh-btn" class="small-btn" title="Refresh sessions" disabled>&#8635;</button>
         </div>
+        <input id="session-search" type="search" placeholder="Search sessions" autocomplete="off">
         <div id="session-list" class="session-list small-text"></div>
         <div id="session-detail" class="session-detail small-text"></div>
-        <button id="resume-session-btn" class="full-width-btn" disabled>Resume / Open</button>
+        <div class="session-actions">
+          <button id="resume-session-btn" disabled>Open</button>
+          <button id="delete-session-btn" class="danger-btn" title="Soft delete selected session" disabled>Delete</button>
+        </div>
       </div>
 
-      <div class="panel-section">
-        <label for="kb-select" class="section-label">Knowledge Base</label>
-        <select id="kb-select" disabled>
-          <option value="">Loading...</option>
-        </select>
-        <div id="kb-hint" class="hint">Affects the next prompt in the current session.</div>
-      </div>
-
-      <div class="panel-section">
-        <label for="soul-select" class="section-label">Soul</label>
-        <select id="soul-select" disabled>
-          <option value="">Loading...</option>
-        </select>
-        <div id="soul-hint" class="hint highlight-hint">Applies immediately.</div>
-      </div>
-
-      <div class="panel-section">
-        <label for="role-preset-select" class="section-label">Role Preset</label>
-        <select id="role-preset-select" disabled>
-          <option value="">Loading...</option>
-        </select>
-        <div id="role-preset-hint" class="hint highlight-hint">Applies immediately.</div>
-      </div>
-
-      <div class="panel-section">
-        <label for="instruction-select" class="section-label">Custom Instruction</label>
-        <select id="instruction-select" disabled>
-          <option value="">Loading...</option>
-        </select>
-      </div>
-
-      <div class="panel-section panel-footer">
-        <div class="section-label">Provider / Model</div>
-        <div id="provider-info" class="muted small-text">—</div>
+      <div class="panel-section config-section">
+        <span class="section-label">Launch / Config</span>
+        <div class="config-grid">
+          <label for="project-select">Project</label>
+          <select id="project-select" disabled><option value="">Loading...</option></select>
+          <label for="kb-select">KB</label>
+          <select id="kb-select" disabled><option value="">Loading...</option></select>
+          <label for="soul-select">Soul</label>
+          <select id="soul-select" disabled><option value="">Loading...</option></select>
+          <label for="role-preset-select">Role</label>
+          <select id="role-preset-select" disabled><option value="">Loading...</option></select>
+          <label for="instruction-select">Instruction</label>
+          <select id="instruction-select" disabled><option value="">Loading...</option></select>
+        </div>
       </div>
     </aside>
+
+    <div id="left-resizer" class="pane-resizer" title="Resize sessions pane"></div>
 
     <!-- Center: Chat -->
     <main id="chat-panel">
@@ -100,16 +89,34 @@
       </div>
     </main>
 
+    <div id="right-resizer" class="pane-resizer" title="Resize inspector pane"></div>
+
     <!-- Right: Inspector -->
     <aside id="right-panel" class="side-panel">
       <div class="panel-section right-tab-header">
         <div class="panel-header">
           <span class="panel-title">Inspector</span>
+          <button id="collapse-right" class="icon-btn desktop-only" title="Collapse inspector">&#9654;</button>
         </div>
         <div id="right-tabs" class="right-tabs">
           <button class="right-tab selected" data-right-tab="records">Records</button>
           <button class="right-tab" data-right-tab="runtime">Runtime</button>
+          <button class="right-tab" data-right-tab="provenance">Provenance</button>
           <button class="right-tab" data-right-tab="paths">Paths</button>
+        </div>
+      </div>
+
+      <div class="right-tab-panel" data-right-panel="provenance">
+        <div class="panel-section">
+          <div class="panel-header compact-header">
+            <span class="section-label inline-label">Effective Configuration</span>
+            <button id="provenance-refresh-btn" class="small-btn" title="Refresh provenance" disabled>&#8635;</button>
+          </div>
+          <div id="provenance-summary" class="provenance-list small-text"></div>
+        </div>
+        <div class="panel-section">
+          <span class="section-label">Recent Runs</span>
+          <div id="provenance-runs" class="provenance-list small-text"></div>
         </div>
       </div>
 
@@ -210,6 +217,8 @@
 
   <!-- Overlay for mobile panels -->
   <div id="overlay"></div>
+  <button id="restore-left" class="pane-restore pane-restore-left desktop-only" title="Show sessions">&#9654;</button>
+  <button id="restore-right" class="pane-restore pane-restore-right desktop-only" title="Show inspector">&#9664;</button>
 
   <!-- New session confirmation dialog -->
   <div id="confirm-dialog" class="dialog hidden">
@@ -222,6 +231,7 @@
     </div>
   </div>
 
+  <script src="/vendor/marked.js"></script>
   <script src="client.js"></script>
 </body>
 </html>

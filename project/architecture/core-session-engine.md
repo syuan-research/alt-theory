@@ -4,7 +4,7 @@ slug: core-session-engine
 scope: Alt Theory core session engine and Pi Coding Agent integration
 summary: Creates persistent, asset-configured Pi sessions through an application-owned service used by WebSocket adapters
 status: current
-last_reviewed: 2026-06-08
+last_reviewed: 2026-06-15
 tags: [core, backend, pi-agent, session]
 depends_on: []
 implements:
@@ -57,6 +57,8 @@ and Pi adapter prompt templates from `agent-assets/prompts/pi/`.
   creation, user config changes, and resume fallback.
 - **Research project**: optional local JSON record under `{dataDir}/projects`
   for grouping and defaults. Project setup is not mandatory.
+- **Deletion marker**: optional `records/deleted.json` tombstone that hides a
+  session from the normal catalog without removing recoverable data.
 
 ## 1. Structure
 
@@ -302,6 +304,10 @@ existing session whose original role/soul/KB cannot resolve falls back
 automatically to the current selectors and appends a `resume_fallback` config
 event with warnings. Resume never blocks on a confirmation dialog.
 
+Draft project selection may apply supported defaults before first send. After a
+session is materialized, project reassignment updates durable grouping metadata
+without changing runtime identity, active branch, or effective prompt layers.
+
 Role, soul, and custom-instruction changes rebuild the internal Pi runtime
 against the active branch's Pi JSONL and workspace. They keep the same Alt
 Theory `sessionId` and logical branch. KB changes update the selector and
@@ -333,6 +339,10 @@ Project routes read/write local JSON files under `{dataDir}/projects`. They
 are optional grouping/default records, not mandatory launch setup and not a
 project-management UI.
 
+Session deletion uses `DELETE /api/sessions/{sessionId}` and writes
+`records/deleted.json`. Deleted sessions are excluded from the normal catalog
+but remain directly readable for recovery/developer use.
+
 Session file routes expose only `.md`, `.txt`, and `.json` files under a
 session's `records/` or `workspace/` roots. Requests must resolve inside the
 selected root, and large files are rejected. The routes support lightweight
@@ -355,7 +365,9 @@ context usage. Successful runs atomically update
 
 Session detail also returns `effectiveConfig` and `configEvents`, derived from
 `records/config-events.jsonl` when present and falling back to the assembly
-manifest for older sessions.
+manifest for older sessions. If a legacy manifest lacks newer v0.4 config
+fields, the detail projection returns `effectiveConfig: null` instead of
+failing the request.
 
 Runtime events currently cover session creation, existing-session open/resume,
 resume warnings, KB/role-preset selection, and run completion/failure/abort. Pi
@@ -401,6 +413,8 @@ is configured; they are not a billing claim.
 - Existing v0.3 sessions without `records/session.json` are read as
   `legacy-v0.3` projection. The catalog does not fabricate v0.4 trajectory
   IDs for them.
+- Legacy/incomplete detail may expose `effectiveConfig: null` when newer
+  config structure cannot be inferred safely from old manifests.
 - Opening and abandoning the console does not create a session root. If a v0.4
   zero-turn root is encountered, the normal catalog suppresses it instead of
   offering a user-facing empty conversation.
@@ -429,6 +443,9 @@ is configured; they are not a billing claim.
 
 ## Change Log
 
+- 2026-06-15: Updated after workbench-session-management acceptance. Added
+  durable project assignment, recoverable delete tombstones, and safe legacy
+  detail fallback when v0.4 config projection is unavailable.
 - 2026-06-14: Added append-only run lineage, same-branch latest-turn revision,
   and explicit collaboration/comparison Fork with shared/copied workspace
   policies. Alt Theory and Pi session identities are now explicitly separate.

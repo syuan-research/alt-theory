@@ -12,6 +12,7 @@ import type { AssemblyManifest } from "../core/alt-theory-core.js";
 
 export interface SessionSnapshot {
   sessionId: string;
+  projectId: string | null;
   branchId?: string;
   status: "idle" | "running" | "error";
   currentDomain: string;
@@ -27,6 +28,7 @@ export interface SessionSnapshot {
 
 export interface SessionDraftSnapshot {
   status: "draft";
+  projectId: string | null;
   currentDomain: string;
   rolePresetSlug: string | null;
   /** Deprecated compatibility field; use rolePresetSlug. */
@@ -82,6 +84,7 @@ export type ClientMessage =
       type: "switch_instruction";
       payload: { customInstructionRef: string | null };
     }
+  | { type: "switch_project"; payload: { projectId: string | null } }
   | {
       type: "invoke_skill";
       payload: { skillName: string; userText?: string };

@@ -19,11 +19,13 @@ const kbSelect = document.getElementById("kb-select");
 const soulSelect = document.getElementById("soul-select");
 const rolePresetSelect = document.getElementById("role-preset-select");
 const instructionSelect = document.getElementById("instruction-select");
-const providerInfoEl = document.getElementById("provider-info");
+const projectSelect = document.getElementById("project-select");
 const sessionRefreshBtn = document.getElementById("session-refresh-btn");
+const sessionSearchEl = document.getElementById("session-search");
 const sessionListEl = document.getElementById("session-list");
 const sessionDetailEl = document.getElementById("session-detail");
 const resumeSessionBtn = document.getElementById("resume-session-btn");
+const deleteSessionBtn = document.getElementById("delete-session-btn");
 
 // ---------------------------------------------------------------------------
 // DOM refs — Chat
@@ -72,6 +74,9 @@ const recordsListEl = document.getElementById("records-list");
 const recordEditorEl = document.getElementById("record-editor");
 const recordSaveBtn = document.getElementById("record-save-btn");
 const recordStatusEl = document.getElementById("record-status");
+const provenanceRefreshBtn = document.getElementById("provenance-refresh-btn");
+const provenanceSummaryEl = document.getElementById("provenance-summary");
+const provenanceRunsEl = document.getElementById("provenance-runs");
 const rightTabBtns = Array.from(document.querySelectorAll(".right-tab"));
 const rightTabPanels = Array.from(document.querySelectorAll(".right-tab-panel"));
 
@@ -89,6 +94,12 @@ const confirmDialog = document.getElementById("confirm-dialog");
 const confirmMessage = document.getElementById("confirm-message");
 const confirmYes = document.getElementById("confirm-yes");
 const confirmNo = document.getElementById("confirm-no");
+const leftResizer = document.getElementById("left-resizer");
+const rightResizer = document.getElementById("right-resizer");
+const collapseLeftBtn = document.getElementById("collapse-left");
+const collapseRightBtn = document.getElementById("collapse-right");
+const restoreLeftBtn = document.getElementById("restore-left");
+const restoreRightBtn = document.getElementById("restore-right");
 
 // ---------------------------------------------------------------------------
 // State
@@ -103,10 +114,12 @@ let currentDomain = "";
 let currentRolePresetSlug = null;
 let currentSoulSlug = null;
 let currentInstructionRef = null;
+let currentProjectId = null;
 let sessionReady = false;
 let latestManifest = null;
 let pendingConfirmAction = null;
 let sessionCatalog = [];
+let projectCatalog = [];
 let selectedHistoricalSessionId = "";
 let selectedSessionDetail = null;
 let pendingOpenSessionId = "";
@@ -117,6 +130,13 @@ let transcriptView = "developer";
 let sessionRecordFiles = [];
 let selectedRecordFile = null;
 const NONE_VALUE = "__none__";
+const PANE_STORAGE_KEY = "alt-theory-workbench-panes";
+const paneState = {
+  leftWidth: 264,
+  rightWidth: 320,
+  leftCollapsed: false,
+  rightCollapsed: false,
+};
 
 // ---------------------------------------------------------------------------
 // REST discovery
@@ -124,12 +144,13 @@ const NONE_VALUE = "__none__";
 
 async function fetchDiscovery() {
   try {
-    const [rolePresetsRes, soulsRes, domainsRes, instructionsRes, skillsRes] = await Promise.all([
+    const [rolePresetsRes, soulsRes, domainsRes, instructionsRes, skillsRes, projectsRes] = await Promise.all([
       fetch("/api/role-presets"),
       fetch("/api/souls"),
       fetch("/api/kb-domains"),
       fetch("/api/instruction-assets"),
       fetch("/api/skills"),
+      fetch("/api/projects"),
     ]);
 
     const rolePresets = rolePresetsRes.ok
@@ -141,7 +162,11 @@ async function fetchDiscovery() {
       ? (await instructionsRes.json()).instructions
       : [];
     const skills = skillsRes.ok ? (await skillsRes.json()).skills : [];
+    projectCatalog = projectsRes.ok
+      ? (await projectsRes.json()).projects || []
+      : [];
 
+    populateProjectSelect(projectCatalog, currentProjectId);
     populateSelect(kbSelect, domains, "ep-core");
     populateSelect(soulSelect, souls, currentSoulSlug, { includeNone: true });
     populateSelect(rolePresetSelect, rolePresets, currentRolePresetSlug || "default", {
@@ -156,9 +181,11 @@ async function fetchDiscovery() {
     kbSelect.innerHTML = '<option value="">Error loading</option>';
     soulSelect.innerHTML = '<option value="">Error loading</option>';
     rolePresetSelect.innerHTML = '<option value="">Error loading</option>';
+    projectSelect.innerHTML = '<option value="">Error loading</option>';
     kbSelect.dataset.hasOptions = "false";
     soulSelect.dataset.hasOptions = "false";
     rolePresetSelect.dataset.hasOptions = "false";
+    projectSelect.dataset.hasOptions = "false";
     instructionSelect.dataset.hasOptions = "false";
     skillSelect.dataset.hasOptions = "false";
     setControlsEnabled(!isRunning);
@@ -205,11 +232,13 @@ async function fetchSessionDetail(sessionId) {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     selectedSessionDetail = await res.json();
     renderSessionDetail();
+    renderProvenance(selectedSessionDetail);
   } catch (err) {
     console.error("[sessions] Detail failed:", err);
     selectedSessionDetail = null;
     sessionDetailEl.innerHTML = '<div class="session-error">Could not load session detail.</div>';
     resumeSessionBtn.disabled = true;
+    renderProvenance(null);
   }
 }
 
@@ -308,42 +337,81 @@ async function saveSessionRecord() {
 
 function renderSessionList() {
   sessionListEl.innerHTML = "";
-  if (sessionCatalog.length === 0) {
+  const query = sessionSearchEl.value.trim().toLowerCase();
+  const projectNames = new Map(
+    projectCatalog.map((project) => [project.projectId, project.displayName])
+  );
+  const visible = sessionCatalog.filter((session) => {
+    if (!query) return true;
+    return [
+      session.sessionId,
+      projectNames.get(session.projectId) || "unassigned",
+      session.rolePresetSlug,
+      session.kbDomain,
+      session.model,
+      session.provider,
+    ].some((value) => String(value || "").toLowerCase().includes(query));
+  });
+  if (visible.length === 0) {
     sessionListEl.innerHTML = '<div class="session-empty">No saved sessions.</div>';
     return;
   }
 
-  for (const session of sessionCatalog) {
-    const row = document.createElement("button");
-    row.type = "button";
-    row.className = "session-row";
-    if (session.sessionId === selectedHistoricalSessionId) {
-      row.classList.add("selected");
+  const groups = new Map();
+  for (const session of visible) {
+    const projectId = session.projectId || "";
+    if (!groups.has(projectId)) groups.set(projectId, []);
+    groups.get(projectId).push(session);
+  }
+  const orderedGroups = [...groups.entries()].sort(([a], [b]) => {
+    if (!a) return 1;
+    if (!b) return -1;
+    return (projectNames.get(a) || a).localeCompare(projectNames.get(b) || b);
+  });
+
+  for (const [projectId, sessions] of orderedGroups) {
+    const group = document.createElement("section");
+    group.className = "session-group";
+    const heading = document.createElement("div");
+    heading.className = "session-group-title";
+    heading.textContent = projectId
+      ? projectNames.get(projectId) || projectId
+      : "Unassigned";
+    group.appendChild(heading);
+
+    for (const session of sessions) {
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "session-row";
+      if (session.sessionId === selectedHistoricalSessionId) {
+        row.classList.add("selected");
+      }
+      row.onclick = () => fetchSessionDetail(session.sessionId);
+
+      const title = document.createElement("div");
+      title.className = "session-row-title";
+      const id = document.createElement("span");
+      id.textContent = shortId(session.sessionId);
+      const status = document.createElement("span");
+      status.className = session.warnings?.length ? "session-warning" : "";
+      status.textContent = session.status || "unknown";
+      title.appendChild(id);
+      title.appendChild(status);
+
+      const meta = document.createElement("div");
+      meta.className = "session-row-meta";
+      meta.textContent = [
+        session.kbDomain || "no-kb",
+        session.rolePresetSlug || "no-role",
+        formatProviderModel(session),
+        fmtTime(session.updatedAt || session.createdAt),
+      ].filter(Boolean).join(" | ");
+
+      row.appendChild(title);
+      row.appendChild(meta);
+      group.appendChild(row);
     }
-    row.onclick = () => fetchSessionDetail(session.sessionId);
-
-    const title = document.createElement("div");
-    title.className = "session-row-title";
-    const id = document.createElement("span");
-    id.textContent = shortId(session.sessionId);
-    const status = document.createElement("span");
-    status.className = session.warnings?.length ? "session-warning" : "";
-    status.textContent = session.status || "unknown";
-    title.appendChild(id);
-    title.appendChild(status);
-
-    const meta = document.createElement("div");
-    meta.className = "session-row-meta";
-    meta.textContent = [
-      session.kbDomain || "no-kb",
-      session.rolePresetSlug || "no-role",
-      formatProviderModel(session),
-      fmtTime(session.updatedAt || session.createdAt),
-    ].filter(Boolean).join(" | ");
-
-    row.appendChild(title);
-    row.appendChild(meta);
-    sessionListEl.appendChild(row);
+    sessionListEl.appendChild(group);
   }
 }
 
@@ -386,12 +454,14 @@ function renderSessionDetail() {
   const detail = selectedSessionDetail;
   if (!detail) {
     resumeSessionBtn.disabled = true;
+    deleteSessionBtn.disabled = true;
     return;
   }
 
   const session = detail.session || {};
   const rows = [
     ["ID", session.sessionId || "—"],
+    ["Project", projectDisplayName(session.projectId)],
     ["Updated", fmtTime(session.updatedAt || session.createdAt)],
     ["KB", session.kbDomain || "—"],
     ["Role", session.rolePresetSlug || "—"],
@@ -434,6 +504,7 @@ function renderSessionDetail() {
 
   resumeSessionBtn.disabled =
     !session.hasSessionFile || !session.sessionId || ws.readyState !== WebSocket.OPEN;
+  deleteSessionBtn.disabled = !session.sessionId || ws.readyState !== WebSocket.OPEN;
 }
 
 function populateSelect(select, items, defaultSlug, options = {}) {
@@ -478,6 +549,18 @@ function populateReferenceSelect(select, items, selectedRef) {
   if (!selectedRef) select.value = NONE_VALUE;
 }
 
+function populateProjectSelect(projects, selectedProjectId) {
+  projectSelect.innerHTML = '<option value="__none__">Unassigned</option>';
+  for (const project of projects) {
+    const option = document.createElement("option");
+    option.value = project.projectId;
+    option.textContent = project.displayName;
+    projectSelect.appendChild(option);
+  }
+  projectSelect.dataset.hasOptions = "true";
+  projectSelect.value = selectedProjectId || NONE_VALUE;
+}
+
 function populateSkillSelect(skills) {
   skillSelect.innerHTML = '<option value="">Skill</option>';
   for (const skill of skills) {
@@ -497,10 +580,19 @@ function selectIfAvailable(select, value) {
 }
 
 function syncSessionSelectors() {
+  selectIfAvailable(projectSelect, currentProjectId);
   selectIfAvailable(kbSelect, currentDomain);
   selectIfAvailable(soulSelect, currentSoulSlug);
   selectIfAvailable(rolePresetSelect, currentRolePresetSlug);
   selectIfAvailable(instructionSelect, currentInstructionRef);
+}
+
+function projectDisplayName(projectId) {
+  if (!projectId) return "Unassigned";
+  return (
+    projectCatalog.find((project) => project.projectId === projectId)
+      ?.displayName || projectId
+  );
 }
 
 function selectedSlug(value) {
@@ -620,9 +712,111 @@ function appendChatMessage(role, text, options = {}) {
   } else {
     el.className = "message system";
   }
-  el.textContent = value;
+  if (role === "user" || role === "assistant") {
+    el.innerHTML = renderMarkdown(value);
+  } else {
+    el.textContent = value;
+  }
   messagesEl.appendChild(el);
   return el;
+}
+
+function renderProvenance(detail) {
+  provenanceSummaryEl.innerHTML = "";
+  provenanceRunsEl.innerHTML = "";
+  if (!detail) {
+    provenanceSummaryEl.innerHTML = '<div class="session-empty">No session selected.</div>';
+    provenanceRunsEl.innerHTML = '<div class="session-empty">No run history.</div>';
+    return;
+  }
+  const effective = detail.effectiveConfig || {};
+  const warnings = [
+    ...(detail.session?.warnings || []),
+    ...(detail.warnings || []),
+  ].filter((value, index, array) => value && array.indexOf(value) === index);
+  const summaryItems = [
+    ["Project", projectDisplayName(detail.session?.projectId)],
+    ["Branch", detail.activeBranch?.branchId || "main"],
+    ["Workspace", detail.activeBranch?.workspaceMode || "shared"],
+    ["Role", effective.rolePresetSlug || "none"],
+    ["Soul", effective.soulSlug || "none"],
+    ["KB", effective.kbDomain || "all"],
+    ["Instruction", effective.customInstruction?.ref || "none"],
+    ["Warnings", warnings.length ? warnings.join(" | ") : "none"],
+  ];
+  for (const [label, value] of summaryItems) {
+    provenanceSummaryEl.appendChild(buildProvenanceItem(label, value));
+  }
+
+  const runs = Array.isArray(detail.runs) ? detail.runs.slice(-8).reverse() : [];
+  if (runs.length === 0) {
+    provenanceRunsEl.innerHTML = '<div class="session-empty">No run history.</div>';
+    return;
+  }
+  for (const run of runs) {
+    provenanceRunsEl.appendChild(
+      buildProvenanceItem(
+        `${run.status} ${run.runId}`,
+        `${run.branchId} | ${run.turnId} | ${run.revisionId}`
+      )
+    );
+  }
+}
+
+function buildProvenanceItem(label, value) {
+  const item = document.createElement("div");
+  item.className = "provenance-item";
+  const strong = document.createElement("strong");
+  strong.textContent = label;
+  const body = document.createElement("div");
+  body.textContent = value || "—";
+  item.appendChild(strong);
+  item.appendChild(body);
+  return item;
+}
+
+function renderMarkdown(text) {
+  const escaped = escapeHtml(text);
+  const markedApi = window.marked;
+  const rawHtml = markedApi?.parse
+    ? markedApi.parse(escaped, {
+        breaks: true,
+        gfm: true,
+      })
+    : `<p>${escaped.replace(/\n/g, "<br>")}</p>`;
+  return sanitizeRenderedHtml(rawHtml);
+}
+
+function sanitizeRenderedHtml(html) {
+  const template = document.createElement("template");
+  template.innerHTML = html;
+  template.content.querySelectorAll("*").forEach((node) => {
+    if (node.tagName === "A") {
+      const href = node.getAttribute("href") || "";
+      if (!/^(https?:|mailto:|#)/i.test(href)) {
+        node.removeAttribute("href");
+      } else {
+        node.setAttribute("target", "_blank");
+        node.setAttribute("rel", "noreferrer noopener");
+      }
+      return;
+    }
+    for (const attr of [...node.attributes]) {
+      if (/^on/i.test(attr.name) || attr.name === "style") {
+        node.removeAttribute(attr.name);
+      }
+    }
+  });
+  return template.innerHTML;
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 function appendThinkingMessage(text) {
@@ -748,7 +942,6 @@ function renderManifest(manifest) {
   const provider = manifest.provider || "—";
   rtModel.textContent = model;
   rtProvider.textContent = provider;
-  providerInfoEl.textContent = `${model} (${provider})`;
 
   // Paths
   renderPaths(manifest);
@@ -765,6 +958,7 @@ function renderDraftSession(payload) {
   currentRolePresetSlug = payload.rolePresetSlug ?? payload.profileSlug ?? null;
   currentSoulSlug = payload.soulSlug ?? null;
   currentInstructionRef = payload.customInstructionRef ?? null;
+  currentProjectId = payload.projectId ?? null;
   sessionReady = true;
   isRunning = false;
   pendingAssetSwitch = false;
@@ -778,7 +972,6 @@ function renderDraftSession(payload) {
   rtRolePreset.textContent = displaySlug(currentRolePresetSlug);
   rtModel.textContent = "—";
   rtProvider.textContent = "—";
-  providerInfoEl.textContent = "Draft";
   rtTurns.textContent = "—";
   rtMessages.textContent = "—";
   rtToolCalls.textContent = "—";
@@ -798,6 +991,7 @@ function renderDraftSession(payload) {
   recordEditorEl.value = "";
   renderRecordsList([]);
   recordStatusEl.textContent = "No materialized session.";
+  renderProvenance(null);
   syncSessionSelectors();
   setControlsEnabled(true);
   setConnStatus("idle", "Ready");
@@ -1011,6 +1205,7 @@ ws.onmessage = (event) => {
         msg.payload.rolePresetSlug ?? msg.payload.profileSlug ?? null;
       currentSoulSlug = msg.payload.soulSlug ?? null;
       currentInstructionRef = msg.payload.customInstructionRef ?? null;
+      currentProjectId = msg.payload.projectId ?? null;
       sessionReady = true;
       isRunning = false;
       rtKb.textContent = currentDomain || "—";
@@ -1022,6 +1217,7 @@ ws.onmessage = (event) => {
       selectedRecordFile = null;
       recordEditorEl.value = "";
       fetchSessionRecords();
+      fetchSessionDetail(msg.payload.sessionId);
       console.log("[ws] Session opened:", msg.payload.sessionId);
       fetchSessions();
       break;
@@ -1040,10 +1236,17 @@ ws.onmessage = (event) => {
       currentSoulSlug = msg.payload.soulSlug ?? currentSoulSlug;
       currentInstructionRef =
         msg.payload.customInstructionRef ?? currentInstructionRef;
+      currentProjectId =
+        msg.payload.projectId === undefined
+          ? currentProjectId
+          : msg.payload.projectId;
       rtKb.textContent = currentDomain || rtKb.textContent;
       rtSoul.textContent = displaySlug(currentSoulSlug);
       rtRolePreset.textContent = displaySlug(currentRolePresetSlug);
       syncSessionSelectors();
+      if (selectedHistoricalSessionId === msg.payload.sessionId) {
+        fetchSessionDetail(msg.payload.sessionId);
+      }
       break;
 
     case "session_metadata":
@@ -1066,11 +1269,16 @@ ws.onmessage = (event) => {
     // --- Streaming text ---
     case "assistant_delta": {
       if (!currentAssistantEl) {
-        currentAssistantEl = document.createElement("div");
+      currentAssistantEl = document.createElement("div");
         currentAssistantEl.className = "message assistant";
+        currentAssistantEl.dataset.rawText = "";
         messagesEl.appendChild(currentAssistantEl);
       }
-      currentAssistantEl.textContent += msg.payload.text;
+      currentAssistantEl.dataset.rawText =
+        `${currentAssistantEl.dataset.rawText || ""}${msg.payload.text}`;
+      currentAssistantEl.innerHTML = renderMarkdown(
+        currentAssistantEl.dataset.rawText
+      );
       break;
     }
 
@@ -1137,6 +1345,7 @@ ws.onmessage = (event) => {
       activeToolNames = {};
       refreshCurrentTranscript();
       fetchSessionRecords();
+      if (currentSessionId) fetchSessionDetail(currentSessionId);
       break;
     }
 
@@ -1210,6 +1419,7 @@ function setControlsEnabled(enabled) {
   inputEl.disabled = !interactive;
   newSessionBtn.disabled = !interactive;
   refreshMetricsBtn.disabled = !interactive || !currentSessionId;
+  provenanceRefreshBtn.disabled = !interactive || !currentSessionId;
   recordsRefreshBtn.disabled = !interactive || !currentSessionId;
   recordSaveBtn.disabled = !interactive || !currentSessionId || !selectedRecordFile;
   sessionRefreshBtn.disabled = !connected;
@@ -1217,6 +1427,10 @@ function setControlsEnabled(enabled) {
     !interactive ||
     !selectedSessionDetail?.session?.hasSessionFile ||
     !selectedSessionDetail?.session?.sessionId;
+  deleteSessionBtn.disabled =
+    !connected || !selectedSessionDetail?.session?.sessionId;
+  projectSelect.disabled =
+    !interactive || projectSelect.dataset.hasOptions !== "true";
   kbSelect.disabled = !interactive || kbSelect.dataset.hasOptions !== "true";
   soulSelect.disabled =
     !interactive || soulSelect.dataset.hasOptions !== "true";
@@ -1279,6 +1493,18 @@ stopBtn.onclick = () => {
     toolStatusEl.textContent = "Stopping…";
   }
 };
+
+projectSelect.addEventListener("change", (e) => {
+  const projectId = selectedSlug(e.target.value);
+  if (
+    wsSafeSend(
+      JSON.stringify({ type: "switch_project", payload: { projectId } })
+    )
+  ) {
+    currentProjectId = projectId;
+    if (currentSessionId) fetchSessions();
+  }
+});
 
 // KB switch — takes effect on next prompt
 kbSelect.addEventListener("change", (e) => {
@@ -1426,6 +1652,40 @@ sessionRefreshBtn.onclick = () => {
   fetchSessions();
 };
 
+sessionSearchEl.addEventListener("input", renderSessionList);
+
+deleteSessionBtn.onclick = () => {
+  const sessionId = selectedSessionDetail?.session?.sessionId;
+  if (!sessionId) return;
+  showConfirm("Delete the selected session from the normal list?", () => {
+    softDeleteSelectedSession(sessionId);
+  });
+};
+
+async function softDeleteSelectedSession(sessionId) {
+  deleteSessionBtn.disabled = true;
+  try {
+    const response = await fetch(
+      `/api/sessions/${encodeURIComponent(sessionId)}`,
+      { method: "DELETE" }
+    );
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body.error || `HTTP ${response.status}`);
+    }
+    selectedHistoricalSessionId = "";
+    selectedSessionDetail = null;
+    if (currentSessionId === sessionId) {
+      doNewSession();
+    } else {
+      await fetchSessions();
+    }
+  } catch (error) {
+    toolStatusEl.textContent = `Delete failed: ${error.message || error}`;
+    renderSessionDetail();
+  }
+}
+
 resumeSessionBtn.onclick = () => {
   const sessionId = selectedSessionDetail?.session?.sessionId;
   if (!sessionId || isRunning) return;
@@ -1467,6 +1727,10 @@ recordsRefreshBtn.onclick = () => {
   fetchSessionRecords();
 };
 
+provenanceRefreshBtn.onclick = () => {
+  if (currentSessionId) fetchSessionDetail(currentSessionId);
+};
+
 recordSaveBtn.onclick = () => {
   saveSessionRecord();
 };
@@ -1495,7 +1759,62 @@ for (const button of rightTabBtns) {
     if (tab === "records") {
       fetchSessionRecords();
     }
+    if (tab === "provenance" && currentSessionId) {
+      fetchSessionDetail(currentSessionId);
+    }
   };
+}
+
+function applyPaneState() {
+  document.documentElement.style.setProperty(
+    "--left-width",
+    `${paneState.leftWidth}px`
+  );
+  document.documentElement.style.setProperty(
+    "--right-width",
+    `${paneState.rightWidth}px`
+  );
+  leftPanel.classList.toggle("collapsed", paneState.leftCollapsed);
+  rightPanel.classList.toggle("collapsed", paneState.rightCollapsed);
+  leftResizer.classList.toggle("hidden", paneState.leftCollapsed);
+  rightResizer.classList.toggle("hidden", paneState.rightCollapsed);
+  restoreLeftBtn.classList.toggle("visible", paneState.leftCollapsed);
+  restoreRightBtn.classList.toggle("visible", paneState.rightCollapsed);
+}
+
+function persistPaneState() {
+  localStorage.setItem(PANE_STORAGE_KEY, JSON.stringify(paneState));
+}
+
+function loadPaneState() {
+  try {
+    Object.assign(paneState, JSON.parse(localStorage.getItem(PANE_STORAGE_KEY) || "{}"));
+  } catch {}
+  applyPaneState();
+}
+
+function beginResize(which, startX) {
+  const startLeft = paneState.leftWidth;
+  const startRight = paneState.rightWidth;
+  const target = which === "left" ? leftResizer : rightResizer;
+  target.classList.add("dragging");
+  const onMove = (event) => {
+    if (window.innerWidth <= 1024) return;
+    if (which === "left") {
+      paneState.leftWidth = Math.max(220, Math.min(420, startLeft + (event.clientX - startX)));
+    } else {
+      paneState.rightWidth = Math.max(260, Math.min(460, startRight - (event.clientX - startX)));
+    }
+    applyPaneState();
+  };
+  const onUp = () => {
+    target.classList.remove("dragging");
+    persistPaneState();
+    window.removeEventListener("mousemove", onMove);
+    window.removeEventListener("mouseup", onUp);
+  };
+  window.addEventListener("mousemove", onMove);
+  window.addEventListener("mouseup", onUp);
 }
 
 // ---------------------------------------------------------------------------
@@ -1550,6 +1869,30 @@ toggleRightBtn.onclick = () => {
 };
 
 overlay.onclick = closeMobilePanels;
+
+leftResizer.addEventListener("mousedown", (event) => beginResize("left", event.clientX));
+rightResizer.addEventListener("mousedown", (event) => beginResize("right", event.clientX));
+collapseLeftBtn.onclick = () => {
+  paneState.leftCollapsed = true;
+  applyPaneState();
+  persistPaneState();
+};
+collapseRightBtn.onclick = () => {
+  paneState.rightCollapsed = true;
+  applyPaneState();
+  persistPaneState();
+};
+restoreLeftBtn.onclick = () => {
+  paneState.leftCollapsed = false;
+  applyPaneState();
+  persistPaneState();
+};
+restoreRightBtn.onclick = () => {
+  paneState.rightCollapsed = false;
+  applyPaneState();
+  persistPaneState();
+};
+loadPaneState();
 
 // ---------------------------------------------------------------------------
 // Keyboard: Escape closes dialog / mobile panels

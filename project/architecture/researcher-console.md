@@ -4,7 +4,7 @@ slug: researcher-console
 scope: Current browser console used by the researcher to run, inspect, compare, and later annotate Alt Theory sessions
 summary: The current researcher console is a temporary vanilla frontend seed that exposes live backend sessions, loaded agent assets, and historical session browse/resume.
 status: current
-last_reviewed: 2026-06-08
+last_reviewed: 2026-06-15
 tags: [frontend, researcher-console, session, runtime-inspection]
 depends_on:
   - core-session-engine
@@ -66,13 +66,11 @@ flowchart LR
 The left panel currently owns:
 
 - new session button;
-- session ID/status summary;
-- historical session list/detail/preview;
+- compact draft selectors including project, KB, soul, role preset, and custom
+  instruction;
+- grouped/searchable historical session list/detail/preview;
 - resume/open selected session control;
-- KB selector;
-- soul selector;
-- role-preset selector;
-- custom-instruction asset selector;
+- session delete control with recoverable soft delete;
 - provider/model display.
 
 The center panel currently owns:
@@ -92,6 +90,8 @@ The right runtime inspector currently owns:
 - provider/model;
 - counters, tokens, context usage, cost;
 - key runtime paths under a dedicated Paths tab;
+- effective config warnings and recent run lineage under a dedicated
+  Provenance tab;
 - loaded app context, soul, role preset, KB, and Pi prompt-template paths;
 - core-soul modules when present.
 
@@ -125,10 +125,12 @@ Current backend-facing state:
 - legacy compatibility alias from `GET /api/profiles`;
 - historical session list and detail from `GET /api/sessions` and
   `GET /api/sessions/{sessionId}`;
+- optional project list from `GET /api/projects`;
 - current live session metadata from `session_metadata`;
 - current live session metrics from `session_metrics`;
 - connection-local draft state from `session_draft`;
 - session resume/open over WebSocket `open_session`;
+- project switching over WebSocket `switch_project`;
 - streaming output and tool events over WebSocket;
 - stable `session_busy` errors when a same-session mutation is already active;
 - selected KB domain in the current connection;
@@ -165,6 +167,8 @@ export sessions.
   prompt is sent.
 - Populates KB, soul, and role-preset selectors from REST discovery.
 - Populates historical session list/detail from REST.
+- Groups historical sessions by project with an `Unassigned` bucket and local
+  search filtering.
 - Sends prompts and abort requests.
 - Revises the latest user turn on the same logical branch using replacement
   text from the composer.
@@ -179,16 +183,23 @@ export sessions.
   change.
 - Displays streaming assistant text.
 - Displays tool started/updated/finished states.
+- Renders loaded and streaming assistant Markdown through a local vendor parser
+  with post-render sanitization.
 - Displays manifest and metrics in the Runtime inspector tab.
 - Displays loaded asset paths in the Paths inspector tab.
+- Displays effective config and recent run lineage in the Provenance inspector
+  tab.
 - Displays resumed/history transcripts in two hot-switchable views: User hides
   thinking and tool events; Developer shows thinking, tool calls, and collapsed
   tool results.
 - Provides a right-panel Records tab with a text editor for path-contained
   `.md`, `.txt`, and `.json` files under the active session's `records/` and
   `workspace/`.
+- Supports recoverable soft delete from the normal catalog.
+- Supports desktop left/right pane resize, collapse, and restore controls.
 - Disables records/paths/metrics surfaces while the connection is still draft.
-- Passed a user-run browser + live LLM smoke on 2026-06-08.
+- Passed consolidated browser UAT for resize/collapse, Markdown rendering,
+  delete, and provenance on 2026-06-15.
 
 ## 5. Known Constraints / Edge Cases
 
@@ -200,8 +211,8 @@ export sessions.
 - Custom-instruction switching uses the same same-session rebuild behavior.
 - The skill picker exposes only configured Alt Theory skills, even when the
   backend is in `dev-debug`; Pi debug/global skills remain outside the picker.
-- Project records exist at the backend/API layer, but the current frontend does
-  not yet expose full project creation or selection UI.
+- Project assignment and draft project selection exist in the current
+  frontend, but project creation/administration UI does not.
 - Tags and annotations are not implemented.
 - Export is not implemented.
 - Historical session comparison is not implemented.
@@ -212,6 +223,8 @@ export sessions.
 - Model-comparison prompts across multiple providers are not implemented.
 - The Session Records editor is plain text only. It has no Markdown preview,
   diff, autosave, conflict handling, or new-file UI.
+- Soft delete hides sessions from the normal catalog but does not yet expose a
+  restore or Trash-management surface in ordinary UI.
 - Runtime config visibility is still partial: the console shows active
   provider/model and loaded asset paths, while full startup source and
   provider/auth selection UI are not implemented.
@@ -230,6 +243,9 @@ export sessions.
 
 ## Change Log
 
+- 2026-06-15: Updated after workbench-session-management acceptance. The
+  frontend now exposes project grouping/search, recoverable delete, resizable
+  panes, rendered Markdown, and a Provenance inspector tab.
 - 2026-06-14: Added minimal latest-turn revision and explicit
   collaboration/comparison Fork controls. Full branch browsing remains
   deferred to later workbench UI.

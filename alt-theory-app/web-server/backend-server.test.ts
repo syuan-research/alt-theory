@@ -845,6 +845,14 @@ test("session catalog and detail expose complete and incomplete sessions", async
       "catalog preview text"
     );
 
+    const incompleteDetailResponse = await fetch(
+      `${baseUrl}/api/sessions/session-incomplete`
+    );
+    assert.equal(incompleteDetailResponse.status, 200);
+    const incompleteDetailJson = await incompleteDetailResponse.json();
+    assert.equal(incompleteDetailJson.session.status, "incomplete");
+    assert.equal(incompleteDetailJson.effectiveConfig, null);
+
     const invalidResponse = await fetch(`${baseUrl}/api/sessions/.bad`);
     assert.equal(invalidResponse.status, 400);
 
@@ -898,6 +906,29 @@ test("session catalog and detail expose complete and incomplete sessions", async
       }
     );
     assert.equal(escapeResponse.status, 400);
+
+    const deleteResponse = await fetch(
+      `${baseUrl}/api/sessions/session-complete`,
+      { method: "DELETE" }
+    );
+    assert.equal(deleteResponse.status, 200);
+    const deleteJson = await deleteResponse.json();
+    assert.equal(deleteJson.deleted.recordType, "deleted-session");
+    assert.equal(existsSync(join(completeDirs.recordsDir, "deleted.json")), true);
+
+    const listAfterDelete = await fetch(`${baseUrl}/api/sessions`);
+    const listAfterDeleteJson = await listAfterDelete.json();
+    assert.equal(
+      listAfterDeleteJson.sessions.some(
+        (session: any) => session.sessionId === "session-complete"
+      ),
+      false
+    );
+    const recoverableDetail = await fetch(
+      `${baseUrl}/api/sessions/session-complete`
+    );
+    assert.equal(recoverableDetail.status, 200);
+    assert.ok((await recoverableDetail.json()).session.deletedAt);
   } finally {
     await new Promise<void>((resolveClose) => {
       instance.wss.close(() => {
@@ -1251,6 +1282,7 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
             soulSlug: "soul-test",
             kbDomain: "ep-core",
             modelId: "mimo-v2.5-pro",
+            customInstructionRef: "study.rules",
           },
           notes: "local test project",
         }),
@@ -1277,6 +1309,7 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
             soulSlug: "soul-test",
             kbDomain: "ep-core",
             modelId: "mimo-v2.5-pro",
+            customInstructionRef: "study.rules",
           },
         },
       ]
@@ -1290,6 +1323,21 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
     assert.equal(draft2.payload.status, "draft");
     assert.equal(draft1.payload.rolePresetSlug, "default");
     assert.equal(draft1.payload.soulSlug, "soul-latest");
+    assert.equal(existsSync(join(root, "data", "sessions")), false);
+
+    const projectDraftPromise = waitForType(ws1, "session_draft");
+    ws1.send(
+      JSON.stringify({
+        type: "switch_project",
+        payload: { projectId: "manual-role-uat" },
+      })
+    );
+    const projectDraft = await projectDraftPromise;
+    assert.equal(projectDraft.payload.projectId, "manual-role-uat");
+    assert.equal(projectDraft.payload.rolePresetSlug, "alternate");
+    assert.equal(projectDraft.payload.soulSlug, "soul-test");
+    assert.equal(projectDraft.payload.currentDomain, "ep-core");
+    assert.equal(projectDraft.payload.customInstructionRef, "study.rules");
     assert.equal(existsSync(join(root, "data", "sessions")), false);
 
     const kbDraftPromise = waitForType(ws1, "session_draft");
@@ -1308,7 +1356,7 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
     );
     const soulDraft = await soulDraftPromise;
     assert.equal(soulDraft.payload.currentDomain, "all");
-    assert.equal(soulDraft.payload.rolePresetSlug, "default");
+    assert.equal(soulDraft.payload.rolePresetSlug, "alternate");
     assert.equal(soulDraft.payload.soulSlug, null);
 
     const roleDraftPromise = waitForType(ws1, "session_draft");

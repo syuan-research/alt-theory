@@ -11,6 +11,7 @@ export interface ResearchProject {
     kbDomain?: string | null;
     modelProvider?: string | null;
     modelId?: string | null;
+    customInstructionRef?: string | null;
   };
   notes?: string;
   createdAt: string;
@@ -59,6 +60,14 @@ export function upsertProject(
   return project;
 }
 
+export function getProject(
+  dataDir: string,
+  projectId: string
+): ResearchProject | null {
+  assertProjectId(projectId);
+  return readProjectFile(join(projectsRoot(dataDir), `${projectId}.json`));
+}
+
 function projectsRoot(dataDir: string): string {
   return resolve(dataDir, "projects");
 }
@@ -83,6 +92,7 @@ function normalizeDefaults(
     ...optionalString(input.kbDomain, "kbDomain"),
     ...optionalString(input.modelProvider, "modelProvider"),
     ...optionalString(input.modelId, "modelId"),
+    ...optionalString(input.customInstructionRef, "customInstructionRef"),
   };
 }
 

@@ -32,8 +32,10 @@ import {
 import { readSessionDetail, getSessionRootForRequest } from "./session-store.js";
 import {
   readBranchIndex,
+  readV4SessionHeader,
   resolveBranchWorkspace,
   writeFoundationRecords,
+  writeSessionHeader,
 } from "./session-records.js";
 import {
   appendConfigEvent,
@@ -87,6 +89,7 @@ export interface SessionServiceConfig {
 }
 
 export interface SessionSelectors {
+  projectId?: string | null;
   rolePresetSlug: string | null;
   kbDomain: string;
   soulSlug: string | null;
@@ -157,7 +160,10 @@ export class SessionService {
       sessionId: managed.manifest.sessionId,
       branchId: managed.branchId,
       reason: "creation",
-      effective: buildEffectiveConfig(managed.manifest),
+      effective: buildEffectiveConfig(
+        managed.manifest,
+        managed.selectors.projectId
+      ),
       changedFields: [],
       warnings: [],
     });
@@ -216,7 +222,10 @@ export class SessionService {
     appendConfigEvent(replacement.manifest.recordsDir, {
       sessionId: replacement.manifest.sessionId,
       reason: "user_change",
-      effective: buildEffectiveConfig(replacement.manifest),
+      effective: buildEffectiveConfig(
+        replacement.manifest,
+        replacement.selectors.projectId
+      ),
       changedFields: configChangedFields(previous.selectors, selectors),
       warnings: [],
       branchId: replacement.branchId,
@@ -274,7 +283,7 @@ export class SessionService {
           ...managed.manifest.kb,
           domain,
         },
-      }),
+      }, managed.selectors.projectId),
       changedFields: ["kbDomain"],
       warnings: [],
       branchId: managed.branchId,
@@ -607,6 +616,32 @@ export class SessionService {
     return { ...this.requireSession(sessionId).selectors };
   }
 
+  setProjectId(sessionId: string, projectId: string | null): SessionSnapshot {
+    const managed = this.requireSession(sessionId);
+    if (managed.busy || managed.session.isStreaming) {
+      throw new SessionBusyError(sessionId);
+    }
+    if (managed.selectors.projectId === projectId) {
+      return this.snapshot(managed);
+    }
+    const header = readV4SessionHeader(managed.manifest.recordsDir);
+    if (!header) throw new Error("v0.4 session header is required");
+    writeSessionHeader(managed.manifest.recordsDir, {
+      ...header,
+      projectId,
+    });
+    managed.selectors.projectId = projectId;
+    appendConfigEvent(managed.manifest.recordsDir, {
+      sessionId,
+      branchId: managed.branchId,
+      reason: "user_change",
+      effective: buildEffectiveConfig(managed.manifest, projectId),
+      changedFields: ["projectId"],
+      warnings: [],
+    });
+    return this.snapshot(managed);
+  }
+
   async disposeAll(): Promise<void> {
     const sessions = [...this.sessions.values()];
     this.sessions.clear();
@@ -655,6 +690,7 @@ export class SessionService {
       sessionRoot: sessionDirs.sessionRoot,
       recordsDir: sessionDirs.recordsDir,
       manifest: result.manifest,
+      projectId: selectors.projectId ?? null,
     });
 
     const managed = this.createManaged({
@@ -761,6 +797,7 @@ export class SessionService {
     const managed = this.createManaged({
       ...result,
       selectors: {
+        projectId: detail.session.projectId ?? fallbackSelectors.projectId ?? null,
         rolePresetSlug: activeRolePresetSlug,
         kbDomain: activeDomain,
         soulSlug: activeSoulSlug,
@@ -819,7 +856,10 @@ export class SessionService {
       appendConfigEvent(managed.manifest.recordsDir, {
         sessionId: managed.manifest.sessionId,
         reason: "resume_fallback",
-        effective: buildEffectiveConfig(managed.manifest),
+        effective: buildEffectiveConfig(
+          managed.manifest,
+          managed.selectors.projectId
+        ),
         changedFields: fallbackChangedFields,
         warnings: managed.resumeWarnings,
         branchId: managed.branchId,
@@ -1075,6 +1115,7 @@ export class SessionService {
   ): SessionSnapshot {
     return {
       sessionId: managed.manifest.sessionId,
+      projectId: managed.selectors.projectId ?? null,
       status: managed.session.isStreaming ? "running" : "idle",
       currentDomain: managed.selectors.kbDomain,
       rolePresetSlug: managed.selectors.rolePresetSlug,
@@ -1219,6 +1260,9 @@ function configChangedFields(
   after: SessionSelectors
 ): string[] {
   const fields: string[] = [];
+  if ((before.projectId ?? null) !== (after.projectId ?? null)) {
+    fields.push("projectId");
+  }
   if (before.kbDomain !== after.kbDomain) fields.push("kbDomain");
   if (before.rolePresetSlug !== after.rolePresetSlug) {
     fields.push("rolePresetSlug");

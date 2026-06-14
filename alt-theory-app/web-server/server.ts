@@ -40,6 +40,7 @@ import {
   listSessionSummaries,
   readSessionTextFile,
   readSessionDetail,
+  softDeleteSession,
   writeSessionTextFile,
 } from "./session-store.js";
 import {
@@ -48,7 +49,7 @@ import {
   type SessionSelectors,
   type SessionServiceEvent,
 } from "./session-service.js";
-import { listProjects, upsertProject } from "./projects.js";
+import { getProject, listProjects, upsertProject } from "./projects.js";
 import { listInstructionAssets } from "./instruction-assets.js";
 import { listAltTheorySkills } from "./skill-assets.js";
 
@@ -174,6 +175,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
 
   app.use(express.json({ limit: "600kb" }));
   app.use(express.static(publicDir));
+  app.get("/vendor/marked.js", (_req, res) => {
+    res.sendFile(resolve(PROJECT_ROOT, "node_modules", "marked", "lib", "marked.umd.js"));
+  });
   app.get("/api/role-presets", (_req, res) => {
     res.json({ rolePresets: listRolePresets(rolePresetsDir) });
   });
@@ -231,6 +235,25 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       return;
     }
     res.json(detail);
+  });
+  app.delete("/api/sessions/:sessionId", (req, res) => {
+    const sessionId = req.params.sessionId;
+    const root = getSessionRootForRequest(dataDir, sessionId);
+    if (root.status === "invalid") {
+      res.status(400).json({ error: `Invalid session id: ${sessionId}` });
+      return;
+    }
+    if (root.status === "missing") {
+      res.status(404).json({ error: `Unknown session id: ${sessionId}` });
+      return;
+    }
+    try {
+      res.json({ deleted: softDeleteSession(dataDir, sessionId) });
+    } catch (error) {
+      res.status(409).json({
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   });
   app.get("/api/sessions/:sessionId/files", (req, res) => {
     const sessionId = req.params.sessionId;
@@ -386,6 +409,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
 
   function createDraftSelectors(): SessionSelectors {
     return {
+      projectId: null,
       rolePresetSlug: defaultRolePresetSlug(),
       kbDomain: "ep-core",
       soulSlug: defaultSoulSlug(),
@@ -401,6 +425,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       type: "session_draft",
       payload: {
         status: "draft",
+        projectId: selectors.projectId ?? null,
         currentDomain: selectors.kbDomain,
         rolePresetSlug: selectors.rolePresetSlug,
         profileSlug: selectors.rolePresetSlug,
@@ -564,6 +589,43 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               "instruction_switch"
             );
             if (!closed) attachToSession(replacement.sessionId);
+          } catch (error) {
+            sendServiceError(send, error);
+          }
+          break;
+        }
+        case "switch_project": {
+          const projectId = optionalSlug(msg.payload.projectId);
+          const project = projectId ? getProject(dataDir, projectId) : null;
+          if (projectId && !project) {
+            sendError(send, new Error(`Unknown project: ${projectId}`));
+            break;
+          }
+          if (!attachedSessionId) {
+            draftSelectors = {
+              ...draftSelectors,
+              projectId,
+              ...(project?.defaults.rolePresetSlug !== undefined
+                ? { rolePresetSlug: project.defaults.rolePresetSlug }
+                : {}),
+              ...(project?.defaults.soulSlug !== undefined
+                ? { soulSlug: project.defaults.soulSlug }
+                : {}),
+              ...(project?.defaults.kbDomain
+                ? { kbDomain: project.defaults.kbDomain }
+                : {}),
+              ...(project?.defaults.customInstructionRef !== undefined
+                ? {
+                    customInstructionRef:
+                      project.defaults.customInstructionRef,
+                  }
+                : {}),
+            };
+            sendDraft(send, draftSelectors);
+            break;
+          }
+          try {
+            sessionService.setProjectId(attachedSessionId, projectId);
           } catch (error) {
             sendServiceError(send, error);
           }
