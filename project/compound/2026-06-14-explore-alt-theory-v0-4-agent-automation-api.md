@@ -128,8 +128,11 @@ Today, opening a WebSocket creates a new session immediately. This is good for
 the browser but awkward for automation because an agent may only want to list,
 open, or create a specifically configured session.
 
-v0.4 should avoid forcing automation clients to create disposable empty
-sessions as a side effect of connecting.
+v0.4 should not create a persisted session as a side effect of connecting.
+Before the first user message, configuration is an unpersisted draft. The
+first prompt submission resolves the draft, creates a session ID from the
+first-turn date-time/role/soul/model snapshot, persists the session, and
+starts the run.
 
 ### 2. Session Creation Is Not Request-Scoped Enough
 
@@ -185,7 +188,7 @@ config precedence are still being designed.
 
 Current direction: new sessions resolve project defaults plus explicit
 overrides once into the session manifest; old-session resume is manifest-first
-with explicit warned fallback.
+with automatic warned fallback.
 
 ### 6. No Soft Delete / Restore API Yet
 
@@ -246,13 +249,14 @@ agents a simple, testable contract while preserving UI responsiveness.
 Options:
 
 - keep the current behavior where WebSocket connect auto-creates a session;
-- add an automation mode where connect does not create a session;
-- make REST `POST /api/sessions` the canonical creation path and let WebSocket
-  attach to an existing session.
+- keep an unpersisted connection/client draft until the first prompt;
+- make a REST create-and-first-run operation the canonical materialization
+  path, then let WebSocket attach to the created session for streaming.
 
-Best current guess: canonicalize explicit session creation, then let browser
-connect continue to create a default session as a compatibility/UI convenience.
-Automation should not depend on connect side effects.
+Best current guess: canonicalize first-turn materialization. Browser and
+automation clients may prepare configuration before sending, but the persisted
+session and final `sessionId` are created only with the first submitted user
+message. Automation should not depend on connect side effects.
 
 ### 3. Run Concurrency
 
@@ -296,14 +300,15 @@ participant access. Participant-facing auth is a separate platform design.
 Options:
 
 - let project defaults influence only new sessions;
-- allow project defaults as explicit fallback when old session assets are
+- allow project defaults as automatic fallback when old session assets are
   missing;
 - allow project defaults to overwrite old-session config.
 
 Best current guess: project defaults apply to new sessions; old-session resume
-is manifest-first with explicit warned fallback. Project assignment after
-creation should be grouping metadata unless the user explicitly creates a new
-session boundary.
+uses the resolvable original configuration first, then the selected project
+default, then the app/backend default, and finally no optional layer. Fallback
+warns and is recorded but does not block resume or create a new session.
+Project assignment after creation should be grouping metadata.
 
 ### Minimal Operations
 
@@ -313,11 +318,21 @@ The first pass should support:
   - role presets, souls, KB domains, prompt modes, resource-discovery modes,
     skill options, projects when implemented.
 - `POST /api/sessions`
-  - create a session with explicit project/config overrides.
+  - atomically create a session from explicit project/config plus the required
+    first user message, wait for completion, and return the created session/run
+    snapshot. A persisted zero-turn result is not valid.
 - `POST /api/sessions/:sessionId/open`
   - open/resume an existing session with manifest-first fallback semantics.
 - `POST /api/sessions/:sessionId/runs`
   - send one user message and wait for completion.
+- a latest-turn revision operation
+  - revise/regenerate the active tail while preserving the current logical
+    branch.
+- an explicit fork operation
+  - create a new logical branch from a caller-selected entry only when the
+    caller explicitly requests a fork;
+  - accept a fork purpose/workspace mode:
+    `collaboration/shared` or `comparison/copied`.
 - `POST /api/sessions/:sessionId/abort`
   - abort active run.
 - `GET /api/sessions/:sessionId`
@@ -340,6 +355,7 @@ A completed run should return or make immediately available:
 ```json
 {
   "sessionId": "...",
+  "branchId": "...",
   "status": "completed",
   "runId": "...",
   "turnCount": 3,
@@ -351,6 +367,26 @@ A completed run should return or make immediately available:
   "warnings": []
 }
 ```
+
+Latest-turn revision and explicit fork must remain distinct in the API and
+persisted data:
+
+- revising the latest turn keeps the same `sessionId` and logical `branchId`;
+- an explicit fork creates a new `branchId` and records its parent branch and
+  fork-point entry;
+- collaboration forks continue using the shared workspace;
+- comparison forks recursively copy the small fork-point workspace into a
+  branch-local workspace and isolate later branch writes;
+- superseded latest-turn versions remain available as revision/provenance
+  evidence but do not appear in the ordinary active transcript;
+- configuration changes do not create a branch.
+
+Pi's native session tree and fork files can implement these operations, but
+they should not define the Alt Theory product-level identity model by accident.
+Current workspaces are expected to remain small, so v0.4 does not need
+copy-on-write or deduplicated snapshot infrastructure.
+The concrete directory layout and API fields are part of the downstream
+research-data contract and require researcher review before implementation.
 
 For failures and interruptions, distinguish:
 
@@ -379,15 +415,18 @@ Create a small local client/helper around today's protocol:
 This is useful for immediate agent UAT and proves the workflow with little app
 change, but it should be treated as a compatibility adapter, not the final API.
 
-### R2 - Add Request-Scoped Session Creation
+### R2 - Add Request-Scoped First-Turn Materialization
 
-Add first-class session creation with explicit config. This is the main missing
-backend primitive for project-based v0.4.
+Add first-class session creation with explicit config and a required first user
+message. This is the main missing backend primitive for project-based v0.4 and
+prevents empty sessions from being created before the researcher finishes the
+launch selections.
 
 This should implement the agreed direction:
 
 - project defaults;
 - explicit session overrides;
+- first-turn ID generation from date-time, role, soul, and model;
 - manifest snapshot at creation;
 - no silent mutation of old sessions.
 
@@ -415,8 +454,9 @@ Do not create a separate agent-only harness with its own transcript parser,
 manifest semantics, or config resolution. That would repeat the v0.3 problem
 where live rendering and persisted transcript handling diverged.
 
-Do not make project defaults silently rewrite old sessions on resume. Use
-manifest-first resume with explicit warned fallback.
+Do not make project defaults overwrite a resolvable old-session configuration.
+Use manifest-first resume with automatic warned fallback and continue the same
+session.
 
 ## Confidence
 
