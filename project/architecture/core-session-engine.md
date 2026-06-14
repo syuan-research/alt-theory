@@ -51,6 +51,12 @@ and Pi adapter prompt templates from `agent-assets/prompts/pi/`.
 - **Run label / test batch**: optional launch-time metadata recorded in
   manifests for grouping manual UAT sessions without changing provider/model
   identity.
+- **Effective config**: analysis-facing snapshot of the active project, KB,
+  soul, role preset, provider/model, prompt mode, and resource discovery mode.
+- **Config event**: append-only record in `records/config-events.jsonl` for
+  creation, user config changes, and resume fallback.
+- **Research project**: optional local JSON record under `{dataDir}/projects`
+  for grouping and defaults. Project setup is not mandatory.
 
 ## 1. Structure
 
@@ -67,8 +73,10 @@ flowchart LR
   Core --> Manifest[records/assembly-manifest.json]
   Pi --> Metrics[records/session-metrics.json]
   Service --> Events[records/session-events.jsonl]
+  Service --> ConfigEvents[records/config-events.jsonl]
   Service --> V4Records[records/session.json + branch-index.json]
   REST[Static REST] --> Registry[asset-registry.ts]
+  REST --> Projects[projects.ts]
   REST --> Store[session-store.ts]
   REST --> SessionFiles[session records/workspace text files]
 ```
@@ -89,6 +97,9 @@ Code anchors:
   atomic snapshot persistence.
 - `alt-theory-app/web-server/session-events.ts`: bounded append-only runtime
   event persistence.
+- `alt-theory-app/web-server/config-events.ts`: effective config snapshots and
+  append-only config event persistence.
+- `alt-theory-app/web-server/projects.ts`: optional local project records.
 - `alt-theory-app/web-server/session-service.ts`: application-owned session
   runtime lifecycle, WebSocket subscriptions, prompt/abort operations, and
   single-process mutation guard.
@@ -255,6 +266,18 @@ records/branch-index.json   # schemaVersion: 1, activeBranchId: main
 These records are thin indexes around Pi JSONL. They do not duplicate
 conversation bodies and do not yet implement revision/fork operations.
 
+Service-created sessions also append a `creation` config event. Supported
+idle-time KB/role/soul changes append `user_change` config events. Opening an
+existing session whose original role/soul/KB cannot resolve falls back
+automatically to the current selectors and appends a `resume_fallback` config
+event with warnings. Resume never blocks on a confirmation dialog.
+
+Role and soul changes now rebuild the internal Pi runtime against the same
+session root and Pi JSONL. They keep the same Alt Theory `sessionId`,
+`branchId=main`, workspace, and history. KB changes update the selector and
+per-turn context policy without rebuilding the runtime. Busy sessions reject
+config changes with `session_busy`.
+
 ## 6. Discovery And Introspection
 
 REST:
@@ -263,6 +286,8 @@ REST:
 - `GET /api/souls`
 - `GET /api/profiles` legacy compatibility alias
 - `GET /api/kb-domains`
+- `GET /api/projects`
+- `PUT /api/projects/{projectId}`
 - `GET /api/sessions`
 - `GET /api/sessions/{sessionId}`
 - `GET /api/sessions/{sessionId}/files`
@@ -273,6 +298,10 @@ Asset discovery routes return sorted `{ slug, displayName }` arrays without
 filesystem paths. Session list returns path-free summaries; session detail may
 include local paths because the current researcher console is a local runtime
 inspection tool.
+
+Project routes read/write local JSON files under `{dataDir}/projects`. They
+are optional grouping/default records, not mandatory launch setup and not a
+project-management UI.
 
 Session file routes expose only `.md`, `.txt`, and `.json` files under a
 session's `records/` or `workspace/` roots. Requests must resolve inside the
@@ -292,6 +321,10 @@ unavailable until materialization.
 Metrics include message/turn/tool counts, token totals, cost, and nullable
 context usage. Successful runs atomically update
 `records/session-metrics.json`.
+
+Session detail also returns `effectiveConfig` and `configEvents`, derived from
+`records/config-events.jsonl` when present and falling back to the assembly
+manifest for older sessions.
 
 Runtime events currently cover session creation, existing-session open/resume,
 resume warnings, KB/role-preset selection, and run completion/failure/abort. Pi
@@ -318,11 +351,12 @@ is configured; they are not a billing claim.
 
 - Backend REST session list/detail and WebSocket `open_session` are
   implemented. Browser session-list UI is still pending.
-- Role-preset and soul changes from the researcher console immediately replace
-  the active backend session after materialization. Before the first prompt,
-  the same controls update draft state only. The browser also offers `None`
-  for both layers, which injects no role/soul prompt section. KB domain changes
-  affect the next prompt prefix.
+- Role-preset and soul changes from the researcher console rebuild the internal
+  Pi runtime after materialization but keep the same Alt Theory session ID and
+  history. Before the first prompt, the same controls update draft state only.
+  The browser also offers `None` for both layers, which injects no role/soul
+  prompt section. KB domain changes affect the next prompt prefix and append a
+  config event.
 - The per-turn KB context prefix is a temporary hardcoded hook substitute.
   There is no explicit hook/context-policy layer yet.
 - The assembly manifest hashes selected app context, soul, and role-preset
@@ -345,6 +379,9 @@ is configured; they are not a billing claim.
   environment/config, not UI.
 - Hard write-path enforcement, thinking events, compaction/retry events, and
   provider/auth UI are deferred.
+- Model selector UI, custom instruction loading, and visual skill invocation
+  remain deferred. Current config events include placeholder fields for those
+  later capabilities but do not implement them.
 - Transcript detail now preserves assistant thinking and distinguishes tool
   calls from tool results so the researcher console can switch between User,
   Researcher, and Evidence views.
@@ -361,6 +398,9 @@ is configured; they are not a billing claim.
 
 ## Change Log
 
+- 2026-06-14: Updated after project-config/live-switching implementation.
+  Added optional project records, effective config events, automatic
+  resume-fallback records, and same-session KB/role/soul switching.
 - 2026-06-14: Updated after draft-first-send implementation. WebSocket connect
   now creates only `session_draft`; first prompt materializes a readable-ID
   session; `new_session` returns to draft; v0.4 zero-turn roots are hidden from

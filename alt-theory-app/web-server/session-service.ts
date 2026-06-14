@@ -33,6 +33,10 @@ import { readSessionDetail, getSessionRootForRequest } from "./session-store.js"
 import {
   writeFoundationRecords,
 } from "./session-records.js";
+import {
+  appendConfigEvent,
+  buildEffectiveConfig,
+} from "./config-events.js";
 import type {
   SessionMetrics,
   SessionSnapshot,
@@ -133,6 +137,13 @@ export class SessionService {
       selectors
     );
     this.sessions.set(managed.session.sessionId, managed);
+    appendConfigEvent(managed.manifest.recordsDir, {
+      sessionId: managed.session.sessionId,
+      reason: "creation",
+      effective: buildEffectiveConfig(managed.manifest),
+      changedFields: [],
+      warnings: [],
+    });
     return this.snapshot(managed);
   }
 
@@ -151,9 +162,12 @@ export class SessionService {
   async replaceSession(
     sessionId: string,
     selectors: SessionSelectors,
-    abortReason: string
+    _abortReason: string
   ): Promise<SessionSnapshot> {
     const previous = this.requireSession(sessionId);
+    if (previous.busy || previous.session.isStreaming) {
+      throw new SessionBusyError(sessionId);
+    }
     if (selectors.rolePresetSlug !== previous.selectors.rolePresetSlug) {
       appendSessionEvent(previous.manifest.recordsDir, {
         sessionId: previous.session.sessionId,
@@ -168,23 +182,27 @@ export class SessionService {
         details: { soulSlug: selectors.soulSlug },
       });
     }
-    if (previous.busy || previous.session.isStreaming) {
-      await this.abort(sessionId, abortReason);
-    }
-    const reuseCurrentSession = this.hasSessionHistory(previous) === false;
-    const dirs = reuseCurrentSession
-      ? getSessionDirs(this.config.dataDir, previous.session.sessionId)
-      : createSessionDirs(this.config.dataDir);
+    const dirs = getSessionDirs(this.config.dataDir, previous.session.sessionId);
     if (!dirs) {
       throw new Error(`Invalid session id: ${previous.session.sessionId}`);
     }
 
-    const replacement = await this.createManagedFromDirs(dirs, selectors);
+    const replacement = this.hasSessionHistory(previous)
+      ? await this.createManagedFromExistingWithSelectors(
+          previous.session.sessionId,
+          selectors,
+          previous
+        )
+      : await this.createManagedFromDirs(dirs, selectors);
     this.sessions.set(replacement.session.sessionId, replacement);
     await this.disposeManaged(previous);
-    if (replacement.session.sessionId !== previous.session.sessionId) {
-      this.sessions.delete(previous.session.sessionId);
-    }
+    appendConfigEvent(replacement.manifest.recordsDir, {
+      sessionId: replacement.session.sessionId,
+      reason: "user_change",
+      effective: buildEffectiveConfig(replacement.manifest),
+      changedFields: configChangedFields(previous.selectors, selectors),
+      warnings: [],
+    });
     return this.snapshot(replacement);
   }
 
@@ -193,11 +211,28 @@ export class SessionService {
       throw new Error(`Unknown KB domain: ${domain}`);
     }
     const managed = this.requireSession(sessionId);
+    if (managed.busy || managed.session.isStreaming) {
+      throw new SessionBusyError(sessionId);
+    }
     managed.selectors.kbDomain = domain;
     appendSessionEvent(managed.manifest.recordsDir, {
       sessionId: managed.session.sessionId,
       type: "kb_selected",
       details: { kbDomain: domain },
+    });
+    appendConfigEvent(managed.manifest.recordsDir, {
+      sessionId: managed.session.sessionId,
+      reason: "user_change",
+      effective: buildEffectiveConfig({
+        ...managed.manifest,
+        kbDomain: domain,
+        kb: {
+          ...managed.manifest.kb,
+          domain,
+        },
+      }),
+      changedFields: ["kbDomain"],
+      warnings: [],
     });
     return this.snapshot(managed);
   }
@@ -459,7 +494,79 @@ export class SessionService {
         },
       });
     }
+    const fallbackChangedFields = configChangedFields(
+      {
+        rolePresetSlug: detail.manifest?.rolePreset?.slug ?? null,
+        kbDomain: originalDomain ?? fallbackSelectors.kbDomain,
+        soulSlug: detail.manifest?.soul?.slug ?? null,
+      },
+      managed.selectors
+    );
+    if (fallbackChangedFields.length > 0) {
+      appendConfigEvent(managed.manifest.recordsDir, {
+        sessionId: managed.session.sessionId,
+        reason: "resume_fallback",
+        effective: buildEffectiveConfig(managed.manifest),
+        changedFields: fallbackChangedFields,
+        warnings: managed.resumeWarnings,
+      });
+    }
     return managed;
+  }
+
+  private async createManagedFromExistingWithSelectors(
+    sessionId: string,
+    selectors: SessionSelectors,
+    previous: ManagedSession
+  ): Promise<ManagedSession> {
+    const detail = readSessionDetail(this.config.dataDir, sessionId);
+    const sessionFile = detail?.pi.sessionFile ?? previous.session.sessionFile;
+    if (!sessionFile) {
+      throw new Error(
+        `Session cannot be reconfigured because Pi JSONL is missing: ${sessionId}`
+      );
+    }
+    const sessionDirs = getSessionDirs(this.config.dataDir, sessionId);
+    if (!sessionDirs) {
+      throw new Error(`Invalid session id: ${sessionId}`);
+    }
+
+    const result = await openAltTheorySession({
+      ...sessionDirs,
+      sessionFile,
+      originalManifest: detail?.manifest ?? previous.manifest,
+      appContextPath: this.config.assetPaths.appContextPath,
+      soulPath: this.resolveOptionalSoulPath(selectors.soulSlug),
+      soulSlug: selectors.soulSlug,
+      rolePresetPath: this.resolveOptionalRolePresetPath(selectors.rolePresetSlug),
+      rolePresetSlug: selectors.rolePresetSlug,
+      kbDir: this.config.kbDir,
+      kbDomain: selectors.kbDomain,
+      piPromptTemplatesDir: this.config.assetPaths.piPromptTemplatesDir,
+      coreSoulPath: this.config.coreSoulPath,
+      coreSoulModulesDir: this.config.coreSoulModulesDir,
+      coreSoulModules: this.config.coreSoulModules,
+      modelProvider: this.config.modelProvider,
+      modelId: this.config.modelId,
+      modelsPath: this.config.modelsPath,
+      runtimeApiKey: this.config.runtimeApiKey,
+      thinkingLevel: this.config.thinkingLevel,
+      promptMode: this.config.promptMode,
+      resourceDiscovery: this.config.resourceDiscovery,
+      skillsDir: this.config.skillsDir,
+      runLabel: this.config.runLabel,
+      testBatch: this.config.testBatch,
+      readOnly: this.config.readOnly,
+    });
+
+    return this.createManaged({
+      ...result,
+      selectors,
+      openedFrom: previous.openedFrom,
+      resumeWarnings: result.resumeWarnings,
+      counters: previous.counters,
+      transcript: previous.transcript,
+    });
   }
 
   private createManaged(args: {
@@ -662,6 +769,19 @@ export class SessionService {
 
 function formatCounter(prefix: string, value: number): string {
   return `${prefix}-${String(value).padStart(6, "0")}`;
+}
+
+function configChangedFields(
+  before: SessionSelectors,
+  after: SessionSelectors
+): string[] {
+  const fields: string[] = [];
+  if (before.kbDomain !== after.kbDomain) fields.push("kbDomain");
+  if (before.rolePresetSlug !== after.rolePresetSlug) {
+    fields.push("rolePresetSlug");
+  }
+  if (before.soulSlug !== after.soulSlug) fields.push("soulSlug");
+  return fields;
 }
 
 function extractToolPathFromEvent(event: AgentSessionEvent): string | null {

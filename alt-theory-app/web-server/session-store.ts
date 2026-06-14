@@ -22,6 +22,12 @@ import {
   type BranchIndexRecord,
   type V4SessionHeader,
 } from "./session-records.js";
+import {
+  buildEffectiveConfig,
+  readConfigEvents,
+  type ConfigEvent,
+  type EffectiveSessionConfig,
+} from "./config-events.js";
 
 export interface SessionSummary {
   sessionId: string;
@@ -61,6 +67,8 @@ export interface SessionDetailResponse {
   };
   transcript: TranscriptMessage[];
   transcriptPreview: TranscriptMessage[];
+  effectiveConfig: EffectiveSessionConfig | null;
+  configEvents: ConfigEvent[];
   warnings: string[];
 }
 
@@ -120,6 +128,7 @@ export function readSessionDetail(
 
   const session = buildSummary(sessionId, parts);
   const events = readSessionEvents(parts.recordsDir, parts.state);
+  const configEvents = readConfigEvents(parts.recordsDir);
   const pi = readPiInfo(parts.sessionFile, parts.historyDir, parts.state);
   const transcriptPreview = pi.transcript.slice(-12);
 
@@ -134,6 +143,10 @@ export function readSessionDetail(
     pi: pi.info,
     transcript: pi.transcript,
     transcriptPreview,
+    effectiveConfig:
+      configEvents.at(-1)?.effective ??
+      (parts.manifest ? buildEffectiveConfig(parts.manifest) : null),
+    configEvents,
     warnings: uniqueWarnings([...session.warnings, ...parts.state.warnings]),
   };
 }

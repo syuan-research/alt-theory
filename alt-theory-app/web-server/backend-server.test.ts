@@ -1188,6 +1188,50 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
     assert.deepEqual(await domainsResponse.json(), {
       domains: [{ slug: "ep-core", displayName: "Ep Core" }],
     });
+    const emptyProjectsResponse = await fetch(`${baseUrl}/api/projects`);
+    assert.deepEqual(await emptyProjectsResponse.json(), { projects: [] });
+    const projectResponse = await fetch(
+      `${baseUrl}/api/projects/manual-role-uat`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          displayName: "Manual Role UAT",
+          defaults: {
+            rolePresetSlug: "alternate",
+            soulSlug: "soul-test",
+            kbDomain: "ep-core",
+            modelId: "mimo-v2.5-pro",
+          },
+          notes: "local test project",
+        }),
+      }
+    );
+    assert.equal(projectResponse.status, 200);
+    const savedProject = await projectResponse.json();
+    assert.equal(savedProject.projectId, "manual-role-uat");
+    assert.equal(savedProject.defaults.rolePresetSlug, "alternate");
+    const projectsResponse = await fetch(`${baseUrl}/api/projects`);
+    const projectsJson = await projectsResponse.json();
+    assert.deepEqual(
+      projectsJson.projects.map((project: any) => ({
+        projectId: project.projectId,
+        displayName: project.displayName,
+        defaults: project.defaults,
+      })),
+      [
+        {
+          projectId: "manual-role-uat",
+          displayName: "Manual Role UAT",
+          defaults: {
+            rolePresetSlug: "alternate",
+            soulSlug: "soul-test",
+            kbDomain: "ep-core",
+            modelId: "mimo-v2.5-pro",
+          },
+        },
+      ]
+    );
 
     const [draft1, draft2] = await Promise.all([
       draft1Promise,

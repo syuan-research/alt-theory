@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { mkdtempSync } from "fs";
 import { tmpdir } from "os";
 import { join, resolve } from "path";
@@ -8,6 +8,7 @@ import { createAltTheorySession } from "../core/alt-theory-core.js";
 import { createSessionDirs } from "../core/data-dir.js";
 import { SessionBusyError, SessionService } from "./session-service.js";
 import { readSessionDetail } from "./session-store.js";
+import { readConfigEvents } from "./config-events.js";
 
 function setupFixture() {
   const root = mkdtempSync(join(tmpdir(), "alt-theory-session-service-"));
@@ -25,7 +26,9 @@ function setupFixture() {
   mkdirSync(skillsDir, { recursive: true });
   writeFileSync(appContextPath, "Session service app context", "utf-8");
   writeFileSync(join(rolePresetsDir, "default.md"), "Default role", "utf-8");
+  writeFileSync(join(rolePresetsDir, "alternate.md"), "Alternate role", "utf-8");
   writeFileSync(join(soulDir, "soul-latest.md"), "Latest soul", "utf-8");
+  writeFileSync(join(soulDir, "soul-test.md"), "Test soul", "utf-8");
 
   return {
     root,
@@ -113,6 +116,156 @@ test("SessionService creates managed sessions with v0.4 foundation records", asy
 
     const detail = readSessionDetail(fixture.dataDir, snapshot.sessionId);
     assert.equal(detail?.session.recordModel, "v0.4");
+    assert.deepEqual(
+      readConfigEvents(manifest.recordsDir).map((event) => event.reason),
+      ["creation"]
+    );
+  } finally {
+    await service.disposeAll();
+  }
+});
+
+test("SessionService switches role and soul inside the same materialized session", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const snapshot = await service.createSession({
+    rolePresetSlug: "default",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+
+  try {
+    const managed = (service as any).sessions.get(snapshot.sessionId);
+    managed.session.sessionManager.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: "history before config switch" }],
+      api: "openai-completions",
+      provider: "test",
+      model: "test",
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+      stopReason: "stop",
+      timestamp: Date.now(),
+    } as any);
+
+    const beforeManifest = service.getManifest(snapshot.sessionId);
+    const kbSwitched = service.setKbDomain(snapshot.sessionId, "all");
+    assert.equal(kbSwitched.sessionId, snapshot.sessionId);
+    assert.equal(kbSwitched.currentDomain, "all");
+    const switchedRole = await service.replaceSession(
+      snapshot.sessionId,
+      {
+        rolePresetSlug: "alternate",
+        kbDomain: "all",
+        soulSlug: "soul-latest",
+      },
+      "test_role_switch"
+    );
+    const switchedSoul = await service.replaceSession(
+      snapshot.sessionId,
+      {
+        rolePresetSlug: "alternate",
+        kbDomain: "all",
+        soulSlug: "soul-test",
+      },
+      "test_soul_switch"
+    );
+    const afterManifest = service.getManifest(snapshot.sessionId);
+
+    assert.equal(switchedRole.sessionId, snapshot.sessionId);
+    assert.equal(switchedSoul.sessionId, snapshot.sessionId);
+    assert.equal(afterManifest.sessionCwd, beforeManifest.sessionCwd);
+    assert.equal(afterManifest.piSessionDir, beforeManifest.piSessionDir);
+    assert.equal(afterManifest.rolePreset.slug, "alternate");
+    assert.equal(afterManifest.soul.slug, "soul-test");
+
+    const detail = readSessionDetail(fixture.dataDir, snapshot.sessionId);
+    assert.equal(
+      detail?.transcriptPreview.at(-1)?.text,
+      "history before config switch"
+    );
+    assert.equal(detail?.effectiveConfig?.rolePresetSlug, "alternate");
+    assert.equal(detail?.effectiveConfig?.soulSlug, "soul-test");
+    assert.equal(detail?.configEvents.length, 4);
+    assert.deepEqual(
+      readConfigEvents(afterManifest.recordsDir).map((event) => ({
+        reason: event.reason,
+        changedFields: event.changedFields,
+      })),
+      [
+        { reason: "creation", changedFields: [] },
+        { reason: "user_change", changedFields: ["kbDomain"] },
+        { reason: "user_change", changedFields: ["rolePresetSlug"] },
+        { reason: "user_change", changedFields: ["soulSlug"] },
+      ]
+    );
+  } finally {
+    await service.disposeAll();
+  }
+});
+
+test("SessionService records resume_fallback config event when original assets are missing", async () => {
+  const fixture = setupFixture();
+  const dirs = createSessionDirs(fixture.dataDir, "resume-fallback-session");
+  const original = await createAltTheorySession({
+    ...dirs,
+    appContextPath: fixture.appContextPath,
+    soulPath: join(fixture.soulDir, "soul-test.md"),
+    soulSlug: "soul-test",
+    rolePresetPath: join(fixture.rolePresetsDir, "alternate.md"),
+    rolePresetSlug: "alternate",
+    kbDir: fixture.kbDir,
+    kbDomain: "ep-core",
+    piPromptTemplatesDir: fixture.piPromptTemplatesDir,
+    readOnly: true,
+    promptMode: "alt-only",
+    resourceDiscovery: "clean",
+  });
+
+  try {
+    original.session.sessionManager.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: "fallback source history" }],
+      api: "openai-completions",
+      provider: "test",
+      model: "test",
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+      stopReason: "stop",
+      timestamp: Date.now(),
+    } as any);
+  } finally {
+    original.session.dispose();
+  }
+  rmSync(join(fixture.rolePresetsDir, "alternate.md"));
+  rmSync(join(fixture.soulDir, "soul-test.md"));
+  const service = createTestService(fixture);
+  try {
+    const opened = await service.openSession("resume-fallback-session", {
+      rolePresetSlug: "default",
+      kbDomain: "ep-core",
+      soulSlug: "soul-latest",
+    });
+    assert.equal(opened.rolePresetSlug, "default");
+    assert.equal(opened.soulSlug, "soul-latest");
+    const events = readConfigEvents(dirs.recordsDir);
+    assert.equal(events.at(-1)?.reason, "resume_fallback");
+    assert.deepEqual(events.at(-1)?.changedFields, [
+      "rolePresetSlug",
+      "soulSlug",
+    ]);
   } finally {
     await service.disposeAll();
   }
@@ -138,6 +291,23 @@ test("SessionService rejects concurrent same-session prompt mutations with sessi
     const run = service.runPrompt(snapshot.sessionId, "first prompt without configured model");
     assert.throws(
       () => service.runPrompt(snapshot.sessionId, "second prompt"),
+      (error) => error instanceof SessionBusyError && error.code === "session_busy"
+    );
+    assert.throws(
+      () => service.setKbDomain(snapshot.sessionId, "all"),
+      (error) => error instanceof SessionBusyError && error.code === "session_busy"
+    );
+    await assert.rejects(
+      () =>
+        service.replaceSession(
+          snapshot.sessionId,
+          {
+            rolePresetSlug: "alternate",
+            kbDomain: "ep-core",
+            soulSlug: "soul-latest",
+          },
+          "busy_role_switch"
+        ),
       (error) => error instanceof SessionBusyError && error.code === "session_busy"
     );
     assert.ok(resolvePrompt);

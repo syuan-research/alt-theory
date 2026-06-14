@@ -130,6 +130,9 @@ Current backend-facing state:
 - selected KB domain in the current connection;
 - selected soul slug or `None` in the current connection;
 - selected role-preset slug or `None` in the current connection.
+- effective config and config-event history from session detail;
+- optional project records from REST when external clients or later UI need
+  local grouping/defaults;
 - loaded transcript view state in the browser, switchable between User and
   Developer views;
 - session-local record files read through REST for files under `records/` and
@@ -162,10 +165,11 @@ export sessions.
 - Starts a new draft within the same browser connection without creating an
   empty session.
 - Resumes/opens an existing session within the same browser connection.
-- Switches soul and role preset immediately by rebuilding the active backend
-  session for the current connection. When the current session has no Pi
-  history yet, the rebuild reuses the same session id/directory; after history
-  exists, the rebuild creates a new session boundary.
+- Switches soul and role preset immediately after materialization by
+  rebuilding the active backend runtime while keeping the same Alt Theory
+  session id, workspace, and Pi history.
+- Switches KB domain in the same session and records the effective config
+  change.
 - Displays streaming assistant text.
 - Displays tool started/updated/finished states.
 - Displays manifest and metrics in the Runtime inspector tab.
@@ -183,9 +187,11 @@ export sessions.
 
 - Provider/model switching is not implemented in the console.
 - Core-soul module switching is not implemented in the console.
-- Role-preset and soul switching rebuild the backend session rather than
+- Role-preset and soul switching rebuild the backend runtime rather than
   mutating an in-flight model prompt after a session has materialized. In
   draft, those controls only update the pending launch selectors.
+- Project records exist at the backend/API layer, but the current frontend does
+  not yet expose full project creation or selection UI.
 - Tags and annotations are not implemented.
 - Export is not implemented.
 - Historical session comparison is not implemented.
@@ -210,6 +216,9 @@ export sessions.
 
 ## Change Log
 
+- 2026-06-14: Updated after project-config/live-switching implementation.
+  Materialized KB/role/soul changes now remain inside the same Alt Theory
+  session and config provenance is available through session detail.
 - 2026-06-14: Updated after draft-first-send implementation. Console opens in
   `session_draft`, first prompt materializes the session, and records/paths/
   metrics remain unavailable while draft.

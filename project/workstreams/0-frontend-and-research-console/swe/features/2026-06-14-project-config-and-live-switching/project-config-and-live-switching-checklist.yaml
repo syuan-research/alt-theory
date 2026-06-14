@@ -1,0 +1,48 @@
+feature: 2026-06-14-project-config-and-live-switching
+created: 2026-06-14
+
+steps:
+  - action: "Config/project records: add append/read config events and simple project list/upsert APIs"
+    exit_signal: "Unit tests cover event shape, project validation, and no secret/body leakage"
+    status: done
+  - action: "SessionService creation/open writeback: append creation and resume-fallback effective config events"
+    exit_signal: "Service tests verify config event reasons and fallback warnings"
+    status: done
+  - action: "Same-session live switching: role/soul rebuild runtime against the same JSONL/session root; KB writes event without rebuild"
+    exit_signal: "Tests verify session ID/root unchanged after role/soul changes with history"
+    status: done
+  - action: "Session detail/provenance: expose config history/current effective config through existing detail API"
+    exit_signal: "Backend tests read config history from REST/detail"
+    status: done
+  - action: "Regression validation and docs"
+    exit_signal: "npm run test:backend passes and architecture reflects landed code"
+    status: done
+
+checks:
+  - item: "First-send materialized session has a creation config event"
+    source: design
+    status: passed
+  - item: "KB switch after materialization keeps same session and appends user_change"
+    source: design
+    status: passed
+  - item: "Role switch after at least one persisted history message keeps same session ID/root and appends user_change"
+    source: design
+    status: passed
+  - item: "Soul switch after at least one persisted history message keeps same session ID/root and appends user_change"
+    source: design
+    status: passed
+  - item: "Open existing session with missing original role/soul falls back automatically and appends resume_fallback with warning"
+    source: design
+    status: passed
+  - item: "Session detail returns config history and current effective config"
+    source: design
+    status: passed
+  - item: "Project list/upsert works under dataDir/projects and project defaults can be read without mandatory UI setup"
+    source: design
+    status: passed
+  - item: "Busy config change returns session_busy"
+    source: design
+    status: passed
+  - item: "No empty-session toggle, fallback confirmation dialog, model selector UI, custom instruction loader, skill picker, or branch/revision/fork behavior is implemented"
+    source: design
+    status: passed

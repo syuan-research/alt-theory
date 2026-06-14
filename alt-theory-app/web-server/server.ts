@@ -48,6 +48,7 @@ import {
   type SessionSelectors,
   type SessionServiceEvent,
 } from "./session-service.js";
+import { listProjects, upsertProject } from "./projects.js";
 
 const PROJECT_ROOT = process.cwd();
 const PUBLIC_DIR = resolve(
@@ -175,6 +176,19 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   });
   app.get("/api/kb-domains", (_req, res) => {
     res.json({ domains: listKbDomains(kbDir) });
+  });
+  app.get("/api/projects", (_req, res) => {
+    res.json(listProjects(dataDir));
+  });
+  app.put("/api/projects/:projectId", (req, res) => {
+    try {
+      res.json(upsertProject(dataDir, req.params.projectId, req.body ?? {}));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(/Invalid|required/.test(message) ? 400 : 500).json({
+        error: message,
+      });
+    }
   });
   app.get("/api/sessions", (_req, res) => {
     res.json(listSessionSummaries(dataDir));
@@ -341,6 +355,14 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     });
   }
 
+  function sendServiceError(send: (msg: ServerMessage) => void, error: unknown) {
+    if (error instanceof SessionBusyError) {
+      sendError(send, error, error.code);
+      return;
+    }
+    sendError(send, error);
+  }
+
   function createDraftSelectors(): SessionSelectors {
     return {
       rolePresetSlug: defaultRolePresetSlug(),
@@ -455,7 +477,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           try {
             sessionService.setKbDomain(attachedSessionId, msg.payload.domain);
           } catch (error) {
-            sendError(send, error);
+            sendServiceError(send, error);
           }
           break;
         case "switch_role_preset":
@@ -478,7 +500,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             );
             if (!closed) attachToSession(replacement.sessionId);
           } catch (error) {
-            sendError(send, error);
+            sendServiceError(send, error);
           }
           break;
         }
@@ -498,7 +520,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             );
             if (!closed) attachToSession(replacement.sessionId);
           } catch (error) {
-            sendError(send, error);
+            sendServiceError(send, error);
           }
           break;
         }
