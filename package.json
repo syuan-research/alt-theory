@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "dev:web": "tsx alt-theory-app/web-server/server.ts",
+    "start:web": "tsx alt-theory-app/web-server/server.ts",
     "smoke:core": "tsx alt-theory-app/core/test-core.ts",
     "smoke:resume": "tsx alt-theory-app/core/smoke-resume.ts",
     "smoke:backend": "tsx alt-theory-app/web-server/smoke-backend.ts",
