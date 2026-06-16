@@ -7,7 +7,7 @@ steps:
     status: done
   - action: "Auth routes and cookie identity: add login/logout/me plus request auth resolver"
     exit_signal: "Backend route tests cover cookie round trip and no secret leakage"
-    status: pending
+    status: done
   - action: "Session ownership persistence: extend v0.4 session header and create-session input"
     exit_signal: "Service test creates an owned session with roleCondition and consent snapshot"
     status: pending
@@ -21,13 +21,13 @@ steps:
 checks:
   - item: "Valid participant code logs in and /api/auth/me returns safe identity"
     source: design
-    status: pending
+    status: done
   - item: "Wrong code returns a generic unauthorized response"
     source: design
-    status: pending
+    status: done
   - item: "Disabled account cannot log in"
     source: design
-    status: pending
+    status: done
   - item: "Participant-created session records ownerAccountId, roleCondition, and consent snapshot"
     source: design
     status: pending

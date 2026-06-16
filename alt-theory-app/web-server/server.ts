@@ -52,6 +52,11 @@ import {
 import { getProject, listProjects, upsertProject } from "./projects.js";
 import { listInstructionAssets } from "./instruction-assets.js";
 import { listAltTheorySkills } from "./skill-assets.js";
+import {
+  AuthSessionManager,
+  clearAuthCookie,
+  setAuthCookie,
+} from "./auth-session.js";
 
 const PROJECT_ROOT = process.cwd();
 const PUBLIC_DIR = resolve(
@@ -172,6 +177,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   const app = express();
   const httpServer = createServer(app);
   const wss = new WebSocketServer({ server: httpServer });
+  const authSessions = new AuthSessionManager(dataDir);
 
   app.use(express.json({ limit: "600kb" }));
   app.use(express.static(publicDir));
@@ -200,6 +206,28 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           ? []
           : listAltTheorySkills(skillsDir),
     });
+  });
+  app.post("/api/auth/login", (req, res) => {
+    const body = req.body as { accountId?: unknown; loginCode?: unknown };
+    if (typeof body?.accountId !== "string" || typeof body.loginCode !== "string") {
+      res.status(400).json({ error: "accountId and loginCode are required" });
+      return;
+    }
+    const login = authSessions.login(body.accountId, body.loginCode);
+    if (!login.ok) {
+      res.status(login.status).json({ error: login.error });
+      return;
+    }
+    setAuthCookie(res, login.token);
+    res.json({ account: login.account });
+  });
+  app.post("/api/auth/logout", (req, res) => {
+    authSessions.logoutFromRequest(req);
+    clearAuthCookie(res);
+    res.json({ ok: true });
+  });
+  app.get("/api/auth/me", (req, res) => {
+    res.json({ auth: authSessions.resolveRequest(req) });
   });
   app.get("/api/projects", (_req, res) => {
     res.json(listProjects(dataDir));

@@ -39,6 +39,11 @@ import {
   writeSessionTextFile,
 } from "./session-store.js";
 import { writeFoundationRecords } from "./session-records.js";
+import {
+  hashLoginCode,
+  writeAccountStore,
+  type AccountRecord,
+} from "./auth-accounts.js";
 
 test("asset registry lists safe sorted slugs and resolves known assets", () => {
   const root = mkdtempSync(join(tmpdir(), "alt-theory-assets-"));
@@ -929,6 +934,129 @@ test("session catalog and detail expose complete and incomplete sessions", async
     );
     assert.equal(recoverableDetail.status, 200);
     assert.ok((await recoverableDetail.json()).session.deletedAt);
+  } finally {
+    await new Promise<void>((resolveClose) => {
+      instance.wss.close(() => {
+        instance.httpServer.close(() => resolveClose());
+      });
+    });
+  }
+});
+
+test("auth routes support cookie round trip without leaking account secrets", async () => {
+  const root = mkdtempSync(join(tmpdir(), "alt-theory-auth-routes-"));
+  const dataDir = join(root, "data");
+  const now = "2026-06-16T00:00:00.000Z";
+  const participant: AccountRecord = {
+    schemaVersion: 1,
+    accountId: "p01",
+    displayLabel: "Participant 01",
+    role: "participant",
+    status: "active",
+    loginCodeHash: hashLoginCode("code-123", "route-salt"),
+    defaultRoleCondition: "conceptual-theory",
+    defaultConsent: {
+      researcherReadable: true,
+      quoteAfterAnonymization: true,
+    },
+    createdAt: now,
+    updatedAt: now,
+  };
+  writeAccountStore(dataDir, {
+    schemaVersion: 1,
+    accounts: [
+      participant,
+      {
+        ...participant,
+        accountId: "p02",
+        displayLabel: "Participant 02",
+        status: "disabled",
+        loginCodeHash: hashLoginCode("disabled-code", "disabled-route-salt"),
+      },
+    ],
+  });
+
+  const instance = createAltTheoryServer({
+    dataDir,
+    readOnly: true,
+  });
+  await new Promise<void>((resolveListen) => {
+    instance.httpServer.listen(0, "127.0.0.1", resolveListen);
+  });
+  const address = instance.httpServer.address();
+  assert.ok(address && typeof address === "object");
+  const baseUrl = `http://127.0.0.1:${address.port}`;
+
+  try {
+    const anonymous = await fetch(`${baseUrl}/api/auth/me`);
+    assert.deepEqual(await anonymous.json(), {
+      auth: {
+        accountId: null,
+        role: "anonymous",
+        displayLabel: null,
+        defaultRoleCondition: null,
+        defaultConsent: null,
+      },
+    });
+
+    const wrong = await fetch(`${baseUrl}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ accountId: "missing", loginCode: "wrong" }),
+    });
+    assert.equal(wrong.status, 401);
+    assert.deepEqual(await wrong.json(), { error: "Invalid account or code" });
+
+    const disabled = await fetch(`${baseUrl}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ accountId: "p02", loginCode: "disabled-code" }),
+    });
+    assert.equal(disabled.status, 403);
+
+    const login = await fetch(`${baseUrl}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ accountId: "p01", loginCode: "code-123" }),
+    });
+    assert.equal(login.status, 200);
+    const loginCookie = login.headers.get("set-cookie");
+    assert.match(loginCookie ?? "", /alt_theory_auth=/);
+    assert.match(loginCookie ?? "", /HttpOnly/);
+    const loginJson = await login.json();
+    assert.equal(loginJson.account.accountId, "p01");
+    assert.equal(loginJson.account.defaultRoleCondition, "conceptual-theory");
+    assert.equal(JSON.stringify(loginJson).includes("loginCodeHash"), false);
+
+    const cookie = loginCookie?.split(";")[0] ?? "";
+    const me = await fetch(`${baseUrl}/api/auth/me`, {
+      headers: { Cookie: cookie },
+    });
+    assert.deepEqual(await me.json(), {
+      auth: {
+        accountId: "p01",
+        role: "participant",
+        displayLabel: "Participant 01",
+        defaultRoleCondition: "conceptual-theory",
+        defaultConsent: {
+          researcherReadable: true,
+          quoteAfterAnonymization: true,
+        },
+      },
+    });
+
+    const logout = await fetch(`${baseUrl}/api/auth/logout`, {
+      method: "POST",
+      headers: { Cookie: cookie },
+    });
+    assert.equal(logout.status, 200);
+    assert.match(logout.headers.get("set-cookie") ?? "", /Max-Age=0/);
+
+    const afterLogout = await fetch(`${baseUrl}/api/auth/me`, {
+      headers: { Cookie: cookie },
+    });
+    const afterLogoutJson = await afterLogout.json();
+    assert.equal(afterLogoutJson.auth.role, "anonymous");
   } finally {
     await new Promise<void>((resolveClose) => {
       instance.wss.close(() => {
