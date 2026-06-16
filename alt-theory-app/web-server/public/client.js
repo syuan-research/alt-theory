@@ -1814,16 +1814,13 @@ ws.onmessage = (event) => {
       messagesEl.appendChild(errEl);
       // Also show in composer tool status
       toolStatusEl.textContent = `⚠ ${msg.payload.error}`;
-      if (pendingOpenSessionId) {
-        pendingOpenSessionId = "";
-        isRunning = false;
-        setControlsEnabled(true);
-      }
-      if (pendingAssetSwitch) {
-        pendingAssetSwitch = false;
-        isRunning = false;
-        setControlsEnabled(true);
-      }
+      // Any pending operation that set isRunning must be cleared on error, otherwise
+      // the UI is permanently stuck (revise/delete/fork/branch/open/asset-switch).
+      pendingOpenSessionId = "";
+      pendingAssetSwitch = false;
+      isRunning = false;
+      setConnStatus("error", "Error");
+      setControlsEnabled(true);
       break;
     }
   }
