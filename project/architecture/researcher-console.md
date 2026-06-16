@@ -243,6 +243,21 @@ export sessions.
 
 ## Change Log
 
+- 2026-06-16: Updated after participant-view-shell + conversation-action frontend
+  acceptance. The shell now resolves app identity from `GET /api/auth/me` and gates
+  itself into participant / researcher / debug view modes. With configured accounts,
+  an anonymous browser sees a login gate (the backend 401 on session routes is the
+  signal); participant login hides Launch/Config, project, model/provider, Records/
+  Paths/Provenance tabs, and the revise/fork lineage row, and shows a role-condition
+  label plus a low-noise private-mode toggle/badge. The private toggle sends
+  WebSocket `switch_visibility` before first prompt and locks once materialized.
+  Conversation actions gained a delete-latest control near the composer, a hardened
+  send lockout while running (Send hidden/disabled; Stop available), and a stop→
+  "edit or delete your latest message" hint. A client-side Debug toggle (researcher/
+  admin only) re-shows advanced inspector panels for current-browser troubleshooting;
+  it changes no server identity, ownership, or consent. Frontend hiding remains
+  presentational: the backend is the authorization gate. Verified via browser UAT
+  (22/22) and backend regression (55/55).
 - 2026-06-15: Updated after workbench-session-management acceptance. The
   frontend now exposes project grouping/search, recoverable delete, resizable
   panes, rendered Markdown, and a Provenance inspector tab.

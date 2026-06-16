@@ -1191,3 +1191,238 @@ button:hover {
     max-width: 320px;
   }
 }
+
+/* ==========================================================================
+   v0.5 — Auth, view-mode gating, private mode
+   ========================================================================== */
+
+.hidden {
+  display: none !important;
+}
+
+/* --- Login gate overlay --- */
+
+.overlay-screen {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-darkest);
+  z-index: 2000;
+}
+
+.overlay-card {
+  background: var(--bg-dark);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 28px;
+  width: 90%;
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.overlay-title {
+  font-family: var(--font-serif);
+  font-size: 22px;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.overlay-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+#login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+#login-form input {
+  background: var(--bg-mid);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-primary);
+  padding: 8px 10px;
+  font-size: 14px;
+}
+
+#login-form input:focus {
+  outline: none;
+  border-color: var(--accent-dim);
+}
+
+#login-submit {
+  margin-top: 10px;
+  padding: 9px 16px;
+  border-radius: 6px;
+  background: var(--accent-dim);
+  color: #fff;
+  border: 1px solid var(--accent-dim);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+#login-submit:hover {
+  background: var(--accent);
+}
+
+#login-submit:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.overlay-error {
+  color: var(--error);
+  font-size: 13px;
+}
+
+/* --- Auth badge + header controls --- */
+
+.auth-badge {
+  font-size: 11px;
+  color: var(--text-secondary);
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+}
+
+#logout-btn,
+#debug-toggle {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+#logout-btn:hover,
+#debug-toggle:hover {
+  border-color: var(--accent-dim);
+  color: var(--text-primary);
+}
+
+#debug-toggle.active {
+  border-color: var(--accent-dim);
+  color: var(--accent);
+}
+
+.mobile-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* --- Role-condition display (participant) --- */
+
+.role-condition-section {
+  padding-top: 0;
+}
+
+.role-condition-display {
+  color: var(--text-secondary);
+  padding: 2px 0 6px;
+}
+
+/* --- Visibility / private-mode bar --- */
+
+.visibility-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 2px 6px;
+  flex-wrap: wrap;
+}
+
+.visibility-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.visibility-toggle input {
+  cursor: pointer;
+  accent-color: var(--accent-dim);
+}
+
+.private-badge {
+  font-size: 11px;
+  color: var(--warning);
+  border: 1px solid var(--warning);
+  border-radius: 10px;
+  padding: 1px 8px;
+  cursor: help;
+}
+
+.private-expiry-hint {
+  color: var(--warning);
+  font-size: 11px;
+}
+
+/* --- Run hint (stop -> edit/delete) --- */
+
+.run-hint {
+  font-size: 12px;
+  color: var(--text-secondary);
+  padding: 2px 2px 4px;
+}
+
+/* --- Participant session list: tighter, less researcher noise --- */
+
+body.view-participant .session-row-meta {
+  color: var(--text-muted);
+}
+
+body.view-participant .session-group-title {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+/* --- Hide advanced tabs in participant view --- */
+
+.right-tab.hidden {
+  display: none !important;
+}
+
+/* --- Delete-latest control + private row tag --- */
+
+#delete-latest {
+  color: var(--error);
+  border-color: var(--border);
+}
+
+#delete-latest:hover:not(:disabled) {
+  border-color: var(--error);
+}
+
+.row-private-tag {
+  font-size: 10px;
+  color: var(--warning);
+  border: 1px solid var(--warning);
+  border-radius: 8px;
+  padding: 0 6px;
+  cursor: help;
+}
+
+.session-row.private .session-row-title {
+  border-left: 2px solid var(--warning);
+  padding-left: 6px;
+}
+

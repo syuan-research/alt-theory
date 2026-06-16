@@ -39,6 +39,7 @@ const toolStatusEl = document.getElementById("tool-status");
 const skillSelect = document.getElementById("skill-select");
 const invokeSkillBtn = document.getElementById("invoke-skill");
 const reviseLatestBtn = document.getElementById("revise-latest");
+const deleteLatestBtn = document.getElementById("delete-latest");
 const forkPurposeSelect = document.getElementById("fork-purpose");
 const forkSessionBtn = document.getElementById("fork-session");
 const viewToggleBtns = Array.from(document.querySelectorAll(".view-toggle"));
@@ -102,6 +103,35 @@ const restoreLeftBtn = document.getElementById("restore-left");
 const restoreRightBtn = document.getElementById("restore-right");
 
 // ---------------------------------------------------------------------------
+// DOM refs — Auth / view mode / visibility
+// ---------------------------------------------------------------------------
+
+const loginOverlay = document.getElementById("login-overlay");
+const loginForm = document.getElementById("login-form");
+const loginAccountInput = document.getElementById("login-account");
+const loginCodeInput = document.getElementById("login-code");
+const loginSubmitBtn = document.getElementById("login-submit");
+const loginErrorEl = document.getElementById("login-error");
+const authBadge = document.getElementById("auth-badge");
+const authBadgeMobile = document.getElementById("auth-badge-mobile");
+const logoutBtn = document.getElementById("logout-btn");
+const debugToggle = document.getElementById("debug-toggle");
+const roleConditionSection = document.querySelector(".role-condition-section");
+const roleConditionDisplay = document.getElementById("role-condition-display");
+const visibilityBar = document.getElementById("visibility-bar");
+const privateToggle = document.getElementById("private-toggle");
+const privateBadge = document.getElementById("private-badge");
+const privateExpiryHint = document.getElementById("private-expiry-hint");
+const runHintEl = document.getElementById("run-hint");
+const debugOnlyEls = Array.from(document.querySelectorAll(".debug-only"));
+const leftConfigSection = document.querySelector(".config-section");
+const sessionBrowserSection = document.getElementById("session-browser-section");
+// Right-panel tabs that researcher/debug own.
+const recordsTabBtn = document.querySelector('.right-tab[data-right-tab="records"]');
+const pathsTabBtn = document.querySelector('.right-tab[data-right-tab="paths"]');
+const provenanceTabBtn = document.querySelector('.right-tab[data-right-tab="provenance"]');
+
+// ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
 
@@ -139,8 +169,288 @@ const paneState = {
 };
 
 // ---------------------------------------------------------------------------
-// REST discovery
+// View-mode state (participant / researcher / debug)
 // ---------------------------------------------------------------------------
+
+// authCtx mirrors GET /api/auth/me -> { auth: AuthContext }.
+// role: "anonymous" | "participant" | "researcher" | "admin".
+let authCtx = null;
+// Effective shell view: derived from role. "debug" is a client-only escalation on top of
+// "researcher" and never changes server-side identity, ownership, or consent.
+let viewMode = "researcher"; // default until /me resolves
+let accountsConfigured = false; // whether any accounts exist server-side
+let debugExpanded = false; // client-only flag for the Debug toggle
+let currentVisibility = "research"; // last known draft/session visibility
+const DEBUG_STORAGE_KEY = "alt-theory-debug-expanded";
+
+// ---------------------------------------------------------------------------
+// Auth + view-mode gating
+// ---------------------------------------------------------------------------
+
+// Maps a roleCondition id (e.g. "conceptual-theory") to a friendlier label for
+// participant display. Backend resolves the actual role preset; we only show a label.
+const ROLE_CONDITION_LABELS = {
+  "conceptual-theory": "Theory companion",
+  "metatheory-oriented": "Metatheory-oriented",
+};
+
+function roleConditionLabel(condition) {
+  if (!condition) return "—";
+  return ROLE_CONDITION_LABELS[condition] || condition;
+}
+
+function showLoginError(message) {
+  if (!message) {
+    loginErrorEl.classList.add("hidden");
+    loginErrorEl.textContent = "";
+    return;
+  }
+  loginErrorEl.textContent = message;
+  loginErrorEl.classList.remove("hidden");
+}
+
+function setLoginGateActive(active) {
+  loginOverlay.classList.toggle("hidden", !active);
+  if (active) {
+    loginSubmitBtn.disabled = false;
+    loginAccountInput.focus();
+  }
+}
+
+function renderAuthBadge() {
+  const role = authCtx?.role || "anonymous";
+  const label =
+    role === "anonymous"
+      ? ""
+      : `${authCtx.displayLabel || authCtx.accountId || ""} · ${role}`;
+  const titleText = label;
+  for (const el of [authBadge, authBadgeMobile]) {
+    if (!el) continue;
+    if (!label) {
+      el.classList.add("hidden");
+      el.textContent = "";
+      el.title = "";
+    } else {
+      el.textContent = label;
+      el.title = titleText;
+      el.classList.remove("hidden");
+    }
+  }
+  logoutBtn.classList.toggle("hidden", role === "anonymous");
+}
+
+// Derive the shell view mode from resolved auth. Anonymous with no configured accounts
+// keeps the legacy local researcher workbench (v0.4 compatibility).
+function viewModeForRole(role) {
+  if (role === "participant") return "participant";
+  if (role === "researcher" || role === "admin") return "researcher";
+  return "researcher"; // anonymous local: legacy workbench
+}
+
+// Apply section/tab gating by view mode. This is purely presentational; the backend
+// remains the authorization gate for all data.
+function applyViewMode(mode) {
+  viewMode = mode;
+  const isParticipant = mode === "participant";
+  const isResearcherBase = mode === "researcher" || mode === "debug";
+
+  // Left panel: participant hides launch/config and project row; researcher/debug show it.
+  if (leftConfigSection) leftConfigSection.classList.toggle("hidden", isParticipant);
+  if (projectSelect) projectSelect.parentElement &&
+    (projectSelect.closest(".config-grid")?.classList.toggle("hidden", false));
+  const projectRow = projectSelect?.closest(".config-grid")
+    ?.querySelector('label[for="project-select"]');
+  if (projectRow) projectRow.classList.toggle("hidden", isParticipant);
+
+  // Role-condition display: participant only.
+  roleConditionSection.classList.toggle("hidden", !isParticipant);
+
+  // Debug toggle visibility: researcher/admin roles only.
+  const canDebug =
+    authCtx?.role === "researcher" || authCtx?.role === "admin";
+  debugToggle.classList.toggle("hidden", !canDebug);
+
+  // Delete-from-catalog control: participant view does not expose arbitrary delete.
+  // (Participant sessions are owner-scoped; soft delete stays a researcher/debug action.)
+  if (deleteSessionBtn) deleteSessionBtn.classList.toggle("hidden", isParticipant);
+
+  // Right-panel tab gating: participant keeps Runtime only; researcher/debug own Records/Paths/Provenance.
+  const advancedTabs = [recordsTabBtn, pathsTabBtn, provenanceTabBtn].filter(Boolean);
+  const showAdvanced = isResearcherBase && (!isParticipant || debugExpanded);
+  for (const tab of advancedTabs) tab.classList.toggle("hidden", !showAdvanced);
+  for (const panel of rightTabPanels) {
+    const isAdvanced = panel.dataset.rightPanel !== "runtime";
+    panel.classList.toggle("hidden", isAdvanced && !showAdvanced);
+  }
+  // If the active right tab just got hidden, fall back to Runtime.
+  const activeTabBtn = rightTabBtns.find((b) => b.classList.contains("selected"));
+  if (activeTabBtn && activeTabBtn.classList.contains("hidden")) {
+    const runtimeBtn = rightTabBtns.find(
+      (b) => b.dataset.rightTab === "runtime"
+    );
+    if (runtimeBtn) runtimeBtn.click();
+  }
+
+  // Transcript view toggle: participant defaults to User view and hides the toggle.
+  const hideViewToggle = isParticipant;
+  viewToggleBtns.forEach((b) => {
+    b.classList.toggle("hidden", hideViewToggle);
+  });
+  if (isParticipant && transcriptView !== "user") {
+    const userBtn = viewToggleBtns.find((b) => b.dataset.view === "user");
+    if (userBtn) userBtn.click();
+  }
+
+  // Composer lineage row (revise/fork): researcher/debug only in this shell.
+  const lineageRow = document.getElementById("lineage-actions");
+  if (lineageRow) lineageRow.classList.toggle("hidden", isParticipant);
+
+  // Debug-expansion-only controls (none yet beyond tab gating).
+  document.body.classList.toggle("view-participant", isParticipant);
+  document.body.classList.toggle("view-researcher", isResearcherBase);
+  setControlsEnabled(!isRunning);
+  renderSessionList();
+}
+
+// Resolve current auth from the server and decide whether to gate behind login.
+async function resolveAuthAndApply() {
+  let me;
+  try {
+    const res = await fetch("/api/auth/me");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    me = data.auth || { role: "anonymous" };
+  } catch (err) {
+    console.error("[auth] /me failed:", err);
+    me = { role: "anonymous" };
+  }
+  authCtx = me;
+  accountsConfigured = await detectAccountsConfigured();
+  renderAuthBadge();
+  roleConditionDisplay.textContent = roleConditionLabel(authCtx.defaultRoleCondition);
+
+  const role = authCtx.role || "anonymous";
+  if (role === "anonymous" && accountsConfigured) {
+    // Pilot deployment with configured accounts: require app-level login.
+    setLoginGateActive(true);
+    applyViewMode("researcher"); // underlying shell stays neutral but gated
+    return;
+  }
+  setLoginGateActive(false);
+  const baseMode = viewModeForRole(role);
+  debugExpanded =
+    baseMode === "researcher" &&
+    localStorage.getItem(DEBUG_STORAGE_KEY) === "1";
+  applyViewMode(debugExpanded ? "debug" : baseMode);
+}
+
+// Backend returns 401 on session routes when accounts are configured, even for anonymous.
+// Use that to detect configured-accounts pilot deployments without a dedicated endpoint.
+async function detectAccountsConfigured() {
+  try {
+    const res = await fetch("/api/sessions");
+    // 401 means accounts exist and anonymous is rejected.
+    return res.status === 401;
+  } catch {
+    return false;
+  }
+}
+
+async function handleLogin(event) {
+  event.preventDefault();
+  loginSubmitBtn.disabled = true;
+  showLoginError("");
+  const accountId = loginAccountInput.value.trim();
+  const loginCode = loginCodeInput.value;
+  try {
+    const res = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ accountId, loginCode }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || `HTTP ${res.status}`);
+    }
+    loginForm.reset();
+    await resolveAuthAndApply();
+  } catch (err) {
+    // Server already returns a generic message; surface it verbatim without account disclosure.
+    showLoginError(err.message || "Sign in failed.");
+  } finally {
+    loginSubmitBtn.disabled = false;
+  }
+}
+
+async function handleLogout() {
+  try {
+    await fetch("/api/auth/logout", { method: "POST" });
+  } catch (err) {
+    console.error("[auth] logout failed:", err);
+  }
+  debugExpanded = false;
+  localStorage.removeItem(DEBUG_STORAGE_KEY);
+  await resolveAuthAndApply();
+}
+
+function handleDebugToggle() {
+  const canDebug =
+    authCtx?.role === "researcher" || authCtx?.role === "admin";
+  if (!canDebug) return;
+  debugExpanded = !debugExpanded;
+  localStorage.setItem(DEBUG_STORAGE_KEY, debugExpanded ? "1" : "0");
+  debugToggle.classList.toggle("active", debugExpanded);
+  applyViewMode(debugExpanded ? "debug" : "researcher");
+}
+
+loginForm.addEventListener("submit", handleLogin);
+logoutBtn.addEventListener("click", handleLogout);
+debugToggle.addEventListener("click", handleDebugToggle);
+
+// ---------------------------------------------------------------------------
+// Private-mode (visibility) UI
+// ---------------------------------------------------------------------------
+
+// `editable` is true only in draft (before first prompt). Once a session is materialized
+// the backend rejects visibility switching, so the control becomes read-only state.
+function syncVisibilityBar(editable) {
+  const isPrivate = currentVisibility === "private";
+  privateToggle.checked = isPrivate;
+  privateToggle.disabled = !editable;
+  privateBadge.classList.toggle("hidden", !isPrivate);
+  privateExpiryHint.classList.add("hidden");
+  privateExpiryHint.textContent = "";
+  // The visibility bar is participant-facing and also harmless for researcher/debug,
+  // but only show it once we know the effective view mode.
+  const show =
+    viewMode === "participant" || viewMode === "researcher" || viewMode === "debug";
+  visibilityBar.classList.toggle("hidden", !show);
+}
+
+privateToggle.addEventListener("change", () => {
+  if (privateToggle.disabled) return;
+  const visibility = privateToggle.checked ? "private" : "research";
+  if (!wsSafeSend(JSON.stringify({ type: "switch_visibility", payload: { visibility } }))) {
+    // revert checkbox if the send failed
+    privateToggle.checked = !privateToggle.checked;
+    return;
+  }
+  currentVisibility = visibility;
+  privateBadge.classList.toggle("hidden", visibility !== "private");
+  if (visibility === "private") {
+    showPrivateIntroCopy();
+  }
+});
+
+// Verbatim private-mode copy from the v0.5 plan. Shown once as a system message.
+function showPrivateIntroCopy() {
+  appendChatMessage(
+    "system",
+    "Private sessions and files are deleted after 7 inactive days. Download anything you want to keep."
+  );
+}
+
+
 
 async function fetchDiscovery() {
   try {
@@ -341,6 +651,7 @@ function renderSessionList() {
   const projectNames = new Map(
     projectCatalog.map((project) => [project.projectId, project.displayName])
   );
+  const isParticipant = viewMode === "participant";
   const visible = sessionCatalog.filter((session) => {
     if (!query) return true;
     return [
@@ -353,7 +664,22 @@ function renderSessionList() {
     ].some((value) => String(value || "").toLowerCase().includes(query));
   });
   if (visible.length === 0) {
-    sessionListEl.innerHTML = '<div class="session-empty">No saved sessions.</div>';
+    sessionListEl.innerHTML = isParticipant
+      ? '<div class="session-empty">No sessions yet.</div>'
+      : '<div class="session-empty">No saved sessions.</div>';
+    return;
+  }
+
+  // Participant view: flat list, no project grouping, low-noise meta (role + time only).
+  if (isParticipant) {
+    for (const session of visible) {
+      sessionListEl.appendChild(
+        buildSessionRow(session, {
+          showModel: false,
+          showKb: false,
+        })
+      );
+    }
     return;
   }
 
@@ -380,39 +706,56 @@ function renderSessionList() {
     group.appendChild(heading);
 
     for (const session of sessions) {
-      const row = document.createElement("button");
-      row.type = "button";
-      row.className = "session-row";
-      if (session.sessionId === selectedHistoricalSessionId) {
-        row.classList.add("selected");
-      }
-      row.onclick = () => fetchSessionDetail(session.sessionId);
-
-      const title = document.createElement("div");
-      title.className = "session-row-title";
-      const id = document.createElement("span");
-      id.textContent = shortId(session.sessionId);
-      const status = document.createElement("span");
-      status.className = session.warnings?.length ? "session-warning" : "";
-      status.textContent = session.status || "unknown";
-      title.appendChild(id);
-      title.appendChild(status);
-
-      const meta = document.createElement("div");
-      meta.className = "session-row-meta";
-      meta.textContent = [
-        session.kbDomain || "no-kb",
-        session.rolePresetSlug || "no-role",
-        formatProviderModel(session),
-        fmtTime(session.updatedAt || session.createdAt),
-      ].filter(Boolean).join(" | ");
-
-      row.appendChild(title);
-      row.appendChild(meta);
-      group.appendChild(row);
+      group.appendChild(
+        buildSessionRow(session, { showModel: true, showKb: true })
+      );
     }
     sessionListEl.appendChild(group);
   }
+}
+
+function buildSessionRow(session, options = {}) {
+  const row = document.createElement("button");
+  row.type = "button";
+  row.className = "session-row";
+  if (session.sessionId === selectedHistoricalSessionId) {
+    row.classList.add("selected");
+  }
+  if (session.visibility === "private") {
+    row.classList.add("private");
+  }
+  row.onclick = () => fetchSessionDetail(session.sessionId);
+
+  const title = document.createElement("div");
+  title.className = "session-row-title";
+  const id = document.createElement("span");
+  id.textContent = shortId(session.sessionId);
+  const status = document.createElement("span");
+  status.className = session.warnings?.length ? "session-warning" : "";
+  status.textContent = session.status || "unknown";
+  title.appendChild(id);
+  if (session.visibility === "private") {
+    const priv = document.createElement("span");
+    priv.className = "row-private-tag";
+    priv.textContent = "private";
+    priv.title =
+      "Private sessions and files are deleted after 7 inactive days. Download anything you want to keep.";
+    title.appendChild(priv);
+  }
+  title.appendChild(status);
+
+  const meta = document.createElement("div");
+  meta.className = "session-row-meta";
+  const parts = [];
+  if (options.showKb) parts.push(session.kbDomain || "no-kb");
+  parts.push(session.rolePresetSlug || "no-role");
+  if (options.showModel) parts.push(formatProviderModel(session));
+  parts.push(fmtTime(session.updatedAt || session.createdAt));
+  meta.textContent = parts.filter(Boolean).join(" | ");
+
+  row.appendChild(title);
+  row.appendChild(meta);
+  return row;
 }
 
 function renderRecordsList(files) {
@@ -887,8 +1230,12 @@ const ws = new WebSocket(`${proto}//${location.host}`);
 ws.onopen = () => {
   console.log("[ws] Connected");
   setConnStatus("idle", "Connected");
-  fetchDiscovery();
-  fetchSessions();
+  // Resolve app identity first; view-mode gating decides whether discovery/sessions load.
+  resolveAuthAndApply().finally(() => {
+    if (!loginOverlay.classList.contains("hidden")) return; // gated behind login
+    fetchDiscovery();
+    fetchSessions();
+  });
 };
 
 ws.onclose = () => {
@@ -967,6 +1314,8 @@ function renderDraftSession(payload) {
   rtSessionId.textContent = "draft";
   rtSessionId.title = "Draft session";
   rtSessionId.onclick = null;
+  currentVisibility = payload.visibility || "research";
+  syncVisibilityBar(true); // draft: private toggle is editable
   rtKb.textContent = currentDomain || "—";
   rtSoul.textContent = displaySlug(currentSoulSlug);
   rtRolePreset.textContent = displaySlug(currentRolePresetSlug);
@@ -1208,6 +1557,8 @@ ws.onmessage = (event) => {
       currentProjectId = msg.payload.projectId ?? null;
       sessionReady = true;
       isRunning = false;
+      currentVisibility = msg.payload.visibility || currentVisibility;
+      syncVisibilityBar(false); // materialized: visibility is fixed
       rtKb.textContent = currentDomain || "—";
       rtSoul.textContent = displaySlug(currentSoulSlug);
       rtRolePreset.textContent = displaySlug(currentRolePresetSlug);
@@ -1342,6 +1693,8 @@ ws.onmessage = (event) => {
       setControlsEnabled(true);
       setConnStatus("idle", "Ready");
       toolStatusEl.textContent = "";
+      // A clean completed reply clears the stop/edit/delete hint.
+      setRunHint("");
       activeToolNames = {};
       refreshCurrentTranscript();
       fetchSessionRecords();
@@ -1363,6 +1716,8 @@ ws.onmessage = (event) => {
       setControlsEnabled(true);
       setConnStatus(interrupted ? "idle" : "error", interrupted ? "Ready" : "Error");
       toolStatusEl.textContent = "";
+      // If the user stopped, keep the edit/delete hint. A real failure clears it.
+      if (!interrupted) setRunHint("");
       activeToolNames = {};
       break;
     }
@@ -1412,11 +1767,15 @@ function autoScroll() {
 function setControlsEnabled(enabled) {
   const connected = ws.readyState === WebSocket.OPEN;
   const interactive = enabled && sessionReady && connected;
+  // Send lockout: while a run is active, Send is hidden and stays disabled even if
+  // this helper is called with enabled=true. The explicit `isRunning` guards in
+  // sendMessage() / input Enter handler are the real lockout; this keeps the button
+  // visually consistent.
   sendBtn.style.display = isRunning ? "none" : "inline";
   stopBtn.style.display = isRunning ? "inline" : "none";
-  sendBtn.disabled = !interactive;
+  sendBtn.disabled = !interactive || isRunning;
   stopBtn.disabled = !isRunning || !connected;
-  inputEl.disabled = !interactive;
+  inputEl.disabled = !interactive || isRunning;
   newSessionBtn.disabled = !interactive;
   refreshMetricsBtn.disabled = !interactive || !currentSessionId;
   provenanceRefreshBtn.disabled = !interactive || !currentSessionId;
@@ -1443,6 +1802,9 @@ function setControlsEnabled(enabled) {
   invokeSkillBtn.disabled = !interactive || !skillSelect.value;
   reviseLatestBtn.disabled =
     !interactive || !currentSessionId || !hasMessages || !inputEl.value.trim();
+  // Delete latest: only when a completed latest user turn exists and nothing is running.
+  deleteLatestBtn.disabled =
+    !interactive || !currentSessionId || !hasMessages || isRunning;
   forkPurposeSelect.disabled = !interactive || !currentSessionId;
   forkSessionBtn.disabled = !interactive || !currentSessionId;
 }
@@ -1471,6 +1833,7 @@ function sendMessage() {
   hasMessages = true;
 
   inputEl.value = "";
+  setRunHint("");
 
   // Toggle controls
   isRunning = true;
@@ -1491,6 +1854,8 @@ inputEl.addEventListener("keydown", (e) => {
 stopBtn.onclick = () => {
   if (wsSafeSend(JSON.stringify({ type: "abort" }))) {
     toolStatusEl.textContent = "Stopping…";
+    // Low-noise hint: after stopping, the latest turn can be edited or deleted.
+    setRunHint("You can edit or delete your latest message.");
   }
 };
 
@@ -1624,6 +1989,38 @@ forkSessionBtn.onclick = () => {
   setConnStatus("running", "Forking...");
   toolStatusEl.textContent = `Creating ${purpose} fork...`;
 };
+
+// Delete latest completed user turn from the active branch. Backend moves the Pi leaf back and
+// returns session_updated + a refreshed transcript; the server reply drives the re-render.
+deleteLatestBtn.onclick = () => {
+  if (isRunning || !currentSessionId || !hasMessages) return;
+  showConfirm(
+    "Delete your latest message and its reply? The active branch moves back one turn.",
+    doDeleteLatest
+  );
+};
+
+function doDeleteLatest() {
+  if (!wsSafeSend(JSON.stringify({ type: "delete_latest" }))) return;
+  isRunning = true;
+  setControlsEnabled(false);
+  setConnStatus("running", "Deleting...");
+  toolStatusEl.textContent = "Deleting latest turn...";
+  setRunHint("");
+}
+
+// Low-noise composer hint. Shown after Stop/interrupted; cleared on any next send action.
+function setRunHint(text) {
+  if (!text) {
+    runHintEl.classList.add("hidden");
+    runHintEl.textContent = "";
+    runHintEl.title = "";
+    return;
+  }
+  runHintEl.textContent = text;
+  runHintEl.title = text;
+  runHintEl.classList.remove("hidden");
+}
 
 // New session — confirm if chat has messages
 newSessionBtn.onclick = () => {

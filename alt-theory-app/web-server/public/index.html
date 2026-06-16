@@ -11,7 +11,25 @@
   <div id="mobile-bar">
     <button id="toggle-left" class="panel-toggle" title="Session / Config">&#9776;</button>
     <span class="mobile-title">Alt Theory</span>
-    <button id="toggle-right" class="panel-toggle" title="Runtime Inspector">&#9881;</button>
+    <div class="mobile-bar-actions">
+      <span id="auth-badge-mobile" class="auth-badge hidden" title=""></span>
+      <button id="toggle-right" class="panel-toggle" title="Runtime Inspector">&#9881;</button>
+    </div>
+  </div>
+
+  <!-- Login gate overlay -->
+  <div id="login-overlay" class="overlay-screen hidden">
+    <div class="overlay-card">
+      <h1 class="overlay-title">Sign in</h1>
+      <p id="login-error" class="overlay-error hidden"></p>
+      <form id="login-form" autocomplete="off">
+        <label for="login-account" class="overlay-label">Account</label>
+        <input id="login-account" type="text" autocomplete="username" required>
+        <label for="login-code" class="overlay-label">Login code</label>
+        <input id="login-code" type="password" autocomplete="current-password" required>
+        <button type="submit" id="login-submit">Sign in</button>
+      </form>
+    </div>
   </div>
 
   <div id="app">
@@ -21,10 +39,19 @@
         <div class="panel-header">
           <h1>Alt Theory</h1>
           <div class="header-actions">
+            <span id="auth-badge" class="auth-badge hidden" title=""></span>
+            <button id="debug-toggle" class="icon-btn debug-only hidden" title="Show debug/inspector panels for this browser">Debug</button>
+            <button id="logout-btn" class="icon-btn hidden" title="Sign out">Sign out</button>
             <button id="collapse-left" class="icon-btn desktop-only" title="Collapse sessions">&#9664;</button>
             <button id="new-session-btn" title="New session" disabled>+ New</button>
           </div>
         </div>
+      </div>
+
+      <!-- Participant role-condition display (participant view only) -->
+      <div class="panel-section role-condition-section hidden">
+        <span id="role-condition-label" class="section-label">Condition</span>
+        <div id="role-condition-display" class="role-condition-display small-text">—</div>
       </div>
 
       <div class="panel-section" id="session-browser-section">
@@ -69,8 +96,18 @@
       <div id="messages"></div>
       <div id="composer">
         <div id="tool-status"></div>
+        <div id="run-hint" class="run-hint hidden" title=""></div>
+        <div id="visibility-bar" class="visibility-bar hidden">
+          <label class="visibility-toggle">
+            <input type="checkbox" id="private-toggle">
+            <span>Private session</span>
+          </label>
+          <span id="private-badge" class="private-badge hidden" title="Private sessions and files are deleted after 7 inactive days. Download anything you want to keep.">Private</span>
+          <span id="private-expiry-hint" class="private-expiry-hint small-text hidden"></span>
+        </div>
         <div id="lineage-actions">
           <button id="revise-latest" title="Replace the latest user turn without creating a branch" disabled>Revise latest</button>
+          <button id="delete-latest" title="Delete the latest completed user turn from the active branch" disabled>Delete latest</button>
           <select id="fork-purpose" title="Fork workspace behavior" disabled>
             <option value="collaboration">Collaboration</option>
             <option value="comparison">Comparison</option>
