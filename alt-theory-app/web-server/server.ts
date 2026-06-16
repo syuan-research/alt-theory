@@ -190,7 +190,15 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   const authSessions = new AuthSessionManager(dataDir);
 
   app.use(express.json({ limit: "600kb" }));
-  app.use(express.static(publicDir));
+  app.use(
+    express.static(publicDir, {
+      etag: false,
+      lastModified: false,
+      setHeaders: (res) => {
+        res.setHeader("Cache-Control", "no-store");
+      },
+    })
+  );
   app.get("/vendor/marked.js", (_req, res) => {
     res.sendFile(resolve(PROJECT_ROOT, "node_modules", "marked", "lib", "marked.umd.js"));
   });
