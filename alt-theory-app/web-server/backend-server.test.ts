@@ -1158,6 +1158,26 @@ test("session REST routes filter participant access and preserve researcher acce
       },
     }
   );
+  const p01PrivateSession = await service.createSession(
+    { rolePresetSlug: "default", kbDomain: "ep-core", soulSlug: "soul-latest" },
+    {
+      ownerAccountId: "p01",
+      roleCondition: "conceptual-theory",
+      visibility: "private",
+      consentSnapshot: {
+        researcherReadable: true,
+        quoteAfterAnonymization: true,
+        privateOverride: false,
+      },
+    }
+  );
+  const p01PrivateWorkspacePath =
+    service.getManifest(p01PrivateSession.sessionId).sessionCwd;
+  writeFileSync(
+    join(p01PrivateWorkspacePath, "private-note.md"),
+    "private workspace note",
+    "utf-8"
+  );
   const p02Session = await service.createSession(
     { rolePresetSlug: "default", kbDomain: "ep-core", soulSlug: "soul-latest" },
     {
@@ -1177,6 +1197,7 @@ test("session REST routes filter participant access and preserve researcher acce
   });
   for (const sessionId of [
     p01Session.sessionId,
+    p01PrivateSession.sessionId,
     p02Session.sessionId,
     ownerlessSession.sessionId,
   ]) {
@@ -1233,7 +1254,7 @@ test("session REST routes filter participant access and preserve researcher acce
     const participantListJson = await participantList.json();
     assert.deepEqual(
       participantListJson.sessions.map((session: any) => session.sessionId),
-      [p01Session.sessionId]
+      [p01PrivateSession.sessionId, p01Session.sessionId]
     );
     assert.equal(
       participantListJson.sessions[0].roleCondition,
@@ -1245,6 +1266,36 @@ test("session REST routes filter participant access and preserve researcher acce
       { headers: { Cookie: participantCookie } }
     );
     assert.equal(ownDetail.status, 200);
+    const ownPrivateDetail = await fetch(
+      `${baseUrl}/api/sessions/${p01PrivateSession.sessionId}`,
+      { headers: { Cookie: participantCookie } }
+    );
+    assert.equal(ownPrivateDetail.status, 200);
+    const privateDownload = await fetch(
+      `${baseUrl}/api/sessions/${p01PrivateSession.sessionId}/files/download?root=workspace&path=private-note.md`,
+      { headers: { Cookie: participantCookie } }
+    );
+    assert.equal(privateDownload.status, 200);
+    assert.equal(await privateDownload.text(), "private workspace note");
+    const privateTraversal = await fetch(
+      `${baseUrl}/api/sessions/${p01PrivateSession.sessionId}/files/download?root=workspace&path=../session.json`,
+      { headers: { Cookie: participantCookie } }
+    );
+    assert.equal(privateTraversal.status, 400);
+    const privateDelete = await fetch(
+      `${baseUrl}/api/sessions/${p01PrivateSession.sessionId}/files/content?root=workspace&path=private-note.md`,
+      {
+        method: "DELETE",
+        headers: { Cookie: participantCookie },
+      }
+    );
+    assert.equal(privateDelete.status, 200);
+    assert.equal(
+      existsSync(
+        join(p01PrivateWorkspacePath, "private-note.md")
+      ),
+      false
+    );
     const otherDetail = await fetch(
       `${baseUrl}/api/sessions/${p02Session.sessionId}`,
       { headers: { Cookie: participantCookie } }
@@ -1261,12 +1312,29 @@ test("session REST routes filter participant access and preserve researcher acce
       headers: { Cookie: researcherCookie },
     });
     const researcherListJson = await researcherList.json();
-    assert.equal(researcherListJson.sessions.length, 3);
+    assert.equal(researcherListJson.sessions.length, 4);
     assert.ok(
       researcherListJson.sessions.some(
         (session: any) => session.sessionId === ownerlessSession.sessionId
       )
     );
+    assert.ok(
+      researcherListJson.sessions.some(
+        (session: any) =>
+          session.sessionId === p01PrivateSession.sessionId &&
+          session.visibility === "private"
+      )
+    );
+    const researcherPrivateDetail = await fetch(
+      `${baseUrl}/api/sessions/${p01PrivateSession.sessionId}`,
+      { headers: { Cookie: researcherCookie } }
+    );
+    assert.equal(researcherPrivateDetail.status, 403);
+    const researcherPrivateFile = await fetch(
+      `${baseUrl}/api/sessions/${p01PrivateSession.sessionId}/files/content?root=workspace&path=private-note.md`,
+      { headers: { Cookie: researcherCookie } }
+    );
+    assert.equal(researcherPrivateFile.status, 403);
     const researcherOwnerlessDetail = await fetch(
       `${baseUrl}/api/sessions/${ownerlessSession.sessionId}`,
       { headers: { Cookie: researcherCookie } }
@@ -1604,6 +1672,17 @@ test("WebSocket participant first send creates an owned role-conditioned session
       draft.payload.rolePresetSlug,
       "role-conceptual-theory-companion"
     );
+    assert.equal(draft.payload.visibility, "research");
+
+    const privateDraftPromise = waitForType(ws, "session_draft");
+    ws.send(
+      JSON.stringify({
+        type: "switch_visibility",
+        payload: { visibility: "private" },
+      })
+    );
+    const privateDraft = await privateDraftPromise;
+    assert.equal(privateDraft.payload.visibility, "private");
 
     const openedPromise = waitForType(ws, "session_opened");
     ws.send(JSON.stringify({ type: "prompt", payload: "hello" }));
@@ -1616,10 +1695,12 @@ test("WebSocket participant first send creates an owned role-conditioned session
     );
     assert.equal(sessionJson.ownerAccountId, "p01");
     assert.equal(sessionJson.roleCondition, "conceptual-theory");
+    assert.equal(sessionJson.visibility, "private");
+    assert.match(sessionJson.retentionDueAt, /^\d{4}-\d{2}-\d{2}T/);
     assert.deepEqual(sessionJson.consentSnapshot, {
-      researcherReadable: true,
+      researcherReadable: false,
       quoteAfterAnonymization: false,
-      privateOverride: false,
+      privateOverride: true,
     });
     ws.close();
   } finally {

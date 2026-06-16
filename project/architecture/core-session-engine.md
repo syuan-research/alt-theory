@@ -69,6 +69,11 @@ and Pi adapter prompt templates from `agent-assets/prompts/pi/`.
   REST APIs.
 - **Role condition**: participant/study condition stored separately from
   `projectId` and mapped to a role preset slug at WebSocket draft creation.
+- **Private session**: session with `visibility: private` in
+  `records/session.json`. It is owner-readable but blocked from normal
+  researcher/admin detail and file routes.
+- **Inactive retention**: private sessions are due for hard deletion at
+  `lastActivityAt + 7 days`; opening or reading detail does not refresh it.
 
 ## 1. Structure
 
@@ -95,6 +100,7 @@ flowchart LR
   REST --> Projects[projects.ts]
   REST --> Store[session-store.ts]
   REST --> SessionFiles[session records/workspace text files]
+  Store --> Retention[session-retention.ts]
 ```
 
 Code anchors:
@@ -127,6 +133,8 @@ Code anchors:
   foundation records and branch-aware path helpers.
 - `alt-theory-app/web-server/session-store.ts`: historical session catalog,
   detail inspection, v0.4/legacy projection, Pi JSONL discovery, and bounded preview.
+- `alt-theory-app/web-server/session-retention.ts`: private retention due-date
+  calculation, activity refresh, and explicit expired-private-session cleanup.
 - `alt-theory-app/web-server/websocket-protocol.ts`: shared transport types.
 
 ## 2. Session Creation
@@ -151,7 +159,9 @@ Code anchors:
    in the manifest as `runLabel` and `testBatch`.
 9. For participant auth contexts, `records/session.json` also records
    `ownerAccountId`, `roleCondition`, `visibility`, `consentSnapshot`,
-   `lastActivityAt`, and `retentionDueAt`.
+   `lastActivityAt`, and `retentionDueAt`. Private creation forces
+   `consentSnapshot.privateOverride: true` and calculates the first
+   `retentionDueAt` from creation activity.
 
 ## 2.1 Session Catalog And Open
 
@@ -169,6 +179,11 @@ routes require app identity. Participant accounts see only sessions whose
 ownerless researcher workbench sessions and participant-owned sessions. When no
 account store is configured, anonymous access keeps the old local workbench
 behavior for v0.4 compatibility.
+
+Private sessions remain visible as summaries for operations, but normal
+detail/transcript/file content access is owner-only. Researcher/admin REST
+detail and file routes return a private-content error instead of exposing the
+Pi transcript or workspace files.
 
 WebSocket `open_session` makes an existing session the current live session for
 that connection. The server reads the detail record, opens the existing Pi JSONL
@@ -313,9 +328,11 @@ and does not replace the Alt Theory `sessionId`.
 
 `records/session.json` also carries v0.5 pilot metadata when present:
 `ownerAccountId`, `roleCondition`, `visibility`, `consentSnapshot`,
-`lastActivityAt`, and `retentionDueAt`. The private-retention cleanup behavior
-is a later feature; this engine currently persists the fields and enforces
-owner-based REST filtering.
+`lastActivityAt`, and `retentionDueAt`. Meaningful prompts refresh private
+`lastActivityAt` and `retentionDueAt`; session open/detail reads do not.
+`session-retention.ts` provides explicit cleanup for expired private sessions:
+it removes history, workspace, branch workspace, and non-tombstone records while
+leaving `records/deleted.json`.
 
 Ordinary runs append accepted and terminal snapshots to `records/runs.jsonl`.
 Each run maps `sessionId`, `branchId`, `turnId`, `revisionId`, and `runId` to
@@ -367,6 +384,8 @@ REST:
 - `GET /api/sessions/{sessionId}/files`
 - `GET /api/sessions/{sessionId}/files/content`
 - `PUT /api/sessions/{sessionId}/files/content`
+- `GET /api/sessions/{sessionId}/files/download?root=workspace&path=...`
+- `DELETE /api/sessions/{sessionId}/files/content`
 
 Asset discovery routes return sorted `{ slug, displayName }` arrays without
 filesystem paths. Session list returns path-free summaries; session detail may
@@ -385,19 +404,24 @@ Session file routes expose only `.md`, `.txt`, and `.json` files under a
 session's `records/` or `workspace/` roots. Requests must resolve inside the
 selected root, and large files are rejected. The routes support lightweight
 researcher record inspection/editing, not arbitrary filesystem browsing.
-When accounts are configured, these routes use the same owner/admin filter as
-session catalog/detail.
+When accounts are configured, these routes use content access filtering:
+participant accounts can access only their own sessions, and private session
+content is owner-only. The download and delete routes are intentionally
+workspace-only.
 
 WebSocket:
 
 - server: `session_draft`
 - server: `session_metadata`, `session_metrics`
 - client: `get_session_metadata`, `get_session_metrics`, `open_session`
+- client: `switch_visibility`
 - client: `revise_latest`, `fork_session`
 
 `session_draft` contains only selector state and no session ID. The browser may
 enable input/config controls in draft, but records, paths, and metrics remain
-unavailable until materialization.
+unavailable until materialization. Draft visibility can be switched between
+`research` and `private` before first prompt; after materialization the current
+backend rejects visibility switching.
 
 For participant WebSocket connections, the draft role preset is derived from
 the account's `defaultRoleCondition`. The built-in mapping currently includes
@@ -475,9 +499,8 @@ is configured; they are not a billing claim.
   persist in the data directory, but browser auth tokens are in memory and
   require re-login after server restart. There is no self-registration or
   global admin UI.
-- Private-session retention is not implemented in this feature. The session
-  header fields exist for the next feature, but private hard deletion and
-  participant workspace download/delete remain pending.
+- Private-session cleanup is explicit backend logic. There is no background
+  scheduler, encryption layer, or broad participant file manager.
 - Model selector UI remains deferred. Custom instruction loading and visual
   Alt Theory skill invocation are implemented; the normal skill picker excludes
   Pi global/project debug skills.
@@ -497,6 +520,12 @@ is configured; they are not a billing claim.
 
 ## Change Log
 
+- 2026-06-16: Added private session retention and workspace-file foundation.
+  Private WebSocket drafts can materialize owner-scoped private sessions,
+  private prompts refresh inactive retention, detail reads do not, researcher
+  normal detail/file routes cannot read private content, explicit cleanup
+  hard-deletes expired private evidence with a tombstone, and workspace
+  download/delete routes are constrained to owner-visible workspace files.
 - 2026-06-16: Added v0.5 pilot account/auth foundation. The backend now has
   data-dir account records, login/logout/me routes, HttpOnly browser auth,
   owner/role-condition/consent metadata in `records/session.json`,

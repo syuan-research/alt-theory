@@ -6,6 +6,7 @@ import {
   readFileSync,
   renameSync,
   statSync,
+  unlinkSync,
   writeFileSync,
 } from "fs";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from "path";
@@ -260,6 +261,27 @@ export function writeSessionTextFile(
     throw error;
   }
   return readSessionTextFile(dataDir, sessionId, rootName, target.relativePath);
+}
+
+export function deleteSessionTextFile(
+  dataDir: string,
+  sessionId: string,
+  rootName: string,
+  requestedPath: string
+): SessionTextFile {
+  const target = resolveSessionTextFile(dataDir, sessionId, rootName, requestedPath);
+  const stats = statSync(target.path);
+  if (!stats.isFile()) {
+    throw new Error("Requested path is not a file");
+  }
+  const deleted: SessionTextFile = {
+    root: target.root,
+    path: target.relativePath,
+    size: stats.size,
+    updatedAt: stats.mtime.toISOString(),
+  };
+  unlinkSync(target.path);
+  return deleted;
 }
 
 function readSessionSummary(

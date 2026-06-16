@@ -450,6 +450,78 @@ test("SessionService creates owned sessions with role condition and consent snap
   }
 });
 
+test("SessionService creates private sessions and refreshes private activity on prompt", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const snapshot = await service.createSession(
+    {
+      rolePresetSlug: "default",
+      kbDomain: "ep-core",
+      soulSlug: "soul-latest",
+    },
+    {
+      ownerAccountId: "p01",
+      roleCondition: "conceptual-theory",
+      visibility: "private",
+      consentSnapshot: {
+        researcherReadable: true,
+        quoteAfterAnonymization: true,
+        privateOverride: false,
+      },
+    }
+  );
+  const managed = (
+    service as unknown as {
+      sessions: Map<string, {
+        session: {
+          prompt(text: string): Promise<void>;
+          sessionManager: { appendMessage(message: unknown): string };
+        };
+      }>;
+    }
+  ).sessions.get(snapshot.sessionId)!;
+  managed.session.prompt = async (text: string) => {
+    managed.session.sessionManager.appendMessage({
+      role: "user",
+      content: [{ type: "text", text }],
+      timestamp: Date.now(),
+    });
+  };
+
+  try {
+    const manifest = service.getManifest(snapshot.sessionId);
+    const sessionPath = join(manifest.recordsDir, "session.json");
+    const createdRecord = JSON.parse(readFileSync(sessionPath, "utf-8"));
+    assert.equal(createdRecord.visibility, "private");
+    assert.equal(createdRecord.consentSnapshot.privateOverride, true);
+    assert.match(createdRecord.retentionDueAt, /^\d{4}-\d{2}-\d{2}T/);
+
+    const stale = {
+      ...createdRecord,
+      lastActivityAt: "2026-06-01T00:00:00.000Z",
+      retentionDueAt: "2026-06-08T00:00:00.000Z",
+    };
+    writeFileSync(sessionPath, `${JSON.stringify(stale, null, 2)}\n`, "utf-8");
+    assert.equal(
+      readSessionDetail(fixture.dataDir, snapshot.sessionId)?.session.visibility,
+      "private"
+    );
+    const afterDetailRead = JSON.parse(readFileSync(sessionPath, "utf-8"));
+    assert.equal(afterDetailRead.lastActivityAt, stale.lastActivityAt);
+    assert.equal(afterDetailRead.retentionDueAt, stale.retentionDueAt);
+
+    const run = service.runPrompt(snapshot.sessionId, "refresh private");
+    await run.completion;
+    const refreshed = JSON.parse(readFileSync(sessionPath, "utf-8"));
+    assert.equal(refreshed.visibility, "private");
+    assert.equal(refreshed.consentSnapshot.privateOverride, true);
+    assert.notEqual(refreshed.lastActivityAt, stale.lastActivityAt);
+    assert.notEqual(refreshed.retentionDueAt, stale.retentionDueAt);
+  } finally {
+    await service.disposeAll();
+  }
+});
+
 test("SessionService switches role and soul inside the same materialized session", async () => {
   const fixture = setupFixture();
   const service = createTestService(fixture);

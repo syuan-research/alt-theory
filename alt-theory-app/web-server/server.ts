@@ -36,6 +36,7 @@ import type {
 } from "./websocket-protocol.js";
 import {
   getSessionRootForRequest,
+  deleteSessionTextFile,
   listSessionTextFiles,
   listSessionSummaries,
   readSessionTextFile,
@@ -285,6 +286,10 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       res.status(404).json({ error: `Unknown session id: ${sessionId}` });
       return;
     }
+    if (!canAccessSessionContent(auth, detail.session)) {
+      res.status(403).json({ error: "Session content is private" });
+      return;
+    }
     res.json(detail);
   });
   app.delete("/api/sessions/:sessionId", (req, res) => {
@@ -305,6 +310,10 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       res.status(404).json({ error: `Unknown session id: ${sessionId}` });
       return;
     }
+    if (!canAccessSessionContent(auth, detail.session)) {
+      res.status(403).json({ error: "Session content is private" });
+      return;
+    }
     try {
       res.json({ deleted: softDeleteSession(dataDir, sessionId) });
     } catch (error) {
@@ -317,7 +326,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     const sessionId = req.params.sessionId;
     const rootName =
       typeof req.query.root === "string" ? req.query.root : undefined;
-    if (!requireSessionRestAccess(req, res, sessionId)) return;
+    if (!requireSessionRestContentAccess(req, res, sessionId)) return;
     try {
       res.json(listSessionTextFiles(dataDir, sessionId, rootName));
     } catch (error) {
@@ -329,7 +338,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     const rootName = typeof req.query.root === "string" ? req.query.root : "";
     const requestedPath =
       typeof req.query.path === "string" ? req.query.path : "";
-    if (!requireSessionRestAccess(req, res, sessionId)) return;
+    if (!requireSessionRestContentAccess(req, res, sessionId)) return;
     try {
       res.json(readSessionTextFile(dataDir, sessionId, rootName, requestedPath));
     } catch (error) {
@@ -351,7 +360,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       res.status(400).json({ error: "root, path, and content are required" });
       return;
     }
-    if (!requireSessionRestAccess(req, res, sessionId)) return;
+    if (!requireSessionRestContentAccess(req, res, sessionId)) return;
     try {
       res.json(
         writeSessionTextFile(
@@ -362,6 +371,61 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           body.content
         )
       );
+    } catch (error) {
+      sendFileApiError(res, error);
+    }
+  });
+  app.get("/api/sessions/:sessionId/files/download", (req, res) => {
+    const sessionId = req.params.sessionId;
+    const rootName = typeof req.query.root === "string" ? req.query.root : "";
+    const requestedPath =
+      typeof req.query.path === "string" ? req.query.path : "";
+    if (rootName !== "workspace") {
+      res.status(400).json({ error: "Only workspace files can be downloaded" });
+      return;
+    }
+    if (!requireSessionRestContentAccess(req, res, sessionId)) return;
+    try {
+      const file = readSessionTextFile(
+        dataDir,
+        sessionId,
+        rootName,
+        requestedPath
+      );
+      res.attachment(file.path);
+      res.type("text/plain").send(file.content);
+    } catch (error) {
+      sendFileApiError(res, error);
+    }
+  });
+  app.delete("/api/sessions/:sessionId/files/content", (req, res) => {
+    const sessionId = req.params.sessionId;
+    const rootName =
+      typeof req.query.root === "string"
+        ? req.query.root
+        : typeof req.body?.root === "string"
+          ? req.body.root
+          : "";
+    const requestedPath =
+      typeof req.query.path === "string"
+        ? req.query.path
+        : typeof req.body?.path === "string"
+          ? req.body.path
+          : "";
+    if (rootName !== "workspace") {
+      res.status(400).json({ error: "Only workspace files can be deleted" });
+      return;
+    }
+    if (!requireSessionRestContentAccess(req, res, sessionId)) return;
+    try {
+      res.json({
+        deleted: deleteSessionTextFile(
+          dataDir,
+          sessionId,
+          rootName,
+          requestedPath
+        ),
+      });
     } catch (error) {
       sendFileApiError(res, error);
     }
@@ -411,7 +475,20 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     return true;
   }
 
-  function requireSessionRestAccess(
+  function canAccessSessionContent(
+    auth: AuthContext,
+    session: SessionSummary
+  ): boolean {
+    if (session.visibility === "private") {
+      return Boolean(auth.accountId) && session.ownerAccountId === auth.accountId;
+    }
+    if (auth.role === "participant") {
+      return Boolean(auth.accountId) && session.ownerAccountId === auth.accountId;
+    }
+    return true;
+  }
+
+  function requireSessionRestContentAccess(
     req: express.Request,
     res: Response,
     sessionId: string
@@ -430,6 +507,10 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     const detail = readSessionDetail(dataDir, sessionId);
     if (!detail || !canAccessSessionSummary(auth, detail.session)) {
       res.status(404).json({ error: `Unknown session id: ${sessionId}` });
+      return false;
+    }
+    if (!canAccessSessionContent(auth, detail.session)) {
+      res.status(403).json({ error: "Session content is private" });
       return false;
     }
     return true;
@@ -550,18 +631,37 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     return rolePresetSlug;
   }
 
-  function sessionCreationMetadataForAuth(auth: AuthContext) {
-    if (auth.role !== "participant" || !auth.accountId) return {};
+  function sessionCreationMetadataForAuth(
+    auth: AuthContext,
+    visibility: "research" | "private"
+  ) {
+    if (auth.role !== "participant" || !auth.accountId) {
+      return {
+        visibility,
+        consentSnapshot:
+          visibility === "private"
+            ? {
+                researcherReadable: false,
+                quoteAfterAnonymization: false,
+                privateOverride: true,
+              }
+            : null,
+      };
+    }
     return {
       ownerAccountId: auth.accountId,
       roleCondition: auth.defaultRoleCondition,
-      visibility: "research" as const,
+      visibility,
       consentSnapshot: {
-        researcherReadable: Boolean(auth.defaultConsent?.researcherReadable),
-        quoteAfterAnonymization: Boolean(
-          auth.defaultConsent?.quoteAfterAnonymization
-        ),
-        privateOverride: false,
+        researcherReadable:
+          visibility === "private"
+            ? false
+            : Boolean(auth.defaultConsent?.researcherReadable),
+        quoteAfterAnonymization:
+          visibility === "private"
+            ? false
+            : Boolean(auth.defaultConsent?.quoteAfterAnonymization),
+        privateOverride: visibility === "private",
       },
     };
   }
@@ -572,13 +672,15 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
 
   function sendDraft(
     send: (msg: ServerMessage) => void,
-    selectors: SessionSelectors
+    selectors: SessionSelectors,
+    visibility: "research" | "private"
   ): void {
     send({
       type: "session_draft",
       payload: {
         status: "draft",
         projectId: selectors.projectId ?? null,
+        visibility,
         currentDomain: selectors.kbDomain,
         rolePresetSlug: selectors.rolePresetSlug,
         profileSlug: selectors.rolePresetSlug,
@@ -594,6 +696,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     let detach = () => {};
     let closed = false;
     let draftSelectors: SessionSelectors;
+    let draftVisibility: "research" | "private" = "research";
     let initialError: unknown = null;
     try {
       draftSelectors = createDraftSelectorsForAuth(auth);
@@ -630,7 +733,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     if (initialError) {
       sendServiceError(send, initialError);
     }
-    sendDraft(send, draftSelectors);
+    sendDraft(send, draftSelectors, draftVisibility);
 
     ws.on("message", async (data) => {
       let msg: ClientMessage;
@@ -651,7 +754,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               }
               const initial = await sessionService.createSession(
                 draftSelectors,
-                sessionCreationMetadataForAuth(auth)
+                sessionCreationMetadataForAuth(auth, draftVisibility)
               );
               if (closed) return;
               attachToSession(initial.sessionId);
@@ -675,7 +778,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         }
         case "abort":
           if (!attachedSessionId) {
-            sendDraft(send, draftSelectors);
+            sendDraft(send, draftSelectors, draftVisibility);
             break;
           }
           try {
@@ -691,7 +794,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               break;
             }
             draftSelectors = { ...draftSelectors, kbDomain: msg.payload.domain };
-            sendDraft(send, draftSelectors);
+            sendDraft(send, draftSelectors, draftVisibility);
             break;
           }
           try {
@@ -708,7 +811,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               : optionalSlug(msg.payload.profileSlug);
           if (!attachedSessionId) {
             draftSelectors = { ...draftSelectors, rolePresetSlug };
-            sendDraft(send, draftSelectors);
+            sendDraft(send, draftSelectors, draftVisibility);
             break;
           }
           const selectors = sessionService.getSelectors(attachedSessionId);
@@ -728,7 +831,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           const soulSlug = optionalSlug(msg.payload.soulSlug);
           if (!attachedSessionId) {
             draftSelectors = { ...draftSelectors, soulSlug };
-            sendDraft(send, draftSelectors);
+            sendDraft(send, draftSelectors, draftVisibility);
             break;
           }
           const selectors = sessionService.getSelectors(attachedSessionId);
@@ -750,7 +853,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           );
           if (!attachedSessionId) {
             draftSelectors = { ...draftSelectors, customInstructionRef };
-            sendDraft(send, draftSelectors);
+            sendDraft(send, draftSelectors, draftVisibility);
             break;
           }
           const selectors = sessionService.getSelectors(attachedSessionId);
@@ -793,7 +896,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
                   }
                 : {}),
             };
-            sendDraft(send, draftSelectors);
+            sendDraft(send, draftSelectors, draftVisibility);
             break;
           }
           try {
@@ -801,6 +904,27 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           } catch (error) {
             sendServiceError(send, error);
           }
+          break;
+        }
+        case "switch_visibility": {
+          if (
+            msg.payload.visibility !== "research" &&
+            msg.payload.visibility !== "private"
+          ) {
+            sendError(send, new Error("Invalid visibility"));
+            break;
+          }
+          if (attachedSessionId) {
+            sendError(
+              send,
+              new Error(
+                "Session visibility can only be changed before the first prompt"
+              )
+            );
+            break;
+          }
+          draftVisibility = msg.payload.visibility;
+          sendDraft(send, draftSelectors, draftVisibility);
           break;
         }
         case "invoke_skill": {
@@ -812,7 +936,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               }
               const initial = await sessionService.createSession(
                 draftSelectors,
-                sessionCreationMetadataForAuth(auth)
+                sessionCreationMetadataForAuth(auth, draftVisibility)
               );
               if (closed) return;
               attachToSession(initial.sessionId);
@@ -876,7 +1000,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           detach();
           detach = () => {};
           attachedSessionId = null;
-          sendDraft(send, draftSelectors);
+          draftVisibility = "research";
+          sendDraft(send, draftSelectors, draftVisibility);
           break;
         }
         case "open_session": {
@@ -901,7 +1026,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         }
         case "get_session_metadata":
           if (!attachedSessionId) {
-            sendDraft(send, draftSelectors);
+            sendDraft(send, draftSelectors, draftVisibility);
             break;
           }
           send({
@@ -911,7 +1036,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           break;
         case "get_session_metrics":
           if (!attachedSessionId) {
-            sendDraft(send, draftSelectors);
+            sendDraft(send, draftSelectors, draftVisibility);
             break;
           }
           send({

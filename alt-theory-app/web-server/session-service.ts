@@ -38,6 +38,10 @@ import {
   writeSessionHeader,
 } from "./session-records.js";
 import {
+  calculateRetentionDueAt,
+  refreshSessionRetention,
+} from "./session-retention.js";
+import {
   appendConfigEvent,
   buildEffectiveConfig,
 } from "./config-events.js";
@@ -491,6 +495,7 @@ export class SessionService {
     const revisionId = formatCounter("rev", managed.nextRevisionIndex++);
     const runId = formatCounter("run", managed.nextRunIndex++);
     const acceptedAt = new Date().toISOString();
+    refreshSessionRetention(managed.manifest.recordsDir, new Date(acceptedAt));
     const beforeEntryIds = new Set(
       managed.session.sessionManager.getEntries().map((entry) => entry.id)
     );
@@ -702,6 +707,16 @@ export class SessionService {
       testBatch: this.config.testBatch,
       readOnly: this.config.readOnly,
     });
+    const visibility = metadata.visibility ?? "research";
+    const consentSnapshot =
+      visibility === "private"
+        ? {
+            researcherReadable: metadata.consentSnapshot?.researcherReadable ?? false,
+            quoteAfterAnonymization:
+              metadata.consentSnapshot?.quoteAfterAnonymization ?? false,
+            privateOverride: true,
+          }
+        : metadata.consentSnapshot ?? null;
     writeFoundationRecords({
       sessionRoot: sessionDirs.sessionRoot,
       recordsDir: sessionDirs.recordsDir,
@@ -709,8 +724,13 @@ export class SessionService {
       projectId: selectors.projectId ?? null,
       ownerAccountId: metadata.ownerAccountId ?? null,
       roleCondition: metadata.roleCondition ?? null,
-      visibility: metadata.visibility ?? "research",
-      consentSnapshot: metadata.consentSnapshot ?? null,
+      visibility,
+      consentSnapshot,
+      lastActivityAt: result.manifest.createdAt,
+      retentionDueAt:
+        visibility === "private"
+          ? calculateRetentionDueAt(result.manifest.createdAt)
+          : null,
     });
 
     const managed = this.createManaged({
@@ -728,6 +748,7 @@ export class SessionService {
         kbDomain: selectors.kbDomain,
         rolePresetSlug: selectors.rolePresetSlug,
         soulSlug: selectors.soulSlug,
+        visibility,
         model: managed.manifest.model,
         provider: managed.manifest.provider,
       },

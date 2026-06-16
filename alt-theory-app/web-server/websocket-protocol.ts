@@ -15,6 +15,7 @@ export interface SessionSnapshot {
   projectId: string | null;
   branchId?: string;
   status: "idle" | "running" | "error";
+  visibility?: "research" | "private";
   currentDomain: string;
   rolePresetSlug: string | null;
   /** Deprecated compatibility field; use rolePresetSlug. */
@@ -29,6 +30,7 @@ export interface SessionSnapshot {
 export interface SessionDraftSnapshot {
   status: "draft";
   projectId: string | null;
+  visibility: "research" | "private";
   currentDomain: string;
   rolePresetSlug: string | null;
   /** Deprecated compatibility field; use rolePresetSlug. */
@@ -85,6 +87,7 @@ export type ClientMessage =
       payload: { customInstructionRef: string | null };
     }
   | { type: "switch_project"; payload: { projectId: string | null } }
+  | { type: "switch_visibility"; payload: { visibility: "research" | "private" } }
   | {
       type: "invoke_skill";
       payload: { skillName: string; userText?: string };

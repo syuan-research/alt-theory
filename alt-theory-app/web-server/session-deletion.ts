@@ -7,6 +7,7 @@ export interface DeletedSessionRecord {
   recordType: "deleted-session";
   sessionId: string;
   deletedAt: string;
+  reason?: "user_deleted" | "private_retention_expired";
 }
 
 export function readDeletedSessionRecord(
@@ -29,7 +30,11 @@ export function readDeletedSessionRecord(
 
 export function writeDeletedSessionRecord(
   recordsDir: string,
-  sessionId: string
+  sessionId: string,
+  options: {
+    deletedAt?: string;
+    reason?: DeletedSessionRecord["reason"];
+  } = {}
 ): DeletedSessionRecord {
   const existing = readDeletedSessionRecord(recordsDir);
   if (existing) return existing;
@@ -37,7 +42,8 @@ export function writeDeletedSessionRecord(
     schemaVersion: 1,
     recordType: "deleted-session",
     sessionId,
-    deletedAt: new Date().toISOString(),
+    deletedAt: options.deletedAt ?? new Date().toISOString(),
+    ...(options.reason ? { reason: options.reason } : {}),
   };
   writeJsonAtomic(join(recordsDir, "deleted.json"), record);
   return record;
