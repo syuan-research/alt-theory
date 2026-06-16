@@ -91,6 +91,11 @@ html, body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+body.auth-pending #app,
+body.auth-pending #mobile-bar {
+  visibility: hidden;
+}
+
 /* --- Mobile Bar (hidden on desktop) --- */
 
 #mobile-bar {

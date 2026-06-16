@@ -353,7 +353,7 @@ async function resolveAuthAndApply() {
   if (role === "anonymous" && accountsConfigured) {
     // Pilot deployment with configured accounts: require app-level login.
     setLoginGateActive(true);
-    applyViewMode("researcher"); // underlying shell stays neutral but gated
+    document.body.classList.remove("auth-pending");
     return;
   }
   setLoginGateActive(false);
@@ -363,6 +363,7 @@ async function resolveAuthAndApply() {
     baseMode === "participant" &&
     localStorage.getItem(DEBUG_STORAGE_KEY) === "1";
   applyViewMode(baseMode);
+  document.body.classList.remove("auth-pending");
 }
 
 // Backend returns 401 on session routes when accounts are configured, even for anonymous.
@@ -1133,21 +1134,23 @@ function appendChatMessage(role, text, options = {}) {
       actions.appendChild(delBtn);
     }
 
-    const branchBtn = document.createElement("button");
-    branchBtn.className = "msg-btn";
-    branchBtn.textContent = "⑂ Branch";
-    branchBtn.title = "Create a branch starting from this message";
-    branchBtn.onclick = (e) => {
-      e.stopPropagation();
-      if (isRunning || !currentSessionId) return;
-      const purpose = forkPurposeSelect.value;
-      showConfirm(
-        "Create a branch starting from this message?",
-        () => doBranchFromMessage(options.entryId, purpose),
-        "Branch"
-      );
-    };
-    actions.appendChild(branchBtn);
+    if (viewMode !== "participant") {
+      const branchBtn = document.createElement("button");
+      branchBtn.className = "msg-btn";
+      branchBtn.textContent = "⑂ Branch";
+      branchBtn.title = "Create a branch starting from this message";
+      branchBtn.onclick = (e) => {
+        e.stopPropagation();
+        if (isRunning || !currentSessionId) return;
+        const purpose = forkPurposeSelect.value;
+        showConfirm(
+          "Create a branch starting from this message?",
+          () => doBranchFromMessage(options.entryId, purpose),
+          "Branch"
+        );
+      };
+      actions.appendChild(branchBtn);
+    }
 
     el.appendChild(actions);
     messagesEl.appendChild(el);
@@ -1949,6 +1952,12 @@ function setControlsEnabled(enabled) {
   if (summaryInvokeBtn) summaryInvokeBtn.disabled = !interactive || isRunning;
   reviseLatestBtn.disabled =
     !interactive || !currentSessionId || !hasMessages || !inputEl.value.trim();
+  sendEditedBtn.disabled =
+    !interactive ||
+    !reviseMode ||
+    !currentSessionId ||
+    isRunning ||
+    !inputEl.value.trim();
   forkPurposeSelect.disabled = !interactive || !currentSessionId;
 }
 
@@ -1990,7 +1999,7 @@ inputEl.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) {
     e.preventDefault();
     if (reviseMode) {
-      reviseLatestBtn.click();
+      doReviseLatest();
     } else {
       sendMessage();
     }
@@ -2147,7 +2156,7 @@ if (summaryInvokeBtn) {
   };
 }
 
-reviseLatestBtn.onclick = () => {
+function doReviseLatest() {
   const text = inputEl.value.trim();
   if (!text || isRunning || !currentSessionId) return;
   if (
@@ -2162,7 +2171,9 @@ reviseLatestBtn.onclick = () => {
   setControlsEnabled(false);
   setConnStatus("running", "Revising...");
   toolStatusEl.textContent = `Revising latest turn on ${currentBranchId}...`;
-};
+}
+
+reviseLatestBtn.onclick = doReviseLatest;
 
 // fork_session and delete_latest are now triggered from per-message buttons
 // (doBranchFromMessage / doDeleteLatest), not the composer row.
@@ -2187,6 +2198,7 @@ function startEditLatest(text) {
   inputEl.focus();
   reviseMode = true;
   updateReviseModeUI();
+  setControlsEnabled(true);
 }
 
 function updateReviseModeUI() {
@@ -2207,7 +2219,7 @@ function updateReviseModeUI() {
 
 sendEditedBtn.onclick = () => {
   if (!reviseMode) return;
-  reviseLatestBtn.click();
+  doReviseLatest();
 };
 
 // Branch from a specific user message (forkPointEntryId).
