@@ -749,7 +749,11 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           try {
             if (!attachedSessionId) {
               if (!canMaterializeSession(auth)) {
-                sendError(send, new Error("Authentication required"));
+                sendError(
+                  send,
+                  new Error("Authentication required"),
+                  "auth_required"
+                );
                 break;
               }
               const initial = await sessionService.createSession(
@@ -941,7 +945,11 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           try {
             if (!attachedSessionId) {
               if (!canMaterializeSession(auth)) {
-                sendError(send, new Error("Authentication required"));
+                sendError(
+                  send,
+                  new Error("Authentication required"),
+                  "auth_required"
+                );
                 break;
               }
               const initial = await sessionService.createSession(

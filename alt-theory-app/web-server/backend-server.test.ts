@@ -1657,6 +1657,15 @@ test("WebSocket participant first send creates an owned role-conditioned session
   }
 
   try {
+    const anonymousWs = new WebSocket(`ws://127.0.0.1:${address.port}`);
+    await waitForType(anonymousWs, "session_draft");
+    const authRequiredPromise = waitForType(anonymousWs, "error");
+    anonymousWs.send(JSON.stringify({ type: "prompt", payload: "hello" }));
+    const authRequired = await authRequiredPromise;
+    assert.equal(authRequired.payload.error, "Authentication required");
+    assert.equal(authRequired.payload.code, "auth_required");
+    anonymousWs.close();
+
     const login = await fetch(`${baseUrl}/api/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

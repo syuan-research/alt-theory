@@ -128,6 +128,12 @@ const sessionBrowserSection = document.getElementById("session-browser-section")
 const recordsTabBtn = document.querySelector('.right-tab[data-right-tab="records"]');
 const pathsTabBtn = document.querySelector('.right-tab[data-right-tab="paths"]');
 const provenanceTabBtn = document.querySelector('.right-tab[data-right-tab="provenance"]');
+// Summary skill panel (participant + researcher/debug visible).
+const summaryEditor = document.getElementById("summary-editor");
+const summaryInvokeBtn = document.getElementById("summary-invoke-btn");
+const summaryStatusEl = document.getElementById("summary-status");
+const SUMMARY_SKILL_NAME = "conversation-summary";
+const chatPanelEl = document.getElementById("chat-panel");
 
 // ---------------------------------------------------------------------------
 // State
@@ -404,6 +410,25 @@ async function handleLogout() {
   location.reload();
 }
 
+async function handleAuthRequiredError() {
+  let me = null;
+  try {
+    const res = await fetch("/api/auth/me");
+    if (res.ok) {
+      const body = await res.json();
+      me = body.auth || null;
+    }
+  } catch (err) {
+    console.error("[auth] auth_required recovery failed:", err);
+  }
+  if (me && me.role && me.role !== "anonymous") {
+    location.reload();
+    return true;
+  }
+  await resolveAuthAndApply();
+  return false;
+}
+
 function handleDebugToggle() {
   // Debug toggle is for participants only: temporarily reveal advanced inspector panels.
   const canDebug = authCtx?.role === "participant";
@@ -423,15 +448,22 @@ debugToggle.addEventListener("click", handleDebugToggle);
 // Private-mode (visibility) UI
 // ---------------------------------------------------------------------------
 
-// `editable` is true only in draft (before first prompt). Once a session is materialized
-// the backend rejects visibility switching, so the control becomes read-only state.
+// The visibility toggle is always editable on a live session (the backend now
+// supports `switch_visibility` after materialization/resume as of the
+// 2026-06-17 resume-leaf fix). `editable` is kept as a parameter for the draft
+// state, but it is no longer the only thing that enables the toggle.
 function syncVisibilityBar(editable) {
   const isPrivate = currentVisibility === "private";
   privateToggle.checked = isPrivate;
-  privateToggle.disabled = !editable;
+  // Toggle stays enabled whenever a session is live, regardless of draft vs
+  // materialized. Only disable when explicitly not editable AND no session.
+  privateToggle.disabled = !editable && !sessionReady;
   privateBadge.classList.toggle("hidden", !isPrivate);
   privateExpiryHint.classList.add("hidden");
   privateExpiryHint.textContent = "";
+  // Subtle private-mode distinction: a slightly darker chat canvas + a badge.
+  // Toggled on #chat-panel via .private-active; see style.css.
+  if (chatPanelEl) chatPanelEl.classList.toggle("private-active", isPrivate);
   // The visibility bar is participant-facing and also harmless for researcher/debug,
   // but only show it once we know the effective view mode.
   const show =
@@ -1635,7 +1667,7 @@ ws.onmessage = (event) => {
       sessionReady = true;
       isRunning = false;
       currentVisibility = msg.payload.visibility || currentVisibility;
-      syncVisibilityBar(false); // materialized: visibility is fixed
+      syncVisibilityBar(true); // materialized but visibility stays editable (resume-leaf fix)
       rtKb.textContent = currentDomain || "—";
       rtSoul.textContent = displaySlug(currentSoulSlug);
       rtRolePreset.textContent = displaySlug(currentRolePresetSlug);
@@ -1644,6 +1676,13 @@ ws.onmessage = (event) => {
       setConnStatus("idle", "Ready");
       selectedRecordFile = null;
       recordEditorEl.value = "";
+      // Reset the Summary panel state on each session open so a prior session's
+      // "summary generated" / error message does not bleed into the new one.
+      if (summaryStatusEl) {
+        summaryStatusEl.textContent = "";
+        summaryStatusEl.classList.remove("error", "ok");
+      }
+      if (summaryEditor) summaryEditor.value = "";
       fetchSessionRecords();
       fetchSessionDetail(msg.payload.sessionId);
       console.log("[ws] Session opened:", msg.payload.sessionId);
@@ -1780,6 +1819,12 @@ ws.onmessage = (event) => {
       toolStatusEl.textContent = "";
       // A clean completed reply clears the stop/edit/delete hint.
       setRunHint("");
+      // If a summary invocation was pending, mark it done.
+      if (summaryStatusEl && summaryStatusEl.textContent) {
+        summaryStatusEl.textContent = "总结已生成。";
+        summaryStatusEl.classList.remove("error");
+        summaryStatusEl.classList.add("ok");
+      }
       activeToolNames = {};
       refreshCurrentTranscript();
       fetchSessionRecords();
@@ -1808,12 +1853,28 @@ ws.onmessage = (event) => {
     }
 
     case "error": {
+      if (msg.payload.code === "auth_required") {
+        toolStatusEl.textContent = "Please sign in to continue.";
+        handleAuthRequiredError().then((handled) => {
+          if (!handled) setLoginGateActive(true);
+        });
+        isRunning = false;
+        setControlsEnabled(true);
+        break;
+      }
       const errEl = document.createElement("div");
       errEl.className = "message error";
       errEl.textContent = msg.payload.error;
       messagesEl.appendChild(errEl);
       // Also show in composer tool status
       toolStatusEl.textContent = `⚠ ${msg.payload.error}`;
+      // Surface backend errors plainly in the Summary panel too — no fake
+      // success. If a summary was pending, show the real backend error there.
+      if (summaryStatusEl) {
+        summaryStatusEl.textContent = msg.payload.error || "Skill invocation failed.";
+        summaryStatusEl.classList.remove("ok");
+        summaryStatusEl.classList.add("error");
+      }
       // Any pending operation that set isRunning must be cleared on error, otherwise
       // the UI is permanently stuck (revise/delete/fork/branch/open/asset-switch).
       pendingOpenSessionId = "";
@@ -1882,6 +1943,9 @@ function setControlsEnabled(enabled) {
   skillSelect.disabled =
     !interactive || skillSelect.dataset.hasOptions !== "true";
   invokeSkillBtn.disabled = !interactive || !skillSelect.value;
+  // Summary skill button mirrors the main skill-invoke gating: needs an
+  // interactive live session and must be locked out while a run is active.
+  if (summaryInvokeBtn) summaryInvokeBtn.disabled = !interactive || isRunning;
   reviseLatestBtn.disabled =
     !interactive || !currentSessionId || !hasMessages || !inputEl.value.trim();
   forkPurposeSelect.disabled = !interactive || !currentSessionId;
@@ -2048,6 +2112,39 @@ invokeSkillBtn.onclick = () => {
   setControlsEnabled(false);
   setConnStatus("running", "Thinking...");
 };
+
+// Summary skill panel: invoke the conversation-summary skill with an optional
+// user note from #summary-editor. The skill name is hardcoded; the backend
+// validates active Alt Theory skills and returns its own error if missing.
+if (summaryInvokeBtn) {
+  summaryInvokeBtn.onclick = () => {
+    if (!sessionReady || isRunning) return;
+    const userText = (summaryEditor?.value || "").trim();
+    if (
+      !wsSafeSend(
+        JSON.stringify({
+          type: "invoke_skill",
+          payload: {
+            skillName: SUMMARY_SKILL_NAME,
+            ...(userText ? { userText } : {}),
+          },
+        })
+      )
+    ) {
+      return;
+    }
+    // Surface the user's instruction (or a default marker) in the transcript
+    // so the participant sees the invocation leave the client.
+    appendChatMessage("user", userText || `总结 session 到文件`);
+    if (summaryStatusEl) {
+      summaryStatusEl.textContent = "正在生成总结…";
+      summaryStatusEl.classList.remove("error", "ok");
+    }
+    isRunning = true;
+    setControlsEnabled(false);
+    setConnStatus("running", "Summarizing...");
+  };
+}
 
 reviseLatestBtn.onclick = () => {
   const text = inputEl.value.trim();

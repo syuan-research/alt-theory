@@ -115,8 +115,8 @@
         </div>
         <div id="input-row">
           <input type="text" id="input" placeholder="Ask Alt Theory..." autocomplete="off" disabled>
-          <button id="send" disabled>Send</button>
-          <button id="stop" style="display:none" disabled>Stop</button>
+          <button id="send" disabled title="Send" aria-label="Send"></button>
+          <button id="stop" style="display:none" disabled title="Stop" aria-label="Stop"></button>
         </div>
         <div id="edit-send-row" class="hidden">
           <button id="send-edited" title="Send the edited message">Send edited message</button>
@@ -139,6 +139,7 @@
         </div>
         <div id="right-tabs" class="right-tabs">
           <button class="right-tab selected" data-right-tab="records">Records</button>
+          <button class="right-tab" data-right-tab="summary">Summary</button>
           <button class="right-tab" data-right-tab="runtime">Runtime</button>
           <button class="right-tab" data-right-tab="provenance">Provenance</button>
           <button class="right-tab" data-right-tab="paths">Paths</button>
@@ -170,6 +171,20 @@
           <div class="record-actions">
             <span id="record-status" class="hint"></span>
             <button id="record-save-btn" class="small-btn" disabled>Save</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="right-tab-panel" data-right-panel="summary">
+        <div class="panel-section">
+          <div class="panel-header compact-header">
+            <span class="section-label inline-label">Summary</span>
+          </div>
+          <textarea id="summary-editor" spellcheck="false" placeholder="可交互补充要求，例如侧重决定、疑问、背景或下一步。"></textarea>
+          <div class="summary-actions">
+            <button id="summary-invoke-btn" title="Run the conversation-summary skill" disabled>总结 session 到文件</button>
+            <span class="summary-note">可交互补充要求，例如侧重决定、疑问、背景或下一步。</span>
+            <span id="summary-status" class="summary-status"></span>
           </div>
         </div>
       </div>
