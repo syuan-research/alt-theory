@@ -39,7 +39,6 @@
         <div class="panel-header">
           <h1>Alt Theory</h1>
           <div class="header-actions">
-            <button id="debug-toggle" class="icon-btn debug-only hidden" title="Show debug/inspector panels for this browser">Debug</button>
             <button id="collapse-left" class="icon-btn desktop-only" title="Collapse sessions">&#9664;</button>
           </div>
         </div>
@@ -117,9 +116,7 @@
           <input type="text" id="input" placeholder="Ask Alt Theory..." autocomplete="off" disabled>
           <button id="send" disabled title="Send" aria-label="Send"></button>
           <button id="stop" style="display:none" disabled title="Stop" aria-label="Stop"></button>
-        </div>
-        <div id="edit-send-row" class="hidden">
-          <button id="send-edited" title="Send the edited message">Send edited message</button>
+          <button id="send-edited" style="display:none" disabled title="Send the edited message">Send edited message</button>
         </div>
         <select id="skill-select" title="Alt Theory skill" class="hidden" disabled>
           <option value="">Skill</option>
@@ -135,7 +132,10 @@
       <div class="panel-section right-tab-header">
         <div class="panel-header">
           <span class="panel-title">Inspector</span>
-          <button id="collapse-right" class="icon-btn desktop-only" title="Collapse inspector">&#9654;</button>
+          <div class="header-actions">
+            <button id="debug-toggle" class="icon-btn debug-only hidden" title="Show debug/inspector panels for this browser">Debug</button>
+            <button id="collapse-right" class="icon-btn desktop-only" title="Collapse inspector">&#9654;</button>
+          </div>
         </div>
         <div id="right-tabs" class="right-tabs">
           <button class="right-tab selected" data-right-tab="records">Records</button>
@@ -180,10 +180,10 @@
           <div class="panel-header compact-header">
             <span class="section-label inline-label">Summary</span>
           </div>
-          <textarea id="summary-editor" spellcheck="false" placeholder="可交互补充要求，例如侧重决定、疑问、背景或下一步。"></textarea>
+          <textarea id="summary-editor" spellcheck="false" placeholder="Add an optional note, e.g. focus on decisions, questions, context, or next steps."></textarea>
           <div class="summary-actions">
-            <button id="summary-invoke-btn" title="Run the conversation-summary skill" disabled>总结 session 到文件</button>
-            <span class="summary-note">可交互补充要求，例如侧重决定、疑问、背景或下一步。</span>
+            <button id="summary-invoke-btn" title="Run the conversation-summary skill" disabled><span class="ico">⏏︎</span><span>Save summary to file</span></button>
+            <span class="summary-note">Add an optional note, e.g. focus on decisions, questions, context, or next steps.</span>
             <span id="summary-status" class="summary-status"></span>
           </div>
         </div>

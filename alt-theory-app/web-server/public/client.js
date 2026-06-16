@@ -291,13 +291,16 @@ function applyViewMode(mode) {
     const isAdvanced = panel.dataset.rightPanel !== "runtime";
     panel.classList.toggle("hidden", isAdvanced && !showAdvanced);
   }
-  // If the active right tab just got hidden, fall back to Runtime.
+  // If the active right tab just got hidden, fall back. Participants land
+  // on Summary (the participant-facing surface); researcher/debug land on
+  // Runtime (the workbench surface).
   const activeTabBtn = rightTabBtns.find((b) => b.classList.contains("selected"));
   if (activeTabBtn && activeTabBtn.classList.contains("hidden")) {
-    const runtimeBtn = rightTabBtns.find(
-      (b) => b.dataset.rightTab === "runtime"
+    const fallbackTab = isParticipant ? "summary" : "runtime";
+    const fallbackBtn = rightTabBtns.find(
+      (b) => b.dataset.rightTab === fallbackTab
     );
-    if (runtimeBtn) runtimeBtn.click();
+    if (fallbackBtn) fallbackBtn.click();
   }
 
   // Transcript view toggle: participant defaults to User view and hides the toggle.
@@ -486,10 +489,12 @@ privateToggle.addEventListener("change", () => {
   }
 });
 
-// Verbatim private-mode copy from the v0.5 plan. Shown once as a system message.
+// Verbatim private-mode copy from the v0.5 plan. Surfaced as a composer
+// notice (mono small text at #tool-status) with a ⏏ prefix, matching the
+// unified notification style. Auto-dismisses; not appended to the transcript.
 function showPrivateIntroCopy() {
-  appendChatMessage(
-    "system",
+  setComposerNotice(
+    "⏏",
     "Private sessions and files are deleted after 7 inactive days. Download anything you want to keep."
   );
 }
@@ -1835,17 +1840,17 @@ ws.onmessage = (event) => {
     case "run_failed": {
       const interrupted = isInterruptedError(msg.payload.error);
       finalizeStaleTools(false);
-      const errEl = document.createElement("div");
-      errEl.className = interrupted ? "message system" : "message error";
-      errEl.textContent = `${
-        interrupted ? "Run interrupted" : "Run failed"
-      }: ${msg.payload.error}`;
-      messagesEl.appendChild(errEl);
+      // Surface failures as composer notices; the red transcript rectangle is
+      // gone. Interrupted runs use no prefix (informational), real failures
+      // use ⚠.
+      setComposerNotice(
+        interrupted ? "" : "⚠",
+        (interrupted ? "Run interrupted: " : "Run failed: ") + msg.payload.error
+      );
       currentAssistantEl = null;
       isRunning = false;
       setControlsEnabled(true);
       setConnStatus(interrupted ? "idle" : "error", interrupted ? "Ready" : "Error");
-      toolStatusEl.textContent = "";
       // If the user stopped, keep the edit/delete hint. A real failure clears it.
       if (!interrupted) setRunHint("");
       activeToolNames = {};
@@ -1862,14 +1867,11 @@ ws.onmessage = (event) => {
         setControlsEnabled(true);
         break;
       }
-      const errEl = document.createElement("div");
-      errEl.className = "message error";
-      errEl.textContent = msg.payload.error;
-      messagesEl.appendChild(errEl);
-      // Also show in composer tool status
-      toolStatusEl.textContent = `⚠ ${msg.payload.error}`;
-      // Surface backend errors plainly in the Summary panel too — no fake
-      // success. If a summary was pending, show the real backend error there.
+      // Backend errors surface as a single unified composer notice with the
+      // ⚠ prefix and auto-dismiss. No transcript red rectangle. The Summary
+      // panel still shows a persistent plain error there so the user can
+      // re-read it after the composer notice fades.
+      setComposerNotice("⚠", msg.payload.error);
       if (summaryStatusEl) {
         summaryStatusEl.textContent = msg.payload.error || "Skill invocation failed.";
         summaryStatusEl.classList.remove("ok");
@@ -1913,9 +1915,12 @@ function setControlsEnabled(enabled) {
   // Send lockout: while a run is active, Send is hidden and stays disabled even if
   // this helper is called with enabled=true. The explicit `isRunning` guards in
   // sendMessage() / input Enter handler are the real lockout; this keeps the button
-  // visually consistent.
-  sendBtn.style.display = isRunning ? "none" : "inline";
-  stopBtn.style.display = isRunning ? "inline" : "none";
+  // visually consistent. In revise mode, send-edited owns the slot — do not
+  // touch send/stop display here; updateReviseModeUI owns that.
+  if (!reviseMode) {
+    sendBtn.style.display = isRunning ? "none" : "inline";
+    stopBtn.style.display = isRunning ? "inline" : "none";
+  }
   sendBtn.disabled = !interactive || isRunning;
   stopBtn.disabled = !isRunning || !connected;
   inputEl.disabled = !interactive || isRunning;
@@ -2135,7 +2140,7 @@ if (summaryInvokeBtn) {
     }
     // Surface the user's instruction (or a default marker) in the transcript
     // so the participant sees the invocation leave the client.
-    appendChatMessage("user", userText || `总结 session 到文件`);
+    appendChatMessage("user", userText || `Save summary to file`);
     if (summaryStatusEl) {
       summaryStatusEl.textContent = "正在生成总结…";
       summaryStatusEl.classList.remove("error", "ok");
@@ -2180,7 +2185,6 @@ function doDeleteLatest() {
 // revise it in place, then click "Send edited message" below the input row.
 let reviseMode = false;
 const sendEditedBtn = document.getElementById("send-edited");
-const editSendRow = document.getElementById("edit-send-row");
 
 function startEditLatest(text) {
   inputEl.value = text;
@@ -2191,10 +2195,16 @@ function startEditLatest(text) {
 
 function updateReviseModeUI() {
   if (reviseMode) {
-    editSendRow.classList.remove("hidden");
-    inputEl.placeholder = "Editing your latest message. Revise to update.";
+    // Send-edited takes the slot where Send/Stop normally live; hide them
+    // and show the edited-send button. It is wired to #input-row (same flex
+    // row as send/stop), so the layout is identical to the regular composer.
+    sendBtn.style.display = "none";
+    stopBtn.style.display = "none";
+    sendEditedBtn.style.display = "inline-grid";
+    inputEl.placeholder = "Editing your latest message. Send to update.";
   } else {
-    editSendRow.classList.add("hidden");
+    sendEditedBtn.style.display = "none";
+    // setControlsEnabled will re-show the right slot based on isRunning.
     inputEl.placeholder = "Ask Alt Theory...";
   }
 }
@@ -2224,6 +2234,38 @@ function setRunHint(text) {
   runHintEl.textContent = text;
   runHintEl.title = text;
   runHintEl.classList.remove("hidden");
+}
+
+// Unified composer notification: mono small text at #tool-status, with an
+// optional single-glyph emoji prefix (e.g. "⚠", "⏏"). Auto-dismisses after
+// a few seconds so transient notices do not pile up. Replaces the previous
+// transcript `message.error` red rectangle and the private-intro system
+// message at the center of the chat.
+let toolStatusTimer = null;
+const TOOL_STATUS_TTL_MS = 4500;
+function setComposerNotice(prefix, text) {
+  const body = String(text || "").trim();
+  if (!body) {
+    toolStatusEl.textContent = "";
+    toolStatusEl.title = "";
+    toolStatusEl.classList.remove("notice-warn");
+    if (toolStatusTimer) {
+      clearTimeout(toolStatusTimer);
+      toolStatusTimer = null;
+    }
+    return;
+  }
+  const lead = prefix ? prefix + " " : "";
+  toolStatusEl.textContent = lead + body;
+  toolStatusEl.title = body;
+  toolStatusEl.classList.toggle("notice-warn", prefix === "⚠");
+  if (toolStatusTimer) clearTimeout(toolStatusTimer);
+  toolStatusTimer = setTimeout(() => {
+    toolStatusEl.textContent = "";
+    toolStatusEl.title = "";
+    toolStatusEl.classList.remove("notice-warn");
+    toolStatusTimer = null;
+  }, TOOL_STATUS_TTL_MS);
 }
 
 // New session — confirm if chat has messages

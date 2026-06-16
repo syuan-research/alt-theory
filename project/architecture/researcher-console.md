@@ -243,6 +243,23 @@ export sessions.
 
 ## Change Log
 
+- 2026-06-17: Updated after the second v0.5 zcode UI-polish pass. Unified
+  notifications: backend errors and the private-mode intro copy now route
+  through a single `setComposerNotice(prefix, text)` helper that writes to
+  `#tool-status` with an optional single-glyph prefix (`⚠` for warnings,
+  `⏏` for save/intro notices) and auto-dismisses after ~4.5s; the transcript
+  `.message.error` red rectangle is removed. Composer slot: `Send-edited` is
+  now a sibling of `Send`/`Stop` inside `#input-row` and shares the same flex
+  slot; the standalone `#edit-send-row` element is gone. Debug button moved
+  from the left panel header (where it collided with the collapse-left arrow)
+  to the right panel header next to `collapse-right`. Summary invoke button
+  is now a low-key secondary style (transparent + hairline, hover fills to
+  ink), prefixed by a monochrome `⏏\uFE0E` glyph (Variation Selector-15 keeps
+  it a single-glyph line character, not a colored emoji). Summary editor
+  drops its own background and blends into its panel-section card so the
+  textarea reads as text-in-card. Participant view now defaults to the
+  Summary tab (researcher/debug still default to Runtime). All Summary
+  labels switched from Chinese to English.
 - 2026-06-17: Updated after v0.5 zcode UI-polish + Summary-panel pass. Theme is
   now a warm light/flat palette (chat canvas `#f8f8f9`, side panels `#ebebec`,
   near-invisible hairlines, no blue/purple accents). The composer is one
