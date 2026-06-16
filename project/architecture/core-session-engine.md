@@ -4,7 +4,7 @@ slug: core-session-engine
 scope: Alt Theory core session engine and Pi Coding Agent integration
 summary: Creates persistent, asset-configured Pi sessions through an application-owned service used by WebSocket adapters
 status: current
-last_reviewed: 2026-06-16
+last_reviewed: 2026-06-17
 tags: [core, backend, pi-agent, session]
 depends_on: []
 implements:
@@ -59,6 +59,9 @@ and Pi adapter prompt templates from `agent-assets/prompts/pi/`.
   for grouping and defaults. Project setup is not mandatory.
 - **Deletion marker**: optional `records/deleted.json` tombstone that hides a
   session from the normal catalog without removing recoverable data.
+- **Session alias**: optional UI display name persisted as
+  `records/ui-alias.json`. It is read and written through the session file
+  routes; it is not part of the core session header schema.
 - **Account**: data-dir backed app identity record under
   `{dataDir}/accounts/accounts.json`. It is separate from outer deployment
   Basic Auth.
@@ -319,12 +322,15 @@ New service-created sessions also write minimal v0.4 foundation records:
 ```text
 records/session.json        # schemaVersion: 1, recordType: session
 records/branch-index.json   # schemaVersion: 1, activeBranchId: main
+records/ui-alias.json       # optional UI display name, written by frontend
 ```
 
-These records are thin indexes around Pi JSONL. They do not duplicate
+The required records are thin indexes around Pi JSONL. They do not duplicate
 conversation bodies. `branch-index.json` is the authoritative active logical
 branch pointer; Pi's internal fork session ID remains an implementation detail
-and does not replace the Alt Theory `sessionId`.
+and does not replace the Alt Theory `sessionId`. `ui-alias.json` is optional
+frontend state stored beside other session-local records so display names
+follow the session across browsers without changing `records/session.json`.
 
 `records/session.json` also carries v0.5 pilot metadata when present:
 `ownerAccountId`, `roleCondition`, `visibility`, `consentSnapshot`,
@@ -410,6 +416,11 @@ When accounts are configured, these routes use content access filtering:
 participant accounts can access only their own sessions, and private session
 content is owner-only. The download and delete routes are intentionally
 workspace-only.
+
+The participant/researcher frontend also uses these file routes for
+`records/ui-alias.json`, a small optional display-name file. This keeps aliases
+server-persisted and cross-browser while avoiding a new core session schema
+field.
 
 WebSocket:
 
@@ -522,6 +533,11 @@ is configured; they are not a billing claim.
 
 ## Change Log
 
+- 2026-06-17: Added current UI alias persistence note. Session display aliases
+  are stored as optional `records/ui-alias.json` files via the existing
+  `GET/PUT /api/sessions/{sessionId}/files/content` routes, not in
+  `records/session.json`; participant access remains governed by the existing
+  session content authorization rules.
 - 2026-06-16: Added backend latest-turn delete foundation. The WebSocket
   protocol accepts `delete_latest`; `SessionService` moves the Pi leaf away from
   the deleted latest user turn, appends `deleted` run evidence, preserves disk

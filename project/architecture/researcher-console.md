@@ -69,7 +69,8 @@ The left panel currently owns:
 - compact draft selectors including project, KB, soul, role preset, and custom
   instruction;
 - grouped/searchable historical session list/detail/preview;
-- resume/open selected session control;
+- click-to-open historical session rows;
+- session Rename control backed by `records/ui-alias.json`;
 - session delete control with recoverable soft delete;
 - provider/model display.
 
@@ -125,6 +126,8 @@ Current backend-facing state:
 - legacy compatibility alias from `GET /api/profiles`;
 - historical session list and detail from `GET /api/sessions` and
   `GET /api/sessions/{sessionId}`;
+- session alias read/write through the existing `records/` file API using
+  `records/ui-alias.json`;
 - optional project list from `GET /api/projects`;
 - current live session metadata from `session_metadata`;
 - current live session metrics from `session_metrics`;
@@ -154,11 +157,11 @@ Current persistence belongs to the backend data directory, not the browser:
     records/
 ```
 
-The console can display paths from the manifest, list historical sessions,
-inspect selected-session detail/preview, resume/open a selected session, switch
-loaded transcripts between User/Developer views, and lightly edit
-allowed session-local text records. It cannot yet tag, annotate, compare, or
-export sessions.
+The console can display paths from the manifest, list historical sessions with
+server-persisted user aliases, inspect selected-session detail/preview,
+open a selected session by clicking its row, switch loaded transcripts between
+User/Developer views, and lightly edit allowed session-local text records. It
+cannot yet tag, annotate, compare, or export sessions.
 
 ## 4. Current Capabilities
 
@@ -172,10 +175,15 @@ export sessions.
 - Sends prompts and abort requests.
 - Revises the latest user turn on the same logical branch using replacement
   text from the composer.
-- Creates an explicit collaboration or comparison Fork from the current point.
+- Creates an explicit collaboration or comparison Fork from the current point
+  in researcher/debug views; participant view currently hides Branch.
 - Starts a new draft within the same browser connection without creating an
   empty session.
-- Resumes/opens an existing session within the same browser connection.
+- Opens an existing session within the same browser connection by clicking its
+  session row.
+- Persists optional session aliases in `records/ui-alias.json`; when no alias
+  exists, the list falls back to the first user-message snippet and then the
+  timestamp-derived session ID.
 - Switches soul and role preset immediately after materialization by
   rebuilding the active backend runtime while keeping the same Alt Theory
   session id, workspace, and Pi history.
@@ -218,6 +226,8 @@ export sessions.
 - Historical session comparison is not implemented.
 - Branch-tree browsing and switching back to an older branch are not yet
   implemented. The new Fork becomes active immediately.
+- Participant Branch controls are currently hidden because the participant
+  pilot flow prioritizes simple same-session editing over branching.
 - Revision/Fork does not roll back tool or file side effects. Comparison Fork
   copies only the selected branch workspace at Fork time.
 - Model-comparison prompts across multiple providers are not implemented.
@@ -243,6 +253,18 @@ export sessions.
 
 ## Change Log
 
+- 2026-06-17: Updated after v0.5.x participant pilot patch. Session rows now
+  open the selected session directly; the former Open action is replaced by
+  Rename. Session display names are persisted through the existing session
+  file API at `records/ui-alias.json`, with automatic fallback to the first
+  user-message snippet and then a timestamp-style session ID. Participant view
+  hides Branch controls, while researcher/debug views keep them. Latest-message
+  Edit now calls `doReviseLatest()` directly instead of programmatically
+  clicking a disabled hidden button, so `Send edited message` is enabled after
+  entering edit mode. The page starts with `body.auth-pending` to avoid a
+  transient researcher-view flash before `/api/auth/me` resolves. Static
+  assets are served with `Cache-Control: no-store` and versioned CSS/JS query
+  strings for the pilot.
 - 2026-06-17: Updated after the third v0.5 zcode UI-polish pass. Root-cause
   fix for the empty Summary tab in the participant view: the right-tab
   gating used an inverse `isAdvanced = panel.dataset.rightPanel !==
@@ -301,7 +323,8 @@ export sessions.
   signal); participant login hides Launch/Config, project, model/provider, Records/
   Paths/Provenance tabs, and the revise/fork lineage row, and shows a role-condition
   label plus a low-noise private-mode toggle/badge. The private toggle sends
-  WebSocket `switch_visibility` before first prompt and locks once materialized.
+  WebSocket `switch_visibility` before first prompt and remains editable on a
+  live session after the resume-leaf backend fix.
   Conversation actions gained a delete-latest control near the composer, a hardened
   send lockout while running (Send hidden/disabled; Stop available), and a stop→
   "edit or delete your latest message" hint. A client-side Debug toggle (researcher/
