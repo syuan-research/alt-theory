@@ -14,6 +14,7 @@ export type SessionEventType =
   | "soul_selected"
   | "skill_invoked"
   | "session_forked"
+  | "latest_turn_deleted"
   | "run_completed"
   | "run_failed"
   | "run_aborted";

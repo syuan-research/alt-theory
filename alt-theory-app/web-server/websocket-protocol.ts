@@ -93,6 +93,7 @@ export type ClientMessage =
       payload: { skillName: string; userText?: string };
     }
   | { type: "revise_latest"; payload: { text: string } }
+  | { type: "delete_latest" }
   | {
       type: "fork_session";
       payload: {

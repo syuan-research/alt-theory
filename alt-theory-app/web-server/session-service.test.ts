@@ -284,6 +284,113 @@ test("SessionService revises only the latest turn without creating a branch", as
   }
 });
 
+test("SessionService deletes the latest turn from active context without forking", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const created = await service.createSession({
+    rolePresetSlug: "default",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const managed = (
+    service as unknown as {
+      sessions: Map<string, {
+        session: {
+          prompt(text: string): Promise<void>;
+          sessionManager: {
+            appendMessage(message: unknown): string;
+            buildSessionContext(): { messages: Array<{ content: Array<{ type: string; text: string }> }> };
+            getLeafId(): string | null;
+          };
+        };
+      }>;
+    }
+  ).sessions.get(created.sessionId)!;
+  managed.session.prompt = async (text: string) => {
+    managed.session.sessionManager.appendMessage({
+      role: "user",
+      content: [{ type: "text", text }],
+      timestamp: Date.now(),
+    });
+    managed.session.sessionManager.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: `answer:${text}` }],
+      timestamp: Date.now(),
+    });
+  };
+
+  try {
+    const first = service.runPrompt(created.sessionId, "keep me");
+    await first.completion;
+    const second = service.runPrompt(created.sessionId, "delete me");
+    await second.completion;
+    const recordsDir = service.getManifest(created.sessionId).recordsDir;
+    const latestBeforeDelete = latestRunSnapshots(recordsDir).find(
+      (run) => run.runId === second.ids.runId
+    )!;
+
+    const deleted = service.deleteLatest(created.sessionId);
+
+    assert.equal(deleted.sessionId, created.sessionId);
+    assert.equal(deleted.branchId, undefined);
+    assert.equal(
+      latestRunSnapshots(recordsDir).find((run) => run.runId === second.ids.runId)
+        ?.status,
+      "deleted"
+    );
+    assert.equal(
+      latestRunSnapshots(recordsDir).find((run) => run.runId === first.ids.runId)
+        ?.status,
+      "completed"
+    );
+    const contextText = managed.session.sessionManager
+      .buildSessionContext()
+      .messages.map((message) =>
+        message.content
+          .filter((part) => part.type === "text")
+          .map((part) => part.text)
+          .join("")
+      )
+      .join("\n");
+    assert.match(contextText, /keep me/);
+    assert.doesNotMatch(contextText, /delete me/);
+    const branchIndex = JSON.parse(
+      readFileSync(join(recordsDir, "branch-index.json"), "utf-8")
+    );
+    assert.deepEqual(
+      branchIndex.branches.map((branch: { branchId: string }) => branch.branchId),
+      ["main"]
+    );
+    assert.equal(
+      branchIndex.branches[0].activeLeafEntryId,
+      latestBeforeDelete.userEntryId
+        ? managed.session.sessionManager.getLeafId()
+        : null
+    );
+    assert.notEqual(branchIndex.branches[0].activeLeafEntryId, latestBeforeDelete.userEntryId);
+  } finally {
+    await service.disposeAll();
+  }
+});
+
+test("SessionService rejects latest-turn delete when no completed turn exists", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const created = await service.createSession({
+    rolePresetSlug: "default",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  try {
+    assert.throws(
+      () => service.deleteLatest(created.sessionId),
+      /No completed latest user turn/
+    );
+  } finally {
+    await service.disposeAll();
+  }
+});
+
 test("SessionService explicit forks preserve logical session identity and workspace policy", async () => {
   async function runCase(purpose: "collaboration" | "comparison") {
     const fixture = setupFixture();
@@ -852,6 +959,10 @@ test("SessionService rejects concurrent same-session prompt mutations with sessi
     );
     assert.throws(
       () => service.reviseLatest(snapshot.sessionId, "revised"),
+      (error) => error instanceof SessionBusyError && error.code === "session_busy"
+    );
+    assert.throws(
+      () => service.deleteLatest(snapshot.sessionId),
       (error) => error instanceof SessionBusyError && error.code === "session_busy"
     );
     await assert.rejects(

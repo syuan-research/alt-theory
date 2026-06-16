@@ -15,6 +15,7 @@ export type RunStatus =
   | "failed"
   | "interrupted"
   | "aborted"
+  | "deleted"
   | "superseded";
 
 export interface RunRecord {

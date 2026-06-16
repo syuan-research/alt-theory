@@ -361,6 +361,67 @@ export class SessionService {
     });
   }
 
+  deleteLatest(sessionId: string): SessionSnapshot {
+    const managed = this.requireSession(sessionId);
+    if (managed.busy || managed.session.isStreaming) {
+      throw new SessionBusyError(sessionId);
+    }
+    const latest = latestRunSnapshots(managed.manifest.recordsDir)
+      .filter(
+        (run) =>
+          run.branchId === managed.branchId &&
+          run.status === "completed" &&
+          run.userEntryId
+      )
+      .at(-1);
+    if (!latest?.userEntryId) {
+      throw new Error("No completed latest user turn is available to delete");
+    }
+    const activeUserEntries = managed.session.sessionManager
+      .getBranch()
+      .filter(
+        (entry) =>
+          entry.type === "message" &&
+          (entry.message as { role?: string }).role === "user"
+      );
+    if (activeUserEntries.at(-1)?.id !== latest.userEntryId) {
+      throw new Error("Only the active branch latest user turn can be deleted");
+    }
+    const userEntry = managed.session.sessionManager.getEntry(latest.userEntryId);
+    if (!userEntry) {
+      throw new Error("Latest user entry is missing from Pi history");
+    }
+    if (userEntry.parentId) {
+      managed.session.sessionManager.branch(userEntry.parentId);
+    } else {
+      managed.session.sessionManager.resetLeaf();
+    }
+    const activeLeafEntryId = managed.session.sessionManager.getLeafId() ?? null;
+    appendRunRecord(managed.manifest.recordsDir, {
+      ...runRecordBody(latest),
+      status: "deleted",
+      completedAt: new Date().toISOString(),
+    });
+    updateBranchHead(managed.manifest.recordsDir, managed.branchId, {
+      activePiSessionFile: managed.session.sessionFile ?? null,
+      activeLeafEntryId,
+    });
+    managed.transcript =
+      readSessionDetail(this.config.dataDir, sessionId)?.transcript ??
+      managed.transcript;
+    appendSessionEvent(managed.manifest.recordsDir, {
+      sessionId,
+      type: "latest_turn_deleted",
+      details: {
+        branchId: managed.branchId,
+        turnId: latest.turnId,
+        runId: latest.runId,
+        activeLeafEntryId,
+      },
+    });
+    return this.snapshot(managed);
+  }
+
   async forkSession(
     sessionId: string,
     purpose: ForkPurpose,

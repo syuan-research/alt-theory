@@ -339,7 +339,9 @@ Each run maps `sessionId`, `branchId`, `turnId`, `revisionId`, and `runId` to
 the Pi session file and user/assistant entry IDs. Latest-turn revision moves
 the Pi leaf to the latest user entry's parent, appends a new path with the same
 turn ID, and marks the prior run `superseded`; it does not create a logical
-branch or delete old Pi evidence.
+branch or delete old Pi evidence. Latest-turn delete uses the same active-branch
+latest-user-turn guard, moves the Pi leaf to that user entry's parent, marks the
+run `deleted`, updates the active branch head, and does not remove disk evidence.
 
 Only explicit Fork creates `fork-NNN`:
 
@@ -415,7 +417,7 @@ WebSocket:
 - server: `session_metadata`, `session_metrics`
 - client: `get_session_metadata`, `get_session_metrics`, `open_session`
 - client: `switch_visibility`
-- client: `revise_latest`, `fork_session`
+- client: `revise_latest`, `delete_latest`, `fork_session`
 
 `session_draft` contains only selector state and no session ID. The browser may
 enable input/config controls in draft, but records, paths, and metrics remain
@@ -520,6 +522,10 @@ is configured; they are not a billing claim.
 
 ## Change Log
 
+- 2026-06-16: Added backend latest-turn delete foundation. The WebSocket
+  protocol accepts `delete_latest`; `SessionService` moves the Pi leaf away from
+  the deleted latest user turn, appends `deleted` run evidence, preserves disk
+  history, and rejects busy or no-completed-turn sessions.
 - 2026-06-16: Added private session retention and workspace-file foundation.
   Private WebSocket drafts can materialize owner-scoped private sessions,
   private prompts refresh inactive retention, detail reads do not, researcher

@@ -968,6 +968,25 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           }
           break;
         }
+        case "delete_latest": {
+          if (!attachedSessionId) {
+            sendError(send, new Error("A materialized session is required"));
+            break;
+          }
+          try {
+            const snapshot = sessionService.deleteLatest(attachedSessionId);
+            send({ type: "session_updated", payload: snapshot });
+            send({
+              type: "session_transcript",
+              payload: {
+                messages: sessionService.getTranscript(attachedSessionId),
+              },
+            });
+          } catch (error) {
+            sendServiceError(send, error);
+          }
+          break;
+        }
         case "fork_session": {
           if (!attachedSessionId) {
             sendError(send, new Error("A materialized session is required"));
