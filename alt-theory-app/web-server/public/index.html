@@ -106,22 +106,25 @@
           <span id="private-badge" class="private-badge hidden" title="Private sessions and files are deleted after 7 inactive days. Download anything you want to keep.">Private</span>
           <span id="private-expiry-hint" class="private-expiry-hint small-text hidden"></span>
         </div>
-        <div id="lineage-actions">
+        <div id="lineage-actions" class="hidden">
           <button id="revise-latest" title="Replace the latest user turn" disabled>Revise latest</button>
           <select id="fork-purpose" title="Branch workspace behavior" disabled>
-            <option value="collaboration">Shared</option>
             <option value="comparison">Copied</option>
+            <option value="collaboration">Shared</option>
           </select>
         </div>
         <div id="input-row">
-          <select id="skill-select" title="Alt Theory skill" disabled>
-            <option value="">Skill</option>
-          </select>
-          <button id="invoke-skill" title="Invoke selected skill" disabled>Invoke</button>
           <input type="text" id="input" placeholder="Ask Alt Theory..." autocomplete="off" disabled>
           <button id="send" disabled>Send</button>
           <button id="stop" style="display:none" disabled>Stop</button>
         </div>
+        <div id="edit-send-row" class="hidden">
+          <button id="send-edited" title="Send the edited message">Send edited message</button>
+        </div>
+        <select id="skill-select" title="Alt Theory skill" class="hidden" disabled>
+          <option value="">Skill</option>
+        </select>
+        <button id="invoke-skill" title="Invoke selected skill" class="hidden" disabled>Invoke</button>
       </div>
     </main>
 

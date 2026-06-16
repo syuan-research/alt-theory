@@ -304,10 +304,11 @@ function applyViewMode(mode) {
     if (userBtn) userBtn.click();
   }
 
-  // Composer lineage row (revise/fork/delete-latest): these are conversation actions,
-  // available to both participant and researcher.
+  // Composer lineage row (revise button + fork-purpose) is kept hidden — revise is
+  // triggered via per-message Edit + the "Send edited message" button, and fork-purpose
+  // defaults to comparison without a visible selector.
   const lineageRow = document.getElementById("lineage-actions");
-  if (lineageRow) lineageRow.classList.remove("hidden");
+  if (lineageRow) lineageRow.classList.add("hidden");
 
   // Debug-expansion-only controls (none yet beyond tab gating).
   document.body.classList.toggle("view-participant", isParticipant);
@@ -1067,15 +1068,16 @@ function appendChatMessage(role, text, options = {}) {
   if (role === "user") {
     el.className = "message user";
     el.innerHTML = renderMarkdown(value);
-    // Attach per-message conversation actions. Edit/Delete are only valid on the latest
-    // user turn (backend constraint). Branch is valid on any user turn.
+    // Attach per-message conversation actions below the message text.
+    // Edit/Delete are only valid on the latest user turn (backend constraint).
+    // Branch is valid on any user turn.
     const actions = document.createElement("div");
     actions.className = "msg-actions";
     if (options.isLatest) {
       const editBtn = document.createElement("button");
       editBtn.className = "msg-btn";
-      editBtn.textContent = "✎";
-      editBtn.title = "Edit";
+      editBtn.textContent = "✎ Edit";
+      editBtn.title = "Edit this message";
       editBtn.onclick = (e) => {
         e.stopPropagation();
         startEditLatest(value);
@@ -1084,8 +1086,8 @@ function appendChatMessage(role, text, options = {}) {
 
       const delBtn = document.createElement("button");
       delBtn.className = "msg-btn";
-      delBtn.textContent = "🗑";
-      delBtn.title = "Delete";
+      delBtn.textContent = "🗑 Delete";
+      delBtn.title = "Delete this message and its reply";
       delBtn.onclick = (e) => {
         e.stopPropagation();
         if (isRunning || !currentSessionId || !hasMessages) return;
@@ -1100,8 +1102,8 @@ function appendChatMessage(role, text, options = {}) {
 
     const branchBtn = document.createElement("button");
     branchBtn.className = "msg-btn";
-    branchBtn.textContent = "⑂";
-    branchBtn.title = "Branch from here";
+    branchBtn.textContent = "⑂ Branch";
+    branchBtn.title = "Create a branch starting from this message";
     branchBtn.onclick = (e) => {
       e.stopPropagation();
       if (isRunning || !currentSessionId) return;
@@ -2081,8 +2083,11 @@ function doDeleteLatest() {
 }
 
 // Edit latest: load the latest user message text into the composer so the user can
-// revise it in place, then click Revise (or press Enter in revise mode).
+// revise it in place, then click "Send edited message" below the input row.
 let reviseMode = false;
+const sendEditedBtn = document.getElementById("send-edited");
+const editSendRow = document.getElementById("edit-send-row");
+
 function startEditLatest(text) {
   inputEl.value = text;
   inputEl.focus();
@@ -2091,20 +2096,19 @@ function startEditLatest(text) {
 }
 
 function updateReviseModeUI() {
-  const reviseBtn = document.getElementById("revise-latest");
-  if (!reviseBtn) return;
-  if (reviseMode && inputEl.value.trim()) {
-    reviseBtn.textContent = "Revise";
-    reviseBtn.title = "Replace the latest user turn";
-    reviseBtn.disabled = false;
+  if (reviseMode) {
+    editSendRow.classList.remove("hidden");
     inputEl.placeholder = "Editing your latest message. Revise to update.";
   } else {
-    reviseBtn.textContent = "Revise latest";
-    reviseBtn.title = "Replace the latest user turn without creating a branch";
-    reviseBtn.disabled = !currentSessionId || !hasMessages || !inputEl.value.trim();
-    if (!reviseMode) inputEl.placeholder = "Ask Alt Theory...";
+    editSendRow.classList.add("hidden");
+    inputEl.placeholder = "Ask Alt Theory...";
   }
 }
+
+sendEditedBtn.onclick = () => {
+  if (!reviseMode) return;
+  reviseLatestBtn.click();
+};
 
 // Branch from a specific user message (forkPointEntryId).
 function doBranchFromMessage(entryId, purpose) {

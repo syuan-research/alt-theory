@@ -1452,18 +1452,17 @@ body.view-participant .session-group-title {
   color: var(--text-primary);
 }
 
-/* --- Per-message action buttons (Edit/Delete/Branch on user messages) --- */
+/* --- Per-message action buttons (below user message text) --- */
 
 .message.user {
   position: relative;
+  padding-bottom: 8px;
 }
 
 .msg-actions {
-  position: absolute;
-  top: 4px;
-  right: 6px;
   display: flex;
-  gap: 4px;
+  gap: 6px;
+  margin-top: 6px;
   opacity: 0;
   transition: opacity 0.15s;
 }
@@ -1478,8 +1477,8 @@ body.view-participant .session-group-title {
   border-radius: 4px;
   color: var(--text-secondary);
   cursor: pointer;
-  font-size: 13px;
-  padding: 2px 6px;
+  font-size: 12px;
+  padding: 2px 8px;
   line-height: 1.4;
 }
 
@@ -1489,9 +1488,39 @@ body.view-participant .session-group-title {
   border-color: var(--accent-dim);
 }
 
-/* --- Left panel collapse fix: ensure collapsed panel doesn't overlap chat toolbar --- */
+/* --- Edit send row (below input-row) --- */
 
-#left-panel.collapsed {
+#edit-send-row {
+  display: flex;
+  justify-content: flex-end;
+  padding: 6px 0 0;
+}
+
+#edit-send-row.hidden {
   display: none;
+}
+
+#send-edited {
+  background: var(--accent-dim);
+  color: #fff;
+  border: 1px solid var(--accent-dim);
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-size: 14px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+#send-edited:hover {
+  background: var(--accent);
+}
+
+/* --- Chat toolbar: add left padding on desktop so User/Developer don't collide
+     with the restore-left arrow (which is fixed at top:10px left:8px). --- */
+
+@media (min-width: 1025px) {
+  #transcript-toolbar {
+    padding-left: 36px;
+  }
 }
 
