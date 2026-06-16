@@ -1702,6 +1702,29 @@ test("WebSocket participant first send creates an owned role-conditioned session
       quoteAfterAnonymization: false,
       privateOverride: true,
     });
+
+    const researchUpdatePromise = waitForType(ws, "session_updated");
+    ws.send(
+      JSON.stringify({
+        type: "switch_visibility",
+        payload: { visibility: "research" },
+      })
+    );
+    const researchUpdate = await researchUpdatePromise;
+    assert.equal(researchUpdate.payload.visibility, "research");
+    const researchSessionJson = JSON.parse(
+      readFileSync(
+        join(dataDir, "sessions", opened.payload.sessionId, "records", "session.json"),
+        "utf-8"
+      )
+    );
+    assert.equal(researchSessionJson.visibility, "research");
+    assert.equal(researchSessionJson.retentionDueAt, null);
+    assert.deepEqual(researchSessionJson.consentSnapshot, {
+      researcherReadable: true,
+      quoteAfterAnonymization: false,
+      privateOverride: false,
+    });
     ws.close();
   } finally {
     SessionService.prototype.runPrompt = originalRunPrompt;

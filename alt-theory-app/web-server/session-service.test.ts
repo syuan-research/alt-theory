@@ -373,6 +373,174 @@ test("SessionService deletes the latest turn from active context without forking
   }
 });
 
+test("SessionService restores the active branch leaf after reopen for conversation actions", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const created = await service.createSession({
+    rolePresetSlug: "default",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const managed = (
+    service as unknown as {
+      sessions: Map<string, {
+        session: {
+          prompt(text: string): Promise<void>;
+          sessionManager: {
+            appendMessage(message: unknown): string;
+            buildSessionContext(): { messages: Array<{ content: Array<{ type: string; text: string }> }> };
+          };
+        };
+      }>;
+    }
+  ).sessions.get(created.sessionId)!;
+  managed.session.prompt = async (text: string) => {
+    managed.session.sessionManager.appendMessage({
+      role: "user",
+      content: [{ type: "text", text }],
+      timestamp: Date.now(),
+    });
+    managed.session.sessionManager.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: `answer:${text}` }],
+      timestamp: Date.now(),
+    });
+  };
+
+  try {
+    const first = service.runPrompt(created.sessionId, "keep me");
+    await first.completion;
+    const second = service.runPrompt(created.sessionId, "delete me");
+    await second.completion;
+    service.deleteLatest(created.sessionId);
+    const recordsDir = service.getManifest(created.sessionId).recordsDir;
+    const mainLeafAfterDelete = JSON.parse(
+      readFileSync(join(recordsDir, "branch-index.json"), "utf-8")
+    ).branches[0].activeLeafEntryId;
+    await service.disposeAll();
+
+    const reopenedService = createTestService(fixture);
+    const reopened = await reopenedService.openSession(created.sessionId, {
+      rolePresetSlug: "default",
+      kbDomain: "ep-core",
+      soulSlug: "soul-latest",
+    });
+    const reopenedManaged = (
+      reopenedService as unknown as {
+        sessions: Map<string, {
+          session: {
+            prompt(text: string): Promise<void>;
+            sessionManager: {
+              appendMessage(message: unknown): string;
+              buildSessionContext(): { messages: Array<{ content: Array<{ type: string; text: string }> }> };
+              getLeafId(): string | null;
+            };
+          };
+        }>;
+      }
+    ).sessions.get(reopened.sessionId)!;
+    assert.equal(
+      reopenedManaged.session.sessionManager.getLeafId(),
+      mainLeafAfterDelete
+    );
+    reopenedManaged.session.prompt = async (text: string) => {
+      const contextText = reopenedManaged.session.sessionManager
+        .buildSessionContext()
+        .messages.map((message) =>
+          message.content
+            .filter((part) => part.type === "text")
+            .map((part) => part.text)
+            .join("")
+        )
+        .join("\n");
+      assert.match(contextText, /keep me/);
+      assert.doesNotMatch(contextText, /delete me/);
+      reopenedManaged.session.sessionManager.appendMessage({
+        role: "user",
+        content: [{ type: "text", text }],
+        timestamp: Date.now(),
+      });
+      reopenedManaged.session.sessionManager.appendMessage({
+        role: "assistant",
+        content: [{ type: "text", text: `answer:${text}` }],
+        timestamp: Date.now(),
+      });
+    };
+    const continued = reopenedService.runPrompt(reopened.sessionId, "continue");
+    await continued.completion;
+    await reopenedService.disposeAll();
+  } finally {
+    await service.disposeAll();
+  }
+});
+
+test("SessionService revise and default fork use restored branch head after reopen", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const created = await service.createSession({
+    rolePresetSlug: "default",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const managed = (service as any).sessions.get(created.sessionId);
+  managed.session.prompt = async (text: string) => {
+    managed.session.sessionManager.appendMessage({
+      role: "user",
+      content: [{ type: "text", text }],
+      timestamp: Date.now(),
+    });
+    managed.session.sessionManager.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: `answer:${text}` }],
+      timestamp: Date.now(),
+    });
+  };
+
+  try {
+    const first = service.runPrompt(created.sessionId, "first");
+    await first.completion;
+    const second = service.runPrompt(created.sessionId, "second");
+    await second.completion;
+    service.deleteLatest(created.sessionId);
+    await service.disposeAll();
+
+    const reviseService = createTestService(fixture);
+    const reopened = await reviseService.openSession(created.sessionId, {
+      rolePresetSlug: "default",
+      kbDomain: "ep-core",
+      soulSlug: "soul-latest",
+    });
+    const reviseManaged = (reviseService as any).sessions.get(reopened.sessionId);
+    reviseManaged.session.prompt = async (text: string) => {
+      reviseManaged.session.sessionManager.appendMessage({
+        role: "user",
+        content: [{ type: "text", text }],
+        timestamp: Date.now(),
+      });
+    };
+    const revised = reviseService.reviseLatest(reopened.sessionId, "revised first");
+    await revised.completion;
+    assert.equal(revised.ids.turnId, first.ids.turnId);
+    await reviseService.disposeAll();
+
+    const forkService = createTestService(fixture);
+    const forkOpened = await forkService.openSession(created.sessionId, {
+      rolePresetSlug: "default",
+      kbDomain: "ep-core",
+      soulSlug: "soul-latest",
+    });
+    const branchHeadBeforeFork =
+      readSessionDetail(fixture.dataDir, created.sessionId)?.activeBranch
+        ?.activeLeafEntryId;
+    await forkService.forkSession(forkOpened.sessionId, "collaboration");
+    const detail = readSessionDetail(fixture.dataDir, created.sessionId);
+    assert.equal(detail?.activeBranch?.forkPointEntryId, branchHeadBeforeFork);
+    await forkService.disposeAll();
+  } finally {
+    await service.disposeAll();
+  }
+});
+
 test("SessionService rejects latest-turn delete when no completed turn exists", async () => {
   const fixture = setupFixture();
   const service = createTestService(fixture);

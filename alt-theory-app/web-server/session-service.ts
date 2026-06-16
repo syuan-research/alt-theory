@@ -39,6 +39,7 @@ import {
 } from "./session-records.js";
 import {
   calculateRetentionDueAt,
+  refreshRetention,
   refreshSessionRetention,
 } from "./session-retention.js";
 import {
@@ -320,27 +321,7 @@ export class SessionService {
     if (managed.busy || managed.session.isStreaming) {
       throw new SessionBusyError(sessionId);
     }
-    const latest = latestRunSnapshots(managed.manifest.recordsDir)
-      .filter(
-        (run) =>
-          run.branchId === managed.branchId &&
-          run.status === "completed" &&
-          run.userEntryId
-      )
-      .at(-1);
-    if (!latest?.userEntryId) {
-      throw new Error("No completed latest user turn is available to revise");
-    }
-    const activeUserEntries = managed.session.sessionManager
-      .getBranch()
-      .filter(
-        (entry) =>
-          entry.type === "message" &&
-          (entry.message as { role?: string }).role === "user"
-      );
-    if (activeUserEntries.at(-1)?.id !== latest.userEntryId) {
-      throw new Error("Only the active branch latest user turn can be revised");
-    }
+    const latest = this.requireLatestActiveCompletedUserRun(managed, "revise");
     const userEntry = managed.session.sessionManager.getEntry(latest.userEntryId);
     if (!userEntry) {
       throw new Error("Latest user entry is missing from Pi history");
@@ -366,34 +347,7 @@ export class SessionService {
     if (managed.busy || managed.session.isStreaming) {
       throw new SessionBusyError(sessionId);
     }
-    const allRuns = latestRunSnapshots(managed.manifest.recordsDir).filter(
-      (run) => run.branchId === managed.branchId
-    );
-    // Entry IDs whose runs are deleted or superseded — these are no longer part of the
-    // active transcript even though Pi still keeps them on disk for lineage evidence.
-    const inactiveUserEntryIds = new Set(
-      allRuns
-        .filter((run) => run.status === "deleted" || run.status === "superseded")
-        .map((run) => run.userEntryId)
-        .filter(Boolean) as string[]
-    );
-    const latest = allRuns
-      .filter((run) => run.status === "completed" && run.userEntryId)
-      .at(-1);
-    if (!latest?.userEntryId) {
-      throw new Error("No completed latest user turn is available to delete");
-    }
-    const activeUserEntries = managed.session.sessionManager
-      .getBranch()
-      .filter(
-        (entry) =>
-          entry.type === "message" &&
-          (entry.message as { role?: string }).role === "user" &&
-          !inactiveUserEntryIds.has(entry.id)
-      );
-    if (activeUserEntries.at(-1)?.id !== latest.userEntryId) {
-      throw new Error("Only the active branch latest user turn can be deleted");
-    }
+    const latest = this.requireLatestActiveCompletedUserRun(managed, "delete");
     const userEntry = managed.session.sessionManager.getEntry(latest.userEntryId);
     if (!userEntry) {
       throw new Error("Latest user entry is missing from Pi history");
@@ -493,6 +447,8 @@ export class SessionService {
         transcript: previous.transcript,
         overrideSessionCwd: true,
       });
+      const forkActiveLeafEntryId =
+        result.session.sessionManager.getLeafId() ?? null;
       const sourceRun = latestRunSnapshots(previous.manifest.recordsDir).find(
         (run) =>
           run.branchId === previous.branchId &&
@@ -509,7 +465,7 @@ export class SessionService {
         workspaceMode: purpose === "comparison" ? "copied" : "shared",
         workspaceRef,
         activePiSessionFile: forkFile,
-        activeLeafEntryId: leafId,
+        activeLeafEntryId: forkActiveLeafEntryId,
         createdAt: new Date().toISOString(),
       });
       activated = true;
@@ -730,6 +686,52 @@ export class SessionService {
     return this.snapshot(managed);
   }
 
+  setVisibility(
+    sessionId: string,
+    visibility: "research" | "private",
+    consentSnapshot?: SessionCreationMetadata["consentSnapshot"]
+  ): SessionSnapshot {
+    const managed = this.requireSession(sessionId);
+    if (managed.busy || managed.session.isStreaming) {
+      throw new SessionBusyError(sessionId);
+    }
+    const header = readV4SessionHeader(managed.manifest.recordsDir);
+    if (!header) throw new Error("v0.4 session header is required");
+    if (header.visibility === visibility) {
+      return this.snapshot(managed);
+    }
+    const nextBase = {
+      ...header,
+      visibility,
+      consentSnapshot:
+        visibility === "private"
+          ? {
+              researcherReadable: false,
+              quoteAfterAnonymization: false,
+              privateOverride: true,
+            }
+          : consentSnapshot
+            ? { ...consentSnapshot, privateOverride: false }
+            : header.consentSnapshot
+              ? { ...header.consentSnapshot, privateOverride: false }
+              : undefined,
+    };
+    const next =
+      visibility === "private"
+        ? refreshRetention(nextBase, new Date())
+        : {
+            ...nextBase,
+            retentionDueAt: null,
+          };
+    writeSessionHeader(managed.manifest.recordsDir, next);
+    appendSessionEvent(managed.manifest.recordsDir, {
+      sessionId,
+      type: "visibility_changed",
+      details: { visibility },
+    });
+    return this.snapshot(managed);
+  }
+
   async disposeAll(): Promise<void> {
     const sessions = [...this.sessions.values()];
     this.sessions.clear();
@@ -902,6 +904,13 @@ export class SessionService {
       testBatch: this.config.testBatch,
       readOnly: this.config.readOnly,
     });
+    if (detail.activeBranch) {
+      alignSessionManagerLeaf(
+        result.session.sessionManager,
+        detail.activeBranch.activeLeafEntryId,
+        `active branch ${detail.activeBranch.branchId}`
+      );
+    }
 
     const managed = this.createManaged({
       ...result,
@@ -1033,6 +1042,13 @@ export class SessionService {
       readOnly: this.config.readOnly,
       overrideSessionCwd: true,
     });
+    if (detail?.activeBranch) {
+      alignSessionManagerLeaf(
+        result.session.sessionManager,
+        detail.activeBranch.activeLeafEntryId,
+        `active branch ${detail.activeBranch.branchId}`
+      );
+    }
 
     return this.createManaged({
       ...result,
@@ -1057,6 +1073,7 @@ export class SessionService {
     counters: SessionCounters;
     transcript: TranscriptMessage[];
     overrideSessionCwd: boolean;
+    activeLeafEntryId?: string | null;
   }): Promise<ManagedSession> {
     const instruction = this.resolveOptionalInstruction(
       args.selectors.customInstructionRef
@@ -1094,6 +1111,13 @@ export class SessionService {
       testBatch: this.config.testBatch,
       readOnly: this.config.readOnly,
     });
+    if ("activeLeafEntryId" in args) {
+      alignSessionManagerLeaf(
+        result.session.sessionManager,
+        args.activeLeafEntryId ?? null,
+        `active branch ${args.branchId}`
+      );
+    }
     return this.createManaged({
       ...result,
       selectors: args.selectors,
@@ -1136,6 +1160,43 @@ export class SessionService {
       this.handleAgentEvent(managed, event)
     );
     return managed;
+  }
+
+  private requireLatestActiveCompletedUserRun(
+    managed: ManagedSession,
+    action: "revise" | "delete"
+  ): RunRecord & { userEntryId: string } {
+    const allRuns = latestRunSnapshots(managed.manifest.recordsDir).filter(
+      (run) => run.branchId === managed.branchId
+    );
+    // Entry IDs whose runs are deleted or superseded remain in Pi's persisted tree
+    // for evidence, but no longer count as active transcript turns.
+    const inactiveUserEntryIds = new Set(
+      allRuns
+        .filter((run) => run.status === "deleted" || run.status === "superseded")
+        .map((run) => run.userEntryId)
+        .filter(Boolean) as string[]
+    );
+    const latest = allRuns
+      .filter((run) => run.status === "completed" && run.userEntryId)
+      .at(-1);
+    if (!latest?.userEntryId) {
+      throw new Error(`No completed latest user turn is available to ${action}`);
+    }
+    const activeUserEntries = managed.session.sessionManager
+      .getBranch()
+      .filter(
+        (entry) =>
+          entry.type === "message" &&
+          (entry.message as { role?: string }).role === "user" &&
+          !inactiveUserEntryIds.has(entry.id)
+      );
+    if (activeUserEntries.at(-1)?.id !== latest.userEntryId) {
+      throw new Error(
+        `Only the active branch latest user turn can be ${action === "revise" ? "revised" : "deleted"}`
+      );
+    }
+    return latest as RunRecord & { userEntryId: string };
   }
 
   private handleAgentEvent(
@@ -1225,6 +1286,9 @@ export class SessionService {
     return {
       sessionId: managed.manifest.sessionId,
       projectId: managed.selectors.projectId ?? null,
+      visibility:
+        readV4SessionHeader(managed.manifest.recordsDir)?.visibility ??
+        "research",
       status: managed.session.isStreaming ? "running" : "idle",
       currentDomain: managed.selectors.kbDomain,
       rolePresetSlug: managed.selectors.rolePresetSlug,
@@ -1362,6 +1426,27 @@ function runRecordBody(
     ...body
   } = record;
   return body;
+}
+
+function alignSessionManagerLeaf(
+  sessionManager: {
+    branch(entryId: string): void;
+    getEntry(entryId: string): unknown;
+    resetLeaf(): void;
+  },
+  activeLeafEntryId: string | null,
+  context: string
+): void {
+  if (!activeLeafEntryId) {
+    sessionManager.resetLeaf();
+    return;
+  }
+  if (!sessionManager.getEntry(activeLeafEntryId)) {
+    throw new Error(
+      `Cannot restore ${context}: active leaf is missing from Pi history`
+    );
+  }
+  sessionManager.branch(activeLeafEntryId);
 }
 
 function configChangedFields(

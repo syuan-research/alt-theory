@@ -915,12 +915,22 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             break;
           }
           if (attachedSessionId) {
-            sendError(
-              send,
-              new Error(
-                "Session visibility can only be changed before the first prompt"
-              )
-            );
+            try {
+              const metadata = sessionCreationMetadataForAuth(
+                auth,
+                msg.payload.visibility
+              );
+              send({
+                type: "session_updated",
+                payload: sessionService.setVisibility(
+                  attachedSessionId,
+                  msg.payload.visibility,
+                  metadata.consentSnapshot
+                ),
+              });
+            } catch (error) {
+              sendServiceError(send, error);
+            }
             break;
           }
           draftVisibility = msg.payload.visibility;
