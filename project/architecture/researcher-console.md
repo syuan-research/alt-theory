@@ -243,6 +243,23 @@ export sessions.
 
 ## Change Log
 
+- 2026-06-17: Updated after the third v0.5 zcode UI-polish pass. Root-cause
+  fix for the empty Summary tab in the participant view: the right-tab
+  gating used an inverse `isAdvanced = panel.dataset.rightPanel !==
+  "runtime"` rule, which marked Summary as "advanced" and hid it in
+  participant view. Replaced with an explicit `ADVANCED_TAB_NAMES = {
+  records, paths, provenance }` set so Summary and Runtime are always
+  visible. The "if-active-tab-got-hidden-then-fallback" branch was
+  replaced with a deterministic per-view default (participant -> Summary,
+  researcher/debug/anonymous local -> Records); applyViewMode is the
+  single source of truth and HTML no longer hard-codes a default active
+  tab. Debug button was redesigned as a small icon-only gear glyph
+  (`\u2699\ufe0e`) using a new `.icon-btn-glyph` class, so it sits next
+  to the collapse-right arrow with the same low visual weight. The
+  role-condition display collapsed its section heading and value into
+  one inline row with a "Current role setup:" label, low-key, no card.
+  The redundant `.summary-note` under the Summary invoke button was
+  removed because the editor's placeholder already covers it.
 - 2026-06-17: Updated after the second v0.5 zcode UI-polish pass. Unified
   notifications: backend errors and the private-mode intro copy now route
   through a single `setComposerNotice(prefix, text)` helper that writes to

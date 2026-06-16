@@ -114,7 +114,7 @@ const authBadge = document.getElementById("auth-badge");
 const authBadgeMobile = document.getElementById("auth-badge-mobile");
 const logoutBtn = document.getElementById("logout-btn");
 const debugToggle = document.getElementById("debug-toggle");
-const roleConditionSection = document.querySelector(".role-condition-section");
+const roleConditionSection = document.querySelector(".role-condition-row");
 const roleConditionDisplay = document.getElementById("role-condition-display");
 const visibilityBar = document.getElementById("visibility-bar");
 const privateToggle = document.getElementById("private-toggle");
@@ -282,25 +282,29 @@ function applyViewMode(mode) {
   // (Participant sessions are owner-scoped; soft delete stays a researcher/debug action.)
   if (deleteSessionBtn) deleteSessionBtn.classList.toggle("hidden", isParticipant);
 
-  // Right-panel tab gating: participant keeps Runtime only (unless debug-expanded);
-  // researcher sees Records/Paths/Provenance.
-  const advancedTabs = [recordsTabBtn, pathsTabBtn, provenanceTabBtn].filter(Boolean);
+  // Right-panel tab gating: only Records / Paths / Provenance are advanced
+  // (researcher/debug surfaces). Summary is the participant-facing surface
+  // and stays visible in every view. Runtime is always visible. Participants
+  // see Summary + Runtime; researcher/debug see all five.
+  const ADVANCED_TAB_NAMES = new Set(["records", "paths", "provenance"]);
+  const advancedTabs = rightTabBtns.filter(
+    (b) => ADVANCED_TAB_NAMES.has(b.dataset.rightTab)
+  );
   const showAdvanced = isResearcherBase || (isParticipant && debugExpanded);
   for (const tab of advancedTabs) tab.classList.toggle("hidden", !showAdvanced);
   for (const panel of rightTabPanels) {
-    const isAdvanced = panel.dataset.rightPanel !== "runtime";
+    const isAdvanced = ADVANCED_TAB_NAMES.has(panel.dataset.rightPanel);
     panel.classList.toggle("hidden", isAdvanced && !showAdvanced);
   }
-  // If the active right tab just got hidden, fall back. Participants land
-  // on Summary (the participant-facing surface); researcher/debug land on
-  // Runtime (the workbench surface).
+  // Deterministic per-view default tab. Participants land on Summary
+  // (the participant-facing surface); researcher/debug/anonymous local land
+  // on Records (the workbench surface). If the current active tab is still
+  // visible in this view, keep it (preserve user choice).
+  const defaultTab = isParticipant ? "summary" : "records";
   const activeTabBtn = rightTabBtns.find((b) => b.classList.contains("selected"));
-  if (activeTabBtn && activeTabBtn.classList.contains("hidden")) {
-    const fallbackTab = isParticipant ? "summary" : "runtime";
-    const fallbackBtn = rightTabBtns.find(
-      (b) => b.dataset.rightTab === fallbackTab
-    );
-    if (fallbackBtn) fallbackBtn.click();
+  if (!activeTabBtn || activeTabBtn.classList.contains("hidden")) {
+    const def = rightTabBtns.find((b) => b.dataset.rightTab === defaultTab);
+    if (def) def.click();
   }
 
   // Transcript view toggle: participant defaults to User view and hides the toggle.

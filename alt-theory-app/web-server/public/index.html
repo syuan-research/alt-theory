@@ -49,9 +49,9 @@
       </div>
 
       <!-- Participant role-condition display (participant view only) -->
-      <div class="panel-section role-condition-section hidden">
-        <span id="role-condition-label" class="section-label">Condition</span>
-        <div id="role-condition-display" class="role-condition-display small-text">—</div>
+      <div class="role-condition-row hidden">
+        <span class="role-condition-label">Current role setup:</span>
+        <span id="role-condition-display" class="role-condition-value">—</span>
       </div>
 
       <div class="panel-section" id="session-browser-section">
@@ -133,12 +133,12 @@
         <div class="panel-header">
           <span class="panel-title">Inspector</span>
           <div class="header-actions">
-            <button id="debug-toggle" class="icon-btn debug-only hidden" title="Show debug/inspector panels for this browser">Debug</button>
+            <button id="debug-toggle" class="icon-btn icon-btn-glyph debug-only hidden" title="Show debug/inspector panels for this browser" aria-label="Debug">⚙︎</button>
             <button id="collapse-right" class="icon-btn desktop-only" title="Collapse inspector">&#9654;</button>
           </div>
         </div>
         <div id="right-tabs" class="right-tabs">
-          <button class="right-tab selected" data-right-tab="records">Records</button>
+          <button class="right-tab" data-right-tab="records">Records</button>
           <button class="right-tab" data-right-tab="summary">Summary</button>
           <button class="right-tab" data-right-tab="runtime">Runtime</button>
           <button class="right-tab" data-right-tab="provenance">Provenance</button>
@@ -160,7 +160,7 @@
         </div>
       </div>
 
-      <div class="right-tab-panel active" data-right-panel="records">
+      <div class="right-tab-panel" data-right-panel="records">
         <div class="panel-section">
           <div class="panel-header compact-header">
             <span class="section-label inline-label">Session Records</span>
@@ -183,7 +183,6 @@
           <textarea id="summary-editor" spellcheck="false" placeholder="Add an optional note, e.g. focus on decisions, questions, context, or next steps."></textarea>
           <div class="summary-actions">
             <button id="summary-invoke-btn" title="Run the conversation-summary skill" disabled><span class="ico">⏏︎</span><span>Save summary to file</span></button>
-            <span class="summary-note">Add an optional note, e.g. focus on decisions, questions, context, or next steps.</span>
             <span id="summary-status" class="summary-status"></span>
           </div>
         </div>

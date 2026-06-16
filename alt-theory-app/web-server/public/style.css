@@ -802,6 +802,30 @@ html, body {
   color: var(--text-primary);
 }
 
+/* Icon-only glyph button (debug). Smaller and quieter than the text icon-btn
+   so it sits next to the collapse arrow without dominating. */
+.icon-btn-glyph {
+  width: 22px;
+  height: 22px;
+  font-size: 13px;
+  font-family: var(--font-mono);
+  font-variant-emoji: text;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  border-radius: var(--r-sm);
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+  line-height: 1;
+}
+.icon-btn-glyph:hover {
+  background: var(--hover);
+  color: var(--text-primary);
+}
+
 #lineage-actions {
   display: flex;
   gap: 6px;
@@ -1781,15 +1805,23 @@ button:hover {
   gap: 8px;
 }
 
-/* --- Role-condition display (participant) --- */
-
-.role-condition-section {
-  padding-top: 0;
+/* --- Role-condition display (participant) ---
+   Inline row: small muted label + slightly darker value, no card, no
+   section heading. Sits between the auth row and the session browser. */
+.role-condition-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 6px 18px 4px;
+  font-size: 12.5px;
+  flex-wrap: wrap;
 }
-
-.role-condition-display {
+.role-condition-label {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+.role-condition-value {
   color: var(--text-secondary);
-  padding: 2px 0 6px;
 }
 
 /* --- Visibility / private-mode bar --- */
@@ -2060,12 +2092,6 @@ body.view-participant .session-group-title {
   line-height: 1;
   font-family: var(--font-mono);
   font-variant-emoji: text;
-}
-
-.summary-note {
-  font-size: 12px;
-  color: var(--text-muted);
-  line-height: 1.5;
 }
 
 .summary-status {
