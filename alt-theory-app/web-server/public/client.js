@@ -153,6 +153,8 @@ let sessionReady = false;
 let latestManifest = null;
 let pendingConfirmAction = null;
 let sessionCatalog = [];
+let sessionDisplayNames = {};
+let sessionDisplayNameLoads = {};
 let projectCatalog = [];
 let selectedHistoricalSessionId = "";
 let selectedSessionDetail = null;
@@ -565,6 +567,7 @@ async function fetchSessions() {
     const data = await res.json();
     sessionCatalog = Array.isArray(data.sessions) ? data.sessions : [];
     renderSessionList();
+    hydrateSessionDisplayNames(sessionCatalog);
     if (
       selectedHistoricalSessionId &&
       sessionCatalog.some((session) => session.sessionId === selectedHistoricalSessionId)
@@ -764,12 +767,12 @@ function buildSessionRow(session, options = {}) {
   if (session.visibility === "private") {
     row.classList.add("private");
   }
-  row.onclick = () => fetchSessionDetail(session.sessionId);
+  row.onclick = () => openSessionFromRow(session.sessionId);
 
   const title = document.createElement("div");
   title.className = "session-row-title";
   const id = document.createElement("span");
-  id.textContent = shortId(session.sessionId);
+  id.textContent = sessionDisplayTitle(session);
   id.title = session.sessionId || "";
   const status = document.createElement("span");
   status.className = session.warnings?.length ? "session-warning" : "";
@@ -797,6 +800,87 @@ function buildSessionRow(session, options = {}) {
   row.appendChild(title);
   row.appendChild(meta);
   return row;
+}
+
+function sessionDisplayTitle(session) {
+  const cached = sessionDisplayNames[session.sessionId];
+  if (cached?.alias) return cached.alias;
+  if (cached?.snippet) return cached.snippet;
+  return shortId(session.sessionId);
+}
+
+function normalizeSessionAlias(value) {
+  return String(value || "").trim().replace(/\s+/g, " ").slice(0, 80);
+}
+
+function firstUserSnippet(detail) {
+  const message = (detail?.transcript || []).find((item) => item.role === "user");
+  const text = String(message?.text || "").trim().replace(/\s+/g, " ");
+  if (!text) return "";
+  return text.length > 32 ? `${text.slice(0, 32)}...` : text;
+}
+
+async function hydrateSessionDisplayNames(sessions) {
+  for (const session of sessions.slice(0, 20)) {
+    const sessionId = session.sessionId;
+    if (!sessionId || sessionDisplayNameLoads[sessionId]) continue;
+    sessionDisplayNameLoads[sessionId] = true;
+    hydrateSessionDisplayName(sessionId).finally(() => {
+      renderSessionList();
+    });
+  }
+}
+
+async function hydrateSessionDisplayName(sessionId) {
+  let alias = "";
+  try {
+    const qs = new URLSearchParams({ root: "records", path: "ui-alias.json" });
+    const res = await fetch(
+      `/api/sessions/${encodeURIComponent(sessionId)}/files/content?${qs}`
+    );
+    if (res.ok) {
+      const file = await res.json();
+      const parsed = JSON.parse(file.content || "{}");
+      alias = normalizeSessionAlias(parsed.alias);
+    }
+  } catch {}
+
+  let snippet = "";
+  if (!alias) {
+    try {
+      const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`);
+      if (res.ok) snippet = firstUserSnippet(await res.json());
+    } catch {}
+  }
+  sessionDisplayNames[sessionId] = { alias, snippet };
+}
+
+async function saveSessionAlias(sessionId, alias) {
+  const content = alias
+    ? JSON.stringify({ schemaVersion: 1, alias, updatedAt: new Date().toISOString() }, null, 2)
+    : JSON.stringify({ schemaVersion: 1, alias: "", updatedAt: new Date().toISOString() }, null, 2);
+  const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/files/content`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ root: "records", path: "ui-alias.json", content }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `HTTP ${res.status}`);
+  }
+  sessionDisplayNames[sessionId] = {
+    ...(sessionDisplayNames[sessionId] || {}),
+    alias,
+  };
+  renderSessionList();
+}
+
+function openSessionFromRow(sessionId) {
+  if (!sessionId || isRunning) return;
+  selectedHistoricalSessionId = sessionId;
+  renderSessionList();
+  fetchSessionDetail(sessionId);
+  doOpenSession(sessionId);
 }
 
 function renderRecordsList(files) {
@@ -887,7 +971,7 @@ function renderSessionDetail() {
   }
 
   resumeSessionBtn.disabled =
-    !session.hasSessionFile || !session.sessionId || ws.readyState !== WebSocket.OPEN;
+    !session.sessionId || ws.readyState !== WebSocket.OPEN;
   deleteSessionBtn.disabled = !session.sessionId || ws.readyState !== WebSocket.OPEN;
 }
 
@@ -2344,19 +2428,23 @@ async function softDeleteSelectedSession(sessionId) {
 
 resumeSessionBtn.onclick = () => {
   const sessionId = selectedSessionDetail?.session?.sessionId;
-  if (!sessionId || isRunning) return;
-  if (hasMessages) {
-    showConfirm(
-      "Resume selected session? Current chat view will be cleared.",
-      () => doOpenSession(sessionId),
-      "Resume"
-    );
-  } else {
-    doOpenSession(sessionId);
-  }
+  if (!sessionId) return;
+  const current = sessionDisplayNames[sessionId]?.alias || "";
+  const next = window.prompt("Session name", current);
+  if (next === null) return;
+  const alias = normalizeSessionAlias(next);
+  saveSessionAlias(sessionId, alias).catch((error) => {
+    toolStatusEl.textContent = `Rename failed: ${error.message || error}`;
+    renderSessionDetail();
+  });
 };
 
 function doOpenSession(sessionId) {
+  const summary = sessionCatalog.find((session) => session.sessionId === sessionId);
+  if (!summary?.hasSessionFile) {
+    toolStatusEl.textContent = "Session cannot be opened.";
+    return;
+  }
   pendingOpenSessionId = sessionId;
   if (
     !wsSafeSend(
