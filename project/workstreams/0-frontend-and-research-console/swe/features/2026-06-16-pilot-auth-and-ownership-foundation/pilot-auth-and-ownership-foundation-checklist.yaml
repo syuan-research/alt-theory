@@ -10,7 +10,7 @@ steps:
     status: done
   - action: "Session ownership persistence: extend v0.4 session header and create-session input"
     exit_signal: "Service test creates an owned session with roleCondition and consent snapshot"
-    status: pending
+    status: done
   - action: "Auth-aware REST catalog/detail: filter participant access and preserve researcher/admin access"
     exit_signal: "Backend tests prove participant sees own sessions only and cannot read others"
     status: pending

@@ -96,6 +96,17 @@ export interface SessionSelectors {
   customInstructionRef?: string | null;
 }
 
+export interface SessionCreationMetadata {
+  ownerAccountId?: string | null;
+  roleCondition?: string | null;
+  visibility?: "research" | "private";
+  consentSnapshot?: {
+    researcherReadable: boolean;
+    quoteAfterAnonymization: boolean;
+    privateOverride: boolean;
+  } | null;
+}
+
 export type ForkPurpose = "collaboration" | "comparison";
 
 export interface RunHandle {
@@ -145,7 +156,10 @@ export class SessionService {
 
   constructor(private readonly config: SessionServiceConfig) {}
 
-  async createSession(selectors: SessionSelectors): Promise<SessionSnapshot> {
+  async createSession(
+    selectors: SessionSelectors,
+    metadata: SessionCreationMetadata = {}
+  ): Promise<SessionSnapshot> {
     const sessionId = allocateReadableSessionId(this.config.dataDir, {
       rolePresetSlug: selectors.rolePresetSlug,
       soulSlug: selectors.soulSlug,
@@ -153,7 +167,8 @@ export class SessionService {
     });
     const managed = await this.createManagedFromDirs(
       createSessionDirs(this.config.dataDir, sessionId),
-      selectors
+      selectors,
+      metadata
     );
     this.sessions.set(managed.manifest.sessionId, managed);
     appendConfigEvent(managed.manifest.recordsDir, {
@@ -650,7 +665,8 @@ export class SessionService {
 
   private async createManagedFromDirs(
     sessionDirs: SessionDirectories,
-    selectors: SessionSelectors
+    selectors: SessionSelectors,
+    metadata: SessionCreationMetadata = {}
   ): Promise<ManagedSession> {
     const rolePresetPath = this.resolveOptionalRolePresetPath(
       selectors.rolePresetSlug
@@ -691,6 +707,10 @@ export class SessionService {
       recordsDir: sessionDirs.recordsDir,
       manifest: result.manifest,
       projectId: selectors.projectId ?? null,
+      ownerAccountId: metadata.ownerAccountId ?? null,
+      roleCondition: metadata.roleCondition ?? null,
+      visibility: metadata.visibility ?? "research",
+      consentSnapshot: metadata.consentSnapshot ?? null,
     });
 
     const managed = this.createManaged({

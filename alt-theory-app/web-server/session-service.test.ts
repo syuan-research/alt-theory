@@ -409,6 +409,47 @@ test("SessionService cleans unactivated comparison fork artifacts", async () => 
   }
 });
 
+test("SessionService creates owned sessions with role condition and consent snapshot", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const snapshot = await service.createSession(
+    {
+      rolePresetSlug: "default",
+      kbDomain: "ep-core",
+      soulSlug: "soul-latest",
+    },
+    {
+      ownerAccountId: "p01",
+      roleCondition: "conceptual-theory",
+      visibility: "research",
+      consentSnapshot: {
+        researcherReadable: true,
+        quoteAfterAnonymization: true,
+        privateOverride: false,
+      },
+    }
+  );
+
+  try {
+    const manifest = service.getManifest(snapshot.sessionId);
+    const sessionRecord = JSON.parse(
+      readFileSync(join(manifest.recordsDir, "session.json"), "utf-8")
+    );
+    assert.equal(sessionRecord.ownerAccountId, "p01");
+    assert.equal(sessionRecord.roleCondition, "conceptual-theory");
+    assert.equal(sessionRecord.visibility, "research");
+    assert.deepEqual(sessionRecord.consentSnapshot, {
+      researcherReadable: true,
+      quoteAfterAnonymization: true,
+      privateOverride: false,
+    });
+    assert.match(sessionRecord.lastActivityAt, /^\d{4}-\d{2}-\d{2}T/);
+    assert.equal(sessionRecord.retentionDueAt, null);
+  } finally {
+    await service.disposeAll();
+  }
+});
+
 test("SessionService switches role and soul inside the same materialized session", async () => {
   const fixture = setupFixture();
   const service = createTestService(fixture);

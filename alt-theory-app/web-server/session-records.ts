@@ -17,6 +17,16 @@ export interface V4SessionHeader extends RecordEnvelope {
   projectId: string | null;
   activeBranchId: string;
   recordModel: "v0.4";
+  ownerAccountId?: string | null;
+  roleCondition?: string | null;
+  visibility?: "research" | "private";
+  consentSnapshot?: {
+    researcherReadable: boolean;
+    quoteAfterAnonymization: boolean;
+    privateOverride: boolean;
+  };
+  lastActivityAt?: string;
+  retentionDueAt?: string | null;
 }
 
 export interface BranchRecord {
@@ -43,6 +53,16 @@ export function writeFoundationRecords(args: {
   recordsDir: string;
   manifest: AssemblyManifest;
   projectId?: string | null;
+  ownerAccountId?: string | null;
+  roleCondition?: string | null;
+  visibility?: "research" | "private";
+  consentSnapshot?: {
+    researcherReadable: boolean;
+    quoteAfterAnonymization: boolean;
+    privateOverride: boolean;
+  } | null;
+  lastActivityAt?: string;
+  retentionDueAt?: string | null;
 }): { session: V4SessionHeader; branchIndex: BranchIndexRecord } {
   const createdAt = args.manifest.createdAt ?? new Date().toISOString();
   const session: V4SessionHeader = {
@@ -53,6 +73,14 @@ export function writeFoundationRecords(args: {
     projectId: args.projectId ?? null,
     activeBranchId: "main",
     recordModel: "v0.4",
+    ownerAccountId: args.ownerAccountId ?? null,
+    roleCondition: args.roleCondition ?? null,
+    visibility: args.visibility ?? "research",
+    ...(args.consentSnapshot
+      ? { consentSnapshot: { ...args.consentSnapshot } }
+      : {}),
+    lastActivityAt: args.lastActivityAt ?? createdAt,
+    retentionDueAt: args.retentionDueAt ?? null,
   };
   const branchIndex: BranchIndexRecord = {
     schemaVersion: V4_SCHEMA_VERSION,
