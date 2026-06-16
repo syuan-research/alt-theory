@@ -4,7 +4,7 @@ slug: core-session-engine
 scope: Alt Theory core session engine and Pi Coding Agent integration
 summary: Creates persistent, asset-configured Pi sessions through an application-owned service used by WebSocket adapters
 status: current
-last_reviewed: 2026-06-15
+last_reviewed: 2026-06-16
 tags: [core, backend, pi-agent, session]
 depends_on: []
 implements:
@@ -59,6 +59,16 @@ and Pi adapter prompt templates from `agent-assets/prompts/pi/`.
   for grouping and defaults. Project setup is not mandatory.
 - **Deletion marker**: optional `records/deleted.json` tombstone that hides a
   session from the normal catalog without removing recoverable data.
+- **Account**: data-dir backed app identity record under
+  `{dataDir}/accounts/accounts.json`. It is separate from outer deployment
+  Basic Auth.
+- **Auth context**: request/connection identity resolved from an HttpOnly
+  browser session cookie. It is anonymous, participant, researcher, or admin.
+- **Session owner**: optional `ownerAccountId` persisted in
+  `records/session.json`. Participant-created sessions are owner-filtered by
+  REST APIs.
+- **Role condition**: participant/study condition stored separately from
+  `projectId` and mapped to a role preset slug at WebSocket draft creation.
 
 ## 1. Structure
 
@@ -77,6 +87,10 @@ flowchart LR
   Service --> Events[records/session-events.jsonl]
   Service --> ConfigEvents[records/config-events.jsonl]
   Service --> V4Records[records/session.json + branch-index.json]
+  AuthRoutes[Auth REST] --> AuthStore[accounts/accounts.json]
+  AuthRoutes --> AuthCookie[HttpOnly cookie token]
+  AuthCookie --> WS
+  AuthCookie --> REST
   REST[Static REST] --> Registry[asset-registry.ts]
   REST --> Projects[projects.ts]
   REST --> Store[session-store.ts]
@@ -93,6 +107,10 @@ Code anchors:
 - `alt-theory-app/core/alt-theory-core.ts`: resource loader, tool policy,
   persistent Pi session creation/opening, and manifest.
 - `alt-theory-app/web-server/asset-registry.ts`: safe role-preset/KB slugs.
+- `alt-theory-app/web-server/auth-accounts.ts`: data-dir backed account store,
+  login-code hashing, verification, and safe account serialization.
+- `alt-theory-app/web-server/auth-session.ts`: process-local browser session
+  tokens, HttpOnly cookie helpers, and request auth-context resolution.
 - `alt-theory-app/web-server/server.ts`: REST routes and per-connection
   WebSocket lifecycle.
 - `alt-theory-app/web-server/session-metrics.ts`: Pi-native metric mapping and
@@ -113,8 +131,9 @@ Code anchors:
 
 ## 2. Session Creation
 
-1. WebSocket connect creates only an unpersisted draft selector set and sends
-   `session_draft`. It does not create a `sessions/{id}` directory.
+1. WebSocket connect resolves the auth cookie, creates only an unpersisted
+   draft selector set, and sends `session_draft`. It does not create a
+   `sessions/{id}` directory.
 2. The first `prompt` allocates a readable session ID, then creates
    `sessions/{id}/workspace`, `history`, and `records`.
 3. The core creates `SessionManager.create(sessionCwd, piSessionDir)` and sets
@@ -130,6 +149,9 @@ Code anchors:
    session/runtime events to `records/session-events.jsonl`.
 8. If provided, `ALT_THEORY_RUN_LABEL` and `ALT_THEORY_TEST_BATCH` are recorded
    in the manifest as `runLabel` and `testBatch`.
+9. For participant auth contexts, `records/session.json` also records
+   `ownerAccountId`, `roleCondition`, `visibility`, `consentSnapshot`,
+   `lastActivityAt`, and `retentionDueAt`.
 
 ## 2.1 Session Catalog And Open
 
@@ -140,6 +162,13 @@ catalog:
   paths in each summary.
 - `GET /api/sessions/{id}` returns bounded detail: manifest, metrics, event
   tail, Pi JSONL info, context counts, and a small transcript preview.
+
+When `{dataDir}/accounts/accounts.json` has configured accounts, session REST
+routes require app identity. Participant accounts see only sessions whose
+`ownerAccountId` matches their account. Researcher/admin accounts can see
+ownerless researcher workbench sessions and participant-owned sessions. When no
+account store is configured, anonymous access keeps the old local workbench
+behavior for v0.4 compatibility.
 
 WebSocket `open_session` makes an existing session the current live session for
 that connection. The server reads the detail record, opens the existing Pi JSONL
@@ -282,6 +311,12 @@ conversation bodies. `branch-index.json` is the authoritative active logical
 branch pointer; Pi's internal fork session ID remains an implementation detail
 and does not replace the Alt Theory `sessionId`.
 
+`records/session.json` also carries v0.5 pilot metadata when present:
+`ownerAccountId`, `roleCondition`, `visibility`, `consentSnapshot`,
+`lastActivityAt`, and `retentionDueAt`. The private-retention cleanup behavior
+is a later feature; this engine currently persists the fields and enforces
+owner-based REST filtering.
+
 Ordinary runs append accepted and terminal snapshots to `records/runs.jsonl`.
 Each run maps `sessionId`, `branchId`, `turnId`, `revisionId`, and `runId` to
 the Pi session file and user/assistant entry IDs. Latest-turn revision moves
@@ -318,6 +353,9 @@ config changes with `session_busy`.
 
 REST:
 
+- `POST /api/auth/login`
+- `POST /api/auth/logout`
+- `GET /api/auth/me`
 - `GET /api/role-presets`
 - `GET /api/souls`
 - `GET /api/profiles` legacy compatibility alias
@@ -347,6 +385,8 @@ Session file routes expose only `.md`, `.txt`, and `.json` files under a
 session's `records/` or `workspace/` roots. Requests must resolve inside the
 selected root, and large files are rejected. The routes support lightweight
 researcher record inspection/editing, not arbitrary filesystem browsing.
+When accounts are configured, these routes use the same owner/admin filter as
+session catalog/detail.
 
 WebSocket:
 
@@ -358,6 +398,13 @@ WebSocket:
 `session_draft` contains only selector state and no session ID. The browser may
 enable input/config controls in draft, but records, paths, and metrics remain
 unavailable until materialization.
+
+For participant WebSocket connections, the draft role preset is derived from
+the account's `defaultRoleCondition`. The built-in mapping currently includes
+`conceptual-theory -> role-conceptual-theory-companion` and
+`metatheory-oriented -> role-metatheory-oriented`; a condition may also point
+directly to an existing role preset slug. Missing role presets are setup
+errors, not silent fallbacks.
 
 Metrics include message/turn/tool counts, token totals, cost, and nullable
 context usage. Successful runs atomically update
@@ -424,6 +471,13 @@ is configured; they are not a billing claim.
   environment/config, not UI.
 - Hard write-path enforcement, thinking events, compaction/retry events, and
   provider/auth UI are deferred.
+- App-level auth is file-backed and process-local in v0.5.0: account records
+  persist in the data directory, but browser auth tokens are in memory and
+  require re-login after server restart. There is no self-registration or
+  global admin UI.
+- Private-session retention is not implemented in this feature. The session
+  header fields exist for the next feature, but private hard deletion and
+  participant workspace download/delete remain pending.
 - Model selector UI remains deferred. Custom instruction loading and visual
   Alt Theory skill invocation are implemented; the normal skill picker excludes
   Pi global/project debug skills.
@@ -443,6 +497,11 @@ is configured; they are not a billing claim.
 
 ## Change Log
 
+- 2026-06-16: Added v0.5 pilot account/auth foundation. The backend now has
+  data-dir account records, login/logout/me routes, HttpOnly browser auth,
+  owner/role-condition/consent metadata in `records/session.json`,
+  participant-filtered REST session access, and participant WebSocket
+  first-send ownership.
 - 2026-06-15: Updated after workbench-session-management acceptance. Added
   durable project assignment, recoverable delete tombstones, and safe legacy
   detail fallback when v0.4 config projection is unavailable.

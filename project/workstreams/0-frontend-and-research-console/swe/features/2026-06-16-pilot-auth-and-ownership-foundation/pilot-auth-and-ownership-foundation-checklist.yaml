@@ -21,25 +21,25 @@ steps:
 checks:
   - item: "Valid participant code logs in and /api/auth/me returns safe identity"
     source: design
-    status: done
+    status: passed
   - item: "Wrong code returns a generic unauthorized response"
     source: design
-    status: done
+    status: passed
   - item: "Disabled account cannot log in"
     source: design
-    status: done
+    status: passed
   - item: "Participant-created session records ownerAccountId, roleCondition, and consent snapshot"
     source: design
-    status: done
+    status: passed
   - item: "Participant catalog/detail cannot expose another participant's session content"
     source: design
-    status: done
+    status: passed
   - item: "Researcher/admin can still access ownerless researcher workbench sessions"
     source: design
-    status: done
+    status: passed
   - item: "Participant WebSocket draft applies account role-condition default"
     source: design
-    status: done
+    status: passed
   - item: "No self-registration, private retention, project-condition dependency, role-preset authoring, or global admin UI"
     source: design
-    status: done
+    status: passed
