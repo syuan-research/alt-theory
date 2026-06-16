@@ -4,7 +4,7 @@ created: 2026-06-16
 steps:
   - action: "Auth store skeleton: add data-dir account loading, code hashing/verification, and safe account serialization"
     exit_signal: "Unit tests cover valid, disabled, missing, and wrong-code accounts"
-    status: pending
+    status: done
   - action: "Auth routes and cookie identity: add login/logout/me plus request auth resolver"
     exit_signal: "Backend route tests cover cookie round trip and no secret leakage"
     status: pending
