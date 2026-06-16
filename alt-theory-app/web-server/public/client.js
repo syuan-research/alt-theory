@@ -706,7 +706,6 @@ function renderSessionList() {
   const projectNames = new Map(
     projectCatalog.map((project) => [project.projectId, project.displayName])
   );
-  const isParticipant = viewMode === "participant";
   const visible = sessionCatalog.filter((session) => {
     if (!query) return true;
     return [
@@ -719,22 +718,7 @@ function renderSessionList() {
     ].some((value) => String(value || "").toLowerCase().includes(query));
   });
   if (visible.length === 0) {
-    sessionListEl.innerHTML = isParticipant
-      ? '<div class="session-empty">No sessions yet.</div>'
-      : '<div class="session-empty">No saved sessions.</div>';
-    return;
-  }
-
-  // Participant view: flat list, no project grouping, low-noise meta (role + time only).
-  if (isParticipant) {
-    for (const session of visible) {
-      sessionListEl.appendChild(
-        buildSessionRow(session, {
-          showModel: false,
-          showKb: false,
-        })
-      );
-    }
+    sessionListEl.innerHTML = '<div class="session-empty">No saved sessions.</div>';
     return;
   }
 
@@ -785,6 +769,7 @@ function buildSessionRow(session, options = {}) {
   title.className = "session-row-title";
   const id = document.createElement("span");
   id.textContent = shortId(session.sessionId);
+  id.title = session.sessionId || "";
   const status = document.createElement("span");
   status.className = session.warnings?.length ? "session-warning" : "";
   status.textContent = session.status || "unknown";
@@ -1012,6 +997,10 @@ function fmtNum(n) {
 
 function shortId(id) {
   if (!id) return "—";
+  const match = String(id).match(/^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})__/);
+  if (match) {
+    return `${match[2]}/${match[3]} ${match[4]}:${match[5]}:${match[6]}`;
+  }
   return id.length > 12 ? `${id.slice(0, 8)}...` : id;
 }
 
@@ -1024,6 +1013,7 @@ function fmtTime(value) {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
+    second: "2-digit",
   });
 }
 
