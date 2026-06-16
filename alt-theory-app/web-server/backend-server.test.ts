@@ -25,6 +25,7 @@ import {
   resolveSoulSlug,
 } from "./asset-registry.js";
 import { createAltTheoryServer } from "./server.js";
+import { SessionService } from "./session-service.js";
 import {
   buildSessionMetrics,
   persistSessionMetrics,
@@ -1057,6 +1058,220 @@ test("auth routes support cookie round trip without leaking account secrets", as
     });
     const afterLogoutJson = await afterLogout.json();
     assert.equal(afterLogoutJson.auth.role, "anonymous");
+  } finally {
+    await new Promise<void>((resolveClose) => {
+      instance.wss.close(() => {
+        instance.httpServer.close(() => resolveClose());
+      });
+    });
+  }
+});
+
+test("session REST routes filter participant access and preserve researcher access", async () => {
+  const root = mkdtempSync(join(tmpdir(), "alt-theory-auth-filter-"));
+  const dataDir = join(root, "data");
+  const rolePresets = join(root, "role-presets");
+  const souls = join(root, "soul");
+  const kb = join(root, "kb");
+  const appContextPath = join(root, "ALTTHEORY.md");
+  const piPromptTemplatesDir = resolve("agent-assets", "prompts", "pi");
+  const now = "2026-06-16T00:00:00.000Z";
+
+  mkdirSync(rolePresets, { recursive: true });
+  mkdirSync(souls, { recursive: true });
+  mkdirSync(join(kb, "ep-core"), { recursive: true });
+  writeFileSync(appContextPath, "Auth filter app context", "utf-8");
+  writeFileSync(join(rolePresets, "default.md"), "Default role", "utf-8");
+  writeFileSync(join(souls, "soul-latest.md"), "Latest soul", "utf-8");
+
+  writeAccountStore(dataDir, {
+    schemaVersion: 1,
+    accounts: [
+      {
+        schemaVersion: 1,
+        accountId: "p01",
+        displayLabel: "Participant 01",
+        role: "participant",
+        status: "active",
+        loginCodeHash: hashLoginCode("p01-code", "p01-filter-salt"),
+        defaultRoleCondition: "conceptual-theory",
+        defaultConsent: {
+          researcherReadable: true,
+          quoteAfterAnonymization: true,
+        },
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        schemaVersion: 1,
+        accountId: "researcher",
+        displayLabel: "Researcher",
+        role: "researcher",
+        status: "active",
+        loginCodeHash: hashLoginCode("research-code", "research-filter-salt"),
+        defaultRoleCondition: null,
+        defaultConsent: {
+          researcherReadable: true,
+          quoteAfterAnonymization: true,
+        },
+        createdAt: now,
+        updatedAt: now,
+      },
+    ],
+  });
+
+  const service = new SessionService({
+    dataDir,
+    assetPaths: {
+      rootDir: root,
+      appContextPath,
+      instructionsDir: join(root, "instructions"),
+      skillsDir: join(root, "skills"),
+      soulDir: souls,
+      soulPath: join(souls, "soul-latest.md"),
+      rolePresetsDir: rolePresets,
+      kbDir: kb,
+      piPromptTemplatesDir,
+      modelsPath: null,
+    },
+    kbDir: kb,
+    rolePresetsDir: rolePresets,
+    soulDir: souls,
+    legacySoulPath: join(souls, "soul-latest.md"),
+    readOnly: true,
+    promptMode: "alt-only",
+    resourceDiscovery: "clean",
+    instructionsDir: join(root, "instructions"),
+    runLabel: null,
+    testBatch: null,
+  });
+
+  const p01Session = await service.createSession(
+    { rolePresetSlug: "default", kbDomain: "ep-core", soulSlug: "soul-latest" },
+    {
+      ownerAccountId: "p01",
+      roleCondition: "conceptual-theory",
+      consentSnapshot: {
+        researcherReadable: true,
+        quoteAfterAnonymization: true,
+        privateOverride: false,
+      },
+    }
+  );
+  const p02Session = await service.createSession(
+    { rolePresetSlug: "default", kbDomain: "ep-core", soulSlug: "soul-latest" },
+    {
+      ownerAccountId: "p02",
+      roleCondition: "metatheory-oriented",
+      consentSnapshot: {
+        researcherReadable: true,
+        quoteAfterAnonymization: false,
+        privateOverride: false,
+      },
+    }
+  );
+  const ownerlessSession = await service.createSession({
+    rolePresetSlug: "default",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  for (const sessionId of [
+    p01Session.sessionId,
+    p02Session.sessionId,
+    ownerlessSession.sessionId,
+  ]) {
+    persistSessionMetrics(service.getManifest(sessionId).recordsDir, {
+      turnCount: 1,
+      toolCallCount: 0,
+      messageCount: 1,
+      tokens: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        total: 0,
+      },
+      cost: 0,
+      contextUsage: null,
+    });
+  }
+  await service.disposeAll();
+
+  const instance = createAltTheoryServer({
+    dataDir,
+    appContextPath,
+    soulDir: souls,
+    rolePresetsDir: rolePresets,
+    kbDir: kb,
+    readOnly: true,
+  });
+  await new Promise<void>((resolveListen) => {
+    instance.httpServer.listen(0, "127.0.0.1", resolveListen);
+  });
+  const address = instance.httpServer.address();
+  assert.ok(address && typeof address === "object");
+  const baseUrl = `http://127.0.0.1:${address.port}`;
+
+  async function loginCookie(accountId: string, loginCode: string): Promise<string> {
+    const response = await fetch(`${baseUrl}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ accountId, loginCode }),
+    });
+    assert.equal(response.status, 200);
+    return response.headers.get("set-cookie")?.split(";")[0] ?? "";
+  }
+
+  try {
+    const anonymousList = await fetch(`${baseUrl}/api/sessions`);
+    assert.equal(anonymousList.status, 401);
+
+    const participantCookie = await loginCookie("p01", "p01-code");
+    const participantList = await fetch(`${baseUrl}/api/sessions`, {
+      headers: { Cookie: participantCookie },
+    });
+    const participantListJson = await participantList.json();
+    assert.deepEqual(
+      participantListJson.sessions.map((session: any) => session.sessionId),
+      [p01Session.sessionId]
+    );
+    assert.equal(
+      participantListJson.sessions[0].roleCondition,
+      "conceptual-theory"
+    );
+
+    const ownDetail = await fetch(
+      `${baseUrl}/api/sessions/${p01Session.sessionId}`,
+      { headers: { Cookie: participantCookie } }
+    );
+    assert.equal(ownDetail.status, 200);
+    const otherDetail = await fetch(
+      `${baseUrl}/api/sessions/${p02Session.sessionId}`,
+      { headers: { Cookie: participantCookie } }
+    );
+    assert.equal(otherDetail.status, 404);
+    const ownerlessDetail = await fetch(
+      `${baseUrl}/api/sessions/${ownerlessSession.sessionId}`,
+      { headers: { Cookie: participantCookie } }
+    );
+    assert.equal(ownerlessDetail.status, 404);
+
+    const researcherCookie = await loginCookie("researcher", "research-code");
+    const researcherList = await fetch(`${baseUrl}/api/sessions`, {
+      headers: { Cookie: researcherCookie },
+    });
+    const researcherListJson = await researcherList.json();
+    assert.equal(researcherListJson.sessions.length, 3);
+    assert.ok(
+      researcherListJson.sessions.some(
+        (session: any) => session.sessionId === ownerlessSession.sessionId
+      )
+    );
+    const researcherOwnerlessDetail = await fetch(
+      `${baseUrl}/api/sessions/${ownerlessSession.sessionId}`,
+      { headers: { Cookie: researcherCookie } }
+    );
+    assert.equal(researcherOwnerlessDetail.status, 200);
   } finally {
     await new Promise<void>((resolveClose) => {
       instance.wss.close(() => {

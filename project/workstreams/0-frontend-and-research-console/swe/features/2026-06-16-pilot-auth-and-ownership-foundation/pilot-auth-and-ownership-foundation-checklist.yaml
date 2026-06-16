@@ -13,7 +13,7 @@ steps:
     status: done
   - action: "Auth-aware REST catalog/detail: filter participant access and preserve researcher/admin access"
     exit_signal: "Backend tests prove participant sees own sessions only and cannot read others"
-    status: pending
+    status: done
   - action: "WebSocket ownership: resolve auth context on connection and apply role-condition defaults at first send"
     exit_signal: "WebSocket test first-send creates an owned role-conditioned session"
     status: pending
@@ -33,10 +33,10 @@ checks:
     status: pending
   - item: "Participant catalog/detail cannot expose another participant's session content"
     source: design
-    status: pending
+    status: done
   - item: "Researcher/admin can still access ownerless researcher workbench sessions"
     source: design
-    status: pending
+    status: done
   - item: "Participant WebSocket draft applies account role-condition default"
     source: design
     status: pending

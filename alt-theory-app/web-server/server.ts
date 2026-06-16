@@ -40,6 +40,7 @@ import {
   listSessionSummaries,
   readSessionTextFile,
   readSessionDetail,
+  type SessionSummary,
   softDeleteSession,
   writeSessionTextFile,
 } from "./session-store.js";
@@ -57,6 +58,8 @@ import {
   clearAuthCookie,
   setAuthCookie,
 } from "./auth-session.js";
+import { readAccountStore } from "./auth-accounts.js";
+import type { AuthContext } from "./auth-session.js";
 
 const PROJECT_ROOT = process.cwd();
 const PUBLIC_DIR = resolve(
@@ -242,8 +245,16 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       });
     }
   });
-  app.get("/api/sessions", (_req, res) => {
-    res.json(listSessionSummaries(dataDir));
+  app.get("/api/sessions", (req, res) => {
+    const auth = resolveSessionRestAuth(req, res);
+    if (!auth) return;
+    const list = listSessionSummaries(dataDir);
+    res.json({
+      ...list,
+      sessions: list.sessions.filter((session) =>
+        canAccessSessionSummary(auth, session)
+      ),
+    });
   });
   app.get("/api/sessions/:sessionId", (req, res) => {
     const sessionId = req.params.sessionId;
@@ -257,8 +268,14 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       return;
     }
 
+    const auth = resolveSessionRestAuth(req, res);
+    if (!auth) return;
     const detail = readSessionDetail(dataDir, sessionId);
     if (!detail) {
+      res.status(404).json({ error: `Unknown session id: ${sessionId}` });
+      return;
+    }
+    if (!canAccessSessionSummary(auth, detail.session)) {
       res.status(404).json({ error: `Unknown session id: ${sessionId}` });
       return;
     }
@@ -275,6 +292,13 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       res.status(404).json({ error: `Unknown session id: ${sessionId}` });
       return;
     }
+    const auth = resolveSessionRestAuth(req, res);
+    if (!auth) return;
+    const detail = readSessionDetail(dataDir, sessionId);
+    if (!detail || !canAccessSessionSummary(auth, detail.session)) {
+      res.status(404).json({ error: `Unknown session id: ${sessionId}` });
+      return;
+    }
     try {
       res.json({ deleted: softDeleteSession(dataDir, sessionId) });
     } catch (error) {
@@ -287,6 +311,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     const sessionId = req.params.sessionId;
     const rootName =
       typeof req.query.root === "string" ? req.query.root : undefined;
+    if (!requireSessionRestAccess(req, res, sessionId)) return;
     try {
       res.json(listSessionTextFiles(dataDir, sessionId, rootName));
     } catch (error) {
@@ -298,6 +323,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     const rootName = typeof req.query.root === "string" ? req.query.root : "";
     const requestedPath =
       typeof req.query.path === "string" ? req.query.path : "";
+    if (!requireSessionRestAccess(req, res, sessionId)) return;
     try {
       res.json(readSessionTextFile(dataDir, sessionId, rootName, requestedPath));
     } catch (error) {
@@ -319,6 +345,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       res.status(400).json({ error: "root, path, and content are required" });
       return;
     }
+    if (!requireSessionRestAccess(req, res, sessionId)) return;
     try {
       res.json(
         writeSessionTextFile(
@@ -350,6 +377,56 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
 
   function optionalSlug(value: string | null | undefined): string | null {
     return value && value.trim() ? value : null;
+  }
+
+  function resolveSessionRestAuth(
+    req: express.Request,
+    res: Response
+  ): AuthContext | null {
+    const auth = authSessions.resolveRequest(req);
+    if (auth.role === "anonymous" && hasConfiguredAccounts()) {
+      res.status(401).json({ error: "Authentication required" });
+      return null;
+    }
+    return auth;
+  }
+
+  function hasConfiguredAccounts(): boolean {
+    return readAccountStore(dataDir).accounts.length > 0;
+  }
+
+  function canAccessSessionSummary(
+    auth: AuthContext,
+    session: SessionSummary
+  ): boolean {
+    if (auth.role === "participant") {
+      return Boolean(auth.accountId) && session.ownerAccountId === auth.accountId;
+    }
+    return true;
+  }
+
+  function requireSessionRestAccess(
+    req: express.Request,
+    res: Response,
+    sessionId: string
+  ): boolean {
+    const root = getSessionRootForRequest(dataDir, sessionId);
+    if (root.status === "invalid") {
+      res.status(400).json({ error: `Invalid session id: ${sessionId}` });
+      return false;
+    }
+    if (root.status === "missing") {
+      res.status(404).json({ error: `Unknown session id: ${sessionId}` });
+      return false;
+    }
+    const auth = resolveSessionRestAuth(req, res);
+    if (!auth) return false;
+    const detail = readSessionDetail(dataDir, sessionId);
+    if (!detail || !canAccessSessionSummary(auth, detail.session)) {
+      res.status(404).json({ error: `Unknown session id: ${sessionId}` });
+      return false;
+    }
+    return true;
   }
 
 

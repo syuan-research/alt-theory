@@ -38,6 +38,9 @@ import {
 export interface SessionSummary {
   sessionId: string;
   projectId: string | null;
+  ownerAccountId: string | null;
+  roleCondition: string | null;
+  visibility: "research" | "private";
   createdAt: string | null;
   updatedAt: string | null;
   deletedAt: string | null;
@@ -418,6 +421,9 @@ function buildSummary(sessionId: string, parts: SessionParts): SessionSummary {
       parts.v4Session?.projectId ??
       readConfigEvents(parts.recordsDir).at(-1)?.effective.projectId ??
       null,
+    ownerAccountId: parts.v4Session?.ownerAccountId ?? null,
+    roleCondition: parts.v4Session?.roleCondition ?? null,
+    visibility: parts.v4Session?.visibility ?? "research",
     createdAt: parts.manifest?.createdAt ?? null,
     updatedAt: newestTimestamp([
       parts.sessionRoot,
