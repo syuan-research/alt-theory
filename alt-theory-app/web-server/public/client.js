@@ -39,9 +39,7 @@ const toolStatusEl = document.getElementById("tool-status");
 const skillSelect = document.getElementById("skill-select");
 const invokeSkillBtn = document.getElementById("invoke-skill");
 const reviseLatestBtn = document.getElementById("revise-latest");
-const deleteLatestBtn = document.getElementById("delete-latest");
 const forkPurposeSelect = document.getElementById("fork-purpose");
-const forkSessionBtn = document.getElementById("fork-session");
 const viewToggleBtns = Array.from(document.querySelectorAll(".view-toggle"));
 
 // ---------------------------------------------------------------------------
@@ -236,7 +234,9 @@ function renderAuthBadge() {
       el.classList.remove("hidden");
     }
   }
-  logoutBtn.classList.toggle("hidden", role === "anonymous");
+  // Show/hide the whole auth row (badge + logout) based on login state.
+  const authRow = document.getElementById("auth-row");
+  if (authRow) authRow.classList.toggle("hidden", role === "anonymous");
 }
 
 // Derive the shell view mode from resolved auth. Anonymous with no configured accounts
@@ -265,18 +265,21 @@ function applyViewMode(mode) {
   // Role-condition display: participant only.
   roleConditionSection.classList.toggle("hidden", !isParticipant);
 
-  // Debug toggle visibility: researcher/admin roles only.
-  const canDebug =
-    authCtx?.role === "researcher" || authCtx?.role === "admin";
-  debugToggle.classList.toggle("hidden", !canDebug);
+  // Debug toggle: participant only. A participant defaults to a simplified view; the
+  // toggle temporarily reveals advanced inspector panels (Records/Paths/Provenance) for
+  // current-browser troubleshooting. A researcher/admin already sees everything, so the
+  // toggle is useless there and is hidden.
+  const showDebugToggle = isParticipant;
+  debugToggle.classList.toggle("hidden", !showDebugToggle);
 
   // Delete-from-catalog control: participant view does not expose arbitrary delete.
   // (Participant sessions are owner-scoped; soft delete stays a researcher/debug action.)
   if (deleteSessionBtn) deleteSessionBtn.classList.toggle("hidden", isParticipant);
 
-  // Right-panel tab gating: participant keeps Runtime only; researcher/debug own Records/Paths/Provenance.
+  // Right-panel tab gating: participant keeps Runtime only (unless debug-expanded);
+  // researcher sees Records/Paths/Provenance.
   const advancedTabs = [recordsTabBtn, pathsTabBtn, provenanceTabBtn].filter(Boolean);
-  const showAdvanced = isResearcherBase && (!isParticipant || debugExpanded);
+  const showAdvanced = isResearcherBase || (isParticipant && debugExpanded);
   for (const tab of advancedTabs) tab.classList.toggle("hidden", !showAdvanced);
   for (const panel of rightTabPanels) {
     const isAdvanced = panel.dataset.rightPanel !== "runtime";
@@ -301,9 +304,10 @@ function applyViewMode(mode) {
     if (userBtn) userBtn.click();
   }
 
-  // Composer lineage row (revise/fork): researcher/debug only in this shell.
+  // Composer lineage row (revise/fork/delete-latest): these are conversation actions,
+  // available to both participant and researcher.
   const lineageRow = document.getElementById("lineage-actions");
-  if (lineageRow) lineageRow.classList.toggle("hidden", isParticipant);
+  if (lineageRow) lineageRow.classList.remove("hidden");
 
   // Debug-expansion-only controls (none yet beyond tab gating).
   document.body.classList.toggle("view-participant", isParticipant);
@@ -338,10 +342,11 @@ async function resolveAuthAndApply() {
   }
   setLoginGateActive(false);
   const baseMode = viewModeForRole(role);
+  // Debug toggle is for participants only: restore its expanded state from storage.
   debugExpanded =
-    baseMode === "researcher" &&
+    baseMode === "participant" &&
     localStorage.getItem(DEBUG_STORAGE_KEY) === "1";
-  applyViewMode(debugExpanded ? "debug" : baseMode);
+  applyViewMode(baseMode);
 }
 
 // Backend returns 401 on session routes when accounts are configured, even for anonymous.
@@ -372,8 +377,11 @@ async function handleLogin(event) {
       const body = await res.json().catch(() => ({}));
       throw new Error(body.error || `HTTP ${res.status}`);
     }
-    loginForm.reset();
-    await resolveAuthAndApply();
+    // The WebSocket connection was established anonymously at page load. A successful
+    // login sets the auth cookie, but the existing socket never re-reads it. Reload so a
+    // fresh connection resolves to the authenticated identity; otherwise prompts fail
+    // with "Authentication required".
+    location.reload();
   } catch (err) {
     // Server already returns a generic message; surface it verbatim without account disclosure.
     showLoginError(err.message || "Sign in failed.");
@@ -390,17 +398,20 @@ async function handleLogout() {
   }
   debugExpanded = false;
   localStorage.removeItem(DEBUG_STORAGE_KEY);
-  await resolveAuthAndApply();
+  // Reload so the WebSocket re-resolves to anonymous (login gate reappears when
+  // accounts are configured).
+  location.reload();
 }
 
 function handleDebugToggle() {
-  const canDebug =
-    authCtx?.role === "researcher" || authCtx?.role === "admin";
+  // Debug toggle is for participants only: temporarily reveal advanced inspector panels.
+  const canDebug = authCtx?.role === "participant";
   if (!canDebug) return;
   debugExpanded = !debugExpanded;
   localStorage.setItem(DEBUG_STORAGE_KEY, debugExpanded ? "1" : "0");
   debugToggle.classList.toggle("active", debugExpanded);
-  applyViewMode(debugExpanded ? "debug" : "researcher");
+  // Re-apply current mode; applyViewMode reads debugExpanded for the advanced-panel rule.
+  applyViewMode(viewMode);
 }
 
 loginForm.addEventListener("submit", handleLogin);
@@ -998,17 +1009,28 @@ function renderPreviewText(messages) {
 
 function renderTranscriptMessages() {
   messagesEl.innerHTML = "";
-  for (const message of transcriptMessages) {
-    renderTranscriptMessage(message);
+  // Find the latest user message index so Edit/Delete can attach to it.
+  let latestUserIdx = -1;
+  for (let i = transcriptMessages.length - 1; i >= 0; i--) {
+    if (transcriptMessages[i].role === "user") {
+      latestUserIdx = i;
+      break;
+    }
   }
+  transcriptMessages.forEach((message, idx) => {
+    renderTranscriptMessage(message, idx === latestUserIdx);
+  });
   hasMessages = transcriptMessages.length > 0;
 }
 
-function renderTranscriptMessage(message) {
+function renderTranscriptMessage(message, isLatest) {
   if (!message) return;
   if (transcriptView === "user") {
     if (message.role === "user" || message.role === "assistant") {
-      appendChatMessage(message.role, message.text);
+      appendChatMessage(message.role, message.text, {
+        isLatest: message.role === "user" && isLatest,
+        entryId: message.entryId,
+      });
     }
     return;
   }
@@ -1032,7 +1054,10 @@ function renderTranscriptMessage(message) {
     return;
   }
 
-  appendChatMessage(message.role, message.text);
+  appendChatMessage(message.role, message.text, {
+    isLatest: message.role === "user" && isLatest,
+    entryId: message.entryId,
+  });
 }
 
 function appendChatMessage(role, text, options = {}) {
@@ -1041,8 +1066,60 @@ function appendChatMessage(role, text, options = {}) {
   const el = document.createElement("div");
   if (role === "user") {
     el.className = "message user";
+    el.innerHTML = renderMarkdown(value);
+    // Attach per-message conversation actions. Edit/Delete are only valid on the latest
+    // user turn (backend constraint). Branch is valid on any user turn.
+    const actions = document.createElement("div");
+    actions.className = "msg-actions";
+    if (options.isLatest) {
+      const editBtn = document.createElement("button");
+      editBtn.className = "msg-btn";
+      editBtn.textContent = "✎";
+      editBtn.title = "Edit";
+      editBtn.onclick = (e) => {
+        e.stopPropagation();
+        startEditLatest(value);
+      };
+      actions.appendChild(editBtn);
+
+      const delBtn = document.createElement("button");
+      delBtn.className = "msg-btn";
+      delBtn.textContent = "🗑";
+      delBtn.title = "Delete";
+      delBtn.onclick = (e) => {
+        e.stopPropagation();
+        if (isRunning || !currentSessionId || !hasMessages) return;
+        showConfirm(
+          "Please confirm you want to remove the latest message and its reply.",
+          doDeleteLatest,
+          "Delete"
+        );
+      };
+      actions.appendChild(delBtn);
+    }
+
+    const branchBtn = document.createElement("button");
+    branchBtn.className = "msg-btn";
+    branchBtn.textContent = "⑂";
+    branchBtn.title = "Branch from here";
+    branchBtn.onclick = (e) => {
+      e.stopPropagation();
+      if (isRunning || !currentSessionId) return;
+      const purpose = forkPurposeSelect.value;
+      showConfirm(
+        "Create a branch starting from this message?",
+        () => doBranchFromMessage(options.entryId, purpose),
+        "Branch"
+      );
+    };
+    actions.appendChild(branchBtn);
+
+    el.appendChild(actions);
+    messagesEl.appendChild(el);
+    return el;
   } else if (role === "assistant") {
     el.className = "message assistant";
+    el.innerHTML = renderMarkdown(value);
   } else if (role === "tool") {
     const success = options.success !== false;
     el.className = `message tool-status ${success ? "finished" : "failed"}`;
@@ -1055,9 +1132,7 @@ function appendChatMessage(role, text, options = {}) {
   } else {
     el.className = "message system";
   }
-  if (role === "user" || role === "assistant") {
-    el.innerHTML = renderMarkdown(value);
-  } else {
+  if (role !== "user" && role !== "assistant") {
     el.textContent = value;
   }
   messagesEl.appendChild(el);
@@ -1614,6 +1689,14 @@ ws.onmessage = (event) => {
         : [];
       renderTranscriptMessages();
       currentAssistantEl = null;
+      // delete_latest / fork_session reply with session_transcript (no run_completed).
+      // Restore controls + clear transient status so the UI is not stuck "Deleting..."/
+      // "Creating fork...".
+      if (!isRunning) {
+        setControlsEnabled(true);
+        setConnStatus("idle", "Ready");
+        toolStatusEl.textContent = "";
+      }
       break;
     }
 
@@ -1802,11 +1885,7 @@ function setControlsEnabled(enabled) {
   invokeSkillBtn.disabled = !interactive || !skillSelect.value;
   reviseLatestBtn.disabled =
     !interactive || !currentSessionId || !hasMessages || !inputEl.value.trim();
-  // Delete latest: only when a completed latest user turn exists and nothing is running.
-  deleteLatestBtn.disabled =
-    !interactive || !currentSessionId || !hasMessages || isRunning;
   forkPurposeSelect.disabled = !interactive || !currentSessionId;
-  forkSessionBtn.disabled = !interactive || !currentSessionId;
 }
 
 function clearChatSurface() {
@@ -1846,7 +1925,16 @@ sendBtn.onclick = sendMessage;
 inputEl.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) {
     e.preventDefault();
-    sendMessage();
+    if (reviseMode) {
+      reviseLatestBtn.click();
+    } else {
+      sendMessage();
+    }
+  }
+  if (e.key === "Escape" && reviseMode) {
+    reviseMode = false;
+    inputEl.value = "";
+    updateReviseModeUI();
   }
 });
 
@@ -1923,6 +2011,7 @@ rolePresetSelect.addEventListener("change", (e) => {
 
 inputEl.addEventListener("input", () => {
   setControlsEnabled(!isRunning);
+  updateReviseModeUI();
 });
 
 instructionSelect.addEventListener("change", (e) => {
@@ -1970,43 +2059,60 @@ reviseLatestBtn.onclick = () => {
     )
   ) return;
   inputEl.value = "";
+  reviseMode = false;
+  updateReviseModeUI();
   isRunning = true;
   setControlsEnabled(false);
   setConnStatus("running", "Revising...");
   toolStatusEl.textContent = `Revising latest turn on ${currentBranchId}...`;
 };
 
-forkSessionBtn.onclick = () => {
-  if (isRunning || !currentSessionId) return;
-  const purpose = forkPurposeSelect.value;
-  if (
-    !wsSafeSend(
-      JSON.stringify({ type: "fork_session", payload: { purpose } })
-    )
-  ) return;
-  isRunning = true;
-  setControlsEnabled(false);
-  setConnStatus("running", "Forking...");
-  toolStatusEl.textContent = `Creating ${purpose} fork...`;
-};
-
-// Delete latest completed user turn from the active branch. Backend moves the Pi leaf back and
-// returns session_updated + a refreshed transcript; the server reply drives the re-render.
-deleteLatestBtn.onclick = () => {
-  if (isRunning || !currentSessionId || !hasMessages) return;
-  showConfirm(
-    "Delete your latest message and its reply? The active branch moves back one turn.",
-    doDeleteLatest
-  );
-};
+// fork_session and delete_latest are now triggered from per-message buttons
+// (doBranchFromMessage / doDeleteLatest), not the composer row.
 
 function doDeleteLatest() {
   if (!wsSafeSend(JSON.stringify({ type: "delete_latest" }))) return;
-  isRunning = true;
+  // delete_latest is a synchronous backend op, not a model run. It replies with
+  // session_updated + session_transcript (no run_completed), so do NOT set isRunning.
+  // Just briefly show status; the reply handlers restore the UI.
   setControlsEnabled(false);
-  setConnStatus("running", "Deleting...");
   toolStatusEl.textContent = "Deleting latest turn...";
   setRunHint("");
+}
+
+// Edit latest: load the latest user message text into the composer so the user can
+// revise it in place, then click Revise (or press Enter in revise mode).
+let reviseMode = false;
+function startEditLatest(text) {
+  inputEl.value = text;
+  inputEl.focus();
+  reviseMode = true;
+  updateReviseModeUI();
+}
+
+function updateReviseModeUI() {
+  const reviseBtn = document.getElementById("revise-latest");
+  if (!reviseBtn) return;
+  if (reviseMode && inputEl.value.trim()) {
+    reviseBtn.textContent = "Revise";
+    reviseBtn.title = "Replace the latest user turn";
+    reviseBtn.disabled = false;
+    inputEl.placeholder = "Editing your latest message. Revise to update.";
+  } else {
+    reviseBtn.textContent = "Revise latest";
+    reviseBtn.title = "Replace the latest user turn without creating a branch";
+    reviseBtn.disabled = !currentSessionId || !hasMessages || !inputEl.value.trim();
+    if (!reviseMode) inputEl.placeholder = "Ask Alt Theory...";
+  }
+}
+
+// Branch from a specific user message (forkPointEntryId).
+function doBranchFromMessage(entryId, purpose) {
+  const payload = { purpose };
+  if (entryId) payload.forkPointEntryId = entryId;
+  if (!wsSafeSend(JSON.stringify({ type: "fork_session", payload }))) return;
+  setControlsEnabled(false);
+  toolStatusEl.textContent = `Creating ${purpose} branch...`;
 }
 
 // Low-noise composer hint. Shown after Stop/interrupted; cleared on any next send action.
@@ -2028,7 +2134,8 @@ newSessionBtn.onclick = () => {
   if (hasMessages) {
     showConfirm(
       "Start a new session? Current chat will be cleared.",
-      doNewSession
+      doNewSession,
+      "New Session"
     );
   } else {
     doNewSession();
@@ -2054,9 +2161,13 @@ sessionSearchEl.addEventListener("input", renderSessionList);
 deleteSessionBtn.onclick = () => {
   const sessionId = selectedSessionDetail?.session?.sessionId;
   if (!sessionId) return;
-  showConfirm("Delete the selected session from the normal list?", () => {
-    softDeleteSelectedSession(sessionId);
-  });
+  showConfirm(
+    "Delete the selected session from the normal list?",
+    () => {
+      softDeleteSelectedSession(sessionId);
+    },
+    "Delete"
+  );
 };
 
 async function softDeleteSelectedSession(sessionId) {
@@ -2089,7 +2200,8 @@ resumeSessionBtn.onclick = () => {
   if (hasMessages) {
     showConfirm(
       "Resume selected session? Current chat view will be cleared.",
-      () => doOpenSession(sessionId)
+      () => doOpenSession(sessionId),
+      "Resume"
     );
   } else {
     doOpenSession(sessionId);
@@ -2218,8 +2330,9 @@ function beginResize(which, startX) {
 // Confirm dialog
 // ---------------------------------------------------------------------------
 
-function showConfirm(message, action) {
+function showConfirm(message, action, confirmText) {
   confirmMessage.textContent = message;
+  if (confirmText) confirmYes.textContent = confirmText;
   confirmDialog.classList.remove("hidden");
   pendingConfirmAction = action;
 }

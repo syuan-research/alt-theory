@@ -642,7 +642,7 @@ function buildTranscriptFromEntries(entries: unknown[]): TranscriptMessage[] {
     const timestamp = normalizeTimestamp(value.message.timestamp ?? value.timestamp);
     if (role === "user") {
       const text = extractText(value.message.content).trim();
-      if (text) transcript.push({ role: "user", text, timestamp });
+      if (text) transcript.push({ role: "user", text, timestamp, entryId: value.id ?? null });
       continue;
     }
     if (role === "assistant") {

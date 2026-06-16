@@ -39,12 +39,13 @@
         <div class="panel-header">
           <h1>Alt Theory</h1>
           <div class="header-actions">
-            <span id="auth-badge" class="auth-badge hidden" title=""></span>
             <button id="debug-toggle" class="icon-btn debug-only hidden" title="Show debug/inspector panels for this browser">Debug</button>
-            <button id="logout-btn" class="icon-btn hidden" title="Sign out">Sign out</button>
             <button id="collapse-left" class="icon-btn desktop-only" title="Collapse sessions">&#9664;</button>
-            <button id="new-session-btn" title="New session" disabled>+ New</button>
           </div>
+        </div>
+        <div id="auth-row" class="auth-row hidden">
+          <span id="auth-badge" class="auth-badge" title=""></span>
+          <button id="logout-btn" title="Sign out">Logout</button>
         </div>
       </div>
 
@@ -56,16 +57,16 @@
 
       <div class="panel-section" id="session-browser-section">
         <div class="panel-header compact-header">
-          <span class="section-label inline-label">Sessions</span>
+          <button id="new-session-btn" title="New session" disabled>+ New</button>
           <button id="session-refresh-btn" class="small-btn" title="Refresh sessions" disabled>&#8635;</button>
         </div>
         <input id="session-search" type="search" placeholder="Search sessions" autocomplete="off">
         <div id="session-list" class="session-list small-text"></div>
-        <div id="session-detail" class="session-detail small-text"></div>
         <div class="session-actions">
           <button id="resume-session-btn" disabled>Open</button>
           <button id="delete-session-btn" class="danger-btn" title="Soft delete selected session" disabled>Delete</button>
         </div>
+        <div id="session-detail" class="session-detail small-text"></div>
       </div>
 
       <div class="panel-section config-section">
@@ -106,13 +107,11 @@
           <span id="private-expiry-hint" class="private-expiry-hint small-text hidden"></span>
         </div>
         <div id="lineage-actions">
-          <button id="revise-latest" title="Replace the latest user turn without creating a branch" disabled>Revise latest</button>
-          <button id="delete-latest" title="Delete the latest completed user turn from the active branch" disabled>Delete latest</button>
-          <select id="fork-purpose" title="Fork workspace behavior" disabled>
-            <option value="collaboration">Collaboration</option>
-            <option value="comparison">Comparison</option>
+          <button id="revise-latest" title="Replace the latest user turn" disabled>Revise latest</button>
+          <select id="fork-purpose" title="Branch workspace behavior" disabled>
+            <option value="collaboration">Shared</option>
+            <option value="comparison">Copied</option>
           </select>
-          <button id="fork-session" title="Create an explicit branch from the current point" disabled>Fork</button>
         </div>
         <div id="input-row">
           <select id="skill-select" title="Alt Theory skill" disabled>

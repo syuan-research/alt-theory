@@ -366,13 +366,19 @@ export class SessionService {
     if (managed.busy || managed.session.isStreaming) {
       throw new SessionBusyError(sessionId);
     }
-    const latest = latestRunSnapshots(managed.manifest.recordsDir)
-      .filter(
-        (run) =>
-          run.branchId === managed.branchId &&
-          run.status === "completed" &&
-          run.userEntryId
-      )
+    const allRuns = latestRunSnapshots(managed.manifest.recordsDir).filter(
+      (run) => run.branchId === managed.branchId
+    );
+    // Entry IDs whose runs are deleted or superseded — these are no longer part of the
+    // active transcript even though Pi still keeps them on disk for lineage evidence.
+    const inactiveUserEntryIds = new Set(
+      allRuns
+        .filter((run) => run.status === "deleted" || run.status === "superseded")
+        .map((run) => run.userEntryId)
+        .filter(Boolean) as string[]
+    );
+    const latest = allRuns
+      .filter((run) => run.status === "completed" && run.userEntryId)
       .at(-1);
     if (!latest?.userEntryId) {
       throw new Error("No completed latest user turn is available to delete");
@@ -382,7 +388,8 @@ export class SessionService {
       .filter(
         (entry) =>
           entry.type === "message" &&
-          (entry.message as { role?: string }).role === "user"
+          (entry.message as { role?: string }).role === "user" &&
+          !inactiveUserEntryIds.has(entry.id)
       );
     if (activeUserEntries.at(-1)?.id !== latest.userEntryId) {
       throw new Error("Only the active branch latest user turn can be deleted");

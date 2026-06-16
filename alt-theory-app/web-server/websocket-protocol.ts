@@ -62,6 +62,8 @@ export interface TranscriptMessage {
   role: "user" | "assistant" | "system" | "tool" | "other";
   text: string;
   timestamp: string | null;
+  /** Pi entry id, for user messages. Used to identify a branch point. */
+  entryId?: string | null;
   thinking?: string;
   toolType?: "call" | "result";
   toolCallId?: string;
