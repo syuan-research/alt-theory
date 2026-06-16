@@ -802,24 +802,34 @@ html, body {
   color: var(--text-primary);
 }
 
-/* Icon-only glyph button (debug). Smaller and quieter than the text icon-btn
-   so it sits next to the collapse arrow without dominating. */
+/* Glyph + text button (debug). Small inline-flex layout; sits next to
+   the collapse arrow with the same low visual weight. */
 .icon-btn-glyph {
-  width: 22px;
-  height: 22px;
-  font-size: 13px;
-  font-family: var(--font-mono);
-  font-variant-emoji: text;
+  width: auto;
+  height: 28px;
+  font-size: 12.5px;
+  font-family: var(--font-sans);
   color: var(--text-muted);
   background: transparent;
   border: none;
   border-radius: var(--r-sm);
-  padding: 0;
-  display: inline-grid;
-  place-items: center;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease;
   line-height: 1;
+  white-space: nowrap;
+}
+.icon-btn-glyph .ico {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1;
+  font-variant-emoji: text;
+}
+.icon-btn-glyph .lbl {
+  letter-spacing: 0.1px;
 }
 .icon-btn-glyph:hover {
   background: var(--hover);

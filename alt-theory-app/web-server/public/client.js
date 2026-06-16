@@ -278,9 +278,11 @@ function applyViewMode(mode) {
   const showDebugToggle = isParticipant;
   debugToggle.classList.toggle("hidden", !showDebugToggle);
 
-  // Delete-from-catalog control: participant view does not expose arbitrary delete.
-  // (Participant sessions are owner-scoped; soft delete stays a researcher/debug action.)
-  if (deleteSessionBtn) deleteSessionBtn.classList.toggle("hidden", isParticipant);
+  // Delete-from-catalog control: visible to every view. The backend route
+  // enforces owner-scoped authorization (researcher/debug can delete any
+  // session; participants can only delete their own), so the frontend can
+  // expose the control uniformly.
+  if (deleteSessionBtn) deleteSessionBtn.classList.remove("hidden");
 
   // Right-panel tab gating: only Records / Paths / Provenance are advanced
   // (researcher/debug surfaces). Summary is the participant-facing surface
