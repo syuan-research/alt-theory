@@ -14,11 +14,13 @@
 }
 
 :root {
-  /* Warm paper palette — middle canvas lighter than the two side panels */
-  --paper:        #fafafa;   /* chat canvas — warm near-white */
-  --panel:        #f1f1f3;   /* side panels — a hair deeper than the canvas */
-  --card:         #f6f6f7;   /* right-panel inner cards */
-  --card-2:       #f4f4f5;   /* nested / user-bubble fill */
+  /* Warm paper palette — middle canvas lighter than the two side panels.
+     Both sides drop a touch deeper than the canvas; the canvas itself sits a
+     hair off pure white so it reads as warm paper, not glaring. */
+  --paper:        #f8f8f9;   /* chat canvas — warm near-white, slightly off */
+  --panel:        #ebebec;   /* side panels — a touch deeper than the canvas */
+  --card:         #f4f4f5;   /* right-panel inner cards */
+  --card-2:       #f2f2f3;   /* nested / user-bubble fill */
   --elevated:     #ffffff;   /* floating composer, dialog, login card, selected cells */
   --hairline:     #e7e7e9;   /* almost invisible warm line */
   --hairline-2:   #f0f0f1;   /* essentially invisible */

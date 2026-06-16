@@ -4,7 +4,7 @@ slug: researcher-console
 scope: Current browser console used by the researcher to run, inspect, compare, and later annotate Alt Theory sessions
 summary: The current researcher console is a temporary vanilla frontend seed that exposes live backend sessions, loaded agent assets, and historical session browse/resume.
 status: current
-last_reviewed: 2026-06-15
+last_reviewed: 2026-06-17
 tags: [frontend, researcher-console, session, runtime-inspection]
 depends_on:
   - core-session-engine
@@ -243,6 +243,23 @@ export sessions.
 
 ## Change Log
 
+- 2026-06-17: Updated after v0.5 zcode UI-polish + Summary-panel pass. Theme is
+  now a warm light/flat palette (chat canvas `#f8f8f9`, side panels `#ebebec`,
+  near-invisible hairlines, no blue/purple accents). The composer is one
+  white rounded elevated block: the `#input` has no visible border inside it;
+  Send is an icon-only ink button (masked up-arrow SVG, `aria-label="Send"`);
+  Stop is a stop-sign (terracotta-tinted rounded button with a solid bar, also
+  `aria-label`-only). Send-edited lives inside the same white block as an ink
+  button. A new right-tab `Summary` is visible to participant / researcher /
+  debug; it carries a Records-style editor for an optional user note and a
+  `总结 session 到文件` button that sends WebSocket `invoke_skill` with a
+  hardcoded `skillName = "conversation-summary"`. Backend errors are
+  surfaced plainly; no fake success state. The visibility toggle stays
+  editable on a live session (the 2026-06-17 backend resume-leaf fix made
+  post-materialization `switch_visibility` valid); private mode toggles a
+  `.private-active` class on `#chat-panel` that drops the canvas to side-panel
+  depth for a subtle but visible distinction. Verified via backend regression
+  57/57, new UAT 22/22, and the prior participant-shell UAT 24/24.
 - 2026-06-16: Updated after participant-view-shell + conversation-action frontend
   acceptance. The shell now resolves app identity from `GET /api/auth/me` and gates
   itself into participant / researcher / debug view modes. With configured accounts,
