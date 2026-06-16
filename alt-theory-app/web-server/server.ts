@@ -55,6 +55,7 @@ import { listInstructionAssets } from "./instruction-assets.js";
 import { listAltTheorySkills } from "./skill-assets.js";
 import {
   AuthSessionManager,
+  anonymousAuthContext,
   clearAuthCookie,
   setAuthCookie,
 } from "./auth-session.js";
@@ -68,6 +69,11 @@ const PUBLIC_DIR = resolve(
   "web-server",
   "public"
 );
+
+const DEFAULT_ROLE_CONDITION_PRESETS: Record<string, string> = {
+  "conceptual-theory": "role-conceptual-theory-companion",
+  "metatheory-oriented": "role-metatheory-oriented",
+};
 
 
 export interface AltTheoryServerOptions {
@@ -522,6 +528,48 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     };
   }
 
+  function createDraftSelectorsForAuth(auth: AuthContext): SessionSelectors {
+    const selectors = createDraftSelectors();
+    if (auth.role !== "participant" || !auth.defaultRoleCondition) {
+      return selectors;
+    }
+    return {
+      ...selectors,
+      rolePresetSlug: rolePresetSlugForCondition(auth.defaultRoleCondition),
+    };
+  }
+
+  function rolePresetSlugForCondition(conditionId: string): string {
+    const rolePresetSlug =
+      DEFAULT_ROLE_CONDITION_PRESETS[conditionId] ?? conditionId;
+    if (!resolveRolePresetSlug(rolePresetsDir, rolePresetSlug)) {
+      throw new Error(
+        `Role condition '${conditionId}' maps to missing role preset: ${rolePresetSlug}`
+      );
+    }
+    return rolePresetSlug;
+  }
+
+  function sessionCreationMetadataForAuth(auth: AuthContext) {
+    if (auth.role !== "participant" || !auth.accountId) return {};
+    return {
+      ownerAccountId: auth.accountId,
+      roleCondition: auth.defaultRoleCondition,
+      visibility: "research" as const,
+      consentSnapshot: {
+        researcherReadable: Boolean(auth.defaultConsent?.researcherReadable),
+        quoteAfterAnonymization: Boolean(
+          auth.defaultConsent?.quoteAfterAnonymization
+        ),
+        privateOverride: false,
+      },
+    };
+  }
+
+  function canMaterializeSession(auth: AuthContext): boolean {
+    return auth.role !== "anonymous" || !hasConfiguredAccounts();
+  }
+
   function sendDraft(
     send: (msg: ServerMessage) => void,
     selectors: SessionSelectors
@@ -540,11 +588,20 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     });
   }
 
-  wss.on("connection", async (ws: WebSocket) => {
+  wss.on("connection", async (ws: WebSocket, req) => {
+    let auth = authSessions.resolveRequest(req);
     let attachedSessionId: string | null = null;
     let detach = () => {};
     let closed = false;
-    let draftSelectors = createDraftSelectors();
+    let draftSelectors: SessionSelectors;
+    let initialError: unknown = null;
+    try {
+      draftSelectors = createDraftSelectorsForAuth(auth);
+    } catch (error) {
+      auth = anonymousAuthContext();
+      draftSelectors = createDraftSelectors();
+      initialError = error;
+    }
 
     const send = (msg: ServerMessage) => {
       if (ws.readyState === WebSocket.OPEN) {
@@ -570,6 +627,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       attachedSessionId = null;
     });
 
+    if (initialError) {
+      sendServiceError(send, initialError);
+    }
     sendDraft(send, draftSelectors);
 
     ws.on("message", async (data) => {
@@ -585,7 +645,14 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         case "prompt": {
           try {
             if (!attachedSessionId) {
-              const initial = await sessionService.createSession(draftSelectors);
+              if (!canMaterializeSession(auth)) {
+                sendError(send, new Error("Authentication required"));
+                break;
+              }
+              const initial = await sessionService.createSession(
+                draftSelectors,
+                sessionCreationMetadataForAuth(auth)
+              );
               if (closed) return;
               attachToSession(initial.sessionId);
             }
@@ -739,7 +806,14 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         case "invoke_skill": {
           try {
             if (!attachedSessionId) {
-              const initial = await sessionService.createSession(draftSelectors);
+              if (!canMaterializeSession(auth)) {
+                sendError(send, new Error("Authentication required"));
+                break;
+              }
+              const initial = await sessionService.createSession(
+                draftSelectors,
+                sessionCreationMetadataForAuth(auth)
+              );
               if (closed) return;
               attachToSession(initial.sessionId);
             }

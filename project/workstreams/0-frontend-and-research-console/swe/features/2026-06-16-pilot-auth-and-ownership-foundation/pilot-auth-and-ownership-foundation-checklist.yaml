@@ -16,7 +16,7 @@ steps:
     status: done
   - action: "WebSocket ownership: resolve auth context on connection and apply role-condition defaults at first send"
     exit_signal: "WebSocket test first-send creates an owned role-conditioned session"
-    status: pending
+    status: done
 
 checks:
   - item: "Valid participant code logs in and /api/auth/me returns safe identity"
@@ -30,7 +30,7 @@ checks:
     status: done
   - item: "Participant-created session records ownerAccountId, roleCondition, and consent snapshot"
     source: design
-    status: pending
+    status: done
   - item: "Participant catalog/detail cannot expose another participant's session content"
     source: design
     status: done
@@ -39,7 +39,7 @@ checks:
     status: done
   - item: "Participant WebSocket draft applies account role-condition default"
     source: design
-    status: pending
+    status: done
   - item: "No self-registration, private retention, project-condition dependency, role-preset authoring, or global admin UI"
     source: design
-    status: pending
+    status: done

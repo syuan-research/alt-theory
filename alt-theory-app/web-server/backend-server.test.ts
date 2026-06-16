@@ -1498,6 +1498,140 @@ test("WebSocket open_session replaces current state with an existing session", a
   }
 });
 
+test("WebSocket participant first send creates an owned role-conditioned session", async () => {
+  const root = mkdtempSync(join(tmpdir(), "alt-theory-ws-auth-owned-"));
+  const dataDir = join(root, "data");
+  const rolePresets = join(root, "role-presets");
+  const souls = join(root, "soul");
+  const kb = join(root, "kb");
+  const appContextPath = join(root, "ALTTHEORY.md");
+  const now = "2026-06-16T00:00:00.000Z";
+
+  mkdirSync(rolePresets, { recursive: true });
+  mkdirSync(souls, { recursive: true });
+  mkdirSync(join(kb, "ep-core"), { recursive: true });
+  writeFileSync(appContextPath, "WS auth app context", "utf-8");
+  writeFileSync(
+    join(rolePresets, "role-conceptual-theory-companion.md"),
+    "Conceptual theory role",
+    "utf-8"
+  );
+  writeFileSync(join(souls, "soul-latest.md"), "Latest soul", "utf-8");
+  writeAccountStore(dataDir, {
+    schemaVersion: 1,
+    accounts: [
+      {
+        schemaVersion: 1,
+        accountId: "p01",
+        displayLabel: "Participant 01",
+        role: "participant",
+        status: "active",
+        loginCodeHash: hashLoginCode("p01-code", "p01-ws-salt"),
+        defaultRoleCondition: "conceptual-theory",
+        defaultConsent: {
+          researcherReadable: true,
+          quoteAfterAnonymization: false,
+        },
+        createdAt: now,
+        updatedAt: now,
+      },
+    ],
+  });
+
+  const originalRunPrompt = SessionService.prototype.runPrompt;
+  (SessionService.prototype as any).runPrompt = function (
+    sessionId: string
+  ) {
+    return {
+      ids: {
+        sessionId,
+        branchId: "main",
+        turnId: "turn-test",
+        revisionId: "rev-test",
+        runId: "run-test",
+      },
+      completion: Promise.resolve(),
+      abort: async () => {},
+    };
+  };
+
+  const instance = createAltTheoryServer({
+    dataDir,
+    appContextPath,
+    soulDir: souls,
+    rolePresetsDir: rolePresets,
+    kbDir: kb,
+    readOnly: true,
+  });
+  await new Promise<void>((resolveListen) => {
+    instance.httpServer.listen(0, "127.0.0.1", resolveListen);
+  });
+  const address = instance.httpServer.address();
+  assert.ok(address && typeof address === "object");
+  const baseUrl = `http://127.0.0.1:${address.port}`;
+
+  function waitForType(ws: WebSocket, type: string): Promise<any> {
+    return new Promise((resolveMessage, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error(`Timed out waiting for ${type}`)),
+        10_000
+      );
+      const listener = (data: WebSocket.RawData) => {
+        const message = JSON.parse(data.toString());
+        if (message.type === type) {
+          clearTimeout(timer);
+          ws.off("message", listener);
+          resolveMessage(message);
+        }
+      };
+      ws.on("message", listener);
+    });
+  }
+
+  try {
+    const login = await fetch(`${baseUrl}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ accountId: "p01", loginCode: "p01-code" }),
+    });
+    assert.equal(login.status, 200);
+    const cookie = login.headers.get("set-cookie")?.split(";")[0] ?? "";
+    const ws = new WebSocket(`ws://127.0.0.1:${address.port}`, {
+      headers: { Cookie: cookie },
+    });
+    const draft = await waitForType(ws, "session_draft");
+    assert.equal(
+      draft.payload.rolePresetSlug,
+      "role-conceptual-theory-companion"
+    );
+
+    const openedPromise = waitForType(ws, "session_opened");
+    ws.send(JSON.stringify({ type: "prompt", payload: "hello" }));
+    const opened = await openedPromise;
+    const sessionJson = JSON.parse(
+      readFileSync(
+        join(dataDir, "sessions", opened.payload.sessionId, "records", "session.json"),
+        "utf-8"
+      )
+    );
+    assert.equal(sessionJson.ownerAccountId, "p01");
+    assert.equal(sessionJson.roleCondition, "conceptual-theory");
+    assert.deepEqual(sessionJson.consentSnapshot, {
+      researcherReadable: true,
+      quoteAfterAnonymization: false,
+      privateOverride: false,
+    });
+    ws.close();
+  } finally {
+    SessionService.prototype.runPrompt = originalRunPrompt;
+    await new Promise<void>((resolveClose) => {
+      instance.wss.close(() => {
+        instance.httpServer.close(() => resolveClose());
+      });
+    });
+  }
+});
+
 test("REST discovery and WebSocket sessions are connection-local", async () => {
   const root = mkdtempSync(join(tmpdir(), "alt-theory-server-"));
   const rolePresets = join(root, "role-presets");
