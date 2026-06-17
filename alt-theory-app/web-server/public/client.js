@@ -1361,13 +1361,18 @@ function renderSessionDetail() {
 
   const session = detail.session || {};
   const isParticipant = viewMode === "participant";
-  const rows = isParticipant
-    ? [
-        ["Updated", fmtTime(session.updatedAt || session.createdAt)],
-        ["Turns", session.turnCount ?? "—"],
-        ["Messages", session.messageCount ?? "—"],
-      ]
-    : [
+  resumeSessionBtn.disabled =
+    !session.sessionId || ws?.readyState !== WebSocket.OPEN;
+  deleteSessionBtn.disabled =
+    !session.sessionId || ws?.readyState !== WebSocket.OPEN;
+
+  // Participant list rows already carry title, time, and counts; hide the
+  // researcher-style detail block (including transcript preview snippets).
+  if (isParticipant) {
+    return;
+  }
+
+  const rows = [
         ["Updated", fmtTime(session.updatedAt || session.createdAt)],
         ["Turns", session.turnCount ?? "—"],
         ["Messages", session.messageCount ?? "—"],
@@ -1381,7 +1386,7 @@ function renderSessionDetail() {
   for (const [label, value] of rows) {
     const row = document.createElement("div");
     row.className = "session-detail-row";
-    if (!isParticipant && label === "ID") {
+    if (label === "ID") {
       row.classList.add("session-detail-technical");
     }
     const key = document.createElement("div");
@@ -1412,10 +1417,6 @@ function renderSessionDetail() {
     preview.textContent = previewText;
     sessionDetailEl.appendChild(preview);
   }
-
-  resumeSessionBtn.disabled =
-    !session.sessionId || ws?.readyState !== WebSocket.OPEN;
-  deleteSessionBtn.disabled = !session.sessionId || ws?.readyState !== WebSocket.OPEN;
 }
 
 function populateSelect(select, items, defaultSlug, options = {}) {

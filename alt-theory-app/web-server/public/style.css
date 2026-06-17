@@ -1959,8 +1959,8 @@ body.view-participant .session-row-meta {
   color: var(--text-muted);
 }
 
-body.view-participant .session-detail {
-  border-top-color: rgba(31, 30, 26, 0.06);
+body.view-participant #session-detail {
+  display: none;
 }
 
 /* --- Hide advanced tabs in participant view --- */
