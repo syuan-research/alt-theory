@@ -298,9 +298,9 @@ function applyViewMode(mode) {
   if (deleteSessionBtn) deleteSessionBtn.classList.remove("hidden");
 
   // Right-panel tab gating: only Records / Paths / Provenance are advanced
-  // (researcher/debug surfaces). Summary is the participant-facing surface
-  // and stays visible in every view. Runtime is always visible. Participants
-  // see Summary + Runtime; researcher/debug see all five.
+  // (researcher/debug surfaces). Workspace (summary panel) is the participant-
+  // facing surface and stays visible in every view. Runtime is always visible.
+  // Participants see Workspace + Runtime; researcher/debug see all five.
   const ADVANCED_TAB_NAMES = new Set(["records", "paths", "provenance"]);
   const advancedTabs = rightTabBtns.filter(
     (b) => ADVANCED_TAB_NAMES.has(b.dataset.rightTab)
@@ -311,7 +311,7 @@ function applyViewMode(mode) {
     const isAdvanced = ADVANCED_TAB_NAMES.has(panel.dataset.rightPanel);
     panel.classList.toggle("hidden", isAdvanced && !showAdvanced);
   }
-  // Deterministic per-view default tab. Participants land on Summary
+  // Deterministic per-view default tab. Participants land on Workspace
   // (the participant-facing surface); researcher/debug/anonymous local land
   // on Records (the workbench surface). If the current active tab is still
   // visible in this view, keep it (preserve user choice).
