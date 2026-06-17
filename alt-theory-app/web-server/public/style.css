@@ -808,12 +808,6 @@ body.view-researcher #session-detail {
   color: var(--err);
 }
 
-#run-hint {
-  font-size: 12.5px;
-  color: var(--text-secondary);
-  padding: 0 8px 8px;
-}
-
 .header-actions {
   display: flex;
   align-items: center;
@@ -1866,17 +1860,17 @@ button:hover {
 /* --- Auth badge + header controls --- */
 
 .auth-badge {
-  font-size: 11px;
-  color: var(--text-secondary);
-  padding: 3px 10px;
-  background: var(--elevated);
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 0;
+  background: transparent;
   border: none;
-  border-radius: 10px;
+  border-radius: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 180px;
-  font-weight: 500;
+  max-width: 220px;
+  font-weight: 400;
 }
 
 #logout-btn,
@@ -1971,10 +1965,12 @@ button:hover {
 
 /* --- Run hint (stop -> edit/delete) --- */
 
-.run-hint {
-  font-size: 12.5px;
+.run-hint,
+.attachment-hint {
+  font-size: 13px;
   color: var(--text-secondary);
-  padding: 2px 2px 4px;
+  padding: 0 8px 8px;
+  font-family: var(--font-mono);
 }
 
 /* --- Participant session list: title-first, low-noise metadata --- */
@@ -2133,10 +2129,16 @@ body.view-participant #session-detail {
 
 /* --- Summary panel (right tab) --- */
 
-.attachment-hint {
-  font-size: 12.5px;
+.message.user.message-updating {
+  background: var(--hover);
   color: var(--text-muted);
-  margin-bottom: 6px;
+  border: 1px dashed var(--hairline);
+}
+
+.message.user.message-updating .message-pending-text {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-style: italic;
 }
 
 .workspace-usage {

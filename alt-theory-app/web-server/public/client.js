@@ -2458,6 +2458,7 @@ function handleWebSocketMessage(event) {
       // If the user stopped, keep the edit/delete hint. A real failure clears it.
       if (!interrupted) setRunHint("");
       activeToolNames = {};
+      refreshCurrentTranscript();
       break;
     }
 
@@ -2774,6 +2775,24 @@ if (summaryInvokeBtn) {
   };
 }
 
+function markLatestTurnUpdating() {
+  const userMsgs = messagesEl.querySelectorAll(".message.user");
+  if (!userMsgs.length) return;
+  const latestUser = userMsgs[userMsgs.length - 1];
+  let node = latestUser.nextSibling;
+  while (node) {
+    const next = node.nextSibling;
+    node.remove();
+    node = next;
+  }
+  latestUser.classList.add("message-updating");
+  latestUser.replaceChildren();
+  const pending = document.createElement("div");
+  pending.className = "message-pending-text";
+  pending.textContent = "Updating...";
+  latestUser.appendChild(pending);
+}
+
 function doReviseLatest() {
   const text = inputEl.value.trim();
   if (!text || isRunning || !currentSessionId) return;
@@ -2782,6 +2801,7 @@ function doReviseLatest() {
       JSON.stringify({ type: "revise_latest", payload: { text } })
     )
   ) return;
+  markLatestTurnUpdating();
   inputEl.value = "";
   reviseMode = false;
   updateReviseModeUI();
