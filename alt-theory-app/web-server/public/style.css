@@ -196,6 +196,18 @@ body.auth-pending #mobile-bar {
   border-right: none;
 }
 
+#session-browser-section {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.left-panel-footer {
+  margin-top: auto;
+  flex-shrink: 0;
+  border-top: 1px solid rgba(31, 30, 26, 0.08);
+  background: var(--panel);
+}
+
 #right-panel {
   width: var(--right-width);
   min-width: var(--right-width);
@@ -1123,17 +1135,47 @@ button:hover {
 
 .session-row-title {
   display: flex;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 6px;
+  gap: 8px;
+}
+
+.session-row-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  line-height: 1.35;
+}
+
+.session-row-status {
+  flex-shrink: 0;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--text-muted);
+  line-height: 1.6;
 }
 
 .session-row-meta {
-  margin-top: 3px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 4px;
   color: var(--text-muted);
-  font-size: 12px;
-  line-height: 1.5;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.session-row-meta-text {
+  color: inherit;
 }
 
 .session-warning {
@@ -1160,6 +1202,16 @@ button:hover {
   font-size: 10px;
   letter-spacing: 0.7px;
   font-weight: 500;
+}
+
+.session-detail-row.session-detail-technical {
+  opacity: 0.72;
+}
+
+.session-detail-row.session-detail-technical .session-detail-key,
+.session-detail-row.session-detail-technical > div:last-child {
+  font-family: var(--font-mono);
+  font-size: 11px;
 }
 
 .session-preview {
@@ -1830,15 +1882,13 @@ button:hover {
   gap: 8px;
 }
 
-/* --- Role-condition display (participant) ---
-   Inline row: small muted label + slightly darker value, no card, no
-   section heading. Sits between the auth row and the session browser. */
+/* --- Role-condition display (participant footer) --- */
 .role-condition-row {
   display: flex;
   align-items: baseline;
   gap: 6px;
-  padding: 6px 18px 4px;
-  font-size: 12.5px;
+  padding: 10px 18px 12px;
+  font-size: 11px;
   flex-wrap: wrap;
 }
 .role-condition-label {
@@ -1899,17 +1949,18 @@ button:hover {
   padding: 2px 2px 4px;
 }
 
-/* --- Participant session list: tighter, less researcher noise --- */
+/* --- Participant session list: title-first, low-noise metadata --- */
+
+body.view-participant .session-row-label {
+  font-size: 15px;
+}
 
 body.view-participant .session-row-meta {
   color: var(--text-muted);
 }
 
-body.view-participant .session-group-title {
-  font-size: 11px;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
+body.view-participant .session-detail {
+  border-top-color: rgba(31, 30, 26, 0.06);
 }
 
 /* --- Hide advanced tabs in participant view --- */
@@ -1931,7 +1982,8 @@ body.view-participant .session-group-title {
   color: var(--err);
 }
 
-.row-private-tag {
+.row-private-tag,
+.row-visibility-badge {
   font-size: 10px;
   color: var(--warn);
   background: rgba(184, 134, 42, 0.1);
@@ -1940,11 +1992,11 @@ body.view-participant .session-group-title {
   padding: 1px 7px;
   cursor: help;
   font-weight: 500;
+  flex-shrink: 0;
 }
 
-.session-row.private .session-row-title {
-  border-left: 2px solid var(--warn);
-  padding-left: 6px;
+.session-row.private .session-row-label {
+  padding-left: 2px;
 }
 
 /* --- Auth row (below Alt Theory title) --- */

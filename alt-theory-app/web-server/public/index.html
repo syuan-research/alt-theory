@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Alt Theory</title>
-  <link rel="stylesheet" href="style.css?v=20260617-session-alias">
+  <link rel="stylesheet" href="style.css?v=20260617-session-list-hierarchy">
 </head>
 <body class="auth-pending">
   <!-- Mobile header bar (visible at narrow widths) -->
@@ -48,13 +48,7 @@
         </div>
       </div>
 
-      <!-- Participant role-condition display (participant view only) -->
-      <div class="role-condition-row hidden">
-        <span class="role-condition-label">Current role setup:</span>
-        <span id="role-condition-display" class="role-condition-value">—</span>
-      </div>
-
-      <div class="panel-section" id="session-browser-section">
+      <div class="panel-section session-browser-section" id="session-browser-section">
         <div class="panel-header compact-header">
           <button id="new-session-btn" title="New session" disabled>+ New</button>
           <button id="session-refresh-btn" class="small-btn" title="Refresh sessions" disabled>&#8635;</button>
@@ -81,6 +75,13 @@
           <select id="role-preset-select" disabled><option value="">Loading...</option></select>
           <label for="instruction-select">Instruction</label>
           <select id="instruction-select" disabled><option value="">Loading...</option></select>
+        </div>
+      </div>
+
+      <div id="left-panel-footer" class="left-panel-footer">
+        <div class="role-condition-row hidden">
+          <span class="role-condition-label">Current role setup:</span>
+          <span id="role-condition-display" class="role-condition-value">—</span>
         </div>
       </div>
     </aside>

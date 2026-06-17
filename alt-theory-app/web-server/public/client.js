@@ -1072,25 +1072,69 @@ function downloadWorkspaceFile(path) {
   );
 }
 
+function compareSessionsByRecency(a, b) {
+  const aTime = Date.parse(a.updatedAt || a.createdAt || "") || 0;
+  const bTime = Date.parse(b.updatedAt || b.createdAt || "") || 0;
+  return bTime - aTime;
+}
+
+function formatCountLabel(count, singular, plural) {
+  if (count == null) return "";
+  const value = Number(count);
+  if (!Number.isFinite(value)) return "";
+  return `${value} ${value === 1 ? singular : plural}`;
+}
+
+function sessionSearchHaystack(session, projectNames) {
+  const display = sessionDisplayNames[session.sessionId] || {};
+  if (viewMode === "participant") {
+    return [
+      display.alias,
+      display.snippet,
+      sessionDisplayTitle(session),
+      session.status,
+      session.visibility,
+    ];
+  }
+  return [
+    session.sessionId,
+    projectNames.get(session.projectId) || "unassigned",
+    session.rolePresetSlug,
+    session.kbDomain,
+    session.model,
+    session.provider,
+    display.alias,
+    display.snippet,
+  ];
+}
+
+function sessionMatchesSearch(session, query, projectNames) {
+  if (!query) return true;
+  return sessionSearchHaystack(session, projectNames).some((value) =>
+    String(value || "").toLowerCase().includes(query)
+  );
+}
+
 function renderSessionList() {
   sessionListEl.innerHTML = "";
   const query = sessionSearchEl.value.trim().toLowerCase();
   const projectNames = new Map(
     projectCatalog.map((project) => [project.projectId, project.displayName])
   );
-  const visible = sessionCatalog.filter((session) => {
-    if (!query) return true;
-    return [
-      session.sessionId,
-      projectNames.get(session.projectId) || "unassigned",
-      session.rolePresetSlug,
-      session.kbDomain,
-      session.model,
-      session.provider,
-    ].some((value) => String(value || "").toLowerCase().includes(query));
-  });
+  const visible = sessionCatalog.filter((session) =>
+    sessionMatchesSearch(session, query, projectNames)
+  );
   if (visible.length === 0) {
     sessionListEl.innerHTML = '<div class="session-empty">No saved sessions.</div>';
+    return;
+  }
+
+  const isParticipant = viewMode === "participant";
+  if (isParticipant) {
+    const ordered = [...visible].sort(compareSessionsByRecency);
+    for (const session of ordered) {
+      sessionListEl.appendChild(buildSessionRow(session));
+    }
     return;
   }
 
@@ -1116,16 +1160,35 @@ function renderSessionList() {
       : "Unassigned";
     group.appendChild(heading);
 
-    for (const session of sessions) {
-      group.appendChild(
-        buildSessionRow(session, { showModel: true, showKb: true })
-      );
+    const ordered = [...sessions].sort(compareSessionsByRecency);
+    for (const session of ordered) {
+      group.appendChild(buildSessionRow(session));
     }
     sessionListEl.appendChild(group);
   }
 }
 
-function buildSessionRow(session, options = {}) {
+function appendSessionRowMetaText(meta, parts) {
+  const text = parts.filter(Boolean).join(" · ");
+  if (!text) return;
+  const span = document.createElement("span");
+  span.className = "session-row-meta-text";
+  span.textContent = text;
+  meta.appendChild(span);
+}
+
+function appendSessionVisibilityBadge(meta, visibility) {
+  if (visibility !== "private") return;
+  const badge = document.createElement("span");
+  badge.className = "row-visibility-badge private";
+  badge.textContent = "Private";
+  badge.title =
+    "Private sessions and files are deleted after 7 inactive days. Download anything you want to keep.";
+  meta.appendChild(badge);
+}
+
+function buildSessionRow(session) {
+  const isParticipant = viewMode === "participant";
   const row = document.createElement("button");
   row.type = "button";
   row.className = "session-row";
@@ -1139,31 +1202,33 @@ function buildSessionRow(session, options = {}) {
 
   const title = document.createElement("div");
   title.className = "session-row-title";
-  const id = document.createElement("span");
-  id.textContent = sessionDisplayTitle(session);
-  id.title = session.sessionId || "";
+
+  const label = document.createElement("span");
+  label.className = "session-row-label";
+  label.textContent = sessionDisplayTitle(session);
+  label.title = isParticipant ? "" : session.sessionId || "";
+  title.appendChild(label);
+
   const status = document.createElement("span");
-  status.className = session.warnings?.length ? "session-warning" : "";
+  status.className = "session-row-status";
+  if (session.warnings?.length) status.classList.add("session-warning");
   status.textContent = session.status || "unknown";
-  title.appendChild(id);
-  if (session.visibility === "private") {
-    const priv = document.createElement("span");
-    priv.className = "row-private-tag";
-    priv.textContent = "private";
-    priv.title =
-      "Private sessions and files are deleted after 7 inactive days. Download anything you want to keep.";
-    title.appendChild(priv);
-  }
   title.appendChild(status);
 
   const meta = document.createElement("div");
   meta.className = "session-row-meta";
-  const parts = [];
-  if (options.showKb) parts.push(session.kbDomain || "no-kb");
-  parts.push(session.rolePresetSlug || "no-role");
-  if (options.showModel) parts.push(formatProviderModel(session));
-  parts.push(fmtTime(session.updatedAt || session.createdAt));
-  meta.textContent = parts.filter(Boolean).join(" | ");
+  const time = fmtTime(session.updatedAt || session.createdAt);
+  const turns = formatCountLabel(session.turnCount, "turn", "turns");
+  const messages = formatCountLabel(session.messageCount, "msg", "msgs");
+
+  if (isParticipant) {
+    appendSessionRowMetaText(meta, [time, turns, messages]);
+    appendSessionVisibilityBadge(meta, session.visibility);
+  } else {
+    const model = formatProviderModel(session);
+    appendSessionRowMetaText(meta, [time, turns, messages, model]);
+    appendSessionVisibilityBadge(meta, session.visibility);
+  }
 
   row.appendChild(title);
   row.appendChild(meta);
@@ -1295,20 +1360,30 @@ function renderSessionDetail() {
   }
 
   const session = detail.session || {};
-  const rows = [
-    ["ID", session.sessionId || "—"],
-    ["Project", projectDisplayName(session.projectId)],
-    ["Updated", fmtTime(session.updatedAt || session.createdAt)],
-    ["KB", session.kbDomain || "—"],
-    ["Role", session.rolePresetSlug || "—"],
-    ["Model", formatProviderModel(session) || "—"],
-    ["Turns", session.turnCount ?? "—"],
-    ["Messages", session.messageCount ?? "—"],
-  ];
+  const isParticipant = viewMode === "participant";
+  const rows = isParticipant
+    ? [
+        ["Updated", fmtTime(session.updatedAt || session.createdAt)],
+        ["Turns", session.turnCount ?? "—"],
+        ["Messages", session.messageCount ?? "—"],
+      ]
+    : [
+        ["Updated", fmtTime(session.updatedAt || session.createdAt)],
+        ["Turns", session.turnCount ?? "—"],
+        ["Messages", session.messageCount ?? "—"],
+        ["Project", projectDisplayName(session.projectId)],
+        ["KB", session.kbDomain || "—"],
+        ["Role", session.rolePresetSlug || "—"],
+        ["Model", formatProviderModel(session) || "—"],
+        ["ID", session.sessionId || "—"],
+      ];
 
   for (const [label, value] of rows) {
     const row = document.createElement("div");
     row.className = "session-detail-row";
+    if (!isParticipant && label === "ID") {
+      row.classList.add("session-detail-technical");
+    }
     const key = document.createElement("div");
     key.className = "session-detail-key";
     key.textContent = label;
