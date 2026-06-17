@@ -971,8 +971,8 @@ function renderSessionDetail() {
   }
 
   resumeSessionBtn.disabled =
-    !session.sessionId || ws.readyState !== WebSocket.OPEN;
-  deleteSessionBtn.disabled = !session.sessionId || ws.readyState !== WebSocket.OPEN;
+    !session.sessionId || ws?.readyState !== WebSocket.OPEN;
+  deleteSessionBtn.disabled = !session.sessionId || ws?.readyState !== WebSocket.OPEN;
 }
 
 function populateSelect(select, items, defaultSlug, options = {}) {
@@ -1422,36 +1422,84 @@ function collapsePath(p) {
 // ---------------------------------------------------------------------------
 
 const proto = location.protocol === "https:" ? "wss:" : "ws:";
-const ws = new WebSocket(`${proto}//${location.host}`);
+const WS_RECONNECT_BASE_MS = 1000;
+const WS_RECONNECT_MAX_MS = 10000;
+let ws = null;
+let reconnectTimer = null;
+let reconnectAttempt = 0;
+let reconnectSessionId = "";
 
-ws.onopen = () => {
-  console.log("[ws] Connected");
-  setConnStatus("idle", "Connected");
-  // Resolve app identity first; view-mode gating decides whether discovery/sessions load.
-  resolveAuthAndApply().finally(() => {
-    if (!loginOverlay.classList.contains("hidden")) return; // gated behind login
-    fetchDiscovery();
-    fetchSessions();
-  });
-};
+function connectWebSocket() {
+  if (
+    ws &&
+    (ws.readyState === WebSocket.OPEN ||
+      ws.readyState === WebSocket.CONNECTING)
+  ) {
+    return;
+  }
 
-ws.onclose = () => {
-  console.log("[ws] Disconnected");
-  finalizeStaleTools(false);
-  setConnStatus("disconnected", "Disconnected");
-  sessionReady = false;
-  isRunning = false;
-  setControlsEnabled(false);
-  activeToolNames = {};
-  currentAssistantEl = null;
-  toolStatusEl.textContent = "Disconnected";
-  resumeSessionBtn.disabled = true;
-};
+  ws = new WebSocket(`${proto}//${location.host}`);
 
-ws.onerror = (err) => {
-  console.error("[ws] Error", err);
-  setConnStatus("error", "Connection error");
-};
+  ws.onopen = () => {
+    console.log("[ws] Connected");
+    reconnectAttempt = 0;
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+    setConnStatus("idle", reconnectSessionId ? "Reconnected" : "Connected");
+    // Resolve app identity first; view-mode gating decides whether discovery/sessions load.
+    resolveAuthAndApply().finally(() => {
+      if (!loginOverlay.classList.contains("hidden")) return; // gated behind login
+      fetchDiscovery();
+      fetchSessions();
+      if (reconnectSessionId) {
+        wsSafeSend(
+          JSON.stringify({
+            type: "open_session",
+            payload: { sessionId: reconnectSessionId },
+          })
+        );
+      }
+    });
+  };
+
+  ws.onclose = () => {
+    console.log("[ws] Disconnected");
+    reconnectSessionId = currentSessionId || reconnectSessionId;
+    finalizeStaleTools(false);
+    setConnStatus("disconnected", "Disconnected");
+    sessionReady = false;
+    isRunning = false;
+    setControlsEnabled(false);
+    activeToolNames = {};
+    currentAssistantEl = null;
+    toolStatusEl.textContent = "Reconnecting...";
+    resumeSessionBtn.disabled = true;
+    scheduleReconnect();
+  };
+
+  ws.onerror = (err) => {
+    console.error("[ws] Error", err);
+    setConnStatus("error", "Connection error");
+  };
+
+  ws.onmessage = handleWebSocketMessage;
+}
+
+function scheduleReconnect() {
+  if (reconnectTimer) return;
+  const delay = Math.min(
+    WS_RECONNECT_MAX_MS,
+    WS_RECONNECT_BASE_MS * 2 ** reconnectAttempt
+  );
+  reconnectAttempt += 1;
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    setConnStatus("disconnected", "Reconnecting...");
+    connectWebSocket();
+  }, delay);
+}
 
 // ---------------------------------------------------------------------------
 // Connection status display
@@ -1702,11 +1750,12 @@ function finalizeStaleTools(success = true) {
 
 /** Send a WebSocket message only if the connection is open. */
 function wsSafeSend(data) {
-  if (ws.readyState === WebSocket.OPEN) {
+  if (ws?.readyState === WebSocket.OPEN) {
     ws.send(data);
     return true;
   }
   toolStatusEl.textContent = "⚠ Not connected";
+  scheduleReconnect();
   return false;
 }
 
@@ -1714,7 +1763,7 @@ function wsSafeSend(data) {
 // Message rendering
 // ---------------------------------------------------------------------------
 
-ws.onmessage = (event) => {
+function handleWebSocketMessage(event) {
   let msg;
   try {
     msg = JSON.parse(event.data);
@@ -1745,6 +1794,7 @@ ws.onmessage = (event) => {
         pendingAssetSwitch = false;
       }
       currentSessionId = msg.payload.sessionId;
+      reconnectSessionId = currentSessionId;
       currentBranchId = msg.payload.branchId || "main";
       currentDomain = msg.payload.currentDomain || "";
       currentRolePresetSlug =
@@ -1753,7 +1803,7 @@ ws.onmessage = (event) => {
       currentInstructionRef = msg.payload.customInstructionRef ?? null;
       currentProjectId = msg.payload.projectId ?? null;
       sessionReady = true;
-      isRunning = false;
+      isRunning = msg.payload.status === "running";
       currentVisibility = msg.payload.visibility || currentVisibility;
       syncVisibilityBar(true); // materialized but visibility stays editable (resume-leaf fix)
       rtKb.textContent = currentDomain || "—";
@@ -1761,7 +1811,7 @@ ws.onmessage = (event) => {
       rtRolePreset.textContent = displaySlug(currentRolePresetSlug);
       syncSessionSelectors();
       setControlsEnabled(true);
-      setConnStatus("idle", "Ready");
+      setConnStatus(isRunning ? "running" : "idle", isRunning ? "Running" : "Ready");
       selectedRecordFile = null;
       recordEditorEl.value = "";
       // Reset the Summary panel state on each session open so a prior session's
@@ -1973,7 +2023,7 @@ ws.onmessage = (event) => {
 
   // Auto-scroll only if user is near the bottom
   autoScroll();
-};
+}
 
 // ---------------------------------------------------------------------------
 // Auto-scroll
@@ -1993,7 +2043,7 @@ function autoScroll() {
 // ---------------------------------------------------------------------------
 
 function setControlsEnabled(enabled) {
-  const connected = ws.readyState === WebSocket.OPEN;
+  const connected = ws?.readyState === WebSocket.OPEN;
   const interactive = enabled && sessionReady && connected;
   // Send lockout: while a run is active, Send is hidden and stays disabled even if
   // this helper is called with enabled=true. The explicit `isRunning` guards in
@@ -2375,6 +2425,7 @@ newSessionBtn.onclick = () => {
 };
 
 function doNewSession() {
+  reconnectSessionId = "";
   if (!wsSafeSend(JSON.stringify({ type: "new_session" }))) return;
 
   clearChatSurface();
@@ -2639,6 +2690,7 @@ restoreRightBtn.onclick = () => {
   persistPaneState();
 };
 loadPaneState();
+connectWebSocket();
 
 // ---------------------------------------------------------------------------
 // Keyboard: Escape closes dialog / mobile panels

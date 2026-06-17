@@ -188,6 +188,21 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   const httpServer = createServer(app);
   const wss = new WebSocketServer({ server: httpServer });
   const authSessions = new AuthSessionManager(dataDir);
+  const heartbeatInterval = setInterval(() => {
+    for (const client of wss.clients) {
+      const socket = client as WebSocket & { isAlive?: boolean };
+      if (socket.isAlive === false) {
+        socket.terminate();
+        continue;
+      }
+      socket.isAlive = false;
+      socket.ping();
+    }
+  }, 30_000);
+
+  httpServer.on("close", () => {
+    clearInterval(heartbeatInterval);
+  });
 
   app.use(express.json({ limit: "600kb" }));
   app.use(
@@ -699,6 +714,12 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   }
 
   wss.on("connection", async (ws: WebSocket, req) => {
+    const heartbeatSocket = ws as WebSocket & { isAlive?: boolean };
+    heartbeatSocket.isAlive = true;
+    heartbeatSocket.on("pong", () => {
+      heartbeatSocket.isAlive = true;
+    });
+
     let auth = authSessions.resolveRequest(req);
     let attachedSessionId: string | null = null;
     let detach = () => {};
