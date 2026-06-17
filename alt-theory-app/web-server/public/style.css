@@ -196,16 +196,37 @@ body.auth-pending #mobile-bar {
   border-right: none;
 }
 
-#session-browser-section {
-  flex: 1 1 auto;
-  min-height: 0;
-}
-
 .left-panel-footer {
-  margin-top: auto;
   flex-shrink: 0;
   border-top: 1px solid rgba(31, 30, 26, 0.08);
   background: var(--panel);
+}
+
+body.view-participant #session-browser-section {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+body.view-participant .session-list {
+  flex: 1 1 auto;
+  min-height: 120px;
+  max-height: none;
+  overflow-y: auto;
+}
+
+body.view-participant .left-panel-footer {
+  margin-top: auto;
+}
+
+body.view-researcher #left-panel-footer {
+  display: none;
+}
+
+body.view-researcher #session-detail {
+  max-height: 220px;
+  overflow-y: auto;
 }
 
 #right-panel {
