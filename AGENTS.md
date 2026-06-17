@@ -77,6 +77,28 @@ For branch/recovery context, also check:
   it.
 - `cs-swe-v0-2/` and sibling `cs-swe-*` v0.2 folders are historical comparison material only.
 
+## Pilot Deployment And Account Skills
+
+This worktree is currently the active v0.5 pilot web-app lane. For deployment
+or pilot-account tasks, prefer the local/global Alt Theory operational skills
+instead of ad hoc SSH or account-file edits.
+
+Skill source and common global copies:
+
+```text
+%LLM_THEO_ROOT%\local-skills\alt-theory-vps-deploy\
+%LLM_THEO_ROOT%\local-skills\alt-theory-account-admin\
+%USERPROFILE%\.codex\skills\alt-theory-vps-deploy\
+%USERPROFILE%\.codex\skills\alt-theory-account-admin\
+%USERPROFILE%\.agents\skills\alt-theory-vps-deploy\
+%USERPROFILE%\.agents\skills\alt-theory-account-admin\
+```
+
+Use `alt-theory-vps-deploy` before changing the live VPS or `/opt/alt-theory`.
+Use `alt-theory-account-admin` before creating, disabling, or inspecting pilot
+accounts. Do not print root passwords, API keys, login codes, account hashes,
+or raw participant transcripts.
+
 ## Plan-Records And Workstreams
 
 Default workstream-local records live in:
