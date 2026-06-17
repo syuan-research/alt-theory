@@ -229,7 +229,11 @@ export function readSessionTextFile(
   if (!stats.isFile()) {
     throw new Error("Requested path is not a file");
   }
-  if (stats.size > MAX_TEXT_FILE_BYTES) {
+  const maxBytes =
+    target.root === "workspace"
+      ? MAX_WORKSPACE_TEXT_FILE_BYTES
+      : MAX_TEXT_FILE_BYTES;
+  if (stats.size > maxBytes) {
     throw new Error(`File is too large to read: ${target.relativePath}`);
   }
   return {
@@ -248,8 +252,12 @@ export function writeSessionTextFile(
   requestedPath: string,
   content: string
 ): SessionTextFileContent {
-  if (Buffer.byteLength(content, "utf-8") > MAX_TEXT_FILE_BYTES) {
-    throw new Error(`File is too large to write: ${MAX_TEXT_FILE_BYTES} byte limit`);
+  const maxBytes =
+    rootName === "workspace"
+      ? MAX_WORKSPACE_TEXT_FILE_BYTES
+      : MAX_TEXT_FILE_BYTES;
+  if (Buffer.byteLength(content, "utf-8") > maxBytes) {
+    throw new Error(`File is too large to write: ${maxBytes} byte limit`);
   }
   const target = resolveSessionTextFile(dataDir, sessionId, rootName, requestedPath);
   mkdirSync(dirname(target.path), { recursive: true });
@@ -296,8 +304,16 @@ function readSessionSummary(
 }
 
 const TEXT_FILE_ROOTS = ["records", "workspace"] as const;
-const ALLOWED_TEXT_FILE_EXTENSIONS = new Set([".md", ".txt", ".json"]);
+const ALLOWED_TEXT_FILE_EXTENSIONS = new Set([
+  ".md",
+  ".txt",
+  ".json",
+  ".csv",
+  ".tsv",
+  ".html",
+]);
 const MAX_TEXT_FILE_BYTES = 512 * 1024;
+const MAX_WORKSPACE_TEXT_FILE_BYTES = 2 * 1024 * 1024;
 
 function selectTextFileRoots(
   dataDir: string,
@@ -337,7 +353,11 @@ function listTextFilesInRoot(
       }
       if (!entry.isFile() || !isAllowedTextFile(relPath)) continue;
       const stats = statSync(fullPath);
-      if (stats.size > MAX_TEXT_FILE_BYTES) continue;
+      const maxBytes =
+        root === "workspace"
+          ? MAX_WORKSPACE_TEXT_FILE_BYTES
+          : MAX_TEXT_FILE_BYTES;
+      if (stats.size > maxBytes) continue;
       files.push({
         root,
         path: relPath,
@@ -376,7 +396,9 @@ function resolveSessionTextFile(
   }
   const normalizedRelative = relativePath.replace(/\\/g, "/");
   if (!isAllowedTextFile(normalizedRelative)) {
-    throw new Error("Only .md, .txt, and .json files are allowed");
+    throw new Error(
+      "Only .md, .txt, .json, .csv, .tsv, and .html files are allowed"
+    );
   }
   return { root, path: target, relativePath: normalizedRelative };
 }

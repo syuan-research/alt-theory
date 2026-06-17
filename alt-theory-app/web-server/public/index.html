@@ -97,6 +97,7 @@
       <div id="composer">
         <div id="tool-status"></div>
         <div id="run-hint" class="run-hint hidden" title=""></div>
+        <div id="attachment-hint" class="attachment-hint hidden"></div>
         <div id="visibility-bar" class="visibility-bar hidden">
           <label class="visibility-toggle">
             <input type="checkbox" id="private-toggle">
@@ -167,7 +168,7 @@
             <button id="records-refresh-btn" class="small-btn" title="Refresh records" disabled>&#8635;</button>
           </div>
           <div id="records-list" class="records-list small-text"></div>
-          <textarea id="record-editor" spellcheck="false" disabled></textarea>
+          <textarea id="record-editor" class="file-editor" spellcheck="false" disabled></textarea>
           <div class="record-actions">
             <span id="record-status" class="hint"></span>
             <button id="record-save-btn" class="small-btn" disabled>Save</button>
@@ -178,9 +179,28 @@
       <div class="right-tab-panel" data-right-panel="summary">
         <div class="panel-section">
           <div class="panel-header compact-header">
+            <span class="section-label inline-label">Workspace Files</span>
+            <div class="header-actions">
+              <button id="workspace-refresh-btn" class="small-btn" title="Refresh workspace files" disabled>&#8635;</button>
+              <label id="workspace-upload-label" class="small-btn upload-label" title="Upload workspace file">
+                Upload
+                <input id="workspace-upload-input" type="file" accept=".txt,.md,.csv,.tsv,.json,.html,.docx,.xlsx,.pdf" hidden>
+              </label>
+            </div>
+          </div>
+          <div id="workspace-usage" class="workspace-usage hint small-text"></div>
+          <div id="workspace-files-list" class="records-list workspace-files-list small-text"></div>
+          <textarea id="workspace-file-editor" class="file-editor" spellcheck="false" disabled></textarea>
+          <div class="record-actions">
+            <span id="workspace-file-status" class="hint"></span>
+            <button id="workspace-file-save-btn" class="small-btn" disabled>Save</button>
+          </div>
+        </div>
+        <div class="panel-section summary-skill-section">
+          <div class="panel-header compact-header">
             <span class="section-label inline-label">Summary</span>
           </div>
-          <textarea id="summary-editor" spellcheck="false" placeholder="Add an optional note, e.g. focus on decisions, questions, context, or next steps."></textarea>
+          <textarea id="summary-editor" spellcheck="false" placeholder="Optional note for the summary skill, e.g. focus on decisions or next steps."></textarea>
           <div class="summary-actions">
             <button id="summary-invoke-btn" title="Run the conversation-summary skill" disabled><span class="ico">⏏︎</span><span>Save summary to file</span></button>
             <span id="summary-status" class="summary-status"></span>

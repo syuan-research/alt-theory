@@ -134,6 +134,14 @@ const summaryInvokeBtn = document.getElementById("summary-invoke-btn");
 const summaryStatusEl = document.getElementById("summary-status");
 const SUMMARY_SKILL_NAME = "conversation-summary";
 const chatPanelEl = document.getElementById("chat-panel");
+const workspaceRefreshBtn = document.getElementById("workspace-refresh-btn");
+const workspaceUploadInput = document.getElementById("workspace-upload-input");
+const workspaceUsageEl = document.getElementById("workspace-usage");
+const workspaceFilesListEl = document.getElementById("workspace-files-list");
+const workspaceFileEditorEl = document.getElementById("workspace-file-editor");
+const workspaceFileSaveBtn = document.getElementById("workspace-file-save-btn");
+const workspaceFileStatusEl = document.getElementById("workspace-file-status");
+const attachmentHintEl = document.getElementById("attachment-hint");
 
 // ---------------------------------------------------------------------------
 // State
@@ -165,6 +173,9 @@ let transcriptMessages = [];
 let transcriptView = "developer";
 let sessionRecordFiles = [];
 let selectedRecordFile = null;
+let workspaceEntries = [];
+let selectedWorkspaceFile = null;
+let stagedWorkspacePaths = new Set();
 const NONE_VALUE = "__none__";
 const PANE_STORAGE_KEY = "alt-theory-workbench-panes";
 const paneState = {
@@ -626,6 +637,108 @@ async function refreshCurrentTranscript() {
   }
 }
 
+function formatBytes(bytes) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value.toFixed(value >= 10 || unit === 0 ? 0 : 1)} ${units[unit]}`;
+}
+
+function renderAttachmentHint() {
+  if (!attachmentHintEl) return;
+  const count = stagedWorkspacePaths.size;
+  if (!count) {
+    attachmentHintEl.textContent = "";
+    attachmentHintEl.classList.add("hidden");
+    return;
+  }
+  attachmentHintEl.textContent = `${count} file${count === 1 ? "" : "s"} will be attached when you send`;
+  attachmentHintEl.classList.remove("hidden");
+}
+
+function updateSendAvailability() {
+  const hasText = Boolean(inputEl.value.trim());
+  const hasAttachments = stagedWorkspacePaths.size > 0;
+  sendBtn.disabled =
+    !sessionReady || isRunning || (!hasText && !hasAttachments);
+}
+
+function buildOutgoingPrompt(text) {
+  const staged = [...stagedWorkspacePaths];
+  if (!staged.length) return text;
+  const attachmentLine = `(Attachments: ${staged.join(", ")})`;
+  if (!text) return attachmentLine;
+  return `${text}\n\n${attachmentLine}`;
+}
+
+function stageablePathForEntry(entry) {
+  if (!entry?.stageable) return null;
+  if (entry.kind === "converted") return entry.path;
+  if (entry.kind === "text") return entry.path;
+  return entry.convertedPath || null;
+}
+
+async function openFileInEditor(file, editorEl, statusEl, saveBtn, onSelect) {
+  if (!currentSessionId || !file) return;
+  onSelect(file);
+  editorEl.disabled = true;
+  saveBtn.disabled = true;
+  statusEl.textContent = "Opening...";
+  const qs = new URLSearchParams({
+    root: file.root || "workspace",
+    path: file.path,
+  });
+  try {
+    const res = await fetch(
+      `/api/sessions/${encodeURIComponent(currentSessionId)}/files/content?${qs}`
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    onSelect({ root: data.root, path: data.path });
+    editorEl.value = data.content || "";
+    editorEl.disabled = false;
+    saveBtn.disabled = false;
+    statusEl.textContent = `${data.root}/${data.path}`;
+  } catch (err) {
+    console.error("[files] Open failed:", err);
+    statusEl.textContent = "Could not open file.";
+  }
+}
+
+async function saveFileFromEditor(selectedFile, editorEl, statusEl, saveBtn, refreshFn) {
+  if (!currentSessionId || !selectedFile) return;
+  saveBtn.disabled = true;
+  statusEl.textContent = "Saving...";
+  try {
+    const res = await fetch(
+      `/api/sessions/${encodeURIComponent(currentSessionId)}/files/content`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          root: selectedFile.root || "workspace",
+          path: selectedFile.path,
+          content: editorEl.value,
+        }),
+      }
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    statusEl.textContent = `Saved ${data.root}/${data.path}`;
+    await refreshFn();
+  } catch (err) {
+    console.error("[files] Save failed:", err);
+    statusEl.textContent = "Could not save file.";
+  } finally {
+    saveBtn.disabled = !selectedFile;
+  }
+}
+
 async function fetchSessionRecords() {
   if (!currentSessionId) {
     renderRecordsList([]);
@@ -651,57 +764,312 @@ async function fetchSessionRecords() {
 }
 
 async function openSessionRecord(file) {
-  if (!currentSessionId || !file) return;
-  selectedRecordFile = file;
-  renderRecordsList(sessionRecordFiles);
-  recordEditorEl.disabled = true;
-  recordSaveBtn.disabled = true;
-  recordStatusEl.textContent = "Opening...";
-  const qs = new URLSearchParams({ root: file.root, path: file.path });
-  try {
-    const res = await fetch(
-      `/api/sessions/${encodeURIComponent(currentSessionId)}/files/content?${qs}`
-    );
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    selectedRecordFile = { root: data.root, path: data.path };
-    recordEditorEl.value = data.content || "";
-    recordEditorEl.disabled = false;
-    recordSaveBtn.disabled = false;
-    recordStatusEl.textContent = `${data.root}/${data.path}`;
-  } catch (err) {
-    console.error("[records] Open failed:", err);
-    recordStatusEl.textContent = "Could not open record.";
-  }
+  await openFileInEditor(
+    file,
+    recordEditorEl,
+    recordStatusEl,
+    recordSaveBtn,
+    (selected) => {
+      selectedRecordFile = selected;
+      renderRecordsList(sessionRecordFiles);
+    }
+  );
 }
 
 async function saveSessionRecord() {
-  if (!currentSessionId || !selectedRecordFile) return;
-  recordSaveBtn.disabled = true;
-  recordStatusEl.textContent = "Saving...";
+  await saveFileFromEditor(
+    selectedRecordFile,
+    recordEditorEl,
+    recordStatusEl,
+    recordSaveBtn,
+    fetchSessionRecords
+  );
+}
+
+function renderWorkspaceUsage(usage) {
+  if (!workspaceUsageEl || !usage) {
+    if (workspaceUsageEl) workspaceUsageEl.textContent = "";
+    return;
+  }
+  workspaceUsageEl.textContent = `Workspace · ${formatBytes(usage.sessionBytes)} / ${formatBytes(usage.sessionQuotaBytes)} used`;
+}
+
+async function fetchWorkspaceFiles() {
+  if (!currentSessionId) {
+    workspaceEntries = [];
+    renderWorkspaceFilesList([]);
+    renderWorkspaceUsage(null);
+    return;
+  }
+  if (workspaceRefreshBtn) workspaceRefreshBtn.disabled = true;
+  if (workspaceFileStatusEl) workspaceFileStatusEl.textContent = "Loading...";
   try {
     const res = await fetch(
-      `/api/sessions/${encodeURIComponent(currentSessionId)}/files/content`,
-      {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          root: selectedRecordFile.root,
-          path: selectedRecordFile.path,
-          content: recordEditorEl.value,
-        }),
-      }
+      `/api/sessions/${encodeURIComponent(currentSessionId)}/files?root=workspace`
     );
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    recordStatusEl.textContent = `Saved ${data.root}/${data.path}`;
-    await fetchSessionRecords();
+    workspaceEntries = Array.isArray(data.entries) ? data.entries : [];
+    renderWorkspaceUsage(data.usage || null);
+    renderWorkspaceFilesList(workspaceEntries);
+    if (workspaceFileStatusEl) {
+      workspaceFileStatusEl.textContent = workspaceEntries.length ? "" : "No workspace files.";
+    }
   } catch (err) {
-    console.error("[records] Save failed:", err);
-    recordStatusEl.textContent = "Could not save record.";
+    console.error("[workspace] Failed:", err);
+    workspaceEntries = [];
+    renderWorkspaceFilesList([]);
+    renderWorkspaceUsage(null);
+    if (workspaceFileStatusEl) workspaceFileStatusEl.textContent = "Could not load workspace files.";
   } finally {
-    recordSaveBtn.disabled = !selectedRecordFile;
+    if (workspaceRefreshBtn) {
+      workspaceRefreshBtn.disabled = !sessionReady || !currentSessionId;
+    }
   }
+}
+
+function renderWorkspaceFilesList(entries) {
+  if (!workspaceFilesListEl) return;
+  workspaceFilesListEl.innerHTML = "";
+  if (!entries.length) {
+    workspaceFilesListEl.innerHTML = '<div class="session-empty">No workspace files.</div>';
+    if (workspaceFileEditorEl) {
+      workspaceFileEditorEl.value = "";
+      workspaceFileEditorEl.disabled = true;
+    }
+    if (workspaceFileSaveBtn) workspaceFileSaveBtn.disabled = true;
+    selectedWorkspaceFile = null;
+    return;
+  }
+
+  for (const entry of entries) {
+    const row = document.createElement("div");
+    row.className = "workspace-file-row";
+    if (
+      selectedWorkspaceFile?.path === entry.path &&
+      (selectedWorkspaceFile?.root || "workspace") === "workspace"
+    ) {
+      row.classList.add("selected");
+    }
+
+    const stagePath = stageablePathForEntry(entry);
+    const check = document.createElement("input");
+    check.type = "checkbox";
+    check.className = "workspace-stage-check";
+    check.disabled = !stagePath;
+    check.checked = stagePath ? stagedWorkspacePaths.has(stagePath) : false;
+    check.title = stagePath ? "Include in next message" : "Not ready to attach";
+    check.onclick = (e) => e.stopPropagation();
+    check.onchange = () => {
+      if (!stagePath) return;
+      if (check.checked) stagedWorkspacePaths.add(stagePath);
+      else stagedWorkspacePaths.delete(stagePath);
+      renderAttachmentHint();
+      updateSendAvailability();
+    };
+
+    const body = document.createElement("button");
+    body.type = "button";
+    body.className = "workspace-file-body";
+    body.onclick = () => {
+      if (entry.kind === "binary-original" && entry.extractStatus === "failed") return;
+      const openPath =
+        entry.kind === "converted" || entry.kind === "text"
+          ? entry.path
+          : entry.convertedPath;
+      if (!openPath) return;
+      openWorkspaceFile({ root: "workspace", path: openPath });
+    };
+
+    const label = document.createElement("span");
+    label.className = "workspace-file-path";
+    label.textContent = entry.path;
+    const meta = document.createElement("span");
+    meta.className = "workspace-file-meta";
+    if (entry.extractStatus === "failed") {
+      meta.textContent = entry.extractError || "Conversion failed";
+      meta.classList.add("error");
+    } else if (entry.kind === "binary-original" && entry.convertedPath) {
+      meta.textContent = entry.convertedPath;
+    } else {
+      meta.textContent = formatBytes(entry.size);
+    }
+    body.appendChild(label);
+    body.appendChild(meta);
+
+    const actions = document.createElement("div");
+    actions.className = "workspace-file-actions";
+    if (entry.downloadable) {
+      const downloadBtn = document.createElement("button");
+      downloadBtn.type = "button";
+      downloadBtn.className = "workspace-icon-btn";
+      downloadBtn.textContent = "↓";
+      downloadBtn.title = "Download";
+      downloadBtn.onclick = (e) => {
+        e.stopPropagation();
+        downloadWorkspaceFile(entry.path);
+      };
+      actions.appendChild(downloadBtn);
+    }
+    if (entry.extractStatus === "failed") {
+      const retryBtn = document.createElement("button");
+      retryBtn.type = "button";
+      retryBtn.className = "workspace-icon-btn";
+      retryBtn.textContent = "↻";
+      retryBtn.title = "Retry conversion";
+      retryBtn.onclick = (e) => {
+        e.stopPropagation();
+        retryWorkspaceExtract(entry.path);
+      };
+      actions.appendChild(retryBtn);
+    }
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "workspace-icon-btn";
+    deleteBtn.textContent = "🗑";
+    deleteBtn.title = "Delete";
+    deleteBtn.onclick = (e) => {
+      e.stopPropagation();
+      const removePath = entry.kind === "binary-original" ? entry.path : entry.path;
+      showConfirm(`Delete ${removePath}?`, () => deleteWorkspaceFile(removePath), "Delete");
+    };
+    actions.appendChild(deleteBtn);
+
+    row.appendChild(check);
+    row.appendChild(body);
+    row.appendChild(actions);
+    workspaceFilesListEl.appendChild(row);
+  }
+}
+
+async function openWorkspaceFile(file) {
+  await openFileInEditor(
+    file,
+    workspaceFileEditorEl,
+    workspaceFileStatusEl,
+    workspaceFileSaveBtn,
+    (selected) => {
+      selectedWorkspaceFile = selected;
+      renderWorkspaceFilesList(workspaceEntries);
+    }
+  );
+}
+
+async function saveWorkspaceFile() {
+  await saveFileFromEditor(
+    selectedWorkspaceFile,
+    workspaceFileEditorEl,
+    workspaceFileStatusEl,
+    workspaceFileSaveBtn,
+    fetchWorkspaceFiles
+  );
+}
+
+async function uploadWorkspaceFileFromInput(file) {
+  if (!file) return;
+  if (!currentSessionId) {
+    const hint =
+      "Open a saved session from the list, or send a message to create one, before uploading.";
+    if (workspaceFileStatusEl) workspaceFileStatusEl.textContent = hint;
+    setComposerNotice("⏏", hint);
+    if (workspaceUploadInput) workspaceUploadInput.value = "";
+    return;
+  }
+  const form = new FormData();
+  form.append("file", file);
+  if (workspaceFileStatusEl) workspaceFileStatusEl.textContent = "Uploading...";
+  try {
+    const res = await fetch(
+      `/api/sessions/${encodeURIComponent(currentSessionId)}/files/upload`,
+      { method: "POST", body: form }
+    );
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    const stagePath =
+      data.convertedPath ||
+      (data.entry?.stageable ? data.originalPath : null);
+    if (stagePath) stagedWorkspacePaths.add(stagePath);
+    renderAttachmentHint();
+    updateSendAvailability();
+    await fetchWorkspaceFiles();
+    if (data.extractStatus === "failed") {
+      const errText = data.extractError || "Conversion failed";
+      if (workspaceFileStatusEl) workspaceFileStatusEl.textContent = errText;
+      setComposerNotice("⚠", `Upload failed: ${errText}`);
+    } else {
+      const okText = `Uploaded ${data.originalPath}`;
+      if (workspaceFileStatusEl) workspaceFileStatusEl.textContent = okText;
+      setComposerNotice("✓", okText);
+    }
+  } catch (err) {
+    console.error("[workspace] Upload failed:", err);
+    const errText = err instanceof Error ? err.message : "Upload failed";
+    if (workspaceFileStatusEl) workspaceFileStatusEl.textContent = errText;
+    setComposerNotice("⚠", `Upload failed: ${errText}`);
+  } finally {
+    if (workspaceUploadInput) workspaceUploadInput.value = "";
+  }
+}
+
+async function retryWorkspaceExtract(uploadsPath) {
+  if (!currentSessionId) return;
+  if (workspaceFileStatusEl) workspaceFileStatusEl.textContent = "Retrying...";
+  try {
+    const res = await fetch(
+      `/api/sessions/${encodeURIComponent(currentSessionId)}/files/retry-extract`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: uploadsPath }),
+      }
+    );
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    if (data.convertedPath) stagedWorkspacePaths.add(data.convertedPath);
+    renderAttachmentHint();
+    updateSendAvailability();
+    await fetchWorkspaceFiles();
+  } catch (err) {
+    console.error("[workspace] Retry failed:", err);
+    if (workspaceFileStatusEl) {
+      workspaceFileStatusEl.textContent =
+        err instanceof Error ? err.message : "Retry failed";
+    }
+  }
+}
+
+async function deleteWorkspaceFile(path) {
+  if (!currentSessionId) return;
+  const qs = new URLSearchParams({ root: "workspace", path });
+  try {
+    const res = await fetch(
+      `/api/sessions/${encodeURIComponent(currentSessionId)}/files/content?${qs}`,
+      { method: "DELETE" }
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const entry = workspaceEntries.find((item) => item.path === path);
+    stagedWorkspacePaths.delete(path);
+    if (entry?.convertedPath) stagedWorkspacePaths.delete(entry.convertedPath);
+    if (entry?.kind === "converted") {
+      const original = workspaceEntries.find((item) => item.convertedPath === path);
+      if (original?.path) stagedWorkspacePaths.delete(original.path);
+    }
+    renderAttachmentHint();
+    updateSendAvailability();
+    await fetchWorkspaceFiles();
+  } catch (err) {
+    console.error("[workspace] Delete failed:", err);
+    if (workspaceFileStatusEl) workspaceFileStatusEl.textContent = "Could not delete file.";
+  }
+}
+
+function downloadWorkspaceFile(path) {
+  if (!currentSessionId) return;
+  const qs = new URLSearchParams({ root: "workspace", path });
+  window.open(
+    `/api/sessions/${encodeURIComponent(currentSessionId)}/files/download?${qs}`,
+    "_blank"
+  );
 }
 
 function renderSessionList() {
@@ -1191,6 +1559,15 @@ function appendChatMessage(role, text, options = {}) {
     // Branch is valid on any user turn.
     const actions = document.createElement("div");
     actions.className = "msg-actions";
+    const copyBtn = document.createElement("button");
+    copyBtn.className = "msg-btn";
+    copyBtn.textContent = "⎘ Copy";
+    copyBtn.title = "Copy message text";
+    copyBtn.onclick = (e) => {
+      e.stopPropagation();
+      copyToClipboard(value, copyBtn);
+    };
+    actions.appendChild(copyBtn);
     if (options.isLatest) {
       const editBtn = document.createElement("button");
       editBtn.className = "msg-btn";
@@ -1242,6 +1619,20 @@ function appendChatMessage(role, text, options = {}) {
   } else if (role === "assistant") {
     el.className = "message assistant";
     el.innerHTML = renderMarkdown(value);
+    const actions = document.createElement("div");
+    actions.className = "msg-actions";
+    const copyBtn = document.createElement("button");
+    copyBtn.className = "msg-btn";
+    copyBtn.textContent = "⎘ Copy";
+    copyBtn.title = "Copy message text";
+    copyBtn.onclick = (e) => {
+      e.stopPropagation();
+      copyToClipboard(value, copyBtn);
+    };
+    actions.appendChild(copyBtn);
+    el.appendChild(actions);
+    messagesEl.appendChild(el);
+    return el;
   } else if (role === "tool") {
     const success = options.success !== false;
     el.className = `message tool-status ${success ? "finished" : "failed"}`;
@@ -1821,7 +2212,10 @@ function handleWebSocketMessage(event) {
         summaryStatusEl.classList.remove("error", "ok");
       }
       if (summaryEditor) summaryEditor.value = "";
+      stagedWorkspacePaths.clear();
+      renderAttachmentHint();
       fetchSessionRecords();
+      fetchWorkspaceFiles();
       fetchSessionDetail(msg.payload.sessionId);
       console.log("[ws] Session opened:", msg.payload.sessionId);
       fetchSessions();
@@ -1959,13 +2353,14 @@ function handleWebSocketMessage(event) {
       setRunHint("");
       // If a summary invocation was pending, mark it done.
       if (summaryStatusEl && summaryStatusEl.textContent) {
-        summaryStatusEl.textContent = "总结已生成。";
+        summaryStatusEl.textContent = "Summary generated.";
         summaryStatusEl.classList.remove("error");
         summaryStatusEl.classList.add("ok");
       }
       activeToolNames = {};
       refreshCurrentTranscript();
       fetchSessionRecords();
+      fetchWorkspaceFiles();
       if (currentSessionId) fetchSessionDetail(currentSessionId);
       break;
     }
@@ -2054,13 +2449,24 @@ function setControlsEnabled(enabled) {
     sendBtn.style.display = isRunning ? "none" : "inline";
     stopBtn.style.display = isRunning ? "inline" : "none";
   }
-  sendBtn.disabled = !interactive || isRunning;
+  if (!interactive || isRunning) {
+    sendBtn.disabled = true;
+  } else {
+    updateSendAvailability();
+  }
   stopBtn.disabled = !isRunning || !connected;
   inputEl.disabled = !interactive || isRunning;
   newSessionBtn.disabled = !interactive;
   refreshMetricsBtn.disabled = !interactive || !currentSessionId;
   provenanceRefreshBtn.disabled = !interactive || !currentSessionId;
   recordsRefreshBtn.disabled = !interactive || !currentSessionId;
+  if (workspaceRefreshBtn) {
+    workspaceRefreshBtn.disabled = !interactive || !currentSessionId;
+  }
+  if (workspaceFileSaveBtn) {
+    workspaceFileSaveBtn.disabled =
+      !interactive || !currentSessionId || !selectedWorkspaceFile;
+  }
   recordSaveBtn.disabled = !interactive || !currentSessionId || !selectedRecordFile;
   sessionRefreshBtn.disabled = !connected;
   resumeSessionBtn.disabled =
@@ -2110,18 +2516,19 @@ function clearChatSurface() {
 
 function sendMessage() {
   const text = inputEl.value.trim();
-  if (!text || isRunning) return;
+  const outgoing = buildOutgoingPrompt(text);
+  if (!outgoing || isRunning) return;
 
-  if (!wsSafeSend(JSON.stringify({ type: "prompt", payload: text }))) return;
+  if (!wsSafeSend(JSON.stringify({ type: "prompt", payload: outgoing }))) return;
 
-  // Render user message
-  appendChatMessage("user", text);
+  appendChatMessage("user", outgoing);
   hasMessages = true;
 
   inputEl.value = "";
+  stagedWorkspacePaths.clear();
+  renderAttachmentHint();
   setRunHint("");
 
-  // Toggle controls
   isRunning = true;
   setControlsEnabled(false);
   setConnStatus("running", "Thinking…");
@@ -2218,6 +2625,7 @@ rolePresetSelect.addEventListener("change", (e) => {
 
 inputEl.addEventListener("input", () => {
   setControlsEnabled(!isRunning);
+  updateSendAvailability();
   updateReviseModeUI();
 });
 
@@ -2281,7 +2689,7 @@ if (summaryInvokeBtn) {
     // so the participant sees the invocation leave the client.
     appendChatMessage("user", userText || `Save summary to file`);
     if (summaryStatusEl) {
-      summaryStatusEl.textContent = "正在生成总结…";
+      summaryStatusEl.textContent = "Generating summary...";
       summaryStatusEl.classList.remove("error", "ok");
     }
     isRunning = true;
@@ -2523,6 +2931,19 @@ recordsRefreshBtn.onclick = () => {
   fetchSessionRecords();
 };
 
+if (workspaceRefreshBtn) {
+  workspaceRefreshBtn.onclick = () => fetchWorkspaceFiles();
+}
+if (workspaceFileSaveBtn) {
+  workspaceFileSaveBtn.onclick = () => saveWorkspaceFile();
+}
+if (workspaceUploadInput) {
+  workspaceUploadInput.onchange = () => {
+    const file = workspaceUploadInput.files?.[0];
+    if (file) uploadWorkspaceFileFromInput(file);
+  };
+}
+
 provenanceRefreshBtn.onclick = () => {
   if (currentSessionId) fetchSessionDetail(currentSessionId);
 };
@@ -2554,6 +2975,9 @@ for (const button of rightTabBtns) {
     }
     if (tab === "records") {
       fetchSessionRecords();
+    }
+    if (tab === "summary") {
+      fetchWorkspaceFiles();
     }
     if (tab === "provenance" && currentSessionId) {
       fetchSessionDetail(currentSessionId);

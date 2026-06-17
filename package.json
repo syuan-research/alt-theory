@@ -16,11 +16,16 @@
     "@mariozechner/pi-web-ui": "0.70.2",
     "dotenv": "^16.4.7",
     "express": "^5.2.1",
+    "mammoth": "^1.9.0",
+    "multer": "^2.0.2",
+    "pdf-parse": "^1.1.1",
+    "xlsx": "^0.18.5",
     "opencode-goal-plugin": "^0.1.10",
     "ws": "^8.20.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
+    "@types/multer": "^2.0.0",
     "@types/ws": "^8.18.1",
     "tsx": "^4.22.4"
   }

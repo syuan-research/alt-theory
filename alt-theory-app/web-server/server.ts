@@ -7,6 +7,7 @@
 
 import "dotenv/config";
 import express, { type Response } from "express";
+import multer from "multer";
 import { existsSync } from "fs";
 import { createServer } from "http";
 import { resolve } from "path";
@@ -36,7 +37,6 @@ import type {
 } from "./websocket-protocol.js";
 import {
   getSessionRootForRequest,
-  deleteSessionTextFile,
   listSessionTextFiles,
   listSessionSummaries,
   readSessionTextFile,
@@ -45,6 +45,13 @@ import {
   softDeleteSession,
   writeSessionTextFile,
 } from "./session-store.js";
+import {
+  deleteWorkspaceFile,
+  isWorkspaceDownloadAllowed,
+  listWorkspaceFiles,
+  retryWorkspaceExtraction,
+  uploadWorkspaceFile,
+} from "./workspace-files.js";
 import {
   SessionBusyError,
   SessionService,
@@ -204,6 +211,11 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     clearInterval(heartbeatInterval);
   });
 
+  const workspaceUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 20 * 1024 * 1024 },
+  });
+
   app.use(express.json({ limit: "600kb" }));
   app.use(
     express.static(publicDir, {
@@ -351,7 +363,71 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       typeof req.query.root === "string" ? req.query.root : undefined;
     if (!requireSessionRestContentAccess(req, res, sessionId)) return;
     try {
+      if (rootName === "workspace") {
+        const auth = authSessions.resolveRequest(req);
+        const workspace = listWorkspaceFiles(
+          dataDir,
+          sessionId,
+          auth.accountId
+        );
+        const legacy = listSessionTextFiles(dataDir, sessionId, "workspace");
+        res.json({
+          files: legacy.files,
+          entries: workspace.files,
+          usage: workspace.usage,
+        });
+        return;
+      }
       res.json(listSessionTextFiles(dataDir, sessionId, rootName));
+    } catch (error) {
+      sendFileApiError(res, error);
+    }
+  });
+  app.post(
+    "/api/sessions/:sessionId/files/upload",
+    workspaceUpload.single("file"),
+    async (req, res) => {
+      const sessionId = req.params.sessionId;
+      if (!requireSessionRestContentAccess(req, res, sessionId)) return;
+      const auth = authSessions.resolveRequest(req);
+      if (!auth.accountId) {
+        res.status(403).json({ error: "Upload requires an authenticated owner" });
+        return;
+      }
+      const file = req.file;
+      if (!file) {
+        res.status(400).json({ error: "file is required" });
+        return;
+      }
+      try {
+        const result = await uploadWorkspaceFile(
+          dataDir,
+          sessionId,
+          auth.accountId,
+          file.originalname,
+          file.buffer
+        );
+        res.json(result);
+      } catch (error) {
+        sendFileApiError(res, error);
+      }
+    }
+  );
+  app.post("/api/sessions/:sessionId/files/retry-extract", async (req, res) => {
+    const sessionId = req.params.sessionId;
+    if (!requireSessionRestContentAccess(req, res, sessionId)) return;
+    const body = req.body as { path?: unknown };
+    if (typeof body?.path !== "string" || !body.path.trim()) {
+      res.status(400).json({ error: "path is required" });
+      return;
+    }
+    try {
+      const result = await retryWorkspaceExtraction(
+        dataDir,
+        sessionId,
+        body.path
+      );
+      res.json(result);
     } catch (error) {
       sendFileApiError(res, error);
     }
@@ -408,6 +484,10 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       return;
     }
     if (!requireSessionRestContentAccess(req, res, sessionId)) return;
+    if (!isWorkspaceDownloadAllowed(requestedPath)) {
+      res.status(400).json({ error: "This file cannot be downloaded" });
+      return;
+    }
     try {
       const file = readSessionTextFile(
         dataDir,
@@ -441,14 +521,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     }
     if (!requireSessionRestContentAccess(req, res, sessionId)) return;
     try {
-      res.json({
-        deleted: deleteSessionTextFile(
-          dataDir,
-          sessionId,
-          rootName,
-          requestedPath
-        ),
-      });
+      res.json(deleteWorkspaceFile(dataDir, sessionId, requestedPath));
     } catch (error) {
       sendFileApiError(res, error);
     }
