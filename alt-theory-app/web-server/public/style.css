@@ -1247,14 +1247,21 @@ button:hover {
 
 .session-actions {
   display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 6px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
   margin-top: 12px;
+  width: 100%;
 }
 
 .session-actions button {
-  padding: 7px 12px;
+  width: 100%;
+  min-width: 0;
+  padding: 7px 10px;
   font-size: 13px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .danger-btn {
