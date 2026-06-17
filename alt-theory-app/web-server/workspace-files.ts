@@ -326,6 +326,29 @@ export function listWorkspaceFiles(
     visit(extractedDir, "extracted");
   }
 
+  if (existsSync(workspaceDir)) {
+    const visitAgentOutput = (dir: string, prefix: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        if (entry.name.startsWith(".")) continue;
+        const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+        const relNorm = rel.replace(/\\/g, "/");
+        if (relNorm === "uploads" || relNorm === "extracted") continue;
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) {
+          visitAgentOutput(full, relNorm);
+          continue;
+        }
+        if (!entry.isFile()) continue;
+        if (relNorm.endsWith(".extract-error.json")) continue;
+        const ext = extname(entry.name).toLowerCase();
+        if (!TEXT_NATIVE_EXTENSIONS.has(ext)) continue;
+        if (entries.some((item) => item.path === relNorm)) continue;
+        entries.push(fileEntry(workspaceDir, relNorm, "text"));
+      }
+    };
+    visitAgentOutput(workspaceDir, "");
+  }
+
   entries.sort((a, b) => a.path.localeCompare(b.path));
   const sessionBytes = dirByteSize(workspaceDir);
   return {

@@ -93,6 +93,25 @@ function writeOwnerStub(dataDir: string, sessionId: string, ownerAccountId: stri
   );
 }
 
+test("listWorkspaceFiles includes agent-authored text files outside uploads/", async () => {
+  const root = mkdtempSync(join(tmpdir(), "alt-theory-workspace-agent-"));
+  const dataDir = join(root, "data");
+  const { sessionId } = createSessionDirs(dataDir);
+  const workspace = join(dataDir, "sessions", sessionId, "workspace");
+  writeFileSync(join(workspace, "poem.md"), "# Poem\n", "utf-8");
+  mkdirSync(join(workspace, "notes"), { recursive: true });
+  writeFileSync(join(workspace, "notes", "idea.txt"), "idea", "utf-8");
+
+  const listed = listWorkspaceFiles(dataDir, sessionId, "p01");
+  const paths = listed.files.map((entry) => entry.path).sort();
+  assert.deepEqual(paths, ["notes/idea.txt", "poem.md"]);
+  assert.equal(listed.files.find((entry) => entry.path === "poem.md")?.kind, "text");
+  assert.equal(
+    listed.files.find((entry) => entry.path === "poem.md")?.stageable,
+    true
+  );
+});
+
 test("account usage sums owned session workspaces", async () => {
   const root = mkdtempSync(join(tmpdir(), "alt-theory-workspace-account-"));
   const dataDir = join(root, "data");
