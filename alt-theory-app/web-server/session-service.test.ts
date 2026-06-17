@@ -272,6 +272,17 @@ test("SessionService revises only the latest turn without creating a branch", as
       .join("\n");
     assert.match(text, /revised/);
     assert.doesNotMatch(text, /original/);
+    const detail = readSessionDetail(fixture.dataDir, created.sessionId);
+    const transcriptText = (detail?.transcript ?? [])
+      .map((message) => message.text)
+      .join("\n");
+    const userMessages = (detail?.transcript ?? []).filter(
+      (message) => message.role === "user"
+    );
+    assert.equal(userMessages.length, 1);
+    assert.equal(userMessages[0]?.text, "revised");
+    assert.match(transcriptText, /revised/);
+    assert.doesNotMatch(transcriptText, /original/);
     const branchIndex = JSON.parse(
       readFileSync(join(recordsDir, "branch-index.json"), "utf-8")
     );

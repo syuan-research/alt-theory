@@ -29,7 +29,11 @@ import {
   type ConfigEvent,
   type EffectiveSessionConfig,
 } from "./config-events.js";
-import { readRunRecords, type RunRecord } from "./lineage-records.js";
+import {
+  latestRunSnapshots,
+  readRunRecords,
+  type RunRecord,
+} from "./lineage-records.js";
 import {
   readDeletedSessionRecord,
   writeDeletedSessionRecord,
@@ -146,7 +150,18 @@ export function readSessionDetail(
   const events = readSessionEvents(parts.recordsDir, parts.state);
   const configEvents = readConfigEvents(parts.recordsDir);
   const runs = readRunRecords(parts.recordsDir);
-  const pi = readPiInfo(parts.sessionFile, parts.historyDir, parts.state);
+  const latestRuns = latestRunSnapshots(parts.recordsDir);
+  const activeBranch =
+    parts.branchIndex?.branches.find(
+      (branch) => branch.branchId === parts.branchIndex?.activeBranchId
+    ) ?? null;
+  const pi = readPiInfo(
+    parts.sessionFile,
+    parts.historyDir,
+    parts.state,
+    activeBranch?.activeLeafEntryId,
+    latestRuns
+  );
   const transcriptPreview = pi.transcript.slice(-12);
 
   return {
@@ -165,10 +180,7 @@ export function readSessionDetail(
       inferEffectiveConfig(parts.manifest),
     configEvents,
     branchIndex: parts.branchIndex,
-    activeBranch:
-      parts.branchIndex?.branches.find(
-        (branch) => branch.branchId === parts.branchIndex?.activeBranchId
-      ) ?? null,
+    activeBranch,
     runs,
     warnings: uniqueWarnings([...session.warnings, ...parts.state.warnings]),
   };
@@ -597,7 +609,9 @@ function hasDurableRunEvent(parts: SessionParts): boolean {
 function readPiInfo(
   sessionFile: string | null,
   historyDir: string,
-  state: ReadState
+  state: ReadState,
+  activeLeafEntryId: string | null | undefined,
+  latestRuns: RunRecord[]
 ): {
   info: SessionDetailResponse["pi"];
   transcript: TranscriptMessage[];
@@ -616,10 +630,15 @@ function readPiInfo(
 
   try {
     const sessionManager = SessionManager.open(sessionFile, historyDir);
+    alignSessionManagerLeaf(sessionManager, activeLeafEntryId);
     const entries = sessionManager.getEntries();
+    const branchEntries = sessionManager.getBranch();
     const context = sessionManager.buildSessionContext();
     const messages = Array.isArray(context.messages) ? context.messages : [];
-    const transcript = buildTranscriptFromEntries(entries);
+    const transcript = buildTranscriptFromEntries(
+      branchEntries,
+      inactiveTranscriptEntryIds(latestRuns)
+    );
     return {
       info: {
         sessionFile,
@@ -644,10 +663,42 @@ function readPiInfo(
   }
 }
 
-function buildTranscriptFromEntries(entries: unknown[]): TranscriptMessage[] {
+function alignSessionManagerLeaf(
+  sessionManager: {
+    branch(entryId: string): void;
+    getEntry(entryId: string): unknown;
+  },
+  activeLeafEntryId: string | null | undefined
+): void {
+  if (!activeLeafEntryId) {
+    return;
+  }
+  if (!sessionManager.getEntry(activeLeafEntryId)) {
+    throw new Error("active branch leaf is missing from Pi history");
+  }
+  sessionManager.branch(activeLeafEntryId);
+}
+
+function inactiveTranscriptEntryIds(latestRuns: RunRecord[]): Set<string> {
+  const inactive = new Set<string>();
+  for (const run of latestRuns) {
+    if (run.status !== "deleted" && run.status !== "superseded") continue;
+    if (run.userEntryId) inactive.add(run.userEntryId);
+    for (const entryId of run.assistantEntryIds) {
+      inactive.add(entryId);
+    }
+  }
+  return inactive;
+}
+
+function buildTranscriptFromEntries(
+  entries: unknown[],
+  inactiveEntryIds = new Set<string>()
+): TranscriptMessage[] {
   const transcript: TranscriptMessage[] = [];
   for (const entry of entries) {
     const value = entry as {
+      id?: string;
       type?: string;
       timestamp?: string | number;
       message?: {
@@ -659,6 +710,7 @@ function buildTranscriptFromEntries(entries: unknown[]): TranscriptMessage[] {
       };
     };
     if (value.type !== "message" || !value.message) continue;
+    if (value.id && inactiveEntryIds.has(value.id)) continue;
 
     const role = normalizeRole(value.message.role);
     const timestamp = normalizeTimestamp(value.message.timestamp ?? value.timestamp);
