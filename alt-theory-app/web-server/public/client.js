@@ -1580,13 +1580,27 @@ function renderTranscriptMessages() {
       break;
     }
   }
+  const renderedToolCallIds = new Set();
   transcriptMessages.forEach((message, idx) => {
-    renderTranscriptMessage(message, idx === latestUserIdx);
+    renderTranscriptMessage(message, idx === latestUserIdx, renderedToolCallIds);
   });
   hasMessages = transcriptMessages.length > 0;
 }
 
-function renderTranscriptMessage(message, isLatest) {
+function appendToolStatusChip(message, renderedToolCallIds) {
+  if (!message || message.role !== "tool") return null;
+  const callId = message.toolCallId;
+  if (callId && renderedToolCallIds.has(callId)) return null;
+  const chip = appendChatMessage("tool", message.text || message.toolName || "tool", {
+    toolName: message.toolName,
+    path: message.toolPath,
+    success: message.success,
+  });
+  if (chip && callId) renderedToolCallIds.add(callId);
+  return chip;
+}
+
+function renderTranscriptMessage(message, isLatest, renderedToolCallIds = new Set()) {
   if (!message) return;
   if (transcriptView === "user") {
     if (message.role === "user" || message.role === "assistant") {
@@ -1594,6 +1608,8 @@ function renderTranscriptMessage(message, isLatest) {
         isLatest: message.role === "user" && isLatest,
         entryId: message.entryId,
       });
+    } else if (message.role === "tool") {
+      appendToolStatusChip(message, renderedToolCallIds);
     }
     return;
   }
@@ -1603,17 +1619,10 @@ function renderTranscriptMessage(message, isLatest) {
   }
 
   if (message.role === "tool") {
-    if (message.toolType === "result") {
-      if (transcriptView === "developer") {
-        appendToolResultMessage(message);
-      }
-      return;
+    appendToolStatusChip(message, renderedToolCallIds);
+    if (message.toolType === "result" && transcriptView === "developer") {
+      appendToolResultMessage(message);
     }
-    appendChatMessage("tool", message.text, {
-      toolName: message.toolName,
-      path: message.toolPath,
-      success: message.success,
-    });
     return;
   }
 
@@ -1625,7 +1634,7 @@ function renderTranscriptMessage(message, isLatest) {
 
 function appendChatMessage(role, text, options = {}) {
   const value = (text || "").trim();
-  if (!value) return null;
+  if (!value && !(role === "tool" && options.toolName)) return null;
   const el = document.createElement("div");
   if (role === "user") {
     el.className = "message user";
