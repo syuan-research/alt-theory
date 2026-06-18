@@ -10,10 +10,11 @@ This worktree is the clean `v0.3` reorganization lane for Alt Theory. Alt Theory
 
 Current emphasis:
 
-- keep the old `llm-theo-v0.2` repo intact while building a cleaner `v0.3` structure;
+- `main` is the integration branch; v0.5 pilot web-app work merged here in 2026-06;
 - use `cs-swe-v0-4` as the active SWE-only skill bundle;
-- separate project records, agent assets, evaluation work, and reference repositories more cleanly;
-- keep OneDrive-safe project history while moving dependency-heavy or reference-heavy material outside OneDrive when needed.
+- keep project records, runtime `agent-assets/`, and app code in this tree;
+- Windows bundle packaging experiments stay in `llm-theo-v0.5-bundle`; bundle docs
+  live in `project/workstreams/1-bundle-verification/`.
 
 ## Quick Tree
 
@@ -43,8 +44,8 @@ _archives/               # local ignored snapshots only
 
 Start with:
 
-1. [%LLM_THEO_WORKTREES_ROOT%/AGENTS.md](file:///%LLM_THEO_WORKTREES_ROOT%/AGENTS.md) for top-level tree routing
-2. [%LLM_THEO_WORKTREES_ROOT%/README.md](file:///%LLM_THEO_WORKTREES_ROOT%/README.md) for worktree path and branch context
+1. [%LLM_THEO_ROOT%/Agents.md](file:///%LLM_THEO_ROOT%/Agents.md) for workspace tree routing
+2. `%LLM_THEO_ROOT%/dev/worktrees/` layout and branch context via `git worktree list`
 3. `project/README.md`
 4. `agent-assets/README.md`
 5. the relevant workstream under `project/workstreams/`
@@ -79,9 +80,10 @@ For branch/recovery context, also check:
 
 ## Pilot Deployment And Account Skills
 
-This worktree is currently the active v0.5 pilot web-app lane. For deployment
+This worktree (`main`) carries the live v0.5 pilot web-app code. For deployment
 or pilot-account tasks, prefer the local/global Alt Theory operational skills
-instead of ad hoc SSH or account-file edits.
+instead of ad hoc SSH or account-file edits. Deploy archives from this tree's
+`main` HEAD unless a task explicitly names another lane.
 
 Skill source and common global copies:
 
@@ -178,11 +180,13 @@ warnings even when no real Git process is running.
 
 Current workflow expectation:
 
-- `reorg/v0.3-dev-run` in `%LLM_THEO_WORKTREES_ROOT%/llm-theo-v0.3-dev` is the current integration line;
-- `feature/electron-bundle-verification` remains a focused packaging-verification lane;
-- create another worktree only when concurrent work needs a separate checkout, dependency environment, runnable state, or risk boundary;
-- merge accepted focused work back into the intended integration branch;
-- do not leave a temporary feature or repair branch as the permanent main working line by accident.
+- `main` in this worktree is the integration line (includes merged v0.5 pilot);
+- `feature/v0.5-bundle-verification` in `llm-theo-v0.5-bundle` is the active
+  bundle/packaging lane; merge docs into `main`, code may stay on the bundle branch;
+- `feature/v0.5-pilot-participant-system` / `llm-theo-v0.4.1-pilot` is retired;
+- `feature/electron-bundle-verification` / `llm-theo-v0.3-electron` is stale code;
+- create another worktree only when concurrent work needs a separate checkout,
+  dependency environment, runnable state, or risk boundary.
 
 Do not run destructive git commands or irreversible filesystem moves without explicit approval.
 
@@ -208,7 +212,7 @@ Current policy:
   relevant, and use `git check-ignore -v <path>` when a file expected for Git is
   missing.
 
-The external research tree `<external-research-tree>` has its own
+The external research tree `%LLM_THEO_RESEARCH_ROOT%` has its own
 Git/privacy/sync policy and may later have its own `AGENTS.md`. Do not assume
 material is shareable or tracked just because another coding-agent workdir can
 read it.
