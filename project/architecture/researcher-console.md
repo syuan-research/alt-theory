@@ -173,10 +173,13 @@ cannot yet tag, annotate, compare, or export sessions.
 - Groups historical sessions by project with an `Unassigned` bucket and local
   search filtering.
 - Sends prompts and abort requests.
-- Revises the latest user turn on the same logical branch using replacement
-  text from the composer.
-- Creates an explicit collaboration or comparison Fork from the current point
-  in researcher/debug views; participant view currently hides Branch.
+- Revises the latest user turn through per-message **Edit** → composer
+  **Send edited message** / Enter, which sends WebSocket `revise_latest`.
+- Deletes the latest user turn and its reply through per-message **Delete**,
+  which sends WebSocket `delete_latest` and applies the returned
+  `session_transcript`.
+- Exposes per-message **Branch** in researcher/debug views only. The control
+  sends WebSocket `fork_session`; participant view hides Branch.
 - Starts a new draft within the same browser connection without creating an
   empty session.
 - Opens an existing session within the same browser connection by clicking its
@@ -224,10 +227,11 @@ cannot yet tag, annotate, compare, or export sessions.
 - Tags and annotations are not implemented.
 - Export is not implemented.
 - Historical session comparison is not implemented.
-- Branch-tree browsing and switching back to an older branch are not yet
-  implemented. The new Fork becomes active immediately.
-- Participant Branch controls are currently hidden because the participant
-  pilot flow prioritizes simple same-session editing over branching.
+- Branch-tree browsing and switching back to an older branch are not
+  implemented. Backend fork activation exists, but the current client only
+  replaces transcript on `session_transcript` and does not update branch state
+  from the server reply.
+- Participant Branch controls are hidden in the current frontend.
 - Revision/Fork does not roll back tool or file side effects. Comparison Fork
   copies only the selected branch workspace at Fork time.
 - Model-comparison prompts across multiple providers are not implemented.
@@ -253,6 +257,11 @@ cannot yet tag, annotate, compare, or export sessions.
 
 ## Change Log
 
+- 2026-06-17: Updated conversation-action documentation to match current
+  frontend controls. Latest-turn revise/delete are per-message actions; delete
+  applies synchronous `session_transcript`. Branch remains researcher/debug-only
+  with incomplete client branch-state handling; branch browsing is still
+  deferred.
 - 2026-06-17: Updated after v0.5.x participant pilot patch. Session rows now
   open the selected session directly; the former Open action is replaced by
   Rename. Session display names are persisted through the existing session

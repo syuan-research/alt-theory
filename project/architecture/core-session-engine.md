@@ -349,6 +349,20 @@ branch or delete old Pi evidence. Latest-turn delete uses the same active-branch
 latest-user-turn guard, moves the Pi leaf to that user entry's parent, marks the
 run `deleted`, updates the active branch head, and does not remove disk evidence.
 
+REST session detail and transcript preview are projected in `session-store.ts`
+from the active branch, not from all Pi JSONL entries:
+
+- resolve the active branch Pi file from `records/branch-index.json`;
+- when `activeLeafEntryId` is present, align the opened `SessionManager` to
+  that leaf before building transcript;
+- build transcript from `sessionManager.getBranch()`;
+- omit entries whose latest run snapshot is `deleted` or `superseded`.
+
+When `activeLeafEntryId` is missing, the reader keeps Pi's default opened leaf.
+
+Opening or reconfiguring a managed session also aligns Pi's leaf to the active
+branch head recorded in `branch-index.json` before revise/delete guards run.
+
 Only explicit Fork creates `fork-NNN`:
 
 - collaboration Fork uses the shared session `workspace/`;
@@ -430,11 +444,21 @@ WebSocket:
 - client: `switch_visibility`
 - client: `revise_latest`, `delete_latest`, `fork_session`
 
+`revise_latest` starts a model run and completes with the normal run lifecycle
+events (`run_completed` / `run_failed`). The browser refreshes transcript from
+REST after completion.
+
+`delete_latest` is synchronous: the server replies with `session_updated` and
+`session_transcript` for the same attached session.
+
+`fork_session` switches the attached managed runtime to the new active branch and
+replies with `session_transcript` only. It does not currently send
+`session_opened` or `session_updated` with branch metadata.
+
 `session_draft` contains only selector state and no session ID. The browser may
 enable input/config controls in draft, but records, paths, and metrics remain
-unavailable until materialization. Draft visibility can be switched between
-`research` and `private` before first prompt; after materialization the current
-backend rejects visibility switching.
+unavailable until materialization. Draft and materialized sessions both accept
+`switch_visibility` between `research` and `private`.
 
 For participant WebSocket connections, the draft role preset is derived from
 the account's `defaultRoleCondition`. The built-in mapping currently includes
@@ -520,6 +544,9 @@ is configured; they are not a billing claim.
 - Transcript detail now preserves assistant thinking and distinguishes tool
   calls from tool results so the researcher console can switch between User,
   Researcher, and Evidence views.
+- Branch browsing/switching UI is not implemented. `fork_session` backend
+  support exists, but the current WebSocket reply shape does not expose branch
+  activation to the client beyond transcript replacement.
 
 ## 9. Verification
 
@@ -533,6 +560,12 @@ is configured; they are not a billing claim.
 
 ## Change Log
 
+- 2026-06-17: Updated transcript projection and conversation-action runtime
+  notes. `session-store.ts` now builds REST transcript from the active Pi branch
+  and filters `deleted` / `superseded` run entries; managed-session open/reopen
+  aligns Pi leaf to `branch-index.json`. Documented current WebSocket shapes for
+  `revise_latest`, `delete_latest`, and `fork_session`, and corrected
+  materialized `switch_visibility` behavior.
 - 2026-06-17: Added current UI alias persistence note. Session display aliases
   are stored as optional `records/ui-alias.json` files via the existing
   `GET/PUT /api/sessions/{sessionId}/files/content` routes, not in
