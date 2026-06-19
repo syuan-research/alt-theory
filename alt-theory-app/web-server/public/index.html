@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Alt Theory</title>
-  <link rel="stylesheet" href="style.css?v=20260618-mobile-composer">
+  <link rel="stylesheet" href="style.css?v=20260620-v053-handoff">
 </head>
 <body class="auth-pending">
   <!-- Mobile header bar (visible at narrow widths) -->
@@ -37,7 +37,7 @@
     <aside id="left-panel" class="side-panel">
       <div class="panel-section">
         <div class="panel-header">
-          <h1>Alt Theory</h1>
+          <h1>Alt Theory <a class="version-link" href="/changelog.html" target="_blank" rel="noopener" title="What's new and how to use">v0.5.3</a></h1>
           <div class="header-actions">
             <button id="collapse-left" class="icon-btn desktop-only" title="Collapse sessions">&#9664;</button>
           </div>
@@ -201,9 +201,10 @@
           <div class="panel-header compact-header">
             <span class="section-label inline-label">Summary</span>
           </div>
-          <textarea id="summary-editor" spellcheck="false" placeholder="Optional note for the summary skill, e.g. focus on decisions or next steps."></textarea>
+          <textarea id="summary-editor" spellcheck="false" placeholder="Optional note for summary/handoff, e.g. focus on decisions, next steps, or what the next agent should read."></textarea>
           <div class="summary-actions">
-            <button id="summary-invoke-btn" title="Run the conversation-summary skill" disabled><span class="ico">⏏︎</span><span>Save summary to file</span></button>
+            <button id="summary-invoke-btn" class="summary-action-btn" title="Run the conversation-summary skill" disabled><span class="ico">⏏︎</span><span>Save summary to file</span></button>
+            <button id="summary-handoff-btn" class="summary-action-btn" title="Save a handoff for another agent or a future new session" disabled><span class="ico">⏏︎</span><span>Save handoff to file</span></button>
             <span id="summary-status" class="summary-status"></span>
           </div>
         </div>
@@ -306,6 +307,6 @@
   </div>
 
   <script src="/vendor/marked.js"></script>
-  <script src="client.js?v=20260618-tool-label-resume"></script>
+  <script src="client.js?v=20260620-v053-handoff"></script>
 </body>
 </html>

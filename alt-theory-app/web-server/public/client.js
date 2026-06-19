@@ -131,8 +131,11 @@ const provenanceTabBtn = document.querySelector('.right-tab[data-right-tab="prov
 // Summary skill panel (participant + researcher/debug visible).
 const summaryEditor = document.getElementById("summary-editor");
 const summaryInvokeBtn = document.getElementById("summary-invoke-btn");
+const summaryHandoffBtn = document.getElementById("summary-handoff-btn");
 const summaryStatusEl = document.getElementById("summary-status");
 const SUMMARY_SKILL_NAME = "conversation-summary";
+const SUMMARY_HANDOFF_PROMPT =
+  "Write a handoff for another agent or a future new session.";
 const chatPanelEl = document.getElementById("chat-panel");
 const workspaceRefreshBtn = document.getElementById("workspace-refresh-btn");
 const workspaceUploadInput = document.getElementById("workspace-upload-input");
@@ -175,6 +178,7 @@ let sessionRecordFiles = [];
 let selectedRecordFile = null;
 let workspaceEntries = [];
 let selectedWorkspaceFile = null;
+let pendingSummaryKind = "";
 let stagedWorkspacePaths = new Set();
 const NONE_VALUE = "__none__";
 const PANE_STORAGE_KEY = "alt-theory-workbench-panes";
@@ -2436,12 +2440,14 @@ function handleWebSocketMessage(event) {
       toolStatusEl.textContent = "";
       // A clean completed reply clears the stop/edit/delete hint.
       setRunHint("");
-      // If a summary invocation was pending, mark it done.
+      // If a summary/handoff invocation was pending, mark it done.
       if (summaryStatusEl && summaryStatusEl.textContent) {
-        summaryStatusEl.textContent = "Summary generated.";
+        summaryStatusEl.textContent =
+          pendingSummaryKind === "handoff" ? "Handoff generated." : "Summary generated.";
         summaryStatusEl.classList.remove("error");
         summaryStatusEl.classList.add("ok");
       }
+      pendingSummaryKind = "";
       activeToolNames = {};
       refreshCurrentTranscript();
       fetchSessionRecords();
@@ -2491,6 +2497,7 @@ function handleWebSocketMessage(event) {
         summaryStatusEl.classList.remove("ok");
         summaryStatusEl.classList.add("error");
       }
+      pendingSummaryKind = "";
       // Any pending operation that set isRunning must be cleared on error, otherwise
       // the UI is permanently stuck (revise/delete/fork/branch/open/asset-switch).
       pendingOpenSessionId = "";
@@ -2576,6 +2583,7 @@ function setControlsEnabled(enabled) {
   // Summary skill button mirrors the main skill-invoke gating: needs an
   // interactive live session and must be locked out while a run is active.
   if (summaryInvokeBtn) summaryInvokeBtn.disabled = !interactive || isRunning;
+  if (summaryHandoffBtn) summaryHandoffBtn.disabled = !interactive || isRunning;
   reviseLatestBtn.disabled =
     !interactive || !currentSessionId || !hasMessages || !inputEl.value.trim();
   sendEditedBtn.disabled =
@@ -2751,37 +2759,48 @@ invokeSkillBtn.onclick = () => {
   setConnStatus("running", "Thinking...");
 };
 
+function invokeWorkspaceSummary(kind) {
+  if (!sessionReady || isRunning) return;
+  const userNote = (summaryEditor?.value || "").trim();
+  const isHandoff = kind === "handoff";
+  const userText = isHandoff
+    ? `${SUMMARY_HANDOFF_PROMPT}${userNote ? `\n\nUser note: ${userNote}` : ""}`
+    : userNote;
+  if (
+    !wsSafeSend(
+      JSON.stringify({
+        type: "invoke_skill",
+        payload: {
+          skillName: SUMMARY_SKILL_NAME,
+          ...(userText ? { userText } : {}),
+        },
+      })
+    )
+  ) {
+    return;
+  }
+  pendingSummaryKind = isHandoff ? "handoff" : "summary";
+  appendChatMessage("user", userText || `Save summary to file`);
+  if (summaryStatusEl) {
+    summaryStatusEl.textContent = isHandoff
+      ? "Generating handoff..."
+      : "Generating summary...";
+    summaryStatusEl.classList.remove("error", "ok");
+  }
+  isRunning = true;
+  setControlsEnabled(false);
+  setConnStatus("running", isHandoff ? "Writing handoff..." : "Summarizing...");
+}
+
 // Summary skill panel: invoke the conversation-summary skill with an optional
-// user note from #summary-editor. The skill name is hardcoded; the backend
-// validates active Alt Theory skills and returns its own error if missing.
+// user note from #summary-editor. Handoff uses the same skill with an explicit
+// prompt so the backend does not need a second skill or route.
 if (summaryInvokeBtn) {
-  summaryInvokeBtn.onclick = () => {
-    if (!sessionReady || isRunning) return;
-    const userText = (summaryEditor?.value || "").trim();
-    if (
-      !wsSafeSend(
-        JSON.stringify({
-          type: "invoke_skill",
-          payload: {
-            skillName: SUMMARY_SKILL_NAME,
-            ...(userText ? { userText } : {}),
-          },
-        })
-      )
-    ) {
-      return;
-    }
-    // Surface the user's instruction (or a default marker) in the transcript
-    // so the participant sees the invocation leave the client.
-    appendChatMessage("user", userText || `Save summary to file`);
-    if (summaryStatusEl) {
-      summaryStatusEl.textContent = "Generating summary...";
-      summaryStatusEl.classList.remove("error", "ok");
-    }
-    isRunning = true;
-    setControlsEnabled(false);
-    setConnStatus("running", "Summarizing...");
-  };
+  summaryInvokeBtn.onclick = () => invokeWorkspaceSummary("summary");
+}
+
+if (summaryHandoffBtn) {
+  summaryHandoffBtn.onclick = () => invokeWorkspaceSummary("handoff");
 }
 
 function markLatestTurnUpdating() {

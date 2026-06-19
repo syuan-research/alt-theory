@@ -351,6 +351,23 @@ body.view-researcher #session-detail {
   letter-spacing: 0.2px;
 }
 
+.version-link {
+  color: var(--text-muted);
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  margin-left: 6px;
+  padding: 2px 7px;
+  text-decoration: none;
+}
+
+.version-link:hover {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
 .panel-title {
   font-family: var(--font-serif);
   font-size: 17px;
@@ -2300,7 +2317,7 @@ body.view-participant #session-detail {
   align-items: stretch;
 }
 
-#summary-invoke-btn {
+.summary-action-btn {
   background: transparent;
   color: var(--text-secondary);
   border: 1px solid var(--hairline);
@@ -2316,18 +2333,18 @@ body.view-participant #session-detail {
   gap: 7px;
 }
 
-#summary-invoke-btn:hover:not(:disabled) {
+.summary-action-btn:hover:not(:disabled) {
   background: var(--ink);
   color: #fff;
   border-color: var(--ink);
 }
 
-#summary-invoke-btn:disabled {
+.summary-action-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-#summary-invoke-btn .ico {
+.summary-action-btn .ico {
   font-size: 14px;
   line-height: 1;
   font-family: var(--font-mono);
