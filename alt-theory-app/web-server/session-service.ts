@@ -92,6 +92,14 @@ export interface SessionServiceConfig {
   coreSoulPath?: string;
   coreSoulModulesDir?: string;
   coreSoulModules?: string[];
+  resolveRuntimeModelConfig?: () => RuntimeModelConfig;
+}
+
+interface RuntimeModelConfig {
+  modelProvider?: string;
+  modelId?: string;
+  modelsPath?: string;
+  runtimeApiKey?: string;
 }
 
 export interface SessionSelectors {
@@ -162,19 +170,32 @@ export class SessionService {
 
   constructor(private readonly config: SessionServiceConfig) {}
 
+  private resolveRuntimeModelConfig(): RuntimeModelConfig {
+    return (
+      this.config.resolveRuntimeModelConfig?.() ?? {
+        modelProvider: this.config.modelProvider,
+        modelId: this.config.modelId,
+        modelsPath: this.config.modelsPath,
+        runtimeApiKey: this.config.runtimeApiKey,
+      }
+    );
+  }
+
   async createSession(
     selectors: SessionSelectors,
     metadata: SessionCreationMetadata = {}
   ): Promise<SessionSnapshot> {
+    const runtimeModelConfig = this.resolveRuntimeModelConfig();
     const sessionId = allocateReadableSessionId(this.config.dataDir, {
       rolePresetSlug: selectors.rolePresetSlug,
       soulSlug: selectors.soulSlug,
-      modelId: this.config.modelId,
+      modelId: runtimeModelConfig.modelId,
     });
     const managed = await this.createManagedFromDirs(
       createSessionDirs(this.config.dataDir, sessionId),
       selectors,
-      metadata
+      metadata,
+      runtimeModelConfig
     );
     this.sessions.set(managed.manifest.sessionId, managed);
     appendConfigEvent(managed.manifest.recordsDir, {
@@ -743,7 +764,8 @@ export class SessionService {
   private async createManagedFromDirs(
     sessionDirs: SessionDirectories,
     selectors: SessionSelectors,
-    metadata: SessionCreationMetadata = {}
+    metadata: SessionCreationMetadata = {},
+    runtimeModelConfig = this.resolveRuntimeModelConfig()
   ): Promise<ManagedSession> {
     const rolePresetPath = this.resolveOptionalRolePresetPath(
       selectors.rolePresetSlug
@@ -767,10 +789,7 @@ export class SessionService {
       coreSoulPath: this.config.coreSoulPath,
       coreSoulModulesDir: this.config.coreSoulModulesDir,
       coreSoulModules: this.config.coreSoulModules,
-      modelProvider: this.config.modelProvider,
-      modelId: this.config.modelId,
-      modelsPath: this.config.modelsPath,
-      runtimeApiKey: this.config.runtimeApiKey,
+      ...runtimeModelConfig,
       thinkingLevel: this.config.thinkingLevel,
       promptMode: this.config.promptMode,
       resourceDiscovery: this.config.resourceDiscovery,
@@ -896,10 +915,7 @@ export class SessionService {
       coreSoulPath: this.config.coreSoulPath,
       coreSoulModulesDir: this.config.coreSoulModulesDir,
       coreSoulModules: this.config.coreSoulModules,
-      modelProvider: this.config.modelProvider,
-      modelId: this.config.modelId,
-      modelsPath: this.config.modelsPath,
-      runtimeApiKey: this.config.runtimeApiKey,
+      ...this.resolveRuntimeModelConfig(),
       thinkingLevel: this.config.thinkingLevel,
       promptMode: this.config.promptMode,
       resourceDiscovery: this.config.resourceDiscovery,
@@ -1033,10 +1049,7 @@ export class SessionService {
       coreSoulPath: this.config.coreSoulPath,
       coreSoulModulesDir: this.config.coreSoulModulesDir,
       coreSoulModules: this.config.coreSoulModules,
-      modelProvider: this.config.modelProvider,
-      modelId: this.config.modelId,
-      modelsPath: this.config.modelsPath,
-      runtimeApiKey: this.config.runtimeApiKey,
+      ...this.resolveRuntimeModelConfig(),
       thinkingLevel: this.config.thinkingLevel,
       promptMode: this.config.promptMode,
       resourceDiscovery: this.config.resourceDiscovery,
@@ -1103,10 +1116,7 @@ export class SessionService {
       coreSoulPath: this.config.coreSoulPath,
       coreSoulModulesDir: this.config.coreSoulModulesDir,
       coreSoulModules: this.config.coreSoulModules,
-      modelProvider: this.config.modelProvider,
-      modelId: this.config.modelId,
-      modelsPath: this.config.modelsPath,
-      runtimeApiKey: this.config.runtimeApiKey,
+      ...this.resolveRuntimeModelConfig(),
       thinkingLevel: this.config.thinkingLevel,
       promptMode: this.config.promptMode,
       resourceDiscovery: this.config.resourceDiscovery,

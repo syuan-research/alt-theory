@@ -22,6 +22,7 @@ import {
   getAgentDir,
   SettingsManager,
 } from "@mariozechner/pi-coding-agent";
+import { getProviders } from "@mariozechner/pi-ai";
 import {
   existsSync,
   mkdirSync,
@@ -44,6 +45,9 @@ export function resolveAgentConfigDir(): string {
 
 function modelsJsonPath(agentDir: string): string {
   return join(agentDir, "models.json");
+}
+export function modelsConfigPath(agentDir: string): string {
+  return modelsJsonPath(agentDir);
 }
 function authJsonPath(agentDir: string): string {
   return join(agentDir, "auth.json");
@@ -106,6 +110,12 @@ export interface ConfigStatus {
 export interface FetchedModel {
   id: string;
   name?: string;
+}
+
+export interface RuntimeModelConfig {
+  modelProvider?: string;
+  modelId?: string;
+  modelsPath?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -200,6 +210,9 @@ async function writeActive(
  */
 export function listProviders(agentDir: string): ProviderView[] {
   const models = readModelsFile(agentDir);
+  if (sanitizeCustomProviderAuth(agentDir, models)) {
+    writeModelsFileAtomic(agentDir, models);
+  }
   const active = readActive(agentDir);
   const names = Object.keys(models.providers ?? {});
   return names.map((name) => {
@@ -219,6 +232,61 @@ export function listProviders(agentDir: string): ProviderView[] {
   });
 }
 
+function isBuiltInProvider(name: string): boolean {
+  return getProviders().includes(name);
+}
+
+function customProviderNeedsApiKey(
+  name: string,
+  block: { baseUrl?: string; models?: ConfigModel[] }
+): boolean {
+  return !isBuiltInProvider(name) && (block.models ?? []).length > 0;
+}
+
+function normalizeRuntimeBaseUrl(api: string | undefined, baseUrl: string | undefined): string | undefined {
+  if (!baseUrl) return undefined;
+  const trimmed = baseUrl.trim().replace(/\/+$/, "");
+  if (api === "anthropic-messages") {
+    return trimmed.replace(/\/v1$/i, "");
+  }
+  return trimmed;
+}
+
+function modelListUrls(api: ApiType | undefined, baseUrl: string): string[] {
+  const trimmed = baseUrl.trim().replace(/\/+$/, "");
+  const urls = [`${trimmed}/models`];
+  if (api === "anthropic-messages" && !/\/v1$/i.test(trimmed)) {
+    urls.unshift(`${trimmed}/v1/models`);
+  }
+  return [...new Set(urls)];
+}
+
+function sanitizeCustomProviderAuth(agentDir: string, models: ModelsFile): boolean {
+  let changed = false;
+  const providers = models.providers ?? {};
+  for (const [name, block] of Object.entries(providers)) {
+    const normalizedBaseUrl = normalizeRuntimeBaseUrl(block.api, block.baseUrl);
+    if (normalizedBaseUrl && normalizedBaseUrl !== block.baseUrl) {
+      block.baseUrl = normalizedBaseUrl;
+      changed = true;
+    }
+    if (!customProviderNeedsApiKey(name, block)) continue;
+    if (!block.baseUrl) {
+      delete providers[name];
+      changed = true;
+      continue;
+    }
+    if (block.apiKey) continue;
+    if (providerHasKey(agentDir, name)) {
+      block.apiKey = name;
+    } else {
+      delete providers[name];
+    }
+    changed = true;
+  }
+  return changed;
+}
+
 export async function fetchProviderModels(
   agentDir: string,
   provider: string
@@ -229,7 +297,38 @@ export async function fetchProviderModels(
   if (!block) {
     throw new ConfigValidationError(`Unknown provider: ${provider}`);
   }
-  if (!block.baseUrl) {
+  return fetchModelsFromEndpoint(agentDir, {
+    provider,
+    baseUrl: block.baseUrl,
+    api: block.api as ApiType | undefined,
+    apiKey: block.apiKey,
+  });
+}
+
+export async function fetchProviderModelsFromDraft(
+  agentDir: string,
+  input: {
+    provider: string;
+    baseUrl?: string;
+    api?: ApiType;
+    apiKey?: string;
+  }
+): Promise<FetchedModel[]> {
+  assertValidProviderName(input.provider);
+  assertNotCommandKey(input.apiKey);
+  return fetchModelsFromEndpoint(agentDir, input);
+}
+
+async function fetchModelsFromEndpoint(
+  agentDir: string,
+  input: {
+    provider: string;
+    baseUrl?: string;
+    api?: ApiType;
+    apiKey?: string;
+  }
+): Promise<FetchedModel[]> {
+  if (!input.baseUrl) {
     throw new ConfigValidationError(
       "Model refresh needs a Base URL. Use manual model entry for built-in providers."
     );
@@ -237,14 +336,14 @@ export async function fetchProviderModels(
 
   const storage = readAuthStorage(agentDir);
   storage.setFallbackResolver((name) =>
-    name === provider ? block.apiKey : undefined
+    name === input.provider ? input.apiKey : undefined
   );
-  const apiKey = await storage.getApiKey(provider);
+  const apiKey = await storage.getApiKey(input.provider);
   const headers: Record<string, string> = {
     Accept: "application/json",
   };
   if (apiKey) {
-    if (block.api === "anthropic-messages") {
+    if (input.api === "anthropic-messages") {
       headers["x-api-key"] = apiKey;
       headers["anthropic-version"] = "2023-06-01";
     } else {
@@ -252,25 +351,56 @@ export async function fetchProviderModels(
     }
   }
 
-  const endpoint = `${block.baseUrl.replace(/\/+$/, "")}/models`;
-  const response = await fetch(endpoint, {
-    method: "GET",
-    headers,
-    signal: AbortSignal.timeout(10000),
-  });
-  if (!response.ok) {
-    throw new ConfigValidationError(
-      `Model refresh failed: HTTP ${response.status}`
-    );
+  const errors: string[] = [];
+  for (const endpoint of modelListUrls(input.api, input.baseUrl)) {
+    const response = await fetch(endpoint, {
+      method: "GET",
+      headers,
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!response.ok) {
+      errors.push(`${endpoint}: HTTP ${response.status}`);
+      continue;
+    }
+    const payload = (await response.json()) as unknown;
+    const candidates = normalizeModelListPayload(payload);
+    if (candidates.length === 0) {
+      errors.push(`${endpoint}: no recognizable model ids`);
+      continue;
+    }
+    return candidates;
   }
-  const payload = (await response.json()) as unknown;
-  const candidates = normalizeModelListPayload(payload);
-  if (candidates.length === 0) {
-    throw new ConfigValidationError(
-      "Model refresh returned no recognizable model ids. Add models manually."
-    );
+  throw new ConfigValidationError(`Model refresh failed: ${errors.join("; ")}`);
+}
+
+export function getRuntimeModelConfig(agentDir: string): RuntimeModelConfig {
+  const active = readActive(agentDir);
+  if (!active.provider || !active.model) return {};
+
+  const models = readModelsFile(agentDir);
+  if (sanitizeCustomProviderAuth(agentDir, models)) {
+    writeModelsFileAtomic(agentDir, models);
   }
-  return candidates;
+  const block = models.providers?.[active.provider];
+  const knownIds = (block?.models ?? []).map((m) => m.id);
+  if (!block || !knownIds.includes(active.model)) return {};
+  const hasStoredKey = providerHasKey(agentDir, active.provider);
+  if (!hasStoredKey && !block.apiKey) {
+    return {};
+  }
+  if (block.apiKey === active.provider && !hasStoredKey) {
+    return {};
+  }
+  if (hasStoredKey && !block.apiKey) {
+    block.apiKey = active.provider;
+    writeModelsFileAtomic(agentDir, models);
+  }
+
+  return {
+    modelProvider: active.provider,
+    modelId: active.model,
+    modelsPath: modelsJsonPath(agentDir),
+  };
 }
 
 /**
@@ -368,20 +498,47 @@ export function upsertProvider(
 
   const models = readModelsFile(agentDir);
   models.providers = models.providers ?? {};
+  const existingBlock = models.providers[input.name];
 
+  const runtimeBaseUrl = normalizeRuntimeBaseUrl(input.api, input.baseUrl);
   const providerBlock: Record<string, unknown> = { models: input.models };
-  if (input.baseUrl) providerBlock.baseUrl = input.baseUrl;
+  if (runtimeBaseUrl) providerBlock.baseUrl = runtimeBaseUrl;
   if (input.api) providerBlock.api = input.api;
   if (input.options && Object.keys(input.options).length > 0) {
     providerBlock.options = input.options;
   }
 
   // Env-var-named keys live in models.json apiKey field (Pi resolves at runtime).
-  // Literal keys live in auth.json (Pi's standard api_key credential).
+  // Literal keys live in auth.json (Pi's standard api_key credential), but Pi
+  // still requires an apiKey marker in models.json for non-built-in custom
+  // providers with model definitions.
+  let apiKeyConfig: string | undefined;
   if (options.keyStorage === "env" && input.apiKey) {
-    providerBlock.apiKey = input.apiKey;
-  } else {
-    // literal path: do NOT echo the key into models.json
+    apiKeyConfig = input.apiKey;
+  } else if (options.keyStorage === "literal" && input.apiKey) {
+    apiKeyConfig = input.name;
+  } else if (!options.clearKey && existingBlock?.apiKey) {
+    apiKeyConfig = existingBlock.apiKey;
+  } else if (!options.clearKey && providerHasKey(agentDir, input.name)) {
+    apiKeyConfig = input.name;
+  }
+  if (customProviderNeedsApiKey(input.name, {
+    baseUrl: runtimeBaseUrl,
+    models: input.models,
+  })) {
+    if (!runtimeBaseUrl) {
+      throw new ConfigValidationError(
+        "Base URL is required for custom providers."
+      );
+    }
+    if (!apiKeyConfig) {
+      throw new ConfigValidationError(
+        "API key is required before saving a custom provider with models."
+      );
+    }
+  }
+  if (apiKeyConfig) {
+    providerBlock.apiKey = apiKeyConfig;
   }
   models.providers[input.name] = providerBlock as {
     baseUrl?: string;
@@ -403,13 +560,13 @@ export function upsertProvider(
 
   return {
     name: input.name,
-    baseUrl: input.baseUrl,
+    baseUrl: runtimeBaseUrl,
     api: input.api,
     options: input.options,
     hasKey: options.clearKey
       ? false
       : options.keyStorage === "literal"
-        ? Boolean(input.apiKey)
+        ? Boolean(input.apiKey) || providerHasKey(agentDir, input.name)
         : providerHasKey(agentDir, input.name),
     models: input.models,
     active: false,

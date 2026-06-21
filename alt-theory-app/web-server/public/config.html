@@ -7,6 +7,13 @@
   <link rel="stylesheet" href="style.css?v=20260622-config-kb-v055">
   <style>
     /* Local additions for the config page only. Reuses main :root tokens. */
+    html,
+    body {
+      height: auto;
+      min-height: 100%;
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
     .config-page {
       max-width: 880px;
       margin: 0 auto;
@@ -276,6 +283,16 @@
         <div class="hint">Pick the streaming API your provider speaks. Most OpenAI-compatible servers use openai-completions.</div>
       </div>
 
+      <div class="field">
+        <label for="f-key">API key</label>
+        <input id="f-key" type="password" placeholder="paste key, or leave blank to keep existing" autocomplete="off">
+        <div class="key-storage-row">
+          <label><input type="radio" name="keystorage" value="literal" checked> Store key (auth.json)</label>
+          <label><input type="radio" name="keystorage" value="env"> Env var name</label>
+        </div>
+        <div class="hint" id="key-hint">Some providers require the key before fetching models. Stored keys are local plaintext in Pi's auth.json; env mode stores only the variable name.</div>
+      </div>
+
       <div class="models-editor">
         <label style="display:block;font-size:12px;color:#6a6a70;margin-bottom:6px;">Models</label>
         <div id="model-rows"></div>
@@ -293,16 +310,6 @@
         <div class="hint" style="font-size:11px;color:#8a8a90;margin-top:6px;">
           Optional provider settings such as setCacheKey. Values parse as boolean, number, JSON, or string.
         </div>
-      </div>
-
-      <div class="field">
-        <label for="f-key">API key</label>
-        <input id="f-key" type="password" placeholder="paste key, or leave blank to keep existing" autocomplete="off">
-        <div class="key-storage-row">
-          <label><input type="radio" name="keystorage" value="literal" checked> Store key (auth.json)</label>
-          <label><input type="radio" name="keystorage" value="env"> Env var name</label>
-        </div>
-        <div class="hint" id="key-hint">Stored locally in Pi's auth.json (plaintext, local-only). "Env var name" stores the variable name; Pi reads it from the environment at runtime.</div>
       </div>
 
       <div class="editor-actions">
@@ -331,7 +338,7 @@
         label: 'Anthropic',
         name: 'anthropic',
         api: 'anthropic-messages',
-        baseUrl: 'https://api.anthropic.com/v1',
+        baseUrl: 'https://api.anthropic.com',
         models: [{ id: 'claude-sonnet-4-20250514' }]
       },
       {
@@ -345,7 +352,7 @@
         label: 'MiniMax',
         name: 'minimax',
         api: 'anthropic-messages',
-        baseUrl: 'https://api.minimaxi.com/anthropic/v1',
+        baseUrl: 'https://api.minimaxi.com/anthropic',
         models: [{ id: 'minimax-m3' }, { id: 'minimax-m2.7' }],
         options: { setCacheKey: true }
       }
@@ -467,6 +474,8 @@
       $('#f-baseurl').value = '';
       $('#f-api').value = 'openai-completions';
       $('#f-key').value = '';
+      $('#f-key').placeholder = 'paste key';
+      $('#key-hint').textContent = 'Some providers require the key before fetching models. Stored keys are local plaintext in Pi\'s auth.json; env mode stores only the variable name.';
       document.querySelector('input[name="keystorage"][value="literal"]').checked = true;
       $('#model-rows').innerHTML = '';
       $('#option-rows').innerHTML = '';
@@ -479,6 +488,10 @@
           if (!p) return;
           $('#f-baseurl').value = p.baseUrl || '';
           if (p.api) $('#f-api').value = p.api;
+          if (p.hasKey) {
+            $('#f-key').placeholder = 'key already saved; leave blank to keep';
+            $('#key-hint').textContent = 'A key is already saved for this provider. For security it is not shown here; leave blank to keep it, or paste a new key to replace it.';
+          }
           $('#model-rows').innerHTML = '';
           if ((p.models || []).length === 0) { addModelRow(); return; }
           for (const m of p.models) addModelRow(m.id, m.name);
@@ -549,12 +562,24 @@
     $('#editor-cancel').addEventListener('click', () => editor.classList.add('hidden'));
     $('#fetch-models-btn').addEventListener('click', async () => {
       const name = $('#f-name').value.trim();
-      if (!name || !editingName) {
-        toast('Save this provider first, then fetch its model list.', true);
+      const baseUrl = $('#f-baseurl').value.trim();
+      const apiType = $('#f-api').value;
+      const apiKey = $('#f-key').value;
+      if (!name) {
+        toast('Provider name is required before fetching models.', true);
+        return;
+      }
+      if (!baseUrl) {
+        toast('Base URL is required before fetching models.', true);
         return;
       }
       try {
-        const data = await api('POST', '/api/config/providers/' + encodeURIComponent(name) + '/fetch-models');
+        const data = await api('POST', '/api/config/fetch-models', {
+          provider: name,
+          baseUrl,
+          api: apiType,
+          ...(apiKey ? { apiKey } : {}),
+        });
         $('#model-rows').innerHTML = '';
         for (const m of data.models || []) addModelRow(m.id, m.name || '');
         toast('Fetched ' + (data.models || []).length + ' models');

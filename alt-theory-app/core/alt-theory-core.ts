@@ -397,8 +397,11 @@ async function createAltTheorySessionWithManager(
       : ModelRegistry.create(authStorage);
     const model = modelRegistry.find(config.modelProvider, config.modelId);
     if (!model) {
+      const loadError = modelRegistry.getError();
       throw new Error(
-        `Unknown model: ${config.modelProvider}/${config.modelId}`
+        `Unknown model: ${config.modelProvider}/${config.modelId}${
+          loadError ? ` (${loadError})` : ""
+        }`
       );
     }
     sessionOpts.authStorage = authStorage;

@@ -12,6 +12,10 @@ import test from "node:test";
 import { mkdtempSync } from "fs";
 import WebSocket from "ws";
 import {
+  AuthStorage,
+  ModelRegistry,
+} from "@mariozechner/pi-coding-agent";
+import {
   createAltTheorySession,
   openAltTheorySession,
 } from "../core/alt-theory-core.js";
@@ -45,6 +49,11 @@ import {
   writeAccountStore,
   type AccountRecord,
 } from "./auth-accounts.js";
+import {
+  getRuntimeModelConfig,
+  setActive,
+  upsertProvider,
+} from "./config-store.js";
 
 test("asset registry lists safe sorted slugs and resolves known assets", () => {
   const root = mkdtempSync(join(tmpdir(), "alt-theory-assets-"));
@@ -88,6 +97,136 @@ test("asset registry lists safe sorted slugs and resolves known assets", () => {
   assert.equal(isKnownKbDomain(kb, "urban"), true);
   assert.equal(isKnownKbDomain(kb, "all"), true);
   assert.equal(isKnownKbDomain(kb, "../urban"), false);
+});
+
+test("local config active model resolves and loads as a Pi custom model", async () => {
+  const agentDir = mkdtempSync(join(tmpdir(), "alt-theory-pi-config-"));
+  upsertProvider(
+    agentDir,
+    {
+      name: "minimax",
+      baseUrl: "https://api.minimaxi.com/anthropic/v1",
+      api: "anthropic-messages",
+      apiKey: "sk-test",
+      models: [{ id: "minimax-m3" }],
+    },
+    { keyStorage: "literal" }
+  );
+  await setActive(agentDir, "minimax", "minimax-m3");
+
+  const runtimeConfig = getRuntimeModelConfig(agentDir);
+  assert.deepEqual(runtimeConfig, {
+    modelProvider: "minimax",
+    modelId: "minimax-m3",
+    modelsPath: join(agentDir, "models.json"),
+  });
+
+  const registry = ModelRegistry.create(
+    AuthStorage.create(join(agentDir, "auth.json")),
+    runtimeConfig.modelsPath
+  );
+  assert.ok(registry.find("minimax", "minimax-m3"));
+});
+
+test("local config runtime ignores literal-key marker when auth key is missing", async () => {
+  const agentDir = mkdtempSync(join(tmpdir(), "alt-theory-pi-config-"));
+  upsertProvider(
+    agentDir,
+    {
+      name: "minimax",
+      baseUrl: "https://api.minimaxi.com/anthropic/v1",
+      api: "anthropic-messages",
+      apiKey: "sk-test",
+      models: [{ id: "minimax-m3" }],
+    },
+    { keyStorage: "literal" }
+  );
+  upsertProvider(
+    agentDir,
+    {
+      name: "minimax",
+      baseUrl: "https://api.minimaxi.com/anthropic/v1",
+      api: "anthropic-messages",
+      models: [{ id: "minimax-m3" }],
+    },
+    { clearKey: true }
+  );
+  await setActive(agentDir, "minimax", "minimax-m3");
+
+  assert.deepEqual(getRuntimeModelConfig(agentDir), {});
+});
+
+test("local config removes stale invalid custom providers before runtime", async () => {
+  const agentDir = mkdtempSync(join(tmpdir(), "alt-theory-pi-config-"));
+  upsertProvider(
+    agentDir,
+    {
+      name: "mmx-test",
+      baseUrl: "https://api.minimaxi.com/anthropic/v1",
+      api: "anthropic-messages",
+      apiKey: "sk-test",
+      models: [{ id: "MiniMax-M3" }],
+    },
+    { keyStorage: "literal" }
+  );
+  const modelsPath = join(agentDir, "models.json");
+  const modelsFile = JSON.parse(readFileSync(modelsPath, "utf-8")) as {
+    providers: Record<string, unknown>;
+  };
+  modelsFile.providers.mmx = {
+    baseUrl: "https://api.minimaxi.com/anthropic/v1",
+    api: "anthropic-messages",
+    models: [{ id: "MiniMax-M3" }],
+  };
+  writeFileSync(modelsPath, `${JSON.stringify(modelsFile, null, 2)}\n`, "utf-8");
+  await setActive(agentDir, "mmx-test", "MiniMax-M3");
+
+  const runtimeConfig = getRuntimeModelConfig(agentDir);
+  assert.deepEqual(runtimeConfig, {
+    modelProvider: "mmx-test",
+    modelId: "MiniMax-M3",
+    modelsPath,
+  });
+  const repaired = JSON.parse(readFileSync(modelsPath, "utf-8")) as {
+    providers: Record<string, unknown>;
+  };
+  assert.equal("mmx" in repaired.providers, false);
+
+  const registry = ModelRegistry.create(
+    AuthStorage.create(join(agentDir, "auth.json")),
+    runtimeConfig.modelsPath
+  );
+  assert.ok(registry.find("mmx-test", "MiniMax-M3"));
+});
+
+test("local config normalizes Anthropic-compatible runtime base URLs", async () => {
+  const agentDir = mkdtempSync(join(tmpdir(), "alt-theory-pi-config-"));
+  upsertProvider(
+    agentDir,
+    {
+      name: "mmx-test",
+      baseUrl: "https://api.minimaxi.com/anthropic/v1",
+      api: "anthropic-messages",
+      apiKey: "sk-test",
+      models: [{ id: "MiniMax-M3" }],
+    },
+    { keyStorage: "literal" }
+  );
+  await setActive(agentDir, "mmx-test", "MiniMax-M3");
+
+  const modelsPath = join(agentDir, "models.json");
+  assert.deepEqual(getRuntimeModelConfig(agentDir), {
+    modelProvider: "mmx-test",
+    modelId: "MiniMax-M3",
+    modelsPath,
+  });
+  const modelsFile = JSON.parse(readFileSync(modelsPath, "utf-8")) as {
+    providers: Record<string, { baseUrl?: string }>;
+  };
+  assert.equal(
+    modelsFile.providers["mmx-test"].baseUrl,
+    "https://api.minimaxi.com/anthropic"
+  );
 });
 
 test("write-enabled core exposes write without edit/bash and writes notes", async () => {

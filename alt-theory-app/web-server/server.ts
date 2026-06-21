@@ -67,6 +67,8 @@ import {
   ConfigValidationError,
   deleteProvider,
   fetchProviderModels,
+  fetchProviderModelsFromDraft,
+  getRuntimeModelConfig,
   getConfigStatus,
   listProviders,
   setActive,
@@ -94,6 +96,8 @@ const DEFAULT_ROLE_CONDITION_PRESETS: Record<string, string> = {
   "conceptual-theory": "role-conceptual-theory-companion",
   "metatheory-oriented": "role-metatheory-oriented",
 };
+
+const BRANCHING_ENABLED = false;
 
 
 export interface AltTheoryServerOptions {
@@ -257,6 +261,30 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   app.get("/api/config/providers", (_req, res) => {
     if (!requireLocalConfigMode(res)) return;
     res.json({ providers: listProviders(agentConfigDir()) });
+  });
+  app.post("/api/config/fetch-models", async (req, res) => {
+    if (!requireLocalConfigMode(res)) return;
+    const body = req.body as {
+      provider?: unknown;
+      baseUrl?: unknown;
+      api?: unknown;
+      apiKey?: unknown;
+    };
+    try {
+      res.json({
+        models: await fetchProviderModelsFromDraft(agentConfigDir(), {
+          provider: typeof body.provider === "string" ? body.provider : "",
+          baseUrl: typeof body.baseUrl === "string" ? body.baseUrl : undefined,
+          api: typeof body.api === "string" ? (body.api as ApiType) : undefined,
+          apiKey: typeof body.apiKey === "string" ? body.apiKey : undefined,
+        }),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(error instanceof ConfigValidationError ? 400 : 500).json({
+        error: message,
+      });
+    }
   });
   app.post("/api/config/providers/:provider/fetch-models", async (req, res) => {
     if (!requireLocalConfigMode(res)) return;
@@ -768,6 +796,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       options.coreSoulModulesDir ??
       process.env.ALT_THEORY_CORE_SOUL_MODULES_DIR,
     coreSoulModules: options.coreSoulModules ?? parseCoreSoulModules(),
+    resolveRuntimeModelConfig: localMode
+      ? () => getRuntimeModelConfig(agentConfigDir())
+      : undefined,
   });
 
   function forwardServiceEvent(
@@ -1240,6 +1271,10 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           break;
         }
         case "fork_session": {
+          if (!BRANCHING_ENABLED) {
+            sendError(send, new Error("Branching is currently disabled"));
+            break;
+          }
           if (!attachedSessionId) {
             sendError(send, new Error("A materialized session is required"));
             break;

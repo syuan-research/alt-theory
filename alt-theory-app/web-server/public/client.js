@@ -1739,24 +1739,6 @@ function appendChatMessage(role, text, options = {}) {
       actions.appendChild(delBtn);
     }
 
-    if (viewMode !== "participant") {
-      const branchBtn = document.createElement("button");
-      branchBtn.className = "msg-btn";
-      branchBtn.textContent = "⑂ Branch";
-      branchBtn.title = "Create a branch starting from this message";
-      branchBtn.onclick = (e) => {
-        e.stopPropagation();
-        if (isRunning || !currentSessionId) return;
-        const purpose = forkPurposeSelect.value;
-        showConfirm(
-          "Create a branch starting from this message?",
-          () => doBranchFromMessage(options.entryId, purpose),
-          "Branch"
-        );
-      };
-      actions.appendChild(branchBtn);
-    }
-
     el.appendChild(actions);
     messagesEl.appendChild(el);
     return el;
