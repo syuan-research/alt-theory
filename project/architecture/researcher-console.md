@@ -178,8 +178,9 @@ cannot yet tag, annotate, compare, or export sessions.
 - Deletes the latest user turn and its reply through per-message **Delete**,
   which sends WebSocket `delete_latest` and applies the returned
   `session_transcript`.
-- Exposes per-message **Branch** in researcher/debug views only. The control
-  sends WebSocket `fork_session`; participant view hides Branch.
+- Branch is hidden in all current UI surfaces. The underlying lineage/fork
+  code remains for later repair, but the current server rejects WebSocket
+  `fork_session` with "Branching is currently disabled".
 - Starts a new draft within the same browser connection without creating an
   empty session.
 - Opens an existing session within the same browser connection by clicking its
@@ -228,10 +229,9 @@ cannot yet tag, annotate, compare, or export sessions.
 - Export is not implemented.
 - Historical session comparison is not implemented.
 - Branch-tree browsing and switching back to an older branch are not
-  implemented. Backend fork activation exists, but the current client only
-  replaces transcript on `session_transcript` and does not update branch state
-  from the server reply.
-- Participant Branch controls are hidden in the current frontend.
+  implemented. Branch/Fork controls are currently hidden everywhere because
+  the interaction is not pilot-safe; the backend still contains fork machinery
+  but `fork_session` is gated off at the WebSocket boundary.
 - Revision/Fork does not roll back tool or file side effects. Comparison Fork
   copies only the selected branch workspace at Fork time.
 - Model-comparison prompts across multiple providers are not implemented.

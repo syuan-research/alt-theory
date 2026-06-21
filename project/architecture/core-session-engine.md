@@ -495,9 +495,9 @@ REST after completion.
 `delete_latest` is synchronous: the server replies with `session_updated` and
 `session_transcript` for the same attached session.
 
-`fork_session` switches the attached managed runtime to the new active branch and
-replies with `session_transcript` only. It does not currently send
-`session_opened` or `session_updated` with branch metadata.
+`fork_session` exists in the protocol and backend lineage code, but is currently
+disabled at the WebSocket boundary. The server rejects it with "Branching is
+currently disabled" until Branch gets a dedicated repair/UAT pass.
 
 `session_draft` contains only selector state and no session ID. The browser may
 enable input/config controls in draft, but records, paths, and metrics remain
@@ -534,10 +534,16 @@ selection and a runtime-only API key. `ModelRegistry` loads custom model
 definitions independently of Pi's built-in model catalog. Runtime keys use
 `AuthStorage.setRuntimeApiKey()` and are not persisted by Alt Theory.
 
-The tracked runtime model configuration currently includes Xiaomi MiMo Token
-Plan through its Anthropic-compatible endpoint. Model entries can be updated
-without upgrading Pi. Its zero cost fields mean no comparable per-token price
-is configured; they are not a billing claim.
+Local mode exposes `/config` for Pi-native provider/model setup. The GUI writes
+`models.json`, `auth.json`, and `settings.json` under `PI_CODING_AGENT_DIR`;
+session creation resolves the current active provider/model at runtime and
+passes that `models.json` path into Pi. Custom provider definitions are
+sanitized before runtime use so stale invalid providers do not poison the whole
+Pi registry. Anthropic-compatible runtime base URLs are normalized by stripping
+trailing `/v1` because the Anthropic SDK appends `/v1/messages`.
+
+The normal UI can set KB to `none`, which disables the built-in `kb/` folder
+context while leaving workspace file reading intact.
 
 ## 8. Known Constraints
 
@@ -579,15 +585,15 @@ is configured; they are not a billing claim.
   global admin UI.
 - Private-session cleanup is explicit backend logic. There is no background
   scheduler, encryption layer, or broad participant file manager.
-- Model selector UI remains deferred. Custom instruction loading and visual
-  Alt Theory skill invocation are implemented; the normal skill picker excludes
-  Pi global/project debug skills.
+- Hosted model selector UI remains deferred. Local mode has `/config` for model
+  setup; custom instruction loading and visual Alt Theory skill invocation are
+  implemented; the normal skill picker excludes Pi global/project debug skills.
 - Transcript detail now preserves assistant thinking and distinguishes tool
   calls from tool results so the researcher console can switch between User,
   Researcher, and Evidence views.
 - Branch browsing/switching UI is not implemented. `fork_session` backend
-  support exists, but the current WebSocket reply shape does not expose branch
-  activation to the client beyond transcript replacement.
+  machinery exists, but the WebSocket entry point is currently disabled because
+  Branch is broken and should stay unavailable until a dedicated repair session.
 
 ## 9. Verification
 
@@ -601,6 +607,11 @@ is configured; they are not a billing claim.
 
 ## Change Log
 
+- 2026-06-22: Added v0.5.4 local-mode model configuration architecture:
+  `/config` writes Pi-native provider/auth/default files, runtime resolves the
+  active model per session, KB can be disabled with `none`, custom provider
+  configs are sanitized, Anthropic-compatible base URLs are normalized, and
+  Branch is globally disabled at the UI/WebSocket boundary pending repair.
 - 2026-06-18: Added §5.1 role preset resolution (as-is only). Documents
   `None` as the researcher draft default, legacy `default.md` code debt,
   participant condition mapping, and resume fallback without treating them as
