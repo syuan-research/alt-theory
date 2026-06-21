@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Alt Theory — Designer Pass 2-c</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;1,500&display=swap">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Mobile header bar (visible at narrow widths) -->
+  <div id="mobile-bar">
+    <button id="toggle-left" class="panel-toggle" title="Session / Config">&#9776;</button>
+    <span class="mobile-title">Alt Theory</span>
+    <button id="toggle-right" class="panel-toggle" title="Runtime Inspector">&#9881;</button>
+  </div>
+
+  <div id="app">
+    <!-- Left: Session / Config -->
+    <aside id="left-panel" class="side-panel">
+      <div class="panel-section">
+        <div class="panel-header">
+          <h1>Alt Theory</h1>
+          <div class="header-actions">
+            <button id="collapse-left" class="icon-btn desktop-only" title="Collapse sessions">&#9664;</button>
+            <button id="new-session-btn" title="New session">+ New</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel-section" id="session-browser-section">
+        <div class="panel-header compact-header">
+          <span class="section-label inline-label">Sessions</span>
+          <button id="session-refresh-btn" class="small-btn" title="Refresh sessions">&#8635;</button>
+        </div>
+        <input id="session-search" type="search" placeholder="Search sessions" autocomplete="off">
+        <div id="session-list" class="session-list small-text">
+          <div class="session-group">
+            <div class="session-group-title">Recent</div>
+            <button type="button" class="session-row selected">
+              <div class="session-row-title"><span>ses-04a7</span><span>active</span></div>
+              <div class="session-row-meta">Lit review: agentic AI in soc-sci ed</div>
+            </button>
+            <button type="button" class="session-row">
+              <div class="session-row-title"><span>ses-11f2</span><span>idle</span></div>
+              <div class="session-row-meta">Coding pass: transcript tagger v2</div>
+            </button>
+            <button type="button" class="session-row">
+              <div class="session-row-title"><span>ses-2c90</span><span>idle</span></div>
+              <div class="session-row-meta">Methodology memo — reflexive coding</div>
+            </button>
+            <button type="button" class="session-row">
+              <div class="session-row-title"><span>ses-77b3</span><span>idle</span></div>
+              <div class="session-row-meta">Pilot data: session 03 annotation</div>
+            </button>
+          </div>
+          <div class="session-group">
+            <div class="session-group-title">Archived</div>
+            <button type="button" class="session-row">
+              <div class="session-row-title"><span>ses-9d1e</span><span>archived</span></div>
+              <div class="session-row-meta">Spring 2026 corpus prep</div>
+            </button>
+          </div>
+        </div>
+        <div id="session-detail" class="session-detail small-text"></div>
+        <div class="session-actions">
+          <button id="resume-session-btn">Open</button>
+          <button id="delete-session-btn" class="danger-btn" title="Soft delete selected session">Delete</button>
+        </div>
+      </div>
+
+      <div class="panel-section config-section">
+        <span class="section-label">Launch / Config</span>
+        <div class="config-grid">
+          <label for="project-select">Project</label>
+          <select id="project-select">
+            <option value="soc-sci-ed">soc-sci-ed</option>
+            <option value="lit-review">lit-review</option>
+          </select>
+          <label for="kb-select">KB</label>
+          <select id="kb-select">
+            <option value="all">all</option>
+            <option value="education">education</option>
+          </select>
+          <label for="soul-select">Soul</label>
+          <select id="soul-select">
+            <option value="researcher">researcher</option>
+          </select>
+          <label for="role-preset-select">Role</label>
+          <select id="role-preset-select">
+            <option value="qual-coder">qual-coder</option>
+          </select>
+          <label for="instruction-select">Instruction</label>
+          <select id="instruction-select">
+            <option value="reflexive">reflexive</option>
+          </select>
+          <label for="model-select">Model</label>
+          <select id="model-select">
+            <option value="at-research-v0.4">at-research-v0.4</option>
+          </select>
+        </div>
+        <button id="launch-btn" class="primary" title="Launch a new session with this config">Launch</button>
+      </div>
+    </aside>
+
+    <div id="left-resizer" class="pane-resizer" title="Resize sessions pane"></div>
+
+    <!-- Center: Chat -->
+    <main id="chat-panel">
+      <div id="transcript-toolbar">
+        <button class="view-toggle" data-view="user" title="Show only user-visible conversation">User</button>
+        <button class="view-toggle selected" data-view="developer" title="Show thinking, tool calls, and collapsed tool results">Developer</button>
+      </div>
+      <div id="messages">
+        <div class="message system">Session started · model at-research-v0.4</div>
+
+        <div class="message user">Can you summarize the main critiques of fully autonomous tutoring agents in qualitative education research?</div>
+
+        <div class="message tool-status finished">&#10003; search_literature(&quot;autonomous tutoring agents critique&quot;)</div>
+
+        <details class="message tool-result">
+          <summary>Tool result: search_literature</summary>
+          <pre>3 matches
+- Patel &amp; Okafor 2025 — &quot;Human-in-the-loop safeguards in agentic tutoring&quot;
+- Mendoza 2024 — &quot;Over-reliance and epistemic trust in AI-mediated coding&quot;
+- Lin 2023 — &quot;Autonomy gradients for qualitative research assistants&quot;</pre>
+        </details>
+
+        <div class="message assistant">
+          <p>Three lines of critique recur across the recent qualitative-education literature. First, reviewers consistently argue that fully autonomous tutoring agents overstate their epistemic authority; Patel &amp; Okafor (2025) frame this as a <em>human-in-the-loop necessity</em>, where a researcher must retain interpretive control over analytic claims.</p>
+          <p>Second, Mendoza (2024) documents <strong>over-reliance risks</strong>: novice coders defer to the agent's tags even when those tags conflict with their own close reading, which erodes the reflexive discipline qualitative work depends on.</p>
+          <blockquote>Epistemic trust is not granted once and then fixed; it must be re-negotiated at each analytic turn. — Mendoza, 2024, p. 41</blockquote>
+          <p>Third, Lin (2023) proposes an <em>autonomy gradient</em> rather than a binary autonomous/assisted split, which the field has begun to treat as the default framing:</p>
+          <pre><code>autonomy_level = negotiate(researcher_claim, agent_claim, evidence)</code></pre>
+          <p>Net synthesis: the field treats unmediated autonomy as a methodological liability, not a design goal.</p>
+        </div>
+
+        <div class="message user">Draft a one-paragraph methods note tying this to our coding framework.</div>
+
+        <div class="message thinking">
+          <span class="message-label">Thinking</span>
+          <span>Aligning the critique set to our reflexive-coding framework; mapping each critique to a safeguard step.</span>
+        </div>
+
+        <div class="message assistant">
+          <p>Our reflexive-coding framework already separates <em>agent-suggested codes</em> from <em>analyst-accepted codes</em>; the critique above sharpens why that boundary must stay explicit. Patel &amp; Okafor's human-in-the-loop requirement maps to our mandatory second-pass review, Mendoza's over-reliance finding justifies logging every agent tag with a confidence score the analyst must confirm or override, and Lin's autonomy gradient lets us parameterize how much the tagger may commit before review. We will report each turn's accepted-to-overridden ratio as a proxy for maintained interpretive control.</p>
+        </div>
+      </div>
+      <div id="composer">
+        <div id="tool-status"></div>
+        <div id="lineage-actions">
+          <button id="revise-latest" title="Replace the latest user turn without creating a branch">Revise latest</button>
+          <select id="fork-purpose" title="Fork workspace behavior">
+            <option value="collaboration">Collaboration</option>
+            <option value="comparison">Comparison</option>
+          </select>
+          <button id="fork-session" title="Create an explicit branch from the current point">Fork</button>
+        </div>
+        <div id="input-row">
+          <select id="skill-select" title="Alt Theory skill">
+            <option value="">Skill</option>
+            <option value="lit-search">lit-search</option>
+            <option value="memo">memo</option>
+          </select>
+          <button id="invoke-skill" title="Invoke selected skill">Invoke</button>
+          <textarea id="input" placeholder="Ask about the session…" rows="2"></textarea>
+          <button id="send">Send</button>
+          <button id="stop" style="display:none">Stop</button>
+        </div>
+      </div>
+    </main>
+
+    <div id="right-resizer" class="pane-resizer" title="Resize inspector pane"></div>
+
+    <!-- Right: Inspector -->
+    <aside id="right-panel" class="side-panel">
+      <div class="panel-section right-tab-header">
+        <div class="panel-header">
+          <span class="panel-title">Inspector</span>
+          <button id="collapse-right" class="icon-btn desktop-only" title="Collapse inspector">&#9654;</button>
+        </div>
+        <div id="right-tabs" class="right-tabs">
+          <button class="right-tab selected" data-right-tab="records">Records</button>
+          <button class="right-tab" data-right-tab="runtime">Runtime</button>
+          <button class="right-tab" data-right-tab="provenance">Provenance</button>
+          <button class="right-tab" data-right-tab="paths">Paths</button>
+        </div>
+      </div>
+
+      <div class="right-tab-panel" data-right-panel="provenance">
+        <div class="panel-section">
+          <div class="panel-header compact-header">
+            <span class="section-label inline-label">Effective Configuration</span>
+            <button id="provenance-refresh-btn" class="small-btn" title="Refresh provenance">&#8635;</button>
+          </div>
+          <div id="provenance-summary" class="provenance-list small-text">
+            <div class="provenance-item"><strong>Project</strong><div>soc-sci-ed</div></div>
+            <div class="provenance-item"><strong>KB</strong><div>education</div></div>
+            <div class="provenance-item"><strong>Soul</strong><div>researcher</div></div>
+          </div>
+        </div>
+        <div class="panel-section">
+          <span class="section-label">Recent Runs</span>
+          <div id="provenance-runs" class="provenance-list small-text">
+            <div class="provenance-item"><strong>completed run-118c</strong><div>main | turn 04 | rev 7</div></div>
+            <div class="provenance-item"><strong>completed run-117a</strong><div>main | turn 03 | rev 5</div></div>
+            <div class="provenance-item"><strong>completed run-116f</strong><div>main | turn 02 | rev 3</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="right-tab-panel active" data-right-panel="records">
+        <div class="panel-section">
+          <div class="panel-header compact-header">
+            <span class="section-label inline-label">Session Records</span>
+            <button id="records-refresh-btn" class="small-btn" title="Refresh records">&#8635;</button>
+          </div>
+          <div id="records-list" class="records-list small-text">
+            <button type="button" class="record-row selected">
+              <span>2026-06-15 14:02 · decision</span>
+              <span class="record-root">Adopt reflexive two-pass review as default safeguard</span>
+            </button>
+            <button type="button" class="record-row">
+              <span>2026-06-15 13:47 · observation</span>
+              <span class="record-root">Coder deferred to agent tag on transcript 03, turn 12</span>
+            </button>
+            <button type="button" class="record-row">
+              <span>2026-06-15 13:15 · artifact</span>
+              <span class="record-root">tagger-v2 coding output for pilot session 03</span>
+            </button>
+            <button type="button" class="record-row">
+              <span>2026-06-15 12:30 · decision</span>
+              <span class="record-root">Log accepted-to-overridden code ratio per turn</span>
+            </button>
+          </div>
+          <textarea id="record-editor" spellcheck="false">Adopt reflexive two-pass review as default safeguard; agent tags require analyst confirmation before commit.</textarea>
+          <div class="record-actions">
+            <span id="record-status" class="hint">decision · 2026-06-15 14:02</span>
+            <button id="record-save-btn" class="small-btn">Save</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="right-tab-panel" data-right-panel="runtime">
+        <div class="panel-section">
+          <div class="panel-header compact-header">
+            <span class="section-label inline-label">Runtime</span>
+            <button id="refresh-metrics" class="small-btn" title="Refresh metadata &amp; metrics">&#8635;</button>
+          </div>
+        </div>
+
+        <div class="panel-section">
+          <div class="section-label">Session ID</div>
+          <div id="rt-session-id" class="copyable muted small-text">ses-04a7-litreview</div>
+        </div>
+
+        <div class="panel-section">
+          <div class="section-label">Connection Status</div>
+          <div id="rt-conn-status" class="small-text"><span class="status-dot running"></span> Running</div>
+        </div>
+
+        <div class="panel-section">
+          <div class="section-label">Active KB / Soul / Role</div>
+          <div id="rt-kb" class="small-text">education</div>
+          <div id="rt-soul" class="small-text">researcher</div>
+          <div id="rt-role-preset" class="small-text">qual-coder</div>
+        </div>
+
+        <div class="panel-section">
+          <div class="section-label">Model / Provider</div>
+          <div id="rt-model" class="small-text">at-research-v0.4</div>
+          <div id="rt-provider" class="small-text">alt-theory-research</div>
+        </div>
+
+        <div class="panel-section">
+          <div class="section-label">Counters</div>
+          <div class="metrics-grid">
+            <span class="metric-key">Turns</span><span id="rt-turns" class="metric-val">4</span>
+            <span class="metric-key">Messages</span><span id="rt-messages" class="metric-val">9</span>
+            <span class="metric-key">Tool Calls</span><span id="rt-tool-calls" class="metric-val">1</span>
+          </div>
+        </div>
+
+        <div class="panel-section">
+          <div class="section-label">Tokens</div>
+          <div class="metrics-grid">
+            <span class="metric-key">Input</span><span id="rt-tok-input" class="metric-val">4,213</span>
+            <span class="metric-key">Output</span><span id="rt-tok-output" class="metric-val">1,902</span>
+            <span class="metric-key">Cache Read</span><span id="rt-tok-cache-r" class="metric-val">1,024</span>
+            <span class="metric-key">Cache Write</span><span id="rt-tok-cache-w" class="metric-val">512</span>
+            <span class="metric-key">Total</span><span id="rt-tok-total" class="metric-val">6,115</span>
+          </div>
+        </div>
+
+        <div class="panel-section">
+          <div class="section-label">Context</div>
+          <div class="metrics-grid">
+            <span class="metric-key">Tokens</span><span id="rt-ctx-tokens" class="metric-val">6,115</span>
+            <span class="metric-key">Window</span><span id="rt-ctx-window" class="metric-val">128,000</span>
+            <span class="metric-key">Usage</span><span id="rt-ctx-pct" class="metric-val">4.8%</span>
+          </div>
+        </div>
+
+        <div class="panel-section">
+          <div class="section-label">Elapsed / Cost</div>
+          <div id="rt-cost" class="small-text">00:12:40 elapsed · $0.0142</div>
+        </div>
+
+        <div class="panel-section">
+          <div class="section-label">Core-Soul Modules</div>
+          <div id="rt-core-soul" class="small-text">
+            <div class="core-soul-module">
+              <div class="cs-slug">stance</div>
+              <div class="cs-var">autonomy</div>
+              <div class="cs-value">gradient</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="right-tab-panel" data-right-panel="paths">
+        <div class="panel-section">
+          <div class="section-label">Paths</div>
+          <div id="rt-paths" class="paths-list small-text">
+            <div class="path-row">
+              <div class="path-label">Workspace</div>
+              <div class="path-value" title="sessions/2026-06-15-litreview/">sessions/2026-06-15-litreview/</div>
+            </div>
+            <div class="path-row">
+              <div class="path-label">Transcript</div>
+              <div class="path-value" title="sessions/2026-06-15-litreview/outputs/transcript.jsonl">…/outputs/transcript.jsonl</div>
+            </div>
+            <div class="path-row">
+              <div class="path-label">Coding</div>
+              <div class="path-value" title="sessions/2026-06-15-litreview/outputs/coding-v2.csv">…/outputs/coding-v2.csv</div>
+            </div>
+            <div class="path-row">
+              <div class="path-label">Memo</div>
+              <div class="path-value" title="sessions/2026-06-15-litreview/outputs/methods-memo.md">…/outputs/methods-memo.md</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Overlay for mobile panels -->
+  <div id="overlay"></div>
+  <button id="restore-left" class="pane-restore pane-restore-left desktop-only" title="Show sessions">&#9654;</button>
+  <button id="restore-right" class="pane-restore pane-restore-right desktop-only" title="Show inspector">&#9664;</button>
+
+  <!-- New session confirmation dialog -->
+  <div id="confirm-dialog" class="dialog hidden">
+    <div class="dialog-content">
+      <p id="confirm-message">Start a new session? Current chat will be cleared.</p>
+      <div class="dialog-actions">
+        <button id="confirm-yes" class="dialog-btn primary">New Session</button>
+        <button id="confirm-no" class="dialog-btn">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="ui-only.js" defer></script>
+</body>
+</html>

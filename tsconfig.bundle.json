@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "module": "es2022",
+    "moduleResolution": "bundler",
+    "target": "es2022",
+    "outDir": "dist-bundle",
+    "rootDir": ".",
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "noEmitOnError": false,
+    "strict": false,
+    "sourceMap": false,
+    "declaration": false
+  },
+  "include": [
+    "alt-theory-app/core/**/*.ts",
+    "alt-theory-app/web-server/**/*.ts"
+  ],
+  "exclude": [
+    "alt-theory-app/**/*.test.ts",
+    "alt-theory-app/**/smoke-*.ts",
+    "alt-theory-app/**/test-core.ts"
+  ]
+}

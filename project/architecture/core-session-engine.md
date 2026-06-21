@@ -4,7 +4,7 @@ slug: core-session-engine
 scope: Alt Theory core session engine and Pi Coding Agent integration
 summary: Creates persistent, asset-configured Pi sessions through an application-owned service used by WebSocket adapters
 status: current
-last_reviewed: 2026-06-17
+last_reviewed: 2026-06-18
 tags: [core, backend, pi-agent, session]
 depends_on: []
 implements:
@@ -388,6 +388,50 @@ Theory `sessionId` and logical branch. KB changes update the selector and
 per-turn context policy without rebuilding the runtime. Busy sessions reject
 config changes with `session_busy`.
 
+### 5.1 Role Preset Resolution (As-Is)
+
+> **Status note:** This subsection documents **current backend behavior only**.
+> It is not a target architecture, rational design decision, or endorsement of
+> the `default.md` path. Treat it as an implementation snapshot for debugging
+> and ops.
+
+Role presets differ from soul: there is no slug alias chain (no
+`role-latest` → `role-default`). Resolution is explicit per layer below.
+
+| Layer | When | Role preset slug |
+| --- | --- | --- |
+| Draft default | Researcher/admin/anonymous WebSocket connect | `null` (`None`), unless a `role-presets/default.md` file exists (legacy code check only; **not** the intended product default) |
+| Participant draft | Participant connect with `defaultRoleCondition` | Mapped slug (see below) |
+| Project draft override | `switch_project` before first send | `project.defaults.rolePresetSlug` when set |
+| Materialized session | First prompt / `createSession` | Snapshot into `records/assembly-manifest.json` |
+| Resume / `open_session` | Existing Pi JSONL open | Manifest slug if file still exists; else fallback to current connection selectors; manifest `null` stays `null` |
+
+**Participant condition mapping** (`alt-theory-app/web-server/server.ts`):
+
+```text
+conceptual-theory      -> role-conceptual-theory-companion
+metatheory-oriented    -> role-metatheory-oriented
+(other condition id)   -> used directly as a role preset slug
+```
+
+If the resolved slug has no matching `role-presets/{slug}.md`, session setup
+**throws** (setup error). There is no silent fallback to `default` or another
+slug.
+
+**Resume fallback** uses `SessionService.activeOptionalSlug()`: a missing
+manifest file does not block open; the service substitutes the connection's
+current draft selector and may append a `resume_fallback` config event. This is
+resume-time recovery behavior, not a general default-role policy.
+
+Code anchors:
+
+- `alt-theory-app/web-server/server.ts`: `createDraftSelectors()`,
+  `createDraftSelectorsForAuth()`, `DEFAULT_ROLE_CONDITION_PRESETS`,
+  `defaultRolePresetSlug()`
+- `alt-theory-app/web-server/session-service.ts`: `activeOptionalSlug()`,
+  `resolveOptionalRolePresetPath()`
+- `agent-assets/README.md`: role-presets asset layout and archive naming
+
 ## 6. Discovery And Introspection
 
 REST:
@@ -461,11 +505,8 @@ unavailable until materialization. Draft and materialized sessions both accept
 `switch_visibility` between `research` and `private`.
 
 For participant WebSocket connections, the draft role preset is derived from
-the account's `defaultRoleCondition`. The built-in mapping currently includes
-`conceptual-theory -> role-conceptual-theory-companion` and
-`metatheory-oriented -> role-metatheory-oriented`; a condition may also point
-directly to an existing role preset slug. Missing role presets are setup
-errors, not silent fallbacks.
+the account's `defaultRoleCondition`. See §5.1 for the full as-is resolution
+table, condition mapping, and resume fallback behavior.
 
 Metrics include message/turn/tool counts, token totals, cost, and nullable
 context usage. Successful runs atomically update
@@ -560,6 +601,10 @@ is configured; they are not a billing claim.
 
 ## Change Log
 
+- 2026-06-18: Added §5.1 role preset resolution (as-is only). Documents
+  `None` as the researcher draft default, legacy `default.md` code debt,
+  participant condition mapping, and resume fallback without treating them as
+  target design.
 - 2026-06-17: Updated transcript projection and conversation-action runtime
   notes. `session-store.ts` now builds REST transcript from the active Pi branch
   and filters `deleted` / `superseded` run entries; managed-session open/reopen

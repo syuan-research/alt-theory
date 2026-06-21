@@ -12,6 +12,7 @@ node_modules/
 
 # Build, cache, and test output
 dist/
+dist-bundle/
 build/
 out/
 .cache/

@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Alt Theory — Model Setup</title>
+  <link rel="stylesheet" href="style.css?v=20260622-local-mode-v054">
+  <style>
+    /* Local additions for the config page only. Reuses main :root tokens. */
+    .config-page {
+      max-width: 880px;
+      margin: 0 auto;
+      padding: 32px 24px 80px;
+      color: #2b2b2e;
+    }
+    .config-page h1 {
+      font-size: 22px;
+      margin: 0 0 4px;
+    }
+    .config-page .subtitle {
+      color: #6a6a70;
+      font-size: 13px;
+      margin: 0 0 24px;
+    }
+    .config-status {
+      background: var(--elevated);
+      border: 1px solid var(--hairline);
+      border-radius: 10px;
+      padding: 14px 16px;
+      margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .config-status .agent-dir {
+      color: #8a8a90;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+      word-break: break-all;
+    }
+    .config-status .ok { color: #2f7d52; }
+    .config-status .warn { color: #b06a00; }
+    .config-section-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin: 28px 0 12px;
+    }
+    .config-section-head h2 {
+      font-size: 15px;
+      margin: 0;
+    }
+    .provider-list { display: flex; flex-direction: column; gap: 10px; }
+    .provider-card {
+      background: var(--elevated);
+      border: 1px solid var(--hairline);
+      border-radius: 10px;
+      padding: 14px 16px;
+    }
+    .provider-card.active {
+      border-color: #c9c9cc;
+      box-shadow: inset 3px 0 0 #555;
+    }
+    .provider-card-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .provider-name {
+      font-weight: 600;
+      font-size: 14px;
+    }
+    .provider-meta {
+      color: #7a7a80;
+      font-size: 12px;
+      margin-top: 4px;
+      word-break: break-all;
+    }
+    .provider-badges { display: flex; gap: 6px; flex-wrap: wrap; }
+    .badge {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--hairline);
+      color: #6a6a70;
+      background: var(--card-2);
+    }
+    .badge.key-ok { color: #2f7d52; border-color: #cfe6d9; background: #f0f7f3; }
+    .badge.key-missing { color: #b06a00; border-color: #f0dcb6; background: #fbf3e3; }
+    .badge.active { color: #2b2b2e; border-color: #c9c9cc; background: #ededee; font-weight: 600; }
+    .provider-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+      flex-wrap: wrap;
+    }
+    .provider-actions select {
+      flex: 1;
+      min-width: 180px;
+    }
+    .provider-models {
+      margin-top: 10px;
+      font-size: 12px;
+      color: #6a6a70;
+    }
+    .provider-models .model-row {
+      display: flex;
+      gap: 8px;
+      padding: 2px 0;
+    }
+    .empty-state {
+      text-align: center;
+      color: #8a8a90;
+      padding: 32px 16px;
+      font-size: 13px;
+    }
+    /* Editor form (modal-less, inline) */
+    .editor {
+      background: var(--elevated);
+      border: 1px solid var(--hairline);
+      border-radius: 10px;
+      padding: 18px 18px 8px;
+      margin-top: 12px;
+    }
+    .editor.hidden { display: none; }
+    .editor h3 { margin: 0 0 12px; font-size: 15px; }
+    .field { margin-bottom: 14px; }
+    .field label {
+      display: block;
+      font-size: 12px;
+      color: #6a6a70;
+      margin-bottom: 4px;
+    }
+    .field input, .field select {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid var(--hairline);
+      border-radius: 8px;
+      font-size: 13px;
+      background: var(--paper);
+      box-sizing: border-box;
+    }
+    .field input:focus, .field select:focus {
+      outline: none;
+      border-color: #b8b8bc;
+    }
+    .field .hint { font-size: 11px; color: #8a8a90; margin-top: 4px; }
+    .models-editor { margin-bottom: 14px; }
+    .model-edit-row {
+      display: grid;
+      grid-template-columns: 2fr 1fr auto;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .model-edit-row input { padding: 6px 8px; font-size: 12px; border: 1px solid var(--hairline); border-radius: 6px; }
+    .add-model-btn {
+      font-size: 12px;
+      background: none;
+      border: 1px dashed var(--hairline);
+      border-radius: 6px;
+      padding: 6px 10px;
+      color: #6a6a70;
+      cursor: pointer;
+    }
+    .key-storage-row { display: flex; gap: 16px; font-size: 12px; color: #6a6a70; }
+    .key-storage-row label { display: flex; gap: 4px; align-items: center; margin: 0; }
+    .editor-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      padding-top: 4px;
+      padding-bottom: 12px;
+    }
+    .btn {
+      padding: 8px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--hairline);
+      background: var(--card-2);
+      font-size: 13px;
+      cursor: pointer;
+      color: #2b2b2e;
+    }
+    .btn:hover { background: #e4e4e6; }
+    .btn.primary { background: #2b2b2e; color: #fff; border-color: #2b2b2e; }
+    .btn.primary:hover { background: #444; }
+    .btn.danger { color: #9a3a3a; }
+    .btn.danger:hover { background: #f7eeee; }
+    .btn.small { padding: 5px 10px; font-size: 12px; }
+    .top-actions { display: flex; gap: 8px; justify-content: flex-end; margin-bottom: 24px; }
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #2b2b2e;
+      color: #fff;
+      padding: 10px 18px;
+      border-radius: 8px;
+      font-size: 13px;
+      opacity: 0;
+      transition: opacity 0.2s;
+      pointer-events: none;
+      z-index: 100;
+    }
+    .toast.show { opacity: 1; }
+    .toast.error { background: #9a3a3a; }
+    a.back-link { color: #6a6a70; text-decoration: none; font-size: 13px; }
+    a.back-link:hover { color: #2b2b2e; }
+  </style>
+</head>
+<body>
+  <div class="config-page">
+    <div class="top-actions">
+      <a class="back-link" href="/">&#8592; Back to app</a>
+    </div>
+    <h1>Model &amp; API Key Setup</h1>
+    <p class="subtitle">
+      Configure one or more providers. This writes Pi's native config files
+      (<code>models.json</code>, <code>auth.json</code>, <code>settings.json</code>),
+      under Alt Theory's local state folder. No key is stored in the app binary.
+    </p>
+
+    <div id="status-box" class="config-status">Loading…</div>
+
+    <div class="config-section-head">
+      <h2>Providers</h2>
+      <button class="btn primary small" id="add-btn">+ Add provider</button>
+    </div>
+    <div id="provider-list" class="provider-list"></div>
+
+    <!-- Editor -->
+    <div id="editor" class="editor hidden">
+      <h3 id="editor-title">Add provider</h3>
+      <div class="field">
+        <label for="f-name">Provider name</label>
+        <input id="f-name" type="text" placeholder="e.g. anthropic, openai, my-local-llm" autocomplete="off">
+        <div class="hint">Used as the key in models.json. Alphanumeric, dash, dot, underscore.</div>
+      </div>
+      <div class="field">
+        <label for="f-baseurl">Base URL (optional for built-in providers)</label>
+        <input id="f-baseurl" type="text" placeholder="https://api.example.com/v1 (leave blank for built-in)" autocomplete="off">
+        <div class="hint">Required for custom / local / proxy providers (Ollama, LM Studio, vLLM, gateways).</div>
+      </div>
+      <div class="field">
+        <label for="f-api">API type</label>
+        <select id="f-api">
+          <option value="openai-completions">openai-completions (most compatible)</option>
+          <option value="openai-responses">openai-responses</option>
+          <option value="anthropic-messages">anthropic-messages</option>
+          <option value="google-generative-ai">google-generative-ai</option>
+        </select>
+        <div class="hint">Pick the streaming API your provider speaks. Most OpenAI-compatible servers use openai-completions.</div>
+      </div>
+
+      <div class="models-editor">
+        <label style="display:block;font-size:12px;color:#6a6a70;margin-bottom:6px;">Models</label>
+        <div id="model-rows"></div>
+        <button class="add-model-btn" id="add-model-btn">+ Add model</button>
+        <div class="hint" style="font-size:11px;color:#8a8a90;margin-top:6px;">
+          Only model <em>id</em> is required (the rest are optional metadata).
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="f-key">API key</label>
+        <input id="f-key" type="password" placeholder="paste key, or leave blank to keep existing" autocomplete="off">
+        <div class="key-storage-row">
+          <label><input type="radio" name="keystorage" value="literal" checked> Store key (auth.json)</label>
+          <label><input type="radio" name="keystorage" value="env"> Env var name</label>
+        </div>
+        <div class="hint" id="key-hint">Stored locally in Pi's auth.json (plaintext, local-only). "Env var name" stores the variable name; Pi reads it from the environment at runtime.</div>
+      </div>
+
+      <div class="editor-actions">
+        <button class="btn" id="editor-cancel">Cancel</button>
+        <button class="btn primary" id="editor-save">Save provider</button>
+      </div>
+    </div>
+  </div>
+  <div id="toast" class="toast"></div>
+
+  <script>
+    const $ = (s) => document.querySelector(s);
+    const providerList = $('#provider-list');
+    const statusBox = $('#status-box');
+    const editor = $('#editor');
+    let editingName = null; // null = adding, string = editing existing
+
+    function toast(msg, isError) {
+      const t = $('#toast');
+      t.textContent = msg;
+      t.className = 'toast show' + (isError ? ' error' : '');
+      setTimeout(() => { t.className = 'toast'; }, 3500);
+    }
+
+    async function api(method, path, body) {
+      const opts = { method, headers: {} };
+      if (body !== undefined) {
+        opts.headers['Content-Type'] = 'application/json';
+        opts.body = JSON.stringify(body);
+      }
+      const res = await fetch(path, opts);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
+      return data;
+    }
+
+    async function refresh() {
+      const [status, provs] = await Promise.all([
+        api('GET', '/api/config/status'),
+        api('GET', '/api/config/providers'),
+      ]);
+      renderStatus(status);
+      renderProviders(provs.providers || []);
+    }
+
+    function renderStatus(status) {
+      const msg = status.anyUsable
+        ? `<span class="ok">Ready.</span> At least one provider has a key.`
+        : `<span class="warn">No provider has a key yet.</span> Add one below to start using the app.`;
+      const active = (status.activeProvider && status.activeModel)
+        ? ` Active: <strong>${escapeHtml(status.activeProvider)} / ${escapeHtml(status.activeModel)}</strong>.`
+        : ' No active model selected.';
+      statusBox.innerHTML = msg + active;
+    }
+
+    function renderProviders(providers) {
+      providerList.innerHTML = '';
+      if (providers.length === 0) {
+        providerList.innerHTML = '<div class="empty-state">No providers configured. Click "Add provider" to begin.</div>';
+        return;
+      }
+      for (const p of providers) {
+        const card = document.createElement('div');
+        card.className = 'provider-card' + (p.active ? ' active' : '');
+        const badges = [];
+        badges.push(`<span class="badge ${p.hasKey ? 'key-ok' : 'key-missing'}">${p.hasKey ? '✓ key set' : 'no key'}</span>`);
+        if (p.active) badges.push('<span class="badge active">active</span>');
+        if (p.api) badges.push(`<span class="badge">${escapeHtml(p.api)}</span>`);
+        const modelOpts = (p.models || [])
+          .map(m => `<option value="${escapeHtml(m.id)}">${escapeHtml(m.id)}</option>`).join('');
+        const selectedModel = (p.active && statusBox.textContent.includes(p.name))
+          ? '' : (p.models[0]?.id || '');
+        // Determine the active model id from status text is fragile; instead show a selector.
+        card.innerHTML = `
+          <div class="provider-card-head">
+            <div>
+              <div class="provider-name">${escapeHtml(p.name)}</div>
+              <div class="provider-meta">${p.baseUrl ? escapeHtml(p.baseUrl) : '(built-in endpoint)'}</div>
+            </div>
+            <div class="provider-badges">${badges.join('')}</div>
+          </div>
+          <div class="provider-actions">
+            <select class="model-select" data-provider="${escapeHtml(p.name)}">
+              ${modelOpts || '<option>(no models)</option>'}
+            </select>
+            <button class="btn small set-active-btn" data-provider="${escapeHtml(p.name)}">Set active</button>
+            <button class="btn small edit-btn" data-provider="${escapeHtml(p.name)}">Edit</button>
+            <button class="btn small danger delete-btn" data-provider="${escapeHtml(p.name)}">Delete</button>
+          </div>
+          <div class="provider-models">
+            ${(p.models || []).map(m => `<div class="model-row"><span>${escapeHtml(m.id)}</span>${m.contextWindow ? '<span style="color:#aaa">' + m.contextWindow + ' ctx</span>' : ''}</div>`).join('') || '<div>(no models defined)</div>'}
+          </div>
+        `;
+        providerList.appendChild(card);
+      }
+      // Wire actions
+      providerList.querySelectorAll('.set-active-btn').forEach(b => {
+        b.addEventListener('click', async (e) => {
+          const name = e.target.dataset.provider;
+          const sel = providerList.querySelector(`select.model-select[data-provider="${cssEscape(name)}"]`);
+          const model = sel.value;
+          try {
+            await api('PUT', '/api/config/active', { provider: name, model });
+            toast('Set active: ' + name + ' / ' + model);
+            await refresh();
+          } catch (err) { toast(err.message, true); }
+        });
+      });
+      providerList.querySelectorAll('.edit-btn').forEach(b => {
+        b.addEventListener('click', (e) => openEditor(e.target.dataset.provider));
+      });
+      providerList.querySelectorAll('.delete-btn').forEach(b => {
+        b.addEventListener('click', async (e) => {
+          const name = e.target.dataset.provider;
+          if (!confirm(`Delete provider "${name}" and its saved key?`)) return;
+          try {
+            await api('DELETE', '/api/config/providers/' + encodeURIComponent(name));
+            toast('Deleted ' + name);
+            await refresh();
+          } catch (err) { toast(err.message, true); }
+        });
+      });
+    }
+
+    function openEditor(existingName) {
+      editingName = existingName || null;
+      $('#editor-title').textContent = existingName ? 'Edit provider' : 'Add provider';
+      $('#f-name').value = existingName || '';
+      $('#f-name').disabled = !!existingName; // don't rename via edit
+      $('#f-baseurl').value = '';
+      $('#f-api').value = 'openai-completions';
+      $('#f-key').value = '';
+      document.querySelector('input[name="keystorage"][value="literal"]').checked = true;
+      $('#model-rows').innerHTML = '';
+      addModelRow();
+      if (existingName) {
+        // Pre-fill from current provider list
+        api('GET', '/api/config/providers').then(provs => {
+          const p = (provs.providers || []).find(x => x.name === existingName);
+          if (!p) return;
+          $('#f-baseurl').value = p.baseUrl || '';
+          if (p.api) $('#f-api').value = p.api;
+          $('#model-rows').innerHTML = '';
+          if ((p.models || []).length === 0) { addModelRow(); return; }
+          for (const m of p.models) addModelRow(m.id, m.name);
+        }).catch(() => {});
+      }
+      editor.classList.remove('hidden');
+      editor.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    function addModelRow(id = '', name = '') {
+      const row = document.createElement('div');
+      row.className = 'model-edit-row';
+      row.innerHTML = `
+        <input class="m-id" type="text" placeholder="model id (required)" value="${escapeAttr(id)}">
+        <input class="m-name" type="text" placeholder="display name (optional)" value="${escapeAttr(name)}">
+        <button class="btn small danger remove-model-btn" type="button">✕</button>
+      `;
+      row.querySelector('.remove-model-btn').addEventListener('click', () => row.remove());
+      $('#model-rows').appendChild(row);
+    }
+
+    $('#add-model-btn').addEventListener('click', () => addModelRow());
+    $('#add-btn').addEventListener('click', () => openEditor(null));
+    $('#editor-cancel').addEventListener('click', () => editor.classList.add('hidden'));
+    $('#editor-save').addEventListener('click', async () => {
+      const name = $('#f-name').value.trim();
+      const baseUrl = $('#f-baseurl').value.trim() || undefined;
+      const apiType = $('#f-api').value;
+      const apiKey = $('#f-key').value;
+      const keyStorage = document.querySelector('input[name="keystorage"]:checked').value;
+      const modelRows = [...$('#model-rows').querySelectorAll('.model-edit-row')];
+      const models = modelRows.map(r => {
+        const id = r.querySelector('.m-id').value.trim();
+        const mname = r.querySelector('.m-name').value.trim();
+        return id ? { id, ...(mname ? { name: mname } : {}) } : null;
+      }).filter(Boolean);
+      if (!name) { toast('Provider name is required', true); return; }
+      if (models.length === 0) { toast('At least one model is required', true); return; }
+      const body = {
+        baseUrl, api: apiType, models,
+        ...(apiKey ? { apiKey, keyStorage } : {}),
+      };
+      try {
+        await api('PUT', '/api/config/providers/' + encodeURIComponent(name), body);
+        toast(editingName ? 'Saved ' + name : 'Added ' + name);
+        editor.classList.add('hidden');
+        await refresh();
+      } catch (err) { toast(err.message, true); }
+    });
+
+    // helpers
+    function escapeHtml(s) {
+      return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+    function escapeAttr(s) { return escapeHtml(s); }
+    function cssEscape(s) { return String(s).replace(/["\\]/g, '\\$&'); }
+
+    // initial load
+    refresh().catch(err => {
+      statusBox.innerHTML = `<span class="warn">Failed to load config: ${escapeHtml(err.message)}</span>`;
+    });
+  </script>
+</body>
+</html>

@@ -62,6 +62,16 @@ import { getProject, listProjects, upsertProject } from "./projects.js";
 import { listInstructionAssets } from "./instruction-assets.js";
 import { listAltTheorySkills } from "./skill-assets.js";
 import {
+  agentConfigDir,
+  ConfigValidationError,
+  deleteProvider,
+  getConfigStatus,
+  listProviders,
+  setActive,
+  upsertProvider,
+  type ApiType,
+} from "./config-store.js";
+import {
   AuthSessionManager,
   anonymousAuthContext,
   clearAuthCookie,
@@ -190,6 +200,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     options.runLabel ?? process.env.ALT_THEORY_RUN_LABEL ?? null;
   const testBatch =
     options.testBatch ?? process.env.ALT_THEORY_TEST_BATCH ?? null;
+  const appMode = process.env.ALT_THEORY_MODE === "local" ? "local" : "hosted";
+  const localMode = appMode === "local";
 
   const app = express();
   const httpServer = createServer(app);
@@ -228,6 +240,91 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   );
   app.get("/vendor/marked.js", (_req, res) => {
     res.sendFile(resolve(PROJECT_ROOT, "node_modules", "marked", "lib", "marked.umd.js"));
+  });
+  // --- Config GUI (Pi-native model/key management) ---
+  // Local-mode only. Hosted/online deployments must not expose server-side
+  // model/key management through this UI or REST surface.
+  app.get("/config", (_req, res) => {
+    if (!requireLocalConfigMode(res)) return;
+    res.sendFile(resolve(publicDir, "config.html"));
+  });
+  app.get("/api/config/status", (_req, res) => {
+    if (!requireLocalConfigMode(res)) return;
+    res.json(getConfigStatus(agentConfigDir()));
+  });
+  app.get("/api/config/providers", (_req, res) => {
+    if (!requireLocalConfigMode(res)) return;
+    res.json({ providers: listProviders(agentConfigDir()) });
+  });
+  app.put("/api/config/providers/:provider", (req, res) => {
+    if (!requireLocalConfigMode(res)) return;
+    const provider = req.params.provider;
+    const body = req.body as {
+      baseUrl?: unknown;
+      api?: unknown;
+      apiKey?: unknown;
+      keyStorage?: unknown;
+      clearKey?: unknown;
+      models?: unknown;
+    };
+    try {
+      const view = upsertProvider(
+        agentConfigDir(),
+        {
+          name: provider,
+          baseUrl: typeof body.baseUrl === "string" ? body.baseUrl : undefined,
+          api: typeof body.api === "string" ? (body.api as ApiType) : undefined,
+          apiKey: typeof body.apiKey === "string" ? body.apiKey : undefined,
+          models: Array.isArray(body.models) ? (body.models as never[]) : [],
+        },
+        {
+          keyStorage:
+            body.keyStorage === "env"
+              ? "env"
+              : body.keyStorage === "literal"
+                ? "literal"
+                : body.apiKey
+                  ? "literal"
+                  : undefined,
+          clearKey: body.clearKey === true,
+        }
+      );
+      res.json(view);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(error instanceof ConfigValidationError ? 400 : 500).json({
+        error: message,
+      });
+    }
+  });
+  app.delete("/api/config/providers/:provider", (req, res) => {
+    if (!requireLocalConfigMode(res)) return;
+    try {
+      deleteProvider(agentConfigDir(), req.params.provider);
+      res.json({ ok: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(error instanceof ConfigValidationError ? 400 : 500).json({
+        error: message,
+      });
+    }
+  });
+  app.put("/api/config/active", async (req, res) => {
+    if (!requireLocalConfigMode(res)) return;
+    const body = req.body as { provider?: unknown; model?: unknown };
+    if (typeof body.provider !== "string" || typeof body.model !== "string") {
+      res.status(400).json({ error: "provider and model are required" });
+      return;
+    }
+    try {
+      await setActive(agentConfigDir(), body.provider, body.model);
+      res.json(getConfigStatus(agentConfigDir()));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(error instanceof ConfigValidationError ? 400 : 500).json({
+        error: message,
+      });
+    }
   });
   app.get("/api/role-presets", (_req, res) => {
     res.json({ rolePresets: listRolePresets(rolePresetsDir) });
@@ -272,7 +369,11 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     res.json({ ok: true });
   });
   app.get("/api/auth/me", (req, res) => {
-    res.json({ auth: authSessions.resolveRequest(req) });
+    res.json({
+      auth: authSessions.resolveRequest(req),
+      app: { mode: appMode },
+      localConfig: localMode ? getConfigStatus(agentConfigDir()) : null,
+    });
   });
   app.get("/api/projects", (_req, res) => {
     res.json(listProjects(dataDir));
@@ -550,11 +651,17 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     res: Response
   ): AuthContext | null {
     const auth = authSessions.resolveRequest(req);
-    if (auth.role === "anonymous" && hasConfiguredAccounts()) {
+    if (!localMode && auth.role === "anonymous" && hasConfiguredAccounts()) {
       res.status(401).json({ error: "Authentication required" });
       return null;
     }
     return auth;
+  }
+
+  function requireLocalConfigMode(res: Response): boolean {
+    if (localMode) return true;
+    res.status(404).json({ error: "Not found" });
+    return false;
   }
 
   function hasConfiguredAccounts(): boolean {
@@ -1207,6 +1314,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       instructionsDir,
       runLabel,
       testBatch,
+      appMode,
     },
   };
 }

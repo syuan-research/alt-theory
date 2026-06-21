@@ -8,10 +8,10 @@ Current first-slice layout:
 - `soul/` contains selectable soul/personality stance seeds. Runtime default
   selection prefers `soul/soul-latest.md`, then `soul/soul.md`; if neither
   exists, sessions run with no soul layer.
-- `role-presets/` contains selectable role/style/behavior presets. If
-  `role-presets/default.md` exists, it is the default role; otherwise sessions
-  run with no role preset layer until one is selected. This replaces the old
-  `profiles/` naming because these files describe the agent role, not the user.
+- `role-presets/` contains selectable role/style/behavior presets. The
+  researcher workbench draft defaults to **no role preset** (`None`) until one
+  is selected. This replaces the old `profiles/` naming because these files
+  describe the agent role, not the user.
 - `prompts/pi/` is the current Pi adapter prompt-template area for review and future organization.
 - `kb/ep-core/` is the current runtime KB copy used for the first v0.3 smoke-test path. It is not yet declared the long-term KB source-of-truth.
 - `models.example.json` is an uncredentialed example for custom provider/model configuration. Runtime keys stay in environment/config, not Git.
@@ -22,6 +22,42 @@ Current first-slice layout:
 - New role presets go in `role-presets/{slug}.md`; prefer lowercase
   kebab-case. The slug is the filename without `.md`. The researcher console
   can also select `None`, which means no role preset layer is injected.
+
+## Role Presets (As-Is)
+
+This section records current asset and runtime behavior. It is **not** a target
+design.
+
+### Default
+
+- Researcher/admin/anonymous draft sessions start with **no role preset**
+  (`None`).
+- Participant draft sessions get a role from the account's `defaultRoleCondition`
+  (see `project/architecture/core-session-engine.md` §5.1).
+
+### Legacy `default.md` debt
+
+Early backend and workstream notes assumed `role-presets/default.md` as a
+system default. That path is **legacy debt**, not the current product default.
+The backend still checks for `default.md` only because the check remains in
+code (`server.ts` → `defaultRolePresetSlug()`). Do **not** add or restore
+`default.md` unless deliberately retiring that code path. Files such as
+`legacy-default-for-dev.md` are inert unless selected by slug.
+
+### Archive naming (operational convention)
+
+When replacing an active preset in place, keep the same slug filename and move
+the prior version aside in the same directory:
+
+```text
+role-{name}.md                 # active slug (runtime + UI discovery)
+role-{name}-YYYYMMDD-N.md      # archived snapshot (inactive unless selected)
+```
+
+Examples in this tree: `role-conceptual-theory-companion.md` (active) and
+`role-conceptual-theory-companion-20260612-1.md` (archive). Unlike soul, there
+is no `role-latest` alias; only explicit slugs resolve. Old sessions keep the
+slug recorded in their assembly manifest.
 - New soul variants go in `soul/{slug}.md`; prefer lowercase kebab-case. Use
   `soul-latest.md` for the default experimental soul, or `soul.md` as the
   fallback default. The researcher console can also select `None`, which means

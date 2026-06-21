@@ -1085,6 +1085,13 @@ button:hover {
   line-height: 1.2;
 }
 
+a.small-btn {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+  cursor: pointer;
+}
+
 .small-btn:hover {
   background: var(--hover);
   color: var(--text-primary);

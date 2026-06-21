@@ -171,12 +171,24 @@ _archives/agent-assets/skills/cs-swe-v0-3-before-repair-1129b96/
 
 ## Version-Control Safety
 
-Before broad edits, inspect branch and status.
+Before broad edits, inspect branch and status with unsandboxed/escalated Git.
 
-If using Codex in this linked-worktree repo, prefer unsandboxed/escalated Git
-commands for operations that touch index or objects. Sandboxed Codex Git may
-leave a zero-byte `index.lock` under the bare git store and cause repeated lock
-warnings even when no real Git process is running.
+Codex agents must treat sandboxed Git in this linked-worktree repo as
+prohibited. This is not a preference. Sandboxed Codex Git has repeatedly
+created or failed to remove stale `index.lock` files under the bare Git store.
+Do not "just check status" first. Do not run `git status`, `git diff`,
+`git add`, `git commit`, `git worktree`, `git check-ignore`, or any other Git
+command in the sandbox.
+
+If Git is needed, request unsandboxed/escalated execution before the first Git
+command. If escalation is not available, skip Git and report that instead of
+trying a sandboxed command.
+
+If an `index.lock` appears, stop all Git commands, inspect running Git
+processes and the lock file with non-Git tooling, and remove only that specific
+stale lock if no Git process exists. After that, continue with
+unsandboxed/escalated Git only. Never alternate sandboxed and unsandboxed Git
+during the same task or cleanup.
 
 Current workflow expectation:
 

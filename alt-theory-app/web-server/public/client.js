@@ -113,6 +113,7 @@ const loginErrorEl = document.getElementById("login-error");
 const authBadge = document.getElementById("auth-badge");
 const authBadgeMobile = document.getElementById("auth-badge-mobile");
 const logoutBtn = document.getElementById("logout-btn");
+const modelConfigLink = document.getElementById("model-config-link");
 const debugToggle = document.getElementById("debug-toggle");
 const roleConditionSection = document.querySelector(".role-condition-row");
 const roleConditionDisplay = document.getElementById("role-condition-display");
@@ -200,6 +201,8 @@ let authCtx = null;
 // "researcher" and never changes server-side identity, ownership, or consent.
 let viewMode = "researcher"; // default until /me resolves
 let accountsConfigured = false; // whether any accounts exist server-side
+let appMode = "hosted"; // "hosted" | "local"; local is set by Electron bundle
+let localConfigStatus = null;
 let debugExpanded = false; // client-only flag for the Debug toggle
 let currentVisibility = "research"; // last known draft/session visibility
 const DEBUG_STORAGE_KEY = "alt-theory-debug-expanded";
@@ -265,6 +268,7 @@ function renderAuthBadge() {
 // Derive the shell view mode from resolved auth. Anonymous with no configured accounts
 // keeps the legacy local researcher workbench (v0.4 compatibility).
 function viewModeForRole(role) {
+  if (appMode === "local") return "local";
   if (role === "participant") return "participant";
   if (role === "researcher" || role === "admin") return "researcher";
   return "researcher"; // anonymous local: legacy workbench
@@ -275,15 +279,18 @@ function viewModeForRole(role) {
 function applyViewMode(mode) {
   viewMode = mode;
   const isParticipant = mode === "participant";
+  const isLocal = mode === "local";
+  const isSimpleUser = isParticipant || isLocal;
   const isResearcherBase = mode === "researcher" || mode === "debug";
 
-  // Left panel: participant hides launch/config and project row; researcher/debug show it.
-  if (leftConfigSection) leftConfigSection.classList.toggle("hidden", isParticipant);
+  // Left panel: participant/local hides launch/config selectors; researcher/debug show them.
+  if (leftConfigSection) leftConfigSection.classList.toggle("hidden", isSimpleUser);
+  if (modelConfigLink) modelConfigLink.classList.toggle("hidden", !isLocal);
   if (projectSelect) projectSelect.parentElement &&
     (projectSelect.closest(".config-grid")?.classList.toggle("hidden", false));
   const projectRow = projectSelect?.closest(".config-grid")
     ?.querySelector('label[for="project-select"]');
-  if (projectRow) projectRow.classList.toggle("hidden", isParticipant);
+  if (projectRow) projectRow.classList.toggle("hidden", isSimpleUser);
 
   // Role-condition display: participant only.
   roleConditionSection.classList.toggle("hidden", !isParticipant);
@@ -316,22 +323,23 @@ function applyViewMode(mode) {
     panel.classList.toggle("hidden", isAdvanced && !showAdvanced);
   }
   // Deterministic per-view default tab. Participants land on Workspace
-  // (the participant-facing surface); researcher/debug/anonymous local land
-  // on Records (the workbench surface). If the current active tab is still
+  // (the participant-facing surface); local mode also lands on Workspace.
+  // Researcher/debug/legacy anonymous hosted local dev land on Records.
+  // If the current active tab is still
   // visible in this view, keep it (preserve user choice).
-  const defaultTab = isParticipant ? "summary" : "records";
+  const defaultTab = isSimpleUser ? "summary" : "records";
   const activeTabBtn = rightTabBtns.find((b) => b.classList.contains("selected"));
   if (!activeTabBtn || activeTabBtn.classList.contains("hidden")) {
     const def = rightTabBtns.find((b) => b.dataset.rightTab === defaultTab);
     if (def) def.click();
   }
 
-  // Transcript view toggle: participant defaults to User view and hides the toggle.
-  const hideViewToggle = isParticipant;
+  // Transcript view toggle: participant/local defaults to User view and hides the toggle.
+  const hideViewToggle = isSimpleUser;
   viewToggleBtns.forEach((b) => {
     b.classList.toggle("hidden", hideViewToggle);
   });
-  if (isParticipant && transcriptView !== "user") {
+  if (isSimpleUser && transcriptView !== "user") {
     const userBtn = viewToggleBtns.find((b) => b.dataset.view === "user");
     if (userBtn) userBtn.click();
   }
@@ -343,7 +351,8 @@ function applyViewMode(mode) {
   if (lineageRow) lineageRow.classList.add("hidden");
 
   // Debug-expansion-only controls (none yet beyond tab gating).
-  document.body.classList.toggle("view-participant", isParticipant);
+  document.body.classList.toggle("view-participant", isSimpleUser);
+  document.body.classList.toggle("view-local", isLocal);
   document.body.classList.toggle("view-researcher", isResearcherBase);
   setControlsEnabled(!isRunning);
   renderSessionList();
@@ -357,21 +366,30 @@ async function resolveAuthAndApply() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     me = data.auth || { role: "anonymous" };
+    appMode = data.app?.mode === "local" ? "local" : "hosted";
+    localConfigStatus = data.localConfig || null;
   } catch (err) {
     console.error("[auth] /me failed:", err);
     me = { role: "anonymous" };
+    appMode = "hosted";
+    localConfigStatus = null;
   }
   authCtx = me;
-  accountsConfigured = await detectAccountsConfigured();
+  accountsConfigured = appMode === "local" ? false : await detectAccountsConfigured();
   renderAuthBadge();
   roleConditionDisplay.textContent = roleConditionLabel(authCtx.defaultRoleCondition);
+
+  if (appMode === "local" && localConfigStatus && !localConfigStatus.anyUsable) {
+    window.location.assign("/config?firstRun=1");
+    return false;
+  }
 
   const role = authCtx.role || "anonymous";
   if (role === "anonymous" && accountsConfigured) {
     // Pilot deployment with configured accounts: require app-level login.
     setLoginGateActive(true);
     document.body.classList.remove("auth-pending");
-    return;
+    return false;
   }
   setLoginGateActive(false);
   const baseMode = viewModeForRole(role);
@@ -381,11 +399,13 @@ async function resolveAuthAndApply() {
     localStorage.getItem(DEBUG_STORAGE_KEY) === "1";
   applyViewMode(baseMode);
   document.body.classList.remove("auth-pending");
+  return true;
 }
 
 // Backend returns 401 on session routes when accounts are configured, even for anonymous.
 // Use that to detect configured-accounts pilot deployments without a dedicated endpoint.
 async function detectAccountsConfigured() {
+  if (appMode === "local") return false;
   try {
     const res = await fetch("/api/sessions");
     // 401 means accounts exist and anonymous is rejected.
@@ -1929,8 +1949,8 @@ function connectWebSocket() {
     }
     setConnStatus("idle", reconnectSessionId ? "Reconnected" : "Connected");
     // Resolve app identity first; view-mode gating decides whether discovery/sessions load.
-    resolveAuthAndApply().finally(() => {
-      if (!loginOverlay.classList.contains("hidden")) return; // gated behind login
+    resolveAuthAndApply().then((ready) => {
+      if (!ready || !loginOverlay.classList.contains("hidden")) return; // gated or redirecting
       fetchDiscovery();
       fetchSessions();
       if (reconnectSessionId) {
@@ -1941,6 +1961,8 @@ function connectWebSocket() {
           })
         );
       }
+    }).catch((err) => {
+      console.error("[auth] resolve failed:", err);
     });
   };
 
