@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Alt Theory — Model Setup</title>
-  <link rel="stylesheet" href="style.css?v=20260622-local-mode-v054">
+  <link rel="stylesheet" href="style.css?v=20260622-config-kb-v055">
   <style>
     /* Local additions for the config page only. Reuses main :root tokens. */
     .config-page {
@@ -49,6 +49,22 @@
       margin: 0;
     }
     .provider-list { display: flex; flex-direction: column; gap: 10px; }
+    .preset-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 14px;
+    }
+    .preset-btn {
+      border: 1px solid var(--hairline);
+      background: var(--elevated);
+      border-radius: 7px;
+      padding: 6px 10px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .preset-row.hidden { display: none; }
+    .preset-btn:hover { background: var(--card); }
     .provider-card {
       background: var(--elevated);
       border: 1px solid var(--hairline);
@@ -152,7 +168,14 @@
       gap: 8px;
       margin-bottom: 8px;
     }
-    .model-edit-row input { padding: 6px 8px; font-size: 12px; border: 1px solid var(--hairline); border-radius: 6px; }
+    .model-edit-row input,
+    .option-edit-row input { padding: 6px 8px; font-size: 12px; border: 1px solid var(--hairline); border-radius: 6px; }
+    .option-edit-row {
+      display: grid;
+      grid-template-columns: 2fr 1fr auto;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
     .add-model-btn {
       font-size: 12px;
       background: none;
@@ -231,6 +254,7 @@
     <!-- Editor -->
     <div id="editor" class="editor hidden">
       <h3 id="editor-title">Add provider</h3>
+      <div class="preset-row" id="preset-row"></div>
       <div class="field">
         <label for="f-name">Provider name</label>
         <input id="f-name" type="text" placeholder="e.g. anthropic, openai, my-local-llm" autocomplete="off">
@@ -256,8 +280,18 @@
         <label style="display:block;font-size:12px;color:#6a6a70;margin-bottom:6px;">Models</label>
         <div id="model-rows"></div>
         <button class="add-model-btn" id="add-model-btn">+ Add model</button>
+        <button class="add-model-btn" id="fetch-models-btn">Fetch model list</button>
         <div class="hint" style="font-size:11px;color:#8a8a90;margin-top:6px;">
-          Only model <em>id</em> is required (the rest are optional metadata).
+          Built-in presets are enough to start; fetching is optional and manual model entry always works.
+        </div>
+      </div>
+
+      <div class="models-editor">
+        <label style="display:block;font-size:12px;color:#6a6a70;margin-bottom:6px;">Advanced options</label>
+        <div id="option-rows"></div>
+        <button class="add-model-btn" id="add-option-btn">+ Add option</button>
+        <div class="hint" style="font-size:11px;color:#8a8a90;margin-top:6px;">
+          Optional provider settings such as setCacheKey. Values parse as boolean, number, JSON, or string.
         </div>
       </div>
 
@@ -285,6 +319,37 @@
     const statusBox = $('#status-box');
     const editor = $('#editor');
     let editingName = null; // null = adding, string = editing existing
+    const PROVIDER_PRESETS = [
+      {
+        label: 'OpenAI',
+        name: 'openai',
+        api: 'openai-responses',
+        baseUrl: 'https://api.openai.com/v1',
+        models: [{ id: 'gpt-4.1' }, { id: 'gpt-4.1-mini' }]
+      },
+      {
+        label: 'Anthropic',
+        name: 'anthropic',
+        api: 'anthropic-messages',
+        baseUrl: 'https://api.anthropic.com/v1',
+        models: [{ id: 'claude-sonnet-4-20250514' }]
+      },
+      {
+        label: 'OpenRouter',
+        name: 'openrouter',
+        api: 'openai-completions',
+        baseUrl: 'https://openrouter.ai/api/v1',
+        models: [{ id: 'anthropic/claude-sonnet-4' }]
+      },
+      {
+        label: 'MiniMax',
+        name: 'minimax',
+        api: 'anthropic-messages',
+        baseUrl: 'https://api.minimaxi.com/anthropic/v1',
+        models: [{ id: 'minimax-m3' }, { id: 'minimax-m2.7' }],
+        options: { setCacheKey: true }
+      }
+    ];
 
     function toast(msg, isError) {
       const t = $('#toast');
@@ -337,6 +402,7 @@
         badges.push(`<span class="badge ${p.hasKey ? 'key-ok' : 'key-missing'}">${p.hasKey ? '✓ key set' : 'no key'}</span>`);
         if (p.active) badges.push('<span class="badge active">active</span>');
         if (p.api) badges.push(`<span class="badge">${escapeHtml(p.api)}</span>`);
+        if (p.options && Object.keys(p.options).length > 0) badges.push('<span class="badge">options</span>');
         const modelOpts = (p.models || [])
           .map(m => `<option value="${escapeHtml(m.id)}">${escapeHtml(m.id)}</option>`).join('');
         const selectedModel = (p.active && statusBox.textContent.includes(p.name))
@@ -403,7 +469,9 @@
       $('#f-key').value = '';
       document.querySelector('input[name="keystorage"][value="literal"]').checked = true;
       $('#model-rows').innerHTML = '';
+      $('#option-rows').innerHTML = '';
       addModelRow();
+      renderPresetButtons(!existingName);
       if (existingName) {
         // Pre-fill from current provider list
         api('GET', '/api/config/providers').then(provs => {
@@ -414,6 +482,10 @@
           $('#model-rows').innerHTML = '';
           if ((p.models || []).length === 0) { addModelRow(); return; }
           for (const m of p.models) addModelRow(m.id, m.name);
+          $('#option-rows').innerHTML = '';
+          Object.entries(p.options || {}).forEach(([key, value]) => {
+            addOptionRow(key, stringifyOptionValue(value));
+          });
         }).catch(() => {});
       }
       editor.classList.remove('hidden');
@@ -432,9 +504,62 @@
       $('#model-rows').appendChild(row);
     }
 
+    function addOptionRow(key = '', value = '') {
+      const row = document.createElement('div');
+      row.className = 'option-edit-row';
+      row.innerHTML = `
+        <input class="o-key" type="text" placeholder="option key" value="${escapeAttr(key)}">
+        <input class="o-value" type="text" placeholder="value" value="${escapeAttr(value)}">
+        <button class="btn small danger remove-option-btn" type="button">✕</button>
+      `;
+      row.querySelector('.remove-option-btn').addEventListener('click', () => row.remove());
+      $('#option-rows').appendChild(row);
+    }
+
+    function renderPresetButtons(show) {
+      const row = $('#preset-row');
+      row.innerHTML = '';
+      row.classList.toggle('hidden', !show);
+      if (!show) return;
+      for (const preset of PROVIDER_PRESETS) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'preset-btn';
+        btn.textContent = preset.label;
+        btn.addEventListener('click', () => applyPreset(preset));
+        row.appendChild(btn);
+      }
+    }
+
+    function applyPreset(preset) {
+      $('#f-name').value = preset.name;
+      $('#f-baseurl').value = preset.baseUrl || '';
+      $('#f-api').value = preset.api;
+      $('#model-rows').innerHTML = '';
+      for (const model of preset.models) addModelRow(model.id, model.name || '');
+      $('#option-rows').innerHTML = '';
+      Object.entries(preset.options || {}).forEach(([key, value]) => {
+        addOptionRow(key, stringifyOptionValue(value));
+      });
+    }
+
     $('#add-model-btn').addEventListener('click', () => addModelRow());
+    $('#add-option-btn').addEventListener('click', () => addOptionRow());
     $('#add-btn').addEventListener('click', () => openEditor(null));
     $('#editor-cancel').addEventListener('click', () => editor.classList.add('hidden'));
+    $('#fetch-models-btn').addEventListener('click', async () => {
+      const name = $('#f-name').value.trim();
+      if (!name || !editingName) {
+        toast('Save this provider first, then fetch its model list.', true);
+        return;
+      }
+      try {
+        const data = await api('POST', '/api/config/providers/' + encodeURIComponent(name) + '/fetch-models');
+        $('#model-rows').innerHTML = '';
+        for (const m of data.models || []) addModelRow(m.id, m.name || '');
+        toast('Fetched ' + (data.models || []).length + ' models');
+      } catch (err) { toast(err.message, true); }
+    });
     $('#editor-save').addEventListener('click', async () => {
       const name = $('#f-name').value.trim();
       const baseUrl = $('#f-baseurl').value.trim() || undefined;
@@ -442,15 +567,24 @@
       const apiKey = $('#f-key').value;
       const keyStorage = document.querySelector('input[name="keystorage"]:checked').value;
       const modelRows = [...$('#model-rows').querySelectorAll('.model-edit-row')];
+      const optionRows = [...$('#option-rows').querySelectorAll('.option-edit-row')];
       const models = modelRows.map(r => {
         const id = r.querySelector('.m-id').value.trim();
         const mname = r.querySelector('.m-name').value.trim();
         return id ? { id, ...(mname ? { name: mname } : {}) } : null;
       }).filter(Boolean);
+      const options = {};
+      for (const row of optionRows) {
+        const key = row.querySelector('.o-key').value.trim();
+        const raw = row.querySelector('.o-value').value.trim();
+        if (!key) continue;
+        options[key] = parseOptionValue(raw);
+      }
       if (!name) { toast('Provider name is required', true); return; }
       if (models.length === 0) { toast('At least one model is required', true); return; }
       const body = {
         baseUrl, api: apiType, models,
+        ...(Object.keys(options).length ? { options } : {}),
         ...(apiKey ? { apiKey, keyStorage } : {}),
       };
       try {
@@ -467,6 +601,20 @@
     }
     function escapeAttr(s) { return escapeHtml(s); }
     function cssEscape(s) { return String(s).replace(/["\\]/g, '\\$&'); }
+    function parseOptionValue(raw) {
+      if (raw === 'true') return true;
+      if (raw === 'false') return false;
+      if (raw !== '' && !Number.isNaN(Number(raw))) return Number(raw);
+      if ((raw.startsWith('{') && raw.endsWith('}')) || (raw.startsWith('[') && raw.endsWith(']'))) {
+        try { return JSON.parse(raw); } catch {}
+      }
+      return raw;
+    }
+    function stringifyOptionValue(value) {
+      if (value == null) return '';
+      if (typeof value === 'object') return JSON.stringify(value);
+      return String(value);
+    }
 
     // initial load
     refresh().catch(err => {

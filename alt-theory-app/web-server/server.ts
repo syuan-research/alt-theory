@@ -17,6 +17,7 @@ import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
 import {
   type PromptMode,
   type ResourceDiscoveryMode,
+  KB_DISABLED_DOMAIN,
 } from "../core/alt-theory-core.js";
 import { resolveDataDir } from "../core/data-dir.js";
 import {
@@ -65,6 +66,7 @@ import {
   agentConfigDir,
   ConfigValidationError,
   deleteProvider,
+  fetchProviderModels,
   getConfigStatus,
   listProviders,
   setActive,
@@ -256,6 +258,19 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     if (!requireLocalConfigMode(res)) return;
     res.json({ providers: listProviders(agentConfigDir()) });
   });
+  app.post("/api/config/providers/:provider/fetch-models", async (req, res) => {
+    if (!requireLocalConfigMode(res)) return;
+    try {
+      res.json({
+        models: await fetchProviderModels(agentConfigDir(), req.params.provider),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(error instanceof ConfigValidationError ? 400 : 500).json({
+        error: message,
+      });
+    }
+  });
   app.put("/api/config/providers/:provider", (req, res) => {
     if (!requireLocalConfigMode(res)) return;
     const provider = req.params.provider;
@@ -265,6 +280,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       apiKey?: unknown;
       keyStorage?: unknown;
       clearKey?: unknown;
+      options?: unknown;
       models?: unknown;
     };
     try {
@@ -274,6 +290,12 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           name: provider,
           baseUrl: typeof body.baseUrl === "string" ? body.baseUrl : undefined,
           api: typeof body.api === "string" ? (body.api as ApiType) : undefined,
+          options:
+            body.options &&
+            typeof body.options === "object" &&
+            !Array.isArray(body.options)
+              ? (body.options as Record<string, unknown>)
+              : undefined,
           apiKey: typeof body.apiKey === "string" ? body.apiKey : undefined,
           models: Array.isArray(body.models) ? (body.models as never[]) : [],
         },
@@ -1002,7 +1024,10 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           break;
         case "switch_kb":
           if (!attachedSessionId) {
-            if (!isKnownKbDomain(kbDir, msg.payload.domain)) {
+            if (
+              msg.payload.domain !== KB_DISABLED_DOMAIN &&
+              !isKnownKbDomain(kbDir, msg.payload.domain)
+            ) {
               sendError(send, new Error(`Unknown KB domain: ${msg.payload.domain}`));
               break;
             }

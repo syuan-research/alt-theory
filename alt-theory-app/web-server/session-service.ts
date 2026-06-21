@@ -6,6 +6,7 @@ import type {
 import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
 import {
   createAltTheorySession,
+  KB_DISABLED_DOMAIN,
   openAltTheorySession,
   type AssemblyManifest,
   type PromptMode,
@@ -280,7 +281,7 @@ export class SessionService {
   }
 
   setKbDomain(sessionId: string, domain: string): SessionSnapshot {
-    if (!isKnownKbDomain(this.config.kbDir, domain)) {
+    if (domain !== KB_DISABLED_DOMAIN && !isKnownKbDomain(this.config.kbDir, domain)) {
       throw new Error(`Unknown KB domain: ${domain}`);
     }
     const managed = this.requireSession(sessionId);
@@ -524,7 +525,8 @@ export class SessionService {
       managed.session.sessionManager.getEntries().map((entry) => entry.id)
     );
     const contextPrefix =
-      managed.selectors.kbDomain !== "all"
+      managed.selectors.kbDomain !== "all" &&
+      managed.selectors.kbDomain !== KB_DISABLED_DOMAIN
         ? `[Context: Search in ${this.config.kbDir}/${managed.selectors.kbDomain}/ unless user says otherwise.]\n`
         : "";
 
@@ -862,9 +864,11 @@ export class SessionService {
     const originalDomain =
       detail.manifest?.kb?.domain ?? detail.manifest?.kbDomain ?? null;
     const activeDomain =
-      originalDomain && isKnownKbDomain(this.config.kbDir, originalDomain)
-        ? originalDomain
-        : fallbackSelectors.kbDomain;
+      originalDomain === KB_DISABLED_DOMAIN
+        ? KB_DISABLED_DOMAIN
+        : originalDomain && isKnownKbDomain(this.config.kbDir, originalDomain)
+          ? originalDomain
+          : fallbackSelectors.kbDomain;
     const activeInstructionRef = this.activeInstructionRef(
       detail.manifest?.customInstruction?.ref,
       fallbackSelectors.customInstructionRef

@@ -534,6 +534,10 @@ body.view-researcher #session-detail {
   font-weight: 500;
 }
 
+.config-grid .config-advanced.hidden {
+  display: none;
+}
+
 #session-search {
   width: 100%;
   margin-top: 10px;

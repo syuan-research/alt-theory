@@ -113,6 +113,7 @@ export interface AssemblyManifest {
 
 export type ResourceDiscoveryMode = "clean" | "internal" | "dev-debug";
 export type PromptMode = "pi-default" | "alt-only";
+export const KB_DISABLED_DOMAIN = "none";
 
 export interface AltTheoryConfig extends SessionDirectories {
   /** Application/session context loaded into the system prompt */
@@ -304,9 +305,17 @@ async function createAltTheorySessionWithManager(
   if (customInstructionContent) {
     appendContent.push(`## Custom Instruction\n${customInstructionContent}`);
   }
-  appendContent.push(
-    `## Knowledge Base\nYour knowledge base is at: ${resolvedKbDir}`
-  );
+  const kbDomain = config.kbDomain ?? "all";
+  const kbEnabled = kbDomain !== KB_DISABLED_DOMAIN;
+  if (kbEnabled) {
+    appendContent.push(
+      `## Knowledge Base\nYour knowledge base is at: ${resolvedKbDir}`
+    );
+  } else {
+    appendContent.push(
+      "## Knowledge Base\nKnowledge-base folder retrieval is disabled for this session. You may still read user workspace files when requested."
+    );
+  }
   appendContent.push(
     [
       "## Alt Theory Tool Harness",
@@ -466,18 +475,20 @@ async function createAltTheorySessionWithManager(
         ? existsSync(resolvedPiPromptTemplatesDir)
         : false,
     },
-    kbDomain: config.kbDomain ?? "all",
+    kbDomain,
     kb: {
       rootDir: resolvedKbDir,
-      domain: config.kbDomain ?? "all",
+      domain: kbDomain,
       domainPath:
-        (config.kbDomain ?? "all") === "all"
+        kbDomain === "all" || kbDomain === KB_DISABLED_DOMAIN
           ? null
-          : resolve(resolvedKbDir, config.kbDomain ?? "all"),
+          : resolve(resolvedKbDir, kbDomain),
       domainExists:
-        (config.kbDomain ?? "all") === "all"
+        kbDomain === "all"
           ? true
-          : existsSync(resolve(resolvedKbDir, config.kbDomain ?? "all")),
+          : kbDomain === KB_DISABLED_DOMAIN
+            ? false
+            : existsSync(resolve(resolvedKbDir, kbDomain)),
     },
     sessionCwd: cwd,
     piSessionDir: resolvedPiSessionDir,

@@ -998,6 +998,8 @@ test("auth routes support cookie round trip without leaking account secrets", as
         defaultRoleCondition: null,
         defaultConsent: null,
       },
+      app: { mode: "hosted" },
+      localConfig: null,
     });
 
     const wrong = await fetch(`${baseUrl}/api/auth/login`, {
@@ -1044,6 +1046,8 @@ test("auth routes support cookie round trip without leaking account secrets", as
           quoteAfterAnonymization: true,
         },
       },
+      app: { mode: "hosted" },
+      localConfig: null,
     });
 
     const logout = await fetch(`${baseUrl}/api/auth/logout`, {

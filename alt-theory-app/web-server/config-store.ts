@@ -79,6 +79,7 @@ export interface ConfigProviderInput {
   name: string;
   baseUrl?: string;
   api?: ApiType;
+  options?: Record<string, unknown>;
   /** Literal key or env var name. Never a `!command` (rejected). */
   apiKey?: string;
   models: ConfigModel[];
@@ -89,6 +90,7 @@ export interface ProviderView {
   name: string;
   baseUrl?: string;
   api?: ApiType;
+  options?: Record<string, unknown>;
   hasKey: boolean;
   models: ConfigModel[];
   active: boolean;
@@ -99,6 +101,11 @@ export interface ConfigStatus {
   anyUsable: boolean;
   activeProvider: string | null;
   activeModel: string | null;
+}
+
+export interface FetchedModel {
+  id: string;
+  name?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -112,6 +119,7 @@ interface ModelsFile {
       baseUrl?: string;
       api?: string;
       apiKey?: string;
+      options?: Record<string, unknown>;
       models?: ConfigModel[];
     }
   >;
@@ -200,11 +208,69 @@ export function listProviders(agentDir: string): ProviderView[] {
       name,
       baseUrl: block.baseUrl,
       api: (block.api as ApiType | undefined) ?? undefined,
+      options:
+        block.options && typeof block.options === "object"
+          ? block.options
+          : undefined,
       hasKey: providerHasKey(agentDir, name),
       models: Array.isArray(block.models) ? block.models : [],
       active: active.provider === name,
     };
   });
+}
+
+export async function fetchProviderModels(
+  agentDir: string,
+  provider: string
+): Promise<FetchedModel[]> {
+  assertValidProviderName(provider);
+  const modelsFile = readModelsFile(agentDir);
+  const block = modelsFile.providers?.[provider];
+  if (!block) {
+    throw new ConfigValidationError(`Unknown provider: ${provider}`);
+  }
+  if (!block.baseUrl) {
+    throw new ConfigValidationError(
+      "Model refresh needs a Base URL. Use manual model entry for built-in providers."
+    );
+  }
+
+  const storage = readAuthStorage(agentDir);
+  storage.setFallbackResolver((name) =>
+    name === provider ? block.apiKey : undefined
+  );
+  const apiKey = await storage.getApiKey(provider);
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+  };
+  if (apiKey) {
+    if (block.api === "anthropic-messages") {
+      headers["x-api-key"] = apiKey;
+      headers["anthropic-version"] = "2023-06-01";
+    } else {
+      headers.Authorization = `Bearer ${apiKey}`;
+    }
+  }
+
+  const endpoint = `${block.baseUrl.replace(/\/+$/, "")}/models`;
+  const response = await fetch(endpoint, {
+    method: "GET",
+    headers,
+    signal: AbortSignal.timeout(10000),
+  });
+  if (!response.ok) {
+    throw new ConfigValidationError(
+      `Model refresh failed: HTTP ${response.status}`
+    );
+  }
+  const payload = (await response.json()) as unknown;
+  const candidates = normalizeModelListPayload(payload);
+  if (candidates.length === 0) {
+    throw new ConfigValidationError(
+      "Model refresh returned no recognizable model ids. Add models manually."
+    );
+  }
+  return candidates;
 }
 
 /**
@@ -224,6 +290,36 @@ export function getConfigStatus(agentDir: string): ConfigStatus {
 }
 
 export class ConfigValidationError extends Error {}
+
+function normalizeModelListPayload(payload: unknown): FetchedModel[] {
+  const source = Array.isArray(payload)
+    ? payload
+    : payload &&
+        typeof payload === "object" &&
+        Array.isArray((payload as { data?: unknown }).data)
+      ? (payload as { data: unknown[] }).data
+      : [];
+  const seen = new Set<string>();
+  const result: FetchedModel[] = [];
+  for (const item of source) {
+    const id =
+      typeof item === "string"
+        ? item
+        : item && typeof item === "object"
+          ? String(
+              (item as { id?: unknown; name?: unknown; model?: unknown }).id ??
+                (item as { id?: unknown; name?: unknown; model?: unknown }).name ??
+                (item as { id?: unknown; name?: unknown; model?: unknown }).model ??
+                ""
+            )
+          : "";
+    const normalized = id.trim();
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    result.push({ id: normalized, name: normalized });
+  }
+  return result;
+}
 
 function assertValidProviderName(name: string): void {
   if (!name || typeof name !== "string") {
@@ -276,6 +372,9 @@ export function upsertProvider(
   const providerBlock: Record<string, unknown> = { models: input.models };
   if (input.baseUrl) providerBlock.baseUrl = input.baseUrl;
   if (input.api) providerBlock.api = input.api;
+  if (input.options && Object.keys(input.options).length > 0) {
+    providerBlock.options = input.options;
+  }
 
   // Env-var-named keys live in models.json apiKey field (Pi resolves at runtime).
   // Literal keys live in auth.json (Pi's standard api_key credential).
@@ -288,6 +387,7 @@ export function upsertProvider(
     baseUrl?: string;
     api?: string;
     apiKey?: string;
+    options?: Record<string, unknown>;
     models?: ConfigModel[];
   };
   writeModelsFileAtomic(agentDir, models);
@@ -305,6 +405,7 @@ export function upsertProvider(
     name: input.name,
     baseUrl: input.baseUrl,
     api: input.api,
+    options: input.options,
     hasKey: options.clearKey
       ? false
       : options.keyStorage === "literal"

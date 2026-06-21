@@ -124,6 +124,7 @@ const privateExpiryHint = document.getElementById("private-expiry-hint");
 const runHintEl = document.getElementById("run-hint");
 const debugOnlyEls = Array.from(document.querySelectorAll(".debug-only"));
 const leftConfigSection = document.querySelector(".config-section");
+const configAdvancedEls = Array.from(document.querySelectorAll(".config-advanced"));
 const sessionBrowserSection = document.getElementById("session-browser-section");
 // Right-panel tabs that researcher/debug own.
 const recordsTabBtn = document.querySelector('.right-tab[data-right-tab="records"]');
@@ -182,6 +183,7 @@ let selectedWorkspaceFile = null;
 let pendingSummaryKind = "";
 let stagedWorkspacePaths = new Set();
 const NONE_VALUE = "__none__";
+const KB_OFF_VALUE = "none";
 const PANE_STORAGE_KEY = "alt-theory-workbench-panes";
 const paneState = {
   leftWidth: 264,
@@ -283,14 +285,10 @@ function applyViewMode(mode) {
   const isSimpleUser = isParticipant || isLocal;
   const isResearcherBase = mode === "researcher" || mode === "debug";
 
-  // Left panel: participant/local hides launch/config selectors; researcher/debug show them.
-  if (leftConfigSection) leftConfigSection.classList.toggle("hidden", isSimpleUser);
+  // Left panel: participant/local keep only the KB switch; researcher/debug show full config.
+  if (leftConfigSection) leftConfigSection.classList.remove("hidden");
+  configAdvancedEls.forEach((el) => el.classList.toggle("hidden", isSimpleUser));
   if (modelConfigLink) modelConfigLink.classList.toggle("hidden", !isLocal);
-  if (projectSelect) projectSelect.parentElement &&
-    (projectSelect.closest(".config-grid")?.classList.toggle("hidden", false));
-  const projectRow = projectSelect?.closest(".config-grid")
-    ?.querySelector('label[for="project-select"]');
-  if (projectRow) projectRow.classList.toggle("hidden", isSimpleUser);
 
   // Role-condition display: participant only.
   roleConditionSection.classList.toggle("hidden", !isParticipant);
@@ -570,7 +568,7 @@ async function fetchDiscovery() {
       : [];
 
     populateProjectSelect(projectCatalog, currentProjectId);
-    populateSelect(kbSelect, domains, "ep-core");
+    populateKbSelect(kbSelect, domains, currentDomain || "ep-core");
     populateSelect(soulSelect, souls, currentSoulSlug, { includeNone: true });
     populateSelect(rolePresetSelect, rolePresets, currentRolePresetSlug || "default", {
       includeNone: true,
@@ -1124,7 +1122,7 @@ function sessionSearchHaystack(session, projectNames) {
     session.sessionId,
     projectNames.get(session.projectId) || "unassigned",
     session.rolePresetSlug,
-    session.kbDomain,
+    displayKb(session.kbDomain),
     session.model,
     session.provider,
     display.alias,
@@ -1401,7 +1399,7 @@ function renderSessionDetail() {
         ["Turns", session.turnCount ?? "—"],
         ["Messages", session.messageCount ?? "—"],
         ["Project", projectDisplayName(session.projectId)],
-        ["KB", session.kbDomain || "—"],
+        ["KB", displayKb(session.kbDomain)],
         ["Role", session.rolePresetSlug || "—"],
         ["Model", formatProviderModel(session) || "—"],
         ["ID", session.sessionId || "—"],
@@ -1463,6 +1461,39 @@ function populateSelect(select, items, defaultSlug, options = {}) {
     select.appendChild(opt);
     return;
   }
+  for (const item of items) {
+    const opt = document.createElement("option");
+    opt.value = item.slug;
+    opt.textContent = item.displayName;
+    if (item.slug === defaultSlug) opt.selected = true;
+    select.appendChild(opt);
+  }
+}
+
+function populateKbSelect(select, items, defaultSlug) {
+  select.innerHTML = "";
+  select.dataset.hasOptions = "true";
+  const off = document.createElement("option");
+  off.value = KB_OFF_VALUE;
+  off.textContent = "Off";
+  off.title = "Do not ask the agent to search the built-in KB folder.";
+  select.appendChild(off);
+  const all = document.createElement("option");
+  all.value = "all";
+  all.textContent = "All";
+  all.title = "Allow the agent to use the whole built-in KB folder.";
+  select.appendChild(all);
+  populateSelectOptions(select, items, defaultSlug);
+  const values = Array.from(select.options).map((option) => option.value);
+  select.value = values.includes(defaultSlug)
+    ? defaultSlug
+    : values.includes("ep-core")
+      ? "ep-core"
+      : "all";
+}
+
+function populateSelectOptions(select, items, defaultSlug) {
+  if (items.length === 0) return;
   for (const item of items) {
     const opt = document.createElement("option");
     opt.value = item.slug;
@@ -1537,6 +1568,10 @@ function selectedSlug(value) {
 
 function displaySlug(value) {
   return value || "none";
+}
+
+function displayKb(value) {
+  return value === KB_OFF_VALUE ? "Off" : value || "—";
 }
 
 // ---------------------------------------------------------------------------
@@ -1780,7 +1815,7 @@ function renderProvenance(detail) {
     ["Workspace", detail.activeBranch?.workspaceMode || "shared"],
     ["Role", effective.rolePresetSlug || "none"],
     ["Soul", effective.soulSlug || "none"],
-    ["KB", effective.kbDomain || "all"],
+    ["KB", displayKb(effective.kbDomain || "all")],
     ["Instruction", effective.customInstruction?.ref || "none"],
     ["Warnings", warnings.length ? warnings.join(" | ") : "none"],
   ];
@@ -2027,7 +2062,7 @@ function renderManifest(manifest) {
   rtSessionId.onclick = () => copyToClipboard(manifest.sessionId, rtSessionId);
 
   // KB / Soul / Role preset
-  rtKb.textContent = manifest.kb?.domain || manifest.kbDomain || "—";
+  rtKb.textContent = displayKb(manifest.kb?.domain || manifest.kbDomain);
   rtSoul.textContent = displaySlug(manifest.soul?.slug);
   rtRolePreset.textContent = displaySlug(manifest.rolePreset?.slug);
 
@@ -2063,7 +2098,7 @@ function renderDraftSession(payload) {
   rtSessionId.onclick = null;
   currentVisibility = payload.visibility || "research";
   syncVisibilityBar(true); // draft: private toggle is editable
-  rtKb.textContent = currentDomain || "—";
+  rtKb.textContent = displayKb(currentDomain);
   rtSoul.textContent = displaySlug(currentSoulSlug);
   rtRolePreset.textContent = displaySlug(currentRolePresetSlug);
   rtModel.textContent = "—";
@@ -2211,7 +2246,7 @@ function pathStartsWith(path, base) {
 }
 
 function isKbPath(path) {
-  if (!path || !latestManifest?.kb) return false;
+  if (!path || !latestManifest?.kb || latestManifest.kb.domain === KB_OFF_VALUE) return false;
   return (
     pathStartsWith(path, latestManifest.kb.domainPath) ||
     pathStartsWith(path, latestManifest.kb.rootDir)
@@ -2308,7 +2343,7 @@ function handleWebSocketMessage(event) {
       isRunning = msg.payload.status === "running";
       currentVisibility = msg.payload.visibility || currentVisibility;
       syncVisibilityBar(true); // materialized but visibility stays editable (resume-leaf fix)
-      rtKb.textContent = currentDomain || "—";
+      rtKb.textContent = displayKb(currentDomain);
       rtSoul.textContent = displaySlug(currentSoulSlug);
       rtRolePreset.textContent = displaySlug(currentRolePresetSlug);
       syncSessionSelectors();
@@ -2350,7 +2385,7 @@ function handleWebSocketMessage(event) {
         msg.payload.projectId === undefined
           ? currentProjectId
           : msg.payload.projectId;
-      rtKb.textContent = currentDomain || rtKb.textContent;
+      rtKb.textContent = displayKb(currentDomain) || rtKb.textContent;
       rtSoul.textContent = displaySlug(currentSoulSlug);
       rtRolePreset.textContent = displaySlug(currentRolePresetSlug);
       syncSessionSelectors();
@@ -2694,7 +2729,7 @@ kbSelect.addEventListener("change", (e) => {
   if (!e.target.value) return;
   if (wsSafeSend(JSON.stringify({ type: "switch_kb", payload: { domain: e.target.value } }))) {
     currentDomain = e.target.value;
-    rtKb.textContent = currentDomain;
+    rtKb.textContent = displayKb(currentDomain);
   }
 });
 

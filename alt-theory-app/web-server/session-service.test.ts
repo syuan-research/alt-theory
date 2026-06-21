@@ -893,6 +893,28 @@ test("SessionService switches role and soul inside the same materialized session
   }
 });
 
+test("SessionService can disable kb-folder retrieval without disabling the session", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const snapshot = await service.createSession({
+    rolePresetSlug: "default",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+
+  try {
+    const switched = service.setKbDomain(snapshot.sessionId, "none");
+    assert.equal(switched.sessionId, snapshot.sessionId);
+    assert.equal(switched.currentDomain, "none");
+
+    const detail = readSessionDetail(fixture.dataDir, snapshot.sessionId);
+    assert.equal(detail?.effectiveConfig?.kbDomain, "none");
+    assert.deepEqual(detail?.configEvents.at(-1)?.changedFields, ["kbDomain"]);
+  } finally {
+    await service.disposeAll();
+  }
+});
+
 test("SessionService switches custom instruction inside the same materialized session", async () => {
   const fixture = setupFixture();
   const service = createTestService(fixture);
