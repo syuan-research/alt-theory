@@ -545,11 +545,6 @@ export class SessionService {
     const beforeEntryIds = new Set(
       managed.session.sessionManager.getEntries().map((entry) => entry.id)
     );
-    const contextPrefix =
-      managed.selectors.kbDomain !== "all" &&
-      managed.selectors.kbDomain !== KB_DISABLED_DOMAIN
-        ? `[Context: Search in ${this.config.kbDir}/${managed.selectors.kbDomain}/ unless user says otherwise.]\n`
-        : "";
 
     appendRunRecord(managed.manifest.recordsDir, {
       sessionId,
@@ -567,7 +562,7 @@ export class SessionService {
     });
 
     const completion = managed.session
-      .prompt(contextPrefix + text)
+      .prompt(text)
       .then(() => {
         const entries = managed.session.sessionManager
           .getEntries()

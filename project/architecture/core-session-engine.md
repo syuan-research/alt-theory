@@ -4,7 +4,7 @@ slug: core-session-engine
 scope: Alt Theory core session engine and Pi Coding Agent integration
 summary: Creates persistent, asset-configured Pi sessions through an application-owned service used by WebSocket adapters
 status: current
-last_reviewed: 2026-06-18
+last_reviewed: 2026-06-22
 tags: [core, backend, pi-agent, session]
 depends_on: []
 implements:
@@ -42,9 +42,9 @@ and Pi adapter prompt templates from `agent-assets/prompts/pi/`.
   provider.
 - **Prompt assembly**: the full set of backend-controlled model-visible
   instructions assembled at session creation.
-- **Per-turn context prefix**: current hardcoded backend text prepended to user
-  prompts when a specific KB domain is selected. This is a temporary hook
-  substitute, not a complete hook system.
+- **KB declaration**: neutral model-visible prompt assembly text that tells the
+  agent where the knowledge-base root is, or that KB-folder retrieval is
+  disabled. It does not tell the agent to search on every turn.
 - **Session metrics**: mutable counters plus Pi token/cost/context statistics.
 - **Session events**: append-only Alt Theory control/outcome events without
   conversation bodies.
@@ -87,8 +87,6 @@ flowchart LR
   Service --> Core[create/open AltTheorySession]
   Core --> Assets[ALTTHEORY + optional soul + optional role preset + KB + Pi prompts]
   Core --> Pi[Pi AgentSession]
-  Service --> Prefix[per-turn KB context prefix]
-  Prefix --> Pi
   Pi --> JSONL[history/*.jsonl]
   Core --> Manifest[records/assembly-manifest.json]
   Pi --> Metrics[records/session-metrics.json]
@@ -247,29 +245,31 @@ Alt Theory session ID. Explicit visual skill invocation is validated against
 the active Alt Theory skills, sent through Pi's native `/skill:name` command,
 and recorded as `skill_invoked`.
 
-### Per-Turn Context Prefix
+### KB Context Policy
 
-For each WebSocket `prompt` message, `server.ts` currently checks the selected
-KB domain. When the domain is not `all`, it prepends this hidden backend string
-to the user payload before calling `session.prompt()`:
+`SessionService.runPrompt()` sends the user's prompt text to Pi without adding a
+per-turn KB instruction. Earlier v0.5 code prepended a hidden
+`[Context: Search in ...]` string when a specific KB domain was selected; that
+behavior is retired because it made KB use an every-turn backend mandate.
 
-```text
-[Context: Search in {kbDir}/{domain}/ unless user says otherwise.]
-```
+Current behavior is:
 
-This means a domain-specific session currently sends a backend-augmented prompt
-on every user turn. The behavior is current architecture, but it is a known
-design weakness: it implements context policy as string concatenation in the
-WebSocket handler rather than through an explicit hook/context-policy layer.
+- session assembly declares the KB root, or declares KB-folder retrieval
+  disabled;
+- role presets and user instructions decide how aggressively to use KB;
+- KB domain selections are recorded as config events and reflected in session
+  metadata, but are not injected as hidden per-turn user-message text;
+- transcript projection still strips old `[Context: ...]` prefixes for
+  backward compatibility with already-written Pi JSONL histories.
 
-The user has decided that injected content should be visible in transcripts.
-Other hook-policy choices, such as timing, conditions, and experimental
-constant/variable status, remain unsettled.
+Code anchors:
 
-Code anchor:
-
-- `alt-theory-app/web-server/server.ts`: `prompt` handler builds
-  `contextPrefix + msg.payload`.
+- `alt-theory-app/core/alt-theory-core.ts`: neutral KB declaration in prompt
+  assembly.
+- `alt-theory-app/web-server/session-service.ts`: prompt forwarding and config
+  event recording.
+- `alt-theory-app/web-server/session-store.ts`: old hidden-prefix transcript
+  cleanup.
 
 ## 4. Tool Policy
 
@@ -553,10 +553,11 @@ context while leaving workspace file reading intact.
   Pi runtime after materialization but keep the same Alt Theory session ID and
   history. Before the first prompt, the same controls update draft state only.
   The browser also offers `None` for both layers, which injects no role/soul
-  prompt section. KB domain changes affect the next prompt prefix and append a
-  config event.
-- The per-turn KB context prefix is a temporary hardcoded hook substitute.
-  There is no explicit hook/context-policy layer yet.
+  prompt section. KB domain changes append a config event but no longer inject
+  per-turn prompt text.
+- There is no explicit hook/context-policy layer yet. KB-use policy currently
+  belongs in role presets and user-facing instructions, not hidden backend
+  string concatenation.
 - The assembly manifest hashes selected app context, soul, and role-preset
   files, but does not yet snapshot all injected content.
 - Runtime config is easy to mislaunch: generic Anthropic-compatible environment

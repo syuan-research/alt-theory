@@ -166,7 +166,9 @@ test("SessionService records ordinary run trajectory and Pi entry mappings", asy
       }>;
     }
   ).sessions.get(created.sessionId)!;
+  let promptText = "";
   managed.session.prompt = async (text: string) => {
+    promptText = text;
     managed.session.sessionManager.appendMessage({
       role: "user",
       content: [{ type: "text", text }],
@@ -182,6 +184,9 @@ test("SessionService records ordinary run trajectory and Pi entry mappings", asy
   try {
     const run = service.runPrompt(created.sessionId, "question");
     await run.completion;
+    assert.equal(promptText, "question");
+    assert.doesNotMatch(promptText, /\[Context:/);
+    assert.doesNotMatch(promptText, /Search in/);
     const recordsDir = service.getManifest(created.sessionId).recordsDir;
     assert.equal(readRunRecords(recordsDir).length, 2);
     const latest = latestRunSnapshots(recordsDir)[0];
