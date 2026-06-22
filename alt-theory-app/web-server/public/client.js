@@ -1964,23 +1964,36 @@ function connectWebSocket() {
       clearTimeout(reconnectTimer);
       reconnectTimer = null;
     }
-    setConnStatus("idle", reconnectSessionId ? "Reconnected" : "Connected");
-    // Resolve app identity first; view-mode gating decides whether discovery/sessions load.
-    resolveAuthAndApply().then((ready) => {
-      if (!ready || !loginOverlay.classList.contains("hidden")) return; // gated or redirecting
-      fetchDiscovery();
-      fetchSessions();
-      if (reconnectSessionId) {
-        wsSafeSend(
-          JSON.stringify({
-            type: "open_session",
-            payload: { sessionId: reconnectSessionId },
-          })
-        );
-      }
-    }).catch((err) => {
-      console.error("[auth] resolve failed:", err);
-    });
+    const resumingSessionId = reconnectSessionId;
+    setConnStatus("idle", resumingSessionId ? "Reconnected" : "Connected");
+    if (
+      toolStatusEl.textContent === "Reconnecting..." ||
+      toolStatusEl.textContent === "⚠ Not connected"
+    ) {
+      toolStatusEl.textContent = resumingSessionId ? "Restoring session…" : "";
+    }
+    // Match the manual "click session" path: resume immediately on socket open.
+    // Waiting for resolveAuthAndApply() let session_draft win the race first.
+    if (resumingSessionId) {
+      isRunning = true;
+      setControlsEnabled(false);
+      ws.send(
+        JSON.stringify({
+          type: "open_session",
+          payload: { sessionId: resumingSessionId },
+        })
+      );
+    }
+    // Auth badge / view mode still refresh in the background.
+    resolveAuthAndApply()
+      .then((ready) => {
+        if (!ready || !loginOverlay.classList.contains("hidden")) return;
+        fetchDiscovery();
+        fetchSessions();
+      })
+      .catch((err) => {
+        console.error("[auth] resolve failed:", err);
+      });
   };
 
   ws.onclose = () => {
@@ -2297,6 +2310,10 @@ function handleWebSocketMessage(event) {
   switch (msg.type) {
     // --- Session lifecycle ---
     case "session_draft":
+      // Every new socket gets a draft from the server. During auto-resume that
+      // wiped currentSessionId before open_session completed (refresh worked
+      // because the user opens the session manually after the page settles).
+      if (reconnectSessionId) break;
       renderDraftSession(msg.payload);
       break;
 
@@ -2323,6 +2340,12 @@ function handleWebSocketMessage(event) {
       currentProjectId = msg.payload.projectId ?? null;
       sessionReady = true;
       isRunning = msg.payload.status === "running";
+      if (
+        toolStatusEl.textContent === "Restoring session…" ||
+        toolStatusEl.textContent === "Reconnecting..."
+      ) {
+        toolStatusEl.textContent = "";
+      }
       currentVisibility = msg.payload.visibility || currentVisibility;
       syncVisibilityBar(true); // materialized but visibility stays editable (resume-leaf fix)
       rtKb.textContent = displayKb(currentDomain);
@@ -2542,6 +2565,10 @@ function handleWebSocketMessage(event) {
       pendingOpenSessionId = "";
       pendingAssetSwitch = false;
       isRunning = false;
+      if (reconnectSessionId) {
+        reconnectSessionId = "";
+        toolStatusEl.textContent = "";
+      }
       setConnStatus("error", "Error");
       setControlsEnabled(true);
       break;
