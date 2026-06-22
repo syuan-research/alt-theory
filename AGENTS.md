@@ -101,6 +101,20 @@ Use `alt-theory-account-admin` before creating, disabling, or inspecting pilot
 accounts. Do not print root passwords, API keys, login codes, account hashes,
 or raw participant transcripts.
 
+**VPS ops notes live in ignored archives, not in architecture.** Before deploy,
+restart, or 503/network diagnosis on the live pilot, read:
+
+```text
+_archives/private-evidence/2-deployment-and-operations/
+  2026-06-22-vps-networking-as-is.md           # current networking as-is
+  2026-06-22-cloudflared-503-mitigation-record.md
+  2026-06-15-contabo-mobile-deploy/              # original deploy evidence
+```
+
+That folder is gitignored on purpose (secrets, machine-specific state). Missing
+from `project/architecture/` is expected — agents must open the archive path
+above instead of guessing from product docs.
+
 ## Plan-Records And Workstreams
 
 Default workstream-local records live in:
