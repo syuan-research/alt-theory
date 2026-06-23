@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-06-23",
+  "sourcePolicy": "Recommended models are editable defaults. Verify close to release or friend-test date; do not infer current recommendations from the bundled Pi snapshot alone.",
+  "providers": [
+    {
+      "id": "openrouter",
+      "label": "OpenRouter",
+      "api": "openai-completions",
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "keyHint": "OpenRouter API key",
+      "recommendedModels": [
+        {
+          "id": "qwen/qwen3.7-max",
+          "displayName": "Qwen3.7 Max",
+          "status": "verified",
+          "checkedAt": "2026-06-23",
+          "source": "https://openrouter.ai/api/v1/models",
+          "notes": "Verified in OpenRouter model list as Qwen: Qwen3.7 Max."
+        }
+      ]
+    },
+    {
+      "id": "aliyun",
+      "label": "Aliyun DashScope",
+      "api": "openai-completions",
+      "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "keyHint": "DashScope API key",
+      "recommendedModels": [
+        {
+          "id": "qwen3.7-max",
+          "displayName": "Qwen3.7 Max",
+          "status": "candidate",
+          "checkedAt": "2026-06-23",
+          "source": "not yet verified against official Aliyun/DashScope model endpoint",
+          "notes": "Likely DashScope-compatible id pattern; verify before wiring into the GUI."
+        }
+      ]
+    },
+    {
+      "id": "opencode-go",
+      "label": "OpenCode Go",
+      "api": "openai-completions",
+      "baseUrl": "",
+      "keyHint": "OpenCode Go API key",
+      "recommendedModels": []
+    }
+  ]
+}
