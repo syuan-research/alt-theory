@@ -185,12 +185,32 @@ let stagedWorkspacePaths = new Set();
 const NONE_VALUE = "__none__";
 const KB_OFF_VALUE = "none";
 const PANE_STORAGE_KEY = "alt-theory-workbench-panes";
+const PANE_MIN_LEFT_WIDTH = 220;
+const PANE_MAX_LEFT_WIDTH = 420;
+const PANE_MIN_RIGHT_WIDTH = 260;
+const PANE_MIN_CENTER_WIDTH = 320;
 const paneState = {
   leftWidth: 264,
   rightWidth: 320,
   leftCollapsed: false,
   rightCollapsed: false,
 };
+
+function getRightPanelMaxWidth() {
+  if (window.innerWidth <= 1024) return PANE_MIN_RIGHT_WIDTH;
+  const leftWidth = paneState.leftCollapsed ? 0 : paneState.leftWidth;
+  return Math.max(
+    PANE_MIN_RIGHT_WIDTH,
+    window.innerWidth - leftWidth - PANE_MIN_CENTER_WIDTH
+  );
+}
+
+function clampRightPanelWidth(width) {
+  return Math.max(
+    PANE_MIN_RIGHT_WIDTH,
+    Math.min(getRightPanelMaxWidth(), width)
+  );
+}
 
 // ---------------------------------------------------------------------------
 // View-mode state (participant / researcher / debug)
@@ -3205,6 +3225,7 @@ for (const button of rightTabBtns) {
 }
 
 function applyPaneState() {
+  paneState.rightWidth = clampRightPanelWidth(paneState.rightWidth);
   document.documentElement.style.setProperty(
     "--left-width",
     `${paneState.leftWidth}px`
@@ -3240,9 +3261,15 @@ function beginResize(which, startX) {
   const onMove = (event) => {
     if (window.innerWidth <= 1024) return;
     if (which === "left") {
-      paneState.leftWidth = Math.max(220, Math.min(420, startLeft + (event.clientX - startX)));
+      paneState.leftWidth = Math.max(
+        PANE_MIN_LEFT_WIDTH,
+        Math.min(PANE_MAX_LEFT_WIDTH, startLeft + (event.clientX - startX))
+      );
+      paneState.rightWidth = clampRightPanelWidth(paneState.rightWidth);
     } else {
-      paneState.rightWidth = Math.max(260, Math.min(460, startRight - (event.clientX - startX)));
+      paneState.rightWidth = clampRightPanelWidth(
+        startRight - (event.clientX - startX)
+      );
     }
     applyPaneState();
   };

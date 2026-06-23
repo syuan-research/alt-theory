@@ -67,6 +67,7 @@ import {
   continueAgentTurnAfterModelSwitch,
   loadModelFallbackConfig,
   ModelFallbackCoordinator,
+  type ModelRef,
   resolveModelFallbackStatePath,
 } from "../core/model-fallback.js";
 
@@ -611,6 +612,7 @@ export class SessionService {
     }
 
     managed.busy = true;
+    managed.fallbackAttempts = 0;
     managed.counters.messageCount++;
     const turnId =
       options.turnId ?? formatCounter("turn", managed.nextTurnIndex++);
@@ -1337,17 +1339,24 @@ export class SessionService {
       error
     );
 
-    const next = coordinator.resolveNext(currentModel.id);
-    if (!next) {
-      return false;
-    }
-
-    const resolved = managed.session.modelRegistry.find(
-      next.provider,
-      next.modelId
-    );
-    if (!resolved) {
-      return false;
+    let chainCursor = currentModel.id;
+    let next: ModelRef | null = null;
+    let resolved = null;
+    const triedModelIds = new Set<string>();
+    while (true) {
+      next = coordinator.resolveNext(chainCursor);
+      if (!next || triedModelIds.has(next.modelId)) {
+        return false;
+      }
+      triedModelIds.add(next.modelId);
+      resolved = managed.session.modelRegistry.find(
+        next.provider,
+        next.modelId
+      );
+      if (resolved) {
+        break;
+      }
+      chainCursor = next.modelId;
     }
 
     await managed.session.setModel(resolved);

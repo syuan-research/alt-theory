@@ -3,7 +3,6 @@
   "provider": "qwen-bailian-beijing",
   "maxFallbacksPerRun": 8,
   "chain": [
-    "qwen3.7-max-2026-05-20",
     "qwen3.7-max-2026-06-08",
     "qwen3.7-max-2026-05-17",
     "qwen3.7-max-preview",
@@ -33,6 +32,7 @@
           "allocationquota",
           "free quota",
           "free tier",
+          "free tier of the model",
           "quota has been exhausted",
           "quota exhausted",
           "tier exhausted",

@@ -63,6 +63,7 @@ const DEFAULT_RULES: ModelFallbackRule[] = [
         "allocationquota",
         "free quota",
         "free tier",
+        "free tier of the model",
         "quota has been exhausted",
         "quota exhausted",
         "tier exhausted",
