@@ -1,0 +1,44 @@
+{
+  "enabled": true,
+  "provider": "qwen-bailian-beijing",
+  "maxFallbacksPerRun": 8,
+  "chain": [
+    "qwen3.7-max-2026-05-20",
+    "qwen3.7-max-2026-06-08",
+    "qwen3.7-max-2026-05-17",
+    "qwen3.7-max-preview",
+    "qwen3.6-max-preview",
+    "glm-5.2",
+    "qwen3.7-plus"
+  ],
+  "rules": [
+    {
+      "id": "auth-failure",
+      "action": "fail",
+      "match": {
+        "anyPattern": [
+          "401",
+          "invalid api key",
+          "incorrect api key",
+          "authentication",
+          "unauthorized"
+        ]
+      }
+    },
+    {
+      "id": "dashscope-allocation-quota",
+      "action": "exclude_and_fallback",
+      "match": {
+        "anyPattern": [
+          "allocationquota",
+          "free quota",
+          "free tier",
+          "quota has been exhausted",
+          "quota exhausted",
+          "tier exhausted",
+          "insufficient quota"
+        ]
+      }
+    }
+  ]
+}

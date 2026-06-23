@@ -806,6 +806,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     resolveRuntimeModelConfig: localMode
       ? () => requireLocalRuntimeModelConfig()
       : undefined,
+    modelFallbackConfigPath:
+      process.env.ALT_THEORY_MODEL_FALLBACK_PATH ?? null,
   });
 
   function requireLocalRuntimeModelConfig(): RuntimeModelConfig {

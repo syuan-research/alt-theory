@@ -17,7 +17,8 @@ export type SessionEventType =
   | "latest_turn_deleted"
   | "run_completed"
   | "run_failed"
-  | "run_aborted";
+  | "run_aborted"
+  | "model_fallback";
 
 export interface SessionEventInput {
   sessionId: string;

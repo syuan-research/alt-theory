@@ -16,8 +16,10 @@ import {
   allocateReadableSessionId,
   createSessionDirs,
   getSessionDirs,
+  writeJsonAtomic,
   type SessionDirectories,
 } from "../core/data-dir.js";
+import { join } from "path";
 import type { AgentAssetPaths } from "../core/agent-assets.js";
 import {
   isKnownKbDomain,
@@ -61,6 +63,12 @@ import type {
   SessionSnapshot,
   TranscriptMessage,
 } from "./websocket-protocol.js";
+import {
+  continueAgentTurnAfterModelSwitch,
+  loadModelFallbackConfig,
+  ModelFallbackCoordinator,
+  resolveModelFallbackStatePath,
+} from "../core/model-fallback.js";
 
 export class SessionBusyError extends Error {
   readonly code = "session_busy";
@@ -93,6 +101,7 @@ export interface SessionServiceConfig {
   coreSoulModulesDir?: string;
   coreSoulModules?: string[];
   resolveRuntimeModelConfig?: () => RuntimeModelConfig;
+  modelFallbackConfigPath?: string | null;
 }
 
 interface RuntimeModelConfig {
@@ -163,12 +172,28 @@ interface ManagedSession {
   nextRevisionIndex: number;
   nextRunIndex: number;
   branchId: string;
+  fallbackAttempts: number;
 }
 
 export class SessionService {
   private readonly sessions = new Map<string, ManagedSession>();
+  private readonly modelFallback: ModelFallbackCoordinator | null;
 
-  constructor(private readonly config: SessionServiceConfig) {}
+  constructor(private readonly config: SessionServiceConfig) {
+    const fallbackConfigPath = this.config.modelFallbackConfigPath;
+    if (fallbackConfigPath) {
+      const fallbackConfig = loadModelFallbackConfig(fallbackConfigPath);
+      this.modelFallback =
+        fallbackConfig && fallbackConfig.enabled
+          ? new ModelFallbackCoordinator(
+              fallbackConfig,
+              resolveModelFallbackStatePath(this.config.dataDir)
+            )
+          : null;
+    } else {
+      this.modelFallback = null;
+    }
+  }
 
   private resolveRuntimeModelConfig(): RuntimeModelConfig {
     return (
@@ -181,11 +206,62 @@ export class SessionService {
     );
   }
 
+  private resolveEffectiveRuntimeModelConfig(): RuntimeModelConfig {
+    const base = this.resolveRuntimeModelConfig();
+    const coordinator = this.modelFallback;
+    if (
+      !coordinator?.isEnabled() ||
+      !base.modelProvider ||
+      !base.modelId ||
+      base.modelProvider !== coordinator.provider
+    ) {
+      return base;
+    }
+    const usable = coordinator.resolveFirstUsableModel(base.modelId);
+    if (!usable) {
+      return base;
+    }
+    return {
+      ...base,
+      modelProvider: usable.provider,
+      modelId: usable.modelId,
+    };
+  }
+
+  private persistManifestModel(managed: ManagedSession): void {
+    writeJsonAtomic(
+      join(managed.manifest.recordsDir, "assembly-manifest.json"),
+      managed.manifest
+    );
+    if (managed.openedFrom === "existing") {
+      writeJsonAtomic(
+        join(managed.manifest.recordsDir, "resume-manifest.json"),
+        managed.manifest
+      );
+    }
+  }
+
+  private syncManifestModelFromSession(managed: ManagedSession): void {
+    const current = managed.session.model;
+    if (!current) {
+      return;
+    }
+    if (
+      managed.manifest.provider === current.provider &&
+      managed.manifest.model === current.id
+    ) {
+      return;
+    }
+    managed.manifest.provider = current.provider;
+    managed.manifest.model = current.id;
+    this.persistManifestModel(managed);
+  }
+
   async createSession(
     selectors: SessionSelectors,
     metadata: SessionCreationMetadata = {}
   ): Promise<SessionSnapshot> {
-    const runtimeModelConfig = this.resolveRuntimeModelConfig();
+    const runtimeModelConfig = this.resolveEffectiveRuntimeModelConfig();
     const sessionId = allocateReadableSessionId(this.config.dataDir, {
       rolePresetSlug: selectors.rolePresetSlug,
       soulSlug: selectors.soulSlug,
@@ -760,7 +836,7 @@ export class SessionService {
     sessionDirs: SessionDirectories,
     selectors: SessionSelectors,
     metadata: SessionCreationMetadata = {},
-    runtimeModelConfig = this.resolveRuntimeModelConfig()
+    runtimeModelConfig = this.resolveEffectiveRuntimeModelConfig()
   ): Promise<ManagedSession> {
     const rolePresetPath = this.resolveOptionalRolePresetPath(
       selectors.rolePresetSlug
@@ -910,7 +986,7 @@ export class SessionService {
       coreSoulPath: this.config.coreSoulPath,
       coreSoulModulesDir: this.config.coreSoulModulesDir,
       coreSoulModules: this.config.coreSoulModules,
-      ...this.resolveRuntimeModelConfig(),
+      ...this.resolveEffectiveRuntimeModelConfig(),
       thinkingLevel: this.config.thinkingLevel,
       promptMode: this.config.promptMode,
       resourceDiscovery: this.config.resourceDiscovery,
@@ -1044,7 +1120,7 @@ export class SessionService {
       coreSoulPath: this.config.coreSoulPath,
       coreSoulModulesDir: this.config.coreSoulModulesDir,
       coreSoulModules: this.config.coreSoulModules,
-      ...this.resolveRuntimeModelConfig(),
+      ...this.resolveEffectiveRuntimeModelConfig(),
       thinkingLevel: this.config.thinkingLevel,
       promptMode: this.config.promptMode,
       resourceDiscovery: this.config.resourceDiscovery,
@@ -1111,7 +1187,7 @@ export class SessionService {
       coreSoulPath: this.config.coreSoulPath,
       coreSoulModulesDir: this.config.coreSoulModulesDir,
       coreSoulModules: this.config.coreSoulModules,
-      ...this.resolveRuntimeModelConfig(),
+      ...this.resolveEffectiveRuntimeModelConfig(),
       thinkingLevel: this.config.thinkingLevel,
       promptMode: this.config.promptMode,
       resourceDiscovery: this.config.resourceDiscovery,
@@ -1164,6 +1240,7 @@ export class SessionService {
       nextRunIndex:
         maxCounter(persistedRuns.map((run) => run.runId), "run") + 1,
       branchId: args.branchId ?? "main",
+      fallbackAttempts: 0,
     };
     managed.internalUnsubscribe = managed.session.subscribe((event) =>
       this.handleAgentEvent(managed, event)
@@ -1206,6 +1283,91 @@ export class SessionService {
       );
     }
     return latest as RunRecord & { userEntryId: string };
+  }
+
+  private async finalizeRunFailure(managed: ManagedSession): Promise<void> {
+    await managed.session.waitForRetry();
+    const error = managed.session.state.errorMessage;
+    if (!error) {
+      return;
+    }
+    if (await this.tryModelFallback(managed, error)) {
+      return;
+    }
+    managed.busy = false;
+    appendSessionEvent(managed.manifest.recordsDir, {
+      sessionId: managed.manifest.sessionId,
+      type: "run_failed",
+      details: { error },
+    });
+    this.emit(managed, { type: "run_failed", payload: { error } });
+  }
+
+  private async tryModelFallback(
+    managed: ManagedSession,
+    error: string
+  ): Promise<boolean> {
+    const coordinator = this.modelFallback;
+    if (!coordinator?.isEnabled()) {
+      return false;
+    }
+
+    const currentModel = managed.session.model;
+    if (!currentModel) {
+      return false;
+    }
+    if (currentModel.provider !== coordinator.provider) {
+      return false;
+    }
+
+    const decision = coordinator.evaluate(error);
+    if (decision.action !== "exclude_and_fallback") {
+      return false;
+    }
+
+    managed.fallbackAttempts += 1;
+    if (managed.fallbackAttempts > coordinator.maxFallbacksPerRun) {
+      return false;
+    }
+
+    coordinator.exclude(
+      currentModel.provider,
+      currentModel.id,
+      decision.ruleId ?? "unknown",
+      error
+    );
+
+    const next = coordinator.resolveNext(currentModel.id);
+    if (!next) {
+      return false;
+    }
+
+    const resolved = managed.session.modelRegistry.find(
+      next.provider,
+      next.modelId
+    );
+    if (!resolved) {
+      return false;
+    }
+
+    await managed.session.setModel(resolved);
+    managed.manifest.provider = next.provider;
+    managed.manifest.model = next.modelId;
+    this.persistManifestModel(managed);
+
+    appendSessionEvent(managed.manifest.recordsDir, {
+      sessionId: managed.manifest.sessionId,
+      type: "model_fallback",
+      details: {
+        fromModel: currentModel.id,
+        toModel: next.modelId,
+        ruleId: decision.ruleId ?? "unknown",
+        error,
+      },
+    });
+
+    continueAgentTurnAfterModelSwitch(managed.session);
+    return true;
   }
 
   private handleAgentEvent(
@@ -1251,16 +1413,15 @@ export class SessionService {
         });
         break;
       case "agent_end": {
-        managed.busy = false;
         const error = managed.session.state.errorMessage;
         if (error) {
-          appendSessionEvent(managed.manifest.recordsDir, {
-            sessionId: managed.manifest.sessionId,
-            type: "run_failed",
-            details: { error },
-          });
-          this.emit(managed, { type: "run_failed", payload: { error } });
+          setTimeout(() => {
+            void this.finalizeRunFailure(managed);
+          }, 0);
         } else {
+          managed.busy = false;
+          managed.fallbackAttempts = 0;
+          this.syncManifestModelFromSession(managed);
           managed.counters.turnCount++;
           const metrics = this.persistMetrics(managed);
           appendSessionEvent(managed.manifest.recordsDir, {
