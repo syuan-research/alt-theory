@@ -299,7 +299,7 @@
         <button class="add-model-btn" id="add-model-btn">+ Add model</button>
         <button class="add-model-btn" id="fetch-models-btn">Fetch model list</button>
         <div class="hint" style="font-size:11px;color:#8a8a90;margin-top:6px;">
-          Built-in presets are enough to start; fetching is optional and manual model entry always works.
+          Presets fill provider settings only. Fetch models when supported, or enter the current model ID manually.
         </div>
       </div>
 
@@ -333,41 +333,35 @@
         name: 'opencode-go',
         api: 'openai-completions',
         baseUrl: '',
-        models: [
-          { id: 'mimo-v2.5-pro', name: 'MiMo V2.5 Pro' },
-          { id: 'qwen3.6-plus', name: 'Qwen3.6 Plus' }
-        ]
+        models: []
       },
       {
         label: 'OpenAI',
         name: 'openai',
         api: 'openai-responses',
         baseUrl: 'https://api.openai.com/v1',
-        models: [{ id: 'gpt-4.1' }, { id: 'gpt-4.1-mini' }]
+        models: []
       },
       {
         label: 'Anthropic',
         name: 'anthropic',
         api: 'anthropic-messages',
         baseUrl: 'https://api.anthropic.com',
-        models: [{ id: 'claude-sonnet-4-20250514' }]
+        models: []
       },
       {
-        label: 'OpenRouter Qwen',
+        label: 'OpenRouter',
         name: 'openrouter',
         api: 'openai-completions',
         baseUrl: 'https://openrouter.ai/api/v1',
-        models: [
-          { id: 'qwen/qwen3-max', name: 'Qwen3 Max' },
-          { id: 'qwen/qwen3-max-thinking', name: 'Qwen3 Max Thinking' }
-        ]
+        models: []
       },
       {
         label: 'MiniMax',
         name: 'minimax',
         api: 'anthropic-messages',
         baseUrl: 'https://api.minimaxi.com/anthropic',
-        models: [{ id: 'minimax-m3' }, { id: 'minimax-m2.7' }],
+        models: [],
         options: { setCacheKey: true }
       }
     ];
@@ -575,7 +569,11 @@
       $('#f-baseurl').value = preset.baseUrl || '';
       $('#f-api').value = preset.api;
       $('#model-rows').innerHTML = '';
-      for (const model of preset.models) addModelRow(model.id, model.name || '');
+      if ((preset.models || []).length === 0) {
+        addModelRow();
+      } else {
+        for (const model of preset.models) addModelRow(model.id, model.name || '');
+      }
       $('#option-rows').innerHTML = '';
       Object.entries(preset.options || {}).forEach(([key, value]) => {
         addOptionRow(key, stringifyOptionValue(value));
