@@ -326,7 +326,18 @@
     const statusBox = $('#status-box');
     const editor = $('#editor');
     let editingName = null; // null = adding, string = editing existing
+    let activeStatus = { provider: null, model: null, usable: false };
     const PROVIDER_PRESETS = [
+      {
+        label: 'OpenCode Go',
+        name: 'opencode-go',
+        api: 'openai-completions',
+        baseUrl: '',
+        models: [
+          { id: 'mimo-v2.5-pro', name: 'MiMo V2.5 Pro' },
+          { id: 'qwen3.6-plus', name: 'Qwen3.6 Plus' }
+        ]
+      },
       {
         label: 'OpenAI',
         name: 'openai',
@@ -342,11 +353,14 @@
         models: [{ id: 'claude-sonnet-4-20250514' }]
       },
       {
-        label: 'OpenRouter',
+        label: 'OpenRouter Qwen',
         name: 'openrouter',
         api: 'openai-completions',
         baseUrl: 'https://openrouter.ai/api/v1',
-        models: [{ id: 'anthropic/claude-sonnet-4' }]
+        models: [
+          { id: 'qwen/qwen3-max', name: 'Qwen3 Max' },
+          { id: 'qwen/qwen3-max-thinking', name: 'Qwen3 Max Thinking' }
+        ]
       },
       {
         label: 'MiniMax',
@@ -387,13 +401,23 @@
     }
 
     function renderStatus(status) {
-      const msg = status.anyUsable
-        ? `<span class="ok">Ready.</span> At least one provider has a key.`
-        : `<span class="warn">No provider has a key yet.</span> Add one below to start using the app.`;
+      activeStatus = {
+        provider: status.activeProvider || null,
+        model: status.activeModel || null,
+        usable: Boolean(status.activeUsable),
+      };
+      const msg = status.activeUsable
+        ? `<span class="ok">Ready.</span> Active model is usable for new sessions.`
+        : status.anyUsable
+          ? `<span class="warn">Provider saved.</span> Choose a model and set it active before starting a session.`
+          : `<span class="warn">No usable provider yet.</span> Add a provider key to start using the app.`;
       const active = (status.activeProvider && status.activeModel)
         ? ` Active: <strong>${escapeHtml(status.activeProvider)} / ${escapeHtml(status.activeModel)}</strong>.`
         : ' No active model selected.';
-      statusBox.innerHTML = msg + active;
+      const issue = status.activeIssue
+        ? ` <span class="warn">${escapeHtml(status.activeIssue)}</span>`
+        : '';
+      statusBox.innerHTML = msg + active + issue;
     }
 
     function renderProviders(providers) {
@@ -411,10 +435,12 @@
         if (p.api) badges.push(`<span class="badge">${escapeHtml(p.api)}</span>`);
         if (p.options && Object.keys(p.options).length > 0) badges.push('<span class="badge">options</span>');
         const modelOpts = (p.models || [])
-          .map(m => `<option value="${escapeHtml(m.id)}">${escapeHtml(m.id)}</option>`).join('');
-        const selectedModel = (p.active && statusBox.textContent.includes(p.name))
-          ? '' : (p.models[0]?.id || '');
-        // Determine the active model id from status text is fragile; instead show a selector.
+          .map(m => {
+            const selected = p.name === activeStatus.provider && m.id === activeStatus.model
+              ? ' selected'
+              : '';
+            return `<option value="${escapeHtml(m.id)}"${selected}>${escapeHtml(m.name || m.id)}</option>`;
+          }).join('');
         card.innerHTML = `
           <div class="provider-card-head">
             <div>
@@ -490,7 +516,7 @@
           if (p.api) $('#f-api').value = p.api;
           if (p.hasKey) {
             $('#f-key').placeholder = 'key already saved; leave blank to keep';
-            $('#key-hint').textContent = 'A key is already saved for this provider. For security it is not shown here; leave blank to keep it, or paste a new key to replace it.';
+            $('#key-hint').textContent = 'A key is already saved. The field stays blank by design; leave it blank to keep the key, or paste a new key to replace it.';
           }
           $('#model-rows').innerHTML = '';
           if ((p.models || []).length === 0) { addModelRow(); return; }

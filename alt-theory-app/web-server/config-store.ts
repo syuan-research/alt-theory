@@ -103,6 +103,8 @@ export interface ProviderView {
 export interface ConfigStatus {
   agentDir: string;
   anyUsable: boolean;
+  activeUsable: boolean;
+  activeIssue: string | null;
   activeProvider: string | null;
   activeModel: string | null;
 }
@@ -241,6 +243,15 @@ function customProviderNeedsApiKey(
   block: { baseUrl?: string; models?: ConfigModel[] }
 ): boolean {
   return !isBuiltInProvider(name) && (block.models ?? []).length > 0;
+}
+
+function providerHasRuntimeAuth(
+  agentDir: string,
+  provider: string,
+  block: { apiKey?: string }
+): boolean {
+  if (providerHasKey(agentDir, provider)) return true;
+  return Boolean(block.apiKey && block.apiKey !== provider);
 }
 
 function normalizeRuntimeBaseUrl(api: string | undefined, baseUrl: string | undefined): string | undefined {
@@ -385,7 +396,7 @@ export function getRuntimeModelConfig(agentDir: string): RuntimeModelConfig {
   const knownIds = (block?.models ?? []).map((m) => m.id);
   if (!block || !knownIds.includes(active.model)) return {};
   const hasStoredKey = providerHasKey(agentDir, active.provider);
-  if (!hasStoredKey && !block.apiKey) {
+  if (!providerHasRuntimeAuth(agentDir, active.provider, block)) {
     return {};
   }
   if (block.apiKey === active.provider && !hasStoredKey) {
@@ -408,12 +419,30 @@ export function getRuntimeModelConfig(agentDir: string): RuntimeModelConfig {
  * Drives the first-run landing decision.
  */
 export function getConfigStatus(agentDir: string): ConfigStatus {
-  const providers = listProviders(agentDir);
-  const anyUsable = providers.some((p) => p.hasKey && p.models.length > 0);
+  listProviders(agentDir);
+  const models = readModelsFile(agentDir);
+  const anyUsable = Object.entries(models.providers ?? {}).some(
+    ([name, block]) =>
+      (block.models ?? []).length > 0 &&
+      providerHasRuntimeAuth(agentDir, name, block)
+  );
   const active = readActive(agentDir);
+  const runtime = getRuntimeModelConfig(agentDir);
+  const activeUsable = Boolean(
+    active.provider &&
+      active.model &&
+      runtime.modelProvider === active.provider &&
+      runtime.modelId === active.model
+  );
+  const activeIssue =
+    active.provider && active.model && !activeUsable
+      ? "Active provider/model is not usable. Save a key and choose a model before starting a session."
+      : null;
   return {
     agentDir,
     anyUsable,
+    activeUsable,
+    activeIssue,
     activeProvider: active.provider,
     activeModel: active.model,
   };
@@ -608,6 +637,11 @@ export async function setActive(
   if (!knownIds.includes(model)) {
     throw new ConfigValidationError(
       `Model '${model}' is not defined under provider '${provider}'`
+    );
+  }
+  if (!providerHasRuntimeAuth(agentDir, provider, block)) {
+    throw new ConfigValidationError(
+      `Provider '${provider}' needs a saved API key or env-var key before it can be active`
     );
   }
   await writeActive(agentDir, provider, model);

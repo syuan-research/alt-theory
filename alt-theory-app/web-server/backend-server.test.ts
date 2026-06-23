@@ -50,6 +50,7 @@ import {
   type AccountRecord,
 } from "./auth-accounts.js";
 import {
+  getConfigStatus,
   getRuntimeModelConfig,
   setActive,
   upsertProvider,
@@ -141,6 +142,7 @@ test("local config runtime ignores literal-key marker when auth key is missing",
     },
     { keyStorage: "literal" }
   );
+  await setActive(agentDir, "minimax", "minimax-m3");
   upsertProvider(
     agentDir,
     {
@@ -151,9 +153,24 @@ test("local config runtime ignores literal-key marker when auth key is missing",
     },
     { clearKey: true }
   );
-  await setActive(agentDir, "minimax", "minimax-m3");
 
   assert.deepEqual(getRuntimeModelConfig(agentDir), {});
+});
+
+test("local config refuses to activate a keyless provider", async () => {
+  const agentDir = mkdtempSync(join(tmpdir(), "alt-theory-pi-config-"));
+  upsertProvider(agentDir, {
+    name: "opencode-go",
+    models: [{ id: "mimo-v2.5-pro" }],
+  });
+
+  await assert.rejects(
+    () => setActive(agentDir, "opencode-go", "mimo-v2.5-pro"),
+    /needs a saved API key or env-var key/
+  );
+  const status = getConfigStatus(agentDir);
+  assert.equal(status.anyUsable, false);
+  assert.equal(status.activeUsable, false);
 });
 
 test("local config removes stale invalid custom providers before runtime", async () => {
@@ -2136,6 +2153,87 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
     });
   }
   assert.equal(existsSync(join(root, "data", "sessions")), false);
+});
+
+test("local mode refuses prompt materialization without usable active model", async () => {
+  const root = mkdtempSync(join(tmpdir(), "alt-theory-local-config-"));
+  const dataDir = join(root, "data");
+  const agentDir = join(root, "pi-agent");
+  const rolePresets = join(root, "role-presets");
+  const souls = join(root, "soul");
+  const kb = join(root, "kb");
+  const appContextPath = join(root, "ALTTHEORY.md");
+  mkdirSync(join(kb, "ep-core"), { recursive: true });
+  mkdirSync(rolePresets, { recursive: true });
+  mkdirSync(souls, { recursive: true });
+  writeFileSync(appContextPath, "Local app context", "utf-8");
+  writeFileSync(join(rolePresets, "default.md"), "Default role", "utf-8");
+  writeFileSync(join(souls, "soul-latest.md"), "Latest soul", "utf-8");
+
+  const previousMode = process.env.ALT_THEORY_MODE;
+  const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+  process.env.ALT_THEORY_MODE = "local";
+  process.env.PI_CODING_AGENT_DIR = agentDir;
+
+  const instance = createAltTheoryServer({
+    dataDir,
+    appContextPath,
+    soulDir: souls,
+    rolePresetsDir: rolePresets,
+    kbDir: kb,
+    readOnly: true,
+  });
+
+  await new Promise<void>((resolveListen) => {
+    instance.httpServer.listen(0, "127.0.0.1", resolveListen);
+  });
+  const address = instance.httpServer.address();
+  assert.ok(address && typeof address === "object");
+
+  function waitForType(ws: WebSocket, type: string): Promise<any> {
+    return new Promise((resolveMessage, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error(`Timed out waiting for ${type}`)),
+        10_000
+      );
+      const listener = (data: WebSocket.RawData) => {
+        const message = JSON.parse(data.toString());
+        if (message.type === type) {
+          clearTimeout(timer);
+          ws.off("message", listener);
+          resolveMessage(message);
+        }
+      };
+      ws.on("message", listener);
+    });
+  }
+
+  const ws = new WebSocket(`ws://127.0.0.1:${address.port}`);
+  try {
+    await waitForType(ws, "session_draft");
+    const failed = waitForType(ws, "run_failed");
+    ws.send(JSON.stringify({ type: "prompt", payload: "hello" }));
+    const message = await failed;
+    assert.match(message.payload.error, /No usable local model is active/);
+    assert.equal(existsSync(join(dataDir, "sessions")), false);
+  } finally {
+    ws.close();
+    if (previousMode === undefined) {
+      delete process.env.ALT_THEORY_MODE;
+    } else {
+      process.env.ALT_THEORY_MODE = previousMode;
+    }
+    if (previousAgentDir === undefined) {
+      delete process.env.PI_CODING_AGENT_DIR;
+    } else {
+      process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+    }
+    await new Promise<void>((resolveClose) => {
+      instance.wss.close(() => {
+        instance.httpServer.close(() => resolveClose());
+      });
+    });
+  }
 });
 
 test("dev-debug composes configured Alt Theory skills with Pi discovery", async () => {

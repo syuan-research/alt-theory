@@ -74,6 +74,7 @@ import {
   setActive,
   upsertProvider,
   type ApiType,
+  type RuntimeModelConfig,
 } from "./config-store.js";
 import {
   AuthSessionManager,
@@ -797,9 +798,19 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       process.env.ALT_THEORY_CORE_SOUL_MODULES_DIR,
     coreSoulModules: options.coreSoulModules ?? parseCoreSoulModules(),
     resolveRuntimeModelConfig: localMode
-      ? () => getRuntimeModelConfig(agentConfigDir())
+      ? () => requireLocalRuntimeModelConfig()
       : undefined,
   });
+
+  function requireLocalRuntimeModelConfig(): RuntimeModelConfig {
+    const runtimeConfig = getRuntimeModelConfig(agentConfigDir());
+    if (!runtimeConfig.modelProvider || !runtimeConfig.modelId) {
+      throw new ConfigValidationError(
+        "No usable local model is active. Open Model setup, save a provider key, choose a model, and set it active."
+      );
+    }
+    return runtimeConfig;
+  }
 
   function forwardServiceEvent(
     send: (msg: ServerMessage) => void,

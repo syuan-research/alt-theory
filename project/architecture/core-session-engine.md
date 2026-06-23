@@ -537,9 +537,12 @@ definitions independently of Pi's built-in model catalog. Runtime keys use
 Local mode exposes `/config` for Pi-native provider/model setup. The GUI writes
 `models.json`, `auth.json`, and `settings.json` under `PI_CODING_AGENT_DIR`;
 session creation resolves the current active provider/model at runtime and
-passes that `models.json` path into Pi. Custom provider definitions are
-sanitized before runtime use so stale invalid providers do not poison the whole
-Pi registry. Anthropic-compatible runtime base URLs are normalized by stripping
+passes that `models.json` path into Pi. Local-mode session materialization
+requires a usable active provider/model; if the active config is missing,
+keyless, or invalid, the server refuses the prompt instead of letting Pi fall
+back to an unrelated default model. Custom provider definitions are sanitized
+before runtime use so stale invalid providers do not poison the whole Pi
+registry. Anthropic-compatible runtime base URLs are normalized by stripping
 trailing `/v1` because the Anthropic SDK appends `/v1/messages`.
 
 The normal UI can set KB to `none`, which disables the built-in `kb/` folder
@@ -613,6 +616,9 @@ context while leaving workspace file reading intact.
   active model per session, KB can be disabled with `none`, custom provider
   configs are sanitized, Anthropic-compatible base URLs are normalized, and
   Branch is globally disabled at the UI/WebSocket boundary pending repair.
+- 2026-06-23: Tightened local-mode model setup: active provider/model must be
+  runtime-usable before a local session can materialize, preventing silent Pi
+  fallback to an unrelated default model.
 - 2026-06-18: Added §5.1 role preset resolution (as-is only). Documents
   `None` as the researcher draft default, legacy `default.md` code debt,
   participant condition mapping, and resume fallback without treating them as
