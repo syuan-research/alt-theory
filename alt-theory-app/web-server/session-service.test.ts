@@ -608,12 +608,19 @@ test("SessionService explicit forks preserve logical session identity and worksp
       content: [{ type: "text", text: "fork answer" }],
       timestamp: Date.now(),
     });
+    const projectedForkPoint = readSessionDetail(
+      fixture.dataDir,
+      created.sessionId
+    )?.transcript.find(
+      (message) => message.role === "assistant" && message.text === "fork answer"
+    )?.entryId;
+    assert.equal(projectedForkPoint, forkPoint);
 
     try {
       const forked = await service.forkSession(
         created.sessionId,
         purpose,
-        forkPoint
+        projectedForkPoint ?? undefined
       );
       const activeManifest = service.getManifest(created.sessionId);
       const detail = readSessionDetail(fixture.dataDir, created.sessionId);

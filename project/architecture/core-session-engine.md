@@ -495,9 +495,12 @@ REST after completion.
 `delete_latest` is synchronous: the server replies with `session_updated` and
 `session_transcript` for the same attached session.
 
-`fork_session` exists in the protocol and backend lineage code, but is currently
-disabled at the WebSocket boundary. The server rejects it with "Branching is
-currently disabled" until Branch gets a dedicated repair/UAT pass.
+`fork_session` creates a logical Branch from a selected Pi entry on the active
+branch. Current UI uses it only from researcher/debug assistant-message actions.
+The branch workspace is copied at creation time, so later file/tool side
+effects do not share a mutable workspace. Collaboration-oriented shared space
+should be modeled through projects or another explicit shared-space layer, not
+through the Branch button.
 
 `session_draft` contains only selector state and no session ID. The browser may
 enable input/config controls in draft, but records, paths, and metrics remain
@@ -595,9 +598,9 @@ context while leaving workspace file reading intact.
 - Transcript detail now preserves assistant thinking and distinguishes tool
   calls from tool results so the researcher console can switch between User,
   Researcher, and Evidence views.
-- Branch browsing/switching UI is not implemented. `fork_session` backend
-  machinery exists, but the WebSocket entry point is currently disabled because
-  Branch is broken and should stay unavailable until a dedicated repair session.
+- Branch creation is available from researcher/debug assistant-message actions,
+  but branch-tree browsing and switching back to older branches are not
+  implemented.
 
 ## 9. Verification
 
@@ -611,6 +614,10 @@ context while leaving workspace file reading intact.
 
 ## Change Log
 
+- 2026-06-23: Re-enabled Branch creation through `fork_session` for
+  researcher/debug assistant-message actions, using copied branch workspaces.
+  KB `none` is now a backend-discovered selectable domain and disables only
+  built-in `kb/` folder retrieval, not workspace file access.
 - 2026-06-22: Added v0.5.4 local-mode model configuration architecture:
   `/config` writes Pi-native provider/auth/default files, runtime resolves the
   active model per session, KB can be disabled with `none`, custom provider

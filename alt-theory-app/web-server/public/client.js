@@ -1473,17 +1473,28 @@ function populateSelect(select, items, defaultSlug, options = {}) {
 function populateKbSelect(select, items, defaultSlug) {
   select.innerHTML = "";
   select.dataset.hasOptions = "true";
-  const off = document.createElement("option");
-  off.value = KB_OFF_VALUE;
-  off.textContent = "Off";
-  off.title = "Do not ask the agent to search the built-in KB folder.";
-  select.appendChild(off);
-  const all = document.createElement("option");
-  all.value = "all";
-  all.textContent = "All";
-  all.title = "Allow the agent to use the whole built-in KB folder.";
-  select.appendChild(all);
-  populateSelectOptions(select, items, defaultSlug);
+  const normalizedItems = [
+    { slug: KB_OFF_VALUE, displayName: "Off" },
+    { slug: "all", displayName: "All" },
+    ...items,
+  ].filter(
+    (item, index, allItems) =>
+      item?.slug &&
+      allItems.findIndex((candidate) => candidate.slug === item.slug) === index
+  );
+  populateSelectOptions(select, normalizedItems, defaultSlug);
+  const offOption = Array.from(select.options).find(
+    (option) => option.value === KB_OFF_VALUE
+  );
+  if (offOption) {
+    offOption.title = "Do not ask the agent to search the built-in KB folder.";
+  }
+  const allOption = Array.from(select.options).find(
+    (option) => option.value === "all"
+  );
+  if (allOption) {
+    allOption.title = "Allow the agent to use the whole built-in KB folder.";
+  }
   const values = Array.from(select.options).map((option) => option.value);
   select.value = values.includes(defaultSlug)
     ? defaultSlug
@@ -1572,6 +1583,10 @@ function displaySlug(value) {
 
 function displayKb(value) {
   return value === KB_OFF_VALUE ? "Off" : value || "—";
+}
+
+function canShowBranchActions() {
+  return viewMode === "researcher" || viewMode === "debug";
 }
 
 // ---------------------------------------------------------------------------
@@ -1756,6 +1771,18 @@ function appendChatMessage(role, text, options = {}) {
       copyToClipboard(value, copyBtn);
     };
     actions.appendChild(copyBtn);
+    if (options.entryId && canShowBranchActions()) {
+      const branchBtn = document.createElement("button");
+      branchBtn.className = "msg-btn";
+      branchBtn.textContent = "Branch";
+      branchBtn.title = "Create a branch from this answer";
+      branchBtn.onclick = (e) => {
+        e.stopPropagation();
+        if (isRunning || !currentSessionId) return;
+        doBranchFromMessage(options.entryId);
+      };
+      actions.appendChild(branchBtn);
+    }
     el.appendChild(actions);
     messagesEl.appendChild(el);
     return el;
@@ -2954,13 +2981,15 @@ sendEditedBtn.onclick = () => {
   doReviseLatest();
 };
 
-// Branch from a specific user message (forkPointEntryId).
-function doBranchFromMessage(entryId, purpose) {
+// Branch from a specific assistant answer. Current branch workspaces are copied;
+// future collaboration should be modeled through project/shared space instead.
+function doBranchFromMessage(entryId) {
+  const purpose = "comparison";
   const payload = { purpose };
   if (entryId) payload.forkPointEntryId = entryId;
   if (!wsSafeSend(JSON.stringify({ type: "fork_session", payload }))) return;
   setControlsEnabled(false);
-  toolStatusEl.textContent = `Creating ${purpose} branch...`;
+  toolStatusEl.textContent = "Creating branch...";
 }
 
 // Low-noise composer hint. Shown after Stop/interrupted; cleared on any next send action.

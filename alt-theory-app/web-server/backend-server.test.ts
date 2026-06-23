@@ -1997,7 +1997,11 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
     });
     const domainsResponse = await fetch(`${baseUrl}/api/kb-domains`);
     assert.deepEqual(await domainsResponse.json(), {
-      domains: [{ slug: "ep-core", displayName: "Ep Core" }],
+      domains: [
+        { slug: "none", displayName: "Off" },
+        { slug: "all", displayName: "All" },
+        { slug: "ep-core", displayName: "Ep Core" },
+      ],
     });
     const instructionsResponse = await fetch(`${baseUrl}/api/instruction-assets`);
     assert.deepEqual(await instructionsResponse.json(), {
@@ -2097,6 +2101,13 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
     const kbDraft = await kbDraftPromise;
     assert.equal(kbDraft.payload.currentDomain, "all");
 
+    const kbOffDraftPromise = waitForType(ws1, "session_draft");
+    ws1.send(
+      JSON.stringify({ type: "switch_kb", payload: { domain: "none" } })
+    );
+    const kbOffDraft = await kbOffDraftPromise;
+    assert.equal(kbOffDraft.payload.currentDomain, "none");
+
     const soulDraftPromise = waitForType(ws1, "session_draft");
     ws1.send(
       JSON.stringify({
@@ -2105,7 +2116,7 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
       })
     );
     const soulDraft = await soulDraftPromise;
-    assert.equal(soulDraft.payload.currentDomain, "all");
+    assert.equal(soulDraft.payload.currentDomain, "none");
     assert.equal(soulDraft.payload.rolePresetSlug, "alternate");
     assert.equal(soulDraft.payload.soulSlug, null);
 
@@ -2117,7 +2128,7 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
       })
     );
     const roleDraft = await roleDraftPromise;
-    assert.equal(roleDraft.payload.currentDomain, "all");
+    assert.equal(roleDraft.payload.currentDomain, "none");
     assert.equal(roleDraft.payload.rolePresetSlug, "alternate");
     assert.equal(roleDraft.payload.soulSlug, null);
 
@@ -2136,7 +2147,7 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
     ws2.send(JSON.stringify({ type: "new_session" }));
     const reopened2 = await reopened2Promise;
 
-    assert.equal(reopened1.payload.currentDomain, "all");
+    assert.equal(reopened1.payload.currentDomain, "none");
     assert.equal(reopened1.payload.rolePresetSlug, "alternate");
     assert.equal(reopened1.payload.soulSlug, null);
     assert.equal(reopened2.payload.currentDomain, "ep-core");

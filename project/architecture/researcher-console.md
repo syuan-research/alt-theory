@@ -178,9 +178,9 @@ cannot yet tag, annotate, compare, or export sessions.
 - Deletes the latest user turn and its reply through per-message **Delete**,
   which sends WebSocket `delete_latest` and applies the returned
   `session_transcript`.
-- Branch is hidden in all current UI surfaces. The underlying lineage/fork
-  code remains for later repair, but the current server rejects WebSocket
-  `fork_session` with "Branching is currently disabled".
+- Branch is available as a researcher/debug action on assistant messages. It
+  sends WebSocket `fork_session` and creates a copied-workspace Branch from
+  that answer. Participant/local simplified views do not expose Branch.
 - Starts a new draft within the same browser connection without creating an
   empty session.
 - Opens an existing session within the same browser connection by clicking its
@@ -229,11 +229,10 @@ cannot yet tag, annotate, compare, or export sessions.
 - Export is not implemented.
 - Historical session comparison is not implemented.
 - Branch-tree browsing and switching back to an older branch are not
-  implemented. Branch/Fork controls are currently hidden everywhere because
-  the interaction is not pilot-safe; the backend still contains fork machinery
-  but `fork_session` is gated off at the WebSocket boundary.
-- Revision/Fork does not roll back tool or file side effects. Comparison Fork
-  copies only the selected branch workspace at Fork time.
+  implemented. The current Branch action creates a copied branch workspace and
+  attaches the live session to that new branch.
+- Revision/Branch does not roll back tool or file side effects that already
+  happened before the revision or branch point.
 - Model-comparison prompts across multiple providers are not implemented.
 - The Session Records editor is plain text only. It has no Markdown preview,
   diff, autosave, conflict handling, or new-file UI.
@@ -257,6 +256,10 @@ cannot yet tag, annotate, compare, or export sessions.
 
 ## Change Log
 
+- 2026-06-23: Updated after KB/Branch repair. KB `Off` is a backend-discovered
+  selectable option and disables only built-in `kb/` folder retrieval. Branch is
+  re-enabled for researcher/debug assistant-message actions with copied
+  branch workspaces; participant/local simplified views still hide it.
 - 2026-06-17: Updated conversation-action documentation to match current
   frontend controls. Latest-turn revise/delete are per-message actions; delete
   applies synchronous `session_transcript`. Branch remains researcher/debug-only

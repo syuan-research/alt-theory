@@ -720,7 +720,13 @@ function buildTranscriptFromEntries(
       continue;
     }
     if (role === "assistant") {
-      transcript.push(...assistantContentToTranscript(value.message.content, timestamp));
+      transcript.push(
+        ...assistantContentToTranscript(
+          value.message.content,
+          timestamp,
+          value.id ?? null
+        )
+      );
       continue;
     }
     if (role === "tool" || value.message.role === "toolResult") {
@@ -749,16 +755,17 @@ function buildTranscriptFromEntries(
 
 function assistantContentToTranscript(
   content: unknown,
-  timestamp: string | null
+  timestamp: string | null,
+  entryId: string | null
 ): TranscriptMessage[] {
   if (typeof content === "string") {
     const text = stripContextPrefix(content).trim();
-    return text ? [{ role: "assistant", text, timestamp }] : [];
+    return text ? [{ role: "assistant", text, timestamp, entryId }] : [];
   }
 
   if (!Array.isArray(content)) {
     const text = extractText(content).trim();
-    return text ? [{ role: "assistant", text, timestamp }] : [];
+    return text ? [{ role: "assistant", text, timestamp, entryId }] : [];
   }
 
   const messages: TranscriptMessage[] = [];
@@ -773,6 +780,7 @@ function assistantContentToTranscript(
         text,
         thinking: thinking || undefined,
         timestamp,
+        entryId,
       });
     }
     textBuffer = [];

@@ -98,9 +98,6 @@ const DEFAULT_ROLE_CONDITION_PRESETS: Record<string, string> = {
   "metatheory-oriented": "role-metatheory-oriented",
 };
 
-const BRANCHING_ENABLED = false;
-
-
 export interface AltTheoryServerOptions {
   agentAssetsDir?: string;
   appContextPath?: string;
@@ -387,7 +384,16 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     res.json({ profiles: listRolePresets(rolePresetsDir) });
   });
   app.get("/api/kb-domains", (_req, res) => {
-    res.json({ domains: listKbDomains(kbDir) });
+    const selectableDomains = [
+      { slug: KB_DISABLED_DOMAIN, displayName: "Off" },
+      { slug: "all", displayName: "All" },
+      ...listKbDomains(kbDir),
+    ].filter(
+      (domain, index, allDomains) =>
+        allDomains.findIndex((candidate) => candidate.slug === domain.slug) ===
+        index
+    );
+    res.json({ domains: selectableDomains });
   });
   app.get("/api/instruction-assets", (_req, res) => {
     res.json({ instructions: listInstructionAssets(instructionsDir) });
@@ -1282,10 +1288,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           break;
         }
         case "fork_session": {
-          if (!BRANCHING_ENABLED) {
-            sendError(send, new Error("Branching is currently disabled"));
-            break;
-          }
           if (!attachedSessionId) {
             sendError(send, new Error("A materialized session is required"));
             break;
