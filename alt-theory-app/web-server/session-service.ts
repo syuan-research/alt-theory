@@ -149,6 +149,10 @@ export type SessionServiceEvent =
   | { type: "snapshot"; payload: SessionSnapshot }
   | { type: "assistant_delta"; payload: { text: string } }
   | {
+      type: "run_phase";
+      payload: { phase: "connecting" | "thinking" | "idle" };
+    }
+  | {
       type: "tool_started";
       payload: { toolName: string; callId: string; path?: string | null };
     }
@@ -639,6 +643,8 @@ export class SessionService {
       completedAt: null,
     });
 
+    this.emitRunPhase(managed, "connecting");
+
     const completion = managed.session
       .prompt(text)
       .then(() => {
@@ -718,6 +724,7 @@ export class SessionService {
     const managed = this.requireSession(sessionId);
     await managed.session.abort();
     managed.busy = false;
+    this.emitRunPhase(managed, "idle");
     appendSessionEvent(managed.manifest.recordsDir, {
       sessionId: managed.manifest.sessionId,
       type: "run_aborted",
@@ -1302,6 +1309,7 @@ export class SessionService {
       type: "run_failed",
       details: { error },
     });
+    this.emitRunPhase(managed, "idle");
     this.emit(managed, { type: "run_failed", payload: { error } });
   }
 
@@ -1390,15 +1398,21 @@ export class SessionService {
           payload: this.snapshot(managed, { status: "running" }),
         });
         break;
-      case "message_update":
-        if (event.assistantMessageEvent?.type === "text_delta") {
+      case "message_update": {
+        const assistantEvent = event.assistantMessageEvent;
+        if (assistantEvent?.type === "thinking_delta") {
+          this.emitRunPhase(managed, "thinking");
+        } else if (assistantEvent?.type === "text_delta") {
+          this.emitRunPhase(managed, "idle");
           this.emit(managed, {
             type: "assistant_delta",
-            payload: { text: event.assistantMessageEvent.delta ?? "" },
+            payload: { text: assistantEvent.delta ?? "" },
           });
         }
         break;
+      }
       case "tool_execution_start":
+        this.emitRunPhase(managed, "idle");
         this.emit(managed, {
           type: "tool_started",
           payload: {
@@ -1420,6 +1434,9 @@ export class SessionService {
           type: "tool_finished",
           payload: { callId: event.toolCallId, success: !event.isError },
         });
+        if (managed.busy || managed.session.isStreaming) {
+          this.emitRunPhase(managed, "connecting");
+        }
         break;
       case "agent_end": {
         const error = managed.session.state.errorMessage;
@@ -1441,6 +1458,7 @@ export class SessionService {
               toolCallCount: managed.counters.toolCallCount,
             },
           });
+          this.emitRunPhase(managed, "idle");
           this.emit(managed, {
             type: "run_completed",
             payload: this.snapshot(managed, { status: "idle" }),
@@ -1450,6 +1468,13 @@ export class SessionService {
         break;
       }
     }
+  }
+
+  private emitRunPhase(
+    managed: ManagedSession,
+    phase: "connecting" | "thinking" | "idle"
+  ): void {
+    this.emit(managed, { type: "run_phase", payload: { phase } });
   }
 
   private emit(managed: ManagedSession, event: SessionServiceEvent): void {

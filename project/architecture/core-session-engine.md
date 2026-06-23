@@ -551,6 +551,40 @@ trailing `/v1` because the Anthropic SDK appends `/v1/messages`.
 The normal UI can set KB to `none`, which disables the built-in `kb/` folder
 context while leaving workspace file reading intact.
 
+### Interim model fallback (v0.5.x pilot)
+
+When `ALT_THEORY_MODEL_FALLBACK_PATH` points at a JSON chain file, `SessionService`
+can recover from certain same-provider model errors without aborting the user
+turn.
+
+Mechanism:
+
+- `alt-theory-app/core/model-fallback.ts` — rule classifier (quota-style
+  messages), per-provider exclusion state, ordered chain resolver.
+- On a matching run failure, the service excludes the failed model id, calls
+  `setModel()` with the next chain entry that still exists in the Pi registry,
+  then `continue()` on the active agent session.
+- Successful switches sync `records/assembly-manifest.json` provider/model and
+  append a `model_fallback` event to `records/session-events.jsonl`.
+- Exclusion state persists under `{dataDir}/runtime/model-fallback-state.json`
+  (local dev may mirror under `runs/local-data/…`).
+
+Configuration:
+
+- Env `ALT_THEORY_MODEL_FALLBACK_PATH` — chain file path (hosted pilot:
+  `/etc/alt-theory/model-fallback.json`).
+- Chain entries are same-provider checkpoint ids sharing one API key; not
+  multi-vendor routing.
+
+Limits (current):
+
+- Ops JSON only; no console UI for chain editing or switch notification.
+- Resume/open still uses current environment model resolution, not
+  manifest-first restore (v0.6 target: see
+  `2026-06-18-v0-6-deferred-observations.md` §8).
+- General provider-agnostic fallback policy is deferred to v0.6 (see same file
+  §6).
+
 ## 8. Known Constraints
 
 - Backend REST session list/detail and WebSocket `open_session` are
@@ -583,9 +617,18 @@ context while leaving workspace file reading intact.
 - Default soul discovery prefers `agent-assets/soul/soul-latest.md`, then
   `agent-assets/soul/soul.md`; if neither exists, no soul layer is injected.
   Optional core-soul module activation remains configured by backend
-  environment/config, not UI.
-- Hard write-path enforcement, thinking events, compaction/retry events, and
-  provider/auth UI are deferred.
+  environment/config, not UI, but no core-soul assets or launch env are set in
+  production; the layer is effectively unused (v0.6 deprecate: deferred
+  observations §9).
+- Resume/open uses current environment provider/model
+  (`resolveEffectiveRuntimeModelConfig`), not manifest-first restore; provenance
+  may warn on drift (v0.6 §8).
+- Live WebSocket runs forward `assistant_delta` and tool events only; Pi
+  `thinking_delta` is not streamed. Transcript load preserves thinking text for
+  Developer view after the turn. Run-phase labels (connecting vs thinking) are
+  not exposed (v0.6 §7).
+- Hard write-path enforcement, compaction/retry events, and provider/auth UI
+  are deferred.
 - App-level auth is file-backed and process-local in v0.5.0: account records
   persist in the data directory, but browser auth tokens are in memory and
   require re-login after server restart. There is no self-registration or
@@ -614,6 +657,8 @@ context while leaving workspace file reading intact.
 
 ## Change Log
 
+- 2026-06-23: Documented interim same-provider model fallback (§7), resume
+  model drift, core-soul unused state, and live thinking/run-phase limits (§8).
 - 2026-06-23: Re-enabled Branch creation through `fork_session` for
   researcher/debug assistant-message actions, using copied branch workspaces.
   KB `none` is now a backend-discovered selectable domain and disables only

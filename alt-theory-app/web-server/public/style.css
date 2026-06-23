@@ -736,7 +736,8 @@ body.view-researcher #session-detail {
   padding: 4px 0;
 }
 
-.message.tool-status {
+.message.tool-status,
+.message.run-phase {
   align-self: flex-start;
   font-size: 13px;
   color: var(--text-secondary);

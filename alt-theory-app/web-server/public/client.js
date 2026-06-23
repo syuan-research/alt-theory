@@ -153,6 +153,8 @@ const attachmentHintEl = document.getElementById("attachment-hint");
 // ---------------------------------------------------------------------------
 
 let currentAssistantEl = null;
+/** Live run-phase row in #messages (not composer #tool-status). */
+let runPhaseEl = null;
 let isRunning = false;
 let hasMessages = false;
 let currentSessionId = "";
@@ -1666,6 +1668,7 @@ function renderPreviewText(messages) {
 
 function renderTranscriptMessages() {
   messagesEl.innerHTML = "";
+  runPhaseEl = null;
   // Find the latest user message index so Edit/Delete can attach to it.
   let latestUserIdx = -1;
   for (let i = transcriptMessages.length - 1; i >= 0; i--) {
@@ -2047,6 +2050,7 @@ function connectWebSocket() {
     console.log("[ws] Disconnected");
     reconnectSessionId = currentSessionId || reconnectSessionId;
     finalizeStaleTools(false);
+    clearRunPhaseMessage();
     setConnStatus("disconnected", "Disconnected");
     sessionReady = false;
     isRunning = false;
@@ -2060,6 +2064,7 @@ function connectWebSocket() {
 
   ws.onerror = (err) => {
     console.error("[ws] Error", err);
+    clearRunPhaseMessage();
     setConnStatus("error", "Connection error");
   };
 
@@ -2313,6 +2318,36 @@ function toolLabel(name, path) {
   return `${name}…`;
 }
 
+const RUN_PHASE_LABELS = {
+  connecting: "Connecting…",
+  thinking: "Thinking…",
+};
+
+function clearRunPhaseMessage() {
+  if (runPhaseEl) {
+    runPhaseEl.remove();
+    runPhaseEl = null;
+  }
+}
+
+/** Inline status in the chat stream, same surface as KB/file tool rows. */
+function showRunPhaseMessage(phase) {
+  if (!phase || phase === "idle") {
+    clearRunPhaseMessage();
+    return;
+  }
+  const label = RUN_PHASE_LABELS[phase];
+  if (!label) return;
+  if (!runPhaseEl) {
+    runPhaseEl = document.createElement("div");
+    runPhaseEl.className = "message run-phase";
+    runPhaseEl.dataset.runPhase = "1";
+    messagesEl.appendChild(runPhaseEl);
+  }
+  runPhaseEl.textContent = label;
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
 /** Finalize any tool indicators that never received tool_finished. */
 function finalizeStaleTools(success = true) {
   for (const callId of Object.keys(activeToolNames)) {
@@ -2471,8 +2506,14 @@ function handleWebSocketMessage(event) {
       break;
     }
 
+    case "run_phase": {
+      showRunPhaseMessage(msg.payload.phase);
+      break;
+    }
+
     // --- Streaming text ---
     case "assistant_delta": {
+      clearRunPhaseMessage();
       if (!currentAssistantEl) {
       currentAssistantEl = document.createElement("div");
         currentAssistantEl.className = "message assistant";
@@ -2491,6 +2532,8 @@ function handleWebSocketMessage(event) {
     case "tool_started": {
       const { toolName, callId, path } = msg.payload;
       const label = toolLabel(toolName, path);
+
+      clearRunPhaseMessage();
 
       // Inline tool indicator in chat
       const toolEl = document.createElement("div");
@@ -2541,6 +2584,7 @@ function handleWebSocketMessage(event) {
     case "run_completed": {
       // Finalize any tool indicators that never got tool_finished
       finalizeStaleTools();
+      clearRunPhaseMessage();
       currentAssistantEl = null;
       isRunning = false;
       hasMessages = true;
@@ -2568,6 +2612,7 @@ function handleWebSocketMessage(event) {
     case "run_failed": {
       const interrupted = isInterruptedError(msg.payload.error);
       finalizeStaleTools(false);
+      clearRunPhaseMessage();
       // Surface failures as composer notices; the red transcript rectangle is
       // gone. Interrupted runs use no prefix (informational), real failures
       // use ⚠.
@@ -2738,7 +2783,7 @@ function sendMessage() {
 
   isRunning = true;
   setControlsEnabled(false);
-  setConnStatus("running", "Thinking…");
+  setConnStatus("running", "Running");
 }
 
 sendBtn.onclick = sendMessage;
@@ -2869,7 +2914,7 @@ invokeSkillBtn.onclick = () => {
   isRunning = true;
   hasMessages = true;
   setControlsEnabled(false);
-  setConnStatus("running", "Thinking...");
+  setConnStatus("running", "Running");
 };
 
 function invokeWorkspaceSummary(kind) {
@@ -2902,7 +2947,7 @@ function invokeWorkspaceSummary(kind) {
   }
   isRunning = true;
   setControlsEnabled(false);
-  setConnStatus("running", isHandoff ? "Writing handoff..." : "Summarizing...");
+  setConnStatus("running", "Running");
 }
 
 // Summary skill panel: invoke the conversation-summary skill with an optional
@@ -2948,8 +2993,7 @@ function doReviseLatest() {
   updateReviseModeUI();
   isRunning = true;
   setControlsEnabled(false);
-  setConnStatus("running", "Revising...");
-  toolStatusEl.textContent = `Revising latest turn on ${currentBranchId}...`;
+  setConnStatus("running", "Running");
 }
 
 reviseLatestBtn.onclick = doReviseLatest;

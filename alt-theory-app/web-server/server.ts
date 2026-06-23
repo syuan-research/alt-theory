@@ -831,6 +831,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       case "assistant_delta":
         send({ type: "assistant_delta", payload: event.payload });
         break;
+      case "run_phase":
+        send({ type: "run_phase", payload: event.payload });
+        break;
       case "tool_started":
         send({ type: "tool_started", payload: event.payload });
         break;

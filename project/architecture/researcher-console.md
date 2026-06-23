@@ -243,6 +243,11 @@ cannot yet tag, annotate, compare, or export sessions.
   provider/auth selection UI are not implemented.
 - The console does not yet show prompt assembly, hook/context policy, or
   injected transcript components clearly.
+- Live model turns show inline chat rows for Connecting/Thinking and for
+  tool progress (for example `Reading knowledge base…`). Composer `#tool-status`
+  is a separate mono strip for reconnect/stop notices and mirrors active tool
+  labels; it is not the primary thinking indicator. Live thinking streaming is
+  transcript-only after completion in Developer view (v0.6 §7).
 - The current frontend is a researcher-console seed, not final product UI.
 
 ## 6. Related Documents
@@ -256,6 +261,8 @@ cannot yet tag, annotate, compare, or export sessions.
 
 ## Change Log
 
+- 2026-06-23: Noted missing Connecting/Thinking composer status and deferred
+  live thinking stream (deferred observations §7).
 - 2026-06-23: Updated after KB/Branch repair. KB `Off` is a backend-discovered
   selectable option and disables only built-in `kb/` folder retrieval. Branch is
   re-enabled for researcher/debug assistant-message actions with copied
