@@ -130,6 +130,20 @@ export function saveModelFallbackState(
   writeJsonAtomic(resolved, state);
 }
 
+function trySaveModelFallbackState(
+  statePath: string,
+  state: ModelFallbackState
+): void {
+  try {
+    saveModelFallbackState(statePath, state);
+  } catch (error) {
+    console.error(
+      `[model-fallback] failed to persist exclusion state at ${statePath}:`,
+      error instanceof Error ? error.message : String(error)
+    );
+  }
+}
+
 export class ModelFallbackCoordinator {
   private state: ModelFallbackState;
 
@@ -172,7 +186,7 @@ export class ModelFallbackCoordinator {
       ruleId,
       lastError,
     };
-    saveModelFallbackState(this.statePath, this.state);
+    trySaveModelFallbackState(this.statePath, this.state);
   }
 
   resolveNext(currentModelId: string): ModelRef | null {

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync } from "fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import test from "node:test";
@@ -101,6 +101,29 @@ test("ModelFallbackCoordinator persists exclusion and skips excluded models", ()
     excluded: Record<string, unknown>;
   };
   assert.ok(persisted.excluded["qwen-bailian-beijing/qwen3.7-max"]);
+});
+
+test("exclude keeps in-memory exclusion when persistence fails", () => {
+  const root = mkdtempSync(join(tmpdir(), "alt-theory-fallback-persist-"));
+  const blockedParent = join(root, "blocked");
+  writeFileSync(blockedParent, "not-a-directory");
+  const statePath = join(blockedParent, "model-fallback-state.json");
+  const coordinator = new ModelFallbackCoordinator(testConfig, statePath);
+
+  assert.doesNotThrow(() => {
+    coordinator.exclude(
+      "qwen-bailian-beijing",
+      "qwen3.7-max",
+      "dashscope-allocation-quota",
+      "403 exhausted"
+    );
+  });
+
+  assert.ok(coordinator.isExcluded("qwen-bailian-beijing", "qwen3.7-max"));
+  assert.equal(
+    coordinator.resolveNext("qwen3.7-max")?.modelId,
+    "qwen3.7-max-2026-06-08"
+  );
 });
 
 test("resolveFirstUsableModel skips excluded preferred model", () => {
