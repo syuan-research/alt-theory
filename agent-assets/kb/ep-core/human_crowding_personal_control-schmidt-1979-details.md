@@ -4,9 +4,7 @@ theory: Human Crowding Personal Control
 author: "Schmidt & Keating"
 year: 1979
 type: details
-topics: [Empirical Studies, Physiological Stress, Animal Research]
-environment: [Laboratory, Dormitories, Supermarkets]
-population: [Children, College Students, Shoppers]
+doi: 10.1037/0033-2909.86.4.680
 ---
 ===SECTION===
 ## Study: Perceived Control and Task Performance (Sherrod, 1974)

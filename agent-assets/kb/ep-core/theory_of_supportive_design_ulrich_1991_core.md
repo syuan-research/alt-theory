@@ -4,9 +4,7 @@ theory: Theory of Supportive Design
 author: Roger S. Ulrich
 year: 1991
 type: core
-topics: [Environmental Psychology, Healthcare Design, Stress Management]
-environment: [Hospital, Healthcare Facilities]
-population: [Patients, Medical Staff, Visitors]
+doi:
 ---
 ===SECTION===
 ## Summary

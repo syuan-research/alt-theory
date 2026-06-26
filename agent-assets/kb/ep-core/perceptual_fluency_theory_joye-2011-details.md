@@ -4,9 +4,7 @@ theory: Perceptual Fluency Theory
 author: "Joye & van den Berg"
 year: 2011
 type: details
-topics: [Visual Processing, Fractal Geometry, "Cross-Cultural Studies"]
-environment: [Wilderness, Tended Forests, Urban Scenes]
-population: [Western University Students, Nigerian Subjects]
+doi: 10.1016/j.ufug.2011.07.004
 ---
 ===SECTION===
 ## Empirical Study: Savannah Hypothesis and Age (Balling and Falk, 1982)

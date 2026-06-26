@@ -4,9 +4,7 @@ theory: Social Psychological Model of Crowding
 author: Daniel Stokols
 year: 1972
 type: core
-topics: [Environmental Psychology, Spatial Restriction, Psychological Stress, Human Density]
-environment: [Urban, Interpersonal]
-population: [General Public]
+doi: 10.1080/01944367208977409
 ---
 ===SECTION===
 ## Summary

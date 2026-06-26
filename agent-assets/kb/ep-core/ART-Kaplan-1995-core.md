@@ -4,9 +4,7 @@ theory: Attention Restoration Theory
 author: Stephen Kaplan
 year: 1995
 type: core
-topics: [Environmental Psychology, Attention Restoration Theory, Cognitive Fatigue, Stress Reduction]
-environment: [Natural Environments, Urban Environments]
-population: [General Public, Cancer Patients, Students]
+doi: 10.1016/0272-4944(95)90001-2
 ---
 ===SECTION===
 ## Summary

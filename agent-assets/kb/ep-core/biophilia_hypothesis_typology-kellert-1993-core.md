@@ -4,9 +4,7 @@ theory: "Biophilia Hypothesis - Typology of Values"
 author: Stephen R. Kellert
 year: 1993
 type: core
-topics: [Biophilia, Environmental Psychology, Evolutionary Psychology, Conservation Ethics]
-environment: [Natural Environments, Wilderness, Urban Environments]
-population: [General Public, Hunters, Children, Indigenous Peoples]
+doi:
 ---
 ===SECTION===
 ## Summary

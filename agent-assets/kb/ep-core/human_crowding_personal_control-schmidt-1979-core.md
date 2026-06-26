@@ -4,9 +4,7 @@ theory: Human Crowding Personal Control
 author: "Schmidt & Keating"
 year: 1979
 type: core
-topics: [Environmental Psychology, Personal Control, Social Interference, Cognitive Overload]
-environment: [Urban, Residential, Public Spaces]
-population: [General Public, Children, Students]
+doi: 10.1037/0033-2909.86.4.680
 ---
 ===SECTION===
 ## Summary

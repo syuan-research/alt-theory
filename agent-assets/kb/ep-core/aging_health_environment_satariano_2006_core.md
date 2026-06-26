@@ -4,9 +4,7 @@ theory: Ecological Model of Aging
 author: William A. Satariano
 year: 2006
 type: core
-topics: [Epidemiology of Aging, Environmental Psychology, Gerontology, Public Health]
-environment: [Built Environment, Social Environment, Community]
-population: [Older Adults, Aging Populations]
+doi:
 ---
 ===SECTION===
 ## Summary

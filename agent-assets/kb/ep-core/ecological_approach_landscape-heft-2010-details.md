@@ -4,9 +4,7 @@ theory: Ecological Approach to Landscape Perception
 author: Harry Heft
 year: 2010
 type: details
-topics: [Child Development, Wayfinding, Ergonomics]
-environment: [Outdoor Environments, Everyday Settings]
-population: [Children, Adults]
+doi: 10.4324/9780203853252-12
 ---
 ===SECTION===
 ## Specific Example: The Blindfold Demonstration

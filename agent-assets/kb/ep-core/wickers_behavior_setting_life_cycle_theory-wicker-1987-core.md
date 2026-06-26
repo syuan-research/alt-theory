@@ -4,9 +4,7 @@ theory: Wicker's Behavior Setting Life Cycle Theory
 author: Allan W. Wicker
 year: 1987
 type: core
-topics: [Ecological Psychology, Organizational Psychology, Social Systems, Group Dynamics]
-environment: [Community Settings, Workplaces, Public Spaces, Service Organizations]
-population: [Staff, Founders, Consumers, General Public]
+doi:
 ---
 ===SECTION===
 ## Summary

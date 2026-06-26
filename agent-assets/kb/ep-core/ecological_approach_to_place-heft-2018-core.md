@@ -4,9 +4,7 @@ theory: Ecological Approach to Place
 author: Harry Heft
 year: 2018
 type: core
-topics: [Ecological Psychology, Behavior Settings, Child Development, "Perception-Action"]
-environment: [Community Settings, Behavior Settings, Human Habitats]
-population: [Children]
+doi: 10.1080/10407413.2018.1410045
 ---
 ===SECTION===
 ## Summary

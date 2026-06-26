@@ -4,9 +4,7 @@ theory: Environmental Preference Matrix
 author: Stephen Kaplan
 year: 1987
 type: details
-topics: [Empirical Evidence, Biome Preference, Landscape Predictors]
-environment: [Savanna, Forest, Desert, Urban]
-population: [Children, Adolescents, Adults]
+doi: 10.1177/0013916587191001
 ---
 ===SECTION===
 ## Empirical Study: The Content Effect (Kaplan et al., 1972)

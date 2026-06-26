@@ -4,9 +4,7 @@ theory: "Goal-Framing Theory"
 author: "Lindenberg & Steg"
 year: 2013
 type: details
-topics: ["Pro-environmental Behavior", Social Influence, "Self-Regulation"]
-environment: [Urban Settings, Parking Garages, Office Buildings]
-population: [Adults, Students]
+doi: 10.4324/9780203141182-6
 ---
 ===SECTION===
 ## Study: Cross-Norm Inhibition (The Graffiti Study)

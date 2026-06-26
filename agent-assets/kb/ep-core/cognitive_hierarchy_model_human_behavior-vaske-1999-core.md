@@ -4,9 +4,7 @@ theory: Cognitive Hierarchy Model of Human Behavior
 author: "Vaske & Donnelly"
 year: 1999
 type: core
-topics: [Environmental Psychology, Human Dimensions of Natural Resources, Social Psychology]
-environment: [Wildland, Forests]
-population: [General Public, Voters]
+doi: 10.1080/089419299279425
 ---
 ===SECTION===
 ## Summary

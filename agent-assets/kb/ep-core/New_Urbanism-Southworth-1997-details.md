@@ -4,9 +4,7 @@ theory: Suburban Public Realm Framework
 author: "Southworth & Parthasarathy"
 year: "1996-1997"
 type: details
-topics: [Urban Design Cases, Behavioral Observations, Streetscapes]
-environment: [Elmwood (Berkeley), Kentlands (Maryland), Laguna West (California), Hercules (California)]
-population: [Suburban Homeowners, Pedestrians]
+doi: 10.1080/13574809608724385
 ---
 ===SECTION===
 ## Historical Trend: Evolution of Street Patterns (Southworth & Owens Data)

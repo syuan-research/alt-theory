@@ -4,9 +4,7 @@ theory: Environmental Preference Matrix
 author: Stephen Kaplan
 year: 1987
 type: core
-topics: [Environmental Aesthetics, Evolutionary Psychology, Information Processing, Landscape Architecture]
-environment: [Natural Environments, Built Environments, Savanna]
-population: [General Public]
+doi: 10.1177/0013916587191001
 ---
 ===SECTION===
 ## Summary

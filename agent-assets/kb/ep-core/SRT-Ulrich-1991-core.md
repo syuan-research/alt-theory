@@ -4,9 +4,7 @@ theory: Stress Reduction Theory
 author: Roger S. Ulrich et al.
 year: 1991
 type: core
-topics: [Environmental Psychology, Stress Recovery Theory, "Psycho-evolutionary Theory"]
-environment: [Natural Environments, Urban Environments]
-population: [General Public, Students]
+doi: 10.1016/s0272-4944(05)80184-7
 ---
 ===SECTION===
 ## Summary

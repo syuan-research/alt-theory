@@ -4,9 +4,7 @@ theory: Stress Reduction Theory
 author: Roger S. Ulrich et al.
 year: 1991
 type: details
-topics: [Psychophysiology, Experimental Design, Autonomic Nervous System]
-environment: [Urban Commercial Street, Pedestrian Mall, Forest, Stream]
-population: [University Students, Undergraduates]
+doi: 10.1016/s0272-4944(05)80184-7
 ---
 ===SECTION===
 ## Study Methodology: The Two-Stage Video Experiment

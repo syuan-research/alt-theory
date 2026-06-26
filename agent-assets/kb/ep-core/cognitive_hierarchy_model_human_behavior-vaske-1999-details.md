@@ -4,9 +4,7 @@ theory: Cognitive Hierarchy Model of Human Behavior
 author: "Vaske & Donnelly"
 year: 1999
 type: details
-topics: [Voting Behavior, Wildland Preservation, Structural Equation Modeling]
-environment: [Colorado, National Forests]
-population: [Colorado Residents]
+doi: 10.1080/089419299279425
 ---
 ===SECTION===
 ## Study: Colorado Wildland Preservation Survey

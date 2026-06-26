@@ -4,9 +4,7 @@ theory: Directed Attention Shared Resource
 author: "Kaplan & Berman"
 year: 2010
 type: details
-topics: [Empirical Studies, Intervention Efficacy, "Self-Distraction"]
-environment: [Public Housing, Wilderness, Laboratory]
-population: [College Students, AIDS Caregivers, Prison Inmates]
+doi: 10.1177/1745691609356784
 ---
 ===SECTION===
 ## Empirical Study: The Chicago Public Housing Research

@@ -4,9 +4,7 @@ theory: Psychoevolutionary Theory of Environmental Aesthetics
 author: Roger S. Ulrich
 year: 1983
 type: core
-topics: [Environmental Aesthetics, Psychoevolutionary Theory, Affective Primacy, Landscape Preference]
-environment: [Natural Environments, Built Environments]
-population: [General Public]
+doi: 10.1007/978-1-4613-3539-9_4
 ---
 ===SECTION===
 ## Summary

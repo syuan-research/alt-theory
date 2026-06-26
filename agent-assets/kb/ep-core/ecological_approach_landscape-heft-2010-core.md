@@ -4,9 +4,7 @@ theory: Ecological Approach to Landscape Perception
 author: Harry Heft
 year: 2010
 type: core
-topics: [Environmental Aesthetics, Ecological Psychology, Affordances, Landscape Architecture]
-environment: [Natural Landscapes, Urban Public Spaces, Playgrounds]
-population: [Designers, General Public, Children]
+doi: 10.4324/9780203853252-12
 ---
 ===SECTION===
 ## Summary

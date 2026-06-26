@@ -4,9 +4,7 @@ theory: Altman on Hall's Proxemics Framework
 author: "Irwin Altman & Anne M. Vinsel"
 year: 1977
 type: details
-topics: [Empirical Studies, Spatial Invasion, Cultural Variability]
-environment: [Library, Urinal, Elevator, Zoo]
-population: [College Students, Mental Patients, Naval Personnel, Ethnic Groups]
+doi: 10.1007/978-1-4684-0808-9_5
 ---
 ===SECTION===
 ## Study: Spatial Invasion and Flight (Felipe & Sommer, 1966)

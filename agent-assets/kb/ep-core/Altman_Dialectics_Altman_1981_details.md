@@ -4,9 +4,7 @@ theory: Altman Dialectics
 author: "Irwin Altman, Anne Vinsel, and Barbara B. Brown"
 year: 1981
 type: details
-topics: [Cultural Anthropology, Psychological Models, Relationship Dynamics]
-environment: [Indonesia, Urban Settings, Radical Encounter Groups]
-population: [South Nais People, Married Couples, Preschool Children]
+doi: 10.1016/s0065-2601(08)60371-8
 ---
 ===SECTION===
 ## Specific Example: South Nais Community Design

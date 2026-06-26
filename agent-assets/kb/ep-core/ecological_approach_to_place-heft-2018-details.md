@@ -4,9 +4,7 @@ theory: Ecological Approach to Place
 author: Harry Heft
 year: 2018
 type: details
-topics: [Child Development, Behavior Settings, Methodology]
-environment: [Community Settings, Laboratory Settings, Midwest Town]
-population: [Children]
+doi: 10.1080/10407413.2018.1410045
 ---
 ===SECTION===
 ## Empirical Study: The Midwest Day Records (Barker & Wright, 1955)

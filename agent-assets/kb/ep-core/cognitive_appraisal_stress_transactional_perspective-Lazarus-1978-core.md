@@ -4,9 +4,7 @@ theory: Transactional Model of Stress and Coping
 author: Richard S. Lazarus and Raymond Launier
 year: 1978
 type: core
-topics: [Stress, Coping, Cognitive Appraisal, Emotion, "Person-Environment Fit"]
-environment: [General, Laboratory, Clinical Settings, Everyday Life]
-population: [General Public, Patients, Experimental Subjects]
+doi: 10.1007/978-1-4613-3997-7_12
 ---
 ===SECTION===
 ## Summary

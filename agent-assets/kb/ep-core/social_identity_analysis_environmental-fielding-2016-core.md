@@ -4,9 +4,7 @@ theory: Social Identity Approach to Environmental Psychology
 author: "Fielding & Hornsey"
 year: 2016
 type: core
-topics: [Environmental Psychology, Social Identity Theory, Intergroup Conflict, Climate Change Communication, Social Norms]
-environment: [Political Contexts, Resource Management Contexts, Community Contexts]
-population: [General Public, Political Groups, Environmentalists, Skeptics]
+doi: 10.3389/fpsyg.2016.00121
 ---
 ===SECTION===
 ## Summary

@@ -4,9 +4,7 @@ theory: Attention Restoration Theory
 author: Stephen Kaplan
 year: 1995
 type: details
-topics: [Empirical Studies, Restorative Environments, Information Processing]
-environment: [Wilderness, Dormitory, Hospital, Urban]
-population: [Backpackers, Breast Cancer Patients, University Students]
+doi: 10.1016/0272-4944(95)90001-2
 ---
 ===SECTION===
 

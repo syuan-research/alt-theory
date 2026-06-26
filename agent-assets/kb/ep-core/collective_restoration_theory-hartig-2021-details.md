@@ -4,9 +4,7 @@ theory: Collective Restoration Theory
 author: Terry Hartig
 year: 2021
 type: details
-topics: [Epidemiological Studies, Public Policy, Social Indicators]
-environment: [Sweden, Public Parks, Stadiums]
-population: [Swedish Workers, Retirees, General Public]
+doi: 10.1007/978-3-030-69020-5_5
 ---
 ===SECTION===
 ## Study: National Vacation Legislation and Mental Health (Hartig et al., 2013)

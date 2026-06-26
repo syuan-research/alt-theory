@@ -4,9 +4,7 @@ theory: "Scannell & Gifford's Tripartite Framework of Place Attachment"
 author: "Scannell & Gifford"
 year: 2010
 type: core
-topics: [Environmental Psychology, Place Attachment, "Human-Environment Interaction"]
-environment: [Urban, Natural, Sacred, Residential]
-population: [General Public, Immigrants, Displaced Persons, Religious Groups]
+doi: 10.1016/j.jenvp.2009.09.006
 ---
 ===SECTION===
 ## Summary

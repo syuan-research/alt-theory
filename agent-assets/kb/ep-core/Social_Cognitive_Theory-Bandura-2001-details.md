@@ -4,9 +4,7 @@ theory: Social Cognitive Theory
 author: Albert Bandura
 year: 2001
 type: details
-topics: ["Self-Regulation", Health Psychology, Cultural Psychology, Biotechnology, Global Change]
-environment: [Workplace, Schools, Internet, Political Systems]
-population: [Students, Workers, General Public]
+doi: 10.1146/annurev.psych.52.1.1
 ---
 ===SECTION===
 ## Specific Example: The "Graceful Hippopotamus" (Intentionality)

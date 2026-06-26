@@ -4,9 +4,7 @@ theory: "Southworth & Parthasarathy on New Urbanism"
 author: "Southworth & Parthasarathy"
 year: "1996-1997"
 type: core
-topics: [Environmental Psychology, Urban Morphology, Social Interaction, Public Space Dynamics]
-environment: [Suburban, Neotraditional Communities, Traditional Neighborhoods]
-population: [Suburban Residents, Planners, General Public]
+doi: 10.1080/13574809608724385
 ---
 ===SECTION===
 ## Summary

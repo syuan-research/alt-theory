@@ -4,9 +4,7 @@ theory: Social Psychological Model of Crowding
 author: Daniel Stokols
 year: 1972
 type: details
-topics: [Empirical Studies, Behavioral Sink, Proxemics, Coping Mechanisms]
-environment: [Urban, Laboratory, Natural Settings]
-population: [Humans, Norwegian Rats, Sika Deer]
+doi: 10.1080/01944367208977409
 ---
 ===SECTION===
 ## Empirical Study: Animal Populations (Calhoun & Christian)

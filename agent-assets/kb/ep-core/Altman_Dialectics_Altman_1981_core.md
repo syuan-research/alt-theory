@@ -4,9 +4,7 @@ theory: Altman Dialectics
 author: "Irwin Altman, Anne Vinsel, and Barbara B. Brown"
 year: 1981
 type: core
-topics: [Social Psychology, Interpersonal Relationships, Privacy Regulation, Social Penetration]
-environment: [Social Interaction]
-population: [General Public]
+doi: 10.1016/s0065-2601(08)60371-8
 ---
 ===SECTION===
 ## Summary

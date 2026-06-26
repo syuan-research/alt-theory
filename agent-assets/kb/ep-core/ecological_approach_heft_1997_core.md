@@ -4,9 +4,7 @@ theory: Ecological Approach to Perception
 author: Harry Heft
 year: 1997
 type: core
-topics: [Environmental Psychology, "Perception-Action", Affordances, Wayfinding, Ecological Optics]
-environment: [Built Environment, Natural Environment, Outdoor Play Settings]
-population: [General Public, Children, Designers]
+doi: 10.1007/978-1-4757-4425-5_3
 ---
 ===SECTION===
 ## Summary

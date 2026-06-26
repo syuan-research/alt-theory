@@ -4,9 +4,7 @@ theory: Capability Approach
 author: Sophie Mitra
 year: 2006
 type: core
-topics: [Disability Studies, Welfare Economics, Capability Approach, Social Policy]
-environment: [Social Environment, Economic Environment, Political Environment]
-population: [Persons with Disabilities, Policymakers, Economists]
+doi: 10.1177/10442073060160040501
 ---
 ===SECTION===
 ## Summary

@@ -4,9 +4,7 @@ theory: Lynch's Five Elements
 author: Kevin Lynch
 year: 1960
 type: core
-topics: [Urban Design, Environmental Psychology, Cognitive Mapping, Architecture]
-environment: [Urban, Metropolitan]
-population: [City Dwellers, Planners, Architects]
+doi:
 ---
 ===SECTION===
 ## Summary

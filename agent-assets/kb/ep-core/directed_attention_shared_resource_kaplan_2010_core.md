@@ -4,9 +4,7 @@ theory: Directed Attention Shared Resource
 author: "Kaplan & Berman"
 year: 2010
 type: core
-topics: [Executive Functioning, "Self-Regulation", Attention Restoration Theory, Ego Depletion]
-environment: [Natural Environments, Urban Environments]
-population: [General Public, Cancer Patients, Public Housing Residents]
+doi: 10.1177/1745691609356784
 ---
 ===SECTION===
 ## Summary

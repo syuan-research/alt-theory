@@ -4,9 +4,7 @@ theory: Psychoevolutionary Theory of Environmental Aesthetics
 author: Roger S. Ulrich
 year: 1983
 type: details
-topics: [Empirical Research, Psychophysiology, "Cross-Cultural Studies", Stress Recovery]
-environment: [Forest, Roadside, Urban, Wilderness]
-population: [University Students, American Suburbanites, Swedish Students, Campers]
+doi: 10.1007/978-1-4613-3539-9_4
 ---
 ===SECTION===
 ## Study: Roadside Scenery and Preference (Ulrich, 1977)

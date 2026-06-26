@@ -4,9 +4,7 @@ theory: Relational Restoration Theory
 author: Terry Hartig
 year: 2021
 type: details
-topics: [Interpersonal Dynamics, Field Experiments, "Nature-Based Therapy"]
-environment: [Forest, Urban Parks, Museums, Cafes]
-population: [Couples, Friends, Parents and Children]
+doi: 10.1007/978-3-030-69020-5_5
 ---
 ===SECTION===
 ## Scenario: The Couple in the Forest

@@ -4,9 +4,7 @@ theory: Privacy Regulation Theory
 author: Irwin Altman
 year: 1976
 type: core
-topics: [Social Psychology, Environmental Psychology, Boundary Regulation]
-environment: [General Social, Domestic, Urban]
-population: [General Public, "Cross-cultural Social Groups"]
+doi: 10.1177/001391657600800102
 ---
 ===SECTION===
 ## Summary

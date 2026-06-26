@@ -4,9 +4,7 @@ theory: Cognitive Motivational Relational Theory of Emotion
 author: Richard S. Lazarus
 year: 1991
 type: core
-topics: [Emotion, Cognitive Appraisal, Coping, Motivation, "Person-Environment Fit"]
-environment: [General Life Settings, Social Interactions, Adaptational Encounters]
-population: [Humans (Adults and Children), Animals (Comparative Context)]
+doi: 10.1037/0003-066x.46.8.819
 ---
 ===SECTION===
 ## Summary

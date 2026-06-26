@@ -4,9 +4,7 @@ theory: Perceptual Fluency Theory
 author: "Joye & van den Berg"
 year: 2011
 type: core
-topics: [Restorative Environments, Evolutionary Psychology, Processing Fluency, Aesthetics]
-environment: [Urban, Natural, Savanna]
-population: [General Public]
+doi: 10.1016/j.ufug.2011.07.004
 ---
 ===SECTION===
 ## Summary

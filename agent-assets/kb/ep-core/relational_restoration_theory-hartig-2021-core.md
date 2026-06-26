@@ -4,9 +4,7 @@ theory: Relational Restoration Theory
 author: Terry Hartig
 year: 2021
 type: core
-topics: [Environmental Psychology, Restorative Environments, Social Psychology, Relational Resources]
-environment: [Natural Environments]
-population: [Dyads, Couples, Small Groups, Families]
+doi: 10.1007/978-3-030-69020-5_5
 ---
 ===SECTION===
 ## Summary

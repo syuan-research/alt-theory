@@ -4,9 +4,7 @@ theory: Altman on Hall's Proxemics Framework
 author: "Irwin Altman & Anne M. Vinsel"
 year: 1977
 type: core
-topics: [Environmental Psychology, Proxemics, Nonverbal Communication, Social Interaction]
-environment: [General Social, Laboratory, Field Settings]
-population: [General Public, "Cross-cultural Groups"]
+doi: 10.1007/978-1-4684-0808-9_5
 ---
 ===SECTION===
 ## Summary

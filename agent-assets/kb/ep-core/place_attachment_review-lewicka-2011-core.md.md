@@ -4,9 +4,7 @@ theory: 2011 Review on the Context for Place Attachment
 author: Maria Lewicka
 year: 2011
 type: core
-topics: [Environmental Psychology, Place Attachment, Urban Sociology, Human Geography]
-environment: [Urban, Rural, Gated Communities, Natural Environments]
-population: [General Public, University Students, Residents, Migrants]
+doi: 10.1016/j.jenvp.2010.10.001
 ---
 ===SECTION===
 ## Summary

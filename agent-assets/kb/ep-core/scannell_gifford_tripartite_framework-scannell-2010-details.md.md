@@ -4,9 +4,7 @@ theory: "Scannell & Gifford's Tripartite Framework of Place Attachment"
 author: "Scannell & Gifford"
 year: 2010
 type: details
-topics: [Case Studies, Displacement, Reconstruction, Measurement]
-environment: [Boston West End, "Xenia, Ohio", Appalachian Trail, Norway]
-population: [Residents, Hikers, Norwegian Citizens, Rhesus Monkeys]
+doi: 10.1016/j.jenvp.2009.09.006
 ---
 ===SECTION===
 ## Case Study: Displacement in Boston's West End (Fried, 1963)

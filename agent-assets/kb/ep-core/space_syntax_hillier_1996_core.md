@@ -4,9 +4,7 @@ theory: Space Syntax
 author: Bill Hillier
 year: 1996
 type: core
-topics: [Urban Morphology, Spatial Analysis, Architectural Theory, Network Analysis]
-environment: [Urban Grids, Building Interiors]
-population: [General Public, Architects, Urban Planners]
+doi:
 ---
 ===SECTION===
 ## Summary: The Configurational Theory of Architecture

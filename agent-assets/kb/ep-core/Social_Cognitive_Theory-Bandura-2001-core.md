@@ -4,9 +4,7 @@ theory: Social Cognitive Theory
 author: Albert Bandura
 year: 2001
 type: core
-topics: [Human Agency, "Self-Efficacy", Biosocial Coevolution, Collective Efficacy, Moral Agency]
-environment: [Imposed Environment, Selected Environment, Constructed Environment, Transnational Systems]
-population: [Individuals, Social Systems, Cultures]
+doi: 10.1146/annurev.psych.52.1.1
 ---
 ===SECTION===
 ## Summary

@@ -4,9 +4,7 @@ theory: The Affect Heuristic and Risk as Feelings
 author: Slovic et al.
 year: 2004
 type: core
-topics: [Risk Perception, "Dual-Process Theory", Decision Making, Cognitive Psychology, Behavioral Economics]
-environment: [Technological Hazards, Environmental Policy, Medical Settings, Financial Markets]
-population: [General Public, Experts, Toxicologists, Adolescent Smokers]
+doi: 10.1111/j.0272-4332.2004.00433.x
 ---
 ===SECTION===
 ## Summary

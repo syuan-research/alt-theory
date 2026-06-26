@@ -4,9 +4,7 @@ theory: "Goal-Framing Theory"
 author: "Lindenberg & Steg"
 year: 2013
 type: core
-topics: [Environmental Psychology, Cognitive Sociology, Behavioral Economics, Social Norms]
-environment: [General Social Environments, Public Spaces]
-population: [General Public]
+doi: 10.4324/9780203141182-6
 ---
 ===SECTION===
 ## Summary

@@ -4,9 +4,7 @@ theory: "Biophilia Hypothesis - Typology of Values"
 author: Stephen R. Kellert
 year: 1993
 type: details
-topics: [Biophilia, Typology of Values, "Cross-Cultural Research", Environmental Preferences]
-environment: [USA, Japan, Germany, Botswana]
-population: [General Public, Zoo Visitors, Hunters]
+doi:
 ---
 ===SECTION===
 ## Empirical Study: Cross-Cultural Perspectives (USA vs. Japan)

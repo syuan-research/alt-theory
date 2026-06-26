@@ -4,9 +4,7 @@ theory: Privacy Regulation Theory
 author: Irwin Altman
 year: 1976
 type: details
-topics: ["Cross-cultural Studies", Proxemics, Environmental Design]
-environment: [Domestic, Kibbutz, Wilderness]
-population: [Mexican Families, Tuareg, Javanese, English, Japanese]
+doi: 10.1177/001391657600800102
 ---
 ===SECTION===
 ## Empirical Details: Hall’s Distance Zones

@@ -4,9 +4,7 @@ theory: Ecological Model of Aging
 author: William A. Satariano
 year: 2006
 type: details
-topics: [Epidemiology, Allostatic Load, Socioeconomic Status, Disablement]
-environment: [Laboratory, Population Studies, Urban Environment]
-population: [Older Adults, Minority Populations]
+doi:
 ---
 ===SECTION===
 ## Empirical Measure: Allostatic Load (AL)

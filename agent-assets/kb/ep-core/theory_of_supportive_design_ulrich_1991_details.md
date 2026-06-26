@@ -4,9 +4,7 @@ theory: Theory of Supportive Design
 author: Roger S. Ulrich
 year: 1991
 type: details
-topics: [Empirical Evidence, Patient Recovery, Nature Benefits]
-environment: [Surgical Ward, Psychiatric Unit, Blood Bank]
-population: [Gall Bladder Patients, Heart Surgery Patients, Psychiatric Patients]
+doi:
 ---
 ===SECTION===
 ## Empirical Study: Gall Bladder Surgery Recovery (Ulrich, 1984)

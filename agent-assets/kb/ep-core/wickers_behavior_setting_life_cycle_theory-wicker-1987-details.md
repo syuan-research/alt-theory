@@ -4,9 +4,7 @@ theory: Wicker's Behavior Setting Life Cycle Theory
 author: Allan W. Wicker
 year: 1987
 type: details
-topics: [Staffing Theory, Negotiated Order, Setting Evolution]
-environment: [Retail, Schools, Offices]
-population: [Employees, Managers]
+doi:
 ---
 ===SECTION===
 ## Metaphor: The Gift Shop (Life Cycle Illustration)

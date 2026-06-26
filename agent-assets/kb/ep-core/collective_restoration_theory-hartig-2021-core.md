@@ -4,9 +4,7 @@ theory: Collective Restoration Theory
 author: Terry Hartig
 year: 2021
 type: core
-topics: [Environmental Psychology, Sociology, Social Capital, Public Health]
-environment: [Public Places, Urban Infrastructure, Natural Parks]
-population: [Communities, National Populations]
+doi: 10.1007/978-3-030-69020-5_5
 ---
 ===SECTION===
 ## Summary
