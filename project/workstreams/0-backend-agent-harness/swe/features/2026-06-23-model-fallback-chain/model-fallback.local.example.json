@@ -3,12 +3,9 @@
   "provider": "qwen-bailian-beijing",
   "maxFallbacksPerRun": 8,
   "chain": [
-    "qwen3.7-max-2026-06-08",
-    "qwen3.7-max-2026-05-17",
-    "qwen3.7-max-preview",
-    "qwen3.6-max-preview",
-    "glm-5.2",
-    "qwen3.7-plus"
+    "qwen3.7-max-2026-05-20",
+    "glm-5.1",
+    "kimi-k2.6"
   ],
   "rules": [
     {
