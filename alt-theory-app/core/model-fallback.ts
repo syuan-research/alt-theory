@@ -86,6 +86,115 @@ function matchesAnyPattern(error: string, patterns: string[]): boolean {
   return patterns.some((pattern) => normalized.includes(pattern.toLowerCase()));
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function validateRule(value: unknown): ModelFallbackRule | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const { id, action, match } = value;
+  if (
+    typeof id !== "string" ||
+    id.trim().length === 0 ||
+    (action !== "fail" &&
+      action !== "ignore" &&
+      action !== "exclude_and_fallback") ||
+    !isRecord(match) ||
+    !Array.isArray(match.anyPattern) ||
+    match.anyPattern.some(
+      (pattern) => typeof pattern !== "string" || pattern.trim().length === 0
+    )
+  ) {
+    return null;
+  }
+  return {
+    id,
+    action,
+    match: {
+      anyPattern: [...match.anyPattern],
+    },
+  };
+}
+
+function validateConfig(value: unknown): ModelFallbackConfig | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const { enabled, provider, chain, maxFallbacksPerRun, rules } = value;
+  if (
+    typeof enabled !== "boolean" ||
+    typeof provider !== "string" ||
+    provider.trim().length === 0 ||
+    !Array.isArray(chain) ||
+    chain.length === 0 ||
+    chain.some(
+      (modelId) => typeof modelId !== "string" || modelId.trim().length === 0
+    ) ||
+    new Set(chain).size !== chain.length ||
+    !Number.isInteger(maxFallbacksPerRun) ||
+    maxFallbacksPerRun < 1
+  ) {
+    return null;
+  }
+
+  let validatedRules: ModelFallbackRule[] = DEFAULT_RULES;
+  if (rules !== undefined) {
+    if (!Array.isArray(rules)) {
+      return null;
+    }
+    validatedRules = rules.map(validateRule).filter(Boolean) as ModelFallbackRule[];
+    if (validatedRules.length !== rules.length) {
+      return null;
+    }
+    if (validatedRules.length === 0) {
+      validatedRules = DEFAULT_RULES;
+    }
+  }
+
+  return {
+    enabled,
+    provider: provider.trim(),
+    chain: [...chain],
+    maxFallbacksPerRun,
+    rules: validatedRules,
+  };
+}
+
+function validateState(value: unknown): ModelFallbackState | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const { excluded } = value;
+  if (excluded === undefined) {
+    return { excluded: {} };
+  }
+  if (!isRecord(excluded)) {
+    return null;
+  }
+  const normalized: Record<string, ExcludedModelRecord> = {};
+  for (const [key, record] of Object.entries(excluded)) {
+    if (!isRecord(record)) {
+      continue;
+    }
+    const { excludedAt, ruleId, lastError } = record;
+    if (
+      typeof excludedAt !== "string" ||
+      typeof ruleId !== "string" ||
+      typeof lastError !== "string"
+    ) {
+      continue;
+    }
+    normalized[key] = {
+      excludedAt,
+      ruleId,
+      lastError,
+    };
+  }
+  return { excluded: normalized };
+}
+
 export function classifyModelError(
   error: string,
   rules: ModelFallbackRule[] = DEFAULT_RULES
@@ -103,11 +212,23 @@ export function loadModelFallbackConfig(path: string): ModelFallbackConfig | nul
   if (!existsSync(resolved)) {
     return null;
   }
-  const parsed = JSON.parse(readFileSync(resolved, "utf-8")) as ModelFallbackConfig;
-  if (!parsed.rules?.length) {
-    parsed.rules = DEFAULT_RULES;
+  try {
+    const parsed = JSON.parse(readFileSync(resolved, "utf-8")) as unknown;
+    const config = validateConfig(parsed);
+    if (!config) {
+      console.error(
+        `[model-fallback] invalid config at ${resolved}; fallback disabled`
+      );
+      return null;
+    }
+    return config;
+  } catch (error) {
+    console.error(
+      `[model-fallback] failed to load config at ${resolved}:`,
+      error instanceof Error ? error.message : String(error)
+    );
+    return null;
   }
-  return parsed;
 }
 
 export function loadModelFallbackState(statePath: string): ModelFallbackState {
@@ -115,10 +236,23 @@ export function loadModelFallbackState(statePath: string): ModelFallbackState {
   if (!existsSync(resolved)) {
     return { excluded: {} };
   }
-  const parsed = JSON.parse(readFileSync(resolved, "utf-8")) as ModelFallbackState;
-  return {
-    excluded: parsed.excluded ?? {},
-  };
+  try {
+    const parsed = JSON.parse(readFileSync(resolved, "utf-8")) as unknown;
+    const state = validateState(parsed);
+    if (!state) {
+      console.error(
+        `[model-fallback] invalid state at ${resolved}; starting with empty exclusions`
+      );
+      return { excluded: {} };
+    }
+    return state;
+  } catch (error) {
+    console.error(
+      `[model-fallback] failed to load state at ${resolved}:`,
+      error instanceof Error ? error.message : String(error)
+    );
+    return { excluded: {} };
+  }
 }
 
 export function saveModelFallbackState(
@@ -233,14 +367,16 @@ export function stripLastErrorAssistantMessage(session: AgentSession): void {
   }
 }
 
-export function continueAgentTurnAfterModelSwitch(session: AgentSession): void {
+export function continueAgentTurnAfterModelSwitch(
+  session: AgentSession
+): Promise<void> {
   stripLastErrorAssistantMessage(session);
   const runtime = session as unknown as AgentSessionWithContinue;
-  setTimeout(() => {
-    void runtime.agent.continue().catch(() => {
-      // Next agent_end will surface the error or another fallback attempt.
-    });
-  }, 0);
+  return new Promise((resolve, reject) => {
+    setTimeout(() => {
+      void runtime.agent.continue().then(resolve, reject);
+    }, 0);
+  });
 }
 
 export function resolveModelFallbackStatePath(dataDir: string): string {

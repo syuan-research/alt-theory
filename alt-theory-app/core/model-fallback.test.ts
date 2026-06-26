@@ -5,6 +5,8 @@ import { join } from "path";
 import test from "node:test";
 import {
   classifyModelError,
+  loadModelFallbackConfig,
+  loadModelFallbackState,
   ModelFallbackCoordinator,
   type ModelFallbackConfig,
 } from "./model-fallback.js";
@@ -140,4 +142,61 @@ test("resolveFirstUsableModel skips excluded preferred model", () => {
     coordinator.resolveFirstUsableModel("qwen3.7-max")?.modelId,
     "qwen3.7-max-2026-06-08"
   );
+});
+
+test("loadModelFallbackConfig returns null for invalid JSON or invalid shape", () => {
+  const root = mkdtempSync(join(tmpdir(), "alt-theory-fallback-config-"));
+  const invalidJsonPath = join(root, "invalid.json");
+  const invalidShapePath = join(root, "invalid-shape.json");
+  writeFileSync(invalidJsonPath, "{", "utf-8");
+  writeFileSync(
+    invalidShapePath,
+    JSON.stringify({
+      enabled: true,
+      provider: "qwen-bailian-beijing",
+      chain: [],
+      maxFallbacksPerRun: 0,
+      rules: [],
+    }),
+    "utf-8"
+  );
+
+  assert.equal(loadModelFallbackConfig(invalidJsonPath), null);
+  assert.equal(loadModelFallbackConfig(invalidShapePath), null);
+});
+
+test("loadModelFallbackState falls back to empty exclusions on invalid input", () => {
+  const root = mkdtempSync(join(tmpdir(), "alt-theory-fallback-state-"));
+  const invalidJsonPath = join(root, "invalid.json");
+  const mixedStatePath = join(root, "mixed.json");
+  writeFileSync(invalidJsonPath, "{", "utf-8");
+  writeFileSync(
+    mixedStatePath,
+    JSON.stringify({
+      excluded: {
+        valid: {
+          excludedAt: "2026-06-24T00:00:00.000Z",
+          ruleId: "quota",
+          lastError: "403 exhausted",
+        },
+        invalid: {
+          excludedAt: 1,
+          ruleId: "quota",
+          lastError: "403 exhausted",
+        },
+      },
+    }),
+    "utf-8"
+  );
+
+  assert.deepEqual(loadModelFallbackState(invalidJsonPath), { excluded: {} });
+  assert.deepEqual(loadModelFallbackState(mixedStatePath), {
+    excluded: {
+      valid: {
+        excludedAt: "2026-06-24T00:00:00.000Z",
+        ruleId: "quota",
+        lastError: "403 exhausted",
+      },
+    },
+  });
 });
