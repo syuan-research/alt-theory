@@ -61,11 +61,7 @@ export function resolveAgentAssetPaths(
     overrides.soulPath ?? process.env.ALT_THEORY_SOUL_PATH ?? null;
   const defaultSoulPath = explicitSoulPath
     ? resolve(explicitSoulPath)
-    : firstExisting([
-        resolve(soulDir, "soul-latest.md"),
-        resolve(soulDir, "soul.md"),
-        resolve(rootDir, "soul.md"),
-      ]);
+    : firstExisting([resolve(soulDir, "soul-latest.md")]);
 
   return {
     rootDir,

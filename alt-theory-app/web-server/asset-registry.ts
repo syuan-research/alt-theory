@@ -41,17 +41,9 @@ export const listProfiles = listRolePresets;
 
 export function listSouls(
   soulDir: string,
-  legacySoulPath?: string | null
+  _legacySoulPath?: string | null
 ): DiscoveredAsset[] {
-  const discovered = listMarkdownAssets(soulDir);
-  if (
-    discovered.length === 0 &&
-    legacySoulPath &&
-    existsSync(resolve(legacySoulPath))
-  ) {
-    return [{ slug: "soul", displayName: "Soul" }];
-  }
-  return discovered;
+  return listMarkdownAssets(soulDir);
 }
 
 export function listKbDomains(kbDir: string): DiscoveredAsset[] {
@@ -92,10 +84,6 @@ export function resolveSoulSlug(
   const candidate = resolve(soulDir, `${slug}.md`);
   if (existsSync(candidate)) {
     return candidate;
-  }
-
-  if (slug === "soul" && legacySoulPath && existsSync(resolve(legacySoulPath))) {
-    return resolve(legacySoulPath);
   }
 
   return null;

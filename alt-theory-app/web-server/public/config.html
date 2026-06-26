@@ -72,6 +72,13 @@
     }
     .preset-row.hidden { display: none; }
     .preset-btn:hover { background: var(--card); }
+    .preset-note {
+      width: 100%;
+      color: #6a6a70;
+      font-size: 11px;
+      line-height: 1.4;
+      margin: -4px 0 2px;
+    }
     .provider-card {
       background: var(--elevated);
       border: 1px solid var(--hairline);
@@ -329,11 +336,12 @@
     let activeStatus = { provider: null, model: null, usable: false };
     const PROVIDER_PRESETS = [
       {
-        label: 'OpenCode Go',
+        label: 'Recommended: MiMo',
         name: 'opencode-go',
         api: 'openai-completions',
-        baseUrl: '',
-        models: []
+        baseUrl: 'https://opencode.ai/zen/go/v1',
+        models: [],
+        note: 'Uses OpenCode Go / MiMo-compatible endpoint. Paste the key, then click Fetch model list to get current models.'
       },
       {
         label: 'OpenAI',
@@ -350,19 +358,36 @@
         models: []
       },
       {
+        label: 'Aliyun Qwen',
+        name: 'dashscope-qwen',
+        api: 'openai-completions',
+        baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+        models: [],
+        note: 'Uses Alibaba Cloud DashScope OpenAI-compatible API. Paste a DashScope API key, then click Fetch model list.'
+      },
+      {
         label: 'OpenRouter',
         name: 'openrouter',
         api: 'openai-completions',
         baseUrl: 'https://openrouter.ai/api/v1',
-        models: []
+        models: [],
+        note: 'One OpenRouter key can access many providers. Paste the key, then click Fetch model list.'
       },
       {
-        label: 'MiniMax',
-        name: 'minimax',
+        label: 'MiniMax CN',
+        name: 'minimax-cn',
         api: 'anthropic-messages',
         baseUrl: 'https://api.minimaxi.com/anthropic',
         models: [],
-        options: { setCacheKey: true }
+        note: 'Uses MiniMax China Anthropic-compatible endpoint. Do not add /v1. Paste the key, then click Fetch model list.'
+      },
+      {
+        label: 'Custom',
+        name: 'custom-provider',
+        api: 'openai-completions',
+        baseUrl: 'https://api.example.com/v1',
+        models: [],
+        note: 'Only use this for a gateway or local server. Base URL, API type, key, and model id must match that provider.'
       }
     ];
 
@@ -554,6 +579,10 @@
       row.innerHTML = '';
       row.classList.toggle('hidden', !show);
       if (!show) return;
+      const note = document.createElement('div');
+      note.className = 'preset-note';
+      note.textContent = 'Choose a preset first. For most users, only the API key is required after that.';
+      row.appendChild(note);
       for (const preset of PROVIDER_PRESETS) {
         const btn = document.createElement('button');
         btn.type = 'button';
@@ -578,6 +607,7 @@
       Object.entries(preset.options || {}).forEach(([key, value]) => {
         addOptionRow(key, stringifyOptionValue(value));
       });
+      if (preset.note) toast(preset.note);
     }
 
     $('#add-model-btn').addEventListener('click', () => addModelRow());

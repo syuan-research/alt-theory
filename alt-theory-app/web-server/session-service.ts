@@ -178,6 +178,7 @@ interface ManagedSession {
   nextRunIndex: number;
   branchId: string;
   fallbackAttempts: number;
+  pendingRunWork: Promise<void> | null;
 }
 
 export class SessionService {
@@ -645,53 +646,36 @@ export class SessionService {
 
     this.emitRunPhase(managed, "connecting");
 
-    const completion = managed.session
-      .prompt(text)
-      .then(() => {
-        const entries = managed.session.sessionManager
-          .getEntries()
-          .filter((entry) => !beforeEntryIds.has(entry.id));
-        const userEntryId =
-          entries.find(
-            (entry) =>
-              entry.type === "message" &&
-              (entry.message as { role?: string }).role === "user"
-          )?.id ?? null;
-        const assistantEntryIds = entries
-          .filter(
-            (entry) =>
-              entry.type === "message" &&
-              (entry.message as { role?: string }).role === "assistant"
-          )
-          .map((entry) => entry.id);
+    const completion = (async () => {
+      let promptError: unknown = null;
+      let pendingError: unknown = null;
+      try {
+        await managed.session.prompt(text);
+      } catch (error) {
+        promptError = error;
+      }
+
+      try {
+        await this.waitForPendingRunWork(managed);
+      } catch (error) {
+        pendingError = error;
+      }
+
+      const finalError =
+        managed.session.state.errorMessage ??
+        (pendingError instanceof Error
+          ? pendingError.message
+          : pendingError
+            ? String(pendingError)
+            : null);
+      if (finalError || /abort|interrupt/i.test(String(promptError))) {
         appendRunRecord(managed.manifest.recordsDir, {
           sessionId,
           branchId: managed.branchId,
           turnId,
           revisionId,
           runId,
-          status: "completed",
-          piSessionFile: managed.session.sessionFile ?? null,
-          userEntryId,
-          assistantEntryIds,
-          supersedesRunId: options.supersedesRunId ?? null,
-          acceptedAt,
-          completedAt: new Date().toISOString(),
-        });
-        updateBranchHead(managed.manifest.recordsDir, managed.branchId, {
-          activePiSessionFile: managed.session.sessionFile ?? null,
-          activeLeafEntryId:
-            managed.session.sessionManager.getLeafId() ?? null,
-        });
-      })
-      .catch((error) => {
-        appendRunRecord(managed.manifest.recordsDir, {
-          sessionId,
-          branchId: managed.branchId,
-          turnId,
-          revisionId,
-          runId,
-          status: /abort|interrupt/i.test(String(error))
+          status: /abort|interrupt/i.test(String(promptError))
             ? "aborted"
             : "failed",
           piSessionFile: managed.session.sessionFile ?? null,
@@ -701,11 +685,46 @@ export class SessionService {
           acceptedAt,
           completedAt: new Date().toISOString(),
         });
-        throw error;
-      })
-      .finally(() => {
-        managed.busy = false;
+        throw promptError ?? pendingError ?? new Error(finalError ?? "Run failed");
+      }
+
+      const entries = managed.session.sessionManager
+        .getEntries()
+        .filter((entry) => !beforeEntryIds.has(entry.id));
+      const userEntryId =
+        entries.find(
+          (entry) =>
+            entry.type === "message" &&
+            (entry.message as { role?: string }).role === "user"
+        )?.id ?? null;
+      const assistantEntryIds = entries
+        .filter(
+          (entry) =>
+            entry.type === "message" &&
+            (entry.message as { role?: string }).role === "assistant"
+        )
+        .map((entry) => entry.id);
+      appendRunRecord(managed.manifest.recordsDir, {
+        sessionId,
+        branchId: managed.branchId,
+        turnId,
+        revisionId,
+        runId,
+        status: "completed",
+        piSessionFile: managed.session.sessionFile ?? null,
+        userEntryId,
+        assistantEntryIds,
+        supersedesRunId: options.supersedesRunId ?? null,
+        acceptedAt,
+        completedAt: new Date().toISOString(),
       });
+      updateBranchHead(managed.manifest.recordsDir, managed.branchId, {
+        activePiSessionFile: managed.session.sessionFile ?? null,
+        activeLeafEntryId: managed.session.sessionManager.getLeafId() ?? null,
+      });
+    })().finally(() => {
+      managed.busy = false;
+    });
 
     return {
       ids: {
@@ -718,6 +737,19 @@ export class SessionService {
       completion,
       abort: () => this.abort(sessionId, "run_handle_abort"),
     };
+  }
+
+  private async waitForPendingRunWork(managed: ManagedSession): Promise<void> {
+    while (managed.pendingRunWork) {
+      const pending = managed.pendingRunWork;
+      try {
+        await pending;
+      } finally {
+        if (managed.pendingRunWork === pending) {
+          managed.pendingRunWork = null;
+        }
+      }
+    }
   }
 
   async abort(sessionId: string, reason?: string): Promise<void> {
@@ -950,18 +982,24 @@ export class SessionService {
       throw new Error(`Invalid session id: ${sessionId}`);
     }
 
+    const effectiveConfig = detail.effectiveConfig;
+    const effectiveCustomInstructionRef =
+      effectiveConfig?.customInstruction?.ref ?? null;
     const activeRolePresetSlug = this.activeOptionalSlug(
-      detail.manifest?.rolePreset?.slug,
+      effectiveConfig?.rolePresetSlug ?? detail.manifest?.rolePreset?.slug,
       fallbackSelectors.rolePresetSlug,
       (slug) => this.resolveOptionalRolePresetPath(slug)
     );
     const activeSoulSlug = this.activeOptionalSlug(
-      detail.manifest?.soul?.slug,
+      effectiveConfig?.soulSlug ?? detail.manifest?.soul?.slug,
       fallbackSelectors.soulSlug,
       (slug) => this.resolveOptionalSoulPath(slug)
     );
     const originalDomain =
-      detail.manifest?.kb?.domain ?? detail.manifest?.kbDomain ?? null;
+      effectiveConfig?.kbDomain ??
+      detail.manifest?.kb?.domain ??
+      detail.manifest?.kbDomain ??
+      null;
     const activeDomain =
       originalDomain === KB_DISABLED_DOMAIN
         ? KB_DISABLED_DOMAIN
@@ -969,7 +1007,7 @@ export class SessionService {
           ? originalDomain
           : fallbackSelectors.kbDomain;
     const activeInstructionRef = this.activeInstructionRef(
-      detail.manifest?.customInstruction?.ref,
+      effectiveCustomInstructionRef ?? detail.manifest?.customInstruction?.ref,
       fallbackSelectors.customInstructionRef
     );
     const instruction = this.resolveOptionalInstruction(activeInstructionRef);
@@ -1062,11 +1100,17 @@ export class SessionService {
     }
     const fallbackChangedFields = configChangedFields(
       {
-        rolePresetSlug: detail.manifest?.rolePreset?.slug ?? null,
+        rolePresetSlug:
+          effectiveConfig?.rolePresetSlug ??
+          detail.manifest?.rolePreset?.slug ??
+          null,
         kbDomain: originalDomain ?? fallbackSelectors.kbDomain,
-        soulSlug: detail.manifest?.soul?.slug ?? null,
+        soulSlug:
+          effectiveConfig?.soulSlug ?? detail.manifest?.soul?.slug ?? null,
         customInstructionRef:
-          detail.manifest?.customInstruction?.ref ?? null,
+          effectiveCustomInstructionRef ??
+          detail.manifest?.customInstruction?.ref ??
+          null,
       },
       managed.selectors
     );
@@ -1250,6 +1294,7 @@ export class SessionService {
         maxCounter(persistedRuns.map((run) => run.runId), "run") + 1,
       branchId: args.branchId ?? "main",
       fallbackAttempts: 0,
+      pendingRunWork: null,
     };
     managed.internalUnsubscribe = managed.session.subscribe((event) =>
       this.handleAgentEvent(managed, event)
@@ -1383,7 +1428,7 @@ export class SessionService {
       },
     });
 
-    continueAgentTurnAfterModelSwitch(managed.session);
+    await continueAgentTurnAfterModelSwitch(managed.session);
     return true;
   }
 
@@ -1441,9 +1486,9 @@ export class SessionService {
       case "agent_end": {
         const error = managed.session.state.errorMessage;
         if (error) {
-          setTimeout(() => {
-            void this.finalizeRunFailure(managed);
-          }, 0);
+          const pending = this.finalizeRunFailure(managed);
+          managed.pendingRunWork = pending;
+          void pending.catch(() => {});
         } else {
           managed.busy = false;
           managed.fallbackAttempts = 0;

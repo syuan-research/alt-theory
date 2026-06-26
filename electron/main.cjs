@@ -41,6 +41,7 @@ const PORT = parseInt(
   process.env.ALT_THEORY_PORT || process.env.PORT || "3000",
   10
 );
+process.env.PORT = String(PORT);
 const LOCAL_STATE_ROOT = path.join(os.homedir(), ".alt-theory");
 const LOCAL_DATA_DIR = path.join(LOCAL_STATE_ROOT, "data");
 const LOCAL_PI_AGENT_DIR = path.join(LOCAL_STATE_ROOT, "pi-agent");
@@ -167,6 +168,15 @@ app.whenReady().then(async () => {
   log(`Local log: ${LOCAL_LOG_PATH}`);
 
   const projectRoot = resolveProjectRoot();
+  if (!process.env.ALT_THEORY_PUBLIC_DIR) {
+    process.env.ALT_THEORY_PUBLIC_DIR = path.join(
+      projectRoot,
+      "alt-theory-app",
+      "web-server",
+      "public-v6"
+    );
+  }
+  log(`Public dir: ${process.env.ALT_THEORY_PUBLIC_DIR}`);
   try {
     await startBackend(projectRoot);
     loadedUrl = true;

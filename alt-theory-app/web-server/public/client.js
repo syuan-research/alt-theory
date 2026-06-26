@@ -16,6 +16,7 @@
 
 const newSessionBtn = document.getElementById("new-session-btn");
 const kbSelect = document.getElementById("kb-select");
+const kbToggle = document.getElementById("kb-toggle");
 const soulSelect = document.getElementById("soul-select");
 const rolePresetSelect = document.getElementById("role-preset-select");
 const instructionSelect = document.getElementById("instruction-select");
@@ -125,6 +126,7 @@ const runHintEl = document.getElementById("run-hint");
 const debugOnlyEls = Array.from(document.querySelectorAll(".debug-only"));
 const leftConfigSection = document.querySelector(".config-section");
 const configAdvancedEls = Array.from(document.querySelectorAll(".config-advanced"));
+const configKbEls = Array.from(document.querySelectorAll(".config-kb"));
 const sessionBrowserSection = document.getElementById("session-browser-section");
 // Right-panel tabs that researcher/debug own.
 const recordsTabBtn = document.querySelector('.right-tab[data-right-tab="records"]');
@@ -307,9 +309,10 @@ function applyViewMode(mode) {
   const isSimpleUser = isParticipant || isLocal;
   const isResearcherBase = mode === "researcher" || mode === "debug";
 
-  // Left panel: participant/local keep only the KB switch; researcher/debug show full config.
-  if (leftConfigSection) leftConfigSection.classList.remove("hidden");
+  // Left panel: participant/local use the composer KB checkbox; researcher/debug show advanced config.
+  if (leftConfigSection) leftConfigSection.classList.toggle("hidden", isSimpleUser);
   configAdvancedEls.forEach((el) => el.classList.toggle("hidden", isSimpleUser));
+  configKbEls.forEach((el) => el.classList.add("hidden"));
   if (modelConfigLink) modelConfigLink.classList.toggle("hidden", !isLocal);
 
   // Role-condition display: participant only.
@@ -522,9 +525,11 @@ debugToggle.addEventListener("click", handleDebugToggle);
 function syncVisibilityBar(editable) {
   const isPrivate = currentVisibility === "private";
   privateToggle.checked = isPrivate;
+  syncKbToggle();
   // Toggle stays enabled whenever a session is live, regardless of draft vs
   // materialized. Only disable when explicitly not editable AND no session.
   privateToggle.disabled = !editable && !sessionReady;
+  if (kbToggle) kbToggle.disabled = (!editable && !sessionReady) || isRunning;
   privateBadge.classList.toggle("hidden", !isPrivate);
   privateExpiryHint.classList.add("hidden");
   privateExpiryHint.textContent = "";
@@ -1579,9 +1584,15 @@ function selectIfAvailable(select, value) {
   if (hasValue) select.value = target;
 }
 
+function syncKbToggle() {
+  if (!kbToggle) return;
+  kbToggle.checked = currentDomain !== KB_OFF_VALUE;
+}
+
 function syncSessionSelectors() {
   selectIfAvailable(projectSelect, currentProjectId);
   selectIfAvailable(kbSelect, currentDomain);
+  syncKbToggle();
   selectIfAvailable(soulSelect, currentSoulSlug);
   selectIfAvailable(rolePresetSelect, currentRolePresetSlug);
   selectIfAvailable(instructionSelect, currentInstructionRef);
@@ -2729,6 +2740,7 @@ function setControlsEnabled(enabled) {
   projectSelect.disabled =
     !interactive || projectSelect.dataset.hasOptions !== "true";
   kbSelect.disabled = !interactive || kbSelect.dataset.hasOptions !== "true";
+  if (kbToggle) kbToggle.disabled = !interactive || isRunning;
   soulSelect.disabled =
     !interactive || soulSelect.dataset.hasOptions !== "true";
   rolePresetSelect.disabled =
@@ -2825,14 +2837,23 @@ projectSelect.addEventListener("change", (e) => {
   }
 });
 
-// KB switch — takes effect on next prompt
-kbSelect.addEventListener("change", (e) => {
-  if (!e.target.value) return;
-  if (wsSafeSend(JSON.stringify({ type: "switch_kb", payload: { domain: e.target.value } }))) {
-    currentDomain = e.target.value;
+function switchKbDomain(domain) {
+  if (!domain) return;
+  if (wsSafeSend(JSON.stringify({ type: "switch_kb", payload: { domain } }))) {
+    currentDomain = domain;
+    selectIfAvailable(kbSelect, currentDomain);
+    syncKbToggle();
     rtKb.textContent = displayKb(currentDomain);
   }
-});
+}
+
+// KB switch — takes effect on next prompt
+kbSelect.addEventListener("change", (e) => switchKbDomain(e.target.value));
+if (kbToggle) {
+  kbToggle.addEventListener("change", () => {
+    switchKbDomain(kbToggle.checked ? "ep-core" : KB_OFF_VALUE);
+  });
+}
 
 function requestAssetSwitch(message, label) {
   pendingAssetSwitch = true;

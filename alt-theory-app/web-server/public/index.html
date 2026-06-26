@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Alt Theory</title>
-  <link rel="stylesheet" href="style.css?v=20260623-v055">
+  <link rel="stylesheet" href="style.css?v=20260626-v056">
 </head>
 <body class="auth-pending">
   <!-- Mobile header bar (visible at narrow widths) -->
@@ -37,7 +37,7 @@
     <aside id="left-panel" class="side-panel">
       <div class="panel-section">
         <div class="panel-header">
-          <h1>Alt Theory <a class="version-link" href="/changelog.html" target="_blank" rel="noopener" title="What's new and how to use">v0.5.5</a></h1>
+          <h1>Alt Theory <a class="version-link" href="/changelog.html" target="_blank" rel="noopener" title="What's new and how to use">v0.5.6</a></h1>
           <div class="header-actions">
             <a id="model-config-link" class="small-btn local-only hidden" href="/config" title="Model setup">Model setup</a>
             <button id="collapse-left" class="icon-btn desktop-only" title="Collapse sessions">&#9664;</button>
@@ -68,8 +68,8 @@
         <div class="config-grid">
           <label class="config-advanced" for="project-select">Project</label>
           <select class="config-advanced" id="project-select" disabled><option value="">Loading...</option></select>
-          <label for="kb-select">KB</label>
-          <select id="kb-select" disabled><option value="">Loading...</option></select>
+          <label class="config-kb hidden" for="kb-select">KB</label>
+          <select class="config-kb hidden" id="kb-select" disabled><option value="">Loading...</option></select>
           <label class="config-advanced" for="soul-select">Soul</label>
           <select class="config-advanced" id="soul-select" disabled><option value="">Loading...</option></select>
           <label class="config-advanced" for="role-preset-select">Role</label>
@@ -101,6 +101,10 @@
         <div id="run-hint" class="run-hint hidden" title=""></div>
         <div id="attachment-hint" class="attachment-hint hidden"></div>
         <div id="visibility-bar" class="visibility-bar hidden">
+          <label class="visibility-toggle" title="Uses the environmental psychology theory and concepts knowledge base. Turn it off for conversations unrelated to environmental psychology.">
+            <input type="checkbox" id="kb-toggle" checked>
+            <span>Use EP knowledge base</span>
+          </label>
           <label class="visibility-toggle">
             <input type="checkbox" id="private-toggle">
             <span>Private session</span>

@@ -84,19 +84,23 @@ import {
 } from "./auth-session.js";
 import { readAccountStore } from "./auth-accounts.js";
 import type { AuthContext } from "./auth-session.js";
+import { resolveConfigGuiHtmlPath } from "./config-gui-path.js";
+import { ensureLocalModeDefaults } from "./local-mode-paths.js";
+
+ensureLocalModeDefaults();
 
 const PROJECT_ROOT = process.cwd();
 const PUBLIC_DIR = resolve(
   PROJECT_ROOT,
-  "alt-theory-app",
-  "web-server",
-  "public"
+  process.env.ALT_THEORY_PUBLIC_DIR ?? "alt-theory-app/web-server/public"
 );
 
 const DEFAULT_ROLE_CONDITION_PRESETS: Record<string, string> = {
   "conceptual-theory": "role-conceptual-theory-companion",
   "metatheory-oriented": "role-metatheory-oriented",
 };
+const DEFAULT_ROLE_PRESET_SLUG = "role-conceptual-theory-companion";
+const DEFAULT_SOUL_SLUG = "soul-latest";
 
 export interface AltTheoryServerOptions {
   agentAssetsDir?: string;
@@ -155,9 +159,9 @@ function parsePromptMode(value: string | undefined): PromptMode {
     return value;
   }
   if (value) {
-    console.warn(`Unknown ALT_THEORY_PROMPT_MODE '${value}', using pi-default`);
+    console.warn(`Unknown ALT_THEORY_PROMPT_MODE '${value}', using alt-only`);
   }
-  return "pi-default";
+  return "alt-only";
 }
 
 export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
@@ -250,7 +254,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   // model/key management through this UI or REST surface.
   app.get("/config", (_req, res) => {
     if (!requireLocalConfigMode(res)) return;
-    res.sendFile(resolve(publicDir, "config.html"));
+    res.sendFile(resolveConfigGuiHtmlPath(publicDir));
   });
   app.get("/api/config/status", (_req, res) => {
     if (!requireLocalConfigMode(res)) return;
@@ -686,17 +690,15 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   });
 
   function defaultRolePresetSlug(): string | null {
-    return resolveRolePresetSlug(rolePresetsDir, "default") ? "default" : null;
+    return resolveRolePresetSlug(rolePresetsDir, DEFAULT_ROLE_PRESET_SLUG)
+      ? DEFAULT_ROLE_PRESET_SLUG
+      : null;
   }
 
   function defaultSoulSlug(): string | null {
-    if (resolveSoulSlug(soulDir, "soul-latest", legacySoulPath)) {
-      return "soul-latest";
-    }
-    if (resolveSoulSlug(soulDir, "soul", legacySoulPath)) {
-      return "soul";
-    }
-    return null;
+    return resolveSoulSlug(soulDir, DEFAULT_SOUL_SLUG, legacySoulPath)
+      ? DEFAULT_SOUL_SLUG
+      : null;
   }
 
   function optionalSlug(value: string | null | undefined): string | null {

@@ -16,11 +16,11 @@ async function main() {
 
   const projectRoot = resolve(import.meta.dirname, "..", "..");
   const assetPaths = resolveAgentAssetPaths(projectRoot);
-  const defaultRolePresetPath = resolve(assetPaths.rolePresetsDir, "default.md");
-  const rolePresetPath = existsSync(defaultRolePresetPath)
-    ? defaultRolePresetPath
+  const conceptualTheoryRolePresetPath = resolve(assetPaths.rolePresetsDir, "role-conceptual-theory-companion.md");
+  const rolePresetPath = existsSync(conceptualTheoryRolePresetPath)
+    ? conceptualTheoryRolePresetPath
     : null;
-  const rolePresetSlug = rolePresetPath ? "default" : null;
+  const rolePresetSlug = rolePresetPath ? "role-conceptual-theory-companion" : null;
   const soulSlug = assetPaths.soulPath
     ? basename(assetPaths.soulPath, extname(assetPaths.soulPath))
     : null;

@@ -73,7 +73,7 @@ async function main() {
   const kbDir = join(root, "kb");
   const coreSoulDir = join(root, "core-soul");
   const appContextPath = join(root, "ALTTHEORY.md");
-  const soulPath = join(root, "soul.md");
+  const soulPath = join(root, "soul-latest.md");
   mkdirSync(rolePresetsDir, { recursive: true });
   mkdirSync(join(kbDir, "ep-core"), { recursive: true });
   mkdirSync(coreSoulDir, { recursive: true });
@@ -95,7 +95,7 @@ async function main() {
     "utf-8"
   );
   writeFileSync(
-    join(rolePresetsDir, "default.md"),
+    join(rolePresetsDir, "role-conceptual-theory-companion.md"),
     [
       "Keep responses concise.",
       "Prioritize knowledge-base evidence before relying on general knowledge.",

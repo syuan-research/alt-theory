@@ -86,7 +86,7 @@ function setupAssetFixture(root: string) {
   writeFileSync(appContextPath, "Lineage feasibility app context", "utf-8");
   writeFileSync(soulOnePath, "SOUL-ONE-MARKER", "utf-8");
   writeFileSync(soulTwoPath, "SOUL-TWO-MARKER", "utf-8");
-  writeFileSync(join(rolePresets, "default.md"), "ROLE-DEFAULT-MARKER", "utf-8");
+  writeFileSync(join(rolePresets, "role-conceptual-theory-companion.md"), "ROLE-CONCEPTUAL-THEORY-MARKER", "utf-8");
   writeFileSync(join(rolePresets, "alternate.md"), "ROLE-ALT-MARKER", "utf-8");
   writeFileSync(
     join(skills, "conversation-summary.md"),
@@ -98,7 +98,7 @@ function setupAssetFixture(root: string) {
     appContextPath,
     soulOnePath,
     soulTwoPath,
-    defaultRolePath: join(rolePresets, "default.md"),
+    conceptualTheoryRolePath: join(rolePresets, "role-conceptual-theory-companion.md"),
     alternateRolePath: join(rolePresets, "alternate.md"),
     kb,
     skills,
@@ -267,8 +267,8 @@ test("Alt Theory can reopen the same Pi history with changed prompt resources", 
     appContextPath: assets.appContextPath,
     soulPath: assets.soulOnePath,
     soulSlug: "soul-one",
-    rolePresetPath: assets.defaultRolePath,
-    rolePresetSlug: "default",
+    rolePresetPath: assets.conceptualTheoryRolePath,
+    rolePresetSlug: "role-conceptual-theory-companion",
     kbDir: assets.kb,
     kbDomain: "ep-core",
     readOnly: true,
@@ -281,7 +281,7 @@ test("Alt Theory can reopen the same Pi history with changed prompt resources", 
   try {
     appendExchange(created.session.sessionManager, "persisted user", "persisted answer");
     assert.match(created.session.agent.state.systemPrompt, /SOUL-ONE-MARKER/);
-    assert.match(created.session.agent.state.systemPrompt, /ROLE-DEFAULT-MARKER/);
+    assert.match(created.session.agent.state.systemPrompt, /ROLE-CONCEPTUAL-THEORY-MARKER/);
   } finally {
     created.session.dispose();
   }

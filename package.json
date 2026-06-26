@@ -1,11 +1,16 @@
 {
   "name": "llm-theo",
-  "version": "0.5.5",
+  "version": "0.5.6",
   "private": true,
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
     "dev:web": "tsx alt-theory-app/web-server/server.ts",
+    "dev:web:v6": "cross-env ALT_THEORY_PUBLIC_DIR=alt-theory-app/web-server/public-v6 tsx alt-theory-app/web-server/server.ts",
+    "dev:web:local": "cross-env ALT_THEORY_MODE=local tsx alt-theory-app/web-server/server.ts",
+    "dev:web:local:v6": "cross-env ALT_THEORY_MODE=local ALT_THEORY_PUBLIC_DIR=alt-theory-app/web-server/public-v6 tsx alt-theory-app/web-server/server.ts",
+    "dev:frontend-v6": "npm --prefix alt-theory-app/frontend run dev",
+    "build:frontend-v6": "npm --prefix alt-theory-app/frontend run build",
     "start:web": "tsx alt-theory-app/web-server/server.ts",
     "smoke:core": "tsx alt-theory-app/core/test-core.ts",
     "smoke:resume": "tsx alt-theory-app/core/smoke-resume.ts",
@@ -13,8 +18,8 @@
     "test:backend": "tsx --test alt-theory-app/**/*.test.ts",
     "dev:electron": "electron electron/main.cjs",
     "compile:bundle": "node scripts/compile-bundle.cjs",
-    "build:electron": "npm run compile:bundle && electron-builder build --dir",
-    "build:electron:portable": "npm run compile:bundle && electron-builder build --win portable"
+    "build:electron": "npm run build:frontend-v6 && npm run compile:bundle && electron-builder build --dir",
+    "build:electron:portable": "npm run build:frontend-v6 && npm run compile:bundle && electron-builder build --win portable"
   },
   "dependencies": {
     "@mariozechner/pi-ai": "0.70.2",
@@ -34,6 +39,7 @@
     "@types/express": "^5.0.6",
     "@types/multer": "^2.0.0",
     "@types/ws": "^8.18.1",
+    "cross-env": "^10.1.0",
     "electron": "^33.0.0",
     "electron-builder": "^25.0.0",
     "tsx": "^4.22.4",
@@ -48,6 +54,7 @@
     "files": [
       "electron/**",
       "alt-theory-app/web-server/public/**",
+      "alt-theory-app/web-server/public-v6/**",
       "dist-bundle/**",
       "agent-assets/**",
       "package.json",

@@ -259,7 +259,7 @@ async function createAltTheorySessionWithManager(
     ? resolve(config.runtimeDir)
     : null;
   const agentDir = getAgentDir();
-  const promptMode = config.promptMode ?? "pi-default";
+  const promptMode = config.promptMode ?? "alt-only";
   const resourceDiscovery = config.resourceDiscovery ?? "dev-debug";
   const resolvedSkillsDir = config.skillsDir ? resolve(config.skillsDir) : null;
 

@@ -8,7 +8,9 @@ Current policy:
 - `compound/` stores CodeStable-derived decision, learning, trick, and explore records.
 - `brainstorms/` stores central/open brainstorm records that are not feature-local.
 - `foundation/` stores selected project identity and legacy/foundation indexes.
-- `architecture/` stores current structure and architecture rationale.
+- `architecture/` stores current structure and architecture rationale. Current
+  key maps include `repo-structure-v0.3.md`, `core-session-engine.md`,
+  `researcher-console.md`, and `local-windows-bundle.md`.
 - `roadmap/` stores roadmap-facing references. It currently starts with a
   retrospective version reference, not a full roadmap process.
 - `workstreams/` stores active or near-active workstream briefs, workstream-local `notes-and-status/`, and imported current-status docs.

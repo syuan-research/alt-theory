@@ -28,7 +28,7 @@ function setupFixture() {
   mkdirSync(skillsDir, { recursive: true });
   mkdirSync(instructionsDir, { recursive: true });
   writeFileSync(appContextPath, "Session service app context", "utf-8");
-  writeFileSync(join(rolePresetsDir, "default.md"), "Default role", "utf-8");
+  writeFileSync(join(rolePresetsDir, "role-conceptual-theory-companion.md"), "Conceptual theory role", "utf-8");
   writeFileSync(join(rolePresetsDir, "alternate.md"), "Alternate role", "utf-8");
   writeFileSync(join(soulDir, "soul-latest.md"), "Latest soul", "utf-8");
   writeFileSync(join(soulDir, "soul-test.md"), "Test soul", "utf-8");
@@ -84,12 +84,22 @@ function createTestService(fixture: ReturnType<typeof setupFixture>) {
   });
 }
 
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 test("SessionService creates managed sessions with v0.4 foundation records", async () => {
   const fixture = setupFixture();
   const service = createTestService(fixture);
   const snapshot = await service.createSession({
     projectId: "manual-role-uat",
-    rolePresetSlug: "default",
+    rolePresetSlug: "role-conceptual-theory-companion",
     kbDomain: "ep-core",
     soulSlug: "soul-latest",
   });
@@ -97,9 +107,9 @@ test("SessionService creates managed sessions with v0.4 foundation records", asy
   try {
     assert.match(
       snapshot.sessionId,
-      /^\d{8}-\d{6}__default__soul-latest__default$/
+      /^\d{8}-\d{6}__role-conceptual-theory-c__soul-latest__default$/
     );
-    assert.equal(snapshot.rolePresetSlug, "default");
+    assert.equal(snapshot.rolePresetSlug, "role-conceptual-theory-companion");
     assert.equal(snapshot.projectId, "manual-role-uat");
     assert.equal(snapshot.soulSlug, "soul-latest");
     assert.equal(snapshot.currentDomain, "ep-core");
@@ -152,7 +162,7 @@ test("SessionService records ordinary run trajectory and Pi entry mappings", asy
   const fixture = setupFixture();
   const service = createTestService(fixture);
   const created = await service.createSession({
-    rolePresetSlug: "default",
+    rolePresetSlug: "role-conceptual-theory-companion",
     kbDomain: "ep-core",
     soulSlug: "soul-latest",
   });
@@ -210,7 +220,7 @@ test("SessionService revises only the latest turn without creating a branch", as
   const fixture = setupFixture();
   const service = createTestService(fixture);
   const created = await service.createSession({
-    rolePresetSlug: "default",
+    rolePresetSlug: "role-conceptual-theory-companion",
     kbDomain: "ep-core",
     soulSlug: "soul-latest",
   });
@@ -304,7 +314,7 @@ test("SessionService deletes the latest turn from active context without forking
   const fixture = setupFixture();
   const service = createTestService(fixture);
   const created = await service.createSession({
-    rolePresetSlug: "default",
+    rolePresetSlug: "role-conceptual-theory-companion",
     kbDomain: "ep-core",
     soulSlug: "soul-latest",
   });
@@ -393,7 +403,7 @@ test("SessionService restores the active branch leaf after reopen for conversati
   const fixture = setupFixture();
   const service = createTestService(fixture);
   const created = await service.createSession({
-    rolePresetSlug: "default",
+    rolePresetSlug: "role-conceptual-theory-companion",
     kbDomain: "ep-core",
     soulSlug: "soul-latest",
   });
@@ -437,7 +447,7 @@ test("SessionService restores the active branch leaf after reopen for conversati
 
     const reopenedService = createTestService(fixture);
     const reopened = await reopenedService.openSession(created.sessionId, {
-      rolePresetSlug: "default",
+      rolePresetSlug: "role-conceptual-theory-companion",
       kbDomain: "ep-core",
       soulSlug: "soul-latest",
     });
@@ -494,7 +504,7 @@ test("SessionService revise and default fork use restored branch head after reop
   const fixture = setupFixture();
   const service = createTestService(fixture);
   const created = await service.createSession({
-    rolePresetSlug: "default",
+    rolePresetSlug: "role-conceptual-theory-companion",
     kbDomain: "ep-core",
     soulSlug: "soul-latest",
   });
@@ -522,7 +532,7 @@ test("SessionService revise and default fork use restored branch head after reop
 
     const reviseService = createTestService(fixture);
     const reopened = await reviseService.openSession(created.sessionId, {
-      rolePresetSlug: "default",
+      rolePresetSlug: "role-conceptual-theory-companion",
       kbDomain: "ep-core",
       soulSlug: "soul-latest",
     });
@@ -541,7 +551,7 @@ test("SessionService revise and default fork use restored branch head after reop
 
     const forkService = createTestService(fixture);
     const forkOpened = await forkService.openSession(created.sessionId, {
-      rolePresetSlug: "default",
+      rolePresetSlug: "role-conceptual-theory-companion",
       kbDomain: "ep-core",
       soulSlug: "soul-latest",
     });
@@ -561,7 +571,7 @@ test("SessionService rejects latest-turn delete when no completed turn exists", 
   const fixture = setupFixture();
   const service = createTestService(fixture);
   const created = await service.createSession({
-    rolePresetSlug: "default",
+    rolePresetSlug: "role-conceptual-theory-companion",
     kbDomain: "ep-core",
     soulSlug: "soul-latest",
   });
@@ -580,7 +590,7 @@ test("SessionService explicit forks preserve logical session identity and worksp
     const fixture = setupFixture();
     const service = createTestService(fixture);
     const created = await service.createSession({
-      rolePresetSlug: "default",
+      rolePresetSlug: "role-conceptual-theory-companion",
       kbDomain: "ep-core",
       soulSlug: "soul-latest",
     });
@@ -662,7 +672,7 @@ test("SessionService cleans unactivated comparison fork artifacts", async () => 
   const fixture = setupFixture();
   const service = createTestService(fixture);
   const created = await service.createSession({
-    rolePresetSlug: "default",
+    rolePresetSlug: "role-conceptual-theory-companion",
     kbDomain: "ep-core",
     soulSlug: "soul-latest",
   });
@@ -712,7 +722,7 @@ test("SessionService creates owned sessions with role condition and consent snap
   const service = createTestService(fixture);
   const snapshot = await service.createSession(
     {
-      rolePresetSlug: "default",
+      rolePresetSlug: "role-conceptual-theory-companion",
       kbDomain: "ep-core",
       soulSlug: "soul-latest",
     },
@@ -753,7 +763,7 @@ test("SessionService creates private sessions and refreshes private activity on 
   const service = createTestService(fixture);
   const snapshot = await service.createSession(
     {
-      rolePresetSlug: "default",
+      rolePresetSlug: "role-conceptual-theory-companion",
       kbDomain: "ep-core",
       soulSlug: "soul-latest",
     },
@@ -824,7 +834,7 @@ test("SessionService switches role and soul inside the same materialized session
   const fixture = setupFixture();
   const service = createTestService(fixture);
   const snapshot = await service.createSession({
-    rolePresetSlug: "default",
+    rolePresetSlug: "role-conceptual-theory-companion",
     kbDomain: "ep-core",
     soulSlug: "soul-latest",
   });
@@ -909,7 +919,7 @@ test("SessionService can disable kb-folder retrieval without disabling the sessi
   const fixture = setupFixture();
   const service = createTestService(fixture);
   const snapshot = await service.createSession({
-    rolePresetSlug: "default",
+    rolePresetSlug: "role-conceptual-theory-companion",
     kbDomain: "ep-core",
     soulSlug: "soul-latest",
   });
@@ -927,11 +937,52 @@ test("SessionService can disable kb-folder retrieval without disabling the sessi
   }
 });
 
+test("SessionService preserves disabled kb-domain when resuming an existing session", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const created = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+
+  try {
+    service.setKbDomain(created.sessionId, "none");
+    const managed = (
+      service as unknown as {
+        sessions: Map<string, { session: { sessionManager: { appendMessage(message: unknown): void } } }>;
+      }
+    ).sessions.get(created.sessionId)!;
+    managed.session.sessionManager.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: "existing conversation before resume" }],
+      timestamp: Date.now(),
+    });
+  } finally {
+    await service.disposeAll();
+  }
+
+  const resumedService = createTestService(fixture);
+  try {
+    const reopened = await resumedService.openSession(created.sessionId, {
+      rolePresetSlug: "role-conceptual-theory-companion",
+      kbDomain: "ep-core",
+      soulSlug: "soul-latest",
+    });
+    assert.equal(reopened.currentDomain, "none");
+
+    const detail = readSessionDetail(fixture.dataDir, created.sessionId);
+    assert.equal(detail?.effectiveConfig?.kbDomain, "none");
+  } finally {
+    await resumedService.disposeAll();
+  }
+});
+
 test("SessionService switches custom instruction inside the same materialized session", async () => {
   const fixture = setupFixture();
   const service = createTestService(fixture);
   const created = await service.createSession({
-    rolePresetSlug: "default",
+    rolePresetSlug: "role-conceptual-theory-companion",
     kbDomain: "ep-core",
     soulSlug: "soul-latest",
     customInstructionRef: null,
@@ -980,7 +1031,7 @@ test("SessionService reassigns project without changing runtime identity or conf
   const service = createTestService(fixture);
   const created = await service.createSession({
     projectId: null,
-    rolePresetSlug: "default",
+    rolePresetSlug: "role-conceptual-theory-companion",
     kbDomain: "ep-core",
     soulSlug: "soul-latest",
   });
@@ -1016,7 +1067,7 @@ test("SessionService validates explicit skill invocation against active Alt Theo
     skillsDir: fixture.skillsDir,
   });
   const created = await service.createSession({
-    rolePresetSlug: "default",
+    rolePresetSlug: "role-conceptual-theory-companion",
     kbDomain: "ep-core",
     soulSlug: "soul-latest",
   });
@@ -1114,11 +1165,11 @@ test("SessionService records resume_fallback config event when original assets a
   const service = createTestService(fixture);
   try {
     const opened = await service.openSession("resume-fallback-session", {
-      rolePresetSlug: "default",
+      rolePresetSlug: "role-conceptual-theory-companion",
       kbDomain: "ep-core",
       soulSlug: "soul-latest",
     });
-    assert.equal(opened.rolePresetSlug, "default");
+    assert.equal(opened.rolePresetSlug, "role-conceptual-theory-companion");
     assert.equal(opened.soulSlug, "soul-latest");
     const events = readConfigEvents(dirs.recordsDir);
     assert.equal(events.at(-1)?.reason, "resume_fallback");
@@ -1135,7 +1186,7 @@ test("SessionService rejects concurrent same-session prompt mutations with sessi
   const fixture = setupFixture();
   const service = createTestService(fixture);
   const snapshot = await service.createSession({
-    rolePresetSlug: "default",
+    rolePresetSlug: "role-conceptual-theory-companion",
     kbDomain: "ep-core",
     soulSlug: "soul-latest",
   });
@@ -1194,7 +1245,7 @@ test("SessionService detach removes listeners without disposing the managed sess
   const fixture = setupFixture();
   const service = createTestService(fixture);
   const snapshot = await service.createSession({
-    rolePresetSlug: "default",
+    rolePresetSlug: "role-conceptual-theory-companion",
     kbDomain: "ep-core",
     soulSlug: "soul-latest",
   });
@@ -1215,6 +1266,273 @@ test("SessionService detach removes listeners without disposing the managed sess
   }
 });
 
+test("SessionService keeps run completion and busy state open until fallback continuation finishes", async () => {
+  const fixture = setupFixture();
+  const fallbackConfigPath = join(fixture.root, "model-fallback.json");
+  writeFileSync(
+    fallbackConfigPath,
+    JSON.stringify({
+      enabled: true,
+      provider: "qwen-bailian-beijing",
+      chain: ["qwen3.7-max", "qwen3.7-plus"],
+      maxFallbacksPerRun: 2,
+      rules: [
+        {
+          id: "quota",
+          action: "exclude_and_fallback",
+          match: { anyPattern: ["quota has been exhausted"] },
+        },
+      ],
+    }),
+    "utf-8"
+  );
+  const service = new SessionService({
+    dataDir: fixture.dataDir,
+    assetPaths: {
+      rootDir: fixture.root,
+      appContextPath: fixture.appContextPath,
+      instructionsDir: fixture.instructionsDir,
+      skillsDir: fixture.skillsDir,
+      soulDir: fixture.soulDir,
+      soulPath: join(fixture.soulDir, "soul-latest.md"),
+      rolePresetsDir: fixture.rolePresetsDir,
+      kbDir: fixture.kbDir,
+      piPromptTemplatesDir: fixture.piPromptTemplatesDir,
+      modelsPath: null,
+    },
+    kbDir: fixture.kbDir,
+    rolePresetsDir: fixture.rolePresetsDir,
+    soulDir: fixture.soulDir,
+    legacySoulPath: join(fixture.soulDir, "soul-latest.md"),
+    readOnly: true,
+    promptMode: "alt-only",
+    resourceDiscovery: "clean",
+    instructionsDir: fixture.instructionsDir,
+    runLabel: null,
+    testBatch: null,
+    modelFallbackConfigPath: fallbackConfigPath,
+  });
+  const created = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const internal = service as any;
+  const managed = internal.sessions.get(created.sessionId);
+  const continueGate = createDeferred<void>();
+  let completionSettled = false;
+
+  let currentModel = {
+    provider: "qwen-bailian-beijing",
+    id: "qwen3.7-max",
+  };
+  Object.defineProperty(managed.session, "model", {
+    configurable: true,
+    get: () => currentModel,
+  });
+  managed.session.modelRegistry.find = (provider: string, modelId: string) => ({
+    provider,
+    id: modelId,
+  });
+  managed.session.setModel = async (model: unknown) => {
+    currentModel = model as { provider: string; id: string };
+  };
+  managed.session.getSessionStats = () => ({
+    tokens: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 0,
+    },
+    cost: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      total: 0,
+    },
+    contextUsage: null,
+  });
+  managed.session.waitForRetry = async () => {};
+  managed.session.prompt = async (text: string) => {
+    managed.session.sessionManager.appendMessage({
+      role: "user",
+      content: [{ type: "text", text }],
+      timestamp: Date.now(),
+    });
+    managed.session.state.errorMessage =
+      "403 quota has been exhausted for this model";
+    managed.session.state.messages = [
+      { role: "user", content: [{ type: "text", text }] },
+      { role: "assistant", content: [{ type: "text", text: "quota error" }] },
+    ];
+    internal.handleAgentEvent(managed, { type: "agent_end" });
+  };
+  managed.session.agent.continue = async () => {
+    await continueGate.promise;
+    managed.session.state.errorMessage = null;
+    managed.session.state.messages = [
+      { role: "user", content: [{ type: "text", text: "question" }] },
+      {
+        role: "assistant",
+        content: [{ type: "text", text: "fallback answer" }],
+      },
+    ];
+    managed.session.sessionManager.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: "fallback answer" }],
+      timestamp: Date.now(),
+    });
+    internal.handleAgentEvent(managed, { type: "agent_end" });
+  };
+
+  try {
+    const run = service.runPrompt(created.sessionId, "question");
+    void run.completion.finally(() => {
+      completionSettled = true;
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(completionSettled, false);
+    assert.throws(
+      () => service.runPrompt(created.sessionId, "second question"),
+      SessionBusyError
+    );
+
+    continueGate.resolve();
+    await run.completion;
+
+    const latest = latestRunSnapshots(
+      service.getManifest(created.sessionId).recordsDir
+    )[0];
+    assert.equal(latest.status, "completed");
+    assert.equal(latest.assistantEntryIds.length, 1);
+    assert.equal(currentModel.id, "qwen3.7-plus");
+  } finally {
+    await service.disposeAll();
+  }
+});
+
+test("SessionService surfaces fallback continuation failure through run completion", async () => {
+  const fixture = setupFixture();
+  const fallbackConfigPath = join(fixture.root, "model-fallback.json");
+  writeFileSync(
+    fallbackConfigPath,
+    JSON.stringify({
+      enabled: true,
+      provider: "qwen-bailian-beijing",
+      chain: ["qwen3.7-max", "qwen3.7-plus"],
+      maxFallbacksPerRun: 1,
+      rules: [
+        {
+          id: "quota",
+          action: "exclude_and_fallback",
+          match: { anyPattern: ["quota has been exhausted"] },
+        },
+      ],
+    }),
+    "utf-8"
+  );
+  const service = new SessionService({
+    dataDir: fixture.dataDir,
+    assetPaths: {
+      rootDir: fixture.root,
+      appContextPath: fixture.appContextPath,
+      instructionsDir: fixture.instructionsDir,
+      skillsDir: fixture.skillsDir,
+      soulDir: fixture.soulDir,
+      soulPath: join(fixture.soulDir, "soul-latest.md"),
+      rolePresetsDir: fixture.rolePresetsDir,
+      kbDir: fixture.kbDir,
+      piPromptTemplatesDir: fixture.piPromptTemplatesDir,
+      modelsPath: null,
+    },
+    kbDir: fixture.kbDir,
+    rolePresetsDir: fixture.rolePresetsDir,
+    soulDir: fixture.soulDir,
+    legacySoulPath: join(fixture.soulDir, "soul-latest.md"),
+    readOnly: true,
+    promptMode: "alt-only",
+    resourceDiscovery: "clean",
+    instructionsDir: fixture.instructionsDir,
+    runLabel: null,
+    testBatch: null,
+    modelFallbackConfigPath: fallbackConfigPath,
+  });
+  const created = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const internal = service as any;
+  const managed = internal.sessions.get(created.sessionId);
+
+  let currentModel = {
+    provider: "qwen-bailian-beijing",
+    id: "qwen3.7-max",
+  };
+  Object.defineProperty(managed.session, "model", {
+    configurable: true,
+    get: () => currentModel,
+  });
+  managed.session.modelRegistry.find = (provider: string, modelId: string) => ({
+    provider,
+    id: modelId,
+  });
+  managed.session.setModel = async (model: unknown) => {
+    currentModel = model as { provider: string; id: string };
+  };
+  managed.session.getSessionStats = () => ({
+    tokens: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 0,
+    },
+    cost: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      total: 0,
+    },
+    contextUsage: null,
+  });
+  managed.session.waitForRetry = async () => {};
+  managed.session.prompt = async (text: string) => {
+    managed.session.sessionManager.appendMessage({
+      role: "user",
+      content: [{ type: "text", text }],
+      timestamp: Date.now(),
+    });
+    managed.session.state.errorMessage =
+      "403 quota has been exhausted for this model";
+    managed.session.state.messages = [
+      { role: "user", content: [{ type: "text", text }] },
+      { role: "assistant", content: [{ type: "text", text: "quota error" }] },
+    ];
+    internal.handleAgentEvent(managed, { type: "agent_end" });
+  };
+  managed.session.agent.continue = async () => {
+    managed.session.state.errorMessage = "fallback continue failed";
+    throw new Error("fallback continue failed");
+  };
+
+  try {
+    const run = service.runPrompt(created.sessionId, "question");
+    await assert.rejects(run.completion, /fallback continue failed/);
+
+    const latest = latestRunSnapshots(
+      service.getManifest(created.sessionId).recordsDir
+    )[0];
+    assert.equal(latest.status, "failed");
+  } finally {
+    await service.disposeAll();
+  }
+});
+
 test("session store marks sessions without v0.4 records as legacy projection", async () => {
   const fixture = setupFixture();
   const dirs = createSessionDirs(fixture.dataDir, "legacy-session");
@@ -1223,8 +1541,8 @@ test("session store marks sessions without v0.4 records as legacy projection", a
     appContextPath: fixture.appContextPath,
     soulPath: join(fixture.soulDir, "soul-latest.md"),
     soulSlug: "soul-latest",
-    rolePresetPath: join(fixture.rolePresetsDir, "default.md"),
-    rolePresetSlug: "default",
+    rolePresetPath: join(fixture.rolePresetsDir, "role-conceptual-theory-companion.md"),
+    rolePresetSlug: "role-conceptual-theory-companion",
     kbDir: fixture.kbDir,
     kbDomain: "ep-core",
     piPromptTemplatesDir: fixture.piPromptTemplatesDir,

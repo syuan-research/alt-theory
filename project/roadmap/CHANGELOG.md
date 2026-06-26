@@ -3,6 +3,10 @@
 Current pilot/product-visible changelog. The public page mirrors these short
 entries at `alt-theory-app/web-server/public/changelog.html`.
 
+## v0.5.6 - 2026-06-26
+
+Made knowledge-base selection more stable and moved it next to message entry for a more intuitive local-session flow.
+
 ## v0.5.5 - 2026-06-23
 
 Wider inspector panel, Connecting/Thinking chat status, and more reliable reconnect after brief disconnects.

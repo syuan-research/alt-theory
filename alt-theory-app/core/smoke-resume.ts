@@ -31,7 +31,7 @@ async function main() {
   const cwd = sessionManager.getCwd();
   const beforeContext = sessionManager.buildSessionContext();
   const marker = "RESUME-ROLE-PRESET-ACTIVE";
-  const rolePresetPath = resolve(assetPaths.rolePresetsDir, "default.md");
+  const rolePresetPath = resolve(assetPaths.rolePresetsDir, "role-conceptual-theory-companion.md");
   const appContextContent = readRequiredTextAsset(
     assetPaths.appContextPath,
     "ALTTHEORY.md"

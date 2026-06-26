@@ -32,6 +32,7 @@ import {
 } from "fs";
 import { dirname, join, resolve } from "path";
 import { randomUUID } from "crypto";
+import { ensureLocalModeDefaults } from "./local-mode-paths.js";
 
 // ---------------------------------------------------------------------------
 // Paths (Pi-native; local bundle points this at %USERPROFILE%\.alt-theory\pi-agent)
@@ -39,7 +40,8 @@ import { randomUUID } from "crypto";
 
 export function resolveAgentConfigDir(): string {
   // getAgentDir() honors PI_CODING_AGENT_DIR for this package and otherwise
-  // returns ~/.pi/agent. The local bundle sets the env var before server import.
+  // returns ~/.pi/agent. Local mode defaults to ~/.alt-theory/pi-agent.
+  ensureLocalModeDefaults();
   return getAgentDir();
 }
 
@@ -63,6 +65,19 @@ export type ApiType =
   | "anthropic-messages"
   | "google-generative-ai";
 
+const API_TYPES = new Set<string>([
+  "openai-completions",
+  "openai-responses",
+  "anthropic-messages",
+  "google-generative-ai",
+]);
+
+export interface ModelCompat {
+  thinkingFormat?: string;
+  requiresReasoningContentOnAssistantMessages?: boolean;
+  maxTokensField?: string;
+}
+
 export interface ConfigModel {
   id: string;
   name?: string;
@@ -70,6 +85,7 @@ export interface ConfigModel {
   input?: ("text" | "image")[];
   contextWindow?: number;
   maxTokens?: number;
+  compat?: ModelCompat;
   cost?: {
     input: number;
     output: number;
@@ -95,6 +111,7 @@ export interface ProviderView {
   baseUrl?: string;
   api?: ApiType;
   options?: Record<string, unknown>;
+  keyState: "stored" | "env-set" | "env-missing" | "missing";
   hasKey: boolean;
   models: ConfigModel[];
   active: boolean;
@@ -131,10 +148,25 @@ interface ModelsFile {
       baseUrl?: string;
       api?: string;
       apiKey?: string;
+      authHeader?: boolean;
       options?: Record<string, unknown>;
       models?: ConfigModel[];
     }
   >;
+}
+
+/** MiMo Token Plan rejects Anthropic SDK x-api-key auth; Bearer is required. */
+function anthropicBearerAuthRequired(
+  api: string | undefined,
+  baseUrl: string | undefined
+): boolean {
+  if (api !== "anthropic-messages" || !baseUrl) return false;
+  try {
+    const host = new URL(baseUrl).hostname.toLowerCase();
+    return host === "token-plan-cn.xiaomimimo.com";
+  } catch {
+    return false;
+  }
 }
 
 function readModelsFile(agentDir: string): ModelsFile {
@@ -177,6 +209,26 @@ function providerHasKey(agentDir: string, provider: string): boolean {
   return storage.has(provider);
 }
 
+function keyStateForProvider(
+  agentDir: string,
+  provider: string,
+  block: { apiKey?: string }
+): ProviderView["keyState"] {
+  if (providerHasKey(agentDir, provider)) return "stored";
+  if (!block.apiKey || block.apiKey === provider) return "missing";
+  return process.env[block.apiKey] ? "env-set" : "env-missing";
+}
+
+function resolveEnvApiKey(envName: string): string {
+  const value = process.env[envName];
+  if (!value) {
+    throw new ConfigValidationError(
+      `Environment variable '${envName}' is not set for model refresh`
+    );
+  }
+  return value;
+}
+
 // ---------------------------------------------------------------------------
 // settings.json active provider/model (via Pi's SettingsManager)
 // ---------------------------------------------------------------------------
@@ -212,13 +264,21 @@ async function writeActive(
  */
 export function listProviders(agentDir: string): ProviderView[] {
   const models = readModelsFile(agentDir);
+  let changed = false;
+  if (repairStaleLiteralAuthMarkers(agentDir, models)) {
+    changed = true;
+  }
   if (sanitizeCustomProviderAuth(agentDir, models)) {
+    changed = true;
+  }
+  if (changed) {
     writeModelsFileAtomic(agentDir, models);
   }
   const active = readActive(agentDir);
   const names = Object.keys(models.providers ?? {});
   return names.map((name) => {
     const block = models.providers?.[name] ?? {};
+    const keyState = keyStateForProvider(agentDir, name, block);
     return {
       name,
       baseUrl: block.baseUrl,
@@ -227,7 +287,8 @@ export function listProviders(agentDir: string): ProviderView[] {
         block.options && typeof block.options === "object"
           ? block.options
           : undefined,
-      hasKey: providerHasKey(agentDir, name),
+      keyState,
+      hasKey: keyState === "stored",
       models: Array.isArray(block.models) ? block.models : [],
       active: active.provider === name,
     };
@@ -245,13 +306,53 @@ function customProviderNeedsApiKey(
   return !isBuiltInProvider(name) && (block.models ?? []).length > 0;
 }
 
+function providerHasModels(block: { models?: ConfigModel[] }): boolean {
+  return (block.models ?? []).length > 0;
+}
+
 function providerHasRuntimeAuth(
   agentDir: string,
   provider: string,
   block: { apiKey?: string }
 ): boolean {
   if (providerHasKey(agentDir, provider)) return true;
-  return Boolean(block.apiKey && block.apiKey !== provider);
+  if (!block.apiKey || block.apiKey === provider) return false;
+  return Boolean(process.env[block.apiKey]);
+}
+
+function willHaveEffectiveKey(
+  agentDir: string,
+  providerName: string,
+  input: ConfigProviderInput,
+  options: { keyStorage?: "literal" | "env"; clearKey?: boolean }
+): boolean {
+  if (options.clearKey) return false;
+  if (options.keyStorage === "literal" && input.apiKey) return true;
+  if (options.keyStorage === "env" && input.apiKey) return true;
+  return providerHasKey(agentDir, providerName);
+}
+
+function fetchApiKeyFromStoredMarker(
+  provider: string,
+  marker: string | undefined
+): string | undefined {
+  if (!marker || marker === provider) return undefined;
+  return resolveEnvApiKey(marker);
+}
+
+function repairStaleLiteralAuthMarkers(
+  agentDir: string,
+  models: ModelsFile
+): boolean {
+  let changed = false;
+  const providers = models.providers ?? {};
+  for (const [name, block] of Object.entries(providers)) {
+    if (block.apiKey === name && !providerHasKey(agentDir, name)) {
+      delete block.apiKey;
+      changed = true;
+    }
+  }
+  return changed;
 }
 
 function normalizeRuntimeBaseUrl(api: string | undefined, baseUrl: string | undefined): string | undefined {
@@ -279,6 +380,13 @@ function sanitizeCustomProviderAuth(agentDir: string, models: ModelsFile): boole
     const normalizedBaseUrl = normalizeRuntimeBaseUrl(block.api, block.baseUrl);
     if (normalizedBaseUrl && normalizedBaseUrl !== block.baseUrl) {
       block.baseUrl = normalizedBaseUrl;
+      changed = true;
+    }
+    if (
+      anthropicBearerAuthRequired(block.api, block.baseUrl) &&
+      block.authHeader !== true
+    ) {
+      block.authHeader = true;
       changed = true;
     }
     if (!customProviderNeedsApiKey(name, block)) continue;
@@ -312,7 +420,7 @@ export async function fetchProviderModels(
     provider,
     baseUrl: block.baseUrl,
     api: block.api as ApiType | undefined,
-    apiKey: block.apiKey,
+    apiKey: fetchApiKeyFromStoredMarker(provider, block.apiKey),
   });
 }
 
@@ -323,11 +431,19 @@ export async function fetchProviderModelsFromDraft(
     baseUrl?: string;
     api?: ApiType;
     apiKey?: string;
+    keyStorage?: "literal" | "env";
   }
 ): Promise<FetchedModel[]> {
   assertValidProviderName(input.provider);
+  assertValidApiType(input.api);
   assertNotCommandKey(input.apiKey);
-  return fetchModelsFromEndpoint(agentDir, input);
+  return fetchModelsFromEndpoint(agentDir, {
+    ...input,
+    apiKey:
+      input.keyStorage === "env" && input.apiKey
+        ? resolveEnvApiKey(input.apiKey)
+        : input.apiKey,
+  });
 }
 
 async function fetchModelsFromEndpoint(
@@ -381,6 +497,14 @@ async function fetchModelsFromEndpoint(
     }
     return candidates;
   }
+  if (
+    anthropicBearerAuthRequired(input.api, input.baseUrl) &&
+    errors.every((entry) => entry.includes("HTTP 404"))
+  ) {
+    throw new ConfigValidationError(
+      "MiMo Token Plan does not expose a model list API. Enter the model id manually (for example mimo-v2.5-pro)."
+    );
+  }
   throw new ConfigValidationError(`Model refresh failed: ${errors.join("; ")}`);
 }
 
@@ -394,14 +518,19 @@ export function getRuntimeModelConfig(agentDir: string): RuntimeModelConfig {
   }
   const block = models.providers?.[active.provider];
   const knownIds = (block?.models ?? []).map((m) => m.id);
-  if (!block || !knownIds.includes(active.model)) return {};
+  if (!block) {
+    throw new ConfigValidationError(
+      `Active provider '${active.provider}' is not configured`
+    );
+  }
+  if (!knownIds.includes(active.model)) {
+    throw new ConfigValidationError(
+      `Active model '${active.model}' is not defined under provider '${active.provider}'`
+    );
+  }
   const hasStoredKey = providerHasKey(agentDir, active.provider);
-  if (!providerHasRuntimeAuth(agentDir, active.provider, block)) {
-    return {};
-  }
-  if (block.apiKey === active.provider && !hasStoredKey) {
-    return {};
-  }
+  if (!providerHasRuntimeAuth(agentDir, active.provider, block)) return {};
+  if (block.apiKey === active.provider && !hasStoredKey) return {};
   if (hasStoredKey && !block.apiKey) {
     block.apiKey = active.provider;
     writeModelsFileAtomic(agentDir, models);
@@ -419,20 +548,20 @@ export function getRuntimeModelConfig(agentDir: string): RuntimeModelConfig {
  * Drives the first-run landing decision.
  */
 export function getConfigStatus(agentDir: string): ConfigStatus {
-  listProviders(agentDir);
-  const models = readModelsFile(agentDir);
-  const anyUsable = Object.entries(models.providers ?? {}).some(
-    ([name, block]) =>
-      (block.models ?? []).length > 0 &&
-      providerHasRuntimeAuth(agentDir, name, block)
+  const providers = listProviders(agentDir);
+  const anyUsable = providers.some(
+    (p) =>
+      (p.keyState === "stored" || p.keyState === "env-set") &&
+      p.models.length > 0
   );
   const active = readActive(agentDir);
-  const runtime = getRuntimeModelConfig(agentDir);
+  const activeProvider = providers.find((p) => p.name === active.provider);
   const activeUsable = Boolean(
-    active.provider &&
+    activeProvider &&
       active.model &&
-      runtime.modelProvider === active.provider &&
-      runtime.modelId === active.model
+      (activeProvider.keyState === "stored" ||
+        activeProvider.keyState === "env-set") &&
+      activeProvider.models.some((model) => model.id === active.model)
   );
   const activeIssue =
     active.provider && active.model && !activeUsable
@@ -491,6 +620,13 @@ function assertValidProviderName(name: string): void {
   }
 }
 
+function assertValidApiType(api: string | undefined): void {
+  if (api === undefined) return;
+  if (!API_TYPES.has(api)) {
+    throw new ConfigValidationError(`Unsupported API type: ${api}`);
+  }
+}
+
 function assertNotCommandKey(key: string | undefined): void {
   if (typeof key === "string" && key.startsWith("!")) {
     throw new ConfigValidationError(
@@ -515,6 +651,7 @@ export function upsertProvider(
   options: { keyStorage?: "literal" | "env"; clearKey?: boolean } = {}
 ): ProviderView {
   assertValidProviderName(input.name);
+  assertValidApiType(input.api);
   assertNotCommandKey(input.apiKey);
   if (!Array.isArray(input.models) || input.models.length === 0) {
     throw new ConfigValidationError("At least one model is required");
@@ -536,6 +673,9 @@ export function upsertProvider(
   if (input.options && Object.keys(input.options).length > 0) {
     providerBlock.options = input.options;
   }
+  if (anthropicBearerAuthRequired(input.api, runtimeBaseUrl)) {
+    providerBlock.authHeader = true;
+  }
 
   // Env-var-named keys live in models.json apiKey field (Pi resolves at runtime).
   // Literal keys live in auth.json (Pi's standard api_key credential), but Pi
@@ -547,24 +687,31 @@ export function upsertProvider(
   } else if (options.keyStorage === "literal" && input.apiKey) {
     apiKeyConfig = input.name;
   } else if (!options.clearKey && existingBlock?.apiKey) {
-    apiKeyConfig = existingBlock.apiKey;
+    const existingMarker = existingBlock.apiKey;
+    if (existingMarker === input.name) {
+      if (providerHasKey(agentDir, input.name)) {
+        apiKeyConfig = existingMarker;
+      }
+    } else {
+      apiKeyConfig = existingMarker;
+    }
   } else if (!options.clearKey && providerHasKey(agentDir, input.name)) {
     apiKeyConfig = input.name;
   }
-  if (customProviderNeedsApiKey(input.name, {
-    baseUrl: runtimeBaseUrl,
-    models: input.models,
-  })) {
-    if (!runtimeBaseUrl) {
-      throw new ConfigValidationError(
-        "Base URL is required for custom providers."
-      );
-    }
-    if (!apiKeyConfig) {
-      throw new ConfigValidationError(
-        "API key is required before saving a custom provider with models."
-      );
-    }
+
+  const hasEffectiveKey = willHaveEffectiveKey(agentDir, input.name, input, options);
+
+  if (
+    providerHasModels({ models: input.models }) &&
+    customProviderNeedsApiKey(input.name, {
+      baseUrl: runtimeBaseUrl,
+      models: input.models,
+    }) &&
+    !runtimeBaseUrl
+  ) {
+    throw new ConfigValidationError(
+      "Base URL is required for custom providers."
+    );
   }
   if (apiKeyConfig) {
     providerBlock.apiKey = apiKeyConfig;
@@ -587,16 +734,16 @@ export function upsertProvider(
     storage.set(input.name, { type: "api_key", key: input.apiKey });
   }
 
+  const keyState = keyStateForProvider(agentDir, input.name, {
+    apiKey: apiKeyConfig,
+  });
   return {
     name: input.name,
     baseUrl: runtimeBaseUrl,
     api: input.api,
     options: input.options,
-    hasKey: options.clearKey
-      ? false
-      : options.keyStorage === "literal"
-        ? Boolean(input.apiKey) || providerHasKey(agentDir, input.name)
-        : providerHasKey(agentDir, input.name),
+    keyState: options.clearKey ? "missing" : keyState,
+    hasKey: options.clearKey ? false : keyState === "stored",
     models: input.models,
     active: false,
   };

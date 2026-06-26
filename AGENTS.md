@@ -11,10 +11,30 @@ This worktree is the clean `v0.3` reorganization lane for Alt Theory. Alt Theory
 Current emphasis:
 
 - `main` is the integration branch; v0.5 pilot web-app work merged here in 2026-06;
+- as of 2026-06-26, current v0.5.x bundle continuation also happens here for
+  speed: the practical target is `dist/win-unpacked` from updated v0.5.5 code,
+  using the v0.6 React frontend/config page backfilled into this tree;
 - use `cs-swe-v0-4` as the active SWE-only skill bundle;
 - keep project records, runtime `agent-assets/`, and app code in this tree;
-- Windows bundle packaging experiments stay in `llm-theo-v0.5-bundle`; bundle docs
-  live in `project/workstreams/1-bundle-verification/`.
+- `llm-theo-v0.5-bundle` is now mainly a feasibility/probe reference unless a
+  task explicitly asks for that branch; bundle docs live in
+  `project/workstreams/1-bundle-verification/`.
+
+Current v0.5.x bundle/config facts:
+
+- Do not continue Candidate B / portable unless explicitly asked. The current
+  practical user target is the `win-unpacked` folder app.
+- `/config` is the local model setup surface. It should stay Pi-native:
+  write Pi-compatible provider/auth/default config rather than inventing a
+  separate model system.
+- v0.6 frontend/config work is not just background context; parts of it have
+  been backported into v0.5.5. Read
+  `project/compound/research-provider-model-ux/2026-06-26-decision-v0-5-local-config-and-bundle-path.md`
+  before changing local model config or bundle packaging.
+- During active UX polish, do not rebuild Electron after every small frontend
+  edit. Use `npm --prefix alt-theory-app/frontend run build` for UI/build
+  checks; run `npm run build:electron` only when a fresh bundle artifact is
+  actually needed.
 
 ## Quick Tree
 
