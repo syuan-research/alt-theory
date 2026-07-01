@@ -49,7 +49,7 @@ provider backend smoke still requires explicit provider/model configuration.
 
 This project is not using a full `.codestable/` skeleton yet.
 
-For actual SWE feature / issue / refactor / multi-feature `swe-plan` coding work, use `agent-assets/skills/cs-swe-v0-4/SKILL.md`.
+For actual SWE feature / issue / refactor / multi-feature `swe-plan` coding work, use `project/local-skills/cs-swe-v0-4/SKILL.md`.
 
 Do not use `cs-modified-v0-1` as a current rule. It was an incorrect intermediate artifact from an earlier mistaken assumption that CodeStable should be adapted mainly at a high conceptual level. If that history matters, recover it from plan-records; do not present it to future agents as a skill.
 
@@ -57,7 +57,7 @@ The current local CodeStable adaptation is:
 
 - keep CodeStable's concrete SWE guardrails for features, issues, refactors, and multi-feature `swe-plan`;
 - do not require `.codestable/attention.md` or its full directory tree;
-- keep SWE records inside the relevant concrete `project/workstreams/{workstream}/` area, with `project/architecture/` and `agent-assets/skills/` serving their existing roles;
+- keep SWE records inside the relevant concrete `project/workstreams/{workstream}/` area, with `project/architecture/` and `project/local-skills/` serving dev SWE roles and `agent-assets/skills/` holding runtime-only skills;
 - rename CodeStable raw roadmap mechanics to `swe-plan`;
 - keep requirements as references unless the user opens a separate requirement workflow;
 - make plan-record / brainstorm / architecture boundaries explicit.

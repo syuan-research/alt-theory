@@ -1,21 +1,24 @@
 # Source Map
 
-This file records where v0.3 came from. It is not part of the runtime workflow.
+This file records where v0.4 came from. It is not part of the runtime workflow.
 
-Current revision: v0.3.1 repair. The bundle folder remains `cs-swe-v0-3`; revision is tracked in metadata and notes instead of renaming the folder.
+Current revision: v0.4 action-for-reflection. The bundle folder is
+`cs-swe-v0-4`; revision is tracked by folder name and this source map.
 
 ## Sources
 
 - CodeStable raw repo: `https://github.com/liuzhengdongfortest/CodeStable`
 - Previous adaptation: the v0.2 CS-SWE skill folders in this repository.
-- Current design records: `project/plan-records/cs-swe-v0-3-design/`
+- v0.3 adaptation: `_archives/skills/cs-swe-v0-3/`
+- Current design records:
+  `project/cross-workstream/skill-cs-swe-adaptation/notes-and-status/`
 
 ## Main Adaptations
 
-| v0.3 file | Source / adaptation |
+| v0.4 file | Source / adaptation |
 |---|---|
 | `SKILL.md` | Router and project-specific boundary entry. |
-| `references/shared-conventions.md` | v0.3 path conventions, relative internal-reference rule, compound read/write cycle, archive rules, reflection triggers. |
+| `references/shared-conventions.md` | v0.4 path conventions after the 2026-06-08 restructure, relative internal-reference rule, observation boundary, compound guard, central brainstorm naming. |
 | `references/record-boundaries.md` | Boundary between plan-record, CS-SWE artifacts, brainstorm, architecture, and requirements references. |
 | `references/workflows/feature.md` | Adapts cs-feat-design + reference.md. Design gate, entry modes, document structure, section 2.5, startup check, review. |
 | `references/workflows/feature-impl.md` | Adapts cs-feat-impl. Three stances, startup check, reflection triggers, completion report. |
@@ -26,7 +29,7 @@ Current revision: v0.3.1 repair. The bundle folder remains `cs-swe-v0-3`; revisi
 | `references/refactor/refusal-routing.md` | Copied from cs-refactor/reference/refusal-routing.md. Pre-scan checks (143 lines). |
 | `references/refactor/scan-checklist-format.md` | Copied from cs-refactor/reference/scan-checklist-format.md. Scan item format (164 lines). |
 | `references/workflows/swe-plan.md` | Lightweight adaptation: document structure, drafting discipline, optional items.yaml, child feature handoff. Does NOT prescribe CS raw's 6-phase pipeline — design decision: flexible, not forced. |
-| `references/workflows/brainstorm.md` | Adapts cs-brainstorm + reference.md. v0.3 anchors preserved as design decision. Added grill mode, spike rules, conversation rhythm. |
+| `references/workflows/brainstorm.md` | Adapts cs-brainstorm + reference.md. v0.4 narrows brainstorm landing paths to plan-record continuation, feature-local with an existing anchor, and central brainstorm. |
 | `references/workflows/decide.md` | Adapts cs-decide + reference.md. Four categories, Phase 1-5, update/supersede. |
 | `references/workflows/learn.md` | Adapts cs-learn + reference.md. Pitfall/knowledge tracks, Phase 1-5, update/supersede. |
 | `references/workflows/explore.md` | Adapts cs-explore + reference.md. Three types, Phase 1-5, evidence discipline. |
@@ -39,5 +42,6 @@ Current revision: v0.3.1 repair. The bundle folder remains `cs-swe-v0-3`; revisi
 ## Historical / Non-Active
 
 - v0.2 remains action-for-reflection evidence.
+- v0.3 remains the previous active bundle and comparison baseline.
 - `cs-modified-v0-1` was a wrong-path artifact, not a valid active skill version.
 - Git history can recover tracked old versions for comparison.

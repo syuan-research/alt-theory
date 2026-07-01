@@ -15,7 +15,12 @@ Current first-slice layout:
 - `prompts/pi/` is the current Pi adapter prompt-template area for review and future organization.
 - `kb/ep-core/` is the current runtime KB copy used for the first v0.3 smoke-test path. It is not yet declared the long-term KB source-of-truth.
 - `models.example.json` is an uncredentialed example for custom provider/model configuration. Runtime keys stay in environment/config, not Git.
-- `skills/cs-swe-v0-4/` is the active SWE-only CodeStable-derived skill bundle for feature / issue / refactor / `swe-plan` coding work. It keeps its internal workflow/reference files inside the same folder and uses relative internal links.
+- `skills/` is the runtime skill root. Pilot/runtime keeps only
+  `skills/conversation-summary/` here so `internal` discovery does not expose
+  dev SWE bundles to participants.
+- Active SWE and dev-maintenance skills live under `project/local-skills/`
+  (`cs-swe-v0-4/`, `model-preset-maintenance/`). Historical `cs-swe-*` shards
+  live in local ignored `_archives/skills/`.
 
 ## Adding Runtime Assets
 
@@ -88,14 +93,18 @@ slug recorded in their assembly manifest.
 - Treat `prompts/pi/` as Pi adapter prompt templates, not as the semantic asset
   root.
 
-Removed from active skill surface:
+Removed from runtime skill surface (2026-07-01):
 
-- `cs-modified-v0-1` was an incorrect intermediate artifact from the mistaken assumption that CodeStable should be used only as a high-level organizing inspiration. Do not treat it as a skill. Historical context belongs in plan-records, not in `agent-assets/skills/`.
-- `cs-swe-v0-2/` and its sibling `cs-swe-*` v0.2 folders are historical action-for-reflection evidence, not the current runtime rule.
+- All `cs-swe-*` bundles and `model-preset-maintenance` moved out of
+  `agent-assets/skills/`. Active dev copies: `project/local-skills/`.
+  Historical shards: `_archives/skills/` (local, gitignored).
+- `cs-modified-v0-1` was an incorrect intermediate artifact. Historical context
+  belongs in plan-records, not in runtime skills.
 
 Local ignored archive convention:
 
-- `_archives/agent-assets/` may hold directly openable local snapshots for asset backup/comparison. It is not the active asset surface.
+- `_archives/skills/` holds directly openable CS-SWE history for comparison.
+  It is not runtime-loaded.
 
 Future topics, not solved in this slice:
 

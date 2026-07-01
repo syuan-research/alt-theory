@@ -27,6 +27,11 @@ Current v0.5.x bundle/config facts:
 - `/config` is the local model setup surface. It should stay Pi-native:
   write Pi-compatible provider/auth/default config rather than inventing a
   separate model system.
+- Model preset hard rule: stale Pi package snapshots are not provider truth.
+  Writing outdated model IDs from Pi's bundled/generated model list into the
+  user-facing config presets is almost always wrong. Fetch or verify current
+  provider evidence before changing presets, especially for OpenCode Go, MiMo,
+  Qwen, and other fast-moving gateways.
 - v0.6 frontend/config work is not just background context; parts of it have
   been backported into v0.5.5. Read
   `project/compound/research-provider-model-ux/2026-06-26-decision-v0-5-local-config-and-bundle-path.md`
@@ -36,6 +41,16 @@ Current v0.5.x bundle/config facts:
   checks; run `npm run build:electron` only when a fresh bundle artifact is
   actually needed.
 
+- Do not conflate VPS/hosted static frontend with the local bundle frontend.
+  The local Windows bundle serves `alt-theory-app/web-server/public-v6`; the
+  hosted/VPS default may still use `alt-theory-app/web-server/public/` unless
+  deployment explicitly overrides `ALT_THEORY_PUBLIC_DIR`. Do not delete the
+  old `public/config.html` as a bundle cleanup shortcut.
+- Bundle user guides and future-agent guidance live in
+  `project/workstreams/1-bundle-verification/`:
+  `user-guide-v0-5x-local-bundle.zh.md`,
+  `user-guide-v0-5x-local-bundle.en.md`, and
+  `agent-guidance-v0-5x-bundle.md`.
 ## Quick Tree
 
 ```text
@@ -47,13 +62,14 @@ project/
   compound/
   brainstorms/
   cross-workstream/
+  local-skills/          # dev-only SWE skills (not runtime-loaded)
 
 agent-assets/
   README.md
   kb/
   role-presets/
   prompts/
-  skills/
+  skills/                # runtime-loaded skills only (pilot: conversation-summary)
 
 alt-theory-app/
 references-to-legacy-materials/
@@ -78,9 +94,9 @@ backend now loads current runtime-facing assets from `agent-assets/`.
 
 For software coding work, read:
 
-1. `agent-assets/skills/cs-swe-v0-4/SKILL.md`
-2. `agent-assets/skills/cs-swe-v0-4/references/shared-conventions.md`
-3. the matching workflow file under `agent-assets/skills/cs-swe-v0-4/references/workflows/`
+1. `project/local-skills/cs-swe-v0-4/SKILL.md`
+2. `project/local-skills/cs-swe-v0-4/references/shared-conventions.md`
+3. the matching workflow file under `project/local-skills/cs-swe-v0-4/references/workflows/`
 4. relevant system architecture maps under `project/architecture/` (e.g., `repo-structure-v0.3.md`, `core-session-engine.md`)
 
 For branch/recovery context, also check:
@@ -91,12 +107,15 @@ For branch/recovery context, also check:
 ## Source Of Truth Pointers
 
 - `project/` is the source of truth for project structure, recovery, plans, dev-facing workstream records, and architecture.
-- `agent-assets/` is the source of truth for runtime-facing assets, role presets, prompts, KB copies, and skills.
-- `agent-assets/skills/cs-swe-v0-4/` is the active SWE skill bundle.
-- `agent-assets/skills/cs-swe-v0-3/` is the previous active bundle and should
-  be treated as comparison/history unless the user explicitly asks to inspect
-  it.
-- `cs-swe-v0-2/` and sibling `cs-swe-*` v0.2 folders are historical comparison material only.
+- `agent-assets/` is the source of truth for runtime-facing assets, role presets, prompts, and KB copies.
+- `agent-assets/skills/` is the runtime skill root. Pilot keeps only
+  `conversation-summary/` there.
+- `project/local-skills/cs-swe-v0-4/` is the active SWE skill bundle for dev
+  harness work.
+- `project/local-skills/model-preset-maintenance/` is the dev/release model
+  preset maintenance skill.
+- `_archives/skills/` holds historical `cs-swe-*` shards for local comparison.
+  It is gitignored and not runtime-loaded.
 
 ## Pilot Deployment And Account Skills
 
@@ -197,10 +216,14 @@ Never move, delete, or rewrite reference repos.
 
 `_archives/` is local and ignored by Git. Use it for directly openable snapshots or backups that the user wants available in the current file tree without turning them into active tracked assets.
 
-Current relevant local snapshot:
+Current relevant local skill archive:
 
 ```text
-_archives/agent-assets/skills/cs-swe-v0-3-before-repair-1129b96/
+_archives/skills/
+  cs-swe-v0-3/
+  cs-swe-v0-2/
+  cs-swe-*-v0-2/
+  cs-swe-v0-3-before-repair-1129b96/
 ```
 
 ## Version-Control Safety
@@ -299,3 +322,6 @@ Treat tracked files in this dev tree as future public-branch material.
   `project/foundation/gitignore-policy.md`, and
   `project/foundation/private-evidence-policy.md` for the current machine, Git,
   and private evidence policy details.
+
+
+

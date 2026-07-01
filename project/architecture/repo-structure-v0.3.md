@@ -36,6 +36,7 @@ agent-assets/
   role-presets/          # selectable agent role/style/behavior presets
   prompts/pi/           # Pi adapter prompt templates
   kb/ep-core/           # current centralized KB copy
+  kb/metadata/          # KB domain metadata and prompt-use policy
   models.example.json   # uncredentialed provider/model config example
 ```
 
@@ -90,7 +91,10 @@ Common cases:
 
 - External reference repos, such as CodeStable, agent-brain, pi-gui, or knowledge-rag, should be recorded in a curated reference index when needed.
 - Active dependency-heavy clones that need package install/build/test output should live outside OneDrive when possible.
-- Project-scoped skills/plugins can live inside the project when local harnesses need to read them directly. This is acceptable when they are mostly markdown/text and do not create heavy dependency trees.
+- Project-scoped dev skills live in `project/local-skills/` when harnesses need
+  to read them directly. Runtime-loaded pilot skills stay in
+  `agent-assets/skills/` only. Historical skill shards archive to local
+  ignored `_archives/skills/`.
 - Heavy skills/plugins should be treated like active dev clones, or reduced to curated/adapted skill files before entering the project.
 
 For now, do not use Git submodules. They pin another Git repository inside this one, but add clone/update/version-management complexity that is not worth it while the project structure is still evolving.
@@ -104,6 +108,7 @@ Do not rebuild KB or design a PDF extraction pipeline unless evaluation shows KB
 Current mapping:
 
 - KB runtime copy: `agent-assets/kb/ep-core/`;
+- KB domain metadata / prompt-use policy: `agent-assets/kb/metadata/`;
 - RAG design/reference: `project/architecture/` or `project/workstreams/kb-search/` when copied;
 - RAG code/package may remain optional/fallback.
 
@@ -142,3 +147,5 @@ becomes active, place its records in the concrete backend, frontend, packaging,
 evaluation implementation, or other named workstream.
 
 This borrows the useful CodeStable distinction between architecture, roadmap/plan, decisions, and compound learning without adopting its whole process before the local workflow stabilizes.
+
+

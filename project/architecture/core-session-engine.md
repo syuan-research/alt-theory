@@ -151,7 +151,8 @@ Code anchors:
    `agent-assets/prompts/pi/`.
 5. Prompt layers are appended in this order: Alt Theory application context,
    selected soul when present, optional core-soul modules, selected role preset
-   when present, KB declaration, optional write policy.
+   when present, KB declaration, selected KB domain metadata when present,
+   optional write policy.
 6. Pi returns the reserved timestamped JSONL path. Pi physically writes it once
    an assistant message is present.
 7. Alt Theory atomically writes `records/assembly-manifest.json` and appends
@@ -219,7 +220,9 @@ Current model-visible content has two levels.
      selected;
   5. selected custom instruction text asset, when present;
   6. KB root declaration;
-  7. write policy when write tools are enabled.
+  7. selected KB domain metadata from `agent-assets/kb/metadata/domains.json`,
+     when a concrete KB domain such as `ep-core` is selected;
+  8. write policy when write tools are enabled.
 
 The assembly manifest records the selected paths, existence flags, and SHA-256
 hashes for app context, soul, role preset, and custom instruction when present.
@@ -238,7 +241,11 @@ Code anchors:
 - `alt-theory-app/core/agent-assets.ts`: asset root resolution and file hashes.
 - `agent-assets/prompts/pi/`: Pi adapter prompt-template directory.
 - `agent-assets/instructions/`: default custom-instruction catalog root.
-- `agent-assets/skills/`: configured Alt Theory skill root.
+- `agent-assets/skills/`: runtime Alt Theory skill root (`internal` discovery).
+  Pilot keeps only `conversation-summary/` here.
+- `project/local-skills/`: dev-only SWE bundles (`cs-swe-v0-4/`, etc.); not
+  runtime-loaded.
+- `_archives/skills/`: local ignored historical `cs-swe-*` shards.
 
 Custom instruction changes rebuild the runtime against the same Pi JSONL and
 Alt Theory session ID. Explicit visual skill invocation is validated against
@@ -256,7 +263,10 @@ Current behavior is:
 
 - session assembly declares the KB root, or declares KB-folder retrieval
   disabled;
-- role presets and user instructions decide how aggressively to use KB;
+- selected concrete KB domains can inject their own scope/coverage/use policy
+  from `agent-assets/kb/metadata/domains.json`;
+- role presets should not carry KB catalog metadata or domain-specific KB-use
+  policy; they remain role/style/behavior presets;
 - KB domain selections are recorded as config events and reflected in session
   metadata, but are not injected as hidden per-turn user-message text;
 - transcript projection still strips old `[Context: ...]` prefixes for
@@ -595,9 +605,10 @@ Limits (current):
   The browser also offers `None` for both layers, which injects no role/soul
   prompt section. KB domain changes append a config event but no longer inject
   per-turn prompt text.
-- There is no explicit hook/context-policy layer yet. KB-use policy currently
-  belongs in role presets and user-facing instructions, not hidden backend
-  string concatenation.
+- KB-use policy for a concrete KB domain now belongs in
+  `agent-assets/kb/metadata/domains.json`, not in role presets. The backend
+  injects it at session creation when that domain is selected; it still does
+  not prepend hidden per-turn prompt text.
 - The assembly manifest hashes selected app context, soul, and role-preset
   files, but does not yet snapshot all injected content.
 - Runtime config is easy to mislaunch: generic Anthropic-compatible environment
@@ -722,6 +733,9 @@ Limits (current):
 - 2026-06-08: Updated after minimal agent-asset loading repair. Backend now
   loads `ALTTHEORY.md`, selected soul/role assets when present,
   `agent-assets/kb/`, and `agent-assets/prompts/pi/`.
+- 2026-06-27: Moved KB domain scope/use-policy metadata out of role presets
+  into `agent-assets/kb/metadata/domains.json`; selected KB domains inject
+  metadata during session prompt assembly.
 - 2026-06-08: Added backend session catalog/detail and WebSocket
   `open_session` for existing persisted sessions.
 - 2026-06-12: Added optional run grouping metadata, transcript thinking/tool
@@ -731,3 +745,6 @@ Limits (current):
 
 - `project/architecture/researcher-console.md`: browser console consuming the
   session engine for live testing, inspection, and future session work.
+
+
+
