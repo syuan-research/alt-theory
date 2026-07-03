@@ -336,34 +336,73 @@
     let activeStatus = { provider: null, model: null, usable: false };
     const PROVIDER_PRESETS = [
       {
-        label: 'Recommended: MiMo',
-        name: 'opencode-go',
+        label: 'Xiaomi MiMo Token Plan (CN)',
+        name: 'xiaomi-mimo-token-plan-cn',
+        api: 'openai-completions',
+        baseUrl: 'https://token-plan-cn.xiaomimimo.com/v1',
+        models: [
+          { id: 'mimo-v2.5-pro' },
+          { id: 'mimo-v2.5' }
+        ],
+        note: 'Xiaomi MiMo Token Plan China endpoint. Use this only for keys issued for that product.'
+      },
+      {
+        label: 'Xiaomi MiMo API (CN)',
+        name: 'xiaomi-mimo-api-cn',
+        api: 'openai-completions',
+        baseUrl: '',
+        models: [
+          { id: 'mimo-v2.5-pro' },
+          { id: 'mimo-v2.5' }
+        ],
+        note: 'Normal Xiaomi MiMo API, China region. Paste the Base URL from the MiMo console/docs; do not reuse the Token Plan endpoint.'
+      },
+      {
+        label: 'Xiaomi MiMo API (Global)',
+        name: 'xiaomi-mimo-api-global',
+        api: 'openai-completions',
+        baseUrl: '',
+        models: [
+          { id: 'mimo-v2.5-pro' },
+          { id: 'mimo-v2.5' }
+        ],
+        note: 'Normal Xiaomi MiMo API, global region. Paste the regional Base URL from the MiMo console/docs.'
+      },
+      {
+        label: 'OpenCode Go (OpenAI-compatible)',
+        name: 'opencode-go-openai',
         api: 'openai-completions',
         baseUrl: 'https://opencode.ai/zen/go/v1',
-        models: [],
-        note: 'Uses OpenCode Go / MiMo-compatible endpoint. Paste the key, then click Fetch model list to get current models.'
+        models: [
+          { id: 'mimo-v2.5-pro' },
+          { id: 'mimo-v2.5' },
+          { id: 'deepseek-v4-pro' },
+          { id: 'kimi-k2.7' },
+          { id: 'glm-5.2' }
+        ],
+        note: 'OpenCode Go models served through /v1/chat/completions, including MiMo, DeepSeek, Kimi, and GLM.'
       },
       {
-        label: 'OpenAI',
-        name: 'openai',
-        api: 'openai-responses',
-        baseUrl: 'https://api.openai.com/v1',
-        models: []
-      },
-      {
-        label: 'Anthropic',
-        name: 'anthropic',
+        label: 'OpenCode Go (Anthropic-compatible)',
+        name: 'opencode-go-anthropic',
         api: 'anthropic-messages',
-        baseUrl: 'https://api.anthropic.com',
-        models: []
+        baseUrl: 'https://opencode.ai/zen/go',
+        models: [
+          { id: 'qwen3.7-max' },
+          { id: 'qwen3.7-plus' },
+          { id: 'minimax-m3' }
+        ],
+        note: 'OpenCode Go models served through /v1/messages, including Qwen 3.7 and MiniMax.'
       },
       {
-        label: 'Aliyun Qwen',
-        name: 'dashscope-qwen',
-        api: 'openai-completions',
+        label: 'Qwen 3.7 Max (Bailian)',
+        name: 'qwen-bailian-beijing',
+        api: 'openai-responses',
         baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-        models: [],
-        note: 'Uses Alibaba Cloud DashScope OpenAI-compatible API. Paste a DashScope API key, then click Fetch model list.'
+        models: [
+          { id: 'qwen3.7-max-2026-05-20' }
+        ],
+        note: 'Alibaba/Bailian path for the current Qwen 3.7 label.'
       },
       {
         label: 'OpenRouter',
@@ -374,12 +413,20 @@
         note: 'One OpenRouter key can access many providers. Paste the key, then click Fetch model list.'
       },
       {
-        label: 'MiniMax CN',
-        name: 'minimax-cn',
-        api: 'anthropic-messages',
-        baseUrl: 'https://api.minimaxi.com/anthropic',
+        label: 'OpenAI API',
+        name: 'openai',
+        api: 'openai-responses',
+        baseUrl: 'https://api.openai.com/v1',
         models: [],
-        note: 'Uses MiniMax China Anthropic-compatible endpoint. Do not add /v1. Paste the key, then click Fetch model list.'
+        note: 'Generic OpenAI account. Not a Xiaomi/MiMo entry.'
+      },
+      {
+        label: 'Anthropic API',
+        name: 'anthropic',
+        api: 'anthropic-messages',
+        baseUrl: 'https://api.anthropic.com',
+        models: [],
+        note: 'Generic Anthropic account. Not a Xiaomi/MiMo entry.'
       },
       {
         label: 'Custom',
@@ -581,7 +628,7 @@
       if (!show) return;
       const note = document.createElement('div');
       note.className = 'preset-note';
-      note.textContent = 'Choose a preset first. For most users, only the API key is required after that.';
+      note.textContent = 'Choose a product or gateway preset first. For MiMo, pick normal API vs Token Plan and the right region before entering the key.';
       row.appendChild(note);
       for (const preset of PROVIDER_PRESETS) {
         const btn = document.createElement('button');
@@ -702,3 +749,11 @@
   </script>
 </body>
 </html>
+
+
+
+
+
+
+
+

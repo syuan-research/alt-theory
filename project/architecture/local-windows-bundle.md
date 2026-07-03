@@ -3,7 +3,7 @@
 ---
 status: current
 scope: v0.5.x local Windows folder bundle and local model configuration
-last_updated: 2026-06-26
+last_updated: 2026-06-28
 ---
 
 ## Purpose
@@ -63,6 +63,10 @@ local `/config` page and local-mode flow are already built there.
 This does not mean the VPS pilot is being moved to unfinished v0.6 product
 scope. Hosted VPS deploys use default server configuration unless deployment
 explicitly sets `ALT_THEORY_PUBLIC_DIR=.../public-v6`.
+
+Do not delete `alt-theory-app/web-server/public/config.html` as a local bundle
+cleanup. The local bundle currently uses `public-v6`, but hosted/VPS and
+fallback paths may still depend on the older `public/` surface.
 
 Current local UI notes:
 
@@ -158,9 +162,22 @@ npm run test:backend
 - replacing Pi's model registry with a custom Alt Theory registry
 - broad v0.6 product strategy
 
+## User And Agent Guidance
+
+Friend-test user guides:
+
+- `project/workstreams/1-bundle-verification/user-guide-v0-5x-local-bundle.zh.md`
+- `project/workstreams/1-bundle-verification/user-guide-v0-5x-local-bundle.en.md`
+
+Future-agent bundle guidance:
+
+- `project/workstreams/1-bundle-verification/agent-guidance-v0-5x-bundle.md`
+
 ## Related Records
 
 - `project/workstreams/1-bundle-verification/notes-and-status/STATUS.md`
 - `project/workstreams/0-frontend-and-research-console/notes-and-status/STATUS.md`
 - `project/compound/research-provider-model-ux/2026-06-26-decision-v0-5-local-config-and-bundle-path.md`
 - `project/architecture/core-session-engine.md`
+
+

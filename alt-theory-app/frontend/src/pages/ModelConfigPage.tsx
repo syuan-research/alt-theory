@@ -22,35 +22,8 @@ import { cn } from "@/lib/cn";
 
 const PROVIDER_PRESETS = [
   {
-    label: "OpenAI",
-    name: "openai",
-    api: "openai-responses" as ApiType,
-    baseUrl: "https://api.openai.com/v1",
-    models: [{ id: "gpt-4.1" }, { id: "gpt-4.1-mini" }],
-    description: "Standard OpenAI setup.",
-    recommended: false,
-  },
-  {
-    label: "Anthropic",
-    name: "anthropic",
-    api: "anthropic-messages" as ApiType,
-    baseUrl: "https://api.anthropic.com",
-    models: [{ id: "claude-sonnet-4-20250514" }],
-    description: "Standard Anthropic setup.",
-    recommended: false,
-  },
-  {
-    label: "OpenRouter",
-    name: "openrouter",
-    api: "openai-completions" as ApiType,
-    baseUrl: "https://openrouter.ai/api/v1",
-    models: [{ id: "anthropic/claude-sonnet-4" }],
-    description: "One OpenRouter key for many upstream models.",
-    recommended: false,
-  },
-  {
-    label: "MiMo Token Plan (OpenAI, recommended)",
-    name: "xiaomi-token-plan-cn",
+    label: "Xiaomi MiMo Token Plan (CN)",
+    name: "xiaomi-mimo-token-plan-cn",
     api: "openai-completions" as ApiType,
     baseUrl: "https://token-plan-cn.xiaomimimo.com/v1",
     models: [
@@ -71,18 +44,119 @@ const PROVIDER_PRESETS = [
         },
       },
     ],
-    description: "Recommended MiMo path. Uses Bearer auth and the known model ids.",
+    description:
+      "Xiaomi MiMo Token Plan China endpoint. Use this only for keys issued for that product.",
     recommended: true,
     manualModels: true,
   },
   {
-    label: "MiMo Token Plan (Anthropic)",
-    name: "xiaomi-mimo-token-plan-anthropic",
+    label: "Xiaomi MiMo API (CN)",
+    name: "xiaomi-mimo-api-cn",
+    api: "openai-completions" as ApiType,
+    baseUrl: "",
+    models: [
+      {
+        id: "mimo-v2.5-pro",
+        reasoning: true,
+        compat: {
+          thinkingFormat: "deepseek",
+          requiresReasoningContentOnAssistantMessages: true,
+        },
+      },
+      {
+        id: "mimo-v2.5",
+        reasoning: true,
+        compat: {
+          thinkingFormat: "deepseek",
+          requiresReasoningContentOnAssistantMessages: true,
+        },
+      },
+    ],
+    description:
+      "Normal Xiaomi MiMo API, China region. Paste the Base URL from the MiMo console/docs; do not reuse the Token Plan endpoint.",
+    recommended: true,
+    manualModels: true,
+  },
+  {
+    label: "Xiaomi MiMo API (Global)",
+    name: "xiaomi-mimo-api-global",
+    api: "openai-completions" as ApiType,
+    baseUrl: "",
+    models: [
+      {
+        id: "mimo-v2.5-pro",
+        reasoning: true,
+        compat: {
+          thinkingFormat: "deepseek",
+          requiresReasoningContentOnAssistantMessages: true,
+        },
+      },
+      {
+        id: "mimo-v2.5",
+        reasoning: true,
+        compat: {
+          thinkingFormat: "deepseek",
+          requiresReasoningContentOnAssistantMessages: true,
+        },
+      },
+    ],
+    description:
+      "Normal Xiaomi MiMo API, global region. Paste the regional Base URL from the MiMo console/docs.",
+    recommended: true,
+    manualModels: true,
+  },
+  {
+    label: "OpenCode Go (OpenAI-compatible)",
+    name: "opencode-go-openai",
+    api: "openai-completions" as ApiType,
+    baseUrl: "https://opencode.ai/zen/go/v1",
+    models: [
+      {
+        id: "mimo-v2.5-pro",
+        reasoning: true,
+        compat: {
+          thinkingFormat: "deepseek",
+          requiresReasoningContentOnAssistantMessages: true,
+        },
+      },
+      {
+        id: "mimo-v2.5",
+        reasoning: true,
+        compat: {
+          thinkingFormat: "deepseek",
+          requiresReasoningContentOnAssistantMessages: true,
+        },
+      },
+      { id: "deepseek-v4-pro" },
+      { id: "kimi-k2.7" },
+      { id: "glm-5.2" },
+    ],
+    description:
+      "OpenCode Go models served through /v1/chat/completions, including MiMo, DeepSeek, Kimi, and GLM.",
+    recommended: true,
+    manualModels: true,
+  },
+  {
+    label: "OpenCode Go (Anthropic-compatible)",
+    name: "opencode-go-anthropic",
     api: "anthropic-messages" as ApiType,
-    baseUrl: "https://token-plan-cn.xiaomimimo.com/anthropic",
-    models: [{ id: "mimo-v2.5-pro" }],
-    description: "Fallback Anthropic-compatible MiMo path with Bearer auth repair.",
-    recommended: false,
+    baseUrl: "https://opencode.ai/zen/go",
+    models: [
+      {
+        id: "qwen3.7-max",
+        reasoning: true,
+        compat: { thinkingFormat: "qwen" },
+      },
+      {
+        id: "qwen3.7-plus",
+        reasoning: true,
+        compat: { thinkingFormat: "qwen" },
+      },
+      { id: "minimax-m3" },
+    ],
+    description:
+      "OpenCode Go models served through /v1/messages, including Qwen 3.7 and MiniMax.",
+    recommended: true,
     manualModels: true,
   },
   {
@@ -97,20 +171,37 @@ const PROVIDER_PRESETS = [
         compat: { thinkingFormat: "qwen" },
       },
     ],
-    description: "Recommended Alibaba/Bailian path for the current Qwen label.",
+    description: "Alibaba/Bailian path for the current Qwen 3.7 label.",
     recommended: true,
     keyHint: "Paste a DashScope API key, or choose env var name and enter DASHSCOPE_API_KEY.",
     manualModels: true,
   },
   {
-    label: "OpenCode Go",
-    name: "opencode-go",
+    label: "OpenRouter",
+    name: "openrouter",
+    api: "openai-completions" as ApiType,
+    baseUrl: "https://openrouter.ai/api/v1",
+    models: [{ id: "anthropic/claude-sonnet-4" }],
+    description: "One OpenRouter key for many upstream models.",
+    recommended: false,
+  },
+  {
+    label: "OpenAI API",
+    name: "openai",
+    api: "openai-responses" as ApiType,
+    baseUrl: "https://api.openai.com/v1",
+    models: [{ id: "gpt-4.1" }, { id: "gpt-4.1-mini" }],
+    description: "Generic OpenAI account. Not a Xiaomi/MiMo entry.",
+    recommended: false,
+  },
+  {
+    label: "Anthropic API",
+    name: "anthropic",
     api: "anthropic-messages" as ApiType,
-    baseUrl: "https://opencode.ai/zen/go",
-    models: [{ id: "qwen3.6-plus" }, { id: "mimo-v2.5-pro" }],
-    description: "Gateway option that exposes Qwen and MiMo-style models.",
-    recommended: true,
-    manualModels: true,
+    baseUrl: "https://api.anthropic.com",
+    models: [{ id: "claude-sonnet-4-20250514" }],
+    description: "Generic Anthropic account. Not a Xiaomi/MiMo entry.",
+    recommended: false,
   },
 ];
 
@@ -518,6 +609,9 @@ export function ModelConfigPage() {
               )}
             </BodyText>
           ) : null}
+          {status?.activeIssue ? (
+            <HintText className="mt-2 text-warning">{status.activeIssue}</HintText>
+          ) : null}
           {status?.agentDir ? (
             <MonoText className="mt-2 block break-all text-[0.75rem] text-text-muted">
               Config dir: {status.agentDir}
@@ -591,12 +685,12 @@ export function ModelConfigPage() {
             {!editingName ? (
               <div className="mt-3 space-y-3">
                 <PresetGroup
-                  title="Recommended"
+                  title="MiMo / coding gateways"
                   presets={PROVIDER_PRESETS.filter((preset) => preset.recommended)}
                   onPick={applyPreset}
                 />
                 <PresetGroup
-                  title="Other templates"
+                  title="Generic provider templates"
                   presets={PROVIDER_PRESETS.filter((preset) => !preset.recommended)}
                   onPick={applyPreset}
                   compact
@@ -945,6 +1039,10 @@ function ProviderCard({
         </div>
       </div>
 
+      {provider.warning ? (
+        <HintText className="mt-2 text-warning">{provider.warning}</HintText>
+      ) : null}
+
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <select
           className="min-w-[180px] flex-1 rounded-md border border-hairline bg-surface px-2 py-1.5 text-[0.8125rem]"
@@ -1055,3 +1153,11 @@ function PresetGroup({
     </div>
   );
 }
+
+
+
+
+
+
+
+

@@ -1,9 +1,13 @@
 import { existsSync, readdirSync } from "fs";
 import { basename, extname, resolve } from "path";
+import { loadKbDomainMetadata } from "../core/kb-metadata.js";
 
 export interface DiscoveredAsset {
   slug: string;
   displayName: string;
+  shortLabel?: string;
+  userLabel?: string;
+  description?: string;
 }
 
 function displayName(slug: string): string {
@@ -51,12 +55,29 @@ export function listKbDomains(kbDir: string): DiscoveredAsset[] {
   if (!existsSync(root)) {
     return [];
   }
+  const metadataBySlug = new Map(
+    loadKbDomainMetadata(root).map((domain) => [domain.slug, domain])
+  );
 
   return readdirSync(root, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
+    .filter(
+      (entry) =>
+        entry.isDirectory() &&
+        !entry.name.startsWith(".") &&
+        entry.name !== "metadata"
+    )
     .map((entry) => entry.name)
     .sort((left, right) => left.localeCompare(right))
-    .map((slug) => ({ slug, displayName: displayName(slug) }));
+    .map((slug) => {
+      const metadata = metadataBySlug.get(slug);
+      return {
+        slug,
+        displayName: metadata?.displayName ?? displayName(slug),
+        ...(metadata?.shortLabel ? { shortLabel: metadata.shortLabel } : {}),
+        ...(metadata?.userLabel ? { userLabel: metadata.userLabel } : {}),
+        ...(metadata?.description ? { description: metadata.description } : {}),
+      };
+    });
 }
 
 export function resolveRolePresetSlug(
@@ -95,3 +116,6 @@ export function isKnownKbDomain(kbDir: string, slug: string): boolean {
     listKbDomains(kbDir).some((domain) => domain.slug === slug)
   );
 }
+
+
+

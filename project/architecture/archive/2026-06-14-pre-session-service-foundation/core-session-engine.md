@@ -332,3 +332,4 @@ is configured; they are not a billing claim.
 
 - `project/architecture/researcher-console.md`: browser console consuming the
   session engine for live testing, inspection, and future session work.
+

@@ -65,13 +65,13 @@ async function main() {
   await loader.reload();
 
   const authStorage = AuthStorage.create();
-  authStorage.setRuntimeApiKey("xiaomi-mimo-token-plan", apiKey);
+  authStorage.setRuntimeApiKey("xiaomi-mimo-cn-openai", apiKey);
   const modelRegistry = ModelRegistry.create(
     authStorage,
     assetPaths.modelsPath
   );
   const model = modelRegistry.find(
-    "xiaomi-mimo-token-plan",
+    "xiaomi-mimo-cn-openai",
     "mimo-v2.5-pro"
   );
   assert.ok(model, "MiMo model not found");
@@ -139,3 +139,4 @@ main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });
+

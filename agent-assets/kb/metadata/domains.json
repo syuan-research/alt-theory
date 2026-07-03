@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "domains": [
+    {
+      "slug": "ep-core",
+      "displayName": "Environmental Psychology Core",
+      "shortLabel": "EP knowledge base",
+      "userLabel": "Use EP knowledge base",
+      "description": "Environmental psychology theory and concept summaries. Useful for environmental-psychology theory and concept questions; optional for unrelated conversations.",
+      "promptInstructions": [
+        "This domain is relevant mainly to environmental psychology theory and concept questions. Use it when the user's question fits that scope; do not force it onto unrelated topics."
+      ]
+    }
+  ]
+}

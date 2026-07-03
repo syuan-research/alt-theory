@@ -51,6 +51,14 @@ export function LeftPanel({ onCollapse }: LeftPanelProps) {
             />
           </div>
           <div className="flex items-center gap-1">
+            <a
+              href="/help/"
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-md bg-surface px-2 py-1 text-[0.75rem] font-medium text-text-secondary hover:bg-hover"
+            >
+              Help
+            </a>
             {app.appMode === "local" ? (
               <Link
                 to="/config"

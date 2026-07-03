@@ -115,6 +115,7 @@ export interface ProviderView {
   hasKey: boolean;
   models: ConfigModel[];
   active: boolean;
+  warning?: string;
 }
 
 export interface ConfigStatus {
@@ -155,7 +156,7 @@ interface ModelsFile {
   >;
 }
 
-/** MiMo Token Plan rejects Anthropic SDK x-api-key auth; Bearer is required. */
+/** MiMo Token Plan CN Anthropic-compatible endpoint rejects SDK x-api-key auth; Bearer is required. */
 function anthropicBearerAuthRequired(
   api: string | undefined,
   baseUrl: string | undefined
@@ -291,6 +292,7 @@ export function listProviders(agentDir: string): ProviderView[] {
       hasKey: keyState === "stored",
       models: Array.isArray(block.models) ? block.models : [],
       active: active.provider === name,
+      warning: providerWarning(name),
     };
   });
 }
@@ -308,6 +310,13 @@ function customProviderNeedsApiKey(
 
 function providerHasModels(block: { models?: ConfigModel[] }): boolean {
   return (block.models ?? []).length > 0;
+}
+
+function providerWarning(name: string): string | undefined {
+  if (name === "opencode-go") {
+    return "This legacy OpenCode Go provider mixed OpenAI-compatible and Anthropic-compatible models. Recreate it as opencode-go-openai or opencode-go-anthropic.";
+  }
+  return undefined;
 }
 
 function providerHasRuntimeAuth(
@@ -502,7 +511,7 @@ async function fetchModelsFromEndpoint(
     errors.every((entry) => entry.includes("HTTP 404"))
   ) {
     throw new ConfigValidationError(
-      "MiMo Token Plan does not expose a model list API. Enter the model id manually (for example mimo-v2.5-pro)."
+      "MiMo Token Plan CN Anthropic-compatible endpoint does not expose a model list API. Enter the model id manually (for example mimo-v2.5-pro)."
     );
   }
   throw new ConfigValidationError(`Model refresh failed: ${errors.join("; ")}`);
@@ -563,10 +572,12 @@ export function getConfigStatus(agentDir: string): ConfigStatus {
         activeProvider.keyState === "env-set") &&
       activeProvider.models.some((model) => model.id === active.model)
   );
+  const activeWarning = activeProvider ? providerWarning(activeProvider.name) : undefined;
   const activeIssue =
-    active.provider && active.model && !activeUsable
+    activeWarning ??
+    (active.provider && active.model && !activeUsable
       ? "Active provider/model is not usable. Save a key and choose a model before starting a session."
-      : null;
+      : null);
   return {
     agentDir,
     anyUsable,
@@ -824,3 +835,10 @@ export function clearActive(agentDir: string): void {
 export function agentConfigDir(): string {
   return resolveAgentConfigDir();
 }
+
+
+
+
+
+
+
