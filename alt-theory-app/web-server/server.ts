@@ -54,6 +54,12 @@ import {
   uploadWorkspaceFile,
 } from "./workspace-files.js";
 import {
+  appendAbComparisonRecord,
+  type AbComparisonCandidate,
+  type AbComparisonInput,
+  type AbComparisonScore,
+} from "./ab-records.js";
+import {
   SessionBusyError,
   SessionService,
   type SessionSelectors,
@@ -503,6 +509,27 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       });
     }
   });
+  app.post("/api/sessions/:sessionId/ab-comparisons", (req, res) => {
+    const sessionId = req.params.sessionId;
+    if (!requireSessionRestContentAccess(req, res, sessionId)) return;
+    try {
+      const detail = readSessionDetail(dataDir, sessionId);
+      if (!detail) {
+        res.status(404).json({ error: `Unknown session id: ${sessionId}` });
+        return;
+      }
+      const input = parseAbComparisonBody(sessionId, req.body);
+      const record = appendAbComparisonRecord(
+        resolve(dataDir, "sessions", sessionId, "records"),
+        input
+      );
+      res.json({ record });
+    } catch (error) {
+      res.status(400).json({
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
   app.get("/api/sessions/:sessionId/files", (req, res) => {
     const sessionId = req.params.sessionId;
     const rootName =
@@ -806,6 +833,127 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       );
     }
     return runtimeConfig;
+  }
+
+  function parseAbComparisonBody(
+    sessionId: string,
+    body: unknown
+  ): AbComparisonInput {
+    const value = asObject(body);
+    const trigger = optionalString(value.trigger) ?? "manual";
+    if (!isAbTrigger(trigger)) {
+      throw new Error("invalid A/B trigger");
+    }
+    const candidates = asArray(value.candidates).map(parseAbCandidate);
+    return {
+      sessionId,
+      trigger,
+      promptEntryId: optionalString(value.promptEntryId),
+      responseEntryId: optionalString(value.responseEntryId),
+      selectedCandidateId: optionalString(value.selectedCandidateId),
+      candidates,
+      scores:
+        value.scores === undefined
+          ? undefined
+          : asArray(value.scores).map(parseAbScore),
+      notes: optionalString(value.notes),
+      source:
+        value.source === undefined ? undefined : parseAbSource(value.source),
+    };
+  }
+
+  function parseAbCandidate(value: unknown): AbComparisonCandidate {
+    const candidate = asObject(value);
+    const candidateId = optionalString(candidate.candidateId);
+    if (!candidateId) throw new Error("candidateId is required");
+    return {
+      candidateId,
+      label: optionalString(candidate.label),
+      provider: optionalString(candidate.provider),
+      model: optionalString(candidate.model),
+      role: optionalString(candidate.role),
+      promptRef: optionalString(candidate.promptRef),
+      instructionRef: optionalString(candidate.instructionRef),
+      kbDomain: optionalString(candidate.kbDomain),
+      outputText: optionalString(candidate.outputText),
+      artifact:
+        candidate.artifact === undefined
+          ? undefined
+          : parseAbArtifact(candidate.artifact),
+    };
+  }
+
+  function parseAbScore(value: unknown): AbComparisonScore {
+    const score = asObject(value);
+    const candidateId = optionalString(score.candidateId);
+    const metric = optionalString(score.metric);
+    if (!candidateId || !metric) {
+      throw new Error("score candidateId and metric are required");
+    }
+    if (typeof score.value !== "number") {
+      throw new Error("score value must be a number");
+    }
+    return { candidateId, metric, value: score.value };
+  }
+
+  function parseAbSource(value: unknown): NonNullable<AbComparisonInput["source"]> {
+    const source = asObject(value);
+    return {
+      package: optionalString(source.package),
+      artifactVersion:
+        typeof source.artifactVersion === "string" ||
+        typeof source.artifactVersion === "number"
+          ? source.artifactVersion
+          : null,
+      runId: optionalString(source.runId),
+      asyncDir: optionalString(source.asyncDir),
+      resultFile: optionalString(source.resultFile),
+      eventsFile: optionalString(source.eventsFile),
+    };
+  }
+
+  function parseAbArtifact(
+    value: unknown
+  ): NonNullable<AbComparisonCandidate["artifact"]> {
+    const artifact = asObject(value);
+    return {
+      runId: optionalString(artifact.runId),
+      sessionId: optionalString(artifact.sessionId),
+      asyncDir: optionalString(artifact.asyncDir),
+      resultFile: optionalString(artifact.resultFile),
+      statusFile: optionalString(artifact.statusFile),
+      eventsFile: optionalString(artifact.eventsFile),
+      outputFile: optionalString(artifact.outputFile),
+      sessionFile: optionalString(artifact.sessionFile),
+    };
+  }
+
+  function isAbTrigger(
+    value: string
+  ): value is AbComparisonInput["trigger"] {
+    return [
+      "manual",
+      "backend_request",
+      "config_rule",
+      "pi_subagents",
+      "imported",
+    ].includes(value);
+  }
+
+  function asArray(value: unknown): unknown[] {
+    if (!Array.isArray(value)) throw new Error("expected array");
+    return value;
+  }
+
+  function asObject(value: unknown): Record<string, unknown> {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw new Error("expected object");
+    }
+    return value as Record<string, unknown>;
+  }
+
+  function optionalString(value: unknown): string | null {
+    return typeof value === "string" && value.trim() ? value : null;
   }
 
   function forwardServiceEvent(

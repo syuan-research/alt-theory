@@ -33,6 +33,10 @@ import {
   type RunRecord,
 } from "./run-records.js";
 import {
+  readAbComparisonRecords,
+  type AbComparisonRecord,
+} from "./ab-records.js";
+import {
   readDeletedSessionRecord,
   writeDeletedSessionRecord,
   type DeletedSessionRecord,
@@ -84,6 +88,7 @@ export interface SessionDetailResponse {
   effectiveConfig: EffectiveSessionConfig | null;
   configEvents: ConfigEvent[];
   runs: RunRecord[];
+  abComparisons: AbComparisonRecord[];
   warnings: string[];
 }
 
@@ -145,6 +150,7 @@ export function readSessionDetail(
   const events = readSessionEvents(parts.recordsDir, parts.state);
   const configEvents = readConfigEvents(parts.recordsDir);
   const runs = readRunRecords(parts.recordsDir);
+  const abComparisons = readAbComparisonRecords(parts.recordsDir);
   const latestRuns = latestRunSnapshots(parts.recordsDir);
   const pi = readPiInfo(
     parts.sessionFile,
@@ -170,6 +176,7 @@ export function readSessionDetail(
       inferEffectiveConfig(parts.manifest),
     configEvents,
     runs,
+    abComparisons,
     warnings: uniqueWarnings([...session.warnings, ...parts.state.warnings]),
   };
 }
