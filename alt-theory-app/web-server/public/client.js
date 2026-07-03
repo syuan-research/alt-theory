@@ -67,7 +67,6 @@ const rtCtxWindow = document.getElementById("rt-ctx-window");
 const rtCtxPct = document.getElementById("rt-ctx-pct");
 const rtCost = document.getElementById("rt-cost");
 const rtPaths = document.getElementById("rt-paths");
-const rtCoreSoul = document.getElementById("rt-core-soul");
 const refreshMetricsBtn = document.getElementById("refresh-metrics");
 const recordsRefreshBtn = document.getElementById("records-refresh-btn");
 const recordsListEl = document.getElementById("records-list");
@@ -2132,9 +2131,6 @@ function renderManifest(manifest) {
 
   // Paths
   renderPaths(manifest);
-
-  // Core-soul modules
-  renderCoreSoul(manifest.coreSoul);
 }
 
 function renderDraftSession(payload) {
@@ -2142,7 +2138,7 @@ function renderDraftSession(payload) {
   currentSessionId = "";
   currentBranchId = "main";
   currentDomain = payload.currentDomain || "";
-  currentRolePresetSlug = payload.rolePresetSlug ?? payload.profileSlug ?? null;
+  currentRolePresetSlug = payload.rolePresetSlug ?? null;
   currentSoulSlug = payload.soulSlug ?? null;
   currentInstructionRef = payload.customInstructionRef ?? null;
   currentProjectId = payload.projectId ?? null;
@@ -2174,7 +2170,6 @@ function renderDraftSession(payload) {
   rtCtxPct.textContent = "—";
   rtCost.textContent = "—";
   rtPaths.textContent = "—";
-  rtCoreSoul.textContent = "—";
   selectedRecordFile = null;
   sessionRecordFiles = [];
   recordEditorEl.value = "";
@@ -2201,8 +2196,6 @@ function renderPaths(manifest) {
     ["KB Root", manifest.kb?.rootDir],
     ["KB Domain", manifest.kb?.domainPath],
     ["Pi Prompts", manifest.piAdapter?.promptTemplatesDir],
-    ["Runtime", manifest.runtimeDir],
-    ["Core-Soul", manifest.coreSoul?.basePath],
   ];
   const writableRoots = Array.isArray(manifest.writableRoots)
     ? manifest.writableRoots
@@ -2228,22 +2221,6 @@ function renderPaths(manifest) {
   }
   if (rtPaths.children.length === 0) {
     rtPaths.textContent = "—";
-  }
-}
-
-function renderCoreSoul(coreSoul) {
-  rtCoreSoul.innerHTML = "";
-  if (!coreSoul || !coreSoul.modules || coreSoul.modules.length === 0) {
-    rtCoreSoul.textContent = "—";
-    return;
-  }
-  for (const mod of coreSoul.modules) {
-    const el = document.createElement("div");
-    el.className = "core-soul-module";
-    el.innerHTML = `<div class="cs-slug">${escHtml(mod.slug)}</div>` +
-      `<div class="cs-var">${escHtml(mod.variable)}</div>` +
-      `<div class="cs-value">${escHtml(mod.value)}</div>`;
-    rtCoreSoul.appendChild(el);
   }
 }
 
@@ -2426,8 +2403,7 @@ function handleWebSocketMessage(event) {
       reconnectSessionId = currentSessionId;
       currentBranchId = msg.payload.branchId || "main";
       currentDomain = msg.payload.currentDomain || "";
-      currentRolePresetSlug =
-        msg.payload.rolePresetSlug ?? msg.payload.profileSlug ?? null;
+      currentRolePresetSlug = msg.payload.rolePresetSlug ?? null;
       currentSoulSlug = msg.payload.soulSlug ?? null;
       currentInstructionRef = msg.payload.customInstructionRef ?? null;
       currentProjectId = msg.payload.projectId ?? null;
@@ -2473,9 +2449,7 @@ function handleWebSocketMessage(event) {
       }
       currentDomain = msg.payload.currentDomain || currentDomain;
       currentRolePresetSlug =
-        msg.payload.rolePresetSlug ??
-        msg.payload.profileSlug ??
-        currentRolePresetSlug;
+        msg.payload.rolePresetSlug ?? currentRolePresetSlug;
       currentSoulSlug = msg.payload.soulSlug ?? currentSoulSlug;
       currentInstructionRef =
         msg.payload.customInstructionRef ?? currentInstructionRef;

@@ -18,8 +18,6 @@ export interface SessionSnapshot {
   visibility?: "research" | "private";
   currentDomain: string;
   rolePresetSlug: string | null;
-  /** Deprecated compatibility field; use rolePresetSlug. */
-  profileSlug?: string | null;
   soulSlug: string | null;
   customInstructionRef?: string | null;
   openedFrom?: "new" | "existing";
@@ -33,8 +31,6 @@ export interface SessionDraftSnapshot {
   visibility: "research" | "private";
   currentDomain: string;
   rolePresetSlug: string | null;
-  /** Deprecated compatibility field; use rolePresetSlug. */
-  profileSlug?: string | null;
   soulSlug: string | null;
   customInstructionRef?: string | null;
 }
@@ -83,7 +79,6 @@ export type ClientMessage =
   /** domain is a known KB domain, "all", or "none" to disable kb-folder retrieval. */
   | { type: "switch_kb"; payload: { domain: string } }
   | { type: "switch_role_preset"; payload: { rolePresetSlug: string | null } }
-  | { type: "switch_profile"; payload: { profileSlug: string | null } }
   | { type: "switch_soul"; payload: { soulSlug: string | null } }
   | {
       type: "switch_instruction";

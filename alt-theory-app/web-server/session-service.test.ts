@@ -1,12 +1,23 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "fs";
 import { mkdtempSync } from "fs";
 import { tmpdir } from "os";
 import { join, resolve } from "path";
 import test from "node:test";
 import { createAltTheorySession } from "../core/alt-theory-core.js";
 import { createSessionDirs } from "../core/data-dir.js";
-import { SessionBusyError, SessionService } from "./session-service.js";
+import {
+  SessionBusyError,
+  SessionService,
+  type SessionServiceEvent,
+} from "./session-service.js";
 import { readSessionDetail } from "./session-store.js";
 import { readConfigEvents } from "./config-events.js";
 import { latestRunSnapshots, readRunRecords } from "./lineage-records.js";
@@ -558,9 +569,15 @@ test("SessionService revise and default fork use restored branch head after reop
     const branchHeadBeforeFork =
       readSessionDetail(fixture.dataDir, created.sessionId)?.activeBranch
         ?.activeLeafEntryId;
-    await forkService.forkSession(forkOpened.sessionId, "collaboration");
-    const detail = readSessionDetail(fixture.dataDir, created.sessionId);
-    assert.equal(detail?.activeBranch?.forkPointEntryId, branchHeadBeforeFork);
+    const forked = await forkService.forkSession(
+      forkOpened.sessionId,
+      "collaboration"
+    );
+    const sourceDetail = readSessionDetail(fixture.dataDir, created.sessionId);
+    const forkDetail = readSessionDetail(fixture.dataDir, forked.sessionId);
+    assert.notEqual(forked.sessionId, created.sessionId);
+    assert.equal(sourceDetail?.activeBranch?.branchId, "main");
+    assert.equal(forkDetail?.transcript.at(-1)?.entryId, branchHeadBeforeFork);
     await forkService.disposeAll();
   } finally {
     await service.disposeAll();
@@ -585,7 +602,7 @@ test("SessionService rejects latest-turn delete when no completed turn exists", 
   }
 });
 
-test("SessionService explicit forks preserve logical session identity and workspace policy", async () => {
+test("SessionService explicit forks create a new session with copied workspace", async () => {
   async function runCase(purpose: "collaboration" | "comparison") {
     const fixture = setupFixture();
     const service = createTestService(fixture);
@@ -632,33 +649,22 @@ test("SessionService explicit forks preserve logical session identity and worksp
         purpose,
         projectedForkPoint ?? undefined
       );
-      const activeManifest = service.getManifest(created.sessionId);
-      const detail = readSessionDetail(fixture.dataDir, created.sessionId);
-      assert.equal(forked.sessionId, created.sessionId);
-      assert.equal(detail?.activeBranch?.branchId, "fork-001");
-      assert.equal(detail?.activeBranch?.purpose, purpose);
-      assert.notEqual(
-        detail?.activeBranch?.activePiSessionFile,
-        manifest.piSessionFile
+      const sourceDetail = readSessionDetail(fixture.dataDir, created.sessionId);
+      const forkDetail = readSessionDetail(fixture.dataDir, forked.sessionId);
+      const forkManifest = service.getManifest(forked.sessionId);
+      assert.notEqual(forked.sessionId, created.sessionId);
+      assert.equal(sourceDetail?.activeBranch?.branchId, "main");
+      assert.equal(forkDetail?.activeBranch?.branchId, "main");
+      assert.notEqual(forkManifest.piSessionFile, manifest.piSessionFile);
+      assert.notEqual(forkManifest.sessionCwd, manifest.sessionCwd);
+      assert.equal(
+        readFileSync(join(forkManifest.sessionCwd!, "shared-note.txt"), "utf-8"),
+        "source"
       );
-      if (purpose === "collaboration") {
-        assert.equal(detail?.activeBranch?.workspaceMode, "shared");
-        assert.equal(detail?.activeBranch?.workspaceRef, manifest.sessionCwd);
-      } else {
-        assert.equal(detail?.activeBranch?.workspaceMode, "copied");
-        assert.notEqual(detail?.activeBranch?.workspaceRef, manifest.sessionCwd);
-        assert.equal(
-          readFileSync(
-            join(detail!.activeBranch!.workspaceRef, "shared-note.txt"),
-            "utf-8"
-          ),
-          "source"
-        );
-        assert.equal(
-          activeManifest.sessionCwd,
-          detail?.activeBranch?.workspaceRef
-        );
-      }
+      assert.equal(
+        forkDetail?.transcript.at(-1)?.text,
+        "fork answer"
+      );
     } finally {
       await service.disposeAll();
     }
@@ -700,18 +706,13 @@ test("SessionService cleans unactivated comparison fork artifacts", async () => 
       /forced fork open failure/
     );
     const detail = readSessionDetail(fixture.dataDir, created.sessionId);
-    const comparisonWorkspace = join(
-      fixture.dataDir,
-      "sessions",
-      created.sessionId,
-      "branches",
-      "fork-001",
-      "workspace"
-    );
     assert.equal(existsSync(forkFile), false);
-    assert.equal(existsSync(comparisonWorkspace), false);
     assert.equal(detail?.branchIndex?.activeBranchId, "main");
     assert.equal(detail?.branchIndex?.branches.length, 1);
+    assert.equal(
+      readdirSync(join(fixture.dataDir, "sessions")).length,
+      1
+    );
   } finally {
     await service.disposeAll();
   }
@@ -1465,6 +1466,10 @@ test("SessionService surfaces fallback continuation failure through run completi
     kbDomain: "ep-core",
     soulSlug: "soul-latest",
   });
+  const events: SessionServiceEvent[] = [];
+  const detach = service.attach(created.sessionId, (event) => {
+    events.push(event);
+  });
   const internal = service as any;
   const managed = internal.sessions.get(created.sessionId);
 
@@ -1528,7 +1533,10 @@ test("SessionService surfaces fallback continuation failure through run completi
       service.getManifest(created.sessionId).recordsDir
     )[0];
     assert.equal(latest.status, "failed");
+    assert.equal(managed.busy, false);
+    assert.equal(events.at(-1)?.type, "run_failed");
   } finally {
+    detach();
     await service.disposeAll();
   }
 });

@@ -1,4 +1,4 @@
-import { cpSync, existsSync, rmSync } from "fs";
+import { cpSync, existsSync, rmSync, writeFileSync } from "fs";
 import type {
   AgentSession,
   AgentSessionEvent,
@@ -19,7 +19,7 @@ import {
   writeJsonAtomic,
   type SessionDirectories,
 } from "../core/data-dir.js";
-import { join } from "path";
+import { basename, join } from "path";
 import type { AgentAssetPaths } from "../core/agent-assets.js";
 import {
   isKnownKbDomain,
@@ -36,7 +36,6 @@ import { readSessionDetail, getSessionRootForRequest } from "./session-store.js"
 import {
   readBranchIndex,
   readV4SessionHeader,
-  resolveBranchWorkspace,
   writeFoundationRecords,
   writeSessionHeader,
 } from "./session-records.js";
@@ -51,8 +50,6 @@ import {
 } from "./config-events.js";
 import { loadInstructionAsset } from "./instruction-assets.js";
 import {
-  addAndActivateBranch,
-  allocateBranchId,
   appendRunRecord,
   latestRunSnapshots,
   type RunRecord,
@@ -98,9 +95,6 @@ export interface SessionServiceConfig {
   instructionsDir?: string;
   runLabel: string | null;
   testBatch: string | null;
-  coreSoulPath?: string;
-  coreSoulModulesDir?: string;
-  coreSoulModules?: string[];
   resolveRuntimeModelConfig?: () => RuntimeModelConfig;
   modelFallbackConfigPath?: string | null;
 }
@@ -508,93 +502,113 @@ export class SessionService {
     ) {
       throw new Error("Fork point must be on the active branch");
     }
-    const dirs = getSessionDirs(this.config.dataDir, sessionId);
-    if (!dirs) throw new Error(`Invalid session id: ${sessionId}`);
-    const branchIndex = readBranchIndex(previous.manifest.recordsDir);
-    if (!branchIndex) throw new Error("v0.4 branch index is required");
-    const branchId = allocateBranchId(branchIndex);
-    const sourceBranch = branchIndex.branches.find(
-      (branch) => branch.branchId === previous.branchId
-    );
-    if (!sourceBranch) {
-      throw new Error(`Unknown active branch: ${previous.branchId}`);
-    }
-    const workspaceRef =
-      purpose === "collaboration"
-        ? dirs.sessionCwd
-        : resolveBranchWorkspace(dirs.sessionRoot, branchId);
     const forkFile =
       previous.session.sessionManager.createBranchedSession(leafId);
     if (!forkFile) {
       throw new Error("Pi did not create a persisted fork session");
     }
-    let copiedWorkspace = false;
+    const runtimeModelConfig = this.resolveEffectiveRuntimeModelConfig();
+    const forkSessionId = allocateReadableSessionId(this.config.dataDir, {
+      rolePresetSlug: previous.selectors.rolePresetSlug,
+      soulSlug: previous.selectors.soulSlug,
+      modelId: runtimeModelConfig.modelId,
+    });
+    const forkDirs = createSessionDirs(this.config.dataDir, forkSessionId);
+    const copiedForkFile = join(forkDirs.piSessionDir, basename(forkFile));
     let activated = false;
     try {
-      if (purpose === "comparison") {
-        cpSync(sourceBranch.workspaceRef, workspaceRef, {
-          recursive: true,
-          errorOnExist: true,
-        });
-        copiedWorkspace = true;
-      }
+      rmSync(forkDirs.sessionCwd, { recursive: true, force: true });
+      cpSync(previous.session.sessionManager.getCwd(), forkDirs.sessionCwd, {
+        recursive: true,
+      });
+      const forkEntries = [
+        previous.session.sessionManager.getHeader(),
+        ...previous.session.sessionManager.getEntries(),
+      ].filter(Boolean);
+      writeFileSync(
+        copiedForkFile,
+        `${forkEntries.map((entry) => JSON.stringify(entry)).join("\n")}\n`,
+        "utf-8"
+      );
       const result = await this.openManagedRuntime({
-        sessionId,
-        sessionFile: forkFile,
-        sessionDirs: { ...dirs, sessionCwd: workspaceRef },
+        sessionId: forkSessionId,
+        sessionFile: copiedForkFile,
+        sessionDirs: forkDirs,
         selectors: previous.selectors,
         originalManifest: previous.manifest,
-        branchId,
+        branchId: "main",
         openedFrom: previous.openedFrom,
         resumeWarnings: previous.resumeWarnings,
         counters: previous.counters,
         transcript: previous.transcript,
         overrideSessionCwd: true,
+        activeLeafEntryId: leafId,
       });
-      const forkActiveLeafEntryId =
-        result.session.sessionManager.getLeafId() ?? null;
-      const sourceRun = latestRunSnapshots(previous.manifest.recordsDir).find(
-        (run) =>
-          run.branchId === previous.branchId &&
-          run.status === "completed" &&
-          (run.userEntryId === leafId ||
-            run.assistantEntryIds.includes(leafId))
+      writeJsonAtomic(
+        join(result.manifest.recordsDir, "assembly-manifest.json"),
+        result.manifest
       );
-      addAndActivateBranch(previous.manifest.recordsDir, {
-        branchId,
-        parentBranchId: previous.branchId,
-        forkPointEntryId: leafId,
-        forkPointTurnId: sourceRun?.turnId ?? null,
-        purpose,
-        workspaceMode: purpose === "comparison" ? "copied" : "shared",
-        workspaceRef,
-        activePiSessionFile: forkFile,
-        activeLeafEntryId: forkActiveLeafEntryId,
-        createdAt: new Date().toISOString(),
+      const sourceHeader = readV4SessionHeader(previous.manifest.recordsDir);
+      writeFoundationRecords({
+        sessionRoot: forkDirs.sessionRoot,
+        recordsDir: forkDirs.recordsDir,
+        manifest: result.manifest,
+        projectId: previous.selectors.projectId ?? null,
+        ownerAccountId: sourceHeader?.ownerAccountId ?? null,
+        roleCondition: sourceHeader?.roleCondition ?? null,
+        visibility: sourceHeader?.visibility ?? "research",
+        consentSnapshot: sourceHeader?.consentSnapshot ?? null,
+        lastActivityAt: result.manifest.createdAt,
+        retentionDueAt: sourceHeader?.retentionDueAt ?? null,
+      });
+      appendConfigEvent(result.manifest.recordsDir, {
+        sessionId: result.manifest.sessionId,
+        branchId: result.branchId,
+        reason: "creation",
+        effective: buildEffectiveConfig(
+          result.manifest,
+          result.selectors.projectId
+        ),
+        changedFields: [],
+        warnings: result.resumeWarnings,
       });
       activated = true;
-      result.nextTurnIndex = previous.nextTurnIndex;
-      result.nextRevisionIndex = previous.nextRevisionIndex;
-      result.nextRunIndex = previous.nextRunIndex;
       result.transcript =
-        readSessionDetail(this.config.dataDir, sessionId)?.transcript ??
+        readSessionDetail(this.config.dataDir, forkSessionId)?.transcript ??
         result.transcript;
-      this.sessions.set(sessionId, result);
-      await this.disposeManaged(previous);
+      this.sessions.set(forkSessionId, result);
       appendSessionEvent(result.manifest.recordsDir, {
+        sessionId: forkSessionId,
+        type: "session_forked_from",
+        details: {
+          sourceSessionId: sessionId,
+          sourceBranchId: previous.branchId,
+          forkPointEntryId: leafId,
+          purpose,
+        },
+      });
+      appendSessionEvent(previous.manifest.recordsDir, {
         sessionId,
         type: "session_forked",
         details: {
-          branchId,
-          parentBranchId: previous.branchId,
+          forkSessionId,
+          forkPointEntryId: leafId,
           purpose,
-          workspaceMode: purpose === "comparison" ? "copied" : "shared",
         },
       });
+      if (existsSync(forkFile)) {
+        rmSync(forkFile, { force: true });
+      }
+      const restoredSource = await this.createManagedFromExisting(
+        sessionId,
+        previous.selectors
+      );
+      this.sessions.set(sessionId, restoredSource);
+      await this.disposeManaged(previous);
       return this.snapshot(result);
     } catch (error) {
-      if (!activated && copiedWorkspace && existsSync(workspaceRef)) {
-        rmSync(workspaceRef, { recursive: true, force: true });
+      if (!activated && existsSync(forkDirs.sessionRoot)) {
+        rmSync(forkDirs.sessionRoot, { recursive: true, force: true });
       }
       if (!activated && existsSync(forkFile)) {
         rmSync(forkFile, { force: true });
@@ -898,9 +912,6 @@ export class SessionService {
       kbDir: this.config.kbDir,
       kbDomain: selectors.kbDomain,
       piPromptTemplatesDir: this.config.assetPaths.piPromptTemplatesDir,
-      coreSoulPath: this.config.coreSoulPath,
-      coreSoulModulesDir: this.config.coreSoulModulesDir,
-      coreSoulModules: this.config.coreSoulModules,
       ...runtimeModelConfig,
       thinkingLevel: this.config.thinkingLevel,
       promptMode: this.config.promptMode,
@@ -1030,9 +1041,6 @@ export class SessionService {
       kbDir: this.config.kbDir,
       kbDomain: activeDomain,
       piPromptTemplatesDir: this.config.assetPaths.piPromptTemplatesDir,
-      coreSoulPath: this.config.coreSoulPath,
-      coreSoulModulesDir: this.config.coreSoulModulesDir,
-      coreSoulModules: this.config.coreSoulModules,
       ...this.resolveEffectiveRuntimeModelConfig(),
       thinkingLevel: this.config.thinkingLevel,
       promptMode: this.config.promptMode,
@@ -1170,9 +1178,6 @@ export class SessionService {
       kbDir: this.config.kbDir,
       kbDomain: selectors.kbDomain,
       piPromptTemplatesDir: this.config.assetPaths.piPromptTemplatesDir,
-      coreSoulPath: this.config.coreSoulPath,
-      coreSoulModulesDir: this.config.coreSoulModulesDir,
-      coreSoulModules: this.config.coreSoulModules,
       ...this.resolveEffectiveRuntimeModelConfig(),
       thinkingLevel: this.config.thinkingLevel,
       promptMode: this.config.promptMode,
@@ -1237,9 +1242,6 @@ export class SessionService {
       kbDir: this.config.kbDir,
       kbDomain: args.selectors.kbDomain,
       piPromptTemplatesDir: this.config.assetPaths.piPromptTemplatesDir,
-      coreSoulPath: this.config.coreSoulPath,
-      coreSoulModulesDir: this.config.coreSoulModulesDir,
-      coreSoulModules: this.config.coreSoulModules,
       ...this.resolveEffectiveRuntimeModelConfig(),
       thinkingLevel: this.config.thinkingLevel,
       promptMode: this.config.promptMode,
@@ -1341,12 +1343,20 @@ export class SessionService {
 
   private async finalizeRunFailure(managed: ManagedSession): Promise<void> {
     await managed.session.waitForRetry();
-    const error = managed.session.state.errorMessage;
+    let error = managed.session.state.errorMessage;
     if (!error) {
       return;
     }
-    if (await this.tryModelFallback(managed, error)) {
-      return;
+    try {
+      if (await this.tryModelFallback(managed, error)) {
+        return;
+      }
+    } catch (fallbackError) {
+      error =
+        fallbackError instanceof Error
+          ? fallbackError.message
+          : String(fallbackError);
+      managed.session.state.errorMessage = error;
     }
     managed.busy = false;
     appendSessionEvent(managed.manifest.recordsDir, {
@@ -1541,7 +1551,6 @@ export class SessionService {
       status: managed.session.isStreaming ? "running" : "idle",
       currentDomain: managed.selectors.kbDomain,
       rolePresetSlug: managed.selectors.rolePresetSlug,
-      profileSlug: managed.selectors.rolePresetSlug,
       soulSlug: managed.selectors.soulSlug,
       customInstructionRef: managed.selectors.customInstructionRef ?? null,
       openedFrom: managed.openedFrom,

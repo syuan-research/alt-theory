@@ -319,9 +319,6 @@ test("write-enabled core exposes write without edit/bash and writes notes", asyn
     );
     assert.match(result.session.agent.state.systemPrompt, /Role Preset/);
     assert.match(result.session.agent.state.systemPrompt, /workspace/);
-    assert.ok(
-      result.session.promptTemplates.some((prompt) => prompt.name === "alt_theo")
-    );
     assert.ok(result.session.sessionFile);
     assert.equal(result.manifest.provider, "test-provider");
     assert.equal(result.manifest.model, "test-model");
@@ -1929,6 +1926,7 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
     "Alternate role preset",
     "utf-8"
   );
+  writeFileSync(join(instructions, "default.md"), "Default instruction.", "utf-8");
   writeFileSync(join(instructions, "study.rules"), "Stay bounded.", "utf-8");
   writeFileSync(
     join(skills, "summary.md"),
@@ -2005,6 +2003,11 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
     assert.deepEqual(await instructionsResponse.json(), {
       instructions: [
         {
+          ref: "default.md",
+          displayName: "default.md",
+          size: Buffer.byteLength("Default instruction."),
+        },
+        {
           ref: "study.rules",
           displayName: "study.rules",
           size: Buffer.byteLength("Stay bounded."),
@@ -2075,6 +2078,7 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
     assert.equal(draft2.payload.status, "draft");
     assert.equal(draft1.payload.rolePresetSlug, "role-conceptual-theory-companion");
     assert.equal(draft1.payload.soulSlug, "soul-latest");
+    assert.equal(draft1.payload.customInstructionRef, "default.md");
     assert.equal(existsSync(join(root, "data", "sessions")), false);
 
     const projectDraftPromise = waitForType(ws1, "session_draft");
@@ -2136,6 +2140,7 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
     assert.equal(ws2Draft.payload.currentDomain, "ep-core");
     assert.equal(ws2Draft.payload.rolePresetSlug, "role-conceptual-theory-companion");
     assert.equal(ws2Draft.payload.soulSlug, "soul-latest");
+    assert.equal(ws2Draft.payload.customInstructionRef, "default.md");
 
     const reopened1Promise = waitForType(ws1, "session_draft");
     ws1.send(JSON.stringify({ type: "new_session" }));
@@ -2151,6 +2156,7 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
     assert.equal(reopened2.payload.currentDomain, "ep-core");
     assert.equal(reopened2.payload.rolePresetSlug, "role-conceptual-theory-companion");
     assert.equal(reopened2.payload.soulSlug, "soul-latest");
+    assert.equal(reopened2.payload.customInstructionRef, "default.md");
     assert.equal(existsSync(join(root, "data", "sessions")), false);
   } finally {
     ws1.close();

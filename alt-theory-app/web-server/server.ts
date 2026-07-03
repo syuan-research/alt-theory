@@ -101,6 +101,7 @@ const DEFAULT_ROLE_CONDITION_PRESETS: Record<string, string> = {
 };
 const DEFAULT_ROLE_PRESET_SLUG = "role-conceptual-theory-companion";
 const DEFAULT_SOUL_SLUG = "soul-latest";
+const DEFAULT_INSTRUCTION_REF = "default.md";
 
 export interface AltTheoryServerOptions {
   agentAssetsDir?: string;
@@ -112,14 +113,9 @@ export interface AltTheoryServerOptions {
   dataDir?: string;
   kbDir?: string;
   rolePresetsDir?: string;
-  /** Deprecated compatibility option; use rolePresetsDir. */
-  profilesDir?: string;
   piPromptTemplatesDir?: string;
   publicDir?: string;
   readOnly?: boolean;
-  coreSoulPath?: string;
-  coreSoulModulesDir?: string;
-  coreSoulModules?: string[];
   modelProvider?: string;
   modelId?: string;
   modelsPath?: string;
@@ -129,15 +125,6 @@ export interface AltTheoryServerOptions {
   resourceDiscovery?: ResourceDiscoveryMode;
   runLabel?: string | null;
   testBatch?: string | null;
-}
-
-function parseCoreSoulModules(): string[] | undefined {
-  const value = process.env.ALT_THEORY_CORE_SOUL_MODULES;
-  if (!value) return undefined;
-  return value
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
 }
 
 function parseResourceDiscoveryMode(
@@ -173,7 +160,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     skillsDir: options.skillsDir,
     soulDir: options.soulDir,
     soulPath: options.soulPath,
-    rolePresetsDir: options.rolePresetsDir ?? options.profilesDir,
+    rolePresetsDir: options.rolePresetsDir,
     kbDir: options.kbDir,
     piPromptTemplatesDir: options.piPromptTemplatesDir,
     modelsPath: options.modelsPath,
@@ -383,9 +370,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   });
   app.get("/api/souls", (_req, res) => {
     res.json({ souls: listSouls(soulDir, legacySoulPath) });
-  });
-  app.get("/api/profiles", (_req, res) => {
-    res.json({ profiles: listRolePresets(rolePresetsDir) });
   });
   app.get("/api/kb-domains", (_req, res) => {
     const selectableDomains = [
@@ -701,6 +685,14 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       : null;
   }
 
+  function defaultInstructionRef(): string | null {
+    return listInstructionAssets(instructionsDir).some(
+      (asset) => asset.ref === DEFAULT_INSTRUCTION_REF
+    )
+      ? DEFAULT_INSTRUCTION_REF
+      : null;
+  }
+
   function optionalSlug(value: string | null | undefined): string | null {
     return value && value.trim() ? value : null;
   }
@@ -799,12 +791,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     instructionsDir,
     runLabel,
     testBatch,
-    coreSoulPath:
-      options.coreSoulPath ?? process.env.ALT_THEORY_CORE_SOUL_PATH,
-    coreSoulModulesDir:
-      options.coreSoulModulesDir ??
-      process.env.ALT_THEORY_CORE_SOUL_MODULES_DIR,
-    coreSoulModules: options.coreSoulModules ?? parseCoreSoulModules(),
     resolveRuntimeModelConfig: localMode
       ? () => requireLocalRuntimeModelConfig()
       : undefined,
@@ -885,7 +871,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       rolePresetSlug: defaultRolePresetSlug(),
       kbDomain: "ep-core",
       soulSlug: defaultSoulSlug(),
-      customInstructionRef: null,
+      customInstructionRef: defaultInstructionRef(),
     };
   }
 
@@ -963,7 +949,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         visibility,
         currentDomain: selectors.kbDomain,
         rolePresetSlug: selectors.rolePresetSlug,
-        profileSlug: selectors.rolePresetSlug,
         soulSlug: selectors.soulSlug,
         customInstructionRef: selectors.customInstructionRef ?? null,
       },
@@ -1096,12 +1081,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             sendServiceError(send, error);
           }
           break;
-        case "switch_role_preset":
-        case "switch_profile": {
-          const rolePresetSlug =
-            msg.type === "switch_role_preset"
-              ? optionalSlug(msg.payload.rolePresetSlug)
-              : optionalSlug(msg.payload.profileSlug);
+        case "switch_role_preset": {
+          const rolePresetSlug = optionalSlug(msg.payload.rolePresetSlug);
           if (!attachedSessionId) {
             draftSelectors = { ...draftSelectors, rolePresetSlug };
             sendDraft(send, draftSelectors, draftVisibility);

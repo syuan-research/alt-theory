@@ -28,24 +28,21 @@ import {
   writeJsonAtomic,
   type SessionDirectories,
 } from "./data-dir.js";
-import { assembleCoreSoul } from "./core-soul.js";
 import {
   emptyFileRef,
   fileRef,
   readRequiredTextAsset,
   type LoadedAssetFileRef,
 } from "./agent-assets.js";
+import {
+  findKbDomainMetadata,
+  formatKbMetadataPrompt,
+  type KbDomainMetadata,
+} from "./kb-metadata.js";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
-export interface CoreSoulModule {
-  slug: string;
-  variable: string;
-  value: string;
-  path: string;
-}
 
 export interface AssemblyManifest {
   sessionId: string;
@@ -76,13 +73,6 @@ export interface AssemblyManifest {
     sha256: string | null;
     source: "alt-theory";
   }>;
-  coreSoul: {
-    basePath: string | null;
-    modules: CoreSoulModule[];
-  };
-  /** Deprecated compatibility field; use rolePreset.path instead. */
-  profilePath: string | null;
-  runtimeDir: string | null;
   piAdapter: {
     promptTemplatesDir: string | null;
     promptTemplatesExist: boolean;
@@ -93,6 +83,7 @@ export interface AssemblyManifest {
     domain: string;
     domainPath: string | null;
     domainExists: boolean;
+    metadata: KbDomainMetadata | null;
   };
   sessionCwd: string;
   piSessionDir: string;
@@ -136,16 +127,6 @@ export interface AltTheoryConfig extends SessionDirectories {
   kbDomain?: string;
   /** Pi adapter prompt templates */
   piPromptTemplatesDir?: string;
-  /** Deprecated compatibility field for older runtimeDir callers */
-  runtimeDir?: string;
-  /** Deprecated compatibility field; use rolePresetPath */
-  profilePath?: string;
-  /** Core-soul base file path */
-  coreSoulPath?: string;
-  /** Selected core-soul module slugs */
-  coreSoulModules?: string[];
-  /** Directory containing core-soul module files */
-  coreSoulModulesDir?: string;
   /** Read-only mode: only read/search tools; coding mode: full read/write/edit/bash */
   readOnly: boolean;
   /** Optional custom Pi models.json path */
@@ -243,20 +224,14 @@ async function createAltTheorySessionWithManager(
   );
   const resolvedAppContextPath = resolve(config.appContextPath);
   const resolvedSoulPath = config.soulPath ? resolve(config.soulPath) : null;
-  const configuredRolePresetPath = config.rolePresetPath ?? config.profilePath;
-  const resolvedRolePresetPath = configuredRolePresetPath
-    ? resolve(configuredRolePresetPath)
+  const resolvedRolePresetPath = config.rolePresetPath
+    ? resolve(config.rolePresetPath)
     : null;
   const resolvedCustomInstructionPath = config.customInstructionPath
     ? resolve(config.customInstructionPath)
     : null;
   const resolvedPiPromptTemplatesDir = config.piPromptTemplatesDir
     ? resolve(config.piPromptTemplatesDir)
-    : config.runtimeDir
-      ? resolve(config.runtimeDir, ".pi", "prompts")
-      : null;
-  const resolvedRuntimeDir = config.runtimeDir
-    ? resolve(config.runtimeDir)
     : null;
   const agentDir = getAgentDir();
   const promptMode = config.promptMode ?? "alt-only";
@@ -278,26 +253,12 @@ async function createAltTheorySessionWithManager(
     ? readRequiredTextAsset(resolvedCustomInstructionPath, "custom instruction")
     : null;
 
-  if (config.coreSoulPath && !config.coreSoulModulesDir) {
-    throw new Error("coreSoulModulesDir is required when coreSoulPath is set");
-  }
-  const coreSoul = config.coreSoulPath
-    ? assembleCoreSoul({
-        basePath: config.coreSoulPath,
-        modulesDir: config.coreSoulModulesDir!,
-        activeModules: config.coreSoulModules,
-      })
-    : null;
-
   // --- 2. Assemble appendSystemPromptOverride ---
-  //    Order: app context -> optional soul -> optional core-soul modules -> optional role preset -> KB path declaration
+  //    Order: app context -> optional soul -> optional role preset -> optional instruction -> KB path declaration
   const appendContent: string[] = [];
   appendContent.push(`## Alt Theory Application Context\n${appContextContent}`);
   if (soulContent) {
     appendContent.push(`## Soul\n${soulContent}`);
-  }
-  if (coreSoul) {
-    appendContent.push(`## Core Soul\n${coreSoul.content}`);
   }
   if (rolePresetContent) {
     appendContent.push(`## Role Preset\n${rolePresetContent}`);
@@ -307,10 +268,18 @@ async function createAltTheorySessionWithManager(
   }
   const kbDomain = config.kbDomain ?? "all";
   const kbEnabled = kbDomain !== KB_DISABLED_DOMAIN;
+  const kbMetadata =
+    kbEnabled && kbDomain !== "all"
+      ? findKbDomainMetadata(resolvedKbDir, kbDomain)
+      : null;
+  const kbMetadataPrompt = formatKbMetadataPrompt(kbMetadata);
   if (kbEnabled) {
     appendContent.push(
       `## Knowledge Base\nYour knowledge base is at: ${resolvedKbDir}`
     );
+    if (kbMetadataPrompt) {
+      appendContent.push(`## Knowledge Base Metadata\n${kbMetadataPrompt}`);
+    }
   } else {
     appendContent.push(
       "## Knowledge Base\nKnowledge-base folder retrieval is disabled for this session. You may still read user workspace files when requested."
@@ -466,12 +435,6 @@ async function createAltTheorySessionWithManager(
         sha256: fileRef(skill.filePath).sha256,
         source: "alt-theory" as const,
       })),
-    coreSoul: {
-      basePath: coreSoul?.basePath ?? null,
-      modules: coreSoul?.modules ?? [],
-    },
-    profilePath: resolvedRolePresetPath,
-    runtimeDir: resolvedRuntimeDir,
     piAdapter: {
       promptTemplatesDir: resolvedPiPromptTemplatesDir,
       promptTemplatesExist: resolvedPiPromptTemplatesDir
@@ -712,3 +675,4 @@ function compareField(
 function uniqueWarnings(warnings: string[]): string[] {
   return [...new Set(warnings)];
 }
+

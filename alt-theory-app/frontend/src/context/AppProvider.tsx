@@ -174,8 +174,7 @@ function applySnapshotSelectors(
   return {
     projectId: payload.projectId ?? null,
     currentDomain: payload.currentDomain || DEFAULT_KB_DOMAIN,
-    rolePresetSlug:
-      payload.rolePresetSlug ?? payload.profileSlug ?? null,
+    rolePresetSlug: payload.rolePresetSlug ?? null,
     soulSlug: payload.soulSlug ?? null,
     customInstructionRef: payload.customInstructionRef ?? null,
     visibility: payload.visibility ?? "research",
@@ -547,9 +546,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             ...prev,
             currentDomain: message.payload.currentDomain || prev.currentDomain,
             rolePresetSlug:
-              message.payload.rolePresetSlug ??
-              message.payload.profileSlug ??
-              prev.rolePresetSlug,
+              message.payload.rolePresetSlug ?? prev.rolePresetSlug,
             soulSlug: message.payload.soulSlug ?? prev.soulSlug,
             customInstructionRef:
               message.payload.customInstructionRef ?? prev.customInstructionRef,

@@ -1540,41 +1540,6 @@ a.small-btn {
   margin-bottom: 2px;
 }
 
-.core-soul-module {
-  margin-bottom: 8px;
-  padding: 10px 14px;
-  background: var(--paper);
-  border: none;
-  border-radius: var(--r-sm);
-}
-
-.core-soul-module:last-child {
-  margin-bottom: 0;
-}
-
-.core-soul-module .cs-slug {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.core-soul-module .cs-var {
-  font-size: 12px;
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  margin-top: 2px;
-}
-
-.core-soul-module .cs-value {
-  font-size: 13px;
-  color: var(--text-secondary);
-  margin-top: 4px;
-  white-space: pre-wrap;
-  word-break: break-word;
-  max-height: 80px;
-  overflow: hidden;
-}
-
 /* --- Footer in left panel --- */
 
 .panel-footer {

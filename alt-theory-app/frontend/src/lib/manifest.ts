@@ -32,8 +32,6 @@ export function manifestPathEntries(
     ["KB Root", manifest.kb?.rootDir],
     ["KB Domain", manifest.kb?.domainPath],
     ["Pi Prompts", manifest.piAdapter?.promptTemplatesDir],
-    ["Runtime", manifest.runtimeDir],
-    ["Core-Soul", manifest.coreSoul?.basePath],
   ].map(([label, path]) => ({ label: String(label), path }));
 
   const writableRoots = Array.isArray(manifest.writableRoots)

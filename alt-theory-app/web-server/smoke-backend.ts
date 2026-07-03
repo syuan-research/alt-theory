@@ -71,12 +71,10 @@ async function main() {
   const dataDir = join(root, "data");
   const rolePresetsDir = join(root, "role-presets");
   const kbDir = join(root, "kb");
-  const coreSoulDir = join(root, "core-soul");
   const appContextPath = join(root, "ALTTHEORY.md");
   const soulPath = join(root, "soul-latest.md");
   mkdirSync(rolePresetsDir, { recursive: true });
   mkdirSync(join(kbDir, "ep-core"), { recursive: true });
-  mkdirSync(coreSoulDir, { recursive: true });
 
   writeFileSync(
     appContextPath,
@@ -86,12 +84,6 @@ async function main() {
   writeFileSync(
     soulPath,
     "Maintain a stable identity as an Alt Theory research assistant.\n",
-    "utf-8"
-  );
-  const coreSoulPath = join(coreSoulDir, "core-soul.md");
-  writeFileSync(
-    coreSoulPath,
-    "You are a friendly assistant. Maintain a stable identity as an Alt Theory research assistant.\n",
     "utf-8"
   );
   writeFileSync(
@@ -119,11 +111,9 @@ async function main() {
     soulPath,
     rolePresetsDir,
     kbDir,
-    coreSoulPath,
-    coreSoulModulesDir: coreSoulDir,
     piPromptTemplatesDir: assetPaths.piPromptTemplatesDir,
     modelsPath: assetPaths.modelsPath,
-    modelProvider: "xiaomi-mimo-token-plan",
+    modelProvider: "xiaomi-mimo-cn-openai",
     modelId: "mimo-v2.5-pro",
     runtimeApiKey: apiKey,
     thinkingLevel: "off",
@@ -147,7 +137,7 @@ async function main() {
       initialMetricsPromise,
     ]);
     assert.equal(initialMetrics.payload.turnCount, 0);
-    assert.equal(metadata.payload.provider, "xiaomi-mimo-token-plan");
+    assert.equal(metadata.payload.provider, "xiaomi-mimo-cn-openai");
     assert.equal(metadata.payload.model, "mimo-v2.5-pro");
 
     const identityResponse = await runTurn(
@@ -231,3 +221,4 @@ main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });
+

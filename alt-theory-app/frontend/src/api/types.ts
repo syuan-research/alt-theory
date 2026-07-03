@@ -25,6 +25,9 @@ export interface AuthMeResponse {
 export interface DiscoveredAsset {
   slug: string;
   displayName: string;
+  shortLabel?: string;
+  userLabel?: string;
+  description?: string;
 }
 
 export interface InstructionAsset {
@@ -59,7 +62,6 @@ export interface SessionDraftSnapshot {
   visibility: "research" | "private";
   currentDomain: string;
   rolePresetSlug: string | null;
-  profileSlug?: string | null;
   soulSlug: string | null;
   customInstructionRef?: string | null;
 }
@@ -72,7 +74,6 @@ export interface SessionSnapshot {
   visibility?: "research" | "private";
   currentDomain: string;
   rolePresetSlug: string | null;
-  profileSlug?: string | null;
   soulSlug: string | null;
   customInstructionRef?: string | null;
   openedFrom?: "new" | "existing";
@@ -196,12 +197,14 @@ export interface ProviderView {
   hasKey: boolean;
   models: ConfigModel[];
   active: boolean;
+  warning?: string;
 }
 
 export interface ConfigStatus {
   agentDir: string;
   anyUsable: boolean;
   activeUsable: boolean;
+  activeIssue: string | null;
   activeProvider: string | null;
   activeModel: string | null;
 }
@@ -288,12 +291,6 @@ export interface DeleteWorkspaceFileResult {
   deleted: string[];
 }
 
-export interface CoreSoulModule {
-  slug: string;
-  variable: string;
-  value: string;
-}
-
 export interface AssemblyManifest {
   sessionId?: string;
   kbDomain?: string;
@@ -304,7 +301,6 @@ export interface AssemblyManifest {
   piSessionFile?: string | null;
   recordsDir?: string;
   writeDir?: string | null;
-  runtimeDir?: string | null;
   writableRoots?: string[];
   kb?: {
     rootDir?: string;
@@ -315,10 +311,6 @@ export interface AssemblyManifest {
   rolePreset?: { slug?: string | null; path?: string | null };
   appContext?: { path?: string | null };
   piAdapter?: { promptTemplatesDir?: string | null };
-  coreSoul?: {
-    basePath?: string | null;
-    modules?: CoreSoulModule[];
-  };
   [key: string]: unknown;
 }
 
@@ -327,7 +319,6 @@ export type ClientMessage =
   | { type: "abort" }
   | { type: "switch_kb"; payload: { domain: string } }
   | { type: "switch_role_preset"; payload: { rolePresetSlug: string | null } }
-  | { type: "switch_profile"; payload: { profileSlug: string | null } }
   | { type: "switch_soul"; payload: { soulSlug: string | null } }
   | {
       type: "switch_instruction";
@@ -386,3 +377,8 @@ export interface SessionSelectors {
   visibility: "research" | "private";
   branchId: string;
 }
+
+
+
+
+

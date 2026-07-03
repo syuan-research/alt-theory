@@ -66,16 +66,6 @@ export function sendSwitchRolePreset(
   });
 }
 
-export function sendSwitchProfile(
-  ws: WebSocket | null,
-  profileSlug: string | null
-): boolean {
-  return sendClientMessage(ws, {
-    type: "switch_profile",
-    payload: { profileSlug },
-  });
-}
-
 export function sendSwitchSoul(
   ws: WebSocket | null,
   soulSlug: string | null

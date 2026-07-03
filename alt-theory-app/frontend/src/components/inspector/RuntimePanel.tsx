@@ -157,30 +157,6 @@ export function RuntimePanel({
         <MonoText>{formatCost(metrics?.cost)}</MonoText>
       </section>
 
-      <section className="space-y-2">
-        <p className="text-[0.75rem] font-semibold text-text-secondary">
-          Core-Soul Modules
-        </p>
-        {manifest?.coreSoul?.modules?.length ? (
-          <div className="space-y-2">
-            {manifest.coreSoul.modules.map((mod) => (
-              <div
-                key={`${mod.slug}-${mod.variable}`}
-                className="rounded-md border border-hairline bg-surface px-2 py-1.5"
-              >
-                <MonoText className="block font-semibold text-ink">
-                  {mod.slug}
-                </MonoText>
-                <HintText className="text-text-secondary">{mod.variable}</HintText>
-                <MonoText className="block break-all">{mod.value}</MonoText>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <MonoText>—</MonoText>
-        )}
-      </section>
-
       {!manifest && !metrics ? (
         <HintText>
           Metadata appears after a session is materialized or when you refresh.
