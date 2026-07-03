@@ -116,6 +116,7 @@ dead or weakly justified prompt layers just because they already exist.
 
 ## Related Documents
 
+- `project/compound/2026-07-03-decision-v0-6-ab-fallback-agent-boundary.md`
 - `project/architecture/core-session-engine.md`
 - `project/workstreams/0-backend-agent-harness/notes-and-status/2026-06-17-session-lineage-product-integration-observation.md`
 - `project/workstreams/0-backend-agent-harness/notes-and-status/2026-06-18-v0-6-deferred-observations.md`
