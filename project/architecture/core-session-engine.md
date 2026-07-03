@@ -85,14 +85,14 @@ flowchart LR
   WS[WebSocket connection] --> Service[SessionService]
   Service --> Dirs[data-dir.ts]
   Service --> Core[create/open AltTheorySession]
-  Core --> Assets[ALTTHEORY + optional soul + optional role preset + KB + Pi prompts]
+  Core --> Assets[ALTTHEORY + optional soul + optional role + KB + Pi prompts]
   Core --> Pi[Pi AgentSession]
   Pi --> JSONL[history/*.jsonl]
   Core --> Manifest[records/assembly-manifest.json]
   Pi --> Metrics[records/session-metrics.json]
   Service --> Events[records/session-events.jsonl]
   Service --> ConfigEvents[records/config-events.jsonl]
-  Service --> V4Records[records/session.json + branch-index.json]
+  Service --> V4Records[records/session.json + runs.jsonl]
   AuthRoutes[Auth REST] --> AuthStore[accounts/accounts.json]
   AuthRoutes --> AuthCookie[HttpOnly cookie token]
   AuthCookie --> WS
@@ -113,7 +113,7 @@ Code anchors:
   deterministic assembly.
 - `alt-theory-app/core/alt-theory-core.ts`: resource loader, tool policy,
   persistent Pi session creation/opening, and manifest.
-- `alt-theory-app/web-server/asset-registry.ts`: safe role-preset/KB slugs.
+- `alt-theory-app/web-server/asset-registry.ts`: safe role/KB slugs.
 - `alt-theory-app/web-server/auth-accounts.ts`: data-dir backed account store,
   login-code hashing, verification, and safe account serialization.
 - `alt-theory-app/web-server/auth-session.ts`: process-local browser session
@@ -323,7 +323,7 @@ Current behavior:
   service-owned runtime. Explicit `abort` remains the cancellation operation.
 - A concurrent same-session mutation returns stable `session_busy` instead of
   exposing Pi's raw in-flight prompt error.
-- Role-preset and KB values are client-safe slugs resolved against server roots.
+- Role and KB values are client-safe slugs resolved against server roots.
 - Session metadata and metrics still use WebSocket; static discovery and
   historical session catalog/detail still use REST.
 
@@ -331,14 +331,14 @@ New service-created sessions also write minimal v0.4 foundation records:
 
 ```text
 records/session.json        # schemaVersion: 1, recordType: session
-records/branch-index.json   # schemaVersion: 1, activeBranchId: main
+records/runs.jsonl          # append-only accepted/deleted/superseded run records
 records/ui-alias.json       # optional UI display name, written by frontend
 ```
 
 The required records are thin indexes around Pi JSONL. They do not duplicate
-conversation bodies. `branch-index.json` is the authoritative active logical
-branch pointer; Pi's internal fork session ID remains an implementation detail
-and does not replace the Alt Theory `sessionId`. `ui-alias.json` is optional
+conversation bodies. Pi history is the conversation body authority; Alt Theory
+derives deleted/superseded transcript projection from `runs.jsonl` instead of
+maintaining a separate branch-index authority. `ui-alias.json` is optional
 frontend state stored beside other session-local records so display names
 follow the session across browsers without changing `records/session.json`.
 
@@ -347,31 +347,30 @@ follow the session across browsers without changing `records/session.json`.
 `lastActivityAt`, and `retentionDueAt`. Meaningful prompts refresh private
 `lastActivityAt` and `retentionDueAt`; session open/detail reads do not.
 `session-retention.ts` provides explicit cleanup for expired private sessions:
-it removes history, workspace, branch workspace, and non-tombstone records while
-leaving `records/deleted.json`.
+it removes history, workspace, and non-tombstone records while leaving
+`records/deleted.json`.
 
 Ordinary runs append accepted and terminal snapshots to `records/runs.jsonl`.
 Each run maps `sessionId`, `branchId`, `turnId`, `revisionId`, and `runId` to
 the Pi session file and user/assistant entry IDs. Latest-turn revision moves
 the Pi leaf to the latest user entry's parent, appends a new path with the same
 turn ID, and marks the prior run `superseded`; it does not create a logical
-branch or delete old Pi evidence. Latest-turn delete uses the same active-branch
-latest-user-turn guard, moves the Pi leaf to that user entry's parent, marks the
-run `deleted`, updates the active branch head, and does not remove disk evidence.
+branch or delete old Pi evidence. Latest-turn delete moves the Pi leaf to that
+user entry's parent, marks the run `deleted`, and does not remove disk evidence.
 
 REST session detail and transcript preview are projected in `session-store.ts`
-from the active branch, not from all Pi JSONL entries:
+from the active Pi leaf and run evidence, not from all Pi JSONL entries:
 
-- resolve the active branch Pi file from `records/branch-index.json`;
-- when `activeLeafEntryId` is present, align the opened `SessionManager` to
-  that leaf before building transcript;
+- derive the latest active leaf from completed run records not marked deleted
+  or superseded;
+- align the opened `SessionManager` to that leaf before building transcript;
 - build transcript from `sessionManager.getBranch()`;
 - omit entries whose latest run snapshot is `deleted` or `superseded`.
 
-When `activeLeafEntryId` is missing, the reader keeps Pi's default opened leaf.
+When no active leaf can be derived, the reader keeps Pi's default opened leaf.
 
-Opening or reconfiguring a managed session also aligns Pi's leaf to the active
-branch head recorded in `branch-index.json` before revise/delete guards run.
+Opening or reconfiguring a managed session also aligns Pi's leaf from run
+evidence before revise/delete guards run.
 
 Only explicit Fork creates `fork-NNN`:
 
@@ -390,15 +389,14 @@ event with warnings. Resume never blocks on a confirmation dialog.
 
 Draft project selection may apply supported defaults before first send. After a
 session is materialized, project reassignment updates durable grouping metadata
-without changing runtime identity, active branch, or effective prompt layers.
+without changing runtime identity, Pi leaf, or effective prompt layers.
 
 Role, soul, and custom-instruction changes rebuild the internal Pi runtime
-against the active branch's Pi JSONL and workspace. They keep the same Alt
-Theory `sessionId` and logical branch. KB changes update the selector and
-per-turn context policy without rebuilding the runtime. Busy sessions reject
-config changes with `session_busy`.
+against the current Pi JSONL and workspace. They keep the same Alt Theory
+`sessionId`. KB changes update the selector and per-turn context policy without
+rebuilding the runtime. Busy sessions reject config changes with `session_busy`.
 
-### 5.1 Role Preset Resolution (As-Is)
+### 5.1 Role Resolution (As-Is)
 
 > **Status note:** This subsection documents **current backend behavior only**.
 > It is not a target architecture, rational design decision, or endorsement of
@@ -686,12 +684,13 @@ Limits (current):
   `None` as the researcher draft default, legacy `default.md` code debt,
   participant condition mapping, and resume fallback without treating them as
   target design.
+- 2026-07-03: Removed branch-index as a current session authority. Transcript
+  projection now derives the active Pi leaf from append-only run records.
 - 2026-06-17: Updated transcript projection and conversation-action runtime
-  notes. `session-store.ts` now builds REST transcript from the active Pi branch
-  and filters `deleted` / `superseded` run entries; managed-session open/reopen
-  aligns Pi leaf to `branch-index.json`. Documented current WebSocket shapes for
-  `revise_latest`, `delete_latest`, and `fork_session`, and corrected
-  materialized `switch_visibility` behavior.
+  notes. `session-store.ts` builds REST transcript from the active Pi branch and
+  filters `deleted` / `superseded` run entries. Documented current WebSocket
+  shapes for `revise_latest`, `delete_latest`, and `fork_session`, and
+  corrected materialized `switch_visibility` behavior.
 - 2026-06-17: Added current UI alias persistence note. Session display aliases
   are stored as optional `records/ui-alias.json` files via the existing
   `GET/PUT /api/sessions/{sessionId}/files/content` routes, not in

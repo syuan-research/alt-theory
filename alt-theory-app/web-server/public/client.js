@@ -1853,8 +1853,6 @@ function renderProvenance(detail) {
   ].filter((value, index, array) => value && array.indexOf(value) === index);
   const summaryItems = [
     ["Project", projectDisplayName(detail.session?.projectId)],
-    ["Branch", detail.activeBranch?.branchId || "main"],
-    ["Workspace", detail.activeBranch?.workspaceMode || "shared"],
     ["Role", effective.rolePresetSlug || "none"],
     ["Soul", effective.soulSlug || "none"],
     ["KB", displayKb(effective.kbDomain || "all")],
@@ -2192,7 +2190,7 @@ function renderPaths(manifest) {
     ["Write Dir", manifest.writeDir],
     ["App Context", manifest.appContext?.path],
     ["Soul", manifest.soul?.path],
-    ["Role Preset", manifest.rolePreset?.path],
+    ["Role", manifest.rolePreset?.path],
     ["KB Root", manifest.kb?.rootDir],
     ["KB Domain", manifest.kb?.domainPath],
     ["Pi Prompts", manifest.piAdapter?.promptTemplatesDir],

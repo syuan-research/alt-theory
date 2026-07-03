@@ -20,7 +20,7 @@ import {
 } from "./session-service.js";
 import { readSessionDetail } from "./session-store.js";
 import { readConfigEvents } from "./config-events.js";
-import { latestRunSnapshots, readRunRecords } from "./lineage-records.js";
+import { latestRunSnapshots, readRunRecords } from "./run-records.js";
 
 function setupFixture() {
   const root = mkdtempSync(join(tmpdir(), "alt-theory-session-service-"));
@@ -129,32 +129,23 @@ test("SessionService creates managed sessions with v0.4 foundation records", asy
     const sessionRecordPath = join(manifest.recordsDir, "session.json");
     const branchIndexPath = join(manifest.recordsDir, "branch-index.json");
     assert.equal(existsSync(sessionRecordPath), true);
-    assert.equal(existsSync(branchIndexPath), true);
+    assert.equal(existsSync(branchIndexPath), false);
 
     const sessionRecord = JSON.parse(readFileSync(sessionRecordPath, "utf-8"));
-    const branchIndex = JSON.parse(readFileSync(branchIndexPath, "utf-8"));
     assert.deepEqual(
       {
         schemaVersion: sessionRecord.schemaVersion,
         recordType: sessionRecord.recordType,
         projectId: sessionRecord.projectId,
-        activeBranchId: sessionRecord.activeBranchId,
         recordModel: sessionRecord.recordModel,
       },
       {
         schemaVersion: 1,
         recordType: "session",
         projectId: "manual-role-uat",
-        activeBranchId: "main",
         recordModel: "v0.4",
       }
     );
-    assert.equal(branchIndex.schemaVersion, 1);
-    assert.equal(branchIndex.recordType, "branch-index");
-    assert.equal(branchIndex.activeBranchId, "main");
-    assert.equal(branchIndex.branches[0].workspaceMode, "shared");
-    assert.equal(branchIndex.branches[0].workspaceRef, manifest.sessionCwd);
-    assert.equal(branchIndex.branches[0].activePiSessionFile, manifest.piSessionFile);
 
     const detail = readSessionDetail(fixture.dataDir, snapshot.sessionId);
     assert.equal(detail?.session.recordModel, "v0.4");
@@ -309,13 +300,7 @@ test("SessionService revises only the latest turn without creating a branch", as
     assert.equal(userMessages[0]?.text, "revised");
     assert.match(transcriptText, /revised/);
     assert.doesNotMatch(transcriptText, /original/);
-    const branchIndex = JSON.parse(
-      readFileSync(join(recordsDir, "branch-index.json"), "utf-8")
-    );
-    assert.deepEqual(
-      branchIndex.branches.map((branch: { branchId: string }) => branch.branchId),
-      ["main"]
-    );
+    assert.equal(existsSync(join(recordsDir, "branch-index.json")), false);
   } finally {
     await service.disposeAll();
   }
@@ -362,9 +347,6 @@ test("SessionService deletes the latest turn from active context without forking
     const second = service.runPrompt(created.sessionId, "delete me");
     await second.completion;
     const recordsDir = service.getManifest(created.sessionId).recordsDir;
-    const latestBeforeDelete = latestRunSnapshots(recordsDir).find(
-      (run) => run.runId === second.ids.runId
-    )!;
 
     const deleted = service.deleteLatest(created.sessionId);
 
@@ -391,26 +373,13 @@ test("SessionService deletes the latest turn from active context without forking
       .join("\n");
     assert.match(contextText, /keep me/);
     assert.doesNotMatch(contextText, /delete me/);
-    const branchIndex = JSON.parse(
-      readFileSync(join(recordsDir, "branch-index.json"), "utf-8")
-    );
-    assert.deepEqual(
-      branchIndex.branches.map((branch: { branchId: string }) => branch.branchId),
-      ["main"]
-    );
-    assert.equal(
-      branchIndex.branches[0].activeLeafEntryId,
-      latestBeforeDelete.userEntryId
-        ? managed.session.sessionManager.getLeafId()
-        : null
-    );
-    assert.notEqual(branchIndex.branches[0].activeLeafEntryId, latestBeforeDelete.userEntryId);
+    assert.equal(existsSync(join(recordsDir, "branch-index.json")), false);
   } finally {
     await service.disposeAll();
   }
 });
 
-test("SessionService restores the active branch leaf after reopen for conversation actions", async () => {
+test("SessionService restores the active Pi leaf after reopen for conversation actions", async () => {
   const fixture = setupFixture();
   const service = createTestService(fixture);
   const created = await service.createSession({
@@ -450,10 +419,7 @@ test("SessionService restores the active branch leaf after reopen for conversati
     const second = service.runPrompt(created.sessionId, "delete me");
     await second.completion;
     service.deleteLatest(created.sessionId);
-    const recordsDir = service.getManifest(created.sessionId).recordsDir;
-    const mainLeafAfterDelete = JSON.parse(
-      readFileSync(join(recordsDir, "branch-index.json"), "utf-8")
-    ).branches[0].activeLeafEntryId;
+    const mainLeafAfterDelete = managed.session.sessionManager.getLeafId();
     await service.disposeAll();
 
     const reopenedService = createTestService(fixture);
@@ -511,7 +477,7 @@ test("SessionService restores the active branch leaf after reopen for conversati
   }
 });
 
-test("SessionService revise and default fork use restored branch head after reopen", async () => {
+test("SessionService revise and default fork use restored Pi leaf after reopen", async () => {
   const fixture = setupFixture();
   const service = createTestService(fixture);
   const created = await service.createSession({
@@ -566,9 +532,10 @@ test("SessionService revise and default fork use restored branch head after reop
       kbDomain: "ep-core",
       soulSlug: "soul-latest",
     });
-    const branchHeadBeforeFork =
-      readSessionDetail(fixture.dataDir, created.sessionId)?.activeBranch
-        ?.activeLeafEntryId;
+    const piLeafBeforeFork = readSessionDetail(
+      fixture.dataDir,
+      created.sessionId
+    )?.transcript.at(-1)?.entryId;
     const forked = await forkService.forkSession(
       forkOpened.sessionId,
       "collaboration"
@@ -576,8 +543,8 @@ test("SessionService revise and default fork use restored branch head after reop
     const sourceDetail = readSessionDetail(fixture.dataDir, created.sessionId);
     const forkDetail = readSessionDetail(fixture.dataDir, forked.sessionId);
     assert.notEqual(forked.sessionId, created.sessionId);
-    assert.equal(sourceDetail?.activeBranch?.branchId, "main");
-    assert.equal(forkDetail?.transcript.at(-1)?.entryId, branchHeadBeforeFork);
+    assert.equal(sourceDetail?.session.sessionId, created.sessionId);
+    assert.equal(forkDetail?.transcript.at(-1)?.entryId, piLeafBeforeFork);
     await forkService.disposeAll();
   } finally {
     await service.disposeAll();
@@ -653,8 +620,8 @@ test("SessionService explicit forks create a new session with copied workspace",
       const forkDetail = readSessionDetail(fixture.dataDir, forked.sessionId);
       const forkManifest = service.getManifest(forked.sessionId);
       assert.notEqual(forked.sessionId, created.sessionId);
-      assert.equal(sourceDetail?.activeBranch?.branchId, "main");
-      assert.equal(forkDetail?.activeBranch?.branchId, "main");
+      assert.equal(sourceDetail?.session.sessionId, created.sessionId);
+      assert.equal(forkDetail?.session.sessionId, forked.sessionId);
       assert.notEqual(forkManifest.piSessionFile, manifest.piSessionFile);
       assert.notEqual(forkManifest.sessionCwd, manifest.sessionCwd);
       assert.equal(
@@ -707,8 +674,7 @@ test("SessionService cleans unactivated comparison fork artifacts", async () => 
     );
     const detail = readSessionDetail(fixture.dataDir, created.sessionId);
     assert.equal(existsSync(forkFile), false);
-    assert.equal(detail?.branchIndex?.activeBranchId, "main");
-    assert.equal(detail?.branchIndex?.branches.length, 1);
+    assert.equal(detail?.session.sessionId, created.sessionId);
     assert.equal(
       readdirSync(join(fixture.dataDir, "sessions")).length,
       1

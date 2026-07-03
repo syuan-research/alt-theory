@@ -942,10 +942,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setIsRunning(true);
       setConnStatus("running");
       setConnLabel("Revising...");
-      setToolStatus(`Revising latest turn on ${selectors.branchId}...`);
+      setToolStatus("Revising latest turn...");
       return true;
     },
-    [isRunning, selectors.branchId, sendMessage, sessionId]
+    [isRunning, sendMessage, sessionId]
   );
 
   const deleteLatest = useCallback(() => {

@@ -92,5 +92,5 @@ normal Pi path. Prompt cleanup should not quietly cripple that path.
 ## Related Documents
 
 - `agent-assets/README.md`
-- `project/compound/2026-07-02-decision-v0-6-pi-v0-8-runtime-boundary.md`
+- `project/compound/2026-07-02-decision-v0-6-pi-runtime-boundary.md`
 - `project/workstreams/0-backend-agent-harness/notes-and-status/2026-06-24-model-fallback-pilot-incident-review-handoff.md`

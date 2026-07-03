@@ -95,7 +95,6 @@ test("refreshRetention updates private sessions and clears public retention", ()
       sessionId: "private-session",
       createdAt: BASE_TIME,
       projectId: null,
-      activeBranchId: "main",
       recordModel: "v0.4",
       visibility: "private",
       consentSnapshot: {

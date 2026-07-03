@@ -52,10 +52,10 @@ async function main() {
       const appended = [
         `## Alt Theory Application Context\n${appContextContent}`,
         ...(soulContent ? [`## Soul\n${soulContent}`] : []),
-        ...(rolePresetContent ? [`## Role Preset\n${rolePresetContent}`] : []),
+        ...(rolePresetContent ? [`## Role\n${rolePresetContent}`] : []),
         [
-          "## Resumed Role Preset Marker",
-          "This role preset marker was selected at resume time.",
+          "## Resumed Role Marker",
+          "This role marker was selected at resume time.",
           `For the next identity check, reply with exactly: ${marker}`,
         ].join("\n"),
       ];

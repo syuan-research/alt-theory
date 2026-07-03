@@ -2,13 +2,13 @@
 doc_type: decision
 category: architecture
 date: 2026-07-02
-slug: v0-6-pi-v0-8-runtime-boundary
+slug: v0-6-pi-runtime-boundary
 status: active
 area: backend agent harness / session runtime / prompt runtime
 tags: [v0-6, pi, runtime, session, fork, prompt, debt]
 ---
 
-# v0.6 Pi v0.8 Runtime Boundary
+# v0.6 Pi Runtime Boundary
 
 ## Background
 
@@ -25,19 +25,19 @@ That overlap has already produced confusion around fork behavior, branch state,
 session meaning, and prompt/runtime configuration. The current shape is not a
 good base for later v0.7 or v0.8 work.
 
-At the same time, the repo is still pinned to Pi `0.70.2`, while the current
-official public Pi line is `v0.80.2` (released 2026-06-23). v0.6 is not a
-fast patch release; it is the point to reset the foundation.
+At the same time, the repo is still pinned to the older
+`@mariozechner/pi-*` `0.70.2` package line. v0.6 is not a fast patch release;
+it is the point to reset the foundation.
 
 ## Decision
 
-v0.6 will use **Pi v0.8 as the foundation**, not continue extending the
-current Pi `0.70.2` based runtime layer.
+v0.6 will upgrade the existing Pi package set together and stop extending the
+current Alt Theory branch-index runtime layer.
 
 Settled boundaries:
 
-- Upgrade the Pi package set together to the `0.80.x` line rather than keep
-  building new Alt Theory runtime behavior on `0.70.2`.
+- Upgrade the Pi package set together rather than keep building new Alt Theory
+  runtime behavior on `0.70.2`.
 - Pi is the **only runtime source of truth** for live conversation state:
   session history, active leaf, revise/fork/continue behavior, and session
   replacement lifecycle.
@@ -80,9 +80,9 @@ Keeping the current structure and "refactoring it carefully" would mostly
 preserve the same overlap under a cleaner surface. That does not remove the
 debt.
 
-Moving to Pi v0.8 matters because it makes the intended runtime boundary easier
-to honor: Pi already has the native session/runtime concepts; Alt Theory does
-not need to keep inventing substitutes.
+Moving to the current Pi package line matters because it makes the intended
+runtime boundary easier to honor: Pi already has the native session/runtime
+concepts; Alt Theory does not need to keep inventing substitutes.
 
 The fork decision is intentionally strict. The current hidden same-session fork
 model is hard to explain, hard to inspect, and easy to get wrong. Treating a
@@ -95,7 +95,7 @@ dead or weakly justified prompt layers just because they already exist.
 
 - **Stay on Pi 0.70.2 and keep repairing the current Alt Theory runtime layer**:
   rejected because it would preserve the wrong ownership boundary.
-- **Adopt Pi v0.8 but keep Alt Theory branch/session authority intact**:
+- **Upgrade Pi but keep Alt Theory branch/session authority intact**:
   rejected because version upgrade alone does not remove the core debt.
 - **Keep same-session hidden fork but hide it better**: rejected because the
   mental model remains poor even if the UI wording improves.
@@ -105,8 +105,8 @@ dead or weakly justified prompt layers just because they already exist.
 
 ## Consequences
 
-- v0.6 planning should treat the Pi v0.8 baseline migration and runtime-boundary
-  reset as the main foundation work.
+- v0.6 planning should treat the Pi baseline migration and runtime-boundary
+  reset as foundation work.
 - The existing branch-index and same-session hidden fork path should be treated
   as removal targets, not as permanent architecture to preserve.
 - Prompt loading needs a separate decision/cleanup pass, but that pass should

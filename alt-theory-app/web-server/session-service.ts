@@ -32,9 +32,12 @@ import {
   persistSessionMetrics,
   type SessionCounters,
 } from "./session-metrics.js";
-import { readSessionDetail, getSessionRootForRequest } from "./session-store.js";
 import {
-  readBranchIndex,
+  latestActiveLeafEntryId,
+  readSessionDetail,
+  getSessionRootForRequest,
+} from "./session-store.js";
+import {
   readV4SessionHeader,
   writeFoundationRecords,
   writeSessionHeader,
@@ -53,8 +56,7 @@ import {
   appendRunRecord,
   latestRunSnapshots,
   type RunRecord,
-  updateBranchHead,
-} from "./lineage-records.js";
+} from "./run-records.js";
 import type {
   SessionMetrics,
   SessionSnapshot,
@@ -461,10 +463,6 @@ export class SessionService {
       status: "deleted",
       completedAt: new Date().toISOString(),
     });
-    updateBranchHead(managed.manifest.recordsDir, managed.branchId, {
-      activePiSessionFile: managed.session.sessionFile ?? null,
-      activeLeafEntryId,
-    });
     managed.transcript =
       readSessionDetail(this.config.dataDir, sessionId)?.transcript ??
       managed.transcript;
@@ -500,7 +498,7 @@ export class SessionService {
         .getBranch()
         .some((entry) => entry.id === leafId)
     ) {
-      throw new Error("Fork point must be on the active branch");
+      throw new Error("Fork point must be in the current Pi conversation");
     }
     const forkFile =
       previous.session.sessionManager.createBranchedSession(leafId);
@@ -731,10 +729,6 @@ export class SessionService {
         supersedesRunId: options.supersedesRunId ?? null,
         acceptedAt,
         completedAt: new Date().toISOString(),
-      });
-      updateBranchHead(managed.manifest.recordsDir, managed.branchId, {
-        activePiSessionFile: managed.session.sessionFile ?? null,
-        activeLeafEntryId: managed.session.sessionManager.getLeafId() ?? null,
       });
     })().finally(() => {
       managed.busy = false;
@@ -1023,12 +1017,8 @@ export class SessionService {
     );
     const instruction = this.resolveOptionalInstruction(activeInstructionRef);
 
-    const activeSessionDirs = {
-      ...sessionDirs,
-      sessionCwd: detail.activeBranch?.workspaceRef ?? sessionDirs.sessionCwd,
-    };
     const result = await openAltTheorySession({
-      ...activeSessionDirs,
+      ...sessionDirs,
       sessionFile: detail.pi.sessionFile,
       originalManifest: detail.manifest,
       appContextPath: this.config.assetPaths.appContextPath,
@@ -1050,13 +1040,11 @@ export class SessionService {
       testBatch: this.config.testBatch,
       readOnly: this.config.readOnly,
     });
-    if (detail.activeBranch) {
-      alignSessionManagerLeaf(
-        result.session.sessionManager,
-        detail.activeBranch.activeLeafEntryId,
-        `active branch ${detail.activeBranch.branchId}`
-      );
-    }
+    alignSessionManagerLeaf(
+      result.session.sessionManager,
+      latestActiveLeafEntryId(latestRunSnapshots(result.manifest.recordsDir)),
+      "latest active run"
+    );
 
     const managed = this.createManaged({
       ...result,
@@ -1075,7 +1063,7 @@ export class SessionService {
         turnCount: detail.metrics?.turnCount ?? 0,
       },
       transcript: detail.transcript,
-      branchId: detail.activeBranch?.branchId ?? "main",
+      branchId: "main",
     });
     appendSessionEvent(managed.manifest.recordsDir, {
       sessionId: managed.manifest.sessionId,
@@ -1157,10 +1145,7 @@ export class SessionService {
 
     const activeSessionDirs = {
       ...sessionDirs,
-      sessionCwd:
-        detail?.activeBranch?.workspaceRef ??
-        previous.manifest.sessionCwd ??
-        sessionDirs.sessionCwd,
+      sessionCwd: previous.manifest.sessionCwd ?? sessionDirs.sessionCwd,
     };
     const result = await openAltTheorySession({
       ...activeSessionDirs,
@@ -1188,13 +1173,13 @@ export class SessionService {
       readOnly: this.config.readOnly,
       overrideSessionCwd: true,
     });
-    if (detail?.activeBranch) {
-      alignSessionManagerLeaf(
-        result.session.sessionManager,
-        detail.activeBranch.activeLeafEntryId,
-        `active branch ${detail.activeBranch.branchId}`
-      );
-    }
+    alignSessionManagerLeaf(
+      result.session.sessionManager,
+      detail
+        ? latestActiveLeafEntryId(latestRunSnapshots(result.manifest.recordsDir))
+        : null,
+      "latest active run"
+    );
 
     return this.createManaged({
       ...result,
@@ -1255,7 +1240,7 @@ export class SessionService {
       alignSessionManagerLeaf(
         result.session.sessionManager,
         args.activeLeafEntryId ?? null,
-        `active branch ${args.branchId}`
+        `current Pi leaf for ${args.branchId}`
       );
     }
     return this.createManaged({
@@ -1335,7 +1320,7 @@ export class SessionService {
       );
     if (activeUserEntries.at(-1)?.id !== latest.userEntryId) {
       throw new Error(
-        `Only the active branch latest user turn can be ${action === "revise" ? "revised" : "deleted"}`
+        `Only the current latest user turn can be ${action === "revise" ? "revised" : "deleted"}`
       );
     }
     return latest as RunRecord & { userEntryId: string };

@@ -18,9 +18,7 @@ import {
 import type { SessionEvent } from "./session-events.js";
 import type { SessionMetrics, TranscriptMessage } from "./websocket-protocol.js";
 import {
-  readBranchIndex,
   readV4SessionHeader,
-  type BranchIndexRecord,
   type V4SessionHeader,
 } from "./session-records.js";
 import {
@@ -33,7 +31,7 @@ import {
   latestRunSnapshots,
   readRunRecords,
   type RunRecord,
-} from "./lineage-records.js";
+} from "./run-records.js";
 import {
   readDeletedSessionRecord,
   writeDeletedSessionRecord,
@@ -85,8 +83,6 @@ export interface SessionDetailResponse {
   transcriptPreview: TranscriptMessage[];
   effectiveConfig: EffectiveSessionConfig | null;
   configEvents: ConfigEvent[];
-  branchIndex: BranchIndexRecord | null;
-  activeBranch: BranchIndexRecord["branches"][number] | null;
   runs: RunRecord[];
   warnings: string[];
 }
@@ -114,7 +110,6 @@ interface SessionParts {
   manifest: AssemblyManifest | null;
   metrics: SessionMetrics | null;
   v4Session: V4SessionHeader | null;
-  branchIndex: BranchIndexRecord | null;
   deleted: DeletedSessionRecord | null;
   sessionFile: string | null;
   state: ReadState;
@@ -151,15 +146,10 @@ export function readSessionDetail(
   const configEvents = readConfigEvents(parts.recordsDir);
   const runs = readRunRecords(parts.recordsDir);
   const latestRuns = latestRunSnapshots(parts.recordsDir);
-  const activeBranch =
-    parts.branchIndex?.branches.find(
-      (branch) => branch.branchId === parts.branchIndex?.activeBranchId
-    ) ?? null;
   const pi = readPiInfo(
     parts.sessionFile,
     parts.historyDir,
     parts.state,
-    activeBranch?.activeLeafEntryId,
     latestRuns
   );
   const transcriptPreview = pi.transcript.slice(-12);
@@ -179,8 +169,6 @@ export function readSessionDetail(
       configEvents.at(-1)?.effective ??
       inferEffectiveConfig(parts.manifest),
     configEvents,
-    branchIndex: parts.branchIndex,
-    activeBranch,
     runs,
     warnings: uniqueWarnings([...session.warnings, ...parts.state.warnings]),
   };
@@ -442,13 +430,11 @@ function readSessionParts(
     { warnMissing: false }
   );
   const v4Session = readV4SessionHeader(recordsDir);
-  const branchIndex = readBranchIndex(recordsDir);
   const deleted = readDeletedSessionRecord(recordsDir);
   const sessionFile = findSessionJsonl(
     sessionRoot,
     historyDir,
     manifest,
-    branchIndex,
     state
   );
 
@@ -459,7 +445,6 @@ function readSessionParts(
     manifest,
     metrics,
     v4Session,
-    branchIndex,
     deleted,
     sessionFile,
     state,
@@ -523,22 +508,8 @@ function findSessionJsonl(
   sessionRoot: string,
   historyDir: string,
   manifest: AssemblyManifest | null,
-  branchIndex: BranchIndexRecord | null,
   state: ReadState
 ): string | null {
-  const activeBranch = branchIndex?.branches.find(
-    (branch) => branch.branchId === branchIndex.activeBranchId
-  );
-  if (activeBranch?.activePiSessionFile) {
-    const activePath = resolve(activeBranch.activePiSessionFile);
-    if (isPathInside(historyDir, activePath) && existsSync(activePath)) {
-      return activePath;
-    }
-    state.warnings.push(
-      "branch index active Pi session file is missing or outside current history dir"
-    );
-  }
-
   if (manifest?.piSessionFile) {
     const manifestPath = resolve(manifest.piSessionFile);
     if (isPathInside(historyDir, manifestPath) && existsSync(manifestPath)) {
@@ -610,7 +581,6 @@ function readPiInfo(
   sessionFile: string | null,
   historyDir: string,
   state: ReadState,
-  activeLeafEntryId: string | null | undefined,
   latestRuns: RunRecord[]
 ): {
   info: SessionDetailResponse["pi"];
@@ -630,7 +600,7 @@ function readPiInfo(
 
   try {
     const sessionManager = SessionManager.open(sessionFile, historyDir);
-    alignSessionManagerLeaf(sessionManager, activeLeafEntryId);
+    alignSessionManagerLeaf(sessionManager, latestActiveLeafEntryId(latestRuns));
     const entries = sessionManager.getEntries();
     const branchEntries = sessionManager.getBranch();
     const context = sessionManager.buildSessionContext();
@@ -663,6 +633,26 @@ function readPiInfo(
   }
 }
 
+export function latestActiveLeafEntryId(latestRuns: RunRecord[]): string | null {
+  const inactive = new Set<string>();
+  for (const run of latestRuns) {
+    if (run.status !== "deleted" && run.status !== "superseded") continue;
+    if (run.userEntryId) inactive.add(run.userEntryId);
+    for (const entryId of run.assistantEntryIds) inactive.add(entryId);
+  }
+  for (let index = latestRuns.length - 1; index >= 0; index--) {
+    const run = latestRuns[index];
+    if (run.status !== "completed") continue;
+    const assistant = run.assistantEntryIds
+      .slice()
+      .reverse()
+      .find((entryId) => !inactive.has(entryId));
+    if (assistant) return assistant;
+    if (run.userEntryId && !inactive.has(run.userEntryId)) return run.userEntryId;
+  }
+  return null;
+}
+
 function alignSessionManagerLeaf(
   sessionManager: {
     branch(entryId: string): void;
@@ -674,7 +664,7 @@ function alignSessionManagerLeaf(
     return;
   }
   if (!sessionManager.getEntry(activeLeafEntryId)) {
-    throw new Error("active branch leaf is missing from Pi history");
+    throw new Error("active Pi leaf is missing from Pi history");
   }
   sessionManager.branch(activeLeafEntryId);
 }

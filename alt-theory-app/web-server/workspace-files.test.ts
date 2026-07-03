@@ -86,7 +86,6 @@ function writeOwnerStub(dataDir: string, sessionId: string, ownerAccountId: stri
       sessionId,
       createdAt: new Date().toISOString(),
       projectId: null,
-      activeBranchId: "main",
       recordModel: "v0.4",
       ownerAccountId,
     })

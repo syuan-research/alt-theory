@@ -254,14 +254,14 @@ async function createAltTheorySessionWithManager(
     : null;
 
   // --- 2. Assemble appendSystemPromptOverride ---
-  //    Order: app context -> optional soul -> optional role preset -> optional instruction -> KB path declaration
+  //    Order: app context -> optional soul -> optional role -> optional instruction -> KB path declaration
   const appendContent: string[] = [];
   appendContent.push(`## Alt Theory Application Context\n${appContextContent}`);
   if (soulContent) {
     appendContent.push(`## Soul\n${soulContent}`);
   }
   if (rolePresetContent) {
-    appendContent.push(`## Role Preset\n${rolePresetContent}`);
+    appendContent.push(`## Role\n${rolePresetContent}`);
   }
   if (customInstructionContent) {
     appendContent.push(`## Custom Instruction\n${customInstructionContent}`);

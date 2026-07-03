@@ -317,7 +317,7 @@ test("write-enabled core exposes write without edit/bash and writes notes", asyn
       result.session.agent.state.systemPrompt,
       /Alt Theory Application Context/
     );
-    assert.match(result.session.agent.state.systemPrompt, /Role Preset/);
+    assert.match(result.session.agent.state.systemPrompt, /Role/);
     assert.match(result.session.agent.state.systemPrompt, /workspace/);
     assert.ok(result.session.sessionFile);
     assert.equal(result.manifest.provider, "test-provider");
@@ -490,7 +490,7 @@ test("alt-only prompt mode replaces Pi base system prompt", async () => {
     assert.match(prompt, /Alt Theory Application Context/);
     assert.match(prompt, /Test app context/);
     assert.match(prompt, /Soul/);
-    assert.match(prompt, /Role Preset/);
+    assert.match(prompt, /Role/);
     assert.match(prompt, /operating inside the Pi harness/);
     assert.match(prompt, /do not describe yourself as Pi/);
     assert.match(prompt, /read: read file contents/);
@@ -503,7 +503,7 @@ test("alt-only prompt mode replaces Pi base system prompt", async () => {
   }
 });
 
-test("core allows no soul and no role preset prompt layers", async () => {
+test("core allows no soul and no role prompt layers", async () => {
   const root = mkdtempSync(join(tmpdir(), "alt-theory-no-soul-role-"));
   const dirs = createSessionDirs(root);
   const appContextPath = join(root, "ALTTHEORY.md");
@@ -529,7 +529,7 @@ test("core allows no soul and no role preset prompt layers", async () => {
     const prompt = result.session.agent.state.systemPrompt;
     assert.match(prompt, /Alt Theory Application Context/);
     assert.doesNotMatch(prompt, /## Soul/);
-    assert.doesNotMatch(prompt, /## Role Preset/);
+    assert.doesNotMatch(prompt, /## Role/);
     assert.equal(result.manifest.soul.slug, null);
     assert.equal(result.manifest.soul.path, null);
     assert.equal(result.manifest.rolePreset.slug, null);
@@ -1918,12 +1918,12 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
   writeFileSync(join(souls, "soul-test.md"), "Test soul", "utf-8");
   writeFileSync(
     join(rolePresets, "role-conceptual-theory-companion.md"),
-    "Conceptual theory role preset",
+    "Conceptual theory role",
     "utf-8"
   );
   writeFileSync(
     join(rolePresets, "alternate.md"),
-    "Alternate role preset",
+    "Alternate role",
     "utf-8"
   );
   writeFileSync(join(instructions, "default.md"), "Default instruction.", "utf-8");

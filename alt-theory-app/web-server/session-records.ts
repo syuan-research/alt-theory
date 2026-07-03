@@ -15,7 +15,6 @@ export interface V4SessionHeader extends RecordEnvelope {
   sessionId: string;
   createdAt: string;
   projectId: string | null;
-  activeBranchId: string;
   recordModel: "v0.4";
   ownerAccountId?: string | null;
   roleCondition?: string | null;
@@ -27,25 +26,6 @@ export interface V4SessionHeader extends RecordEnvelope {
   };
   lastActivityAt?: string;
   retentionDueAt?: string | null;
-}
-
-export interface BranchRecord {
-  branchId: string;
-  parentBranchId: string | null;
-  forkPointEntryId: string | null;
-  forkPointTurnId: string | null;
-  purpose: "main" | "collaboration" | "comparison";
-  workspaceMode: "shared" | "copied";
-  workspaceRef: string;
-  activePiSessionFile: string | null;
-  activeLeafEntryId: string | null;
-  createdAt: string;
-}
-
-export interface BranchIndexRecord extends RecordEnvelope {
-  recordType: "branch-index";
-  activeBranchId: string;
-  branches: BranchRecord[];
 }
 
 export function writeFoundationRecords(args: {
@@ -63,7 +43,7 @@ export function writeFoundationRecords(args: {
   } | null;
   lastActivityAt?: string;
   retentionDueAt?: string | null;
-}): { session: V4SessionHeader; branchIndex: BranchIndexRecord } {
+}): { session: V4SessionHeader } {
   const createdAt = args.manifest.createdAt ?? new Date().toISOString();
   const session: V4SessionHeader = {
     schemaVersion: V4_SCHEMA_VERSION,
@@ -71,7 +51,6 @@ export function writeFoundationRecords(args: {
     sessionId: args.manifest.sessionId,
     createdAt,
     projectId: args.projectId ?? null,
-    activeBranchId: "main",
     recordModel: "v0.4",
     ownerAccountId: args.ownerAccountId ?? null,
     roleCondition: args.roleCondition ?? null,
@@ -82,42 +61,13 @@ export function writeFoundationRecords(args: {
     lastActivityAt: args.lastActivityAt ?? createdAt,
     retentionDueAt: args.retentionDueAt ?? null,
   };
-  const branchIndex: BranchIndexRecord = {
-    schemaVersion: V4_SCHEMA_VERSION,
-    recordType: "branch-index",
-    activeBranchId: "main",
-    branches: [
-      {
-        branchId: "main",
-        parentBranchId: null,
-        forkPointEntryId: null,
-        forkPointTurnId: null,
-        purpose: "main",
-        workspaceMode: "shared",
-        workspaceRef: resolveMainWorkspace(args.sessionRoot),
-        activePiSessionFile: args.manifest.piSessionFile ?? null,
-        activeLeafEntryId: null,
-        createdAt,
-      },
-    ],
-  };
 
   writeJsonAtomic(join(args.recordsDir, "session.json"), session);
-  writeJsonAtomic(join(args.recordsDir, "branch-index.json"), branchIndex);
-  return { session, branchIndex };
+  return { session };
 }
 
 export function resolveMainWorkspace(sessionRoot: string): string {
   return resolve(sessionRoot, "workspace");
-}
-
-export function resolveBranchWorkspace(
-  sessionRoot: string,
-  branchId: string
-): string {
-  return branchId === "main"
-    ? resolveMainWorkspace(sessionRoot)
-    : resolve(sessionRoot, "branches", branchId, "workspace");
 }
 
 export function readV4SessionHeader(recordsDir: string): V4SessionHeader | null {
@@ -130,25 +80,6 @@ export function readV4SessionHeader(recordsDir: string): V4SessionHeader | null 
     return header;
   }
   return null;
-}
-
-export function readBranchIndex(recordsDir: string): BranchIndexRecord | null {
-  const path = join(recordsDir, "branch-index.json");
-  const record = readJson<BranchIndexRecord>(path);
-  if (
-    record?.schemaVersion === V4_SCHEMA_VERSION &&
-    record.recordType === "branch-index"
-  ) {
-    return record;
-  }
-  return null;
-}
-
-export function writeBranchIndex(
-  recordsDir: string,
-  branchIndex: BranchIndexRecord
-): void {
-  writeJsonAtomic(join(recordsDir, "branch-index.json"), branchIndex);
 }
 
 export function writeSessionHeader(

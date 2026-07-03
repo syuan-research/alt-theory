@@ -164,7 +164,6 @@ export interface SessionDetailResponse {
   transcriptPreview: TranscriptMessage[];
   warnings: string[];
   effectiveConfig?: EffectiveSessionConfig | null;
-  activeBranch?: { branchId: string; workspaceMode?: string } | null;
   runs?: RunRecord[];
 }
 

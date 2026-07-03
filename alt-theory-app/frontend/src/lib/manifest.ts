@@ -28,7 +28,7 @@ export function manifestPathEntries(
     ["Write Dir", manifest.writeDir],
     ["App Context", manifest.appContext?.path],
     ["Soul", manifest.soul?.path],
-    ["Role Preset", manifest.rolePreset?.path],
+    ["Role", manifest.rolePreset?.path],
     ["KB Root", manifest.kb?.rootDir],
     ["KB Domain", manifest.kb?.domainPath],
     ["Pi Prompts", manifest.piAdapter?.promptTemplatesDir],
