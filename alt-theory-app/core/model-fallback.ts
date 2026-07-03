@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync } from "fs";
 import { dirname, join, resolve } from "path";
-import type { AgentSession } from "@mariozechner/pi-coding-agent";
+import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { writeJsonAtomic } from "./data-dir.js";
 
 export type FallbackAction = "fail" | "ignore" | "exclude_and_fallback";

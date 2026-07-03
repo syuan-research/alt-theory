@@ -22,9 +22,11 @@
     "build:electron:portable": "npm run build:frontend-v6 && npm run compile:bundle && electron-builder build --win portable"
   },
   "dependencies": {
-    "@mariozechner/pi-ai": "^0.73.1",
-    "@mariozechner/pi-coding-agent": "^0.73.1",
-    "@mariozechner/pi-web-ui": "^0.73.1",
+    "@earendil-works/pi-agent-core": "^0.80.3",
+    "@earendil-works/pi-ai": "^0.80.3",
+    "@earendil-works/pi-coding-agent": "^0.80.3",
+    "@earendil-works/pi-tui": "^0.80.3",
+    "@earendil-works/pi-web-ui": "^0.75.3",
     "dotenv": "^16.4.7",
     "express": "^5.2.1",
     "mammoth": "^1.9.0",

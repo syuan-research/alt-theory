@@ -21,8 +21,8 @@ import {
   AuthStorage,
   getAgentDir,
   SettingsManager,
-} from "@mariozechner/pi-coding-agent";
-import { getProviders } from "@mariozechner/pi-ai";
+} from "@earendil-works/pi-coding-agent";
+import { getProviders } from "@earendil-works/pi-ai/compat";
 import {
   existsSync,
   mkdirSync,

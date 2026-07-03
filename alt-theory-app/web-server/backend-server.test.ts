@@ -14,7 +14,7 @@ import WebSocket from "ws";
 import {
   AuthStorage,
   ModelRegistry,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 import {
   createAltTheorySession,
   openAltTheorySession,

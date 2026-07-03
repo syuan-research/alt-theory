@@ -12,7 +12,7 @@ import {
   getAgentDir,
   ModelRegistry,
   SessionManager,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 
 async function main() {
   const sessionFile = process.env.ALT_THEORY_RESUME_SESSION_FILE;

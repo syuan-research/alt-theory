@@ -1,4 +1,4 @@
-import type { AgentSession } from "@mariozechner/pi-coding-agent";
+import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { resolve } from "path";
 import { writeJsonAtomic } from "../core/data-dir.js";
 import type { SessionMetrics } from "./websocket-protocol.js";

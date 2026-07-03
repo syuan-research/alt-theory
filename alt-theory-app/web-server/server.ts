@@ -13,7 +13,7 @@ import { createServer } from "http";
 import { resolve } from "path";
 import { fileURLToPath } from "url";
 import WebSocket, { WebSocketServer } from "ws";
-import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
+import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import {
   type PromptMode,
   type ResourceDiscoveryMode,

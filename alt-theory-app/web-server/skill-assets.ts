@@ -1,4 +1,4 @@
-import { loadSkillsFromDir } from "@mariozechner/pi-coding-agent";
+import { loadSkillsFromDir } from "@earendil-works/pi-coding-agent";
 import { fileRef } from "../core/agent-assets.js";
 
 export interface SkillAssetSummary {

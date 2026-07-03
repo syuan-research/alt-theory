@@ -2,8 +2,8 @@ import { cpSync, existsSync, rmSync, writeFileSync } from "fs";
 import type {
   AgentSession,
   AgentSessionEvent,
-} from "@mariozechner/pi-coding-agent";
-import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
+} from "@earendil-works/pi-coding-agent";
+import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import {
   createAltTheorySession,
   KB_DISABLED_DOMAIN,

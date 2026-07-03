@@ -19,8 +19,8 @@ import {
   SessionManager,
   type Skill,
   type WriteOperations,
-} from "@mariozechner/pi-coding-agent";
-import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
+} from "@earendil-works/pi-coding-agent";
+import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { existsSync } from "fs";
 import { mkdir, realpath, writeFile } from "fs/promises";
 import { dirname, isAbsolute, join, relative, resolve } from "path";
