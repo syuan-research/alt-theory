@@ -22,6 +22,19 @@ Model fallback is also important for online users. Online use mostly studies
 real scenarios and observed reply quality, not strict per-session attachment to
 one exact LLM.
 
+## Sequencing
+
+Do the Pi subagent / multi-agent route selection before implementing A/B
+execution records. The A/B record model should fit the selected plugin's
+runtime shape instead of forcing an Alt Theory-only execution model first.
+
+Until that route is selected, A/B only has three fixed requirements:
+
+- record each candidate's actual runtime configuration;
+- record each candidate's output reference and status;
+- record user choice and optional per-candidate scores as session-attached
+  research evidence.
+
 ## Decisions
 
 ### Model Fallback
@@ -44,12 +57,9 @@ one exact LLM.
   "only the model differs."
 - Choice and score records are session-attached research records, not a reason
   to change session identity or rebuild session management.
-- Minimum backend record shape:
-  - `abRunId`, `sessionId`, `parentEntryId`, `userEntryId`, `createdAt`
-  - `candidates[]`: `candidateId`, actual runtime config snapshot, response
-    entry/file references, status, error, timing, token/cost metrics
-  - `evaluation`: selected candidate, optional per-candidate scores, optional
-    notes, evaluator identity/role, timestamp
+- Minimum backend record shape is intentionally not final until the Pi
+  subagent/plugin route is selected. Do not implement an Alt Theory-specific
+  A/B runner before that.
 
 ### A/B Triggering
 
@@ -77,15 +87,20 @@ Evidence checked 2026-07-03:
   adds a `subagent` tool. Its package page says it runs delegated tasks in
   separate `pi --mode json -p --no-session` subprocesses, supports single,
   parallel, and chain modes, and discovers user/project agents.
-- The catalog also lists `pi-crew` as coordinated AI teams/workflows/worktrees
-  orchestration, and third-party `@tintinweb/pi-subagents` documents parallel
-  background agents, isolated sessions, custom agent types, live UI, steering,
-  and resume.
+- The catalog includes multiple subagent and multi-agent packages:
+  `@mjakl/pi-subagent`, `pi-subagents`, `@tintinweb/pi-subagents`,
+  `@gotgenes/pi-subagents`, `pi-multiagent`, `pi-crew`, and
+  `@gjczone/pi-swarm`.
+- The subagent packages are closer to v0.6's immediate need than the team/swarm
+  packages. Team/swarm packages may matter later, but they should not drive the
+  first integration.
 
 Decision:
 
 - Do not build an Alt Theory-native agent-team framework in v0.6.
 - First integration target is Pi package/extension compatibility.
+- Default route to evaluate first: a Pi subagent extension/package with
+  isolated Pi sessions and per-agent config, not a team/swarm orchestrator.
 - If a subagent feature is needed soon, prefer installing or adapting a Pi
   subagent package/extension and recording Alt Theory research metadata around
   it.
@@ -99,6 +114,7 @@ Decision:
 - Exact fallback candidate list.
 - Exact Pi subagent package to install.
 - Full multi-agent team UX.
+- Final A/B execution record schema.
 
 ## Sources
 
@@ -107,5 +123,11 @@ Decision:
 - https://pi.dev/
 - https://pi.dev/packages
 - https://pi.dev/packages/pi-sub-agent
+- https://pi.dev/packages/pi-subagents
+- https://pi.dev/packages/%40mjakl/pi-subagent
+- https://pi.dev/packages/%40tintinweb/pi-subagents
+- https://pi.dev/packages/pi-multiagent
+- https://pi.dev/packages/pi-crew
+- https://pi.dev/packages/%40gjczone/pi-swarm
 - https://github.com/mjakl/pi-subagent
 - https://github.com/tintinweb/pi-subagents
