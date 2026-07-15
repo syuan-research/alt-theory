@@ -37,11 +37,21 @@ const os = require("os");
 app.disableHardwareAcceleration();
 app.commandLine.appendSwitch("no-sandbox");
 
-const PORT = parseInt(
-  process.env.ALT_THEORY_PORT || process.env.PORT || "3000",
+// Port: honor an explicit override (ALT_THEORY_PORT / PORT) when present;
+// otherwise leave PORT unset so the backend auto-selects a free port at listen
+// time. A non-technical user never has to choose or type a port, and a busy
+// default port no longer blocks startup. The actual bound port is captured from
+// the backend after it listens (see activePort).
+const PORT_OVERRIDE = parseInt(
+  process.env.ALT_THEORY_PORT || process.env.PORT || "",
   10
 );
-process.env.PORT = String(PORT);
+if (Number.isInteger(PORT_OVERRIDE)) {
+  process.env.PORT = String(PORT_OVERRIDE);
+} else {
+  delete process.env.PORT;
+}
+let activePort = null;
 const LOCAL_STATE_ROOT = path.join(os.homedir(), ".alt-theory");
 const LOCAL_DATA_DIR = path.join(LOCAL_STATE_ROOT, "data");
 const LOCAL_PI_AGENT_DIR = path.join(LOCAL_STATE_ROOT, "pi-agent");
@@ -104,8 +114,10 @@ async function startBackend(projectRoot) {
       __dirname,
       "bundle-server.cjs"
     ));
-    backendInstance = await doStart(projectRoot);
-    log("Backend started.");
+    const started = await doStart(projectRoot);
+    backendInstance = started.instance;
+    activePort = started.port;
+    log(`Backend started on port ${activePort}.`);
   } catch (err) {
     backendStartError = err;
     log(`Backend start FAILED: ${err && err.stack ? err.stack : err}`);
@@ -115,7 +127,7 @@ async function startBackend(projectRoot) {
 
 function loadShell() {
   if (!mainWindow) return;
-  const url = `http://127.0.0.1:${PORT}/`;
+  const url = `http://127.0.0.1:${activePort}/`;
   log(`Loading ${url}`);
   mainWindow.loadURL(url).catch((err) => log(`loadURL failed: ${err.message}`));
 }

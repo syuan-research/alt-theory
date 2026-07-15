@@ -26,8 +26,12 @@ async function startBackend(projectRoot) {
   // for unpacked files).
   process.chdir(projectRoot);
 
-  if (!process.env.PORT) process.env.PORT = "3000";
-  const port = parseInt(process.env.PORT, 10);
+  // Port selection: a non-technical user must never have to pick a port. If an
+  // explicit override is set (ALT_THEORY_PORT / PORT) we try it first; otherwise
+  // we bind to port 0 and let the OS hand us a free ephemeral port. If a
+  // requested port is busy (e.g. 3000 taken by another local tool), we fall back
+  // to an auto-selected free port instead of failing the launch.
+  const preferred = parseInt(process.env.PORT || "0", 10);
 
   // Dynamically import the compiled ESM server entry. Use a file:// URL so the
   // asar path is importable under Node ESM.
@@ -42,16 +46,37 @@ async function startBackend(projectRoot) {
   const serverUrl = pathToFileURL(serverJsPath).href;
   const serverMod = await import(serverUrl);
   const instance = serverMod.createAltTheoryServer();
-  await new Promise((resolve, reject) => {
-    instance.httpServer.once("error", reject);
-    instance.httpServer.listen(port, "127.0.0.1", () => {
-      instance.httpServer.removeListener("error", reject);
-      // Match the ready string main.cjs watches for.
-      console.log("Alt Theory server running on http://127.0.0.1:" + port);
-      resolve();
+
+  const listenOn = (p) =>
+    new Promise((resolve, reject) => {
+      const onErr = (err) => {
+        instance.httpServer.removeListener("error", onErr);
+        reject(err);
+      };
+      instance.httpServer.once("error", onErr);
+      instance.httpServer.listen(p, "127.0.0.1", () => {
+        instance.httpServer.removeListener("error", onErr);
+        resolve(instance.httpServer.address().port);
+      });
     });
-  });
-  return instance;
+
+  let port;
+  try {
+    port = await listenOn(preferred); // preferred === 0 => OS picks a free port
+  } catch (err) {
+    if (preferred !== 0 && err && err.code === "EADDRINUSE") {
+      console.log(
+        "Port " + preferred + " is in use; selecting a free port automatically."
+      );
+      port = await listenOn(0);
+    } else {
+      throw err;
+    }
+  }
+
+  // Match the ready string main.cjs watches for.
+  console.log("Alt Theory server running on http://127.0.0.1:" + port);
+  return { instance, port };
 }
 
 module.exports = { startBackend };
