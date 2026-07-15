@@ -951,10 +951,11 @@ function newestTimestamp(paths: Array<string | null>): string | null {
 function compareSummaries(a: SessionSummary, b: SessionSummary): number {
   const aTime = Date.parse(a.updatedAt ?? a.createdAt ?? "");
   const bTime = Date.parse(b.updatedAt ?? b.createdAt ?? "");
-  if (!Number.isNaN(aTime) || !Number.isNaN(bTime)) {
-    return (Number.isNaN(bTime) ? 0 : bTime) - (Number.isNaN(aTime) ? 0 : aTime);
-  }
-  return b.sessionId.localeCompare(a.sessionId);
+  const timeDiff = (Number.isNaN(bTime) ? 0 : bTime) - (Number.isNaN(aTime) ? 0 : aTime);
+  if (timeDiff !== 0) return timeDiff;
+  // Timestamps are second-granular; same-second sessions tie. IDs carry the
+  // creation counter, so a numeric-aware descending ID compare keeps newest first.
+  return b.sessionId.localeCompare(a.sessionId, undefined, { numeric: true });
 }
 
 function isPathInside(root: string, path: string): boolean {

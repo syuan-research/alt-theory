@@ -22,7 +22,7 @@ import {
   getAgentDir,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
-import { getProviders } from "@earendil-works/pi-ai/compat";
+import { getBuiltinProviders } from "@earendil-works/pi-ai/providers/all";
 import {
   existsSync,
   mkdirSync,
@@ -298,7 +298,7 @@ export function listProviders(agentDir: string): ProviderView[] {
 }
 
 function isBuiltInProvider(name: string): boolean {
-  return getProviders().includes(name);
+  return getBuiltinProviders().includes(name);
 }
 
 function customProviderNeedsApiKey(
