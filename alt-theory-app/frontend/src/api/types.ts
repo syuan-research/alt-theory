@@ -341,7 +341,26 @@ export type ClientMessage =
   | { type: "new_session" }
   | { type: "open_session"; payload: { sessionId: string } }
   | { type: "get_session_metadata" }
-  | { type: "get_session_metrics" };
+  | { type: "get_session_metrics" }
+  | {
+      type: "respond_approval";
+      payload: {
+        approvalId: string;
+        accept?: boolean;
+        choice?: string | null;
+        text?: string | null;
+      };
+    };
+
+export interface ApprovalRequestPayload {
+  approvalId: string;
+  kind: "confirm" | "select" | "input";
+  title: string;
+  message?: string;
+  options?: string[];
+  placeholder?: string;
+  timeoutMs?: number;
+}
 
 export type ServerMessage =
   | { type: "session_draft"; payload: SessionDraftSnapshot }
@@ -356,6 +375,18 @@ export type ServerMessage =
   | { type: "tool_finished"; payload: { callId: string; success: boolean; output?: unknown } }
   | { type: "run_completed"; payload: SessionSnapshot }
   | { type: "run_failed"; payload: { error: string } }
+  | { type: "approval_requested"; payload: ApprovalRequestPayload }
+  | {
+      type: "approval_resolved";
+      payload: {
+        approvalId: string;
+        resolution: "responded" | "cancelled" | "timeout";
+      };
+    }
+  | {
+      type: "extension_notice";
+      payload: { message: string; level: "info" | "warning" | "error" };
+    }
   | { type: "error"; payload: { error: string; code?: string } };
 
 export interface ActiveToolState {

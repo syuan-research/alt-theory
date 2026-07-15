@@ -1715,3 +1715,135 @@ test("SessionService creates workspace sessions and restores workspace on reopen
     await reopenedService.disposeAll();
   }
 });
+
+test("approval bridge routes extension confirm dialogs through the service", async () => {
+  const fixture = setupFixture();
+  const service = new SessionService({
+    dataDir: fixture.dataDir,
+    assetPaths: {
+      rootDir: fixture.root,
+      appContextPath: fixture.appContextPath,
+      instructionsDir: fixture.instructionsDir,
+      skillsDir: fixture.skillsDir,
+      soulDir: fixture.soulDir,
+      soulPath: join(fixture.soulDir, "soul-latest.md"),
+      rolePresetsDir: fixture.rolePresetsDir,
+      kbDir: fixture.kbDir,
+      piPromptTemplatesDir: fixture.piPromptTemplatesDir,
+      modelsPath: null,
+    },
+    kbDir: fixture.kbDir,
+    rolePresetsDir: fixture.rolePresetsDir,
+    soulDir: fixture.soulDir,
+    legacySoulPath: join(fixture.soulDir, "soul-latest.md"),
+    readOnly: true,
+    promptMode: "alt-only",
+    resourceDiscovery: "clean",
+    instructionsDir: fixture.instructionsDir,
+    runLabel: null,
+    testBatch: null,
+    // A policy-style extension: every bash call must be user-approved.
+    extensionFactories: [
+      (pi) => {
+        pi.on("tool_call", async (event, ctx) => {
+          if (event.toolName !== "bash") return undefined;
+          const approved = await ctx.ui.confirm(
+            "Approve tool",
+            `Run ${event.toolName}?`
+          );
+          return approved
+            ? undefined
+            : { block: true, reason: "Denied by user" };
+        });
+      },
+    ],
+  });
+
+  const created = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+
+  const events: SessionServiceEvent[] = [];
+  const detachListener = service.attach(created.sessionId, (event) =>
+    events.push(event)
+  );
+  const managed = (
+    service as unknown as {
+      sessions: Map<
+        string,
+        {
+          session: {
+            agent: {
+              beforeToolCall?: (input: {
+                toolCall: { id: string; name: string; arguments: unknown };
+                args: Record<string, unknown>;
+              }) => Promise<{ block?: boolean; reason?: string } | undefined>;
+            };
+          };
+        }
+      >;
+    }
+  ).sessions.get(created.sessionId)!;
+
+  try {
+    // Approved call: reply accept=true while the extension awaits confirm.
+    const approvedCall = managed.session.agent.beforeToolCall!({
+      toolCall: { id: "t1", name: "bash", arguments: {} },
+      args: { command: "echo ok" },
+    });
+    // Wait for the request event to surface, then respond.
+    for (let i = 0; i < 50 && !events.some((e) => e.type === "approval_requested"); i++) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    const request = events.find((e) => e.type === "approval_requested");
+    assert.ok(request && request.type === "approval_requested");
+    assert.equal(request.payload.kind, "confirm");
+    assert.equal(request.payload.title, "Approve tool");
+    assert.equal(
+      service.respondApproval(created.sessionId, request.payload.approvalId, {
+        accept: true,
+      }),
+      true
+    );
+    assert.equal(await approvedCall, undefined);
+    assert.ok(
+      events.some(
+        (e) =>
+          e.type === "approval_resolved" &&
+          e.payload.resolution === "responded"
+      )
+    );
+
+    // Denied call: reply accept=false → the extension blocks the tool.
+    const deniedCall = managed.session.agent.beforeToolCall!({
+      toolCall: { id: "t2", name: "bash", arguments: {} },
+      args: { command: "rm -rf /" },
+    });
+    for (let i = 0; i < 50; i++) {
+      const pending = events.filter((e) => e.type === "approval_requested");
+      if (pending.length >= 2) break;
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    const second = events.filter((e) => e.type === "approval_requested").at(-1)!;
+    assert.ok(second.type === "approval_requested");
+    service.respondApproval(created.sessionId, second.payload.approvalId, {
+      accept: false,
+    });
+    const blocked = await deniedCall;
+    assert.equal(blocked?.block, true);
+    assert.match(blocked?.reason ?? "", /Denied by user/);
+
+    // Unknown approval ids are a no-op.
+    assert.equal(
+      service.respondApproval(created.sessionId, "no-such-approval", {
+        accept: true,
+      }),
+      false
+    );
+  } finally {
+    detachListener();
+    await service.disposeAll();
+  }
+});

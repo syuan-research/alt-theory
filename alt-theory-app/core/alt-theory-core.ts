@@ -12,6 +12,7 @@ import {
   createAgentSession,
   createWriteToolDefinition,
   DefaultResourceLoader,
+  type ExtensionFactory,
   getAgentDir,
   loadProjectContextFiles,
   loadSkills,
@@ -187,6 +188,12 @@ export interface AltTheoryConfig extends SessionDirectories {
    * and joins the guarded-write roots.
    */
   workspaceDirs?: string[];
+  /**
+   * Inline Pi extension factories, loaded explicitly by the app (M4 policy
+   * layer, tests). Ambient extension discovery stays off in every mode
+   * (noExtensions, spec §3.4/§4.2); this is the only extension entry point.
+   */
+  extensionFactories?: ExtensionFactory[];
 }
 
 export interface AltTheoryOpenExistingConfig extends AltTheoryConfig {
@@ -431,6 +438,7 @@ async function createAltTheorySessionWithManager(
     // must never do silently (spec §3.4) and Full may only do behind the
     // policy boundary (spec §4.2).
     noExtensions: true,
+    extensionFactories: config.extensionFactories ?? [],
     noContextFiles: resourceDiscovery !== "dev-debug",
     // Pure replaces Pi's prompt with the Alt assembly; Full preserves Pi's
     // default prompt (base) and appends the semantic Alt sections (spec §3.3).

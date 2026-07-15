@@ -26,6 +26,7 @@ import {
 } from "@/api/sessions";
 import type {
   ActiveToolState,
+  ApprovalRequestPayload,
   AssemblyManifest,
   AuthContext,
   ClientMessage,
@@ -43,6 +44,7 @@ import type {
 } from "@/api/types";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import type { ConnStatus } from "@/components/ui/StatusBadge";
+import { ApprovalDialog } from "@/components/ui/ApprovalDialog";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { DEFAULT_KB_DOMAIN } from "@/lib/constants";
 import { isInterruptedError } from "@/lib/format";
@@ -255,6 +257,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(
     null
   );
+  const [approvals, setApprovals] = useState<ApprovalRequestPayload[]>([]);
 
   const [manifest, setManifest] = useState<AssemblyManifest | null>(null);
   const [metrics, setMetrics] = useState<SessionMetrics | null>(null);
@@ -682,6 +685,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
           break;
         }
 
+        case "approval_requested":
+          setApprovals((prev) => [...prev, message.payload]);
+          break;
+
+        case "approval_resolved":
+          setApprovals((prev) =>
+            prev.filter(
+              (entry) => entry.approvalId !== message.payload.approvalId
+            )
+          );
+          break;
+
+        case "extension_notice":
+          setComposerNoticeTimed({
+            prefix: message.payload.level === "info" ? undefined : "⚠",
+            text: message.payload.message,
+            warn: message.payload.level !== "info",
+          });
+          break;
+
         case "error": {
           if (message.payload.code === "auth_required") {
             setToolStatus("Please sign in to continue.");
@@ -741,6 +764,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setWsConnected(false);
         setSessionReady(false);
         setIsRunning(false);
+        setApprovals([]);
         setConnStatus("disconnected");
         setConnLabel(detail?.label ?? "Disconnected");
         setStreamingText(null);
@@ -1197,6 +1221,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
   return (
     <AppContext.Provider value={value}>
       {children}
+      <ApprovalDialog
+        request={approvals[0] ?? null}
+        onRespond={(approvalId, response) => {
+          sendMessage({
+            type: "respond_approval",
+            payload: { approvalId, ...response },
+          });
+          setApprovals((prev) =>
+            prev.filter((entry) => entry.approvalId !== approvalId)
+          );
+        }}
+      />
       <ConfirmDialog
         open={Boolean(confirmRequest)}
         message={confirmRequest?.message ?? ""}

@@ -97,6 +97,15 @@ export type ClientMessage =
   | { type: "switch_mode"; payload: { mode: "pure" | "full" } }
   | { type: "add_workspace_dir"; payload: { dir: string } }
   | {
+      type: "respond_approval";
+      payload: {
+        approvalId: string;
+        accept?: boolean;
+        choice?: string | null;
+        text?: string | null;
+      };
+    }
+  | {
       type: "fork_session";
       payload: {
         purpose: "collaboration" | "comparison";
@@ -129,4 +138,27 @@ export type ServerMessage =
   | { type: "tool_finished"; payload: { callId: string; success: boolean; output?: unknown } }
   | { type: "run_completed"; payload: SessionSnapshot }
   | { type: "run_failed"; payload: { error: string } }
+  | {
+      type: "approval_requested";
+      payload: {
+        approvalId: string;
+        kind: "confirm" | "select" | "input";
+        title: string;
+        message?: string;
+        options?: string[];
+        placeholder?: string;
+        timeoutMs?: number;
+      };
+    }
+  | {
+      type: "approval_resolved";
+      payload: {
+        approvalId: string;
+        resolution: "responded" | "cancelled" | "timeout";
+      };
+    }
+  | {
+      type: "extension_notice";
+      payload: { message: string; level: "info" | "warning" | "error" };
+    }
   | { type: "error"; payload: { error: string; code?: string } };

@@ -1064,6 +1064,15 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       case "session_metrics":
         send({ type: "session_metrics", payload: event.payload });
         break;
+      case "approval_requested":
+        send({ type: "approval_requested", payload: event.payload });
+        break;
+      case "approval_resolved":
+        send({ type: "approval_resolved", payload: event.payload });
+        break;
+      case "extension_notice":
+        send({ type: "extension_notice", payload: event.payload });
+        break;
     }
   }
 
@@ -1559,6 +1568,27 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               msg.payload.dir
             );
             send({ type: "session_updated", payload: snapshot });
+          } catch (error) {
+            sendServiceError(send, error);
+          }
+          break;
+        }
+        case "respond_approval": {
+          if (!attachedSessionId) {
+            sendError(send, new Error("A materialized session is required"));
+            break;
+          }
+          if (typeof msg.payload?.approvalId !== "string") {
+            sendError(send, new Error("An approvalId is required"));
+            break;
+          }
+          try {
+            const { approvalId, accept, choice, text } = msg.payload;
+            sessionService.respondApproval(attachedSessionId, approvalId, {
+              accept,
+              choice,
+              text,
+            });
           } catch (error) {
             sendServiceError(send, error);
           }

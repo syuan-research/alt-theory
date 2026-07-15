@@ -29,6 +29,13 @@ import {
   resolveRolePresetSlug,
   resolveSoulSlug,
 } from "./asset-registry.js";
+import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
+import {
+  ApprovalBridge,
+  type ApprovalRequest,
+  type ApprovalResolution,
+  type ApprovalResponse,
+} from "./approval-bridge.js";
 import { appendSessionEvent } from "./session-events.js";
 import {
   buildSessionMetrics,
@@ -107,6 +114,12 @@ export interface SessionServiceConfig {
    * running sessions.
    */
   resolveExternalSkillPaths?: () => { pure: string[]; full: string[] };
+  /**
+   * Inline Pi extension factories loaded into every session (M4 policy
+   * layer, tests). The only extension entry point — ambient discovery
+   * stays off (spec §3.4/§4.2).
+   */
+  extensionFactories?: ExtensionFactory[];
   modelFallbackConfigPath?: string | null;
 }
 
@@ -174,7 +187,16 @@ export type SessionServiceEvent =
   | { type: "tool_finished"; payload: { callId: string; success: boolean } }
   | { type: "run_completed"; payload: SessionSnapshot }
   | { type: "run_failed"; payload: { error: string } }
-  | { type: "session_metrics"; payload: SessionMetrics };
+  | { type: "session_metrics"; payload: SessionMetrics }
+  | { type: "approval_requested"; payload: ApprovalRequest }
+  | {
+      type: "approval_resolved";
+      payload: { approvalId: string; resolution: ApprovalResolution };
+    }
+  | {
+      type: "extension_notice";
+      payload: { message: string; level: "info" | "warning" | "error" };
+    };
 
 interface ManagedSession {
   session: AgentSession;
@@ -183,6 +205,7 @@ interface ManagedSession {
   setMode: (mode: CapabilityMode) => Promise<void>;
   getWorkspace: () => { primaryDir: string; additionalDirs: string[] };
   addWorkspaceDir: (dir: string) => Promise<string[]>;
+  approvalBridge: ApprovalBridge;
   selectors: SessionSelectors;
   openedFrom: "new" | "existing";
   resumeWarnings: string[];
@@ -446,6 +469,19 @@ export class SessionService {
       },
     });
     return this.snapshot(managed);
+  }
+
+  /**
+   * Resolve a pending extension approval dialog (spec §5.2). Unknown ids
+   * return false (already resolved by timeout/abort, or never existed).
+   */
+  respondApproval(
+    sessionId: string,
+    approvalId: string,
+    response: ApprovalResponse
+  ): boolean {
+    const managed = this.requireSession(sessionId);
+    return managed.approvalBridge.respond(approvalId, response);
   }
 
   invokeSkill(
@@ -1036,6 +1072,7 @@ export class SessionService {
       testBatch: this.config.testBatch,
       readOnly: this.config.readOnly,
       externalSkillPaths: this.config.resolveExternalSkillPaths?.(),
+      extensionFactories: this.config.extensionFactories,
     });
     const visibility = metadata.visibility ?? "research";
     const consentSnapshot =
@@ -1065,7 +1102,7 @@ export class SessionService {
       workspace: metadata.workspace ? result.manifest.workspace : null,
     });
 
-    const managed = this.createManaged({
+    const managed = await this.createManaged({
       ...result,
       selectors,
       openedFrom: "new",
@@ -1174,6 +1211,7 @@ export class SessionService {
       testBatch: this.config.testBatch,
       readOnly: this.config.readOnly,
       externalSkillPaths: this.config.resolveExternalSkillPaths?.(),
+      extensionFactories: this.config.extensionFactories,
     });
     alignSessionManagerLeaf(
       result.session.sessionManager,
@@ -1181,7 +1219,7 @@ export class SessionService {
       "latest active run"
     );
 
-    const managed = this.createManaged({
+    const managed = await this.createManaged({
       ...result,
       selectors: {
         projectId: detail.session.projectId ?? fallbackSelectors.projectId ?? null,
@@ -1309,6 +1347,7 @@ export class SessionService {
       testBatch: this.config.testBatch,
       readOnly: this.config.readOnly,
       externalSkillPaths: this.config.resolveExternalSkillPaths?.(),
+      extensionFactories: this.config.extensionFactories,
       overrideSessionCwd: true,
     });
     alignSessionManagerLeaf(
@@ -1319,7 +1358,7 @@ export class SessionService {
       "latest active run"
     );
 
-    return this.createManaged({
+    return await this.createManaged({
       ...result,
       selectors,
       openedFrom: previous.openedFrom,
@@ -1388,6 +1427,7 @@ export class SessionService {
       testBatch: this.config.testBatch,
       readOnly: this.config.readOnly,
       externalSkillPaths: this.config.resolveExternalSkillPaths?.(),
+      extensionFactories: this.config.extensionFactories,
     });
     if ("activeLeafEntryId" in args) {
       alignSessionManagerLeaf(
@@ -1396,7 +1436,7 @@ export class SessionService {
         `current Pi leaf for ${args.branchId}`
       );
     }
-    return this.createManaged({
+    return await this.createManaged({
       ...result,
       selectors: args.selectors,
       openedFrom: args.openedFrom,
@@ -1407,7 +1447,7 @@ export class SessionService {
     });
   }
 
-  private createManaged(args: {
+  private async createManaged(args: {
     session: AgentSession;
     manifest: AssemblyManifest;
     getMode: () => CapabilityMode;
@@ -1420,10 +1460,25 @@ export class SessionService {
     counters: SessionCounters;
     transcript: TranscriptMessage[];
     branchId?: string;
-  }): ManagedSession {
+  }): Promise<ManagedSession> {
     const persistedRuns = latestRunSnapshots(args.manifest.recordsDir);
+    const approvalBridge = new ApprovalBridge({
+      onRequest: (request) =>
+        this.emit(managed, { type: "approval_requested", payload: request }),
+      onResolve: (approvalId, resolution) =>
+        this.emit(managed, {
+          type: "approval_resolved",
+          payload: { approvalId, resolution },
+        }),
+      onNotify: (message, level) =>
+        this.emit(managed, {
+          type: "extension_notice",
+          payload: { message, level },
+        }),
+    });
     const managed: ManagedSession = {
       ...args,
+      approvalBridge,
       listeners: new Set(),
       internalUnsubscribe: () => {},
       busy: false,
@@ -1443,6 +1498,13 @@ export class SessionService {
     managed.internalUnsubscribe = managed.session.subscribe((event) =>
       this.handleAgentEvent(managed, event)
     );
+    // Approval bridge (spec §5.2): hand Pi extensions a dialog-capable UI
+    // context backed by the web UI. Bound before the session is returned so
+    // extension mediation is in place before any prompt can run.
+    await managed.session.bindExtensions({
+      uiContext: approvalBridge.uiContext,
+      mode: "rpc",
+    });
     return managed;
   }
 
@@ -1731,6 +1793,7 @@ export class SessionService {
 
   private async disposeManaged(managed: ManagedSession): Promise<void> {
     managed.internalUnsubscribe();
+    managed.approvalBridge.disposeAll();
     if (managed.session.isStreaming) {
       await managed.session.abort();
     }
