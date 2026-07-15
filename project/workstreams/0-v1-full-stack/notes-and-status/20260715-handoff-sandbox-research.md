@@ -1,42 +1,48 @@
-# Handoff: Sandbox Research (parallel track, Windows-capable agent)
+# Handoff: Full-Mode Security Layer Evaluation (parallel track)
 
-Date: 2026-07-15
-Consumer: v1-alpha M3 (workspaces/approvals/sandbox). Research can start
-immediately; it does not depend on M0–M2.
+Date: 2026-07-15 (rewritten same day: the earlier OS-sandbox framing is
+withdrawn — the owner set the target at average production-harness security,
+spec §5.3. No Windows LPAC probe is needed.)
+
+Consumer: v1-alpha M3 (workspaces/approvals/security). Research can start
+immediately; it does not depend on M0–M2. Platform-agnostic — fine to run on
+the Windows machine.
 
 ## Goal
 
-Recommend the sandbox route for local Full mode with probe evidence, not
-catalog reading. Design already assumes an enforceable sandbox is achievable
-on all target platforms — by forking/modifying an existing Pi package if
-necessary. The question is *which* base and *what* adaptation, not *whether*.
+Recommend the policy-security route for local Full mode with hands-on
+evidence. Target posture: what OpenCode / Claude Code ship by default —
+command/path/network guards plus user approvals. OS/VM isolation is out of
+scope (future hardening).
 
 ## Read first
 
-- Spec §5 (workspaces, approval UI, sandbox): `project/roadmap/v1.0-alpha-product-spec.md`
-- `project/compound/2026-07-03-decision-v0-6-ab-fallback-agent-boundary.md`
-  (for the Pi-ecosystem-first decision style this research should follow)
+- Spec §5 (workspaces, approvals, security layer):
+  `project/roadmap/v1.0-alpha-product-spec.md`
 - Installed Pi docs: `node_modules/@earendil-works/pi-coding-agent/docs/security.md`,
-  `extensions.md`, `packages.md` (repo now on `@earendil-works/pi-*` ^0.80.3)
+  `extensions.md` (tool_call interception, ctx.ui), `packages.md`
 
 ## Questions to answer with evidence
 
-1. `pi-landstrip`: does its Windows LPAC AppContainer enforcement actually
-   work in a packaged Electron/Node app (not just the pi CLI)? Probe: file
-   read/write outside allowed roots, child processes, network reach.
-2. What credible Pi-native alternatives exist in the current package catalog?
-   Same probe for the top candidate(s).
-3. Extension surface: what approval scopes (once/session/persistent) does the
-   candidate expose through Pi's `confirm`/`select`/`input` UI context? Alt
-   Theory must bridge these into a web UI — note anything that assumes a TTY.
-4. If no candidate passes cleanly: which is the best *fork base*, what
-   specifically must be modified, and roughly how large is that adaptation?
-5. Interaction with additional working directories (spec §5.1): can allowed
-   roots change mid-session, and at what cost?
+1. `@vtstech/pi-security` (first candidate, MIT, zero-dep, actively
+   maintained): install it against Pi ^0.80 and probe — do its path guards
+   accept configurable allowed roots that match our primary + additional
+   working-directory model (spec §5.1)? Can roots change mid-session?
+2. Which of its modes fits scholar users? `max` blocks package management and
+   dev tooling — likely too strict for Full's use cases; check what `basic`
+   leaves open and whether per-rule configuration exists.
+3. Does anything in it assume a TTY? Alt Theory bridges extension UI into a
+   web frontend; confirm its prompts/status surfaces work headless or degrade
+   cleanly.
+4. Audit log: can the JSONL path be pointed into the session records area?
+5. Are there credible catalog alternatives worth preferring? Same probe for
+   any serious contender.
+6. If gaps exist (e.g. multi-root support), what is the smallest adaptation:
+   configuration, upstream PR, or a light fork?
 
 ## Deliverable
 
-One compound decision record (`project/compound/2026-07-XX-decision-v1-sandbox-route.md`)
-with probe transcripts/evidence paths, a recommendation, and the fork/adapt
-scope if applicable. macOS-side validation will be done in the Mac dev
-session; focus Windows evidence here.
+One compound decision record
+(`project/compound/2026-07-XX-decision-v1-security-layer.md`) with probe
+evidence, the recommended package + configuration, and the adaptation scope
+if any.
