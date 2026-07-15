@@ -119,10 +119,13 @@ For branch/recovery context, also check:
 
 ## Pilot Deployment And Account Skills
 
-This worktree (`main`) carries the live v0.5 pilot web-app code. For deployment
-or pilot-account tasks, prefer the local/global Alt Theory operational skills
-instead of ad hoc SSH or account-file edits. Deploy archives from this tree's
-`main` HEAD unless a task explicitly names another lane.
+Since 2026-07-15, `main` is the v1.0-alpha development line and is not
+deploy-ready at arbitrary commits. The pilot patch line is
+`release/v0.5x-pilot` (frozen at the last pre-v0.6 pilot state, `0418670`).
+Pilot hotfixes go to that branch; deploy pilot archives from
+`release/v0.5x-pilot`, not from `main` HEAD. For deployment or pilot-account
+tasks, prefer the local/global Alt Theory operational skills instead of ad hoc
+SSH or account-file edits.
 
 Skill source and common global copies:
 
