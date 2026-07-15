@@ -92,6 +92,13 @@ import { readAccountStore } from "./auth-accounts.js";
 import type { AuthContext } from "./auth-session.js";
 import { resolveConfigGuiHtmlPath } from "./config-gui-path.js";
 import { ensureLocalModeDefaults } from "./local-mode-paths.js";
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import {
+  readAppSettings,
+  resolveExternalSkillPaths,
+  writeAppSettings,
+} from "./app-settings.js";
+import { discoverSkillResources } from "./resource-discovery.js";
 
 ensureLocalModeDefaults();
 
@@ -141,10 +148,13 @@ function parseResourceDiscoveryMode(
   }
   if (value) {
     console.warn(
-      `Unknown ALT_THEORY_RESOURCE_DISCOVERY '${value}', using dev-debug`
+      `Unknown ALT_THEORY_RESOURCE_DISCOVERY '${value}', using internal`
     );
   }
-  return "dev-debug";
+  // internal = Alt bundled skills plus explicitly user-enabled externals.
+  // dev-debug (ambient Pi merge + context files) is an explicit dev knob:
+  // external skills must never be silently enabled in Pure (spec §3.4).
+  return "internal";
 }
 
 function parsePromptMode(value: string | undefined): PromptMode {
@@ -252,6 +262,56 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   app.get("/api/config/status", (_req, res) => {
     if (!requireLocalConfigMode(res)) return;
     res.json(getConfigStatus(agentConfigDir()));
+  });
+  // --- Resource discovery + per-mode skill enablement (spec §6.1) ---
+  app.get("/api/resources", (_req, res) => {
+    if (!requireLocalConfigMode(res)) return;
+    const settings = readAppSettings(dataDir);
+    const discovered = discoverSkillResources({
+      altSkillsDir: skillsDir,
+      agentDir: getAgentDir(),
+    });
+    const externalPaths = discovered.skills
+      .filter((skill) => skill.source !== "alt-theory")
+      .map((skill) => skill.path);
+    const enabled = resolveExternalSkillPaths(settings, externalPaths);
+    const enabledPure = new Set(enabled.pure);
+    const enabledFull = new Set(enabled.full);
+    res.json({
+      skills: discovered.skills.map((skill) => ({
+        ...skill,
+        enabled:
+          skill.source === "alt-theory"
+            ? { pure: true, full: true }
+            : {
+                pure: enabledPure.has(skill.path),
+                full: enabledFull.has(skill.path),
+              },
+      })),
+      diagnostics: discovered.diagnostics,
+      note: "Settings apply to new and reopened sessions, not running ones.",
+    });
+  });
+  app.put("/api/resources/skills", (req, res) => {
+    if (!requireLocalConfigMode(res)) return;
+    const body = req.body as {
+      pure?: { enabledPaths?: unknown };
+      full?: { enabledPaths?: unknown };
+    };
+    const parseList = (value: unknown): string[] | null =>
+      Array.isArray(value)
+        ? value.filter((entry): entry is string => typeof entry === "string")
+        : null;
+    const current = readAppSettings(dataDir);
+    const next = {
+      ...current,
+      skills: {
+        pure: { enabledPaths: parseList(body.pure?.enabledPaths) },
+        full: { enabledPaths: parseList(body.full?.enabledPaths) },
+      },
+    };
+    writeAppSettings(dataDir, next);
+    res.json({ ok: true, settings: next });
   });
   app.get("/api/config/providers", (_req, res) => {
     if (!requireLocalConfigMode(res)) return;
@@ -820,6 +880,22 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     testBatch,
     resolveRuntimeModelConfig: localMode
       ? () => requireLocalRuntimeModelConfig()
+      : undefined,
+    // Discovery of machine-local resources is a local-app capability; hosted
+    // deployments never read the server's ~/.pi or ~/.agents directories.
+    resolveExternalSkillPaths: localMode
+      ? () => {
+          const discovered = discoverSkillResources({
+            altSkillsDir: skillsDir,
+            agentDir: getAgentDir(),
+          });
+          return resolveExternalSkillPaths(
+            readAppSettings(dataDir),
+            discovered.skills
+              .filter((skill) => skill.source !== "alt-theory")
+              .map((skill) => skill.path)
+          );
+        }
       : undefined,
     modelFallbackConfigPath:
       process.env.ALT_THEORY_MODEL_FALLBACK_PATH ?? null,

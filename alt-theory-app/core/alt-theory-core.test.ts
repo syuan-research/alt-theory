@@ -57,3 +57,56 @@ test("capability mode switches prompt layers and active tools on the live sessio
 
   await session.dispose();
 });
+
+test("external skills are enabled per mode and re-apply on mode switch", async () => {
+  const root = mkdtempSync(join(tmpdir(), "alt-theory-core-skills-"));
+  const appContextPath = join(root, "ALTTHEORY.md");
+  const kbDir = join(root, "kb");
+  const skillsDir = join(root, "alt-skills");
+  const externalDir = join(root, "external-skills");
+  mkdirSync(kbDir, { recursive: true });
+  mkdirSync(skillsDir, { recursive: true });
+  mkdirSync(externalDir, { recursive: true });
+  writeFileSync(appContextPath, "External skills app context", "utf-8");
+  writeFileSync(
+    join(skillsDir, "summary.md"),
+    "---\nname: alt-summary\ndescription: Alt bundled\n---\nSummarize.",
+    "utf-8"
+  );
+  writeFileSync(
+    join(externalDir, "helper.md"),
+    "---\nname: full-only-helper\ndescription: Full-only external skill\n---\nHelp.",
+    "utf-8"
+  );
+
+  const result = await createAltTheorySession({
+    ...createSessionDirs(join(root, "data"), "external-skills-test"),
+    appContextPath,
+    kbDir,
+    kbDomain: "none",
+    readOnly: true,
+    promptMode: "alt-only",
+    resourceDiscovery: "internal",
+    skillsDir,
+    externalSkillPaths: { full: [externalDir] },
+  });
+  const { session } = result;
+
+  // Pure: bundled skill only; the external skill is not silently enabled.
+  assert.match(session.systemPrompt, /alt-summary/);
+  assert.doesNotMatch(session.systemPrompt, /full-only-helper/);
+  assert.deepEqual(
+    result.manifest.skills.map((skill) => `${skill.source}:${skill.name}`),
+    ["alt-theory:alt-summary"]
+  );
+
+  // Full: the user-enabled external skill joins the assembly.
+  await result.setMode("full");
+  assert.match(session.systemPrompt, /alt-summary/);
+  assert.match(session.systemPrompt, /full-only-helper/);
+
+  await result.setMode("pure");
+  assert.doesNotMatch(session.systemPrompt, /full-only-helper/);
+
+  await session.dispose();
+});

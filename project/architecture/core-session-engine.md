@@ -212,27 +212,43 @@ Current model-visible content has two levels.
 
 - Pi adapter prompt templates from `agent-assets/prompts/pi/`;
 - no Alt Theory runtime `AGENTS.md` file;
-- `appendSystemPromptOverride` layers in this order:
+Since v1-alpha M1 (2026-07-15), the session has a per-session capability mode
+(`pure`/`full`, spec §3.2) that decides how the layers apply. The semantic
+sections are, in order:
   1. `agent-assets/ALTTHEORY.md`;
   2. selected `agent-assets/soul/{slug}.md`, when a soul is selected;
-  3. optional core-soul module content, when configured;
-  4. selected `agent-assets/role-presets/{slug}.md`, when a role preset is
+  3. selected `agent-assets/role-presets/{slug}.md`, when a role preset is
      selected;
-  5. selected custom instruction text asset, when present;
-  6. KB root declaration;
-  7. selected KB domain metadata from `agent-assets/kb/metadata/domains.json`,
-     when a concrete KB domain such as `ep-core` is selected;
-  8. write policy when write tools are enabled.
+  4. selected custom instruction text asset, when present;
+  5. KB root declaration;
+  6. selected KB domain metadata from `agent-assets/kb/metadata/domains.json`,
+     when a concrete KB domain such as `ep-core` is selected.
+
+In Pure, `systemPromptOverride` replaces Pi's default prompt with these
+sections plus two Pure-only sections (tool harness description; write policy
+when write tools are enabled). In Full, Pi's default prompt is preserved and
+the semantic sections are appended via `appendSystemPromptOverride`. Mode is
+mutable on the live session: `setMode` re-runs `loader.reload()` and swaps the
+active tool set; Pi applies both from the next turn. Mode persists in
+`session.json` (`mode`, absent = pure) and maps 1:1 onto the manifest
+`promptMode` field (`alt-only` = pure, `pi-default` = full).
 
 The assembly manifest records the selected paths, existence flags, and SHA-256
 hashes for app context, soul, role preset, and custom instruction when present.
-It also records Alt Theory skills loaded from the configured skill directory.
-Skill discovery follows three modes: `clean` loads none, `internal` loads only
-Alt Theory skills, and `dev-debug` merges Alt Theory skills with Pi's normal
-global/project discovery while preferring Alt Theory on name collision. It
-also records selected soul/role slugs, including `null` for `None`, plus KB
-root/domain, Pi prompt-template directory, provider/model, session directories,
-and Pi JSONL path. Full content snapshots are deferred.
+It also records the loaded skills with their source: `alt-theory` (bundled
+skill directory) or `external` (user-enabled via app settings, spec §6.1).
+Per-mode external skill enablement lives in `{dataDir}/app-settings.json`
+(null = default policy: Pure none, Full all discovered), is snapshot at
+session open, and is served/edited through `GET /api/resources` +
+`PUT /api/resources/skills` (local mode only). Base discovery posture stays
+the `resourceDiscovery` knob: `clean` loads no skills, `internal` (the
+default) loads Alt bundled + user-enabled externals, and `dev-debug`
+additionally merges Pi's ambient global/project discovery for debugging
+(ambient skills are not recorded in the manifest). Pi extensions stay off in
+every mode (`noExtensions`) until the M3/M4 approval bridge and policy layer.
+The manifest also records selected soul/role slugs, including `null` for
+`None`, plus KB root/domain, Pi prompt-template directory, provider/model,
+session directories, and Pi JSONL path. Full content snapshots are deferred.
 
 Code anchors:
 
@@ -283,11 +299,18 @@ Code anchors:
 
 ## 4. Tool Policy
 
-- Read-only: `read`, `ls`, `grep`, `find`.
-- Write-enabled: the same tools plus `write`.
-- `edit` and `bash` are not enabled by the backend.
-- The workspace path restriction is prompt-based guidance, not a hard
-  filesystem sandbox. Pi's built-in write tool accepts absolute paths.
+Since v1-alpha M1, the session keeps Pi's full tool registry and restricts the
+ACTIVE tool set per capability mode (an allowlist would be a lifetime registry
+filter and block in-session mode switches):
+
+- Pure read-only: `read`, `ls`, `grep`, `find`.
+- Pure write-enabled: the same tools plus `write`.
+- Full: Pi's default active set (`read`, `bash`, `edit`, `write`); exposure is
+  gated until the M3/M4 policy boundary.
+- The write tool is the Alt Theory guarded implementation in every mode: it
+  shadows Pi's builtin write and hard-enforces the writable roots, including
+  symlink dereference (`createGuardedWriteOperations`). This is a policy
+  check in trusted code, not an OS sandbox (spec §5.3).
 
 ## 5. Application-Owned Session Service
 

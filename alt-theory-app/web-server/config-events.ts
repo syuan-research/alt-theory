@@ -23,7 +23,7 @@ export interface EffectiveSessionConfig {
     name: string;
     path: string;
     sha256: string | null;
-    source: "alt-theory" | "debug";
+    source: "alt-theory" | "external";
   }>;
   promptMode: PromptMode;
   resourceDiscovery: ResourceDiscoveryMode;

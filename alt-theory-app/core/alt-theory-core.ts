@@ -13,6 +13,7 @@ import {
   createWriteToolDefinition,
   DefaultResourceLoader,
   getAgentDir,
+  loadSkills,
   loadSkillsFromDir,
   ModelRegistry,
   type ResourceDiagnostic,
@@ -71,7 +72,12 @@ export interface AssemblyManifest {
     name: string;
     path: string;
     sha256: string | null;
-    source: "alt-theory";
+    /**
+     * alt-theory = bundled; external = user-enabled via settings. Ambient
+     * dev-debug merges are deliberately not recorded: they are a
+     * machine-dependent debug posture, not session provenance.
+     */
+    source: "alt-theory" | "external";
   }>;
   piAdapter: {
     promptTemplatesDir: string | null;
@@ -156,6 +162,13 @@ export interface AltTheoryConfig extends SessionDirectories {
   promptMode?: PromptMode;
   resourceDiscovery?: ResourceDiscoveryMode;
   skillsDir?: string;
+  /**
+   * User-enabled external skill paths (files or directories) per capability
+   * mode, resolved by the app settings layer (spec §6.1). Snapshot at session
+   * open; settings changes apply on session reload. External skills are never
+   * silently enabled: absent lists mean Alt bundled skills only.
+   */
+  externalSkillPaths?: { pure?: string[]; full?: string[] };
 }
 
 export interface AltTheoryOpenExistingConfig extends AltTheoryConfig {
@@ -352,6 +365,20 @@ async function createAltTheorySessionWithManager(
           source: "alt-theory",
         })
       : { skills: [], diagnostics: [] };
+  // User-enabled external skills, snapshot per mode at session open (spec
+  // §6.1). Loaded through Pi's own resolver so files, directories, and skill
+  // packages all behave exactly as they would in Pi.
+  const loadExternalSkills = (paths?: string[]) =>
+    resourceDiscovery !== "clean" && paths?.length
+      ? loadSkills({ cwd, agentDir, skillPaths: paths, includeDefaults: false })
+      : { skills: [], diagnostics: [] };
+  const externalSkillsByMode: Record<
+    CapabilityMode,
+    ReturnType<typeof loadExternalSkills>
+  > = {
+    pure: loadExternalSkills(config.externalSkillPaths?.pure),
+    full: loadExternalSkills(config.externalSkillPaths?.full),
+  };
 
   const loader = new DefaultResourceLoader({
     cwd,
@@ -359,17 +386,32 @@ async function createAltTheorySessionWithManager(
     additionalPromptTemplatePaths: resolvedPiPromptTemplatesDir
       ? [resolvedPiPromptTemplatesDir]
       : [],
+    // Extensions stay off in every mode until the M3/M4 approval bridge and
+    // policy layer exist: loading an extension executes its code, which Pure
+    // must never do silently (spec §3.4) and Full may only do behind the
+    // policy boundary (spec §4.2).
+    noExtensions: true,
     noContextFiles: resourceDiscovery !== "dev-debug",
     // Pure replaces Pi's prompt with the Alt assembly; Full preserves Pi's
     // default prompt (base) and appends the semantic Alt sections (spec §3.3).
     systemPromptOverride: (base) =>
       modeState.mode === "pure" ? altTheorySystemPrompt : base,
-    skillsOverride:
-      resourceDiscovery === "clean"
-        ? () => ({ skills: [], diagnostics: [] })
-        : resourceDiscovery === "internal"
-          ? () => altTheorySkills
-          : (current) => mergeSkills(current, altTheorySkills),
+    // The enabled set — Alt bundled plus the current mode's user-enabled
+    // external skills — is the source of truth. Pi's own discovery feeds the
+    // settings page listing, not the session (one-way discovery, spec §6.1);
+    // only dev-debug merges the ambient Pi-discovered set for debugging.
+    skillsOverride: (current) => {
+      if (resourceDiscovery === "clean") {
+        return { skills: [], diagnostics: [] };
+      }
+      const selected = mergeSkills(
+        altTheorySkills,
+        externalSkillsByMode[modeState.mode]
+      );
+      return resourceDiscovery === "internal"
+        ? selected
+        : mergeSkills(current, selected);
+    },
     appendSystemPromptOverride: (base: string[]) =>
       modeState.mode === "pure" ? [] : [...base, ...semanticSections],
   });
@@ -436,6 +478,9 @@ async function createAltTheorySessionWithManager(
     });
   }
 
+  const externalPaths = new Set(
+    externalSkillsByMode[modeState.mode].skills.map((s) => resolve(s.filePath))
+  );
   const manifest: AssemblyManifest = {
     sessionId: config.sessionId,
     createdAt,
@@ -459,17 +504,24 @@ async function createAltTheorySessionWithManager(
     },
     skills: loader
       .getSkills()
-      .skills.filter((skill) =>
-        resolvedSkillsDir
-          ? isPathInside(resolvedSkillsDir, skill.filePath)
-          : false
-      )
-      .map((skill) => ({
-        name: skill.name,
-        path: resolve(skill.filePath),
-        sha256: fileRef(skill.filePath).sha256,
-        source: "alt-theory" as const,
-      })),
+      .skills.flatMap((skill) => {
+        const path = resolve(skill.filePath);
+        const source =
+          resolvedSkillsDir && isPathInside(resolvedSkillsDir, path)
+            ? ("alt-theory" as const)
+            : externalPaths.has(path)
+              ? ("external" as const)
+              : null;
+        if (!source) return [];
+        return [
+          {
+            name: skill.name,
+            path,
+            sha256: fileRef(skill.filePath).sha256,
+            source,
+          },
+        ];
+      }),
     piAdapter: {
       promptTemplatesDir: resolvedPiPromptTemplatesDir,
       promptTemplatesExist: resolvedPiPromptTemplatesDir

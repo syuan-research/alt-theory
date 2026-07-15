@@ -101,6 +101,12 @@ export interface SessionServiceConfig {
   runLabel: string | null;
   testBatch: string | null;
   resolveRuntimeModelConfig?: () => RuntimeModelConfig;
+  /**
+   * Per-mode user-enabled external skill paths (spec §6.1). Read at every
+   * session open so settings changes apply on reload without touching
+   * running sessions.
+   */
+  resolveExternalSkillPaths?: () => { pure: string[]; full: string[] };
   modelFallbackConfigPath?: string | null;
 }
 
@@ -962,6 +968,7 @@ export class SessionService {
       runLabel: this.config.runLabel,
       testBatch: this.config.testBatch,
       readOnly: this.config.readOnly,
+      externalSkillPaths: this.config.resolveExternalSkillPaths?.(),
     });
     const visibility = metadata.visibility ?? "research";
     const consentSnapshot =
@@ -1091,6 +1098,7 @@ export class SessionService {
       runLabel: this.config.runLabel,
       testBatch: this.config.testBatch,
       readOnly: this.config.readOnly,
+      externalSkillPaths: this.config.resolveExternalSkillPaths?.(),
     });
     alignSessionManagerLeaf(
       result.session.sessionManager,
@@ -1224,6 +1232,7 @@ export class SessionService {
       runLabel: this.config.runLabel,
       testBatch: this.config.testBatch,
       readOnly: this.config.readOnly,
+      externalSkillPaths: this.config.resolveExternalSkillPaths?.(),
       overrideSessionCwd: true,
     });
     alignSessionManagerLeaf(
@@ -1293,6 +1302,7 @@ export class SessionService {
       runLabel: this.config.runLabel,
       testBatch: this.config.testBatch,
       readOnly: this.config.readOnly,
+      externalSkillPaths: this.config.resolveExternalSkillPaths?.(),
     });
     if ("activeLeafEntryId" in args) {
       alignSessionManagerLeaf(
