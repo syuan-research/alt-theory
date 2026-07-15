@@ -4,7 +4,7 @@ slug: core-session-engine
 scope: Alt Theory core session engine and Pi Coding Agent integration
 summary: Creates persistent, asset-configured Pi sessions through an application-owned service used by WebSocket adapters
 status: current
-last_reviewed: 2026-06-22
+last_reviewed: 2026-07-15
 tags: [core, backend, pi-agent, session]
 depends_on: []
 implements:
@@ -236,7 +236,8 @@ active tool set; Pi applies both from the next turn. Mode persists in
 The assembly manifest records the selected paths, existence flags, and SHA-256
 hashes for app context, soul, role preset, and custom instruction when present.
 It also records the loaded skills with their source: `alt-theory` (bundled
-skill directory) or `external` (user-enabled via app settings, spec §6.1).
+skill directory), `external` (user-enabled via app settings, spec §6.1), or
+`workspace` (project skills from a Full-mode working directory, spec §5.1).
 Per-mode external skill enablement lives in `{dataDir}/app-settings.json`
 (null = default policy: Pure none, Full all discovered), is snapshot at
 session open, and is served/edited through `GET /api/resources` +
@@ -244,11 +245,47 @@ session open, and is served/edited through `GET /api/resources` +
 the `resourceDiscovery` knob: `clean` loads no skills, `internal` (the
 default) loads Alt bundled + user-enabled externals, and `dev-debug`
 additionally merges Pi's ambient global/project discovery for debugging
-(ambient skills are not recorded in the manifest). Pi extensions stay off in
-every mode (`noExtensions`) until the M3/M4 approval bridge and policy layer.
+(ambient skills are not recorded in the manifest).
+
+Pi extension posture since M3/M4 (2026-07-15): ambient extension discovery
+stays off in every mode (`noExtensions`); only explicit factories load through
+the core `extensionFactories` config. The core always registers the Alt Theory
+security extension (`core/security-extension.ts`, §4) last, so it evaluates
+tool input as finally mutated by any earlier handlers. Extension
+`confirm`/`select`/`input` dialogs reach the web UI through the approval
+bridge (`web-server/approval-bridge.ts`): `SessionService` binds an
+`ExtensionUIContext` implementation via `session.bindExtensions({ uiContext,
+mode: "rpc" })` before any prompt can run, dialog requests become
+`approval_requested` session events, and the user's `respond_approval` reply
+resolves the pending promise. The bridge fails closed — dispose, abort,
+timeout, or no reply reads as rejection (spec §5.2/§5.3).
+
 The manifest also records selected soul/role slugs, including `null` for
-`None`, plus KB root/domain, Pi prompt-template directory, provider/model,
-session directories, and Pi JSONL path. Full content snapshots are deferred.
+`None`, plus KB root/domain, the workspace (§3.1), Pi prompt-template
+directory, provider/model, session directories, and Pi JSONL path. Full
+content snapshots are deferred.
+
+### 3.1 Workspace Model (spec §5.1)
+
+A Full-capable session has a workspace: the primary working directory (the
+session cwd; defaults to the data-dir `workspace/`, or a user-chosen directory
+passed at creation) plus zero or more additional directories added
+intentionally mid-session. In Full mode only:
+
+- the primary directory receives Pi's own project-context discovery (global
+  agent-dir context plus the ancestor AGENTS.md/CLAUDE.md chain via
+  `loadProjectContextFiles`); each added directory contributes its own context
+  file without climbing its ancestors;
+- project skills load from `[primary, ...added] × {.pi/skills,
+  .agents/skills}` with manifest source `workspace`;
+- the guarded-write roots grow to the primary and added directories.
+
+Pure receives none of this. `addWorkspaceDir` mutates closure state and calls
+`session.reload()` (a bare `loader.reload()` would not rebuild the system
+prompt). The workspace persists in the `V4SessionHeader` and manifest; reopen
+restores the primary as the session cwd, and a fork whose primary lies outside
+the data dir does not copy the user's project into the data dir. The
+`add_workspace_dir` WebSocket message is local-form only.
 
 Code anchors:
 
@@ -305,12 +342,32 @@ filter and block in-session mode switches):
 
 - Pure read-only: `read`, `ls`, `grep`, `find`.
 - Pure write-enabled: the same tools plus `write`.
-- Full: Pi's default active set (`read`, `bash`, `edit`, `write`); exposure is
-  gated until the M3/M4 policy boundary.
+- Full: Pi's default active set (`read`, `bash`, `edit`, `write`). Since M4
+  Full is exposed at the policy boundary; the `ALT_THEORY_ENABLE_FULL` gate is
+  removed.
 - The write tool is the Alt Theory guarded implementation in every mode: it
-  shadows Pi's builtin write and hard-enforces the writable roots, including
-  symlink dereference (`createGuardedWriteOperations`). This is a policy
-  check in trusted code, not an OS sandbox (spec §5.3).
+  shadows Pi's builtin write and hard-enforces the mode's writable roots
+  (Pure: Alt writable roots; Full: plus workspace primary and added
+  directories), including symlink dereference
+  (`createGuardedWriteOperations`).
+- The security extension (`core/security-extension.ts`, a vendored light fork
+  per `project/compound/2026-07-15-decision-v1-alpha-security-extension.md`)
+  mediates every tool call through Pi's native `tool_call` → `{ block }`
+  interception: bash commands are scanned per chain segment and substitution
+  body on the NFKC-normalized, de-obfuscated form — a hard blocklist (fs
+  destruction, privilege escalation, user management) blocks outright, a
+  risky list (`rm`, `curl`, `ssh`, `chmod`, …) and credential-path references
+  escalate to the §5.2 approval path (deny / allow once / allow for this
+  session with a 30-minute TTL; fail closed without a UI); `edit`/`write`
+  paths are bounded to the same writable roots via the shared
+  realpath+`path.relative` containment (which lives in this file); credential
+  stores (`~/.ssh`, `~/.aws`, `~/.pi/agent/auth.json`, …) are blocked for
+  read and write in every mode; URL-shaped custom-tool inputs are checked
+  against cloud-metadata/internal-host patterns. Blocked and approved calls
+  append to `records/security-audit.jsonl`.
+- All of the above is a policy check in trusted code, not an OS sandbox. The
+  UI must describe it as policy checks and approvals — guard rails, never a
+  sandbox (spec §5.3); OS-level enforcement is out of v1.0-alpha scope.
 
 ## 5. Application-Owned Session Service
 
@@ -356,6 +413,7 @@ New service-created sessions also write minimal v0.4 foundation records:
 records/session.json        # schemaVersion: 1, recordType: session
 records/runs.jsonl          # append-only accepted/deleted/superseded run records
 records/ui-alias.json       # optional UI display name, written by frontend
+records/security-audit.jsonl # append-only security extension block/approval log
 ```
 
 The required records are thin indexes around Pi JSONL. They do not duplicate
@@ -515,8 +573,10 @@ WebSocket:
 
 - server: `session_draft`
 - server: `session_metadata`, `session_metrics`
+- server: `approval_requested`, `approval_resolved`, `extension_notice`
 - client: `get_session_metadata`, `get_session_metrics`, `open_session`
-- client: `switch_visibility`
+- client: `switch_visibility`, `switch_mode`
+- client: `add_workspace_dir` (local form only), `respond_approval`
 - client: `revise_latest`, `delete_latest`, `fork_session`
 
 `revise_latest` starts a model run and completes with the normal run lifecycle
@@ -659,8 +719,9 @@ Limits (current):
   `thinking_delta` is not streamed. Transcript load preserves thinking text for
   Developer view after the turn. Run-phase labels (connecting vs thinking) are
   not exposed (v0.6 §7).
-- Hard write-path enforcement, compaction/retry events, and provider/auth UI
-  are deferred.
+- Compaction/retry events and provider/auth UI are deferred. Write-path
+  enforcement is hard (guarded write + security extension), but it remains
+  policy in trusted code; OS-level enforcement is out of scope.
 - App-level auth is file-backed and process-local in v0.5.0: account records
   persist in the data directory, but browser auth tokens are in memory and
   require re-login after server restart. There is no self-registration or
@@ -689,6 +750,13 @@ Limits (current):
 
 ## Change Log
 
+- 2026-07-15: v1-alpha M1–M4 refresh. Per-session capability mode (§3/§4),
+  workspace model with primary + added directories (§3.1), approval bridge
+  binding extension dialogs to the web UI, always-on vendored security
+  extension with session-records audit (§4), workspace skill source in the
+  manifest, new WebSocket messages (`switch_mode`, `add_workspace_dir`,
+  `respond_approval`, approval/extension server events), and removal of the
+  `ALT_THEORY_ENABLE_FULL` gate.
 - 2026-06-23: Documented interim same-provider model fallback (§7), resume
   model drift, core-soul unused state, and live thinking/run-phase limits (§8).
 - 2026-06-23: Re-enabled Branch creation through `fork_session` for
