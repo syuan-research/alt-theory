@@ -26,6 +26,8 @@ export interface V4SessionHeader extends RecordEnvelope {
   };
   lastActivityAt?: string;
   retentionDueAt?: string | null;
+  /** Capability mode (spec §4); absent = pure (all pre-v1-alpha sessions). */
+  mode?: "pure" | "full";
 }
 
 export function writeFoundationRecords(args: {
@@ -43,6 +45,7 @@ export function writeFoundationRecords(args: {
   } | null;
   lastActivityAt?: string;
   retentionDueAt?: string | null;
+  mode?: "pure" | "full";
 }): { session: V4SessionHeader } {
   const createdAt = args.manifest.createdAt ?? new Date().toISOString();
   const session: V4SessionHeader = {
@@ -60,6 +63,7 @@ export function writeFoundationRecords(args: {
       : {}),
     lastActivityAt: args.lastActivityAt ?? createdAt,
     retentionDueAt: args.retentionDueAt ?? null,
+    ...(args.mode ? { mode: args.mode } : {}),
   };
 
   writeJsonAtomic(join(args.recordsDir, "session.json"), session);

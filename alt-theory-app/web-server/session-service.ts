@@ -5,10 +5,13 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import {
+  capabilityModeFromPromptMode,
   createAltTheorySession,
   KB_DISABLED_DOMAIN,
   openAltTheorySession,
+  promptModeFromCapabilityMode,
   type AssemblyManifest,
+  type CapabilityMode,
   type PromptMode,
   type ResourceDiscoveryMode,
 } from "../core/alt-theory-core.js";
@@ -161,6 +164,8 @@ export type SessionServiceEvent =
 interface ManagedSession {
   session: AgentSession;
   manifest: AssemblyManifest;
+  getMode: () => CapabilityMode;
+  setMode: (mode: CapabilityMode) => Promise<void>;
   selectors: SessionSelectors;
   openedFrom: "new" | "existing";
   resumeWarnings: string[];
@@ -353,6 +358,47 @@ export class SessionService {
     return this.snapshot(replacement);
   }
 
+  /**
+   * Switch capability mode on the live session (spec §3.2). Applies from the
+   * next turn via Pi's own loader reload + active-tool swap; the session, its
+   * conversation, and its Pi JSONL are untouched.
+   */
+  async switchMode(
+    sessionId: string,
+    mode: CapabilityMode
+  ): Promise<SessionSnapshot> {
+    const managed = this.requireSession(sessionId);
+    if (managed.busy || managed.session.isStreaming) {
+      throw new SessionBusyError(sessionId);
+    }
+    if (managed.getMode() === mode) {
+      return this.snapshot(managed);
+    }
+    await managed.setMode(mode);
+    managed.manifest.promptMode = promptModeFromCapabilityMode(mode);
+    const header = readV4SessionHeader(managed.manifest.recordsDir);
+    if (header) {
+      writeSessionHeader(managed.manifest.recordsDir, { ...header, mode });
+    }
+    appendSessionEvent(managed.manifest.recordsDir, {
+      sessionId,
+      type: "mode_selected",
+      details: { mode },
+    });
+    appendConfigEvent(managed.manifest.recordsDir, {
+      sessionId,
+      branchId: managed.branchId,
+      reason: "user_change",
+      effective: buildEffectiveConfig(
+        managed.manifest,
+        managed.selectors.projectId
+      ),
+      changedFields: ["promptMode"],
+      warnings: [],
+    });
+    return this.snapshot(managed);
+  }
+
   invokeSkill(
     sessionId: string,
     skillName: string,
@@ -541,6 +587,7 @@ export class SessionService {
         transcript: previous.transcript,
         overrideSessionCwd: true,
         activeLeafEntryId: leafId,
+        mode: previous.getMode(),
       });
       writeJsonAtomic(
         join(result.manifest.recordsDir, "assembly-manifest.json"),
@@ -558,6 +605,7 @@ export class SessionService {
         consentSnapshot: sourceHeader?.consentSnapshot ?? null,
         lastActivityAt: result.manifest.createdAt,
         retentionDueAt: sourceHeader?.retentionDueAt ?? null,
+        mode: previous.getMode(),
       });
       appendConfigEvent(result.manifest.recordsDir, {
         sessionId: result.manifest.sessionId,
@@ -939,6 +987,7 @@ export class SessionService {
         visibility === "private"
           ? calculateRetentionDueAt(result.manifest.createdAt)
           : null,
+      mode: result.getMode(),
     });
 
     const managed = this.createManaged({
@@ -1016,6 +1065,9 @@ export class SessionService {
       fallbackSelectors.customInstructionRef
     );
     const instruction = this.resolveOptionalInstruction(activeInstructionRef);
+    const persistedMode =
+      readV4SessionHeader(sessionDirs.recordsDir)?.mode ??
+      capabilityModeFromPromptMode(this.config.promptMode);
 
     const result = await openAltTheorySession({
       ...sessionDirs,
@@ -1033,7 +1085,7 @@ export class SessionService {
       piPromptTemplatesDir: this.config.assetPaths.piPromptTemplatesDir,
       ...this.resolveEffectiveRuntimeModelConfig(),
       thinkingLevel: this.config.thinkingLevel,
-      promptMode: this.config.promptMode,
+      promptMode: promptModeFromCapabilityMode(persistedMode),
       resourceDiscovery: this.config.resourceDiscovery,
       skillsDir: this.config.skillsDir,
       runLabel: this.config.runLabel,
@@ -1147,6 +1199,7 @@ export class SessionService {
       ...sessionDirs,
       sessionCwd: previous.manifest.sessionCwd ?? sessionDirs.sessionCwd,
     };
+    const persistedMode = previous.getMode();
     const result = await openAltTheorySession({
       ...activeSessionDirs,
       sessionFile,
@@ -1165,7 +1218,7 @@ export class SessionService {
       piPromptTemplatesDir: this.config.assetPaths.piPromptTemplatesDir,
       ...this.resolveEffectiveRuntimeModelConfig(),
       thinkingLevel: this.config.thinkingLevel,
-      promptMode: this.config.promptMode,
+      promptMode: promptModeFromCapabilityMode(persistedMode),
       resourceDiscovery: this.config.resourceDiscovery,
       skillsDir: this.config.skillsDir,
       runLabel: this.config.runLabel,
@@ -1205,10 +1258,15 @@ export class SessionService {
     transcript: TranscriptMessage[];
     overrideSessionCwd: boolean;
     activeLeafEntryId?: string | null;
+    mode?: CapabilityMode;
   }): Promise<ManagedSession> {
     const instruction = this.resolveOptionalInstruction(
       args.selectors.customInstructionRef
     );
+    const persistedMode =
+      args.mode ??
+      readV4SessionHeader(args.sessionDirs.recordsDir)?.mode ??
+      capabilityModeFromPromptMode(this.config.promptMode);
     const result = await openAltTheorySession({
       ...args.sessionDirs,
       sessionId: args.sessionId,
@@ -1229,7 +1287,7 @@ export class SessionService {
       piPromptTemplatesDir: this.config.assetPaths.piPromptTemplatesDir,
       ...this.resolveEffectiveRuntimeModelConfig(),
       thinkingLevel: this.config.thinkingLevel,
-      promptMode: this.config.promptMode,
+      promptMode: promptModeFromCapabilityMode(persistedMode),
       resourceDiscovery: this.config.resourceDiscovery,
       skillsDir: this.config.skillsDir,
       runLabel: this.config.runLabel,
@@ -1257,6 +1315,8 @@ export class SessionService {
   private createManaged(args: {
     session: AgentSession;
     manifest: AssemblyManifest;
+    getMode: () => CapabilityMode;
+    setMode: (mode: CapabilityMode) => Promise<void>;
     selectors: SessionSelectors;
     openedFrom: "new" | "existing";
     resumeWarnings: string[];
@@ -1327,7 +1387,6 @@ export class SessionService {
   }
 
   private async finalizeRunFailure(managed: ManagedSession): Promise<void> {
-    await managed.session.waitForRetry();
     let error = managed.session.state.errorMessage;
     if (!error) {
       return;
@@ -1479,6 +1538,11 @@ export class SessionService {
         }
         break;
       case "agent_end": {
+        if (event.willRetry) {
+          // Pi auto-retries this error and emits another agent_end afterwards;
+          // finalizing now would double-handle the failure.
+          break;
+        }
         const error = managed.session.state.errorMessage;
         if (error) {
           const pending = this.finalizeRunFailure(managed);
@@ -1538,6 +1602,7 @@ export class SessionService {
       rolePresetSlug: managed.selectors.rolePresetSlug,
       soulSlug: managed.selectors.soulSlug,
       customInstructionRef: managed.selectors.customInstructionRef ?? null,
+      mode: managed.getMode(),
       openedFrom: managed.openedFrom,
       resumeWarnings: managed.resumeWarnings,
       messageCount: managed.counters.messageCount,

@@ -1423,6 +1423,38 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           }
           break;
         }
+        case "switch_mode": {
+          if (!attachedSessionId) {
+            sendError(send, new Error("A materialized session is required"));
+            break;
+          }
+          if (msg.payload.mode !== "pure" && msg.payload.mode !== "full") {
+            sendError(send, new Error("Unknown mode"));
+            break;
+          }
+          // Full stays gated until the M3/M4 policy boundary (security layer +
+          // approval bridge) is active. Dev override for testing only.
+          if (
+            msg.payload.mode === "full" &&
+            process.env.ALT_THEORY_ENABLE_FULL !== "1"
+          ) {
+            sendError(
+              send,
+              new Error("Full mode is not enabled on this server yet")
+            );
+            break;
+          }
+          try {
+            const snapshot = await sessionService.switchMode(
+              attachedSessionId,
+              msg.payload.mode
+            );
+            send({ type: "session_updated", payload: snapshot });
+          } catch (error) {
+            sendServiceError(send, error);
+          }
+          break;
+        }
         case "fork_session": {
           if (!attachedSessionId) {
             sendError(send, new Error("A materialized session is required"));

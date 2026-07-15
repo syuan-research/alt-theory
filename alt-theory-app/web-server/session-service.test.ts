@@ -1551,3 +1551,70 @@ test("session store marks sessions without v0.4 records as legacy projection", a
   assert.equal(detail?.session.recordModel, "legacy-v0.3");
   assert.equal(detail?.session.hasSessionFile, true);
 });
+
+test("SessionService switches capability mode in-session and restores it on reopen", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const created = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+
+  const managed = (
+    service as unknown as {
+      sessions: Map<string, {
+        session: {
+          prompt(text: string): Promise<void>;
+          sessionManager: { appendMessage(message: unknown): string };
+        };
+      }>;
+    }
+  ).sessions.get(created.sessionId)!;
+  managed.session.prompt = async (text: string) => {
+    managed.session.sessionManager.appendMessage({
+      role: "user",
+      content: [{ type: "text", text }],
+      timestamp: Date.now(),
+    });
+    managed.session.sessionManager.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: `answer:${text}` }],
+      timestamp: Date.now(),
+    });
+  };
+
+  try {
+    assert.equal(created.mode, "pure");
+    const run = service.runPrompt(created.sessionId, "hello");
+    await run.completion;
+
+    const switched = await service.switchMode(created.sessionId, "full");
+    assert.equal(switched.mode, "full");
+    assert.equal(switched.sessionId, created.sessionId);
+
+    const manifest = service.getManifest(created.sessionId);
+    const header = JSON.parse(
+      readFileSync(join(manifest.recordsDir, "session.json"), "utf-8")
+    );
+    assert.equal(header.mode, "full");
+    const configReasons = readConfigEvents(manifest.recordsDir);
+    assert.equal(configReasons.at(-1)?.reason, "user_change");
+    assert.deepEqual(configReasons.at(-1)?.changedFields, ["promptMode"]);
+    assert.equal(configReasons.at(-1)?.effective.promptMode, "pi-default");
+  } finally {
+    await service.disposeAll();
+  }
+
+  const reopenedService = createTestService(fixture);
+  try {
+    const reopened = await reopenedService.openSession(created.sessionId, {
+      rolePresetSlug: "role-conceptual-theory-companion",
+      kbDomain: "ep-core",
+      soulSlug: "soul-latest",
+    });
+    assert.equal(reopened.mode, "full");
+  } finally {
+    await reopenedService.disposeAll();
+  }
+});

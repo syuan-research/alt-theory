@@ -298,7 +298,7 @@ export function listProviders(agentDir: string): ProviderView[] {
 }
 
 function isBuiltInProvider(name: string): boolean {
-  return getBuiltinProviders().includes(name);
+  return (getBuiltinProviders() as string[]).includes(name);
 }
 
 function customProviderNeedsApiKey(
@@ -471,9 +471,11 @@ async function fetchModelsFromEndpoint(
   }
 
   const storage = readAuthStorage(agentDir);
-  storage.setFallbackResolver((name) =>
-    name === input.provider ? input.apiKey : undefined
-  );
+  // Pi 0.80 removed setFallbackResolver; a runtime override (never persisted)
+  // is the supported way to prefer the key typed into the refresh form.
+  if (input.apiKey) {
+    storage.setRuntimeApiKey(input.provider, input.apiKey);
+  }
   const apiKey = await storage.getApiKey(input.provider);
   const headers: Record<string, string> = {
     Accept: "application/json",

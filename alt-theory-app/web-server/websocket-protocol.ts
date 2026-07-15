@@ -20,6 +20,7 @@ export interface SessionSnapshot {
   rolePresetSlug: string | null;
   soulSlug: string | null;
   customInstructionRef?: string | null;
+  mode?: "pure" | "full";
   openedFrom?: "new" | "existing";
   resumeWarnings?: string[];
   messageCount: number;
@@ -92,6 +93,7 @@ export type ClientMessage =
     }
   | { type: "revise_latest"; payload: { text: string } }
   | { type: "delete_latest" }
+  | { type: "switch_mode"; payload: { mode: "pure" | "full" } }
   | {
       type: "fork_session";
       payload: {

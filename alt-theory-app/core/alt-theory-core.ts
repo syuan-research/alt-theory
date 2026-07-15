@@ -104,7 +104,20 @@ export interface AssemblyManifest {
 
 export type ResourceDiscoveryMode = "clean" | "internal" | "dev-debug";
 export type PromptMode = "pi-default" | "alt-only";
+/**
+ * Session capability mode (spec §4). Persisted via the existing manifest
+ * `promptMode` field: pure ⟺ alt-only, full ⟺ pi-default.
+ */
+export type CapabilityMode = "pure" | "full";
 export const KB_DISABLED_DOMAIN = "none";
+
+export function capabilityModeFromPromptMode(promptMode: PromptMode): CapabilityMode {
+  return promptMode === "alt-only" ? "pure" : "full";
+}
+
+export function promptModeFromCapabilityMode(mode: CapabilityMode): PromptMode {
+  return mode === "pure" ? "alt-only" : "pi-default";
+}
 
 export interface AltTheoryConfig extends SessionDirectories {
   /** Application/session context loaded into the system prompt */
@@ -158,6 +171,13 @@ export interface AltTheoryOpenExistingConfig extends AltTheoryConfig {
 const READONLY_TOOLS = ["read", "ls", "grep", "find"];
 /** Conference-stage note mode: read/search plus write, without edit or bash. */
 const WRITE_ENABLED_TOOLS = [...READONLY_TOOLS, "write"];
+/** Pi's own default active toolset — Full mode preserves Pi behavior. */
+const PI_DEFAULT_TOOLS = ["read", "bash", "edit", "write"];
+
+function activeToolsForMode(mode: CapabilityMode, readOnly: boolean): string[] {
+  if (mode === "full") return PI_DEFAULT_TOOLS;
+  return readOnly ? READONLY_TOOLS : WRITE_ENABLED_TOOLS;
+}
 
 // ---------------------------------------------------------------------------
 // Implementation
@@ -253,18 +273,21 @@ async function createAltTheorySessionWithManager(
     ? readRequiredTextAsset(resolvedCustomInstructionPath, "custom instruction")
     : null;
 
-  // --- 2. Assemble appendSystemPromptOverride ---
-  //    Order: app context -> optional soul -> optional role -> optional instruction -> KB path declaration
-  const appendContent: string[] = [];
-  appendContent.push(`## Alt Theory Application Context\n${appContextContent}`);
+  // --- 2. Assemble the Alt Theory prompt layers ---
+  //    Semantic sections (both modes): app context -> optional soul -> optional
+  //    role -> optional instruction -> KB path declaration.
+  //    Pure-only sections: tool harness + write policy (in Full, Pi's own
+  //    default prompt documents the tool environment).
+  const semanticSections: string[] = [];
+  semanticSections.push(`## Alt Theory Application Context\n${appContextContent}`);
   if (soulContent) {
-    appendContent.push(`## Soul\n${soulContent}`);
+    semanticSections.push(`## Soul\n${soulContent}`);
   }
   if (rolePresetContent) {
-    appendContent.push(`## Role\n${rolePresetContent}`);
+    semanticSections.push(`## Role\n${rolePresetContent}`);
   }
   if (customInstructionContent) {
-    appendContent.push(`## Custom Instruction\n${customInstructionContent}`);
+    semanticSections.push(`## Custom Instruction\n${customInstructionContent}`);
   }
   const kbDomain = config.kbDomain ?? "all";
   const kbEnabled = kbDomain !== KB_DISABLED_DOMAIN;
@@ -274,18 +297,19 @@ async function createAltTheorySessionWithManager(
       : null;
   const kbMetadataPrompt = formatKbMetadataPrompt(kbMetadata);
   if (kbEnabled) {
-    appendContent.push(
+    semanticSections.push(
       `## Knowledge Base\nYour knowledge base is at: ${resolvedKbDir}`
     );
     if (kbMetadataPrompt) {
-      appendContent.push(`## Knowledge Base Metadata\n${kbMetadataPrompt}`);
+      semanticSections.push(`## Knowledge Base Metadata\n${kbMetadataPrompt}`);
     }
   } else {
-    appendContent.push(
+    semanticSections.push(
       "## Knowledge Base\nKnowledge-base folder retrieval is disabled for this session. You may still read user workspace files when requested."
     );
   }
-  appendContent.push(
+  const pureOnlySections: string[] = [];
+  pureOnlySections.push(
     [
       "## Alt Theory Tool Harness",
       "You are operating inside the Pi harness as the tool runtime for Alt Theory.",
@@ -304,7 +328,7 @@ async function createAltTheorySessionWithManager(
   );
   if (!readOnly) {
     const writableRoots = [resolvedWriteDir, resolvedWritableAssetDir];
-    appendContent.push(
+    pureOnlySections.push(
       [
         "## Write Policy",
         "The write tool is hard-limited to these writable roots:",
@@ -313,7 +337,14 @@ async function createAltTheorySessionWithManager(
       ].join("\n")
     );
   }
-  const altTheorySystemPrompt = appendContent.join("\n\n");
+  const altTheorySystemPrompt = [...semanticSections, ...pureOnlySections].join(
+    "\n\n"
+  );
+
+  // Mutable capability-mode state, read by the loader overrides at each
+  // reload. Switching mode = update state + loader.reload() +
+  // setActiveToolsByName(); Pi applies both from the next turn (spec §3.2).
+  const modeState = { mode: capabilityModeFromPromptMode(promptMode) };
   const altTheorySkills =
     resourceDiscovery !== "clean" && resolvedSkillsDir
       ? loadSkillsFromDir({
@@ -329,18 +360,18 @@ async function createAltTheorySessionWithManager(
       ? [resolvedPiPromptTemplatesDir]
       : [],
     noContextFiles: resourceDiscovery !== "dev-debug",
-    systemPromptOverride:
-      promptMode === "alt-only" ? () => altTheorySystemPrompt : undefined,
+    // Pure replaces Pi's prompt with the Alt assembly; Full preserves Pi's
+    // default prompt (base) and appends the semantic Alt sections (spec §3.3).
+    systemPromptOverride: (base) =>
+      modeState.mode === "pure" ? altTheorySystemPrompt : base,
     skillsOverride:
       resourceDiscovery === "clean"
         ? () => ({ skills: [], diagnostics: [] })
         : resourceDiscovery === "internal"
           ? () => altTheorySkills
           : (current) => mergeSkills(current, altTheorySkills),
-    appendSystemPromptOverride:
-      promptMode === "alt-only"
-        ? () => []
-        : (base: string[]) => [...base, ...appendContent],
+    appendSystemPromptOverride: (base: string[]) =>
+      modeState.mode === "pure" ? [] : [...base, ...semanticSections],
   });
   await loader.reload();
 
@@ -381,19 +412,23 @@ async function createAltTheorySessionWithManager(
     sessionOpts.thinkingLevel = config.thinkingLevel;
   }
 
-  sessionOpts.noTools = "all";
-  sessionOpts.tools = readOnly ? READONLY_TOOLS : WRITE_ENABLED_TOOLS;
+  // Keep the full Pi tool registry (no allowlist — an allowlist is a hard
+  // registry filter for the session's lifetime, which would block a later
+  // in-session mode switch). The per-mode restriction is the ACTIVE tool set,
+  // applied below via setActiveToolsByName. The guarded write tool is always
+  // registered so it shadows Pi's builtin write in every mode.
+  const writableRoots = [resolvedWriteDir, resolvedWritableAssetDir];
   if (!readOnly) {
-    const writableRoots = [resolvedWriteDir, resolvedWritableAssetDir];
     await Promise.all(writableRoots.map((root) => mkdir(root, { recursive: true })));
-    sessionOpts.customTools = [
-      createWriteToolDefinition(cwd, {
-        operations: createGuardedWriteOperations(writableRoots),
-      }),
-    ];
   }
+  sessionOpts.customTools = [
+    createWriteToolDefinition(cwd, {
+      operations: createGuardedWriteOperations(writableRoots),
+    }),
+  ];
 
   const { session } = await createAgentSession(sessionOpts);
+  session.setActiveToolsByName(activeToolsForMode(modeState.mode, readOnly));
   const createdAt = new Date().toISOString();
   if (openMode.openedFrom === "new") {
     session.sessionManager.appendCustomEntry("alt-theory-session-created", {
@@ -455,6 +490,7 @@ async function createAltTheorySessionWithManager(
           : kbDomain === KB_DISABLED_DOMAIN
             ? false
             : existsSync(resolve(resolvedKbDir, kbDomain)),
+      metadata: kbMetadata,
     },
     sessionCwd: cwd,
     piSessionDir: resolvedPiSessionDir,
@@ -492,7 +528,23 @@ async function createAltTheorySessionWithManager(
 
   writeJsonAtomic(join(resolvedRecordsDir, openMode.manifestFileName), manifest);
 
-  return { session, manifest, resumeWarnings };
+  return {
+    session,
+    manifest,
+    resumeWarnings,
+    getMode: () => modeState.mode,
+    /**
+     * Switch capability mode on the live session (spec §3.2). Re-evaluates the
+     * prompt layers and swaps the active tool set; Pi applies both from the
+     * next turn. No session rebuild, no new session row.
+     */
+    setMode: async (next: CapabilityMode): Promise<void> => {
+      if (next === modeState.mode) return;
+      modeState.mode = next;
+      await loader.reload();
+      session.setActiveToolsByName(activeToolsForMode(next, readOnly));
+    },
+  };
 }
 
 function summarizeOriginalManifest(
