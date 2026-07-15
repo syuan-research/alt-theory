@@ -1,4 +1,4 @@
-import { cpSync, existsSync, rmSync, writeFileSync } from "fs";
+import { cpSync, existsSync, rmSync, statSync, writeFileSync } from "fs";
 import type {
   AgentSession,
   AgentSessionEvent,
@@ -22,7 +22,7 @@ import {
   writeJsonAtomic,
   type SessionDirectories,
 } from "../core/data-dir.js";
-import { basename, join } from "path";
+import { basename, isAbsolute, join, relative, resolve } from "path";
 import type { AgentAssetPaths } from "../core/agent-assets.js";
 import {
   isKnownKbDomain,
@@ -134,6 +134,15 @@ export interface SessionCreationMetadata {
     quoteAfterAnonymization: boolean;
     privateOverride: boolean;
   } | null;
+  /**
+   * Full workspace (spec §5.1). primaryDir replaces the default session
+   * workspace as Pi's cwd; additionalDirs are intentional user additions.
+   * Local app form only — the server layer gates this.
+   */
+  workspace?: {
+    primaryDir?: string;
+    additionalDirs?: string[];
+  } | null;
 }
 
 export type ForkPurpose = "collaboration" | "comparison";
@@ -172,6 +181,8 @@ interface ManagedSession {
   manifest: AssemblyManifest;
   getMode: () => CapabilityMode;
   setMode: (mode: CapabilityMode) => Promise<void>;
+  getWorkspace: () => { primaryDir: string; additionalDirs: string[] };
+  addWorkspaceDir: (dir: string) => Promise<string[]>;
   selectors: SessionSelectors;
   openedFrom: "new" | "existing";
   resumeWarnings: string[];
@@ -405,6 +416,38 @@ export class SessionService {
     return this.snapshot(managed);
   }
 
+  /**
+   * Add a workspace directory to a live session (spec §5.1) — an intentional
+   * user act. Applies from the next turn via loader reload; persisted in the
+   * session header so reopen restores it.
+   */
+  async addWorkspaceDir(
+    sessionId: string,
+    dir: string
+  ): Promise<SessionSnapshot> {
+    const managed = this.requireSession(sessionId);
+    if (managed.busy || managed.session.isStreaming) {
+      throw new SessionBusyError(sessionId);
+    }
+    await managed.addWorkspaceDir(dir);
+    const workspace = managed.getWorkspace();
+    managed.manifest.workspace = workspace;
+    this.persistManifestModel(managed);
+    const header = readV4SessionHeader(managed.manifest.recordsDir);
+    if (header) {
+      writeSessionHeader(managed.manifest.recordsDir, { ...header, workspace });
+    }
+    appendSessionEvent(managed.manifest.recordsDir, {
+      sessionId,
+      type: "workspace_dir_added",
+      details: {
+        dir: resolve(dir),
+        additionalDirCount: workspace.additionalDirs.length,
+      },
+    });
+    return this.snapshot(managed);
+  }
+
   invokeSkill(
     sessionId: string,
     skillName: string,
@@ -566,11 +609,18 @@ export class SessionService {
     const forkDirs = createSessionDirs(this.config.dataDir, forkSessionId);
     const copiedForkFile = join(forkDirs.piSessionDir, basename(forkFile));
     let activated = false;
+    // A workspace session's primary is the user's own project directory
+    // (spec §5.1): the fork keeps pointing at it instead of copying it into
+    // the data dir. Default sessions copy their session workspace as before.
+    const sourceCwd = resolve(previous.session.sessionManager.getCwd());
+    const externalPrimary = !isInsideDataDir(this.config.dataDir, sourceCwd);
     try {
-      rmSync(forkDirs.sessionCwd, { recursive: true, force: true });
-      cpSync(previous.session.sessionManager.getCwd(), forkDirs.sessionCwd, {
-        recursive: true,
-      });
+      if (!externalPrimary) {
+        rmSync(forkDirs.sessionCwd, { recursive: true, force: true });
+        cpSync(sourceCwd, forkDirs.sessionCwd, {
+          recursive: true,
+        });
+      }
       const forkEntries = [
         previous.session.sessionManager.getHeader(),
         ...previous.session.sessionManager.getEntries(),
@@ -591,9 +641,12 @@ export class SessionService {
         resumeWarnings: previous.resumeWarnings,
         counters: previous.counters,
         transcript: previous.transcript,
-        overrideSessionCwd: true,
+        overrideSessionCwd: !externalPrimary,
         activeLeafEntryId: leafId,
         mode: previous.getMode(),
+        ...(readV4SessionHeader(previous.manifest.recordsDir)?.workspace
+          ? { workspace: previous.getWorkspace() }
+          : {}),
       });
       writeJsonAtomic(
         join(result.manifest.recordsDir, "assembly-manifest.json"),
@@ -612,6 +665,9 @@ export class SessionService {
         lastActivityAt: result.manifest.createdAt,
         retentionDueAt: sourceHeader?.retentionDueAt ?? null,
         mode: previous.getMode(),
+        workspace: sourceHeader?.workspace
+          ? result.manifest.workspace
+          : null,
       });
       appendConfigEvent(result.manifest.recordsDir, {
         sessionId: result.manifest.sessionId,
@@ -948,8 +1004,19 @@ export class SessionService {
     const instruction = this.resolveOptionalInstruction(
       selectors.customInstructionRef
     );
+    // Workspace (spec §5.1): the primary directory replaces the default
+    // session workspace as Pi's cwd. The session's own workspace dir stays
+    // as the Alt writable root (writeDir), untouched.
+    const primaryDir = metadata.workspace?.primaryDir
+      ? resolve(metadata.workspace.primaryDir)
+      : null;
+    if (primaryDir && !statSync(primaryDir, { throwIfNoEntry: false })?.isDirectory()) {
+      throw new Error(`Workspace primary directory does not exist: ${primaryDir}`);
+    }
     const result = await createAltTheorySession({
       ...sessionDirs,
+      ...(primaryDir ? { sessionCwd: primaryDir } : {}),
+      workspaceDirs: metadata.workspace?.additionalDirs,
       appContextPath: this.config.assetPaths.appContextPath,
       soulPath,
       soulSlug: selectors.soulSlug,
@@ -995,6 +1062,7 @@ export class SessionService {
           ? calculateRetentionDueAt(result.manifest.createdAt)
           : null,
       mode: result.getMode(),
+      workspace: metadata.workspace ? result.manifest.workspace : null,
     });
 
     const managed = this.createManaged({
@@ -1072,12 +1140,19 @@ export class SessionService {
       fallbackSelectors.customInstructionRef
     );
     const instruction = this.resolveOptionalInstruction(activeInstructionRef);
+    const persistedHeader = readV4SessionHeader(sessionDirs.recordsDir);
     const persistedMode =
-      readV4SessionHeader(sessionDirs.recordsDir)?.mode ??
+      persistedHeader?.mode ??
       capabilityModeFromPromptMode(this.config.promptMode);
 
     const result = await openAltTheorySession({
       ...sessionDirs,
+      // Workspace sessions keep their user-chosen primary directory as cwd
+      // across reopen (spec §5.1); default sessions keep the data-dir one.
+      ...(persistedHeader?.workspace
+        ? { sessionCwd: persistedHeader.workspace.primaryDir }
+        : {}),
+      workspaceDirs: persistedHeader?.workspace?.additionalDirs,
       sessionFile: detail.pi.sessionFile,
       originalManifest: detail.manifest,
       appContextPath: this.config.assetPaths.appContextPath,
@@ -1210,6 +1285,7 @@ export class SessionService {
     const persistedMode = previous.getMode();
     const result = await openAltTheorySession({
       ...activeSessionDirs,
+      workspaceDirs: previous.getWorkspace().additionalDirs,
       sessionFile,
       originalManifest: detail?.manifest ?? previous.manifest,
       appContextPath: this.config.assetPaths.appContextPath,
@@ -1268,16 +1344,25 @@ export class SessionService {
     overrideSessionCwd: boolean;
     activeLeafEntryId?: string | null;
     mode?: CapabilityMode;
+    workspace?: { primaryDir: string; additionalDirs: string[] };
   }): Promise<ManagedSession> {
     const instruction = this.resolveOptionalInstruction(
       args.selectors.customInstructionRef
     );
+    const persistedHeader = readV4SessionHeader(args.sessionDirs.recordsDir);
     const persistedMode =
       args.mode ??
-      readV4SessionHeader(args.sessionDirs.recordsDir)?.mode ??
+      persistedHeader?.mode ??
       capabilityModeFromPromptMode(this.config.promptMode);
+    const persistedWorkspace = args.workspace ?? persistedHeader?.workspace;
     const result = await openAltTheorySession({
       ...args.sessionDirs,
+      // Workspace sessions keep their primary directory as cwd unless the
+      // caller forces the data-dir workspace (copy-based forks).
+      ...(persistedWorkspace && !args.overrideSessionCwd
+        ? { sessionCwd: persistedWorkspace.primaryDir }
+        : {}),
+      workspaceDirs: persistedWorkspace?.additionalDirs,
       sessionId: args.sessionId,
       sessionFile: args.sessionFile,
       originalManifest: args.originalManifest,
@@ -1327,6 +1412,8 @@ export class SessionService {
     manifest: AssemblyManifest;
     getMode: () => CapabilityMode;
     setMode: (mode: CapabilityMode) => Promise<void>;
+    getWorkspace: () => { primaryDir: string; additionalDirs: string[] };
+    addWorkspaceDir: (dir: string) => Promise<string[]>;
     selectors: SessionSelectors;
     openedFrom: "new" | "existing";
     resumeWarnings: string[];
@@ -1613,6 +1700,7 @@ export class SessionService {
       soulSlug: managed.selectors.soulSlug,
       customInstructionRef: managed.selectors.customInstructionRef ?? null,
       mode: managed.getMode(),
+      workspace: managed.getWorkspace(),
       openedFrom: managed.openedFrom,
       resumeWarnings: managed.resumeWarnings,
       messageCount: managed.counters.messageCount,
@@ -1656,6 +1744,7 @@ export class SessionService {
     }
     return managed;
   }
+
 
   private resolveOptionalRolePresetPath(slug: string | null): string | null {
     if (!slug) return null;
@@ -1813,4 +1902,14 @@ function extractToolPathFromEvent(event: AgentSessionEvent): string | null {
     }
   }
   return null;
+}
+
+/** Whether a session cwd lives inside the app data dir (a managed session
+ * workspace) as opposed to a user project directory (spec §5.1 primary). */
+function isInsideDataDir(dataDir: string, target: string): boolean {
+  const relativePath = relative(resolve(dataDir), resolve(target));
+  return (
+    relativePath === "" ||
+    (!relativePath.startsWith("..") && !isAbsolute(relativePath))
+  );
 }

@@ -1618,3 +1618,100 @@ test("SessionService switches capability mode in-session and restores it on reop
     await reopenedService.disposeAll();
   }
 });
+
+test("SessionService creates workspace sessions and restores workspace on reopen", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const primaryDir = join(fixture.root, "user-project");
+  const extraDir = join(fixture.root, "reference-material");
+  const laterDir = join(fixture.root, "added-later");
+  mkdirSync(primaryDir, { recursive: true });
+  mkdirSync(extraDir, { recursive: true });
+  mkdirSync(laterDir, { recursive: true });
+
+  const created = await service.createSession(
+    {
+      rolePresetSlug: "role-conceptual-theory-companion",
+      kbDomain: "ep-core",
+      soulSlug: "soul-latest",
+    },
+    { workspace: { primaryDir, additionalDirs: [extraDir] } }
+  );
+
+  const managed = (
+    service as unknown as {
+      sessions: Map<string, {
+        session: {
+          prompt(text: string): Promise<void>;
+          sessionManager: { appendMessage(message: unknown): string };
+        };
+      }>;
+    }
+  ).sessions.get(created.sessionId)!;
+  managed.session.prompt = async (text: string) => {
+    managed.session.sessionManager.appendMessage({
+      role: "user",
+      content: [{ type: "text", text }],
+      timestamp: Date.now(),
+    });
+    managed.session.sessionManager.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: `answer:${text}` }],
+      timestamp: Date.now(),
+    });
+  };
+
+  try {
+    assert.deepEqual(created.workspace, {
+      primaryDir: resolve(primaryDir),
+      additionalDirs: [resolve(extraDir)],
+    });
+    const manifest = service.getManifest(created.sessionId);
+    assert.equal(manifest.sessionCwd, resolve(primaryDir));
+    const header = JSON.parse(
+      readFileSync(join(manifest.recordsDir, "session.json"), "utf-8")
+    );
+    assert.deepEqual(header.workspace, {
+      primaryDir: resolve(primaryDir),
+      additionalDirs: [resolve(extraDir)],
+    });
+
+    const run = service.runPrompt(created.sessionId, "hello");
+    await run.completion;
+
+    const updated = await service.addWorkspaceDir(created.sessionId, laterDir);
+    assert.deepEqual(updated.workspace?.additionalDirs, [
+      resolve(extraDir),
+      resolve(laterDir),
+    ]);
+    const updatedHeader = JSON.parse(
+      readFileSync(join(manifest.recordsDir, "session.json"), "utf-8")
+    );
+    assert.deepEqual(updatedHeader.workspace.additionalDirs, [
+      resolve(extraDir),
+      resolve(laterDir),
+    ]);
+
+    await assert.rejects(
+      () => service.addWorkspaceDir(created.sessionId, join(fixture.root, "missing")),
+      /does not exist/
+    );
+  } finally {
+    await service.disposeAll();
+  }
+
+  const reopenedService = createTestService(fixture);
+  try {
+    const reopened = await reopenedService.openSession(created.sessionId, {
+      rolePresetSlug: "role-conceptual-theory-companion",
+      kbDomain: "ep-core",
+      soulSlug: "soul-latest",
+    });
+    assert.deepEqual(reopened.workspace, {
+      primaryDir: resolve(primaryDir),
+      additionalDirs: [resolve(extraDir), resolve(laterDir)],
+    });
+  } finally {
+    await reopenedService.disposeAll();
+  }
+});

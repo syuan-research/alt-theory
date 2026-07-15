@@ -13,6 +13,7 @@ import {
   createWriteToolDefinition,
   DefaultResourceLoader,
   getAgentDir,
+  loadProjectContextFiles,
   loadSkills,
   loadSkillsFromDir,
   ModelRegistry,
@@ -22,7 +23,7 @@ import {
   type WriteOperations,
 } from "@earendil-works/pi-coding-agent";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
-import { existsSync } from "fs";
+import { existsSync, readFileSync, statSync } from "fs";
 import { mkdir, realpath, writeFile } from "fs/promises";
 import { dirname, isAbsolute, join, relative, resolve } from "path";
 import {
@@ -73,11 +74,12 @@ export interface AssemblyManifest {
     path: string;
     sha256: string | null;
     /**
-     * alt-theory = bundled; external = user-enabled via settings. Ambient
+     * alt-theory = bundled; external = user-enabled via settings; workspace =
+     * project skills from a Full-mode working directory (spec §5.1). Ambient
      * dev-debug merges are deliberately not recorded: they are a
      * machine-dependent debug posture, not session provenance.
      */
-    source: "alt-theory" | "external";
+    source: "alt-theory" | "external" | "workspace";
   }>;
   piAdapter: {
     promptTemplatesDir: string | null;
@@ -92,6 +94,15 @@ export interface AssemblyManifest {
     metadata: KbDomainMetadata | null;
   };
   sessionCwd: string;
+  /**
+   * Full-mode workspace (spec §5.1): the primary working directory is the
+   * session cwd; additional directories are intentional user additions whose
+   * context files and project skills join the assembly in Full.
+   */
+  workspace: {
+    primaryDir: string;
+    additionalDirs: string[];
+  };
   piSessionDir: string;
   piSessionFile: string | null;
   recordsDir: string;
@@ -169,6 +180,13 @@ export interface AltTheoryConfig extends SessionDirectories {
    * silently enabled: absent lists mean Alt bundled skills only.
    */
   externalSkillPaths?: { pure?: string[]; full?: string[] };
+  /**
+   * Additional workspace directories (spec §5.1), applied in Full mode only.
+   * The primary working directory is sessionCwd. Each added directory
+   * contributes its AGENTS.md/CLAUDE.md and project skills to the assembly
+   * and joins the guarded-write roots.
+   */
+  workspaceDirs?: string[];
 }
 
 export interface AltTheoryOpenExistingConfig extends AltTheoryConfig {
@@ -358,6 +376,14 @@ async function createAltTheorySessionWithManager(
   // reload. Switching mode = update state + loader.reload() +
   // setActiveToolsByName(); Pi applies both from the next turn (spec §3.2).
   const modeState = { mode: capabilityModeFromPromptMode(promptMode) };
+  // Mutable workspace state (spec §5.1). The primary working directory is the
+  // session cwd; additional directories are intentional user additions.
+  // Adding one mutates this state and reloads the loader — the overrides
+  // below re-read it, so the new directory's context files and project
+  // skills apply from the next turn.
+  const workspaceState = {
+    additionalDirs: (config.workspaceDirs ?? []).map((dir) => resolve(dir)),
+  };
   const altTheorySkills =
     resourceDiscovery !== "clean" && resolvedSkillsDir
       ? loadSkillsFromDir({
@@ -379,6 +405,20 @@ async function createAltTheorySessionWithManager(
     pure: loadExternalSkills(config.externalSkillPaths?.pure),
     full: loadExternalSkills(config.externalSkillPaths?.full),
   };
+  // Project skills from the Full workspace (spec §5.1): the primary and each
+  // added directory contribute their standard project skill locations.
+  // Re-read at every loader reload so directories added mid-session apply.
+  const workspaceSkillRoots = () =>
+    [cwd, ...workspaceState.additionalDirs].flatMap((dir) =>
+      [".pi/skills", ".agents/skills"].map((sub) => join(dir, sub))
+    );
+  const loadWorkspaceSkills = () =>
+    resourceDiscovery !== "clean" && modeState.mode === "full"
+      ? workspaceSkillRoots()
+          .filter((dir) => existsSync(dir))
+          .map((dir) => loadSkillsFromDir({ dir, source: "workspace" }))
+          .reduce(mergeSkills, { skills: [], diagnostics: [] })
+      : { skills: [], diagnostics: [] };
 
   const loader = new DefaultResourceLoader({
     cwd,
@@ -405,12 +445,36 @@ async function createAltTheorySessionWithManager(
         return { skills: [], diagnostics: [] };
       }
       const selected = mergeSkills(
-        altTheorySkills,
-        externalSkillsByMode[modeState.mode]
+        mergeSkills(altTheorySkills, externalSkillsByMode[modeState.mode]),
+        loadWorkspaceSkills()
       );
       return resourceDiscovery === "internal"
         ? selected
         : mergeSkills(current, selected);
+    },
+    // Workspace context (spec §5.1), Full only: the primary directory gets
+    // Pi's own discovery (global + ancestor AGENTS.md/CLAUDE.md chain); each
+    // added directory contributes its own context file. Pure stays bounded
+    // to the session workspace and receives none of this.
+    agentsFilesOverride: (base) => {
+      if (modeState.mode !== "full") {
+        return base;
+      }
+      const files = [...base.agentsFiles];
+      const seen = new Set(files.map((file) => file.path));
+      const add = (file: { path: string; content: string } | undefined) => {
+        if (file && !seen.has(file.path)) {
+          files.push(file);
+          seen.add(file.path);
+        }
+      };
+      for (const file of loadProjectContextFiles({ cwd, agentDir })) {
+        add(file);
+      }
+      for (const dir of workspaceState.additionalDirs) {
+        add(readWorkspaceContextFile(dir));
+      }
+      return { agentsFiles: files };
     },
     appendSystemPromptOverride: (base: string[]) =>
       modeState.mode === "pure" ? [] : [...base, ...semanticSections],
@@ -458,14 +522,20 @@ async function createAltTheorySessionWithManager(
   // registry filter for the session's lifetime, which would block a later
   // in-session mode switch). The per-mode restriction is the ACTIVE tool set,
   // applied below via setActiveToolsByName. The guarded write tool is always
-  // registered so it shadows Pi's builtin write in every mode.
-  const writableRoots = [resolvedWriteDir, resolvedWritableAssetDir];
+  // registered so it shadows Pi's builtin write in every mode. Its roots are
+  // evaluated per call: Pure stays bounded to the Alt writable roots; Full
+  // additionally writes within its workspace (primary + added directories).
+  const altWritableRoots = [resolvedWriteDir, resolvedWritableAssetDir];
+  const writableRootsForMode = () =>
+    modeState.mode === "full"
+      ? [...altWritableRoots, cwd, ...workspaceState.additionalDirs]
+      : altWritableRoots;
   if (!readOnly) {
-    await Promise.all(writableRoots.map((root) => mkdir(root, { recursive: true })));
+    await Promise.all(altWritableRoots.map((root) => mkdir(root, { recursive: true })));
   }
   sessionOpts.customTools = [
     createWriteToolDefinition(cwd, {
-      operations: createGuardedWriteOperations(writableRoots),
+      operations: createGuardedWriteOperations(writableRootsForMode),
     }),
   ];
 
@@ -511,7 +581,9 @@ async function createAltTheorySessionWithManager(
             ? ("alt-theory" as const)
             : externalPaths.has(path)
               ? ("external" as const)
-              : null;
+              : workspaceSkillRoots().some((root) => isPathInside(root, path))
+                ? ("workspace" as const)
+                : null;
         if (!source) return [];
         return [
           {
@@ -545,11 +617,15 @@ async function createAltTheorySessionWithManager(
       metadata: kbMetadata,
     },
     sessionCwd: cwd,
+    workspace: {
+      primaryDir: cwd,
+      additionalDirs: [...workspaceState.additionalDirs],
+    },
     piSessionDir: resolvedPiSessionDir,
     piSessionFile: session.sessionFile ?? null,
     recordsDir: resolvedRecordsDir,
     writeDir: readOnly ? null : resolvedWriteDir,
-    writableRoots: readOnly ? [] : [resolvedWriteDir, resolvedWritableAssetDir],
+    writableRoots: readOnly ? [] : writableRootsForMode(),
     model: session.model?.id ?? null,
     provider: session.model?.provider ?? null,
     promptMode,
@@ -596,7 +672,51 @@ async function createAltTheorySessionWithManager(
       await loader.reload();
       session.setActiveToolsByName(activeToolsForMode(next, readOnly));
     },
+    getWorkspace: () => ({
+      primaryDir: cwd,
+      additionalDirs: [...workspaceState.additionalDirs],
+    }),
+    /**
+     * Add a workspace directory to the live session (spec §5.1). Its context
+     * files and project skills apply from the next turn via loader reload;
+     * it also joins the Full guarded-write roots.
+     */
+    addWorkspaceDir: async (dir: string): Promise<string[]> => {
+      const resolved = resolve(dir);
+      if (!statSync(resolved, { throwIfNoEntry: false })?.isDirectory()) {
+        throw new Error(`Workspace directory does not exist: ${resolved}`);
+      }
+      if (
+        resolved !== cwd &&
+        !workspaceState.additionalDirs.includes(resolved)
+      ) {
+        workspaceState.additionalDirs.push(resolved);
+        manifest.workspace.additionalDirs = [...workspaceState.additionalDirs];
+        // session.reload() (not a bare loader.reload()) so Pi rebuilds the
+        // runtime and system prompt from the reloaded resources.
+        await session.reload();
+      }
+      return [...workspaceState.additionalDirs];
+    },
   };
+}
+
+/**
+ * Read an added workspace directory's own context file (spec §5.1). Matches
+ * Pi's candidate names; unlike the primary directory, added directories do
+ * not climb their ancestor chain — the user added this directory, not its
+ * parents.
+ */
+function readWorkspaceContextFile(
+  dir: string
+): { path: string; content: string } | undefined {
+  for (const name of ["AGENTS.md", "AGENTS.MD", "CLAUDE.md", "CLAUDE.MD"]) {
+    const path = join(dir, name);
+    if (existsSync(path)) {
+      return { path, content: readFileSync(path, "utf-8") };
+    }
+  }
+  return undefined;
 }
 
 function summarizeOriginalManifest(
@@ -622,15 +742,17 @@ function summarizeOriginalManifest(
   };
 }
 
-function createGuardedWriteOperations(writableRoots: string[]): WriteOperations {
-  const roots = writableRoots.map((root) => resolve(root));
+function createGuardedWriteOperations(
+  getWritableRoots: () => string[]
+): WriteOperations {
+  const roots = () => getWritableRoots().map((root) => resolve(root));
   return {
     async mkdir(dir: string): Promise<void> {
-      await assertWritablePath(dir, roots);
+      await assertWritablePath(dir, roots());
       await mkdir(dir, { recursive: true });
     },
     async writeFile(path: string, content: string): Promise<void> {
-      await assertWritablePath(path, roots);
+      await assertWritablePath(path, roots());
       await writeFile(path, content, "utf-8");
     },
   };

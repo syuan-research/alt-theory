@@ -1531,6 +1531,39 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           }
           break;
         }
+        case "add_workspace_dir": {
+          if (!attachedSessionId) {
+            sendError(send, new Error("A materialized session is required"));
+            break;
+          }
+          // Workspace directories are a Full/local-app concept (spec §5.1):
+          // machine-local paths only make sense in the local form, and Full
+          // stays gated until M4.
+          if (!localMode || process.env.ALT_THEORY_ENABLE_FULL !== "1") {
+            sendError(
+              send,
+              new Error("Workspace directories are not enabled on this server")
+            );
+            break;
+          }
+          if (
+            typeof msg.payload?.dir !== "string" ||
+            !msg.payload.dir.trim()
+          ) {
+            sendError(send, new Error("A workspace directory is required"));
+            break;
+          }
+          try {
+            const snapshot = await sessionService.addWorkspaceDir(
+              attachedSessionId,
+              msg.payload.dir
+            );
+            send({ type: "session_updated", payload: snapshot });
+          } catch (error) {
+            sendServiceError(send, error);
+          }
+          break;
+        }
         case "fork_session": {
           if (!attachedSessionId) {
             sendError(send, new Error("A materialized session is required"));

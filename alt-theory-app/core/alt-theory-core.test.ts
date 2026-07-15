@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdtempSync, mkdirSync, writeFileSync } from "fs";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { createSessionDirs } from "./data-dir.js";
@@ -107,6 +107,85 @@ test("external skills are enabled per mode and re-apply on mode switch", async (
 
   await result.setMode("pure");
   assert.doesNotMatch(session.systemPrompt, /full-only-helper/);
+
+  await session.dispose();
+});
+
+test("workspace directories apply in full mode only and extend guarded write", async () => {
+  const root = mkdtempSync(join(tmpdir(), "alt-theory-core-workspace-"));
+  const appContextPath = join(root, "ALTTHEORY.md");
+  const kbDir = join(root, "kb");
+  const dirA = join(root, "project-a");
+  const dirB = join(root, "project-b");
+  mkdirSync(kbDir, { recursive: true });
+  mkdirSync(join(dirA, ".agents", "skills"), { recursive: true });
+  mkdirSync(dirB, { recursive: true });
+  writeFileSync(appContextPath, "Workspace app context", "utf-8");
+  writeFileSync(join(dirA, "AGENTS.md"), "WORKSPACE-DIR-CONTEXT-A", "utf-8");
+  writeFileSync(
+    join(dirA, ".agents", "skills", "helper.md"),
+    "---\nname: ws-helper\ndescription: Workspace project skill\n---\nHelp.",
+    "utf-8"
+  );
+  writeFileSync(join(dirB, "CLAUDE.md"), "WORKSPACE-DIR-CONTEXT-B", "utf-8");
+
+  const result = await createAltTheorySession({
+    ...createSessionDirs(join(root, "data"), "workspace-test"),
+    appContextPath,
+    kbDir,
+    kbDomain: "none",
+    readOnly: false,
+    promptMode: "alt-only",
+    resourceDiscovery: "internal",
+    workspaceDirs: [dirA],
+  });
+  const { session } = result;
+
+  // Pure stays bounded to the session workspace: no workspace context,
+  // no workspace skills, no workspace write access.
+  assert.doesNotMatch(session.systemPrompt, /WORKSPACE-DIR-CONTEXT-A/);
+  assert.doesNotMatch(session.systemPrompt, /ws-helper/);
+  const writeTool = session.agent.state.tools.find(
+    (tool) => tool.name === "write"
+  );
+  assert.ok(writeTool);
+  await assert.rejects(
+    () =>
+      writeTool.execute("ws-pure", {
+        path: join(dirA, "pure.md"),
+        content: "blocked",
+      }),
+    /outside Alt Theory writable roots/
+  );
+
+  // Full receives the added directory's context file and project skills,
+  // and the guarded write roots grow to the workspace.
+  await result.setMode("full");
+  assert.match(session.systemPrompt, /WORKSPACE-DIR-CONTEXT-A/);
+  assert.match(session.systemPrompt, /ws-helper/);
+  await writeTool.execute("ws-full", {
+    path: join(dirA, "full.md"),
+    content: "allowed",
+  });
+  assert.equal(readFileSync(join(dirA, "full.md"), "utf-8"), "allowed");
+
+  // Adding a directory is a live action: context applies after reload.
+  await result.addWorkspaceDir(dirB);
+  assert.match(session.systemPrompt, /WORKSPACE-DIR-CONTEXT-B/);
+  assert.deepEqual(result.getWorkspace().additionalDirs, [dirA, dirB]);
+  assert.deepEqual(result.manifest.workspace.additionalDirs, [dirA, dirB]);
+
+  // Switching back to pure withdraws workspace access again.
+  await result.setMode("pure");
+  assert.doesNotMatch(session.systemPrompt, /WORKSPACE-DIR-CONTEXT-A/);
+  await assert.rejects(
+    () =>
+      writeTool.execute("ws-pure-again", {
+        path: join(dirA, "pure-again.md"),
+        content: "blocked",
+      }),
+    /outside Alt Theory writable roots/
+  );
 
   await session.dispose();
 });

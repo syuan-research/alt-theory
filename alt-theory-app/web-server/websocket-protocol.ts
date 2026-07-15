@@ -21,6 +21,7 @@ export interface SessionSnapshot {
   soulSlug: string | null;
   customInstructionRef?: string | null;
   mode?: "pure" | "full";
+  workspace?: { primaryDir: string; additionalDirs: string[] };
   openedFrom?: "new" | "existing";
   resumeWarnings?: string[];
   messageCount: number;
@@ -94,6 +95,7 @@ export type ClientMessage =
   | { type: "revise_latest"; payload: { text: string } }
   | { type: "delete_latest" }
   | { type: "switch_mode"; payload: { mode: "pure" | "full" } }
+  | { type: "add_workspace_dir"; payload: { dir: string } }
   | {
       type: "fork_session";
       payload: {

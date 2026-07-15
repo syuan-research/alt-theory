@@ -13,6 +13,7 @@ export type SessionEventType =
   | "profile_selected_next_session"
   | "soul_selected"
   | "mode_selected"
+  | "workspace_dir_added"
   | "skill_invoked"
   | "session_forked"
   | "session_forked_from"
