@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "fs";
-import { tmpdir } from "os";
+import { homedir, tmpdir } from "os";
 import { join } from "path";
 import { createSessionDirs } from "./data-dir.js";
 import { createAltTheorySession } from "./alt-theory-core.js";
@@ -186,6 +186,79 @@ test("workspace directories apply in full mode only and extend guarded write", a
       }),
     /outside Alt Theory writable roots/
   );
+
+  await session.dispose();
+});
+
+test("security extension mediates tool calls at the policy boundary", async () => {
+  const root = mkdtempSync(join(tmpdir(), "alt-theory-core-security-"));
+  const appContextPath = join(root, "ALTTHEORY.md");
+  const kbDir = join(root, "kb");
+  mkdirSync(kbDir, { recursive: true });
+  writeFileSync(appContextPath, "Security app context", "utf-8");
+  writeFileSync(join(kbDir, "note.md"), "kb note", "utf-8");
+
+  const dirs = createSessionDirs(join(root, "data"), "security-test");
+  const result = await createAltTheorySession({
+    ...dirs,
+    appContextPath,
+    kbDir,
+    kbDomain: "none",
+    readOnly: false,
+    promptMode: "pi-default",
+    resourceDiscovery: "clean",
+  });
+  const { session } = result;
+  const agent = session.agent as unknown as {
+    beforeToolCall: (input: {
+      toolCall: { id: string; name: string; arguments: unknown };
+      args: Record<string, unknown>;
+    }) => Promise<{ block?: boolean; reason?: string } | undefined>;
+  };
+  const call = (name: string, args: Record<string, unknown>) =>
+    agent.beforeToolCall({
+      toolCall: { id: `sec-${name}`, name, arguments: {} },
+      args,
+    });
+
+  // Hard block, including via chain, wrapper, and zero-width obfuscation.
+  assert.match((await call("bash", { command: "sudo rm -rf /" }))?.reason ?? "", /command_blocklist/);
+  assert.match((await call("bash", { command: "echo hi && nohup dd if=/dev/zero" }))?.reason ?? "", /command_blocklist/);
+  assert.match((await call("bash", { command: "su\u200bdo whoami" }))?.reason ?? "", /command_blocklist/);
+
+  // Risky commands escalate; with no approval UI attached they fail closed.
+  assert.match((await call("bash", { command: "rm -rf build" }))?.reason ?? "", /requires user approval/);
+  assert.match((await call("bash", { command: "cat ~/.ssh/id_rsa" }))?.reason ?? "", /requires user approval/);
+
+  // Ordinary commands pass without mediation.
+  assert.equal(await call("bash", { command: "echo hello" }), undefined);
+  assert.equal(await call("bash", { command: "git status" }), undefined);
+
+  // Credential paths are blocked for reads in every mode; KB reads pass.
+  assert.match(
+    (await call("read", { path: join(homedir(), ".ssh", "id_rsa") }))?.reason ?? "",
+    /credential path/
+  );
+  assert.equal(await call("read", { path: join(kbDir, "note.md") }), undefined);
+
+  // Edit is bounded to the mode's writable roots (Full includes the cwd).
+  assert.match(
+    (await call("edit", { path: join(root, "outside.txt") }))?.reason ?? "",
+    /outside Alt Theory writable roots/
+  );
+  assert.equal(await call("edit", { path: join(dirs.writeDir, "ok.md") }), undefined);
+
+  // Blocked and escalated calls land in the session's audit record.
+  const auditLines = readFileSync(
+    join(dirs.recordsDir, "security-audit.jsonl"),
+    "utf-8"
+  )
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line) as { action: string; rule: string });
+  assert.ok(auditLines.some((entry) => entry.rule === "command_blocklist"));
+  assert.ok(auditLines.some((entry) => entry.rule === "sensitive_path"));
+  assert.ok(auditLines.every((entry) => entry.action === "blocked"));
 
   await session.dispose();
 });

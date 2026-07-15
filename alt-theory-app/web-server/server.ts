@@ -1517,18 +1517,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             sendError(send, new Error("Unknown mode"));
             break;
           }
-          // Full stays gated until the M3/M4 policy boundary (security layer +
-          // approval bridge) is active. Dev override for testing only.
-          if (
-            msg.payload.mode === "full" &&
-            process.env.ALT_THEORY_ENABLE_FULL !== "1"
-          ) {
-            sendError(
-              send,
-              new Error("Full mode is not enabled on this server yet")
-            );
-            break;
-          }
           try {
             const snapshot = await sessionService.switchMode(
               attachedSessionId,
@@ -1546,9 +1534,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             break;
           }
           // Workspace directories are a Full/local-app concept (spec §5.1):
-          // machine-local paths only make sense in the local form, and Full
-          // stays gated until M4.
-          if (!localMode || process.env.ALT_THEORY_ENABLE_FULL !== "1") {
+          // machine-local paths only make sense in the local form.
+          if (!localMode) {
             sendError(
               send,
               new Error("Workspace directories are not enabled on this server")

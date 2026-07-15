@@ -14,6 +14,10 @@ import test from "node:test";
 import { createAltTheorySession } from "../core/alt-theory-core.js";
 import { createSessionDirs } from "../core/data-dir.js";
 import {
+  APPROVAL_ALLOW_SESSION,
+  APPROVAL_DENY,
+} from "../core/security-extension.js";
+import {
   SessionBusyError,
   SessionService,
   type SessionServiceEvent,
@@ -1842,6 +1846,90 @@ test("approval bridge routes extension confirm dialogs through the service", asy
       }),
       false
     );
+  } finally {
+    detachListener();
+    await service.disposeAll();
+  }
+});
+
+test("security extension escalates risky commands through the approval bridge", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const created = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+
+  const events: SessionServiceEvent[] = [];
+  const detachListener = service.attach(created.sessionId, (event) =>
+    events.push(event)
+  );
+  const managed = (
+    service as unknown as {
+      sessions: Map<
+        string,
+        {
+          session: {
+            agent: {
+              beforeToolCall?: (input: {
+                toolCall: { id: string; name: string; arguments: unknown };
+                args: Record<string, unknown>;
+              }) => Promise<{ block?: boolean; reason?: string } | undefined>;
+            };
+          };
+        }
+      >;
+    }
+  ).sessions.get(created.sessionId)!;
+  const requested = () =>
+    events.filter((event) => event.type === "approval_requested");
+
+  try {
+    // Escalated command: the user grants a session allowance.
+    const first = managed.session.agent.beforeToolCall!({
+      toolCall: { id: "sec-1", name: "bash", arguments: {} },
+      args: { command: "rm -rf scratch" },
+    });
+    for (let i = 0; i < 50 && requested().length === 0; i++) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    const request = requested().at(-1)!;
+    assert.ok(request.type === "approval_requested");
+    assert.equal(request.payload.kind, "select");
+    assert.match(request.payload.title, /rm -rf scratch/);
+    assert.ok(request.payload.options?.includes(APPROVAL_ALLOW_SESSION));
+    service.respondApproval(created.sessionId, request.payload.approvalId, {
+      choice: APPROVAL_ALLOW_SESSION,
+    });
+    assert.equal(await first, undefined);
+
+    // The allowance covers the repeat without a new dialog.
+    assert.equal(
+      await managed.session.agent.beforeToolCall!({
+        toolCall: { id: "sec-2", name: "bash", arguments: {} },
+        args: { command: "rm -rf scratch" },
+      }),
+      undefined
+    );
+    assert.equal(requested().length, 1);
+
+    // Denying a different escalation blocks the tool.
+    const denied = managed.session.agent.beforeToolCall!({
+      toolCall: { id: "sec-3", name: "bash", arguments: {} },
+      args: { command: "curl http://example.com" },
+    });
+    for (let i = 0; i < 50 && requested().length < 2; i++) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    const second = requested().at(-1)!;
+    assert.ok(second.type === "approval_requested");
+    service.respondApproval(created.sessionId, second.payload.approvalId, {
+      choice: APPROVAL_DENY,
+    });
+    const blocked = await denied;
+    assert.equal(blocked?.block, true);
+    assert.match(blocked?.reason ?? "", /not approved/);
   } finally {
     detachListener();
     await service.disposeAll();

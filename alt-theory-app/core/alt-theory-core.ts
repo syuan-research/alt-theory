@@ -24,9 +24,14 @@ import {
   type WriteOperations,
 } from "@earendil-works/pi-coding-agent";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
-import { existsSync, readFileSync, statSync } from "fs";
-import { mkdir, realpath, writeFile } from "fs/promises";
-import { dirname, isAbsolute, join, relative, resolve } from "path";
+import { appendFileSync, existsSync, readFileSync, statSync } from "fs";
+import { mkdir, writeFile } from "fs/promises";
+import { join, resolve } from "path";
+import {
+  assertWritablePath,
+  createSecurityExtension,
+  isPathInside,
+} from "./security-extension.js";
 import {
   writeJsonAtomic,
   type SessionDirectories,
@@ -391,6 +396,15 @@ async function createAltTheorySessionWithManager(
   const workspaceState = {
     additionalDirs: (config.workspaceDirs ?? []).map((dir) => resolve(dir)),
   };
+  // Writable roots per mode, evaluated per call (spec §5.1): Pure stays
+  // bounded to the Alt writable roots; Full additionally writes within its
+  // workspace (primary + added directories). Shared by the guarded write
+  // tool and the security extension.
+  const altWritableRoots = [resolvedWriteDir, resolvedWritableAssetDir];
+  const writableRootsForMode = () =>
+    modeState.mode === "full"
+      ? [...altWritableRoots, cwd, ...workspaceState.additionalDirs]
+      : altWritableRoots;
   const altTheorySkills =
     resourceDiscovery !== "clean" && resolvedSkillsDir
       ? loadSkillsFromDir({
@@ -433,12 +447,25 @@ async function createAltTheorySessionWithManager(
     additionalPromptTemplatePaths: resolvedPiPromptTemplatesDir
       ? [resolvedPiPromptTemplatesDir]
       : [],
-    // Extensions stay off in every mode until the M3/M4 approval bridge and
-    // policy layer exist: loading an extension executes its code, which Pure
-    // must never do silently (spec §3.4) and Full may only do behind the
-    // policy boundary (spec §4.2).
+    // Ambient extension discovery stays off in every mode: loading an
+    // extension executes its code, which Pure must never do silently (spec
+    // §3.4) and Full may only do behind the policy boundary (spec §4.2).
+    // Only explicit factories load. The security extension registers last so
+    // it evaluates tool input as finally mutated by earlier handlers — a
+    // block from any handler short-circuits execution regardless of order.
     noExtensions: true,
-    extensionFactories: config.extensionFactories ?? [],
+    extensionFactories: [
+      ...(config.extensionFactories ?? []),
+      createSecurityExtension({
+        sessionCwd: cwd,
+        getWritableRoots: writableRootsForMode,
+        recordAudit: (entry) =>
+          appendFileSync(
+            join(resolvedRecordsDir, "security-audit.jsonl"),
+            `${JSON.stringify(entry)}\n`
+          ),
+      }),
+    ],
     noContextFiles: resourceDiscovery !== "dev-debug",
     // Pure replaces Pi's prompt with the Alt assembly; Full preserves Pi's
     // default prompt (base) and appends the semantic Alt sections (spec §3.3).
@@ -530,14 +557,7 @@ async function createAltTheorySessionWithManager(
   // registry filter for the session's lifetime, which would block a later
   // in-session mode switch). The per-mode restriction is the ACTIVE tool set,
   // applied below via setActiveToolsByName. The guarded write tool is always
-  // registered so it shadows Pi's builtin write in every mode. Its roots are
-  // evaluated per call: Pure stays bounded to the Alt writable roots; Full
-  // additionally writes within its workspace (primary + added directories).
-  const altWritableRoots = [resolvedWriteDir, resolvedWritableAssetDir];
-  const writableRootsForMode = () =>
-    modeState.mode === "full"
-      ? [...altWritableRoots, cwd, ...workspaceState.additionalDirs]
-      : altWritableRoots;
+  // registered so it shadows Pi's builtin write in every mode.
   if (!readOnly) {
     await Promise.all(altWritableRoots.map((root) => mkdir(root, { recursive: true })));
   }
@@ -764,58 +784,6 @@ function createGuardedWriteOperations(
       await writeFile(path, content, "utf-8");
     },
   };
-}
-
-async function assertWritablePath(path: string, writableRoots: string[]): Promise<void> {
-  const resolvedPath = resolve(path);
-  const lexicalRoot = writableRoots.find((root) => isPathInside(root, resolvedPath));
-  if (!lexicalRoot) {
-    throw new Error(
-      `Write blocked: ${resolvedPath} is outside Alt Theory writable roots.`
-    );
-  }
-
-  const realRoots = await Promise.all(writableRoots.map((root) => realpath(root)));
-  const realRoot = realRoots.find((root) => isPathInside(root, resolvedPath));
-  if (!realRoot) {
-    const lexicalIndex = writableRoots.indexOf(lexicalRoot);
-    const fallbackRoot = realRoots[lexicalIndex];
-    if (!fallbackRoot) {
-      throw new Error(`Write blocked: writable root is unavailable: ${lexicalRoot}`);
-    }
-  }
-
-  const existingPath = await nearestExistingPath(resolvedPath);
-  const realExistingPath = await realpath(existingPath);
-  if (!realRoots.some((root) => isPathInside(root, realExistingPath))) {
-    throw new Error(
-      `Write blocked: ${resolvedPath} resolves outside Alt Theory writable roots.`
-    );
-  }
-}
-
-async function nearestExistingPath(path: string): Promise<string> {
-  let current = resolve(path);
-  while (!existsSync(current)) {
-    const parent = dirname(current);
-    if (parent === current) return current;
-    current = parent;
-  }
-  return current;
-}
-
-function isPathInside(root: string, target: string): boolean {
-  const resolvedRoot = normalizePath(resolve(root));
-  const resolvedTarget = normalizePath(resolve(target));
-  const relativePath = relative(resolvedRoot, resolvedTarget);
-  return (
-    relativePath === "" ||
-    (!relativePath.startsWith("..") && !isAbsolute(relativePath))
-  );
-}
-
-function normalizePath(path: string): string {
-  return process.platform === "win32" ? path.toLowerCase() : path;
 }
 
 function mergeSkills(
