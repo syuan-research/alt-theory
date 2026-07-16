@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Variant B - Alt Theory M7 IA</title>
+<script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
+<style>
+  :root {
+    --ink:#1f1e1a; --ink-soft:#2a2823; --text-2:#595752; --text-3:#8e8b83;
+    --canvas:#f8f8f9; --panel:#ebebec; --surface:#ffffff; --card:#f4f4f5;
+    --hairline:#e7e7e9; --hover:#eeedef; --selected:#e8e7e8;
+    --accent:#3f7d52; --accent-soft:#e9f1ec; --warning:#b8862a; --danger:#b0463e;
+    --r-sm:6px; --r-md:8px; --r-lg:12px;
+    --ui:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    --brand:"Iowan Old Style","Source Serif Pro",Georgia,serif;
+    --mono:SFMono-Regular,Consolas,Menlo,monospace;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:var(--ui); font-size:.9375rem; line-height:1.48; color:var(--ink); background:var(--canvas); height:100vh; display:flex; flex-direction:column; overflow:hidden; }
+  i.ph { font-size:1.05em; vertical-align:-0.12em; }
+
+  .proto-bar { background:var(--ink); color:#f0efec; padding:8px 16px; display:flex; align-items:center; gap:12px; font-size:.8125rem; flex-shrink:0; }
+  .proto-bar b { font-weight:600; }
+  .proto-tabs { display:flex; gap:4px; margin-left:8px; }
+  .proto-tabs button { background:transparent; border:1px solid #4a4841; color:#d8d6d0; border-radius:999px; padding:3px 14px; font-size:.8125rem; cursor:pointer; }
+  .proto-tabs button.on { background:#f0efec; color:var(--ink); border-color:#f0efec; }
+  .proto-bar a { color:#b8b5ad; margin-left:auto; text-decoration:none; font-size:.8125rem; }
+
+  .app { flex:1; display:flex; flex-direction:column; min-height:0; }
+  header.top { height:52px; flex-shrink:0; display:flex; align-items:center; gap:14px; padding:0 16px; background:var(--surface); border-bottom:1px solid var(--hairline); position:relative; }
+  .wordmark { font-family:var(--brand); font-weight:600; font-size:1.05rem; }
+  .conv-title { font-weight:500; color:var(--ink-soft); }
+  .mode-chip { display:inline-flex; align-items:center; gap:6px; background:var(--accent-soft); color:var(--accent); border-radius:999px; padding:3px 12px; font-size:.8125rem; font-weight:500; cursor:pointer; }
+  .posture-pop { display:none; position:absolute; top:46px; left:300px; z-index:30; background:var(--surface); border:1px solid var(--hairline); border-radius:var(--r-md); box-shadow:0 4px 16px rgba(31,30,26,.1); padding:12px 16px; max-width:340px; font-size:.8125rem; color:var(--text-2); }
+  .posture-pop.on { display:block; }
+  .posture-pop b { color:var(--ink); }
+  .study-chip { margin-left:auto; display:none; font-size:.78rem; color:var(--text-2); background:var(--card); border-radius:999px; padding:4px 12px; }
+  body.researcher .study-chip { display:inline-flex; }
+
+  .cols { flex:1; display:flex; min-height:0; }
+
+  /* left */
+  .left { width:264px; flex-shrink:0; background:var(--panel); border-right:1px solid var(--hairline); display:flex; flex-direction:column; position:relative; }
+  .left .pad { padding:12px; }
+  .btn-new { width:100%; display:flex; align-items:center; justify-content:center; gap:8px; background:var(--accent); color:#fff; border:none; border-radius:var(--r-md); padding:9px 0; font-size:.9rem; font-weight:500; cursor:pointer; }
+  .search { margin-top:10px; display:flex; align-items:center; gap:8px; background:var(--surface); border:1px solid var(--hairline); border-radius:var(--r-md); padding:7px 10px; color:var(--text-3); font-size:.85rem; }
+  .sessions { flex:1; overflow-y:auto; padding:4px 8px; }
+  .group-label { font-size:.72rem; text-transform:uppercase; letter-spacing:.04em; color:var(--text-3); padding:10px 8px 4px; }
+  .sess { display:flex; align-items:center; gap:8px; padding:7px 10px; border-radius:var(--r-sm); cursor:pointer; color:var(--ink-soft); font-size:.875rem; }
+  .sess:hover { background:var(--hover); }
+  .sess.active { background:var(--selected); font-weight:500; }
+  .sess.child { margin-left:22px; color:var(--text-2); }
+  .sess .badge-run { margin-left:auto; font-size:.7rem; background:var(--accent-soft); color:var(--accent); border-radius:999px; padding:1px 8px; }
+  .left-foot { border-top:1px solid var(--hairline); padding:10px 12px; display:flex; align-items:center; gap:10px; }
+  .left-foot .gear { display:flex; align-items:center; gap:8px; color:var(--ink-soft); cursor:pointer; padding:6px 10px; border-radius:var(--r-sm); font-size:.875rem; }
+  .left-foot .gear:hover { background:var(--hover); }
+  .avatar { width:26px; height:26px; border-radius:50%; background:var(--card); border:1px solid var(--hairline); display:flex; align-items:center; justify-content:center; font-size:.75rem; font-weight:600; color:var(--text-2); margin-left:auto; }
+
+  /* new-conversation popover */
+  .new-pop { display:none; position:absolute; top:56px; left:12px; right:12px; z-index:40; background:var(--surface); border:1px solid var(--hairline); border-radius:var(--r-lg); box-shadow:0 8px 28px rgba(31,30,26,.14); padding:16px; }
+  .new-pop.on { display:block; }
+  .new-pop h4 { margin:0 0 12px; font-size:.9rem; }
+  .np-row { display:flex; align-items:center; justify-content:space-between; padding:7px 0; font-size:.85rem; }
+  .np-row .k { color:var(--text-2); display:flex; align-items:center; gap:8px; }
+  .np-row .k i { color:var(--accent); }
+  .np-row select { border:1px solid var(--hairline); border-radius:var(--r-sm); padding:5px 8px; font:inherit; font-size:.85rem; background:var(--surface); }
+  .np-start { width:100%; margin-top:12px; background:var(--accent); color:#fff; border:none; border-radius:var(--r-md); padding:9px 0; font-size:.9rem; font-weight:500; cursor:pointer; }
+  .np-fine { font-size:.72rem; color:var(--text-3); margin-top:8px; text-align:center; }
+
+  /* researcher workbench */
+  .workbench { display:none; flex-direction:column; }
+  body.researcher .left .user-nav { display:none; }
+  body.researcher .workbench { display:flex; flex:1; min-height:0; }
+  .wb-card { background:var(--surface); border:1px solid var(--hairline); border-radius:var(--r-md); margin:12px 12px 0; padding:12px; }
+  .wb-card h4 { margin:0 0 8px; font-size:.8rem; text-transform:uppercase; letter-spacing:.04em; color:var(--text-3); font-weight:600; }
+  .wb-row { display:flex; justify-content:space-between; font-size:.85rem; padding:3px 0; }
+  .wb-row .k { color:var(--text-2); }
+  .wb-row .v { font-weight:500; }
+  .wb-note { font-size:.75rem; color:var(--text-3); margin-top:8px; }
+  .wb-actions { display:flex; flex-direction:column; gap:8px; margin:12px 12px 0; }
+  .wb-actions button { display:flex; align-items:center; gap:8px; border:1px solid var(--hairline); background:var(--surface); border-radius:var(--r-md); padding:8px 12px; font-size:.8125rem; cursor:pointer; color:var(--ink-soft); }
+  .wb-actions button:hover { background:var(--hover); }
+  .wb-sessions { flex:1; overflow-y:auto; margin-top:8px; padding:0 8px; }
+  .wb-sess { display:flex; align-items:center; gap:8px; padding:5px 10px; border-radius:var(--r-sm); font-size:.8125rem; color:var(--ink-soft); cursor:pointer; white-space:nowrap; overflow:hidden; }
+  .wb-sess:hover { background:var(--hover); }
+  .wb-sess .tag { margin-left:auto; font-size:.68rem; color:var(--text-3); font-family:var(--mono); }
+
+  /* center: splittable */
+  .center { flex:1; display:flex; min-width:0; background:var(--canvas); }
+  .conv { flex:1; display:flex; flex-direction:column; min-width:0; }
+  .msgs { flex:1; overflow-y:auto; padding:28px 0; }
+  .msg { max-width:640px; margin:0 auto 22px; padding:0 24px; }
+  .msg .who { font-size:.75rem; color:var(--text-3); margin-bottom:4px; }
+  .msg.user .bubble { background:var(--surface); border:1px solid var(--hairline); border-radius:var(--r-lg); padding:12px 16px; }
+  .msg.assistant .bubble { padding:0 2px; color:var(--ink-soft); }
+
+  .approval { max-width:640px; margin:0 auto 22px; padding:0 24px; }
+  .approval .card { background:var(--surface); border:1px solid var(--hairline); border-left:3px solid var(--warning); border-radius:var(--r-md); padding:14px 16px; }
+  .approval .cat { font-size:.75rem; font-weight:600; color:var(--warning); text-transform:uppercase; letter-spacing:.03em; margin-bottom:6px; display:flex; gap:6px; align-items:center; }
+  .approval .cmd { font-family:var(--mono); font-size:.8rem; background:var(--card); border-radius:var(--r-sm); padding:8px 10px; margin:8px 0; color:var(--ink-soft); overflow-x:auto; }
+  .approval .scope { font-size:.8125rem; color:var(--text-2); margin-bottom:10px; }
+  .approval .acts { display:flex; gap:8px; }
+  .approval .acts button { border-radius:var(--r-sm); padding:6px 14px; font-size:.8125rem; cursor:pointer; border:1px solid var(--hairline); background:var(--surface); }
+  .approval .acts .primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .approval .acts .deny { color:var(--danger); }
+
+  .composer-wrap { padding:0 24px 20px; }
+  .composer { max-width:640px; margin:0 auto; background:var(--surface); border:1px solid var(--hairline); border-radius:var(--r-lg); padding:10px 12px 8px; box-shadow:0 1px 3px rgba(31,30,26,.04); }
+  .composer textarea { width:100%; border:none; resize:none; outline:none; font:inherit; color:var(--ink); background:transparent; min-height:44px; }
+  .composer .row { display:flex; align-items:center; gap:8px; margin-top:4px; }
+  .chip { display:inline-flex; align-items:center; gap:6px; border:1px solid var(--hairline); background:var(--card); border-radius:999px; padding:4px 12px; font-size:.8rem; color:var(--ink-soft); cursor:pointer; }
+  .chip:hover { background:var(--hover); }
+  .chip i { color:var(--accent); }
+  .send { margin-left:auto; width:32px; height:32px; border-radius:50%; border:none; background:var(--accent); color:#fff; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+
+  /* thread pane (side-by-side) */
+  .thread { width:0; overflow:hidden; border-left:1px solid var(--hairline); background:var(--surface); display:flex; flex-direction:column; transition:width .18s ease; }
+  .center.split .thread { width:42%; min-width:340px; }
+  .thread .head { display:flex; align-items:center; gap:8px; padding:12px 16px; border-bottom:1px solid var(--hairline); font-weight:500; font-size:.9rem; white-space:nowrap; }
+  .thread .head .badge-run { font-size:.7rem; background:var(--accent-soft); color:var(--accent); border-radius:999px; padding:1px 8px; }
+  .thread .head .close { margin-left:auto; border:none; background:transparent; cursor:pointer; color:var(--text-2); }
+  .thread .t-msgs { flex:1; overflow-y:auto; padding:16px; font-size:.875rem; }
+  .thread .cm { background:var(--card); border-radius:var(--r-md); padding:9px 12px; margin-bottom:10px; color:var(--ink-soft); }
+  .thread .cm .w { font-size:.7rem; color:var(--text-3); margin-bottom:2px; }
+  .thread .t-composer { display:flex; gap:6px; padding:12px 16px; border-top:1px solid var(--hairline); }
+  .thread .t-composer input { flex:1; border:1px solid var(--hairline); border-radius:999px; padding:7px 12px; font:inherit; font-size:.85rem; outline:none; }
+  .thread .t-composer button { width:30px; height:30px; border-radius:50%; border:none; background:var(--accent); color:#fff; cursor:pointer; }
+
+  /* right rail */
+  .right { flex-shrink:0; display:flex; background:var(--panel); border-left:1px solid var(--hairline); }
+  .rail { width:48px; display:flex; flex-direction:column; align-items:center; padding-top:12px; gap:4px; }
+  .rail button { width:36px; height:36px; border:none; background:transparent; border-radius:var(--r-sm); color:var(--text-2); cursor:pointer; position:relative; font-size:1.1rem; }
+  .rail button:hover { background:var(--hover); }
+  .rail button.on { background:var(--selected); color:var(--ink); }
+  .rail button .dot { position:absolute; top:5px; right:5px; width:7px; height:7px; border-radius:50%; background:var(--accent); }
+  .rpanel { width:0; overflow:hidden; transition:width .18s ease; display:flex; flex-direction:column; }
+  .right.open .rpanel { width:300px; }
+  .rpanel .head { padding:12px 14px; border-bottom:1px solid var(--hairline); font-weight:500; font-size:.9rem; white-space:nowrap; }
+  .rpanel .body { flex:1; overflow-y:auto; padding:10px; }
+  .sc-item { background:var(--surface); border:1px solid var(--hairline); border-radius:var(--r-md); padding:10px 12px; margin-bottom:8px; cursor:pointer; }
+  .sc-item:hover { border-color:#cfcecb; }
+  .sc-item .t { font-size:.875rem; font-weight:500; display:flex; align-items:center; gap:6px; }
+  .sc-item .t .run { margin-left:auto; font-size:.7rem; background:var(--accent-soft); color:var(--accent); border-radius:999px; padding:1px 8px; }
+  .sc-item .d { font-size:.78rem; color:var(--text-3); margin-top:2px; }
+
+  /* review page */
+  .page { flex:1; overflow-y:auto; display:none; background:var(--canvas); }
+  .page-inner { max-width:880px; margin:0 auto; padding:36px 24px 80px; }
+  .page h2 { font-family:var(--brand); font-weight:600; font-size:1.5rem; margin:0 0 4px; }
+  .page .sub { color:var(--text-2); font-size:.9rem; margin:0 0 24px; }
+  .filters { display:flex; gap:10px; margin-bottom:16px; }
+  .filters select, .filters button { border:1px solid var(--hairline); background:var(--surface); border-radius:var(--r-md); padding:7px 12px; font:inherit; font-size:.85rem; color:var(--ink-soft); cursor:pointer; }
+  .filters .export { margin-left:auto; display:flex; align-items:center; gap:6px; }
+  table.review { width:100%; border-collapse:collapse; background:var(--surface); border:1px solid var(--hairline); border-radius:var(--r-md); overflow:hidden; font-size:.85rem; }
+  table.review th { text-align:left; background:var(--card); padding:10px 14px; font-weight:600; }
+  table.review td { padding:10px 14px; border-top:1px solid var(--hairline); color:var(--text-2); }
+  table.review td:first-child { font-family:var(--mono); font-size:.78rem; }
+  .chosen { color:var(--accent); font-weight:500; }
+
+  /* settings (same IA as variant A) */
+  .settings { flex:1; display:none; min-height:0; }
+  .set-nav { width:240px; flex-shrink:0; background:var(--panel); border-right:1px solid var(--hairline); padding:16px 10px; }
+  .set-nav .back-app { display:flex; align-items:center; gap:8px; color:var(--text-2); font-size:.85rem; padding:6px 10px; cursor:pointer; margin-bottom:14px; }
+  .set-item { display:flex; align-items:center; gap:10px; padding:8px 12px; border-radius:var(--r-sm); font-size:.9rem; color:var(--ink-soft); cursor:pointer; }
+  .set-item:hover { background:var(--hover); }
+  .set-item.on { background:var(--selected); font-weight:500; }
+  .set-item i { color:var(--text-2); }
+  .set-item.on i { color:var(--accent); }
+  .set-item .soon { margin-left:auto; font-size:.68rem; color:var(--text-3); }
+  .set-body { flex:1; overflow-y:auto; padding:36px 44px; }
+  .set-panel { max-width:560px; display:none; }
+  .set-panel.on { display:block; }
+  .set-panel h2 { font-family:var(--brand); font-weight:600; font-size:1.4rem; margin:0 0 4px; }
+  .set-panel .sub { color:var(--text-2); font-size:.875rem; margin:0 0 24px; }
+  .set-card { background:var(--surface); border:1px solid var(--hairline); border-radius:var(--r-md); padding:16px; margin-bottom:14px; }
+  .set-card h4 { margin:0 0 4px; font-size:.95rem; }
+  .set-card p { margin:0; font-size:.8125rem; color:var(--text-2); }
+  .set-card .row2 { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+  .set-card input[type=text] { border:1px solid var(--hairline); border-radius:var(--r-sm); padding:7px 10px; font:inherit; font-size:.875rem; width:220px; outline:none; }
+  .toggle { width:38px; height:22px; border-radius:999px; background:#cfcecb; position:relative; cursor:pointer; flex-shrink:0; }
+  .toggle::after { content:""; position:absolute; top:2px; left:2px; width:18px; height:18px; border-radius:50%; background:#fff; transition:left .15s; }
+  .toggle.on { background:var(--accent); }
+  .toggle.on::after { left:18px; }
+  .set-card .fine { font-size:.75rem; color:var(--text-3); margin-top:8px; }
+  .model-row { display:flex; align-items:center; gap:10px; padding:10px 0; border-top:1px solid var(--hairline); font-size:.875rem; }
+  .model-row:first-of-type { border-top:none; }
+  .model-row .name { font-weight:500; }
+  .model-row .meta { color:var(--text-3); font-size:.78rem; }
+  .model-row .default { margin-left:auto; font-size:.72rem; color:var(--accent); background:var(--accent-soft); border-radius:999px; padding:2px 10px; }
+  .add-btn { display:inline-flex; align-items:center; gap:6px; border:1px dashed var(--hairline); background:transparent; border-radius:var(--r-md); padding:8px 14px; font-size:.85rem; color:var(--text-2); cursor:pointer; margin-top:6px; }
+</style>
+</head>
+<body>
+
+<div class="proto-bar">
+  <b>Variant B</b>
+  <div class="proto-tabs">
+    <button class="on" data-view="user">User</button>
+    <button data-view="researcher">Researcher</button>
+    <button data-view="review">Review page</button>
+    <button data-view="settings">Settings</button>
+  </div>
+  <a href="index.html">back to read-me</a>
+</div>
+
+<div class="app">
+  <header class="top">
+    <span class="wordmark">Alt Theory</span>
+    <span class="conv-title">Kuhn ch.3 reading notes</span>
+    <span class="mode-chip" id="modeChip"><i class="ph ph-book-open"></i>Reading<i class="ph ph-caret-down"></i></span>
+    <div class="posture-pop" id="posturePop"><b>Reading mode.</b> Alt reads what you point it at, only changes files in your workspace, and asks before anything risky.</div>
+    <span class="study-chip">Study · batch-07</span>
+  </header>
+
+  <div class="cols" id="appCols">
+    <!-- LEFT -->
+    <aside class="left">
+      <div class="user-nav" style="display:flex;flex-direction:column;flex:1;min-height:0;">
+        <div class="pad">
+          <button class="btn-new" id="btnNew"><i class="ph ph-plus"></i>New conversation</button>
+          <div class="search"><i class="ph ph-magnifying-glass"></i>Search</div>
+        </div>
+        <div class="new-pop" id="newPop">
+          <h4>New conversation</h4>
+          <div class="np-row"><span class="k"><i class="ph ph-user-circle"></i>Role</span>
+            <select><option>Guide (last used)</option><option>Socratic</option><option>Plain</option></select></div>
+          <div class="np-row"><span class="k"><i class="ph ph-books"></i>Knowledge</span>
+            <select><option>Theory Core</option><option>Methods</option><option>None</option></select></div>
+          <div class="np-row"><span class="k"><i class="ph ph-book-open"></i>Mode</span>
+            <select><option>Reading</option><option>Building</option></select></div>
+          <button class="np-start">Start</button>
+          <div class="np-fine">These are your last-used settings. Change anything, or just start.</div>
+        </div>
+        <div class="sessions">
+          <div class="group-label">Today</div>
+          <div class="sess active"><i class="ph ph-chat-circle"></i>Kuhn ch.3 reading notes</div>
+          <div class="sess child"><i class="ph ph-arrows-split"></i>Anomaly definition<span class="badge-run">running</span></div>
+          <div class="sess"><i class="ph ph-chat-circle"></i>Paradigm shift concept map</div>
+          <div class="group-label">Earlier</div>
+          <div class="sess"><i class="ph ph-chat-circle"></i>Daily journal</div>
+          <div class="sess"><i class="ph ph-chat-circle"></i>Lakatos research programmes</div>
+        </div>
+      </div>
+      <div class="workbench">
+        <div class="wb-card">
+          <h4>Current setup</h4>
+          <div class="wb-row"><span class="k">Role</span><span class="v">Guide</span></div>
+          <div class="wb-row"><span class="k">Knowledge</span><span class="v">Theory Core</span></div>
+          <div class="wb-row"><span class="k">Model</span><span class="v">Default</span></div>
+          <div class="wb-row"><span class="k">Study</span><span class="v">batch-07</span></div>
+          <div class="wb-note">Applies to every new conversation until changed.</div>
+        </div>
+        <div class="wb-actions">
+          <button><i class="ph ph-git-fork"></i>Compare responses</button>
+          <button><i class="ph ph-eye"></i>View as participant</button>
+          <button><i class="ph ph-file-arrow-up"></i>Import config file</button>
+          <button data-view="review"><i class="ph ph-table"></i>Open review</button>
+        </div>
+        <div class="wb-sessions">
+          <div class="group-label">This experiment</div>
+          <div class="wb-sess"><i class="ph ph-chat-circle"></i>Kuhn ch.3 reading notes<span class="tag">t-07</span></div>
+          <div class="wb-sess"><i class="ph ph-arrows-split"></i>Anomaly definition<span class="tag">t-07</span></div>
+          <div class="wb-sess"><i class="ph ph-chat-circle"></i>Paradigm shift concept map<span class="tag">t-07</span></div>
+        </div>
+      </div>
+      <div class="left-foot">
+        <div class="gear" data-view="settings"><i class="ph ph-gear"></i>Settings</div>
+        <div class="avatar">S</div>
+      </div>
+    </aside>
+
+    <!-- CENTER (splittable) -->
+    <main class="center" id="center">
+      <div class="conv">
+        <div class="msgs">
+          <div class="msg user">
+            <div class="who">You</div>
+            <div class="bubble">Compare how Kuhn and Lakatos would treat the anomaly we found in study 2.</div>
+          </div>
+          <div class="msg assistant">
+            <div class="who">Alt</div>
+            <div class="bubble">Good candidate for a side-by-side reading. Kuhn would ask whether the anomaly resists assimilation long enough to provoke crisis; Lakatos would ask whether your programme's protective belt can absorb it while the hard core stays untouched. Before I lay this out, I want to check the original passage on anomaly accumulation.</div>
+          </div>
+          <div class="approval">
+            <div class="card">
+              <div class="cat"><i class="ph ph-globe"></i>Access the network</div>
+              <div class="cmd">curl https://plato.stanford.edu/entries/thomas-kuhn/</div>
+              <div class="scope">This would allow reaching <b>plato.stanford.edu</b> for the rest of this session.</div>
+              <div class="acts">
+                <button class="primary">Allow this session</button>
+                <button>Allow once</button>
+                <button class="deny">Block</button>
+              </div>
+            </div>
+          </div>
+          <div class="msg assistant">
+            <div class="who">Alt</div>
+            <div class="bubble">The SEP entry confirms the reading: anomalies count only against the background of paradigm-governed expectation. I have drafted the comparison into <b>notes/anomaly-comparison.md</b> in your workspace.</div>
+          </div>
+        </div>
+        <div class="composer-wrap">
+          <div class="composer">
+            <textarea placeholder="Message Alt. Type / for commands."></textarea>
+            <div class="row">
+              <span class="chip"><i class="ph ph-sliders-horizontal"></i>Guide · Theory Core</span>
+              <button class="send"><i class="ph ph-arrow-up"></i></button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="thread">
+        <div class="head"><i class="ph ph-arrows-split"></i>Anomaly definition<span class="badge-run">running</span>
+          <button class="close" id="threadClose"><i class="ph ph-x"></i></button></div>
+        <div class="t-msgs">
+          <div class="cm"><div class="w">You</div>Give me a working definition of anomaly for our coding sheet.</div>
+          <div class="cm"><div class="w">Alt</div>Draft: an observation that violates the paradigm-induced expectation governing normal research, and persists after repeated adjustment.</div>
+        </div>
+        <div class="t-composer">
+          <input placeholder="Reply in this thread">
+          <button><i class="ph ph-arrow-up"></i></button>
+        </div>
+      </div>
+    </main>
+
+    <!-- RIGHT -->
+    <aside class="right" id="right">
+      <div class="rpanel">
+        <div class="head">Threads</div>
+        <div class="body">
+          <div class="sc-item" id="scOpenThread">
+            <div class="t"><i class="ph ph-arrows-split"></i>Anomaly definition<span class="run">running</span></div>
+            <div class="d">Forked from this conversation · opens beside it</div>
+          </div>
+          <div class="sc-item">
+            <div class="t"><i class="ph ph-lifebuoy"></i>Helper</div>
+            <div class="d">Ask how Alt works · fresh context</div>
+          </div>
+        </div>
+      </div>
+      <div class="rail">
+        <button id="railSc" title="Threads"><i class="ph ph-arrows-split"></i><span class="dot"></span></button>
+        <button title="Files"><i class="ph ph-folder"></i></button>
+        <button class="adv" title="Records" style="display:none"><i class="ph ph-scroll"></i></button>
+        <button class="adv" title="Provenance" style="display:none"><i class="ph ph-tree-structure"></i></button>
+        <button class="adv" title="Runtime" style="display:none"><i class="ph ph-pulse"></i></button>
+      </div>
+    </aside>
+  </div>
+
+  <!-- REVIEW PAGE -->
+  <div class="page" id="reviewPage">
+    <div class="page-inner">
+      <h2>Review</h2>
+      <p class="sub">Comparisons and records across the study. Reads exported records only; nothing here touches live conversations.</p>
+      <div class="filters">
+        <select><option>Study: batch-07</option><option>Study: batch-06</option><option>All studies</option></select>
+        <select><option>Dedicated tests</option><option>Daily use</option><option>All sessions</option></select>
+        <button class="export"><i class="ph ph-download-simple"></i>Export</button>
+      </div>
+      <table class="review">
+        <tr><th>Comparison</th><th>Created</th><th>Arms</th><th>Chosen</th><th>Decided</th></tr>
+        <tr><td>cmp-3f82</td><td>Jul 16, 10:42</td><td>Guide vs Socratic</td><td class="chosen">Socratic</td><td>Jul 16, 10:51</td></tr>
+        <tr><td>cmp-3f7d</td><td>Jul 15, 15:20</td><td>Theory Core vs none</td><td class="chosen">Theory Core</td><td>Jul 15, 15:33</td></tr>
+        <tr><td>cmp-3f5a</td><td>Jul 14, 09:12</td><td>Guide vs Guide</td><td>undecided</td><td></td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- SETTINGS -->
+  <div class="settings" id="settingsView">
+    <nav class="set-nav">
+      <div class="back-app" data-view="user"><i class="ph ph-arrow-left"></i>Back to app</div>
+      <div class="set-item on" data-panel="models"><i class="ph ph-cpu"></i>Models</div>
+      <div class="set-item" data-panel="general"><i class="ph ph-gear"></i>General</div>
+      <div class="set-item" data-panel="rolekb"><i class="ph ph-books"></i>Role &amp; Knowledge<span class="soon">soon</span></div>
+      <div class="set-item" data-panel="participant"><i class="ph ph-identification-badge"></i>Participant mode</div>
+      <div class="set-item" data-panel="about"><i class="ph ph-info"></i>About</div>
+    </nav>
+    <div class="set-body">
+      <div class="set-panel on" id="panel-models">
+        <h2>Models</h2>
+        <p class="sub">Providers and models Alt can use. At least one provider must be configured.</p>
+        <div class="set-card">
+          <div class="model-row"><div><div class="name">Anthropic</div><div class="meta">API key configured · 2 models</div></div><span class="default">default</span></div>
+          <div class="model-row"><div><div class="name">Local (Ollama)</div><div class="meta">Not configured</div></div></div>
+          <button class="add-btn"><i class="ph ph-plus"></i>Add provider</button>
+        </div>
+      </div>
+      <div class="set-panel" id="panel-general">
+        <h2>General</h2>
+        <p class="sub">App behavior and appearance.</p>
+        <div class="set-card"><div class="row2"><div><h4>Language</h4><p>English. More languages later.</p></div></div></div>
+      </div>
+      <div class="set-panel" id="panel-rolekb">
+        <h2>Role &amp; Knowledge</h2>
+        <p class="sub">Managing roles, knowledge sets, and extra scanned paths lands in a later version. The New-conversation panel already covers daily use.</p>
+      </div>
+      <div class="set-panel" id="panel-participant">
+        <h2>Participant mode</h2>
+        <p class="sub">Only relevant if you take part in a study. Everything here is optional.</p>
+        <div class="set-card">
+          <div class="row2"><div><h4>Display label</h4><p>A name or code used to identify your data in the study. No other function.</p></div><input type="text" placeholder="e.g. P-04"></div>
+        </div>
+        <div class="set-card">
+          <div class="row2"><div><h4>Share conversations with the research team</h4><p>Default follows your study status; you can change it per conversation.</p></div><div class="toggle"></div></div>
+          <div class="fine">This install is designated: not a study participant. Sharing defaults to off.</div>
+        </div>
+      </div>
+      <div class="set-panel" id="panel-about">
+        <h2>About</h2>
+        <p class="sub">Alt Theory, v1 alpha.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const appCols = document.getElementById('appCols');
+  const reviewPage = document.getElementById('reviewPage');
+  const settingsView = document.getElementById('settingsView');
+
+  function show(view) {
+    document.querySelectorAll('.proto-tabs button').forEach(b => b.classList.toggle('on', b.dataset.view === view));
+    document.body.classList.toggle('researcher', view === 'researcher');
+    appCols.style.display = (view === 'user' || view === 'researcher') ? 'flex' : 'none';
+    reviewPage.style.display = view === 'review' ? 'block' : 'none';
+    settingsView.style.display = view === 'settings' ? 'flex' : 'none';
+    document.querySelectorAll('.rail .adv').forEach(b => b.style.display = view === 'researcher' ? 'block' : 'none');
+  }
+  document.querySelectorAll('[data-view]').forEach(el => el.addEventListener('click', () => show(el.dataset.view)));
+
+  // posture popover on mode chip
+  document.getElementById('modeChip').addEventListener('click', () =>
+    document.getElementById('posturePop').classList.toggle('on'));
+
+  // new-conversation popover
+  document.getElementById('btnNew').addEventListener('click', (e) => {
+    e.stopPropagation();
+    document.getElementById('newPop').classList.toggle('on');
+  });
+  document.querySelector('.np-start').addEventListener('click', () =>
+    document.getElementById('newPop').classList.remove('on'));
+
+  // right rail: threads list; item opens side-by-side split
+  const right = document.getElementById('right');
+  document.getElementById('railSc').addEventListener('click', () => {
+    right.classList.toggle('open');
+    document.getElementById('railSc').classList.toggle('on');
+  });
+  document.getElementById('scOpenThread').addEventListener('click', () => {
+    document.getElementById('center').classList.add('split');
+    right.classList.remove('open');
+    document.getElementById('railSc').classList.remove('on');
+  });
+  document.getElementById('threadClose').addEventListener('click', () =>
+    document.getElementById('center').classList.remove('split'));
+
+  // settings tabs
+  document.querySelectorAll('.set-item').forEach(item => {
+    item.addEventListener('click', () => {
+      document.querySelectorAll('.set-item').forEach(i => i.classList.remove('on'));
+      item.classList.add('on');
+      document.querySelectorAll('.set-panel').forEach(p => p.classList.remove('on'));
+      document.getElementById('panel-' + item.dataset.panel).classList.add('on');
+    });
+  });
+  document.querySelectorAll('.toggle').forEach(t => t.addEventListener('click', () => t.classList.toggle('on')));
+</script>
+</body>
+</html>

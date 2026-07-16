@@ -1,379 +1,172 @@
 ---
 doc_type: architecture
 slug: researcher-console
-scope: Current browser console used by the researcher to run, inspect, compare, and later annotate Alt Theory sessions
-summary: The current researcher console is a temporary vanilla frontend seed that exposes live backend sessions, loaded agent assets, and historical session browse/resume.
+scope: v1-alpha frontend and research surfaces — view modes, pane logic, researcher workbench/review, study designation, A/B comparison
+summary: Two view modes (user/researcher) over one React frontend; the M7 IA is owner-approved as a prototype blueprint, backend support is complete, frontend realization is the open work item.
 status: current
-last_reviewed: 2026-06-17
-tags: [frontend, researcher-console, session, runtime-inspection]
+last_reviewed: 2026-07-16
+tags: [frontend, researcher-console, research, view-modes, ia]
 depends_on:
   - core-session-engine
 implements: []
 ---
 
-# Architecture: Researcher Console
+# Architecture: Frontend & Research Console (v1-alpha)
 
-## 0. Terminology
+## 0. Status And Reading Order
 
-- **Researcher console**: the browser surface used by the user as first tester,
-  designer, asset author, and research observer. It is not the final learner UI.
-- **Runtime inspector**: the right-side information surface showing current
-  session metadata, metrics, paths, provider/model, and selected assets.
-- **Session/config panel**: the left-side control surface for creating a new
-  session and selecting KB, soul, and role preset.
-- **Temporary frontend seed**: the current vanilla HTML/CSS/JS implementation.
-  It is functional enough for live testing but not yet a complete researcher
-  console.
+Backend support for everything below EXISTS and is tested (see
+`core-session-engine.md`, change log 2026-07-15/16). The frontend is the
+React app in `alt-theory-app/frontend/` (built to `web-server/public-v6/`),
+which still renders the v0.5 layout; the v1-alpha information architecture
+is owner-approved as a clickable blueprint, not yet implemented. Governing
+documents, in authority order:
 
-## 1. Positioning And Audience
+1. `project/compound/2026-07-16-decision-v1-alpha-m7-ia-principles-and-research-assumptions.md`
+   — pane logic, view-mode collapse, study designation, sharing rules,
+   working assumptions A1–A7, latent (deferred) items §8.
+2. `project/workstreams/0-v1-full-stack/notes-and-status/20260716-m7-ia-card-sort-v1.md`
+   — surface-by-surface card sort with four owner reaction rounds.
+3. `design-mockups/m7-ia-pass/v2.html` — the converged prototype (5 views).
+4. `project/workstreams/0-v1-full-stack/notes-and-status/20260716-v1-alpha-completion-definition.md`
+   — the done-gate for v1.0.0-alpha.
 
-This architecture records the current browser console that sits on top of the
-core session engine. Future frontend agents should read this before treating
-the temporary frontend as either disposable UI or final product design.
+The pre-M7 vanilla console (`web-server/public/`) described by earlier
+revisions of this document is legacy; its behavior notes were accurate as of
+2026-06-23 and are preserved in git history.
 
-The console's current purpose is to support real user interaction as design and
-research evidence. That includes live conversation, runtime inspection,
-historical session browse/resume, and later comparison, annotation, and export.
+## 1. View Modes: Exactly Two
 
-## 2. Structure And Interaction
+Only **user** and **researcher** presentation modes exist. The old
+three-state model (`participant`/`researcher` + `debugExpanded` + a third
+`"debug"` viewMode in `frontend/src/lib/viewMode.ts`) is decided out: the
+debug button's semantic is a MODE SWITCH (a door), not an expander.
 
-Current implementation:
+Doors into researcher mode (all do the same one thing — switch mode and
+activate study surfaces; closing switches back, no residue):
 
-```text
-alt-theory-app/web-server/public/
-  index.html   # static three-area DOM
-  client.js    # REST discovery + WebSocket session client
-  style.css    # responsive temporary layout
-```
+- researcher/admin account (door always open);
+- local install flag on a researcher's machine;
+- code-unlock inside a participant app (latent; build when a protocol
+  needs it).
 
-Browser interaction shape:
+Frontend hiding stays presentational; the backend remains the authorization
+gate (unchanged since v0.5).
 
-```mermaid
-flowchart LR
-  Browser[Researcher console] --> REST[REST discovery]
-  Browser --> WS[WebSocket session]
-  REST --> RolePresets[role presets list]
-  REST --> Souls[soul variants list]
-  REST --> KBDomains[KB domain list]
-  REST --> SessionCatalog[session list + detail]
-  WS --> Draft[connection-local draft]
-  Draft --> Session[first prompt materializes session]
-  WS --> OpenSession[open_session]
-  Session --> Inspector[metadata + metrics + paths]
-  Session --> Chat[streaming chat + tool status]
-```
+## 2. Pane Information Logic (governs every surface placement)
 
-The left panel currently owns:
+- **Left = navigation.** User mode: conversation history grouped by
+  workspace (collapsible groups) + New conversation + demoted search
+  (overlay, not a persistent field); collapses to an icon strip. Researcher
+  mode: a DIFFERENT left pane — the current-experiment workbench
+  (`Setup | Sessions` tabs: visible auto-applied configuration, comparison
+  setup, compact session list).
+- **Center = the conversation.** Center-top hosts a thin strip for
+  session-scoped ACTIONS only (researcher-only for now, e.g. A/B trigger);
+  configuration never goes there. The separation test: actions are clicked
+  frequently mid-session, configuration is set and sits still.
+- **Right = conversation-derived, optional detail**, collapsed by default,
+  event-driven auto-open. Per object class: narrow swap panel (side chats,
+  helper, file review), full-width side-by-side (A/B arm reading),
+  Changes list (agent-modified files aggregated from mediation records)
+  vs Workspace (tree + full-panel preview) as two distinct tabs. Advanced
+  inspector tabs (Records/Provenance/Paths/Runtime) stay researcher-only
+  right-pane detail.
+- **Settings = first-level gear** (bottom-left) opening a dedicated
+  surface: general; provider/model config (existing route folds in, sits
+  high in the nav); participant panel (§4); reserved data-and-sharing
+  block. Research configuration does NOT go into general settings — it
+  lives in the researcher workbench.
+- **Full-page routes** for activities that want the whole screen: the
+  research review page (past comparisons, records, export) reads the
+  records layer ONLY — never live app state — so it stays extractable into
+  a standalone viewer later.
 
-- new session button;
-- compact draft selectors including project, KB, soul, role preset, and custom
-  instruction;
-- grouped/searchable historical session list/detail/preview;
-- click-to-open historical session rows;
-- session Rename control backed by `records/ui-alias.json`;
-- session delete control with recoverable soft delete;
-- provider/model display.
+## 3. Conversation Surfaces (user mode)
 
-The center panel currently owns:
+- **Morphing mode control**: at new conversation, an obvious
+  Understand/Work choice (default Understand; Work costs one extra click);
+  after the first message it collapses to a small composer-row switch.
+  Principle learned from ChatGPT's toggle — "an obvious choice when a new
+  surface opens" — NOT its placement or look.
+- **Composer**: role and KB pickers live near the input (flat, no card
+  chrome); model chip bottom-right opens the model dropdown with per-model
+  thinking badge (unset by default, hover to expand off/low/high) and a
+  Manage-models entry — backed by WS `set_session_model`. No permission
+  control until a second permission level exists.
+- **Session list membership**: only roots and `forkedFrom.purpose:"fork"`
+  appear; side chats (`side`), `helper`, and pending `ab-arm` children are
+  reachable from their parent conversation only; the chosen A/B arm is
+  rewritten to the list continuation.
+- **Approvals**: low-key dock above the composer (no alarm styling), with
+  an "allowed this session" marker in the transcript for TTL approvals.
+- **Helper**: forks FRESH (no parent-context copy — cross-session prompt
+  cache reuse is impossible because the helper's own system prompt diverges
+  at token 0). Context-aware help is a latent in-conversation skill, not a
+  session kind.
 
-- chat message stream;
-- streaming assistant text;
-- inline tool status;
-- prompt input;
-- Alt Theory skill selector and explicit Invoke action;
-- send/stop controls.
+## 4. Study Designation And Sharing Surfaces
 
-The right runtime inspector currently owns:
+One primitive, two levels (decision doc §3), all backend-complete:
 
-- full session ID;
-- connection status;
-- active KB, soul, and role preset;
-- provider/model;
-- counters, tokens, context usage, cost;
-- key runtime paths under a dedicated Paths tab;
-- effective config warnings and recent run lineage under a dedicated
-  Provenance tab;
-- loaded app context, soul, role preset, KB, and Pi prompt-template paths;
-- core-soul modules when present.
+- **Account/install designation** decides whether ANY study surface
+  renders. Source: `/api/auth/me` → `participant` (hosted: account role;
+  local: `app-settings.json` `participant {designated, label}`).
+  Non-designated users — anyone who got the app from GitHub — see zero
+  study surfaces: no private checkbox, no share switch, no participant
+  panel content.
+- **Sharing default follows designation** (consent-based): designated →
+  sharing on by default, everyone else → private by default, regardless of
+  Pure/Full and deployment. The per-session switch overrides either way.
+  Two semantics the UI copy must distinguish (owner-verbatim examples live
+  in decision doc §8): account-login deployments share automatically;
+  local installs only MARK conversations — the app has no upload
+  capability, export is manual through the (latent) anonymizing tool.
+- **Session study tag** (`studyTag {studyId, batch?}`) is the researcher's
+  test-identification control (WS `set_study_tag`), surfaced in the
+  workbench, inherited by forks, and read by the review page from summary
+  rows / records.
 
-Code anchors:
+## 5. Researcher Mode = User Mode + Deltas
 
-- `alt-theory-app/web-server/public/index.html`: current DOM layout.
-- `alt-theory-app/web-server/public/client.js`: current REST/WebSocket client.
-- `alt-theory-app/web-server/public/style.css`: current temporary visual layer.
-- `alt-theory-app/web-server/websocket-protocol.ts`: client/server message
-  contract.
-- `alt-theory-app/web-server/server.ts`: REST discovery and WebSocket session
-  behavior.
+Tab/surface-level increments, per the pane logic: left workbench
+(configuration + comparison setup + compact session list), center-top
+action strip (A/B trigger), full-page review route, advanced right-pane
+inspector tabs, and a reserved view-as-participant toggle. The A/B flow
+itself (M6): trigger forks Pure-pinned arms off the live parent via the
+copy-fork substrate, records to append-only `ab-comparisons.jsonl`, choice
+promotes one arm to the continuation.
 
-## 3. Data And State
+## 6. Visual Language (locked by the M7 prototype rounds)
 
-Current console attachment state is browser-local and tied to one live
-WebSocket connection. A new connection starts in draft state with selected KB,
-  soul, role preset, and optional custom instruction but no session ID. The active backend runtime is
-application-owned by `SessionService` only after a draft is materialized by the
-first prompt or an existing session is opened. Closing the browser socket
-detaches the listener rather than aborting a materialized session. The browser
-reads a durable session index from the backend data directory but does not own
-or persist that index locally.
+v0.5 tokens (ink `#1f1e1a`, canvas `#f8f8f9`, panel `#ebebec`, card-2
+`#f2f2f3`, hairline `#e7e7e9`; Iowan Old Style serif wordmark, in the left
+panel — no top header stripe). Ink/black emphasis only — NO green accent.
+Flat borderless white blocks; composer elevated by shadow only; Phosphor
+icons; send button is a rounded rectangle. The v2 prototype is the visual
+authority; `frontend/src/index.css` carries the tokens.
 
-Current backend-facing state:
+## 7. Explicitly Deferred (do not build; decision doc §8 has triggers)
 
-- discovery lists from `GET /api/role-presets`, `GET /api/souls`, and
-  `GET /api/kb-domains`;
-- content-validated instruction catalog from `GET /api/instruction-assets`;
-- active Alt Theory-only skill catalog from `GET /api/skills`;
-- legacy compatibility alias from `GET /api/profiles`;
-- historical session list and detail from `GET /api/sessions` and
-  `GET /api/sessions/{sessionId}`;
-- session alias read/write through the existing `records/` file API using
-  `records/ui-alias.json`;
-- optional project list from `GET /api/projects`;
-- current live session metadata from `session_metadata`;
-- current live session metrics from `session_metrics`;
-- connection-local draft state from `session_draft`;
-- session resume/open over WebSocket `open_session`;
-- project switching over WebSocket `switch_project`;
-- streaming output and tool events over WebSocket;
-- stable `session_busy` errors when a same-session mutation is already active;
-- selected KB domain in the current connection;
-- selected soul slug or `None` in the current connection;
-- selected role-preset slug or `None` in the current connection.
-- effective config and config-event history from session detail;
-- optional project records from REST when external clients or later UI need
-  local grouping/defaults;
-- loaded transcript view state in the browser, switchable between User and
-  Developer views;
-- session-local record files read through REST for files under `records/` and
-  `workspace/`.
-
-Current persistence belongs to the backend data directory, not the browser:
-
-```text
-{ALT_THEORY_DATA_DIR or default data root}/
-  sessions/{session-id}/
-    workspace/
-    history/
-    records/
-```
-
-The console can display paths from the manifest, list historical sessions with
-server-persisted user aliases, inspect selected-session detail/preview,
-open a selected session by clicking its row, switch loaded transcripts between
-User/Developer views, and lightly edit allowed session-local text records. It
-cannot yet tag, annotate, compare, or export sessions.
-
-## 4. Current Capabilities
-
-- Opens to an unpersisted draft on WebSocket connect.
-- Materializes the draft into one readable-ID backend session when the first
-  prompt is sent.
-- Populates KB, soul, and role-preset selectors from REST discovery.
-- Populates historical session list/detail from REST.
-- Groups historical sessions by project with an `Unassigned` bucket and local
-  search filtering.
-- Sends prompts and abort requests.
-- Revises the latest user turn through per-message **Edit** → composer
-  **Send edited message** / Enter, which sends WebSocket `revise_latest`.
-- Deletes the latest user turn and its reply through per-message **Delete**,
-  which sends WebSocket `delete_latest` and applies the returned
-  `session_transcript`.
-- Branch is available as a researcher/debug action on assistant messages. It
-  sends WebSocket `fork_session` and creates a copied-workspace Branch from
-  that answer. Participant/local simplified views do not expose Branch.
-- Starts a new draft within the same browser connection without creating an
-  empty session.
-- Opens an existing session within the same browser connection by clicking its
-  session row.
-- Persists optional session aliases in `records/ui-alias.json`; when no alias
-  exists, the list falls back to the first user-message snippet and then the
-  timestamp-derived session ID.
-- Switches soul and role preset immediately after materialization by
-  rebuilding the active backend runtime while keeping the same Alt Theory
-  session id, workspace, and Pi history.
-- Switches KB domain in the same session and records the effective config
-  change.
-- Displays streaming assistant text.
-- Displays tool started/updated/finished states.
-- Renders loaded and streaming assistant Markdown through a local vendor parser
-  with post-render sanitization.
-- Displays manifest and metrics in the Runtime inspector tab.
-- Displays loaded asset paths in the Paths inspector tab.
-- Displays effective config and recent run lineage in the Provenance inspector
-  tab.
-- Displays resumed/history transcripts in two hot-switchable views: User hides
-  thinking and tool events; Developer shows thinking, tool calls, and collapsed
-  tool results.
-- Provides a right-panel Records tab with a text editor for path-contained
-  `.md`, `.txt`, and `.json` files under the active session's `records/` and
-  `workspace/`.
-- Supports recoverable soft delete from the normal catalog.
-- Supports desktop left/right pane resize, collapse, and restore controls.
-- Disables records/paths/metrics surfaces while the connection is still draft.
-- Passed consolidated browser UAT for resize/collapse, Markdown rendering,
-  delete, and provenance on 2026-06-15.
-
-## 5. Known Constraints / Edge Cases
-
-- Provider/model switching is not implemented in the console.
-- Core-soul module switching is not implemented in the console.
-- Role-preset and soul switching rebuild the backend runtime rather than
-  mutating an in-flight model prompt after a session has materialized. In
-  draft, those controls only update the pending launch selectors.
-- Custom-instruction switching uses the same same-session rebuild behavior.
-- The skill picker exposes only configured Alt Theory skills, even when the
-  backend is in `dev-debug`; Pi debug/global skills remain outside the picker.
-- Project assignment and draft project selection exist in the current
-  frontend, but project creation/administration UI does not.
-- Tags and annotations are not implemented.
-- Export is not implemented.
-- Historical session comparison is not implemented.
-- Branch-tree browsing and switching back to an older branch are not
-  implemented. The current Branch action creates a copied branch workspace and
-  attaches the live session to that new branch.
-- Revision/Branch does not roll back tool or file side effects that already
-  happened before the revision or branch point.
-- Model-comparison prompts across multiple providers are not implemented.
-- The Session Records editor is plain text only. It has no Markdown preview,
-  diff, autosave, conflict handling, or new-file UI.
-- Soft delete hides sessions from the normal catalog but does not yet expose a
-  restore or Trash-management surface in ordinary UI.
-- Runtime config visibility is still partial: the console shows active
-  provider/model and loaded asset paths, while full startup source and
-  provider/auth selection UI are not implemented.
-- The console does not yet show prompt assembly, hook/context policy, or
-  injected transcript components clearly.
-- Live model turns show inline chat rows for Connecting/Thinking and for
-  tool progress (for example `Reading knowledge base…`). Composer `#tool-status`
-  is a separate mono strip for reconnect/stop notices and mirrors active tool
-  labels; it is not the primary thinking indicator. Live thinking streaming is
-  transcript-only after completion in Developer view (v0.6 §7).
-- The current frontend is a researcher-console seed, not final product UI.
-
-## 6. Related Documents
-
-- `project/architecture/core-session-engine.md`: backend session, prompt
-  assembly, persistence, and WebSocket architecture.
-- `project/workstreams/0-backend-agent-harness/notes-and-status/2026-06-08-researcher-console-issue-pool-plan-record-v1.md`:
-  current issue pool and implementation priority discussion.
-- `project/workstreams/0-frontend-and-research-console/notes-and-status/2026-06-07-temporary-frontend-implementation-report.md`:
-  implementation report and live-turn smoke record for the temporary frontend.
+Approve-all permission level, config-card file format, code-unlock door,
+A/B auto-trigger, post-choice participant questions, anonymizing export
+tool, workspace management (add-only constraint recorded), per-account
+settings dimension, context-aware helper skill, copy/semantics review
+agent pass (gate before public repo).
 
 ## Change Log
 
-- 2026-06-23: Noted missing Connecting/Thinking composer status and deferred
-  live thinking stream (deferred observations §7).
-- 2026-06-23: Updated after KB/Branch repair. KB `Off` is a backend-discovered
-  selectable option and disables only built-in `kb/` folder retrieval. Branch is
-  re-enabled for researcher/debug assistant-message actions with copied
-  branch workspaces; participant/local simplified views still hide it.
-- 2026-06-17: Updated conversation-action documentation to match current
-  frontend controls. Latest-turn revise/delete are per-message actions; delete
-  applies synchronous `session_transcript`. Branch remains researcher/debug-only
-  with incomplete client branch-state handling; branch browsing is still
-  deferred.
-- 2026-06-17: Updated after v0.5.x participant pilot patch. Session rows now
-  open the selected session directly; the former Open action is replaced by
-  Rename. Session display names are persisted through the existing session
-  file API at `records/ui-alias.json`, with automatic fallback to the first
-  user-message snippet and then a timestamp-style session ID. Participant view
-  hides Branch controls, while researcher/debug views keep them. Latest-message
-  Edit now calls `doReviseLatest()` directly instead of programmatically
-  clicking a disabled hidden button, so `Send edited message` is enabled after
-  entering edit mode. The page starts with `body.auth-pending` to avoid a
-  transient researcher-view flash before `/api/auth/me` resolves. Static
-  assets are served with `Cache-Control: no-store` and versioned CSS/JS query
-  strings for the pilot.
-- 2026-06-17: Updated after the third v0.5 zcode UI-polish pass. Root-cause
-  fix for the empty Summary tab in the participant view: the right-tab
-  gating used an inverse `isAdvanced = panel.dataset.rightPanel !==
-  "runtime"` rule, which marked Summary as "advanced" and hid it in
-  participant view. Replaced with an explicit `ADVANCED_TAB_NAMES = {
-  records, paths, provenance }` set so Summary and Runtime are always
-  visible. The "if-active-tab-got-hidden-then-fallback" branch was
-  replaced with a deterministic per-view default (participant -> Summary,
-  researcher/debug/anonymous local -> Records); applyViewMode is the
-  single source of truth and HTML no longer hard-codes a default active
-  tab. Debug button was redesigned as a small icon-only gear glyph
-  (`\u2699\ufe0e`) using a new `.icon-btn-glyph` class, so it sits next
-  to the collapse-right arrow with the same low visual weight. The
-  role-condition display collapsed its section heading and value into
-  one inline row with a "Current role setup:" label, low-key, no card.
-  The redundant `.summary-note` under the Summary invoke button was
-  removed because the editor's placeholder already covers it.
-- 2026-06-17: Updated after the second v0.5 zcode UI-polish pass. Unified
-  notifications: backend errors and the private-mode intro copy now route
-  through a single `setComposerNotice(prefix, text)` helper that writes to
-  `#tool-status` with an optional single-glyph prefix (`⚠` for warnings,
-  `⏏` for save/intro notices) and auto-dismisses after ~4.5s; the transcript
-  `.message.error` red rectangle is removed. Composer slot: `Send-edited` is
-  now a sibling of `Send`/`Stop` inside `#input-row` and shares the same flex
-  slot; the standalone `#edit-send-row` element is gone. Debug button moved
-  from the left panel header (where it collided with the collapse-left arrow)
-  to the right panel header next to `collapse-right`. Summary invoke button
-  is now a low-key secondary style (transparent + hairline, hover fills to
-  ink), prefixed by a monochrome `⏏\uFE0E` glyph (Variation Selector-15 keeps
-  it a single-glyph line character, not a colored emoji). Summary editor
-  drops its own background and blends into its panel-section card so the
-  textarea reads as text-in-card. Participant view now defaults to the
-  Summary tab (researcher/debug still default to Runtime). All Summary
-  labels switched from Chinese to English.
-- 2026-06-17: Updated after v0.5 zcode UI-polish + Summary-panel pass. Theme is
-  now a warm light/flat palette (chat canvas `#f8f8f9`, side panels `#ebebec`,
-  near-invisible hairlines, no blue/purple accents). The composer is one
-  white rounded elevated block: the `#input` has no visible border inside it;
-  Send is an icon-only ink button (masked up-arrow SVG, `aria-label="Send"`);
-  Stop is a stop-sign (terracotta-tinted rounded button with a solid bar, also
-  `aria-label`-only). Send-edited lives inside the same white block as an ink
-  button. A new right-tab `Summary` is visible to participant / researcher /
-  debug; it carries a Records-style editor for an optional user note and a
-  `总结 session 到文件` button that sends WebSocket `invoke_skill` with a
-  hardcoded `skillName = "conversation-summary"`. Backend errors are
-  surfaced plainly; no fake success state. The visibility toggle stays
-  editable on a live session (the 2026-06-17 backend resume-leaf fix made
-  post-materialization `switch_visibility` valid); private mode toggles a
-  `.private-active` class on `#chat-panel` that drops the canvas to side-panel
-  depth for a subtle but visible distinction. Verified via backend regression
-  57/57, new UAT 22/22, and the prior participant-shell UAT 24/24.
-- 2026-06-16: Updated after participant-view-shell + conversation-action frontend
-  acceptance. The shell now resolves app identity from `GET /api/auth/me` and gates
-  itself into participant / researcher / debug view modes. With configured accounts,
-  an anonymous browser sees a login gate (the backend 401 on session routes is the
-  signal); participant login hides Launch/Config, project, model/provider, Records/
-  Paths/Provenance tabs, and the revise/fork lineage row, and shows a role-condition
-  label plus a low-noise private-mode toggle/badge. The private toggle sends
-  WebSocket `switch_visibility` before first prompt and remains editable on a
-  live session after the resume-leaf backend fix.
-  Conversation actions gained a delete-latest control near the composer, a hardened
-  send lockout while running (Send hidden/disabled; Stop available), and a stop→
-  "edit or delete your latest message" hint. A client-side Debug toggle (researcher/
-  admin only) re-shows advanced inspector panels for current-browser troubleshooting;
-  it changes no server identity, ownership, or consent. Frontend hiding remains
-  presentational: the backend is the authorization gate. Verified via browser UAT
-  (22/22) and backend regression (55/55).
-- 2026-06-15: Updated after workbench-session-management acceptance. The
-  frontend now exposes project grouping/search, recoverable delete, resizable
-  panes, rendered Markdown, and a Provenance inspector tab.
-- 2026-06-14: Added minimal latest-turn revision and explicit
-  collaboration/comparison Fork controls. Full branch browsing remains
-  deferred to later workbench UI.
-- 2026-06-14: Added custom-instruction selection and explicit Alt Theory skill
-  invocation near the composer. Unified visual UAT remains scheduled for the
-  later consolidated frontend checkpoint.
-- 2026-06-14: Updated after project-config/live-switching implementation.
-  Materialized KB/role/soul changes now remain inside the same Alt Theory
-  session and config provenance is available through session detail.
-- 2026-06-14: Updated after draft-first-send implementation. Console opens in
-  `session_draft`, first prompt materializes the session, and records/paths/
-  metrics remain unavailable while draft.
-- 2026-06-08: Created current-state architecture for the researcher console
-  seed.
-- 2026-06-08: Updated after session browser/resume-open slice. Console now
-  lists historical sessions, shows selected detail/preview, and sends
-  WebSocket `open_session`.
-- 2026-06-12: Updated after researcher-console asset switching alignment.
-  Console now exposes soul and role `None` selectors, immediate backend
-  rebuild, and no-history session-id reuse.
-- 2026-06-12: Updated after UAT data-management implementation. Console now
-  has transcript User/Developer views and right-panel Records/Runtime/Paths
-  tabs.
+- 2026-07-16: Rewritten for v1-alpha after the M7 IA design pass and
+  backend pass. Replaces the vanilla-console description (legacy notes
+  preserved in git history) with the two-view-mode model, pane logic,
+  study-designation surfaces, per-session model chip, and the
+  blueprint-approved / not-yet-implemented frontend status.
+- (Earlier vanilla-console entries: see git history of this file.)
+
+## Related Documents
+
+- `project/architecture/core-session-engine.md`: backend authority.
+- `project/compound/2026-07-16-decision-v1-alpha-m7-ia-principles-and-research-assumptions.md`
+- `project/workstreams/0-v1-full-stack/notes-and-status/20260716-m7-ia-card-sort-v1.md`
+- `project/workstreams/0-v1-full-stack/notes-and-status/20260716-v1-alpha-completion-definition.md`
+- `design-mockups/m7-ia-pass/v2.html`

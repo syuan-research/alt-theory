@@ -4,7 +4,7 @@ slug: core-session-engine
 scope: Alt Theory core session engine and Pi Coding Agent integration
 summary: Creates persistent, asset-configured Pi sessions through an application-owned service used by WebSocket adapters
 status: current
-last_reviewed: 2026-07-15
+last_reviewed: 2026-07-16
 tags: [core, backend, pi-agent, session]
 depends_on: []
 implements:
@@ -425,7 +425,18 @@ follow the session across browsers without changing `records/session.json`.
 
 `records/session.json` also carries v0.5 pilot metadata when present:
 `ownerAccountId`, `roleCondition`, `visibility`, `consentSnapshot`,
-`lastActivityAt`, and `retentionDueAt`. Meaningful prompts refresh private
+`lastActivityAt`, and `retentionDueAt`. Since v1-alpha M7 (2026-07-16) it is
+the single source of truth for three more optional fields (M7 decision doc
+§3/§5b): `studyTag {studyId, batch?}` (session-level study designation;
+absent = daily use; forks inherit it; `setStudyTag` + WS `set_study_tag`
+mutate it), `modelOverride {provider, modelId, thinkingLevel?}` (per-session
+model choice, §7), and a widened `forkedFrom.purpose` vocabulary
+`fork | side | helper | ab-arm` — legacy `collaboration`/`comparison` values
+are normalized on read (`collaboration→side`, `comparison→ab-arm`) inside
+`readV4SessionHeader`, so every consumer sees only the new vocabulary.
+Session-list membership derives from the purpose: only roots and `fork`
+belong in the user-facing list; a chosen A/B arm is rewritten to the
+continuation. Meaningful prompts refresh private
 `lastActivityAt` and `retentionDueAt`; session open/detail reads do not.
 `session-retention.ts` provides explicit cleanup for expired private sessions:
 it removes history, workspace, and non-tombstone records while leaving
@@ -453,13 +464,21 @@ When no active leaf can be derived, the reader keeps Pi's default opened leaf.
 Opening or reconfiguring a managed session also aligns Pi's leaf from run
 evidence before revise/delete guards run.
 
-Only explicit Fork creates `fork-NNN`:
+Explicit Fork (M5 substrate, 2026-07-15) creates a NEW full session, not a
+`fork-NNN` branch:
 
-- collaboration Fork uses the shared session `workspace/`;
-- comparison Fork copies the source branch workspace to
-  `branches/{branchId}/workspace/`;
-- both use a separate Pi JSONL with parent linkage and preserve the Alt Theory
-  session ID;
+- the child's Pi JSONL is built by COPYING the parent's persisted branch path
+  (never via Pi's `createBranchedSession`, which re-points the live parent
+  and survives only one fork cycle) — forking is N-repeatable and never
+  kicks the live parent (A/B arms, side chats, helper all fork the same
+  live parent);
+- the child gets its own readable session ID, dirs, and v0.4 records with
+  `forkedFrom: { sessionId, purpose }`;
+- default-workspace sessions copy the parent workspace; a §3.1 workspace
+  session keeps pointing at the user's external primary directory instead
+  of copying it into the data dir;
+- an A/B arm (or any child that must differ) can override any assembly
+  layer via selector overrides while keeping the parent conversation;
 - tool/file side effects before revision or Fork are not rolled back.
 
 Service-created sessions also append a `creation` config event. Supported
@@ -541,6 +560,9 @@ REST:
 - `PUT /api/sessions/{sessionId}/files/content`
 - `GET /api/sessions/{sessionId}/files/download?root=workspace&path=...`
 - `DELETE /api/sessions/{sessionId}/files/content`
+- `POST /api/sessions/{sessionId}/ab-comparisons` (+ `/generate`,
+  `/{comparisonId}/choice`) — M6 A/B comparison flow over the append-only
+  `records/ab-comparisons.jsonl` side-car
 
 Asset discovery routes return sorted `{ slug, displayName }` arrays without
 filesystem paths. Session list returns path-free summaries; session detail may
@@ -578,6 +600,7 @@ WebSocket:
 - client: `switch_visibility`, `switch_mode`
 - client: `add_workspace_dir` (local form only), `respond_approval`
 - client: `revise_latest`, `delete_latest`, `fork_session`
+- client: `set_study_tag`, `set_session_model` (M7, 2026-07-16)
 
 `revise_latest` starts a model run and completes with the normal run lifecycle
 events (`run_completed` / `run_failed`). The browser refreshes transcript from
@@ -641,6 +664,22 @@ trailing `/v1` because the Anthropic SDK appends `/v1/messages`.
 
 The normal UI can set KB to `none`, which disables the built-in `kb/` folder
 context while leaving workspace file reading intact.
+
+### Per-session model override (v1-alpha M7, 2026-07-16)
+
+A session can carry `modelOverride {provider, modelId, thinkingLevel?}` in
+`records/session.json`. The override wins over the deployment-global model
+config at every open/resume path (`SessionService.modelArgsFor`);
+`thinkingLevel` falls back to the global config when unset. WS
+`set_session_model` persists the override and, when the model resolves in
+the live registry, switches the RUNNING session immediately (the same
+`setModel` + manifest-sync mechanism the fallback chain uses, plus Pi's
+native `setThinkingLevel`); an unresolvable model applies on next open.
+Sending `override: null` clears back to the global config, symmetrically
+switching the live session back. Changes append a `model_override_changed`
+session event. Forked children inherit the parent's override at creation.
+The pickable model list is the configured `models.json` registry — the
+override never introduces models outside the configured registry.
 
 ### Interim model fallback (v0.5.x pilot)
 
@@ -750,6 +789,18 @@ Limits (current):
 
 ## Change Log
 
+- 2026-07-16: v1-alpha M7 backend pass. `records/session.json` gains
+  `studyTag`, `modelOverride`, and the widened `forkedFrom.purpose`
+  vocabulary (`fork | side | helper | ab-arm`, legacy values normalized on
+  read). Per-session model override with live switch (§7), `setStudyTag` /
+  `setSessionModel` service methods, WS `set_study_tag` /
+  `set_session_model`. Install-level participant designation in
+  `app-settings.json` (`participant {designated, label}`); `/api/auth/me`
+  returns `participant` (hosted from account role, local from the install
+  flag); local non-designated installs default new drafts to `private`
+  (sharing default follows designation, M7 decision doc §4). Fork section
+  rewritten to describe the M5 copy-fork substrate. Registered here after
+  the M7 IA design pass (`compound/2026-07-16-decision-v1-alpha-m7-ia-*`).
 - 2026-07-15: v1-alpha M1–M4 refresh. Per-session capability mode (§3/§4),
   workspace model with primary + added directories (§3.1), approval bridge
   binding extension dialogs to the web UI, always-on vendored security
