@@ -1,4 +1,5 @@
 import { cpSync, existsSync, rmSync, statSync, writeFileSync } from "fs";
+import { randomUUID } from "crypto";
 import type {
   AgentSession,
   AgentSessionEvent,
@@ -22,7 +23,7 @@ import {
   writeJsonAtomic,
   type SessionDirectories,
 } from "../core/data-dir.js";
-import { basename, isAbsolute, join, relative, resolve } from "path";
+import { isAbsolute, join, relative, resolve } from "path";
 import type { AgentAssetPaths } from "../core/agent-assets.js";
 import {
   isKnownKbDomain,
@@ -640,11 +641,6 @@ export class SessionService {
     ) {
       throw new Error("Fork point must be in the current Pi conversation");
     }
-    const forkFile =
-      previous.session.sessionManager.createBranchedSession(leafId);
-    if (!forkFile) {
-      throw new Error("Pi did not create a persisted fork session");
-    }
     const runtimeModelConfig = this.resolveEffectiveRuntimeModelConfig();
     const forkSessionId = allocateReadableSessionId(this.config.dataDir, {
       rolePresetSlug: childSelectors.rolePresetSlug,
@@ -652,7 +648,38 @@ export class SessionService {
       modelId: runtimeModelConfig.modelId,
     });
     const forkDirs = createSessionDirs(this.config.dataDir, forkSessionId);
-    const copiedForkFile = join(forkDirs.piSessionDir, basename(forkFile));
+    // Build the child's session file by COPYING the parent's persisted path —
+    // never via createBranchedSession, which is Pi's TUI extract-and-move: it
+    // re-points the live parent's SessionManager at the new file, forcing a
+    // dispose+restore of the parent that survives only one fork cycle. Copying
+    // getBranch(leafId) keeps the parent untouched, so forking is N-repeatable
+    // and non-kicking (A/B arms, /btw, helper all fork the same live parent).
+    const parentManager = previous.session.sessionManager;
+    const parentHeader = parentManager.getHeader();
+    if (!parentHeader) {
+      throw new Error("Fork requires a persisted parent session");
+    }
+    const forkTimestamp = new Date().toISOString();
+    const forkPiId = randomUUID();
+    const forkHeader = {
+      ...parentHeader,
+      id: forkPiId,
+      timestamp: forkTimestamp,
+      parentSession: parentManager.getSessionFile(),
+    };
+    // Same label handling as Pi's createBranchedSession: drop label entries
+    // and re-chain parentIds so the retained path stays a valid chain.
+    const forkPath: Array<Record<string, unknown>> = [];
+    let forkParentId: string | null = null;
+    for (const entry of parentManager.getBranch(leafId)) {
+      if (entry.type === "label") continue;
+      forkPath.push({ ...entry, parentId: forkParentId });
+      forkParentId = entry.id;
+    }
+    const copiedForkFile = join(
+      forkDirs.piSessionDir,
+      `${forkTimestamp.replace(/[:.]/g, "-")}_${forkPiId}.jsonl`
+    );
     let activated = false;
     // A workspace session's primary is the user's own project directory
     // (spec §5.1): the fork keeps pointing at it instead of copying it into
@@ -666,10 +693,7 @@ export class SessionService {
           recursive: true,
         });
       }
-      const forkEntries = [
-        previous.session.sessionManager.getHeader(),
-        ...previous.session.sessionManager.getEntries(),
-      ].filter(Boolean);
+      const forkEntries = [forkHeader, ...forkPath];
       writeFileSync(
         copiedForkFile,
         `${forkEntries.map((entry) => JSON.stringify(entry)).join("\n")}\n`,
@@ -749,22 +773,10 @@ export class SessionService {
           purpose,
         },
       });
-      if (existsSync(forkFile)) {
-        rmSync(forkFile, { force: true });
-      }
-      const restoredSource = await this.createManagedFromExisting(
-        sessionId,
-        previous.selectors
-      );
-      this.sessions.set(sessionId, restoredSource);
-      await this.disposeManaged(previous);
       return this.snapshot(result);
     } catch (error) {
       if (!activated && existsSync(forkDirs.sessionRoot)) {
         rmSync(forkDirs.sessionRoot, { recursive: true, force: true });
-      }
-      if (!activated && existsSync(forkFile)) {
-        rmSync(forkFile, { force: true });
       }
       throw error;
     }

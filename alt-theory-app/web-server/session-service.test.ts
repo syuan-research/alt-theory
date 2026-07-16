@@ -665,18 +665,37 @@ test("forkSession applies per-arm selector overrides (A/B substrate)", async () 
     timestamp: Date.now(),
   });
   try {
-    // An A/B arm forks the same conversation but overrides an assembly layer.
-    const arm = await service.forkSession(
-      created.sessionId,
-      "comparison",
-      forkPoint,
-      { soulSlug: null }
-    );
+    // A/B needs N arms off the SAME live parent: forking must copy the
+    // parent's persisted path without mutating or restarting the parent.
+    const arms = [];
+    for (const overrides of [{ soulSlug: null }, {}, { kbDomain: "none" }]) {
+      arms.push(
+        await service.forkSession(created.sessionId, "comparison", forkPoint, overrides)
+      );
+    }
+    assert.equal(new Set(arms.map((a) => a.sessionId)).size, 3);
     assert.equal(service.getManifest(created.sessionId).soul?.slug, "soul-latest");
-    assert.equal(service.getManifest(arm.sessionId).soul?.slug, null);
+    assert.equal(service.getManifest(arms[0].sessionId).soul?.slug, null);
+    assert.equal(service.getManifest(arms[2].sessionId).kb.domain, "none");
+    for (const arm of arms) {
+      assert.equal(
+        readSessionDetail(fixture.dataDir, arm.sessionId)?.transcript.at(-1)?.text,
+        "ab answer"
+      );
+    }
+    // The parent was never disposed: same managed instance, still promptable.
+    assert.equal((service as any).sessions.get(created.sessionId), managed);
+    managed.session.prompt = async (text: string) => {
+      managed.session.sessionManager.appendMessage({
+        role: "user",
+        content: [{ type: "text", text }],
+        timestamp: Date.now(),
+      });
+    };
+    await service.runPrompt(created.sessionId, "parent continues").completion;
     assert.equal(
-      readSessionDetail(fixture.dataDir, arm.sessionId)?.transcript.at(-1)?.text,
-      "ab answer"
+      readSessionDetail(fixture.dataDir, created.sessionId)?.transcript.at(-1)?.text,
+      "parent continues"
     );
   } finally {
     await service.disposeAll();
@@ -702,9 +721,6 @@ test("SessionService cleans unactivated comparison fork artifacts", async () => 
     content: [{ type: "text", text: "fork answer" }],
     timestamp: Date.now(),
   });
-  const forkFile = join(fixture.root, "failed-fork.jsonl");
-  writeFileSync(forkFile, "partial", "utf-8");
-  managed.session.sessionManager.createBranchedSession = () => forkFile;
   (service as any).openManagedRuntime = async () => {
     throw new Error("forced fork open failure");
   };
@@ -715,7 +731,6 @@ test("SessionService cleans unactivated comparison fork artifacts", async () => 
       /forced fork open failure/
     );
     const detail = readSessionDetail(fixture.dataDir, created.sessionId);
-    assert.equal(existsSync(forkFile), false);
     assert.equal(detail?.session.sessionId, created.sessionId);
     assert.equal(
       readdirSync(join(fixture.dataDir, "sessions")).length,
