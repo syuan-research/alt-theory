@@ -645,6 +645,44 @@ test("SessionService explicit forks create a new session with copied workspace",
   await runCase("comparison");
 });
 
+test("forkSession applies per-arm selector overrides (A/B substrate)", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const created = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const managed = (service as any).sessions.get(created.sessionId);
+  managed.session.sessionManager.appendMessage({
+    role: "user",
+    content: [{ type: "text", text: "ab source" }],
+    timestamp: Date.now(),
+  });
+  const forkPoint = managed.session.sessionManager.appendMessage({
+    role: "assistant",
+    content: [{ type: "text", text: "ab answer" }],
+    timestamp: Date.now(),
+  });
+  try {
+    // An A/B arm forks the same conversation but overrides an assembly layer.
+    const arm = await service.forkSession(
+      created.sessionId,
+      "comparison",
+      forkPoint,
+      { soulSlug: null }
+    );
+    assert.equal(service.getManifest(created.sessionId).soul?.slug, "soul-latest");
+    assert.equal(service.getManifest(arm.sessionId).soul?.slug, null);
+    assert.equal(
+      readSessionDetail(fixture.dataDir, arm.sessionId)?.transcript.at(-1)?.text,
+      "ab answer"
+    );
+  } finally {
+    await service.disposeAll();
+  }
+});
+
 test("SessionService cleans unactivated comparison fork artifacts", async () => {
   const fixture = setupFixture();
   const service = createTestService(fixture);

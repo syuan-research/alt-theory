@@ -613,12 +613,21 @@ export class SessionService {
   async forkSession(
     sessionId: string,
     purpose: ForkPurpose,
-    forkPointEntryId?: string
+    forkPointEntryId?: string,
+    selectorOverrides?: Partial<SessionSelectors>
   ): Promise<SessionSnapshot> {
     const previous = this.requireSession(sessionId);
     if (previous.busy || previous.session.isStreaming) {
       throw new SessionBusyError(sessionId);
     }
+    // The sub-session substrate (M5): a fork inherits the parent by default, but
+    // an A/B arm (or any child that must differ) can override any assembly layer
+    // — role, KB domain, soul, instruction — while keeping the parent's
+    // conversation. The child still routes through createManaged, so it is
+    // mediated and non-headless like any session.
+    const childSelectors: SessionSelectors = selectorOverrides
+      ? { ...previous.selectors, ...selectorOverrides }
+      : previous.selectors;
     const leafId =
       forkPointEntryId ?? previous.session.sessionManager.getLeafId();
     if (!leafId) {
@@ -638,8 +647,8 @@ export class SessionService {
     }
     const runtimeModelConfig = this.resolveEffectiveRuntimeModelConfig();
     const forkSessionId = allocateReadableSessionId(this.config.dataDir, {
-      rolePresetSlug: previous.selectors.rolePresetSlug,
-      soulSlug: previous.selectors.soulSlug,
+      rolePresetSlug: childSelectors.rolePresetSlug,
+      soulSlug: childSelectors.soulSlug,
       modelId: runtimeModelConfig.modelId,
     });
     const forkDirs = createSessionDirs(this.config.dataDir, forkSessionId);
@@ -670,7 +679,7 @@ export class SessionService {
         sessionId: forkSessionId,
         sessionFile: copiedForkFile,
         sessionDirs: forkDirs,
-        selectors: previous.selectors,
+        selectors: childSelectors,
         originalManifest: previous.manifest,
         branchId: "main",
         openedFrom: previous.openedFrom,
@@ -693,7 +702,7 @@ export class SessionService {
         sessionRoot: forkDirs.sessionRoot,
         recordsDir: forkDirs.recordsDir,
         manifest: result.manifest,
-        projectId: previous.selectors.projectId ?? null,
+        projectId: childSelectors.projectId ?? null,
         ownerAccountId: sourceHeader?.ownerAccountId ?? null,
         roleCondition: sourceHeader?.roleCondition ?? null,
         visibility: sourceHeader?.visibility ?? "research",
