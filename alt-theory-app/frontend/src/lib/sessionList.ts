@@ -89,7 +89,7 @@ export function buildSessionTree(
     })
     .map(([projectId, roots]) => ({
       projectId,
-      label: projectId ? projectNames.get(projectId) || projectId : "Workspace",
+      label: projectId ? projectNames.get(projectId) || projectId : "No project",
       roots,
     }));
 

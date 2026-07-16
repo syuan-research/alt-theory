@@ -51,7 +51,7 @@ export function WorkspaceTree() {
     let cancelled = false;
     listWorkspaceFiles(sessionId)
       .then((res) => !cancelled && (setEntries(res.files), setError(null)))
-      .catch((e) => !cancelled && setError(e?.message ?? "Failed to load workspace"));
+      .catch((e) => !cancelled && setError(e?.message ?? "Failed to load files"));
     return () => {
       cancelled = true;
     };
@@ -104,7 +104,7 @@ export function WorkspaceTree() {
   if (error) return <div className="rp-empty">{error}</div>;
   if (!entries) return <div className="rp-empty">Loading…</div>;
   if (entries.length === 0) {
-    return <div className="rp-empty">Workspace is empty.</div>;
+    return <div className="rp-empty">No files available.</div>;
   }
 
   return (

@@ -294,7 +294,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                 onClick={() => (shell.openRail("workspace"), setMenu(null))}
               >
                 <i className="ph ph-paperclip" />
-                Attach from workspace
+                Attach a file
               </div>
               <div className="sep" />
               <div
@@ -351,7 +351,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                     <i className="ph ph-hammer" />
                     <span>
                       Work
-                      <span className="d">Can act on files in your workspace.</span>
+                      <span className="d">Can act on files in your working folders.</span>
                     </span>
                     {app.sessionMode === "full" ? (
                       <i className="ph ph-check check" />
@@ -407,16 +407,17 @@ function CtxPicker({
   children: React.ReactNode;
 }) {
   return (
-    <span style={{ position: "relative" }}>
+    <span className="ctx-picker">
       <button
         className="ctx-item"
+        title={label}
         onClick={(e) => {
           e.stopPropagation();
           onToggle();
         }}
       >
         <i className={`ph ${icon}`} />
-        {label}
+        <span className="ctx-label">{label}</span>
         <i className="ph ph-caret-down caret" />
       </button>
       <div

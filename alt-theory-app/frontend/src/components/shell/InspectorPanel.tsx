@@ -11,7 +11,7 @@ import { ChangesPanel } from "@/components/inspector/ChangesPanel";
 const RAIL_META: Record<RailKey, { title: string; icon: string; adv?: boolean }> = {
   chats: { title: "Side chats", icon: "ph-arrows-split" },
   changes: { title: "Changes", icon: "ph-pencil-simple-line" },
-  workspace: { title: "Workspace", icon: "ph-folder" },
+  workspace: { title: "Files", icon: "ph-folder" },
   records: { title: "Records", icon: "ph-scroll", adv: true },
   provenance: { title: "Provenance", icon: "ph-tree-structure", adv: true },
   runtime: { title: "Runtime", icon: "ph-pulse", adv: true },

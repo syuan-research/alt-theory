@@ -49,29 +49,31 @@ function EmptyState() {
   const shell = useShell();
   return (
     <div className="empty-state">
-      <div className="greet">Where shall we begin?</div>
-      <div className="mode-pick">
-        <button
-          className={`mode-card${shell.newMode === "pure" ? " on" : ""}`}
-          onClick={() => shell.setNewMode("pure")}
-        >
-          <div className="t">
-            <i className="ph ph-book-open" />
-            Understand
-            <span className="def">default</span>
-          </div>
-          <div className="d">Reads and discusses. Asks before touching anything.</div>
-        </button>
-        <button
-          className={`mode-card${shell.newMode === "full" ? " on" : ""}`}
-          onClick={() => shell.setNewMode("full")}
-        >
-          <div className="t">
-            <i className="ph ph-hammer" />
-            Work
-          </div>
-          <div className="d">Can act on files in your workspace.</div>
-        </button>
+      <div className="empty-intro">
+        <div className="greet">Where shall we begin?</div>
+        <div className="mode-pick">
+          <button
+            className={`mode-card${shell.newMode === "pure" ? " on" : ""}`}
+            onClick={() => shell.setNewMode("pure")}
+          >
+            <div className="t">
+              <i className="ph ph-book-open" />
+              Understand
+              <span className="def">default</span>
+            </div>
+            <div className="d">Reads and discusses. Asks before touching anything.</div>
+          </button>
+          <button
+            className={`mode-card${shell.newMode === "full" ? " on" : ""}`}
+            onClick={() => shell.setNewMode("full")}
+          >
+            <div className="t">
+              <i className="ph ph-hammer" />
+              Work
+            </div>
+            <div className="d">Can act on files in your working folders.</div>
+          </button>
+        </div>
       </div>
       <div className="empty-composer">
         {app.sessionReady ? (

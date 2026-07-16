@@ -864,16 +864,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const startNewSession = useCallback(() => {
     if (isRunning) return;
-    if (messages.length > 0) {
-      requestConfirm({
-        message: "Start a new session? Current chat will be cleared.",
-        confirmLabel: "New Session",
-        onConfirm: beginNewSession,
-      });
-      return;
-    }
     beginNewSession();
-  }, [beginNewSession, isRunning, messages.length, requestConfirm]);
+  }, [beginNewSession, isRunning]);
 
   const openCatalogSession = useCallback(
     (targetSessionId: string) => {
