@@ -32,15 +32,25 @@ export interface AbComparisonScore {
 
 export interface AbComparisonInput {
   sessionId: string;
+  /**
+   * Caller-fixed id for append-only updates (recording a choice re-appends
+   * the record under the same comparisonId; the latest line wins — see
+   * currentAbComparisonRecords). Omit to mint a new comparison.
+   */
+  comparisonId?: string;
   trigger:
     | "manual"
     | "backend_request"
     | "config_rule"
     | "pi_subagents"
     | "imported";
+  /** The prompt text the arms answered (display/provenance). */
+  prompt?: string | null;
   promptEntryId?: string | null;
   responseEntryId?: string | null;
   selectedCandidateId?: string | null;
+  /** When the participant/researcher made the choice (createdAt stays the generation time). */
+  decidedAt?: string | null;
   candidates: AbComparisonCandidate[];
   scores?: AbComparisonScore[];
   notes?: string | null;
@@ -85,6 +95,21 @@ export function readAbComparisonRecords(recordsDir: string): AbComparisonRecord[
     );
 }
 
+/**
+ * The current state of each comparison: the file is append-only, so a choice
+ * is recorded by re-appending under the same comparisonId — the last line
+ * per id wins. Order follows first appearance (generation order).
+ */
+export function currentAbComparisonRecords(
+  recordsDir: string
+): AbComparisonRecord[] {
+  const latest = new Map<string, AbComparisonRecord>();
+  for (const record of readAbComparisonRecords(recordsDir)) {
+    latest.set(record.comparisonId, record);
+  }
+  return [...latest.values()];
+}
+
 function normalizeRecord(input: AbComparisonInput): AbComparisonRecord {
   if (!input.sessionId.trim()) throw new Error("sessionId is required");
   if (!input.candidates.length) throw new Error("at least one candidate is required");
@@ -113,9 +138,9 @@ function normalizeRecord(input: AbComparisonInput): AbComparisonRecord {
   return {
     schemaVersion: 1,
     recordType: "ab-comparison",
-    comparisonId: randomUUID(),
     createdAt: new Date().toISOString(),
     ...input,
+    comparisonId: input.comparisonId ?? randomUUID(),
   };
 }
 

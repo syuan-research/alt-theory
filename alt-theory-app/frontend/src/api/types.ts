@@ -163,6 +163,29 @@ export interface RunRecord {
   revisionId: string;
 }
 
+export interface AbComparisonCandidate {
+  candidateId: string;
+  label?: string | null;
+  provider?: string | null;
+  model?: string | null;
+  role?: string | null;
+  instructionRef?: string | null;
+  kbDomain?: string | null;
+  outputText?: string | null;
+}
+
+export interface AbComparisonRecord {
+  comparisonId: string;
+  createdAt: string;
+  sessionId: string;
+  trigger: string;
+  prompt?: string | null;
+  selectedCandidateId?: string | null;
+  decidedAt?: string | null;
+  candidates: AbComparisonCandidate[];
+  notes?: string | null;
+}
+
 export interface SessionDetailResponse {
   session: SessionSummary;
   transcript: TranscriptMessage[];
@@ -170,6 +193,7 @@ export interface SessionDetailResponse {
   warnings: string[];
   effectiveConfig?: EffectiveSessionConfig | null;
   runs?: RunRecord[];
+  abComparisons?: AbComparisonRecord[];
 }
 
 export type ApiType =

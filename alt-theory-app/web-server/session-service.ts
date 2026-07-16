@@ -888,6 +888,7 @@ export class SessionService {
     return appendAbComparisonRecord(parent.manifest.recordsDir, {
       sessionId,
       trigger: "backend_request",
+      prompt,
       promptEntryId,
       candidates,
     });

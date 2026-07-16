@@ -55,6 +55,7 @@ import {
 } from "./workspace-files.js";
 import {
   appendAbComparisonRecord,
+  currentAbComparisonRecords,
   type AbComparisonCandidate,
   type AbComparisonInput,
   type AbComparisonScore,
@@ -590,6 +591,44 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       });
     }
   });
+  // Continue-from-choice is PRELIM (owner decision 2026-07-16, round 3):
+  // choosing = append the choice under the same comparisonId (latest wins)
+  // + the client switches to the chosen arm session. No id rewriting.
+  app.post(
+    "/api/sessions/:sessionId/ab-comparisons/:comparisonId/choice",
+    (req, res) => {
+      const sessionId = req.params.sessionId;
+      if (!requireSessionRestContentAccess(req, res, sessionId)) return;
+      try {
+        const recordsDir = resolve(dataDir, "sessions", sessionId, "records");
+        const existing = currentAbComparisonRecords(recordsDir).find(
+          (record) => record.comparisonId === req.params.comparisonId
+        );
+        if (!existing) {
+          res.status(404).json({
+            error: `Unknown comparison id: ${req.params.comparisonId}`,
+          });
+          return;
+        }
+        const body = asObject(req.body);
+        const selectedCandidateId = optionalString(body.selectedCandidateId);
+        if (!selectedCandidateId) {
+          throw new Error("selectedCandidateId is required");
+        }
+        const record = appendAbComparisonRecord(recordsDir, {
+          ...existing,
+          selectedCandidateId,
+          decidedAt: new Date().toISOString(),
+          notes: optionalString(body.notes) ?? existing.notes ?? null,
+        });
+        res.json({ record });
+      } catch (error) {
+        res.status(400).json({
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+  );
   app.post(
     "/api/sessions/:sessionId/ab-comparisons/generate",
     async (req, res) => {

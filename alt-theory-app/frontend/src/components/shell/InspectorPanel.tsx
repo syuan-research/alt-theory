@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { PathsPanel } from "@/components/inspector/PathsPanel";
 import { ProvenancePanel } from "@/components/inspector/ProvenancePanel";
+import { ResearchPanel } from "@/components/inspector/ResearchPanel";
 import { RecordsPanel } from "@/components/inspector/RecordsPanel";
 import { RuntimePanel } from "@/components/inspector/RuntimePanel";
 import { WorkspacePanel } from "@/components/inspector/WorkspacePanel";
@@ -81,6 +82,11 @@ export function InspectorPanel({ onCollapse }: InspectorPanelProps) {
 
   if (advanced) {
     tabItems.push(
+      {
+        value: "research",
+        label: "Research",
+        content: <ResearchPanel tabActive={activeTab === "research"} />,
+      },
       {
         value: "provenance",
         label: "Provenance",

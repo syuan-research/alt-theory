@@ -1,4 +1,65 @@
-import type { SessionDetailResponse, SessionSummary } from "./types";
+import type {
+  AbComparisonRecord,
+  SessionDetailResponse,
+  SessionSummary,
+} from "./types";
+
+export interface AbArmConfig {
+  label?: string | null;
+  selectorOverrides?: {
+    rolePresetSlug?: string | null;
+    kbDomain?: string;
+    soulSlug?: string | null;
+    customInstructionRef?: string | null;
+  };
+}
+
+export async function generateAbComparison(
+  sessionId: string,
+  prompt: string,
+  arms: AbArmConfig[]
+): Promise<AbComparisonRecord> {
+  const res = await fetch(
+    `/api/sessions/${encodeURIComponent(sessionId)}/ab-comparisons/generate`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt, arms }),
+    }
+  );
+  const body = (await res.json().catch(() => ({}))) as {
+    record?: AbComparisonRecord;
+    error?: string;
+  };
+  if (!res.ok || !body.record) {
+    throw new Error(body.error || `A/B generation failed (${res.status})`);
+  }
+  return body.record;
+}
+
+export async function chooseAbCandidate(
+  sessionId: string,
+  comparisonId: string,
+  selectedCandidateId: string,
+  notes?: string
+): Promise<AbComparisonRecord> {
+  const res = await fetch(
+    `/api/sessions/${encodeURIComponent(sessionId)}/ab-comparisons/${encodeURIComponent(comparisonId)}/choice`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ selectedCandidateId, notes }),
+    }
+  );
+  const body = (await res.json().catch(() => ({}))) as {
+    record?: AbComparisonRecord;
+    error?: string;
+  };
+  if (!res.ok || !body.record) {
+    throw new Error(body.error || `Recording choice failed (${res.status})`);
+  }
+  return body.record;
+}
 
 export interface SessionDisplayName {
   alias: string;

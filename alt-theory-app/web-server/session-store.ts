@@ -33,7 +33,7 @@ import {
   type RunRecord,
 } from "./run-records.js";
 import {
-  readAbComparisonRecords,
+  currentAbComparisonRecords,
   type AbComparisonRecord,
 } from "./ab-records.js";
 import {
@@ -155,7 +155,7 @@ export function readSessionDetail(
   const events = readSessionEvents(parts.recordsDir, parts.state);
   const configEvents = readConfigEvents(parts.recordsDir);
   const runs = readRunRecords(parts.recordsDir);
-  const abComparisons = readAbComparisonRecords(parts.recordsDir);
+  const abComparisons = currentAbComparisonRecords(parts.recordsDir);
   const latestRuns = latestRunSnapshots(parts.recordsDir);
   const pi = readPiInfo(
     parts.sessionFile,
