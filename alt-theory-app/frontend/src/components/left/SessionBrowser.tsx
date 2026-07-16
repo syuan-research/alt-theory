@@ -121,13 +121,7 @@ export function SessionBrowser() {
       />
       {(childrenByParent.get(session.sessionId) ?? []).map((child) => (
         <div key={child.sessionId} className="pl-3">
-          <SessionRow
-            session={child}
-            title={sessionTitle(child, app.sessionDisplayNames)}
-            selected={app.selectedCatalogSessionId === child.sessionId}
-            isParticipant={participant}
-            onOpen={() => app.openCatalogSession(child.sessionId)}
-          />
+          {renderSessionWithChildren(child, participant)}
         </div>
       ))}
     </div>
