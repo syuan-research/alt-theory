@@ -20,12 +20,15 @@ function assertNonEmptyText(content: string, label: string): string {
 }
 
 async function extractDocxNode(filePath: string): Promise<ExtractResult> {
+  // mammoth has no markdown converter (only convertToHtml / extractRawText),
+  // so the Node path yields readable plain text. The pandoc CLI path
+  // (extractDocxCli, WORKSPACE_EXTRACT_USE_CLI=1) yields richer markdown.
   const mammoth = await import("mammoth");
   const buffer = readFileSync(filePath);
-  const result = await mammoth.convertToMarkdown({ buffer });
+  const result = await mammoth.extractRawText({ buffer });
   return {
     content: assertNonEmptyText(result.value, "DOCX"),
-    outputExt: ".md",
+    outputExt: ".txt",
   };
 }
 

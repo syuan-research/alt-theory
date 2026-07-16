@@ -231,6 +231,12 @@ test("security extension mediates tool calls at the policy boundary", async () =
   assert.match((await call("bash", { command: "rm -rf build" }))?.reason ?? "", /requires user approval/);
   assert.match((await call("bash", { command: "cat ~/.ssh/id_rsa" }))?.reason ?? "", /requires user approval/);
 
+  // Cloud-metadata / internal hosts are blocked on the bash network path too.
+  assert.match(
+    (await call("bash", { command: "curl http://169.254.169.254/latest/meta-data" }))?.reason ?? "",
+    /internal or cloud-metadata address/
+  );
+
   // Ordinary commands pass without mediation.
   assert.equal(await call("bash", { command: "echo hello" }), undefined);
   assert.equal(await call("bash", { command: "git status" }), undefined);

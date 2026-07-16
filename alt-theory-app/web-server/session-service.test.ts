@@ -1914,12 +1914,49 @@ test("security extension escalates risky commands through the approval bridge", 
     );
     assert.equal(requested().length, 1);
 
-    // Denying a different escalation blocks the tool.
-    const denied = managed.session.agent.beforeToolCall!({
-      toolCall: { id: "sec-3", name: "bash", arguments: {} },
-      args: { command: "curl http://example.com" },
+    // The allowance survives a loader reload (mode switch): it lives in the
+    // per-session closure, not the per-reload factory.
+    await service.switchMode(created.sessionId, "full");
+    assert.equal(
+      await managed.session.agent.beforeToolCall!({
+        toolCall: { id: "sec-reload", name: "bash", arguments: {} },
+        args: { command: "rm -rf scratch" },
+      }),
+      undefined
+    );
+    assert.equal(requested().length, 1);
+
+    // Network allowances are keyed per host: granting one host does not cover
+    // another.
+    const grantHostA = managed.session.agent.beforeToolCall!({
+      toolCall: { id: "net-1", name: "bash", arguments: {} },
+      args: { command: "curl https://example.com/data" },
     });
     for (let i = 0; i < 50 && requested().length < 2; i++) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    const hostA = requested().at(-1)!;
+    assert.ok(hostA.type === "approval_requested");
+    service.respondApproval(created.sessionId, hostA.payload.approvalId, {
+      choice: APPROVAL_ALLOW_SESSION,
+    });
+    assert.equal(await grantHostA, undefined);
+    // Same host, covered without a new dialog.
+    assert.equal(
+      await managed.session.agent.beforeToolCall!({
+        toolCall: { id: "net-2", name: "bash", arguments: {} },
+        args: { command: "curl https://example.com/other" },
+      }),
+      undefined
+    );
+    assert.equal(requested().length, 2);
+
+    // A different host re-prompts, and denying it blocks the tool.
+    const denied = managed.session.agent.beforeToolCall!({
+      toolCall: { id: "net-3", name: "bash", arguments: {} },
+      args: { command: "curl https://elsewhere.test/x" },
+    });
+    for (let i = 0; i < 50 && requested().length < 3; i++) {
       await new Promise((r) => setTimeout(r, 10));
     }
     const second = requested().at(-1)!;

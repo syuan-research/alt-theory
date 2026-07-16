@@ -268,6 +268,15 @@ export function createSecurityExtension(
           const hosts = [...escalations].some((e) => NETWORK_COMMANDS.has(e))
             ? extractHosts(sanitized)
             : [];
+          // SSRF: hard-block cloud-metadata / internal hosts on the bash
+          // network path too, not only on custom-tool URL inputs.
+          const blockedHost = hosts.find((host) => isBlockedHost(host));
+          if (blockedHost) {
+            return blocked(
+              "ssrf_protection",
+              `Blocked network destination "${blockedHost}" — this is an internal or cloud-metadata address.`
+            );
+          }
           const key = `bash:${[...escalations].sort().join(",")}${
             hosts.length ? `@${hosts.sort().join(",")}` : ""
           }`;
@@ -335,15 +344,15 @@ export function createSecurityExtension(
       if (url) {
         let hostname: string;
         try {
-          hostname = new URL(url).hostname.toLowerCase().replace(/\.$/, "");
+          hostname = new URL(url).hostname;
         } catch {
           return undefined;
         }
-        if (
-          BLOCKED_HOSTS.has(hostname) ||
-          BLOCKED_HOST_PREFIXES.some((prefix) => hostname.startsWith(prefix))
-        ) {
-          return blocked("ssrf_protection", `Blocked hostname: ${hostname}`);
+        if (isBlockedHost(hostname)) {
+          return blocked(
+            "ssrf_protection",
+            `Blocked network destination "${hostname}" — this is an internal or cloud-metadata address.`
+          );
         }
       }
       return undefined;
@@ -405,6 +414,16 @@ function extractHosts(command: string): string[] {
   }
   hosts.delete("");
   return [...hosts];
+}
+
+/** Cloud-metadata / internal-service host match, shared by the bash network
+ *  path and custom-tool URL inputs. */
+function isBlockedHost(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/\.$/, "");
+  return (
+    BLOCKED_HOSTS.has(host) ||
+    BLOCKED_HOST_PREFIXES.some((prefix) => host.startsWith(prefix))
+  );
 }
 
 /** @vtstech/pi-security homoglyph check: invisible characters that change the
