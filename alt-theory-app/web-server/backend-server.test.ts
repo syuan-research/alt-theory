@@ -1539,6 +1539,13 @@ test("session REST routes preserve hosted isolation and local access", async () 
       `http://127.0.0.1:${localAddress.port}/api/sessions/${ownerlessPrivateSession.sessionId}`
     );
     assert.equal(localPrivateDetail.status, 200);
+    const upload = new FormData();
+    upload.append("file", new Blob(["local reference"], { type: "text/plain" }), "reference.txt");
+    const localUpload = await fetch(
+      `http://127.0.0.1:${localAddress.port}/api/sessions/${ownerlessPrivateSession.sessionId}/files/upload`,
+      { method: "POST", body: upload }
+    );
+    assert.equal(localUpload.status, 200);
   } finally {
     if (previousMode === undefined) delete process.env.ALT_THEORY_MODE;
     else process.env.ALT_THEORY_MODE = previousMode;

@@ -1,8 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { WorkspaceFileEntry } from "@/api/types";
-import { getSessionFileContent, listWorkspaceFiles } from "@/api/session-files";
+import {
+  getSessionFileContent,
+  listWorkspaceFiles,
+  uploadWorkspaceFile,
+} from "@/api/session-files";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
+import { stagePathAfterUpload } from "@/lib/workspace";
 
 interface TreeNode {
   name: string;
@@ -39,11 +44,15 @@ export function WorkspaceTree() {
   const [entries, setEntries] = useState<WorkspaceFileEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<{ path: string; content: string } | null>(null);
+  const [uploadStatus, setUploadStatus] = useState("");
+  const uploadInput = useRef<HTMLInputElement>(null);
 
   const sessionId = app.sessionId;
   const runCount = app.runCompletedCount;
+  const pureMode = sessionId ? app.sessionMode === "pure" : shell.newMode === "pure";
 
   useEffect(() => {
+    setUploadStatus("");
     if (!sessionId) {
       setEntries([]);
       return;
@@ -78,6 +87,28 @@ export function WorkspaceTree() {
     }
   };
 
+  const importFile = async (file: File) => {
+    if (!sessionId) return;
+    setUploadStatus("Importing…");
+    try {
+      const result = await uploadWorkspaceFile(sessionId, file);
+      const stagePath = stagePathAfterUpload(result);
+      if (stagePath) app.stageWorkspacePath(stagePath);
+      const refreshed = await listWorkspaceFiles(sessionId);
+      setEntries(refreshed.files);
+      setError(null);
+      setUploadStatus(
+        result.extractStatus === "failed"
+          ? result.extractError || "Could not read this file."
+          : `${file.name} attached to the next message.`
+      );
+    } catch (e) {
+      setUploadStatus(e instanceof Error ? e.message : "Import failed.");
+    } finally {
+      if (uploadInput.current) uploadInput.current.value = "";
+    }
+  };
+
   if (preview) {
     const staged = app.stagedWorkspacePaths.includes(preview.path);
     return (
@@ -101,16 +132,44 @@ export function WorkspaceTree() {
     );
   }
 
-  if (error) return <div className="rp-empty">{error}</div>;
-  if (!entries) return <div className="rp-empty">Loading…</div>;
-  if (entries.length === 0) {
-    return <div className="rp-empty">No files available.</div>;
-  }
-
   return (
-    <div className="tree">
-      <TreeLevel node={tree} depth={0} onOpenFile={openFile} />
-    </div>
+    <>
+      {pureMode ? (
+        <div className="pv-card">
+          <button
+            className="wb-apply"
+            disabled={!sessionId}
+            onClick={() => uploadInput.current?.click()}
+          >
+            {sessionId ? "Import reference" : "Import after the first message"}
+          </button>
+          <input
+            ref={uploadInput}
+            type="file"
+            hidden
+            accept=".txt,.md,.csv,.tsv,.json,.html,.docx,.xlsx,.pdf"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) void importFile(file);
+            }}
+          />
+          {uploadStatus ? <div className="wb-note">{uploadStatus}</div> : null}
+        </div>
+      ) : null}
+      {error ? (
+        <div className="rp-empty">{error}</div>
+      ) : !entries ? (
+        <div className="rp-empty">Loading…</div>
+      ) : entries.length === 0 ? (
+        <div className="rp-empty">
+          {pureMode ? "No imported references." : "No files available."}
+        </div>
+      ) : (
+        <div className="tree">
+          <TreeLevel node={tree} depth={0} onOpenFile={openFile} />
+        </div>
+      )}
+    </>
   );
 }
 

@@ -723,7 +723,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       const sessionId = req.params.sessionId;
       if (!requireSessionRestContentAccess(req, res, sessionId)) return;
       const auth = authSessions.resolveRequest(req);
-      if (!auth.accountId) {
+      const uploadOwner = auth.accountId ?? (localMode ? "__local__" : null);
+      if (!uploadOwner) {
         res.status(403).json({ error: "Upload requires an authenticated owner" });
         return;
       }
@@ -736,7 +737,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         const result = await uploadWorkspaceFile(
           dataDir,
           sessionId,
-          auth.accountId,
+          uploadOwner,
           file.originalname,
           file.buffer
         );

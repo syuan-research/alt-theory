@@ -80,6 +80,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
     interactive && !app.isRunning && (hasText || app.stagedWorkspacePaths.length > 0);
   const showVisibility =
     app.participant?.designated === true || app.viewMode === "researcher";
+  const pureMode = variant === "empty" ? shell.newMode === "pure" : app.sessionMode === "pure";
 
   const handleSubmit = () => {
     if (app.reviseMode) {
@@ -276,7 +277,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
             {/* plus / actions */}
             <button
               className="flat"
-              title="Attach or act"
+              title="More actions"
               onClick={(e) => {
                 e.stopPropagation();
                 toggle("plus");
@@ -289,14 +290,18 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               style={{ left: 0 }}
               onClick={(e) => e.stopPropagation()}
             >
-              <div
-                className="mi"
-                onClick={() => (shell.openRail("workspace"), setMenu(null))}
-              >
-                <i className="ph ph-paperclip" />
-                Attach a file
-              </div>
-              <div className="sep" />
+              {pureMode ? (
+                <>
+                  <div
+                    className="mi"
+                    onClick={() => (shell.openRail("workspace"), setMenu(null))}
+                  >
+                    <i className="ph ph-paperclip" />
+                    Import reference
+                  </div>
+                  <div className="sep" />
+                </>
+              ) : null}
               <div
                 className="mi"
                 onClick={() => (app.forkCurrentSession("helper"), setMenu(null))}
