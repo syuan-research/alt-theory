@@ -1,4 +1,7 @@
-import { SessionManager } from "@earendil-works/pi-coding-agent";
+import {
+  SessionManager,
+  generateDiffString,
+} from "@earendil-works/pi-coding-agent";
 import {
   existsSync,
   mkdirSync,
@@ -648,6 +651,132 @@ function readPiInfo(
       transcript: [],
     };
   }
+}
+
+/** One agent-modified file in a conversation (M7 §2 Changes projection). */
+export interface FileChange {
+  path: string;
+  added: number;
+  removed: number;
+  /** Display-oriented diff, capped for transport. */
+  diff: string;
+}
+
+export interface SessionChanges {
+  files: FileChange[];
+}
+
+const CHANGE_TOOL_NAMES = new Set(["edit", "write", "create", "multiedit"]);
+const MAX_DIFF_LINES = 160;
+
+/**
+ * Read-only projection of the files the agent wrote/edited in a conversation,
+ * aggregated from the Pi transcript's write/edit tool calls (M7 §2). The ONE
+ * sanctioned backend addition for the v1-alpha frontend; never mutates state.
+ */
+export function readSessionChanges(
+  dataDir: string,
+  sessionId: string
+): SessionChanges | null {
+  const parts = readSessionParts(dataDir, sessionId);
+  if (!parts) return null;
+  if (!parts.sessionFile) return { files: [] };
+
+  let branchEntries: unknown[];
+  try {
+    const sessionManager = SessionManager.open(parts.sessionFile, parts.historyDir);
+    branchEntries = sessionManager.getBranch();
+  } catch {
+    return { files: [] };
+  }
+
+  return projectChangesFromEntries(branchEntries);
+}
+
+/**
+ * Pure projection of write/edit tool calls into per-file changes. Split out so
+ * the parsing is unit-testable without a Pi session on disk.
+ */
+export function projectChangesFromEntries(branchEntries: unknown[]): SessionChanges {
+  // Aggregate per path, keeping most-recently-touched first.
+  const byPath = new Map<string, FileChange>();
+  const touch = (path: string, added: number, removed: number, diff: string) => {
+    const existing = byPath.get(path);
+    byPath.delete(path);
+    const diffLines = [existing?.diff, diff].filter(Boolean).join("\n").split("\n");
+    byPath.set(path, {
+      path,
+      added: (existing?.added ?? 0) + added,
+      removed: (existing?.removed ?? 0) + removed,
+      diff: diffLines.slice(0, MAX_DIFF_LINES).join("\n"),
+    });
+  };
+
+  for (const entry of branchEntries) {
+    const content = (entry as { message?: { content?: unknown } })?.message?.content;
+    if (!Array.isArray(content)) continue;
+    for (const part of content) {
+      if (!part || typeof part !== "object") continue;
+      const typed = part as { type?: string; name?: unknown; arguments?: unknown };
+      if (typed.type !== "toolCall") continue;
+      const name = String(typed.name ?? "").toLowerCase();
+      if (!CHANGE_TOOL_NAMES.has(name)) continue;
+      const args = typed.arguments;
+      if (!args || typeof args !== "object") continue;
+      const path = extractToolPath(args);
+      if (!path) continue;
+
+      const a = args as {
+        content?: unknown;
+        edits?: unknown;
+        oldText?: unknown;
+        newText?: unknown;
+      };
+      if (typeof a.content === "string") {
+        // Full write: count content lines as additions.
+        const lines = a.content.split(/\r?\n/);
+        touch(path, lines.length, 0, prefixLines(a.content, "+"));
+        continue;
+      }
+      const edits = Array.isArray(a.edits)
+        ? a.edits
+        : typeof a.oldText === "string" && typeof a.newText === "string"
+          ? [{ oldText: a.oldText, newText: a.newText }]
+          : [];
+      for (const edit of edits) {
+        const e = edit as { oldText?: unknown; newText?: unknown };
+        const oldText = typeof e.oldText === "string" ? e.oldText : "";
+        const newText = typeof e.newText === "string" ? e.newText : "";
+        let diff = "";
+        try {
+          diff = generateDiffString(oldText, newText).diff;
+        } catch {
+          diff = "";
+        }
+        touch(
+          path,
+          countLines(newText),
+          countLines(oldText),
+          diff || prefixLines(newText, "+")
+        );
+      }
+    }
+  }
+
+  return { files: [...byPath.values()].reverse() };
+}
+
+function countLines(text: string): number {
+  if (!text) return 0;
+  return text.split(/\r?\n/).length;
+}
+
+function prefixLines(text: string, prefix: string): string {
+  return text
+    .split(/\r?\n/)
+    .slice(0, MAX_DIFF_LINES)
+    .map((line) => `${prefix} ${line}`)
+    .join("\n");
 }
 
 export function latestActiveLeafEntryId(latestRuns: RunRecord[]): string | null {

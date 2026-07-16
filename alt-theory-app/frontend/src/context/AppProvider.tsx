@@ -29,22 +29,25 @@ import type {
   ApprovalRequestPayload,
   AssemblyManifest,
   AuthContext,
+  CapabilityMode,
   ClientMessage,
   DiscoveryLists,
   ServerMessage,
   SessionDetailResponse,
   SessionDraftSnapshot,
   SessionMetrics,
+  SessionModelOverride,
   SessionSelectors,
   SessionSnapshot,
   SessionSummary,
+  StudyTag,
   TranscriptMessage,
   TranscriptView,
   ViewMode,
+  ParticipantInfo,
 } from "@/api/types";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import type { ConnStatus } from "@/components/ui/StatusBadge";
-import { ApprovalDialog } from "@/components/ui/ApprovalDialog";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { DEFAULT_KB_DOMAIN } from "@/lib/constants";
 import { isInterruptedError } from "@/lib/format";
@@ -52,9 +55,8 @@ import { toolLabel } from "@/lib/tools";
 import { buildOutgoingPrompt } from "@/lib/workspace";
 import {
   defaultTranscriptView,
-  readDebugExpanded,
+  researcherDoorOpen,
   viewModeForRole,
-  writeDebugExpanded,
 } from "@/lib/viewMode";
 
 const anonymousAuth: AuthContext = {
@@ -98,8 +100,9 @@ export interface AppContextValue {
   logout: () => Promise<void>;
 
   viewMode: ViewMode;
-  debugExpanded: boolean;
-  toggleDebugExpanded: () => void;
+  canSwitchMode: boolean;
+  toggleViewMode: () => void;
+  participant: ParticipantInfo | null;
   transcriptView: TranscriptView;
   setTranscriptView: (view: TranscriptView) => void;
 
@@ -135,6 +138,13 @@ export interface AppContextValue {
   switchInstruction: (customInstructionRef: string | null) => void;
   switchVisibility: (visibility: "research" | "private") => void;
 
+  sessionMode: CapabilityMode;
+  switchMode: (mode: CapabilityMode) => void;
+  modelOverride: SessionModelOverride | null;
+  setSessionModel: (override: SessionModelOverride | null) => void;
+  studyTag: StudyTag | null;
+  setStudyTag: (tag: StudyTag | null) => void;
+
   messages: TranscriptMessage[];
   streamingText: string | null;
   activeTools: ActiveToolState[];
@@ -153,6 +163,14 @@ export interface AppContextValue {
 
   runCompletedCount: number;
   requestConfirm: (request: ConfirmRequest) => void;
+
+  approvals: ApprovalRequestPayload[];
+  respondApproval: (
+    approvalId: string,
+    response: { accept?: boolean; choice?: string | null; text?: string | null }
+  ) => void;
+  approvalMarkers: string[];
+  addApprovalMarker: (text: string) => void;
 
   manifest: AssemblyManifest | null;
   metrics: SessionMetrics | null;
@@ -217,9 +235,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
   const [discovery, setDiscovery] = useState<DiscoveryLists | null>(null);
-  const [viewMode, setViewMode] = useState<ViewMode>("researcher");
-  const [debugExpanded, setDebugExpanded] = useState(() => readDebugExpanded());
-  const [transcriptView, setTranscriptView] = useState<TranscriptView>("developer");
+  const [viewMode, setViewMode] = useState<ViewMode>("user");
+  const [canSwitchMode, setCanSwitchMode] = useState(false);
+  const [participant, setParticipant] = useState<ParticipantInfo | null>(null);
+  const [transcriptView, setTranscriptView] = useState<TranscriptView>("user");
 
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [sessionSearch, setSessionSearch] = useState("");
@@ -242,6 +261,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [wsError, setWsError] = useState<string | null>(null);
   const [wsConnected, setWsConnected] = useState(false);
   const [selectors, setSelectors] = useState<SessionSelectors>(defaultSelectors);
+  const [sessionMode, setSessionMode] = useState<CapabilityMode>("pure");
+  const [modelOverride, setModelOverride] =
+    useState<SessionModelOverride | null>(null);
+  const [studyTag, setStudyTagState] = useState<StudyTag | null>(null);
 
   const [messages, setMessages] = useState<TranscriptMessage[]>([]);
   const [streamingText, setStreamingText] = useState<string | null>(null);
@@ -259,6 +282,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     null
   );
   const [approvals, setApprovals] = useState<ApprovalRequestPayload[]>([]);
+  // Session-scoped approval markers ("X allowed for this session"), recorded
+  // client-side the moment the user grants a session allowance (M7 §3).
+  const [approvalMarkers, setApprovalMarkers] = useState<string[]>([]);
 
   const [manifest, setManifest] = useState<AssemblyManifest | null>(null);
   const [metrics, setMetrics] = useState<SessionMetrics | null>(null);
@@ -330,8 +356,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const role = me.auth?.role ?? "anonymous";
       const required = role === "anonymous" && accounts;
       const nextViewMode = viewModeForRole(role, mode);
-      const nextDebugExpanded =
-        nextViewMode === "participant" ? readDebugExpanded() : false;
+      const nextCanSwitchMode = researcherDoorOpen(role, mode);
 
       if (
         mode === "local" &&
@@ -348,7 +373,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setAccountsConfigured(accounts);
       setLoginRequired(required);
       setViewMode(nextViewMode);
-      setDebugExpanded(nextDebugExpanded);
+      setCanSwitchMode(nextCanSwitchMode);
+      setParticipant(me.participant ?? null);
       setTranscriptView(defaultTranscriptView(nextViewMode));
 
       if (!required) {
@@ -384,14 +410,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch {
       /* reload anyway */
     }
-    writeDebugExpanded(false);
     window.location.reload();
   }, []);
 
-  const toggleDebugExpanded = useCallback(() => {
-    setDebugExpanded((prev) => {
-      const next = !prev;
-      writeDebugExpanded(next);
+  const toggleViewMode = useCallback(() => {
+    setViewMode((prev) => {
+      const next: ViewMode = prev === "researcher" ? "user" : "researcher";
+      setTranscriptView(defaultTranscriptView(next));
       return next;
     });
   }, []);
@@ -499,6 +524,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setSessionReady(true);
           setIsRunning(false);
           setSelectors(applySnapshotSelectors(message.payload));
+          setSessionMode("pure");
+          setModelOverride(null);
+          setStudyTagState(null);
+          setApprovalMarkers([]);
           setManifest(null);
           setMetrics(null);
           setMessages([]);
@@ -528,9 +557,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
             setStreamingText(null);
             pendingAssetSwitchRef.current = false;
           }
+          if (message.payload.sessionId !== reconnectSessionIdRef.current) {
+            setApprovalMarkers([]);
+          }
           setSessionId(message.payload.sessionId);
           reconnectSessionIdRef.current = message.payload.sessionId;
           setSelectors(applySnapshotSelectors(message.payload));
+          setSessionMode(message.payload.mode ?? "pure");
+          setModelOverride(message.payload.modelOverride ?? null);
+          setStudyTagState(message.payload.studyTag ?? null);
           setSessionReady(true);
           setIsRunning(message.payload.status === "running");
           setConnStatus(message.payload.status === "running" ? "running" : "idle");
@@ -561,6 +596,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
             visibility: message.payload.visibility ?? prev.visibility,
             branchId: message.payload.branchId || prev.branchId,
           }));
+          if (message.payload.mode) setSessionMode(message.payload.mode);
+          if (message.payload.modelOverride !== undefined) {
+            setModelOverride(message.payload.modelOverride);
+          }
+          if (message.payload.studyTag !== undefined) {
+            setStudyTagState(message.payload.studyTag);
+          }
           if (message.payload.status === "running") {
             setConnStatus("running");
             setConnLabel("Running");
@@ -1086,6 +1128,49 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [sendMessage, setComposerNoticeTimed]
   );
 
+  const switchMode = useCallback(
+    (mode: CapabilityMode) => {
+      if (sendMessage({ type: "switch_mode", payload: { mode } })) {
+        setSessionMode(mode);
+      }
+    },
+    [sendMessage]
+  );
+
+  const setSessionModel = useCallback(
+    (override: SessionModelOverride | null) => {
+      if (sendMessage({ type: "set_session_model", payload: { override } })) {
+        setModelOverride(override);
+      }
+    },
+    [sendMessage]
+  );
+
+  const setStudyTag = useCallback(
+    (tag: StudyTag | null) => {
+      if (sendMessage({ type: "set_study_tag", payload: { studyTag: tag } })) {
+        setStudyTagState(tag);
+        if (sessionId) void refreshSessions();
+      }
+    },
+    [refreshSessions, sendMessage, sessionId]
+  );
+
+  const respondApproval = useCallback(
+    (
+      approvalId: string,
+      response: { accept?: boolean; choice?: string | null; text?: string | null }
+    ) => {
+      sendMessage({ type: "respond_approval", payload: { approvalId, ...response } });
+      setApprovals((prev) => prev.filter((entry) => entry.approvalId !== approvalId));
+    },
+    [sendMessage]
+  );
+
+  const addApprovalMarker = useCallback((text: string) => {
+    setApprovalMarkers((prev) => (prev.includes(text) ? prev : [...prev, text]));
+  }, []);
+
   const requestMetadata = useCallback(() => {
     sendMessage({ type: "get_session_metadata" });
   }, [sendMessage]);
@@ -1105,8 +1190,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       login,
       logout,
       viewMode,
-      debugExpanded,
-      toggleDebugExpanded,
+      canSwitchMode,
+      toggleViewMode,
+      participant,
       transcriptView,
       setTranscriptView,
       discovery,
@@ -1137,6 +1223,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       switchRolePreset,
       switchInstruction,
       switchVisibility,
+      sessionMode,
+      switchMode,
+      modelOverride,
+      setSessionModel,
+      studyTag,
+      setStudyTag,
       messages,
       streamingText,
       activeTools,
@@ -1153,6 +1245,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       clearStagedWorkspace,
       runCompletedCount,
       requestConfirm,
+      approvals,
+      respondApproval,
+      approvalMarkers,
+      addApprovalMarker,
       manifest,
       metrics,
       startNewSession,
@@ -1176,8 +1272,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       login,
       logout,
       viewMode,
-      debugExpanded,
-      toggleDebugExpanded,
+      canSwitchMode,
+      toggleViewMode,
+      participant,
       transcriptView,
       discovery,
       sessions,
@@ -1206,6 +1303,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       switchRolePreset,
       switchInstruction,
       switchVisibility,
+      sessionMode,
+      switchMode,
+      modelOverride,
+      setSessionModel,
+      studyTag,
+      setStudyTag,
       messages,
       streamingText,
       activeTools,
@@ -1222,6 +1325,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       clearStagedWorkspace,
       runCompletedCount,
       requestConfirm,
+      approvals,
+      respondApproval,
+      approvalMarkers,
+      addApprovalMarker,
       manifest,
       metrics,
       startNewSession,
@@ -1240,18 +1347,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   return (
     <AppContext.Provider value={value}>
       {children}
-      <ApprovalDialog
-        request={approvals[0] ?? null}
-        onRespond={(approvalId, response) => {
-          sendMessage({
-            type: "respond_approval",
-            payload: { approvalId, ...response },
-          });
-          setApprovals((prev) =>
-            prev.filter((entry) => entry.approvalId !== approvalId)
-          );
-        }}
-      />
       <ConfirmDialog
         open={Boolean(confirmRequest)}
         message={confirmRequest?.message ?? ""}

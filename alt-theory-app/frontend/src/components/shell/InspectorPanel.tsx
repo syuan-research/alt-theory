@@ -1,146 +1,174 @@
-import { useState } from "react";
-import { PathsPanel } from "@/components/inspector/PathsPanel";
-import { ProvenancePanel } from "@/components/inspector/ProvenancePanel";
-import { ResearchPanel } from "@/components/inspector/ResearchPanel";
-import { RecordsPanel } from "@/components/inspector/RecordsPanel";
-import { RuntimePanel } from "@/components/inspector/RuntimePanel";
-import { WorkspacePanel } from "@/components/inspector/WorkspacePanel";
-import { Button } from "@/components/ui/Button";
-import { Panel } from "@/components/ui/Panel";
-import { Tabs } from "@/components/ui/Tabs";
+import { useMemo } from "react";
 import { useApp } from "@/context/AppProvider";
-import { showAdvancedInspectorTabs } from "@/lib/viewMode";
+import { useShell, type RailKey } from "@/context/ShellContext";
+import { sessionTitle } from "@/lib/sessionList";
+import { RecordsPanel } from "@/components/inspector/RecordsPanel";
+import { ProvenancePanel } from "@/components/inspector/ProvenancePanel";
+import { RuntimePanel } from "@/components/inspector/RuntimePanel";
+import { WorkspaceTree } from "@/components/inspector/WorkspaceTree";
+import { ChangesPanel } from "@/components/inspector/ChangesPanel";
 
-interface InspectorPanelProps {
-  onCollapse?: () => void;
-}
+const RAIL_META: Record<RailKey, { title: string; icon: string; adv?: boolean }> = {
+  chats: { title: "Side chats", icon: "ph-arrows-split" },
+  changes: { title: "Changes", icon: "ph-pencil-simple-line" },
+  workspace: { title: "Workspace", icon: "ph-folder" },
+  records: { title: "Records", icon: "ph-scroll", adv: true },
+  provenance: { title: "Provenance", icon: "ph-tree-structure", adv: true },
+  runtime: { title: "Runtime", icon: "ph-pulse", adv: true },
+};
 
-export function InspectorPanel({ onCollapse }: InspectorPanelProps) {
+const PRIMARY: RailKey[] = ["chats", "changes", "workspace"];
+const ADVANCED: RailKey[] = ["records", "provenance", "runtime"];
+
+export function InspectorPanel() {
   const app = useApp();
-  const advanced = showAdvancedInspectorTabs(app.viewMode, app.debugExpanded);
-  const showDebugToggle = app.viewMode === "participant";
-  const defaultTab = advanced ? "records" : "workspace";
-  const [activeTab, setActiveTab] = useState(defaultTab);
+  const shell = useShell();
+  const advanced = app.viewMode === "researcher";
+  const open = shell.rightPanel !== null;
+  const active = shell.rightPanel;
 
-  const tabItems = [];
-
-  if (advanced) {
-    tabItems.push({
-      value: "records",
-      label: "Records",
-      content: (
-        <RecordsPanel
-          sessionId={app.sessionId}
-          sessionReady={app.sessionReady}
-          tabActive={activeTab === "records"}
-        />
+  // Side-chat notification dot: any live child hanging off this conversation.
+  const hasSideChats = useMemo(
+    () =>
+      app.sessions.some(
+        (s) => s.forkedFrom?.sessionId === app.sessionId && !s.deletedAt
       ),
-    });
-  }
-
-  tabItems.push(
-    {
-      value: "workspace",
-      label: "Workspace",
-      content: (
-        <WorkspacePanel
-          sessionId={app.sessionId}
-          sessionReady={app.sessionReady}
-          tabActive={activeTab === "workspace"}
-          isRunning={app.isRunning}
-          runCompletedCount={app.runCompletedCount}
-          stagedWorkspacePaths={app.stagedWorkspacePaths}
-          onToggleWorkspaceStage={app.toggleWorkspaceStage}
-          onStageWorkspacePath={app.stageWorkspacePath}
-          onUnstageWorkspacePaths={app.unstageWorkspacePaths}
-          onRequestConfirm={app.requestConfirm}
-          onInvokeSkill={app.invokeSkill}
-        />
-      ),
-    },
-    {
-      value: "runtime",
-      label: "Runtime",
-      content: (
-        <RuntimePanel
-          sessionId={app.sessionId}
-          connStatus={app.connStatus}
-          connLabel={app.connLabel}
-          manifest={app.manifest}
-          currentDomain={app.selectors.currentDomain}
-          metrics={app.metrics}
-          discovery={app.discovery}
-          onRefresh={() => {
-            app.requestMetadata();
-            app.requestMetrics();
-          }}
-          disabled={!app.sessionReady || !app.wsConnected}
-        />
-      ),
-    }
+    [app.sessions, app.sessionId]
   );
 
-  if (advanced) {
-    tabItems.push(
-      {
-        value: "research",
-        label: "Research",
-        content: <ResearchPanel tabActive={activeTab === "research"} />,
-      },
-      {
-        value: "provenance",
-        label: "Provenance",
-        content: (
-          <ProvenancePanel
-            sessionId={app.sessionId}
-            sessionReady={app.sessionReady}
-            discovery={app.discovery}
-            tabActive={activeTab === "provenance"}
-          />
-        ),
-      },
-      {
-        value: "paths",
-        label: "Paths",
-        content: <PathsPanel manifest={app.manifest} />,
-      }
+  const title = shell.rightSub?.title ?? (active ? RAIL_META[active].title : "");
+
+  return (
+    <aside className={`right${open ? " open" : ""}`}>
+      <div className="rpanel">
+        {active ? (
+          <div className={`head${shell.rightSub ? " sub" : ""}`}>
+            <button className="back" onClick={shell.closeSub} title="Back">
+              <i className="ph ph-arrow-left" />
+            </button>
+            <span>{title}</span>
+            <button className="rp-close" onClick={shell.closeRight} title="Collapse">
+              <i className="ph ph-sidebar-simple" style={{ transform: "scaleX(-1)" }} />
+            </button>
+          </div>
+        ) : null}
+        <div className="body">
+          {active === "chats" ? <SideChats /> : null}
+          {active === "changes" ? <ChangesPanel /> : null}
+          {active === "workspace" ? <WorkspaceTree /> : null}
+          {active === "records" ? (
+            <RecordsPanel
+              sessionId={app.sessionId}
+              sessionReady={app.sessionReady}
+              tabActive
+            />
+          ) : null}
+          {active === "provenance" ? (
+            <ProvenancePanel
+              sessionId={app.sessionId}
+              sessionReady={app.sessionReady}
+              discovery={app.discovery}
+              tabActive
+            />
+          ) : null}
+          {active === "runtime" ? (
+            <RuntimePanel
+              sessionId={app.sessionId}
+              connStatus={app.connStatus}
+              connLabel={app.connLabel}
+              manifest={app.manifest}
+              currentDomain={app.selectors.currentDomain}
+              metrics={app.metrics}
+              discovery={app.discovery}
+              onRefresh={() => {
+                app.requestMetadata();
+                app.requestMetrics();
+              }}
+              disabled={!app.sessionReady || !app.wsConnected}
+            />
+          ) : null}
+        </div>
+      </div>
+      <div className="rail">
+        {PRIMARY.map((key) => (
+          <button
+            key={key}
+            className={active === key ? "on" : ""}
+            title={RAIL_META[key].title}
+            onClick={() => shell.toggleRail(key)}
+          >
+            <i className={`ph ${RAIL_META[key].icon}`} />
+            {key === "chats" && hasSideChats ? <span className="dot" /> : null}
+          </button>
+        ))}
+        {advanced
+          ? ADVANCED.map((key) => (
+              <button
+                key={key}
+                className={active === key ? "on" : ""}
+                title={RAIL_META[key].title}
+                onClick={() => shell.toggleRail(key)}
+              >
+                <i className={`ph ${RAIL_META[key].icon}`} />
+              </button>
+            ))
+          : null}
+      </div>
+    </aside>
+  );
+}
+
+function SideChats() {
+  const app = useApp();
+  const shell = useShell();
+  const children = useMemo(
+    () =>
+      app.sessions.filter(
+        (s) => s.forkedFrom?.sessionId === app.sessionId && !s.deletedAt
+      ),
+    [app.sessions, app.sessionId]
+  );
+
+  const PURPOSE_ICON: Record<string, string> = {
+    side: "ph-arrows-split",
+    helper: "ph-lifebuoy",
+    "ab-arm": "ph-git-fork",
+    fork: "ph-git-branch",
+  };
+
+  if (children.length === 0) {
+    return (
+      <div className="rp-empty">
+        No side chats. Use <b>/branch</b> or the + menu to start one.
+      </div>
     );
   }
 
   return (
-    <Panel
-      className="h-full"
-      bodyClassName="flex min-h-0 flex-1 flex-col p-0"
-      headerActions={
-        <div className="flex items-center gap-1">
-          {showDebugToggle ? (
-            <Button
-              variant={app.debugExpanded ? "secondary" : "ghost"}
-              className="min-h-8 px-2 text-[0.75rem]"
-              onClick={app.toggleDebugExpanded}
-              title="Show debug inspector panels for this browser"
-            >
-              Debug
-            </Button>
-          ) : null}
-          {onCollapse ? (
-            <Button
-              variant="ghost"
-              className="hidden min-h-8 px-2 lg:inline-flex"
-              onClick={onCollapse}
-              title="Collapse inspector"
-            >
-              ▶
-            </Button>
-          ) : null}
-        </div>
-      }
-    >
-      <Tabs
-        items={tabItems}
-        defaultValue={defaultTab}
-        onValueChange={setActiveTab}
-      />
-    </Panel>
+    <>
+      {children.map((child) => (
+        <button
+          key={child.sessionId}
+          className="sc-item"
+          onClick={() => {
+            shell.openApp();
+            app.openCatalogSession(child.sessionId);
+          }}
+        >
+          <div className="t">
+            <i className={`ph ${PURPOSE_ICON[child.forkedFrom?.purpose ?? "side"]}`} />
+            {sessionTitle(child, app.sessionDisplayNames)}
+            {child.status === "incomplete" ? (
+              <span className="badge-run">running</span>
+            ) : null}
+          </div>
+          <div className="d">
+            {child.forkedFrom?.purpose === "helper"
+              ? "Ask how Alt works · fresh context"
+              : `Forked from this conversation · ${child.messageCount ?? 0} messages`}
+          </div>
+        </button>
+      ))}
+    </>
   );
 }

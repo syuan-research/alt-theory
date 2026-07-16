@@ -1,12 +1,21 @@
 import { ApiError, fetchJson, readErrorMessage } from "./http";
 import type {
   DeleteWorkspaceFileResult,
+  SessionChanges,
   SessionFilesResponse,
   SessionTextFileContent,
   UploadWorkspaceFileResult,
   WorkspaceFilesResponse,
   WriteSessionFileInput,
 } from "./types";
+
+export async function fetchSessionChanges(
+  sessionId: string
+): Promise<SessionChanges> {
+  return fetchJson<SessionChanges>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/changes`
+  );
+}
 
 function sessionFilesBase(sessionId: string): string {
   return `/api/sessions/${encodeURIComponent(sessionId)}/files`;

@@ -2,7 +2,7 @@
 doc_type: architecture
 slug: researcher-console
 scope: v1-alpha frontend and research surfaces — view modes, pane logic, researcher workbench/review, study designation, A/B comparison
-summary: Two view modes (user/researcher) over one React frontend; the M7 IA is owner-approved as a prototype blueprint, backend support is complete, frontend realization is the open work item.
+summary: Two view modes (user/researcher) over one React frontend; the M7 IA is owner-approved and now realized in the React app (build-gate green); the live Pure/Full self-test is the remaining owner gate.
 status: current
 last_reviewed: 2026-07-16
 tags: [frontend, researcher-console, research, view-modes, ia]
@@ -17,10 +17,12 @@ implements: []
 
 Backend support for everything below EXISTS and is tested (see
 `core-session-engine.md`, change log 2026-07-15/16). The frontend is the
-React app in `alt-theory-app/frontend/` (built to `web-server/public-v6/`),
-which still renders the v0.5 layout; the v1-alpha information architecture
-is owner-approved as a clickable blueprint, not yet implemented. Governing
-documents, in authority order:
+React app in `alt-theory-app/frontend/` (built to `web-server/public-v6/`).
+The v1-alpha information architecture is owner-approved AND now realized in
+the React app (2026-07-16 frontend build; typecheck + `build:frontend-v6` +
+backend tests green). The one remaining gate is the owner's live Pure/Full
+self-test (needs a configured model). Governing documents, in authority
+order:
 
 1. `project/compound/2026-07-16-decision-v1-alpha-m7-ia-principles-and-research-assumptions.md`
    — pane logic, view-mode collapse, study designation, sharing rules,
@@ -156,6 +158,20 @@ agent pass (gate before public repo).
 
 ## Change Log
 
+- 2026-07-16 (frontend build): Frontend realized from the v2 prototype. New
+  React shell (`components/shell/*`, `context/ShellContext.tsx`): two-mode
+  collapse, workspace-grouped left nav + collapse strip + search overlay,
+  morphing Understand/Work + composer model chip (`set_session_model`) +
+  approval dock rendering the real Allow-once/Allow-session/Deny options,
+  right rail (Side chats / Changes / Workspace + researcher adv tabs),
+  Settings (participant tab opt-in via General), Researcher workbench +
+  A/B float-cmp → arm-split reader + Review page. One sanctioned backend
+  addition: read-only `GET /api/sessions/:id/changes`
+  (`readSessionChanges`/`projectChangesFromEntries`, unit-tested). Deferred to
+  v1.0.x: subsequent-silent-allow UI signal (a ~5-line `extension_notice`);
+  cross-study review aggregate (currently per-session). Gate remaining: owner
+  live Pure/Full self-test. See
+  `notes-and-status/20260716-v1-alpha-frontend-swe-plan.md`.
 - 2026-07-16: Rewritten for v1-alpha after the M7 IA design pass and
   backend pass. Replaces the vanilla-console description (legacy notes
   preserved in git history) with the two-view-mode model, pane logic,

@@ -42,6 +42,7 @@ import {
   listSessionSummaries,
   readSessionTextFile,
   readSessionDetail,
+  readSessionChanges,
   type SessionSummary,
   softDeleteSession,
   writeSessionTextFile,
@@ -548,6 +549,35 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       return;
     }
     res.json(detail);
+  });
+  app.get("/api/sessions/:sessionId/changes", (req, res) => {
+    const sessionId = req.params.sessionId;
+    const root = getSessionRootForRequest(dataDir, sessionId);
+    if (root.status === "invalid") {
+      res.status(400).json({ error: `Invalid session id: ${sessionId}` });
+      return;
+    }
+    if (root.status === "missing") {
+      res.status(404).json({ error: `Unknown session id: ${sessionId}` });
+      return;
+    }
+    const auth = resolveSessionRestAuth(req, res);
+    if (!auth) return;
+    const detail = readSessionDetail(dataDir, sessionId);
+    if (!detail || !canAccessSessionSummary(auth, detail.session)) {
+      res.status(404).json({ error: `Unknown session id: ${sessionId}` });
+      return;
+    }
+    if (!canAccessSessionContent(auth, detail.session)) {
+      res.status(403).json({ error: "Session content is private" });
+      return;
+    }
+    const changes = readSessionChanges(dataDir, sessionId);
+    if (!changes) {
+      res.status(404).json({ error: `Unknown session id: ${sessionId}` });
+      return;
+    }
+    res.json(changes);
   });
   app.delete("/api/sessions/:sessionId", (req, res) => {
     const sessionId = req.params.sessionId;

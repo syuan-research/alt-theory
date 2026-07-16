@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "@/context/AppProvider";
-import { Button } from "@/components/ui/Button";
-import { Select, TextArea } from "@/components/ui/Field";
-import { HintText, MonoText } from "@/components/ui/Typography";
-import { cn } from "@/lib/cn";
+import { useShell } from "@/context/ShellContext";
+import { ApprovalDock } from "@/components/conversation/ApprovalDock";
+import { ModelChip } from "@/components/conversation/ModelChip";
 import { DEFAULT_KB_DOMAIN, KB_OFF_VALUE } from "@/lib/constants";
+
+type MenuKey = "plus" | "mode" | "model" | "role" | "kb" | null;
 
 interface SlashCommand {
   name: string;
@@ -12,21 +13,29 @@ interface SlashCommand {
   run: (args: string) => void;
 }
 
-export function Composer() {
+/** Composer variant: `empty` = new-conversation (mode via cards, no switch). */
+export function Composer({ variant }: { variant: "empty" | "live" }) {
   const app = useApp();
+  const shell = useShell();
   const [draft, setDraft] = useState("");
-  const [selectedSkill, setSelectedSkill] = useState("");
   const [slashIndex, setSlashIndex] = useState(0);
+  const [menu, setMenu] = useState<MenuKey>(null);
+  const rowRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (app.reviseMode) {
-      setDraft(app.reviseDraft);
-    }
+    if (app.reviseMode) setDraft(app.reviseDraft);
   }, [app.reviseMode, app.reviseDraft]);
 
-  // Slash palette (M7 slice, floor): mirrors Pi's TUI model — builtins plus
-  // every discovered skill as a /command. Typing "/" opens it; unmatched
-  // slash text still sends as a normal message.
+  // Close menus on outside click (mirrors the prototype's body-click close).
+  useEffect(() => {
+    if (!menu) return;
+    const onDoc = (e: MouseEvent) => {
+      if (!rowRef.current?.contains(e.target as Node)) setMenu(null);
+    };
+    document.addEventListener("click", onDoc);
+    return () => document.removeEventListener("click", onDoc);
+  }, [menu]);
+
   const slashCommands = useMemo<SlashCommand[]>(
     () => [
       {
@@ -36,19 +45,18 @@ export function Composer() {
       },
       {
         name: "new",
-        description: "Start a new session",
+        description: "Start a new conversation",
         run: () => app.startNewSession(),
       },
       ...(app.discovery?.skills ?? []).map((skill) => ({
         name: skill.name,
         description: skill.description || "Alt Theory skill",
-        run: (args: string) => {
-          app.invokeSkill(skill.name, args);
-        },
+        run: (args: string) => app.invokeSkill(skill.name, args),
       })),
     ],
     [app]
   );
+
   const slashQuery =
     !app.reviseMode && draft.startsWith("/") && !draft.startsWith("//")
       ? draft.slice(1)
@@ -56,15 +64,11 @@ export function Composer() {
   const slashMatches = useMemo(() => {
     if (slashQuery === null) return [];
     const token = slashQuery.split(/\s+/, 1)[0].toLowerCase();
-    return slashCommands.filter((command) =>
-      command.name.toLowerCase().startsWith(token)
-    );
+    return slashCommands.filter((c) => c.name.toLowerCase().startsWith(token));
   }, [slashCommands, slashQuery]);
-  useEffect(() => {
-    setSlashIndex(0);
-  }, [slashMatches.length]);
+  useEffect(() => setSlashIndex(0), [slashMatches.length]);
 
-  const runSlashCommand = (command: SlashCommand) => {
+  const runSlash = (command: SlashCommand) => {
     const args = slashQuery?.split(/\s+/).slice(1).join(" ") ?? "";
     setDraft("");
     command.run(args);
@@ -72,247 +76,356 @@ export function Composer() {
 
   const interactive = app.sessionReady && app.wsConnected;
   const hasText = draft.trim().length > 0;
-  const hasAttachments = app.stagedWorkspacePaths.length > 0;
   const canSend =
-    interactive && !app.isRunning && (hasText || hasAttachments);
+    interactive && !app.isRunning && (hasText || app.stagedWorkspacePaths.length > 0);
   const showVisibility =
-    app.viewMode === "participant" ||
-    app.viewMode === "researcher" ||
-    app.viewMode === "debug";
-  const showSkills = (app.discovery?.skills.length ?? 0) > 0;
-  const kbEnabled = app.selectors.currentDomain !== KB_OFF_VALUE;
-  const canSwitchKb = interactive && !app.isRunning;
+    app.participant?.designated === true || app.viewMode === "researcher";
 
   const handleSubmit = () => {
     if (app.reviseMode) {
-      if (app.reviseLatest(draft)) {
-        setDraft("");
-      }
+      if (app.reviseLatest(draft)) setDraft("");
       return;
     }
-    if (app.sendPrompt(draft)) {
-      setDraft("");
-    }
+    if (app.sendPrompt(draft)) setDraft("");
   };
 
+  // ctx-line labels
+  const roleLabel = app.selectors.rolePresetSlug
+    ? app.discovery?.rolePresets.find(
+        (r) => r.slug === app.selectors.rolePresetSlug
+      )?.userLabel ??
+      app.discovery?.rolePresets.find(
+        (r) => r.slug === app.selectors.rolePresetSlug
+      )?.displayName ??
+      app.selectors.rolePresetSlug
+    : "Default role";
+  const kbOff = app.selectors.currentDomain === KB_OFF_VALUE;
+  const kbLabel = kbOff
+    ? "No knowledge base"
+    : app.discovery?.kbDomains.find(
+        (k) => k.slug === app.selectors.currentDomain
+      )?.displayName ?? "Knowledge base";
+
+  const toggle = (key: MenuKey) => setMenu((prev) => (prev === key ? null : key));
+
   return (
-    <footer
-      className={cn(
-        "bg-canvas px-5 pb-4 pt-2",
-        app.selectors.visibility === "private" && "bg-[#f0eff1]"
-      )}
-    >
-      {app.toolStatus ? (
-        <MonoText className="mb-2 block text-[0.75rem]">{app.toolStatus}</MonoText>
-      ) : null}
-
-      {app.composerNotice ? (
-        <MonoText
-          className={cn(
-            "mb-2 block text-[0.75rem]",
-            app.composerNotice.warn ? "text-danger" : "text-text-secondary"
-          )}
-        >
-          {app.composerNotice.prefix ? `${app.composerNotice.prefix} ` : ""}
-          {app.composerNotice.text}
-        </MonoText>
-      ) : null}
-
-      {app.runHint ? (
-        <p className="mb-2 text-[0.75rem] text-text-muted" title={app.runHint}>
-          {app.runHint}
-        </p>
-      ) : null}
-
-      {app.attachmentHint ? (
-        <HintText className="mb-2">{app.attachmentHint}</HintText>
-      ) : null}
-
-      <div className="mb-3 flex flex-wrap items-center gap-3">
-        <label
-          className="inline-flex items-center gap-2 text-[0.8125rem] text-ink"
-          title="Uses the environmental psychology theory and concepts knowledge base. Turn it off for conversations unrelated to environmental psychology."
-        >
-          <input
-            type="checkbox"
-            checked={kbEnabled}
-            disabled={!canSwitchKb}
-            onChange={(event) =>
-              app.switchKb(event.target.checked ? DEFAULT_KB_DOMAIN : KB_OFF_VALUE)
-            }
+    <div className="composer-wrap">
+      <div className="composer-col">
+        {app.approvals.length > 0 ? (
+          <ApprovalDock
+            request={app.approvals[0]}
+            onRespond={app.respondApproval}
+            onSessionAllow={app.addApprovalMarker}
           />
-          <span>Use EP knowledge base</span>
-        </label>
+        ) : null}
 
-        {showVisibility ? (
-          <>
-            <label className="inline-flex items-center gap-2 text-[0.8125rem] text-ink">
-              <input
-                type="checkbox"
-                checked={app.selectors.visibility === "private"}
-                disabled={!interactive}
-                onChange={(event) =>
-                  app.switchVisibility(event.target.checked ? "private" : "research")
+        {app.toolStatus || app.composerNotice || app.runHint || app.attachmentHint ? (
+          <div className="composer-notes">
+            {app.toolStatus ? <span>{app.toolStatus}</span> : null}
+            {app.composerNotice ? (
+              <span className={app.composerNotice.warn ? "warn" : ""}>
+                {app.composerNotice.prefix ? `${app.composerNotice.prefix} ` : ""}
+                {app.composerNotice.text}
+              </span>
+            ) : null}
+            {app.runHint ? <span>{app.runHint}</span> : null}
+            {app.attachmentHint ? <span>{app.attachmentHint}</span> : null}
+          </div>
+        ) : null}
+
+        <div className="ctx-line">
+          <CtxPicker
+            icon="ph-user-circle"
+            label={roleLabel}
+            open={menu === "role"}
+            onToggle={() => toggle("role")}
+          >
+            <div
+              className="mi"
+              onClick={() => (app.switchRolePreset(null), setMenu(null))}
+            >
+              <span>Default role</span>
+              {!app.selectors.rolePresetSlug ? <i className="ph ph-check check" /> : null}
+            </div>
+            {(app.discovery?.rolePresets ?? []).map((r) => (
+              <div
+                key={r.slug}
+                className="mi"
+                onClick={() => (app.switchRolePreset(r.slug), setMenu(null))}
+              >
+                <span>{r.userLabel || r.displayName}</span>
+                {app.selectors.rolePresetSlug === r.slug ? (
+                  <i className="ph ph-check check" />
+                ) : null}
+              </div>
+            ))}
+          </CtxPicker>
+
+          <CtxPicker
+            icon="ph-books"
+            label={kbLabel}
+            open={menu === "kb"}
+            onToggle={() => toggle("kb")}
+          >
+            <div
+              className="mi"
+              onClick={() => (app.switchKb(DEFAULT_KB_DOMAIN), setMenu(null))}
+            >
+              <span>EP knowledge base</span>
+              {!kbOff ? <i className="ph ph-check check" /> : null}
+            </div>
+            {(app.discovery?.kbDomains ?? [])
+              .filter((k) => k.slug !== DEFAULT_KB_DOMAIN)
+              .map((k) => (
+                <div
+                  key={k.slug}
+                  className="mi"
+                  onClick={() => (app.switchKb(k.slug), setMenu(null))}
+                >
+                  <span>{k.displayName}</span>
+                  {app.selectors.currentDomain === k.slug ? (
+                    <i className="ph ph-check check" />
+                  ) : null}
+                </div>
+              ))}
+            <div className="sep" />
+            <div
+              className="mi"
+              onClick={() => (app.switchKb(KB_OFF_VALUE), setMenu(null))}
+            >
+              <span>No knowledge base</span>
+              {kbOff ? <i className="ph ph-check check" /> : null}
+            </div>
+          </CtxPicker>
+
+          {showVisibility ? (
+            <button
+              className="ctx-item"
+              onClick={() =>
+                app.switchVisibility(
+                  app.selectors.visibility === "private" ? "research" : "private"
+                )
+              }
+              title="Private conversations are marked and auto-deleted after 7 inactive days."
+            >
+              <i
+                className={
+                  app.selectors.visibility === "private"
+                    ? "ph ph-lock-simple"
+                    : "ph ph-share-network"
                 }
               />
-              <span>Private session</span>
-            </label>
-            {app.selectors.visibility === "private" ? (
-              <span
-                className="rounded-md bg-warning/15 px-2 py-0.5 text-[0.75rem] font-semibold text-warning"
-                title="Private sessions and files are deleted after 7 inactive days. Download anything you want to keep."
-              >
-                Private
-              </span>
-            ) : null}
-          </>
-        ) : null}
-      </div>
-
-      {slashMatches.length > 0 ? (
-        <div className="mb-1 max-h-48 overflow-auto rounded-md border border-hairline bg-surface py-1 text-[0.8125rem]">
-          {slashMatches.map((command, index) => (
-            <button
-              key={command.name}
-              type="button"
-              className={cn(
-                "flex w-full items-baseline gap-2 px-3 py-1 text-left",
-                index === slashIndex ? "bg-selected" : "hover:bg-hover"
-              )}
-              onMouseEnter={() => setSlashIndex(index)}
-              onClick={() => runSlashCommand(command)}
-            >
-              <MonoText className="shrink-0 text-ink">/{command.name}</MonoText>
-              <span className="truncate text-text-secondary">
-                {command.description}
-              </span>
+              {app.selectors.visibility === "private" ? "Private" : "Shared"}
             </button>
-          ))}
+          ) : null}
         </div>
-      ) : null}
 
-      <div className="flex items-end gap-2 rounded-xl bg-surface px-3 py-2 shadow-[0_1px_2px_rgba(20,18,12,0.05)]">
-        <TextArea
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          placeholder={
-            app.reviseMode
-              ? "Editing your latest message. Send to update."
-              : "Ask Alt Theory... ( / for commands)"
-          }
-          disabled={!interactive || (app.isRunning && !app.reviseMode)}
-          className="min-h-10 flex-1 resize-none border-transparent bg-transparent px-0 py-1 shadow-none focus:border-transparent"
-          onKeyDown={(event) => {
-            if (slashMatches.length > 0) {
-              if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-                event.preventDefault();
-                const step = event.key === "ArrowDown" ? 1 : -1;
-                setSlashIndex(
-                  (prev) =>
-                    (prev + step + slashMatches.length) % slashMatches.length
-                );
-                return;
-              }
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                if (!app.isRunning) {
-                  runSlashCommand(slashMatches[slashIndex]);
+        {slashMatches.length > 0 ? (
+          <div className="slash-palette">
+            {slashMatches.map((command, index) => (
+              <button
+                key={command.name}
+                className={`slash-item${index === slashIndex ? " on" : ""}`}
+                onMouseEnter={() => setSlashIndex(index)}
+                onClick={() => runSlash(command)}
+              >
+                <span className="cmd">/{command.name}</span>
+                <span className="desc">{command.description}</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
+
+        <div className="composer">
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder={
+              app.reviseMode
+                ? "Editing your latest message. Send to update."
+                : "Message Alt. Type / for commands."
+            }
+            disabled={!interactive || (app.isRunning && !app.reviseMode)}
+            onKeyDown={(e) => {
+              if (slashMatches.length > 0) {
+                if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                  e.preventDefault();
+                  const step = e.key === "ArrowDown" ? 1 : -1;
+                  setSlashIndex(
+                    (p) => (p + step + slashMatches.length) % slashMatches.length
+                  );
+                  return;
                 }
-                return;
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  if (!app.isRunning) runSlash(slashMatches[slashIndex]);
+                  return;
+                }
               }
-            }
-            if (event.key === "Enter" && !event.shiftKey) {
-              event.preventDefault();
-              if (app.reviseMode) {
-                handleSubmit();
-              } else if (!app.isRunning) {
-                handleSubmit();
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                if (!app.isRunning || app.reviseMode) handleSubmit();
               }
-            }
-            if (event.key === "Escape" && app.reviseMode) {
-              setDraft("");
-              app.cancelReviseMode();
-            }
-          }}
-        />
-        {app.reviseMode ? (
-          <>
-            <Button variant="ghost" className="shrink-0" disabled={!canSend} onClick={handleSubmit}>
-              Send edited message
-            </Button>
-            <Button
-              variant="ghost"
-              className="shrink-0"
-              onClick={() => {
+              if (e.key === "Escape" && app.reviseMode) {
                 setDraft("");
                 app.cancelReviseMode();
+              }
+            }}
+          />
+          <div className="row" ref={rowRef}>
+            {/* plus / actions */}
+            <button
+              className="flat"
+              title="Attach or act"
+              onClick={(e) => {
+                e.stopPropagation();
+                toggle("plus");
               }}
             >
-              Cancel edit
-            </Button>
-          </>
-        ) : (
-          <>
-            <Button
-              variant="ghost"
-              className="h-9 w-9 shrink-0 rounded-lg px-0 text-base text-ink"
-              disabled={!canSend}
-              onClick={handleSubmit}
-              title="Send"
-              aria-label="Send"
+              <i className="ph ph-plus" />
+            </button>
+            <div
+              className={`menu${menu === "plus" ? " on" : ""}`}
+              style={{ left: 0 }}
+              onClick={(e) => e.stopPropagation()}
             >
-              ↑
-            </Button>
-            {app.isRunning ? (
-              <Button
-                variant="ghost"
-                className="h-9 w-9 shrink-0 rounded-lg px-0 text-danger"
+              <div
+                className="mi"
+                onClick={() => (shell.openRail("workspace"), setMenu(null))}
+              >
+                <i className="ph ph-paperclip" />
+                Attach from workspace
+              </div>
+              <div className="sep" />
+              <div
+                className="mi"
+                onClick={() => (app.forkCurrentSession("helper"), setMenu(null))}
+              >
+                <i className="ph ph-lifebuoy" />
+                Ask how Alt works
+              </div>
+            </div>
+
+            {/* morph mode switch (live only; empty state uses the cards) */}
+            {variant === "live" ? (
+              <>
+                <button
+                  className="flat"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggle("mode");
+                  }}
+                >
+                  <i
+                    className={
+                      app.sessionMode === "full" ? "ph ph-hammer" : "ph ph-book-open"
+                    }
+                  />
+                  {app.sessionMode === "full" ? "Work" : "Understand"}
+                  <i className="ph ph-caret-down caret" />
+                </button>
+                <div
+                  className={`menu${menu === "mode" ? " on" : ""}`}
+                  style={{ left: 40 }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div
+                    className="mi"
+                    onClick={() => (app.switchMode("pure"), setMenu(null))}
+                  >
+                    <i className="ph ph-book-open" />
+                    <span>
+                      Understand
+                      <span className="d">
+                        Reads and discusses. Asks before touching anything.
+                      </span>
+                    </span>
+                    {app.sessionMode === "pure" ? (
+                      <i className="ph ph-check check" />
+                    ) : null}
+                  </div>
+                  <div
+                    className="mi"
+                    onClick={() => (app.switchMode("full"), setMenu(null))}
+                  >
+                    <i className="ph ph-hammer" />
+                    <span>
+                      Work
+                      <span className="d">Can act on files in your workspace.</span>
+                    </span>
+                    {app.sessionMode === "full" ? (
+                      <i className="ph ph-check check" />
+                    ) : null}
+                  </div>
+                </div>
+              </>
+            ) : null}
+
+            <ModelChip open={menu === "model"} onToggle={() => toggle("model")} />
+
+            {app.reviseMode ? (
+              <>
+                <button className="flat" onClick={() => (setDraft(""), app.cancelReviseMode())}>
+                  Cancel
+                </button>
+                <button className="send" disabled={!canSend} onClick={handleSubmit} title="Save edit">
+                  <i className="ph ph-check" />
+                </button>
+              </>
+            ) : app.isRunning ? (
+              <button
+                className="send"
+                style={{ background: "var(--danger)" }}
                 onClick={app.abortRun}
                 title="Stop"
-                aria-label="Stop"
               >
-                ■
-              </Button>
-            ) : null}
-          </>
-        )}
+                <i className="ph ph-square" />
+              </button>
+            ) : (
+              <button className="send" disabled={!canSend} onClick={handleSubmit} title="Send">
+                <i className="ph ph-arrow-up" />
+              </button>
+            )}
+          </div>
+        </div>
       </div>
+    </div>
+  );
+}
 
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        {showSkills ? (
-          <>
-            <Select
-              className="w-auto min-w-32 bg-surface/80 text-[0.8125rem]"
-              disabled={!interactive || app.isRunning}
-              value={selectedSkill}
-              onChange={(event) => setSelectedSkill(event.target.value)}
-              title="Alt Theory skill"
-            >
-              <option value="">Skill</option>
-              {(app.discovery?.skills ?? []).map((skill) => (
-                <option key={skill.name} value={skill.name} title={skill.description}>
-                  {skill.name}
-                </option>
-              ))}
-            </Select>
-            <Button
-              variant="ghost"
-              className="h-8 w-8 px-0 text-base"
-              disabled={!interactive || app.isRunning || !selectedSkill}
-              onClick={() => {
-                if (app.invokeSkill(selectedSkill, draft)) {
-                  setDraft("");
-                  setSelectedSkill("");
-                }
-              }}
-              title="Invoke selected skill"
-              aria-label="Invoke selected skill"
-            >
-              ↵
-            </Button>
-          </>
-        ) : null}
+function CtxPicker({
+  icon,
+  label,
+  open,
+  onToggle,
+  children,
+}: {
+  icon: string;
+  label: string;
+  open: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <span style={{ position: "relative" }}>
+      <button
+        className="ctx-item"
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggle();
+        }}
+      >
+        <i className={`ph ${icon}`} />
+        {label}
+        <i className="ph ph-caret-down caret" />
+      </button>
+      <div
+        className={`menu${open ? " on" : ""}`}
+        style={{ left: 0, bottom: "auto", top: 22 }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {children}
       </div>
-    </footer>
+    </span>
   );
 }

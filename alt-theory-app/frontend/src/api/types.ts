@@ -4,7 +4,7 @@ export type AccountRole =
   | "admin"
   | "debug";
 
-export type ViewMode = "participant" | "researcher" | "debug" | "local";
+export type ViewMode = "user" | "researcher";
 
 export type TranscriptView = "user" | "developer";
 
@@ -16,9 +16,16 @@ export interface AuthContext {
   defaultConsent: Record<string, unknown> | null;
 }
 
+/** Install/account study designation — the only signal for study surfaces. */
+export interface ParticipantInfo {
+  designated: boolean;
+  label: string | null;
+}
+
 export interface AuthMeResponse {
   auth: AuthContext;
   app: { mode: "local" | "hosted" };
+  participant: ParticipantInfo | null;
   localConfig: ConfigStatus | null;
 }
 
@@ -66,6 +73,30 @@ export interface SessionDraftSnapshot {
   customInstructionRef?: string | null;
 }
 
+export type ThinkingLevel =
+  | "off"
+  | "minimal"
+  | "low"
+  | "medium"
+  | "high"
+  | "xhigh";
+
+/** Study designation, session level (M7 §3); absent = daily use. */
+export interface StudyTag {
+  studyId: string;
+  batch?: string;
+}
+
+/** Per-session model choice; absent = deployment-global model config. */
+export interface SessionModelOverride {
+  provider: string;
+  modelId: string;
+  thinkingLevel?: ThinkingLevel;
+}
+
+/** Capability mode (spec §4): Understand = pure, Work = full. */
+export type CapabilityMode = "pure" | "full";
+
 export interface SessionSnapshot {
   sessionId: string;
   projectId: string | null;
@@ -76,6 +107,9 @@ export interface SessionSnapshot {
   rolePresetSlug: string | null;
   soulSlug: string | null;
   customInstructionRef?: string | null;
+  mode?: CapabilityMode;
+  modelOverride?: SessionModelOverride | null;
+  studyTag?: StudyTag | null;
   openedFrom?: "new" | "existing";
   resumeWarnings?: string[];
   messageCount: number;
@@ -139,6 +173,8 @@ export interface SessionSummary {
     sessionId: string;
     purpose: "fork" | "side" | "helper" | "ab-arm";
   } | null;
+  /** Study designation (M7 §3); null = daily use. */
+  studyTag: StudyTag | null;
 }
 
 export interface EffectiveSessionConfig {
@@ -194,6 +230,17 @@ export interface SessionDetailResponse {
   effectiveConfig?: EffectiveSessionConfig | null;
   runs?: RunRecord[];
   abComparisons?: AbComparisonRecord[];
+}
+
+export interface FileChange {
+  path: string;
+  added: number;
+  removed: number;
+  diff: string;
+}
+
+export interface SessionChanges {
+  files: FileChange[];
 }
 
 export type ApiType =
@@ -366,6 +413,12 @@ export type ClientMessage =
         purpose: "fork" | "side" | "helper" | "ab-arm";
         forkPointEntryId?: string;
       };
+    }
+  | { type: "switch_mode"; payload: { mode: CapabilityMode } }
+  | { type: "set_study_tag"; payload: { studyTag: StudyTag | null } }
+  | {
+      type: "set_session_model";
+      payload: { override: SessionModelOverride | null };
     }
   | { type: "new_session" }
   | { type: "open_session"; payload: { sessionId: string } }
