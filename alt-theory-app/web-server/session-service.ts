@@ -39,6 +39,10 @@ import {
 } from "./approval-bridge.js";
 import { appendSessionEvent } from "./session-events.js";
 import {
+  appendAbComparisonRecord,
+  type AbComparisonRecord,
+} from "./ab-records.js";
+import {
   buildSessionMetrics,
   persistSessionMetrics,
   type SessionCounters,
@@ -780,6 +784,104 @@ export class SessionService {
       }
       throw error;
     }
+  }
+
+  /**
+   * M6 Pure response comparison (spec §14.6), thin over the M5 substrate:
+   * fork one Pure-pinned arm per config off the same live parent, run the
+   * same prompt in every arm, and record the outputs as an ab-comparison on
+   * the parent. The participant's choice/scores arrive later via the existing
+   * POST endpoint; continue-from-choice is a separate, undecided step.
+   */
+  async generateAbComparison(
+    sessionId: string,
+    prompt: string,
+    arms: Array<{
+      label?: string | null;
+      selectorOverrides?: Partial<SessionSelectors>;
+    }>
+  ): Promise<AbComparisonRecord> {
+    if (!prompt.trim()) {
+      throw new Error("A/B comparison requires a prompt");
+    }
+    if (arms.length < 2 || arms.length > 8) {
+      throw new Error("A/B comparison takes 2-8 arms");
+    }
+    // Validate every arm before creating any (HTTP callers pass overrides
+    // verbatim); a bad arm must not leave earlier arms behind as orphans.
+    for (const arm of arms) {
+      const overrides = arm.selectorOverrides;
+      if (!overrides) continue;
+      for (const key of Object.keys(overrides)) {
+        if (
+          !["projectId", "rolePresetSlug", "kbDomain", "soulSlug", "customInstructionRef"].includes(key)
+        ) {
+          throw new Error(`Unknown selector override: ${key}`);
+        }
+      }
+      if (overrides.rolePresetSlug !== undefined) {
+        this.resolveOptionalRolePresetPath(overrides.rolePresetSlug);
+      }
+      if (overrides.soulSlug !== undefined) {
+        this.resolveOptionalSoulPath(overrides.soulSlug);
+      }
+      if (
+        overrides.kbDomain !== undefined &&
+        overrides.kbDomain !== KB_DISABLED_DOMAIN &&
+        !isKnownKbDomain(this.config.kbDir, overrides.kbDomain)
+      ) {
+        throw new Error(`Unknown KB domain: ${overrides.kbDomain}`);
+      }
+    }
+    const parent = this.requireSession(sessionId);
+    if (parent.busy || parent.session.isStreaming) {
+      throw new SessionBusyError(sessionId);
+    }
+    const promptEntryId = parent.session.sessionManager.getLeafId();
+    // Forks are sequential (each reads the live parent); the arm runs are
+    // independent sessions and execute in parallel.
+    const armSnapshots: SessionSnapshot[] = [];
+    for (const arm of arms) {
+      const forked = await this.forkSession(
+        sessionId,
+        "comparison",
+        undefined,
+        arm.selectorOverrides
+      );
+      await this.switchMode(forked.sessionId, "pure");
+      armSnapshots.push(forked);
+    }
+    await Promise.all(
+      armSnapshots.map(
+        (snap) => this.runPrompt(snap.sessionId, prompt).completion
+      )
+    );
+    const candidates = armSnapshots.map((snap, index) => {
+      const manifest = this.getManifest(snap.sessionId);
+      const transcript =
+        readSessionDetail(this.config.dataDir, snap.sessionId)?.transcript ??
+        [];
+      const lastAssistant = [...transcript]
+        .reverse()
+        .find((message) => message.role === "assistant");
+      return {
+        candidateId: snap.sessionId,
+        label: arms[index].label ?? null,
+        provider: manifest.provider,
+        model: manifest.model,
+        role: manifest.rolePreset.slug,
+        instructionRef: manifest.customInstruction.ref,
+        kbDomain: manifest.kb.domain,
+        outputText: lastAssistant?.text?.slice(0, 20000) ?? null,
+        artifact: { sessionId: snap.sessionId },
+      };
+    });
+    return appendAbComparisonRecord(parent.manifest.recordsDir, {
+      sessionId,
+      trigger: "backend_request",
+      promptEntryId,
+      candidates,
+    });
   }
 
   private runPromptWithLineage(

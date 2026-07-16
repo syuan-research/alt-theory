@@ -590,6 +590,28 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       });
     }
   });
+  app.post(
+    "/api/sessions/:sessionId/ab-comparisons/generate",
+    async (req, res) => {
+      const sessionId = req.params.sessionId;
+      if (!requireSessionRestContentAccess(req, res, sessionId)) return;
+      const body = req.body ?? {};
+      const prompt = typeof body.prompt === "string" ? body.prompt : "";
+      const arms = Array.isArray(body.arms) ? body.arms : [];
+      try {
+        const record = await sessionService.generateAbComparison(
+          sessionId,
+          prompt,
+          arms
+        );
+        res.json({ record });
+      } catch (error) {
+        res.status(400).json({
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+  );
   app.get("/api/sessions/:sessionId/files", (req, res) => {
     const sessionId = req.params.sessionId;
     const rootName =

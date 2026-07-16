@@ -23,6 +23,7 @@ import {
   type SessionServiceEvent,
 } from "./session-service.js";
 import { readSessionDetail } from "./session-store.js";
+import { readAbComparisonRecords } from "./ab-records.js";
 import { readConfigEvents } from "./config-events.js";
 import { latestRunSnapshots, readRunRecords } from "./run-records.js";
 
@@ -697,6 +698,82 @@ test("forkSession applies per-arm selector overrides (A/B substrate)", async () 
       readSessionDetail(fixture.dataDir, created.sessionId)?.transcript.at(-1)?.text,
       "parent continues"
     );
+  } finally {
+    await service.disposeAll();
+  }
+});
+
+test("generateAbComparison runs Pure-pinned arms and records candidates on the parent", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const created = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const managed = (service as any).sessions.get(created.sessionId);
+  managed.session.sessionManager.appendMessage({
+    role: "user",
+    content: [{ type: "text", text: "compare source" }],
+    timestamp: Date.now(),
+  });
+  managed.session.sessionManager.appendMessage({
+    role: "assistant",
+    content: [{ type: "text", text: "compare answer" }],
+    timestamp: Date.now(),
+  });
+  // Arms are created inside the generator, so stub each one's prompt lazily
+  // at run time instead of per-session up front.
+  const realRun = (service as any).runPromptWithLineage.bind(service);
+  (service as any).runPromptWithLineage = (armManaged: any, text: string, options?: any) => {
+    armManaged.session.prompt = async (t: string) => {
+      armManaged.session.sessionManager.appendMessage({
+        role: "user",
+        content: [{ type: "text", text: t }],
+        timestamp: Date.now(),
+      });
+      armManaged.session.sessionManager.appendMessage({
+        role: "assistant",
+        content: [
+          { type: "text", text: `arm:${armManaged.manifest.sessionId}` },
+        ],
+        timestamp: Date.now(),
+      });
+    };
+    return realRun(armManaged, text, options);
+  };
+  try {
+    const record = await service.generateAbComparison(
+      created.sessionId,
+      "which framing is better?",
+      [{ label: "with-soul" }, { label: "no-soul", selectorOverrides: { soulSlug: null } }]
+    );
+    assert.equal(record.candidates.length, 2);
+    assert.equal(record.trigger, "backend_request");
+    for (const candidate of record.candidates) {
+      assert.equal(candidate.outputText, `arm:${candidate.candidateId}`);
+      const armManaged = (service as any).sessions.get(candidate.candidateId);
+      assert.equal(armManaged.getMode(), "pure");
+    }
+    assert.equal(record.candidates[0].role, "role-conceptual-theory-companion");
+    // The record lands on the PARENT's records dir and the parent is untouched.
+    const stored = readAbComparisonRecords(
+      join(fixture.dataDir, "sessions", created.sessionId, "records")
+    );
+    assert.equal(stored.length, 1);
+    assert.equal(stored[0].comparisonId, record.comparisonId);
+    assert.equal((service as any).sessions.get(created.sessionId), managed);
+    // A bad arm fails the whole request before any arm is created.
+    const sessionCountBefore = (service as any).sessions.size;
+    await assert.rejects(
+      () =>
+        service.generateAbComparison(created.sessionId, "prompt", [
+          { selectorOverrides: { kbDomain: "no-such-domain" } },
+          {},
+        ]),
+      /Unknown KB domain/
+    );
+    assert.equal((service as any).sessions.size, sessionCountBefore);
   } finally {
     await service.disposeAll();
   }
