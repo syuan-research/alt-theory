@@ -41,10 +41,10 @@ export interface SecurityExtensionOptions {
   sessionCwd: string;
   /** Mode-aware writable roots, shared with the guarded write tool. */
   getWritableRoots: () => string[];
+  /** Mode-aware readable roots (workspace ∪ KB ∪ writable); reads outside escalate. */
+  getReadableRoots: () => string[];
   /** Session-scoped audit sink (session records, never a machine-global log). */
   recordAudit?: (entry: SecurityAuditEntry) => void;
-  /** Lifetime of an "allow for this session" approval. Default 30 minutes. */
-  sessionAllowTtlMs?: number;
 }
 
 /** Commands with no legitimate use inside an Alt Theory session: hard block. */
@@ -98,6 +98,24 @@ const APPROVAL_COMMANDS = new Set([
   "diskutil",
 ]);
 
+/**
+ * Network-reaching commands: their session allowance is keyed per destination
+ * host, so approving one host does not blanket-approve another (OpenCode-style
+ * per-pattern grant).
+ */
+const NETWORK_COMMANDS = new Set([
+  "ssh",
+  "scp",
+  "sftp",
+  "rsync",
+  "nc",
+  "netcat",
+  "telnet",
+  "nmap",
+  "curl",
+  "wget",
+]);
+
 /** Credential stores: reads and writes are blocked in every mode. */
 const SENSITIVE_PATHS = [
   join(homedir(), ".ssh"),
@@ -142,15 +160,19 @@ const APPROVAL_OPTIONS = [
   APPROVAL_ALLOW_SESSION,
   APPROVAL_DENY,
 ];
+/** An unattended approval fails closed after this long instead of hanging. */
+const APPROVAL_TIMEOUT_MS = 5 * 60_000;
 
 export function createSecurityExtension(
   options: SecurityExtensionOptions
 ): ExtensionFactory {
-  const { sessionCwd, getWritableRoots, recordAudit } = options;
-  const ttlMs = options.sessionAllowTtlMs ?? 30 * 60_000;
-  // Outlives loader reloads: the factory re-registers on reload, the
-  // allowances granted by the user do not reset.
-  const sessionAllowances = new Map<string, number>();
+  const { sessionCwd, getWritableRoots, getReadableRoots, recordAudit } =
+    options;
+  // Session-lifetime allowances (spec §5.2): "allow for this session" lasts
+  // until the session ends, matching the OpenCode / Claude Code convention —
+  // not a timer. Outlives loader reloads: the factory re-registers on reload,
+  // the user's grants do not reset.
+  const sessionAllowances = new Set<string>();
 
   const audit = (
     entry: Pick<SecurityAuditEntry, "toolName" | "toolCallId" | "action" | "rule" | "detail">
@@ -168,7 +190,10 @@ export function createSecurityExtension(
           rule,
           detail,
         });
-        return { block: true, reason: `[security] ${detail} (rule: ${rule})` };
+        // Plain, relayable prose (spec §5.3): Full's UI renders tool activity
+        // like a coding agent, so this reaches the user. The machine rule slug
+        // stays in the audit entry, not the message.
+        return { block: true, reason: detail };
       };
 
       const approve = async (
@@ -176,8 +201,7 @@ export function createSecurityExtension(
         key: string,
         title: string
       ): Promise<ToolCallEventResult | undefined> => {
-        const expiry = sessionAllowances.get(key);
-        if (expiry !== undefined && expiry > Date.now()) {
+        if (sessionAllowances.has(key)) {
           audit({
             toolName: event.toolName,
             toolCallId: event.toolCallId,
@@ -187,15 +211,19 @@ export function createSecurityExtension(
           });
           return undefined;
         }
-        sessionAllowances.delete(key);
         // Fail closed: no approval UI means no approval.
         if (!ctx.hasUI) {
-          return blocked(rule, `${title} — requires user approval and no approval UI is attached`);
+          return blocked(rule, `${title} — requires user approval, and no approval dialog is available right now.`);
         }
-        const choice = await ctx.ui.select(title, APPROVAL_OPTIONS);
+        // Bounded + abortable so an unattended session fails closed instead of
+        // hanging (the bridge arms timeout/abort only when these are passed).
+        const choice = await ctx.ui.select(title, APPROVAL_OPTIONS, {
+          signal: ctx.signal,
+          timeout: APPROVAL_TIMEOUT_MS,
+        });
         if (choice === APPROVAL_ALLOW_ONCE || choice === APPROVAL_ALLOW_SESSION) {
           if (choice === APPROVAL_ALLOW_SESSION) {
-            sessionAllowances.set(key, Date.now() + ttlMs);
+            sessionAllowances.add(key);
           }
           audit({
             toolName: event.toolName,
@@ -215,7 +243,7 @@ export function createSecurityExtension(
         if (hasUnicodeVariance(command)) {
           return blocked(
             "command_sanitizer",
-            "Command rejected: unicode normalization variance (possible homoglyph bypass)"
+            "Blocked — this command hides characters that disguise what it actually does."
           );
         }
         // Scan the normalized, de-obfuscated form: a zero-width-spliced `sudo` scans as `sudo`.
@@ -223,7 +251,10 @@ export function createSecurityExtension(
         const bases = splitCommands(sanitized).map(baseCommand);
         const hard = bases.find((base) => BLOCKED_COMMANDS.has(base));
         if (hard) {
-          return blocked("command_blocklist", `Blocked command: ${hard}`);
+          return blocked(
+            "command_blocklist",
+            `Blocked "${hard}" — this command can damage the system or erase data, so it is not allowed here.`
+          );
         }
         const escalations = new Set(
           bases.filter((base) => APPROVAL_COMMANDS.has(base))
@@ -232,9 +263,17 @@ export function createSecurityExtension(
           if (sanitized.includes(token)) escalations.add(token);
         }
         if (escalations.size > 0) {
+          // Network commands key their allowance per destination host, so
+          // approving one host does not blanket-approve another.
+          const hosts = [...escalations].some((e) => NETWORK_COMMANDS.has(e))
+            ? extractHosts(sanitized)
+            : [];
+          const key = `bash:${[...escalations].sort().join(",")}${
+            hosts.length ? `@${hosts.sort().join(",")}` : ""
+          }`;
           return approve(
             "command_approval",
-            `bash:${[...escalations].sort().join(",")}`,
+            key,
             `Run command: ${summarize(sanitized)}`
           );
         }
@@ -269,9 +308,23 @@ export function createSecurityExtension(
       if (["read", "grep", "find", "ls"].includes(event.toolName)) {
         if (!path) return undefined;
         const sensitive = await findSensitiveRoot(sessionCwd, path);
-        return sensitive
-          ? blocked("sensitive_path", `Access to credential path denied: ${sensitive}`)
-          : undefined;
+        if (sensitive) {
+          return blocked("sensitive_path", `Access to credential path denied: ${sensitive}`);
+        }
+        // Reads reaching outside the workspace/KB escalate to approval
+        // (OpenCode external_directory convention). Reading is not itself the
+        // security boundary — that is write, spec §5.3 — but reaching outside
+        // the workspace is worth a prompt.
+        const resolved = resolve(sessionCwd, path);
+        const readable = getReadableRoots().map((root) => resolve(root));
+        if (!readable.some((root) => isPathInside(root, resolved))) {
+          return approve(
+            "read_outside_workspace",
+            `read:${dirname(resolved)}`,
+            `Read outside your workspace: ${summarize(path)}`
+          );
+        }
+        return undefined;
       }
 
       // Custom tools: SSRF check on URL-shaped inputs.
@@ -335,6 +388,23 @@ function baseCommand(subCommand: string): string {
     return name;
   }
   return "";
+}
+
+/**
+ * Best-effort destination hosts from a network command: URL hosts and
+ * `user@host` targets. ponytail: a host we can't parse falls back to a
+ * command-scoped allowance — coarser, still safe (re-prompts more, not less).
+ */
+function extractHosts(command: string): string[] {
+  const hosts = new Set<string>();
+  for (const match of command.matchAll(/\bhttps?:\/\/([^/\s'"]+)/gi)) {
+    hosts.add((match[1] ?? "").replace(/:\d+$/, "").toLowerCase());
+  }
+  for (const match of command.matchAll(/\b[\w.-]+@([\w.-]+)/g)) {
+    hosts.add((match[1] ?? "").toLowerCase());
+  }
+  hosts.delete("");
+  return [...hosts];
 }
 
 /** @vtstech/pi-security homoglyph check: invisible characters that change the

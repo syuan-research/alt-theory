@@ -405,6 +405,15 @@ async function createAltTheorySessionWithManager(
     modeState.mode === "full"
       ? [...altWritableRoots, cwd, ...workspaceState.additionalDirs]
       : altWritableRoots;
+  // Readable roots: everything writable, plus the workspace primary and the
+  // knowledge base (which legitimately lives outside cwd). Reads outside these
+  // escalate to approval; reading is not the security boundary (spec §5.3),
+  // this only matches the OpenCode/Claude Code external-directory prompt.
+  const readableRootsForMode = () => [
+    ...writableRootsForMode(),
+    cwd,
+    resolvedKbDir,
+  ];
   const altTheorySkills =
     resourceDiscovery !== "clean" && resolvedSkillsDir
       ? loadSkillsFromDir({
@@ -459,6 +468,7 @@ async function createAltTheorySessionWithManager(
       createSecurityExtension({
         sessionCwd: cwd,
         getWritableRoots: writableRootsForMode,
+        getReadableRoots: readableRootsForMode,
         recordAudit: (entry) =>
           appendFileSync(
             join(resolvedRecordsDir, "security-audit.jsonl"),

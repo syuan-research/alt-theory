@@ -222,9 +222,10 @@ test("security extension mediates tool calls at the policy boundary", async () =
     });
 
   // Hard block, including via chain, wrapper, and zero-width obfuscation.
-  assert.match((await call("bash", { command: "sudo rm -rf /" }))?.reason ?? "", /command_blocklist/);
-  assert.match((await call("bash", { command: "echo hi && nohup dd if=/dev/zero" }))?.reason ?? "", /command_blocklist/);
-  assert.match((await call("bash", { command: "su\u200bdo whoami" }))?.reason ?? "", /command_blocklist/);
+  // Reason is now plain prose; the rule slug lives only in the audit entry.
+  assert.match((await call("bash", { command: "sudo rm -rf /" }))?.reason ?? "", /can damage the system/);
+  assert.match((await call("bash", { command: "echo hi && nohup dd if=/dev/zero" }))?.reason ?? "", /can damage the system/);
+  assert.match((await call("bash", { command: "su\u200bdo whoami" }))?.reason ?? "", /can damage the system/);
 
   // Risky commands escalate; with no approval UI attached they fail closed.
   assert.match((await call("bash", { command: "rm -rf build" }))?.reason ?? "", /requires user approval/);
@@ -240,6 +241,13 @@ test("security extension mediates tool calls at the policy boundary", async () =
     /credential path/
   );
   assert.equal(await call("read", { path: join(kbDir, "note.md") }), undefined);
+
+  // Reads reaching outside the workspace/KB escalate; with no approval UI they
+  // fail closed (OpenCode external_directory convention).
+  assert.match(
+    (await call("read", { path: "/etc/hosts" }))?.reason ?? "",
+    /requires user approval/
+  );
 
   // Edit is bounded to the mode's writable roots (Full includes the cwd).
   assert.match(
