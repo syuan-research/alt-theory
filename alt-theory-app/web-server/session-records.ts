@@ -33,6 +33,11 @@ export interface V4SessionHeader extends RecordEnvelope {
     primaryDir: string;
     additionalDirs: string[];
   };
+  /** Set on forked children (M5 substrate); absent = a root conversation. */
+  forkedFrom?: {
+    sessionId: string;
+    purpose: "collaboration" | "comparison";
+  };
 }
 
 export function writeFoundationRecords(args: {
@@ -55,6 +60,10 @@ export function writeFoundationRecords(args: {
     primaryDir: string;
     additionalDirs: string[];
   } | null;
+  forkedFrom?: {
+    sessionId: string;
+    purpose: "collaboration" | "comparison";
+  } | null;
 }): { session: V4SessionHeader } {
   const createdAt = args.manifest.createdAt ?? new Date().toISOString();
   const session: V4SessionHeader = {
@@ -74,6 +83,7 @@ export function writeFoundationRecords(args: {
     retentionDueAt: args.retentionDueAt ?? null,
     ...(args.mode ? { mode: args.mode } : {}),
     ...(args.workspace ? { workspace: { ...args.workspace } } : {}),
+    ...(args.forkedFrom ? { forkedFrom: { ...args.forkedFrom } } : {}),
   };
 
   writeJsonAtomic(join(args.recordsDir, "session.json"), session);

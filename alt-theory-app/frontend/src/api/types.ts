@@ -134,6 +134,11 @@ export interface SessionSummary {
   hasSessionFile: boolean;
   recordModel: "v0.4" | "legacy-v0.3";
   warnings: string[];
+  /** Fork lineage (M5 substrate); null = a root conversation. */
+  forkedFrom: {
+    sessionId: string;
+    purpose: "collaboration" | "comparison";
+  } | null;
 }
 
 export interface EffectiveSessionConfig {

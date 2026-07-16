@@ -72,10 +72,28 @@ export function SessionBrowser() {
       .sort(compareSessionsByRecency);
   }, [app.sessionSearch, app.sessions, projectNames]);
 
+  // Children render indented under their live parent; a child whose parent
+  // is filtered out (or deleted) falls back to a top-level row.
+  const { topLevelSessions, childrenByParent } = useMemo(() => {
+    const ids = new Set(visibleSessions.map((session) => session.sessionId));
+    const children = new Map<string, SessionSummary[]>();
+    const topLevel: SessionSummary[] = [];
+    for (const session of visibleSessions) {
+      const parentId = session.forkedFrom?.sessionId;
+      if (parentId && ids.has(parentId)) {
+        if (!children.has(parentId)) children.set(parentId, []);
+        children.get(parentId)?.push(session);
+      } else {
+        topLevel.push(session);
+      }
+    }
+    return { topLevelSessions: topLevel, childrenByParent: children };
+  }, [visibleSessions]);
+
   const groupedSessions = useMemo(() => {
     if (isParticipant) return null;
     const groups = new Map<string, SessionSummary[]>();
-    for (const session of visibleSessions) {
+    for (const session of topLevelSessions) {
       const projectId = session.projectId || "";
       if (!groups.has(projectId)) groups.set(projectId, []);
       groups.get(projectId)?.push(session);
@@ -85,9 +103,35 @@ export function SessionBrowser() {
       if (!b) return -1;
       return (projectNames.get(a) || a).localeCompare(projectNames.get(b) || b);
     });
-  }, [isParticipant, projectNames, visibleSessions]);
+  }, [isParticipant, projectNames, topLevelSessions]);
 
   const canInteract = app.sessionReady && app.wsConnected && !app.isRunning;
+
+  const renderSessionWithChildren = (
+    session: SessionSummary,
+    participant: boolean
+  ) => (
+    <div key={session.sessionId} className="space-y-1">
+      <SessionRow
+        session={session}
+        title={sessionTitle(session, app.sessionDisplayNames)}
+        selected={app.selectedCatalogSessionId === session.sessionId}
+        isParticipant={participant}
+        onOpen={() => app.openCatalogSession(session.sessionId)}
+      />
+      {(childrenByParent.get(session.sessionId) ?? []).map((child) => (
+        <div key={child.sessionId} className="pl-3">
+          <SessionRow
+            session={child}
+            title={sessionTitle(child, app.sessionDisplayNames)}
+            selected={app.selectedCatalogSessionId === child.sessionId}
+            isParticipant={participant}
+            onOpen={() => app.openCatalogSession(child.sessionId)}
+          />
+        </div>
+      ))}
+    </div>
+  );
 
   return (
     <div className="space-y-3">
@@ -126,18 +170,9 @@ export function SessionBrowser() {
         ) : visibleSessions.length === 0 ? (
           <HintText className="p-2">No saved sessions.</HintText>
         ) : isParticipant ? (
-          visibleSessions.map((session) => (
-            <SessionRow
-              key={session.sessionId}
-              session={session}
-              title={sessionTitle(session, app.sessionDisplayNames)}
-              selected={
-                app.selectedCatalogSessionId === session.sessionId
-              }
-              isParticipant
-              onOpen={() => app.openCatalogSession(session.sessionId)}
-            />
-          ))
+          topLevelSessions.map((session) =>
+            renderSessionWithChildren(session, true)
+          )
         ) : (
           groupedSessions?.map(([projectId, items]) => (
             <section key={projectId || "unassigned"} className="space-y-1">
@@ -146,18 +181,9 @@ export function SessionBrowser() {
                   ? projectNames.get(projectId) || projectId
                   : "Unassigned"}
               </p>
-              {items.map((session) => (
-                <SessionRow
-                  key={session.sessionId}
-                  session={session}
-                  title={sessionTitle(session, app.sessionDisplayNames)}
-                  selected={
-                    app.selectedCatalogSessionId === session.sessionId
-                  }
-                  isParticipant={false}
-                  onOpen={() => app.openCatalogSession(session.sessionId)}
-                />
-              ))}
+              {items.map((session) =>
+                renderSessionWithChildren(session, false)
+              )}
             </section>
           ))
         )}
@@ -224,6 +250,11 @@ function SessionRow({
           className="truncate text-[0.8125rem] font-semibold text-ink"
           title={isParticipant ? undefined : session.sessionId}
         >
+          {session.forkedFrom ? (
+            <span className="mr-1 text-text-muted" aria-hidden>
+              ⑂
+            </span>
+          ) : null}
           {title}
         </span>
         <span

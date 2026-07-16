@@ -115,6 +115,7 @@ export interface AppContextValue {
   sessionsError: string | null;
   refreshSessions: () => Promise<void>;
   openCatalogSession: (sessionId: string) => void;
+  forkCurrentSession: (purpose: "collaboration" | "comparison") => void;
   renameSelectedSession: () => Promise<void>;
   deleteSelectedSession: () => void;
 
@@ -841,6 +842,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [isRunning, sendMessage, sessions]
   );
 
+  const forkCurrentSession = useCallback(
+    (purpose: "collaboration" | "comparison") => {
+      // The server forks the live conversation into a child session, attaches
+      // to it, and replies with session_opened + session_transcript — the
+      // existing handlers switch the view over. The parent stays live.
+      if (!sessionId || isRunning) return;
+      if (sendMessage({ type: "fork_session", payload: { purpose } })) {
+        setIsRunning(true);
+        setConnStatus("running");
+        setConnLabel("Forking...");
+        setToolStatus("Branching conversation…");
+      }
+    },
+    [isRunning, sendMessage, sessionId]
+  );
+
   const renameSelectedSession = useCallback(async () => {
     const targetId = selectedSessionDetail?.session?.sessionId;
     if (!targetId) return;
@@ -1103,6 +1120,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       sessionsError,
       refreshSessions,
       openCatalogSession,
+      forkCurrentSession,
       renameSelectedSession,
       deleteSelectedSession,
       sessionId,
@@ -1171,6 +1189,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       sessionsError,
       refreshSessions,
       openCatalogSession,
+      forkCurrentSession,
       renameSelectedSession,
       deleteSelectedSession,
       sessionId,

@@ -679,11 +679,17 @@ test("forkSession applies per-arm selector overrides (A/B substrate)", async () 
     assert.equal(service.getManifest(arms[0].sessionId).soul?.slug, null);
     assert.equal(service.getManifest(arms[2].sessionId).kb.domain, "none");
     for (const arm of arms) {
-      assert.equal(
-        readSessionDetail(fixture.dataDir, arm.sessionId)?.transcript.at(-1)?.text,
-        "ab answer"
-      );
+      const detail = readSessionDetail(fixture.dataDir, arm.sessionId);
+      assert.equal(detail?.transcript.at(-1)?.text, "ab answer");
+      assert.deepEqual(detail?.session.forkedFrom, {
+        sessionId: created.sessionId,
+        purpose: "comparison",
+      });
     }
+    assert.equal(
+      readSessionDetail(fixture.dataDir, created.sessionId)?.session.forkedFrom,
+      null
+    );
     // The parent was never disposed: same managed instance, still promptable.
     assert.equal((service as any).sessions.get(created.sessionId), managed);
     managed.session.prompt = async (text: string) => {

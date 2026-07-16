@@ -344,6 +344,14 @@ export class SessionService {
     sessionId: string,
     fallbackSelectors: SessionSelectors
   ): Promise<SessionSnapshot> {
+    // A live session keeps its managed instance. Re-opening from disk would
+    // stack a second runtime over the same files and orphan any in-flight
+    // run — the multi-conversation UI switches freely between a live parent
+    // and its children, so this path is now hot.
+    const live = this.sessions.get(sessionId);
+    if (live) {
+      return this.snapshot(live);
+    }
     const managed = await this.createManagedFromExisting(
       sessionId,
       fallbackSelectors
@@ -741,6 +749,7 @@ export class SessionService {
         workspace: sourceHeader?.workspace
           ? result.manifest.workspace
           : null,
+        forkedFrom: { sessionId, purpose },
       });
       appendConfigEvent(result.manifest.recordsDir, {
         sessionId: result.manifest.sessionId,
