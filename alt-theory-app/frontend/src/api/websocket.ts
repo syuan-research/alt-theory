@@ -124,7 +124,7 @@ export function sendDeleteLatest(ws: WebSocket | null): boolean {
 
 export function sendForkSession(
   ws: WebSocket | null,
-  purpose: "collaboration" | "comparison",
+  purpose: "fork" | "side" | "helper" | "ab-arm",
   forkPointEntryId?: string
 ): boolean {
   return sendClientMessage(ws, {

@@ -1,9 +1,36 @@
 import { existsSync, readFileSync } from "fs";
 import { join, resolve } from "path";
+import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { AssemblyManifest } from "../core/alt-theory-core.js";
 import { writeJsonAtomic } from "../core/data-dir.js";
 
 export const V4_SCHEMA_VERSION = 1;
+
+/**
+ * Child-session kind (M7 decision doc §3). Session-list membership derives
+ * from it: only roots and "fork" appear in the list; a chosen A/B arm is
+ * rewritten to "fork" when it becomes the continuation.
+ */
+export type ForkPurpose = "fork" | "side" | "helper" | "ab-arm";
+
+/** Pre-M7 records used the original two purposes; normalize on read. */
+const LEGACY_FORK_PURPOSE: Record<string, ForkPurpose> = {
+  collaboration: "side",
+  comparison: "ab-arm",
+};
+
+/** Study designation, session level (M7 decision doc §3); absent = daily use. */
+export interface StudyTag {
+  studyId: string;
+  batch?: string;
+}
+
+/** Per-session model choice; absent = deployment-global model config. */
+export interface SessionModelOverride {
+  provider: string;
+  modelId: string;
+  thinkingLevel?: ThinkingLevel;
+}
 
 export interface RecordEnvelope {
   schemaVersion: 1;
@@ -36,8 +63,10 @@ export interface V4SessionHeader extends RecordEnvelope {
   /** Set on forked children (M5 substrate); absent = a root conversation. */
   forkedFrom?: {
     sessionId: string;
-    purpose: "collaboration" | "comparison";
+    purpose: ForkPurpose;
   };
+  studyTag?: StudyTag;
+  modelOverride?: SessionModelOverride;
 }
 
 export function writeFoundationRecords(args: {
@@ -62,8 +91,10 @@ export function writeFoundationRecords(args: {
   } | null;
   forkedFrom?: {
     sessionId: string;
-    purpose: "collaboration" | "comparison";
+    purpose: ForkPurpose;
   } | null;
+  studyTag?: StudyTag | null;
+  modelOverride?: SessionModelOverride | null;
 }): { session: V4SessionHeader } {
   const createdAt = args.manifest.createdAt ?? new Date().toISOString();
   const session: V4SessionHeader = {
@@ -84,6 +115,8 @@ export function writeFoundationRecords(args: {
     ...(args.mode ? { mode: args.mode } : {}),
     ...(args.workspace ? { workspace: { ...args.workspace } } : {}),
     ...(args.forkedFrom ? { forkedFrom: { ...args.forkedFrom } } : {}),
+    ...(args.studyTag ? { studyTag: { ...args.studyTag } } : {}),
+    ...(args.modelOverride ? { modelOverride: { ...args.modelOverride } } : {}),
   };
 
   writeJsonAtomic(join(args.recordsDir, "session.json"), session);
@@ -101,6 +134,11 @@ export function readV4SessionHeader(recordsDir: string): V4SessionHeader | null 
     header?.schemaVersion === V4_SCHEMA_VERSION &&
     header.recordType === "session"
   ) {
+    if (header.forkedFrom) {
+      header.forkedFrom.purpose =
+        LEGACY_FORK_PURPOSE[header.forkedFrom.purpose] ??
+        header.forkedFrom.purpose;
+    }
     return header;
   }
   return null;

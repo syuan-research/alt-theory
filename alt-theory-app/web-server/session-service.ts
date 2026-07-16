@@ -56,6 +56,9 @@ import {
   readV4SessionHeader,
   writeFoundationRecords,
   writeSessionHeader,
+  type ForkPurpose,
+  type SessionModelOverride,
+  type StudyTag,
 } from "./session-records.js";
 import {
   calculateRetentionDueAt,
@@ -161,9 +164,11 @@ export interface SessionCreationMetadata {
     primaryDir?: string;
     additionalDirs?: string[];
   } | null;
+  studyTag?: StudyTag | null;
+  modelOverride?: SessionModelOverride | null;
 }
 
-export type ForkPurpose = "collaboration" | "comparison";
+export type { ForkPurpose, StudyTag, SessionModelOverride };
 
 export interface RunHandle {
   ids: {
@@ -277,6 +282,23 @@ export class SessionService {
       ...base,
       modelProvider: usable.provider,
       modelId: usable.modelId,
+    };
+  }
+
+  /**
+   * Model args for opening a session: a persisted per-session override (M7
+   * §5b) wins over the deployment-global config; thinking falls back global.
+   */
+  private modelArgsFor(
+    override: SessionModelOverride | null | undefined
+  ): RuntimeModelConfig & { thinkingLevel?: ThinkingLevel } {
+    const base = this.resolveEffectiveRuntimeModelConfig();
+    return {
+      ...base,
+      ...(override
+        ? { modelProvider: override.provider, modelId: override.modelId }
+        : {}),
+      thinkingLevel: override?.thinkingLevel ?? this.config.thinkingLevel,
     };
   }
 
@@ -728,6 +750,9 @@ export class SessionService {
         ...(readV4SessionHeader(previous.manifest.recordsDir)?.workspace
           ? { workspace: previous.getWorkspace() }
           : {}),
+        modelOverride:
+          readV4SessionHeader(previous.manifest.recordsDir)?.modelOverride ??
+          null,
       });
       writeJsonAtomic(
         join(result.manifest.recordsDir, "assembly-manifest.json"),
@@ -750,6 +775,8 @@ export class SessionService {
           ? result.manifest.workspace
           : null,
         forkedFrom: { sessionId, purpose },
+        studyTag: sourceHeader?.studyTag ?? null,
+        modelOverride: sourceHeader?.modelOverride ?? null,
       });
       appendConfigEvent(result.manifest.recordsDir, {
         sessionId: result.manifest.sessionId,
@@ -853,7 +880,7 @@ export class SessionService {
     for (const arm of arms) {
       const forked = await this.forkSession(
         sessionId,
-        "comparison",
+        "ab-arm",
         undefined,
         arm.selectorOverrides
       );
@@ -1154,6 +1181,83 @@ export class SessionService {
     return this.snapshot(managed);
   }
 
+  setStudyTag(sessionId: string, studyTag: StudyTag | null): SessionSnapshot {
+    const managed = this.requireSession(sessionId);
+    const header = readV4SessionHeader(managed.manifest.recordsDir);
+    if (!header) throw new Error("v0.4 session header is required");
+    const { studyTag: _dropped, ...rest } = header;
+    writeSessionHeader(
+      managed.manifest.recordsDir,
+      studyTag ? { ...rest, studyTag } : rest
+    );
+    appendSessionEvent(managed.manifest.recordsDir, {
+      sessionId,
+      type: "study_tag_changed",
+      details: { studyTag },
+    });
+    return this.snapshot(managed);
+  }
+
+  /**
+   * Per-session model choice (M7 §5b). Persists to the v0.4 header and, when
+   * the model is resolvable in the live registry, switches the running
+   * session immediately (same mechanism as the fallback chain); otherwise it
+   * applies on next open. null clears back to the deployment-global config.
+   */
+  async setSessionModel(
+    sessionId: string,
+    override: SessionModelOverride | null
+  ): Promise<SessionSnapshot> {
+    const managed = this.requireSession(sessionId);
+    if (managed.busy || managed.session.isStreaming) {
+      throw new SessionBusyError(sessionId);
+    }
+    const header = readV4SessionHeader(managed.manifest.recordsDir);
+    if (!header) throw new Error("v0.4 session header is required");
+    const { modelOverride: _dropped, ...rest } = header;
+    writeSessionHeader(
+      managed.manifest.recordsDir,
+      override ? { ...rest, modelOverride: override } : rest
+    );
+    let applied = false;
+    if (override) {
+      const resolved = managed.session.modelRegistry.find(
+        override.provider,
+        override.modelId
+      );
+      if (resolved) {
+        await managed.session.setModel(resolved);
+        managed.manifest.provider = override.provider;
+        managed.manifest.model = override.modelId;
+        this.persistManifestModel(managed);
+        applied = true;
+      }
+      if (override.thinkingLevel) {
+        managed.session.setThinkingLevel(override.thinkingLevel);
+      }
+    } else {
+      const base = this.resolveEffectiveRuntimeModelConfig();
+      const resolved =
+        base.modelProvider && base.modelId
+          ? managed.session.modelRegistry.find(base.modelProvider, base.modelId)
+          : undefined;
+      if (resolved) {
+        await managed.session.setModel(resolved);
+        managed.manifest.provider = base.modelProvider!;
+        managed.manifest.model = base.modelId!;
+        this.persistManifestModel(managed);
+        applied = true;
+      }
+      managed.session.setThinkingLevel(this.config.thinkingLevel ?? "off");
+    }
+    appendSessionEvent(managed.manifest.recordsDir, {
+      sessionId,
+      type: "model_override_changed",
+      details: { override, appliedLive: applied },
+    });
+    return this.snapshot(managed);
+  }
+
   async disposeAll(): Promise<void> {
     const sessions = [...this.sessions.values()];
     this.sessions.clear();
@@ -1197,7 +1301,14 @@ export class SessionService {
       kbDomain: selectors.kbDomain,
       piPromptTemplatesDir: this.config.assetPaths.piPromptTemplatesDir,
       ...runtimeModelConfig,
-      thinkingLevel: this.config.thinkingLevel,
+      ...(metadata.modelOverride
+        ? {
+            modelProvider: metadata.modelOverride.provider,
+            modelId: metadata.modelOverride.modelId,
+          }
+        : {}),
+      thinkingLevel:
+        metadata.modelOverride?.thinkingLevel ?? this.config.thinkingLevel,
       promptMode: this.config.promptMode,
       resourceDiscovery: this.config.resourceDiscovery,
       skillsDir: this.config.skillsDir,
@@ -1233,6 +1344,8 @@ export class SessionService {
           : null,
       mode: result.getMode(),
       workspace: metadata.workspace ? result.manifest.workspace : null,
+      studyTag: metadata.studyTag ?? null,
+      modelOverride: metadata.modelOverride ?? null,
     });
 
     const managed = await this.createManaged({
@@ -1335,8 +1448,7 @@ export class SessionService {
       kbDir: this.config.kbDir,
       kbDomain: activeDomain,
       piPromptTemplatesDir: this.config.assetPaths.piPromptTemplatesDir,
-      ...this.resolveEffectiveRuntimeModelConfig(),
-      thinkingLevel: this.config.thinkingLevel,
+      ...this.modelArgsFor(persistedHeader?.modelOverride),
       promptMode: promptModeFromCapabilityMode(persistedMode),
       resourceDiscovery: this.config.resourceDiscovery,
       skillsDir: this.config.skillsDir,
@@ -1471,8 +1583,9 @@ export class SessionService {
       kbDir: this.config.kbDir,
       kbDomain: selectors.kbDomain,
       piPromptTemplatesDir: this.config.assetPaths.piPromptTemplatesDir,
-      ...this.resolveEffectiveRuntimeModelConfig(),
-      thinkingLevel: this.config.thinkingLevel,
+      ...this.modelArgsFor(
+        readV4SessionHeader(sessionDirs.recordsDir)?.modelOverride
+      ),
       promptMode: promptModeFromCapabilityMode(persistedMode),
       resourceDiscovery: this.config.resourceDiscovery,
       skillsDir: this.config.skillsDir,
@@ -1517,6 +1630,7 @@ export class SessionService {
     activeLeafEntryId?: string | null;
     mode?: CapabilityMode;
     workspace?: { primaryDir: string; additionalDirs: string[] };
+    modelOverride?: SessionModelOverride | null;
   }): Promise<ManagedSession> {
     const instruction = this.resolveOptionalInstruction(
       args.selectors.customInstructionRef
@@ -1551,8 +1665,7 @@ export class SessionService {
       kbDir: this.config.kbDir,
       kbDomain: args.selectors.kbDomain,
       piPromptTemplatesDir: this.config.assetPaths.piPromptTemplatesDir,
-      ...this.resolveEffectiveRuntimeModelConfig(),
-      thinkingLevel: this.config.thinkingLevel,
+      ...this.modelArgsFor(args.modelOverride ?? persistedHeader?.modelOverride),
       promptMode: promptModeFromCapabilityMode(persistedMode),
       resourceDiscovery: this.config.resourceDiscovery,
       skillsDir: this.config.skillsDir,

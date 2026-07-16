@@ -5,6 +5,11 @@
  */
 
 import type { AssemblyManifest } from "../core/alt-theory-core.js";
+import type {
+  ForkPurpose,
+  SessionModelOverride,
+  StudyTag,
+} from "./session-records.js";
 
 // ---------------------------------------------------------------------------
 // Session Snapshot
@@ -108,9 +113,14 @@ export type ClientMessage =
   | {
       type: "fork_session";
       payload: {
-        purpose: "collaboration" | "comparison";
+        purpose: ForkPurpose;
         forkPointEntryId?: string;
       };
+    }
+  | { type: "set_study_tag"; payload: { studyTag: StudyTag | null } }
+  | {
+      type: "set_session_model";
+      payload: { override: SessionModelOverride | null };
     }
   | { type: "new_session" }
   | { type: "open_session"; payload: { sessionId: string } }

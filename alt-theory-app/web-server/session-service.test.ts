@@ -543,7 +543,7 @@ test("SessionService revise and default fork use restored Pi leaf after reopen",
     )?.transcript.at(-1)?.entryId;
     const forked = await forkService.forkSession(
       forkOpened.sessionId,
-      "collaboration"
+      "side"
     );
     const sourceDetail = readSessionDetail(fixture.dataDir, created.sessionId);
     const forkDetail = readSessionDetail(fixture.dataDir, forked.sessionId);
@@ -575,7 +575,7 @@ test("SessionService rejects latest-turn delete when no completed turn exists", 
 });
 
 test("SessionService explicit forks create a new session with copied workspace", async () => {
-  async function runCase(purpose: "collaboration" | "comparison") {
+  async function runCase(purpose: "side" | "ab-arm") {
     const fixture = setupFixture();
     const service = createTestService(fixture);
     const created = await service.createSession({
@@ -642,8 +642,8 @@ test("SessionService explicit forks create a new session with copied workspace",
     }
   }
 
-  await runCase("collaboration");
-  await runCase("comparison");
+  await runCase("side");
+  await runCase("ab-arm");
 });
 
 test("forkSession applies per-arm selector overrides (A/B substrate)", async () => {
@@ -671,7 +671,7 @@ test("forkSession applies per-arm selector overrides (A/B substrate)", async () 
     const arms = [];
     for (const overrides of [{ soulSlug: null }, {}, { kbDomain: "none" }]) {
       arms.push(
-        await service.forkSession(created.sessionId, "comparison", forkPoint, overrides)
+        await service.forkSession(created.sessionId, "ab-arm", forkPoint, overrides)
       );
     }
     assert.equal(new Set(arms.map((a) => a.sessionId)).size, 3);
@@ -683,7 +683,7 @@ test("forkSession applies per-arm selector overrides (A/B substrate)", async () 
       assert.equal(detail?.transcript.at(-1)?.text, "ab answer");
       assert.deepEqual(detail?.session.forkedFrom, {
         sessionId: created.sessionId,
-        purpose: "comparison",
+        purpose: "ab-arm",
       });
     }
     assert.equal(
@@ -810,7 +810,7 @@ test("SessionService cleans unactivated comparison fork artifacts", async () => 
 
   try {
     await assert.rejects(
-      () => service.forkSession(created.sessionId, "comparison", forkPoint),
+      () => service.forkSession(created.sessionId, "ab-arm", forkPoint),
       /forced fork open failure/
     );
     const detail = readSessionDetail(fixture.dataDir, created.sessionId);
@@ -1337,7 +1337,7 @@ test("SessionService rejects concurrent same-session prompt mutations with sessi
       (error) => error instanceof SessionBusyError && error.code === "session_busy"
     );
     await assert.rejects(
-      () => service.forkSession(snapshot.sessionId, "collaboration"),
+      () => service.forkSession(snapshot.sessionId, "side"),
       (error) => error instanceof SessionBusyError && error.code === "session_busy"
     );
     assert.ok(resolvePrompt);

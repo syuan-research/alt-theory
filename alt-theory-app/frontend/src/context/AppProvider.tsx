@@ -115,7 +115,7 @@ export interface AppContextValue {
   sessionsError: string | null;
   refreshSessions: () => Promise<void>;
   openCatalogSession: (sessionId: string) => void;
-  forkCurrentSession: (purpose: "collaboration" | "comparison") => void;
+  forkCurrentSession: (purpose: "fork" | "side" | "helper" | "ab-arm") => void;
   renameSelectedSession: () => Promise<void>;
   deleteSelectedSession: () => void;
 
@@ -843,7 +843,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   const forkCurrentSession = useCallback(
-    (purpose: "collaboration" | "comparison") => {
+    (purpose: "fork" | "side" | "helper" | "ab-arm") => {
       // The server forks the live conversation into a child session, attaches
       // to it, and replies with session_opened + session_transcript — the
       // existing handlers switch the view over. The parent stays live.

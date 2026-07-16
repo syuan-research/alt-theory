@@ -481,9 +481,18 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     res.json({ ok: true });
   });
   app.get("/api/auth/me", (req, res) => {
+    const auth = authSessions.resolveRequest(req);
+    // Study designation (M7 §3): hosted = the account role; local = the
+    // install-level flag. Non-designated users get zero study surfaces.
+    const participant = hasConfiguredAccounts()
+      ? auth.role === "participant"
+        ? { designated: true, label: null }
+        : null
+      : (readAppSettings(dataDir).participant ?? null);
     res.json({
-      auth: authSessions.resolveRequest(req),
+      auth,
       app: { mode: appMode },
+      participant,
       localConfig: localMode ? getConfigStatus(agentConfigDir()) : null,
     });
   });
@@ -1230,6 +1239,18 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     return auth.role !== "anonymous" || !hasConfiguredAccounts();
   }
 
+  /**
+   * Sharing default follows study designation (M7 §4). Hosted deployments
+   * keep the pre-existing default (participants consented); a local install
+   * defaults to private unless the install is designated at handout.
+   */
+  function defaultDraftVisibility(): "research" | "private" {
+    if (hasConfiguredAccounts()) return "research";
+    return readAppSettings(dataDir).participant?.designated
+      ? "research"
+      : "private";
+  }
+
   function sendDraft(
     send: (msg: ServerMessage) => void,
     selectors: SessionSelectors,
@@ -1261,7 +1282,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     let detach = () => {};
     let closed = false;
     let draftSelectors: SessionSelectors;
-    let draftVisibility: "research" | "private" = "research";
+    let draftVisibility: "research" | "private" = defaultDraftVisibility();
     let initialError: unknown = null;
     try {
       draftSelectors = createDraftSelectorsForAuth(auth);
@@ -1505,6 +1526,42 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           sendDraft(send, draftSelectors, draftVisibility);
           break;
         }
+        case "set_study_tag": {
+          if (!attachedSessionId) {
+            sendError(send, new Error("A materialized session is required"));
+            break;
+          }
+          try {
+            send({
+              type: "session_updated",
+              payload: sessionService.setStudyTag(
+                attachedSessionId,
+                msg.payload.studyTag ?? null
+              ),
+            });
+          } catch (error) {
+            sendServiceError(send, error);
+          }
+          break;
+        }
+        case "set_session_model": {
+          if (!attachedSessionId) {
+            sendError(send, new Error("A materialized session is required"));
+            break;
+          }
+          try {
+            send({
+              type: "session_updated",
+              payload: await sessionService.setSessionModel(
+                attachedSessionId,
+                msg.payload.override ?? null
+              ),
+            });
+          } catch (error) {
+            sendServiceError(send, error);
+          }
+          break;
+        }
         case "invoke_skill": {
           try {
             if (!attachedSessionId) {
@@ -1674,7 +1731,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           detach();
           detach = () => {};
           attachedSessionId = null;
-          draftVisibility = "research";
+          draftVisibility = defaultDraftVisibility();
           sendDraft(send, draftSelectors, draftVisibility);
           break;
         }

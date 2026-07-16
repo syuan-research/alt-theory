@@ -32,7 +32,7 @@ export function Composer() {
       {
         name: "branch",
         description: "Branch this conversation into a side conversation",
-        run: () => app.forkCurrentSession("collaboration"),
+        run: () => app.forkCurrentSession("side"),
       },
       {
         name: "new",

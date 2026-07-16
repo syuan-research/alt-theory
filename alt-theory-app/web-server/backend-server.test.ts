@@ -1150,6 +1150,7 @@ test("auth routes support cookie round trip without leaking account secrets", as
         defaultConsent: null,
       },
       app: { mode: "hosted" },
+      participant: null,
       localConfig: null,
     });
 
@@ -1198,6 +1199,7 @@ test("auth routes support cookie round trip without leaking account secrets", as
         },
       },
       app: { mode: "hosted" },
+      participant: { designated: true, label: null },
       localConfig: null,
     });
 

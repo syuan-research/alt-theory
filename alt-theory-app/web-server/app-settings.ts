@@ -20,6 +20,13 @@ export interface AppSettings {
     pure: { enabledPaths: string[] | null };
     full: { enabledPaths: string[] | null };
   };
+  /**
+   * Install-level participant designation (M7 §3). Local carrier of the
+   * study-designation primitive: set at handout, drives the sharing default
+   * (designated → research, else private) and whether study surfaces render.
+   * Absent = non-participant (the GitHub-download posture).
+   */
+  participant?: { designated: boolean; label: string | null };
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -46,6 +53,17 @@ export function readAppSettings(dataDir: string): AppSettings {
         pure: { enabledPaths: normalizePaths(parsed.skills?.pure?.enabledPaths) },
         full: { enabledPaths: normalizePaths(parsed.skills?.full?.enabledPaths) },
       },
+      ...(parsed.participant
+        ? {
+            participant: {
+              designated: Boolean(parsed.participant.designated),
+              label:
+                typeof parsed.participant.label === "string"
+                  ? parsed.participant.label
+                  : null,
+            },
+          }
+        : {}),
     };
   } catch {
     return structuredClone(DEFAULT_SETTINGS);

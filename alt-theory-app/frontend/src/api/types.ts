@@ -137,7 +137,7 @@ export interface SessionSummary {
   /** Fork lineage (M5 substrate); null = a root conversation. */
   forkedFrom: {
     sessionId: string;
-    purpose: "collaboration" | "comparison";
+    purpose: "fork" | "side" | "helper" | "ab-arm";
   } | null;
 }
 
@@ -363,7 +363,7 @@ export type ClientMessage =
   | {
       type: "fork_session";
       payload: {
-        purpose: "collaboration" | "comparison";
+        purpose: "fork" | "side" | "helper" | "ab-arm";
         forkPointEntryId?: string;
       };
     }

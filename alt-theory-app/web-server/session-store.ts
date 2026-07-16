@@ -19,6 +19,7 @@ import type { SessionEvent } from "./session-events.js";
 import type { SessionMetrics, TranscriptMessage } from "./websocket-protocol.js";
 import {
   readV4SessionHeader,
+  type ForkPurpose,
   type V4SessionHeader,
 } from "./session-records.js";
 import {
@@ -65,8 +66,10 @@ export interface SessionSummary {
   /** Fork lineage (M5 substrate); null = a root conversation. */
   forkedFrom: {
     sessionId: string;
-    purpose: "collaboration" | "comparison";
+    purpose: ForkPurpose;
   } | null;
+  /** Study designation (M7 §3); null = daily use. */
+  studyTag: { studyId: string; batch?: string } | null;
 }
 
 export interface SessionListResponse {
@@ -502,6 +505,7 @@ function buildSummary(sessionId: string, parts: SessionParts): SessionSummary {
     warnings: uniqueWarnings(warnings),
     deletedAt: parts.deleted?.deletedAt ?? null,
     forkedFrom: parts.v4Session?.forkedFrom ?? null,
+    studyTag: parts.v4Session?.studyTag ?? null,
   };
 }
 

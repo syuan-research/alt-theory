@@ -68,7 +68,7 @@ function ConversationLineageBar() {
         variant="secondary"
         className="ml-auto px-2 py-0.5 text-[0.75rem]"
         disabled={!canSwitch || !app.sessionId}
-        onClick={() => app.forkCurrentSession("collaboration")}
+        onClick={() => app.forkCurrentSession("side")}
         title="Branch this conversation into a side conversation; this one stays as it is"
       >
         ⑂ Branch
