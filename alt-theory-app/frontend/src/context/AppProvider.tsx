@@ -295,6 +295,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const activeToolsMapRef = useRef<Record<string, ActiveToolState>>({});
   const composerNoticeTimerRef = useRef<number | null>(null);
   const hydratedNamesRef = useRef<Set<string>>(new Set());
+  const sessionListRequestRef = useRef(0);
+  const sessionDetailRequestRef = useRef(0);
 
   const clearStagedWorkspace = useCallback(() => {
     setStagedWorkspacePaths([]);
@@ -421,44 +423,60 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const refreshSessionDetail = useCallback(async (targetSessionId: string | null) => {
+    const requestId = ++sessionDetailRequestRef.current;
+    if (!targetSessionId) {
+      setSelectedSessionDetail(null);
+      return;
+    }
+    try {
+      const detail = await fetchSessionDetail(targetSessionId);
+      if (requestId === sessionDetailRequestRef.current) {
+        setSelectedSessionDetail(detail);
+      }
+    } catch {
+      if (requestId === sessionDetailRequestRef.current) {
+        setSelectedSessionDetail(null);
+      }
+    }
+  }, []);
+
   const refreshSessions = useCallback(async () => {
     if (loginRequired) return;
+    const requestId = ++sessionListRequestRef.current;
     setSessionsLoading(true);
     setSessionsError(null);
     try {
       const list = await fetchSessionList();
+      if (requestId !== sessionListRequestRef.current) return;
       setSessions(list);
-
-      const visibleId = selectedCatalogSessionId;
-      if (visibleId && list.some((item) => item.sessionId === visibleId)) {
-        const detail = await fetchSessionDetail(visibleId);
-        setSelectedSessionDetail(detail);
-      } else if (list.length > 0) {
-        const firstId = list[0].sessionId;
-        setSelectedCatalogSessionId(firstId);
-        const detail = await fetchSessionDetail(firstId);
-        setSelectedSessionDetail(detail);
-      } else {
-        setSelectedCatalogSessionId(null);
-        setSelectedSessionDetail(null);
-      }
-    } catch (err) {
-      setSessions([]);
-      setSelectedCatalogSessionId(null);
-      setSelectedSessionDetail(null);
-      setSessionsError(
-        err instanceof Error ? err.message : "Could not load sessions"
+      setSelectedCatalogSessionId((current) =>
+        current && list.some((item) => item.sessionId === current)
+          ? current
+          : list[0]?.sessionId ?? null
       );
+    } catch (err) {
+      if (requestId === sessionListRequestRef.current) {
+        setSessionsError(
+          err instanceof Error ? err.message : "Could not load sessions"
+        );
+      }
     } finally {
-      setSessionsLoading(false);
+      if (requestId === sessionListRequestRef.current) {
+        setSessionsLoading(false);
+      }
     }
-  }, [loginRequired, selectedCatalogSessionId]);
+  }, [loginRequired]);
 
   useEffect(() => {
     if (!loading && !loginRequired) {
       void refreshSessions();
     }
   }, [loading, loginRequired, refreshSessions]);
+
+  useEffect(() => {
+    void refreshSessionDetail(selectedCatalogSessionId);
+  }, [refreshSessionDetail, selectedCatalogSessionId]);
 
   useEffect(() => {
     if (loginRequired) return;
@@ -575,7 +593,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           clearStagedWorkspace();
           void refreshSessions();
           if (selectedCatalogSessionId === message.payload.sessionId) {
-            void fetchSessionDetail(message.payload.sessionId).then(setSelectedSessionDetail);
+            void refreshSessionDetail(message.payload.sessionId);
           }
           break;
         }
@@ -613,7 +631,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             setIsRunning(false);
           }
           if (selectedCatalogSessionId === message.payload.sessionId) {
-            void fetchSessionDetail(message.payload.sessionId).then(setSelectedSessionDetail);
+            void refreshSessionDetail(message.payload.sessionId);
           }
           break;
         }
@@ -779,6 +797,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [
       clearStagedWorkspace,
       refreshCurrentTranscript,
+      refreshSessionDetail,
       refreshSessions,
       selectedCatalogSessionId,
       sessionId,
@@ -865,7 +884,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return;
       }
       setSelectedCatalogSessionId(targetSessionId);
-      void fetchSessionDetail(targetSessionId).then(setSelectedSessionDetail);
       pendingOpenSessionIdRef.current = targetSessionId;
       if (
         sendMessage({

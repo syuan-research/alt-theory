@@ -910,6 +910,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     auth: AuthContext,
     session: SessionSummary
   ): boolean {
+    if (localMode) return true;
     if (auth.role === "participant") {
       return Boolean(auth.accountId) && session.ownerAccountId === auth.accountId;
     }
@@ -920,6 +921,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     auth: AuthContext,
     session: SessionSummary
   ): boolean {
+    if (localMode) return true;
     if (session.visibility === "private") {
       return Boolean(auth.accountId) && session.ownerAccountId === auth.accountId;
     }

@@ -140,8 +140,10 @@ function UserNav() {
         </button>
       </div>
       <div className="sessions">
-        {app.sessionsLoading ? (
+        {app.sessionsLoading && app.sessions.length === 0 ? (
           <div className="rp-empty">Loading conversations…</div>
+        ) : app.sessionsError && app.sessions.length === 0 ? (
+          <div className="rp-empty">{app.sessionsError}</div>
         ) : tree.groups.length === 0 ? (
           <div className="rp-empty">No conversations yet.</div>
         ) : (

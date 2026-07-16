@@ -1224,7 +1224,7 @@ test("auth routes support cookie round trip without leaking account secrets", as
   }
 });
 
-test("session REST routes filter participant access and preserve researcher access", async () => {
+test("session REST routes preserve hosted isolation and local access", async () => {
   const root = mkdtempSync(join(tmpdir(), "alt-theory-auth-filter-"));
   const dataDir = join(root, "data");
   const rolePresets = join(root, "role-presets");
@@ -1352,11 +1352,20 @@ test("session REST routes filter participant access and preserve researcher acce
     kbDomain: "ep-core",
     soulSlug: "soul-latest",
   });
+  const ownerlessPrivateSession = await service.createSession(
+    {
+      rolePresetSlug: "role-conceptual-theory-companion",
+      kbDomain: "ep-core",
+      soulSlug: "soul-latest",
+    },
+    { visibility: "private" }
+  );
   for (const sessionId of [
     p01Session.sessionId,
     p01PrivateSession.sessionId,
     p02Session.sessionId,
     ownerlessSession.sessionId,
+    ownerlessPrivateSession.sessionId,
   ]) {
     persistSessionMetrics(service.getManifest(sessionId).recordsDir, {
       turnCount: 1,
@@ -1469,7 +1478,7 @@ test("session REST routes filter participant access and preserve researcher acce
       headers: { Cookie: researcherCookie },
     });
     const researcherListJson = await researcherList.json();
-    assert.equal(researcherListJson.sessions.length, 4);
+    assert.equal(researcherListJson.sessions.length, 5);
     assert.ok(
       researcherListJson.sessions.some(
         (session: any) => session.sessionId === ownerlessSession.sessionId
@@ -1497,10 +1506,45 @@ test("session REST routes filter participant access and preserve researcher acce
       { headers: { Cookie: researcherCookie } }
     );
     assert.equal(researcherOwnerlessDetail.status, 200);
+    const researcherOwnerlessPrivateDetail = await fetch(
+      `${baseUrl}/api/sessions/${ownerlessPrivateSession.sessionId}`,
+      { headers: { Cookie: researcherCookie } }
+    );
+    assert.equal(researcherOwnerlessPrivateDetail.status, 403);
   } finally {
     await new Promise<void>((resolveClose) => {
       instance.wss.close(() => {
         instance.httpServer.close(() => resolveClose());
+      });
+    });
+  }
+
+  const previousMode = process.env.ALT_THEORY_MODE;
+  process.env.ALT_THEORY_MODE = "local";
+  const localInstance = createAltTheoryServer({
+    dataDir,
+    appContextPath,
+    soulDir: souls,
+    rolePresetsDir: rolePresets,
+    kbDir: kb,
+    readOnly: true,
+  });
+  await new Promise<void>((resolveListen) => {
+    localInstance.httpServer.listen(0, "127.0.0.1", resolveListen);
+  });
+  const localAddress = localInstance.httpServer.address();
+  assert.ok(localAddress && typeof localAddress === "object");
+  try {
+    const localPrivateDetail = await fetch(
+      `http://127.0.0.1:${localAddress.port}/api/sessions/${ownerlessPrivateSession.sessionId}`
+    );
+    assert.equal(localPrivateDetail.status, 200);
+  } finally {
+    if (previousMode === undefined) delete process.env.ALT_THEORY_MODE;
+    else process.env.ALT_THEORY_MODE = previousMode;
+    await new Promise<void>((resolveClose) => {
+      localInstance.wss.close(() => {
+        localInstance.httpServer.close(() => resolveClose());
       });
     });
   }
