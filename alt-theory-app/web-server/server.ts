@@ -96,6 +96,13 @@ import { resolveConfigGuiHtmlPath } from "./config-gui-path.js";
 import { ensureLocalModeDefaults } from "./local-mode-paths.js";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import {
+  IMPORT_HARNESSES,
+  ImportHarnessNotImplementedError,
+  discoverImportSessions,
+  isImportHarness,
+  registerPiImport,
+} from "./session-import.js";
+import {
   readAppSettings,
   resolveExternalSkillPaths,
   writeAppSettings,
@@ -496,6 +503,167 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       participant,
       localConfig: localMode ? getConfigStatus(agentConfigDir()) : null,
     });
+  });
+  app.get("/api/session-import/harnesses", (_req, res) => {
+    if (!localMode) {
+      res.status(404).json({ error: "Session import is available only in local mode" });
+      return;
+    }
+    res.json({
+      harnesses: IMPORT_HARNESSES.map((harness) => ({
+        harness,
+        status: harness === "pi" ? "ready" : "not_implemented",
+      })),
+    });
+  });
+  app.get("/api/session-import/:harness/sessions", async (req, res) => {
+    if (!localMode) {
+      res.status(404).json({ error: "Session import is available only in local mode" });
+      return;
+    }
+    const harness = req.params.harness;
+    if (!isImportHarness(harness)) {
+      res.status(400).json({ error: `Unknown import harness: ${harness}` });
+      return;
+    }
+    try {
+      const sessions = await discoverImportSessions({ harness, dataDir });
+      res.json({ harness, sessions });
+    } catch (error) {
+      if (error instanceof ImportHarnessNotImplementedError) {
+        res.status(501).json({ error: error.message, harness });
+        return;
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: message });
+    }
+  });
+  app.post("/api/session-import/:harness", async (req, res) => {
+    if (!localMode) {
+      res.status(404).json({ error: "Session import is available only in local mode" });
+      return;
+    }
+    const auth = resolveSessionRestAuth(req, res);
+    if (!auth) return;
+    const harness = req.params.harness;
+    if (!isImportHarness(harness)) {
+      res.status(400).json({ error: `Unknown import harness: ${harness}` });
+      return;
+    }
+    const body = (req.body ?? {}) as {
+      selection?: unknown;
+      sourceIds?: unknown;
+      mode?: unknown;
+      changedSourcePolicy?: unknown;
+      workspaceOverrides?: unknown;
+      visibility?: unknown;
+    };
+    const selection = body.selection ?? "selected";
+    const mode = body.mode ?? "pure";
+    const changedSourcePolicy = body.changedSourcePolicy ?? "skip";
+    if (selection !== "all" && selection !== "selected") {
+      res.status(400).json({ error: "selection must be 'all' or 'selected'" });
+      return;
+    }
+    if (mode !== "pure" && mode !== "full") {
+      res.status(400).json({ error: "mode must be 'pure' or 'full'" });
+      return;
+    }
+    if (changedSourcePolicy !== "skip" && changedSourcePolicy !== "copy") {
+      res.status(400).json({
+        error: "changedSourcePolicy must be 'skip' or 'copy' in this backend slice",
+      });
+      return;
+    }
+    const sourceIds = Array.isArray(body.sourceIds)
+      ? body.sourceIds.filter((value): value is string => typeof value === "string")
+      : [];
+    if (selection === "selected" && sourceIds.length === 0) {
+      res.status(400).json({ error: "sourceIds are required for selected import" });
+      return;
+    }
+    const workspaceOverrides =
+      body.workspaceOverrides && typeof body.workspaceOverrides === "object"
+        ? (body.workspaceOverrides as Record<string, unknown>)
+        : {};
+    const visibility = body.visibility === "research" ? "research" : "private";
+
+    try {
+      const discovered = await discoverImportSessions({ harness, dataDir });
+      const selected =
+        selection === "all"
+          ? discovered
+          : discovered.filter((source) => sourceIds.includes(source.sourceId));
+      const missingSourceIds =
+        selection === "selected"
+          ? sourceIds.filter(
+              (sourceId) => !selected.some((source) => source.sourceId === sourceId)
+            )
+          : [];
+      if (missingSourceIds.length > 0) {
+        res.status(400).json({
+          error: "One or more sourceIds are not present in current discovery",
+          missingSourceIds,
+        });
+        return;
+      }
+      const metadata = sessionCreationMetadataForAuth(auth, visibility);
+      const results = selected.map((source) => {
+        if (source.repeat === "unchanged") {
+          return {
+            sourceId: source.sourceId,
+            status: "unchanged" as const,
+            sessionId: source.importedSessionId,
+          };
+        }
+        if (source.repeat === "changed" && changedSourcePolicy === "skip") {
+          return {
+            sourceId: source.sourceId,
+            status: "conflict" as const,
+            sessionId: source.importedSessionId,
+          };
+        }
+        const override = workspaceOverrides[source.sourceId];
+        const workspacePrimaryDir =
+          typeof override === "string" && override.trim() ? override : undefined;
+        if (!source.cwdAvailable && !workspacePrimaryDir) {
+          return {
+            sourceId: source.sourceId,
+            status: "needs_workspace" as const,
+            sessionId: null,
+          };
+        }
+        try {
+          const registered = registerPiImport({
+            dataDir,
+            source,
+            mode,
+            workspacePrimaryDir,
+            ...metadata,
+          });
+          return {
+            sourceId: source.sourceId,
+            status: "imported" as const,
+            sessionId: registered.sessionId,
+          };
+        } catch (error) {
+          return {
+            sourceId: source.sourceId,
+            status: "failed" as const,
+            sessionId: null,
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
+      });
+      res.json({ harness, results });
+    } catch (error) {
+      if (error instanceof ImportHarnessNotImplementedError) {
+        res.status(501).json({ error: error.message, harness });
+        return;
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: message });
+    }
   });
   app.get("/api/projects", (_req, res) => {
     res.json(listProjects(dataDir));
