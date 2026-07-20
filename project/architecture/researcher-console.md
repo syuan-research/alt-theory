@@ -2,9 +2,9 @@
 doc_type: architecture
 slug: researcher-console
 scope: v1-alpha frontend and research surfaces — view modes, pane logic, researcher workbench/review, study designation, A/B comparison
-summary: Two view modes (user/researcher) over one React frontend; the M7 IA is owner-approved and now realized in the React app (build-gate green); the live Pure/Full self-test is the remaining owner gate.
+summary: Two view modes (user/researcher) over one React frontend; the M7 IA is realized and the local Pure/Full development flow has passed owner testing.
 status: current
-last_reviewed: 2026-07-16
+last_reviewed: 2026-07-20
 tags: [frontend, researcher-console, research, view-modes, ia]
 depends_on:
   - core-session-engine
@@ -20,9 +20,9 @@ Backend support for everything below EXISTS and is tested (see
 React app in `alt-theory-app/frontend/` (built to `web-server/public-v6/`).
 The v1-alpha information architecture is owner-approved AND now realized in
 the React app (2026-07-16 frontend build; typecheck + `build:frontend-v6` +
-backend tests green). The one remaining gate is the owner's live Pure/Full
-self-test (needs a configured model). Governing documents, in authority
-order:
+backend tests green). The owner subsequently completed the local Pure/Full
+development flow. A distributable v1-alpha bundle remains a delivery concern,
+not a frontend-architecture gap. Governing documents, in authority order:
 
 1. `project/compound/2026-07-16-decision-v1-alpha-m7-ia-principles-and-research-assumptions.md`
    — pane logic, view-mode collapse, study designation, sharing rules,
@@ -168,10 +168,12 @@ agent pass (gate before public repo).
   A/B float-cmp → arm-split reader + Review page. One sanctioned backend
   addition: read-only `GET /api/sessions/:id/changes`
   (`readSessionChanges`/`projectChangesFromEntries`, unit-tested). Deferred to
-  v1.0.x: subsequent-silent-allow UI signal (a ~5-line `extension_notice`);
-  cross-study review aggregate (currently per-session). Gate remaining: owner
-  live Pure/Full self-test. See
+  v1.0.x: subsequent-silent-allow UI signal (the `extension_notice` transport
+  exists, but the allowance-reuse branch does not emit it); cross-study review
+  aggregate (currently per-session). See
   `notes-and-status/20260716-v1-alpha-frontend-swe-plan.md`.
+- 2026-07-20: Updated owner-acceptance status after the local Pure/Full flow
+  passed. Bundle delivery remains separate from the React architecture.
 - 2026-07-16: Rewritten for v1-alpha after the M7 IA design pass and
   backend pass. Replaces the vanilla-console description (legacy notes
   preserved in git history) with the two-view-mode model, pane logic,

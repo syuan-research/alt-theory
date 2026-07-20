@@ -3,7 +3,7 @@
 ---
 status: current
 scope: v0.5.x local Windows folder bundle and local model configuration
-last_updated: 2026-06-28
+last_updated: 2026-07-20
 ---
 
 ## Purpose
@@ -17,6 +17,12 @@ mechanics.
 The current goal is a pragmatic local folder app usable by a non-technical
 operator. Installer polish, portable Candidate B repair, and broad packaging
 research are out of scope unless explicitly reopened.
+
+This is not the v1-alpha source-run guide. To run and test the current source
+tree, use `start-v1-alpha-local.cmd` and
+`project/workstreams/0-v1-full-stack/v1-alpha-local-testing-guide.zh.md`.
+That path reuses `%USERPROFILE%\.alt-theory` and does not use the obsolete
+`dist-bundle` as product evidence.
 
 ## Current Target
 

@@ -4,7 +4,7 @@ slug: core-session-engine
 scope: Alt Theory core session engine and Pi Coding Agent integration
 summary: Creates persistent, asset-configured Pi sessions through an application-owned service used by WebSocket adapters
 status: current
-last_reviewed: 2026-07-16
+last_reviewed: 2026-07-20
 tags: [core, backend, pi-agent, session]
 depends_on: []
 implements:
@@ -201,6 +201,37 @@ session_metrics
 The original `records/assembly-manifest.json` is not overwritten on resume.
 Resume-time active runtime facts are written to `records/resume-manifest.json`,
 and drift warnings are returned in the active manifest/snapshot.
+
+## 2.2 Local Session Import
+
+Local mode exposes a harness-discriminated import boundary without adding a
+second session engine. `GET /api/session-import/harnesses` reports Pi as ready;
+Codex, OpenCode, and Grok Build are named but return `not_implemented` until a
+converter exists. `GET /api/session-import/{harness}/sessions` returns bounded
+source metadata, and `POST /api/session-import/{harness}` accepts all or selected
+source IDs. Hosted mode does not expose these routes
+(`alt-theory-app/web-server/server.ts:507`).
+
+The Pi adapter uses `SessionManager.listAll()` for discovery. Registration
+copies the source JSONL into a newly allocated normal Alt Theory
+`sessions/{id}/history/` directory, validates the copy with `SessionManager.open`,
+then writes the existing assembly manifest and v0.4 foundation records. The
+import therefore becomes an ordinary catalog/open target; it is not a special
+runtime session type (`alt-theory-app/web-server/session-import.ts:71`,
+`alt-theory-app/web-server/session-import.ts:111`).
+
+`records/session-import-source.json` records the source harness, store, source
+session ID, SHA-256 fingerprint, and import time. Discovery compares that record
+with the current source artifact to classify `new`, `unchanged`, or `changed`.
+The current endpoint skips unchanged sources and can either report a changed
+source as a conflict or register it as a second session. It does not replace an
+existing imported session in place
+(`alt-theory-app/web-server/session-import.ts:220`).
+
+Imported cwd uses the existing `workspace.primaryDir` field. Pure keeps the
+managed session workspace as its writable root; Work also treats the imported
+source workspace as writable. A missing source cwd requires an existing
+replacement workspace path and is never created implicitly.
 
 ## 3. Prompt Assembly And Injection
 
@@ -559,6 +590,9 @@ REST:
 - `GET /api/sessions/{sessionId}/files/content`
 - `PUT /api/sessions/{sessionId}/files/content`
 - `GET /api/sessions/{sessionId}/files/download?root=workspace&path=...`
+- `GET /api/session-import/harnesses` (local only)
+- `GET /api/session-import/{harness}/sessions` (local only)
+- `POST /api/session-import/{harness}` (local only)
 - `DELETE /api/sessions/{sessionId}/files/content`
 - `POST /api/sessions/{sessionId}/ab-comparisons` (+ `/generate`,
   `/{comparisonId}/choice`) — M6 A/B comparison flow over the append-only
@@ -789,6 +823,10 @@ Limits (current):
 
 ## Change Log
 
+- 2026-07-20: Documented the local session-import boundary: harness discovery,
+  Pi managed-copy registration, source provenance/fingerprint records,
+  repeat-state classification, ordinary workspace/mode reuse, and hosted-mode
+  exclusion. Added after backend verification passed 100/100.
 - 2026-07-16: v1-alpha M7 backend pass. `records/session.json` gains
   `studyTag`, `modelOverride`, and the widened `forkedFrom.purpose`
   vocabulary (`fork | side | helper | ab-arm`, legacy values normalized on
