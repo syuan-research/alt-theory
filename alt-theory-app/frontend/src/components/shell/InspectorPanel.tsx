@@ -124,7 +124,10 @@ function SideChats() {
   const children = useMemo(
     () =>
       app.sessions.filter(
-        (s) => s.forkedFrom?.sessionId === app.sessionId && !s.deletedAt
+        (s) =>
+          s.forkedFrom?.sessionId === app.sessionId &&
+          s.forkedFrom.purpose !== "fork" &&
+          !s.deletedAt
       ),
     [app.sessions, app.sessionId]
   );
@@ -139,7 +142,7 @@ function SideChats() {
   if (children.length === 0) {
     return (
       <div className="rp-empty">
-        No side chats. Use <b>/branch</b> or the + menu to start one.
+        No side conversations. Use <b>/btw</b> to start one.
       </div>
     );
   }

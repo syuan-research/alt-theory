@@ -40,7 +40,12 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
     () => [
       {
         name: "branch",
-        description: "Branch this conversation into a side conversation",
+        description: "Branch this conversation into a new direction",
+        run: () => app.forkCurrentSession("fork"),
+      },
+      {
+        name: "btw",
+        description: "Start a side conversation without adding it to the list",
         run: () => app.forkCurrentSession("side"),
       },
       {

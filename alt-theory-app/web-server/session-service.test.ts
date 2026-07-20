@@ -2049,6 +2049,13 @@ test("security extension escalates risky commands through the approval bridge", 
       undefined
     );
     assert.equal(requested().length, 1);
+    assert.ok(
+      events.some(
+        (event) =>
+          event.type === "extension_notice" &&
+          event.payload.message.startsWith("Allowed for this session:")
+      )
+    );
 
     // The allowance survives a loader reload (mode switch): it lives in the
     // per-session closure, not the per-reload factory.

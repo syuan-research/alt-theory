@@ -209,6 +209,7 @@ export function createSecurityExtension(
             rule,
             detail: title,
           });
+          ctx.ui.notify(`Allowed for this session: ${title}`, "info");
           return undefined;
         }
         // Fail closed: no approval UI means no approval.

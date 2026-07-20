@@ -4,7 +4,7 @@ slug: researcher-console
 scope: v1-alpha frontend and research surfaces — view modes, pane logic, researcher workbench/review, study designation, A/B comparison
 summary: Two view modes (user/researcher) over one React frontend; the M7 IA is realized and the local Pure/Full development flow has passed owner testing.
 status: current
-last_reviewed: 2026-07-20
+last_reviewed: 2026-07-21
 tags: [frontend, researcher-console, research, view-modes, ia]
 depends_on:
   - core-session-engine
@@ -167,10 +167,9 @@ agent pass (gate before public repo).
   Settings (participant tab opt-in via General), Researcher workbench +
   A/B float-cmp → arm-split reader + Review page. One sanctioned backend
   addition: read-only `GET /api/sessions/:id/changes`
-  (`readSessionChanges`/`projectChangesFromEntries`, unit-tested). Deferred to
-  v1.0.x: subsequent-silent-allow UI signal (the `extension_notice` transport
-  exists, but the allowance-reuse branch does not emit it); cross-study review
-  aggregate (currently per-session). See
+  (`readSessionChanges`/`projectChangesFromEntries`, unit-tested). Reused
+  session allowances now emit the existing `extension_notice` signal.
+  Deferred to v1.0.x: cross-study review aggregate (currently per-session). See
   `notes-and-status/20260716-v1-alpha-frontend-swe-plan.md`.
 - 2026-07-20: Updated owner-acceptance status after the local Pure/Full flow
   passed. Bundle delivery remains separate from the React architecture.

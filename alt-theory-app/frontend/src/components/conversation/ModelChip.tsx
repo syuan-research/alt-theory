@@ -120,7 +120,8 @@ export function ModelChip({
               </span>
               {opt.reasoning ? (
                 <span className="think">
-                  thinking: {isActive(opt) ? current?.thinkingLevel ?? "off" : "off"}
+                  thinking
+                  {isActive(opt) ? `: ${current?.thinkingLevel ?? "off"}` : ""}
                   <span className="levels">
                     {THINKING_LEVELS.map((lvl) => (
                       <span

@@ -176,16 +176,30 @@ function UserBubble({
         />
       </div>
       <div className="msg-actions">
-        <button onClick={() => void navigator.clipboard?.writeText(trimmed)}>
-          Copy
+        <button
+          title="Copy"
+          aria-label="Copy message"
+          onClick={() => void navigator.clipboard?.writeText(trimmed)}
+        >
+          <i className="ph ph-copy" aria-hidden="true" />
         </button>
         {isLatest ? (
           <>
-            <button disabled={isRunning} onClick={() => onEditLatest(trimmed)}>
-              Edit
+            <button
+              title="Edit"
+              aria-label="Edit message"
+              disabled={isRunning}
+              onClick={() => onEditLatest(trimmed)}
+            >
+              <i className="ph ph-pencil-simple" aria-hidden="true" />
             </button>
-            <button disabled={isRunning || !hasSession} onClick={onDeleteLatest}>
-              Delete
+            <button
+              title="Delete"
+              aria-label="Delete message and reply"
+              disabled={isRunning || !hasSession}
+              onClick={onDeleteLatest}
+            >
+              <i className="ph ph-trash" aria-hidden="true" />
             </button>
           </>
         ) : null}
