@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  fetchOpenCodeImportSessions,
-  submitOpenCodeImport,
+  fetchImportSessions,
+  submitSessionImport,
+  type ImportableHarness,
   type ImportResult,
   type ImportSourceSession,
 } from "@/api/session-import";
@@ -16,6 +17,7 @@ export function SessionImportDialog({
   onClose: () => void;
 }) {
   const app = useApp();
+  const [harness, setHarness] = useState<ImportableHarness>("opencode");
   const [sessions, setSessions] = useState<ImportSourceSession[]>([]);
   const [sourceId, setSourceId] = useState("");
   const [mode, setMode] = useState<"pure" | "full">("full");
@@ -28,7 +30,7 @@ export function SessionImportDialog({
     setBusy(true);
     setError("");
     setResult(null);
-    void fetchOpenCodeImportSessions()
+    void fetchImportSessions(harness)
       .then((next) => {
         setSessions(next);
         setSourceId((current) =>
@@ -39,7 +41,7 @@ export function SessionImportDialog({
       })
       .catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)))
       .finally(() => setBusy(false));
-  }, [open]);
+  }, [open, harness]);
 
   const selected = useMemo(
     () => sessions.find((session) => session.sourceId === sourceId) ?? null,
@@ -53,7 +55,7 @@ export function SessionImportDialog({
     setBusy(true);
     setError("");
     try {
-      const next = await submitOpenCodeImport({ sourceId, mode, preflightOnly });
+      const next = await submitSessionImport({ harness, sourceId, mode, preflightOnly });
       setResult(next);
       if (!preflightOnly && next.sessionId) {
         await app.refreshSessions();
@@ -84,13 +86,31 @@ export function SessionImportDialog({
         onClick={(event) => event.stopPropagation()}
       >
         <h2 id="session-import-title" className="text-lg font-semibold text-ink">
-          Import an OpenCode conversation
+          Import a conversation
         </h2>
         <p className="mt-1 text-sm text-text-secondary">
           Alt Theory checks the whole selected conversation before writing anything.
         </p>
 
         <label className="mt-4 block text-sm font-medium text-ink">
+          Source
+          <select
+            className="mt-1 w-full rounded-md border border-hairline bg-canvas px-3 py-2 text-sm"
+            value={harness}
+            disabled={busy}
+            onChange={(event) => {
+              setHarness(event.target.value as ImportableHarness);
+              setSessions([]);
+              setSourceId("");
+              setResult(null);
+            }}
+          >
+            <option value="opencode">OpenCode</option>
+            <option value="codex">Codex</option>
+          </select>
+        </label>
+
+        <label className="mt-3 block text-sm font-medium text-ink">
           Conversation
           <select
             className="mt-1 w-full rounded-md border border-hairline bg-canvas px-3 py-2 text-sm"

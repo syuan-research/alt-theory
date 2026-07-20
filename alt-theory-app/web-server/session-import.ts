@@ -29,6 +29,11 @@ import {
   preflightOpenCodeSession,
   type OpenCodePreflight,
 } from "./opencode-session-import.js";
+import {
+  discoverCodexSessions,
+  preflightCodexSession,
+  type CodexPreflight,
+} from "./codex-session-import.js";
 
 export const IMPORT_HARNESSES = [
   "pi",
@@ -83,13 +88,17 @@ export async function discoverImportSessions(args: {
   dataDir: string;
   piSessionDir?: string;
   openCodeDbPath?: string;
+  codexSessionsDir?: string;
 }): Promise<ImportSourceSession[]> {
-  if (args.harness === "opencode") {
+  if (args.harness === "opencode" || args.harness === "codex") {
     const previous = readImportSourceRecords(args.dataDir);
-    return discoverOpenCodeSessions(args.openCodeDbPath).map((source) => {
+    const discovered = args.harness === "opencode"
+      ? discoverOpenCodeSessions(args.openCodeDbPath)
+      : discoverCodexSessions(args.codexSessionsDir);
+    return discovered.map((source) => {
       const prior = previous.find(
         (candidate) =>
-          candidate.record.harness === "opencode" &&
+          candidate.record.harness === args.harness &&
           candidate.record.sourceSessionId === source.sourceSessionId
       );
       return {
@@ -177,6 +186,13 @@ export function preflightOpenCodeImport(source: ImportSourceSession): OpenCodePr
   });
 }
 
+export function preflightCodexImport(source: ImportSourceSession): CodexPreflight {
+  return preflightCodexSession({
+    sourceSessionId: source.sourceSessionId,
+    sourceStore: source.sourceStore,
+  });
+}
+
 export function registerOpenCodeImport(args: {
   dataDir: string;
   source: ImportSourceSession;
@@ -204,10 +220,37 @@ export function registerOpenCodeImport(args: {
   });
 }
 
+export function registerCodexImport(args: {
+  dataDir: string;
+  source: ImportSourceSession;
+  preflight: CodexPreflight;
+  mode: CapabilityMode;
+  workspacePrimaryDir?: string;
+  ownerAccountId?: string | null;
+  roleCondition?: string | null;
+  visibility?: "research" | "private";
+  consentSnapshot?: {
+    researcherReadable: boolean;
+    quoteAfterAnonymization: boolean;
+    privateOverride: boolean;
+  } | null;
+}): { sessionId: string; sourceFingerprint: string } {
+  return registerPreparedImport({
+    ...args,
+    harness: "codex",
+    piSessionJsonl: args.preflight.piSessionJsonl,
+    importedFilename: `codex-${args.source.sourceSessionId}.jsonl`,
+    sourceFingerprint: args.preflight.sourceFingerprint,
+    sourceStore: args.source.sourceStore ?? "",
+    sourceVersion: args.preflight.sourceVersion,
+    transformations: args.preflight.transformations,
+  });
+}
+
 function registerPreparedImport(args: {
   dataDir: string;
   source: ImportSourceSession;
-  harness: "pi" | "opencode";
+  harness: "pi" | "opencode" | "codex";
   piSessionJsonl: string;
   importedFilename: string;
   sourceFingerprint: string;
@@ -238,7 +281,7 @@ function registerPreparedImport(args: {
     modelId: "imported-pi",
   });
   const dirs = createSessionDirs(args.dataDir, sessionId);
-  const importedPath = join(dirs.piSessionDir, args.importedFilename);
+  const importedPath = join(dirs.piSessionDir, basename(args.importedFilename));
   try {
     writeFileSync(importedPath, args.piSessionJsonl);
     SessionManager.open(importedPath);

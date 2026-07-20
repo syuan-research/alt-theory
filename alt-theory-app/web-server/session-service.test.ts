@@ -647,6 +647,52 @@ test("SessionService explicit forks create a new session with copied workspace",
   await runCase("ab-arm");
 });
 
+test("SessionService keeps imported Pi history as the active leaf before the first Alt Theory run", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const created = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const managed = (service as any).sessions.get(created.sessionId);
+  managed.session.sessionManager.appendMessage({
+    role: "user",
+    content: [{ type: "text", text: "imported history marker" }],
+    timestamp: Date.now(),
+  });
+  managed.session.sessionManager.appendMessage({
+    role: "assistant",
+    content: [{ type: "text", text: "imported answer marker" }],
+    timestamp: Date.now(),
+  });
+  const importedLeaf = managed.session.sessionManager.getLeafId();
+  assert.match(
+    service.getTranscript(created.sessionId).map((message) => message.text).join("\n"),
+    /imported answer marker/
+  );
+  await service.disposeAll();
+
+  const reopenedService = createTestService(fixture);
+  try {
+    const reopened = await reopenedService.openSession(created.sessionId, {
+      rolePresetSlug: "role-conceptual-theory-companion",
+      kbDomain: "ep-core",
+      soulSlug: "soul-latest",
+    });
+    const reopenedManaged = (reopenedService as any).sessions.get(reopened.sessionId);
+    assert.equal(reopenedManaged.session.sessionManager.getLeafId(), importedLeaf);
+    const context = reopenedManaged.session.sessionManager
+      .buildSessionContext()
+      .messages.map((message: any) => JSON.stringify(message))
+      .join("\n");
+    assert.match(context, /imported history marker/);
+    assert.match(context, /imported answer marker/);
+  } finally {
+    await reopenedService.disposeAll();
+  }
+});
+
 test("related Helper starts fresh and promotion turns it into a normal fork", async () => {
   const fixture = setupFixture();
   const service = createTestService(fixture);

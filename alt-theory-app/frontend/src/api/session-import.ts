@@ -30,8 +30,12 @@ export interface ImportResult {
   error?: string;
 }
 
-export async function fetchOpenCodeImportSessions(): Promise<ImportSourceSession[]> {
-  const response = await fetch("/api/session-import/opencode/sessions");
+export type ImportableHarness = "opencode" | "codex";
+
+export async function fetchImportSessions(
+  harness: ImportableHarness
+): Promise<ImportSourceSession[]> {
+  const response = await fetch(`/api/session-import/${harness}/sessions`);
   const body = (await response.json().catch(() => ({}))) as {
     sessions?: ImportSourceSession[];
     error?: string;
@@ -40,12 +44,13 @@ export async function fetchOpenCodeImportSessions(): Promise<ImportSourceSession
   return body.sessions ?? [];
 }
 
-export async function submitOpenCodeImport(args: {
+export async function submitSessionImport(args: {
+  harness: ImportableHarness;
   sourceId: string;
   mode: "pure" | "full";
   preflightOnly: boolean;
 }): Promise<ImportResult> {
-  const response = await fetch("/api/session-import/opencode", {
+  const response = await fetch(`/api/session-import/${args.harness}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

@@ -205,8 +205,9 @@ and drift warnings are returned in the active manifest/snapshot.
 ## 2.2 Local Session Import
 
 Local mode exposes a harness-discriminated import boundary without adding a
-second session engine. `GET /api/session-import/harnesses` reports Pi and
-OpenCode as ready; Codex and Grok Build remain named `not_implemented` entries.
+second session engine. `GET /api/session-import/harnesses` reports Pi,
+OpenCode, and Codex as ready; Grok Build remains a named `not_implemented`
+entry.
 `GET /api/session-import/{harness}/sessions` returns source metadata, and
 `POST /api/session-import/{harness}` accepts all or selected source IDs. Hosted
 mode does not expose these routes.
@@ -214,9 +215,12 @@ mode does not expose these routes.
 The Pi adapter uses `SessionManager.listAll()` for discovery. The OpenCode
 adapter opens the local SQLite store read-only, reproduces OpenCode's current
 compaction selection, and projects supported messages, reasoning, images, and
-tool pairs into a Pi JSONL payload. Complete source rows are retained as Pi
-custom entries but do not enter model context; every raw-only or portable
-transformation is disclosed separately.
+tool pairs into a Pi JSONL payload. The Codex adapter recursively discovers
+plain rollout JSONL, reads bounded metadata for listing, then parses and hashes
+the complete selected rollout during preflight. Complete source rows from
+either external adapter are retained as Pi custom entries but do not enter
+model context; every raw-only or portable transformation is disclosed
+separately.
 
 OpenCode `preflightOnly` parses and accounts for the complete selected session
 before managed storage exists. An unknown or unverified semantic returns a
@@ -226,6 +230,17 @@ preflight is repeated at import time, then the prepared JSONL goes through the
 same newly allocated normal Alt Theory `sessions/{id}/history/`, assembly
 manifest, and v0.4 foundation-record path as native Pi. The result is an
 ordinary catalog/open target, not a special runtime session type.
+
+Codex preflight requires persisted base instructions and maps labelled
+system/developer text, user/assistant text, and paired function/custom tool
+calls and text results. System/developer text is model-visible at Pi
+user-message priority and that transformation is disclosed. Reasoning,
+`turn_context`, `world_state`, event metadata, and session-level dynamic tool
+definitions remain raw-only; source dynamic tools are not reactivated. Actual
+unmapped response items, malformed/non-text content, incomplete tool pairs,
+compaction, rollback/aborted turns, inherited/forked/subagent history, and
+other control semantics refuse before write. Compressed rollouts are not
+discovered in the first supported subset.
 
 `records/session-import-source.json` records the source harness, store, source
 session ID, SHA-256 fingerprint, source version when available, declared
@@ -241,9 +256,18 @@ managed session workspace as its writable root; Work also treats the imported
 source workspace as writable. A missing source cwd requires an existing
 replacement workspace path and is never created implicitly.
 
-The local React sidebar exposes the OpenCode path as “Import conversation.” It
-requires a dry preflight, displays transformations or the refusal reason, then
-imports, refreshes the normal catalog, and opens the selected managed session.
+The local React sidebar exposes the shared OpenCode/Codex path as “Import
+conversation.” It requires a dry preflight, displays transformations or the
+refusal reason, then imports, refreshes the normal catalog, and opens the
+selected managed session. Repeat discovery classifies an identical source as
+`unchanged` and opens the existing managed session without overwriting its
+continuation.
+
+An imported nonempty Pi JSONL initially has no Alt Theory run records. On open,
+Pi's loaded final entry remains the active leaf until persisted Alt Theory run
+state explicitly selects or clears a leaf. Transcript requests refresh from
+persisted Pi history, so same-process and post-restart reopen expose the same
+connected continuation.
 
 ## 3. Prompt Assembly And Injection
 

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, readFileSync } from "fs";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import test from "node:test";
@@ -8,11 +8,14 @@ import { SessionManager } from "@earendil-works/pi-coding-agent";
 import {
   ImportHarnessNotImplementedError,
   discoverImportSessions,
+  preflightCodexImport,
   preflightOpenCodeImport,
+  registerCodexImport,
   registerOpenCodeImport,
   registerPiImport,
 } from "./session-import.js";
 import { OpenCodeImportRefusalError } from "./opencode-session-import.js";
+import { CodexImportRefusalError } from "./codex-session-import.js";
 import { listSessionSummaries, readSessionDetail } from "./session-store.js";
 
 test("Pi discovery and managed registration preserve history and workspace", async () => {
@@ -120,14 +123,146 @@ test("Pi discovery and managed registration preserve history and workspace", asy
   assert.equal(changed?.repeat, "changed");
 });
 
-test("unimplemented harnesses are explicit", async () => {
+test("remaining unimplemented harnesses are explicit", async () => {
   await assert.rejects(
     discoverImportSessions({
-      harness: "codex",
+      harness: "grok-build",
       dataDir: join(tmpdir(), "unused-alt-data"),
     }),
     ImportHarnessNotImplementedError
   );
+});
+
+test("Codex preflight maps supported rollout history and refuses unmatched tool output atomically", async () => {
+  const root = mkdtempSync(join(tmpdir(), "alt-theory-codex-import-"));
+  const dataDir = join(root, "alt-data");
+  const sessionsDir = join(root, "codex-sessions", "2026", "07", "21");
+  const workspace = join(root, "workspace");
+  mkdirSync(sessionsDir, { recursive: true });
+  mkdirSync(workspace, { recursive: true });
+  const timestamp = "2026-07-21T00:00:00.000Z";
+  const line = (type: string, payload: Record<string, unknown>, offset = 0) => ({
+    timestamp: new Date(Date.parse(timestamp) + offset).toISOString(),
+    type,
+    payload,
+  });
+  const supported = [
+    line("session_meta", {
+      id: "codex-supported",
+      session_id: "codex-supported",
+      timestamp,
+      cwd: workspace,
+      originator: "Codex Desktop",
+      cli_version: "test",
+      source: "vscode",
+      base_instructions: { text: "CODEX_BASE_MARKER" },
+      dynamic_tools: [{ type: "function", name: "source_only_tool" }],
+    }),
+    line("event_msg", { type: "task_started" }, 1),
+    line("response_item", {
+      type: "message",
+      role: "developer",
+      content: [{ type: "input_text", text: "CODEX_DEVELOPER_MARKER" }],
+    }, 2),
+    line("response_item", {
+      type: "message",
+      role: "user",
+      content: [{ type: "input_text", text: "Use the imported tool history." }],
+    }, 3),
+    line("turn_context", { model: "source-model", cwd: workspace }, 4),
+    line("world_state", { full: true, state: {} }, 5),
+    line("response_item", {
+      type: "message",
+      role: "assistant",
+      content: [{ type: "output_text", text: "I will read the recorded file." }],
+    }, 6),
+    line("response_item", {
+      type: "custom_tool_call",
+      call_id: "call_exec",
+      name: "exec",
+      input: "read D:/fixture/HISTORY_TARGET.md",
+    }, 7),
+    line("response_item", {
+      type: "custom_tool_call_output",
+      call_id: "call_exec",
+      name: "exec",
+      output: [{ type: "input_text", text: "HISTORY_RESULT_MARKER" }],
+    }, 8),
+    line("response_item", {
+      type: "reasoning",
+      summary: [],
+      encrypted_content: "opaque",
+    }, 9),
+    line("event_msg", { type: "task_complete" }, 10),
+  ];
+  const supportedPath = join(sessionsDir, "rollout-codex-supported.jsonl");
+  writeFileSync(supportedPath, `${supported.map(JSON.stringify).join("\n")}\n`);
+
+  const [source] = await discoverImportSessions({
+    harness: "codex",
+    dataDir,
+    codexSessionsDir: join(root, "codex-sessions"),
+  });
+  assert.ok(source);
+  assert.equal(source.sourceSessionId, "codex-supported");
+  assert.equal(source.repeat, "new");
+  const preflight = preflightCodexImport(source);
+  assert.match(preflight.piSessionJsonl, /CODEX_BASE_MARKER/);
+  assert.match(preflight.piSessionJsonl, /CODEX_DEVELOPER_MARKER/);
+  assert.match(preflight.piSessionJsonl, /HISTORY_RESULT_MARKER/);
+  assert.ok(preflight.transformations.some((item) => item.includes("user-role priority")));
+  assert.ok(preflight.transformations.some((item) => item.includes("not registered as active")));
+  const entries = preflight.piSessionJsonl.trim().split(/\r?\n/).map((value) => JSON.parse(value));
+  assert.equal(
+    entries.filter((entry) => entry.customType === "source-codex-record").length,
+    supported.length
+  );
+  const registered = registerCodexImport({
+    dataDir,
+    source,
+    preflight,
+    mode: "full",
+    visibility: "private",
+  });
+  assert.ok(readSessionDetail(dataDir, registered.sessionId));
+  const [unchanged] = await discoverImportSessions({
+    harness: "codex",
+    dataDir,
+    codexSessionsDir: join(root, "codex-sessions"),
+  });
+  assert.equal(unchanged?.repeat, "unchanged");
+  assert.equal(unchanged?.importedSessionId, registered.sessionId);
+
+  const unsupported = [
+    line("session_meta", {
+      id: "codex-unsupported",
+      session_id: "codex-unsupported",
+      timestamp,
+      cwd: workspace,
+      originator: "Codex Desktop",
+      cli_version: "test",
+      source: "vscode",
+      base_instructions: { text: "base" },
+    }),
+    line("response_item", {
+      type: "custom_tool_call_output",
+      call_id: "missing-call",
+      output: "orphan",
+    }, 1),
+  ];
+  writeFileSync(
+    join(sessionsDir, "rollout-codex-unsupported.jsonl"),
+    `${unsupported.map(JSON.stringify).join("\n")}\n`
+  );
+  const sources = await discoverImportSessions({
+    harness: "codex",
+    dataDir,
+    codexSessionsDir: join(root, "codex-sessions"),
+  });
+  const refused = sources.find((item) => item.sourceSessionId === "codex-unsupported");
+  assert.ok(refused);
+  assert.throws(() => preflightCodexImport(refused), CodexImportRefusalError);
+  assert.equal(listSessionSummaries(dataDir).sessions.length, 1);
 });
 
 test("OpenCode preflight registers complete supported history and refuses unsupported files atomically", async () => {

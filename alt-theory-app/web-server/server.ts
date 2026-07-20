@@ -100,11 +100,14 @@ import {
   ImportHarnessNotImplementedError,
   discoverImportSessions,
   isImportHarness,
+  preflightCodexImport,
   preflightOpenCodeImport,
+  registerCodexImport,
   registerOpenCodeImport,
   registerPiImport,
 } from "./session-import.js";
 import { OpenCodeImportRefusalError } from "./opencode-session-import.js";
+import { CodexImportRefusalError } from "./codex-session-import.js";
 import {
   readAppSettings,
   resolveExternalSkillPaths,
@@ -519,7 +522,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     res.json({
       harnesses: IMPORT_HARNESSES.map((harness) => ({
         harness,
-        status: harness === "pi" || harness === "opencode" ? "ready" : "not_implemented",
+        status: ["pi", "opencode", "codex"].includes(harness) ? "ready" : "not_implemented",
       })),
     });
   });
@@ -596,8 +599,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         : {};
     const visibility = body.visibility === "research" ? "research" : "private";
     const preflightOnly = body.preflightOnly === true;
-    if (preflightOnly && harness !== "opencode") {
-      res.status(400).json({ error: "preflightOnly is currently supported only for OpenCode" });
+    if (preflightOnly && harness !== "opencode" && harness !== "codex") {
+      res.status(400).json({ error: "preflightOnly is currently supported only for OpenCode and Codex" });
       return;
     }
 
@@ -647,8 +650,10 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           };
         }
         try {
-          if (harness === "opencode") {
-            const preflight = preflightOpenCodeImport(source);
+          if (harness === "opencode" || harness === "codex") {
+            const preflight = harness === "opencode"
+              ? preflightOpenCodeImport(source)
+              : preflightCodexImport(source);
             if (preflightOnly) {
               return {
                 sourceId: source.sourceId,
@@ -657,14 +662,10 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
                 transformations: preflight.transformations,
               };
             }
-            const registered = registerOpenCodeImport({
-              dataDir,
-              source,
-              preflight,
-              mode,
-              workspacePrimaryDir,
-              ...metadata,
-            });
+            const common = { dataDir, source, mode, workspacePrimaryDir, ...metadata };
+            const registered = harness === "opencode"
+              ? registerOpenCodeImport({ ...common, preflight })
+              : registerCodexImport({ ...common, preflight });
             return {
               sourceId: source.sourceId,
               status: preflight.transformations.length
@@ -681,7 +682,10 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             sessionId: registered.sessionId,
           };
         } catch (error) {
-          if (error instanceof OpenCodeImportRefusalError) {
+          if (
+            error instanceof OpenCodeImportRefusalError ||
+            error instanceof CodexImportRefusalError
+          ) {
             return {
               sourceId: source.sourceId,
               status: "refused" as const,

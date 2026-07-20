@@ -1106,7 +1106,11 @@ export class SessionService {
   }
 
   getTranscript(sessionId: string): TranscriptMessage[] {
-    return [...this.requireSession(sessionId).transcript];
+    const managed = this.requireSession(sessionId);
+    managed.transcript =
+      readSessionDetail(this.config.dataDir, sessionId)?.transcript ??
+      managed.transcript;
+    return [...managed.transcript];
   }
 
   getSelectors(sessionId: string): SessionSelectors {
@@ -1527,9 +1531,9 @@ export class SessionService {
       externalSkillPaths: this.config.resolveExternalSkillPaths?.(),
       extensionFactories: this.config.extensionFactories,
     });
-    alignSessionManagerLeaf(
+    alignSessionManagerToLatestRun(
       result.session.sessionManager,
-      latestActiveLeafEntryId(latestRunSnapshots(result.manifest.recordsDir)),
+      latestRunSnapshots(result.manifest.recordsDir),
       "latest active run"
     );
 
@@ -1665,13 +1669,13 @@ export class SessionService {
       extensionFactories: this.config.extensionFactories,
       overrideSessionCwd: true,
     });
-    alignSessionManagerLeaf(
-      result.session.sessionManager,
-      detail
-        ? latestActiveLeafEntryId(latestRunSnapshots(result.manifest.recordsDir))
-        : null,
-      "latest active run"
-    );
+    if (detail) {
+      alignSessionManagerToLatestRun(
+        result.session.sessionManager,
+        latestRunSnapshots(result.manifest.recordsDir),
+        "latest active run"
+      );
+    }
 
     return await this.createManaged({
       ...result,
@@ -2232,6 +2236,26 @@ function alignSessionManagerLeaf(
     );
   }
   sessionManager.branch(activeLeafEntryId);
+}
+
+function alignSessionManagerToLatestRun(
+  sessionManager: {
+    branch(entryId: string): void;
+    getEntry(entryId: string): unknown;
+    resetLeaf(): void;
+  },
+  latestRuns: RunRecord[],
+  context: string
+): void {
+  // Imported sessions have valid Pi history before Alt Theory has produced a
+  // run record. SessionManager.open() already points at that history's final
+  // entry, so only persisted Alt Theory run state should override the leaf.
+  if (latestRuns.length === 0) return;
+  alignSessionManagerLeaf(
+    sessionManager,
+    latestActiveLeafEntryId(latestRuns),
+    context
+  );
 }
 
 function configChangedFields(
