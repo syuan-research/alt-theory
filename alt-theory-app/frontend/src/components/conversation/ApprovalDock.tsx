@@ -7,17 +7,17 @@ interface ApprovalDockProps {
     approvalId: string,
     response: { accept?: boolean; choice?: string | null; text?: string | null }
   ) => void;
-  /** Called with a marker label when the user grants a session-scoped allowance. */
+  /** Called with a marker label when the user grants a conversation-scoped allowance. */
   onSessionAllow: (label: string) => void;
 }
 
 // Security-extension approval options (core/security-extension.ts).
-const ALLOW_SESSION = "Allow for this session";
+const ALLOW_SESSION = "Allow for this conversation";
 const DENY_LABELS = new Set(["Deny", "Block", "No", "Cancel"]);
 
 /**
  * Low-key approval dock above the composer (M7 §3). Renders the real option set
- * the security extension sends (Allow once / Allow for this session / Deny) for
+ * the security extension sends (Allow once / Allow for this conversation / Deny) for
  * select approvals; guard rail, not a sandbox.
  */
 export function ApprovalDock({ request, onRespond, onSessionAllow }: ApprovalDockProps) {

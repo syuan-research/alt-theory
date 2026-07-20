@@ -51,7 +51,7 @@ export function MessageList() {
       {app.approvalMarkers.map((marker) => (
         <SysLine key={marker}>
           <i className="ph ph-check" />
-          {marker} — allowed for this session
+          {marker} — allowed for this conversation
         </SysLine>
       ))}
 

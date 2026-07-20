@@ -287,8 +287,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     null
   );
   const [approvals, setApprovals] = useState<ApprovalRequestPayload[]>([]);
-  // Session-scoped approval markers ("X allowed for this session"), recorded
-  // client-side the moment the user grants a session allowance (M7 §3).
+  // Conversation-scoped approval markers, recorded
+  // client-side the moment the user grants a conversation allowance (M7 §3).
   const [approvalMarkers, setApprovalMarkers] = useState<string[]>([]);
 
   const [manifest, setManifest] = useState<AssemblyManifest | null>(null);
@@ -463,7 +463,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       if (requestId === sessionListRequestRef.current) {
         setSessionsError(
-          err instanceof Error ? err.message : "Could not load sessions"
+          err instanceof Error ? err.message : "Could not load conversations"
         );
       }
     } finally {
@@ -833,7 +833,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setConnLabel(detail?.label ?? "Connected");
         if (resuming) {
           setIsRunning(true);
-          setToolStatus("Restoring session…");
+          setToolStatus("Restoring conversation…");
         }
       } else if (status === "closed") {
         reconnectSessionIdRef.current = sessionId || reconnectSessionIdRef.current;
@@ -886,7 +886,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (!targetSessionId || isRunning) return;
       const summary = sessions.find((item) => item.sessionId === targetSessionId);
       if (summary && !summary.hasSessionFile) {
-        setToolStatus("Session cannot be opened.");
+        setToolStatus("Conversation cannot be opened.");
         return;
       }
       setSelectedCatalogSessionId(targetSessionId);
@@ -900,7 +900,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setIsRunning(true);
         setConnStatus("running");
         setConnLabel("Opening...");
-        setToolStatus("Opening selected session…");
+        setToolStatus("Opening selected conversation…");
       } else {
         pendingOpenSessionIdRef.current = "";
       }
@@ -945,7 +945,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const targetId = selectedSessionDetail?.session?.sessionId;
     if (!targetId) return;
     const current = sessionDisplayNames[targetId]?.alias || "";
-    const next = window.prompt("Session name", current);
+    const next = window.prompt("Conversation name", current);
     if (next === null) return;
     const alias = normalizeSessionAlias(next);
     try {
@@ -993,7 +993,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const targetId = selectedSessionDetail?.session?.sessionId;
     if (!targetId) return;
     requestConfirm({
-      message: "Delete the selected session from the normal list?",
+      message: "Delete this conversation from the conversation list?",
       confirmLabel: "Delete",
       onConfirm: () => {
         void performDeleteSelectedSession();
@@ -1161,7 +1161,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (visibility === "private") {
           setComposerNoticeTimed({
             prefix: "⏏",
-            text: "Private sessions and files are deleted after 7 inactive days. Download anything you want to keep.",
+            text: "Private conversations and their files are deleted after 7 inactive days. Download anything you want to keep.",
           });
         }
       }

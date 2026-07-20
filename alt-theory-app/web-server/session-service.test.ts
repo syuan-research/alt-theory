@@ -73,7 +73,10 @@ function setupFixture() {
   };
 }
 
-function createTestService(fixture: ReturnType<typeof setupFixture>) {
+function createTestService(
+  fixture: ReturnType<typeof setupFixture>,
+  resourceDiscovery: "clean" | "internal" = "clean"
+) {
   return new SessionService({
     dataDir: fixture.dataDir,
     assetPaths: {
@@ -94,7 +97,8 @@ function createTestService(fixture: ReturnType<typeof setupFixture>) {
     legacySoulPath: join(fixture.soulDir, "soul-latest.md"),
     readOnly: true,
     promptMode: "alt-only",
-    resourceDiscovery: "clean",
+    resourceDiscovery,
+    skillsDir: fixture.skillsDir,
     instructionsDir: fixture.instructionsDir,
     runLabel: null,
     testBatch: null,
@@ -693,9 +697,14 @@ test("SessionService keeps imported Pi history as the active leaf before the fir
   }
 });
 
-test("related Helper starts fresh and promotion turns it into a normal fork", async () => {
+test("related Helper invokes its skill once before promotion", async () => {
   const fixture = setupFixture();
-  const service = createTestService(fixture);
+  writeFileSync(
+    join(fixture.skillsDir, "alt-theory-help.md"),
+    "---\nname: alt-theory-help\ndescription: Test helper\n---\nCheck current docs.\n",
+    "utf-8"
+  );
+  const service = createTestService(fixture, "internal");
   const parent = await service.createSession({
     rolePresetSlug: "role-conceptual-theory-companion",
     kbDomain: "ep-core",
@@ -718,6 +727,30 @@ test("related Helper starts fresh and promotion turns it into a normal fork", as
       sessionId: parent.sessionId,
       purpose: "helper",
     });
+    assert.equal(
+      service.getManifest(helper.sessionId).skills?.some(
+        (skill) => skill.name === "alt-theory-help"
+      ),
+      true
+    );
+    assert.equal(
+      latestRunSnapshots(service.getManifest(helper.sessionId).recordsDir).length,
+      0
+    );
+
+    let helperPrompt = "";
+    const helperManaged = (service as any).sessions.get(helper.sessionId);
+    helperManaged.session.prompt = async (text: string) => {
+      helperPrompt = text;
+    };
+    await service.runPrompt(helper.sessionId, "How do I start locally?").completion;
+    assert.equal(
+      helperPrompt,
+      "/skill:alt-theory-help How do I start locally?"
+    );
+
+    await service.runPrompt(helper.sessionId, "Where is that button?").completion;
+    assert.equal(helperPrompt, "Where is that button?");
 
     service.promoteRelatedSession(helper.sessionId);
     const promoted = readV4SessionHeader(

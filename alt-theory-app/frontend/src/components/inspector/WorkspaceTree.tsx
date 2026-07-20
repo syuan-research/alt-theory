@@ -91,7 +91,19 @@ export function WorkspaceTree() {
     if (!shell.rightSub) setPreview(null);
   }, [shell.rightSub]);
 
-  const tree = useMemo(() => buildTree(entries ?? []), [entries]);
+  const referenceEntries = useMemo(
+    () => (entries ?? []).filter((entry) => /^(uploads|extracted)\//.test(entry.path)),
+    [entries]
+  );
+  const conversationFolderEntries = useMemo(
+    () => (entries ?? []).filter((entry) => !/^(uploads|extracted)\//.test(entry.path)),
+    [entries]
+  );
+  const referenceTree = useMemo(() => buildTree(referenceEntries), [referenceEntries]);
+  const conversationFolderTree = useMemo(
+    () => buildTree(conversationFolderEntries),
+    [conversationFolderEntries]
+  );
 
   const openFile = async (entry: WorkspaceFileEntry) => {
     if (!sessionId || entry.kind === "binary-original") return;
@@ -185,8 +197,8 @@ export function WorkspaceTree() {
                 <i className="ph ph-folder-open" />
                 <div>
                   <div className="working-folder-role">
-                    {folder.role === "primary" ? "Primary" : "Additional"}
-                    {folder.managed ? " · managed by Alt Theory" : ""}
+                    {folder.role === "primary" ? "Main folder" : "Additional folder"}
+                    {folder.managed ? " · conversation folder" : ""}
                   </div>
                   <div className="working-folder-path" title={folder.path}>{folder.path}</div>
                   {!folder.available ? (
@@ -194,7 +206,7 @@ export function WorkspaceTree() {
                   ) : null}
                 </div>
               </div>
-              {folder.available ? (
+              {folder.available && !folder.managed ? (
                 <WorkingTree
                   entries={workingFiles.filter((entry) => entry.folderId === folder.id)}
                   onOpenFile={openWorkingFile}
@@ -206,7 +218,7 @@ export function WorkspaceTree() {
             <div className="wb-note">Showing the first 1,000 files; large dependency and hidden folders are omitted.</div>
           ) : null}
           <div className="wb-note">
-            Switching Understand/Work changes capabilities, not these folder locations.
+            Understand/Work changes what Alt may do, not where these files are stored.
           </div>
         </div>
       ) : null}
@@ -217,7 +229,7 @@ export function WorkspaceTree() {
             disabled={!sessionId}
             onClick={() => uploadInput.current?.click()}
           >
-            {sessionId ? "Import reference" : "Import after the first message"}
+            {sessionId ? "Add reference" : "Add a reference after the first message"}
           </button>
           <input
             ref={uploadInput}
@@ -237,15 +249,25 @@ export function WorkspaceTree() {
       ) : !entries ? (
         <div className="rp-empty">Loading…</div>
       ) : entries.length === 0 ? (
-        <div className="rp-empty">
-          {pureMode ? "No imported references." : "No files available."}
-        </div>
+        <div className="rp-empty">No references or conversation-folder files.</div>
       ) : (
         <>
-          <div className="files-section-title">Imported references and managed files</div>
-          <div className="tree">
-            <TreeLevel node={tree} depth={0} onOpenFile={openFile} />
-          </div>
+          {referenceEntries.length > 0 ? (
+            <>
+              <div className="files-section-title">References</div>
+              <div className="tree">
+                <TreeLevel node={referenceTree} depth={0} onOpenFile={openFile} />
+              </div>
+            </>
+          ) : null}
+          {conversationFolderEntries.length > 0 ? (
+            <>
+              <div className="files-section-title">Conversation folder</div>
+              <div className="tree">
+                <TreeLevel node={conversationFolderTree} depth={0} onOpenFile={openFile} />
+              </div>
+            </>
+          ) : null}
         </>
       )}
     </>

@@ -543,8 +543,8 @@ export class SessionService {
       type: "skill_invoked",
       details: { skillName, skillPath: skill.path },
     });
-    return this.runPrompt(
-      sessionId,
+    return this.runPromptWithLineage(
+      managed,
       `/skill:${skillName}${userText?.trim() ? ` ${userText.trim()}` : ""}`
     );
   }
@@ -583,6 +583,14 @@ export class SessionService {
 
   runPrompt(sessionId: string, text: string): RunHandle {
     const managed = this.requireSession(sessionId);
+    const header = readV4SessionHeader(managed.manifest.recordsDir);
+    if (
+      header?.forkedFrom?.purpose === "helper" &&
+      latestRunSnapshots(managed.manifest.recordsDir).length === 0 &&
+      managed.manifest.skills?.some((skill) => skill.name === "alt-theory-help")
+    ) {
+      return this.invokeSkill(sessionId, "alt-theory-help", text);
+    }
     return this.runPromptWithLineage(managed, text);
   }
 

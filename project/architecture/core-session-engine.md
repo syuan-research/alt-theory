@@ -362,7 +362,8 @@ Code anchors:
 - `agent-assets/prompts/pi/`: Pi adapter prompt-template directory.
 - `agent-assets/instructions/`: default custom-instruction catalog root.
 - `agent-assets/skills/`: runtime Alt Theory skill root (`internal` discovery).
-  Pilot keeps only `conversation-summary/` here.
+  Current user-facing skills are `conversation-summary/` and
+  `alt-theory-help/`.
 - `project/local-skills/`: dev-only SWE bundles (`cs-swe-v0-4/`, etc.); not
   runtime-loaded.
 - `_archives/skills/`: local ignored historical `cs-swe-*` shards.
@@ -371,6 +372,15 @@ Custom instruction changes rebuild the runtime against the same Pi JSONL and
 Alt Theory session ID. Explicit visual skill invocation is validated against
 the active Alt Theory skills, sent through Pi's native `/skill:name` command,
 and recorded as `skill_invoked`.
+
+A new related conversation whose persisted purpose is `helper` routes its
+first prompt through `/skill:alt-theory-help`. Later prompts remain unchanged:
+the initial skill invocation has already established the help rules in that
+conversation's context. The skill keeps only stable product semantics in its
+own body and requires current user documentation for concrete or changeable
+behavior. Promotion preserves the transcript, and the skill remains available
+for explicit use; it does not unload anything or introduce a second prompt
+system.
 
 ### KB Context Policy
 
@@ -667,6 +677,12 @@ files, and rechecks containment before a bounded text preview. This lets Files
 show the directory the agent actually works in without mislabeling imported
 references as the entire workspace. Switching Pure/Full changes mediation
 capability, not these persisted folder identities.
+
+The daily Files UI labels persisted primary/additional locations as working
+folders. It does not repeat the managed primary tree there: managed `uploads/`
+and `extracted/` entries appear under References, while other managed entries
+appear under Conversation folder. Files in external working folders remain in
+their corresponding working-folder tree.
 
 The participant/researcher frontend also uses these file routes for
 `records/ui-alias.json`, a small optional display-name file. This keeps aliases

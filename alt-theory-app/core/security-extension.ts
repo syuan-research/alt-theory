@@ -153,7 +153,7 @@ const BLOCKED_HOSTS = new Set([
 const BLOCKED_HOST_PREFIXES = ["internal.", "private.", "intranet."];
 
 export const APPROVAL_ALLOW_ONCE = "Allow once";
-export const APPROVAL_ALLOW_SESSION = "Allow for this session";
+export const APPROVAL_ALLOW_SESSION = "Allow for this conversation";
 export const APPROVAL_DENY = "Deny";
 const APPROVAL_OPTIONS = [
   APPROVAL_ALLOW_ONCE,

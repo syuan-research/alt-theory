@@ -15,9 +15,9 @@ Current first-slice layout:
 - `prompts/pi/` is the current Pi adapter prompt-template area for review and future organization.
 - `kb/ep-core/` is the current runtime KB copy used for the first v0.3 smoke-test path. It is not yet declared the long-term KB source-of-truth.
 - `models.example.json` is an uncredentialed example for custom provider/model configuration. Runtime keys stay in environment/config, not Git.
-- `skills/` is the runtime skill root. Pilot/runtime keeps only
-  `skills/conversation-summary/` here so `internal` discovery does not expose
-  dev SWE bundles to participants.
+- `skills/` is the runtime skill root. It contains the user-facing
+  `conversation-summary` and `alt-theory-help` skills; `internal` discovery
+  must not expose dev SWE bundles to participants.
 - Active SWE and dev-maintenance skills live under `project/local-skills/`
   (`cs-swe-v0-4/`, `model-preset-maintenance/`). Historical `cs-swe-*` shards
   live in local ignored `_archives/skills/`.

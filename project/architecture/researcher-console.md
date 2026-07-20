@@ -104,11 +104,15 @@ gate (unchanged since v0.5).
   reachable from their parent conversation only; the chosen A/B arm is
   rewritten to the list continuation.
 - **Approvals**: low-key dock above the composer (no alarm styling), with
-  an "allowed this session" marker in the transcript for TTL approvals.
-- **Helper**: starts FRESH (no parent-context copy — cross-session prompt
-  cache reuse is impossible because the helper's own system prompt diverges
-  at token 0). Context-aware help is a latent in-conversation skill, not a
-  session kind.
+  an "allowed for this conversation" marker in the transcript for TTL
+  approvals.
+- **Helper**: starts FRESH, with no parent transcript. Its first prompt invokes
+  the bundled `alt-theory-help` skill through the existing Pi `/skill:` path,
+  establishing the help rules in that conversation's context without
+  rewriting every later message. The skill contains only a small stable
+  product-semantic core; concrete and changeable answers must consult current
+  user documentation. Promotion preserves that history, and the skill remains
+  available for explicit use.
 
 ## 4. Study Designation And Sharing Surfaces (provisional product UI)
 
@@ -161,8 +165,8 @@ authority; `frontend/src/index.css` carries the tokens.
 Approve-all permission level, config-card file format, code-unlock door,
 A/B auto-trigger, post-choice participant questions, anonymizing export
 tool, workspace management (add-only constraint recorded), per-account
-settings dimension, context-aware helper skill, copy/semantics review
-agent pass (gate before public repo).
+settings dimension, and the remaining copy/semantics review gate before the
+public repo.
 
 ## Change Log
 
@@ -187,6 +191,10 @@ agent pass (gate before public repo).
   conversation. Files distinguishes actual working folders from managed
   imported references. Researcher/Review/A-B IA is explicitly provisional
   until a real study determines it.
+- 2026-07-21: Added first-turn docs-first `alt-theory-help` routing for Helper
+  conversations, separated Files into References and Conversation folder,
+  and standardized ordinary user-facing copy on Conversation. Technical
+  records and APIs retain Session.
 - 2026-07-16: Rewritten for v1-alpha after the M7 IA design pass and
   backend pass. Replaces the vanilla-console description (legacy notes
   preserved in git history) with the two-view-mode model, pane logic,
