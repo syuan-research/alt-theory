@@ -1,0 +1,33 @@
+feature: 2026-07-21-opencode-session-import
+created: 2026-07-21
+
+steps:
+  - action: "Source adapter: implement deterministic OpenCode discovery, complete-session preflight, and Pi projection"
+    exit_signal: "Supported fixture projects and an unsupported fixture refuses before any managed write"
+    status: done
+  - action: "Registration orchestration: reuse managed Pi registration, provenance, and repeat policy"
+    exit_signal: "Imported fixture is catalogued and openable; unchanged/changed classifications remain explicit"
+    status: done
+  - action: "Product surface: expose local OpenCode selection, transformations, refusal, and open action"
+    exit_signal: "Browser build passes and the local UI can complete the import path"
+    status: done
+  - action: "Product acceptance: run history-dependent continuation with selected mode and tools"
+    exit_signal: "Alt Theory performs the directed action through the imported managed session"
+    status: done
+
+checks:
+  - item: "Every selected OpenCode message/part is mapped, declared, or atomically refused"
+    source: design
+    status: passed
+  - item: "Managed registration preserves source provenance and repeat-import safety"
+    source: design
+    status: passed
+  - item: "Local UI discovers, selects, imports/refuses, and opens the result"
+    source: design
+    status: passed
+  - item: "A directed tool-using continuation depends on imported history"
+    source: design
+    status: passed
+  - item: "Source data remains untouched and branches/old tips are not imported"
+    source: design
+    status: passed

@@ -1,14 +1,15 @@
 import { createHash } from "crypto";
 import {
-  copyFileSync,
   existsSync,
   readFileSync,
   readdirSync,
   rmSync,
   statSync,
+  writeFileSync,
 } from "fs";
 import { basename, dirname, join, resolve } from "path";
 import {
+  parseSessionEntries,
   SessionManager,
 } from "@earendil-works/pi-coding-agent";
 import type {
@@ -23,6 +24,11 @@ import {
   writeJsonAtomic,
 } from "../core/data-dir.js";
 import { writeFoundationRecords } from "./session-records.js";
+import {
+  discoverOpenCodeSessions,
+  preflightOpenCodeSession,
+  type OpenCodePreflight,
+} from "./opencode-session-import.js";
 
 export const IMPORT_HARNESSES = [
   "pi",
@@ -45,6 +51,8 @@ export interface ImportSourceSession {
   preview: string;
   repeat: "new" | "unchanged" | "changed";
   importedSessionId: string | null;
+  sourceStore?: string;
+  sourceVersion?: string;
 }
 
 export interface ImportSourceRecord {
@@ -56,6 +64,8 @@ export interface ImportSourceRecord {
   sourceSessionId: string;
   sourceFingerprint: string;
   importedAt: string;
+  sourceVersion?: string;
+  transformations?: string[];
 }
 
 export class ImportHarnessNotImplementedError extends Error {
@@ -72,7 +82,28 @@ export async function discoverImportSessions(args: {
   harness: ImportHarness;
   dataDir: string;
   piSessionDir?: string;
+  openCodeDbPath?: string;
 }): Promise<ImportSourceSession[]> {
+  if (args.harness === "opencode") {
+    const previous = readImportSourceRecords(args.dataDir);
+    return discoverOpenCodeSessions(args.openCodeDbPath).map((source) => {
+      const prior = previous.find(
+        (candidate) =>
+          candidate.record.harness === "opencode" &&
+          candidate.record.sourceSessionId === source.sourceSessionId
+      );
+      return {
+        ...source,
+        cwdAvailable: isDirectory(source.cwd),
+        repeat: !prior
+          ? "new"
+          : prior.record.sourceVersion === source.sourceVersion
+            ? "unchanged"
+            : "changed",
+        importedSessionId: prior?.sessionId ?? null,
+      };
+    });
+  }
   requirePiAdapter(args.harness);
   const infos = args.piSessionDir
     ? await SessionManager.listAll(resolve(args.piSessionDir))
@@ -123,27 +154,93 @@ export function registerPiImport(args: {
   } | null;
 }): { sessionId: string; sourceFingerprint: string } {
   const sourcePath = resolve(args.source.sourceId);
-  const workspacePrimaryDir = resolve(
-    args.workspacePrimaryDir ?? args.source.cwd
-  );
   if (!existsSync(sourcePath) || !statSync(sourcePath).isFile()) {
     throw new Error(`Pi source session is missing: ${sourcePath}`);
   }
+  const piSessionJsonl = readFileSync(sourcePath, "utf-8");
+  parseSessionEntries(piSessionJsonl);
+  return registerPreparedImport({
+    ...args,
+    harness: "pi",
+    piSessionJsonl,
+    importedFilename: basename(sourcePath),
+    sourceFingerprint: fingerprintFile(sourcePath),
+    sourceStore: dirname(sourcePath),
+    transformations: [],
+  });
+}
+
+export function preflightOpenCodeImport(source: ImportSourceSession): OpenCodePreflight {
+  return preflightOpenCodeSession({
+    sourceSessionId: source.sourceSessionId,
+    sourceStore: source.sourceStore,
+  });
+}
+
+export function registerOpenCodeImport(args: {
+  dataDir: string;
+  source: ImportSourceSession;
+  preflight: OpenCodePreflight;
+  mode: CapabilityMode;
+  workspacePrimaryDir?: string;
+  ownerAccountId?: string | null;
+  roleCondition?: string | null;
+  visibility?: "research" | "private";
+  consentSnapshot?: {
+    researcherReadable: boolean;
+    quoteAfterAnonymization: boolean;
+    privateOverride: boolean;
+  } | null;
+}): { sessionId: string; sourceFingerprint: string } {
+  return registerPreparedImport({
+    ...args,
+    harness: "opencode",
+    piSessionJsonl: args.preflight.piSessionJsonl,
+    importedFilename: `opencode-${args.source.sourceSessionId}.jsonl`,
+    sourceFingerprint: args.preflight.sourceFingerprint,
+    sourceStore: args.source.sourceStore ?? "",
+    sourceVersion: args.preflight.sourceVersion,
+    transformations: args.preflight.transformations,
+  });
+}
+
+function registerPreparedImport(args: {
+  dataDir: string;
+  source: ImportSourceSession;
+  harness: "pi" | "opencode";
+  piSessionJsonl: string;
+  importedFilename: string;
+  sourceFingerprint: string;
+  sourceStore: string;
+  sourceVersion?: string;
+  transformations: string[];
+  mode: CapabilityMode;
+  workspacePrimaryDir?: string;
+  ownerAccountId?: string | null;
+  roleCondition?: string | null;
+  visibility?: "research" | "private";
+  consentSnapshot?: {
+    researcherReadable: boolean;
+    quoteAfterAnonymization: boolean;
+    privateOverride: boolean;
+  } | null;
+}): { sessionId: string; sourceFingerprint: string } {
+  parseSessionEntries(args.piSessionJsonl);
+  const workspacePrimaryDir = resolve(args.workspacePrimaryDir ?? args.source.cwd);
   if (!isDirectory(workspacePrimaryDir)) {
     throw new Error(
       `Imported session needs an existing workspace directory: ${workspacePrimaryDir}`
     );
   }
 
-  // Validate the copied artifact with the same Pi parser used when reopening it.
-  // The source file itself remains untouched.
+  // The complete prepared artifact was parsed before this managed write begins.
   const sessionId = allocateReadableSessionId(args.dataDir, {
     modelId: "imported-pi",
   });
   const dirs = createSessionDirs(args.dataDir, sessionId);
-  const importedPath = join(dirs.piSessionDir, basename(sourcePath));
+  const importedPath = join(dirs.piSessionDir, args.importedFilename);
   try {
-    copyFileSync(sourcePath, importedPath);
+    writeFileSync(importedPath, args.piSessionJsonl);
     SessionManager.open(importedPath);
 
     const createdAt = args.source.createdAt;
@@ -205,22 +302,23 @@ export function registerPiImport(args: {
       workspace: manifest.workspace,
     });
 
-    const sourceFingerprint = fingerprintFile(sourcePath);
     const sourceRecord: ImportSourceRecord = {
       schemaVersion: 1,
       recordType: "session-import-source",
-      harness: "pi",
-      sourceStore: dirname(sourcePath),
-      sourceId: sourcePath,
+      harness: args.harness,
+      sourceStore: args.sourceStore,
+      sourceId: args.source.sourceId,
       sourceSessionId: args.source.sourceSessionId,
-      sourceFingerprint,
+      sourceFingerprint: args.sourceFingerprint,
+      sourceVersion: args.sourceVersion,
+      transformations: args.transformations,
       importedAt: new Date().toISOString(),
     };
     writeJsonAtomic(
       join(dirs.recordsDir, "session-import-source.json"),
       sourceRecord
     );
-    return { sessionId, sourceFingerprint };
+    return { sessionId, sourceFingerprint: args.sourceFingerprint };
   } catch (error) {
     rmSync(dirs.sessionRoot, { recursive: true, force: true });
     throw error;

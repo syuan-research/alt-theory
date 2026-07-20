@@ -205,24 +205,32 @@ and drift warnings are returned in the active manifest/snapshot.
 ## 2.2 Local Session Import
 
 Local mode exposes a harness-discriminated import boundary without adding a
-second session engine. `GET /api/session-import/harnesses` reports Pi as ready;
-Codex, OpenCode, and Grok Build are named but return `not_implemented` until a
-converter exists. `GET /api/session-import/{harness}/sessions` returns bounded
-source metadata, and `POST /api/session-import/{harness}` accepts all or selected
-source IDs. Hosted mode does not expose these routes
-(`alt-theory-app/web-server/server.ts:507`).
+second session engine. `GET /api/session-import/harnesses` reports Pi and
+OpenCode as ready; Codex and Grok Build remain named `not_implemented` entries.
+`GET /api/session-import/{harness}/sessions` returns source metadata, and
+`POST /api/session-import/{harness}` accepts all or selected source IDs. Hosted
+mode does not expose these routes.
 
-The Pi adapter uses `SessionManager.listAll()` for discovery. Registration
-copies the source JSONL into a newly allocated normal Alt Theory
-`sessions/{id}/history/` directory, validates the copy with `SessionManager.open`,
-then writes the existing assembly manifest and v0.4 foundation records. The
-import therefore becomes an ordinary catalog/open target; it is not a special
-runtime session type (`alt-theory-app/web-server/session-import.ts:71`,
-`alt-theory-app/web-server/session-import.ts:111`).
+The Pi adapter uses `SessionManager.listAll()` for discovery. The OpenCode
+adapter opens the local SQLite store read-only, reproduces OpenCode's current
+compaction selection, and projects supported messages, reasoning, images, and
+tool pairs into a Pi JSONL payload. Complete source rows are retained as Pi
+custom entries but do not enter model context; every raw-only or portable
+transformation is disclosed separately.
+
+OpenCode `preflightOnly` parses and accounts for the complete selected session
+before managed storage exists. An unknown or unverified semantic returns a
+structured refusal with record type, count, and reason. Current explicit
+refusals include non-image file parts and tool-result attachments. A successful
+preflight is repeated at import time, then the prepared JSONL goes through the
+same newly allocated normal Alt Theory `sessions/{id}/history/`, assembly
+manifest, and v0.4 foundation-record path as native Pi. The result is an
+ordinary catalog/open target, not a special runtime session type.
 
 `records/session-import-source.json` records the source harness, store, source
-session ID, SHA-256 fingerprint, and import time. Discovery compares that record
-with the current source artifact to classify `new`, `unchanged`, or `changed`.
+session ID, SHA-256 fingerprint, source version when available, declared
+transformations, and import time. Discovery compares that record with the
+current source artifact/version to classify `new`, `unchanged`, or `changed`.
 The current endpoint skips unchanged sources and can either report a changed
 source as a conflict or register it as a second session. It does not replace an
 existing imported session in place
@@ -232,6 +240,10 @@ Imported cwd uses the existing `workspace.primaryDir` field. Pure keeps the
 managed session workspace as its writable root; Work also treats the imported
 source workspace as writable. A missing source cwd requires an existing
 replacement workspace path and is never created implicitly.
+
+The local React sidebar exposes the OpenCode path as “Import conversation.” It
+requires a dry preflight, displays transformations or the refusal reason, then
+imports, refreshes the normal catalog, and opens the selected managed session.
 
 ## 3. Prompt Assembly And Injection
 

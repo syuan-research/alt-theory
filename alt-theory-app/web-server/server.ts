@@ -100,8 +100,11 @@ import {
   ImportHarnessNotImplementedError,
   discoverImportSessions,
   isImportHarness,
+  preflightOpenCodeImport,
+  registerOpenCodeImport,
   registerPiImport,
 } from "./session-import.js";
+import { OpenCodeImportRefusalError } from "./opencode-session-import.js";
 import {
   readAppSettings,
   resolveExternalSkillPaths,
@@ -512,7 +515,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     res.json({
       harnesses: IMPORT_HARNESSES.map((harness) => ({
         harness,
-        status: harness === "pi" ? "ready" : "not_implemented",
+        status: harness === "pi" || harness === "opencode" ? "ready" : "not_implemented",
       })),
     });
   });
@@ -557,6 +560,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       changedSourcePolicy?: unknown;
       workspaceOverrides?: unknown;
       visibility?: unknown;
+      preflightOnly?: unknown;
     };
     const selection = body.selection ?? "selected";
     const mode = body.mode ?? "pure";
@@ -587,6 +591,11 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         ? (body.workspaceOverrides as Record<string, unknown>)
         : {};
     const visibility = body.visibility === "research" ? "research" : "private";
+    const preflightOnly = body.preflightOnly === true;
+    if (preflightOnly && harness !== "opencode") {
+      res.status(400).json({ error: "preflightOnly is currently supported only for OpenCode" });
+      return;
+    }
 
     try {
       const discovered = await discoverImportSessions({ harness, dataDir });
@@ -634,19 +643,50 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           };
         }
         try {
-          const registered = registerPiImport({
-            dataDir,
-            source,
-            mode,
-            workspacePrimaryDir,
-            ...metadata,
-          });
+          if (harness === "opencode") {
+            const preflight = preflightOpenCodeImport(source);
+            if (preflightOnly) {
+              return {
+                sourceId: source.sourceId,
+                status: "ready" as const,
+                sessionId: null,
+                transformations: preflight.transformations,
+              };
+            }
+            const registered = registerOpenCodeImport({
+              dataDir,
+              source,
+              preflight,
+              mode,
+              workspacePrimaryDir,
+              ...metadata,
+            });
+            return {
+              sourceId: source.sourceId,
+              status: preflight.transformations.length
+                ? ("imported_with_transformations" as const)
+                : ("imported" as const),
+              sessionId: registered.sessionId,
+              transformations: preflight.transformations,
+            };
+          }
+          const registered = registerPiImport({ dataDir, source, mode, workspacePrimaryDir, ...metadata });
           return {
             sourceId: source.sourceId,
             status: "imported" as const,
             sessionId: registered.sessionId,
           };
         } catch (error) {
+          if (error instanceof OpenCodeImportRefusalError) {
+            return {
+              sourceId: source.sourceId,
+              status: "refused" as const,
+              sessionId: null,
+              recordType: error.recordType,
+              count: error.count,
+              reason: error.reason,
+            };
+          }
           return {
             sourceId: source.sourceId,
             status: "failed" as const,

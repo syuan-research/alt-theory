@@ -4,10 +4,12 @@ import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
 import { buildSessionTree, sessionTitle } from "@/lib/sessionList";
 import { Workbench } from "@/components/shell/Workbench";
+import { SessionImportDialog } from "@/components/shell/SessionImportDialog";
 
 export function LeftNav() {
   const app = useApp();
   const shell = useShell();
+  const [sessionImportOpen, setSessionImportOpen] = useState(false);
   const avatarLetter = (
     app.auth.displayLabel ||
     app.auth.accountId ||
@@ -40,6 +42,11 @@ export function LeftNav() {
         <button title="Search" onClick={() => shell.setSearchOpen(true)}>
           <i className="ph ph-magnifying-glass" />
         </button>
+        {app.appMode === "local" ? (
+          <button title="Import conversation" onClick={() => setSessionImportOpen(true)}>
+            <i className="ph ph-download-simple" />
+          </button>
+        ) : null}
         <div style={{ flex: 1 }} />
         <button
           title="Settings"
@@ -74,7 +81,7 @@ export function LeftNav() {
           </div>
         </div>
 
-        <UserNav />
+        <UserNav onImport={() => setSessionImportOpen(true)} />
         <Workbench />
 
         <div className="left-foot">
@@ -87,11 +94,12 @@ export function LeftNav() {
           </div>
         </div>
       </div>
+      <SessionImportDialog open={sessionImportOpen} onClose={() => setSessionImportOpen(false)} />
     </aside>
   );
 }
 
-function UserNav() {
+function UserNav({ onImport }: { onImport: () => void }) {
   const app = useApp();
   const shell = useShell();
   const [closedGroups, setClosedGroups] = useState<Set<string>>(new Set());
@@ -138,6 +146,12 @@ function UserNav() {
           <i className="ph ph-plus" />
           New conversation
         </button>
+        {app.appMode === "local" ? (
+          <button className="group-label ws" onClick={onImport}>
+            <i className="ph ph-download-simple" />
+            Import conversation
+          </button>
+        ) : null}
       </div>
       <div className="sessions">
         {app.sessionsLoading && app.sessions.length === 0 ? (

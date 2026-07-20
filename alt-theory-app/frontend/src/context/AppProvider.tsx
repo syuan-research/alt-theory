@@ -871,7 +871,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     (targetSessionId: string) => {
       if (!targetSessionId || isRunning) return;
       const summary = sessions.find((item) => item.sessionId === targetSessionId);
-      if (!summary?.hasSessionFile) {
+      if (summary && !summary.hasSessionFile) {
         setToolStatus("Session cannot be opened.");
         return;
       }
