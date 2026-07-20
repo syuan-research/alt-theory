@@ -1,21 +1,23 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import {
-  ImportHarnessNotImplementedError,
   discoverImportSessions,
   preflightCodexImport,
+  preflightGrokImport,
   preflightOpenCodeImport,
   registerCodexImport,
+  registerGrokImport,
   registerOpenCodeImport,
   registerPiImport,
 } from "./session-import.js";
 import { OpenCodeImportRefusalError } from "./opencode-session-import.js";
 import { CodexImportRefusalError } from "./codex-session-import.js";
+import { GrokImportRefusalError } from "./grok-session-import.js";
 import { listSessionSummaries, readSessionDetail } from "./session-store.js";
 
 test("Pi discovery and managed registration preserve history and workspace", async () => {
@@ -123,14 +125,140 @@ test("Pi discovery and managed registration preserve history and workspace", asy
   assert.equal(changed?.repeat, "changed");
 });
 
-test("remaining unimplemented harnesses are explicit", async () => {
-  await assert.rejects(
-    discoverImportSessions({
-      harness: "grok-build",
-      dataDir: join(tmpdir(), "unused-alt-data"),
-    }),
-    ImportHarnessNotImplementedError
+test("Grok preflight preserves current history and raw source, and refuses unmatched tools atomically", async () => {
+  const root = mkdtempSync(join(tmpdir(), "alt-theory-grok-import-"));
+  const dataDir = join(root, "alt-data");
+  const sessionsDir = join(root, "grok-sessions");
+  const workspace = join(root, "workspace");
+  const sourceDir = join(sessionsDir, "encoded-cwd", "grok-supported");
+  mkdirSync(sourceDir, { recursive: true });
+  mkdirSync(workspace, { recursive: true });
+  const createdAt = "2026-07-21T00:00:00.000Z";
+  const summary = {
+    info: { id: "grok-supported", cwd: workspace },
+    session_summary: "fixture",
+    created_at: createdAt,
+    updated_at: "2026-07-21T00:01:00.000Z",
+    last_active_at: "2026-07-21T00:01:00.000Z",
+    num_messages: 7,
+    num_chat_messages: 7,
+    current_model_id: "source-grok",
+    chat_format_version: 1,
+    generated_title: "Supported Grok conversation",
+  };
+  const history = [
+    { type: "system", content: "GROK_SYSTEM_MARKER" },
+    { type: "user", content: [{ type: "text", text: "Continue from the recorded tool fact." }], prompt_index: 0 },
+    {
+      type: "reasoning",
+      id: "reasoning-1",
+      summary: [{ type: "summary_text", text: "GROK_REASONING_MARKER" }],
+      encrypted_content: "opaque",
+      status: "completed",
+    },
+    {
+      type: "assistant",
+      content: "I will use the recorded read.",
+      tool_calls: [{ id: "call-read", name: "read_file", arguments: JSON.stringify({ path: "HISTORY.md" }) }],
+      model_id: "source-grok",
+    },
+    { type: "tool_result", tool_call_id: "call-read", content: "GROK_TOOL_RESULT_MARKER" },
+    { type: "assistant", content: "The imported fact is available.", model_id: "source-grok" },
+    { type: "user", content: [{ type: "text", text: "Keep that fact for the next turn." }], prompt_index: 1 },
+  ];
+  writeFileSync(join(sourceDir, "summary.json"), JSON.stringify(summary));
+  writeFileSync(join(sourceDir, "chat_history.jsonl"), `${history.map(JSON.stringify).join("\n")}\n`);
+  writeFileSync(join(sourceDir, "events.jsonl"), `${JSON.stringify({ type: "raw-event-marker" })}\n`);
+
+  const [source] = await discoverImportSessions({
+    harness: "grok-build",
+    dataDir,
+    grokSessionsDir: sessionsDir,
+  });
+  assert.ok(source);
+  assert.equal(source.sourceSessionId, "grok-supported");
+  assert.equal(source.repeat, "new");
+  const preflight = preflightGrokImport(source);
+  assert.equal(preflightGrokImport(source).piSessionJsonl, preflight.piSessionJsonl);
+  assert.match(preflight.piSessionJsonl, /GROK_SYSTEM_MARKER/);
+  assert.match(preflight.piSessionJsonl, /GROK_REASONING_MARKER/);
+  assert.match(preflight.piSessionJsonl, /GROK_TOOL_RESULT_MARKER/);
+  const entries = preflight.piSessionJsonl.trim().split(/\r?\n/).map(JSON.parse);
+  assert.equal(entries.filter((entry) => entry.customType === "source-grok-record").length, history.length);
+  assert.ok(entries.some((entry) => entry.message?.content?.some((part: any) => part.type === "thinking")));
+
+  const registered = registerGrokImport({
+    dataDir,
+    source,
+    preflight,
+    mode: "full",
+    visibility: "private",
+  });
+  const snapshot = join(
+    dataDir,
+    "sessions",
+    registered.sessionId,
+    "records",
+    "source-snapshot"
   );
+  assert.equal(readFileSync(join(snapshot, "events.jsonl"), "utf-8"), readFileSync(join(sourceDir, "events.jsonl"), "utf-8"));
+  assert.ok(readSessionDetail(dataDir, registered.sessionId));
+
+  const [unchanged] = await discoverImportSessions({
+    harness: "grok-build",
+    dataDir,
+    grokSessionsDir: sessionsDir,
+  });
+  assert.equal(unchanged?.repeat, "unchanged");
+  assert.equal(unchanged?.importedSessionId, registered.sessionId);
+
+  const refusedDir = join(sessionsDir, "encoded-cwd", "grok-refused");
+  mkdirSync(refusedDir, { recursive: true });
+  writeFileSync(join(refusedDir, "summary.json"), JSON.stringify({
+    ...summary,
+    info: { id: "grok-refused", cwd: workspace },
+    num_chat_messages: 2,
+  }));
+  writeFileSync(join(refusedDir, "chat_history.jsonl"), `${[
+    { type: "system", content: "system" },
+    { type: "tool_result", tool_call_id: "missing", content: "orphan" },
+  ].map(JSON.stringify).join("\n")}\n`);
+  const sources = await discoverImportSessions({
+    harness: "grok-build",
+    dataDir,
+    grokSessionsDir: sessionsDir,
+  });
+  const refused = sources.find((item) => item.sourceSessionId === "grok-refused");
+  assert.ok(refused);
+  assert.throws(() => preflightGrokImport(refused), GrokImportRefusalError);
+  assert.equal(existsSync(join(dataDir, "sessions", "grok-refused")), false);
+  assert.equal(listSessionSummaries(dataDir).sessions.length, 1);
+
+  const legacyDir = join(sessionsDir, "encoded-cwd", "grok-legacy");
+  mkdirSync(legacyDir, { recursive: true });
+  writeFileSync(join(legacyDir, "summary.json"), JSON.stringify({
+    ...summary,
+    info: { id: "grok-legacy", cwd: workspace },
+    num_chat_messages: 2,
+  }));
+  writeFileSync(join(legacyDir, "chat_history.jsonl"), `${[
+    { type: "system", content: "system" },
+    { type: "assistant", content: "answer", raw_output: [{ type: "reasoning", id: "legacy" }] },
+  ].map(JSON.stringify).join("\n")}\n`);
+  const legacySources = await discoverImportSessions({
+    harness: "grok-build",
+    dataDir,
+    grokSessionsDir: sessionsDir,
+  });
+  const legacy = legacySources.find((item) => item.sourceSessionId === "grok-legacy");
+  assert.ok(legacy);
+  assert.throws(
+    () => preflightGrokImport(legacy),
+    (error: unknown) =>
+      error instanceof GrokImportRefusalError &&
+      error.recordType === "legacy_assistant_context"
+  );
+  assert.equal(listSessionSummaries(dataDir).sessions.length, 1);
 });
 
 test("Codex preflight maps supported rollout history and refuses unmatched tool output atomically", async () => {

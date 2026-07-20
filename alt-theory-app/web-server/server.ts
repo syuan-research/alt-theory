@@ -101,13 +101,16 @@ import {
   discoverImportSessions,
   isImportHarness,
   preflightCodexImport,
+  preflightGrokImport,
   preflightOpenCodeImport,
   registerCodexImport,
+  registerGrokImport,
   registerOpenCodeImport,
   registerPiImport,
 } from "./session-import.js";
 import { OpenCodeImportRefusalError } from "./opencode-session-import.js";
 import { CodexImportRefusalError } from "./codex-session-import.js";
+import { GrokImportRefusalError } from "./grok-session-import.js";
 import {
   readAppSettings,
   resolveExternalSkillPaths,
@@ -522,7 +525,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     res.json({
       harnesses: IMPORT_HARNESSES.map((harness) => ({
         harness,
-        status: ["pi", "opencode", "codex"].includes(harness) ? "ready" : "not_implemented",
+        status: "ready",
       })),
     });
   });
@@ -599,8 +602,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         : {};
     const visibility = body.visibility === "research" ? "research" : "private";
     const preflightOnly = body.preflightOnly === true;
-    if (preflightOnly && harness !== "opencode" && harness !== "codex") {
-      res.status(400).json({ error: "preflightOnly is currently supported only for OpenCode and Codex" });
+    if (preflightOnly && harness === "pi") {
+      res.status(400).json({ error: "preflightOnly is currently supported only for converted external sessions" });
       return;
     }
 
@@ -650,6 +653,33 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           };
         }
         try {
+          if (harness === "grok-build") {
+            const preflight = preflightGrokImport(source);
+            if (preflightOnly) {
+              return {
+                sourceId: source.sourceId,
+                status: "ready" as const,
+                sessionId: null,
+                transformations: preflight.transformations,
+              };
+            }
+            const registered = registerGrokImport({
+              dataDir,
+              source,
+              preflight,
+              mode,
+              workspacePrimaryDir,
+              ...metadata,
+            });
+            return {
+              sourceId: source.sourceId,
+              status: preflight.transformations.length
+                ? ("imported_with_transformations" as const)
+                : ("imported" as const),
+              sessionId: registered.sessionId,
+              transformations: preflight.transformations,
+            };
+          }
           if (harness === "opencode" || harness === "codex") {
             const preflight = harness === "opencode"
               ? preflightOpenCodeImport(source)
@@ -684,7 +714,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         } catch (error) {
           if (
             error instanceof OpenCodeImportRefusalError ||
-            error instanceof CodexImportRefusalError
+            error instanceof CodexImportRefusalError ||
+            error instanceof GrokImportRefusalError
           ) {
             return {
               sourceId: source.sourceId,

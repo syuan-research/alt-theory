@@ -206,8 +206,7 @@ and drift warnings are returned in the active manifest/snapshot.
 
 Local mode exposes a harness-discriminated import boundary without adding a
 second session engine. `GET /api/session-import/harnesses` reports Pi,
-OpenCode, and Codex as ready; Grok Build remains a named `not_implemented`
-entry.
+OpenCode, Codex, and Grok Build as ready.
 `GET /api/session-import/{harness}/sessions` returns source metadata, and
 `POST /api/session-import/{harness}` accepts all or selected source IDs. Hosted
 mode does not expose these routes.
@@ -218,7 +217,7 @@ compaction selection, and projects supported messages, reasoning, images, and
 tool pairs into a Pi JSONL payload. The Codex adapter recursively discovers
 plain rollout JSONL, reads bounded metadata for listing, then parses and hashes
 the complete selected rollout during preflight. Complete source rows from
-either external adapter are retained as Pi custom entries but do not enter
+these external adapters are retained as Pi custom entries but do not enter
 model context; every raw-only or portable transformation is disclosed
 separately.
 
@@ -242,6 +241,18 @@ compaction, rollback/aborted turns, inherited/forked/subagent history, and
 other control semantics refuse before write. Compressed rollouts are not
 discovered in the first supported subset.
 
+The Grok Build adapter follows the official two-level session layout and treats
+the selected session's current `chat_history.jsonl` as authoritative because
+Grok itself replaces that file atomically for compaction/rewind. It maps text
+system/user/assistant records, visible reasoning text/summary, and locally
+executed tool calls/results only after exact call-ID pairing. Encrypted
+reasoning remains raw-only. Backend-only calls, images, unknown item types,
+malformed/incomplete pairs, and legacy assistant `reasoning`/`raw_output`
+refuse before write. It neither starts the Grok runtime nor reconstructs old
+tips/branches. The complete selected Grok session directory is copied to
+`records/source-snapshot` and content-fingerprinted after copy; mismatch removes
+the incomplete managed session atomically.
+
 `records/session-import-source.json` records the source harness, store, source
 session ID, SHA-256 fingerprint, source version when available, declared
 transformations, and import time. Discovery compares that record with the
@@ -256,7 +267,7 @@ managed session workspace as its writable root; Work also treats the imported
 source workspace as writable. A missing source cwd requires an existing
 replacement workspace path and is never created implicitly.
 
-The local React sidebar exposes the shared OpenCode/Codex path as “Import
+The local React sidebar exposes the shared OpenCode/Codex/Grok Build path as “Import
 conversation.” It requires a dry preflight, displays transformations or the
 refusal reason, then imports, refreshes the normal catalog, and opens the
 selected managed session. Repeat discovery classifies an identical source as
@@ -891,6 +902,9 @@ Limits (current):
 
 ## Change Log
 
+- 2026-07-21: Added Grok Build current-history discovery, deterministic
+  projection, complete-session refusal boundaries, full managed source
+  snapshot, shared UI import, and real continuation/repeat/restart acceptance.
 - 2026-07-20: Documented the local session-import boundary: harness discovery,
   Pi managed-copy registration, source provenance/fingerprint records,
   repeat-state classification, ordinary workspace/mode reuse, and hosted-mode

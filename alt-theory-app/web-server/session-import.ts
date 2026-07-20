@@ -1,6 +1,7 @@
 import { createHash } from "crypto";
 import {
   existsSync,
+  cpSync,
   readFileSync,
   readdirSync,
   rmSync,
@@ -34,6 +35,12 @@ import {
   preflightCodexSession,
   type CodexPreflight,
 } from "./codex-session-import.js";
+import {
+  discoverGrokSessions,
+  fingerprintGrokSessionDir,
+  preflightGrokSession,
+  type GrokPreflight,
+} from "./grok-session-import.js";
 
 export const IMPORT_HARNESSES = [
   "pi",
@@ -71,6 +78,7 @@ export interface ImportSourceRecord {
   importedAt: string;
   sourceVersion?: string;
   transformations?: string[];
+  sourceSnapshot?: string;
 }
 
 export class ImportHarnessNotImplementedError extends Error {
@@ -89,12 +97,19 @@ export async function discoverImportSessions(args: {
   piSessionDir?: string;
   openCodeDbPath?: string;
   codexSessionsDir?: string;
+  grokSessionsDir?: string;
 }): Promise<ImportSourceSession[]> {
-  if (args.harness === "opencode" || args.harness === "codex") {
+  if (
+    args.harness === "opencode" ||
+    args.harness === "codex" ||
+    args.harness === "grok-build"
+  ) {
     const previous = readImportSourceRecords(args.dataDir);
     const discovered = args.harness === "opencode"
       ? discoverOpenCodeSessions(args.openCodeDbPath)
-      : discoverCodexSessions(args.codexSessionsDir);
+      : args.harness === "codex"
+        ? discoverCodexSessions(args.codexSessionsDir)
+        : discoverGrokSessions(args.grokSessionsDir);
     return discovered.map((source) => {
       const prior = previous.find(
         (candidate) =>
@@ -193,6 +208,13 @@ export function preflightCodexImport(source: ImportSourceSession): CodexPrefligh
   });
 }
 
+export function preflightGrokImport(source: ImportSourceSession): GrokPreflight {
+  return preflightGrokSession({
+    sourceSessionId: source.sourceSessionId,
+    sourceStore: source.sourceStore,
+  });
+}
+
 export function registerOpenCodeImport(args: {
   dataDir: string;
   source: ImportSourceSession;
@@ -247,16 +269,45 @@ export function registerCodexImport(args: {
   });
 }
 
+export function registerGrokImport(args: {
+  dataDir: string;
+  source: ImportSourceSession;
+  preflight: GrokPreflight;
+  mode: CapabilityMode;
+  workspacePrimaryDir?: string;
+  ownerAccountId?: string | null;
+  roleCondition?: string | null;
+  visibility?: "research" | "private";
+  consentSnapshot?: {
+    researcherReadable: boolean;
+    quoteAfterAnonymization: boolean;
+    privateOverride: boolean;
+  } | null;
+}): { sessionId: string; sourceFingerprint: string } {
+  return registerPreparedImport({
+    ...args,
+    harness: "grok-build",
+    piSessionJsonl: args.preflight.piSessionJsonl,
+    importedFilename: `grok-build-${args.source.sourceSessionId}.jsonl`,
+    sourceFingerprint: args.preflight.sourceFingerprint,
+    sourceStore: args.source.sourceStore ?? "",
+    sourceVersion: args.preflight.sourceVersion,
+    transformations: args.preflight.transformations,
+    rawSourceDir: args.source.sourceStore,
+  });
+}
+
 function registerPreparedImport(args: {
   dataDir: string;
   source: ImportSourceSession;
-  harness: "pi" | "opencode" | "codex";
+  harness: "pi" | "opencode" | "codex" | "grok-build";
   piSessionJsonl: string;
   importedFilename: string;
   sourceFingerprint: string;
   sourceStore: string;
   sourceVersion?: string;
   transformations: string[];
+  rawSourceDir?: string;
   mode: CapabilityMode;
   workspacePrimaryDir?: string;
   ownerAccountId?: string | null;
@@ -285,6 +336,20 @@ function registerPreparedImport(args: {
   try {
     writeFileSync(importedPath, args.piSessionJsonl);
     SessionManager.open(importedPath);
+    let sourceSnapshot: string | undefined;
+    if (args.rawSourceDir) {
+      sourceSnapshot = "source-snapshot";
+      const snapshotPath = join(dirs.recordsDir, sourceSnapshot);
+      cpSync(resolve(args.rawSourceDir), snapshotPath, {
+        recursive: true,
+        force: false,
+        errorOnExist: true,
+        verbatimSymlinks: true,
+      });
+      if (fingerprintGrokSessionDir(snapshotPath) !== args.sourceFingerprint) {
+        throw new Error("Grok source changed while its managed snapshot was copied");
+      }
+    }
 
     const createdAt = args.source.createdAt;
     const empty = emptyFileRef();
@@ -355,6 +420,7 @@ function registerPreparedImport(args: {
       sourceFingerprint: args.sourceFingerprint,
       sourceVersion: args.sourceVersion,
       transformations: args.transformations,
+      sourceSnapshot,
       importedAt: new Date().toISOString(),
     };
     writeJsonAtomic(
