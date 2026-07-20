@@ -24,6 +24,7 @@ import {
 } from "./session-service.js";
 import { readSessionDetail } from "./session-store.js";
 import { readAbComparisonRecords } from "./ab-records.js";
+import { readV4SessionHeader } from "./session-records.js";
 import { readConfigEvents } from "./config-events.js";
 import { latestRunSnapshots, readRunRecords } from "./run-records.js";
 
@@ -644,6 +645,42 @@ test("SessionService explicit forks create a new session with copied workspace",
 
   await runCase("side");
   await runCase("ab-arm");
+});
+
+test("related Helper starts fresh and promotion turns it into a normal fork", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const parent = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const managed = (service as any).sessions.get(parent.sessionId);
+  managed.session.sessionManager.appendMessage({
+    role: "user",
+    content: [{ type: "text", text: "parent-only context" }],
+    timestamp: Date.now(),
+  });
+  try {
+    const helper = await service.createRelatedSession(parent.sessionId, "helper");
+    const helperDetail = readSessionDetail(fixture.dataDir, helper.sessionId);
+    const helperHeader = readV4SessionHeader(
+      service.getManifest(helper.sessionId).recordsDir
+    );
+    assert.deepEqual(helperDetail?.transcript ?? [], []);
+    assert.deepEqual(helperHeader?.forkedFrom, {
+      sessionId: parent.sessionId,
+      purpose: "helper",
+    });
+
+    service.promoteRelatedSession(helper.sessionId);
+    const promoted = readV4SessionHeader(
+      service.getManifest(helper.sessionId).recordsDir
+    );
+    assert.equal(promoted?.forkedFrom?.purpose, "fork");
+  } finally {
+    await service.disposeAll();
+  }
 });
 
 test("forkSession applies per-arm selector overrides (A/B substrate)", async () => {

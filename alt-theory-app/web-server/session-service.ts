@@ -166,6 +166,10 @@ export interface SessionCreationMetadata {
   } | null;
   studyTag?: StudyTag | null;
   modelOverride?: SessionModelOverride | null;
+  /** Internal child relationship used by fresh-context children. */
+  forkedFrom?: { sessionId: string; purpose: ForkPurpose } | null;
+  /** Internal mode override used when a fresh child inherits its parent mode. */
+  mode?: CapabilityMode;
 }
 
 export type { ForkPurpose, StudyTag, SessionModelOverride };
@@ -1309,7 +1313,9 @@ export class SessionService {
         : {}),
       thinkingLevel:
         metadata.modelOverride?.thinkingLevel ?? this.config.thinkingLevel,
-      promptMode: this.config.promptMode,
+      promptMode: metadata.mode
+        ? promptModeFromCapabilityMode(metadata.mode)
+        : this.config.promptMode,
       resourceDiscovery: this.config.resourceDiscovery,
       skillsDir: this.config.skillsDir,
       runLabel: this.config.runLabel,
@@ -1344,6 +1350,7 @@ export class SessionService {
           : null,
       mode: result.getMode(),
       workspace: metadata.workspace ? result.manifest.workspace : null,
+      forkedFrom: metadata.forkedFrom ?? null,
       studyTag: metadata.studyTag ?? null,
       modelOverride: metadata.modelOverride ?? null,
     });
@@ -1369,6 +1376,68 @@ export class SessionService {
       },
     });
     return managed;
+  }
+
+  async createRelatedSession(
+    sessionId: string,
+    purpose: "side" | "helper",
+    forkPointEntryId?: string
+  ): Promise<SessionSnapshot> {
+    if (purpose === "side") {
+      return this.forkSession(sessionId, purpose, forkPointEntryId);
+    }
+
+    const parent = this.requireSession(sessionId);
+    if (parent.busy || parent.session.isStreaming) {
+      throw new SessionBusyError(sessionId);
+    }
+    const header = readV4SessionHeader(parent.manifest.recordsDir);
+    const child = await this.createSession(parent.selectors, {
+      ownerAccountId: header?.ownerAccountId ?? null,
+      roleCondition: header?.roleCondition ?? null,
+      visibility: header?.visibility ?? "research",
+      consentSnapshot: header?.consentSnapshot ?? null,
+      workspace: header?.workspace ?? null,
+      studyTag: header?.studyTag ?? null,
+      modelOverride: header?.modelOverride ?? null,
+      forkedFrom: { sessionId, purpose },
+      mode: parent.getMode(),
+    });
+    appendSessionEvent(parent.manifest.recordsDir, {
+      sessionId,
+      type: "related_session_created",
+      details: { childSessionId: child.sessionId, purpose },
+    });
+    appendSessionEvent(this.requireSession(child.sessionId).manifest.recordsDir, {
+      sessionId: child.sessionId,
+      type: "session_forked_from",
+      details: { sourceSessionId: sessionId, purpose, freshContext: true },
+    });
+    return child;
+  }
+
+  promoteRelatedSession(sessionId: string): SessionSnapshot | null {
+    const dirs = getSessionDirs(this.config.dataDir, sessionId);
+    if (!dirs) throw new Error(`Unknown session id: ${sessionId}`);
+    const header = readV4SessionHeader(dirs.recordsDir);
+    if (!header?.forkedFrom) {
+      throw new Error("Only a related child can be promoted");
+    }
+    if (!(["side", "helper"] as ForkPurpose[]).includes(header.forkedFrom.purpose)) {
+      throw new Error("This related conversation is already a normal branch");
+    }
+    const previousPurpose = header.forkedFrom.purpose;
+    writeSessionHeader(dirs.recordsDir, {
+      ...header,
+      forkedFrom: { ...header.forkedFrom, purpose: "fork" },
+    });
+    appendSessionEvent(dirs.recordsDir, {
+      sessionId,
+      type: "related_session_promoted",
+      details: { previousPurpose, purpose: "fork" },
+    });
+    const live = this.sessions.get(sessionId);
+    return live ? this.snapshot(live) : null;
   }
 
   private async createManagedFromExisting(

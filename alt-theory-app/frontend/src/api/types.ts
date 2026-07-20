@@ -346,6 +346,29 @@ export interface WorkspaceFilesResponse {
   files: WorkspaceFileEntry[];
   entries?: WorkspaceFileEntry[];
   usage: WorkspaceUsage;
+  workingFolders?: WorkingFolderDescriptor[];
+}
+
+export interface WorkingFolderDescriptor {
+  id: string;
+  path: string;
+  role: "primary" | "additional";
+  managed: boolean;
+  available: boolean;
+}
+
+export interface WorkingFileEntry {
+  folderId: string;
+  path: string;
+  size: number;
+  updatedAt: string | null;
+  previewable: boolean;
+}
+
+export interface WorkingFilesResponse {
+  folders: WorkingFolderDescriptor[];
+  files: WorkingFileEntry[];
+  truncated: boolean;
 }
 
 export interface WriteSessionFileInput {
@@ -414,6 +437,13 @@ export type ClientMessage =
         forkPointEntryId?: string;
       };
     }
+  | {
+      type: "create_related_session";
+      payload: {
+        purpose: "side" | "helper";
+        forkPointEntryId?: string;
+      };
+    }
   | { type: "switch_mode"; payload: { mode: CapabilityMode } }
   | { type: "set_study_tag"; payload: { studyTag: StudyTag | null } }
   | {
@@ -451,7 +481,15 @@ export type ServerMessage =
   | { type: "session_metadata"; payload: AssemblyManifest }
   | { type: "session_metrics"; payload: SessionMetrics }
   | { type: "session_transcript"; payload: { messages: TranscriptMessage[] } }
+  | {
+      type: "related_session_created";
+      payload: { sessionId: string; purpose: "side" | "helper" };
+    }
   | { type: "assistant_delta"; payload: { text: string } }
+  | {
+      type: "run_phase";
+      payload: { phase: "connecting" | "thinking" | "idle" };
+    }
   | { type: "tool_started"; payload: { toolName: string; callId: string; path?: string | null } }
   | { type: "tool_updated"; payload: { callId: string; text?: string; progress?: number } }
   | { type: "tool_finished"; payload: { callId: string; success: boolean; output?: unknown } }

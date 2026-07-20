@@ -111,6 +111,10 @@ import {
   writeAppSettings,
 } from "./app-settings.js";
 import { discoverSkillResources } from "./resource-discovery.js";
+import {
+  listWorkingFolderFiles,
+  readWorkingFolderTextFile,
+} from "./workspace-files.js";
 
 ensureLocalModeDefaults();
 
@@ -817,6 +821,18 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       });
     }
   });
+  app.post("/api/sessions/:sessionId/promote", (req, res) => {
+    const sessionId = req.params.sessionId;
+    if (!requireSessionRestContentAccess(req, res, sessionId)) return;
+    try {
+      const snapshot = sessionService.promoteRelatedSession(sessionId);
+      res.json({ sessionId, snapshot });
+    } catch (error) {
+      res.status(409).json({
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
   app.post("/api/sessions/:sessionId/ab-comparisons", (req, res) => {
     const sessionId = req.params.sessionId;
     if (!requireSessionRestContentAccess(req, res, sessionId)) return;
@@ -915,8 +931,17 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         res.json({
           files: legacy.files,
           entries: workspace.files,
+          workingFolders: workspace.workingFolders,
           usage: workspace.usage,
         });
+        return;
+      }
+      if (rootName === "working") {
+        if (!localMode) {
+          res.status(403).json({ error: "Working-folder browsing is local-only" });
+          return;
+        }
+        res.json(listWorkingFolderFiles(dataDir, sessionId));
         return;
       }
       res.json(listSessionTextFiles(dataDir, sessionId, rootName));
@@ -981,6 +1006,14 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       typeof req.query.path === "string" ? req.query.path : "";
     if (!requireSessionRestContentAccess(req, res, sessionId)) return;
     try {
+      if (rootName === "working") {
+        if (!localMode) {
+          res.status(403).json({ error: "Working-folder browsing is local-only" });
+          return;
+        }
+        res.json(readWorkingFolderTextFile(dataDir, sessionId, requestedPath));
+        return;
+      }
       res.json(readSessionTextFile(dataDir, sessionId, rootName, requestedPath));
     } catch (error) {
       sendFileApiError(res, error);
@@ -1957,6 +1990,31 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
                 type: "session_transcript",
                 payload: {
                   messages: sessionService.getTranscript(forked.sessionId),
+                },
+              });
+            }
+          } catch (error) {
+            sendServiceError(send, error);
+          }
+          break;
+        }
+        case "create_related_session": {
+          if (!attachedSessionId) {
+            sendError(send, new Error("A materialized session is required"));
+            break;
+          }
+          try {
+            const related = await sessionService.createRelatedSession(
+              attachedSessionId,
+              msg.payload.purpose,
+              msg.payload.forkPointEntryId
+            );
+            if (!closed) {
+              send({
+                type: "related_session_created",
+                payload: {
+                  sessionId: related.sessionId,
+                  purpose: msg.payload.purpose,
                 },
               });
             }

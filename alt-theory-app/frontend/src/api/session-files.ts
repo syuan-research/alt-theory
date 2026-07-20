@@ -6,6 +6,7 @@ import type {
   SessionTextFileContent,
   UploadWorkspaceFileResult,
   WorkspaceFilesResponse,
+  WorkingFilesResponse,
   WriteSessionFileInput,
 } from "./types";
 
@@ -118,4 +119,12 @@ export async function downloadWorkspaceFile(
     throw new ApiError(await readErrorMessage(res), res.status);
   }
   return res.blob();
+}
+
+export async function listWorkingFiles(
+  sessionId: string
+): Promise<WorkingFilesResponse> {
+  return fetchJson<WorkingFilesResponse>(
+    `${sessionFilesBase(sessionId)}?root=working`
+  );
 }

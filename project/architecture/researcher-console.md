@@ -68,8 +68,11 @@ gate (unchanged since v0.5).
   configuration never goes there. The separation test: actions are clicked
   frequently mid-session, configuration is set and sits still.
 - **Right = conversation-derived, optional detail**, collapsed by default,
-  event-driven auto-open. Per object class: narrow swap panel (side chats,
-  helper, file review), full-width side-by-side (A/B arm reading),
+  event-driven auto-open. `Related conversations` is the narrow relationship
+  container for Branch, BTW, and Helper children. BTW and Helper run there
+  with their own transcript/composer while the parent remains in the center;
+  either can be promoted to an ordinary Branch. Other object classes include
+  file review and (provisionally) full-width side-by-side A/B arm reading,
   Changes list (agent-modified files aggregated from mediation records)
   vs Workspace (tree + full-panel preview) as two distinct tabs. Advanced
   inspector tabs (Records/Provenance/Paths/Runtime) stay researcher-only
@@ -79,10 +82,10 @@ gate (unchanged since v0.5).
   high in the nav); participant panel (§4); reserved data-and-sharing
   block. Research configuration does NOT go into general settings — it
   lives in the researcher workbench.
-- **Full-page routes** for activities that want the whole screen: the
-  research review page (past comparisons, records, export) reads the
-  records layer ONLY — never live app state — so it stays extractable into
-  a standalone viewer later.
+- **Full-page research routes are provisional.** The current Review page is a
+  probe built before a real study workflow existed. Its object scope,
+  filters, comparison flow, records, and export behavior must be derived from
+  future study design rather than treated as settled IA.
 
 ## 3. Conversation Surfaces (user mode)
 
@@ -96,18 +99,23 @@ gate (unchanged since v0.5).
   thinking badge (unset by default, hover to expand off/low/high) and a
   Manage-models entry — backed by WS `set_session_model`. No permission
   control until a second permission level exists.
-- **Session list membership**: only roots and `forkedFrom.purpose:"fork"`
+- **Conversation list membership**: only roots and `forkedFrom.purpose:"fork"`
   appear; side chats (`side`), `helper`, and pending `ab-arm` children are
   reachable from their parent conversation only; the chosen A/B arm is
   rewritten to the list continuation.
 - **Approvals**: low-key dock above the composer (no alarm styling), with
   an "allowed this session" marker in the transcript for TTL approvals.
-- **Helper**: forks FRESH (no parent-context copy — cross-session prompt
+- **Helper**: starts FRESH (no parent-context copy — cross-session prompt
   cache reuse is impossible because the helper's own system prompt diverges
   at token 0). Context-aware help is a latent in-conversation skill, not a
   session kind.
 
-## 4. Study Designation And Sharing Surfaces
+## 4. Study Designation And Sharing Surfaces (provisional product UI)
+
+The persistence primitives below exist, but their user-facing grouping and
+journey are not final. `Study setup`, study-associated conversations, Review,
+and A/B continuation must be revisited when a concrete study defines the
+objects and evidence requirements.
 
 One primitive, two levels (decision doc §3), all backend-complete:
 
@@ -129,15 +137,15 @@ One primitive, two levels (decision doc §3), all backend-complete:
   workbench, inherited by forks, and read by the review page from summary
   rows / records.
 
-## 5. Researcher Mode = User Mode + Deltas
+## 5. Researcher Mode = User Mode + Deltas (implementation probe)
 
 Tab/surface-level increments, per the pane logic: left workbench
 (configuration + comparison setup + compact session list), center-top
 action strip (A/B trigger), full-page review route, advanced right-pane
 inspector tabs, and a reserved view-as-participant toggle. The A/B flow
-itself (M6): trigger forks Pure-pinned arms off the live parent via the
-copy-fork substrate, records to append-only `ab-comparisons.jsonl`, choice
-promotes one arm to the continuation.
+itself is provisional: the current M6 probe forks Pure-pinned arms off the
+live parent and records to append-only `ab-comparisons.jsonl`, but comparison,
+choice, and continuation behavior are not a final product contract.
 
 ## 6. Visual Language (locked by the M7 prototype rounds)
 
@@ -163,7 +171,7 @@ agent pass (gate before public repo).
   collapse, workspace-grouped left nav + collapse strip + search overlay,
   morphing Understand/Work + composer model chip (`set_session_model`) +
   approval dock rendering the real Allow-once/Allow-session/Deny options,
-  right rail (Side chats / Changes / Workspace + researcher adv tabs),
+  right rail (Related conversations / Changes / Files + researcher adv tabs),
   Settings (participant tab opt-in via General), Researcher workbench +
   A/B float-cmp → arm-split reader + Review page. One sanctioned backend
   addition: read-only `GET /api/sessions/:id/changes`
@@ -173,6 +181,12 @@ agent pass (gate before public repo).
   `notes-and-status/20260716-v1-alpha-frontend-swe-plan.md`.
 - 2026-07-20: Updated owner-acceptance status after the local Pure/Full flow
   passed. Bundle delivery remains separate from the React architecture.
+- 2026-07-21: Reopened the prototype mismatch as a real flow gap: BTW and
+  fresh-context Helper now run in Related conversations through their own
+  WebSocket connection and can be promoted; Branch remains a listed center
+  conversation. Files distinguishes actual working folders from managed
+  imported references. Researcher/Review/A-B IA is explicitly provisional
+  until a real study determines it.
 - 2026-07-16: Rewritten for v1-alpha after the M7 IA design pass and
   backend pass. Replaces the vanilla-console description (legacy notes
   preserved in git history) with the two-view-mode model, pane logic,

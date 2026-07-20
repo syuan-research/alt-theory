@@ -10,6 +10,8 @@ import {
   getAccountStorageUsage,
   getSessionWorkspaceUsage,
   listWorkspaceFiles,
+  listWorkingFolderFiles,
+  readWorkingFolderTextFile,
   SESSION_WORKSPACE_QUOTA_BYTES,
   uploadWorkspaceFile,
 } from "./workspace-files.js";
@@ -135,4 +137,38 @@ test("account usage sums owned session workspaces", async () => {
   assert.equal(getAccountStorageUsage(dataDir, "p01"), 3072);
   const listed = listWorkspaceFiles(dataDir, first.sessionId, "p01");
   assert.equal(listed.usage.sessionBytes, 1024);
+});
+
+test("working-folder browsing follows the persisted external workspace", () => {
+  const root = mkdtempSync(join(tmpdir(), "alt-theory-working-folder-"));
+  const dataDir = join(root, "data");
+  const external = join(root, "user-project");
+  mkdirSync(join(external, "notes"), { recursive: true });
+  writeFileSync(join(external, "notes", "idea.md"), "# Actual work\n", "utf-8");
+  mkdirSync(join(external, "node_modules", "ignored"), { recursive: true });
+  writeFileSync(join(external, "node_modules", "ignored", "x.js"), "x", "utf-8");
+  const { sessionId } = createSessionDirs(dataDir);
+  const recordsDir = join(dataDir, "sessions", sessionId, "records");
+  writeFileSync(
+    join(recordsDir, "session.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      recordType: "session",
+      sessionId,
+      createdAt: new Date().toISOString(),
+      projectId: null,
+      recordModel: "v0.4",
+      workspace: { primaryDir: external, additionalDirs: [] },
+    })
+  );
+
+  const listed = listWorkingFolderFiles(dataDir, sessionId);
+  assert.equal(listed.folders[0]?.path, external);
+  assert.deepEqual(listed.files.map((entry) => entry.path), ["notes/idea.md"]);
+  const file = readWorkingFolderTextFile(
+    dataDir,
+    sessionId,
+    "primary/notes/idea.md"
+  );
+  assert.equal(file.content, "# Actual work\n");
 });

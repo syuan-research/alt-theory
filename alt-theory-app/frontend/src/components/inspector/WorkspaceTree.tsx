@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { WorkspaceFileEntry } from "@/api/types";
+import type { WorkingFileEntry, WorkingFolderDescriptor, WorkspaceFileEntry } from "@/api/types";
 import {
   getSessionFileContent,
   listWorkspaceFiles,
+  listWorkingFiles,
   uploadWorkspaceFile,
 } from "@/api/session-files";
 import { useApp } from "@/context/AppProvider";
@@ -42,8 +43,15 @@ export function WorkspaceTree() {
   const app = useApp();
   const shell = useShell();
   const [entries, setEntries] = useState<WorkspaceFileEntry[] | null>(null);
+  const [workingFolders, setWorkingFolders] = useState<WorkingFolderDescriptor[]>([]);
+  const [workingFiles, setWorkingFiles] = useState<WorkingFileEntry[]>([]);
+  const [workingTruncated, setWorkingTruncated] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [preview, setPreview] = useState<{ path: string; content: string } | null>(null);
+  const [preview, setPreview] = useState<{
+    path: string;
+    content: string;
+    source: "managed" | "working";
+  } | null>(null);
   const [uploadStatus, setUploadStatus] = useState("");
   const uploadInput = useRef<HTMLInputElement>(null);
 
@@ -59,12 +67,25 @@ export function WorkspaceTree() {
     }
     let cancelled = false;
     listWorkspaceFiles(sessionId)
-      .then((res) => !cancelled && (setEntries(res.files), setError(null)))
+      .then((res) => {
+        if (cancelled) return;
+        setEntries(res.entries ?? res.files);
+        setWorkingFolders(res.workingFolders ?? []);
+        setError(null);
+        if (app.appMode === "local") {
+          void listWorkingFiles(sessionId).then((working) => {
+            if (cancelled) return;
+            setWorkingFolders(working.folders);
+            setWorkingFiles(working.files);
+            setWorkingTruncated(working.truncated);
+          }).catch(() => undefined);
+        }
+      })
       .catch((e) => !cancelled && setError(e?.message ?? "Failed to load files"));
     return () => {
       cancelled = true;
     };
-  }, [sessionId, runCount]);
+  }, [app.appMode, sessionId, runCount]);
 
   useEffect(() => {
     if (!shell.rightSub) setPreview(null);
@@ -76,14 +97,32 @@ export function WorkspaceTree() {
     if (!sessionId || entry.kind === "binary-original") return;
     try {
       const res = await getSessionFileContent(sessionId, "workspace", entry.path);
-      setPreview({ path: entry.path, content: res.content });
+      setPreview({ path: entry.path, content: res.content, source: "managed" });
       shell.openSub({ key: `ws:${entry.path}`, title: entry.path });
     } catch (e) {
       setPreview({
         path: entry.path,
         content: e instanceof Error ? e.message : "Could not read file.",
+        source: "managed",
       });
       shell.openSub({ key: `ws:${entry.path}`, title: entry.path });
+    }
+  };
+
+  const openWorkingFile = async (entry: WorkingFileEntry) => {
+    if (!sessionId || !entry.previewable) return;
+    const path = `${entry.folderId}/${entry.path}`;
+    try {
+      const res = await getSessionFileContent(sessionId, "working", path);
+      setPreview({ path, content: res.content, source: "working" });
+      shell.openSub({ key: `working:${path}`, title: entry.path });
+    } catch (e) {
+      setPreview({
+        path,
+        content: e instanceof Error ? e.message : "Could not read file.",
+        source: "working",
+      });
+      shell.openSub({ key: `working:${path}`, title: entry.path });
     }
   };
 
@@ -95,7 +134,8 @@ export function WorkspaceTree() {
       const stagePath = stagePathAfterUpload(result);
       if (stagePath) app.stageWorkspacePath(stagePath);
       const refreshed = await listWorkspaceFiles(sessionId);
-      setEntries(refreshed.files);
+      setEntries(refreshed.entries ?? refreshed.files);
+      setWorkingFolders(refreshed.workingFolders ?? []);
       setError(null);
       setUploadStatus(
         result.extractStatus === "failed"
@@ -118,22 +158,58 @@ export function WorkspaceTree() {
             {preview.content}
           </pre>
         </div>
-        <button
-          className="wb-apply"
-          onClick={() =>
-            staged
-              ? app.unstageWorkspacePaths([preview.path])
-              : app.stageWorkspacePath(preview.path)
-          }
-        >
-          {staged ? "Remove from message" : "Attach to message"}
-        </button>
+        {preview.source === "managed" ? (
+          <button
+            className="wb-apply"
+            onClick={() =>
+              staged
+                ? app.unstageWorkspacePaths([preview.path])
+                : app.stageWorkspacePath(preview.path)
+            }
+          >
+            {staged ? "Remove from message" : "Attach to message"}
+          </button>
+        ) : null}
       </div>
     );
   }
 
   return (
     <>
+      {workingFolders.length > 0 ? (
+        <div className="working-folders">
+          <div className="files-section-title">Working folders</div>
+          {workingFolders.map((folder) => (
+            <div key={folder.id}>
+              <div className="working-folder">
+                <i className="ph ph-folder-open" />
+                <div>
+                  <div className="working-folder-role">
+                    {folder.role === "primary" ? "Primary" : "Additional"}
+                    {folder.managed ? " · managed by Alt Theory" : ""}
+                  </div>
+                  <div className="working-folder-path" title={folder.path}>{folder.path}</div>
+                  {!folder.available ? (
+                    <div className="working-folder-missing">Folder is not available on this device.</div>
+                  ) : null}
+                </div>
+              </div>
+              {folder.available ? (
+                <WorkingTree
+                  entries={workingFiles.filter((entry) => entry.folderId === folder.id)}
+                  onOpenFile={openWorkingFile}
+                />
+              ) : null}
+            </div>
+          ))}
+          {workingTruncated ? (
+            <div className="wb-note">Showing the first 1,000 files; large dependency and hidden folders are omitted.</div>
+          ) : null}
+          <div className="wb-note">
+            Switching Understand/Work changes capabilities, not these folder locations.
+          </div>
+        </div>
+      ) : null}
       {pureMode ? (
         <div className="pv-card">
           <button
@@ -165,11 +241,40 @@ export function WorkspaceTree() {
           {pureMode ? "No imported references." : "No files available."}
         </div>
       ) : (
-        <div className="tree">
-          <TreeLevel node={tree} depth={0} onOpenFile={openFile} />
-        </div>
+        <>
+          <div className="files-section-title">Imported references and managed files</div>
+          <div className="tree">
+            <TreeLevel node={tree} depth={0} onOpenFile={openFile} />
+          </div>
+        </>
       )}
     </>
+  );
+}
+
+function WorkingTree({
+  entries,
+  onOpenFile,
+}: {
+  entries: WorkingFileEntry[];
+  onOpenFile: (entry: WorkingFileEntry) => void;
+}) {
+  if (entries.length === 0) return null;
+  return (
+    <div className="working-tree">
+      {entries.map((entry) => (
+        <button
+          key={`${entry.folderId}:${entry.path}`}
+          className="ti"
+          disabled={!entry.previewable}
+          title={entry.previewable ? entry.path : "Too large to preview"}
+          onClick={() => onOpenFile(entry)}
+        >
+          <i className="ph ph-file" />
+          <span>{entry.path}</span>
+        </button>
+      ))}
+    </div>
   );
 }
 

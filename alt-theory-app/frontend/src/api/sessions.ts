@@ -168,3 +168,14 @@ export async function hydrateSessionDisplayName(
   }
   return { alias, snippet };
 }
+
+export async function promoteRelatedSession(sessionId: string): Promise<void> {
+  const res = await fetch(
+    `/api/sessions/${encodeURIComponent(sessionId)}/promote`,
+    { method: "POST" }
+  );
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error || `Promotion failed (${res.status})`);
+  }
+}

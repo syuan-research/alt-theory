@@ -513,8 +513,9 @@ Explicit Fork (M5 substrate, 2026-07-15) creates a NEW full session, not a
 - the child's Pi JSONL is built by COPYING the parent's persisted branch path
   (never via Pi's `createBranchedSession`, which re-points the live parent
   and survives only one fork cycle) — forking is N-repeatable and never
-  kicks the live parent (A/B arms, side chats, helper all fork the same
-  live parent);
+  kicks the live parent (A/B arms and BTW side conversations fork the same
+  live parent); Helper instead uses the normal create-session path with a
+  `forkedFrom` relationship so its transcript starts fresh;
 - the child gets its own readable session ID, dirs, and v0.4 records with
   `forkedFrom: { sessionId, purpose }`;
 - default-workspace sessions copy the parent workspace; a §3.1 workspace
@@ -599,6 +600,8 @@ REST:
 - `GET /api/sessions`
 - `GET /api/sessions/{sessionId}`
 - `GET /api/sessions/{sessionId}/files`
+- `GET /api/sessions/{sessionId}/files?root=working` (local only; bounded
+  actual working-folder tree)
 - `GET /api/sessions/{sessionId}/files/content`
 - `PUT /api/sessions/{sessionId}/files/content`
 - `GET /api/sessions/{sessionId}/files/download?root=workspace&path=...`
@@ -606,6 +609,7 @@ REST:
 - `GET /api/session-import/{harness}/sessions` (local only)
 - `POST /api/session-import/{harness}` (local only)
 - `DELETE /api/sessions/{sessionId}/files/content`
+- `POST /api/sessions/{sessionId}/promote` (side/helper child to normal fork)
 - `POST /api/sessions/{sessionId}/ab-comparisons` (+ `/generate`,
   `/{comparisonId}/choice`) — M6 A/B comparison flow over the append-only
   `records/ab-comparisons.jsonl` side-car
@@ -632,6 +636,14 @@ participant accounts can access only their own sessions, and private session
 content is owner-only. The download and delete routes are intentionally
 workspace-only.
 
+The local-only `root=working` view is separate from the managed session
+workspace. It resolves only the persisted primary/additional workspace roots,
+omits hidden and common dependency/cache trees, caps the listing at 1,000
+files, and rechecks containment before a bounded text preview. This lets Files
+show the directory the agent actually works in without mislabeling imported
+references as the entire workspace. Switching Pure/Full changes mediation
+capability, not these persisted folder identities.
+
 The participant/researcher frontend also uses these file routes for
 `records/ui-alias.json`, a small optional display-name file. This keeps aliases
 server-persisted and cross-browser while avoiding a new core session schema
@@ -645,7 +657,8 @@ WebSocket:
 - client: `get_session_metadata`, `get_session_metrics`, `open_session`
 - client: `switch_visibility`, `switch_mode`
 - client: `add_workspace_dir` (local form only), `respond_approval`
-- client: `revise_latest`, `delete_latest`, `fork_session`
+- client: `revise_latest`, `delete_latest`, `fork_session`,
+  `create_related_session`
 - client: `set_study_tag`, `set_session_model` (M7, 2026-07-16)
 
 `revise_latest` starts a model run and completes with the normal run lifecycle
@@ -656,7 +669,10 @@ REST after completion.
 `session_transcript` for the same attached session.
 
 `fork_session` creates a logical Branch from a selected Pi entry on the active
-branch. Current UI uses it only from researcher/debug assistant-message actions.
+branch and attaches the requesting socket to it. `create_related_session`
+creates BTW (cloned) or Helper (fresh) without attaching the parent socket;
+the frontend opens a second socket for the right-panel child. Promotion is an
+explicit catalog mutation, not an alias for opening the child.
 The branch workspace is copied at creation time, so later file/tool side
 effects do not share a mutable workspace. Collaboration-oriented shared space
 should be modeled through projects or another explicit shared-space layer, not

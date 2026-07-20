@@ -117,6 +117,10 @@ export type ClientMessage =
         forkPointEntryId?: string;
       };
     }
+  | {
+      type: "create_related_session";
+      payload: { purpose: "side" | "helper"; forkPointEntryId?: string };
+    }
   | { type: "set_study_tag"; payload: { studyTag: StudyTag | null } }
   | {
       type: "set_session_model";
@@ -138,6 +142,10 @@ export type ServerMessage =
   | { type: "session_metadata"; payload: AssemblyManifest }
   | { type: "session_metrics"; payload: SessionMetrics }
   | { type: "session_transcript"; payload: { messages: TranscriptMessage[] } }
+  | {
+      type: "related_session_created";
+      payload: { sessionId: string; purpose: "side" | "helper" };
+    }
   | { type: "assistant_delta"; payload: { text: string } }
   | {
       type: "run_phase";

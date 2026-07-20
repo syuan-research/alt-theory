@@ -22,6 +22,7 @@ import {
   fetchSessionList,
   hydrateSessionDisplayName,
   normalizeSessionAlias,
+  promoteRelatedSession as promoteRelatedSessionRequest,
   saveSessionAlias,
 } from "@/api/sessions";
 import type {
@@ -119,6 +120,9 @@ export interface AppContextValue {
   refreshSessions: () => Promise<void>;
   openCatalogSession: (sessionId: string) => void;
   forkCurrentSession: (purpose: "fork" | "side" | "helper" | "ab-arm") => void;
+  activeRelatedSessionId: string | null;
+  setActiveRelatedSessionId: (sessionId: string | null) => void;
+  promoteRelatedSession: (sessionId: string) => Promise<void>;
   renameSelectedSession: () => Promise<void>;
   deleteSelectedSession: () => void;
 
@@ -241,6 +245,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [transcriptView, setTranscriptView] = useState<TranscriptView>("user");
 
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  const [activeRelatedSessionId, setActiveRelatedSessionId] = useState<string | null>(null);
   const [sessionSearch, setSessionSearch] = useState("");
   const [selectedCatalogSessionId, setSelectedCatalogSessionId] = useState<
     string | null
@@ -655,6 +660,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setIsRunning(false);
           break;
 
+        case "related_session_created":
+          setActiveRelatedSessionId(message.payload.sessionId);
+          setIsRunning(false);
+          setConnStatus("idle");
+          setConnLabel("Ready");
+          setToolStatus("");
+          void refreshSessions();
+          break;
+
         case "assistant_delta":
           setStreamingText((prev) => `${prev ?? ""}${message.payload.text}`);
           break;
@@ -896,18 +910,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const forkCurrentSession = useCallback(
     (purpose: "fork" | "side" | "helper" | "ab-arm") => {
-      // The server forks the live conversation into a child session, attaches
-      // to it, and replies with session_opened + session_transcript — the
-      // existing handlers switch the view over. The parent stays live.
       if (!sessionId || isRunning) return;
-      if (sendMessage({ type: "fork_session", payload: { purpose } })) {
+      const related = purpose === "side" || purpose === "helper";
+      const message: ClientMessage = related
+        ? { type: "create_related_session", payload: { purpose } }
+        : { type: "fork_session", payload: { purpose } };
+      if (sendMessage(message)) {
         setIsRunning(true);
         setConnStatus("running");
-        setConnLabel("Forking...");
-        setToolStatus("Branching conversation…");
+        setConnLabel(related ? "Creating..." : "Forking...");
+        setToolStatus(
+          purpose === "helper"
+            ? "Starting a fresh helper…"
+            : related
+              ? "Starting a related conversation…"
+              : "Branching conversation…"
+        );
       }
     },
     [isRunning, sendMessage, sessionId]
+  );
+
+  const promoteRelatedSession = useCallback(
+    async (targetSessionId: string) => {
+      await promoteRelatedSessionRequest(targetSessionId);
+      await refreshSessions();
+      setActiveRelatedSessionId(null);
+      openCatalogSession(targetSessionId);
+    },
+    [openCatalogSession, refreshSessions]
   );
 
   const renameSelectedSession = useCallback(async () => {
@@ -1217,6 +1248,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       refreshSessions,
       openCatalogSession,
       forkCurrentSession,
+      activeRelatedSessionId,
+      setActiveRelatedSessionId,
+      promoteRelatedSession,
       renameSelectedSession,
       deleteSelectedSession,
       sessionId,
@@ -1297,6 +1331,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       refreshSessions,
       openCatalogSession,
       forkCurrentSession,
+      activeRelatedSessionId,
+      promoteRelatedSession,
       renameSelectedSession,
       deleteSelectedSession,
       sessionId,

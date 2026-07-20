@@ -378,6 +378,17 @@
   .tree .ti { display: flex; align-items: center; gap: 7px; padding: 5px 8px; border-radius: var(--r-sm); cursor: pointer; color: var(--ink-soft); width: 100%; text-align: left; background: none; border: none; }
   .tree .ti:hover { background: var(--hover); }
   .tree .ti.indent { padding-left: 28px; }
+  .files-section-title { margin: 8px 4px 6px; color: var(--text-3); font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+  .working-folders { margin-bottom: 10px; }
+  .working-folder { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 7px; padding: 9px 8px; margin-bottom: 6px; border-radius: var(--r-sm); background: var(--surface); color: var(--ink-soft); }
+  .working-folder-role { font-size: 0.78rem; font-weight: 500; }
+  .working-folder-path { margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3); font-family: var(--mono); font-size: 0.68rem; }
+  .working-folder-missing { margin-top: 3px; color: var(--danger); font-size: 0.7rem; }
+  .working-tree { max-height: 240px; overflow: auto; margin: -2px 0 8px 20px; border-left: 1px solid var(--hairline); padding-left: 4px; }
+  .working-tree .ti { display: flex; align-items: center; gap: 6px; width: 100%; border: none; background: transparent; color: var(--ink-soft); padding: 4px 6px; text-align: left; font: inherit; font-size: 0.75rem; cursor: pointer; }
+  .working-tree .ti span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .working-tree .ti:hover { background: var(--hover); }
+  .working-tree .ti:disabled { opacity: 0.45; cursor: default; }
   .preview { font-size: 0.85rem; }
   .preview .pv-card { background: var(--surface); border: none; border-radius: var(--r-md); padding: 14px 16px; color: var(--ink-soft); }
   .preview .pv-card h5 { margin: 0 0 8px; font-size: 0.9rem; }
@@ -392,6 +403,15 @@
   .mini-composer { display: flex; gap: 6px; padding-top: 8px; }
   .mini-composer input { flex: 1; border: 1px solid var(--hairline); border-radius: 999px; padding: 7px 12px; font: inherit; font-size: 0.85rem; outline: none; }
   .mini-composer button { width: 30px; height: 30px; border-radius: 50%; border: none; background: var(--ink); color: #f5f4f1; cursor: pointer; flex-shrink: 0; }
+  .mini-composer button:disabled { opacity: 0.45; cursor: default; }
+  .related-live { height: 100%; min-height: 0; display: flex; flex-direction: column; }
+  .related-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 2px 8px; color: var(--text-3); font-size: 0.72rem; }
+  .related-actions button, .related-back { border: 1px solid var(--hairline); background: var(--surface); color: var(--ink-soft); border-radius: var(--r-sm); padding: 5px 8px; cursor: pointer; font: inherit; font-size: 0.75rem; }
+  .related-actions button:hover, .related-back:hover { background: var(--hover); }
+  .related-live .child-msgs { flex: 1; min-height: 0; overflow-y: auto; }
+  .related-live .approval-dock { flex-wrap: wrap; margin: 8px 0 0; }
+  .related-error { color: var(--danger); font-size: 0.75rem; padding: 6px 2px 0; }
+  .related-back { margin-top: 8px; width: 100%; }
 
   /* ------- full pages (review / settings) ------- */
   .page { flex: 1; overflow-y: auto; background: var(--canvas); }

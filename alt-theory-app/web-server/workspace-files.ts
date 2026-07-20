@@ -49,6 +49,11 @@ const MAX_FILE_BYTES: Record<string, number> = {
 };
 
 const CONVERTED_SUFFIX = "_converted_from_binary";
+const WORKING_TREE_SKIP_DIRS = new Set([
+  ".git", "node_modules", ".next", ".cache", ".venv", "__pycache__",
+]);
+const MAX_WORKING_FILES = 1000;
+const MAX_WORKING_TEXT_BYTES = 1024 * 1024;
 
 export interface WorkspaceUsage {
   sessionBytes: number;
@@ -72,6 +77,23 @@ export interface WorkspaceFileEntry {
 export interface WorkspaceFilesResponse {
   files: WorkspaceFileEntry[];
   usage: WorkspaceUsage;
+  workingFolders: WorkingFolderDescriptor[];
+}
+
+export interface WorkingFolderDescriptor {
+  id: string;
+  path: string;
+  role: "primary" | "additional";
+  managed: boolean;
+  available: boolean;
+}
+
+export interface WorkingFileEntry {
+  folderId: string;
+  path: string;
+  size: number;
+  updatedAt: string | null;
+  previewable: boolean;
 }
 
 export interface UploadWorkspaceFileResult {
@@ -353,12 +375,105 @@ export function listWorkspaceFiles(
   const sessionBytes = dirByteSize(workspaceDir);
   return {
     files: entries,
+    workingFolders: describeWorkingFolders(dataDir, sessionId),
     usage: {
       sessionBytes,
       sessionQuotaBytes: SESSION_WORKSPACE_QUOTA_BYTES,
       accountBytes: accountId ? getAccountStorageUsage(dataDir, accountId) : sessionBytes,
       accountQuotaBytes: ACCOUNT_STORAGE_QUOTA_BYTES,
     },
+  };
+}
+
+export function describeWorkingFolders(
+  dataDir: string,
+  sessionId: string
+): WorkingFolderDescriptor[] {
+  const managedDir = workspaceRoot(dataDir, sessionId);
+  const header = readV4SessionHeader(
+    join(resolveSessionRoot(dataDir, sessionId)!, "records")
+  );
+  const workspace = header?.workspace;
+  const folders = workspace
+    ? [workspace.primaryDir, ...workspace.additionalDirs]
+    : [managedDir];
+  return folders.map((path, index) => {
+    const resolved = resolve(path);
+    return {
+      id: index === 0 ? "primary" : `additional-${index}`,
+      path: resolved,
+      role: index === 0 ? "primary" : "additional",
+      managed: resolved === resolve(managedDir),
+      available: statSync(resolved, { throwIfNoEntry: false })?.isDirectory() ?? false,
+    };
+  });
+}
+
+export function listWorkingFolderFiles(
+  dataDir: string,
+  sessionId: string
+): { folders: WorkingFolderDescriptor[]; files: WorkingFileEntry[]; truncated: boolean } {
+  const folders = describeWorkingFolders(dataDir, sessionId);
+  const files: WorkingFileEntry[] = [];
+  let truncated = false;
+  for (const folder of folders) {
+    if (!folder.available || truncated) continue;
+    const visit = (dir: string, prefix: string) => {
+      if (truncated) return;
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        if (entry.name.startsWith(".") || WORKING_TREE_SKIP_DIRS.has(entry.name)) continue;
+        const full = join(dir, entry.name);
+        const rel = (prefix ? `${prefix}/${entry.name}` : entry.name).replace(/\\/g, "/");
+        if (entry.isDirectory()) {
+          visit(full, rel);
+        } else if (entry.isFile()) {
+          const stats = statSync(full);
+          files.push({
+            folderId: folder.id,
+            path: rel,
+            size: stats.size,
+            updatedAt: stats.mtime.toISOString(),
+            previewable: stats.size <= MAX_WORKING_TEXT_BYTES,
+          });
+          if (files.length >= MAX_WORKING_FILES) {
+            truncated = true;
+            return;
+          }
+        }
+      }
+    };
+    visit(folder.path, "");
+  }
+  return { folders, files, truncated };
+}
+
+export function readWorkingFolderTextFile(
+  dataDir: string,
+  sessionId: string,
+  requestedPath: string
+): { root: "working"; path: string; size: number; updatedAt: string; content: string } {
+  const [folderId, ...parts] = requestedPath.replace(/\\/g, "/").split("/");
+  const relPath = parts.join("/");
+  const folder = describeWorkingFolders(dataDir, sessionId).find(
+    (item) => item.id === folderId
+  );
+  if (!folder || !relPath || isAbsolute(relPath)) throw new Error("Invalid working-folder path");
+  const target = resolve(folder.path, relPath);
+  const rel = relative(folder.path, target);
+  if (!rel || rel.startsWith("..") || isAbsolute(rel)) {
+    throw new Error("File path must stay inside the selected working folder");
+  }
+  const stats = statSync(target, { throwIfNoEntry: false });
+  if (!stats?.isFile()) throw new Error("Working-folder file not found");
+  if (stats.size > MAX_WORKING_TEXT_BYTES) throw new Error("File is too large to preview");
+  const buffer = readFileSync(target);
+  if (buffer.includes(0)) throw new Error("Binary files cannot be previewed");
+  return {
+    root: "working",
+    path: `${folderId}/${rel.replace(/\\/g, "/")}`,
+    size: stats.size,
+    updatedAt: stats.mtime.toISOString(),
+    content: buffer.toString("utf-8"),
   };
 }
 
