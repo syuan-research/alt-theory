@@ -207,6 +207,9 @@ and drift warnings are returned in the active manifest/snapshot.
 Local mode exposes a harness-discriminated import boundary without adding a
 second session engine. `GET /api/session-import/harnesses` reports Pi,
 OpenCode, Codex, and Grok Build as ready.
+Here `ready` currently means that an adapter route exists; it must not be read
+as a product-support claim. The endpoint/status language needs correction while
+common source records still trigger whole-session rejection.
 `GET /api/session-import/{harness}/sessions` returns source metadata, and
 `POST /api/session-import/{harness}` accepts all or selected source IDs. Hosted
 mode does not expose these routes.
@@ -224,7 +227,10 @@ separately.
 OpenCode `preflightOnly` parses and accounts for the complete selected session
 before managed storage exists. An unknown or unverified semantic returns a
 structured refusal with record type, count, and reason. Current explicit
-refusals include non-image file parts and tool-result attachments. A successful
+refusals include non-image file parts and tool-result attachments. Those are
+current implementation gaps, not endorsed product boundaries: a later adapter
+must first try direct content mapping, retained source references, or labelled
+placeholders before considering whole-session refusal. A successful
 preflight is repeated at import time, then the prepared JSONL goes through the
 same newly allocated normal Alt Theory `sessions/{id}/history/`, assembly
 manifest, and v0.4 foundation-record path as native Pi. The result is an
@@ -240,6 +246,9 @@ unmapped response items, malformed/non-text content, incomplete tool pairs,
 compaction, rollback/aborted turns, inherited/forked/subagent history, and
 other control semantics refuse before write. Compressed rollouts are not
 discovered in the first supported subset.
+In particular, rejecting Codex compaction makes the current adapter incomplete
+for ordinary long conversations. The intended implementation target is the
+source's current effective history, not reconstruction of every discarded tip.
 
 The Grok Build adapter follows the official two-level session layout and treats
 the selected session's current `chat_history.jsonl` as authoritative because
@@ -252,6 +261,10 @@ refuse before write. It neither starts the Grok runtime nor reconstructs old
 tips/branches. The complete selected Grok session directory is copied to
 `records/source-snapshot` and content-fingerprinted after copy; mismatch removes
 the incomplete managed session atomically.
+The image refusal above records current code, not desired design. Image-bearing
+user/tool-result records are common and must gain a direct Pi mapping or a
+truthful retained reference/placeholder rather than forcing rejection of the
+whole conversation.
 
 `records/session-import-source.json` records the source harness, store, source
 session ID, SHA-256 fingerprint, source version when available, declared
@@ -902,6 +915,10 @@ Limits (current):
 
 ## Change Log
 
+- 2026-07-21: Corrected the meaning of adapter `ready`: the three external
+  engineering routes exist, but product support is incomplete while common
+  Codex compaction and image/attachment records can reject whole sessions.
+  These refusals are implementation gaps, not first-version design decisions.
 - 2026-07-21: Added Grok Build current-history discovery, deterministic
   projection, complete-session refusal boundaries, full managed source
   snapshot, shared UI import, and real continuation/repeat/restart acceptance.

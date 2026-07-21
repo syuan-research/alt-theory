@@ -193,36 +193,30 @@ function validateCompleteSession(messages: StoredRow[], parts: StoredRow[]): voi
       "part type has no verified mapping"
     );
   }
-  const attachments = parts.filter(
+  const malformedAttachments = parts.filter(
     (part) =>
       part.data.type === "tool" &&
-      Array.isArray(part.data.state?.attachments) &&
-      part.data.state.attachments.length > 0
+      part.data.state?.attachments != null &&
+      !Array.isArray(part.data.state.attachments)
   );
-  if (attachments.length) {
+  if (malformedAttachments.length) {
     throw new OpenCodeImportRefusalError(
       "tool_result_attachment",
-      attachments.length,
-      "tool-result attachments are not yet supported"
+      malformedAttachments.length,
+      "tool-result attachments field is malformed"
     );
   }
-  const unsupportedFiles = parts.filter((part) => {
-    if (part.data.type !== "file") return false;
-    if (part.data.mime === "text/plain" || part.data.mime === "application/x-directory") {
-      return false;
-    }
-    return !(
-      String(part.data.mime).startsWith("image/") &&
-      typeof part.data.url === "string" &&
-      part.data.url.startsWith("data:") &&
-      part.data.url.includes(",")
-    );
-  });
-  if (unsupportedFiles.length) {
+  const malformedFiles = parts.filter(
+    (part) =>
+      part.data.type === "file" &&
+      (typeof part.data.mime !== "string" ||
+        (part.data.url != null && typeof part.data.url !== "string"))
+  );
+  if (malformedFiles.length) {
     throw new OpenCodeImportRefusalError(
       "file",
-      unsupportedFiles.length,
-      "only embedded image files are currently supported"
+      malformedFiles.length,
+      "file part mime/url is malformed, so the source intent is indeterminate"
     );
   }
   const malformedTools = parts.filter(
@@ -262,6 +256,32 @@ function describeTransformations(messages: StoredRow[], parts: StoredRow[]): str
   }
   if (parts.some((part) => part.data.type === "tool" && part.data.state?.time?.compacted)) {
     result.push("Compacted tool output uses OpenCode's cleared-output placeholder.");
+  }
+  if (
+    parts.some(
+      (part) =>
+        part.data.type === "tool" &&
+        Array.isArray(part.data.state?.attachments) &&
+        part.data.state.attachments.length > 0
+    )
+  ) {
+    result.push("Tool-result attachments are replayed as Pi image content when they embed an image data URL; other attachments stay as labelled placeholder text with the originals in raw entries.");
+  }
+  if (
+    parts.some(
+      (part) =>
+        part.data.type === "file" &&
+        part.data.mime !== "text/plain" &&
+        part.data.mime !== "application/x-directory" &&
+        !(
+          String(part.data.mime).startsWith("image/") &&
+          typeof part.data.url === "string" &&
+          part.data.url.startsWith("data:") &&
+          part.data.url.includes(",")
+        )
+    )
+  ) {
+    result.push("Non-image attached files are not replayed; they stay as labelled placeholder text with the originals in raw entries.");
   }
   if (messages.some((message) => message.data.system || message.data.tools)) {
     result.push("Historical OpenCode message configuration stays raw-only; the selected Alt Theory mode owns active instructions and tools.");
@@ -361,13 +381,24 @@ function projectToPi(session: Row, messages: StoredRow[], parts: StoredRow[]): s
           ? "[Old tool result content cleared]"
           : state.output
         : state.metadata?.output ?? state.error ?? "[Tool execution was interrupted]";
+      const content: Row[] = [{ type: "text", text: text(output) }];
+      const attachments: Row[] = Array.isArray(state.attachments) ? state.attachments : [];
+      for (const attachment of attachments) {
+        const image = parseDataImage(attachment?.mime, attachment?.url);
+        content.push(
+          image ?? {
+            type: "text",
+            text: `[Attachment not replayed: ${typeof attachment?.filename === "string" ? attachment.filename : "unnamed"} (${String(attachment?.mime ?? "unknown mime")}); retained in raw source records]`,
+          }
+        );
+      }
       append({
         type: "message",
         message: {
           role: "toolResult",
           toolCallId: String(part.data.callID),
           toolName: String(part.data.tool),
-          content: [{ type: "text", text: text(output) }],
+          content,
           details: part.data,
           isError: !completed,
           timestamp: Number(part.time_created),
@@ -454,21 +485,40 @@ function userContent(parts: StoredRow[]): Row[] {
     if (part.data.type === "subtask") {
       return [{ type: "text", text: "The following tool was executed by the user" }];
     }
-    if (
-      part.data.type === "file" &&
-      String(part.data.mime).startsWith("image/") &&
-      typeof part.data.url === "string"
-    ) {
+    if (part.data.type === "file") {
+      const image = parseDataImage(part.data.mime, part.data.url);
+      if (image) return [image];
+      if (part.data.mime === "text/plain" || part.data.mime === "application/x-directory") {
+        return [];
+      }
       return [
         {
-          type: "image",
-          mimeType: String(part.data.mime),
-          data: part.data.url.slice(part.data.url.indexOf(",") + 1),
+          type: "text",
+          text: `[Attached file not replayed: ${typeof part.data.filename === "string" ? part.data.filename : "unnamed"} (${String(part.data.mime)}); retained in raw source records]`,
         },
       ];
     }
     return [];
   });
+}
+
+// Embedded image/* data: URLs become Pi image content; anything else returns
+// null so the caller can keep a labelled placeholder instead of refusing.
+function parseDataImage(mime: unknown, url: unknown): Row | null {
+  if (
+    typeof mime !== "string" ||
+    !mime.startsWith("image/") ||
+    typeof url !== "string" ||
+    !url.startsWith("data:") ||
+    !url.includes(",")
+  ) {
+    return null;
+  }
+  return {
+    type: "image",
+    mimeType: mime,
+    data: url.slice(url.indexOf(",") + 1),
+  };
 }
 
 function emptyUsage() {

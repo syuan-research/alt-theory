@@ -4,6 +4,23 @@ Keep this file short. It is the map, not the encyclopedia.
 
 Use it to find the right project docs, active skill bundle, recovery files, and safety rules. Deeper detail belongs in the linked files under `project/` and `agent-assets/`.
 
+For product direction, roadmap, release, public-repository, user-documentation,
+or research-to-product work, follow the private workspace routing in the
+unpublished `llm-theo` root `AGENTS.md`.
+
+## Paused Development Checkpoint (2026-07-21)
+
+- Kimi's cross-harness session-import work is checkpointed by the commit that
+  contains this notice.
+- Backend tests (108/108) and the frontend v6 build passed at that checkpoint.
+- Browser automation and visual UAT are still incomplete; do not describe this
+  work as release-ready until they are finished.
+- Resume from this checkpoint; do not recreate or discard
+  the checkpointed implementation.
+- Private plan records, handoffs, and workstream process records belong in the
+  private process source of truth routed by the unpublished workspace root.
+  Do not maintain duplicate copies in this public repo.
+
 ## Project Purpose
 
 This worktree is the clean `v0.3` reorganization lane for Alt Theory. Alt Theory is an academic research project on the use of 2026 advanced agentic AI tool for social science education, with both swe and empirical research. 
@@ -341,6 +358,3 @@ Treat tracked files in this dev tree as future public-branch material.
   `project/foundation/gitignore-policy.md`, and
   `project/foundation/private-evidence-policy.md` for the current machine, Git,
   and private evidence policy details.
-
-
-

@@ -15,7 +15,6 @@ import {
   registerOpenCodeImport,
   registerPiImport,
 } from "./session-import.js";
-import { OpenCodeImportRefusalError } from "./opencode-session-import.js";
 import { CodexImportRefusalError } from "./codex-session-import.js";
 import { GrokImportRefusalError } from "./grok-session-import.js";
 import { listSessionSummaries, readSessionDetail } from "./session-store.js";
@@ -512,8 +511,8 @@ test("OpenCode preflight registers complete supported history and refuses unsupp
   assert.equal(unchanged?.repeat, "unchanged");
 
   db.prepare("INSERT INTO session VALUES (?, ?, ?, ?, ?, ?)").run(
-    "ses_unsupported",
-    "Unsupported OpenCode conversation",
+    "ses_placeholder",
+    "OpenCode conversation with unreplayed file",
     workspace,
     now + 10,
     now + 10,
@@ -521,7 +520,7 @@ test("OpenCode preflight registers complete supported history and refuses unsupp
   );
   db.prepare("INSERT INTO message VALUES (?, ?, ?, ?, ?)").run(
     "msg_file",
-    "ses_unsupported",
+    "ses_placeholder",
     now + 10,
     now + 10,
     JSON.stringify({ role: "user", agent: "build", model: { providerID: "x", modelID: "y" } })
@@ -529,10 +528,10 @@ test("OpenCode preflight registers complete supported history and refuses unsupp
   insertPart.run(
     "prt_file",
     "msg_file",
-    "ses_unsupported",
+    "ses_placeholder",
     now + 10,
     now + 10,
-    JSON.stringify({ type: "file", mime: "application/pdf", url: "data:application/pdf;base64,AA==" })
+    JSON.stringify({ type: "file", mime: "application/pdf", filename: "scan.pdf", url: "data:application/pdf;base64,AA==" })
   );
   db.close();
 
@@ -541,8 +540,331 @@ test("OpenCode preflight registers complete supported history and refuses unsupp
     dataDir,
     openCodeDbPath: dbPath,
   });
-  const unsupported = sources.find((item) => item.sourceSessionId === "ses_unsupported");
-  assert.ok(unsupported);
-  assert.throws(() => preflightOpenCodeImport(unsupported), OpenCodeImportRefusalError);
+  const placeholder = sources.find((item) => item.sourceSessionId === "ses_placeholder");
+  assert.ok(placeholder);
+  const placeholderPreflight = preflightOpenCodeImport(placeholder);
+  assert.match(placeholderPreflight.piSessionJsonl, /Attached file not replayed: scan\.pdf \(application\/pdf\)/);
+  assert.ok(
+    placeholderPreflight.transformations.some((item) => item.includes("Non-image attached files"))
+  );
   assert.equal(listSessionSummaries(dataDir).sessions.length, 1);
+});
+
+test("Codex preflight reconstructs effective history after compaction and replays embedded images", async () => {
+  const root = mkdtempSync(join(tmpdir(), "alt-theory-codex-compaction-"));
+  const dataDir = join(root, "alt-data");
+  const sessionsDir = join(root, "codex-sessions", "2026", "07", "21");
+  const workspace = join(root, "workspace");
+  mkdirSync(sessionsDir, { recursive: true });
+  mkdirSync(workspace, { recursive: true });
+  const timestamp = "2026-07-21T00:00:00.000Z";
+  const line = (type: string, payload: Record<string, unknown>, offset = 0) => ({
+    timestamp: new Date(Date.parse(timestamp) + offset).toISOString(),
+    type,
+    payload,
+  });
+  const meta = {
+    id: "codex-compacted",
+    session_id: "codex-compacted",
+    timestamp,
+    cwd: workspace,
+    originator: "Codex Desktop",
+    cli_version: "test",
+    source: "vscode",
+    base_instructions: { text: "base" },
+  };
+  const compacted = [
+    line("session_meta", meta),
+    line("response_item", {
+      type: "message",
+      role: "user",
+      content: [{ type: "input_text", text: "PRE_COMPACTION_MARKER" }],
+    }, 1),
+    line("response_item", {
+      type: "custom_tool_call_output",
+      call_id: "orphan-before-compaction",
+      output: "orphan output dropped by compaction",
+    }, 2),
+    line("compacted", {
+      message: "",
+      replacement_history: [
+        {
+          type: "message",
+          role: "user",
+          content: [{ type: "input_text", text: "REPLACEMENT_USER_MARKER" }],
+        },
+        {
+          type: "message",
+          role: "assistant",
+          content: [{ type: "output_text", text: "REPLACEMENT_ASSISTANT_MARKER" }],
+        },
+        { type: "compaction", encrypted_content: "opaque" },
+      ],
+    }, 3),
+    line("response_item", {
+      type: "message",
+      role: "user",
+      content: [
+        { type: "input_text", text: "POST_COMPACTION_MARKER" },
+        { type: "input_image", image_url: "data:image/png;base64,QQ==" },
+      ],
+    }, 4),
+    line("response_item", {
+      type: "message",
+      role: "user",
+      content: [{ type: "input_text", text: "Has a local image ref" }],
+      local_images: [{ path: "D:/fixture/local.png" }],
+    }, 5),
+  ];
+  const compactedPath = join(sessionsDir, "rollout-codex-compacted.jsonl");
+  writeFileSync(compactedPath, `${compacted.map(JSON.stringify).join("\n")}\n`);
+
+  const [source] = await discoverImportSessions({
+    harness: "codex",
+    dataDir,
+    codexSessionsDir: join(root, "codex-sessions"),
+  });
+  assert.ok(source);
+  const preflight = preflightCodexImport(source);
+  const entries = preflight.piSessionJsonl.trim().split(/\r?\n/).map((value) => JSON.parse(value));
+  const projected = entries.filter((entry) => entry.type === "message");
+  const projectedText = JSON.stringify(projected);
+  assert.match(projectedText, /REPLACEMENT_USER_MARKER/);
+  assert.match(projectedText, /REPLACEMENT_ASSISTANT_MARKER/);
+  assert.match(projectedText, /POST_COMPACTION_MARKER/);
+  assert.ok(!projectedText.includes("PRE_COMPACTION_MARKER"));
+  assert.ok(!projectedText.includes("orphan output dropped by compaction"));
+  const imageMessage = projected.find((entry) =>
+    entry.message?.content?.some((part: any) => part.type === "image")
+  );
+  assert.ok(imageMessage);
+  assert.deepEqual(
+    imageMessage.message.content.find((part: any) => part.type === "image"),
+    { type: "image", data: "QQ==", mimeType: "image/png" }
+  );
+  assert.match(projectedText, /Local image attached in the source session at D:\/fixture\/local\.png/);
+  assert.ok(preflight.transformations.some((item) => item.includes("Source compaction detected")));
+  assert.ok(preflight.transformations.some((item) => item.includes("Embedded source images")));
+  assert.ok(preflight.transformations.some((item) => item.includes("labelled placeholder")));
+  assert.equal(
+    entries.filter((entry) => entry.customType === "source-codex-record").length,
+    compacted.length
+  );
+
+  const malformed = [
+    line("session_meta", { ...meta, id: "codex-malformed-compacted", session_id: "codex-malformed-compacted" }),
+    line("compacted", { message: "", replacement_history: "not-an-array" }, 1),
+  ];
+  writeFileSync(
+    join(sessionsDir, "rollout-codex-malformed-compacted.jsonl"),
+    `${malformed.map(JSON.stringify).join("\n")}\n`
+  );
+  const sources = await discoverImportSessions({
+    harness: "codex",
+    dataDir,
+    codexSessionsDir: join(root, "codex-sessions"),
+  });
+  const refused = sources.find((item) => item.sourceSessionId === "codex-malformed-compacted");
+  assert.ok(refused);
+  assert.throws(
+    () => preflightCodexImport(refused),
+    (error: unknown) =>
+      error instanceof CodexImportRefusalError && error.recordType === "compacted"
+  );
+  assert.equal(listSessionSummaries(dataDir).sessions.length, 0);
+});
+
+test("Grok preflight replays user images and keeps tool-result images as placeholders", async () => {
+  const root = mkdtempSync(join(tmpdir(), "alt-theory-grok-images-"));
+  const dataDir = join(root, "alt-data");
+  const sessionsDir = join(root, "grok-sessions");
+  const workspace = join(root, "workspace");
+  const sourceDir = join(sessionsDir, "encoded-cwd", "grok-images");
+  mkdirSync(sourceDir, { recursive: true });
+  mkdirSync(workspace, { recursive: true });
+  const summary = {
+    info: { id: "grok-images", cwd: workspace },
+    session_summary: "fixture",
+    created_at: "2026-07-21T00:00:00.000Z",
+    updated_at: "2026-07-21T00:01:00.000Z",
+    last_active_at: "2026-07-21T00:01:00.000Z",
+    num_messages: 4,
+    num_chat_messages: 4,
+    current_model_id: "source-grok",
+    chat_format_version: 1,
+  };
+  const history = [
+    { type: "system", content: "system" },
+    {
+      type: "user",
+      content: [
+        { type: "text", text: "Look at this screenshot." },
+        { type: "image", url: "data:image/png;base64,QQ==" },
+      ],
+      prompt_index: 0,
+    },
+    {
+      type: "backend_tool_call",
+      kind: {
+        tool_type: "web_search",
+        id: "bt-1",
+        status: "completed",
+        action: {
+          type: "search",
+          query: "BACKEND_QUERY_MARKER",
+          sources: [{ type: "url", url: "https://example.invalid/a" }],
+        },
+      },
+    },
+    {
+      type: "assistant",
+      content: "Reading it now.",
+      tool_calls: [{ id: "call-shot", name: "screenshot", arguments: "{}" }],
+      model_id: "source-grok",
+    },
+    {
+      type: "tool_result",
+      tool_call_id: "call-shot",
+      content: "captured",
+      images: [{ url: "https://example.invalid/shot.png" }],
+    },
+  ];
+  writeFileSync(join(sourceDir, "summary.json"), JSON.stringify(summary));
+  writeFileSync(join(sourceDir, "chat_history.jsonl"), `${history.map(JSON.stringify).join("\n")}\n`);
+
+  const [source] = await discoverImportSessions({
+    harness: "grok-build",
+    dataDir,
+    grokSessionsDir: sessionsDir,
+  });
+  assert.ok(source);
+  const preflight = preflightGrokImport(source);
+  const entries = preflight.piSessionJsonl.trim().split(/\r?\n/).map((value) => JSON.parse(value));
+  const userMessage = entries.find((entry) => entry.message?.role === "user");
+  assert.deepEqual(
+    userMessage.message.content.find((part: any) => part.type === "image"),
+    { type: "image", data: "QQ==", mimeType: "image/png" }
+  );
+  const toolResult = entries.find((entry) => entry.message?.role === "toolResult");
+  assert.ok(toolResult);
+  assert.match(
+    JSON.stringify(toolResult.message.content),
+    /1 image\(s\) attached to this tool result in the source session; image content is not replayed/
+  );
+  const backendPlaceholder = entries.find(
+    (entry) =>
+      entry.message?.role === "assistant" &&
+      JSON.stringify(entry.message.content).includes("provider-side web_search executed by Grok")
+  );
+  assert.ok(backendPlaceholder);
+  assert.match(
+    JSON.stringify(backendPlaceholder.message.content),
+    /Imported provenance, not original conversation content.*query=\\"BACKEND_QUERY_MARKER\\"; sources=1; results are not replayed/
+  );
+  const backendIndex = entries.indexOf(backendPlaceholder);
+  const userIndex = entries.indexOf(userMessage);
+  assert.ok(backendIndex > userIndex);
+  assert.ok(preflight.transformations.some((item) => item.includes("labelled imported-provenance placeholder text")));
+  assert.ok(preflight.transformations.some((item) => item.includes("tool_result image schema is unverified")));
+  assert.ok(preflight.transformations.some((item) => item.includes("User-attached images")));
+  assert.equal(listSessionSummaries(dataDir).sessions.length, 0);
+});
+
+test("OpenCode preflight replays tool-result image attachments", async () => {
+  const root = mkdtempSync(join(tmpdir(), "alt-theory-opencode-attachments-"));
+  const dataDir = join(root, "alt-data");
+  const workspace = join(root, "workspace");
+  const dbPath = join(root, "opencode.db");
+  mkdirSync(workspace, { recursive: true });
+  const db = new DatabaseSync(dbPath);
+  db.exec(`
+    CREATE TABLE session (
+      id TEXT PRIMARY KEY, title TEXT, directory TEXT,
+      time_created INTEGER, time_updated INTEGER, model TEXT
+    );
+    CREATE TABLE message (
+      id TEXT PRIMARY KEY, session_id TEXT, time_created INTEGER,
+      time_updated INTEGER, data TEXT
+    );
+    CREATE TABLE part (
+      id TEXT PRIMARY KEY, message_id TEXT, session_id TEXT,
+      time_created INTEGER, time_updated INTEGER, data TEXT
+    );
+  `);
+  const now = Date.now();
+  db.prepare("INSERT INTO session VALUES (?, ?, ?, ?, ?, ?)").run(
+    "ses_attachments",
+    "OpenCode conversation with tool attachment",
+    workspace,
+    now,
+    now,
+    "source-model"
+  );
+  db.prepare("INSERT INTO message VALUES (?, ?, ?, ?, ?)").run(
+    "msg_user",
+    "ses_attachments",
+    now,
+    now,
+    JSON.stringify({ role: "user", agent: "build", model: { providerID: "x", modelID: "y" } })
+  );
+  db.prepare("INSERT INTO message VALUES (?, ?, ?, ?, ?)").run(
+    "msg_assistant",
+    "ses_attachments",
+    now + 1,
+    now + 1,
+    JSON.stringify({ role: "assistant", parentID: "msg_user", providerID: "x", modelID: "y", finish: "tool-calls" })
+  );
+  const insertPart = db.prepare("INSERT INTO part VALUES (?, ?, ?, ?, ?, ?)");
+  insertPart.run(
+    "prt_user",
+    "msg_user",
+    "ses_attachments",
+    now,
+    now,
+    JSON.stringify({ type: "text", text: "Run the capture." })
+  );
+  insertPart.run(
+    "prt_tool",
+    "msg_assistant",
+    "ses_attachments",
+    now + 1,
+    now + 1,
+    JSON.stringify({
+      type: "tool",
+      callID: "call_capture",
+      tool: "capture",
+      state: {
+        status: "completed",
+        input: {},
+        output: "captured",
+        attachments: [
+          { type: "file", mime: "image/png", url: "data:image/png;base64,QQ==" },
+          { type: "file", mime: "application/pdf", url: "data:application/pdf;base64,AA==" },
+        ],
+        time: { start: now, end: now + 1 },
+      },
+    })
+  );
+  db.close();
+
+  const [source] = await discoverImportSessions({
+    harness: "opencode",
+    dataDir,
+    openCodeDbPath: dbPath,
+  });
+  assert.ok(source);
+  const preflight = preflightOpenCodeImport(source);
+  const entries = preflight.piSessionJsonl.trim().split(/\r?\n/).map((value) => JSON.parse(value));
+  const toolResult = entries.find((entry) => entry.message?.role === "toolResult");
+  assert.ok(toolResult);
+  assert.deepEqual(
+    toolResult.message.content.find((part: any) => part.type === "image"),
+    { type: "image", mimeType: "image/png", data: "QQ==" }
+  );
+  assert.match(
+    JSON.stringify(toolResult.message.content),
+    /Attachment not replayed: unnamed \(application\/pdf\)/
+  );
+  assert.ok(preflight.transformations.some((item) => item.includes("Tool-result attachments")));
+  assert.equal(listSessionSummaries(dataDir).sessions.length, 0);
 });

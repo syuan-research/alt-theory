@@ -164,7 +164,7 @@ function parseJsonl(source: string, strict = false): Row[] {
 }
 
 function validateCompleteRollout(records: Row[], meta: Row): void {
-  const allowedTop = new Set(["session_meta", "response_item", "event_msg", "turn_context", "world_state"]);
+  const allowedTop = new Set(["session_meta", "response_item", "event_msg", "turn_context", "world_state", "compacted"]);
   const unsupportedTop = records.filter((record) => !allowedTop.has(String(record.type)));
   if (unsupportedTop.length) {
     throw new CodexImportRefusalError(
@@ -172,6 +172,20 @@ function validateCompleteRollout(records: Row[], meta: Row): void {
       unsupportedTop.length,
       "rollout item requires current-history reconstruction that is not yet supported"
     );
+  }
+  for (const record of records.filter((candidate) => candidate.type === "compacted")) {
+    const payload = record.payload;
+    if (
+      !payload || typeof payload !== "object" || Array.isArray(payload) ||
+      (payload.replacement_history != null && !Array.isArray(payload.replacement_history)) ||
+      (payload.message != null && typeof payload.message !== "string")
+    ) {
+      throw new CodexImportRefusalError(
+        "compacted",
+        1,
+        "compacted record payload is malformed, so the current effective history is indeterminate"
+      );
+    }
   }
   if (
     meta.history_base || meta.forked_from_id || meta.parent_thread_id ||
@@ -190,22 +204,25 @@ function validateCompleteRollout(records: Row[], meta: Row): void {
       "persisted base instructions are required for a faithful supported import"
     );
   }
+  const lastCompactedIndex = records.findLastIndex((record) => record.type === "compacted");
   const controlEvents = records.filter(
-    (record) => record.type === "event_msg" &&
+    (record, index) =>
+      index > lastCompactedIndex &&
+      record.type === "event_msg" &&
       ["thread_rolled_back", "turn_aborted", "sub_agent_activity"].includes(String(record.payload?.type))
   );
   if (controlEvents.length) {
     throw new CodexImportRefusalError(
       String(controlEvents[0]?.payload?.type ?? "control_event"),
       controlEvents.length,
-      "rollback, aborted-turn, and subagent control semantics are not imported"
+      "rollback, aborted-turn, and subagent control semantics after the last compaction boundary are not imported"
     );
   }
   const calls = new Map<string, { name: string; outputs: number }>();
-  for (const record of records.filter((candidate) => candidate.type === "response_item")) {
+  for (const record of effectiveHistoryRecords(records)) {
     const item = record.payload;
     const type = String(item?.type ?? "missing_response_item_type");
-    if (type === "reasoning") continue;
+    if (type === "reasoning" || type === "compaction") continue;
     if (type === "message") {
       validateMessage(item);
       continue;
@@ -234,7 +251,7 @@ function validateCompleteRollout(records: Row[], meta: Row): void {
       if (call.outputs > 1) {
         throw new CodexImportRefusalError(type, 1, "tool call has multiple source outputs");
       }
-      outputText(item.output, type);
+      outputContent(item.output, type);
       continue;
     }
     throw new CodexImportRefusalError(type, 1, "response item has no verified Pi mapping");
@@ -245,6 +262,30 @@ function validateCompleteRollout(records: Row[], meta: Row): void {
   }
 }
 
+// Effective current history: the last compacted record's replacement_history
+// payloads plus every top-level response_item after that record. Without any
+// compacted record this is simply all response_item records in file order.
+function effectiveHistoryRecords(records: Row[]): Row[] {
+  const lastCompactedIndex = records.findLastIndex((record) => record.type === "compacted");
+  if (lastCompactedIndex < 0) {
+    return records.filter((record) => record.type === "response_item");
+  }
+  const compacted = records[lastCompactedIndex]!;
+  const replacement = compacted.payload?.replacement_history;
+  if (!Array.isArray(replacement)) {
+    throw new CodexImportRefusalError(
+      "compacted",
+      1,
+      "compacted record carries no replacement history, so the current effective history is indeterminate"
+    );
+  }
+  const timestamp = compacted.timestamp;
+  return [
+    ...replacement.map((payload) => ({ timestamp, type: "response_item", payload })),
+    ...records.slice(lastCompactedIndex + 1).filter((record) => record.type === "response_item"),
+  ];
+}
+
 function validateMessage(item: Row): void {
   if (!["system", "developer", "user", "assistant"].includes(String(item.role))) {
     throw new CodexImportRefusalError("message_role", 1, "message role has no verified mapping");
@@ -252,17 +293,72 @@ function validateMessage(item: Row): void {
   if (!Array.isArray(item.content) || item.content.length === 0) {
     throw new CodexImportRefusalError("message_content", 1, "message content is empty or malformed");
   }
-  const expected = item.role === "assistant" ? "output_text" : "input_text";
-  const unsupported = item.content.filter(
-    (part: Row) => part?.type !== expected || typeof part.text !== "string"
+  if (item.local_images != null && !Array.isArray(item.local_images)) {
+    throw new CodexImportRefusalError("local_images", 1, "message local_images is malformed");
+  }
+  const malformed = item.content.filter(
+    (part: Row) => !part || typeof part !== "object" || typeof part.type !== "string"
   );
-  if (unsupported.length) {
+  if (malformed.length) {
     throw new CodexImportRefusalError(
-      String(unsupported[0]?.type ?? "message_content"),
-      unsupported.length,
-      "only source-role text content is currently portable"
+      "message_content",
+      malformed.length,
+      "message content part is malformed, so the source intent is indeterminate"
     );
   }
+}
+
+// Build Pi content parts for a source message. Text parts map directly;
+// input_image parts with data: URLs become Pi image content; anything else
+// stays visible as a labelled placeholder text instead of refusing the session.
+function messageContent(item: Row): Row[] {
+  const parts: Row[] = [];
+  for (const part of item.content as Row[]) {
+    const type = String(part.type);
+    if ((type === "input_text" || type === "output_text") && typeof part.text === "string") {
+      parts.push({ type: "text", text: part.text });
+      continue;
+    }
+    if (type === "input_image") {
+      const image = parseDataImage(part.image_url);
+      parts.push(
+        image ?? {
+          type: "text",
+          text: "[Image attached in the source session is not replayed because it is not an embedded data URL; retained in raw source records]",
+        }
+      );
+      continue;
+    }
+    parts.push({
+      type: "text",
+      text: `[Unsupported content part "${type}" from the source session is not replayed; retained in raw source records]`,
+    });
+  }
+  const localImages = Array.isArray(item.local_images) ? item.local_images : [];
+  for (const entry of localImages) {
+    const path = typeof entry?.path === "string" ? entry.path : "unknown path";
+    parts.push({
+      type: "text",
+      text: `[Local image attached in the source session at ${path}; image content is not replayed, retained in raw source records]`,
+    });
+  }
+  return parts;
+}
+
+function parseDataImage(url: unknown): Row | null {
+  if (typeof url !== "string" || !url.startsWith("data:")) return null;
+  const comma = url.indexOf(",");
+  if (comma < 0) return null;
+  const mimeType = url.slice("data:".length, comma).split(";")[0] || "application/octet-stream";
+  return { type: "image", data: url.slice(comma + 1), mimeType };
+}
+
+function flattenText(parts: Row[]): string {
+  return parts
+    .filter((part) => part.type === "text")
+    .map((part) => String(part.text ?? ""))
+    .filter(Boolean)
+    .join("\n");
 }
 
 function projectToPi(records: Row[], meta: Row): string {
@@ -299,24 +395,23 @@ function projectToPi(records: Row[], meta: Row): string {
     [...records].reverse().find((record) => record.type === "turn_context")?.payload?.model ??
       "source-unknown"
   );
-  for (const record of records) {
-    if (record.type !== "response_item") continue;
+  for (const record of effectiveHistoryRecords(records)) {
     const item = record.payload;
     if (item.type === "message") {
-      const content = messageText(item.content);
+      const parts = messageContent(item);
       if (item.role === "system" || item.role === "developer") {
         append({
           type: "custom_message",
           customType: `source-codex-${item.role}`,
-          content: `[Imported Codex context; source role=${item.role}]\n${content}`,
+          content: `[Imported Codex context; source role=${item.role}]\n${flattenText(parts)}`,
           display: false,
           details: { sourceRole: item.role },
           timestamp: record.timestamp,
         });
       } else if (item.role === "user") {
-        append({ type: "message", message: { role: "user", content: [{ type: "text", text: content }], timestamp: Date.parse(record.timestamp) }, timestamp: record.timestamp });
+        append({ type: "message", message: { role: "user", content: parts, timestamp: Date.parse(record.timestamp) }, timestamp: record.timestamp });
       } else {
-        append({ type: "message", message: assistantMessage([{ type: "text", text: content }], model, "stop", record.timestamp), timestamp: record.timestamp });
+        append({ type: "message", message: assistantMessage([{ type: "text", text: flattenText(parts) }], model, "stop", record.timestamp), timestamp: record.timestamp });
       }
       continue;
     }
@@ -340,7 +435,7 @@ function projectToPi(records: Row[], meta: Row): string {
           role: "toolResult",
           toolCallId: String(item.call_id),
           toolName: callNames.get(String(item.call_id)),
-          content: [{ type: "text", text: outputText(item.output, item.type) }],
+          content: outputContent(item.output, item.type),
           details: item,
           isError: false,
           timestamp: Date.parse(record.timestamp),
@@ -361,6 +456,44 @@ function describeTransformations(records: Row[]): string[] {
     "Codex system/developer text stays labelled and model-visible, but Pi presents it at user-role priority.",
     "Codex runtime records remain raw-only; the selected Alt Theory mode owns active permissions, model, and tools.",
   ];
+  const compactedCount = records.filter((record) => record.type === "compacted").length;
+  if (compactedCount) {
+    result.push(
+      `Source compaction detected: current effective history reconstructed from the last compacted record's replacement history plus subsequent records; pre-compaction records remain in raw entries.` +
+        (compactedCount > 1
+          ? ` ${compactedCount} compacted records exist; only the last one defines the boundary.`
+          : "")
+    );
+  }
+  const effective = compactedCount ? effectiveHistoryRecords(records) : [];
+  const effectiveItems = effective.map((record) => record.payload);
+  if (
+    effectiveItems.some(
+      (item) =>
+        (item?.type === "message" &&
+          (item.content ?? []).some((part: Row) => part?.type === "input_image")) ||
+        ((item?.type === "function_call_output" || item?.type === "custom_tool_call_output") &&
+          Array.isArray(item.output) &&
+          item.output.some((part: Row) => part?.type === "input_image"))
+    )
+  ) {
+    result.push("Embedded source images are replayed as Pi image content wherever the source carried a data URL.");
+  }
+  if (
+    effectiveItems.some(
+      (item) =>
+        item?.type === "message" &&
+        ((item.content ?? []).some(
+          (part: Row) =>
+            part &&
+            !["input_text", "output_text"].includes(String(part.type)) &&
+            !(part.type === "input_image" && parseDataImage(part.image_url))
+        ) ||
+          (Array.isArray(item.local_images) && item.local_images.length > 0))
+    )
+  ) {
+    result.push("Some source content could not be replayed exactly and is kept as labelled placeholder text; the originals remain in raw entries.");
+  }
   const meta = records.find((record) => record.type === "session_meta")?.payload;
   if (Array.isArray(meta?.dynamic_tools) && meta.dynamic_tools.length) {
     result.push("Codex dynamic tool definitions remain in the raw session metadata but are not registered as active Alt Theory tools.");
@@ -381,18 +514,33 @@ function messageText(content: Row[]): string {
     .join("\n");
 }
 
-function outputText(output: unknown, recordType: string): string {
-  if (typeof output === "string") return output;
+function outputContent(output: unknown, recordType: string): Row[] {
+  if (typeof output === "string") return [{ type: "text", text: output }];
   if (!Array.isArray(output)) {
-    throw new CodexImportRefusalError(recordType, 1, "tool output is neither text nor text content items");
+    throw new CodexImportRefusalError(recordType, 1, "tool output is neither text nor content items");
   }
-  const unsupported = output.filter(
-    (part) => !part || !["input_text", "output_text"].includes(String(part.type)) || typeof part.text !== "string"
+  const malformed = output.filter(
+    (part) => !part || typeof part !== "object" || typeof part.type !== "string"
   );
-  if (unsupported.length) {
-    throw new CodexImportRefusalError(recordType, unsupported.length, "tool output contains non-text content");
+  if (malformed.length) {
+    throw new CodexImportRefusalError(recordType, malformed.length, "tool output content part is malformed");
   }
-  return output.map((part) => part.text).join("\n");
+  return (output as Row[]).map((part) => {
+    const type = String(part.type);
+    if ((type === "input_text" || type === "output_text") && typeof part.text === "string") {
+      return { type: "text", text: part.text };
+    }
+    if (type === "input_image") {
+      return parseDataImage(part.image_url) ?? {
+        type: "text",
+        text: "[Image attached to this tool output in the source session is not replayed; retained in raw source records]",
+      };
+    }
+    return {
+      type: "text",
+      text: `[Unsupported tool output part "${type}" from the source session is not replayed; retained in raw source records]`,
+    };
+  });
 }
 
 function parseArguments(value: unknown, recordType: string): Row {

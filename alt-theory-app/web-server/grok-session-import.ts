@@ -228,7 +228,7 @@ function validateHistory(history: Row[]): void {
       "current Grok history must begin with its persisted system item"
     );
   }
-  const allowed = new Set(["system", "user", "assistant", "tool_result", "reasoning"]);
+  const allowed = new Set(["system", "user", "assistant", "tool_result", "reasoning", "backend_tool_call"]);
   const unsupported = history.filter((item) => !allowed.has(String(item.type)));
   if (unsupported.length) {
     throw new GrokImportRefusalError(
@@ -284,12 +284,8 @@ function validateHistory(history: Row[]): void {
     if (typeof item.content !== "string") {
       throw new GrokImportRefusalError("tool_result", 1, "tool result content is not text");
     }
-    if (item.images?.length) {
-      throw new GrokImportRefusalError(
-        "tool_result_image",
-        item.images.length,
-        "tool-result image replay has not been verified"
-      );
+    if (item.images != null && !Array.isArray(item.images)) {
+      throw new GrokImportRefusalError("tool_result_image", 1, "tool result images field is malformed");
     }
     call.results += 1;
     if (call.results > 1) {
@@ -309,16 +305,52 @@ function validateContent(content: unknown, recordType: string): void {
   const unsupported = content.filter(
     (part) =>
       !part ||
-      part.type !== "text" ||
-      typeof part.text !== "string"
+      (part.type === "text"
+        ? typeof part.text !== "string"
+        : part.type === "image"
+          ? typeof part.url !== "string"
+          : true)
   );
   if (unsupported.length) {
     throw new GrokImportRefusalError(
       String(unsupported[0]?.type ?? "content"),
       unsupported.length,
-      "only source text content has a verified Pi mapping"
+      "only source text and image content has a verified Pi mapping"
     );
   }
+}
+
+function userContentParts(content: Row[]): Row[] {
+  return content.map((part) => {
+    if (part.type === "image") {
+      const image = parseDataImage(part.url);
+      return image ?? {
+        type: "text",
+        text: "[Image attached in the source session is not replayed because it is not an embedded data URL; retained in the raw source snapshot]",
+      };
+    }
+    return { type: "text", text: String(part.text) };
+  });
+}
+
+function parseDataImage(url: unknown): Row | null {
+  if (typeof url !== "string" || !url.startsWith("data:")) return null;
+  const comma = url.indexOf(",");
+  if (comma < 0) return null;
+  const mimeType = url.slice("data:".length, comma).split(";")[0] || "application/octet-stream";
+  return { type: "image", data: url.slice(comma + 1), mimeType };
+}
+
+// Clearly-labelled imported-provenance placeholder for provider-side backend
+// tool calls. Only fields the source record actually carries are used; search
+// results are never fabricated.
+function backendToolCallPlaceholder(item: Row): string {
+  const kind = item.kind && typeof item.kind === "object" ? item.kind : {};
+  const toolType = typeof kind.tool_type === "string" ? kind.tool_type : "unknown tool";
+  const action = kind.action && typeof kind.action === "object" ? kind.action : {};
+  const query = typeof action.query === "string" ? `; query="${action.query}"` : "";
+  const sources = Array.isArray(action.sources) ? `; sources=${action.sources.length}` : "";
+  return `[Imported provenance, not original conversation content: provider-side ${toolType} executed by Grok${query}${sources}; results are not replayed, retained in the raw source snapshot]`;
 }
 
 function validateReasoning(item: Row): void {
@@ -382,6 +414,21 @@ function projectToPi(history: Row[], summary: Row): string {
       if (value) pendingReasoning.push(value);
       continue;
     }
+    if (item.type === "backend_tool_call") {
+      // Provider-side activity (e.g. web_search): surface it as a labelled
+      // assistant-side placeholder at its history position, but do not consume
+      // pending reasoning — that belongs to the assistant answer that follows.
+      append({
+        type: "message",
+        message: assistantMessage(
+          [{ type: "text", text: backendToolCallPlaceholder(item) }],
+          String(summary.current_model_id ?? "source-unknown"),
+          "stop",
+          started + sequence
+        ),
+      });
+      continue;
+    }
     if (item.type === "user") {
       if (pendingReasoning.length) {
         throw new GrokImportRefusalError("reasoning", pendingReasoning.length, "reasoning is not followed by an assistant item");
@@ -390,7 +437,7 @@ function projectToPi(history: Row[], summary: Row): string {
         type: "message",
         message: {
           role: "user",
-          content: item.content.map((part: Row) => ({ type: "text", text: part.text })),
+          content: userContentParts(item.content),
           timestamp: started + sequence,
         },
       });
@@ -429,13 +476,26 @@ function projectToPi(history: Row[], summary: Row): string {
       if (pendingReasoning.length) {
         throw new GrokImportRefusalError("reasoning", pendingReasoning.length, "reasoning is not followed by an assistant item");
       }
+      const content: Row[] = [{ type: "text", text: item.content }];
+      const images: Row[] = Array.isArray(item.images) ? item.images : [];
+      const unmapped = images.filter((image) => {
+        const parsed = parseDataImage(typeof image === "string" ? image : image?.url);
+        if (parsed) content.push(parsed);
+        return !parsed;
+      });
+      if (unmapped.length) {
+        content.push({
+          type: "text",
+          text: `[${unmapped.length} image(s) attached to this tool result in the source session; image content is not replayed, retained in the raw source snapshot]`,
+        });
+      }
       append({
         type: "message",
         message: {
           role: "toolResult",
           toolCallId: String(item.tool_call_id),
           toolName: callNames.get(String(item.tool_call_id)),
-          content: [{ type: "text", text: item.content }],
+          content,
           details: item,
           isError: false,
           timestamp: started + sequence,
@@ -468,6 +528,29 @@ function describeTransformations(history: Row[]): string[] {
   }
   if (history.some((item) => item.type === "tool_result")) {
     result.push("Grok tool calls and results are mapped only after exact source call-ID pairing.");
+  }
+  if (
+    history.some(
+      (item) => item.type === "user" &&
+        Array.isArray(item.content) &&
+        item.content.some((part: Row) => part?.type === "image")
+    )
+  ) {
+    result.push("User-attached images with embedded data URLs are replayed as Pi image content.");
+  }
+  if (
+    history.some(
+      (item) => item.type === "tool_result" && Array.isArray(item.images) && item.images.length
+    )
+  ) {
+    result.push(
+      "The exact Grok tool_result image schema is unverified; tool-result images are kept as labelled placeholder text (or mapped only when they carry a recognizable data URL) and are preserved in full in the raw source snapshot."
+    );
+  }
+  if (history.some((item) => item.type === "backend_tool_call")) {
+    result.push(
+      "Provider-side backend tool calls (for example web_search) appear in the transcript as labelled imported-provenance placeholder text; their results are not replayed and the full records stay in the raw source snapshot."
+    );
   }
   return result;
 }
