@@ -18,9 +18,9 @@ Current first-slice layout:
 - `skills/` is the runtime skill root. It contains the user-facing
   `conversation-summary` and `alt-theory-help` skills; `internal` discovery
   must not expose dev SWE bundles to participants.
-- Active SWE and dev-maintenance skills live under `project/local-skills/`
-  (`cs-swe-v0-4/`, `model-preset-maintenance/`). Historical `cs-swe-*` shards
-  live in local ignored `_archives/skills/`.
+- Development-only agent skills are intentionally kept outside the public
+  repository. Historical `cs-swe-*` shards may live in a local ignored
+  `_archives/skills/` directory.
 
 ## Adding Runtime Assets
 
@@ -38,7 +38,7 @@ design.
 - Researcher/admin/anonymous draft sessions start with **no role preset**
   (`None`).
 - Participant draft sessions get a role from the account's `defaultRoleCondition`
-  (see `project/architecture/core-session-engine.md` §5.1).
+  (see `development/architecture/core-session-engine.md` §5.1).
 
 ### Legacy `default.md` debt
 
@@ -96,8 +96,8 @@ slug recorded in their assembly manifest.
 Removed from runtime skill surface (2026-07-01):
 
 - All `cs-swe-*` bundles and `model-preset-maintenance` moved out of
-  `agent-assets/skills/`. Active dev copies: `project/local-skills/`.
-  Historical shards: `_archives/skills/` (local, gitignored).
+  `agent-assets/skills/`. Development copies are private; historical shards
+  may remain in `_archives/skills/` (local, gitignored).
 - `cs-modified-v0-1` was an incorrect intermediate artifact. Historical context
   belongs in plan-records, not in runtime skills.
 

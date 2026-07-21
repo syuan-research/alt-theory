@@ -6,7 +6,7 @@
  * must describe them as policy checks and approvals, never as containment.
  *
  * Vendored light fork per
- * project/compound/2026-07-15-decision-v1-alpha-security-extension.md:
+ * development/compound/2026-07-15-decision-v1-alpha-security-extension.md:
  * - Command blocklist partition, SSRF hostname patterns, and the
  *   unicode-homoglyph command check are adapted from @vtstech/pi-security
  *   1.3.2 (MIT, VTSTech, https://github.com/VTSTech).

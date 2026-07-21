@@ -6,7 +6,7 @@ repository. Do not treat archived bundle guides as v1-alpha truth.
 Current verified entry:
 
 - Local v1-alpha startup and testing:
-  `project/workstreams/0-v1-full-stack/v1-alpha-local-testing-guide.zh.md`
+  `development/releases/v1-alpha/local-testing-guide.zh.md`
 
 Public user documentation is still being prepared. If a concrete question is
 not covered by current user documentation or visible runtime state, say that

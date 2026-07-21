@@ -144,8 +144,8 @@
 }
 
 /* ============================================================
-   v1-alpha shell — ported from design-mockups/m7-ia-pass/v2.html
-   (the owner-approved blueprint). body.X toggles become .app-root.X.
+   v1-alpha shell — ported from the owner-approved private M7 blueprint.
+   body.X toggles become .app-root.X.
    ============================================================ */
 @layer components {
   i.ph { font-size: 1.05em; vertical-align: -0.12em; }

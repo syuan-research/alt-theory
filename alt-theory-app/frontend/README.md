@@ -30,6 +30,6 @@ npm run dev:frontend-v6        # http://localhost:5173
 
 ## SWE plan status
 
-See `project/workstreams/0-frontend-and-research-console/notes-and-status/2026-06-22-v0-6-swe-execution-tracker.md`.
+See `development/architecture/researcher-console.md` for the current frontend architecture.
 
 Handoff Milestone 1 was proof-only, not product completion.
