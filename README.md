@@ -54,6 +54,12 @@ do not commit credentials.
 - [researcher console architecture](development/architecture/researcher-console.md)
 - [local Windows bundle architecture](development/architecture/local-windows-bundle.md)
 
+## License
+
+Alt Theory software is available under the MIT License. Original documentation
+and agent assets are available under CC BY 4.0. See [LICENSE.md](LICENSE.md) for
+path coverage and third-party notices.
+
 ## Status
 
 The repository is being prepared for its first public release. Public
