@@ -2,10 +2,7 @@
 
 Status: imported origin note, not a current protocol.
 
-Source:
-
-- `<private early-project source dated 2026-03-04>`
-- Embedded image: `resources\attachment\edd9b809d05ff5531823116395240022.png`
+Source: imported from the private early-project status record dated 2026-03-04.
 
 This table was an early evaluation framework for theory-building AI. It is useful because it separates expert evaluation, user evaluation, and LLM-as-a-judge evaluation. It should not be treated as the current conference testing protocol without revision.
 

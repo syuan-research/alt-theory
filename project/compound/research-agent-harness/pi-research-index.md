@@ -13,13 +13,7 @@ This folder collects the PI / agent-harness research files that directly explain
 
 ## External Clone
 
-The local `pi-gui` clone remains an external reference:
-
-```text
-https://github.com/minghinmatthewlam/pi-gui
-```
-
-Remote:
+`pi-gui` remains an external reference:
 
 ```text
 https://github.com/minghinmatthewlam/pi-gui.git
@@ -28,5 +22,5 @@ https://github.com/minghinmatthewlam/pi-gui.git
 Policy:
 
 - Do not vendor the whole clone into this repo.
-- If PI GUI needs active secondary development with package installs/build output, create or use a non-OneDrive dev clone.
+- If PI GUI needs active secondary development with package installs/build output, use a separate external clone.
 - Copy only reviewed, curated research notes or adapted code into this project.

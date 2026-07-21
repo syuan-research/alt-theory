@@ -7,11 +7,10 @@ Current revision: v0.4 action-for-reflection. The bundle folder is
 
 ## Sources
 
-- CodeStable raw repo: `https://github.com/liuzhengdongfortest/CodeStable`
+- CodeStable raw repo: <https://github.com/liuzhengdongfortest/CodeStable>
 - Previous adaptation: the v0.2 CS-SWE skill folders in this repository.
 - v0.3 adaptation: `_archives/skills/cs-swe-v0-3/`
-- Current design records:
-  `project/cross-workstream/skill-cs-swe-adaptation/notes-and-status/`
+- Earlier adaptation design records remain available in private project history.
 
 ## Main Adaptations
 

@@ -10,7 +10,7 @@ Status: active draft. This records the current folder strategy; it is not a comp
 | `agent-assets/` | Assets read by Alt Theory or future agent/plugin runtimes: app context, soul, role presets, prompts, KB, and model config examples. | Tracked unless explicitly ignored. |
 | `project/` | Project planning, architecture, foundation docs, workstream records, cross-workstream records, and migration records. | Tracked for curated project records. Private/raw research material should stay outside this dev repo unless explicitly reviewed. |
 | `references-to-legacy-materials/` | Curated pointers or retained legacy material that should not be treated as active architecture. | Tracked only when intentionally selected. |
-| external research tree | Bulk academic research notes, simulated-user/evaluation material, and private research artifacts. Current candidate: `<external-research-tree>`. | Outside this repo; likely private Git or disk/OneDrive sync. |
+| external research tree | Bulk academic research notes, simulated-user/evaluation material, and private research artifacts. | Outside this repo; likely private Git or disk sync. |
 | `node_modules/` | Local generated dependency tree. | Ignored. Only use outside OneDrive runnable worktrees. |
 
 ## Harness Instructions vs Alt Theory Runtime Instructions
