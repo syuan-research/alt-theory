@@ -62,6 +62,7 @@ path coverage and third-party notices.
 
 ## Status
 
-The repository is being prepared for its first public release. Public
-documentation, contribution guidance, and higher-level foundation/roadmap
-material will be expanded after the repository boundary is stable.
+Alt Theory is public in active alpha development. The core v1-alpha product is
+usable; cross-harness session import remains a checkpointed feature pending
+browser and visual acceptance. Documentation and contribution guidance will
+grow with the product.
