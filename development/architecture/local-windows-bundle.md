@@ -1,12 +1,17 @@
 # Local Windows Bundle
 
 ---
-status: current
+status: historical-v0.5-reference
 scope: v0.5.x local Windows folder bundle and local model configuration
 last_updated: 2026-07-20
 ---
 
 ## Purpose
+
+> Routing update (2026-07-22): the old `dev/worktrees` source path no longer
+> exists. Current product development happens in the public checkout. This
+> document describes the v0.5 bundle line and must not select a current deploy
+> or build ref; use an exact historical tag/commit for v0.5 work.
 
 This document records the current local Windows bundle architecture for Alt
 Theory v0.5.x. It is intentionally separate from
@@ -26,7 +31,7 @@ That path reuses `%USERPROFILE%\.alt-theory` and does not use the obsolete
 
 ## Current Target
 
-- Source tree: `dev/worktrees/llm-theo-v0.3-dev`
+- Historical source line: exact v0.5 tag/commit, not a current worktree path
 - App version line: updated v0.5.5 integration code
 - Bundle artifact: `dist/win-unpacked/`
 - User launch target: `dist/win-unpacked/AltTheory.exe`

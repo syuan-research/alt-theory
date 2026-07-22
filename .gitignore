@@ -46,6 +46,7 @@ Thumbs.db
 auth.json
 credentials.json
 secrets.json
+secrets.local.*
 models.json
 **/auth.json
 **/credentials.json
@@ -70,6 +71,7 @@ models.json
 server.log
 server.log.err
 playwright-mcp.log
+/.playwright-mcp/
 
 # Private/raw research and user data
 /private/
@@ -81,3 +83,4 @@ playwright-mcp.log
 
 # Local snapshots and backups
 /_archives/
+/alt-theory-deploy*.tar
