@@ -4,6 +4,9 @@ This file contains repository-facing instructions for coding agents. Product
 explanation belongs in `README.md`; durable technical explanation belongs in
 `development/`.
 
+This is the only active Alt Theory product checkout. Make product changes here,
+not in the frozen legacy worktrees under `D:\llm-theo\dev\worktrees`.
+
 ## Start Here
 
 1. Read `README.md`.
@@ -23,6 +26,8 @@ explanation belongs in `README.md`; durable technical explanation belongs in
   contributor documentation or move it under `development/`.
 - `development/` contains public engineering explanation, not active private
   planning or session records.
+- Local runtime data belongs outside this repository, normally under
+  `D:\llm-theo\runs\alt-theory` on this workspace.
 
 ## Checks
 
@@ -58,3 +63,5 @@ Run both for cross-layer or release-facing changes.
 - Add or update feature design/acceptance evidence only when it helps explain
   durable public behavior; do not add private plans, handoffs, execution
   trackers, or agent-session output to this repository.
+- An alpha checkpoint tag records a version that users actually encountered;
+  it does not assert that acceptance work is complete.
