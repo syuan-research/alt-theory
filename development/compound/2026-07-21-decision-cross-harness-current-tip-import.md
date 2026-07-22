@@ -56,9 +56,8 @@ continuation state only**.
 
 ## Verified Harness Evidence
 
-Private evidence and runnable scripts remain outside the tracked product tree
-under `%LLM_THEO_ROOT%\others\cross-harness-conversation-interop-probe\stage2-private`.
-No raw transcript content is copied into this decision.
+The bounded private probe evidence is intentionally not published. Product
+behavior and tests must stand without access to its source conversations.
 
 | Source | Persisted state used by the probe | Verified Pi result | Remaining evidence work |
 | --- | --- | --- | --- |
@@ -128,5 +127,4 @@ attach that deterministic mapping behind the existing harness registry.
 ## Related Documents
 
 - `project/workstreams/0-v1-full-stack/notes-and-status/20260717-cross-harness-session-import-plan-record-v1.md`
-- `%LLM_THEO_ROOT%\others\cross-harness-conversation-interop-probe\notes-and-status\20260717-cross-harness-conversation-interop-probe-plan-record-v1.md`
 - `project/compound/2026-07-02-decision-v0-6-pi-runtime-boundary.md`

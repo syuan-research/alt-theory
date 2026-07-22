@@ -4,8 +4,8 @@ This file contains repository-facing instructions for coding agents. Product
 explanation belongs in `README.md`; durable technical explanation belongs in
 `development/`.
 
-This is the only active Alt Theory product checkout. Make product changes here,
-not in the frozen legacy worktrees under `D:\llm-theo\dev\worktrees`.
+This repository is the active Alt Theory product source. Do not infer private
+workspace layout from this public file.
 
 ## Start Here
 
@@ -26,8 +26,8 @@ not in the frozen legacy worktrees under `D:\llm-theo\dev\worktrees`.
   contributor documentation or move it under `development/`.
 - `development/` contains public engineering explanation, not active private
   planning or session records.
-- Local runtime data belongs outside this repository, normally under
-  `D:\llm-theo\runs\alt-theory` on this workspace.
+- Local runtime data, credentials, deployment state, and private test evidence
+  belong outside this repository.
 
 ## Checks
 
