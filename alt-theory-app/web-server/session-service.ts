@@ -591,6 +591,18 @@ export class SessionService {
     ) {
       return this.invokeSkill(sessionId, "alt-theory-help", text);
     }
+    // Imported sessions (session-import-source.json in the records dir) get
+    // the imported-session-context skill on their first Alt Theory run, so
+    // the agent learns what the import preserved and lost before continuing.
+    if (
+      existsSync(join(managed.manifest.recordsDir, "session-import-source.json")) &&
+      latestRunSnapshots(managed.manifest.recordsDir).length === 0 &&
+      managed.manifest.skills?.some(
+        (skill) => skill.name === "imported-session-context"
+      )
+    ) {
+      return this.invokeSkill(sessionId, "imported-session-context", text);
+    }
     return this.runPromptWithLineage(managed, text);
   }
 

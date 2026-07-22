@@ -207,9 +207,10 @@ and drift warnings are returned in the active manifest/snapshot.
 Local mode exposes a harness-discriminated import boundary without adding a
 second session engine. `GET /api/session-import/harnesses` reports Pi,
 OpenCode, Codex, and Grok Build as ready.
-Here `ready` currently means that an adapter route exists; it must not be read
-as a product-support claim. The endpoint/status language needs correction while
-common source records still trigger whole-session rejection.
+Here `ready` means the adapter maps the common source shapes (text, tool
+pairs, images, compaction markers) and converts anything it cannot replay
+into labelled placeholders or raw-only provenance; only genuinely unknown or
+unverified semantics still refuse the whole session.
 `GET /api/session-import/{harness}/sessions` returns source metadata, and
 `POST /api/session-import/{harness}` accepts all or selected source IDs. Hosted
 mode does not expose these routes.
@@ -292,6 +293,13 @@ Pi's loaded final entry remains the active leaf until persisted Alt Theory run
 state explicitly selects or clears a leaf. Transcript requests refresh from
 persisted Pi history, so same-process and post-restart reopen expose the same
 connected continuation.
+
+The first Alt Theory run in an imported session (detected via
+`records/session-import-source.json` with zero run records) automatically
+invokes the bundled `imported-session-context` skill with the user's text, so
+the agent is told what the import preserved and lost before continuing. Later
+runs are plain prompts. This mirrors the helper-fork `alt-theory-help`
+first-run invocation in `SessionService.runPrompt`.
 
 ## 3. Prompt Assembly And Injection
 
@@ -920,6 +928,9 @@ Limits (current):
 - 2026-07-21: Added Grok Build current-history discovery, deterministic
   projection, complete-session refusal boundaries, full managed source
   snapshot, shared UI import, and real continuation/repeat/restart acceptance.
+- 2026-07-21: Imported sessions auto-invoke the `imported-session-context`
+  skill on their first Alt Theory run; corrected the stale `ready` semantics
+  note after the common-shape adapter mappings landed.
 - 2026-07-20: Documented the local session-import boundary: harness discovery,
   Pi managed-copy registration, source provenance/fingerprint records,
   repeat-state classification, ordinary workspace/mode reuse, and hosted-mode

@@ -762,6 +762,51 @@ test("related Helper invokes its skill once before promotion", async () => {
   }
 });
 
+test("imported session invokes imported-session-context skill once on first run", async () => {
+  const fixture = setupFixture();
+  writeFileSync(
+    join(fixture.skillsDir, "imported-session-context.md"),
+    "---\nname: imported-session-context\ndescription: Imported session context\n---\nExplain import losses.\n",
+    "utf-8"
+  );
+  const service = createTestService(fixture, "internal");
+  const created = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const manifest = service.getManifest(created.sessionId);
+  writeFileSync(
+    join(manifest.recordsDir, "session-import-source.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      recordType: "session-import-source",
+      importedSessionId: null,
+      harness: "codex",
+      importedAt: new Date().toISOString(),
+      transformations: [],
+    }),
+    "utf-8"
+  );
+  try {
+    let prompt = "";
+    const managed = (service as any).sessions.get(created.sessionId);
+    managed.session.prompt = async (text: string) => {
+      prompt = text;
+    };
+    await service.runPrompt(created.sessionId, "Continue the imported work.").completion;
+    assert.equal(
+      prompt,
+      "/skill:imported-session-context Continue the imported work."
+    );
+
+    await service.runPrompt(created.sessionId, "Second turn stays plain.").completion;
+    assert.equal(prompt, "Second turn stays plain.");
+  } finally {
+    await service.disposeAll();
+  }
+});
+
 test("forkSession applies per-arm selector overrides (A/B substrate)", async () => {
   const fixture = setupFixture();
   const service = createTestService(fixture);
