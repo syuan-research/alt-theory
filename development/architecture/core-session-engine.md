@@ -228,13 +228,13 @@ Descendant agent records are copied separately under
 `records/source-context/`, with `index.json` linking source and parent IDs.
 They are searchable recovery evidence, not replayed conversation turns.
 
-OpenCode `preflightOnly` parses and accounts for the complete selected session
+External-session `preflightOnly` parses and accounts for the complete selected session
 before managed storage exists. An unknown or unverified semantic returns a
-structured refusal with record type, count, and reason. Current explicit
-refusals include non-image file parts and tool-result attachments. Those are
-current implementation gaps, not endorsed product boundaries: a later adapter
-must first try direct content mapping, retained source references, or labelled
-placeholders before considering whole-session refusal. A successful
+structured refusal with record type, count, and reason. OpenCode directly maps
+image files and tool-result image attachments; text/directory file records stay
+raw-only when OpenCode already stores their model-visible text separately.
+Unknown or malformed parts and unverified assistant-error replay still refuse.
+A successful
 preflight is repeated at import time, then the prepared JSONL goes through the
 same newly allocated normal Alt Theory `sessions/{id}/history/`, assembly
 manifest, and v0.4 foundation-record path as native Pi. The result is an
@@ -257,17 +257,14 @@ The Grok Build adapter follows the official two-level session layout and treats
 the selected session's current `chat_history.jsonl` as authoritative because
 Grok itself replaces that file atomically for compaction/rewind. It maps text
 system/user/assistant records, visible reasoning text/summary, and locally
-executed tool calls/results only after exact call-ID pairing. Encrypted
-reasoning remains raw-only. Backend-only calls, images, unknown item types,
+executed tool calls/results only after exact call-ID pairing. User images map
+directly; tool-result images become labelled retained-source placeholders.
+Encrypted reasoning remains raw-only. Backend-only calls, unknown item types,
 malformed/incomplete pairs, and legacy assistant `reasoning`/`raw_output`
 refuse before write. It neither starts the Grok runtime nor reconstructs old
 tips/branches. The complete selected Grok session directory is copied to
 `records/source-snapshot` and content-fingerprinted after copy; mismatch removes
 the incomplete managed session atomically.
-The image refusal above records current code, not desired design. Image-bearing
-user/tool-result records are common and must gain a direct Pi mapping or a
-truthful retained reference/placeholder rather than forcing rejection of the
-whole conversation.
 
 `records/session-import-source.json` records the source harness, store, source
 session ID, SHA-256 fingerprint, source version when available, declared
@@ -279,17 +276,22 @@ records carry an ordinal, and `records/ui-alias.json` distinguishes copies as
 `{source name} · {harness} import {date} #{ordinal}`. Imported sessions use the
 same default soul and role resolution as newly created Alt Theory sessions.
 
-Imported cwd uses the existing `workspace.primaryDir` field. Pure keeps the
-managed session workspace as its writable root; Work also treats the imported
-source workspace as writable. A missing source cwd requires an existing
-replacement workspace path and is never created implicitly.
+Imported cwd uses the existing `workspace.primaryDir` field. Understand keeps
+the managed session workspace as its writable root; Work also treats the
+imported source workspace as writable. A missing source cwd requires an
+existing replacement workspace path and is never created implicitly; the
+dialog sends that path through the same backend override rather than creating
+an importer-specific workspace model.
 
-The local React sidebar exposes the shared OpenCode/Codex/Grok Build path as “Import
-conversation.” It requires a dry preflight, displays transformations or the
-refusal reason, then imports, refreshes the normal catalog, and opens the
-selected managed session. Repeat discovery classifies an identical source as
-`unchanged` and opens the existing managed session without overwriting its
-continuation.
+The local React empty state and conversation-list overflow open the shared
+OpenCode/Codex/Grok Build dialog. It searches and groups source roots by
+working folder while keeping recent activity first, requires a dry preflight,
+and folds technical transformation/refusal details behind a plain outcome.
+The selected mode starts from the same persisted Understand/Work preference as
+a new conversation. Repeat discovery classifies an identical source as
+`unchanged` and opens the existing managed session; changed source activity
+creates a separately aliased import and never overwrites or merges an Alt
+Theory continuation.
 
 An imported nonempty Pi JSONL initially has no Alt Theory run records. On open,
 Pi's loaded final entry remains the active leaf until persisted Alt Theory run

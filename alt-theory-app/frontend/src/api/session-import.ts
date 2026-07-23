@@ -2,6 +2,7 @@ export interface ImportSourceSession {
   sourceId: string;
   sourceSessionId: string;
   name: string | null;
+  cwd: string;
   cwdAvailable: boolean;
   createdAt: string;
   updatedAt: string;
@@ -50,6 +51,7 @@ export async function submitSessionImport(args: {
   sourceId: string;
   mode: "pure" | "full";
   preflightOnly: boolean;
+  workspaceOverride?: string;
 }): Promise<ImportResult> {
   const response = await fetch(`/api/session-import/${args.harness}`, {
     method: "POST",
@@ -60,6 +62,9 @@ export async function submitSessionImport(args: {
       mode: args.mode,
       preflightOnly: args.preflightOnly,
       changedSourcePolicy: "copy",
+      ...(args.workspaceOverride
+        ? { workspaceOverrides: { [args.sourceId]: args.workspaceOverride } }
+        : {}),
       visibility: "private",
     }),
   });
