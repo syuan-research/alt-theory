@@ -845,6 +845,15 @@ function buildTranscriptFromEntries(
         toolName?: unknown;
       };
     };
+    if (value.type === "compaction") {
+      transcript.push({
+        role: "system",
+        marker: "compaction",
+        text: "Earlier conversation was compressed here to keep the context small. Alt keeps a summary of it.",
+        timestamp: normalizeTimestamp(value.timestamp),
+      });
+      continue;
+    }
     if (value.type !== "message" || !value.message) continue;
     if (value.id && inactiveEntryIds.has(value.id)) continue;
 

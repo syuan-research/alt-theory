@@ -40,6 +40,7 @@ export interface SessionDraftSnapshot {
   rolePresetSlug: string | null;
   soulSlug: string | null;
   customInstructionRef?: string | null;
+  modelOverride?: SessionModelOverride | null;
 }
 
 export interface SessionMetrics {
@@ -74,6 +75,8 @@ export interface TranscriptMessage {
   toolPath?: string | null;
   success?: boolean;
   truncated?: boolean;
+  /** Non-message boundary markers rendered specially (e.g. context compaction). */
+  marker?: "compaction";
 }
 
 // ---------------------------------------------------------------------------
@@ -147,6 +150,7 @@ export type ServerMessage =
       payload: { sessionId: string; purpose: "side" | "helper" };
     }
   | { type: "assistant_delta"; payload: { text: string } }
+  | { type: "thinking_delta"; payload: { text: string } }
   | {
       type: "run_phase";
       payload: { phase: "connecting" | "thinking" | "idle" };

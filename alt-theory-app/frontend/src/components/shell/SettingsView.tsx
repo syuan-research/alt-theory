@@ -145,6 +145,22 @@ function GeneralPanel() {
       <div className="set-card">
         <div className="row2">
           <div>
+            <h4>Expand thinking</h4>
+            <p>
+              Show the assistant&apos;s thinking blocks expanded by default.
+              When off, thinking stays collapsed and can be opened per block.
+            </p>
+          </div>
+          <button
+            className={`toggle${shell.thinkingExpanded ? " on" : ""}`}
+            aria-pressed={shell.thinkingExpanded}
+            onClick={() => shell.setThinkingExpanded(!shell.thinkingExpanded)}
+          />
+        </div>
+      </div>
+      <div className="set-card">
+        <div className="row2">
+          <div>
             <h4>Study participant options</h4>
             <p>
               Show the Participant mode settings. Only turn this on if you take

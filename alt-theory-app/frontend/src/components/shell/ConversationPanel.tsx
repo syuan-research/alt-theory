@@ -45,7 +45,6 @@ export function ConversationPanel() {
 }
 
 function EmptyState() {
-  const app = useApp();
   const shell = useShell();
   return (
     <div className="empty-state">
@@ -74,13 +73,14 @@ function EmptyState() {
             <div className="d">Can act on files in your working folders.</div>
           </button>
         </div>
+        <div className="mode-note">
+          {shell.newMode === "pure"
+            ? "Alt reads, thinks, and talks things through with you. It will not change anything on your computer."
+            : "Alt can read, edit, and create files in the working folders you choose. Anything risky asks for your approval first."}
+        </div>
       </div>
       <div className="empty-composer">
-        {app.sessionReady ? (
-          <Composer variant="empty" />
-        ) : (
-          <div className="rp-empty">Connecting…</div>
-        )}
+        <Composer variant="empty" />
       </div>
     </div>
   );

@@ -247,9 +247,11 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             placeholder={
-              app.reviseMode
-                ? "Editing your latest message. Send to update."
-                : "Message Alt. Type / for commands."
+              !interactive
+                ? "Connecting…"
+                : app.reviseMode
+                  ? "Editing your latest message. Send to update."
+                  : "Message Alt. Type / for commands."
             }
             disabled={!interactive || (app.isRunning && !app.reviseMode)}
             onKeyDown={(e) => {

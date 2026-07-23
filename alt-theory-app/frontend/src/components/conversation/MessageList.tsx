@@ -1,12 +1,14 @@
-import { useEffect, useMemo, useRef } from "react";
-import type { TranscriptMessage } from "@/api/types";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { ActiveToolState, TranscriptMessage } from "@/api/types";
 import { useApp } from "@/context/AppProvider";
+import { useShell } from "@/context/ShellContext";
 import { renderMarkdown } from "@/lib/markdown";
 import { toolLabel } from "@/lib/tools";
 import { cn } from "@/lib/cn";
 
 export function MessageList() {
   const app = useApp();
+  const shell = useShell();
   const containerRef = useRef<HTMLDivElement>(null);
   const developer = app.transcriptView === "developer";
 
@@ -22,12 +24,18 @@ export function MessageList() {
     if (!el) return;
     const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
     if (nearBottom) el.scrollTop = el.scrollHeight;
-  }, [app.messages, app.streamingText, app.activeTools]);
+  }, [app.messages, app.streamParts]);
 
   const renderedToolCallIds = new Set<string>();
 
   return (
     <div className="msgs" ref={containerRef}>
+      {app.sessionId && !app.selectors.soulSlug ? (
+        <SysLine>
+          <i className="ph ph-warning" />
+          Soul not loaded — this conversation runs without Alt&apos;s persona.
+        </SysLine>
+      ) : null}
       {app.messages.map((message, index) => (
         <TranscriptEntry
           key={`${index}-${message.timestamp ?? message.text.slice(0, 12)}`}
@@ -36,15 +44,7 @@ export function MessageList() {
           isLatestUser={index === latestUserIndex}
           renderedToolCallIds={renderedToolCallIds}
           isRunning={app.isRunning}
-          hasSession={Boolean(app.sessionId)}
           onEditLatest={app.startReviseMode}
-          onDeleteLatest={() =>
-            app.requestConfirm({
-              message: "Remove the latest message and its reply?",
-              confirmLabel: "Delete",
-              onConfirm: app.deleteLatest,
-            })
-          }
         />
       ))}
 
@@ -55,26 +55,71 @@ export function MessageList() {
         </SysLine>
       ))}
 
-      {app.streamingText ? (
-        <AssistantBubble text={app.streamingText} streaming />
-      ) : null}
-
-      {app.activeTools.map((tool) => (
-        <SysLine key={tool.callId}>
-          <i
-            className={
-              tool.status === "running"
-                ? "ph ph-circle-notch"
-                : tool.success === false
-                  ? "ph ph-x"
-                  : "ph ph-check"
-            }
-          />
-          {toolLabel(tool.toolName, tool.path)}
-          {tool.progressText ? ` — ${tool.progressText}` : ""}
-        </SysLine>
-      ))}
+      {app.streamParts.map((part, index) => {
+        if (part.kind === "text") {
+          return <AssistantBubble key={`sp-${index}`} text={part.text} streaming />;
+        }
+        if (part.kind === "thinking") {
+          if (!developer) return null;
+          return (
+            <ThinkingBlock
+              key={`sp-${index}`}
+              text={part.text}
+              defaultOpen={shell.thinkingExpanded}
+            />
+          );
+        }
+        return <ToolLine key={part.tool.callId} tool={part.tool} />;
+      })}
     </div>
+  );
+}
+
+function ToolLine({ tool }: { tool: ActiveToolState }) {
+  return (
+    <SysLine
+      tone={
+        tool.status === "failed"
+          ? "danger"
+          : tool.status === "finished"
+            ? "ok"
+            : "running"
+      }
+    >
+      <i
+        className={
+          tool.status === "running"
+            ? "ph ph-circle-notch"
+            : tool.success === false
+              ? "ph ph-x"
+              : "ph ph-check"
+        }
+      />
+      {toolLabel(tool.toolName, tool.path)}
+      {tool.progressText ? ` — ${tool.progressText}` : ""}
+    </SysLine>
+  );
+}
+
+function ThinkingBlock({
+  text,
+  defaultOpen,
+}: {
+  text: string;
+  defaultOpen: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <details
+      className="think-block"
+      open={open}
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+    >
+      <summary>
+        <i className="ph ph-brain" aria-hidden="true" /> Thinking
+      </summary>
+      <div className="think-body">{text}</div>
+    </details>
   );
 }
 
@@ -84,28 +129,23 @@ function TranscriptEntry({
   isLatestUser,
   renderedToolCallIds,
   isRunning,
-  hasSession,
   onEditLatest,
-  onDeleteLatest,
 }: {
   message: TranscriptMessage;
   developer: boolean;
   isLatestUser: boolean;
   renderedToolCallIds: Set<string>;
   isRunning: boolean;
-  hasSession: boolean;
   onEditLatest: (text: string) => void;
-  onDeleteLatest: () => void;
 }) {
+  const { thinkingExpanded } = useShell();
   if (message.role === "user") {
     return (
       <UserBubble
         text={message.text}
         isLatest={isLatestUser}
         isRunning={isRunning}
-        hasSession={hasSession}
         onEditLatest={onEditLatest}
-        onDeleteLatest={onDeleteLatest}
       />
     );
   }
@@ -114,10 +154,7 @@ function TranscriptEntry({
     return (
       <>
         {developer && message.thinking ? (
-          <SysLine>
-            <i className="ph ph-brain" />
-            {message.thinking}
-          </SysLine>
+          <ThinkingBlock text={message.thinking} defaultOpen={thinkingExpanded} />
         ) : null}
         <AssistantBubble text={message.text} />
       </>
@@ -130,7 +167,7 @@ function TranscriptEntry({
     if (callId) renderedToolCallIds.add(callId);
     const success = message.success !== false;
     return (
-      <SysLine tone={success ? undefined : "danger"}>
+      <SysLine tone={success ? "ok" : "danger"}>
         <i className={success ? "ph ph-check" : "ph ph-x"} />
         {toolLabel(message.toolName || message.text || "tool", message.toolPath)}
       </SysLine>
@@ -138,6 +175,13 @@ function TranscriptEntry({
   }
 
   if (message.role === "system") {
+    if (message.marker === "compaction") {
+      return (
+        <div className="compact-line" title={message.text}>
+          <span>Conversation compressed here</span>
+        </div>
+      );
+    }
     return (
       <SysLine>
         <i className="ph ph-info" />
@@ -153,16 +197,12 @@ function UserBubble({
   text,
   isLatest,
   isRunning,
-  hasSession,
   onEditLatest,
-  onDeleteLatest,
 }: {
   text: string;
   isLatest: boolean;
   isRunning: boolean;
-  hasSession: boolean;
   onEditLatest: (text: string) => void;
-  onDeleteLatest: () => void;
 }) {
   const trimmed = (text || "").trim();
   if (!trimmed) return null;
@@ -184,24 +224,14 @@ function UserBubble({
           <i className="ph ph-copy" aria-hidden="true" />
         </button>
         {isLatest ? (
-          <>
-            <button
-              title="Edit"
-              aria-label="Edit message"
-              disabled={isRunning}
-              onClick={() => onEditLatest(trimmed)}
-            >
-              <i className="ph ph-pencil-simple" aria-hidden="true" />
-            </button>
-            <button
-              title="Delete"
-              aria-label="Delete message and reply"
-              disabled={isRunning || !hasSession}
-              onClick={onDeleteLatest}
-            >
-              <i className="ph ph-trash" aria-hidden="true" />
-            </button>
-          </>
+          <button
+            title="Edit"
+            aria-label="Edit message"
+            disabled={isRunning}
+            onClick={() => onEditLatest(trimmed)}
+          >
+            <i className="ph ph-pencil-simple" aria-hidden="true" />
+          </button>
         ) : null}
       </div>
     </div>
@@ -235,10 +265,17 @@ function SysLine({
   tone,
 }: {
   children: React.ReactNode;
-  tone?: "danger";
+  tone?: "danger" | "ok" | "running";
 }) {
   return (
-    <div className={cn("sys-line", tone === "danger" && "sys-danger")}>
+    <div
+      className={cn(
+        "sys-line",
+        tone === "danger" && "sys-danger",
+        tone === "ok" && "sys-ok",
+        tone === "running" && "sys-running"
+      )}
+    >
       {children}
     </div>
   );

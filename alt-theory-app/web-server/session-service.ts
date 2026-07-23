@@ -189,6 +189,7 @@ export interface RunHandle {
 export type SessionServiceEvent =
   | { type: "snapshot"; payload: SessionSnapshot }
   | { type: "assistant_delta"; payload: { text: string } }
+  | { type: "thinking_delta"; payload: { text: string } }
   | {
       type: "run_phase";
       payload: { phase: "connecting" | "thinking" | "idle" };
@@ -1999,6 +2000,10 @@ export class SessionService {
         const assistantEvent = event.assistantMessageEvent;
         if (assistantEvent?.type === "thinking_delta") {
           this.emitRunPhase(managed, "thinking");
+          this.emit(managed, {
+            type: "thinking_delta",
+            payload: { text: assistantEvent.delta ?? "" },
+          });
         } else if (assistantEvent?.type === "text_delta") {
           this.emitRunPhase(managed, "idle");
           this.emit(managed, {

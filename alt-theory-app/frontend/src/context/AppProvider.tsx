@@ -41,11 +41,13 @@ import type {
   SessionSelectors,
   SessionSnapshot,
   SessionSummary,
+  StreamPart,
   StudyTag,
   TranscriptMessage,
   TranscriptView,
   ViewMode,
   ParticipantInfo,
+  ConfigStatus,
 } from "@/api/types";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import type { ConnStatus } from "@/components/ui/StatusBadge";
@@ -108,6 +110,8 @@ export interface AppContextValue {
   setTranscriptView: (view: TranscriptView) => void;
 
   discovery: DiscoveryLists | null;
+  /** Local-mode model config status; carries the active default model. */
+  localConfig: ConfigStatus | null;
 
   sessions: SessionSummary[];
   sessionSearch: string;
@@ -150,8 +154,7 @@ export interface AppContextValue {
   setStudyTag: (tag: StudyTag | null) => void;
 
   messages: TranscriptMessage[];
-  streamingText: string | null;
-  activeTools: ActiveToolState[];
+  streamParts: StreamPart[];
   toolStatus: string;
   composerNotice: ComposerNotice | null;
   runHint: string | null;
@@ -210,24 +213,42 @@ function applySnapshotSelectors(
   };
 }
 
-function finalizeStaleTools(
-  tools: Record<string, ActiveToolState>,
-  success = true
-): ActiveToolState[] {
-  return Object.values(tools).map((tool) => ({
-    ...tool,
-    status: success ? "finished" : "failed",
-    success,
-  }));
+function appendStreamText(
+  parts: StreamPart[],
+  kind: "thinking" | "text",
+  delta: string
+): StreamPart[] {
+  const last = parts[parts.length - 1];
+  if (last && last.kind === kind) {
+    return [...parts.slice(0, -1), { kind, text: last.text + delta }];
+  }
+  return [...parts, { kind, text: delta }];
 }
 
-function upsertToolInOrder(
-  current: ActiveToolState[],
-  next: ActiveToolState
-): ActiveToolState[] {
-  const index = current.findIndex((tool) => tool.callId === next.callId);
-  if (index === -1) return [...current, next];
-  return current.map((tool, i) => (i === index ? next : tool));
+function upsertToolPart(
+  parts: StreamPart[],
+  tool: ActiveToolState
+): StreamPart[] {
+  const index = parts.findIndex(
+    (part) => part.kind === "tool" && part.tool.callId === tool.callId
+  );
+  if (index === -1) return [...parts, { kind: "tool", tool }];
+  return parts.map((part, i) =>
+    i === index ? { kind: "tool" as const, tool } : part
+  );
+}
+
+function failRunningToolParts(parts: StreamPart[]): StreamPart[] {
+  return parts
+    .filter((part) => part.kind === "tool")
+    .map((part) =>
+      part.kind === "tool" && part.tool.status === "running"
+        ? {
+            kind: "tool" as const,
+            tool: { ...part.tool, status: "failed" as const, success: false },
+          }
+        : part
+    );
 }
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -239,6 +260,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
   const [discovery, setDiscovery] = useState<DiscoveryLists | null>(null);
+  const [localConfig, setLocalConfig] = useState<ConfigStatus | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("user");
   const [canSwitchMode, setCanSwitchMode] = useState(false);
   const [participant, setParticipant] = useState<ParticipantInfo | null>(null);
@@ -272,8 +294,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [studyTag, setStudyTagState] = useState<StudyTag | null>(null);
 
   const [messages, setMessages] = useState<TranscriptMessage[]>([]);
-  const [streamingText, setStreamingText] = useState<string | null>(null);
-  const [activeTools, setActiveTools] = useState<ActiveToolState[]>([]);
+  const [streamParts, setStreamParts] = useState<StreamPart[]>([]);
   const [toolStatus, setToolStatus] = useState("");
   const [composerNotice, setComposerNotice] = useState<ComposerNotice | null>(
     null
@@ -382,6 +403,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setViewMode(nextViewMode);
       setCanSwitchMode(nextCanSwitchMode);
       setParticipant(me.participant ?? null);
+      setLocalConfig(me.localConfig ?? null);
       setTranscriptView(defaultTranscriptView(nextViewMode));
 
       if (!required) {
@@ -548,14 +570,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setIsRunning(false);
           setSelectors(applySnapshotSelectors(message.payload));
           setSessionMode("pure");
-          setModelOverride(null);
+          setModelOverride(message.payload.modelOverride ?? null);
           setStudyTagState(null);
           setApprovalMarkers([]);
           setManifest(null);
           setMetrics(null);
           setMessages([]);
-          setStreamingText(null);
-          setActiveTools([]);
+          setStreamParts([]);
           activeToolsMapRef.current = {};
           setConnStatus("idle");
           setConnLabel("Ready");
@@ -572,12 +593,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
             message.payload.sessionId === pendingOpenSessionIdRef.current
           ) {
             setMessages([]);
-            setStreamingText(null);
+            setStreamParts([]);
             pendingOpenSessionIdRef.current = "";
           }
           if (pendingAssetSwitchRef.current) {
             setMessages([]);
-            setStreamingText(null);
+            setStreamParts([]);
             pendingAssetSwitchRef.current = false;
           }
           if (message.payload.sessionId !== reconnectSessionIdRef.current) {
@@ -651,8 +672,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         case "session_transcript":
           setMessages(message.payload.messages);
-          setStreamingText(null);
-          setActiveTools([]);
+          setStreamParts([]);
           activeToolsMapRef.current = {};
           setConnStatus("idle");
           setConnLabel("Ready");
@@ -670,7 +690,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
           break;
 
         case "assistant_delta":
-          setStreamingText((prev) => `${prev ?? ""}${message.payload.text}`);
+          setStreamParts((parts) =>
+            appendStreamText(parts, "text", message.payload.text)
+          );
+          break;
+
+        case "thinking_delta":
+          setStreamParts((parts) =>
+            appendStreamText(parts, "thinking", message.payload.text)
+          );
           break;
 
         case "tool_started": {
@@ -683,7 +711,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             status: "running",
           };
           activeToolsMapRef.current[callId] = entry;
-          setActiveTools((current) => upsertToolInOrder(current, entry));
+          setStreamParts((parts) => upsertToolPart(parts, entry));
           setToolStatus(`⏳ ${label}`);
           break;
         }
@@ -696,7 +724,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
               progressText: message.payload.text,
             };
             activeToolsMapRef.current[message.payload.callId] = updated;
-            setActiveTools((current) => upsertToolInOrder(current, updated));
+            setStreamParts((parts) => upsertToolPart(parts, updated));
             if (message.payload.text) {
               setToolStatus(
                 `⏳ ${toolLabel(entry.toolName, entry.path)} — ${message.payload.text}`
@@ -717,7 +745,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             const remaining = { ...activeToolsMapRef.current };
             delete remaining[message.payload.callId];
             activeToolsMapRef.current = remaining;
-            setActiveTools((current) => upsertToolInOrder(current, updated));
+            setStreamParts((parts) => upsertToolPart(parts, updated));
           }
           if (Object.keys(activeToolsMapRef.current).length === 0) {
             setToolStatus("");
@@ -726,9 +754,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
 
         case "run_completed":
-          setActiveTools([]);
+          setStreamParts([]);
           activeToolsMapRef.current = {};
-          setStreamingText(null);
           setIsRunning(false);
           setConnStatus("idle");
           setConnLabel("Ready");
@@ -744,9 +771,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         case "run_failed": {
           const interrupted = isInterruptedError(message.payload.error);
-          setActiveTools(finalizeStaleTools(activeToolsMapRef.current, false));
+          setStreamParts((parts) => failRunningToolParts(parts));
           activeToolsMapRef.current = {};
-          setStreamingText(null);
           setIsRunning(false);
           setConnStatus(interrupted ? "idle" : "error");
           setConnLabel(interrupted ? "Ready" : "Error");
@@ -843,8 +869,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setApprovals([]);
         setConnStatus("disconnected");
         setConnLabel(detail?.label ?? "Disconnected");
-        setStreamingText(null);
-        setActiveTools([]);
+        setStreamParts([]);
         activeToolsMapRef.current = {};
         setToolStatus("Reconnecting...");
       } else if (status === "error") {
@@ -864,7 +889,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const beginNewSession = useCallback(() => {
     reconnectSessionIdRef.current = null;
     setMessages([]);
-    setStreamingText(null);
+    setStreamParts([]);
     setWsError(null);
     setReviseMode(false);
     setRunHint(null);
@@ -1011,7 +1036,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         ...prev,
         { role: "user", text: outgoing, timestamp: null },
       ]);
-      setStreamingText(null);
+      setStreamParts([]);
       setWsError(null);
       setRunHint("");
       setReviseMode(false);
@@ -1237,6 +1262,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       transcriptView,
       setTranscriptView,
       discovery,
+      localConfig,
       sessions,
       sessionSearch,
       setSessionSearch,
@@ -1274,8 +1300,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       studyTag,
       setStudyTag,
       messages,
-      streamingText,
-      activeTools,
+      streamParts,
       toolStatus,
       composerNotice,
       runHint,
@@ -1321,6 +1346,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       participant,
       transcriptView,
       discovery,
+      localConfig,
       sessions,
       sessionSearch,
       selectedCatalogSessionId,
@@ -1356,8 +1382,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       studyTag,
       setStudyTag,
       messages,
-      streamingText,
-      activeTools,
+      streamParts,
       toolStatus,
       composerNotice,
       runHint,

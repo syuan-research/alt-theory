@@ -54,6 +54,10 @@ export interface ShellContextValue {
   participantTabEnabled: boolean;
   setParticipantTabEnabled: (on: boolean) => void;
 
+  /** Whether thinking blocks start expanded in the transcript (General). */
+  thinkingExpanded: boolean;
+  setThinkingExpanded: (on: boolean) => void;
+
   /** A/B comparison setup panel (float-cmp) over the center (researcher). */
   compareOpen: boolean;
   openCompare: () => void;
@@ -73,6 +77,7 @@ const ShellContext = createContext<ShellContextValue | null>(null);
 
 const PARTICIPANT_TAB_KEY = "alt-theory-participant-tab";
 const LEFT_COLLAPSED_KEY = "alt-theory-left-collapsed";
+const THINKING_EXPANDED_KEY = "alt-theory-thinking-expanded";
 
 function readFlag(key: string): boolean {
   try {
@@ -103,6 +108,9 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   const [participantTabEnabled, setParticipantTabState] = useState(() =>
     readFlag(PARTICIPANT_TAB_KEY)
   );
+  const [thinkingExpanded, setThinkingExpandedState] = useState(() =>
+    readFlag(THINKING_EXPANDED_KEY)
+  );
   const [armsComparisonId, setArmsComparisonId] = useState<string | null>(null);
   const [compareOpen, setCompareOpen] = useState(false);
   const [newMode, setNewMode] = useState<CapabilityMode>("pure");
@@ -122,6 +130,11 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   const setParticipantTabEnabled = useCallback((on: boolean) => {
     setParticipantTabState(on);
     writeFlag(PARTICIPANT_TAB_KEY, on);
+  }, []);
+
+  const setThinkingExpanded = useCallback((on: boolean) => {
+    setThinkingExpandedState(on);
+    writeFlag(THINKING_EXPANDED_KEY, on);
   }, []);
 
   const toggleRail = useCallback((key: RailKey) => {
@@ -169,6 +182,8 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       closeSub,
       participantTabEnabled,
       setParticipantTabEnabled,
+      thinkingExpanded,
+      setThinkingExpanded,
       compareOpen,
       openCompare,
       closeCompare,
@@ -196,6 +211,8 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       closeSub,
       participantTabEnabled,
       setParticipantTabEnabled,
+      thinkingExpanded,
+      setThinkingExpanded,
       compareOpen,
       openCompare,
       closeCompare,

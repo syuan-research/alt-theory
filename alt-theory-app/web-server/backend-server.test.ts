@@ -2338,3 +2338,73 @@ test("dev-debug composes configured Alt Theory skills with Pi discovery", async 
     result.session.dispose();
   }
 });
+
+test("WebSocket set_session_model in draft state stores the override on the draft", async () => {
+  const root = mkdtempSync(join(tmpdir(), "alt-theory-ws-draft-model-"));
+  const dataDir = join(root, "data");
+  const rolePresets = join(root, "role-presets");
+  const kb = join(root, "kb");
+  const appContextPath = join(root, "ALTTHEORY.md");
+  const soulPath = join(root, "soul-latest.md");
+  mkdirSync(join(kb, "ep-core"), { recursive: true });
+  mkdirSync(rolePresets, { recursive: true });
+  writeFileSync(appContextPath, "Draft model app context", "utf-8");
+  writeFileSync(soulPath, "Draft model soul", "utf-8");
+
+  const instance = createAltTheoryServer({
+    dataDir,
+    appContextPath,
+    soulPath,
+    rolePresetsDir: rolePresets,
+    kbDir: kb,
+    readOnly: true,
+  });
+  await new Promise<void>((resolveListen) => {
+    instance.httpServer.listen(0, "127.0.0.1", resolveListen);
+  });
+  const address = instance.httpServer.address();
+  assert.ok(address && typeof address === "object");
+
+  function waitForType(ws: WebSocket, type: string): Promise<any> {
+    return new Promise((resolveMessage, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error(`Timed out waiting for ${type}`)),
+        10_000
+      );
+      const listener = (data: WebSocket.RawData) => {
+        const message = JSON.parse(data.toString());
+        if (message.type === type) {
+          clearTimeout(timer);
+          ws.off("message", listener);
+          resolveMessage(message);
+        }
+      };
+      ws.on("message", listener);
+    });
+  }
+
+  const ws = new WebSocket(`ws://127.0.0.1:${(address as any).port}`);
+  try {
+    const draft = await waitForType(ws, "session_draft");
+    assert.equal(draft.payload.modelOverride ?? null, null);
+
+    const updatedPromise = waitForType(ws, "session_draft");
+    ws.send(
+      JSON.stringify({
+        type: "set_session_model",
+        payload: { override: { provider: "test", modelId: "test-model", thinkingLevel: "high" } },
+      })
+    );
+    const updated = await updatedPromise;
+    assert.deepEqual(updated.payload.modelOverride, {
+      provider: "test",
+      modelId: "test-model",
+      thinkingLevel: "high",
+    });
+  } finally {
+    ws.close();
+    await new Promise<void>((resolveClose) => {
+      instance.httpServer.close(() => resolveClose());
+    });
+  }
+});

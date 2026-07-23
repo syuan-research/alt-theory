@@ -64,6 +64,7 @@ import {
 import {
   SessionBusyError,
   SessionService,
+  type SessionModelOverride,
   type SessionSelectors,
   type SessionServiceEvent,
 } from "./session-service.js";
@@ -1422,6 +1423,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       case "assistant_delta":
         send({ type: "assistant_delta", payload: event.payload });
         break;
+      case "thinking_delta":
+        send({ type: "thinking_delta", payload: event.payload });
+        break;
       case "run_phase":
         send({ type: "run_phase", payload: event.payload });
         break;
@@ -1563,7 +1567,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   function sendDraft(
     send: (msg: ServerMessage) => void,
     selectors: SessionSelectors,
-    visibility: "research" | "private"
+    visibility: "research" | "private",
+    modelOverride: SessionModelOverride | null = null
   ): void {
     send({
       type: "session_draft",
@@ -1575,6 +1580,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         rolePresetSlug: selectors.rolePresetSlug,
         soulSlug: selectors.soulSlug,
         customInstructionRef: selectors.customInstructionRef ?? null,
+        modelOverride,
       },
     });
   }
@@ -1592,6 +1598,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     let closed = false;
     let draftSelectors: SessionSelectors;
     let draftVisibility: "research" | "private" = defaultDraftVisibility();
+    let draftModelOverride: SessionModelOverride | null = null;
     let initialError: unknown = null;
     try {
       draftSelectors = createDraftSelectorsForAuth(auth);
@@ -1653,7 +1660,10 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               }
               const initial = await sessionService.createSession(
                 draftSelectors,
-                sessionCreationMetadataForAuth(auth, draftVisibility)
+                {
+                  ...sessionCreationMetadataForAuth(auth, draftVisibility),
+                  modelOverride: draftModelOverride,
+                }
               );
               if (closed) return;
               attachToSession(initial.sessionId);
@@ -1855,7 +1865,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         }
         case "set_session_model": {
           if (!attachedSessionId) {
-            sendError(send, new Error("A materialized session is required"));
+            // Draft state: remember the choice and apply it on materialization.
+            draftModelOverride = msg.payload.override ?? null;
+            sendDraft(send, draftSelectors, draftVisibility, draftModelOverride);
             break;
           }
           try {
@@ -1884,7 +1896,10 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               }
               const initial = await sessionService.createSession(
                 draftSelectors,
-                sessionCreationMetadataForAuth(auth, draftVisibility)
+                {
+                  ...sessionCreationMetadataForAuth(auth, draftVisibility),
+                  modelOverride: draftModelOverride,
+                }
               );
               if (closed) return;
               attachToSession(initial.sessionId);
@@ -2175,6 +2190,11 @@ if (isMain) {
     console.log(
       `  Default soul:      ${assetPaths.soulPath ?? "(none)"} (${assetPaths.soulPath && existsSync(assetPaths.soulPath) ? "found" : "not loaded"})`
     );
+    if (!assetPaths.soulPath || !existsSync(assetPaths.soulPath)) {
+      console.warn(
+        "  WARNING: default soul (soul-latest.md) is missing — new conversations will run WITHOUT a soul. Check agent-assets/soul/."
+      );
+    }
     console.log(
       `  Role presets:      ${assetPaths.rolePresetsDir} (${existsSync(assetPaths.rolePresetsDir) ? "found" : "missing"})`
     );
