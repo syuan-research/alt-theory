@@ -41,6 +41,7 @@ export interface SessionDraftSnapshot {
   soulSlug: string | null;
   customInstructionRef?: string | null;
   modelOverride?: SessionModelOverride | null;
+  workspacePrimaryDir?: string | null;
 }
 
 export interface SessionMetrics {
@@ -128,6 +129,10 @@ export type ClientMessage =
   | {
       type: "set_session_model";
       payload: { override: SessionModelOverride | null };
+    }
+  | {
+      type: "set_draft_workspace";
+      payload: { primaryDir: string | null };
     }
   | { type: "new_session" }
   | { type: "open_session"; payload: { sessionId: string } }

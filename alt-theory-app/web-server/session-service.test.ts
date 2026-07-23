@@ -2373,3 +2373,67 @@ test("SessionService reviseAt rewrites from an earlier turn and supersedes later
     await service.disposeAll();
   }
 });
+
+test("SessionService setSessionWorkspace re-points a session's working folder", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const created = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const folder = mkdtempSync(join(tmpdir(), "alt-theory-ws-repoint-"));
+  const managed = (
+    service as unknown as {
+      sessions: Map<string, {
+        session: {
+          prompt(text: string): Promise<void>;
+          sessionManager: { appendMessage(message: unknown): string };
+        };
+      }>;
+    }
+  ).sessions.get(created.sessionId)!;
+  managed.session.prompt = async (text: string) => {
+    managed.session.sessionManager.appendMessage({
+      role: "user",
+      content: [{ type: "text", text }],
+      timestamp: Date.now(),
+    });
+    managed.session.sessionManager.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: `answer:${text}` }],
+      timestamp: Date.now(),
+    });
+  };
+
+  try {
+    await service.runPrompt(created.sessionId, "hello").completion;
+    const snapshot = await service.setSessionWorkspace(
+      created.sessionId,
+      folder
+    );
+    assert.equal(snapshot?.workspace?.primaryDir, resolve(folder));
+    const recordsDir = service.getManifest(created.sessionId).recordsDir;
+    const header = readV4SessionHeader(recordsDir);
+    assert.equal(header?.workspace?.primaryDir, resolve(folder));
+    assert.deepEqual(header?.workspace?.additionalDirs, []);
+
+    // Clearing goes back to the managed default workspace.
+    const cleared = await service.setSessionWorkspace(created.sessionId, null);
+    assert.equal(cleared?.workspace?.primaryDir.includes(folder), false);
+    const clearedHeader = readV4SessionHeader(recordsDir);
+    assert.equal(clearedHeader?.workspace, undefined);
+
+    // Nonexistent folders are rejected.
+    await assert.rejects(
+      () =>
+        service.setSessionWorkspace(
+          created.sessionId,
+          join(folder, "does-not-exist")
+        ),
+      /does not exist/
+    );
+  } finally {
+    await service.disposeAll();
+  }
+});

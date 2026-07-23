@@ -95,3 +95,63 @@ export function buildSessionTree(
 
   return { groups, childrenByParent };
 }
+
+/** Basename of a working-folder path, for path-free list display (M4). */
+export function folderLabel(dir: string): string {
+  const parts = dir.replace(/[\\/]+$/, "").split(/[\\/]/);
+  return parts[parts.length - 1] || dir;
+}
+
+export interface WorkspaceTree {
+  /** Workspace groups; dir "" = sessions without a working folder (last). */
+  groups: Array<{ dir: string; label: string; roots: SessionSummary[] }>;
+  childrenByParent: Map<string, SessionSummary[]>;
+}
+
+/**
+ * Session list grouped by working folder (M4). knownWorkspaces adds empty
+ * groups so a just-added folder appears before any conversation exists in it.
+ */
+export function buildWorkspaceTree(
+  sessions: SessionSummary[],
+  knownWorkspaces: string[]
+): WorkspaceTree {
+  const members = sessions.filter(isListMember).sort(compareByRecency);
+  const ids = new Set(members.map((s) => s.sessionId));
+
+  const childrenByParent = new Map<string, SessionSummary[]>();
+  const roots: SessionSummary[] = [];
+  for (const session of members) {
+    const parentId = session.forkedFrom?.sessionId;
+    if (parentId && ids.has(parentId)) {
+      if (!childrenByParent.has(parentId)) childrenByParent.set(parentId, []);
+      childrenByParent.get(parentId)?.push(session);
+    } else {
+      roots.push(session);
+    }
+  }
+
+  const byDir = new Map<string, SessionSummary[]>();
+  for (const dir of knownWorkspaces) {
+    if (!byDir.has(dir)) byDir.set(dir, []);
+  }
+  for (const root of roots) {
+    const dir = root.workspacePrimaryDir || "";
+    if (!byDir.has(dir)) byDir.set(dir, []);
+    byDir.get(dir)?.push(root);
+  }
+
+  const groups = [...byDir.entries()]
+    .sort(([a], [b]) => {
+      if (!a) return 1;
+      if (!b) return -1;
+      return folderLabel(a).localeCompare(folderLabel(b));
+    })
+    .map(([dir, groupRoots]) => ({
+      dir,
+      label: dir ? folderLabel(dir) : "No folder",
+      roots: groupRoots,
+    }));
+
+  return { groups, childrenByParent };
+}

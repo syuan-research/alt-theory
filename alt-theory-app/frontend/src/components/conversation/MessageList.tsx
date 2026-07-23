@@ -10,6 +10,8 @@ export function MessageList() {
   const app = useApp();
   const shell = useShell();
   const containerRef = useRef<HTMLDivElement>(null);
+  const railRef = useRef<HTMLDivElement>(null);
+  const [scrubbing, setScrubbing] = useState(false);
   const developer = app.transcriptView === "developer";
 
   const latestUserIndex = useMemo(() => {
@@ -19,6 +21,28 @@ export function MessageList() {
     return -1;
   }, [app.messages]);
 
+  const userMessageCount = useMemo(
+    () => app.messages.filter((message) => message.role === "user").length,
+    [app.messages]
+  );
+
+  // Map a pointer position on the rail to a user message and scroll to it.
+  const scrubTo = (clientY: number) => {
+    const rail = railRef.current;
+    const container = containerRef.current;
+    if (!rail || !container || userMessageCount === 0) return;
+    const rect = rail.getBoundingClientRect();
+    const ratio = Math.min(
+      1,
+      Math.max(0, (clientY - rect.top) / Math.max(1, rect.height))
+    );
+    const index = Math.round(ratio * (userMessageCount - 1));
+    const target = container.querySelector(`[data-uidx="${index}"]`);
+    if (target instanceof HTMLElement) {
+      container.scrollTop = target.offsetTop - container.offsetTop - 8;
+    }
+  };
+
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -27,8 +51,10 @@ export function MessageList() {
   }, [app.messages, app.streamParts]);
 
   const renderedToolCallIds = new Set<string>();
+  let userOrdinal = -1;
 
   return (
+    <div className="msgs-wrap">
     <div className="msgs" ref={containerRef}>
       {app.sessionId && !app.selectors.soulSlug ? (
         <SysLine>
@@ -36,15 +62,19 @@ export function MessageList() {
           Soul not loaded — this conversation runs without Alt&apos;s persona.
         </SysLine>
       ) : null}
-      {app.messages.map((message, index) => (
-        <TranscriptEntry
-          key={`${index}-${message.timestamp ?? message.text.slice(0, 12)}`}
-          message={message}
-          developer={developer}
-          isLatestUser={index === latestUserIndex}
-          renderedToolCallIds={renderedToolCallIds}
-        />
-      ))}
+      {app.messages.map((message, index) => {
+        if (message.role === "user") userOrdinal += 1;
+        return (
+          <TranscriptEntry
+            key={`${index}-${message.timestamp ?? message.text.slice(0, 12)}`}
+            message={message}
+            developer={developer}
+            isLatestUser={index === latestUserIndex}
+            renderedToolCallIds={renderedToolCallIds}
+            userIndex={message.role === "user" ? userOrdinal : undefined}
+          />
+        );
+      })}
 
       {app.approvalMarkers.map((marker) => (
         <SysLine key={marker}>
@@ -69,6 +99,28 @@ export function MessageList() {
         }
         return <ToolLine key={part.tool.callId} tool={part.tool} />;
       })}
+    </div>
+    {userMessageCount > 1 ? (
+      <div
+        className={cn("scrub-rail", scrubbing && "dragging")}
+        ref={railRef}
+        onPointerDown={(event) => {
+          event.preventDefault();
+          event.currentTarget.setPointerCapture?.(event.pointerId);
+          setScrubbing(true);
+          scrubTo(event.clientY);
+        }}
+        onPointerMove={(event) => {
+          if (scrubbing) scrubTo(event.clientY);
+        }}
+        onPointerUp={() => setScrubbing(false)}
+        onPointerCancel={() => setScrubbing(false)}
+      >
+        {Array.from({ length: userMessageCount }, (_, tick) => (
+          <span key={tick} className="tick" />
+        ))}
+      </div>
+    ) : null}
     </div>
   );
 }
@@ -157,11 +209,13 @@ function TranscriptEntry({
   developer,
   isLatestUser,
   renderedToolCallIds,
+  userIndex,
 }: {
   message: TranscriptMessage;
   developer: boolean;
   isLatestUser: boolean;
   renderedToolCallIds: Set<string>;
+  userIndex?: number;
 }) {
   const app = useApp();
   const { thinkingExpanded } = useShell();
@@ -199,6 +253,7 @@ function TranscriptEntry({
         isRunning={app.isRunning}
         onEdit={editMessage}
         onBranch={branchMessage}
+        userIndex={userIndex}
       />
     );
   }
@@ -258,6 +313,7 @@ function UserBubble({
   isRunning,
   onEdit,
   onBranch,
+  userIndex,
 }: {
   text: string;
   entryId: string | null;
@@ -265,6 +321,7 @@ function UserBubble({
   isRunning: boolean;
   onEdit: (text: string, entryId: string | null) => void;
   onBranch: (entryId: string) => void;
+  userIndex?: number;
 }) {
   const trimmed = (text || "").trim();
   if (!trimmed) return null;
@@ -272,7 +329,7 @@ function UserBubble({
   // their Pi entry id, which old transcripts may not carry.
   const canEdit = isLatest || Boolean(entryId);
   return (
-    <div className="msg user">
+    <div className="msg user" data-uidx={userIndex}>
       <div className="who">You</div>
       <div className="bubble">
         <div

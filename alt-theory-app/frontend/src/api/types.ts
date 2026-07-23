@@ -72,6 +72,7 @@ export interface SessionDraftSnapshot {
   soulSlug: string | null;
   customInstructionRef?: string | null;
   modelOverride?: SessionModelOverride | null;
+  workspacePrimaryDir?: string | null;
 }
 
 export type ThinkingLevel =
@@ -111,6 +112,7 @@ export interface SessionSnapshot {
   mode?: CapabilityMode;
   modelOverride?: SessionModelOverride | null;
   studyTag?: StudyTag | null;
+  workspace?: { primaryDir: string; additionalDirs: string[] } | null;
   openedFrom?: "new" | "existing";
   resumeWarnings?: string[];
   messageCount: number;
@@ -178,6 +180,8 @@ export interface SessionSummary {
   } | null;
   /** Study designation (M7 §3); null = daily use. */
   studyTag: StudyTag | null;
+  /** Working folder (M4); null = default managed workspace. */
+  workspacePrimaryDir: string | null;
 }
 
 export interface EffectiveSessionConfig {
@@ -452,6 +456,10 @@ export type ClientMessage =
   | {
       type: "set_session_model";
       payload: { override: SessionModelOverride | null };
+    }
+  | {
+      type: "set_draft_workspace";
+      payload: { primaryDir: string | null };
     }
   | { type: "new_session" }
   | { type: "open_session"; payload: { sessionId: string } }

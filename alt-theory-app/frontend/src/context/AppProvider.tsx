@@ -49,6 +49,11 @@ import type {
   ParticipantInfo,
   ConfigStatus,
 } from "@/api/types";
+import {
+  addWorkspace as addWorkspaceRequest,
+  listWorkspaces,
+  setSessionWorkspace as setSessionWorkspaceRequest,
+} from "@/api/workspaces";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import type { ConnStatus } from "@/components/ui/StatusBadge";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -145,6 +150,16 @@ export interface AppContextValue {
   switchRolePreset: (rolePresetSlug: string | null) => void;
   switchInstruction: (customInstructionRef: string | null) => void;
   switchVisibility: (visibility: "research" | "private") => void;
+
+  /** Working folder for the draft/current conversation; null = none. */
+  workspacePrimaryDir: string | null;
+  /** Explicitly added working folders (may be empty of sessions). */
+  knownWorkspaces: string[];
+  /** Choose the working folder for the next (or current) conversation. */
+  setDraftWorkspace: (primaryDir: string | null) => void;
+  addKnownWorkspace: (path: string) => Promise<void>;
+  /** Re-point any existing session's working folder (drag & drop, M4). */
+  repointSession: (sessionId: string, primaryDir: string | null) => Promise<void>;
 
   sessionMode: CapabilityMode;
   switchMode: (mode: CapabilityMode) => void;
@@ -290,6 +305,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [wsConnected, setWsConnected] = useState(false);
   const [selectors, setSelectors] = useState<SessionSelectors>(defaultSelectors);
   const [sessionMode, setSessionMode] = useState<CapabilityMode>("pure");
+  const [workspacePrimaryDir, setWorkspacePrimaryDir] = useState<string | null>(
+    null
+  );
+  const [knownWorkspaces, setKnownWorkspaces] = useState<string[]>([]);
   const [modelOverride, setModelOverride] =
     useState<SessionModelOverride | null>(null);
   const [studyTag, setStudyTagState] = useState<StudyTag | null>(null);
@@ -573,6 +592,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setSelectors(applySnapshotSelectors(message.payload));
           setSessionMode("pure");
           setModelOverride(message.payload.modelOverride ?? null);
+          setWorkspacePrimaryDir(message.payload.workspacePrimaryDir ?? null);
           setStudyTagState(null);
           setApprovalMarkers([]);
           setManifest(null);
@@ -1127,6 +1147,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setReviseEntryId(null);
   }, []);
 
+  const setDraftWorkspace = useCallback(
+    (primaryDir: string | null) => {
+      if (sendMessage({ type: "set_draft_workspace", payload: { primaryDir } })) {
+        // Sticky choice for the NEXT conversation; server echoes only in
+        // draft state, so track it optimistically here.
+        setWorkspacePrimaryDir(primaryDir);
+      }
+    },
+    [sendMessage]
+  );
+
+  const addKnownWorkspace = useCallback(async (path: string) => {
+    const result = await addWorkspaceRequest(path);
+    setKnownWorkspaces(result.workspaces);
+  }, []);
+
+  const repointSession = useCallback(
+    async (targetSessionId: string, primaryDir: string | null) => {
+      await setSessionWorkspaceRequest(targetSessionId, primaryDir);
+      void refreshSessions();
+    },
+    [refreshSessions]
+  );
+
+  useEffect(() => {
+    if (appMode !== "local") return;
+    listWorkspaces()
+      .then((result) => setKnownWorkspaces(result.workspaces))
+      .catch(() => {
+        /* hosted or endpoint unavailable */
+      });
+  }, [appMode]);
+
   const branchFromEntry = useCallback(
     (entryId: string) => {
       if (!sessionId || isRunning) return;
@@ -1324,6 +1377,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       switchInstruction,
       switchVisibility,
       sessionMode,
+      workspacePrimaryDir,
+      knownWorkspaces,
+      setDraftWorkspace,
+      addKnownWorkspace,
+      repointSession,
       switchMode,
       modelOverride,
       setSessionModel,
@@ -1407,6 +1465,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       switchInstruction,
       switchVisibility,
       sessionMode,
+      workspacePrimaryDir,
+      knownWorkspaces,
+      setDraftWorkspace,
+      addKnownWorkspace,
+      repointSession,
       switchMode,
       modelOverride,
       setSessionModel,

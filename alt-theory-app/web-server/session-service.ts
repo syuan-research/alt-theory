@@ -519,6 +519,62 @@ export class SessionService {
   }
 
   /**
+   * Re-point a session's working folder (M4). Header is the source of truth;
+   * a live session is disposed and reopened so Pi's cwd and the security
+   * boundary rebuild against the new folder — which also resets session
+   * approval allowances (conservative: re-ask in the new context).
+   * additionalDirs are dropped for the same reason. Returns null when the
+   * session was not live (header-only change; next open picks it up).
+   */
+  async setSessionWorkspace(
+    sessionId: string,
+    primaryDir: string | null
+  ): Promise<SessionSnapshot | null> {
+    const resolved = primaryDir ? resolve(primaryDir) : null;
+    if (resolved) {
+      const stat = statSync(resolved, { throwIfNoEntry: false });
+      if (!stat?.isDirectory()) {
+        throw new Error(`Working folder does not exist: ${resolved}`);
+      }
+    }
+    const live = this.sessions.get(sessionId);
+    if (live && (live.busy || live.session.isStreaming)) {
+      throw new SessionBusyError(sessionId);
+    }
+    const recordsDir =
+      live?.manifest.recordsDir ??
+      getSessionDirs(this.config.dataDir, sessionId)?.recordsDir;
+    if (!recordsDir || !existsSync(recordsDir)) {
+      throw new Error(`Unknown session id: ${sessionId}`);
+    }
+    const header = readV4SessionHeader(recordsDir);
+    if (!header) {
+      throw new Error(`Session header missing: ${sessionId}`);
+    }
+    writeSessionHeader(recordsDir, {
+      ...header,
+      workspace: resolved
+        ? { primaryDir: resolved, additionalDirs: [] }
+        : undefined,
+    });
+    appendSessionEvent(recordsDir, {
+      sessionId,
+      type: "workspace_repointed",
+      details: { primaryDir: resolved },
+    });
+    if (!live) return null;
+    const selectors = { ...live.selectors };
+    this.sessions.delete(sessionId);
+    await this.disposeManaged(live);
+    const replacement = await this.createManagedFromExisting(
+      sessionId,
+      selectors
+    );
+    this.sessions.set(sessionId, replacement);
+    return this.snapshot(replacement);
+  }
+
+  /**
    * Resolve a pending extension approval dialog (spec §5.2). Unknown ids
    * return false (already resolved by timeout/abort, or never existed).
    */
