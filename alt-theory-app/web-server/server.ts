@@ -132,10 +132,13 @@ const PUBLIC_DIR = resolve(
 );
 
 const DEFAULT_ROLE_CONDITION_PRESETS: Record<string, string> = {
-  "conceptual-theory": "role-conceptual-theory-companion",
+  "conceptual-theory": "role-conceptual-theory-companion-latest",
   "metatheory-oriented": "role-metatheory-oriented",
 };
-const DEFAULT_ROLE_PRESET_SLUG = "role-conceptual-theory-companion";
+// Points at the MUTABLE -latest asset by convention (agent-assets/README.md):
+// the name is stable while its content evolves, so this constant never needs
+// to change again — no config indirection required.
+const DEFAULT_ROLE_PRESET_SLUG = "role-conceptual-theory-companion-latest";
 const DEFAULT_SOUL_SLUG = "soul-latest";
 const DEFAULT_INSTRUCTION_REF = "default.md";
 

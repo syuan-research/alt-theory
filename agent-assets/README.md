@@ -113,3 +113,24 @@ Future topics, not solved in this slice:
 - Source-of-truth rules for KB and prompt versions.
 - Session-level agent instructions.
 - Whether project-scoped skills should later be installed globally, vendored as plugin assets, or kept as readable project rules only.
+
+## Asset versioning convention (2026-07-23)
+
+- Top-level `*-latest.md` files (`soul/soul-latest.md`,
+  `role-presets/role-conceptual-theory-companion-latest.md`) are the MUTABLE
+  working versions. Edit them freely. The backend default slugs point at the
+  `-latest` names, so evolving the content never requires a code change.
+- `snapshots/` subfolders hold FROZEN copies. Before a meaningful edit — and
+  always before an experiment/benchmark run — copy the latest file into
+  `snapshots/` with a date suffix (`name-YYYYMMDD-n.md`). Never edit a
+  snapshot.
+- Experiments and A/B arms select explicit snapshot versions, not `-latest`
+  (researcher pickers show snapshots collapsed under "History"; user-facing
+  pickers hide them).
+- Provenance floor: every session manifest records the sha256 of the exact
+  asset content it loaded, so sessions remain traceable to content even when
+  `-latest` has moved on.
+- Planned: a `version:` frontmatter field in `-latest` files, bumped on
+  meaningful edits (major rework bumps the integer). Snapshots inherit the
+  version they froze.
+- Release bundles exclude `snapshots/` directories.

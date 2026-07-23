@@ -256,7 +256,7 @@ test("write-enabled core exposes write without edit/bash and writes notes", asyn
   mkdirSync(join(kb, "ep-core"), { recursive: true });
   writeFileSync(appContextPath, "Write test app context", "utf-8");
   writeFileSync(soulPath, "Write test soul", "utf-8");
-  writeFileSync(join(rolePresets, "role-conceptual-theory-companion.md"), "Write test conceptual theory role", "utf-8");
+  writeFileSync(join(rolePresets, "role-conceptual-theory-companion-latest.md"), "Write test conceptual theory role", "utf-8");
   writeFileSync(
     modelsPath,
     JSON.stringify({
@@ -290,8 +290,8 @@ test("write-enabled core exposes write without edit/bash and writes notes", asyn
     ...dirs,
     appContextPath,
     soulPath,
-    rolePresetPath: join(rolePresets, "role-conceptual-theory-companion.md"),
-    rolePresetSlug: "role-conceptual-theory-companion",
+    rolePresetPath: join(rolePresets, "role-conceptual-theory-companion-latest.md"),
+    rolePresetSlug: "role-conceptual-theory-companion-latest",
     kbDir: kb,
     piPromptTemplatesDir: resolve(projectRoot, "agent-assets", "prompts", "pi"),
     modelsPath,
@@ -326,7 +326,7 @@ test("write-enabled core exposes write without edit/bash and writes notes", asyn
     assert.equal(result.manifest.testBatch, "2026-06-12-smoke");
     assert.equal(result.manifest.appContext.exists, true);
     assert.equal(result.manifest.soul.exists, true);
-    assert.equal(result.manifest.rolePreset.slug, "role-conceptual-theory-companion");
+    assert.equal(result.manifest.rolePreset.slug, "role-conceptual-theory-companion-latest");
     assert.equal(existsSync(result.session.sessionFile), false);
     result.session.sessionManager.appendMessage({
       role: "assistant",
@@ -411,7 +411,7 @@ test("core records resource discovery mode in the assembly manifest", async () =
   mkdirSync(skillsDir, { recursive: true });
   writeFileSync(appContextPath, "Test app context", "utf-8");
   writeFileSync(soulPath, "Test soul", "utf-8");
-  writeFileSync(join(rolePresets, "role-conceptual-theory-companion.md"), "Conceptual theory role", "utf-8");
+  writeFileSync(join(rolePresets, "role-conceptual-theory-companion-latest.md"), "Conceptual theory role", "utf-8");
   writeFileSync(
     join(skillsDir, "summary.md"),
     "---\nname: summary-test\ndescription: Test summary skill\n---\nSummarize.",
@@ -423,8 +423,8 @@ test("core records resource discovery mode in the assembly manifest", async () =
     ...dirs,
     appContextPath,
     soulPath,
-    rolePresetPath: join(rolePresets, "role-conceptual-theory-companion.md"),
-    rolePresetSlug: "role-conceptual-theory-companion",
+    rolePresetPath: join(rolePresets, "role-conceptual-theory-companion-latest.md"),
+    rolePresetSlug: "role-conceptual-theory-companion-latest",
     kbDir: kb,
     kbDomain: "ep-core",
     readOnly: true,
@@ -470,14 +470,14 @@ test("alt-only prompt mode replaces Pi base system prompt", async () => {
   mkdirSync(join(kb, "ep-core"), { recursive: true });
   writeFileSync(appContextPath, "Test app context", "utf-8");
   writeFileSync(soulPath, "Test soul", "utf-8");
-  writeFileSync(join(rolePresets, "role-conceptual-theory-companion.md"), "Conceptual theory role", "utf-8");
+  writeFileSync(join(rolePresets, "role-conceptual-theory-companion-latest.md"), "Conceptual theory role", "utf-8");
 
   const result = await createAltTheorySession({
     ...dirs,
     appContextPath,
     soulPath,
-    rolePresetPath: join(rolePresets, "role-conceptual-theory-companion.md"),
-    rolePresetSlug: "role-conceptual-theory-companion",
+    rolePresetPath: join(rolePresets, "role-conceptual-theory-companion-latest.md"),
+    rolePresetSlug: "role-conceptual-theory-companion-latest",
     kbDir: kb,
     kbDomain: "ep-core",
     readOnly: true,
@@ -552,7 +552,7 @@ test("openAltTheorySession opens existing JSONL and reports runtime drift", asyn
   mkdirSync(rolePresets, { recursive: true });
   writeFileSync(appContextPath, "Open existing app context", "utf-8");
   writeFileSync(soulPath, "Open existing soul", "utf-8");
-  writeFileSync(join(rolePresets, "role-conceptual-theory-companion.md"), "Conceptual theory role", "utf-8");
+  writeFileSync(join(rolePresets, "role-conceptual-theory-companion-latest.md"), "Conceptual theory role", "utf-8");
   writeFileSync(join(rolePresets, "alternate.md"), "Alternate role", "utf-8");
   writeFileSync(
     modelsPath,
@@ -588,8 +588,8 @@ test("openAltTheorySession opens existing JSONL and reports runtime drift", asyn
     ...dirs,
     appContextPath,
     soulPath,
-    rolePresetPath: join(rolePresets, "role-conceptual-theory-companion.md"),
-    rolePresetSlug: "role-conceptual-theory-companion",
+    rolePresetPath: join(rolePresets, "role-conceptual-theory-companion-latest.md"),
+    rolePresetSlug: "role-conceptual-theory-companion-latest",
     kbDir: kb,
     kbDomain: "ep-core",
     modelsPath,
@@ -676,7 +676,7 @@ test("openAltTheorySession opens existing JSONL and reports runtime drift", asyn
       readFileSync(join(dirs.recordsDir, "resume-manifest.json"), "utf-8")
     );
     assert.equal(resumeManifest.openedFrom, "existing");
-    assert.equal(resumeManifest.resumedFrom.rolePresetSlug, "role-conceptual-theory-companion");
+    assert.equal(resumeManifest.resumedFrom.rolePresetSlug, "role-conceptual-theory-companion-latest");
     assert.deepEqual(
       readdirSync(join(dataDir, "sessions")),
       sessionRootEntriesBefore
@@ -731,7 +731,7 @@ test("session events are append-only structured records without message bodies",
   appendSessionEvent(root, {
     sessionId: "session-test",
     type: "session_created",
-    details: { rolePresetSlug: "role-conceptual-theory-companion" },
+    details: { rolePresetSlug: "role-conceptual-theory-companion-latest" },
   });
   appendSessionEvent(root, {
     sessionId: "session-test",
@@ -766,7 +766,7 @@ test("session catalog and detail expose complete and incomplete sessions", async
   mkdirSync(rolePresets, { recursive: true });
   writeFileSync(appContextPath, "Catalog test app context", "utf-8");
   writeFileSync(soulPath, "Catalog test soul", "utf-8");
-  writeFileSync(join(rolePresets, "role-conceptual-theory-companion.md"), "Conceptual theory role", "utf-8");
+  writeFileSync(join(rolePresets, "role-conceptual-theory-companion-latest.md"), "Conceptual theory role", "utf-8");
   writeFileSync(
     modelsPath,
     JSON.stringify({
@@ -801,8 +801,8 @@ test("session catalog and detail expose complete and incomplete sessions", async
     ...completeDirs,
     appContextPath,
     soulPath,
-    rolePresetPath: join(rolePresets, "role-conceptual-theory-companion.md"),
-    rolePresetSlug: "role-conceptual-theory-companion",
+    rolePresetPath: join(rolePresets, "role-conceptual-theory-companion-latest.md"),
+    rolePresetSlug: "role-conceptual-theory-companion-latest",
     kbDir: kb,
     kbDomain: "ep-core",
     modelsPath,
@@ -866,8 +866,8 @@ test("session catalog and detail expose complete and incomplete sessions", async
     ...emptyV4Dirs,
     appContextPath,
     soulPath,
-    rolePresetPath: join(rolePresets, "role-conceptual-theory-companion.md"),
-    rolePresetSlug: "role-conceptual-theory-companion",
+    rolePresetPath: join(rolePresets, "role-conceptual-theory-companion-latest.md"),
+    rolePresetSlug: "role-conceptual-theory-companion-latest",
     kbDir: kb,
     kbDomain: "ep-core",
     modelsPath,
@@ -907,7 +907,7 @@ test("session catalog and detail expose complete and incomplete sessions", async
     (session) => session.sessionId === "session-v4-empty"
   );
   assert.equal(completeSummary?.status, "available");
-  assert.equal(completeSummary?.rolePresetSlug, "role-conceptual-theory-companion");
+  assert.equal(completeSummary?.rolePresetSlug, "role-conceptual-theory-companion-latest");
   assert.equal(completeSummary?.kbDomain, "ep-core");
   assert.equal(completeSummary?.provider, "test-provider");
   assert.equal(completeSummary?.model, "test-model");
@@ -1238,7 +1238,7 @@ test("session REST routes preserve hosted isolation and local access", async () 
   mkdirSync(souls, { recursive: true });
   mkdirSync(join(kb, "ep-core"), { recursive: true });
   writeFileSync(appContextPath, "Auth filter app context", "utf-8");
-  writeFileSync(join(rolePresets, "role-conceptual-theory-companion.md"), "Conceptual theory role", "utf-8");
+  writeFileSync(join(rolePresets, "role-conceptual-theory-companion-latest.md"), "Conceptual theory role", "utf-8");
   writeFileSync(join(souls, "soul-latest.md"), "Latest soul", "utf-8");
 
   writeAccountStore(dataDir, {
@@ -1304,7 +1304,7 @@ test("session REST routes preserve hosted isolation and local access", async () 
   });
 
   const p01Session = await service.createSession(
-    { rolePresetSlug: "role-conceptual-theory-companion", kbDomain: "ep-core", soulSlug: "soul-latest" },
+    { rolePresetSlug: "role-conceptual-theory-companion-latest", kbDomain: "ep-core", soulSlug: "soul-latest" },
     {
       ownerAccountId: "p01",
       roleCondition: "conceptual-theory",
@@ -1316,7 +1316,7 @@ test("session REST routes preserve hosted isolation and local access", async () 
     }
   );
   const p01PrivateSession = await service.createSession(
-    { rolePresetSlug: "role-conceptual-theory-companion", kbDomain: "ep-core", soulSlug: "soul-latest" },
+    { rolePresetSlug: "role-conceptual-theory-companion-latest", kbDomain: "ep-core", soulSlug: "soul-latest" },
     {
       ownerAccountId: "p01",
       roleCondition: "conceptual-theory",
@@ -1336,7 +1336,7 @@ test("session REST routes preserve hosted isolation and local access", async () 
     "utf-8"
   );
   const p02Session = await service.createSession(
-    { rolePresetSlug: "role-conceptual-theory-companion", kbDomain: "ep-core", soulSlug: "soul-latest" },
+    { rolePresetSlug: "role-conceptual-theory-companion-latest", kbDomain: "ep-core", soulSlug: "soul-latest" },
     {
       ownerAccountId: "p02",
       roleCondition: "metatheory-oriented",
@@ -1348,13 +1348,13 @@ test("session REST routes preserve hosted isolation and local access", async () 
     }
   );
   const ownerlessSession = await service.createSession({
-    rolePresetSlug: "role-conceptual-theory-companion",
+    rolePresetSlug: "role-conceptual-theory-companion-latest",
     kbDomain: "ep-core",
     soulSlug: "soul-latest",
   });
   const ownerlessPrivateSession = await service.createSession(
     {
-      rolePresetSlug: "role-conceptual-theory-companion",
+      rolePresetSlug: "role-conceptual-theory-companion-latest",
       kbDomain: "ep-core",
       soulSlug: "soul-latest",
     },
@@ -1569,15 +1569,15 @@ test("WebSocket open_session replaces current state with an existing session", a
   mkdirSync(rolePresets, { recursive: true });
   writeFileSync(appContextPath, "WS open app context", "utf-8");
   writeFileSync(soulPath, "WS open soul", "utf-8");
-  writeFileSync(join(rolePresets, "role-conceptual-theory-companion.md"), "Conceptual theory role", "utf-8");
+  writeFileSync(join(rolePresets, "role-conceptual-theory-companion-latest.md"), "Conceptual theory role", "utf-8");
 
   const existingDirs = createSessionDirs(dataDir, "session-ws-open");
   const existing = await createAltTheorySession({
     ...existingDirs,
     appContextPath,
     soulPath,
-    rolePresetPath: join(rolePresets, "role-conceptual-theory-companion.md"),
-    rolePresetSlug: "role-conceptual-theory-companion",
+    rolePresetPath: join(rolePresets, "role-conceptual-theory-companion-latest.md"),
+    rolePresetSlug: "role-conceptual-theory-companion-latest",
     kbDir: kb,
     kbDomain: "ep-core",
     readOnly: true,
@@ -1680,7 +1680,7 @@ test("WebSocket open_session replaces current state with an existing session", a
   try {
     const initialDraft = await initialDraftPromise;
     assert.equal(initialDraft.payload.status, "draft");
-    assert.equal(initialDraft.payload.rolePresetSlug, "role-conceptual-theory-companion");
+    assert.equal(initialDraft.payload.rolePresetSlug, "role-conceptual-theory-companion-latest");
     assert.equal(initialDraft.payload.currentDomain, "ep-core");
     const sessionRootsAfterConnect = readdirSync(join(dataDir, "sessions"));
     assert.deepEqual(sessionRootsAfterConnect, ["session-ws-open"]);
@@ -1788,7 +1788,7 @@ test("WebSocket participant first send creates an owned role-conditioned session
   mkdirSync(join(kb, "ep-core"), { recursive: true });
   writeFileSync(appContextPath, "WS auth app context", "utf-8");
   writeFileSync(
-    join(rolePresets, "role-conceptual-theory-companion.md"),
+    join(rolePresets, "role-conceptual-theory-companion-latest.md"),
     "Conceptual theory role",
     "utf-8"
   );
@@ -1887,7 +1887,7 @@ test("WebSocket participant first send creates an owned role-conditioned session
     const draft = await waitForType(ws, "session_draft");
     assert.equal(
       draft.payload.rolePresetSlug,
-      "role-conceptual-theory-companion"
+      "role-conceptual-theory-companion-latest"
     );
     assert.equal(draft.payload.visibility, "research");
 
@@ -1970,7 +1970,7 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
   writeFileSync(join(souls, "soul-latest.md"), "Latest soul", "utf-8");
   writeFileSync(join(souls, "soul-test.md"), "Test soul", "utf-8");
   writeFileSync(
-    join(rolePresets, "role-conceptual-theory-companion.md"),
+    join(rolePresets, "role-conceptual-theory-companion-latest.md"),
     "Conceptual theory role",
     "utf-8"
   );
@@ -2034,7 +2034,7 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
     assert.deepEqual(await rolePresetsResponse.json(), {
       rolePresets: [
         { slug: "alternate", displayName: "Alternate" },
-        { slug: "role-conceptual-theory-companion", displayName: "Role Conceptual Theory Companion" },
+        { slug: "role-conceptual-theory-companion-latest", displayName: "Role Conceptual Theory Companion Latest" },
       ],
     });
     const soulsResponse = await fetch(`${baseUrl}/api/souls`);
@@ -2129,7 +2129,7 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
     ]);
     assert.equal(draft1.payload.status, "draft");
     assert.equal(draft2.payload.status, "draft");
-    assert.equal(draft1.payload.rolePresetSlug, "role-conceptual-theory-companion");
+    assert.equal(draft1.payload.rolePresetSlug, "role-conceptual-theory-companion-latest");
     assert.equal(draft1.payload.soulSlug, "soul-latest");
     assert.equal(draft1.payload.customInstructionRef, "default.md");
     assert.equal(existsSync(join(root, "data", "sessions")), false);
@@ -2191,7 +2191,7 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
     ws2.send(JSON.stringify({ type: "get_session_metadata" }));
     const ws2Draft = await ws2DraftPromise;
     assert.equal(ws2Draft.payload.currentDomain, "ep-core");
-    assert.equal(ws2Draft.payload.rolePresetSlug, "role-conceptual-theory-companion");
+    assert.equal(ws2Draft.payload.rolePresetSlug, "role-conceptual-theory-companion-latest");
     assert.equal(ws2Draft.payload.soulSlug, "soul-latest");
     assert.equal(ws2Draft.payload.customInstructionRef, "default.md");
 
@@ -2207,7 +2207,7 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
     assert.equal(reopened1.payload.rolePresetSlug, "alternate");
     assert.equal(reopened1.payload.soulSlug, null);
     assert.equal(reopened2.payload.currentDomain, "ep-core");
-    assert.equal(reopened2.payload.rolePresetSlug, "role-conceptual-theory-companion");
+    assert.equal(reopened2.payload.rolePresetSlug, "role-conceptual-theory-companion-latest");
     assert.equal(reopened2.payload.soulSlug, "soul-latest");
     assert.equal(reopened2.payload.customInstructionRef, "default.md");
     assert.equal(existsSync(join(root, "data", "sessions")), false);
@@ -2235,7 +2235,7 @@ test("local mode refuses prompt materialization without usable active model", as
   mkdirSync(rolePresets, { recursive: true });
   mkdirSync(souls, { recursive: true });
   writeFileSync(appContextPath, "Local app context", "utf-8");
-  writeFileSync(join(rolePresets, "role-conceptual-theory-companion.md"), "Conceptual theory role", "utf-8");
+  writeFileSync(join(rolePresets, "role-conceptual-theory-companion-latest.md"), "Conceptual theory role", "utf-8");
   writeFileSync(join(souls, "soul-latest.md"), "Latest soul", "utf-8");
 
   const previousMode = process.env.ALT_THEORY_MODE;
