@@ -11,9 +11,10 @@ workspace layout from this public file.
 
 1. Read `README.md`.
 2. Read the relevant map under `development/architecture/`.
-3. Read the matching design/acceptance material under
-   `development/features/` or issue note under `development/issues/` when it
-   exists.
+3. Read the matching private development `swe-plan` when one is provided.
+   GPT-5.6, Kimi K3, Claude Opus, Fable, and comparable models normally do not
+   need feature or issue scaffolding; stronger models made those default gates
+   more constraining than helpful.
 4. Check the exact Git status before editing and keep unrelated changes intact.
 
 ## Source Boundaries
@@ -60,8 +61,8 @@ Run both for cross-layer or release-facing changes.
 
 - Prefer the smallest change at the shared source of truth.
 - Update current architecture when an implemented boundary changes.
-- Add or update feature design/acceptance evidence only when it helps explain
-  durable public behavior; do not add private plans, handoffs, execution
-  trackers, or agent-session output to this repository.
+- Add feature or issue artifacts only when the user asks or they materially
+  help explain durable public behavior; do not add private plans, handoffs,
+  execution trackers, or agent-session output to this repository.
 - An alpha checkpoint tag records a version that users actually encountered;
   it does not assert that acceptance work is complete.
