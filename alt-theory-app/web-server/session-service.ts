@@ -383,6 +383,13 @@ export class SessionService {
       sessionId,
       fallbackSelectors
     );
+    // Reading a private session counts as activity: reopening refreshes the
+    // retention timer so a conversation the user still returns to never
+    // expires out from under them (owner decision 2026-07-23).
+    const header = readV4SessionHeader(managed.manifest.recordsDir);
+    if (header?.visibility === "private") {
+      refreshSessionRetention(managed.manifest.recordsDir);
+    }
     this.sessions.set(managed.manifest.sessionId, managed);
     return this.snapshot(managed);
   }

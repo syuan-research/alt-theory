@@ -9,7 +9,6 @@ import { SessionImportDialog } from "@/components/shell/SessionImportDialog";
 export function LeftNav() {
   const app = useApp();
   const shell = useShell();
-  const [sessionImportOpen, setSessionImportOpen] = useState(false);
   const avatarLetter = (
     app.auth.displayLabel ||
     app.auth.accountId ||
@@ -42,11 +41,6 @@ export function LeftNav() {
         <button title="Search" onClick={() => shell.setSearchOpen(true)}>
           <i className="ph ph-magnifying-glass" />
         </button>
-        {app.appMode === "local" ? (
-          <button title="Import conversation" onClick={() => setSessionImportOpen(true)}>
-            <i className="ph ph-download-simple" />
-          </button>
-        ) : null}
         <div style={{ flex: 1 }} />
         <button
           title="Settings"
@@ -81,7 +75,7 @@ export function LeftNav() {
           </div>
         </div>
 
-        <UserNav onImport={() => setSessionImportOpen(true)} />
+        <UserNav onImport={() => shell.setImportOpen(true)} />
         <Workbench />
 
         <div className="left-foot">
@@ -94,7 +88,10 @@ export function LeftNav() {
           </div>
         </div>
       </div>
-      <SessionImportDialog open={sessionImportOpen} onClose={() => setSessionImportOpen(false)} />
+      <SessionImportDialog
+        open={shell.importOpen}
+        onClose={() => shell.setImportOpen(false)}
+      />
     </aside>
   );
 }
@@ -136,22 +133,36 @@ function UserNav({ onImport }: { onImport: () => void }) {
       style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}
     >
       <div className="pad">
-        <button
-          className="btn-new"
-          onClick={() => {
-            shell.openApp();
-            app.startNewSession();
-          }}
-        >
-          <i className="ph ph-plus" />
-          New conversation
-        </button>
-        {app.appMode === "local" ? (
-          <button className="group-label ws" onClick={onImport}>
-            <i className="ph ph-download-simple" />
-            Import conversation
+        <div className="new-row">
+          <button
+            className="btn-new"
+            onClick={() => {
+              shell.openApp();
+              app.startNewSession();
+            }}
+          >
+            <i className="ph ph-plus" />
+            New conversation
           </button>
-        ) : null}
+          {app.appMode === "local" ? (
+            <details className="list-more">
+              <summary title="More">
+                <i className="ph ph-dots-three" />
+              </summary>
+              <div className="list-menu">
+                <button
+                  onClick={(e) => {
+                    e.currentTarget.closest("details")?.removeAttribute("open");
+                    onImport();
+                  }}
+                >
+                  <i className="ph ph-download-simple" />
+                  Import conversations…
+                </button>
+              </div>
+            </details>
+          ) : null}
+        </div>
       </div>
       <div className="sessions">
         {app.sessionsLoading && app.sessions.length === 0 ? (

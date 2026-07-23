@@ -58,6 +58,10 @@ export interface ShellContextValue {
   thinkingExpanded: boolean;
   setThinkingExpanded: (on: boolean) => void;
 
+  /** Session-import dialog (triggered from empty state or the list menu). */
+  importOpen: boolean;
+  setImportOpen: (open: boolean) => void;
+
   /** A/B comparison setup panel (float-cmp) over the center (researcher). */
   compareOpen: boolean;
   openCompare: () => void;
@@ -111,6 +115,7 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   const [thinkingExpanded, setThinkingExpandedState] = useState(() =>
     readFlag(THINKING_EXPANDED_KEY)
   );
+  const [importOpen, setImportOpen] = useState(false);
   const [armsComparisonId, setArmsComparisonId] = useState<string | null>(null);
   const [compareOpen, setCompareOpen] = useState(false);
   const [newMode, setNewMode] = useState<CapabilityMode>("pure");
@@ -184,6 +189,8 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       setParticipantTabEnabled,
       thinkingExpanded,
       setThinkingExpanded,
+      importOpen,
+      setImportOpen,
       compareOpen,
       openCompare,
       closeCompare,
@@ -213,6 +220,8 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       setParticipantTabEnabled,
       thinkingExpanded,
       setThinkingExpanded,
+      importOpen,
+      setImportOpen,
       compareOpen,
       openCompare,
       closeCompare,
