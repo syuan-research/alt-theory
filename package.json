@@ -56,6 +56,8 @@
       "alt-theory-app/web-server/public-v6/**",
       "dist-bundle/**",
       "agent-assets/**",
+      "!agent-assets/role-presets/snapshots/**",
+      "!agent-assets/soul/snapshots/**",
       "package.json",
       "node_modules/**"
     ],

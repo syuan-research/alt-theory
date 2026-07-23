@@ -35,6 +35,9 @@ export interface DiscoveredAsset {
   shortLabel?: string;
   userLabel?: string;
   description?: string;
+  /** Historical snapshot; hidden from user-facing pickers, shown collapsed
+   *  under "History" in researcher surfaces. */
+  snapshot?: boolean;
 }
 
 export interface InstructionAsset {

@@ -567,12 +567,21 @@ export function ModelConfigPage() {
     <div className="h-screen overflow-y-auto bg-canvas px-6 py-8 pb-20">
       <div className="mx-auto max-w-[880px]">
         <div className="mb-6 flex justify-end">
-          <Link
-            to="/"
-            className="text-[0.8125rem] text-text-secondary hover:text-ink"
-          >
-            ← Back to app
-          </Link>
+          {status && !status.activeUsable ? (
+            <span
+              className="text-[0.8125rem] text-text-muted"
+              title="The app needs an active model before it can reply"
+            >
+              Set an active model to start using Alt
+            </span>
+          ) : (
+            <Link
+              to="/"
+              className="text-[0.8125rem] text-text-secondary hover:text-ink"
+            >
+              ← Back to app
+            </Link>
+          )}
         </div>
 
         <PageTitle>Model &amp; API Key Setup</PageTitle>

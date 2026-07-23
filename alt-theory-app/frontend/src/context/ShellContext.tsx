@@ -82,6 +82,7 @@ const ShellContext = createContext<ShellContextValue | null>(null);
 const PARTICIPANT_TAB_KEY = "alt-theory-participant-tab";
 const LEFT_COLLAPSED_KEY = "alt-theory-left-collapsed";
 const THINKING_EXPANDED_KEY = "alt-theory-thinking-expanded";
+const NEW_MODE_KEY = "alt-theory-new-mode";
 
 function readFlag(key: string): boolean {
   try {
@@ -118,7 +119,23 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   const [importOpen, setImportOpen] = useState(false);
   const [armsComparisonId, setArmsComparisonId] = useState<string | null>(null);
   const [compareOpen, setCompareOpen] = useState(false);
-  const [newMode, setNewMode] = useState<CapabilityMode>("pure");
+  // Persisted: a user who prefers Work should not reset to Understand on
+  // every launch (settings review 2026-07-23).
+  const [newMode, setNewModeState] = useState<CapabilityMode>(() => {
+    try {
+      return localStorage.getItem(NEW_MODE_KEY) === "full" ? "full" : "pure";
+    } catch {
+      return "pure";
+    }
+  });
+  const setNewMode = useCallback((mode: CapabilityMode) => {
+    setNewModeState(mode);
+    try {
+      localStorage.setItem(NEW_MODE_KEY, mode);
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   const openApp = useCallback(() => setSurface("app"), []);
   const openSettings = useCallback((panel?: string) => {

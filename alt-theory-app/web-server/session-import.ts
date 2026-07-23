@@ -360,7 +360,7 @@ function registerPreparedImport(args: {
       appContext: empty,
       soul: { ...empty, slug: null },
       rolePreset: { ...empty, slug: null },
-      customInstruction: { ...empty, ref: null },
+      customInstruction: { ...empty, ref: null, optional: true },
       skills: [],
       piAdapter: {
         promptTemplatesDir: null,

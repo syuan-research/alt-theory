@@ -295,6 +295,9 @@
   .split-new .split-plus { flex: 0 0 auto; width: 34px; display: flex; align-items: center; justify-content: center; border: none; border-left: 1px solid var(--hairline); background: none; border-radius: 0 var(--r-md) var(--r-md) 0; cursor: pointer; color: var(--ink); }
   .split-new .split-plus:hover { background: var(--hover); }
   .list-menu .check { margin-left: auto; }
+  .menu-history > summary { list-style: none; cursor: pointer; font-size: 0.72rem; color: var(--text-3); padding: 6px 10px 2px; }
+  .menu-history > summary::-webkit-details-marker { display: none; }
+  .menu-history > summary:hover { color: var(--ink); }
   .list-menu .sep { height: 1px; background: var(--hairline); margin: 4px 2px; }
 
   /* workspace group rows (M4) */
