@@ -104,7 +104,14 @@ function ModelsPanel() {
           <p>No providers configured yet.</p>
         ) : (
           providers.map((p) => (
-            <div className="model-row" key={p.name}>
+            <div
+              className={`model-row${app.appMode === "local" ? " clickable" : ""}`}
+              key={p.name}
+              role={app.appMode === "local" ? "button" : undefined}
+              onClick={
+                app.appMode === "local" ? () => navigate("/config") : undefined
+              }
+            >
               <div>
                 <div className="name">{p.name}</div>
                 <div className="meta">
@@ -114,6 +121,9 @@ function ModelsPanel() {
                 </div>
               </div>
               {p.active ? <span className="default">default</span> : null}
+              {app.appMode === "local" ? (
+                <i className="ph ph-caret-right caret" aria-hidden="true" />
+              ) : null}
             </div>
           ))
         )}
@@ -140,6 +150,38 @@ function GeneralPanel() {
             <h4>Language</h4>
             <p>English. More languages later.</p>
           </div>
+        </div>
+      </div>
+      <div className="set-card">
+        <div className="row2">
+          <div>
+            <h4>Show thinking</h4>
+            <p>
+              Show Alt&apos;s thinking as a collapsible block above each reply.
+              Off by default — some models think at great length.
+            </p>
+          </div>
+          <button
+            className={`toggle${shell.showThinking ? " on" : ""}`}
+            aria-pressed={shell.showThinking}
+            onClick={() => shell.setShowThinking(!shell.showThinking)}
+          />
+        </div>
+      </div>
+      <div className="set-card">
+        <div className="row2">
+          <div>
+            <h4>Expand thinking</h4>
+            <p>
+              Show the assistant&apos;s thinking blocks expanded by default.
+              When off, thinking stays collapsed and can be opened per block.
+            </p>
+          </div>
+          <button
+            className={`toggle${shell.thinkingExpanded ? " on" : ""}`}
+            aria-pressed={shell.thinkingExpanded}
+            onClick={() => shell.setThinkingExpanded(!shell.thinkingExpanded)}
+          />
         </div>
       </div>
       <div className="set-card">

@@ -2,6 +2,7 @@ import { createHash } from "crypto";
 import {
   existsSync,
   cpSync,
+  mkdirSync,
   readFileSync,
   readdirSync,
   rmSync,
@@ -63,6 +64,7 @@ export interface ImportSourceSession {
   preview: string;
   repeat: "new" | "unchanged" | "changed";
   importedSessionId: string | null;
+  importCount: number;
   sourceStore?: string;
   sourceVersion?: string;
 }
@@ -79,6 +81,8 @@ export interface ImportSourceRecord {
   sourceVersion?: string;
   transformations?: string[];
   sourceSnapshot?: string;
+  sourceContext?: string;
+  importOrdinal?: number;
 }
 
 export class ImportHarnessNotImplementedError extends Error {
@@ -111,11 +115,12 @@ export async function discoverImportSessions(args: {
         ? discoverCodexSessions(args.codexSessionsDir)
         : discoverGrokSessions(args.grokSessionsDir);
     return discovered.map((source) => {
-      const prior = previous.find(
+      const priors = previous.filter(
         (candidate) =>
           candidate.record.harness === args.harness &&
           candidate.record.sourceSessionId === source.sourceSessionId
       );
+      const prior = latestImport(priors);
       return {
         ...source,
         cwdAvailable: isDirectory(source.cwd),
@@ -125,6 +130,7 @@ export async function discoverImportSessions(args: {
             ? "unchanged"
             : "changed",
         importedSessionId: prior?.sessionId ?? null,
+        importCount: priors.length,
       };
     });
   }
@@ -136,12 +142,13 @@ export async function discoverImportSessions(args: {
 
   return infos.map((info) => {
     const sourceId = resolve(info.path);
-    const prior = previous.find(
+    const priors = previous.filter(
       (candidate) =>
         candidate.record.harness === "pi" &&
         candidate.record.sourceId === sourceId &&
         candidate.record.sourceSessionId === info.id
     );
+    const prior = latestImport(priors);
     const currentFingerprint = prior ? fingerprintFile(sourceId) : null;
     return {
       sourceId,
@@ -159,6 +166,7 @@ export async function discoverImportSessions(args: {
           ? "unchanged"
           : "changed",
       importedSessionId: prior?.sessionId ?? null,
+      importCount: priors.length,
     };
   });
 }
@@ -170,6 +178,8 @@ export function registerPiImport(args: {
   workspacePrimaryDir?: string;
   ownerAccountId?: string | null;
   roleCondition?: string | null;
+  rolePresetSlug?: string | null;
+  soulSlug?: string | null;
   visibility?: "research" | "private";
   consentSnapshot?: {
     researcherReadable: boolean;
@@ -223,6 +233,8 @@ export function registerOpenCodeImport(args: {
   workspacePrimaryDir?: string;
   ownerAccountId?: string | null;
   roleCondition?: string | null;
+  rolePresetSlug?: string | null;
+  soulSlug?: string | null;
   visibility?: "research" | "private";
   consentSnapshot?: {
     researcherReadable: boolean;
@@ -239,6 +251,7 @@ export function registerOpenCodeImport(args: {
     sourceStore: args.source.sourceStore ?? "",
     sourceVersion: args.preflight.sourceVersion,
     transformations: args.preflight.transformations,
+    sourceContextFiles: args.preflight.sourceContextFiles,
   });
 }
 
@@ -250,6 +263,8 @@ export function registerCodexImport(args: {
   workspacePrimaryDir?: string;
   ownerAccountId?: string | null;
   roleCondition?: string | null;
+  rolePresetSlug?: string | null;
+  soulSlug?: string | null;
   visibility?: "research" | "private";
   consentSnapshot?: {
     researcherReadable: boolean;
@@ -266,6 +281,7 @@ export function registerCodexImport(args: {
     sourceStore: args.source.sourceStore ?? "",
     sourceVersion: args.preflight.sourceVersion,
     transformations: args.preflight.transformations,
+    sourceContextFiles: args.preflight.sourceContextFiles,
   });
 }
 
@@ -277,6 +293,8 @@ export function registerGrokImport(args: {
   workspacePrimaryDir?: string;
   ownerAccountId?: string | null;
   roleCondition?: string | null;
+  rolePresetSlug?: string | null;
+  soulSlug?: string | null;
   visibility?: "research" | "private";
   consentSnapshot?: {
     researcherReadable: boolean;
@@ -307,11 +325,14 @@ function registerPreparedImport(args: {
   sourceStore: string;
   sourceVersion?: string;
   transformations: string[];
+  sourceContextFiles?: Array<{ filename: string; content: string }>;
   rawSourceDir?: string;
   mode: CapabilityMode;
   workspacePrimaryDir?: string;
   ownerAccountId?: string | null;
   roleCondition?: string | null;
+  rolePresetSlug?: string | null;
+  soulSlug?: string | null;
   visibility?: "research" | "private";
   consentSnapshot?: {
     researcherReadable: boolean;
@@ -350,6 +371,18 @@ function registerPreparedImport(args: {
         throw new Error("Grok source changed while its managed snapshot was copied");
       }
     }
+    let sourceContext: string | undefined;
+    if (args.sourceContextFiles?.length) {
+      sourceContext = "source-context";
+      const contextDir = join(dirs.recordsDir, sourceContext);
+      mkdirSync(contextDir);
+      for (const file of args.sourceContextFiles) {
+        if (basename(file.filename) !== file.filename) {
+          throw new Error(`Invalid source context filename: ${file.filename}`);
+        }
+        writeFileSync(join(contextDir, file.filename), file.content);
+      }
+    }
 
     const createdAt = args.source.createdAt;
     const empty = emptyFileRef();
@@ -358,9 +391,9 @@ function registerPreparedImport(args: {
       createdAt,
       openedFrom: "existing",
       appContext: empty,
-      soul: { ...empty, slug: null },
-      rolePreset: { ...empty, slug: null },
-      customInstruction: { ...empty, ref: null },
+      soul: { ...empty, slug: args.soulSlug ?? null },
+      rolePreset: { ...empty, slug: args.rolePresetSlug ?? null },
+      customInstruction: { ...empty, ref: null, optional: true },
       skills: [],
       piAdapter: {
         promptTemplatesDir: null,
@@ -410,6 +443,7 @@ function registerPreparedImport(args: {
       workspace: manifest.workspace,
     });
 
+    const importOrdinal = args.source.importCount + 1;
     const sourceRecord: ImportSourceRecord = {
       schemaVersion: 1,
       recordType: "session-import-source",
@@ -421,17 +455,55 @@ function registerPreparedImport(args: {
       sourceVersion: args.sourceVersion,
       transformations: args.transformations,
       sourceSnapshot,
+      sourceContext,
+      importOrdinal,
       importedAt: new Date().toISOString(),
     };
     writeJsonAtomic(
       join(dirs.recordsDir, "session-import-source.json"),
       sourceRecord
     );
+    writeJsonAtomic(join(dirs.recordsDir, "ui-alias.json"), {
+      schemaVersion: 1,
+      alias: importAlias(
+        args.source.name || args.source.preview || args.source.sourceSessionId,
+        args.harness,
+        importOrdinal,
+        sourceRecord.importedAt
+      ),
+      updatedAt: sourceRecord.importedAt,
+    });
     return { sessionId, sourceFingerprint: args.sourceFingerprint };
   } catch (error) {
     rmSync(dirs.sessionRoot, { recursive: true, force: true });
     throw error;
   }
+}
+
+function latestImport<T extends { record: ImportSourceRecord }>(
+  records: T[]
+): T | undefined {
+  return [...records].sort((a, b) =>
+    String(b.record.importedAt).localeCompare(String(a.record.importedAt))
+  )[0];
+}
+
+function importAlias(
+  sourceName: string,
+  harness: ImportHarness,
+  ordinal: number,
+  importedAt: string
+): string {
+  const label = harness === "grok-build"
+    ? "Grok Build"
+    : harness === "opencode"
+      ? "OpenCode"
+      : harness === "codex"
+        ? "Codex"
+        : "Pi";
+  const suffix = ` · ${label} import ${importedAt.slice(0, 10)} #${String(ordinal).padStart(2, "0")}`;
+  const base = sourceName.trim().replace(/\s+/g, " ");
+  return `${base.slice(0, Math.max(1, 80 - suffix.length))}${suffix}`;
 }
 
 function requirePiAdapter(harness: ImportHarness): void {

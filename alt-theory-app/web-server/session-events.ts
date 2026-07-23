@@ -14,6 +14,7 @@ export type SessionEventType =
   | "soul_selected"
   | "mode_selected"
   | "workspace_dir_added"
+  | "workspace_repointed"
   | "skill_invoked"
   | "session_forked"
   | "session_forked_from"

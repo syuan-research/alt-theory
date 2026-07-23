@@ -41,12 +41,19 @@ import type {
   SessionSelectors,
   SessionSnapshot,
   SessionSummary,
+  StreamPart,
   StudyTag,
   TranscriptMessage,
   TranscriptView,
   ViewMode,
   ParticipantInfo,
+  ConfigStatus,
 } from "@/api/types";
+import {
+  addWorkspace as addWorkspaceRequest,
+  listWorkspaces,
+  setSessionWorkspace as setSessionWorkspaceRequest,
+} from "@/api/workspaces";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import type { ConnStatus } from "@/components/ui/StatusBadge";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -108,6 +115,8 @@ export interface AppContextValue {
   setTranscriptView: (view: TranscriptView) => void;
 
   discovery: DiscoveryLists | null;
+  /** Local-mode model config status; carries the active default model. */
+  localConfig: ConfigStatus | null;
 
   sessions: SessionSummary[];
   sessionSearch: string;
@@ -128,6 +137,11 @@ export interface AppContextValue {
 
   sessionId: string | null;
   sessionReady: boolean;
+  /** True only when the current session was just created in this pane (not
+   * opened from the list, reconnected, or rebuilt by an asset switch). */
+  sessionCreatedHere: boolean;
+  /** Resume warnings from the backend, e.g. an asset fallback on reopen. */
+  sessionWarnings: string[];
   isRunning: boolean;
   connStatus: ConnStatus;
   connLabel: string;
@@ -142,6 +156,16 @@ export interface AppContextValue {
   switchInstruction: (customInstructionRef: string | null) => void;
   switchVisibility: (visibility: "research" | "private") => void;
 
+  /** Working folder for the draft/current conversation; null = none. */
+  workspacePrimaryDir: string | null;
+  /** Explicitly added working folders (may be empty of sessions). */
+  knownWorkspaces: string[];
+  /** Choose the working folder for the next (or current) conversation. */
+  setDraftWorkspace: (primaryDir: string | null) => void;
+  addKnownWorkspace: (path: string) => Promise<void>;
+  /** Re-point any existing session's working folder (drag & drop, M4). */
+  repointSession: (sessionId: string, primaryDir: string | null) => Promise<void>;
+
   sessionMode: CapabilityMode;
   switchMode: (mode: CapabilityMode) => void;
   modelOverride: SessionModelOverride | null;
@@ -150,8 +174,7 @@ export interface AppContextValue {
   setStudyTag: (tag: StudyTag | null) => void;
 
   messages: TranscriptMessage[];
-  streamingText: string | null;
-  activeTools: ActiveToolState[];
+  streamParts: StreamPart[];
   toolStatus: string;
   composerNotice: ComposerNotice | null;
   runHint: string | null;
@@ -185,7 +208,8 @@ export interface AppContextValue {
   invokeSkill: (skillName: string, userText?: string) => boolean;
   reviseLatest: (text: string) => boolean;
   deleteLatest: () => void;
-  startReviseMode: (text: string) => string;
+  branchFromEntry: (entryId: string) => void;
+  startReviseMode: (text: string, entryId?: string) => string;
   cancelReviseMode: () => void;
   requestMetadata: () => void;
   requestMetrics: () => void;
@@ -210,24 +234,42 @@ function applySnapshotSelectors(
   };
 }
 
-function finalizeStaleTools(
-  tools: Record<string, ActiveToolState>,
-  success = true
-): ActiveToolState[] {
-  return Object.values(tools).map((tool) => ({
-    ...tool,
-    status: success ? "finished" : "failed",
-    success,
-  }));
+function appendStreamText(
+  parts: StreamPart[],
+  kind: "thinking" | "text",
+  delta: string
+): StreamPart[] {
+  const last = parts[parts.length - 1];
+  if (last && last.kind === kind) {
+    return [...parts.slice(0, -1), { kind, text: last.text + delta }];
+  }
+  return [...parts, { kind, text: delta }];
 }
 
-function upsertToolInOrder(
-  current: ActiveToolState[],
-  next: ActiveToolState
-): ActiveToolState[] {
-  const index = current.findIndex((tool) => tool.callId === next.callId);
-  if (index === -1) return [...current, next];
-  return current.map((tool, i) => (i === index ? next : tool));
+function upsertToolPart(
+  parts: StreamPart[],
+  tool: ActiveToolState
+): StreamPart[] {
+  const index = parts.findIndex(
+    (part) => part.kind === "tool" && part.tool.callId === tool.callId
+  );
+  if (index === -1) return [...parts, { kind: "tool", tool }];
+  return parts.map((part, i) =>
+    i === index ? { kind: "tool" as const, tool } : part
+  );
+}
+
+function failRunningToolParts(parts: StreamPart[]): StreamPart[] {
+  return parts
+    .filter((part) => part.kind === "tool")
+    .map((part) =>
+      part.kind === "tool" && part.tool.status === "running"
+        ? {
+            kind: "tool" as const,
+            tool: { ...part.tool, status: "failed" as const, success: false },
+          }
+        : part
+    );
 }
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -239,6 +281,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
   const [discovery, setDiscovery] = useState<DiscoveryLists | null>(null);
+  const [localConfig, setLocalConfig] = useState<ConfigStatus | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("user");
   const [canSwitchMode, setCanSwitchMode] = useState(false);
   const [participant, setParticipant] = useState<ParticipantInfo | null>(null);
@@ -260,6 +303,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionReady, setSessionReady] = useState(false);
+  const [sessionCreatedHere, setSessionCreatedHere] = useState(false);
+  const [sessionWarnings, setSessionWarnings] = useState<string[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [connStatus, setConnStatus] = useState<ConnStatus>("connecting");
   const [connLabel, setConnLabel] = useState("Connecting");
@@ -267,13 +312,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [wsConnected, setWsConnected] = useState(false);
   const [selectors, setSelectors] = useState<SessionSelectors>(defaultSelectors);
   const [sessionMode, setSessionMode] = useState<CapabilityMode>("pure");
+  const [workspacePrimaryDir, setWorkspacePrimaryDir] = useState<string | null>(
+    null
+  );
+  const [knownWorkspaces, setKnownWorkspaces] = useState<string[]>([]);
   const [modelOverride, setModelOverride] =
     useState<SessionModelOverride | null>(null);
   const [studyTag, setStudyTagState] = useState<StudyTag | null>(null);
 
   const [messages, setMessages] = useState<TranscriptMessage[]>([]);
-  const [streamingText, setStreamingText] = useState<string | null>(null);
-  const [activeTools, setActiveTools] = useState<ActiveToolState[]>([]);
+  const [streamParts, setStreamParts] = useState<StreamPart[]>([]);
   const [toolStatus, setToolStatus] = useState("");
   const [composerNotice, setComposerNotice] = useState<ComposerNotice | null>(
     null
@@ -281,6 +329,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [runHint, setRunHint] = useState<string | null>(null);
   const [reviseMode, setReviseMode] = useState(false);
   const [reviseDraft, setReviseDraft] = useState("");
+  const [reviseEntryId, setReviseEntryId] = useState<string | null>(null);
   const [stagedWorkspacePaths, setStagedWorkspacePaths] = useState<string[]>([]);
   const [runCompletedCount, setRunCompletedCount] = useState(0);
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(
@@ -382,6 +431,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setViewMode(nextViewMode);
       setCanSwitchMode(nextCanSwitchMode);
       setParticipant(me.participant ?? null);
+      setLocalConfig(me.localConfig ?? null);
       setTranscriptView(defaultTranscriptView(nextViewMode));
 
       if (!required) {
@@ -545,17 +595,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
           if (reconnectSessionIdRef.current) break;
           setSessionId(null);
           setSessionReady(true);
+          setSessionCreatedHere(false);
+          setSessionWarnings([]);
           setIsRunning(false);
           setSelectors(applySnapshotSelectors(message.payload));
           setSessionMode("pure");
-          setModelOverride(null);
+          setModelOverride(message.payload.modelOverride ?? null);
+          setWorkspacePrimaryDir(message.payload.workspacePrimaryDir ?? null);
           setStudyTagState(null);
           setApprovalMarkers([]);
           setManifest(null);
           setMetrics(null);
           setMessages([]);
-          setStreamingText(null);
-          setActiveTools([]);
+          setStreamParts([]);
           activeToolsMapRef.current = {};
           setConnStatus("idle");
           setConnLabel("Ready");
@@ -567,17 +619,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
           break;
 
         case "session_opened": {
+          // Decide "created here" before the pending refs are consumed below:
+          // an explicit open, an asset-switch rebuild, or a reconnect to the
+          // same id is NOT a new conversation (persisted Work mode must not
+          // silently expand an existing Pure session's tools).
+          setSessionCreatedHere(
+            !pendingOpenSessionIdRef.current &&
+              !pendingAssetSwitchRef.current &&
+              message.payload.sessionId !== reconnectSessionIdRef.current
+          );
+          setSessionWarnings(message.payload.resumeWarnings ?? []);
           if (
             pendingOpenSessionIdRef.current &&
             message.payload.sessionId === pendingOpenSessionIdRef.current
           ) {
             setMessages([]);
-            setStreamingText(null);
+            setStreamParts([]);
             pendingOpenSessionIdRef.current = "";
           }
           if (pendingAssetSwitchRef.current) {
             setMessages([]);
-            setStreamingText(null);
+            setStreamParts([]);
             pendingAssetSwitchRef.current = false;
           }
           if (message.payload.sessionId !== reconnectSessionIdRef.current) {
@@ -651,8 +713,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         case "session_transcript":
           setMessages(message.payload.messages);
-          setStreamingText(null);
-          setActiveTools([]);
+          setStreamParts([]);
           activeToolsMapRef.current = {};
           setConnStatus("idle");
           setConnLabel("Ready");
@@ -670,7 +731,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
           break;
 
         case "assistant_delta":
-          setStreamingText((prev) => `${prev ?? ""}${message.payload.text}`);
+          setStreamParts((parts) =>
+            appendStreamText(parts, "text", message.payload.text)
+          );
+          break;
+
+        case "thinking_delta":
+          setStreamParts((parts) =>
+            appendStreamText(parts, "thinking", message.payload.text)
+          );
           break;
 
         case "tool_started": {
@@ -683,7 +752,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             status: "running",
           };
           activeToolsMapRef.current[callId] = entry;
-          setActiveTools((current) => upsertToolInOrder(current, entry));
+          setStreamParts((parts) => upsertToolPart(parts, entry));
           setToolStatus(`⏳ ${label}`);
           break;
         }
@@ -696,7 +765,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
               progressText: message.payload.text,
             };
             activeToolsMapRef.current[message.payload.callId] = updated;
-            setActiveTools((current) => upsertToolInOrder(current, updated));
+            setStreamParts((parts) => upsertToolPart(parts, updated));
             if (message.payload.text) {
               setToolStatus(
                 `⏳ ${toolLabel(entry.toolName, entry.path)} — ${message.payload.text}`
@@ -717,7 +786,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             const remaining = { ...activeToolsMapRef.current };
             delete remaining[message.payload.callId];
             activeToolsMapRef.current = remaining;
-            setActiveTools((current) => upsertToolInOrder(current, updated));
+            setStreamParts((parts) => upsertToolPart(parts, updated));
           }
           if (Object.keys(activeToolsMapRef.current).length === 0) {
             setToolStatus("");
@@ -726,9 +795,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
 
         case "run_completed":
-          setActiveTools([]);
+          setStreamParts([]);
           activeToolsMapRef.current = {};
-          setStreamingText(null);
           setIsRunning(false);
           setConnStatus("idle");
           setConnLabel("Ready");
@@ -744,9 +812,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         case "run_failed": {
           const interrupted = isInterruptedError(message.payload.error);
-          setActiveTools(finalizeStaleTools(activeToolsMapRef.current, false));
+          setStreamParts((parts) => failRunningToolParts(parts));
           activeToolsMapRef.current = {};
-          setStreamingText(null);
           setIsRunning(false);
           setConnStatus(interrupted ? "idle" : "error");
           setConnLabel(interrupted ? "Ready" : "Error");
@@ -843,8 +910,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setApprovals([]);
         setConnStatus("disconnected");
         setConnLabel(detail?.label ?? "Disconnected");
-        setStreamingText(null);
-        setActiveTools([]);
+        setStreamParts([]);
         activeToolsMapRef.current = {};
         setToolStatus("Reconnecting...");
       } else if (status === "error") {
@@ -864,7 +930,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const beginNewSession = useCallback(() => {
     reconnectSessionIdRef.current = null;
     setMessages([]);
-    setStreamingText(null);
+    setStreamParts([]);
     setWsError(null);
     setReviseMode(false);
     setRunHint(null);
@@ -1011,7 +1077,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         ...prev,
         { role: "user", text: outgoing, timestamp: null },
       ]);
-      setStreamingText(null);
+      setStreamParts([]);
       setWsError(null);
       setRunHint("");
       setReviseMode(false);
@@ -1059,17 +1125,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
     (text: string) => {
       const trimmed = text.trim();
       if (!trimmed || isRunning || !sessionId) return false;
-      if (!sendMessage({ type: "revise_latest", payload: { text: trimmed } }))
+      if (
+        !sendMessage({
+          type: "revise_latest",
+          payload: reviseEntryId
+            ? { text: trimmed, entryId: reviseEntryId }
+            : { text: trimmed },
+        })
+      )
         return false;
       setReviseMode(false);
       setReviseDraft("");
+      setReviseEntryId(null);
       setIsRunning(true);
       setConnStatus("running");
       setConnLabel("Revising...");
-      setToolStatus("Revising latest turn...");
+      setToolStatus("Revising the conversation...");
       return true;
     },
-    [isRunning, sendMessage, sessionId]
+    [isRunning, sendMessage, sessionId, reviseEntryId]
   );
 
   const deleteLatest = useCallback(() => {
@@ -1078,8 +1152,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setRunHint("");
   }, [sendMessage]);
 
-  const startReviseMode = useCallback((text: string) => {
+  const startReviseMode = useCallback((text: string, entryId?: string) => {
     setReviseDraft(text);
+    setReviseEntryId(entryId ?? null);
     setReviseMode(true);
     setRunHint(null);
     return text;
@@ -1088,7 +1163,59 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const cancelReviseMode = useCallback(() => {
     setReviseMode(false);
     setReviseDraft("");
+    setReviseEntryId(null);
   }, []);
+
+  const setDraftWorkspace = useCallback(
+    (primaryDir: string | null) => {
+      if (sendMessage({ type: "set_draft_workspace", payload: { primaryDir } })) {
+        // Sticky choice for the NEXT conversation; server echoes only in
+        // draft state, so track it optimistically here.
+        setWorkspacePrimaryDir(primaryDir);
+      }
+    },
+    [sendMessage]
+  );
+
+  const addKnownWorkspace = useCallback(async (path: string) => {
+    const result = await addWorkspaceRequest(path);
+    setKnownWorkspaces(result.workspaces);
+  }, []);
+
+  const repointSession = useCallback(
+    async (targetSessionId: string, primaryDir: string | null) => {
+      await setSessionWorkspaceRequest(targetSessionId, primaryDir);
+      void refreshSessions();
+    },
+    [refreshSessions]
+  );
+
+  useEffect(() => {
+    if (appMode !== "local") return;
+    listWorkspaces()
+      .then((result) => setKnownWorkspaces(result.workspaces))
+      .catch(() => {
+        /* hosted or endpoint unavailable */
+      });
+  }, [appMode]);
+
+  const branchFromEntry = useCallback(
+    (entryId: string) => {
+      if (!sessionId || isRunning) return;
+      if (
+        sendMessage({
+          type: "fork_session",
+          payload: { purpose: "fork", forkPointEntryId: entryId },
+        })
+      ) {
+        setIsRunning(true);
+        setConnStatus("running");
+        setConnLabel("Branching...");
+        setToolStatus("Branching from this point…");
+      }
+    },
+    [sendMessage, sessionId, isRunning]
+  );
 
   const switchProject = useCallback(
     (projectId: string | null) => {
@@ -1237,6 +1364,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       transcriptView,
       setTranscriptView,
       discovery,
+      localConfig,
       sessions,
       sessionSearch,
       setSessionSearch,
@@ -1255,6 +1383,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       deleteSelectedSession,
       sessionId,
       sessionReady,
+      sessionCreatedHere,
+      sessionWarnings,
       isRunning,
       connStatus,
       connLabel,
@@ -1268,14 +1398,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
       switchInstruction,
       switchVisibility,
       sessionMode,
+      workspacePrimaryDir,
+      knownWorkspaces,
+      setDraftWorkspace,
+      addKnownWorkspace,
+      repointSession,
       switchMode,
       modelOverride,
       setSessionModel,
       studyTag,
       setStudyTag,
       messages,
-      streamingText,
-      activeTools,
+      streamParts,
       toolStatus,
       composerNotice,
       runHint,
@@ -1301,6 +1435,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       invokeSkill,
       reviseLatest,
       deleteLatest,
+      branchFromEntry,
       startReviseMode,
       cancelReviseMode,
       requestMetadata,
@@ -1321,6 +1456,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       participant,
       transcriptView,
       discovery,
+      localConfig,
       sessions,
       sessionSearch,
       selectedCatalogSessionId,
@@ -1337,6 +1473,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       deleteSelectedSession,
       sessionId,
       sessionReady,
+      sessionCreatedHere,
+      sessionWarnings,
       isRunning,
       connStatus,
       connLabel,
@@ -1350,14 +1488,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
       switchInstruction,
       switchVisibility,
       sessionMode,
+      workspacePrimaryDir,
+      knownWorkspaces,
+      setDraftWorkspace,
+      addKnownWorkspace,
+      repointSession,
       switchMode,
       modelOverride,
       setSessionModel,
       studyTag,
       setStudyTag,
       messages,
-      streamingText,
-      activeTools,
+      streamParts,
       toolStatus,
       composerNotice,
       runHint,
@@ -1383,6 +1525,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       invokeSkill,
       reviseLatest,
       deleteLatest,
+      branchFromEntry,
       startReviseMode,
       cancelReviseMode,
       requestMetadata,

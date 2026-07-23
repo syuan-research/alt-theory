@@ -40,6 +40,8 @@ export interface SessionDraftSnapshot {
   rolePresetSlug: string | null;
   soulSlug: string | null;
   customInstructionRef?: string | null;
+  modelOverride?: SessionModelOverride | null;
+  workspacePrimaryDir?: string | null;
 }
 
 export interface SessionMetrics {
@@ -74,6 +76,9 @@ export interface TranscriptMessage {
   toolPath?: string | null;
   success?: boolean;
   truncated?: boolean;
+  /** Non-message boundary markers rendered specially (e.g. context compaction). */
+  marker?: "compaction" | "imported-context";
+  sourceRole?: "system" | "developer";
 }
 
 // ---------------------------------------------------------------------------
@@ -97,7 +102,7 @@ export type ClientMessage =
       type: "invoke_skill";
       payload: { skillName: string; userText?: string };
     }
-  | { type: "revise_latest"; payload: { text: string } }
+  | { type: "revise_latest"; payload: { text: string; entryId?: string } }
   | { type: "delete_latest" }
   | { type: "switch_mode"; payload: { mode: "pure" | "full" } }
   | { type: "add_workspace_dir"; payload: { dir: string } }
@@ -126,6 +131,10 @@ export type ClientMessage =
       type: "set_session_model";
       payload: { override: SessionModelOverride | null };
     }
+  | {
+      type: "set_draft_workspace";
+      payload: { primaryDir: string | null };
+    }
   | { type: "new_session" }
   | { type: "open_session"; payload: { sessionId: string } }
   | { type: "get_session_metadata" }
@@ -147,6 +156,7 @@ export type ServerMessage =
       payload: { sessionId: string; purpose: "side" | "helper" };
     }
   | { type: "assistant_delta"; payload: { text: string } }
+  | { type: "thinking_delta"; payload: { text: string } }
   | {
       type: "run_phase";
       payload: { phase: "connecting" | "thinking" | "idle" };

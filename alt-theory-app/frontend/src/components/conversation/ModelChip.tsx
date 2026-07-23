@@ -58,7 +58,14 @@ export function ModelChip({
   }, [open, options, error]);
 
   const current = app.modelOverride;
-  const label = current ? current.modelId : "Default model";
+  const defaultLabel = app.localConfig?.activeModel
+    ? `Default · ${app.localConfig.activeModel}`
+    : "Default model";
+  const label = current
+    ? current.thinkingLevel && current.thinkingLevel !== "off"
+      ? `${current.modelId} · ${current.thinkingLevel}`
+      : current.modelId
+    : defaultLabel;
 
   const pick = (opt: ModelOption, thinkingLevel?: ThinkingLevel) => {
     app.setSessionModel({
@@ -92,7 +99,7 @@ export function ModelChip({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mi" onClick={() => (app.setSessionModel(null), onToggle())}>
-          <span style={{ fontWeight: current ? 400 : 500 }}>Default model</span>
+          <span style={{ fontWeight: current ? 400 : 500 }}>{defaultLabel}</span>
           {!current ? <i className="ph ph-check check" /> : null}
         </div>
         <div className="sep" />
@@ -118,19 +125,14 @@ export function ModelChip({
               <span style={{ fontWeight: isActive(opt) ? 500 : 400 }}>
                 {opt.label}
               </span>
-              {opt.reasoning ? (
+              {opt.reasoning && isActive(opt) ? (
                 <span className="think">
-                  thinking
-                  {isActive(opt) ? `: ${current?.thinkingLevel ?? "off"}` : ""}
                   <span className="levels">
                     {THINKING_LEVELS.map((lvl) => (
                       <span
                         key={lvl}
                         className={
-                          isActive(opt) &&
-                          (current?.thinkingLevel ?? "off") === lvl
-                            ? "on"
-                            : ""
+                          (current?.thinkingLevel ?? "off") === lvl ? "on" : ""
                         }
                         onClick={(e) => {
                           e.stopPropagation();

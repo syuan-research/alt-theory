@@ -2276,3 +2276,306 @@ test("security extension escalates risky commands through the approval bridge", 
     await service.disposeAll();
   }
 });
+
+test("SessionService reviseAt rewrites from an earlier turn and supersedes later runs", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const created = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const managed = (
+    service as unknown as {
+      sessions: Map<string, {
+        session: {
+          prompt(text: string): Promise<void>;
+          sessionManager: {
+            appendMessage(message: unknown): string;
+            buildSessionContext(): { messages: Array<{ content: Array<{ type: string; text: string }> }> };
+          };
+        };
+      }>;
+    }
+  ).sessions.get(created.sessionId)!;
+  managed.session.prompt = async (text: string) => {
+    managed.session.sessionManager.appendMessage({
+      role: "user",
+      content: [{ type: "text", text }],
+      timestamp: Date.now(),
+    });
+    managed.session.sessionManager.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: `answer:${text}` }],
+      timestamp: Date.now(),
+    });
+  };
+
+  try {
+    for (const prompt of ["first", "second", "third"]) {
+      await service.runPrompt(created.sessionId, prompt).completion;
+    }
+    const recordsDir = service.getManifest(created.sessionId).recordsDir;
+    const runs = latestRunSnapshots(recordsDir);
+    assert.equal(runs.length, 3);
+    const secondRun = runs[1];
+    assert.equal(secondRun.status, "completed");
+
+    const revised = service.reviseAt(
+      created.sessionId,
+      secondRun.userEntryId!,
+      "revised-second"
+    );
+    await revised.completion;
+
+    const after = latestRunSnapshots(recordsDir);
+    assert.equal(
+      after.find((run) => run.runId === runs[0].runId)?.status,
+      "completed"
+    );
+    assert.equal(
+      after.find((run) => run.runId === runs[1].runId)?.status,
+      "superseded"
+    );
+    assert.equal(
+      after.find((run) => run.runId === runs[2].runId)?.status,
+      "superseded"
+    );
+    assert.equal(
+      after.find((run) => run.runId === revised.ids.runId)?.supersedesRunId,
+      secondRun.runId
+    );
+    assert.equal(revised.ids.turnId, secondRun.turnId);
+
+    const text = managed.session.sessionManager
+      .buildSessionContext()
+      .messages.map((message) =>
+        message.content
+          .filter((part) => part.type === "text")
+          .map((part) => part.text)
+          .join("")
+      )
+      .join("\n");
+    assert.match(text, /first/);
+    assert.match(text, /revised-second/);
+    assert.doesNotMatch(text, /answer:second/);
+    assert.doesNotMatch(text, /third/);
+
+    const detail = readSessionDetail(fixture.dataDir, created.sessionId);
+    const userMessages = (detail?.transcript ?? []).filter(
+      (message) => message.role === "user"
+    );
+    assert.deepEqual(
+      userMessages.map((message) => message.text),
+      ["first", "revised-second"]
+    );
+  } finally {
+    await service.disposeAll();
+  }
+});
+
+test("SessionService setSessionWorkspace re-points a session's working folder", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const created = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const folder = mkdtempSync(join(tmpdir(), "alt-theory-ws-repoint-"));
+  const managed = (
+    service as unknown as {
+      sessions: Map<string, {
+        session: {
+          prompt(text: string): Promise<void>;
+          sessionManager: { appendMessage(message: unknown): string };
+        };
+      }>;
+    }
+  ).sessions.get(created.sessionId)!;
+  managed.session.prompt = async (text: string) => {
+    managed.session.sessionManager.appendMessage({
+      role: "user",
+      content: [{ type: "text", text }],
+      timestamp: Date.now(),
+    });
+    managed.session.sessionManager.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: `answer:${text}` }],
+      timestamp: Date.now(),
+    });
+  };
+
+  try {
+    await service.runPrompt(created.sessionId, "hello").completion;
+    const snapshot = await service.setSessionWorkspace(
+      created.sessionId,
+      folder
+    );
+    assert.equal(snapshot?.workspace?.primaryDir, resolve(folder));
+    const recordsDir = service.getManifest(created.sessionId).recordsDir;
+    const header = readV4SessionHeader(recordsDir);
+    assert.equal(header?.workspace?.primaryDir, resolve(folder));
+    assert.deepEqual(header?.workspace?.additionalDirs, []);
+
+    // Clearing goes back to the managed default workspace.
+    const cleared = await service.setSessionWorkspace(created.sessionId, null);
+    assert.equal(cleared?.workspace?.primaryDir.includes(folder), false);
+    const clearedHeader = readV4SessionHeader(recordsDir);
+    assert.equal(clearedHeader?.workspace, undefined);
+
+    // Nonexistent folders are rejected.
+    await assert.rejects(
+      () =>
+        service.setSessionWorkspace(
+          created.sessionId,
+          join(folder, "does-not-exist")
+        ),
+      /does not exist/
+    );
+  } finally {
+    await service.disposeAll();
+  }
+});
+
+test("SessionService workspace re-point carries fork children and live listeners", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const created = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const folder = mkdtempSync(join(tmpdir(), "alt-theory-ws-family-"));
+  const sessions = (
+    service as unknown as {
+      sessions: Map<string, {
+        listeners: Set<unknown>;
+        session: {
+          prompt(text: string): Promise<void>;
+          sessionManager: { appendMessage(message: unknown): string };
+        };
+      }>;
+    }
+  ).sessions;
+  const managed = sessions.get(created.sessionId)!;
+  managed.session.prompt = async (text: string) => {
+    managed.session.sessionManager.appendMessage({
+      role: "user",
+      content: [{ type: "text", text }],
+      timestamp: Date.now(),
+    });
+    managed.session.sessionManager.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: `answer:${text}` }],
+      timestamp: Date.now(),
+    });
+  };
+
+  try {
+    await service.runPrompt(created.sessionId, "hello").completion;
+    const forked = await service.forkSession(created.sessionId, "fork");
+    const listener = () => {};
+    const detach = service.attach(created.sessionId, listener);
+
+    await service.setSessionWorkspace(created.sessionId, folder);
+
+    // The fork child moved with its parent.
+    const childHeader = readV4SessionHeader(
+      service.getManifest(forked.sessionId).recordsDir
+    );
+    assert.equal(childHeader?.workspace?.primaryDir, resolve(folder));
+
+    // The WebSocket subscription survived the dispose+reopen, and the old
+    // unsubscribe closure still detaches from the replacement session.
+    const replacement = sessions.get(created.sessionId)!;
+    assert.equal(replacement.listeners.has(listener), true);
+    detach();
+    assert.equal(replacement.listeners.has(listener), false);
+  } finally {
+    await service.disposeAll();
+  }
+});
+
+test("SessionService reviseAt edits a turn inherited from the fork parent", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const created = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const sessions = (
+    service as unknown as {
+      sessions: Map<string, {
+        session: {
+          prompt(text: string): Promise<void>;
+          sessionManager: {
+            appendMessage(message: unknown): string;
+            getBranch(): Array<{
+              id: string;
+              type?: string;
+              message?: { role?: string };
+            }>;
+            buildSessionContext(): {
+              messages: Array<{
+                content: Array<{ type: string; text?: string }>;
+              }>;
+            };
+          };
+        };
+      }>;
+    }
+  ).sessions;
+  const mockPrompt = (sessionId: string) => {
+    const target = sessions.get(sessionId)!;
+    target.session.prompt = async (text: string) => {
+      target.session.sessionManager.appendMessage({
+        role: "user",
+        content: [{ type: "text", text }],
+        timestamp: Date.now(),
+      });
+      target.session.sessionManager.appendMessage({
+        role: "assistant",
+        content: [{ type: "text", text: `answer:${text}` }],
+        timestamp: Date.now(),
+      });
+    };
+  };
+
+  try {
+    mockPrompt(created.sessionId);
+    await service.runPrompt(created.sessionId, "first").completion;
+    const forked = await service.forkSession(created.sessionId, "fork");
+    mockPrompt(forked.sessionId);
+
+    // The inherited turn has no run record in the child; edit must still work.
+    const child = sessions.get(forked.sessionId)!;
+    const inheritedUser = child.session.sessionManager
+      .getBranch()
+      .find(
+        (entry) => entry.type === "message" && entry.message?.role === "user"
+      );
+    assert.ok(inheritedUser, "fork should inherit the parent's user turn");
+    const revised = service.reviseAt(
+      forked.sessionId,
+      inheritedUser.id,
+      "revised-first"
+    );
+    await revised.completion;
+
+    const text = child.session.sessionManager
+      .buildSessionContext()
+      .messages.map((message) =>
+        message.content
+          .filter((part) => part.type === "text")
+          .map((part) => part.text)
+          .join("")
+      )
+      .join("\n");
+    assert.match(text, /revised-first/);
+    assert.doesNotMatch(text, /answer:first/);
+  } finally {
+    await service.disposeAll();
+  }
+});

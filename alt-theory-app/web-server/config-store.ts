@@ -844,3 +844,104 @@ export function agentConfigDir(): string {
 
 
 
+
+/**
+ * Minimal live probe of a provider draft (M-final settings review): one tiny
+ * completion request against the draft's endpoint/key/model. Works for
+ * manual-model providers where the /models fetch cannot validate anything.
+ */
+export async function testProviderConnectionFromDraft(
+  agentDir: string,
+  input: {
+    provider: string;
+    baseUrl?: string;
+    api?: ApiType;
+    apiKey?: string;
+    keyStorage?: "literal" | "env";
+    modelId?: string;
+  }
+): Promise<{ ok: true; modelId: string }> {
+  assertValidProviderName(input.provider);
+  assertValidApiType(input.api);
+  assertNotCommandKey(input.apiKey);
+  if (!input.baseUrl) {
+    throw new ConfigValidationError("Connection test needs a Base URL.");
+  }
+  if (!input.modelId) {
+    throw new ConfigValidationError("Connection test needs a model id.");
+  }
+  const resolvedKey =
+    input.keyStorage === "env" && input.apiKey
+      ? resolveEnvApiKey(input.apiKey)
+      : input.apiKey;
+  const storage = readAuthStorage(agentDir);
+  if (resolvedKey) {
+    storage.setRuntimeApiKey(input.provider, resolvedKey);
+  }
+  const apiKey = await storage.getApiKey(input.provider);
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+  };
+  if (apiKey) {
+    if (
+      input.api === "anthropic-messages" &&
+      !anthropicBearerAuthRequired(input.api, input.baseUrl)
+    ) {
+      headers["x-api-key"] = apiKey;
+      headers["anthropic-version"] = "2023-06-01";
+    } else {
+      headers.Authorization = `Bearer ${apiKey}`;
+      if (input.api === "anthropic-messages") {
+        headers["anthropic-version"] = "2023-06-01";
+      }
+    }
+  }
+
+  const base = input.baseUrl.replace(/\/+$/, "");
+  const probes: Array<{ url: string; body: Record<string, unknown> }> = [];
+  if (input.api === "anthropic-messages") {
+    probes.push({
+      url: base.endsWith("/v1") ? `${base}/messages` : `${base}/v1/messages`,
+      body: {
+        model: input.modelId,
+        max_tokens: 16,
+        messages: [{ role: "user", content: "ping" }],
+      },
+    });
+  } else {
+    if (input.api === "openai-responses") {
+      probes.push({
+        url: `${base}/responses`,
+        body: { model: input.modelId, input: "ping", max_output_tokens: 16 },
+      });
+    }
+    // chat/completions works as a fallback for most openai-compatible hosts.
+    probes.push({
+      url: `${base}/chat/completions`,
+      body: {
+        model: input.modelId,
+        max_tokens: 16,
+        messages: [{ role: "user", content: "ping" }],
+      },
+    });
+  }
+
+  const errors: string[] = [];
+  for (const probe of probes) {
+    const response = await fetch(probe.url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(probe.body),
+      signal: AbortSignal.timeout(15000),
+    });
+    if (response.ok) {
+      return { ok: true, modelId: input.modelId };
+    }
+    const detail = (await response.text().catch(() => "")).slice(0, 200);
+    errors.push(`${probe.url}: HTTP ${response.status}${detail ? ` ${detail}` : ""}`);
+    // Auth failures will not change across endpoints; report immediately.
+    if (response.status === 401 || response.status === 403) break;
+  }
+  throw new ConfigValidationError(`Connection test failed: ${errors.join("; ")}`);
+}

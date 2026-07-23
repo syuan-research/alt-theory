@@ -72,6 +72,8 @@ test("Pi discovery and managed registration preserve history and workspace", asy
     dataDir,
     source,
     mode: "pure",
+    rolePresetSlug: "role-conceptual-theory-companion",
+    soulSlug: "soul-latest",
     visibility: "private",
   });
   const list = listSessionSummaries(dataDir);
@@ -85,6 +87,8 @@ test("Pi discovery and managed registration preserve history and workspace", asy
   assert.equal(detail.session.recordModel, "v0.4");
   assert.equal(detail.transcript[0]?.text, "history that must survive import");
   assert.equal(detail.manifest?.workspace.primaryDir, sourceCwd);
+  assert.equal(detail.manifest?.rolePreset.slug, "role-conceptual-theory-companion");
+  assert.equal(detail.manifest?.soul.slug, "soul-latest");
   assert.equal(detail.manifest?.writeDir?.endsWith("workspace"), true);
   assert.notEqual(detail.pi.sessionFile, source.sourceId);
 
@@ -122,6 +126,27 @@ test("Pi discovery and managed registration preserve history and workspace", asy
     piSessionDir: sourceDir,
   });
   assert.equal(changed?.repeat, "changed");
+
+  const reimported = registerPiImport({
+    dataDir,
+    source: changed!,
+    mode: "pure",
+    rolePresetSlug: "role-conceptual-theory-companion",
+    soulSlug: "soul-latest",
+    visibility: "private",
+  });
+  const alias = JSON.parse(readFileSync(
+    join(dataDir, "sessions", reimported.sessionId, "records", "ui-alias.json"),
+    "utf-8"
+  ));
+  assert.match(alias.alias, /Pi import \d{4}-\d{2}-\d{2} #02$/);
+  const [reimportedUnchanged] = await discoverImportSessions({
+    harness: "pi",
+    dataDir,
+    piSessionDir: sourceDir,
+  });
+  assert.equal(reimportedUnchanged?.repeat, "unchanged");
+  assert.equal(reimportedUnchanged?.importedSessionId, reimported.sessionId);
 });
 
 test("Grok preflight preserves current history and raw source, and refuses unmatched tools atomically", async () => {
@@ -201,7 +226,8 @@ test("Grok preflight preserves current history and raw source, and refuses unmat
     "source-snapshot"
   );
   assert.equal(readFileSync(join(snapshot, "events.jsonl"), "utf-8"), readFileSync(join(sourceDir, "events.jsonl"), "utf-8"));
-  assert.ok(readSessionDetail(dataDir, registered.sessionId));
+  const detail = readSessionDetail(dataDir, registered.sessionId);
+  assert.ok(detail);
 
   const [unchanged] = await discoverImportSessions({
     harness: "grok-build",
@@ -351,7 +377,16 @@ test("Codex preflight maps supported rollout history and refuses unmatched tool 
     mode: "full",
     visibility: "private",
   });
-  assert.ok(readSessionDetail(dataDir, registered.sessionId));
+  const detail = readSessionDetail(dataDir, registered.sessionId);
+  assert.ok(detail);
+  assert.ok(
+    detail.transcript.some(
+      (message) =>
+        message.marker === "imported-context" &&
+        message.sourceRole === "developer" &&
+        message.text.includes("CODEX_DEVELOPER_MARKER")
+    )
+  );
   const [unchanged] = await discoverImportSessions({
     harness: "codex",
     dataDir,
@@ -434,7 +469,14 @@ test("OpenCode preflight registers complete supported history and refuses unsupp
     "ses_supported",
     now + 1,
     now + 1,
-    JSON.stringify({ role: "assistant", parentID: "msg_user", providerID: "x", modelID: "y", finish: "tool-calls" })
+    JSON.stringify({
+      role: "assistant",
+      parentID: "msg_user",
+      providerID: "x",
+      modelID: "y",
+      finish: "tool-calls",
+      error: { name: "APIError", data: { message: "provider failed after recorded parts" } },
+    })
   );
   const insertPart = db.prepare("INSERT INTO part VALUES (?, ?, ?, ?, ?, ?)");
   insertPart.run(
@@ -484,6 +526,7 @@ test("OpenCode preflight registers complete supported history and refuses unsupp
   const preflight = preflightOpenCodeImport(source);
   assert.match(preflight.piSessionJsonl, /IMPORTED_HISTORY_MARKER/);
   assert.ok(preflight.transformations.some((item) => item.includes("Reasoning")));
+  assert.ok(preflight.transformations.some((item) => item.includes("Assistant error metadata")));
   const rawEntry = preflight.piSessionJsonl
     .trim()
     .split(/\r?\n/)
@@ -566,15 +609,23 @@ test("Codex preflight reconstructs effective history after compaction and replay
   const meta = {
     id: "codex-compacted",
     session_id: "codex-compacted",
+    forked_from_id: "codex-parent",
     timestamp,
     cwd: workspace,
     originator: "Codex Desktop",
     cli_version: "test",
     source: "vscode",
+    thread_source: "user",
     base_instructions: { text: "base" },
   };
   const compacted = [
     line("session_meta", meta),
+    line("session_meta", {
+      ...meta,
+      id: "codex-parent",
+      session_id: "codex-parent",
+      forked_from_id: null,
+    }),
     line("response_item", {
       type: "message",
       role: "user",
@@ -615,6 +666,97 @@ test("Codex preflight reconstructs effective history after compaction and replay
       content: [{ type: "input_text", text: "Has a local image ref" }],
       local_images: [{ path: "D:/fixture/local.png" }],
     }, 5),
+    line("turn_context", { turn_id: "turn-spans-compaction" }, 6),
+    line("response_item", {
+      type: "message",
+      role: "assistant",
+      content: [{ type: "output_text", text: "COMPACTION_SPLIT_TURN_MARKER" }],
+    }, 7),
+    line("event_msg", {
+      type: "turn_aborted",
+      turn_id: "turn-spans-compaction",
+      reason: "interrupted",
+    }, 8),
+    line("event_msg", { type: "task_started", turn_id: "turn-aborted" }, 6),
+    line("response_item", {
+      type: "message",
+      role: "user",
+      content: [{ type: "input_text", text: "ROLLED_BACK_TURN_MARKER" }],
+    }, 7),
+    line("event_msg", {
+      type: "turn_aborted",
+      turn_id: "turn-aborted",
+      reason: "interrupted",
+    }, 8),
+    line("event_msg", { type: "token_count" }, 9),
+    line("event_msg", { type: "thread_rolled_back", num_turns: 1 }, 10),
+    line("event_msg", { type: "task_started", turn_id: "turn-completed-rollback" }, 11),
+    line("response_item", {
+      type: "message",
+      role: "user",
+      content: [{ type: "input_text", text: "COMPLETED_ROLLBACK_MARKER" }],
+    }, 12),
+    line("event_msg", { type: "task_complete", turn_id: "turn-completed-rollback" }, 13),
+    line("event_msg", { type: "thread_rolled_back", num_turns: 1 }, 14),
+    line("event_msg", { type: "task_started", turn_id: "turn-survives" }, 11),
+    line("response_item", {
+      type: "message",
+      role: "user",
+      content: [{ type: "input_text", text: "SURVIVING_TURN_MARKER" }],
+    }, 12),
+    line("response_item", {
+      type: "tool_search_call",
+      call_id: "tool-search-1",
+      status: "completed",
+      arguments: { query: "fixture" },
+    }, 13),
+    line("response_item", {
+      type: "tool_search_output",
+      call_id: "tool-search-1",
+      status: "completed",
+      tools: [{ name: "fixture_tool" }],
+    }, 14),
+    line("response_item", {
+      type: "function_call",
+      call_id: "old-blank-name",
+      name: "",
+      arguments: "{\"value\":1}",
+    }, 15),
+    line("response_item", {
+      type: "function_call_output",
+      call_id: "old-blank-name",
+      output: "done",
+    }, 16),
+    line("response_item", {
+      type: "web_search_call",
+      status: "completed",
+      metadata: { turn_id: "turn-survives" },
+    }, 17),
+    line("response_item", {
+      type: "image_generation_call",
+      id: "generated-image",
+      status: "generating",
+      revised_prompt: "fixture image",
+      result: "iVBORw0KGgo=",
+    }, 18),
+    line("inter_agent_communication_metadata", {
+      trigger_turn: "turn-survives",
+    }, 15),
+    line("response_item", {
+      type: "agent_message",
+      author: "root",
+      recipient: "child",
+      content: [
+        { type: "input_text", text: "RAW_ONLY_AGENT_MESSAGE_MARKER" },
+        { type: "encrypted_content", encrypted_content: "opaque" },
+      ],
+      internal_chat_message_metadata_passthrough: {},
+    }, 16),
+    line("event_msg", {
+      type: "turn_aborted",
+      turn_id: "turn-survives",
+      reason: "interrupted",
+    }, 17),
   ];
   const compactedPath = join(sessionsDir, "rollout-codex-compacted.jsonl");
   writeFileSync(compactedPath, `${compacted.map(JSON.stringify).join("\n")}\n`);
@@ -632,8 +774,13 @@ test("Codex preflight reconstructs effective history after compaction and replay
   assert.match(projectedText, /REPLACEMENT_USER_MARKER/);
   assert.match(projectedText, /REPLACEMENT_ASSISTANT_MARKER/);
   assert.match(projectedText, /POST_COMPACTION_MARKER/);
+  assert.match(projectedText, /COMPACTION_SPLIT_TURN_MARKER/);
+  assert.match(projectedText, /SURVIVING_TURN_MARKER/);
   assert.ok(!projectedText.includes("PRE_COMPACTION_MARKER"));
   assert.ok(!projectedText.includes("orphan output dropped by compaction"));
+  assert.ok(!projectedText.includes("ROLLED_BACK_TURN_MARKER"));
+  assert.ok(!projectedText.includes("COMPLETED_ROLLBACK_MARKER"));
+  assert.ok(!projectedText.includes("RAW_ONLY_AGENT_MESSAGE_MARKER"));
   const imageMessage = projected.find((entry) =>
     entry.message?.content?.some((part: any) => part.type === "image")
   );
@@ -646,6 +793,14 @@ test("Codex preflight reconstructs effective history after compaction and replay
   assert.ok(preflight.transformations.some((item) => item.includes("Source compaction detected")));
   assert.ok(preflight.transformations.some((item) => item.includes("Embedded source images")));
   assert.ok(preflight.transformations.some((item) => item.includes("labelled placeholder")));
+  assert.ok(preflight.transformations.some((item) => item.includes("one-turn rollback")));
+  assert.ok(preflight.transformations.some((item) => item.includes("tool-search control")));
+  assert.ok(preflight.transformations.some((item) => item.includes("web-search control")));
+  assert.ok(preflight.transformations.some((item) => item.includes("generated PNG/JPEG")));
+  assert.ok(preflight.transformations.some((item) => item.includes("codex_function")));
+  assert.ok(preflight.transformations.some((item) => item.includes("user-fork lineage")));
+  assert.ok(preflight.transformations.some((item) => item.includes("inter-agent messages")));
+  assert.ok(preflight.transformations.some((item) => item.includes("were not rolled back")));
   assert.equal(
     entries.filter((entry) => entry.customType === "source-codex-record").length,
     compacted.length
@@ -659,6 +814,29 @@ test("Codex preflight reconstructs effective history after compaction and replay
     join(sessionsDir, "rollout-codex-malformed-compacted.jsonl"),
     `${malformed.map(JSON.stringify).join("\n")}\n`
   );
+  const ambiguousRollback = [
+    line("session_meta", {
+      ...meta,
+      id: "codex-ambiguous-rollback",
+      session_id: "codex-ambiguous-rollback",
+    }),
+    line("event_msg", { type: "task_started", turn_id: "turn-ambiguous" }, 1),
+    line("response_item", {
+      type: "message",
+      role: "user",
+      content: [{ type: "input_text", text: "Ambiguous rollback marker" }],
+    }, 2),
+    line("event_msg", {
+      type: "turn_aborted",
+      turn_id: "turn-ambiguous",
+      reason: "interrupted",
+    }, 3),
+    line("event_msg", { type: "thread_rolled_back", num_turns: 2 }, 4),
+  ];
+  writeFileSync(
+    join(sessionsDir, "rollout-codex-ambiguous-rollback.jsonl"),
+    `${ambiguousRollback.map(JSON.stringify).join("\n")}\n`
+  );
   const sources = await discoverImportSessions({
     harness: "codex",
     dataDir,
@@ -670,6 +848,15 @@ test("Codex preflight reconstructs effective history after compaction and replay
     () => preflightCodexImport(refused),
     (error: unknown) =>
       error instanceof CodexImportRefusalError && error.recordType === "compacted"
+  );
+  const ambiguous = sources.find((item) => item.sourceSessionId === "codex-ambiguous-rollback");
+  assert.ok(ambiguous);
+  assert.throws(
+    () => preflightCodexImport(ambiguous),
+    (error: unknown) =>
+      error instanceof CodexImportRefusalError &&
+      error.recordType === "turn_aborted" &&
+      error.message.includes("one-turn rollback")
   );
   assert.equal(listSessionSummaries(dataDir).sessions.length, 0);
 });
@@ -867,4 +1054,243 @@ test("OpenCode preflight replays tool-result image attachments", async () => {
   );
   assert.ok(preflight.transformations.some((item) => item.includes("Tool-result attachments")));
   assert.equal(listSessionSummaries(dataDir).sessions.length, 0);
+});
+
+test("OpenCode lists roots and archives child sessions beside the imported root", async () => {
+  const root = mkdtempSync(join(tmpdir(), "alt-theory-opencode-roots-"));
+  const dataDir = join(root, "alt-data");
+  const workspace = join(root, "workspace");
+  const dbPath = join(root, "opencode.db");
+  mkdirSync(workspace, { recursive: true });
+  const db = new DatabaseSync(dbPath);
+  db.exec(`
+    CREATE TABLE session (
+      id TEXT PRIMARY KEY, parent_id TEXT, title TEXT, directory TEXT,
+      time_created INTEGER, time_updated INTEGER, time_archived INTEGER, model TEXT
+    );
+    CREATE TABLE message (
+      id TEXT PRIMARY KEY, session_id TEXT, time_created INTEGER,
+      time_updated INTEGER, data TEXT
+    );
+    CREATE TABLE part (
+      id TEXT PRIMARY KEY, message_id TEXT, session_id TEXT,
+      time_created INTEGER, time_updated INTEGER, data TEXT
+    );
+  `);
+  const now = Date.now();
+  const insertSession = db.prepare(
+    "INSERT INTO session VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+  );
+  insertSession.run(
+    "ses_root",
+    null,
+    "Root conversation",
+    workspace,
+    now,
+    now + 2,
+    null,
+    "source-model"
+  );
+  insertSession.run(
+    "ses_child",
+    "ses_root",
+    "Root conversation",
+    workspace,
+    now + 1,
+    now + 1,
+    null,
+    "source-model"
+  );
+  const insertMessage = db.prepare("INSERT INTO message VALUES (?, ?, ?, ?, ?)");
+  const insertPart = db.prepare("INSERT INTO part VALUES (?, ?, ?, ?, ?, ?)");
+  insertMessage.run(
+    "msg_root",
+    "ses_root",
+    now,
+    now,
+    JSON.stringify({ role: "user" })
+  );
+  insertPart.run(
+    "prt_root",
+    "msg_root",
+    "ses_root",
+    now,
+    now,
+    JSON.stringify({ type: "text", text: "ROOT_MARKER" })
+  );
+  insertMessage.run(
+    "msg_child",
+    "ses_child",
+    now + 1,
+    now + 1,
+    JSON.stringify({ role: "user" })
+  );
+  insertPart.run(
+    "prt_child",
+    "msg_child",
+    "ses_child",
+    now + 1,
+    now + 1,
+    JSON.stringify({ type: "text", text: "CHILD_MARKER" })
+  );
+  db.close();
+
+  const [source, extra] = await discoverImportSessions({
+    harness: "opencode",
+    dataDir,
+    openCodeDbPath: dbPath,
+  });
+  assert.ok(source);
+  assert.equal(extra, undefined);
+  assert.equal(source.sourceSessionId, "ses_root");
+  const preflight = preflightOpenCodeImport(source);
+  assert.equal(preflight.sourceContextFiles.length, 2);
+  assert.match(preflight.sourceContextFiles[1]!.content, /CHILD_MARKER/);
+  const registered = registerOpenCodeImport({
+    dataDir,
+    source,
+    preflight,
+    mode: "full",
+    rolePresetSlug: "role-conceptual-theory-companion",
+    soulSlug: "soul-latest",
+    visibility: "private",
+  });
+  const contextDir = join(
+    dataDir,
+    "sessions",
+    registered.sessionId,
+    "records",
+    "source-context"
+  );
+  assert.match(readFileSync(join(contextDir, "index.json"), "utf-8"), /ses_child/);
+  assert.match(
+    readFileSync(join(contextDir, "opencode-001.jsonl"), "utf-8"),
+    /CHILD_MARKER/
+  );
+});
+
+test("Codex uses the state index for roots and archives spawned descendants", async () => {
+  const root = mkdtempSync(join(tmpdir(), "alt-theory-codex-roots-"));
+  const dataDir = join(root, "alt-data");
+  const codexHome = join(root, "codex-home");
+  const sessionsDir = join(codexHome, "sessions");
+  const rolloutDir = join(sessionsDir, "2026", "07", "23");
+  const workspace = join(root, "workspace");
+  mkdirSync(rolloutDir, { recursive: true });
+  mkdirSync(workspace, { recursive: true });
+  const timestamp = "2026-07-23T00:00:00.000Z";
+  const rootPath = join(rolloutDir, "rollout-root.jsonl");
+  const childPath = join(rolloutDir, "rollout-child.jsonl");
+  const rootRecords = [
+    {
+      timestamp,
+      type: "session_meta",
+      payload: {
+        id: "codex-root",
+        timestamp,
+        cwd: workspace,
+        source: "cli",
+        base_instructions: { text: "base" },
+      },
+    },
+    {
+      timestamp,
+      type: "event_msg",
+      payload: { type: "sub_agent_activity", message: "spawned child" },
+    },
+    {
+      timestamp,
+      type: "response_item",
+      payload: {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text: "ROOT_MARKER" }],
+      },
+    },
+  ];
+  const childRecords = [
+    {
+      timestamp,
+      type: "session_meta",
+      payload: {
+        id: "codex-child",
+        timestamp,
+        cwd: workspace,
+        source: {
+          subagent: {
+            thread_spawn: {
+              parent_thread_id: "codex-root",
+              depth: 1,
+              agent_role: "explorer",
+            },
+          },
+        },
+        base_instructions: { text: "base" },
+      },
+    },
+    {
+      timestamp,
+      type: "response_item",
+      payload: {
+        type: "message",
+        role: "assistant",
+        content: [{ type: "output_text", text: "CHILD_MARKER" }],
+      },
+    },
+  ];
+  writeFileSync(rootPath, `${rootRecords.map(JSON.stringify).join("\n")}\n`);
+  writeFileSync(childPath, `${childRecords.map(JSON.stringify).join("\n")}\n`);
+  const db = new DatabaseSync(join(codexHome, "state_5.sqlite"));
+  db.exec(`
+    CREATE TABLE threads (
+      id TEXT PRIMARY KEY, rollout_path TEXT, title TEXT, cwd TEXT,
+      created_at INTEGER, updated_at INTEGER, source TEXT,
+      thread_source TEXT, archived INTEGER, first_user_message TEXT
+    );
+  `);
+  const insert = db.prepare("INSERT INTO threads VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+  const epoch = Math.floor(Date.parse(timestamp) / 1000);
+  insert.run(
+    "codex-root",
+    rootPath,
+    "Indexed root conversation",
+    workspace,
+    epoch,
+    epoch + 2,
+    "cli",
+    "user",
+    0,
+    "ROOT_MARKER"
+  );
+  insert.run(
+    "codex-child",
+    childPath,
+    "Indexed root conversation",
+    workspace,
+    epoch + 1,
+    epoch + 1,
+    JSON.stringify(childRecords[0]!.payload.source),
+    "subagent",
+    0,
+    "CHILD_MARKER"
+  );
+  db.close();
+
+  const [source, extra] = await discoverImportSessions({
+    harness: "codex",
+    dataDir,
+    codexSessionsDir: sessionsDir,
+  });
+  assert.ok(source);
+  assert.equal(extra, undefined);
+  assert.equal(source.sourceSessionId, "codex-root");
+  assert.equal(source.name, "Indexed root conversation");
+  const preflight = preflightCodexImport(source);
+  assert.equal(preflight.sourceContextFiles.length, 2);
+  assert.match(preflight.sourceContextFiles[1]!.content, /CHILD_MARKER/);
+  assert.ok(
+    preflight.transformations.some((item) =>
+      item.includes("Child agent sessions")
+    )
+  );
 });

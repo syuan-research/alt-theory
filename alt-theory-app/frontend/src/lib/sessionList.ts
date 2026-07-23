@@ -41,6 +41,7 @@ export function matchesQuery(
     session.kbDomain,
     session.provider,
     session.model,
+    session.workspacePrimaryDir ? folderLabel(session.workspacePrimaryDir) : null,
   ]
     .filter(Boolean)
     .join(" ")
@@ -91,6 +92,74 @@ export function buildSessionTree(
       projectId,
       label: projectId ? projectNames.get(projectId) || projectId : "No project",
       roots,
+    }));
+
+  return { groups, childrenByParent };
+}
+
+/** Basename of a working-folder path, for path-free list display (M4). */
+export function folderLabel(dir: string): string {
+  const parts = dir.replace(/[\\/]+$/, "").split(/[\\/]/);
+  return parts[parts.length - 1] || dir;
+}
+
+export interface WorkspaceTree {
+  /** Workspace groups; dir "" = sessions without a working folder (last). */
+  groups: Array<{ dir: string; label: string; roots: SessionSummary[] }>;
+  childrenByParent: Map<string, SessionSummary[]>;
+}
+
+/**
+ * Session list grouped by working folder (M4). knownWorkspaces adds empty
+ * groups so a just-added folder appears before any conversation exists in it.
+ */
+export function buildWorkspaceTree(
+  sessions: SessionSummary[],
+  knownWorkspaces: string[]
+): WorkspaceTree {
+  const members = sessions.filter(isListMember).sort(compareByRecency);
+  const ids = new Set(members.map((s) => s.sessionId));
+
+  const childrenByParent = new Map<string, SessionSummary[]>();
+  const roots: SessionSummary[] = [];
+  for (const session of members) {
+    const parentId = session.forkedFrom?.sessionId;
+    if (parentId && ids.has(parentId)) {
+      if (!childrenByParent.has(parentId)) childrenByParent.set(parentId, []);
+      childrenByParent.get(parentId)?.push(session);
+    } else {
+      roots.push(session);
+    }
+  }
+
+  const byDir = new Map<string, SessionSummary[]>();
+  for (const dir of knownWorkspaces) {
+    if (!byDir.has(dir)) byDir.set(dir, []);
+  }
+  for (const root of roots) {
+    const dir = root.workspacePrimaryDir || "";
+    if (!byDir.has(dir)) byDir.set(dir, []);
+    byDir.get(dir)?.push(root);
+  }
+
+  // Groups with recent activity first (their roots are already
+  // recency-sorted); empty just-added folders next; "No folder" last.
+  const newestTime = (roots: SessionSummary[]): number =>
+    roots.length
+      ? new Date(roots[0].updatedAt || roots[0].createdAt || 0).getTime()
+      : 0;
+  const groups = [...byDir.entries()]
+    .sort(([aDir, aRoots], [bDir, bRoots]) => {
+      if (!aDir) return 1;
+      if (!bDir) return -1;
+      const byRecency = newestTime(bRoots) - newestTime(aRoots);
+      if (byRecency !== 0) return byRecency;
+      return folderLabel(aDir).localeCompare(folderLabel(bDir));
+    })
+    .map(([dir, groupRoots]) => ({
+      dir,
+      label: dir ? folderLabel(dir) : "No folder",
+      roots: groupRoots,
     }));
 
   return { groups, childrenByParent };

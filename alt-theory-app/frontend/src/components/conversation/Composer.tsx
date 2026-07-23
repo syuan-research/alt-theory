@@ -21,6 +21,22 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
   const [slashIndex, setSlashIndex] = useState(0);
   const [menu, setMenu] = useState<MenuKey>(null);
   const rowRef = useRef<HTMLDivElement>(null);
+  const [toolboxSeen, setToolboxSeen] = useState(() => {
+    try {
+      return localStorage.getItem("alt-theory-toolbox-seen") === "1";
+    } catch {
+      return true;
+    }
+  });
+  const markToolboxSeen = () => {
+    if (toolboxSeen) return;
+    setToolboxSeen(true);
+    try {
+      localStorage.setItem("alt-theory-toolbox-seen", "1");
+    } catch {
+      /* ignore */
+    }
+  };
 
   useEffect(() => {
     if (app.reviseMode) setDraft(app.reviseDraft);
@@ -104,7 +120,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
         (r) => r.slug === app.selectors.rolePresetSlug
       )?.displayName ??
       app.selectors.rolePresetSlug
-    : "Default role";
+    : "No role";
   const kbOff = app.selectors.currentDomain === KB_OFF_VALUE;
   const kbLabel = kbOff
     ? "No knowledge base"
@@ -150,21 +166,43 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               className="mi"
               onClick={() => (app.switchRolePreset(null), setMenu(null))}
             >
-              <span>Default role</span>
+              <span>No role</span>
               {!app.selectors.rolePresetSlug ? <i className="ph ph-check check" /> : null}
             </div>
-            {(app.discovery?.rolePresets ?? []).map((r) => (
-              <div
-                key={r.slug}
-                className="mi"
-                onClick={() => (app.switchRolePreset(r.slug), setMenu(null))}
-              >
-                <span>{r.userLabel || r.displayName}</span>
-                {app.selectors.rolePresetSlug === r.slug ? (
-                  <i className="ph ph-check check" />
-                ) : null}
-              </div>
-            ))}
+            {(app.discovery?.rolePresets ?? [])
+              .filter((r) => !r.snapshot)
+              .map((r) => (
+                <div
+                  key={r.slug}
+                  className="mi"
+                  onClick={() => (app.switchRolePreset(r.slug), setMenu(null))}
+                >
+                  <span>{r.userLabel || r.displayName}</span>
+                  {app.selectors.rolePresetSlug === r.slug ? (
+                    <i className="ph ph-check check" />
+                  ) : null}
+                </div>
+              ))}
+            {app.viewMode === "researcher" &&
+            (app.discovery?.rolePresets ?? []).some((r) => r.snapshot) ? (
+              <details className="menu-history">
+                <summary>History</summary>
+                {(app.discovery?.rolePresets ?? [])
+                  .filter((r) => r.snapshot)
+                  .map((r) => (
+                    <div
+                      key={r.slug}
+                      className="mi"
+                      onClick={() => (app.switchRolePreset(r.slug), setMenu(null))}
+                    >
+                      <span>{r.userLabel || r.displayName}</span>
+                      {app.selectors.rolePresetSlug === r.slug ? (
+                        <i className="ph ph-check check" />
+                      ) : null}
+                    </div>
+                  ))}
+              </details>
+            ) : null}
           </CtxPicker>
 
           <CtxPicker
@@ -247,9 +285,11 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             placeholder={
-              app.reviseMode
-                ? "Editing your latest message. Send to update."
-                : "Message Alt. Type / for commands."
+              !interactive
+                ? "Connecting…"
+                : app.reviseMode
+                  ? "Editing your latest message. Send to update."
+                  : "Message Alt. Type / for commands."
             }
             disabled={!interactive || (app.isRunning && !app.reviseMode)}
             onKeyDown={(e) => {
@@ -279,40 +319,64 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
             }}
           />
           <div className="row" ref={rowRef}>
-            {/* plus / actions */}
+            {/* toolbox: featured skills + actions */}
             <button
-              className="flat"
-              title="More actions"
+              className="flat toolbox-btn"
+              title="Toolbox"
               onClick={(e) => {
                 e.stopPropagation();
+                markToolboxSeen();
                 toggle("plus");
               }}
             >
-              <i className="ph ph-plus" />
+              <i className="ph ph-toolbox" />
+              {!toolboxSeen ? <span className="badge-dot" /> : null}
             </button>
             <div
               className={`menu${menu === "plus" ? " on" : ""}`}
               style={{ left: 0 }}
               onClick={(e) => e.stopPropagation()}
             >
-              {pureMode ? (
-                <>
-                  <div
-                    className="mi"
-                    onClick={() => (shell.openRail("workspace"), setMenu(null))}
-                  >
-                    <i className="ph ph-paperclip" />
-                    Import reference
-                  </div>
-                  <div className="sep" />
-                </>
-              ) : null}
               <div
                 className="mi"
                 onClick={() => (app.forkCurrentSession("helper"), setMenu(null))}
               >
                 <i className="ph ph-lifebuoy" />
                 Ask how Alt works
+              </div>
+              {/* Reserved featured-skill slots (owner 2026-07-23): filled or
+                  pruned in 1.2.x/1.3 as the built-in skills land. */}
+              <div className="mi disabled" title="Coming in a later update">
+                <i className="ph ph-chats-circle" />
+                Align on a plan or decision
+                <span className="soon">soon</span>
+              </div>
+              <div className="mi disabled" title="Coming in a later update">
+                <i className="ph ph-list-checks" />
+                Plan &amp; record
+                <span className="soon">soon</span>
+              </div>
+              <div className="mi disabled" title="Coming in a later update">
+                <i className="ph ph-seal-check" />
+                Strict fact levels
+                <span className="soon">soon</span>
+              </div>
+              <div className="sep" />
+              {pureMode ? (
+                <div
+                  className="mi"
+                  onClick={() => (shell.openRail("workspace"), setMenu(null))}
+                >
+                  <i className="ph ph-paperclip" />
+                  Import reference
+                </div>
+              ) : null}
+              <div
+                className="mi"
+                onClick={() => (setDraft("/"), setMenu(null))}
+              >
+                <i className="ph ph-slash-forward" />
+                All skills…
               </div>
             </div>
 

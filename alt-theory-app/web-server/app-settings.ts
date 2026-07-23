@@ -27,6 +27,12 @@ export interface AppSettings {
    * Absent = non-participant (the GitHub-download posture).
    */
   participant?: { designated: boolean; label: string | null };
+  /**
+   * Working folders the user added explicitly (M4). Lets an empty workspace
+   * appear in the session list before any conversation exists in it; folders
+   * that already host sessions are derived from session summaries instead.
+   */
+  knownWorkspaces?: string[];
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -62,6 +68,13 @@ export function readAppSettings(dataDir: string): AppSettings {
                   ? parsed.participant.label
                   : null,
             },
+          }
+        : {}),
+      ...(Array.isArray(parsed.knownWorkspaces)
+        ? {
+            knownWorkspaces: parsed.knownWorkspaces.filter(
+              (entry): entry is string => typeof entry === "string"
+            ),
           }
         : {}),
     };

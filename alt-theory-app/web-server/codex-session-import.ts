@@ -9,7 +9,8 @@ import {
   statSync,
 } from "fs";
 import { homedir } from "os";
-import { join, resolve } from "path";
+import { dirname, join, resolve } from "path";
+import { DatabaseSync } from "node:sqlite";
 import {
   CURRENT_SESSION_VERSION,
   parseSessionEntries,
@@ -35,6 +36,7 @@ export interface CodexPreflight {
   sourceFingerprint: string;
   sourceVersion: string;
   transformations: string[];
+  sourceContextFiles: Array<{ filename: string; content: string }>;
 }
 
 export class CodexImportRefusalError extends Error {
@@ -58,6 +60,86 @@ export function discoverCodexSessions(
 ): CodexDiscoveredSession[] {
   const root = resolve(sessionsDir);
   if (!existsSync(root)) return [];
+  return discoverCodexFromStateDb(root) ?? discoverCodexFromRollouts(root);
+}
+
+function discoverCodexFromStateDb(root: string): CodexDiscoveredSession[] | null {
+  const dbPath = resolve(
+    process.env.CODEX_STATE_DB_PATH?.trim() || join(dirname(root), "state_5.sqlite")
+  );
+  if (!existsSync(dbPath)) return null;
+  let db: DatabaseSync;
+  try {
+    db = new DatabaseSync(dbPath, { readOnly: true });
+  } catch {
+    return null;
+  }
+  try {
+    const columns = new Set(
+      (db.prepare("PRAGMA table_info(threads)").all() as Row[]).map((row) =>
+        String(row.name)
+      )
+    );
+    if (!columns.has("id") || !columns.has("rollout_path")) return null;
+    const value = (name: string) =>
+      columns.has(name) ? name : `NULL AS ${name}`;
+    const rows = db.prepare(`
+      SELECT id, rollout_path, ${value("title")}, ${value("cwd")},
+        ${value("created_at")}, ${value("updated_at")}, ${value("source")},
+        ${value("thread_source")}, ${value("archived")}, ${value("preview")}
+      FROM threads
+      ORDER BY ${columns.has("updated_at") ? "updated_at" : "created_at"} DESC, id DESC
+    `).all() as Row[];
+    return rows.flatMap((row) => {
+      try {
+        if (Number(row.archived ?? 0) !== 0) return [];
+        if (String(row.thread_source ?? "") === "subagent") return [];
+        if (isSubagentSource(row.source)) return [];
+        const path = resolve(String(row.rollout_path ?? ""));
+        if (!existsSync(path) || !statSync(path).isFile()) return [];
+        const stat = statSync(path);
+        const head = parseJsonl(readHead(path));
+        const meta = head.find((record) => record.type === "session_meta")?.payload;
+        const firstUser = head.find(
+          (record) =>
+            record.type === "response_item" &&
+            record.payload?.type === "message" &&
+            record.payload?.role === "user"
+        );
+        const createdAt = timestamp(row.created_at, meta?.timestamp, stat.birthtimeMs);
+        const updatedAt = timestamp(row.updated_at, null, stat.mtimeMs);
+        const preview = String(
+          row.preview ??
+          messageText(firstUser?.payload?.content ?? [])
+        ).slice(0, 240);
+        return [{
+          sourceId: `codex:${String(row.id)}`,
+          sourceSessionId: String(row.id),
+          sourceStore: path,
+          sourceVersion: `${stat.size}:${stat.mtimeMs}`,
+          name: typeof row.title === "string" && row.title.trim() ? row.title : null,
+          cwd: String(row.cwd ?? meta?.cwd ?? ""),
+          createdAt,
+          updatedAt,
+          messageCount: head.filter(
+            (record) =>
+              record.type === "response_item" &&
+              record.payload?.type === "message"
+          ).length,
+          preview,
+        } satisfies CodexDiscoveredSession];
+      } catch {
+        return [];
+      }
+    });
+  } catch {
+    return null;
+  } finally {
+    db.close();
+  }
+}
+
+function discoverCodexFromRollouts(root: string): CodexDiscoveredSession[] {
   return jsonlFiles(root)
     .flatMap((path) => {
       try {
@@ -65,7 +147,7 @@ export function discoverCodexSessions(
         const records = parseJsonl(readHead(path));
         const meta = records.find((record) => record.type === "session_meta")?.payload;
         const id = String(meta?.id ?? meta?.session_id ?? "");
-        if (!id || !meta?.cwd || !meta?.timestamp) return [];
+        if (!id || !meta?.cwd || !meta?.timestamp || isSubagentSource(meta.source)) return [];
         const messages = records.filter(
           (record) => record.type === "response_item" && record.payload?.type === "message"
         );
@@ -89,6 +171,36 @@ export function discoverCodexSessions(
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
+function timestamp(primary: unknown, fallback: unknown, finalMs: number): string {
+  const value = primary ?? fallback;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Date.parse(value);
+    if (Number.isFinite(parsed)) return new Date(parsed).toISOString();
+  }
+  const numeric = Number(value);
+  if (Number.isFinite(numeric) && numeric > 0) {
+    return new Date(numeric < 10_000_000_000 ? numeric * 1000 : numeric).toISOString();
+  }
+  return new Date(finalMs).toISOString();
+}
+
+function isSubagentSource(source: unknown): boolean {
+  let value = source;
+  if (typeof value === "string" && value.trim().startsWith("{")) {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      return false;
+    }
+  }
+  return Boolean(
+    value &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    "subagent" in value
+  );
+}
+
 export function preflightCodexSession(args: {
   sourceSessionId: string;
   sourceStore?: string;
@@ -105,28 +217,227 @@ export function preflightCodexSession(args: {
   }
   const records = parseJsonl(source, true);
   const metaRecords = records.filter((record) => record.type === "session_meta");
-  if (metaRecords.length !== 1) {
+  const matchingMeta = metaRecords.filter((record) => {
+    const id = String(record.payload?.id ?? record.payload?.session_id ?? "");
+    return id === args.sourceSessionId;
+  });
+  if (
+    matchingMeta.length !== 1 ||
+    metaRecords[0] !== matchingMeta[0]
+  ) {
     throw new CodexImportRefusalError(
       "session_meta",
       metaRecords.length,
-      "exactly one session metadata record is required"
+      "rollout must begin with exactly one metadata record for the selected session"
     );
   }
-  const meta = metaRecords[0]!.payload;
-  const id = String(meta?.id ?? meta?.session_id ?? "");
-  if (id !== args.sourceSessionId) {
-    throw new CodexImportRefusalError("session_meta", 1, "selected session ID does not match rollout metadata");
+  const meta = matchingMeta[0]!.payload;
+  if (metaRecords.length > 1) {
+    const completeUserForkChain =
+      meta.thread_source === "user" &&
+      metaRecords.every((record, index) => {
+        if (index === metaRecords.length - 1) {
+          return !record.payload?.forked_from_id;
+        }
+        const next = metaRecords[index + 1]!.payload;
+        return (
+          String(record.payload?.forked_from_id ?? "") ===
+          String(next?.id ?? next?.session_id ?? "")
+        );
+      });
+    if (!completeUserForkChain) {
+      throw new CodexImportRefusalError(
+        "session_relationship",
+        metaRecords.length,
+        "embedded session metadata does not form a complete user-fork lineage"
+      );
+    }
   }
   validateCompleteRollout(records, meta);
   const piSessionJsonl = projectToPi(records, meta);
   parseSessionEntries(piSessionJsonl);
   const stat = statSync(path);
+  const sourceContextFiles = exportCodexChildContext(path, args.sourceSessionId);
+  const transformations = describeTransformations(records);
+  if (sourceContextFiles.length) {
+    transformations.push(
+      "Child agent sessions are indexed beside the import; available records are preserved as searchable source context, not replayed into the main conversation."
+    );
+  }
   return {
     piSessionJsonl,
     sourceFingerprint: createHash("sha256").update(source).digest("hex"),
     sourceVersion: `${stat.size}:${stat.mtimeMs}`,
-    transformations: describeTransformations(records),
+    transformations,
+    sourceContextFiles,
   };
+}
+
+function exportCodexChildContext(
+  rootRolloutPath: string,
+  rootSessionId: string
+): Array<{ filename: string; content: string }> {
+  const sessionsRoot = namedAncestor(dirname(rootRolloutPath), "sessions");
+  if (!sessionsRoot) return [];
+  const dbPath = resolve(
+    process.env.CODEX_STATE_DB_PATH?.trim() ||
+      join(dirname(sessionsRoot), "state_5.sqlite")
+  );
+  const candidates = existsSync(dbPath)
+    ? codexRelationsFromDb(dbPath)
+    : codexRelationsFromRollouts(sessionsRoot);
+  const descendants: Array<{
+    id: string;
+    parentId: string;
+    path: string;
+  }> = [];
+  const parents = new Set([rootSessionId]);
+  // ponytail: O(n²) over local thread metadata; replace with a parent map only
+  // if real stores become large enough for import preflight to notice.
+  let added = true;
+  while (added) {
+    added = false;
+    for (const candidate of candidates) {
+      if (
+        !parents.has(candidate.id) &&
+        parents.has(candidate.parentId) &&
+        existsSync(candidate.path)
+      ) {
+        parents.add(candidate.id);
+        descendants.push(candidate);
+        added = true;
+      }
+    }
+  }
+  if (!descendants.length) return [];
+  const files = descendants.map((child, index) => {
+    const filename = `codex-${String(index + 1).padStart(3, "0")}.jsonl`;
+    try {
+      return {
+        filename,
+        content: readFileSync(child.path, "utf-8"),
+        index: {
+          sourceSessionId: child.id,
+          parentSessionId: child.parentId,
+          filename,
+          available: true,
+        },
+      };
+    } catch {
+      return {
+        filename: null,
+        content: null,
+        index: {
+          sourceSessionId: child.id,
+          parentSessionId: child.parentId,
+          filename: null,
+          available: false,
+        },
+      };
+    }
+  });
+  return [
+    {
+      filename: "index.json",
+      content: `${JSON.stringify({
+        schemaVersion: 1,
+        harness: "codex",
+        rootSessionId,
+        sessions: files.map((file) => file.index),
+      }, null, 2)}\n`,
+    },
+    ...files.flatMap(({ filename, content }) =>
+      filename && content ? [{ filename, content }] : []
+    ),
+  ];
+}
+
+function namedAncestor(path: string, name: string): string | null {
+  let current = resolve(path);
+  while (dirname(current) !== current) {
+    if (current.toLowerCase().endsWith(`\\${name.toLowerCase()}`) ||
+        current.toLowerCase().endsWith(`/${name.toLowerCase()}`)) {
+      return current;
+    }
+    current = dirname(current);
+  }
+  return null;
+}
+
+function codexRelationsFromDb(
+  dbPath: string
+): Array<{ id: string; parentId: string; path: string }> {
+  let db: DatabaseSync;
+  try {
+    db = new DatabaseSync(dbPath, { readOnly: true });
+  } catch {
+    return [];
+  }
+  try {
+    const columns = new Set(
+      (db.prepare("PRAGMA table_info(threads)").all() as Row[]).map((row) =>
+        String(row.name)
+      )
+    );
+    if (
+      !columns.has("id") ||
+      !columns.has("rollout_path") ||
+      !columns.has("source")
+    ) {
+      return [];
+    }
+    return (db.prepare(
+      "SELECT id, rollout_path, source FROM threads"
+    ).all() as Row[]).flatMap((row) => {
+      const parentId = codexParentThreadId(row.source);
+      return parentId
+        ? [{
+            id: String(row.id),
+            parentId,
+            path: resolve(String(row.rollout_path)),
+          }]
+        : [];
+    });
+  } catch {
+    return [];
+  } finally {
+    db.close();
+  }
+}
+
+function codexRelationsFromRollouts(
+  sessionsRoot: string
+): Array<{ id: string; parentId: string; path: string }> {
+  return jsonlFiles(sessionsRoot).flatMap((path) => {
+    try {
+      const meta = parseJsonl(readHead(path)).find(
+        (record) => record.type === "session_meta"
+      )?.payload;
+      const id = String(meta?.id ?? meta?.session_id ?? "");
+      const parentId = codexParentThreadId(meta?.source);
+      return id && parentId ? [{ id, parentId, path }] : [];
+    } catch {
+      return [];
+    }
+  });
+}
+
+function codexParentThreadId(source: unknown): string | null {
+  let value = source;
+  if (typeof value === "string" && value.trim().startsWith("{")) {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      return null;
+    }
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const subagent = (value as Row).subagent;
+  if (!subagent || typeof subagent !== "object") return null;
+  const parent =
+    (subagent as Row).thread_spawn?.parent_thread_id ??
+    (subagent as Row).parent_thread_id;
+  return typeof parent === "string" && parent ? parent : null;
 }
 
 function jsonlFiles(root: string): string[] {
@@ -164,7 +475,15 @@ function parseJsonl(source: string, strict = false): Row[] {
 }
 
 function validateCompleteRollout(records: Row[], meta: Row): void {
-  const allowedTop = new Set(["session_meta", "response_item", "event_msg", "turn_context", "world_state", "compacted"]);
+  const allowedTop = new Set([
+    "session_meta",
+    "response_item",
+    "event_msg",
+    "turn_context",
+    "world_state",
+    "compacted",
+    "inter_agent_communication_metadata",
+  ]);
   const unsupportedTop = records.filter((record) => !allowedTop.has(String(record.type)));
   if (unsupportedTop.length) {
     throw new CodexImportRefusalError(
@@ -188,7 +507,7 @@ function validateCompleteRollout(records: Row[], meta: Row): void {
     }
   }
   if (
-    meta.history_base || meta.forked_from_id || meta.parent_thread_id ||
+    meta.history_base || meta.parent_thread_id ||
     meta.subagent_history_start_ordinal != null || meta.agent_role || meta.agent_path
   ) {
     throw new CodexImportRefusalError(
@@ -204,20 +523,6 @@ function validateCompleteRollout(records: Row[], meta: Row): void {
       "persisted base instructions are required for a faithful supported import"
     );
   }
-  const lastCompactedIndex = records.findLastIndex((record) => record.type === "compacted");
-  const controlEvents = records.filter(
-    (record, index) =>
-      index > lastCompactedIndex &&
-      record.type === "event_msg" &&
-      ["thread_rolled_back", "turn_aborted", "sub_agent_activity"].includes(String(record.payload?.type))
-  );
-  if (controlEvents.length) {
-    throw new CodexImportRefusalError(
-      String(controlEvents[0]?.payload?.type ?? "control_event"),
-      controlEvents.length,
-      "rollback, aborted-turn, and subagent control semantics after the last compaction boundary are not imported"
-    );
-  }
   const calls = new Map<string, { name: string; outputs: number }>();
   for (const record of effectiveHistoryRecords(records)) {
     const item = record.payload;
@@ -227,16 +532,87 @@ function validateCompleteRollout(records: Row[], meta: Row): void {
       validateMessage(item);
       continue;
     }
+    if (type === "agent_message") {
+      const content = item.content;
+      if (
+        typeof item.author !== "string" ||
+        !item.author ||
+        typeof item.recipient !== "string" ||
+        !item.recipient ||
+        !Array.isArray(content) ||
+        content.length === 0 ||
+        content.some(
+          (part: Row) =>
+            !part ||
+            !(
+              (part.type === "input_text" && typeof part.text === "string") ||
+              (part.type === "encrypted_content" &&
+                typeof part.encrypted_content === "string")
+            )
+        )
+      ) {
+        throw new CodexImportRefusalError(
+          type,
+          1,
+          "inter-agent message structure is malformed"
+        );
+      }
+      continue;
+    }
     if (type === "function_call" || type === "custom_tool_call") {
       const callId = String(item.call_id ?? "");
-      if (!callId || !item.name || calls.has(callId)) {
-        throw new CodexImportRefusalError(type, 1, "tool call ID/name is missing or duplicated");
+      if (!callId || calls.has(callId)) {
+        throw new CodexImportRefusalError(type, 1, "tool call ID is missing or duplicated");
       }
       if (type === "function_call") parseArguments(item.arguments, type);
       else if (typeof item.input !== "string") {
         throw new CodexImportRefusalError(type, 1, "custom tool input is not text");
       }
-      calls.set(callId, { name: String(item.name), outputs: 0 });
+      const name = String(item.name ?? "").trim() ||
+        (type === "function_call" ? "codex_function" : "codex_custom_tool");
+      calls.set(callId, { name, outputs: 0 });
+      continue;
+    }
+    if (type === "web_search_call") {
+      if (
+        item.status !== "completed" ||
+        (item.id != null && typeof item.id !== "string") ||
+        (item.action != null &&
+          (!item.action || typeof item.action !== "object" || Array.isArray(item.action))) ||
+        (item.metadata != null &&
+          (!item.metadata || typeof item.metadata !== "object" || Array.isArray(item.metadata)))
+      ) {
+        throw new CodexImportRefusalError(type, 1, "web-search control record is malformed");
+      }
+      continue;
+    }
+    if (type === "image_generation_call") {
+      if (
+        typeof item.id !== "string" ||
+        item.status !== "generating" ||
+        typeof item.revised_prompt !== "string" ||
+        !generatedImage(item.result)
+      ) {
+        throw new CodexImportRefusalError(type, 1, "generated image record is malformed or unsupported");
+      }
+      continue;
+    }
+    if (type === "tool_search_call") {
+      const callId = String(item.call_id ?? "");
+      if (
+        !callId ||
+        calls.has(callId) ||
+        !item.arguments ||
+        typeof item.arguments !== "object" ||
+        Array.isArray(item.arguments)
+      ) {
+        throw new CodexImportRefusalError(
+          type,
+          1,
+          "tool-search call ID/arguments is missing, duplicated, or malformed"
+        );
+      }
+      calls.set(callId, { name: "__tool_search__", outputs: 0 });
       continue;
     }
     if (type === "function_call_output" || type === "custom_tool_call_output") {
@@ -254,6 +630,21 @@ function validateCompleteRollout(records: Row[], meta: Row): void {
       outputContent(item.output, type);
       continue;
     }
+    if (type === "tool_search_output") {
+      const call = calls.get(String(item.call_id ?? ""));
+      if (!call || call.name !== "__tool_search__" || !Array.isArray(item.tools)) {
+        throw new CodexImportRefusalError(
+          type,
+          1,
+          "tool-search output has no matching source call or a malformed tools list"
+        );
+      }
+      call.outputs += 1;
+      if (call.outputs > 1) {
+        throw new CodexImportRefusalError(type, 1, "tool-search call has multiple outputs");
+      }
+      continue;
+    }
     throw new CodexImportRefusalError(type, 1, "response item has no verified Pi mapping");
   }
   const dangling = [...calls.values()].filter((call) => call.outputs !== 1);
@@ -267,8 +658,9 @@ function validateCompleteRollout(records: Row[], meta: Row): void {
 // compacted record this is simply all response_item records in file order.
 function effectiveHistoryRecords(records: Row[]): Row[] {
   const lastCompactedIndex = records.findLastIndex((record) => record.type === "compacted");
+  const suffix = normalizeCurrentSuffix(records, lastCompactedIndex + 1).records;
   if (lastCompactedIndex < 0) {
-    return records.filter((record) => record.type === "response_item");
+    return suffix.filter((record) => record.type === "response_item");
   }
   const compacted = records[lastCompactedIndex]!;
   const replacement = compacted.payload?.replacement_history;
@@ -282,8 +674,121 @@ function effectiveHistoryRecords(records: Row[]): Row[] {
   const timestamp = compacted.timestamp;
   return [
     ...replacement.map((payload) => ({ timestamp, type: "response_item", payload })),
-    ...records.slice(lastCompactedIndex + 1).filter((record) => record.type === "response_item"),
+    ...suffix.filter((record) => record.type === "response_item"),
   ];
+}
+
+// Codex records a completed or interrupted attempt, then
+// `thread_rolled_back {num_turns:1}` before the next task. Its own current
+// conversation omits that whole turn. Only this explicit bounded shape is
+// normalized; every other rollback remains a refusal because the current
+// history would be ambiguous.
+function normalizeCurrentSuffix(
+  records: Row[],
+  startIndex: number
+): { records: Row[]; rolledBackTurns: number; interruptedTurns: number } {
+  const suffix = records.slice(startIndex);
+  const normalized: Row[] = [];
+  let rolledBackTurns = 0;
+  let interruptedTurns = 0;
+  let index = 0;
+  const eventType = (record: Row) =>
+    record.type === "event_msg" ? String(record.payload?.type ?? "") : "";
+  const isControl = (record: Row) =>
+    ["turn_aborted", "thread_rolled_back"].includes(eventType(record));
+
+  while (index < suffix.length) {
+    if (eventType(suffix[index]!) !== "task_started") {
+      if (eventType(suffix[index]!) === "turn_aborted") {
+        const turnId = String(suffix[index]?.payload?.turn_id ?? "");
+        const hasMatchingContext = normalized.some(
+          (record) =>
+            record.type === "turn_context" &&
+            String(record.payload?.turn_id ?? "") === turnId
+        );
+        let nextTaskIndex = index + 1;
+        while (
+          nextTaskIndex < suffix.length &&
+          eventType(suffix[nextTaskIndex]!) !== "task_started"
+        ) {
+          nextTaskIndex += 1;
+        }
+        const trailing = suffix.slice(index + 1, nextTaskIndex);
+        if (
+          turnId &&
+          hasMatchingContext &&
+          !trailing.some(
+            (record) =>
+              record.type === "response_item" ||
+              ["turn_aborted", "thread_rolled_back"].includes(eventType(record))
+          )
+        ) {
+          normalized.push(suffix[index]!);
+          interruptedTurns += 1;
+          index += 1;
+          continue;
+        }
+      }
+      if (isControl(suffix[index]!)) {
+        throw new CodexImportRefusalError(
+          eventType(suffix[index]!),
+          1,
+          "rollback control is not attached to a supported interrupted turn"
+        );
+      }
+      normalized.push(suffix[index]!);
+      index += 1;
+      continue;
+    }
+
+    let end = index + 1;
+    while (end < suffix.length && eventType(suffix[end]!) !== "task_started") {
+      end += 1;
+    }
+    const turn = suffix.slice(index, end);
+    const aborts = turn.filter((record) => eventType(record) === "turn_aborted");
+    const rollbacks = turn.filter((record) => eventType(record) === "thread_rolled_back");
+    if (aborts.length === 0 && rollbacks.length === 0) {
+      normalized.push(...turn);
+      index = end;
+      continue;
+    }
+
+    const abortIndex = turn.findIndex((record) => eventType(record) === "turn_aborted");
+    const rollbackIndex = turn.findIndex((record) => eventType(record) === "thread_rolled_back");
+    const matchingAbort =
+      aborts.length === 1 &&
+      String(aborts[0]?.payload?.turn_id ?? "") ===
+        String(turn[0]?.payload?.turn_id ?? "");
+    const keptInterruption =
+      matchingAbort &&
+      rollbacks.length === 0 &&
+      !turn.slice(abortIndex + 1).some((record) => record.type === "response_item");
+    if (keptInterruption) {
+      normalized.push(...turn);
+      interruptedTurns += 1;
+      index = end;
+      continue;
+    }
+    const rolledBackTurn =
+      (aborts.length === 0 || matchingAbort) &&
+      rollbacks.length === 1 &&
+      (aborts.length === 0 || abortIndex < rollbackIndex) &&
+      Number(rollbacks[0]?.payload?.num_turns) === 1 &&
+      !turn.slice(rollbackIndex + 1).some((record) => record.type === "response_item");
+    if (!rolledBackTurn) {
+      const control = [...aborts, ...rollbacks][0];
+      throw new CodexImportRefusalError(
+        eventType(control),
+        aborts.length + rollbacks.length,
+        "rollback control does not match one bounded turn followed by a one-turn rollback"
+      );
+    }
+    rolledBackTurns += 1;
+    index = end;
+  }
+
+  return { records: normalized, rolledBackTurns, interruptedTurns };
 }
 
 function validateMessage(item: Row): void {
@@ -353,6 +858,23 @@ function parseDataImage(url: unknown): Row | null {
   return { type: "image", data: url.slice(comma + 1), mimeType };
 }
 
+function generatedImage(value: unknown): Row | null {
+  if (typeof value !== "string" || !value) return null;
+  let bytes: Buffer;
+  try {
+    bytes = Buffer.from(value.slice(0, 16), "base64");
+  } catch {
+    return null;
+  }
+  const mimeType =
+    bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+      ? "image/png"
+      : bytes.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]))
+        ? "image/jpeg"
+        : null;
+  return mimeType ? { type: "image", data: value, mimeType } : null;
+}
+
 function flattenText(parts: Row[]): string {
   return parts
     .filter((part) => part.type === "text")
@@ -416,7 +938,8 @@ function projectToPi(records: Row[], meta: Row): string {
       continue;
     }
     if (item.type === "function_call" || item.type === "custom_tool_call") {
-      const name = String(item.name);
+      const name = String(item.name ?? "").trim() ||
+        (item.type === "function_call" ? "codex_function" : "codex_custom_tool");
       callNames.set(String(item.call_id), name);
       const args = item.type === "function_call"
         ? parseArguments(item.arguments, item.type)
@@ -424,6 +947,19 @@ function projectToPi(records: Row[], meta: Row): string {
       append({
         type: "message",
         message: assistantMessage([{ type: "toolCall", id: String(item.call_id), name, arguments: args }], model, "toolUse", record.timestamp),
+        timestamp: record.timestamp,
+      });
+      continue;
+    }
+    if (item.type === "image_generation_call") {
+      append({
+        type: "message",
+        message: assistantMessage(
+          [generatedImage(item.result)!],
+          model,
+          "stop",
+          record.timestamp
+        ),
         timestamp: record.timestamp,
       });
       continue;
@@ -465,8 +1001,22 @@ function describeTransformations(records: Row[]): string[] {
           : "")
     );
   }
-  const effective = compactedCount ? effectiveHistoryRecords(records) : [];
+  const effective = effectiveHistoryRecords(records);
   const effectiveItems = effective.map((record) => record.payload);
+  const normalizedSuffix = normalizeCurrentSuffix(
+    records,
+    records.findLastIndex((record) => record.type === "compacted") + 1
+  );
+  if (normalizedSuffix.rolledBackTurns) {
+    result.push(
+      `${normalizedSuffix.rolledBackTurns} Codex turn(s) were followed by an explicit one-turn rollback; those turns stay in raw records and are excluded from active history.`
+    );
+  }
+  if (normalizedSuffix.interruptedTurns) {
+    result.push(
+      `${normalizedSuffix.interruptedTurns} interrupted Codex turn(s) were not rolled back; their complete recorded messages remain active while interruption metadata stays raw-only.`
+    );
+  }
   if (
     effectiveItems.some(
       (item) =>
@@ -503,6 +1053,33 @@ function describeTransformations(records: Row[]): string[] {
   }
   if (itemTypes.has("custom_tool_call")) {
     result.push("Codex freeform tool input is retained in Pi tool arguments under the input field.");
+  }
+  if (itemTypes.has("tool_search_call") || itemTypes.has("tool_search_output")) {
+    result.push("Codex tool-search control records and discovered definitions stay raw-only; the selected Alt Theory mode supplies the active tools.");
+  }
+  if (itemTypes.has("web_search_call")) {
+    result.push("Codex web-search control records stay raw-only; model-visible answers remain in the conversation.");
+  }
+  if (itemTypes.has("image_generation_call")) {
+    result.push("Embedded Codex-generated PNG/JPEG results are replayed as assistant images; generation control metadata stays raw-only.");
+  }
+  if (
+    effectiveItems.some(
+      (item) =>
+        item?.type === "function_call" &&
+        !String(item.name ?? "").trim()
+    )
+  ) {
+    result.push('Older Codex function calls with an empty source name use the visible fallback name "codex_function"; original records remain raw.');
+  }
+  if (records.filter((record) => record.type === "session_meta").length > 1) {
+    result.push("An embedded Codex user-fork lineage was verified and replayed as one current conversation; every lineage record remains raw.");
+  }
+  if (
+    itemTypes.has("agent_message") ||
+    records.some((record) => record.type === "inter_agent_communication_metadata")
+  ) {
+    result.push("Codex inter-agent messages and communication metadata stay in raw source records and are not replayed as main-conversation turns.");
   }
   return result;
 }

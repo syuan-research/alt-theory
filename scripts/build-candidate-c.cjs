@@ -45,6 +45,13 @@ fs.mkdirSync(appDir, { recursive: true });
 
 copyDir(path.join(root, "dist-bundle"), path.join(appDir, "dist-bundle"));
 copyDir(path.join(root, "agent-assets"), path.join(appDir, "agent-assets"));
+// Release bundles exclude historical asset snapshots (M5).
+for (const snapshotDir of ["role-presets", "soul"]) {
+  fs.rmSync(path.join(appDir, "agent-assets", snapshotDir, "snapshots"), {
+    recursive: true,
+    force: true,
+  });
+}
 fs.copyFileSync(
   path.join(root, "package.json"),
   path.join(appDir, "package.json")

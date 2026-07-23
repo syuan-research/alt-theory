@@ -325,6 +325,7 @@ function RelatedConversation({ sessionId }: { sessionId: string }) {
       <div className="related-actions">
         <span>{status}</span>
         <button
+          title="Turn this side chat into a listed conversation of its own — everything said here is kept."
           onClick={() => {
             void app.promoteRelatedSession(sessionId).catch((reason) =>
               setError(reason instanceof Error ? reason.message : String(reason))

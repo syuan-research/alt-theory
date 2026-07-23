@@ -8,6 +8,9 @@ export interface DiscoveredAsset {
   shortLabel?: string;
   userLabel?: string;
   description?: string;
+  /** Historical snapshot (lives in <dir>/snapshots); hidden from user-facing
+   *  pickers, collapsed under "History" in researcher surfaces (M5). */
+  snapshot?: boolean;
 }
 
 function displayName(slug: string): string {
@@ -36,8 +39,18 @@ function listMarkdownAssets(dir: string): DiscoveredAsset[] {
     .map((slug) => ({ slug, displayName: displayName(slug) }));
 }
 
+function listWithSnapshots(dir: string): DiscoveredAsset[] {
+  return [
+    ...listMarkdownAssets(dir),
+    ...listMarkdownAssets(resolve(dir, "snapshots")).map((asset) => ({
+      ...asset,
+      snapshot: true as const,
+    })),
+  ];
+}
+
 export function listRolePresets(rolePresetsDir: string): DiscoveredAsset[] {
-  return listMarkdownAssets(rolePresetsDir);
+  return listWithSnapshots(rolePresetsDir);
 }
 
 /** Deprecated compatibility alias. Use listRolePresets. */
@@ -47,7 +60,7 @@ export function listSouls(
   soulDir: string,
   _legacySoulPath?: string | null
 ): DiscoveredAsset[] {
-  return listMarkdownAssets(soulDir);
+  return listWithSnapshots(soulDir);
 }
 
 export function listKbDomains(kbDir: string): DiscoveredAsset[] {
@@ -84,10 +97,15 @@ export function resolveRolePresetSlug(
   rolePresetsDir: string,
   slug: string
 ): string | null {
-  if (!listRolePresets(rolePresetsDir).some((preset) => preset.slug === slug)) {
+  const match = listRolePresets(rolePresetsDir).find(
+    (preset) => preset.slug === slug
+  );
+  if (!match) {
     return null;
   }
-  return resolve(rolePresetsDir, `${slug}.md`);
+  return match.snapshot
+    ? resolve(rolePresetsDir, "snapshots", `${slug}.md`)
+    : resolve(rolePresetsDir, `${slug}.md`);
 }
 
 /** Deprecated compatibility alias. Use resolveRolePresetSlug. */
@@ -98,11 +116,16 @@ export function resolveSoulSlug(
   slug: string,
   legacySoulPath?: string | null
 ): string | null {
-  if (!listSouls(soulDir, legacySoulPath).some((soul) => soul.slug === slug)) {
+  const match = listSouls(soulDir, legacySoulPath).find(
+    (soul) => soul.slug === slug
+  );
+  if (!match) {
     return null;
   }
 
-  const candidate = resolve(soulDir, `${slug}.md`);
+  const candidate = match.snapshot
+    ? resolve(soulDir, "snapshots", `${slug}.md`)
+    : resolve(soulDir, `${slug}.md`);
   if (existsSync(candidate)) {
     return candidate;
   }

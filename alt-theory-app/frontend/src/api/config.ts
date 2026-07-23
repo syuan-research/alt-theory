@@ -67,3 +67,17 @@ export async function setActiveModel(
     body: JSON.stringify({ provider, model }),
   });
 }
+export async function testConnectionFromDraft(input: {
+  provider: string;
+  baseUrl?: string;
+  api?: string;
+  apiKey?: string;
+  keyStorage?: "literal" | "env";
+  modelId?: string;
+}): Promise<{ ok: true; modelId: string }> {
+  return fetchJson<{ ok: true; modelId: string }>("/api/config/test-connection", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}

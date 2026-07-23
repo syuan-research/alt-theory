@@ -8,13 +8,14 @@
 import "dotenv/config";
 import express, { type Response } from "express";
 import multer from "multer";
-import { existsSync } from "fs";
+import { existsSync, statSync } from "fs";
 import { createServer } from "http";
 import { resolve } from "path";
 import { fileURLToPath } from "url";
 import WebSocket, { WebSocketServer } from "ws";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import {
+  type CapabilityMode,
   type PromptMode,
   type ResourceDiscoveryMode,
   KB_DISABLED_DOMAIN,
@@ -64,6 +65,7 @@ import {
 import {
   SessionBusyError,
   SessionService,
+  type SessionModelOverride,
   type SessionSelectors,
   type SessionServiceEvent,
 } from "./session-service.js";
@@ -73,6 +75,7 @@ import { listAltTheorySkills } from "./skill-assets.js";
 import {
   agentConfigDir,
   ConfigValidationError,
+  testProviderConnectionFromDraft,
   deleteProvider,
   fetchProviderModels,
   fetchProviderModelsFromDraft,
@@ -131,10 +134,13 @@ const PUBLIC_DIR = resolve(
 );
 
 const DEFAULT_ROLE_CONDITION_PRESETS: Record<string, string> = {
-  "conceptual-theory": "role-conceptual-theory-companion",
+  "conceptual-theory": "role-conceptual-theory-companion-latest",
   "metatheory-oriented": "role-metatheory-oriented",
 };
-const DEFAULT_ROLE_PRESET_SLUG = "role-conceptual-theory-companion";
+// Points at the MUTABLE -latest asset by convention (agent-assets/README.md):
+// the name is stable while its content evolves, so this constant never needs
+// to change again — no config indirection required.
+const DEFAULT_ROLE_PRESET_SLUG = "role-conceptual-theory-companion-latest";
 const DEFAULT_SOUL_SLUG = "soul-latest";
 const DEFAULT_INSTRUCTION_REF = "default.md";
 
@@ -356,6 +362,37 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           apiKey: typeof body.apiKey === "string" ? body.apiKey : undefined,
         }),
       });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(error instanceof ConfigValidationError ? 400 : 500).json({
+        error: message,
+      });
+    }
+  });
+  app.post("/api/config/test-connection", async (req, res) => {
+    if (!requireLocalConfigMode(res)) return;
+    const body = req.body as {
+      provider?: unknown;
+      baseUrl?: unknown;
+      api?: unknown;
+      apiKey?: unknown;
+      keyStorage?: unknown;
+      modelId?: unknown;
+    };
+    try {
+      res.json(
+        await testProviderConnectionFromDraft(agentConfigDir(), {
+          provider: typeof body.provider === "string" ? body.provider : "",
+          baseUrl: typeof body.baseUrl === "string" ? body.baseUrl : undefined,
+          api: typeof body.api === "string" ? (body.api as ApiType) : undefined,
+          apiKey: typeof body.apiKey === "string" ? body.apiKey : undefined,
+          keyStorage:
+            body.keyStorage === "env" || body.keyStorage === "literal"
+              ? body.keyStorage
+              : undefined,
+          modelId: typeof body.modelId === "string" ? body.modelId : undefined,
+        })
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       res.status(error instanceof ConfigValidationError ? 400 : 500).json({
@@ -627,6 +664,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         return;
       }
       const metadata = sessionCreationMetadataForAuth(auth, visibility);
+      const importSelectors = createDraftSelectorsForAuth(auth);
       const results = selected.map((source) => {
         if (source.repeat === "unchanged") {
           return {
@@ -669,6 +707,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               preflight,
               mode,
               workspacePrimaryDir,
+              rolePresetSlug: importSelectors.rolePresetSlug,
+              soulSlug: importSelectors.soulSlug,
               ...metadata,
             });
             return {
@@ -692,7 +732,15 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
                 transformations: preflight.transformations,
               };
             }
-            const common = { dataDir, source, mode, workspacePrimaryDir, ...metadata };
+            const common = {
+              dataDir,
+              source,
+              mode: mode as CapabilityMode,
+              workspacePrimaryDir,
+              rolePresetSlug: importSelectors.rolePresetSlug,
+              soulSlug: importSelectors.soulSlug,
+              ...metadata,
+            };
             const registered = harness === "opencode"
               ? registerOpenCodeImport({ ...common, preflight })
               : registerCodexImport({ ...common, preflight });
@@ -705,7 +753,15 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               transformations: preflight.transformations,
             };
           }
-          const registered = registerPiImport({ dataDir, source, mode, workspacePrimaryDir, ...metadata });
+          const registered = registerPiImport({
+            dataDir,
+            source,
+            mode,
+            workspacePrimaryDir,
+            rolePresetSlug: importSelectors.rolePresetSlug,
+            soulSlug: importSelectors.soulSlug,
+            ...metadata,
+          });
           return {
             sourceId: source.sourceId,
             status: "imported" as const,
@@ -867,6 +923,70 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         error: error instanceof Error ? error.message : String(error),
       });
     }
+  });
+  // M4: re-point a session's working folder (local form only, like
+  // add_workspace_dir). primaryDir null = back to the managed default.
+  app.put("/api/sessions/:sessionId/workspace", async (req, res) => {
+    if (!localMode) {
+      res.status(403).json({ error: "Workspace changes are local-mode only" });
+      return;
+    }
+    const sessionId = req.params.sessionId;
+    if (!requireSessionRestContentAccess(req, res, sessionId)) return;
+    const body = req.body as { primaryDir?: unknown };
+    const primaryDir =
+      typeof body.primaryDir === "string" && body.primaryDir.trim()
+        ? body.primaryDir
+        : null;
+    try {
+      const snapshot = await sessionService.setSessionWorkspace(
+        sessionId,
+        primaryDir
+      );
+      res.json({ sessionId, snapshot });
+    } catch (error) {
+      res.status(409).json({
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+  // M4: explicit working-folder registry so empty workspaces can appear in
+  // the list before any conversation exists in them.
+  app.get("/api/workspaces", (_req, res) => {
+    if (!localMode) {
+      res.json({ workspaces: [] });
+      return;
+    }
+    res.json({
+      workspaces: readAppSettings(dataDir).knownWorkspaces ?? [],
+    });
+  });
+  app.post("/api/workspaces", (req, res) => {
+    if (!localMode) {
+      res.status(403).json({ error: "Workspaces are local-mode only" });
+      return;
+    }
+    const body = req.body as { path?: unknown };
+    const raw = typeof body.path === "string" ? body.path.trim() : "";
+    if (!raw) {
+      res.status(400).json({ error: "path is required" });
+      return;
+    }
+    const resolved = resolve(raw);
+    const stat = statSync(resolved, { throwIfNoEntry: false });
+    if (!stat?.isDirectory()) {
+      res.status(400).json({ error: `Folder does not exist: ${resolved}` });
+      return;
+    }
+    const settings = readAppSettings(dataDir);
+    const known = settings.knownWorkspaces ?? [];
+    if (!known.includes(resolved)) {
+      writeAppSettings(dataDir, {
+        ...settings,
+        knownWorkspaces: [...known, resolved],
+      });
+    }
+    res.json({ workspaces: readAppSettings(dataDir).knownWorkspaces ?? [] });
   });
   app.post("/api/sessions/:sessionId/ab-comparisons", (req, res) => {
     const sessionId = req.params.sessionId;
@@ -1422,6 +1542,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       case "assistant_delta":
         send({ type: "assistant_delta", payload: event.payload });
         break;
+      case "thinking_delta":
+        send({ type: "thinking_delta", payload: event.payload });
+        break;
       case "run_phase":
         send({ type: "run_phase", payload: event.payload });
         break;
@@ -1563,7 +1686,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   function sendDraft(
     send: (msg: ServerMessage) => void,
     selectors: SessionSelectors,
-    visibility: "research" | "private"
+    visibility: "research" | "private",
+    modelOverride: SessionModelOverride | null = null,
+    workspacePrimaryDir: string | null = null
   ): void {
     send({
       type: "session_draft",
@@ -1575,6 +1700,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         rolePresetSlug: selectors.rolePresetSlug,
         soulSlug: selectors.soulSlug,
         customInstructionRef: selectors.customInstructionRef ?? null,
+        modelOverride,
+        workspacePrimaryDir,
       },
     });
   }
@@ -1592,6 +1719,10 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     let closed = false;
     let draftSelectors: SessionSelectors;
     let draftVisibility: "research" | "private" = defaultDraftVisibility();
+    let draftModelOverride: SessionModelOverride | null = null;
+    // Sticky across new_session: the workspace selector chooses where NEW
+    // conversations go until the user changes it (M4).
+    let draftWorkspace: string | null = null;
     let initialError: unknown = null;
     try {
       draftSelectors = createDraftSelectorsForAuth(auth);
@@ -1628,7 +1759,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     if (initialError) {
       sendServiceError(send, initialError);
     }
-    sendDraft(send, draftSelectors, draftVisibility);
+    sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace);
 
     ws.on("message", async (data) => {
       let msg: ClientMessage;
@@ -1653,7 +1784,13 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               }
               const initial = await sessionService.createSession(
                 draftSelectors,
-                sessionCreationMetadataForAuth(auth, draftVisibility)
+                {
+                  ...sessionCreationMetadataForAuth(auth, draftVisibility),
+                  modelOverride: draftModelOverride,
+                  workspace: draftWorkspace
+                    ? { primaryDir: draftWorkspace }
+                    : null,
+                }
               );
               if (closed) return;
               attachToSession(initial.sessionId);
@@ -1677,7 +1814,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         }
         case "abort":
           if (!attachedSessionId) {
-            sendDraft(send, draftSelectors, draftVisibility);
+            sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace);
             break;
           }
           try {
@@ -1696,7 +1833,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               break;
             }
             draftSelectors = { ...draftSelectors, kbDomain: msg.payload.domain };
-            sendDraft(send, draftSelectors, draftVisibility);
+            sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace);
             break;
           }
           try {
@@ -1709,7 +1846,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           const rolePresetSlug = optionalSlug(msg.payload.rolePresetSlug);
           if (!attachedSessionId) {
             draftSelectors = { ...draftSelectors, rolePresetSlug };
-            sendDraft(send, draftSelectors, draftVisibility);
+            sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace);
             break;
           }
           const selectors = sessionService.getSelectors(attachedSessionId);
@@ -1729,7 +1866,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           const soulSlug = optionalSlug(msg.payload.soulSlug);
           if (!attachedSessionId) {
             draftSelectors = { ...draftSelectors, soulSlug };
-            sendDraft(send, draftSelectors, draftVisibility);
+            sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace);
             break;
           }
           const selectors = sessionService.getSelectors(attachedSessionId);
@@ -1751,7 +1888,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           );
           if (!attachedSessionId) {
             draftSelectors = { ...draftSelectors, customInstructionRef };
-            sendDraft(send, draftSelectors, draftVisibility);
+            sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace);
             break;
           }
           const selectors = sessionService.getSelectors(attachedSessionId);
@@ -1794,7 +1931,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
                   }
                 : {}),
             };
-            sendDraft(send, draftSelectors, draftVisibility);
+            sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace);
             break;
           }
           try {
@@ -1832,7 +1969,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             break;
           }
           draftVisibility = msg.payload.visibility;
-          sendDraft(send, draftSelectors, draftVisibility);
+          sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace);
           break;
         }
         case "set_study_tag": {
@@ -1853,9 +1990,40 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           }
           break;
         }
+        case "set_draft_workspace": {
+          if (!localMode) {
+            sendError(send, new Error("Workspaces are local-mode only"));
+            break;
+          }
+          const raw = msg.payload.primaryDir;
+          if (raw) {
+            const resolved = resolve(raw);
+            const stat = statSync(resolved, { throwIfNoEntry: false });
+            if (!stat?.isDirectory()) {
+              sendError(
+                send,
+                new Error(`Working folder does not exist: ${resolved}`)
+              );
+              break;
+            }
+            draftWorkspace = resolved;
+          } else {
+            draftWorkspace = null;
+          }
+          // The selector chooses where the NEXT conversation goes (sticky
+          // draft); re-pointing an existing session goes through the HTTP
+          // route instead. No echo needed while attached — a session_draft
+          // here would reset the client's live-session state.
+          if (!attachedSessionId) {
+            sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace);
+          }
+          break;
+        }
         case "set_session_model": {
           if (!attachedSessionId) {
-            sendError(send, new Error("A materialized session is required"));
+            // Draft state: remember the choice and apply it on materialization.
+            draftModelOverride = msg.payload.override ?? null;
+            sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace);
             break;
           }
           try {
@@ -1884,7 +2052,13 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               }
               const initial = await sessionService.createSession(
                 draftSelectors,
-                sessionCreationMetadataForAuth(auth, draftVisibility)
+                {
+                  ...sessionCreationMetadataForAuth(auth, draftVisibility),
+                  modelOverride: draftModelOverride,
+                  workspace: draftWorkspace
+                    ? { primaryDir: draftWorkspace }
+                    : null,
+                }
               );
               if (closed) return;
               attachToSession(initial.sessionId);
@@ -1906,10 +2080,16 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             break;
           }
           try {
-            const run = sessionService.reviseLatest(
-              attachedSessionId,
-              msg.payload.text
-            );
+            const run = msg.payload.entryId
+              ? sessionService.reviseAt(
+                  attachedSessionId,
+                  msg.payload.entryId,
+                  msg.payload.text
+                )
+              : sessionService.reviseLatest(
+                  attachedSessionId,
+                  msg.payload.text
+                );
             await run.completion;
           } catch (error) {
             sendServiceError(send, error);
@@ -2066,7 +2246,10 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           detach = () => {};
           attachedSessionId = null;
           draftVisibility = defaultDraftVisibility();
-          sendDraft(send, draftSelectors, draftVisibility);
+          // Model override is a per-conversation choice; workspace stays
+          // sticky for the next conversation.
+          draftModelOverride = null;
+          sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace);
           break;
         }
         case "open_session": {
@@ -2091,7 +2274,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         }
         case "get_session_metadata":
           if (!attachedSessionId) {
-            sendDraft(send, draftSelectors, draftVisibility);
+            sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace);
             break;
           }
           send({
@@ -2101,7 +2284,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           break;
         case "get_session_metrics":
           if (!attachedSessionId) {
-            sendDraft(send, draftSelectors, draftVisibility);
+            sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace);
             break;
           }
           send({
@@ -2175,6 +2358,11 @@ if (isMain) {
     console.log(
       `  Default soul:      ${assetPaths.soulPath ?? "(none)"} (${assetPaths.soulPath && existsSync(assetPaths.soulPath) ? "found" : "not loaded"})`
     );
+    if (!assetPaths.soulPath || !existsSync(assetPaths.soulPath)) {
+      console.warn(
+        "  WARNING: default soul (soul-latest.md) is missing — new conversations will run WITHOUT a soul. Check agent-assets/soul/."
+      );
+    }
     console.log(
       `  Role presets:      ${assetPaths.rolePresetsDir} (${existsSync(assetPaths.rolePresetsDir) ? "found" : "missing"})`
     );

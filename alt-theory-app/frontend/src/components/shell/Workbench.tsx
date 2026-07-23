@@ -48,7 +48,7 @@ function SetupView() {
   const role = labelFor(
     app.selectors.rolePresetSlug,
     app.discovery?.rolePresets,
-    "Default"
+    "None"
   );
   const knowledge = labelFor(
     app.selectors.currentDomain === "__off__" ? null : app.selectors.currentDomain,
@@ -57,7 +57,9 @@ function SetupView() {
   );
   const model = app.modelOverride
     ? app.modelOverride.modelId
-    : "Default";
+    : app.localConfig?.activeModel
+      ? `Default · ${app.localConfig.activeModel}`
+      : "Default";
   const study = app.studyTag
     ? `${app.studyTag.studyId}${app.studyTag.batch ? ` · ${app.studyTag.batch}` : ""}`
     : "Daily use";

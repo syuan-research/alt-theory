@@ -54,6 +54,18 @@ export interface ShellContextValue {
   participantTabEnabled: boolean;
   setParticipantTabEnabled: (on: boolean) => void;
 
+  /** Whether thinking blocks appear at all outside developer view (General). */
+  showThinking: boolean;
+  setShowThinking: (on: boolean) => void;
+
+  /** Whether thinking blocks start expanded in the transcript (General). */
+  thinkingExpanded: boolean;
+  setThinkingExpanded: (on: boolean) => void;
+
+  /** Session-import dialog (triggered from empty state or the list menu). */
+  importOpen: boolean;
+  setImportOpen: (open: boolean) => void;
+
   /** A/B comparison setup panel (float-cmp) over the center (researcher). */
   compareOpen: boolean;
   openCompare: () => void;
@@ -73,6 +85,9 @@ const ShellContext = createContext<ShellContextValue | null>(null);
 
 const PARTICIPANT_TAB_KEY = "alt-theory-participant-tab";
 const LEFT_COLLAPSED_KEY = "alt-theory-left-collapsed";
+const SHOW_THINKING_KEY = "alt-theory-show-thinking";
+const THINKING_EXPANDED_KEY = "alt-theory-thinking-expanded";
+const NEW_MODE_KEY = "alt-theory-new-mode";
 
 function readFlag(key: string): boolean {
   try {
@@ -103,9 +118,32 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   const [participantTabEnabled, setParticipantTabState] = useState(() =>
     readFlag(PARTICIPANT_TAB_KEY)
   );
+  const [showThinking, setShowThinkingState] = useState(() =>
+    readFlag(SHOW_THINKING_KEY)
+  );
+  const [thinkingExpanded, setThinkingExpandedState] = useState(() =>
+    readFlag(THINKING_EXPANDED_KEY)
+  );
+  const [importOpen, setImportOpen] = useState(false);
   const [armsComparisonId, setArmsComparisonId] = useState<string | null>(null);
   const [compareOpen, setCompareOpen] = useState(false);
-  const [newMode, setNewMode] = useState<CapabilityMode>("pure");
+  // Persisted: a user who prefers Work should not reset to Understand on
+  // every launch (settings review 2026-07-23).
+  const [newMode, setNewModeState] = useState<CapabilityMode>(() => {
+    try {
+      return localStorage.getItem(NEW_MODE_KEY) === "full" ? "full" : "pure";
+    } catch {
+      return "pure";
+    }
+  });
+  const setNewMode = useCallback((mode: CapabilityMode) => {
+    setNewModeState(mode);
+    try {
+      localStorage.setItem(NEW_MODE_KEY, mode);
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   const openApp = useCallback(() => setSurface("app"), []);
   const openSettings = useCallback((panel?: string) => {
@@ -122,6 +160,16 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   const setParticipantTabEnabled = useCallback((on: boolean) => {
     setParticipantTabState(on);
     writeFlag(PARTICIPANT_TAB_KEY, on);
+  }, []);
+
+  const setShowThinking = useCallback((on: boolean) => {
+    setShowThinkingState(on);
+    writeFlag(SHOW_THINKING_KEY, on);
+  }, []);
+
+  const setThinkingExpanded = useCallback((on: boolean) => {
+    setThinkingExpandedState(on);
+    writeFlag(THINKING_EXPANDED_KEY, on);
   }, []);
 
   const toggleRail = useCallback((key: RailKey) => {
@@ -169,6 +217,12 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       closeSub,
       participantTabEnabled,
       setParticipantTabEnabled,
+      showThinking,
+      setShowThinking,
+      thinkingExpanded,
+      setThinkingExpanded,
+      importOpen,
+      setImportOpen,
       compareOpen,
       openCompare,
       closeCompare,
@@ -196,6 +250,12 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       closeSub,
       participantTabEnabled,
       setParticipantTabEnabled,
+      showThinking,
+      setShowThinking,
+      thinkingExpanded,
+      setThinkingExpanded,
+      importOpen,
+      setImportOpen,
       compareOpen,
       openCompare,
       closeCompare,

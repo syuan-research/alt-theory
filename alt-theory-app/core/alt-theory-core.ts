@@ -74,6 +74,9 @@ export interface AssemblyManifest {
   };
   customInstruction: LoadedAssetFileRef & {
     ref: string | null;
+    /** This layer is an optional per-session extra; absent is the normal
+     *  state, not a missing asset (owner decision 2026-07-23). */
+    optional: true;
   };
   skills: Array<{
     name: string;
@@ -351,6 +354,15 @@ async function createAltTheorySessionWithManager(
       "## Knowledge Base\nKnowledge-base folder retrieval is disabled for this session. You may still read user workspace files when requested."
     );
   }
+  semanticSections.push(
+    [
+      "## Skill Install Locations",
+      "When the user asks where to install or save a skill:",
+      "- for Pi-family harnesses including Alt Theory: ~/.pi/skills",
+      "- for all agent harnesses on this machine: ~/.agents/skills",
+      "Alt Theory's bundled skills ship inside the app's read-only assets; never install or edit skills there.",
+    ].join("\n")
+  );
   const pureOnlySections: string[] = [];
   pureOnlySections.push(
     [
@@ -609,6 +621,7 @@ async function createAltTheorySessionWithManager(
         ? fileRef(resolvedCustomInstructionPath)
         : emptyFileRef()),
       ref: config.customInstructionRef ?? null,
+      optional: true,
     },
     skills: loader
       .getSkills()

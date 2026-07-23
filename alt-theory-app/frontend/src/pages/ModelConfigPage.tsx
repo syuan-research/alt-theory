@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import {
   deleteConfigProvider,
   fetchModelsFromDraft,
+  testConnectionFromDraft,
   fetchProviderModels,
   getConfigStatus,
   listConfigProviders,
@@ -172,6 +173,7 @@ const PROVIDER_PRESETS = [
       },
     ],
     description: "Alibaba/Bailian path for the current Qwen 3.7 label.",
+    keyUrl: "https://bailian.console.aliyun.com/?apiKey=1",
     recommended: true,
     keyHint: "Paste a DashScope API key, or choose env var name and enter DASHSCOPE_API_KEY.",
     manualModels: true,
@@ -183,6 +185,7 @@ const PROVIDER_PRESETS = [
     baseUrl: "https://openrouter.ai/api/v1",
     models: [{ id: "anthropic/claude-sonnet-4" }],
     description: "One OpenRouter key for many upstream models.",
+    keyUrl: "https://openrouter.ai/keys",
     recommended: false,
   },
   {
@@ -192,6 +195,7 @@ const PROVIDER_PRESETS = [
     baseUrl: "https://api.openai.com/v1",
     models: [{ id: "gpt-4.1" }, { id: "gpt-4.1-mini" }],
     description: "Generic OpenAI account. Not a Xiaomi/MiMo entry.",
+    keyUrl: "https://platform.openai.com/api-keys",
     recommended: false,
   },
   {
@@ -201,6 +205,7 @@ const PROVIDER_PRESETS = [
     baseUrl: "https://api.anthropic.com",
     models: [{ id: "claude-sonnet-4-20250514" }],
     description: "Generic Anthropic account. Not a Xiaomi/MiMo entry.",
+    keyUrl: "https://console.anthropic.com/settings/keys",
     recommended: false,
   },
 ];
@@ -329,6 +334,13 @@ export function ModelConfigPage() {
   const [keyHint, setKeyHint] = useState(
     "Some providers require the key before fetching models. Stored keys are local plaintext in Pi's auth.json; env mode stores only the variable name."
   );
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{
+    ok: boolean;
+    message: string;
+  } | null>(null);
+  const firstRun =
+    new URLSearchParams(window.location.search).get("firstRun") === "1";
 
   const showToast = useCallback((text: string, isError = false) => {
     setToast({ text, error: isError });
@@ -528,6 +540,43 @@ export function ModelConfigPage() {
     }
   };
 
+  const testConnection = async () => {
+    const trimmedName = name.trim();
+    const trimmedBaseUrl = baseUrl.trim();
+    const firstModelId = modelRows
+      .map((row) => row.id.trim())
+      .find((id) => id.length > 0);
+    if (!trimmedName || !trimmedBaseUrl || !firstModelId) {
+      setTestResult({
+        ok: false,
+        message: "Provider name, Base URL, and at least one model id are needed first.",
+      });
+      return;
+    }
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const result = await testConnectionFromDraft({
+        provider: trimmedName,
+        baseUrl: trimmedBaseUrl,
+        api: apiType,
+        ...(apiKey ? { apiKey, keyStorage } : {}),
+        modelId: firstModelId,
+      });
+      setTestResult({
+        ok: true,
+        message: `Connected — ${result.modelId} answered.`,
+      });
+    } catch (err) {
+      setTestResult({
+        ok: false,
+        message: err instanceof Error ? err.message : "Connection test failed",
+      });
+    } finally {
+      setTesting(false);
+    }
+  };
+
   const fetchModels = async () => {
     const trimmedName = name.trim();
     const trimmedBaseUrl = baseUrl.trim();
@@ -564,21 +613,33 @@ export function ModelConfigPage() {
   };
 
   return (
-    <div className="min-h-full bg-canvas px-6 py-8 pb-20">
+    <div className="h-screen overflow-y-auto bg-canvas px-6 py-8 pb-20">
       <div className="mx-auto max-w-[880px]">
         <div className="mb-6 flex justify-end">
-          <Link
-            to="/"
-            className="text-[0.8125rem] text-text-secondary hover:text-ink"
-          >
-            ← Back to app
-          </Link>
+          {status && !status.activeUsable ? (
+            <span
+              className="text-[0.8125rem] text-text-muted"
+              title="The app needs an active model before it can reply"
+            >
+              Set an active model to start using Alt
+            </span>
+          ) : (
+            <Link
+              to="/"
+              className="text-[0.8125rem] text-text-secondary hover:text-ink"
+            >
+              ← Back to app
+            </Link>
+          )}
         </div>
 
-        <PageTitle>Model &amp; API Key Setup</PageTitle>
+        <PageTitle>
+          {firstRun ? "Welcome — connect Alt to an AI model" : "Model & API Key Setup"}
+        </PageTitle>
         <BodyText className="mt-1 text-text-secondary">
-          Configure one or more providers. This writes Pi&apos;s native config
-          files under Alt Theory&apos;s local state folder.
+          {firstRun
+            ? "Alt needs an AI model service before it can reply. Three steps: pick a provider below, paste its API key, and save — the first model becomes active automatically. Your key is saved only on this computer."
+            : "Configure one or more providers. This writes Pi's native config files under Alt Theory's local state folder."}
         </BodyText>
 
         <div className="mt-6 rounded-lg border border-hairline bg-card px-4 py-3">
@@ -889,6 +950,22 @@ export function ModelConfigPage() {
                   <Button variant="secondary" onClick={() => void fetchModels()}>
                     Fetch model list
                   </Button>
+                  <Button
+                    variant="secondary"
+                    disabled={testing}
+                    onClick={() => void testConnection()}
+                  >
+                    {testing ? "Testing…" : "Test connection"}
+                  </Button>
+                  {testResult ? (
+                    <HintText
+                      className={
+                        testResult.ok ? "text-success" : "text-warning"
+                      }
+                    >
+                      {testResult.message}
+                    </HintText>
+                  ) : null}
                   {manualModelListHint(name.trim()) ? (
                     <HintText>{manualModelListHint(name.trim())}</HintText>
                   ) : null}
@@ -1145,6 +1222,17 @@ function PresetGroup({
                 <span className="mt-1 block truncate text-[0.6875rem] text-text-muted">
                   {preset.models.map((model) => model.id).join(", ")}
                 </span>
+                {(preset as { keyUrl?: string }).keyUrl ? (
+                  <a
+                    className="mt-1 block text-[0.6875rem] text-text-secondary underline underline-offset-2 hover:text-ink"
+                    href={(preset as { keyUrl?: string }).keyUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    Get an API key ↗
+                  </a>
+                ) : null}
               </>
             ) : null}
           </button>

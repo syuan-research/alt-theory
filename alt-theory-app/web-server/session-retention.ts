@@ -72,6 +72,12 @@ export function refreshSessionRetention(
   return refreshed;
 }
 
+/**
+ * HOSTED/RESEARCH DEPLOYMENTS ONLY. This is intentionally not wired anywhere
+ * in the app today. If a retention job ever calls it, that job MUST be gated
+ * to account-based (hosted) mode: local installs mark sessions private but
+ * must never auto-delete the user's own data (owner decision 2026-07-23).
+ */
 export function hardDeleteExpiredPrivateSessions(
   dataDir: string,
   now: Date = new Date()

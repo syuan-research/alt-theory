@@ -73,6 +73,9 @@ export interface SessionSummary {
   } | null;
   /** Study designation (M7 §3); null = daily use. */
   studyTag: { studyId: string; batch?: string } | null;
+  /** Working folder (M4); null = default managed workspace. The UI groups by
+   *  this and shows only the basename, keeping full paths out of the list. */
+  workspacePrimaryDir: string | null;
 }
 
 export interface SessionListResponse {
@@ -509,6 +512,7 @@ function buildSummary(sessionId: string, parts: SessionParts): SessionSummary {
     deletedAt: parts.deleted?.deletedAt ?? null,
     forkedFrom: parts.v4Session?.forkedFrom ?? null,
     studyTag: parts.v4Session?.studyTag ?? null,
+    workspacePrimaryDir: parts.v4Session?.workspace?.primaryDir ?? null,
   };
 }
 
@@ -844,7 +848,34 @@ function buildTranscriptFromEntries(
         toolCallId?: unknown;
         toolName?: unknown;
       };
+      customType?: string;
+      content?: unknown;
+      details?: { sourceRole?: unknown };
     };
+    if (
+      value.type === "custom_message" &&
+      (value.details?.sourceRole === "system" ||
+        value.details?.sourceRole === "developer") &&
+      typeof value.content === "string"
+    ) {
+      transcript.push({
+        role: "system",
+        marker: "imported-context",
+        sourceRole: value.details.sourceRole,
+        text: value.content,
+        timestamp: normalizeTimestamp(value.timestamp),
+      });
+      continue;
+    }
+    if (value.type === "compaction") {
+      transcript.push({
+        role: "system",
+        marker: "compaction",
+        text: "Earlier conversation was compressed here to keep the context small. Alt keeps a summary of it.",
+        timestamp: normalizeTimestamp(value.timestamp),
+      });
+      continue;
+    }
     if (value.type !== "message" || !value.message) continue;
     if (value.id && inactiveEntryIds.has(value.id)) continue;
 

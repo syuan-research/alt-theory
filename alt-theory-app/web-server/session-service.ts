@@ -49,6 +49,7 @@ import {
 } from "./session-metrics.js";
 import {
   latestActiveLeafEntryId,
+  listSessionSummaries,
   readSessionDetail,
   getSessionRootForRequest,
 } from "./session-store.js";
@@ -189,6 +190,7 @@ export interface RunHandle {
 export type SessionServiceEvent =
   | { type: "snapshot"; payload: SessionSnapshot }
   | { type: "assistant_delta"; payload: { text: string } }
+  | { type: "thinking_delta"; payload: { text: string } }
   | {
       type: "run_phase";
       payload: { phase: "connecting" | "thinking" | "idle" };
@@ -382,6 +384,13 @@ export class SessionService {
       sessionId,
       fallbackSelectors
     );
+    // Reading a private session counts as activity: reopening refreshes the
+    // retention timer so a conversation the user still returns to never
+    // expires out from under them (owner decision 2026-07-23).
+    const header = readV4SessionHeader(managed.manifest.recordsDir);
+    if (header?.visibility === "private") {
+      refreshSessionRetention(managed.manifest.recordsDir);
+    }
     this.sessions.set(managed.manifest.sessionId, managed);
     return this.snapshot(managed);
   }
@@ -511,6 +520,119 @@ export class SessionService {
   }
 
   /**
+   * Re-point a session's working folder (M4). Header is the source of truth;
+   * a live session is disposed and reopened so Pi's cwd and the security
+   * boundary rebuild against the new folder — which also resets session
+   * approval allowances (conservative: re-ask in the new context).
+   * additionalDirs are dropped for the same reason. Returns null when the
+   * session was not live (header-only change; next open picks it up).
+   */
+  async setSessionWorkspace(
+    sessionId: string,
+    primaryDir: string | null
+  ): Promise<SessionSnapshot | null> {
+    const resolved = primaryDir ? resolve(primaryDir) : null;
+    if (resolved) {
+      const stat = statSync(resolved, { throwIfNoEntry: false });
+      if (!stat?.isDirectory()) {
+        throw new Error(`Working folder does not exist: ${resolved}`);
+      }
+    }
+    // Branches move with their conversation (owner decision 2026-07-24): one
+    // re-point carries the whole fork family so a moved parent never strands
+    // its branches in the old folder — and the list grouping stays truthful.
+    const family = [sessionId, ...this.forkDescendants(sessionId)];
+    for (const id of family) {
+      const member = this.sessions.get(id);
+      if (member && (member.busy || member.session.isStreaming)) {
+        throw new SessionBusyError(id);
+      }
+    }
+    let target: SessionSnapshot | null = null;
+    for (const id of family) {
+      const snapshot = await this.repointOne(id, resolved);
+      if (id === sessionId) target = snapshot;
+    }
+    return target;
+  }
+
+  /** All fork/side/helper/arm descendants of a session, breadth-first. */
+  private forkDescendants(sessionId: string): string[] {
+    const childrenByParent = new Map<string, string[]>();
+    for (const summary of listSessionSummaries(this.config.dataDir).sessions) {
+      const parentId = summary.forkedFrom?.sessionId;
+      if (!parentId) continue;
+      if (!childrenByParent.has(parentId)) childrenByParent.set(parentId, []);
+      childrenByParent.get(parentId)?.push(summary.sessionId);
+    }
+    const out: string[] = [];
+    const queue = [...(childrenByParent.get(sessionId) ?? [])];
+    while (queue.length > 0) {
+      const id = queue.shift() as string;
+      out.push(id);
+      queue.push(...(childrenByParent.get(id) ?? []));
+    }
+    return out;
+  }
+
+  private async repointOne(
+    sessionId: string,
+    resolved: string | null
+  ): Promise<SessionSnapshot | null> {
+    const live = this.sessions.get(sessionId);
+    const recordsDir =
+      live?.manifest.recordsDir ??
+      getSessionDirs(this.config.dataDir, sessionId)?.recordsDir;
+    if (!recordsDir || !existsSync(recordsDir)) {
+      throw new Error(`Unknown session id: ${sessionId}`);
+    }
+    const header = readV4SessionHeader(recordsDir);
+    if (!header) {
+      throw new Error(`Session header missing: ${sessionId}`);
+    }
+    writeSessionHeader(recordsDir, {
+      ...header,
+      workspace: resolved
+        ? { primaryDir: resolved, additionalDirs: [] }
+        : undefined,
+    });
+    appendSessionEvent(recordsDir, {
+      sessionId,
+      type: "workspace_repointed",
+      details: { primaryDir: resolved },
+    });
+    if (!live) return null;
+    const selectors = { ...live.selectors };
+    this.sessions.delete(sessionId);
+    await this.disposeManaged(live);
+    let replacement: ManagedSession;
+    try {
+      replacement = await this.createManagedFromExisting(sessionId, selectors);
+    } catch (error) {
+      // Roll back so a failed reopen never leaves the conversation closed:
+      // restore the previous header and reopen against the old folder.
+      writeSessionHeader(recordsDir, header);
+      appendSessionEvent(recordsDir, {
+        sessionId,
+        type: "workspace_repointed",
+        details: {
+          primaryDir: header.workspace?.primaryDir ?? null,
+          rollback: true,
+        },
+      });
+      replacement = await this.createManagedFromExisting(sessionId, selectors);
+      replacement.listeners = live.listeners;
+      this.sessions.set(sessionId, replacement);
+      throw error;
+    }
+    // Reuse the old Set (not a copy): existing unsubscribe closures captured
+    // it, so WebSocket subscriptions survive the reopen and still detach.
+    replacement.listeners = live.listeners;
+    this.sessions.set(sessionId, replacement);
+    return this.snapshot(replacement);
+  }
+
+  /**
    * Resolve a pending extension approval dialog (spec §5.2). Unknown ids
    * return false (already resolved by timeout/abort, or never existed).
    */
@@ -612,9 +734,83 @@ export class SessionService {
       throw new SessionBusyError(sessionId);
     }
     const latest = this.requireLatestActiveCompletedUserRun(managed, "revise");
-    const userEntry = managed.session.sessionManager.getEntry(latest.userEntryId);
+    return this.reviseFromRun(managed, latest, text);
+  }
+
+  /**
+   * Rewind to ANY earlier completed user turn on the current branch and re-run
+   * it with new text ("edit" in the UI). The target turn and every completed
+   * turn after it are superseded; superseded entries stay in Pi's tree as
+   * evidence, exactly like reviseLatest.
+   */
+  reviseAt(sessionId: string, userEntryId: string, text: string): RunHandle {
+    const managed = this.requireSession(sessionId);
+    if (managed.busy || managed.session.isStreaming) {
+      throw new SessionBusyError(sessionId);
+    }
+    if (
+      !managed.session.sessionManager
+        .getBranch()
+        .some((entry) => entry.id === userEntryId)
+    ) {
+      throw new Error("Revise point must be in the current Pi conversation");
+    }
+    const allRuns = latestRunSnapshots(managed.manifest.recordsDir).filter(
+      (run) => run.branchId === managed.branchId
+    );
+    const target = allRuns.find(
+      (run) => run.status === "completed" && run.userEntryId === userEntryId
+    );
+    if (target?.userEntryId) {
+      // Rewinding rewrites everything after the target: later completed runs
+      // on this branch are superseded alongside it.
+      for (const run of allRuns.slice(allRuns.indexOf(target) + 1)) {
+        if (run.status !== "completed") continue;
+        appendRunRecord(managed.manifest.recordsDir, {
+          ...runRecordBody(run),
+          status: "superseded",
+          completedAt: new Date().toISOString(),
+        });
+      }
+      return this.reviseFromRun(
+        managed,
+        target as RunRecord & { userEntryId: string },
+        text
+      );
+    }
+    // Inherited turn (fork or import history): the entry predates this
+    // session's own run records, so every local completed run comes after it —
+    // supersede them all and rewind Pi directly.
+    const userEntry = managed.session.sessionManager.getEntry(userEntryId) as
+      | { parentId?: string; type?: string; message?: { role?: string } }
+      | undefined;
+    if (userEntry?.type !== "message" || userEntry.message?.role !== "user") {
+      throw new Error("Revise point must be a user message");
+    }
+    for (const run of allRuns) {
+      if (run.status !== "completed") continue;
+      appendRunRecord(managed.manifest.recordsDir, {
+        ...runRecordBody(run),
+        status: "superseded",
+        completedAt: new Date().toISOString(),
+      });
+    }
+    if (userEntry.parentId) {
+      managed.session.sessionManager.branch(userEntry.parentId);
+    } else {
+      managed.session.sessionManager.resetLeaf();
+    }
+    return this.runPromptWithLineage(managed, text);
+  }
+
+  private reviseFromRun(
+    managed: ManagedSession,
+    run: RunRecord & { userEntryId: string },
+    text: string
+  ): RunHandle {
+    const userEntry = managed.session.sessionManager.getEntry(run.userEntryId);
     if (!userEntry) {
-      throw new Error("Latest user entry is missing from Pi history");
+      throw new Error("User entry is missing from Pi history");
     }
     if (userEntry.parentId) {
       managed.session.sessionManager.branch(userEntry.parentId);
@@ -622,13 +818,13 @@ export class SessionService {
       managed.session.sessionManager.resetLeaf();
     }
     appendRunRecord(managed.manifest.recordsDir, {
-      ...runRecordBody(latest),
+      ...runRecordBody(run),
       status: "superseded",
       completedAt: new Date().toISOString(),
     });
     return this.runPromptWithLineage(managed, text, {
-      turnId: latest.turnId,
-      supersedesRunId: latest.runId,
+      turnId: run.turnId,
+      supersedesRunId: run.runId,
     });
   }
 
@@ -687,10 +883,37 @@ export class SessionService {
     const childSelectors: SessionSelectors = selectorOverrides
       ? { ...previous.selectors, ...selectorOverrides }
       : previous.selectors;
-    const leafId =
+    let leafId =
       forkPointEntryId ?? previous.session.sessionManager.getLeafId();
     if (!leafId) {
       throw new Error("Fork requires an existing conversation entry");
+    }
+    // "Branch from here" on a user message forks the COMPLETE turn: advance
+    // the fork point to that run's last assistant entry so the child doesn't
+    // end on a dangling user message.
+    const leafEntry = previous.session.sessionManager.getEntry(leafId) as
+      | { type?: string; message?: { role?: string } }
+      | undefined;
+    if (leafEntry?.type === "message" && leafEntry.message?.role === "user") {
+      // Advance to the last entry before the next user message on the active
+      // path. Scanning the Pi branch (not run records) also covers inherited
+      // fork/import history that has no local run records.
+      const branch = previous.session.sessionManager.getBranch();
+      const start = branch.findIndex((entry) => entry.id === leafId);
+      if (start !== -1) {
+        let end = branch.length - 1;
+        for (let i = start + 1; i < branch.length; i += 1) {
+          const entry = branch[i] as {
+            type?: string;
+            message?: { role?: string };
+          };
+          if (entry?.type === "message" && entry.message?.role === "user") {
+            end = i - 1;
+            break;
+          }
+        }
+        leafId = branch[end].id;
+      }
     }
     if (
       !previous.session.sessionManager
@@ -1490,16 +1713,44 @@ export class SessionService {
     const effectiveConfig = detail.effectiveConfig;
     const effectiveCustomInstructionRef =
       effectiveConfig?.customInstruction?.ref ?? null;
+    const requestedRoleSlug =
+      effectiveConfig?.rolePresetSlug ?? detail.manifest?.rolePreset?.slug;
     const activeRolePresetSlug = this.activeOptionalSlug(
-      effectiveConfig?.rolePresetSlug ?? detail.manifest?.rolePreset?.slug,
+      requestedRoleSlug,
       fallbackSelectors.rolePresetSlug,
       (slug) => this.resolveOptionalRolePresetPath(slug)
     );
+    const requestedSoulSlug =
+      effectiveConfig?.soulSlug ?? detail.manifest?.soul?.slug;
     const activeSoulSlug = this.activeOptionalSlug(
-      effectiveConfig?.soulSlug ?? detail.manifest?.soul?.slug,
+      requestedSoulSlug,
       fallbackSelectors.soulSlug,
       (slug) => this.resolveOptionalSoulPath(slug)
     );
+    // Pre-release compat policy: assets referenced by old sessions may vanish
+    // between alpha builds. Falling back is fine; doing it silently is not —
+    // surface every substitution as a resume warning in the conversation.
+    const assetWarnings: string[] = [];
+    if (
+      typeof requestedRoleSlug === "string" &&
+      activeRolePresetSlug !== requestedRoleSlug
+    ) {
+      assetWarnings.push(
+        `This conversation's original role "${requestedRoleSlug}" is not in this build — continuing with ${
+          activeRolePresetSlug ? `"${activeRolePresetSlug}"` : "no role"
+        }.`
+      );
+    }
+    if (
+      typeof requestedSoulSlug === "string" &&
+      activeSoulSlug !== requestedSoulSlug
+    ) {
+      assetWarnings.push(
+        `This conversation's original soul "${requestedSoulSlug}" is not in this build — continuing with ${
+          activeSoulSlug ? `"${activeSoulSlug}"` : "no soul"
+        }.`
+      );
+    }
     const originalDomain =
       effectiveConfig?.kbDomain ??
       detail.manifest?.kb?.domain ??
@@ -1511,6 +1762,11 @@ export class SessionService {
         : originalDomain && isKnownKbDomain(this.config.kbDir, originalDomain)
           ? originalDomain
           : fallbackSelectors.kbDomain;
+    if (originalDomain && activeDomain !== originalDomain) {
+      assetWarnings.push(
+        `This conversation's original knowledge domain "${originalDomain}" is not in this build — continuing with "${activeDomain}".`
+      );
+    }
     const activeInstructionRef = this.activeInstructionRef(
       effectiveCustomInstructionRef ?? detail.manifest?.customInstruction?.ref,
       fallbackSelectors.customInstructionRef
@@ -1567,7 +1823,7 @@ export class SessionService {
         customInstructionRef: activeInstructionRef,
       },
       openedFrom: "existing",
-      resumeWarnings: result.resumeWarnings,
+      resumeWarnings: [...assetWarnings, ...result.resumeWarnings],
       counters: {
         messageCount: detail.metrics?.messageCount ?? 0,
         toolCallCount: detail.metrics?.toolCallCount ?? 0,
@@ -1999,6 +2255,10 @@ export class SessionService {
         const assistantEvent = event.assistantMessageEvent;
         if (assistantEvent?.type === "thinking_delta") {
           this.emitRunPhase(managed, "thinking");
+          this.emit(managed, {
+            type: "thinking_delta",
+            payload: { text: assistantEvent.delta ?? "" },
+          });
         } else if (assistantEvent?.type === "text_delta") {
           this.emitRunPhase(managed, "idle");
           this.emit(managed, {

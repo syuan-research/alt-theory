@@ -216,22 +216,26 @@ unverified semantics still refuse the whole session.
 mode does not expose these routes.
 
 The Pi adapter uses `SessionManager.listAll()` for discovery. The OpenCode
-adapter opens the local SQLite store read-only, reproduces OpenCode's current
-compaction selection, and projects supported messages, reasoning, images, and
-tool pairs into a Pi JSONL payload. The Codex adapter recursively discovers
-plain rollout JSONL, reads bounded metadata for listing, then parses and hashes
-the complete selected rollout during preflight. Complete source rows from
-these external adapters are retained as Pi custom entries but do not enter
-model context; every raw-only or portable transformation is disclosed
-separately.
+adapter opens the local SQLite store read-only and lists only unarchived root
+sessions (`parent_id IS NULL`), matching OpenCode's conversation list rather
+than exposing child-agent rows. It reproduces OpenCode's current compaction
+selection and projects supported messages, reasoning, images, and tool pairs
+into a Pi JSONL payload. The Codex adapter uses `state_5.sqlite.threads` for
+root metadata and rollout paths, excluding archived/subagent threads; bounded
+rollout discovery remains the compatibility fallback. Complete selected-root
+source rows are retained as Pi custom entries but do not enter model context.
+Descendant agent records are copied separately under
+`records/source-context/`, with `index.json` linking source and parent IDs.
+They are searchable recovery evidence, not replayed conversation turns.
 
-OpenCode `preflightOnly` parses and accounts for the complete selected session
+External-session `preflightOnly` parses and accounts for the complete selected session
 before managed storage exists. An unknown or unverified semantic returns a
-structured refusal with record type, count, and reason. Current explicit
-refusals include non-image file parts and tool-result attachments. Those are
-current implementation gaps, not endorsed product boundaries: a later adapter
-must first try direct content mapping, retained source references, or labelled
-placeholders before considering whole-session refusal. A successful
+structured refusal with record type, count, and reason. OpenCode directly maps
+image files and tool-result image attachments; text/directory file records stay
+raw-only when OpenCode already stores their model-visible text separately.
+Assistant error metadata also stays raw-only while the same model-visible
+assistant parts that OpenCode retains are replayed. Unknown or malformed parts
+still refuse. A successful
 preflight is repeated at import time, then the prepared JSONL goes through the
 same newly allocated normal Alt Theory `sessions/{id}/history/`, assembly
 manifest, and v0.4 foundation-record path as native Pi. The result is an
@@ -240,53 +244,64 @@ ordinary catalog/open target, not a special runtime session type.
 Codex preflight requires persisted base instructions and maps labelled
 system/developer text, user/assistant text, and paired function/custom tool
 calls and text results. System/developer text is model-visible at Pi
-user-message priority and that transformation is disclosed. Reasoning,
+user-message priority, appears in the transcript as collapsed imported
+context, and that transformation is disclosed. Reasoning,
 `turn_context`, `world_state`, event metadata, and session-level dynamic tool
-definitions remain raw-only; source dynamic tools are not reactivated. Actual
-unmapped response items, malformed/non-text content, incomplete tool pairs,
-compaction, rollback/aborted turns, inherited/forked/subagent history, and
-other control semantics refuse before write. Compressed rollouts are not
-discovered in the first supported subset.
-In particular, rejecting Codex compaction makes the current adapter incomplete
-for ordinary long conversations. The intended implementation target is the
-source's current effective history, not reconstruction of every discarded tip.
+definitions remain raw-only; source dynamic tools are not reactivated.
+Tool-search records are validated as pairs but remain raw-only, as does
+web-search control and inter-agent message/communication metadata. Embedded
+generated PNG/JPEG results replay as assistant images; older function calls
+whose source name is blank use a disclosed fallback name. A completed or interrupted
+turn followed by Codex's explicit one-turn rollback is kept in raw records and
+excluded from active history. A non-rolled-back interrupted turn retains its
+complete response items, including when compaction split its task-start marker
+from the persisted suffix. Actual unmapped response items, malformed content,
+incomplete tool pairs, multi-turn or ambiguous rollback, incomplete fork
+lineage, inherited roots, and other indeterminate control semantics refuse before write.
+Compaction uses the last persisted replacement history plus subsequent
+response items. A complete embedded user-fork lineage replays as the selected
+current conversation. Subagent activity does not itself refuse a root import;
+linked child rollouts stay in source context.
 
 The Grok Build adapter follows the official two-level session layout and treats
 the selected session's current `chat_history.jsonl` as authoritative because
 Grok itself replaces that file atomically for compaction/rewind. It maps text
 system/user/assistant records, visible reasoning text/summary, and locally
-executed tool calls/results only after exact call-ID pairing. Encrypted
-reasoning remains raw-only. Backend-only calls, images, unknown item types,
+executed tool calls/results only after exact call-ID pairing. User images map
+directly; tool-result images become labelled retained-source placeholders.
+Encrypted reasoning remains raw-only. Backend-only calls, unknown item types,
 malformed/incomplete pairs, and legacy assistant `reasoning`/`raw_output`
 refuse before write. It neither starts the Grok runtime nor reconstructs old
 tips/branches. The complete selected Grok session directory is copied to
 `records/source-snapshot` and content-fingerprinted after copy; mismatch removes
 the incomplete managed session atomically.
-The image refusal above records current code, not desired design. Image-bearing
-user/tool-result records are common and must gain a direct Pi mapping or a
-truthful retained reference/placeholder rather than forcing rejection of the
-whole conversation.
 
 `records/session-import-source.json` records the source harness, store, source
 session ID, SHA-256 fingerprint, source version when available, declared
 transformations, and import time. Discovery compares that record with the
 current source artifact/version to classify `new`, `unchanged`, or `changed`.
-The current endpoint skips unchanged sources and can either report a changed
-source as a conflict or register it as a second session. It does not replace an
-existing imported session in place
-(`alt-theory-app/web-server/session-import.ts:220`).
+The current endpoint opens the latest unchanged import and registers a changed
+source as a new session; it never replaces an existing continuation. Import
+records carry an ordinal, and `records/ui-alias.json` distinguishes copies as
+`{source name} · {harness} import {date} #{ordinal}`. Imported sessions use the
+same default soul and role resolution as newly created Alt Theory sessions.
 
-Imported cwd uses the existing `workspace.primaryDir` field. Pure keeps the
-managed session workspace as its writable root; Work also treats the imported
-source workspace as writable. A missing source cwd requires an existing
-replacement workspace path and is never created implicitly.
+Imported cwd uses the existing `workspace.primaryDir` field. Understand keeps
+the managed session workspace as its writable root; Work also treats the
+imported source workspace as writable. A missing source cwd requires an
+existing replacement workspace path and is never created implicitly; the
+dialog sends that path through the same backend override rather than creating
+an importer-specific workspace model.
 
-The local React sidebar exposes the shared OpenCode/Codex/Grok Build path as “Import
-conversation.” It requires a dry preflight, displays transformations or the
-refusal reason, then imports, refreshes the normal catalog, and opens the
-selected managed session. Repeat discovery classifies an identical source as
-`unchanged` and opens the existing managed session without overwriting its
-continuation.
+The local React empty state and conversation-list overflow open the shared
+OpenCode/Codex/Grok Build dialog. It searches and groups source roots by
+working folder while keeping recent activity first, requires a dry preflight,
+and folds technical transformation/refusal details behind a plain outcome.
+The selected mode starts from the same persisted Understand/Work preference as
+a new conversation. Repeat discovery classifies an identical source as
+`unchanged` and opens the existing managed session; changed source activity
+creates a separately aliased import and never overwrites or merges an Alt
+Theory continuation.
 
 An imported nonempty Pi JSONL initially has no Alt Theory run records. On open,
 Pi's loaded final entry remains the active leaf until persisted Alt Theory run
@@ -297,9 +312,11 @@ connected continuation.
 The first Alt Theory run in an imported session (detected via
 `records/session-import-source.json` with zero run records) automatically
 invokes the bundled `imported-session-context` skill with the user's text, so
-the agent is told what the import preserved and lost before continuing. Later
-runs are plain prompts. This mirrors the helper-fork `alt-theory-help`
-first-run invocation in `SessionService.runPrompt`.
+the agent is told what the import preserved and lost before continuing. When
+needed, that skill checks `source-context/index.json`, searches one relevant
+child artifact, and reads only a bounded matching region. Later runs are plain
+prompts. This mirrors the helper-fork `alt-theory-help` first-run invocation in
+`SessionService.runPrompt`.
 
 ## 3. Prompt Assembly And Injection
 
@@ -921,6 +938,10 @@ Limits (current):
 
 ## Change Log
 
+- 2026-07-23: Aligned Codex/OpenCode discovery with logical root conversations,
+  added portable searchable child-agent sidecars, collapsed imported
+  instruction context, normal default soul/role resolution, and numbered
+  aliases for changed-source reimports.
 - 2026-07-21: Corrected the meaning of adapter `ready`: the three external
   engineering routes exist, but product support is incomplete while common
   Codex compaction and image/attachment records can reject whole sessions.
