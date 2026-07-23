@@ -317,7 +317,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                     onClick={() => toggleGroup(group.dir)}
                   >
                     <i className="ph ph-folder-simple" />
-                    {group.label}
+                    <span className="group-name">{group.label}</span>
                     <i className="ph ph-caret-down tw" />
                   </button>
                   {local ? (
