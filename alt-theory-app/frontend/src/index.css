@@ -475,6 +475,10 @@
   .model-row .name { font-weight: 500; }
   .model-row .meta { color: var(--text-3); font-size: 0.78rem; }
   .model-row .default { margin-left: auto; font-size: 0.72rem; color: var(--ink); background: var(--card); border: 1px solid var(--hairline); border-radius: 999px; padding: 2px 10px; }
+  .model-row.clickable { cursor: pointer; }
+  .model-row.clickable:hover { background: var(--hover); }
+  .model-row.clickable .caret { margin-left: auto; color: var(--text-3); font-size: 0.8rem; }
+  .model-row.clickable .default + .caret { margin-left: 8px; }
   .add-btn { display: inline-flex; align-items: center; gap: 6px; border: 1px dashed var(--hairline); background: transparent; border-radius: var(--r-md); padding: 8px 14px; font-size: 0.85rem; color: var(--text-2); cursor: pointer; margin-top: 6px; }
   .add-btn:hover { color: var(--ink); border-color: var(--text-3); }
 }

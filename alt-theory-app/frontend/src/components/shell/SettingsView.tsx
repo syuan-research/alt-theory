@@ -104,7 +104,14 @@ function ModelsPanel() {
           <p>No providers configured yet.</p>
         ) : (
           providers.map((p) => (
-            <div className="model-row" key={p.name}>
+            <div
+              className={`model-row${app.appMode === "local" ? " clickable" : ""}`}
+              key={p.name}
+              role={app.appMode === "local" ? "button" : undefined}
+              onClick={
+                app.appMode === "local" ? () => navigate("/config") : undefined
+              }
+            >
               <div>
                 <div className="name">{p.name}</div>
                 <div className="meta">
@@ -114,6 +121,9 @@ function ModelsPanel() {
                 </div>
               </div>
               {p.active ? <span className="default">default</span> : null}
+              {app.appMode === "local" ? (
+                <i className="ph ph-caret-right caret" aria-hidden="true" />
+              ) : null}
             </div>
           ))
         )}
