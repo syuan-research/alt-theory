@@ -74,6 +74,7 @@ import { listAltTheorySkills } from "./skill-assets.js";
 import {
   agentConfigDir,
   ConfigValidationError,
+  testProviderConnectionFromDraft,
   deleteProvider,
   fetchProviderModels,
   fetchProviderModelsFromDraft,
@@ -360,6 +361,37 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           apiKey: typeof body.apiKey === "string" ? body.apiKey : undefined,
         }),
       });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(error instanceof ConfigValidationError ? 400 : 500).json({
+        error: message,
+      });
+    }
+  });
+  app.post("/api/config/test-connection", async (req, res) => {
+    if (!requireLocalConfigMode(res)) return;
+    const body = req.body as {
+      provider?: unknown;
+      baseUrl?: unknown;
+      api?: unknown;
+      apiKey?: unknown;
+      keyStorage?: unknown;
+      modelId?: unknown;
+    };
+    try {
+      res.json(
+        await testProviderConnectionFromDraft(agentConfigDir(), {
+          provider: typeof body.provider === "string" ? body.provider : "",
+          baseUrl: typeof body.baseUrl === "string" ? body.baseUrl : undefined,
+          api: typeof body.api === "string" ? (body.api as ApiType) : undefined,
+          apiKey: typeof body.apiKey === "string" ? body.apiKey : undefined,
+          keyStorage:
+            body.keyStorage === "env" || body.keyStorage === "literal"
+              ? body.keyStorage
+              : undefined,
+          modelId: typeof body.modelId === "string" ? body.modelId : undefined,
+        })
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       res.status(error instanceof ConfigValidationError ? 400 : 500).json({
