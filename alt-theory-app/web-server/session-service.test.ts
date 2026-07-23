@@ -2017,6 +2017,68 @@ test("SessionService creates workspace sessions and restores workspace on reopen
   }
 });
 
+test("SessionService opens with a missing workspace and warns instead of pointing at a dead folder", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const primaryDir = join(fixture.root, "renamed-away");
+  mkdirSync(primaryDir, { recursive: true });
+
+  const created = await service.createSession(
+    {
+      rolePresetSlug: "role-conceptual-theory-companion",
+      kbDomain: "ep-core",
+      soulSlug: "soul-latest",
+    },
+    { workspace: { primaryDir, additionalDirs: [] } }
+  );
+
+  const managed = (
+    service as unknown as {
+      sessions: Map<string, {
+        session: {
+          prompt(text: string): Promise<void>;
+          sessionManager: { appendMessage(message: unknown): string };
+        };
+      }>;
+    }
+  ).sessions.get(created.sessionId)!;
+  managed.session.prompt = async (text: string) => {
+    managed.session.sessionManager.appendMessage({
+      role: "user",
+      content: [{ type: "text", text }],
+      timestamp: Date.now(),
+    });
+    managed.session.sessionManager.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: `answer:${text}` }],
+      timestamp: Date.now(),
+    });
+  };
+  const run = service.runPrompt(created.sessionId, "hello");
+  await run.completion;
+  await service.disposeAll();
+
+  // Simulate the user renaming/merging the folder away between sessions.
+  rmSync(primaryDir, { recursive: true, force: true });
+
+  const reopenedService = createTestService(fixture);
+  try {
+    const reopened = await reopenedService.openSession(created.sessionId, {
+      rolePresetSlug: "role-conceptual-theory-companion",
+      kbDomain: "ep-core",
+      soulSlug: "soul-latest",
+    });
+    // Session opens (not thrown) and the dead folder is surfaced as a warning.
+    assert.ok(reopened.sessionId);
+    assert.ok(
+      reopened.resumeWarnings.some((w) => /no longer exists/.test(w)),
+      `expected a stale-workspace warning, got: ${JSON.stringify(reopened.resumeWarnings)}`
+    );
+  } finally {
+    await reopenedService.disposeAll();
+  }
+});
+
 test("approval bridge routes extension confirm dialogs through the service", async () => {
   const fixture = setupFixture();
   const service = new SessionService({

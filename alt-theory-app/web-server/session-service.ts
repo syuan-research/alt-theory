@@ -1777,14 +1777,31 @@ export class SessionService {
       persistedHeader?.mode ??
       capabilityModeFromPromptMode(this.config.promptMode);
 
+    // Stale-workspace recovery (v1.2.1): the recorded working folder can vanish
+    // between sessions (rename / merge / delete). Don't point Pi's cwd at a dead
+    // path — open without a workspace and surface a visible notice so the user
+    // can re-point (drag onto a folder / folder selector) or continue without.
+    // The persisted header is NOT mutated; the old path stays until the user acts.
+    const persistedPrimaryDir = persistedHeader?.workspace?.primaryDir ?? null;
+    const workspaceMissing =
+      !!persistedPrimaryDir &&
+      !statSync(persistedPrimaryDir, { throwIfNoEntry: false })?.isDirectory();
+    if (workspaceMissing) {
+      assetWarnings.push(
+        `This conversation's working folder "${persistedPrimaryDir}" no longer exists — continuing without a working folder. Drag the conversation onto a folder, or use the folder selector, to keep working there.`
+      );
+    }
+
     const result = await openAltTheorySession({
       ...sessionDirs,
       // Workspace sessions keep their user-chosen primary directory as cwd
       // across reopen (spec §5.1); default sessions keep the data-dir one.
-      ...(persistedHeader?.workspace
+      ...(persistedHeader?.workspace && !workspaceMissing
         ? { sessionCwd: persistedHeader.workspace.primaryDir }
         : {}),
-      workspaceDirs: persistedHeader?.workspace?.additionalDirs,
+      workspaceDirs: workspaceMissing
+        ? undefined
+        : persistedHeader?.workspace?.additionalDirs,
       sessionFile: detail.pi.sessionFile,
       originalManifest: detail.manifest,
       appContextPath: this.config.assetPaths.appContextPath,
