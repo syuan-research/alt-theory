@@ -233,8 +233,9 @@ before managed storage exists. An unknown or unverified semantic returns a
 structured refusal with record type, count, and reason. OpenCode directly maps
 image files and tool-result image attachments; text/directory file records stay
 raw-only when OpenCode already stores their model-visible text separately.
-Unknown or malformed parts and unverified assistant-error replay still refuse.
-A successful
+Assistant error metadata also stays raw-only while the same model-visible
+assistant parts that OpenCode retains are replayed. Unknown or malformed parts
+still refuse. A successful
 preflight is repeated at import time, then the prepared JSONL goes through the
 same newly allocated normal Alt Theory `sessions/{id}/history/`, assembly
 manifest, and v0.4 foundation-record path as native Pi. The result is an
@@ -246,12 +247,21 @@ calls and text results. System/developer text is model-visible at Pi
 user-message priority, appears in the transcript as collapsed imported
 context, and that transformation is disclosed. Reasoning,
 `turn_context`, `world_state`, event metadata, and session-level dynamic tool
-definitions remain raw-only; source dynamic tools are not reactivated. Actual
-unmapped response items, malformed content, incomplete tool pairs,
-rollback/aborted turns, inherited/forked roots, and other indeterminate
-control semantics refuse before write. Compaction uses the last persisted
-replacement history plus subsequent response items. Subagent activity does
-not itself refuse a root import; linked child rollouts stay in source context.
+definitions remain raw-only; source dynamic tools are not reactivated.
+Tool-search records are validated as pairs but remain raw-only, as does
+web-search control and inter-agent message/communication metadata. Embedded
+generated PNG/JPEG results replay as assistant images; older function calls
+whose source name is blank use a disclosed fallback name. A completed or interrupted
+turn followed by Codex's explicit one-turn rollback is kept in raw records and
+excluded from active history. A non-rolled-back interrupted turn retains its
+complete response items, including when compaction split its task-start marker
+from the persisted suffix. Actual unmapped response items, malformed content,
+incomplete tool pairs, multi-turn or ambiguous rollback, incomplete fork
+lineage, inherited roots, and other indeterminate control semantics refuse before write.
+Compaction uses the last persisted replacement history plus subsequent
+response items. A complete embedded user-fork lineage replays as the selected
+current conversation. Subagent activity does not itself refuse a root import;
+linked child rollouts stay in source context.
 
 The Grok Build adapter follows the official two-level session layout and treats
 the selected session's current `chat_history.jsonl` as authoritative because

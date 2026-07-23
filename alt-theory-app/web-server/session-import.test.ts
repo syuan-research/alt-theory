@@ -469,7 +469,14 @@ test("OpenCode preflight registers complete supported history and refuses unsupp
     "ses_supported",
     now + 1,
     now + 1,
-    JSON.stringify({ role: "assistant", parentID: "msg_user", providerID: "x", modelID: "y", finish: "tool-calls" })
+    JSON.stringify({
+      role: "assistant",
+      parentID: "msg_user",
+      providerID: "x",
+      modelID: "y",
+      finish: "tool-calls",
+      error: { name: "APIError", data: { message: "provider failed after recorded parts" } },
+    })
   );
   const insertPart = db.prepare("INSERT INTO part VALUES (?, ?, ?, ?, ?, ?)");
   insertPart.run(
@@ -519,6 +526,7 @@ test("OpenCode preflight registers complete supported history and refuses unsupp
   const preflight = preflightOpenCodeImport(source);
   assert.match(preflight.piSessionJsonl, /IMPORTED_HISTORY_MARKER/);
   assert.ok(preflight.transformations.some((item) => item.includes("Reasoning")));
+  assert.ok(preflight.transformations.some((item) => item.includes("Assistant error metadata")));
   const rawEntry = preflight.piSessionJsonl
     .trim()
     .split(/\r?\n/)
@@ -601,15 +609,23 @@ test("Codex preflight reconstructs effective history after compaction and replay
   const meta = {
     id: "codex-compacted",
     session_id: "codex-compacted",
+    forked_from_id: "codex-parent",
     timestamp,
     cwd: workspace,
     originator: "Codex Desktop",
     cli_version: "test",
     source: "vscode",
+    thread_source: "user",
     base_instructions: { text: "base" },
   };
   const compacted = [
     line("session_meta", meta),
+    line("session_meta", {
+      ...meta,
+      id: "codex-parent",
+      session_id: "codex-parent",
+      forked_from_id: null,
+    }),
     line("response_item", {
       type: "message",
       role: "user",
@@ -650,6 +666,97 @@ test("Codex preflight reconstructs effective history after compaction and replay
       content: [{ type: "input_text", text: "Has a local image ref" }],
       local_images: [{ path: "D:/fixture/local.png" }],
     }, 5),
+    line("turn_context", { turn_id: "turn-spans-compaction" }, 6),
+    line("response_item", {
+      type: "message",
+      role: "assistant",
+      content: [{ type: "output_text", text: "COMPACTION_SPLIT_TURN_MARKER" }],
+    }, 7),
+    line("event_msg", {
+      type: "turn_aborted",
+      turn_id: "turn-spans-compaction",
+      reason: "interrupted",
+    }, 8),
+    line("event_msg", { type: "task_started", turn_id: "turn-aborted" }, 6),
+    line("response_item", {
+      type: "message",
+      role: "user",
+      content: [{ type: "input_text", text: "ROLLED_BACK_TURN_MARKER" }],
+    }, 7),
+    line("event_msg", {
+      type: "turn_aborted",
+      turn_id: "turn-aborted",
+      reason: "interrupted",
+    }, 8),
+    line("event_msg", { type: "token_count" }, 9),
+    line("event_msg", { type: "thread_rolled_back", num_turns: 1 }, 10),
+    line("event_msg", { type: "task_started", turn_id: "turn-completed-rollback" }, 11),
+    line("response_item", {
+      type: "message",
+      role: "user",
+      content: [{ type: "input_text", text: "COMPLETED_ROLLBACK_MARKER" }],
+    }, 12),
+    line("event_msg", { type: "task_complete", turn_id: "turn-completed-rollback" }, 13),
+    line("event_msg", { type: "thread_rolled_back", num_turns: 1 }, 14),
+    line("event_msg", { type: "task_started", turn_id: "turn-survives" }, 11),
+    line("response_item", {
+      type: "message",
+      role: "user",
+      content: [{ type: "input_text", text: "SURVIVING_TURN_MARKER" }],
+    }, 12),
+    line("response_item", {
+      type: "tool_search_call",
+      call_id: "tool-search-1",
+      status: "completed",
+      arguments: { query: "fixture" },
+    }, 13),
+    line("response_item", {
+      type: "tool_search_output",
+      call_id: "tool-search-1",
+      status: "completed",
+      tools: [{ name: "fixture_tool" }],
+    }, 14),
+    line("response_item", {
+      type: "function_call",
+      call_id: "old-blank-name",
+      name: "",
+      arguments: "{\"value\":1}",
+    }, 15),
+    line("response_item", {
+      type: "function_call_output",
+      call_id: "old-blank-name",
+      output: "done",
+    }, 16),
+    line("response_item", {
+      type: "web_search_call",
+      status: "completed",
+      metadata: { turn_id: "turn-survives" },
+    }, 17),
+    line("response_item", {
+      type: "image_generation_call",
+      id: "generated-image",
+      status: "generating",
+      revised_prompt: "fixture image",
+      result: "iVBORw0KGgo=",
+    }, 18),
+    line("inter_agent_communication_metadata", {
+      trigger_turn: "turn-survives",
+    }, 15),
+    line("response_item", {
+      type: "agent_message",
+      author: "root",
+      recipient: "child",
+      content: [
+        { type: "input_text", text: "RAW_ONLY_AGENT_MESSAGE_MARKER" },
+        { type: "encrypted_content", encrypted_content: "opaque" },
+      ],
+      internal_chat_message_metadata_passthrough: {},
+    }, 16),
+    line("event_msg", {
+      type: "turn_aborted",
+      turn_id: "turn-survives",
+      reason: "interrupted",
+    }, 17),
   ];
   const compactedPath = join(sessionsDir, "rollout-codex-compacted.jsonl");
   writeFileSync(compactedPath, `${compacted.map(JSON.stringify).join("\n")}\n`);
@@ -667,8 +774,13 @@ test("Codex preflight reconstructs effective history after compaction and replay
   assert.match(projectedText, /REPLACEMENT_USER_MARKER/);
   assert.match(projectedText, /REPLACEMENT_ASSISTANT_MARKER/);
   assert.match(projectedText, /POST_COMPACTION_MARKER/);
+  assert.match(projectedText, /COMPACTION_SPLIT_TURN_MARKER/);
+  assert.match(projectedText, /SURVIVING_TURN_MARKER/);
   assert.ok(!projectedText.includes("PRE_COMPACTION_MARKER"));
   assert.ok(!projectedText.includes("orphan output dropped by compaction"));
+  assert.ok(!projectedText.includes("ROLLED_BACK_TURN_MARKER"));
+  assert.ok(!projectedText.includes("COMPLETED_ROLLBACK_MARKER"));
+  assert.ok(!projectedText.includes("RAW_ONLY_AGENT_MESSAGE_MARKER"));
   const imageMessage = projected.find((entry) =>
     entry.message?.content?.some((part: any) => part.type === "image")
   );
@@ -681,6 +793,14 @@ test("Codex preflight reconstructs effective history after compaction and replay
   assert.ok(preflight.transformations.some((item) => item.includes("Source compaction detected")));
   assert.ok(preflight.transformations.some((item) => item.includes("Embedded source images")));
   assert.ok(preflight.transformations.some((item) => item.includes("labelled placeholder")));
+  assert.ok(preflight.transformations.some((item) => item.includes("one-turn rollback")));
+  assert.ok(preflight.transformations.some((item) => item.includes("tool-search control")));
+  assert.ok(preflight.transformations.some((item) => item.includes("web-search control")));
+  assert.ok(preflight.transformations.some((item) => item.includes("generated PNG/JPEG")));
+  assert.ok(preflight.transformations.some((item) => item.includes("codex_function")));
+  assert.ok(preflight.transformations.some((item) => item.includes("user-fork lineage")));
+  assert.ok(preflight.transformations.some((item) => item.includes("inter-agent messages")));
+  assert.ok(preflight.transformations.some((item) => item.includes("were not rolled back")));
   assert.equal(
     entries.filter((entry) => entry.customType === "source-codex-record").length,
     compacted.length
@@ -694,6 +814,29 @@ test("Codex preflight reconstructs effective history after compaction and replay
     join(sessionsDir, "rollout-codex-malformed-compacted.jsonl"),
     `${malformed.map(JSON.stringify).join("\n")}\n`
   );
+  const ambiguousRollback = [
+    line("session_meta", {
+      ...meta,
+      id: "codex-ambiguous-rollback",
+      session_id: "codex-ambiguous-rollback",
+    }),
+    line("event_msg", { type: "task_started", turn_id: "turn-ambiguous" }, 1),
+    line("response_item", {
+      type: "message",
+      role: "user",
+      content: [{ type: "input_text", text: "Ambiguous rollback marker" }],
+    }, 2),
+    line("event_msg", {
+      type: "turn_aborted",
+      turn_id: "turn-ambiguous",
+      reason: "interrupted",
+    }, 3),
+    line("event_msg", { type: "thread_rolled_back", num_turns: 2 }, 4),
+  ];
+  writeFileSync(
+    join(sessionsDir, "rollout-codex-ambiguous-rollback.jsonl"),
+    `${ambiguousRollback.map(JSON.stringify).join("\n")}\n`
+  );
   const sources = await discoverImportSessions({
     harness: "codex",
     dataDir,
@@ -705,6 +848,15 @@ test("Codex preflight reconstructs effective history after compaction and replay
     () => preflightCodexImport(refused),
     (error: unknown) =>
       error instanceof CodexImportRefusalError && error.recordType === "compacted"
+  );
+  const ambiguous = sources.find((item) => item.sourceSessionId === "codex-ambiguous-rollback");
+  assert.ok(ambiguous);
+  assert.throws(
+    () => preflightCodexImport(ambiguous),
+    (error: unknown) =>
+      error instanceof CodexImportRefusalError &&
+      error.recordType === "turn_aborted" &&
+      error.message.includes("one-turn rollback")
   );
   assert.equal(listSessionSummaries(dataDir).sessions.length, 0);
 });

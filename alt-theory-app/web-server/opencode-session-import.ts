@@ -266,16 +266,6 @@ function validateCompleteSession(messages: StoredRow[], parts: StoredRow[]): voi
   if (badRoles.length) {
     throw new OpenCodeImportRefusalError("message_role", badRoles.length, "role is not supported");
   }
-  const assistantErrors = messages.filter(
-    (message) => message.data.role === "assistant" && message.data.error
-  );
-  if (assistantErrors.length) {
-    throw new OpenCodeImportRefusalError(
-      "assistant_error",
-      assistantErrors.length,
-      "assistant error replay has not been verified"
-    );
-  }
   const known = new Set([
     "text",
     "reasoning",
@@ -390,6 +380,9 @@ function describeTransformations(messages: StoredRow[], parts: StoredRow[]): str
   }
   if (messages.some((message) => message.data.system || message.data.tools)) {
     result.push("Historical OpenCode message configuration stays raw-only; the selected Alt Theory mode owns active instructions and tools.");
+  }
+  if (messages.some((message) => message.data.role === "assistant" && message.data.error)) {
+    result.push("Assistant error metadata stays raw-only; OpenCode's model-visible assistant parts are replayed without provider metadata.");
   }
   return result;
 }
