@@ -265,6 +265,13 @@
   /* mode explainer under the Understand/Work cards */
   .mode-note { max-width: 520px; margin: 0 auto 22px; text-align: center; font-size: 0.8rem; color: var(--text-2); line-height: 1.5; }
 
+  /* toolbox button: first-use badge + reserved featured-skill rows */
+  .toolbox-btn { position: relative; }
+  .toolbox-btn .badge-dot { position: absolute; top: 2px; right: 2px; width: 7px; height: 7px; border-radius: 50%; background: var(--color-warning); }
+  .mi.disabled { opacity: 0.45; cursor: default; }
+  .mi.disabled:hover { background: none; }
+  .mi .soon { margin-left: auto; font-size: 0.68rem; color: var(--text-3); border: 1px solid var(--hairline); border-radius: 999px; padding: 1px 7px; }
+
   /* quiet secondary import entry on the empty state */
   .import-link { border: none; background: none; font-size: 0.78rem; color: var(--text-3); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; padding: 2px 6px; align-self: center; }
   .import-link:hover { color: var(--ink); }
