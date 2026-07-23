@@ -882,7 +882,7 @@ function buildTranscriptFromEntries(
     const role = normalizeRole(value.message.role);
     const timestamp = normalizeTimestamp(value.message.timestamp ?? value.timestamp);
     if (role === "user") {
-      const text = extractText(value.message.content).trim();
+      const text = stripSkillWrapper(extractText(value.message.content)).trim();
       if (text) transcript.push({ role: "user", text, timestamp, entryId: value.id ?? null });
       continue;
     }
@@ -1082,6 +1082,17 @@ function extractToolPath(args: unknown): string | null {
 
 function stripContextPrefix(text: string): string {
   return text.replace(/^\[Context: [^\]]+\]\r?\n/, "");
+}
+
+// Skill invocations are persisted as role:"user" entries whose content is the
+// whole expanded skill body wrapped in <skill name="...">...</skill>, followed
+// by any real user args (e.g. imported-session-context glues the user's first
+// message after the wrapper). Strip the wrapper so the bubble shows only real
+// user text; an empty result is dropped by the caller (e.g. summary, which has
+// no trailing user text, disappears entirely).
+// ponytail: assumes the body has no literal "</skill>" — true for our skills.
+export function stripSkillWrapper(text: string): string {
+  return text.replace(/^\s*<skill\b[^>]*>[\s\S]*?<\/skill>\s*/, "");
 }
 
 function normalizeTimestamp(timestamp: string | number | undefined): string | null {

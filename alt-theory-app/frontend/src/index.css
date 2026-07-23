@@ -175,7 +175,7 @@
   .left .pad { padding: 6px 12px; }
   .btn-new { width: 100%; display: flex; align-items: center; gap: 8px; background: none; color: var(--ink); border: none; border-radius: var(--r-sm); padding: 7px 10px; font-size: 0.9rem; font-weight: 500; cursor: pointer; text-align: left; }
   .btn-new:hover { background: var(--hover); }
-  .sessions { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 4px 8px; }
+  .sessions { flex: 0 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 4px 8px; }
   .group-label { display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; font-size: 0.72rem; text-align: left; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-3); padding: 12px 8px 4px; cursor: pointer; user-select: none; }
   .group-label .group-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .group-label .tw { font-size: 0.7rem; transition: transform 0.12s; margin-left: auto; }
