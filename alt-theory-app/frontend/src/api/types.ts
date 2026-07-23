@@ -431,7 +431,7 @@ export type ClientMessage =
       type: "invoke_skill";
       payload: { skillName: string; userText?: string };
     }
-  | { type: "revise_latest"; payload: { text: string } }
+  | { type: "revise_latest"; payload: { text: string; entryId?: string } }
   | { type: "delete_latest" }
   | {
       type: "fork_session";

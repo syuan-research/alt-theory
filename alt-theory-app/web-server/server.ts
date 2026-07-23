@@ -1921,10 +1921,16 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             break;
           }
           try {
-            const run = sessionService.reviseLatest(
-              attachedSessionId,
-              msg.payload.text
-            );
+            const run = msg.payload.entryId
+              ? sessionService.reviseAt(
+                  attachedSessionId,
+                  msg.payload.entryId,
+                  msg.payload.text
+                )
+              : sessionService.reviseLatest(
+                  attachedSessionId,
+                  msg.payload.text
+                );
             await run.completion;
           } catch (error) {
             sendServiceError(send, error);

@@ -188,7 +188,8 @@ export interface AppContextValue {
   invokeSkill: (skillName: string, userText?: string) => boolean;
   reviseLatest: (text: string) => boolean;
   deleteLatest: () => void;
-  startReviseMode: (text: string) => string;
+  branchFromEntry: (entryId: string) => void;
+  startReviseMode: (text: string, entryId?: string) => string;
   cancelReviseMode: () => void;
   requestMetadata: () => void;
   requestMetrics: () => void;
@@ -302,6 +303,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [runHint, setRunHint] = useState<string | null>(null);
   const [reviseMode, setReviseMode] = useState(false);
   const [reviseDraft, setReviseDraft] = useState("");
+  const [reviseEntryId, setReviseEntryId] = useState<string | null>(null);
   const [stagedWorkspacePaths, setStagedWorkspacePaths] = useState<string[]>([]);
   const [runCompletedCount, setRunCompletedCount] = useState(0);
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(
@@ -1084,17 +1086,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
     (text: string) => {
       const trimmed = text.trim();
       if (!trimmed || isRunning || !sessionId) return false;
-      if (!sendMessage({ type: "revise_latest", payload: { text: trimmed } }))
+      if (
+        !sendMessage({
+          type: "revise_latest",
+          payload: reviseEntryId
+            ? { text: trimmed, entryId: reviseEntryId }
+            : { text: trimmed },
+        })
+      )
         return false;
       setReviseMode(false);
       setReviseDraft("");
+      setReviseEntryId(null);
       setIsRunning(true);
       setConnStatus("running");
       setConnLabel("Revising...");
-      setToolStatus("Revising latest turn...");
+      setToolStatus("Revising the conversation...");
       return true;
     },
-    [isRunning, sendMessage, sessionId]
+    [isRunning, sendMessage, sessionId, reviseEntryId]
   );
 
   const deleteLatest = useCallback(() => {
@@ -1103,8 +1113,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setRunHint("");
   }, [sendMessage]);
 
-  const startReviseMode = useCallback((text: string) => {
+  const startReviseMode = useCallback((text: string, entryId?: string) => {
     setReviseDraft(text);
+    setReviseEntryId(entryId ?? null);
     setReviseMode(true);
     setRunHint(null);
     return text;
@@ -1113,7 +1124,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const cancelReviseMode = useCallback(() => {
     setReviseMode(false);
     setReviseDraft("");
+    setReviseEntryId(null);
   }, []);
+
+  const branchFromEntry = useCallback(
+    (entryId: string) => {
+      if (!sessionId || isRunning) return;
+      if (
+        sendMessage({
+          type: "fork_session",
+          payload: { purpose: "fork", forkPointEntryId: entryId },
+        })
+      ) {
+        setIsRunning(true);
+        setConnStatus("running");
+        setConnLabel("Branching...");
+        setToolStatus("Branching from this point…");
+      }
+    },
+    [sendMessage, sessionId, isRunning]
+  );
 
   const switchProject = useCallback(
     (projectId: string | null) => {
@@ -1326,6 +1356,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       invokeSkill,
       reviseLatest,
       deleteLatest,
+      branchFromEntry,
       startReviseMode,
       cancelReviseMode,
       requestMetadata,
@@ -1408,6 +1439,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       invokeSkill,
       reviseLatest,
       deleteLatest,
+      branchFromEntry,
       startReviseMode,
       cancelReviseMode,
       requestMetadata,

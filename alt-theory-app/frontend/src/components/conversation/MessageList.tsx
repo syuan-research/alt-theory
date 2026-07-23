@@ -43,8 +43,6 @@ export function MessageList() {
           developer={developer}
           isLatestUser={index === latestUserIndex}
           renderedToolCallIds={renderedToolCallIds}
-          isRunning={app.isRunning}
-          onEditLatest={app.startReviseMode}
         />
       ))}
 
@@ -123,29 +121,84 @@ function ThinkingBlock({
   );
 }
 
+/**
+ * One-time explanation before a history-rewriting action. Shown once per
+ * action kind (localStorage flag), then the action runs directly.
+ */
+function confirmOnce(
+  app: ReturnType<typeof useApp>,
+  key: string,
+  message: string,
+  action: () => void
+) {
+  let seen = false;
+  try {
+    seen = Boolean(localStorage.getItem(key));
+  } catch {
+    seen = true;
+  }
+  if (seen) return action();
+  app.requestConfirm({
+    message,
+    confirmLabel: "Continue",
+    onConfirm: () => {
+      try {
+        localStorage.setItem(key, "1");
+      } catch {
+        /* ignore */
+      }
+      action();
+    },
+  });
+}
+
 function TranscriptEntry({
   message,
   developer,
   isLatestUser,
   renderedToolCallIds,
-  isRunning,
-  onEditLatest,
 }: {
   message: TranscriptMessage;
   developer: boolean;
   isLatestUser: boolean;
   renderedToolCallIds: Set<string>;
-  isRunning: boolean;
-  onEditLatest: (text: string) => void;
 }) {
+  const app = useApp();
   const { thinkingExpanded } = useShell();
+
+  const editMessage = (text: string, entryId: string | null) => {
+    const start = () => app.startReviseMode(text, entryId ?? undefined);
+    if (isLatestUser) return start();
+    confirmOnce(
+      app,
+      "alt-theory-hint-edit",
+      `Editing rewrites the conversation from this message: Alt answers again, and everything after it becomes a previous version — kept, not deleted.${
+        app.sessionMode === "full"
+          ? " Files already changed on disk are not reverted."
+          : ""
+      }`,
+      start
+    );
+  };
+
+  const branchMessage = (entryId: string) => {
+    confirmOnce(
+      app,
+      "alt-theory-hint-branch",
+      "This starts a new conversation branching from this point. The current conversation stays unchanged.",
+      () => app.branchFromEntry(entryId)
+    );
+  };
+
   if (message.role === "user") {
     return (
       <UserBubble
         text={message.text}
+        entryId={message.entryId ?? null}
         isLatest={isLatestUser}
-        isRunning={isRunning}
-        onEditLatest={onEditLatest}
+        isRunning={app.isRunning}
+        onEdit={editMessage}
+        onBranch={branchMessage}
       />
     );
   }
@@ -156,7 +209,12 @@ function TranscriptEntry({
         {developer && message.thinking ? (
           <ThinkingBlock text={message.thinking} defaultOpen={thinkingExpanded} />
         ) : null}
-        <AssistantBubble text={message.text} />
+        <AssistantBubble
+          text={message.text}
+          entryId={message.entryId ?? null}
+          isRunning={app.isRunning}
+          onBranch={branchMessage}
+        />
       </>
     );
   }
@@ -195,17 +253,24 @@ function TranscriptEntry({
 
 function UserBubble({
   text,
+  entryId,
   isLatest,
   isRunning,
-  onEditLatest,
+  onEdit,
+  onBranch,
 }: {
   text: string;
+  entryId: string | null;
   isLatest: boolean;
   isRunning: boolean;
-  onEditLatest: (text: string) => void;
+  onEdit: (text: string, entryId: string | null) => void;
+  onBranch: (entryId: string) => void;
 }) {
   const trimmed = (text || "").trim();
   if (!trimmed) return null;
+  // Latest turn can always be edited (reviseLatest path); earlier turns need
+  // their Pi entry id, which old transcripts may not carry.
+  const canEdit = isLatest || Boolean(entryId);
   return (
     <div className="msg user">
       <div className="who">You</div>
@@ -223,14 +288,24 @@ function UserBubble({
         >
           <i className="ph ph-copy" aria-hidden="true" />
         </button>
-        {isLatest ? (
+        {canEdit ? (
           <button
             title="Edit"
-            aria-label="Edit message"
+            aria-label="Edit message and rewrite from here"
             disabled={isRunning}
-            onClick={() => onEditLatest(trimmed)}
+            onClick={() => onEdit(trimmed, entryId)}
           >
             <i className="ph ph-pencil-simple" aria-hidden="true" />
+          </button>
+        ) : null}
+        {entryId ? (
+          <button
+            title="Branch from here"
+            aria-label="Branch a new conversation from here"
+            disabled={isRunning}
+            onClick={() => onBranch(entryId)}
+          >
+            <i className="ph ph-git-branch" aria-hidden="true" />
           </button>
         ) : null}
       </div>
@@ -241,9 +316,15 @@ function UserBubble({
 function AssistantBubble({
   text,
   streaming,
+  entryId,
+  isRunning,
+  onBranch,
 }: {
   text: string;
   streaming?: boolean;
+  entryId?: string | null;
+  isRunning?: boolean;
+  onBranch?: (entryId: string) => void;
 }) {
   const trimmed = (text || "").trim();
   if (!trimmed) return null;
@@ -256,6 +337,25 @@ function AssistantBubble({
           dangerouslySetInnerHTML={{ __html: renderMarkdown(trimmed) }}
         />
       </div>
+      {onBranch && entryId ? (
+        <div className="msg-actions">
+          <button
+            title="Copy"
+            aria-label="Copy message"
+            onClick={() => void navigator.clipboard?.writeText(trimmed)}
+          >
+            <i className="ph ph-copy" aria-hidden="true" />
+          </button>
+          <button
+            title="Branch from here"
+            aria-label="Branch a new conversation from here"
+            disabled={isRunning}
+            onClick={() => onBranch(entryId)}
+          >
+            <i className="ph ph-git-branch" aria-hidden="true" />
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

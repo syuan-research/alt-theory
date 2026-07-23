@@ -2276,3 +2276,100 @@ test("security extension escalates risky commands through the approval bridge", 
     await service.disposeAll();
   }
 });
+
+test("SessionService reviseAt rewrites from an earlier turn and supersedes later runs", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const created = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const managed = (
+    service as unknown as {
+      sessions: Map<string, {
+        session: {
+          prompt(text: string): Promise<void>;
+          sessionManager: {
+            appendMessage(message: unknown): string;
+            buildSessionContext(): { messages: Array<{ content: Array<{ type: string; text: string }> }> };
+          };
+        };
+      }>;
+    }
+  ).sessions.get(created.sessionId)!;
+  managed.session.prompt = async (text: string) => {
+    managed.session.sessionManager.appendMessage({
+      role: "user",
+      content: [{ type: "text", text }],
+      timestamp: Date.now(),
+    });
+    managed.session.sessionManager.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: `answer:${text}` }],
+      timestamp: Date.now(),
+    });
+  };
+
+  try {
+    for (const prompt of ["first", "second", "third"]) {
+      await service.runPrompt(created.sessionId, prompt).completion;
+    }
+    const recordsDir = service.getManifest(created.sessionId).recordsDir;
+    const runs = latestRunSnapshots(recordsDir);
+    assert.equal(runs.length, 3);
+    const secondRun = runs[1];
+    assert.equal(secondRun.status, "completed");
+
+    const revised = service.reviseAt(
+      created.sessionId,
+      secondRun.userEntryId!,
+      "revised-second"
+    );
+    await revised.completion;
+
+    const after = latestRunSnapshots(recordsDir);
+    assert.equal(
+      after.find((run) => run.runId === runs[0].runId)?.status,
+      "completed"
+    );
+    assert.equal(
+      after.find((run) => run.runId === runs[1].runId)?.status,
+      "superseded"
+    );
+    assert.equal(
+      after.find((run) => run.runId === runs[2].runId)?.status,
+      "superseded"
+    );
+    assert.equal(
+      after.find((run) => run.runId === revised.ids.runId)?.supersedesRunId,
+      secondRun.runId
+    );
+    assert.equal(revised.ids.turnId, secondRun.turnId);
+
+    const text = managed.session.sessionManager
+      .buildSessionContext()
+      .messages.map((message) =>
+        message.content
+          .filter((part) => part.type === "text")
+          .map((part) => part.text)
+          .join("")
+      )
+      .join("\n");
+    assert.match(text, /first/);
+    assert.match(text, /revised-second/);
+    assert.doesNotMatch(text, /answer:second/);
+    assert.doesNotMatch(text, /third/);
+
+    const detail = readSessionDetail(fixture.dataDir, created.sessionId);
+    const userMessages = (detail?.transcript ?? []).filter(
+      (message) => message.role === "user"
+    );
+    assert.deepEqual(
+      userMessages.map((message) => message.text),
+      ["first", "revised-second"]
+    );
+  } finally {
+    await service.disposeAll();
+  }
+});

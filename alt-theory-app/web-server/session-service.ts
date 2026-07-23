@@ -613,9 +613,61 @@ export class SessionService {
       throw new SessionBusyError(sessionId);
     }
     const latest = this.requireLatestActiveCompletedUserRun(managed, "revise");
-    const userEntry = managed.session.sessionManager.getEntry(latest.userEntryId);
+    return this.reviseFromRun(managed, latest, text);
+  }
+
+  /**
+   * Rewind to ANY earlier completed user turn on the current branch and re-run
+   * it with new text ("edit" in the UI). The target turn and every completed
+   * turn after it are superseded; superseded entries stay in Pi's tree as
+   * evidence, exactly like reviseLatest.
+   */
+  reviseAt(sessionId: string, userEntryId: string, text: string): RunHandle {
+    const managed = this.requireSession(sessionId);
+    if (managed.busy || managed.session.isStreaming) {
+      throw new SessionBusyError(sessionId);
+    }
+    const allRuns = latestRunSnapshots(managed.manifest.recordsDir).filter(
+      (run) => run.branchId === managed.branchId
+    );
+    const target = allRuns.find(
+      (run) => run.status === "completed" && run.userEntryId === userEntryId
+    );
+    if (!target?.userEntryId) {
+      throw new Error("No completed turn is available to revise at this message");
+    }
+    if (
+      !managed.session.sessionManager
+        .getBranch()
+        .some((entry) => entry.id === userEntryId)
+    ) {
+      throw new Error("Revise point must be in the current Pi conversation");
+    }
+    // Rewinding rewrites everything after the target: later completed runs on
+    // this branch are superseded alongside it.
+    for (const run of allRuns.slice(allRuns.indexOf(target) + 1)) {
+      if (run.status !== "completed") continue;
+      appendRunRecord(managed.manifest.recordsDir, {
+        ...runRecordBody(run),
+        status: "superseded",
+        completedAt: new Date().toISOString(),
+      });
+    }
+    return this.reviseFromRun(
+      managed,
+      target as RunRecord & { userEntryId: string },
+      text
+    );
+  }
+
+  private reviseFromRun(
+    managed: ManagedSession,
+    run: RunRecord & { userEntryId: string },
+    text: string
+  ): RunHandle {
+    const userEntry = managed.session.sessionManager.getEntry(run.userEntryId);
     if (!userEntry) {
-      throw new Error("Latest user entry is missing from Pi history");
+      throw new Error("User entry is missing from Pi history");
     }
     if (userEntry.parentId) {
       managed.session.sessionManager.branch(userEntry.parentId);
@@ -623,13 +675,13 @@ export class SessionService {
       managed.session.sessionManager.resetLeaf();
     }
     appendRunRecord(managed.manifest.recordsDir, {
-      ...runRecordBody(latest),
+      ...runRecordBody(run),
       status: "superseded",
       completedAt: new Date().toISOString(),
     });
     return this.runPromptWithLineage(managed, text, {
-      turnId: latest.turnId,
-      supersedesRunId: latest.runId,
+      turnId: run.turnId,
+      supersedesRunId: run.runId,
     });
   }
 
@@ -688,10 +740,25 @@ export class SessionService {
     const childSelectors: SessionSelectors = selectorOverrides
       ? { ...previous.selectors, ...selectorOverrides }
       : previous.selectors;
-    const leafId =
+    let leafId =
       forkPointEntryId ?? previous.session.sessionManager.getLeafId();
     if (!leafId) {
       throw new Error("Fork requires an existing conversation entry");
+    }
+    // "Branch from here" on a user message forks the COMPLETE turn: advance
+    // the fork point to that run's last assistant entry so the child doesn't
+    // end on a dangling user message.
+    const leafEntry = previous.session.sessionManager.getEntry(leafId) as
+      | { type?: string; message?: { role?: string } }
+      | undefined;
+    if (leafEntry?.type === "message" && leafEntry.message?.role === "user") {
+      const run = latestRunSnapshots(previous.manifest.recordsDir).find(
+        (candidate) =>
+          candidate.branchId === previous.branchId &&
+          candidate.userEntryId === leafId
+      );
+      const lastAssistant = run?.assistantEntryIds?.at(-1);
+      if (lastAssistant) leafId = lastAssistant;
     }
     if (
       !previous.session.sessionManager

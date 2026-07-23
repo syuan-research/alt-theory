@@ -100,7 +100,7 @@ export type ClientMessage =
       type: "invoke_skill";
       payload: { skillName: string; userText?: string };
     }
-  | { type: "revise_latest"; payload: { text: string } }
+  | { type: "revise_latest"; payload: { text: string; entryId?: string } }
   | { type: "delete_latest" }
   | { type: "switch_mode"; payload: { mode: "pure" | "full" } }
   | { type: "add_workspace_dir"; payload: { dir: string } }
