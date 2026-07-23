@@ -13,11 +13,14 @@ export function ConversationPanel() {
   const prevSessionId = useRef<string | null>(null);
 
   // When a brand-new conversation opens with Work selected, apply full mode.
+  // Only for sessions created here: reopening an existing Pure conversation
+  // must never silently expand its tools (Codex review 2026-07-24).
   useEffect(() => {
     if (
       app.sessionId &&
       app.sessionId !== prevSessionId.current &&
       app.sessionReady &&
+      app.sessionCreatedHere &&
       shell.newMode === "full" &&
       app.sessionMode !== "full"
     ) {

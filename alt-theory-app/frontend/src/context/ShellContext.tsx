@@ -54,6 +54,10 @@ export interface ShellContextValue {
   participantTabEnabled: boolean;
   setParticipantTabEnabled: (on: boolean) => void;
 
+  /** Whether thinking blocks appear at all outside developer view (General). */
+  showThinking: boolean;
+  setShowThinking: (on: boolean) => void;
+
   /** Whether thinking blocks start expanded in the transcript (General). */
   thinkingExpanded: boolean;
   setThinkingExpanded: (on: boolean) => void;
@@ -81,6 +85,7 @@ const ShellContext = createContext<ShellContextValue | null>(null);
 
 const PARTICIPANT_TAB_KEY = "alt-theory-participant-tab";
 const LEFT_COLLAPSED_KEY = "alt-theory-left-collapsed";
+const SHOW_THINKING_KEY = "alt-theory-show-thinking";
 const THINKING_EXPANDED_KEY = "alt-theory-thinking-expanded";
 const NEW_MODE_KEY = "alt-theory-new-mode";
 
@@ -112,6 +117,9 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   const [rightSub, setRightSub] = useState<RightSub | null>(null);
   const [participantTabEnabled, setParticipantTabState] = useState(() =>
     readFlag(PARTICIPANT_TAB_KEY)
+  );
+  const [showThinking, setShowThinkingState] = useState(() =>
+    readFlag(SHOW_THINKING_KEY)
   );
   const [thinkingExpanded, setThinkingExpandedState] = useState(() =>
     readFlag(THINKING_EXPANDED_KEY)
@@ -152,6 +160,11 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   const setParticipantTabEnabled = useCallback((on: boolean) => {
     setParticipantTabState(on);
     writeFlag(PARTICIPANT_TAB_KEY, on);
+  }, []);
+
+  const setShowThinking = useCallback((on: boolean) => {
+    setShowThinkingState(on);
+    writeFlag(SHOW_THINKING_KEY, on);
   }, []);
 
   const setThinkingExpanded = useCallback((on: boolean) => {
@@ -204,6 +217,8 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       closeSub,
       participantTabEnabled,
       setParticipantTabEnabled,
+      showThinking,
+      setShowThinking,
       thinkingExpanded,
       setThinkingExpanded,
       importOpen,
@@ -235,6 +250,8 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       closeSub,
       participantTabEnabled,
       setParticipantTabEnabled,
+      showThinking,
+      setShowThinking,
       thinkingExpanded,
       setThinkingExpanded,
       importOpen,

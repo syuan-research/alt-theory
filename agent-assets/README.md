@@ -134,3 +134,18 @@ Future topics, not solved in this slice:
   meaningful edits (major rework bumps the integer). Snapshots inherit the
   version they froze.
 - Release bundles exclude `snapshots/` directories.
+
+### Compatibility policy (pre-release, 2026-07-24)
+
+- The compatibility promise for old sessions' asset slugs starts at the first
+  non-alpha release. Until then, alpha builds may drop or rename assets; an
+  old session whose recorded slug no longer resolves falls back to the current
+  default. Auto-restoring an outdated asset would be a downgrade while every
+  change is still an improvement pass.
+- User DATA is never subject to this policy: conversations, records, and
+  manifests (with their sha256 provenance) are always preserved.
+- Fallbacks must be VISIBLE, never silent: the backend emits a resume warning
+  ("original role X is not in this build — continuing with Y") that the
+  conversation view shows as a notice line.
+- From the first real release on: bundle `snapshots/` (or ship a slug
+  migration) so recorded slugs keep resolving, and revisit this section.

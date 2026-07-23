@@ -161,7 +161,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
     const target = dir || null;
     const label = target ? folderLabel(target) : "no working folder";
     app.requestConfirm({
-      message: `Move this conversation to work in "${label}"? Alt will ask for permissions again in the new folder. Files already on disk are not moved.`,
+      message: `Move this conversation to work in "${label}"? Its branches move with it. Alt will ask for permissions again in the new folder. Files already on disk are not moved.`,
       confirmLabel: "Move",
       onConfirm: () => {
         void app.repointSession(sessionId, target).catch((error) => {

@@ -2437,3 +2437,145 @@ test("SessionService setSessionWorkspace re-points a session's working folder", 
     await service.disposeAll();
   }
 });
+
+test("SessionService workspace re-point carries fork children and live listeners", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const created = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const folder = mkdtempSync(join(tmpdir(), "alt-theory-ws-family-"));
+  const sessions = (
+    service as unknown as {
+      sessions: Map<string, {
+        listeners: Set<unknown>;
+        session: {
+          prompt(text: string): Promise<void>;
+          sessionManager: { appendMessage(message: unknown): string };
+        };
+      }>;
+    }
+  ).sessions;
+  const managed = sessions.get(created.sessionId)!;
+  managed.session.prompt = async (text: string) => {
+    managed.session.sessionManager.appendMessage({
+      role: "user",
+      content: [{ type: "text", text }],
+      timestamp: Date.now(),
+    });
+    managed.session.sessionManager.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: `answer:${text}` }],
+      timestamp: Date.now(),
+    });
+  };
+
+  try {
+    await service.runPrompt(created.sessionId, "hello").completion;
+    const forked = await service.forkSession(created.sessionId, "fork");
+    const listener = () => {};
+    const detach = service.attach(created.sessionId, listener);
+
+    await service.setSessionWorkspace(created.sessionId, folder);
+
+    // The fork child moved with its parent.
+    const childHeader = readV4SessionHeader(
+      service.getManifest(forked.sessionId).recordsDir
+    );
+    assert.equal(childHeader?.workspace?.primaryDir, resolve(folder));
+
+    // The WebSocket subscription survived the dispose+reopen, and the old
+    // unsubscribe closure still detaches from the replacement session.
+    const replacement = sessions.get(created.sessionId)!;
+    assert.equal(replacement.listeners.has(listener), true);
+    detach();
+    assert.equal(replacement.listeners.has(listener), false);
+  } finally {
+    await service.disposeAll();
+  }
+});
+
+test("SessionService reviseAt edits a turn inherited from the fork parent", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const created = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const sessions = (
+    service as unknown as {
+      sessions: Map<string, {
+        session: {
+          prompt(text: string): Promise<void>;
+          sessionManager: {
+            appendMessage(message: unknown): string;
+            getBranch(): Array<{
+              id: string;
+              type?: string;
+              message?: { role?: string };
+            }>;
+            buildSessionContext(): {
+              messages: Array<{
+                content: Array<{ type: string; text?: string }>;
+              }>;
+            };
+          };
+        };
+      }>;
+    }
+  ).sessions;
+  const mockPrompt = (sessionId: string) => {
+    const target = sessions.get(sessionId)!;
+    target.session.prompt = async (text: string) => {
+      target.session.sessionManager.appendMessage({
+        role: "user",
+        content: [{ type: "text", text }],
+        timestamp: Date.now(),
+      });
+      target.session.sessionManager.appendMessage({
+        role: "assistant",
+        content: [{ type: "text", text: `answer:${text}` }],
+        timestamp: Date.now(),
+      });
+    };
+  };
+
+  try {
+    mockPrompt(created.sessionId);
+    await service.runPrompt(created.sessionId, "first").completion;
+    const forked = await service.forkSession(created.sessionId, "fork");
+    mockPrompt(forked.sessionId);
+
+    // The inherited turn has no run record in the child; edit must still work.
+    const child = sessions.get(forked.sessionId)!;
+    const inheritedUser = child.session.sessionManager
+      .getBranch()
+      .find(
+        (entry) => entry.type === "message" && entry.message?.role === "user"
+      );
+    assert.ok(inheritedUser, "fork should inherit the parent's user turn");
+    const revised = service.reviseAt(
+      forked.sessionId,
+      inheritedUser.id,
+      "revised-first"
+    );
+    await revised.completion;
+
+    const text = child.session.sessionManager
+      .buildSessionContext()
+      .messages.map((message) =>
+        message.content
+          .filter((part) => part.type === "text")
+          .map((part) => part.text)
+          .join("")
+      )
+      .join("\n");
+    assert.match(text, /revised-first/);
+    assert.doesNotMatch(text, /answer:first/);
+  } finally {
+    await service.disposeAll();
+  }
+});

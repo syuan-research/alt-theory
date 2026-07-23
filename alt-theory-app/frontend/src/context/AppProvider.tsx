@@ -137,6 +137,11 @@ export interface AppContextValue {
 
   sessionId: string | null;
   sessionReady: boolean;
+  /** True only when the current session was just created in this pane (not
+   * opened from the list, reconnected, or rebuilt by an asset switch). */
+  sessionCreatedHere: boolean;
+  /** Resume warnings from the backend, e.g. an asset fallback on reopen. */
+  sessionWarnings: string[];
   isRunning: boolean;
   connStatus: ConnStatus;
   connLabel: string;
@@ -298,6 +303,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionReady, setSessionReady] = useState(false);
+  const [sessionCreatedHere, setSessionCreatedHere] = useState(false);
+  const [sessionWarnings, setSessionWarnings] = useState<string[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [connStatus, setConnStatus] = useState<ConnStatus>("connecting");
   const [connLabel, setConnLabel] = useState("Connecting");
@@ -588,6 +595,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           if (reconnectSessionIdRef.current) break;
           setSessionId(null);
           setSessionReady(true);
+          setSessionCreatedHere(false);
+          setSessionWarnings([]);
           setIsRunning(false);
           setSelectors(applySnapshotSelectors(message.payload));
           setSessionMode("pure");
@@ -610,6 +619,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
           break;
 
         case "session_opened": {
+          // Decide "created here" before the pending refs are consumed below:
+          // an explicit open, an asset-switch rebuild, or a reconnect to the
+          // same id is NOT a new conversation (persisted Work mode must not
+          // silently expand an existing Pure session's tools).
+          setSessionCreatedHere(
+            !pendingOpenSessionIdRef.current &&
+              !pendingAssetSwitchRef.current &&
+              message.payload.sessionId !== reconnectSessionIdRef.current
+          );
+          setSessionWarnings(message.payload.resumeWarnings ?? []);
           if (
             pendingOpenSessionIdRef.current &&
             message.payload.sessionId === pendingOpenSessionIdRef.current
@@ -1364,6 +1383,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       deleteSelectedSession,
       sessionId,
       sessionReady,
+      sessionCreatedHere,
+      sessionWarnings,
       isRunning,
       connStatus,
       connLabel,
@@ -1452,6 +1473,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       deleteSelectedSession,
       sessionId,
       sessionReady,
+      sessionCreatedHere,
+      sessionWarnings,
       isRunning,
       connStatus,
       connLabel,

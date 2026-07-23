@@ -155,6 +155,22 @@ function GeneralPanel() {
       <div className="set-card">
         <div className="row2">
           <div>
+            <h4>Show thinking</h4>
+            <p>
+              Show Alt&apos;s thinking as a collapsible block above each reply.
+              Off by default — some models think at great length.
+            </p>
+          </div>
+          <button
+            className={`toggle${shell.showThinking ? " on" : ""}`}
+            aria-pressed={shell.showThinking}
+            onClick={() => shell.setShowThinking(!shell.showThinking)}
+          />
+        </div>
+      </div>
+      <div className="set-card">
+        <div className="row2">
+          <div>
             <h4>Expand thinking</h4>
             <p>
               Show the assistant&apos;s thinking blocks expanded by default.

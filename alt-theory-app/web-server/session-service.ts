@@ -49,6 +49,7 @@ import {
 } from "./session-metrics.js";
 import {
   latestActiveLeafEntryId,
+  listSessionSummaries,
   readSessionDetail,
   getSessionRootForRequest,
 } from "./session-store.js";
@@ -537,10 +538,48 @@ export class SessionService {
         throw new Error(`Working folder does not exist: ${resolved}`);
       }
     }
-    const live = this.sessions.get(sessionId);
-    if (live && (live.busy || live.session.isStreaming)) {
-      throw new SessionBusyError(sessionId);
+    // Branches move with their conversation (owner decision 2026-07-24): one
+    // re-point carries the whole fork family so a moved parent never strands
+    // its branches in the old folder — and the list grouping stays truthful.
+    const family = [sessionId, ...this.forkDescendants(sessionId)];
+    for (const id of family) {
+      const member = this.sessions.get(id);
+      if (member && (member.busy || member.session.isStreaming)) {
+        throw new SessionBusyError(id);
+      }
     }
+    let target: SessionSnapshot | null = null;
+    for (const id of family) {
+      const snapshot = await this.repointOne(id, resolved);
+      if (id === sessionId) target = snapshot;
+    }
+    return target;
+  }
+
+  /** All fork/side/helper/arm descendants of a session, breadth-first. */
+  private forkDescendants(sessionId: string): string[] {
+    const childrenByParent = new Map<string, string[]>();
+    for (const summary of listSessionSummaries(this.config.dataDir).sessions) {
+      const parentId = summary.forkedFrom?.sessionId;
+      if (!parentId) continue;
+      if (!childrenByParent.has(parentId)) childrenByParent.set(parentId, []);
+      childrenByParent.get(parentId)?.push(summary.sessionId);
+    }
+    const out: string[] = [];
+    const queue = [...(childrenByParent.get(sessionId) ?? [])];
+    while (queue.length > 0) {
+      const id = queue.shift() as string;
+      out.push(id);
+      queue.push(...(childrenByParent.get(id) ?? []));
+    }
+    return out;
+  }
+
+  private async repointOne(
+    sessionId: string,
+    resolved: string | null
+  ): Promise<SessionSnapshot | null> {
+    const live = this.sessions.get(sessionId);
     const recordsDir =
       live?.manifest.recordsDir ??
       getSessionDirs(this.config.dataDir, sessionId)?.recordsDir;
@@ -566,10 +605,29 @@ export class SessionService {
     const selectors = { ...live.selectors };
     this.sessions.delete(sessionId);
     await this.disposeManaged(live);
-    const replacement = await this.createManagedFromExisting(
-      sessionId,
-      selectors
-    );
+    let replacement: ManagedSession;
+    try {
+      replacement = await this.createManagedFromExisting(sessionId, selectors);
+    } catch (error) {
+      // Roll back so a failed reopen never leaves the conversation closed:
+      // restore the previous header and reopen against the old folder.
+      writeSessionHeader(recordsDir, header);
+      appendSessionEvent(recordsDir, {
+        sessionId,
+        type: "workspace_repointed",
+        details: {
+          primaryDir: header.workspace?.primaryDir ?? null,
+          rollback: true,
+        },
+      });
+      replacement = await this.createManagedFromExisting(sessionId, selectors);
+      replacement.listeners = live.listeners;
+      this.sessions.set(sessionId, replacement);
+      throw error;
+    }
+    // Reuse the old Set (not a copy): existing unsubscribe closures captured
+    // it, so WebSocket subscriptions survive the reopen and still detach.
+    replacement.listeners = live.listeners;
     this.sessions.set(sessionId, replacement);
     return this.snapshot(replacement);
   }
@@ -690,15 +748,6 @@ export class SessionService {
     if (managed.busy || managed.session.isStreaming) {
       throw new SessionBusyError(sessionId);
     }
-    const allRuns = latestRunSnapshots(managed.manifest.recordsDir).filter(
-      (run) => run.branchId === managed.branchId
-    );
-    const target = allRuns.find(
-      (run) => run.status === "completed" && run.userEntryId === userEntryId
-    );
-    if (!target?.userEntryId) {
-      throw new Error("No completed turn is available to revise at this message");
-    }
     if (
       !managed.session.sessionManager
         .getBranch()
@@ -706,9 +755,39 @@ export class SessionService {
     ) {
       throw new Error("Revise point must be in the current Pi conversation");
     }
-    // Rewinding rewrites everything after the target: later completed runs on
-    // this branch are superseded alongside it.
-    for (const run of allRuns.slice(allRuns.indexOf(target) + 1)) {
+    const allRuns = latestRunSnapshots(managed.manifest.recordsDir).filter(
+      (run) => run.branchId === managed.branchId
+    );
+    const target = allRuns.find(
+      (run) => run.status === "completed" && run.userEntryId === userEntryId
+    );
+    if (target?.userEntryId) {
+      // Rewinding rewrites everything after the target: later completed runs
+      // on this branch are superseded alongside it.
+      for (const run of allRuns.slice(allRuns.indexOf(target) + 1)) {
+        if (run.status !== "completed") continue;
+        appendRunRecord(managed.manifest.recordsDir, {
+          ...runRecordBody(run),
+          status: "superseded",
+          completedAt: new Date().toISOString(),
+        });
+      }
+      return this.reviseFromRun(
+        managed,
+        target as RunRecord & { userEntryId: string },
+        text
+      );
+    }
+    // Inherited turn (fork or import history): the entry predates this
+    // session's own run records, so every local completed run comes after it —
+    // supersede them all and rewind Pi directly.
+    const userEntry = managed.session.sessionManager.getEntry(userEntryId) as
+      | { parentId?: string; type?: string; message?: { role?: string } }
+      | undefined;
+    if (userEntry?.type !== "message" || userEntry.message?.role !== "user") {
+      throw new Error("Revise point must be a user message");
+    }
+    for (const run of allRuns) {
       if (run.status !== "completed") continue;
       appendRunRecord(managed.manifest.recordsDir, {
         ...runRecordBody(run),
@@ -716,11 +795,12 @@ export class SessionService {
         completedAt: new Date().toISOString(),
       });
     }
-    return this.reviseFromRun(
-      managed,
-      target as RunRecord & { userEntryId: string },
-      text
-    );
+    if (userEntry.parentId) {
+      managed.session.sessionManager.branch(userEntry.parentId);
+    } else {
+      managed.session.sessionManager.resetLeaf();
+    }
+    return this.runPromptWithLineage(managed, text);
   }
 
   private reviseFromRun(
@@ -815,13 +895,25 @@ export class SessionService {
       | { type?: string; message?: { role?: string } }
       | undefined;
     if (leafEntry?.type === "message" && leafEntry.message?.role === "user") {
-      const run = latestRunSnapshots(previous.manifest.recordsDir).find(
-        (candidate) =>
-          candidate.branchId === previous.branchId &&
-          candidate.userEntryId === leafId
-      );
-      const lastAssistant = run?.assistantEntryIds?.at(-1);
-      if (lastAssistant) leafId = lastAssistant;
+      // Advance to the last entry before the next user message on the active
+      // path. Scanning the Pi branch (not run records) also covers inherited
+      // fork/import history that has no local run records.
+      const branch = previous.session.sessionManager.getBranch();
+      const start = branch.findIndex((entry) => entry.id === leafId);
+      if (start !== -1) {
+        let end = branch.length - 1;
+        for (let i = start + 1; i < branch.length; i += 1) {
+          const entry = branch[i] as {
+            type?: string;
+            message?: { role?: string };
+          };
+          if (entry?.type === "message" && entry.message?.role === "user") {
+            end = i - 1;
+            break;
+          }
+        }
+        leafId = branch[end].id;
+      }
     }
     if (
       !previous.session.sessionManager
@@ -1621,16 +1713,44 @@ export class SessionService {
     const effectiveConfig = detail.effectiveConfig;
     const effectiveCustomInstructionRef =
       effectiveConfig?.customInstruction?.ref ?? null;
+    const requestedRoleSlug =
+      effectiveConfig?.rolePresetSlug ?? detail.manifest?.rolePreset?.slug;
     const activeRolePresetSlug = this.activeOptionalSlug(
-      effectiveConfig?.rolePresetSlug ?? detail.manifest?.rolePreset?.slug,
+      requestedRoleSlug,
       fallbackSelectors.rolePresetSlug,
       (slug) => this.resolveOptionalRolePresetPath(slug)
     );
+    const requestedSoulSlug =
+      effectiveConfig?.soulSlug ?? detail.manifest?.soul?.slug;
     const activeSoulSlug = this.activeOptionalSlug(
-      effectiveConfig?.soulSlug ?? detail.manifest?.soul?.slug,
+      requestedSoulSlug,
       fallbackSelectors.soulSlug,
       (slug) => this.resolveOptionalSoulPath(slug)
     );
+    // Pre-release compat policy: assets referenced by old sessions may vanish
+    // between alpha builds. Falling back is fine; doing it silently is not —
+    // surface every substitution as a resume warning in the conversation.
+    const assetWarnings: string[] = [];
+    if (
+      typeof requestedRoleSlug === "string" &&
+      activeRolePresetSlug !== requestedRoleSlug
+    ) {
+      assetWarnings.push(
+        `This conversation's original role "${requestedRoleSlug}" is not in this build — continuing with ${
+          activeRolePresetSlug ? `"${activeRolePresetSlug}"` : "no role"
+        }.`
+      );
+    }
+    if (
+      typeof requestedSoulSlug === "string" &&
+      activeSoulSlug !== requestedSoulSlug
+    ) {
+      assetWarnings.push(
+        `This conversation's original soul "${requestedSoulSlug}" is not in this build — continuing with ${
+          activeSoulSlug ? `"${activeSoulSlug}"` : "no soul"
+        }.`
+      );
+    }
     const originalDomain =
       effectiveConfig?.kbDomain ??
       detail.manifest?.kb?.domain ??
@@ -1642,6 +1762,11 @@ export class SessionService {
         : originalDomain && isKnownKbDomain(this.config.kbDir, originalDomain)
           ? originalDomain
           : fallbackSelectors.kbDomain;
+    if (originalDomain && activeDomain !== originalDomain) {
+      assetWarnings.push(
+        `This conversation's original knowledge domain "${originalDomain}" is not in this build — continuing with "${activeDomain}".`
+      );
+    }
     const activeInstructionRef = this.activeInstructionRef(
       effectiveCustomInstructionRef ?? detail.manifest?.customInstruction?.ref,
       fallbackSelectors.customInstructionRef
@@ -1698,7 +1823,7 @@ export class SessionService {
         customInstructionRef: activeInstructionRef,
       },
       openedFrom: "existing",
-      resumeWarnings: result.resumeWarnings,
+      resumeWarnings: [...assetWarnings, ...result.resumeWarnings],
       counters: {
         messageCount: detail.metrics?.messageCount ?? 0,
         toolCallCount: detail.metrics?.toolCallCount ?? 0,

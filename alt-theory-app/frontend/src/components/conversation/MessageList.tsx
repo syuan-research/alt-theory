@@ -62,6 +62,12 @@ export function MessageList() {
           Soul not loaded — this conversation runs without Alt&apos;s persona.
         </SysLine>
       ) : null}
+      {app.sessionWarnings.map((warning) => (
+        <SysLine key={warning}>
+          <i className="ph ph-warning" />
+          {warning}
+        </SysLine>
+      ))}
       {app.messages.map((message, index) => {
         if (message.role === "user") userOrdinal += 1;
         return (
@@ -88,7 +94,7 @@ export function MessageList() {
           return <AssistantBubble key={`sp-${index}`} text={part.text} streaming />;
         }
         if (part.kind === "thinking") {
-          if (!developer) return null;
+          if (!developer && !shell.showThinking) return null;
           return (
             <ThinkingBlock
               key={`sp-${index}`}
@@ -218,7 +224,7 @@ function TranscriptEntry({
   userIndex?: number;
 }) {
   const app = useApp();
-  const { thinkingExpanded } = useShell();
+  const { thinkingExpanded, showThinking } = useShell();
 
   const editMessage = (text: string, entryId: string | null) => {
     const start = () => app.startReviseMode(text, entryId ?? undefined);
@@ -261,7 +267,7 @@ function TranscriptEntry({
   if (message.role === "assistant") {
     return (
       <>
-        {developer && message.thinking ? (
+        {(developer || showThinking) && message.thinking ? (
           <ThinkingBlock text={message.thinking} defaultOpen={thinkingExpanded} />
         ) : null}
         <AssistantBubble
