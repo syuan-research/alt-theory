@@ -29,6 +29,7 @@ export function SettingsView() {
           },
         ]
       : []),
+    { key: "features", label: "What Alt can do", icon: "ph-sparkle", soon: true },
     { key: "about", label: "About", icon: "ph-info" },
   ];
 
@@ -66,6 +67,7 @@ export function SettingsView() {
         {shell.settingsPanel === "participant" ? (
           <ParticipantPanel designated={app.participant?.designated ?? false} label={app.participant?.label ?? null} local={app.appMode === "local"} />
         ) : null}
+        {shell.settingsPanel === "features" ? <FeaturesPanel /> : null}
         {shell.settingsPanel === "about" ? <AboutPanel /> : null}
       </div>
     </div>
@@ -285,6 +287,21 @@ function AboutPanel() {
     <div className="set-panel">
       <h2>About</h2>
       <p className="sub">Alt Theory, v1 alpha.</p>
+    </div>
+  );
+}
+
+// Reserved placeholder (owner 2026-07-24): a plain-language guide to what Alt
+// can do. Marked "soon" until the copy lands, alongside the user-docs pass.
+function FeaturesPanel() {
+  return (
+    <div className="set-panel">
+      <h2>What Alt can do</h2>
+      <p className="sub">
+        A short guide to what Alt can help with is coming here. For now, the
+        Understand and Work modes on the new-conversation screen explain the
+        basics before you send your first message.
+      </p>
     </div>
   );
 }
