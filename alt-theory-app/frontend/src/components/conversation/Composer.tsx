@@ -120,7 +120,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
         (r) => r.slug === app.selectors.rolePresetSlug
       )?.displayName ??
       app.selectors.rolePresetSlug
-    : "Default role";
+    : "No role";
   const kbOff = app.selectors.currentDomain === KB_OFF_VALUE;
   const kbLabel = kbOff
     ? "No knowledge base"
@@ -166,7 +166,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               className="mi"
               onClick={() => (app.switchRolePreset(null), setMenu(null))}
             >
-              <span>Default role</span>
+              <span>No role</span>
               {!app.selectors.rolePresetSlug ? <i className="ph ph-check check" /> : null}
             </div>
             {(app.discovery?.rolePresets ?? [])

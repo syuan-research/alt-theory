@@ -41,6 +41,7 @@ export function matchesQuery(
     session.kbDomain,
     session.provider,
     session.model,
+    session.workspacePrimaryDir ? folderLabel(session.workspacePrimaryDir) : null,
   ]
     .filter(Boolean)
     .join(" ")
@@ -141,11 +142,19 @@ export function buildWorkspaceTree(
     byDir.get(dir)?.push(root);
   }
 
+  // Groups with recent activity first (their roots are already
+  // recency-sorted); empty just-added folders next; "No folder" last.
+  const newestTime = (roots: SessionSummary[]): number =>
+    roots.length
+      ? new Date(roots[0].updatedAt || roots[0].createdAt || 0).getTime()
+      : 0;
   const groups = [...byDir.entries()]
-    .sort(([a], [b]) => {
-      if (!a) return 1;
-      if (!b) return -1;
-      return folderLabel(a).localeCompare(folderLabel(b));
+    .sort(([aDir, aRoots], [bDir, bRoots]) => {
+      if (!aDir) return 1;
+      if (!bDir) return -1;
+      const byRecency = newestTime(bRoots) - newestTime(aRoots);
+      if (byRecency !== 0) return byRecency;
+      return folderLabel(aDir).localeCompare(folderLabel(bDir));
     })
     .map(([dir, groupRoots]) => ({
       dir,
