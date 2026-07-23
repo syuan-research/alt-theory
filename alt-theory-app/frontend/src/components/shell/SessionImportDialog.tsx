@@ -189,7 +189,8 @@ export function SessionImportDialog({
         <label className="mt-3 block text-sm font-medium text-ink">
           Conversation
           <select
-            className="mt-1 w-full rounded-md border border-hairline bg-canvas px-3 py-2 text-sm"
+            className="mt-1 w-full rounded-md border border-hairline bg-canvas px-3 py-1 text-sm"
+            size={8}
             value={sourceId}
             disabled={busy}
             onChange={(event) => {

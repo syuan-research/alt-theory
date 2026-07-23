@@ -279,8 +279,8 @@
   .mi .soon { margin-left: auto; font-size: 0.68rem; color: var(--text-3); border: 1px solid var(--hairline); border-radius: 999px; padding: 1px 7px; }
 
   /* quiet secondary import entry on the empty state */
-  .import-link { border: none; background: none; font-size: 0.78rem; color: var(--text-3); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; padding: 2px 6px; align-self: center; }
-  .import-link:hover { color: var(--ink); }
+  .import-link { border: none; background: none; font-size: 0.875rem; font-weight: 500; color: var(--ink); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; padding: 4px 8px; align-self: center; }
+  .import-link:hover { color: var(--text-2); }
 
   /* new-conversation row + overflow menu in the session list */
   .new-row { display: flex; align-items: center; gap: 6px; }
