@@ -176,6 +176,8 @@ export interface AppContextValue {
   messages: TranscriptMessage[];
   streamParts: StreamPart[];
   toolStatus: string;
+  /** Live run-phase label (e.g. "Thinking…") shown while no tool is active. */
+  runPhaseLabel: string;
   composerNotice: ComposerNotice | null;
   runHint: string | null;
   reviseMode: boolean;
@@ -323,6 +325,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [messages, setMessages] = useState<TranscriptMessage[]>([]);
   const [streamParts, setStreamParts] = useState<StreamPart[]>([]);
   const [toolStatus, setToolStatus] = useState("");
+  const [runPhaseLabel, setRunPhaseLabel] = useState("");
   const [composerNotice, setComposerNotice] = useState<ComposerNotice | null>(
     null
   );
@@ -731,6 +734,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
           break;
 
         case "assistant_delta":
+          // Real answer text is streaming now — the bubble's "typing…" indicator
+          // takes over, so drop the "Thinking…" phase label.
+          setRunPhaseLabel("");
           setStreamParts((parts) =>
             appendStreamText(parts, "text", message.payload.text)
           );
@@ -794,6 +800,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
           break;
         }
 
+        case "run_phase":
+          // Live liveness label for the main view (backend already streams it;
+          // previously only the researcher inspector consumed it). Shown in the
+          // composer while no tool is active — fills the pre-stream "thinking" gap.
+          setRunPhaseLabel(
+            message.payload.phase === "connecting"
+              ? "Connecting…"
+              : message.payload.phase === "thinking"
+                ? "Thinking…"
+                : ""
+          );
+          break;
+
         case "run_completed":
           setStreamParts([]);
           activeToolsMapRef.current = {};
@@ -801,6 +820,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setConnStatus("idle");
           setConnLabel("Ready");
           setToolStatus("");
+          setRunPhaseLabel("");
           setRunHint("");
           setRunCompletedCount((count) => count + 1);
           if (message.payload.sessionId) {
@@ -815,6 +835,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setStreamParts((parts) => failRunningToolParts(parts));
           activeToolsMapRef.current = {};
           setIsRunning(false);
+          setRunPhaseLabel("");
           setConnStatus(interrupted ? "idle" : "error");
           setConnLabel(interrupted ? "Ready" : "Error");
           setComposerNoticeTimed({
@@ -1411,6 +1432,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       messages,
       streamParts,
       toolStatus,
+      runPhaseLabel,
       composerNotice,
       runHint,
       reviseMode,
@@ -1501,6 +1523,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       messages,
       streamParts,
       toolStatus,
+      runPhaseLabel,
       composerNotice,
       runHint,
       reviseMode,

@@ -141,9 +141,17 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
           />
         ) : null}
 
-        {app.toolStatus || app.composerNotice || app.runHint || app.attachmentHint ? (
+        {app.toolStatus ||
+        (app.isRunning && app.runPhaseLabel) ||
+        app.composerNotice ||
+        app.runHint ||
+        app.attachmentHint ? (
           <div className="composer-notes">
-            {app.toolStatus ? <span>{app.toolStatus}</span> : null}
+            {app.toolStatus ? (
+              <span>{app.toolStatus}</span>
+            ) : app.isRunning && app.runPhaseLabel ? (
+              <span>⏳ {app.runPhaseLabel}</span>
+            ) : null}
             {app.composerNotice ? (
               <span className={app.composerNotice.warn ? "warn" : ""}>
                 {app.composerNotice.prefix ? `${app.composerNotice.prefix} ` : ""}
