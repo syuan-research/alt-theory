@@ -1,7 +1,12 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { ProviderView } from "@/api/types";
-import { listConfigProviders } from "@/api/config";
+import {
+  getAutoTitleSettings,
+  listConfigProviders,
+  saveAutoTitleSettings,
+  type AutoTitleSettings,
+} from "@/api/config";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
 
@@ -186,6 +191,7 @@ function GeneralPanel() {
           />
         </div>
       </div>
+      <AutoTitleCard />
       <div className="set-card">
         <div className="row2">
           <div>
@@ -202,6 +208,107 @@ function GeneralPanel() {
           />
         </div>
       </div>
+    </div>
+  );
+}
+
+function AutoTitleCard() {
+  const [enabled, setEnabled] = useState(true);
+  const [model, setModel] = useState<{ provider: string; modelId: string } | null>(
+    null
+  );
+  const [models, setModels] = useState<
+    { provider: string; modelId: string; label: string }[]
+  >([]);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      try {
+        const [s, p] = await Promise.all([
+          getAutoTitleSettings(),
+          listConfigProviders(),
+        ]);
+        if (!alive) return;
+        setEnabled(s.enabled);
+        setModel(s.model);
+        setModels(
+          p.providers.flatMap((prov) =>
+            prov.models.map((m) => ({
+              provider: prov.name,
+              modelId: m.id,
+              label: `${m.name || m.id} · ${prov.name}`,
+            }))
+          )
+        );
+      } catch {
+        // leave defaults; the picker just shows "Same as conversation"
+      } finally {
+        if (alive) setLoaded(true);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const persist = (next: AutoTitleSettings) => {
+    setEnabled(next.enabled);
+    setModel(next.model);
+    void saveAutoTitleSettings(next).catch(() => {});
+  };
+
+  const modelKey = model ? `${model.provider}::${model.modelId}` : "";
+
+  return (
+    <div className="set-card">
+      <div className="row2">
+        <div>
+          <h4>Auto-name conversations</h4>
+          <p>
+            Name a conversation automatically after the first message, using its
+            own model. Falls back to the first few words if naming fails.
+          </p>
+        </div>
+        <button
+          className={`toggle${enabled ? " on" : ""}`}
+          aria-pressed={enabled}
+          disabled={!loaded}
+          onClick={() => persist({ enabled: !enabled, model })}
+        />
+      </div>
+      {enabled ? (
+        <div className="row2" style={{ marginTop: 10 }}>
+          <div>
+            <h4>Naming model</h4>
+            <p>A small model is recommended — cheaper and faster.</p>
+          </div>
+          <select
+            value={modelKey}
+            disabled={!loaded}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (!v) return persist({ enabled, model: null });
+              const idx = v.indexOf("::");
+              persist({
+                enabled,
+                model: { provider: v.slice(0, idx), modelId: v.slice(idx + 2) },
+              });
+            }}
+          >
+            <option value="">Same as conversation</option>
+            {models.map((m) => (
+              <option
+                key={`${m.provider}::${m.modelId}`}
+                value={`${m.provider}::${m.modelId}`}
+              >
+                {m.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : null}
     </div>
   );
 }

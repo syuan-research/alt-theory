@@ -15,6 +15,25 @@ export async function listConfigProviders(): Promise<{ providers: ProviderView[]
   return fetchJson<{ providers: ProviderView[] }>("/api/config/providers");
 }
 
+export interface AutoTitleSettings {
+  enabled: boolean;
+  model: { provider: string; modelId: string } | null;
+}
+
+export async function getAutoTitleSettings(): Promise<AutoTitleSettings> {
+  return fetchJson<AutoTitleSettings>("/api/settings/auto-title");
+}
+
+export async function saveAutoTitleSettings(
+  input: AutoTitleSettings
+): Promise<{ ok: true; autoTitle: AutoTitleSettings }> {
+  return fetchJson("/api/settings/auto-title", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
 export async function fetchModelsFromDraft(
   input: FetchModelsDraftInput
 ): Promise<{ models: FetchedModel[] }> {

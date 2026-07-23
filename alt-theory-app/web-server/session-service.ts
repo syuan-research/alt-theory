@@ -5,6 +5,8 @@ import type {
   AgentSessionEvent,
 } from "@earendil-works/pi-coding-agent";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
+import type { Model } from "@earendil-works/pi-ai";
+import { completeSimple } from "@earendil-works/pi-ai/compat";
 import {
   capabilityModeFromPromptMode,
   createAltTheorySession,
@@ -52,7 +54,9 @@ import {
   listSessionSummaries,
   readSessionDetail,
   getSessionRootForRequest,
+  stripSkillWrapper,
 } from "./session-store.js";
+import { readAppSettings } from "./app-settings.js";
 import {
   readV4SessionHeader,
   writeFoundationRecords,
@@ -335,6 +339,51 @@ export class SessionService {
     managed.manifest.provider = current.provider;
     managed.manifest.model = current.id;
     this.persistManifestModel(managed);
+  }
+
+  /**
+   * Auto-name a conversation after its first real turn (v1.2.1). Best-effort:
+   * runs once (only when no ui-alias.json exists — imports seed one, manual
+   * renames create one), fires-and-forgets, and swallows all errors so a failed
+   * title never disturbs the run. Model chain: pinned model (settings) →
+   * session model → no write (frontend keeps the first-words snippet).
+   */
+  private async maybeAutoTitle(managed: ManagedSession): Promise<void> {
+    try {
+      const aliasPath = join(managed.manifest.recordsDir, "ui-alias.json");
+      if (existsSync(aliasPath)) return;
+
+      const settings = readAppSettings(this.config.dataDir);
+      if (settings.autoTitle?.enabled === false) return;
+
+      const firstUser = firstUserMessageText(
+        managed.session.sessionManager.getEntries()
+      );
+      if (!firstUser) return;
+
+      const sessionModel = managed.session.model;
+      const pin = settings.autoTitle?.model ?? null;
+      const pinnedModel = pin
+        ? managed.session.modelRegistry.find(pin.provider, pin.modelId)
+        : null;
+
+      let title = await completeTitle(pinnedModel ?? sessionModel, firstUser);
+      if (!title && pinnedModel && sessionModel) {
+        // Pinned model failed → fall back to the conversation model.
+        title = await completeTitle(sessionModel, firstUser);
+      }
+      if (!title) return; // leave the first-words snippet fallback in place
+
+      // A manual rename may have landed while the model was thinking.
+      if (existsSync(aliasPath)) return;
+      writeJsonAtomic(aliasPath, {
+        schemaVersion: 1,
+        alias: title,
+        updatedAt: new Date().toISOString(),
+      });
+    } catch {
+      // Best-effort; never disturb the run.
+    }
   }
 
   async createSession(
@@ -1283,6 +1332,10 @@ export class SessionService {
         acceptedAt,
         completedAt: new Date().toISOString(),
       });
+
+      // Auto-name the conversation once, after its first real turn (v1.2.1).
+      // Fire-and-forget: title generation must never affect the run.
+      void this.maybeAutoTitle(managed);
     })().finally(() => {
       managed.busy = false;
     });
@@ -2611,4 +2664,90 @@ function isInsideDataDir(dataDir: string, target: string): boolean {
     relativePath === "" ||
     (!relativePath.startsWith("..") && !isAbsolute(relativePath))
   );
+}
+
+// --- Auto-title helpers (v1.2.1) -------------------------------------------
+
+/** A bare completion (no app system prompt, no tools) that returns a short
+ *  title, or null on any failure. */
+async function completeTitle(
+  model: Model<any> | undefined,
+  firstUser: string
+): Promise<string | null> {
+  if (!model) return null;
+  try {
+    const result = await completeSimple(model, {
+      messages: [
+        {
+          role: "user",
+          content:
+            "Give a short 5-8 word title for a conversation that begins with " +
+            "the message below. Reply with only the title — no quotes, no " +
+            "trailing punctuation.\n\n" +
+            firstUser.slice(0, 2000),
+          timestamp: Date.now(),
+        },
+      ],
+    });
+    const text = (result.content ?? [])
+      .filter(
+        (part): part is { type: "text"; text: string } =>
+          !!part && (part as { type?: string }).type === "text"
+      )
+      .map((part) => part.text)
+      .join(" ");
+    return cleanTitle(text);
+  } catch {
+    return null;
+  }
+}
+
+/** First genuine user message text; skill invocations strip to empty and are
+ *  skipped so a title is never built from a skill wrapper. */
+function firstUserMessageText(entries: unknown[]): string {
+  for (const entry of entries) {
+    const e = entry as {
+      type?: string;
+      message?: { role?: string; content?: unknown };
+    };
+    if (e.type !== "message" || e.message?.role !== "user") continue;
+    const text = stripSkillWrapper(contentToText(e.message.content)).trim();
+    if (text) return text;
+  }
+  return "";
+}
+
+function contentToText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((part) =>
+        typeof part === "string"
+          ? part
+          : part && typeof part === "object" && "text" in part
+            ? String((part as { text?: unknown }).text ?? "")
+            : ""
+      )
+      .filter(Boolean)
+      .join("\n");
+  }
+  if (content && typeof content === "object" && "text" in content) {
+    return String((content as { text?: unknown }).text ?? "");
+  }
+  return "";
+}
+
+/** Normalize a model's reply into a clean short title: first line, quotes and
+ *  trailing punctuation stripped, capped at 8 words / 60 chars. */
+export function cleanTitle(raw: string): string | null {
+  let t = (raw.split(/\r?\n/)[0] ?? "").trim();
+  t = t
+    .replace(/^["'“”\s]+/, "")
+    .replace(/["'“”.\s]+$/, "")
+    .trim();
+  if (!t) return null;
+  const words = t.split(/\s+/);
+  if (words.length > 8) t = words.slice(0, 8).join(" ");
+  if (t.length > 60) t = t.slice(0, 60).trim();
+  return t || null;
 }

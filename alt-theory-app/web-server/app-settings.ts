@@ -33,6 +33,16 @@ export interface AppSettings {
    * that already host sessions are derived from session summaries instead.
    */
   knownWorkspaces?: string[];
+  /**
+   * Auto-naming of conversations (v1.2.1). Absent = enabled, using the session's
+   * own model. A pinned `model` (recommended: a small one) overrides which model
+   * writes the title; at call time an unusable pin falls back to the session
+   * model, then to the first-words snippet. `enabled: false` turns it off.
+   */
+  autoTitle?: {
+    enabled: boolean;
+    model: { provider: string; modelId: string } | null;
+  };
 }
 
 const DEFAULT_SETTINGS: AppSettings = {

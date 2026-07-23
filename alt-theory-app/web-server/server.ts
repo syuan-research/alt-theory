@@ -341,6 +341,28 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     writeAppSettings(dataDir, next);
     res.json({ ok: true, settings: next });
   });
+  // --- Auto-naming of conversations (v1.2.1) ---
+  app.get("/api/settings/auto-title", (_req, res) => {
+    if (!requireLocalConfigMode(res)) return;
+    const s = readAppSettings(dataDir).autoTitle;
+    res.json({ enabled: s?.enabled !== false, model: s?.model ?? null });
+  });
+  app.put("/api/settings/auto-title", (req, res) => {
+    if (!requireLocalConfigMode(res)) return;
+    const body = req.body as { enabled?: unknown; model?: unknown };
+    const raw = body.model as { provider?: unknown; modelId?: unknown } | null;
+    const model =
+      raw && typeof raw.provider === "string" && typeof raw.modelId === "string"
+        ? { provider: raw.provider, modelId: raw.modelId }
+        : null;
+    const current = readAppSettings(dataDir);
+    const next = {
+      ...current,
+      autoTitle: { enabled: body.enabled !== false, model },
+    };
+    writeAppSettings(dataDir, next);
+    res.json({ ok: true, autoTitle: next.autoTitle });
+  });
   app.get("/api/config/providers", (_req, res) => {
     if (!requireLocalConfigMode(res)) return;
     res.json({ providers: listProviders(agentConfigDir()) });
