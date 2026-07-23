@@ -26,6 +26,7 @@ export interface OpenCodePreflight {
   sourceFingerprint: string;
   sourceVersion: string;
   transformations: string[];
+  sourceContextFiles: Array<{ filename: string; content: string }>;
 }
 
 export class OpenCodeImportRefusalError extends Error {
@@ -54,6 +55,11 @@ export function discoverOpenCodeSessions(
   if (!existsSync(path)) return [];
   const db = new DatabaseSync(path, { readOnly: true });
   try {
+    const sessionColumns = tableColumns(db, "session");
+    const filters = [
+      sessionColumns.has("parent_id") ? "s.parent_id IS NULL" : "",
+      sessionColumns.has("time_archived") ? "s.time_archived IS NULL" : "",
+    ].filter(Boolean);
     const rows = db.prepare(`
       SELECT
         s.id,
@@ -74,6 +80,7 @@ export function discoverOpenCodeSessions(
           LIMIT 1
         ), '') AS preview
       FROM session s
+      ${filters.length ? `WHERE ${filters.join(" AND ")}` : ""}
       ORDER BY s.time_updated DESC, s.id DESC
     `).all() as Row[];
     return rows.map((row) => ({
@@ -123,9 +130,15 @@ export function preflightOpenCodeSession(args: {
     );
     validateCompleteSession(messages, parts);
 
-    const snapshot = JSON.stringify({ session, messages, parts });
+    const sourceContextFiles = exportChildContext(db, args.sourceSessionId);
+    const snapshot = JSON.stringify({ session, messages, parts, sourceContextFiles });
     const sourceFingerprint = createHash("sha256").update(snapshot).digest("hex");
     const transformations = describeTransformations(messages, parts);
+    if (sourceContextFiles.length) {
+      transformations.push(
+        "Child agent sessions are indexed beside the import; available records are preserved as searchable source context, not replayed into the main conversation."
+      );
+    }
     const piSessionJsonl = projectToPi(session, messages, parts);
     parseSessionEntries(piSessionJsonl);
     return {
@@ -133,9 +146,101 @@ export function preflightOpenCodeSession(args: {
       sourceFingerprint,
       sourceVersion: String(session.time_updated),
       transformations,
+      sourceContextFiles,
     };
   } finally {
     db.close();
+  }
+}
+
+function tableColumns(db: DatabaseSync, table: string): Set<string> {
+  return new Set(
+    (db.prepare(`PRAGMA table_info(${table})`).all() as Row[]).map((row) =>
+      String(row.name)
+    )
+  );
+}
+
+function exportChildContext(
+  db: DatabaseSync,
+  rootSessionId: string
+): Array<{ filename: string; content: string }> {
+  if (!tableColumns(db, "session").has("parent_id")) return [];
+  const sessions = db.prepare(
+    "SELECT * FROM session ORDER BY time_created, id"
+  ).all() as Row[];
+  const descendants: Row[] = [];
+  const parents = new Set([rootSessionId]);
+  // ponytail: O(n²) over local session metadata; replace with a parent map only
+  // if real stores become large enough for import preflight to notice.
+  let added = true;
+  while (added) {
+    added = false;
+    for (const session of sessions) {
+      const id = String(session.id);
+      if (
+        !parents.has(id) &&
+        parents.has(String(session.parent_id ?? ""))
+      ) {
+        parents.add(id);
+        descendants.push(session);
+        added = true;
+      }
+    }
+  }
+  if (!descendants.length) return [];
+
+  const files = descendants.map((session, index) => {
+    const id = String(session.id);
+    const messages = db.prepare(
+      "SELECT * FROM message WHERE session_id = ? ORDER BY time_created, id"
+    ).all(id) as Row[];
+    const parts = db.prepare(
+      "SELECT * FROM part WHERE session_id = ? ORDER BY time_created, id"
+    ).all(id) as Row[];
+    const filename = `opencode-${String(index + 1).padStart(3, "0")}.jsonl`;
+    const records = [
+      { recordType: "session", data: session },
+      ...messages.map((data) => ({
+        recordType: "message",
+        data: sourceRecord(data),
+      })),
+      ...parts.map((data) => ({
+        recordType: "part",
+        data: sourceRecord(data),
+      })),
+    ];
+    return {
+      filename,
+      content: `${records.map((record) => JSON.stringify(record)).join("\n")}\n`,
+      index: {
+        sourceSessionId: id,
+        parentSessionId: String(session.parent_id ?? ""),
+        filename,
+        createdAt: Number(session.time_created ?? 0),
+        updatedAt: Number(session.time_updated ?? 0),
+      },
+    };
+  });
+  return [
+    {
+      filename: "index.json",
+      content: `${JSON.stringify({
+        schemaVersion: 1,
+        harness: "opencode",
+        rootSessionId,
+        sessions: files.map((file) => file.index),
+      }, null, 2)}\n`,
+    },
+    ...files.map(({ filename, content }) => ({ filename, content })),
+  ];
+}
+
+function sourceRecord(row: Row): Row {
+  try {
+    return { ...row, data: JSON.parse(String(row.data)) };
+  } catch {
+    return row;
   }
 }
 

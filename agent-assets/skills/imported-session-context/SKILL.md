@@ -17,10 +17,11 @@ lossy projection, with the full original preserved nearby.
 - Labelled placeholder texts (marked `[Imported provenance ...]` or
   `[... not replayed ...]`) state exactly what existed in the source and was
   not replayed. Never present their content as original conversation.
-- The complete untouched source is retained in the session's provenance
-  records (`session-import-source.json`, plus raw Pi custom entries, plus a
-  full source snapshot for Grok). The import-time `transformations` list in
-  that record names every declared loss.
+- The imported root conversation's source records are retained in the native
+  session and provenance records. When the source harness created child or
+  subagent conversations, their untouched records are stored separately under
+  `records/source-context/`; they are searchable evidence, not active context.
+  The import-time `transformations` list names every declared loss.
 
 ## What may be missing or different
 
@@ -48,3 +49,9 @@ lossy projection, with the full original preserved nearby.
    everyday language, complete enough to stand on its own. Technical terms
    are optional — offer them only when the user wants them, and even then
    always pair each term with a plain explanation.
+6. If missing context may live in a child agent run, read
+   `records/source-context/index.json` first. Select the one relevant child,
+   search that indexed JSONL by an exact ID, path, tool name, or keyword, and
+   read only the matching lines plus a small surrounding range. Never load
+   every child transcript by default. If the index is absent, say that no
+   portable child archive was captured.

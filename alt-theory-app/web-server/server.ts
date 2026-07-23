@@ -15,6 +15,7 @@ import { fileURLToPath } from "url";
 import WebSocket, { WebSocketServer } from "ws";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import {
+  type CapabilityMode,
   type PromptMode,
   type ResourceDiscoveryMode,
   KB_DISABLED_DOMAIN,
@@ -663,6 +664,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         return;
       }
       const metadata = sessionCreationMetadataForAuth(auth, visibility);
+      const importSelectors = createDraftSelectorsForAuth(auth);
       const results = selected.map((source) => {
         if (source.repeat === "unchanged") {
           return {
@@ -705,6 +707,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               preflight,
               mode,
               workspacePrimaryDir,
+              rolePresetSlug: importSelectors.rolePresetSlug,
+              soulSlug: importSelectors.soulSlug,
               ...metadata,
             });
             return {
@@ -728,7 +732,15 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
                 transformations: preflight.transformations,
               };
             }
-            const common = { dataDir, source, mode, workspacePrimaryDir, ...metadata };
+            const common = {
+              dataDir,
+              source,
+              mode: mode as CapabilityMode,
+              workspacePrimaryDir,
+              rolePresetSlug: importSelectors.rolePresetSlug,
+              soulSlug: importSelectors.soulSlug,
+              ...metadata,
+            };
             const registered = harness === "opencode"
               ? registerOpenCodeImport({ ...common, preflight })
               : registerCodexImport({ ...common, preflight });
@@ -741,7 +753,15 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               transformations: preflight.transformations,
             };
           }
-          const registered = registerPiImport({ dataDir, source, mode, workspacePrimaryDir, ...metadata });
+          const registered = registerPiImport({
+            dataDir,
+            source,
+            mode,
+            workspacePrimaryDir,
+            rolePresetSlug: importSelectors.rolePresetSlug,
+            soulSlug: importSelectors.soulSlug,
+            ...metadata,
+          });
           return {
             sourceId: source.sourceId,
             status: "imported" as const,

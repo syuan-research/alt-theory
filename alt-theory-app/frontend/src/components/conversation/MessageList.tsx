@@ -294,6 +294,17 @@ function TranscriptEntry({
   }
 
   if (message.role === "system") {
+    if (message.marker === "imported-context") {
+      return (
+        <details className="think-block">
+          <summary>
+            <i className="ph ph-file-text" aria-hidden="true" /> Imported{" "}
+            {message.sourceRole || "instruction"} context
+          </summary>
+          <div className="think-body">{message.text}</div>
+        </details>
+      );
+    }
     if (message.marker === "compaction") {
       return (
         <div className="compact-line" title={message.text}>

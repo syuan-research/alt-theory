@@ -9,6 +9,7 @@ export interface ImportSourceSession {
   preview: string;
   repeat: "new" | "unchanged" | "changed";
   importedSessionId: string | null;
+  importCount: number;
 }
 
 export interface ImportResult {

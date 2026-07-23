@@ -9,7 +9,8 @@ import {
   statSync,
 } from "fs";
 import { homedir } from "os";
-import { join, resolve } from "path";
+import { dirname, join, resolve } from "path";
+import { DatabaseSync } from "node:sqlite";
 import {
   CURRENT_SESSION_VERSION,
   parseSessionEntries,
@@ -35,6 +36,7 @@ export interface CodexPreflight {
   sourceFingerprint: string;
   sourceVersion: string;
   transformations: string[];
+  sourceContextFiles: Array<{ filename: string; content: string }>;
 }
 
 export class CodexImportRefusalError extends Error {
@@ -58,6 +60,86 @@ export function discoverCodexSessions(
 ): CodexDiscoveredSession[] {
   const root = resolve(sessionsDir);
   if (!existsSync(root)) return [];
+  return discoverCodexFromStateDb(root) ?? discoverCodexFromRollouts(root);
+}
+
+function discoverCodexFromStateDb(root: string): CodexDiscoveredSession[] | null {
+  const dbPath = resolve(
+    process.env.CODEX_STATE_DB_PATH?.trim() || join(dirname(root), "state_5.sqlite")
+  );
+  if (!existsSync(dbPath)) return null;
+  let db: DatabaseSync;
+  try {
+    db = new DatabaseSync(dbPath, { readOnly: true });
+  } catch {
+    return null;
+  }
+  try {
+    const columns = new Set(
+      (db.prepare("PRAGMA table_info(threads)").all() as Row[]).map((row) =>
+        String(row.name)
+      )
+    );
+    if (!columns.has("id") || !columns.has("rollout_path")) return null;
+    const value = (name: string) =>
+      columns.has(name) ? name : `NULL AS ${name}`;
+    const rows = db.prepare(`
+      SELECT id, rollout_path, ${value("title")}, ${value("cwd")},
+        ${value("created_at")}, ${value("updated_at")}, ${value("source")},
+        ${value("thread_source")}, ${value("archived")}, ${value("preview")}
+      FROM threads
+      ORDER BY ${columns.has("updated_at") ? "updated_at" : "created_at"} DESC, id DESC
+    `).all() as Row[];
+    return rows.flatMap((row) => {
+      try {
+        if (Number(row.archived ?? 0) !== 0) return [];
+        if (String(row.thread_source ?? "") === "subagent") return [];
+        if (isSubagentSource(row.source)) return [];
+        const path = resolve(String(row.rollout_path ?? ""));
+        if (!existsSync(path) || !statSync(path).isFile()) return [];
+        const stat = statSync(path);
+        const head = parseJsonl(readHead(path));
+        const meta = head.find((record) => record.type === "session_meta")?.payload;
+        const firstUser = head.find(
+          (record) =>
+            record.type === "response_item" &&
+            record.payload?.type === "message" &&
+            record.payload?.role === "user"
+        );
+        const createdAt = timestamp(row.created_at, meta?.timestamp, stat.birthtimeMs);
+        const updatedAt = timestamp(row.updated_at, null, stat.mtimeMs);
+        const preview = String(
+          row.preview ??
+          messageText(firstUser?.payload?.content ?? [])
+        ).slice(0, 240);
+        return [{
+          sourceId: `codex:${String(row.id)}`,
+          sourceSessionId: String(row.id),
+          sourceStore: path,
+          sourceVersion: `${stat.size}:${stat.mtimeMs}`,
+          name: typeof row.title === "string" && row.title.trim() ? row.title : null,
+          cwd: String(row.cwd ?? meta?.cwd ?? ""),
+          createdAt,
+          updatedAt,
+          messageCount: head.filter(
+            (record) =>
+              record.type === "response_item" &&
+              record.payload?.type === "message"
+          ).length,
+          preview,
+        } satisfies CodexDiscoveredSession];
+      } catch {
+        return [];
+      }
+    });
+  } catch {
+    return null;
+  } finally {
+    db.close();
+  }
+}
+
+function discoverCodexFromRollouts(root: string): CodexDiscoveredSession[] {
   return jsonlFiles(root)
     .flatMap((path) => {
       try {
@@ -65,7 +147,7 @@ export function discoverCodexSessions(
         const records = parseJsonl(readHead(path));
         const meta = records.find((record) => record.type === "session_meta")?.payload;
         const id = String(meta?.id ?? meta?.session_id ?? "");
-        if (!id || !meta?.cwd || !meta?.timestamp) return [];
+        if (!id || !meta?.cwd || !meta?.timestamp || isSubagentSource(meta.source)) return [];
         const messages = records.filter(
           (record) => record.type === "response_item" && record.payload?.type === "message"
         );
@@ -87,6 +169,36 @@ export function discoverCodexSessions(
       }
     })
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+function timestamp(primary: unknown, fallback: unknown, finalMs: number): string {
+  const value = primary ?? fallback;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Date.parse(value);
+    if (Number.isFinite(parsed)) return new Date(parsed).toISOString();
+  }
+  const numeric = Number(value);
+  if (Number.isFinite(numeric) && numeric > 0) {
+    return new Date(numeric < 10_000_000_000 ? numeric * 1000 : numeric).toISOString();
+  }
+  return new Date(finalMs).toISOString();
+}
+
+function isSubagentSource(source: unknown): boolean {
+  let value = source;
+  if (typeof value === "string" && value.trim().startsWith("{")) {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      return false;
+    }
+  }
+  return Boolean(
+    value &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    "subagent" in value
+  );
 }
 
 export function preflightCodexSession(args: {
@@ -121,12 +233,187 @@ export function preflightCodexSession(args: {
   const piSessionJsonl = projectToPi(records, meta);
   parseSessionEntries(piSessionJsonl);
   const stat = statSync(path);
+  const sourceContextFiles = exportCodexChildContext(path, args.sourceSessionId);
+  const transformations = describeTransformations(records);
+  if (sourceContextFiles.length) {
+    transformations.push(
+      "Child agent sessions are indexed beside the import; available records are preserved as searchable source context, not replayed into the main conversation."
+    );
+  }
   return {
     piSessionJsonl,
     sourceFingerprint: createHash("sha256").update(source).digest("hex"),
     sourceVersion: `${stat.size}:${stat.mtimeMs}`,
-    transformations: describeTransformations(records),
+    transformations,
+    sourceContextFiles,
   };
+}
+
+function exportCodexChildContext(
+  rootRolloutPath: string,
+  rootSessionId: string
+): Array<{ filename: string; content: string }> {
+  const sessionsRoot = namedAncestor(dirname(rootRolloutPath), "sessions");
+  if (!sessionsRoot) return [];
+  const dbPath = resolve(
+    process.env.CODEX_STATE_DB_PATH?.trim() ||
+      join(dirname(sessionsRoot), "state_5.sqlite")
+  );
+  const candidates = existsSync(dbPath)
+    ? codexRelationsFromDb(dbPath)
+    : codexRelationsFromRollouts(sessionsRoot);
+  const descendants: Array<{
+    id: string;
+    parentId: string;
+    path: string;
+  }> = [];
+  const parents = new Set([rootSessionId]);
+  // ponytail: O(n²) over local thread metadata; replace with a parent map only
+  // if real stores become large enough for import preflight to notice.
+  let added = true;
+  while (added) {
+    added = false;
+    for (const candidate of candidates) {
+      if (
+        !parents.has(candidate.id) &&
+        parents.has(candidate.parentId) &&
+        existsSync(candidate.path)
+      ) {
+        parents.add(candidate.id);
+        descendants.push(candidate);
+        added = true;
+      }
+    }
+  }
+  if (!descendants.length) return [];
+  const files = descendants.map((child, index) => {
+    const filename = `codex-${String(index + 1).padStart(3, "0")}.jsonl`;
+    try {
+      return {
+        filename,
+        content: readFileSync(child.path, "utf-8"),
+        index: {
+          sourceSessionId: child.id,
+          parentSessionId: child.parentId,
+          filename,
+          available: true,
+        },
+      };
+    } catch {
+      return {
+        filename: null,
+        content: null,
+        index: {
+          sourceSessionId: child.id,
+          parentSessionId: child.parentId,
+          filename: null,
+          available: false,
+        },
+      };
+    }
+  });
+  return [
+    {
+      filename: "index.json",
+      content: `${JSON.stringify({
+        schemaVersion: 1,
+        harness: "codex",
+        rootSessionId,
+        sessions: files.map((file) => file.index),
+      }, null, 2)}\n`,
+    },
+    ...files.flatMap(({ filename, content }) =>
+      filename && content ? [{ filename, content }] : []
+    ),
+  ];
+}
+
+function namedAncestor(path: string, name: string): string | null {
+  let current = resolve(path);
+  while (dirname(current) !== current) {
+    if (current.toLowerCase().endsWith(`\\${name.toLowerCase()}`) ||
+        current.toLowerCase().endsWith(`/${name.toLowerCase()}`)) {
+      return current;
+    }
+    current = dirname(current);
+  }
+  return null;
+}
+
+function codexRelationsFromDb(
+  dbPath: string
+): Array<{ id: string; parentId: string; path: string }> {
+  let db: DatabaseSync;
+  try {
+    db = new DatabaseSync(dbPath, { readOnly: true });
+  } catch {
+    return [];
+  }
+  try {
+    const columns = new Set(
+      (db.prepare("PRAGMA table_info(threads)").all() as Row[]).map((row) =>
+        String(row.name)
+      )
+    );
+    if (
+      !columns.has("id") ||
+      !columns.has("rollout_path") ||
+      !columns.has("source")
+    ) {
+      return [];
+    }
+    return (db.prepare(
+      "SELECT id, rollout_path, source FROM threads"
+    ).all() as Row[]).flatMap((row) => {
+      const parentId = codexParentThreadId(row.source);
+      return parentId
+        ? [{
+            id: String(row.id),
+            parentId,
+            path: resolve(String(row.rollout_path)),
+          }]
+        : [];
+    });
+  } catch {
+    return [];
+  } finally {
+    db.close();
+  }
+}
+
+function codexRelationsFromRollouts(
+  sessionsRoot: string
+): Array<{ id: string; parentId: string; path: string }> {
+  return jsonlFiles(sessionsRoot).flatMap((path) => {
+    try {
+      const meta = parseJsonl(readHead(path)).find(
+        (record) => record.type === "session_meta"
+      )?.payload;
+      const id = String(meta?.id ?? meta?.session_id ?? "");
+      const parentId = codexParentThreadId(meta?.source);
+      return id && parentId ? [{ id, parentId, path }] : [];
+    } catch {
+      return [];
+    }
+  });
+}
+
+function codexParentThreadId(source: unknown): string | null {
+  let value = source;
+  if (typeof value === "string" && value.trim().startsWith("{")) {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      return null;
+    }
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const subagent = (value as Row).subagent;
+  if (!subagent || typeof subagent !== "object") return null;
+  const parent =
+    (subagent as Row).thread_spawn?.parent_thread_id ??
+    (subagent as Row).parent_thread_id;
+  return typeof parent === "string" && parent ? parent : null;
 }
 
 function jsonlFiles(root: string): string[] {
@@ -209,7 +496,7 @@ function validateCompleteRollout(records: Row[], meta: Row): void {
     (record, index) =>
       index > lastCompactedIndex &&
       record.type === "event_msg" &&
-      ["thread_rolled_back", "turn_aborted", "sub_agent_activity"].includes(String(record.payload?.type))
+      ["thread_rolled_back", "turn_aborted"].includes(String(record.payload?.type))
   );
   if (controlEvents.length) {
     throw new CodexImportRefusalError(

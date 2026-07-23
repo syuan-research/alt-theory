@@ -153,7 +153,8 @@ export interface TranscriptMessage {
   success?: boolean;
   truncated?: boolean;
   /** Non-message boundary markers rendered specially (e.g. context compaction). */
-  marker?: "compaction";
+  marker?: "compaction" | "imported-context";
+  sourceRole?: "system" | "developer";
 }
 
 export interface SessionSummary {

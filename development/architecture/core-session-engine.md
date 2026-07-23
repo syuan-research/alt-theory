@@ -216,14 +216,17 @@ unverified semantics still refuse the whole session.
 mode does not expose these routes.
 
 The Pi adapter uses `SessionManager.listAll()` for discovery. The OpenCode
-adapter opens the local SQLite store read-only, reproduces OpenCode's current
-compaction selection, and projects supported messages, reasoning, images, and
-tool pairs into a Pi JSONL payload. The Codex adapter recursively discovers
-plain rollout JSONL, reads bounded metadata for listing, then parses and hashes
-the complete selected rollout during preflight. Complete source rows from
-these external adapters are retained as Pi custom entries but do not enter
-model context; every raw-only or portable transformation is disclosed
-separately.
+adapter opens the local SQLite store read-only and lists only unarchived root
+sessions (`parent_id IS NULL`), matching OpenCode's conversation list rather
+than exposing child-agent rows. It reproduces OpenCode's current compaction
+selection and projects supported messages, reasoning, images, and tool pairs
+into a Pi JSONL payload. The Codex adapter uses `state_5.sqlite.threads` for
+root metadata and rollout paths, excluding archived/subagent threads; bounded
+rollout discovery remains the compatibility fallback. Complete selected-root
+source rows are retained as Pi custom entries but do not enter model context.
+Descendant agent records are copied separately under
+`records/source-context/`, with `index.json` linking source and parent IDs.
+They are searchable recovery evidence, not replayed conversation turns.
 
 OpenCode `preflightOnly` parses and accounts for the complete selected session
 before managed storage exists. An unknown or unverified semantic returns a
@@ -240,16 +243,15 @@ ordinary catalog/open target, not a special runtime session type.
 Codex preflight requires persisted base instructions and maps labelled
 system/developer text, user/assistant text, and paired function/custom tool
 calls and text results. System/developer text is model-visible at Pi
-user-message priority and that transformation is disclosed. Reasoning,
+user-message priority, appears in the transcript as collapsed imported
+context, and that transformation is disclosed. Reasoning,
 `turn_context`, `world_state`, event metadata, and session-level dynamic tool
 definitions remain raw-only; source dynamic tools are not reactivated. Actual
-unmapped response items, malformed/non-text content, incomplete tool pairs,
-compaction, rollback/aborted turns, inherited/forked/subagent history, and
-other control semantics refuse before write. Compressed rollouts are not
-discovered in the first supported subset.
-In particular, rejecting Codex compaction makes the current adapter incomplete
-for ordinary long conversations. The intended implementation target is the
-source's current effective history, not reconstruction of every discarded tip.
+unmapped response items, malformed content, incomplete tool pairs,
+rollback/aborted turns, inherited/forked roots, and other indeterminate
+control semantics refuse before write. Compaction uses the last persisted
+replacement history plus subsequent response items. Subagent activity does
+not itself refuse a root import; linked child rollouts stay in source context.
 
 The Grok Build adapter follows the official two-level session layout and treats
 the selected session's current `chat_history.jsonl` as authoritative because
@@ -271,10 +273,11 @@ whole conversation.
 session ID, SHA-256 fingerprint, source version when available, declared
 transformations, and import time. Discovery compares that record with the
 current source artifact/version to classify `new`, `unchanged`, or `changed`.
-The current endpoint skips unchanged sources and can either report a changed
-source as a conflict or register it as a second session. It does not replace an
-existing imported session in place
-(`alt-theory-app/web-server/session-import.ts:220`).
+The current endpoint opens the latest unchanged import and registers a changed
+source as a new session; it never replaces an existing continuation. Import
+records carry an ordinal, and `records/ui-alias.json` distinguishes copies as
+`{source name} · {harness} import {date} #{ordinal}`. Imported sessions use the
+same default soul and role resolution as newly created Alt Theory sessions.
 
 Imported cwd uses the existing `workspace.primaryDir` field. Pure keeps the
 managed session workspace as its writable root; Work also treats the imported
@@ -297,9 +300,11 @@ connected continuation.
 The first Alt Theory run in an imported session (detected via
 `records/session-import-source.json` with zero run records) automatically
 invokes the bundled `imported-session-context` skill with the user's text, so
-the agent is told what the import preserved and lost before continuing. Later
-runs are plain prompts. This mirrors the helper-fork `alt-theory-help`
-first-run invocation in `SessionService.runPrompt`.
+the agent is told what the import preserved and lost before continuing. When
+needed, that skill checks `source-context/index.json`, searches one relevant
+child artifact, and reads only a bounded matching region. Later runs are plain
+prompts. This mirrors the helper-fork `alt-theory-help` first-run invocation in
+`SessionService.runPrompt`.
 
 ## 3. Prompt Assembly And Injection
 
@@ -921,6 +926,10 @@ Limits (current):
 
 ## Change Log
 
+- 2026-07-23: Aligned Codex/OpenCode discovery with logical root conversations,
+  added portable searchable child-agent sidecars, collapsed imported
+  instruction context, normal default soul/role resolution, and numbered
+  aliases for changed-source reimports.
 - 2026-07-21: Corrected the meaning of adapter `ready`: the three external
   engineering routes exist, but product support is incomplete while common
   Codex compaction and image/attachment records can reject whole sessions.

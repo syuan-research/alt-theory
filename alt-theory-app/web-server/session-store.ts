@@ -848,7 +848,25 @@ function buildTranscriptFromEntries(
         toolCallId?: unknown;
         toolName?: unknown;
       };
+      customType?: string;
+      content?: unknown;
+      details?: { sourceRole?: unknown };
     };
+    if (
+      value.type === "custom_message" &&
+      (value.details?.sourceRole === "system" ||
+        value.details?.sourceRole === "developer") &&
+      typeof value.content === "string"
+    ) {
+      transcript.push({
+        role: "system",
+        marker: "imported-context",
+        sourceRole: value.details.sourceRole,
+        text: value.content,
+        timestamp: normalizeTimestamp(value.timestamp),
+      });
+      continue;
+    }
     if (value.type === "compaction") {
       transcript.push({
         role: "system",
