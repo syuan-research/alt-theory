@@ -18,6 +18,7 @@ import {
   APPROVAL_DENY,
 } from "../core/security-extension.js";
 import {
+  isUnknownModelError,
   SessionBusyError,
   SessionService,
   type SessionServiceEvent,
@@ -2077,6 +2078,22 @@ test("SessionService opens with a missing workspace and warns instead of pointin
   } finally {
     await reopenedService.disposeAll();
   }
+});
+
+test("isUnknownModelError matches core's removed-model throw (item 2 resume fallback)", () => {
+  // Must match the exact shape thrown by createAltTheorySession, else resume
+  // won't fall back to the default model and the reopen stays broken.
+  assert.equal(
+    isUnknownModelError(new Error("Unknown model: minimax/minimax-m3")),
+    true
+  );
+  assert.equal(
+    isUnknownModelError(new Error("Unknown model: x/y (models.json not found)")),
+    true
+  );
+  assert.equal(isUnknownModelError(new Error("some other failure")), false);
+  assert.equal(isUnknownModelError("Unknown model: x/y"), false);
+  assert.equal(isUnknownModelError(null), false);
 });
 
 test("approval bridge routes extension confirm dialogs through the service", async () => {

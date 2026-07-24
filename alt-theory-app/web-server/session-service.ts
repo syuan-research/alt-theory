@@ -1845,7 +1845,7 @@ export class SessionService {
       );
     }
 
-    const result = await openAltTheorySession({
+    const openArgs = {
       ...sessionDirs,
       // Workspace sessions keep their user-chosen primary directory as cwd
       // across reopen (spec §5.1); default sessions keep the data-dir one.
@@ -1876,7 +1876,26 @@ export class SessionService {
       readOnly: this.config.readOnly,
       externalSkillPaths: this.config.resolveExternalSkillPaths?.(),
       extensionFactories: this.config.extensionFactories,
-    });
+    };
+    // Model-on-resume recovery (v1.2.1 item 2): a per-session model override can
+    // point at a model that's since been removed from config — core then throws
+    // "Unknown model" and the reopen fails. Don't block: fall back to the default
+    // model and surface a visible notice. The stale override stays in the header
+    // (not mutated) so if the model returns, a later reopen restores it.
+    let result;
+    try {
+      result = await openAltTheorySession(openArgs);
+    } catch (err) {
+      const override = persistedHeader?.modelOverride;
+      if (!override || !isUnknownModelError(err)) throw err;
+      const fallback = this.modelArgsFor(null);
+      assetWarnings.push(
+        `The model this conversation used (${override.provider}/${override.modelId}) is no longer available — switched to ${
+          fallback.modelId ?? "the default model"
+        }. Your next message will use it; you can pick another model any time.`
+      );
+      result = await openAltTheorySession({ ...openArgs, ...fallback });
+    }
     alignSessionManagerToLatestRun(
       result.session.sessionManager,
       latestRunSnapshots(result.manifest.recordsDir),
@@ -2664,6 +2683,12 @@ function isInsideDataDir(dataDir: string, target: string): boolean {
     relativePath === "" ||
     (!relativePath.startsWith("..") && !isAbsolute(relativePath))
   );
+}
+
+/** True when core rejected the requested model as unresolvable (removed from
+ *  config). Matches the message thrown by createAltTheorySession. */
+export function isUnknownModelError(err: unknown): boolean {
+  return err instanceof Error && err.message.startsWith("Unknown model");
 }
 
 // --- Auto-title helpers (v1.2.1) -------------------------------------------
