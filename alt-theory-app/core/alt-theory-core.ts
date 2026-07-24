@@ -32,6 +32,7 @@ import {
   createSecurityExtension,
   isPathInside,
 } from "./security-extension.js";
+import { createWebAccessToolDefinitions } from "./web-access-tools.js";
 import {
   writeJsonAtomic,
   type SessionDirectories,
@@ -452,6 +453,7 @@ async function createAltTheorySessionWithManager(
     "web-search",
     "page-fetch",
     "doc-convert",
+    "setup-helper",
   ]);
   const bundledSkillsForMode = () =>
     modeState.mode === "full"
@@ -616,6 +618,10 @@ async function createAltTheorySessionWithManager(
     createWriteToolDefinition(cwd, {
       operations: createGuardedWriteOperations(writableRootsForMode),
     }),
+    // Web-access tools ship DISABLED: registered here so the plumbing and
+    // security-extension SSRF coverage exist, but absent from every mode's
+    // active set (activeToolsForMode). Enablement is a post-1.3 decision.
+    ...createWebAccessToolDefinitions(),
   ];
 
   const { session } = await createAgentSession(sessionOpts);
