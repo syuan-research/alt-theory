@@ -544,4 +544,17 @@
   .model-row.clickable .default + .caret { margin-left: 8px; }
   .add-btn { display: inline-flex; align-items: center; gap: 6px; border: 1px dashed var(--hairline); background: transparent; border-radius: var(--r-md); padding: 8px 14px; font-size: 0.85rem; color: var(--text-2); cursor: pointer; margin-top: 6px; }
   .add-btn:hover { color: var(--ink); border-color: var(--text-3); }
+  .provider-block { border-top: 1px solid var(--hairline); padding-top: 8px; margin-top: 8px; }
+  .provider-block:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
+  .provider-head { display: flex; align-items: baseline; gap: 8px; padding: 2px 0 4px; }
+  .provider-head .name { font-weight: 600; font-size: 0.875rem; }
+  .provider-head .meta { color: var(--text-3); font-size: 0.75rem; }
+  .model-row2 { display: flex; align-items: center; gap: 10px; padding: 7px 10px; margin: 2px 0; border-radius: var(--r-sm); font-size: 0.85rem; }
+  .model-row2 .mname { color: var(--text-2); }
+  .model-row2.on .mname { color: var(--ink); font-weight: 500; }
+  .model-row2 .default { margin-left: auto; font-size: 0.72rem; color: var(--ink); background: var(--card); border: 1px solid var(--hairline); border-radius: 999px; padding: 2px 10px; }
+  .model-row2 .set-default { margin-left: auto; font-size: 0.72rem; color: var(--text-3); opacity: 0; transition: opacity 0.12s; }
+  .model-row2.clickable { cursor: pointer; }
+  .model-row2.clickable:hover { background: var(--hover); }
+  .model-row2.clickable:hover .set-default { opacity: 1; }
 }

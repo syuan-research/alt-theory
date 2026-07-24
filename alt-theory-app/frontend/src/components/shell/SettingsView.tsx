@@ -3,10 +3,13 @@ import { useNavigate } from "react-router-dom";
 import type { ProviderView } from "@/api/types";
 import {
   getAutoTitleSettings,
+  getConfigStatus,
   listConfigProviders,
   saveAutoTitleSettings,
+  setActiveModel,
   type AutoTitleSettings,
 } from "@/api/config";
+import type { ConfigStatus } from "@/api/types";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
 
@@ -82,25 +85,51 @@ export function SettingsView() {
 function ModelsPanel() {
   const app = useApp();
   const navigate = useNavigate();
+  const local = app.appMode === "local";
   const [providers, setProviders] = useState<ProviderView[] | null>(null);
+  const [status, setStatus] = useState<ConfigStatus | null>(null);
   const [error, setError] = useState(false);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    listConfigProviders()
-      .then((res) => !cancelled && setProviders(res.providers))
+    Promise.all([
+      listConfigProviders(),
+      getConfigStatus().catch(() => null),
+    ])
+      .then(([res, st]) => {
+        if (cancelled) return;
+        setProviders(res.providers);
+        setStatus(st);
+      })
       .catch(() => !cancelled && setError(true));
     return () => {
       cancelled = true;
     };
   }, []);
 
+  const makeDefault = async (provider: string, modelId: string) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const next = await setActiveModel(provider, modelId);
+      setStatus(next);
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const isActive = (provider: string, modelId: string) =>
+    status?.activeProvider === provider && status?.activeModel === modelId;
+
   return (
     <div className="set-panel">
       <h2>Models</h2>
       <p className="sub">
-        Providers and models Alt can use. Also reachable from the model selector
-        in any conversation.
+        Providers and models Alt can use. Pick the default here, or manage
+        providers and keys in the full configuration.
       </p>
       <div className="set-card">
         {error ? (
@@ -110,34 +139,52 @@ function ModelsPanel() {
         ) : providers.length === 0 ? (
           <p>No providers configured yet.</p>
         ) : (
-          providers.map((p) => (
-            <div
-              className={`model-row${app.appMode === "local" ? " clickable" : ""}`}
-              key={p.name}
-              role={app.appMode === "local" ? "button" : undefined}
-              onClick={
-                app.appMode === "local" ? () => navigate("/config") : undefined
-              }
-            >
-              <div>
-                <div className="name">{p.name}</div>
-                <div className="meta">
-                  {p.hasKey || p.keyState === "env-set"
-                    ? `${p.models.length} model${p.models.length === 1 ? "" : "s"}`
-                    : "Not configured"}
+          providers.map((p) => {
+            const configured = p.hasKey || p.keyState === "env-set";
+            return (
+              <div className="provider-block" key={p.name}>
+                <div className="provider-head">
+                  <span className="name">{p.name}</span>
+                  <span className="meta">
+                    {configured
+                      ? `${p.models.length} model${p.models.length === 1 ? "" : "s"}`
+                      : "Not configured"}
+                  </span>
                 </div>
+                {configured &&
+                  p.models.map((m) => {
+                    const active = isActive(p.name, m.id);
+                    return (
+                      <div
+                        className={`model-row2${active ? " on" : ""}${
+                          local && !active ? " clickable" : ""
+                        }`}
+                        key={m.id}
+                        role={local && !active ? "button" : undefined}
+                        onClick={
+                          local && !active
+                            ? () => void makeDefault(p.name, m.id)
+                            : undefined
+                        }
+                        title={local && !active ? "Set as default model" : undefined}
+                      >
+                        <span className="mname">{m.name || m.id}</span>
+                        {active ? (
+                          <span className="default">default</span>
+                        ) : local ? (
+                          <span className="set-default">Set default</span>
+                        ) : null}
+                      </div>
+                    );
+                  })}
               </div>
-              {p.active ? <span className="default">default</span> : null}
-              {app.appMode === "local" ? (
-                <i className="ph ph-caret-right caret" aria-hidden="true" />
-              ) : null}
-            </div>
-          ))
+            );
+          })
         )}
-        {app.appMode === "local" ? (
+        {local ? (
           <button className="add-btn" onClick={() => navigate("/config")}>
-            <i className="ph ph-plus" />
-            Manage providers
+            <i className="ph ph-gear" />
+            Manage providers &amp; keys
           </button>
         ) : null}
       </div>
