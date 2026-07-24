@@ -104,8 +104,11 @@ function UserNav({ onImport }: { onImport: () => void }) {
   const app = useApp();
   const shell = useShell();
   const [closedGroups, setClosedGroups] = useState<Set<string>>(new Set());
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const local = app.appMode === "local";
+  // Newest N per folder so one busy folder can't bury the others (item 4b).
+  const GROUP_CAP = 8;
 
   const tree = useMemo(
     () => buildWorkspaceTree(app.sessions, local ? app.knownWorkspaces : []),
@@ -159,14 +162,48 @@ function UserNav({ onImport }: { onImport: () => void }) {
     const sessionId = event.dataTransfer.getData("text/alt-theory-session");
     if (!sessionId) return;
     const target = dir || null;
+    const dragged = app.sessions.find((s) => s.sessionId === sessionId);
+    const sourceDir = dragged?.workspacePrimaryDir || "";
+    if ((target ?? "") === sourceDir) return; // dropped back on its own folder
     const label = target ? folderLabel(target) : "no working folder";
+
+    // Whole-folder migration (item 4): when the dragged conversation's current
+    // folder holds other conversations too (the "renamed/merged folder" case),
+    // offer to move all of them in one go. Default-checked, red, so the user
+    // opts in explicitly. Only roots are moved; branches follow their root.
+    const siblings = sourceDir
+      ? (tree.groups.find((g) => g.dir === sourceDir)?.roots ?? []).filter(
+          (s) => s.sessionId !== sessionId
+        )
+      : [];
+    const canMigrateFolder = siblings.length > 0;
+
+    const repointAll = (ids: string[]) => {
+      void Promise.all(
+        ids.map((id) => app.repointSession(id, target))
+      ).catch((error) => {
+        window.alert(error instanceof Error ? error.message : String(error));
+      });
+    };
+
     app.requestConfirm({
       message: `Move this conversation to work in "${label}"? Its branches move with it. Alt will ask for permissions again in the new folder. Files already on disk are not moved.`,
       confirmLabel: "Move",
-      onConfirm: () => {
-        void app.repointSession(sessionId, target).catch((error) => {
-          window.alert(error instanceof Error ? error.message : String(error));
-        });
+      checkbox: canMigrateFolder
+        ? {
+            label: `Also move all ${siblings.length + 1} conversations in "${
+              folderLabel(sourceDir)
+            }"`,
+            defaultChecked: true,
+            danger: true,
+          }
+        : undefined,
+      onConfirm: (result) => {
+        const ids =
+          canMigrateFolder && result?.checkboxChecked
+            ? [sessionId, ...siblings.map((s) => s.sessionId)]
+            : [sessionId];
+        repointAll(ids);
       },
     });
   };
@@ -320,6 +357,17 @@ function UserNav({ onImport }: { onImport: () => void }) {
                     <span className="group-name">{group.label}</span>
                     <i className="ph ph-caret-down tw" />
                   </button>
+                  {local && group.dir ? (
+                    <button
+                      className="group-add"
+                      title={`Copy folder path: ${group.dir}`}
+                      onClick={() => {
+                        void navigator.clipboard?.writeText(group.dir);
+                      }}
+                    >
+                      <i className="ph ph-copy" />
+                    </button>
+                  ) : null}
                   {local ? (
                     <button
                       className="group-add"
@@ -334,7 +382,10 @@ function UserNav({ onImport }: { onImport: () => void }) {
                   <div className="rp-empty ws-empty">No conversations yet.</div>
                 ) : null}
                 {!closed &&
-                  group.roots.map((root) => (
+                  (expandedGroups.has(group.dir)
+                    ? group.roots
+                    : group.roots.slice(0, GROUP_CAP)
+                  ).map((root) => (
                     <SessionNode
                       key={root.sessionId}
                       session={root}
@@ -344,6 +395,23 @@ function UserNav({ onImport }: { onImport: () => void }) {
                       draggable={local}
                     />
                   ))}
+                {!closed && group.roots.length > GROUP_CAP ? (
+                  <button
+                    className="group-more"
+                    onClick={() =>
+                      setExpandedGroups((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(group.dir)) next.delete(group.dir);
+                        else next.add(group.dir);
+                        return next;
+                      })
+                    }
+                  >
+                    {expandedGroups.has(group.dir)
+                      ? "Show less"
+                      : `Show all (${group.roots.length})`}
+                  </button>
+                ) : null}
               </div>
             );
           })

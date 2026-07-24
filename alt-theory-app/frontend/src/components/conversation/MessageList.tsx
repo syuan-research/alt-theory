@@ -62,12 +62,18 @@ export function MessageList() {
           Soul not loaded — this conversation runs without Alt&apos;s persona.
         </SysLine>
       ) : null}
-      {app.sessionWarnings.map((warning) => (
-        <SysLine key={warning}>
-          <i className="ph ph-warning" />
-          {warning}
-        </SysLine>
-      ))}
+      {app.sessionWarnings.map((warning) =>
+        // ponytail: the dead-folder notice is matched by its distinctive phrase
+        // (backend session-service pushes it verbatim). Keep the strings in sync.
+        /working folder .* no longer exists/.test(warning) ? (
+          <StaleWorkspaceNotice key={warning} warning={warning} />
+        ) : (
+          <SysLine key={warning}>
+            <i className="ph ph-warning" />
+            {warning}
+          </SysLine>
+        )
+      )}
       {app.messages.map((message, index) => {
         if (message.role === "user") userOrdinal += 1;
         return (
@@ -431,6 +437,42 @@ function AssistantBubble({
         </div>
       ) : null}
     </div>
+  );
+}
+
+// Actionable version of the stale-workspace resume warning (item 4): the
+// backend opens the session without a dead cwd; this gives the user the two
+// decided choices right in the conversation — re-pick a folder, or dismiss and
+// continue without one — instead of a passive notice.
+function StaleWorkspaceNotice({ warning }: { warning: string }) {
+  const app = useApp();
+  const [dismissed, setDismissed] = useState(false);
+  if (dismissed) return null;
+
+  const choose = () => {
+    if (!app.sessionId) return;
+    // ponytail: window.prompt matches the existing add-folder affordance; the
+    // native directory picker is the upgrade path when bundle work resumes.
+    const path = window.prompt(
+      "Full path of the working folder for this conversation:"
+    );
+    if (!path?.trim()) return;
+    void app.repointSession(app.sessionId, path.trim()).catch((error) => {
+      window.alert(error instanceof Error ? error.message : String(error));
+    });
+  };
+
+  return (
+    <SysLine tone="danger">
+      <i className="ph ph-warning" />
+      <span style={{ flex: 1 }}>{warning}</span>
+      <button className="link-btn" onClick={choose}>
+        Choose folder…
+      </button>
+      <button className="link-btn" onClick={() => setDismissed(true)}>
+        Continue without
+      </button>
+    </SysLine>
   );
 }
 

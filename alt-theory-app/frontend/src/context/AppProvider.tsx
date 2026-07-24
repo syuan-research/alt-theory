@@ -94,7 +94,9 @@ export interface ComposerNotice {
 export interface ConfirmRequest {
   message: string;
   confirmLabel?: string;
-  onConfirm: () => void;
+  onConfirm: (result?: { checkboxChecked: boolean }) => void;
+  /** Optional opt-in checkbox (e.g. whole-folder migration, item 4). */
+  checkbox?: { label: string; defaultChecked?: boolean; danger?: boolean };
 }
 
 export interface AppContextValue {
@@ -1563,8 +1565,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         open={Boolean(confirmRequest)}
         message={confirmRequest?.message ?? ""}
         confirmLabel={confirmRequest?.confirmLabel}
-        onConfirm={() => {
-          confirmRequest?.onConfirm();
+        checkbox={confirmRequest?.checkbox}
+        onConfirm={(result) => {
+          confirmRequest?.onConfirm(result);
           setConfirmRequest(null);
         }}
         onCancel={() => setConfirmRequest(null)}

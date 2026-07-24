@@ -266,6 +266,10 @@
   .sys-line { max-width: 660px; margin: 0 auto 18px; padding: 0 24px; text-align: left; font-size: 0.75rem; color: var(--text-3); display: flex; align-items: baseline; gap: 6px; border-left: 2px solid transparent; }
   .sys-line i { font-size: 0.8rem; }
   .sys-line.sys-danger { color: var(--danger); border-left-color: var(--color-danger); }
+  .sys-line .link-btn { flex: 0 0 auto; background: none; border: none; padding: 0 4px; font: inherit; font-size: 0.75rem; color: inherit; text-decoration: underline; cursor: pointer; opacity: 0.85; }
+  .sys-line .link-btn:hover { opacity: 1; }
+  .group-more { display: block; width: calc(100% - 16px); margin: 2px 8px 6px; padding: 4px 8px; text-align: left; background: none; border: none; font: inherit; font-size: 0.75rem; color: var(--text-3); cursor: pointer; border-radius: var(--r-sm); }
+  .group-more:hover { background: var(--card-2); color: var(--text-2); }
   .sys-line.sys-ok { border-left-color: var(--color-success); }
   .sys-line.sys-running { border-left-color: var(--color-text-muted); }
 
