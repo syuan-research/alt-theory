@@ -18,6 +18,7 @@ import {
   APPROVAL_DENY,
 } from "../core/security-extension.js";
 import {
+  imageAttachmentsFor,
   isUnknownModelError,
   SessionBusyError,
   SessionService,
@@ -2078,6 +2079,29 @@ test("SessionService opens with a missing workspace and warns instead of pointin
   } finally {
     await reopenedService.disposeAll();
   }
+});
+
+test("imageAttachmentsFor gates on model image input (item D)", () => {
+  const fixture = setupFixture();
+  const imgPath = join(fixture.root, "pic.png");
+  writeFileSync(imgPath, Buffer.from([0x89, 0x50, 0x4e, 0x47])); // fake PNG bytes
+  const txtPath = join(fixture.root, "note.txt");
+  writeFileSync(txtPath, "hello");
+  const vision = { input: ["text", "image"] } as never;
+  const textOnly = { input: ["text"] } as never;
+
+  // Text-only model → no images, even for an image file (degrades to text mention).
+  assert.deepEqual(imageAttachmentsFor([imgPath], textOnly), []);
+  // No model → none.
+  assert.deepEqual(imageAttachmentsFor([imgPath], undefined), []);
+  // Vision model + image file → one ImageContent with base64 data.
+  const built = imageAttachmentsFor([imgPath, txtPath], vision);
+  assert.equal(built.length, 1); // .txt skipped, stays a text mention
+  assert.equal(built[0].type, "image");
+  assert.equal(built[0].mimeType, "image/png");
+  assert.equal(built[0].data, Buffer.from([0x89, 0x50, 0x4e, 0x47]).toString("base64"));
+  // Missing/unreadable image path → skipped, no throw.
+  assert.deepEqual(imageAttachmentsFor([join(fixture.root, "gone.png")], vision), []);
 });
 
 test("isUnknownModelError matches core's removed-model throw (item 2 resume fallback)", () => {

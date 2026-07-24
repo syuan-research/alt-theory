@@ -1,11 +1,11 @@
-import { cpSync, existsSync, rmSync, statSync, writeFileSync } from "fs";
+import { cpSync, existsSync, readFileSync, rmSync, statSync, writeFileSync } from "fs";
 import { randomUUID } from "crypto";
 import type {
   AgentSession,
   AgentSessionEvent,
 } from "@earendil-works/pi-coding-agent";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
-import type { Model } from "@earendil-works/pi-ai";
+import type { ImageContent, Model } from "@earendil-works/pi-ai";
 import { completeSimple } from "@earendil-works/pi-ai/compat";
 import {
   capabilityModeFromPromptMode,
@@ -25,7 +25,7 @@ import {
   writeJsonAtomic,
   type SessionDirectories,
 } from "../core/data-dir.js";
-import { isAbsolute, join, relative, resolve } from "path";
+import { extname, isAbsolute, join, relative, resolve } from "path";
 import type { AgentAssetPaths } from "../core/agent-assets.js";
 import {
   isKnownKbDomain,
@@ -752,7 +752,7 @@ export class SessionService {
     return this.snapshot(managed);
   }
 
-  runPrompt(sessionId: string, text: string): RunHandle {
+  runPrompt(sessionId: string, text: string, attachments?: string[]): RunHandle {
     const managed = this.requireSession(sessionId);
     const header = readV4SessionHeader(managed.manifest.recordsDir);
     if (
@@ -774,7 +774,7 @@ export class SessionService {
     ) {
       return this.invokeSkill(sessionId, "imported-session-context", text);
     }
-    return this.runPromptWithLineage(managed, text);
+    return this.runPromptWithLineage(managed, text, { attachments });
   }
 
   reviseLatest(sessionId: string, text: string): RunHandle {
@@ -1223,6 +1223,7 @@ export class SessionService {
     options: {
       turnId?: string;
       supersedesRunId?: string | null;
+      attachments?: string[];
     } = {}
   ): RunHandle {
     const sessionId = managed.manifest.sessionId;
@@ -1263,8 +1264,13 @@ export class SessionService {
     const completion = (async () => {
       let promptError: unknown = null;
       let pendingError: unknown = null;
+      // Image attachments (v1.2.1 D): staged image paths are sent as real
+      // ImageContent to a model that declares image input; the paths also stay
+      // in the prompt text (Attachments: …), so a text-only model still gets the
+      // filename and simply says it cannot read the image — never a hard error.
+      const images = imageAttachmentsFor(options.attachments, managed.session.model);
       try {
-        await managed.session.prompt(text);
+        await managed.session.prompt(text, images.length ? { images } : undefined);
       } catch (error) {
         promptError = error;
       }
@@ -2683,6 +2689,36 @@ function isInsideDataDir(dataDir: string, target: string): boolean {
     relativePath === "" ||
     (!relativePath.startsWith("..") && !isAbsolute(relativePath))
   );
+}
+
+const IMAGE_MIME_BY_EXT: Record<string, string> = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+};
+
+/** Build ImageContent blocks from staged attachment paths (v1.2.1 D). Returns
+ *  [] unless the model declares image input — a text-only model keeps only the
+ *  filename mention in the prompt, so nothing hard-fails. Non-image files and
+ *  unreadable paths are skipped (they remain text mentions). */
+export function imageAttachmentsFor(
+  paths: string[] | undefined,
+  model: Model<any> | undefined
+): ImageContent[] {
+  if (!paths?.length || !model?.input?.includes("image")) return [];
+  const out: ImageContent[] = [];
+  for (const path of paths) {
+    const mimeType = IMAGE_MIME_BY_EXT[extname(path).toLowerCase()];
+    if (!mimeType) continue;
+    try {
+      out.push({ type: "image", data: readFileSync(path).toString("base64"), mimeType });
+    } catch {
+      // Unreadable (e.g. deleted) — leave it as the text mention.
+    }
+  }
+  return out;
 }
 
 /** True when core rejected the requested model as unresolvable (removed from

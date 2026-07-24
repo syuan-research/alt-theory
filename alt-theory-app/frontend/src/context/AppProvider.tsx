@@ -1095,7 +1095,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const trimmed = text.trim();
       const outgoing = buildOutgoingPrompt(trimmed, stagedWorkspacePaths);
       if (!outgoing || isRunning) return false;
-      if (!sendMessage({ type: "prompt", payload: outgoing })) return false;
+      // Staged paths also travel as structured attachments so the backend can
+      // send image files as real pixels to a vision-capable model (v1.2.1 D);
+      // they stay in the prompt text too, so text-only models still see the path.
+      const attachments = stagedWorkspacePaths.length
+        ? [...stagedWorkspacePaths]
+        : undefined;
+      if (!sendMessage({ type: "prompt", payload: outgoing, attachments }))
+        return false;
       setMessages((prev) => [
         ...prev,
         { role: "user", text: outgoing, timestamp: null },

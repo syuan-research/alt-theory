@@ -86,7 +86,7 @@ export interface TranscriptMessage {
 // ---------------------------------------------------------------------------
 
 export type ClientMessage =
-  | { type: "prompt"; payload: string }
+  | { type: "prompt"; payload: string; attachments?: string[] }
   | { type: "abort" }
   /** domain is a known KB domain, "all", or "none" to disable kb-folder retrieval. */
   | { type: "switch_kb"; payload: { domain: string } }

@@ -1818,7 +1818,11 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               attachToSession(initial.sessionId);
             }
             const currentSessionId = attachedSessionId;
-            const run = sessionService.runPrompt(currentSessionId, msg.payload);
+            const run = sessionService.runPrompt(
+              currentSessionId,
+              msg.payload,
+              msg.attachments
+            );
             await run.completion;
           } catch (error) {
             if (error instanceof SessionBusyError) {

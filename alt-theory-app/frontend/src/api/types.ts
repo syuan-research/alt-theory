@@ -424,7 +424,7 @@ export interface AssemblyManifest {
 }
 
 export type ClientMessage =
-  | { type: "prompt"; payload: string }
+  | { type: "prompt"; payload: string; attachments?: string[] }
   | { type: "abort" }
   | { type: "switch_kb"; payload: { domain: string } }
   | { type: "switch_role_preset"; payload: { rolePresetSlug: string | null } }
