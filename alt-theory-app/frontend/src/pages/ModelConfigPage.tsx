@@ -658,21 +658,14 @@ export function ModelConfigPage() {
             <i className={`ph ${dark ? "ph-sun" : "ph-moon"} mr-1`} />
             {dark ? "Light" : "Dark"}
           </button>
-          {status && !status.activeUsable ? (
-            <span
-              className="text-[0.8125rem] text-text-muted"
-              title="The app needs an active model before it can reply"
-            >
-              Set an active model to start using Alt
-            </span>
-          ) : (
+          {status && status.activeUsable ? (
             <Link
               to="/"
               className="text-[0.8125rem] text-text-secondary hover:text-ink"
             >
               ← Back to app
             </Link>
-          )}
+          ) : null}
         </div>
 
         <PageTitle>
