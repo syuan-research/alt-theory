@@ -8,6 +8,9 @@ tags: [session-import, opencode, pi]
 
 # OpenCode session import design
 
+> Historical Stage 1 design snapshot. Current implemented support and refusal
+> boundaries are in `development/architecture/session-import-adapters.md`.
+
 ## 0. Terminology
 
 - **preflight**: parse and account for every selected OpenCode message and part before creating an Alt Theory session; matches the term already used by the active v2 record.

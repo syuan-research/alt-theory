@@ -5,18 +5,19 @@ date: 2026-07-21
 slug: cross-harness-current-tip-import
 status: active
 area: local session import / Pi runtime / harness adapters
-tags: [session-import, pi, opencode, codex, grok-build, current-tip]
+amended: 2026-07-24
+tags: [session-import, pi, opencode, codex, grok-build, claude-code, current-tip]
 ---
 
 # Cross-Harness Current-Tip Import
 
 ## Background
 
-Users already have substantial conversations in OpenCode, Codex, and Grok
-Build. The useful product outcome is to select one of those conversations and
+Users already have substantial conversations in OpenCode, Codex, Grok Build,
+and Claude Code. The useful product outcome is to select one conversation and
 continue it through the Pi runtime used by Alt Theory without first rewriting
-it as a handoff summary. A private probe produced runnable Pi sessions from one
-real bounded sample of each harness.
+it as a handoff summary. Bounded private probes and the implemented adapters
+established that each source needs its own deterministic persistence mapping.
 
 The probe plan accumulated side questions about source-native rewind, old tips,
 and branch reconstruction. Those questions are not required by this user story
@@ -54,47 +55,20 @@ continuation state only**.
 - A later skill/agent handoff is a separately labelled fallback, not the
   faithful import implementation.
 
-## Verified Harness Evidence
+## Evidence and Current Implementation
 
-The bounded private probe evidence is intentionally not published. Product
-behavior and tests must stand without access to its source conversations.
+This decision no longer carries a mutable per-harness evidence table. Upstream
+storage and UI-reconstruction facts live under
+`research-agent-session-history/`; implemented product behavior lives in
+`development/architecture/session-import-adapters.md`. Keeping those facts out
+of this decision prevents historical probe limits from being mistaken for the
+current support boundary.
 
-| Source | Persisted state used by the probe | Verified Pi result | Remaining evidence work |
-| --- | --- | --- | --- |
-| OpenCode | SQLite `session`, `message`, and `part` rows, tested across three bounded recent samples. The primary has 20 messages/88 parts; the compaction case has 81/237; the image/error case has 47/170. | Primary: 4 user, 16 assistant, and 20 exact tool-result messages, including one skill and eight read results. Compaction: OpenCode's `filterCompacted` rule selects 14 current source messages, producing 18 Pi context messages and one compaction prompt while all 81 raw messages remain retained. Image/error: one PNG survives Pi LLM conversion and provider serialization; all 33 tool pairs and one tool error map exactly. Source assistant part order is retained; reasoning becomes portable assistant text following OpenCode's different-model path, while provider metadata remains raw. Every payload probe uses zero tools and exits before HTTP. | Current-tip, compaction, skill/read, image, and tool-error evidence is sufficient for the first product adapter. Tool-result attachments and non-image file parts remain untested; they must be reported rather than silently omitted if encountered. |
-| Grok Build | Current `chat_history.jsonl`; the complete source session directory is retained separately. | 113 current history records project to 85 Pi context messages, including all 46 source tool-call/result pairs and 28 reasoning summaries. Historical source-system text is labelled and model-visible. Provider payload markers were verified exactly once. | Provider-encrypted reasoning remains opaque and raw-only. Source rewind/old-tip work is not product scope. |
-| Codex | One complete bounded rollout JSONL containing 18 records. | Nine Pi context messages: labelled base instructions, two labelled developer blocks, two users, three assistants, and one exact function-call/result pair. The first mapped user message already contains all 12 sampled `AGENTS.md` markers. Provider payload markers were verified exactly once. | Pi represents imported system/developer blocks as model-visible user-role custom messages; exact source priority is unavailable in self-contained Pi JSONL. The sampled `turn_context` is runtime/config metadata and stays raw. |
-
-OpenCode's current repository independently confirms that sessions are read as
-messages with separately loaded parts (`packages/opencode/src/session/message-v2.ts`),
-which matches the probe's SQLite extraction shape. The probe converter and its
-manifests remain the executable evidence for the specific mappings above.
-
-## Development Dependency Order
-
-```mermaid
-flowchart LR
-    P["Pi target context semantics<br/>verified"]
-    O["OpenCode adapter<br/>three bounded samples verified"]
-    G["Grok adapter<br/>current-tip verified"]
-    C["Codex adapter<br/>current-tip verified"]
-    R["Alt Theory adapter dispatch + registration<br/>backend shell already exists"]
-    U["Import selection and result UI"]
-
-    P --> O
-    P --> G
-    P --> C
-    O --> R
-    G --> R
-    C --> R
-    R --> U
-```
-
-The three source adapters are independent once Pi target semantics are known.
-Alt Theory's existing Pi discovery/registration work can continue in parallel;
-it does not depend on source branch reconstruction. OpenCode's three bounded
-samples now cover the first product adapter's current-tip path; product work can
-attach that deterministic mapping behind the existing harness registry.
+The implemented adapters preserve both the recoverable visible transcript and
+the portable active continuation context. Those are distinct when a source has
+compacted, rolled back, branched, or stored provider-private state. Available
+child/subagent material is retained as searchable source context rather than
+replayed as independent main-conversation turns.
 
 ## Alternatives Considered
 
@@ -106,10 +80,9 @@ attach that deterministic mapping behind the existing harness registry.
 - **Use an agent/skill to interpret every source session:** reserved for a
   labelled fallback because it weakens determinism and adds no value when a
   direct adapter works.
-- **Split the compound into one document per harness:** not used now because Pi
-  target semantics, fidelity checks, and product dependencies are shared. Split
-  later only if an adapter develops enough independent implementation detail to
-  need its own maintained document.
+- **Keep upstream format research inside this decision:** rejected after the
+  adapters matured. Upstream persistence facts change independently and now
+  live in dated explore/learning records.
 
 ## Consequences
 
@@ -118,13 +91,12 @@ attach that deterministic mapping behind the existing harness registry.
   visible, and the resulting session openable and continuable.
 - Target-native conversation undo after import may operate on the generated Pi
   chain, but importing source-native historical branches is not promised.
-- OpenCode's deterministic probe now covers ordinary current tip, compaction,
-  skill/read disclosure, one image, and a tool error. The product adapter can be
-  implemented without source-runtime or branch dependencies.
-- Grok's completed rewind experiment remains historical probe evidence only and
-  must not re-enter the product dependency graph.
+- The source harness/runtime is not required during normal import.
+- Upstream research can grow without expanding the core session-engine
+  architecture document or rewriting this product decision.
 
 ## Related Documents
 
-- `project/workstreams/0-v1-full-stack/notes-and-status/20260717-cross-harness-session-import-plan-record-v1.md`
-- `project/compound/2026-07-02-decision-v0-6-pi-runtime-boundary.md`
+- `development/architecture/session-import-adapters.md`
+- `development/compound/research-agent-session-history/README.md`
+- `development/compound/2026-07-02-decision-v0-6-pi-runtime-boundary.md`

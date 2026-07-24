@@ -8,6 +8,9 @@ tags: [session-import, codex, pi]
 
 # Codex session import design
 
+> Historical Stage 2 design snapshot. Current implemented support and refusal
+> boundaries are in `development/architecture/session-import-adapters.md`.
+
 ## 0. Terminology
 
 - **rollout**: one plain Codex JSONL session file selected from the local Codex sessions directory.

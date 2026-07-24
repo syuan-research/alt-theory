@@ -8,6 +8,9 @@ tags: [session-import, opencode, acceptance]
 
 # OpenCode session import acceptance
 
+> Historical acceptance snapshot from 2026-07-21. Current implemented support
+> is in `development/architecture/session-import-adapters.md`.
+
 > Stage: Stage 3 (Acceptance)
 > Acceptance date: 2026-07-21
 > Associated design: `opencode-session-import-design.md`

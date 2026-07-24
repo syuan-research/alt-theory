@@ -1,5 +1,9 @@
 # Grok Build session import — living record
 
+> Historical Stage 3 record from 2026-07-21. Its incomplete image boundary was
+> later resolved; current behavior is in
+> `development/architecture/session-import-adapters.md`.
+
 Updated: 2026-07-21
 
 ## Outcome and current boundary

@@ -232,98 +232,23 @@ drift notices.
 
 ## 2.2 Local Session Import
 
-Local mode exposes a harness-discriminated import boundary without adding a
-second session engine. `GET /api/session-import/harnesses` reports Pi,
-OpenCode, Codex, Grok Build, and Claude Code as ready. Here `ready` means the
-adapter maps verified source shapes into native Pi/transcript semantics,
-labelled limitations, or raw provenance. Genuinely unknown semantics refuse
-the selected session rather than disappearing. Discovery and import routes are
-local-only.
+Local mode exposes Pi, OpenCode, Codex, Grok Build, and Claude Code import
+through a harness-discriminated adapter boundary. External sessions are fully
+preflighted before managed storage exists. Successful projections enter the
+ordinary Pi history, manifest, foundation-record, catalog, reopen, and runtime
+paths; import does not create a second session engine or runtime type.
 
-External-session `preflightOnly` parses the complete selected root before
-managed storage exists and returns transformations or a structured refusal
-with record type, count, and reason. A successful preflight produces Pi JSONL
-that goes through the same newly allocated `sessions/{id}/history/`, assembly
-manifest, and foundation-record path as a native session. It is an ordinary
-catalog/open target, not a special runtime session type. Complete root source
-records remain raw Pi custom entries. Available child/subagent records are
-copied under `records/source-context/` with an index: searchable recovery
-evidence, not independent or replayed main-conversation turns.
+Imported sessions use normal mode, workspace, role, soul, tool, model, and
+permission behavior. Source runtime configuration remains historical evidence.
+Changed source history creates a separately aliased import rather than merging
+into or overwriting an Alt Theory continuation. Available child/subagent
+history is searchable source context, not replayed main-conversation turns.
 
-The Pi adapter uses `SessionManager.listAll()`. OpenCode opens its SQLite store
-read-only and lists unarchived roots (`parent_id IS NULL`). Stored messages form
-the recoverable visible transcript; OpenCode's own compaction selection
-separately determines portable active context. Plaintext summaries become
-native Pi compaction and reasoning becomes collapsible thinking. Distinct
-historical system snapshots become collapsed context, assistant source errors
-stay visible, and supported image/tool-result attachments replay. Non-image
-files use labelled placeholders when they cannot replay exactly.
-
-Codex uses `state_5.sqlite.threads` for root metadata and rollout paths,
-excluding archived/subagent threads; bounded rollout discovery is the fallback.
-Top-level response items form the visible transcript. `replacement_history` is
-active model context, not a UI transcript: compacted records may retain old
-user prompts without the matching assistant messages, so they are not rendered
-as fake user bubbles. The real compact boundary separates visible prefix and
-suffix. Active context begins with the post-compaction suffix plus an honest
-note that Codex's encrypted summary is not portable; earlier turns remain
-searchable. Plaintext reasoning summaries become thinking, while encrypted
-reasoning remains raw-only.
-
-Codex also maps collapsed system/developer context, paired function/custom
-tool calls/results, embedded/generated images, and readable local
-PNG/JPEG/GIF/WebP attachments. Unreadable images use a labelled placeholder.
-Provider web search becomes labelled provenance without invented results.
-Tool-search definitions, runtime/event state, dynamic tools, and inter-agent
-communication remain raw-only and are not reactivated. Explicit bounded
-`num_turns` rollback removes those task turns from active history. A retained
-interrupted call with no source output receives a labelled error result;
-unmatched calls without interruption evidence, ambiguous rollback, incomplete
-fork lineage, or unverified response items refuse.
-
-Grok Build treats current `chat_history.jsonl` as authoritative and maps text,
-visible reasoning, paired local tools, and user images. Tool-result images use
-labelled retained-source placeholders. Known synthetic user-role records never
-become human bubbles: reminders/project instructions become collapsed context,
-`compaction_meta` remains compacted context, and `task_completed` stays
-lifecycle/raw-only. Unknown synthetic reasons refuse. Provider-side searches
-become labelled provenance without fabricated results. The complete source
-directory is copied to `records/source-snapshot` and content-fingerprinted.
-Multiple prior compaction request snapshots carry no deterministic link to one
-current visible chain, so the adapter retains them but does not invent order.
-
-Claude Code scans direct project-root JSONL and treats `sessions-index.json` as
-optional metadata: paths are verified, stale indexes cannot hide direct root
-files, and empty control-only fragments/subagent files are not listed.
-`last-prompt.leafUuid` plus `parentUuid` selects current lineage segments across
-plaintext compaction; abandoned branches remain raw. Consecutive assistant
-fragments sharing one Claude `message.id` are reassembled into one turn with
-thinking, text, tools, images, and source-error meaning. Model-visible
-attachments and metadata become collapsed context, never human messages.
-Plaintext compact summaries become native Pi compaction. Unknown row, system,
-attachment, or active block semantics refuse. Subagent JSONL is copied to
-indexed source context and participates in repeat detection.
-
-`records/session-import-source.json` records harness, store, source IDs,
-fingerprint/version, transformations, snapshot/context pointers, ordinal, and
-import time. Discovery classifies `new`, `unchanged`, or `changed`. Unchanged
-opens the existing import; changed source registers a separately aliased copy
-and never overwrites or merges an Alt continuation. Alias format is
-`{source name} · {harness} import {date} #{ordinal}`.
-
-Imported cwd uses the normal `workspace.primaryDir`. Understand and Work use
-the same workspace/write rules as native sessions; a missing cwd requires an
-existing override. Imported sessions also use normal default role and single
-soul resolution. The shared React dialog offers OpenCode, Codex, Grok Build,
-and Claude Code, searches by title/folder/conversation, keeps recent activity
-first, requires dry preflight, and folds technical details.
-
-On reopen, Pi's loaded final entry remains active until persisted Alt run state
-selects another leaf; transcript requests rebuild from persisted Pi history.
-The first Alt run in an imported session invokes `imported-session-context` so
-the agent knows what was preserved or lost. When child evidence is relevant,
-that skill checks the source-context index, searches one artifact, and reads a
-bounded matching region. Later runs are ordinary prompts.
+The implemented adapter pipeline, fidelity rules, per-harness mappings,
+provenance records, repeat behavior, and current refusal boundaries are
+documented in [`session-import-adapters.md`](session-import-adapters.md).
+Upstream harness storage research is separate under
+`development/compound/research-agent-session-history/`.
 
 ## 3. Prompt Assembly And Injection
 
