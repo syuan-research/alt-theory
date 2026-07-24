@@ -24,6 +24,10 @@ export async function getAutoTitleSettings(): Promise<AutoTitleSettings> {
   return fetchJson<AutoTitleSettings>("/api/settings/auto-title");
 }
 
+export async function getDataFolder(): Promise<{ dataDir: string }> {
+  return fetchJson<{ dataDir: string }>("/api/local/data-folder");
+}
+
 export async function saveAutoTitleSettings(
   input: AutoTitleSettings
 ): Promise<{ ok: true; autoTitle: AutoTitleSettings }> {

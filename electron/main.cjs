@@ -18,7 +18,7 @@
  * no env override is present. Setting env here would override the GUI's choice.
  */
 
-const { app, BrowserWindow, shell } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, shell } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
@@ -141,6 +141,7 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      preload: path.join(__dirname, "preload.cjs"),
     },
   });
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -157,6 +158,24 @@ function createWindow() {
     mainWindow = null;
   });
 }
+
+// Native bridge (renderer → main) for file/folder pickers and reveal. The
+// renderer only ever receives paths the user explicitly picked.
+ipcMain.handle("alt:pickDirectory", async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ["openDirectory", "createDirectory"],
+  });
+  return result.canceled ? null : result.filePaths[0] ?? null;
+});
+ipcMain.handle("alt:pickFiles", async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ["openFile", "multiSelections"],
+  });
+  return result.canceled ? [] : result.filePaths;
+});
+ipcMain.handle("alt:revealPath", (_event, target) => {
+  if (typeof target === "string" && target) shell.showItemInFolder(target);
+});
 
 app.whenReady().then(async () => {
   createWindow();

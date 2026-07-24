@@ -4,12 +4,14 @@ import type { ProviderView } from "@/api/types";
 import {
   getAutoTitleSettings,
   getConfigStatus,
+  getDataFolder,
   listConfigProviders,
   saveAutoTitleSettings,
   setActiveModel,
   type AutoTitleSettings,
 } from "@/api/config";
 import type { ConfigStatus } from "@/api/types";
+import { hasNativeBridge, revealPath } from "@/lib/native";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
 
@@ -437,10 +439,40 @@ function ParticipantPanel({
 }
 
 function AboutPanel() {
+  const [dataDir, setDataDir] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    getDataFolder()
+      .then((r) => alive && setDataDir(r.dataDir))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
   return (
     <div className="set-panel">
       <h2>About</h2>
       <p className="sub">Alt Theory, v1 alpha.</p>
+      {dataDir ? (
+        <div className="set-card">
+          <div className="row2">
+            <div>
+              <h4>Your data folder</h4>
+              <p>Conversations and settings are stored on this machine at {dataDir}.</p>
+            </div>
+            <button
+              className="add-btn"
+              onClick={() => {
+                if (hasNativeBridge()) void revealPath(dataDir);
+                else void navigator.clipboard?.writeText(dataDir);
+              }}
+            >
+              <i className={`ph ${hasNativeBridge() ? "ph-folder-open" : "ph-copy"}`} />
+              {hasNativeBridge() ? "Show in file manager" : "Copy path"}
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

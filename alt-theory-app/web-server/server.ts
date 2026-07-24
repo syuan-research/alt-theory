@@ -341,6 +341,12 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     writeAppSettings(dataDir, next);
     res.json({ ok: true, settings: next });
   });
+  // Data folder location, for "reveal in file manager" (local mode; v1.2.1 #5).
+  app.get("/api/local/data-folder", (_req, res) => {
+    if (!requireLocalConfigMode(res)) return;
+    res.json({ dataDir });
+  });
+
   // --- Auto-naming of conversations (v1.2.1) ---
   app.get("/api/settings/auto-title", (_req, res) => {
     if (!requireLocalConfigMode(res)) return;

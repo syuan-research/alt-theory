@@ -5,6 +5,7 @@ import { useShell } from "@/context/ShellContext";
 import { renderMarkdown } from "@/lib/markdown";
 import { toolLabel } from "@/lib/tools";
 import { cn } from "@/lib/cn";
+import { pickDirectory } from "@/lib/native";
 
 export function MessageList() {
   const app = useApp();
@@ -451,14 +452,13 @@ function StaleWorkspaceNotice({ warning }: { warning: string }) {
 
   const choose = () => {
     if (!app.sessionId) return;
-    // ponytail: window.prompt matches the existing add-folder affordance; the
-    // native directory picker is the upgrade path when bundle work resumes.
-    const path = window.prompt(
+    void pickDirectory(
       "Full path of the working folder for this conversation:"
-    );
-    if (!path?.trim()) return;
-    void app.repointSession(app.sessionId, path.trim()).catch((error) => {
-      window.alert(error instanceof Error ? error.message : String(error));
+    ).then((path) => {
+      if (!path || !app.sessionId) return;
+      void app.repointSession(app.sessionId, path).catch((error) => {
+        window.alert(error instanceof Error ? error.message : String(error));
+      });
     });
   };
 

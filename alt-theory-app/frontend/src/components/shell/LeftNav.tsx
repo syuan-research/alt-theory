@@ -9,6 +9,7 @@ import {
 } from "@/lib/sessionList";
 import { Workbench } from "@/components/shell/Workbench";
 import { SessionImportDialog } from "@/components/shell/SessionImportDialog";
+import { hasNativeBridge, pickDirectory, revealPath } from "@/lib/native";
 
 export function LeftNav() {
   const app = useApp();
@@ -145,12 +146,10 @@ function UserNav({ onImport }: { onImport: () => void }) {
   };
 
   const addFolder = async () => {
-    // ponytail: window.prompt for the path; upgrade path is the Electron
-    // native directory picker when bundle work resumes.
-    const path = window.prompt("Full path of the working folder to add:");
-    if (!path?.trim()) return;
+    const path = await pickDirectory("Full path of the working folder to add:");
+    if (!path) return;
     try {
-      await app.addKnownWorkspace(path.trim());
+      await app.addKnownWorkspace(path);
     } catch (error) {
       window.alert(error instanceof Error ? error.message : String(error));
     }
@@ -357,6 +356,15 @@ function UserNav({ onImport }: { onImport: () => void }) {
                     <span className="group-name">{group.label}</span>
                     <i className="ph ph-caret-down tw" />
                   </button>
+                  {local && group.dir && hasNativeBridge() ? (
+                    <button
+                      className="group-add"
+                      title={`Show folder in file manager`}
+                      onClick={() => void revealPath(group.dir)}
+                    >
+                      <i className="ph ph-folder-open" />
+                    </button>
+                  ) : null}
                   {local && group.dir ? (
                     <button
                       className="group-add"

@@ -4,6 +4,7 @@ import { useShell } from "@/context/ShellContext";
 import { ApprovalDock } from "@/components/conversation/ApprovalDock";
 import { ModelChip } from "@/components/conversation/ModelChip";
 import { DEFAULT_KB_DOMAIN, KB_OFF_VALUE } from "@/lib/constants";
+import { pickFiles } from "@/lib/native";
 
 type MenuKey = "plus" | "mode" | "model" | "role" | "kb" | null;
 
@@ -400,13 +401,27 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                 <span className="soon">soon</span>
               </div>
               <div className="sep" />
+              {canAttach ? (
+                <div
+                  className="mi"
+                  onClick={() => {
+                    setMenu(null);
+                    void pickFiles("Full path of the file to attach:").then(
+                      (paths) => paths.forEach((p) => app.stageWorkspacePath(p))
+                    );
+                  }}
+                >
+                  <i className="ph ph-paperclip" />
+                  Attach file
+                </div>
+              ) : null}
               {pureMode ? (
                 <div
                   className="mi"
                   onClick={() => (shell.openRail("workspace"), setMenu(null))}
                 >
-                  <i className="ph ph-paperclip" />
-                  Import reference
+                  <i className="ph ph-folder-open" />
+                  Browse working folder
                 </div>
               ) : null}
               <div
