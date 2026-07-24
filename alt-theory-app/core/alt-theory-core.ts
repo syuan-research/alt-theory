@@ -376,6 +376,14 @@ async function createAltTheorySessionWithManager(
       "When you synthesize across multiple workspace files, say which files you actually read. Never imply coverage you did not do; if you read only a subset, say so plainly.",
     ].join("\n")
   );
+  semanticSections.push(
+    [
+      "## Foundations",
+      "Two bundled skills are foundational — consult them at the relevant moment rather than improvising:",
+      "- before any live lookup or when citing anything not in the workspace: the search-policy skill;",
+      "- before creating files or folders in the workspace: the workspace-conventions skill.",
+    ].join("\n")
+  );
   const pureOnlySections: string[] = [];
   pureOnlySections.push(
     [
