@@ -106,9 +106,9 @@ Current local UI notes:
 Local model setup belongs here, not in the core session architecture, except
 where it affects runtime provider/model resolution.
 
-Provider/model setup is a Pi-native surface. As of v1.2.1 it is embedded in
-Settings → Models (always-visible provider picker + inline editor, plus an
-auth-connect sign-in preview); the standalone `/config` page remains for the
+Provider/model setup is a Pi-native surface, embedded in Settings → Models
+(always-visible provider picker + inline editor, plus a UI-only auth-connect
+card with no backend); the standalone `/config` page also serves it as the
 first-run screen. Both write the same files:
 
 - writes Pi-compatible `models.json`, `auth.json`, and `settings.json`;

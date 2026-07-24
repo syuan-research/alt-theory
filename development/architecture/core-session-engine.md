@@ -844,14 +844,13 @@ selection and a runtime-only API key. `ModelRegistry` loads custom model
 definitions independently of Pi's built-in model catalog. Runtime keys use
 `AuthStorage.setRuntimeApiKey()` and are not persisted by Alt Theory.
 
-Local mode exposes Pi-native provider/model setup. As of v1.2.1 the full picker +
-inline editor is embedded IN Settings → Models (the `ModelConfigPage embedded`
-prop strips the standalone page chrome); the `/config` route still serves the
-first-run screen. Settings → Models also carries a preview of an account
-sign-in ("auth-connect") flow — a reserved placeholder for a later version that
-wires Pi's native OAuth for providers like grok/codex instead of pasted keys.
-The GUI writes `models.json`, `auth.json`, and `settings.json` under
-`PI_CODING_AGENT_DIR`;
+Local mode exposes Pi-native provider/model setup. The full picker + inline
+editor is embedded in Settings → Models (the `ModelConfigPage embedded` prop
+strips the standalone page chrome); the `/config` route also serves it as the
+first-run screen. Settings → Models also renders an "auth-connect" card that
+walks through an account-sign-in flow in the UI only — it performs no
+authentication and has no backend. The GUI writes `models.json`, `auth.json`,
+and `settings.json` under `PI_CODING_AGENT_DIR`;
 session creation resolves the current active provider/model at runtime and
 passes that `models.json` path into Pi. Local-mode session materialization
 requires a usable active provider/model; if the active config is missing,
@@ -1005,8 +1004,8 @@ Limits (current):
   attachments (§3): WS `prompt.attachments[]` → `runPrompt` → `imageAttachmentsFor`
   → Pi `session.prompt({images})`, modality-gated on `model.input`, with the
   `model-image-support` skill recording capability. Provider/model config embedded
-  in Settings → Models (always-visible picker + inline editor) with an
-  auth-connect preview placeholder (§7). Frontend-only in this pass: dark theme
+  in Settings → Models (always-visible picker + inline editor) with a
+  UI-only auth-connect card that has no backend (§7). Frontend-only in this pass: dark theme
   (`data-theme` over `--color-*` tokens), Electron native bridge for file/folder
   pickers + reveal (see `local-windows-bundle.md`).
 - 2026-07-23: Aligned Codex/OpenCode discovery with logical root conversations,
