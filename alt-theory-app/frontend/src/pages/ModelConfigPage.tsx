@@ -220,7 +220,7 @@ const MANUAL_MODEL_PROVIDER_NAMES = new Set(
 
 function manualModelListHint(providerName: string): string | null {
   if (!MANUAL_MODEL_PROVIDER_NAMES.has(providerName)) return null;
-  return "This preset already includes the expected model ids; the provider may not expose a /models endpoint.";
+  return "This preset already includes the expected model ids; the provider may not expose a /models endpoint. Use Test connection to check your key works.";
 }
 
 function parseOptionValue(raw: string): unknown {
@@ -334,6 +334,7 @@ export function ModelConfigPage() {
   const [keyHint, setKeyHint] = useState(
     "Some providers require the key before fetching models. Stored keys are local plaintext in Pi's auth.json; env mode stores only the variable name."
   );
+  const [keyUrl, setKeyUrl] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{
     ok: boolean;
@@ -344,7 +345,9 @@ export function ModelConfigPage() {
 
   const showToast = useCallback((text: string, isError = false) => {
     setToast({ text, error: isError });
-    window.setTimeout(() => setToast(null), 3500);
+    // Success is transient; errors (validation) persist until dismissed or
+    // superseded, so they aren't missed before the user reads them (#3).
+    if (!isError) window.setTimeout(() => setToast(null), 3500);
   }, []);
 
   const refresh = useCallback(async () => {
@@ -368,6 +371,25 @@ export function ModelConfigPage() {
     void refresh();
   }, [refresh]);
 
+  // Unsaved-changes guard (#7): warn on tab close/reload while the provider
+  // editor is open with content the user hasn't saved.
+  const editorDirty =
+    editorOpen && (!!name.trim() || !!apiKey || !!baseUrl.trim());
+  useEffect(() => {
+    if (!editorDirty) return;
+    const handler = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [editorDirty]);
+
+  const closeEditor = () => {
+    if (editorDirty && !window.confirm("Discard unsaved provider changes?")) return;
+    setEditorOpen(false);
+  };
+
   const openEditor = (existingName?: string) => {
     setEditingName(existingName ?? null);
     setEditorOpen(true);
@@ -378,6 +400,7 @@ export function ModelConfigPage() {
     setKeyStorage("literal");
     setModelRows([emptyModelRow()]);
     setOptionRows([]);
+    setKeyUrl(null);
     setKeyHint(
       "Some providers require the key before fetching models. Stored keys are local plaintext in Pi's auth.json; env mode stores only the variable name."
     );
@@ -430,6 +453,7 @@ export function ModelConfigPage() {
       preset.keyHint ||
         "Paste the provider API key. Stored keys are local plaintext in Pi's auth.json; env mode stores only the variable name."
     );
+    setKeyUrl("keyUrl" in preset ? (preset.keyUrl as string) : null);
   };
 
   const saveProvider = async () => {
@@ -809,6 +833,16 @@ export function ModelConfigPage() {
                   onChange={(event) => setApiKey(event.target.value)}
                   autoComplete="off"
                 />
+                {keyUrl ? (
+                  <a
+                    className="mt-2 inline-flex items-center gap-1 text-[0.75rem] text-text-secondary underline underline-offset-2 hover:text-ink"
+                    href={keyUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Where do I get a key?
+                  </a>
+                ) : null}
                 <div className="mt-2 flex gap-4 text-[0.75rem] text-text-secondary">
                   <label className="flex items-center gap-1">
                     <input
@@ -972,9 +1006,13 @@ export function ModelConfigPage() {
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <p className="text-[0.8125rem] font-semibold text-ink">
+              <details className="config-advanced space-y-2" open={optionRows.length > 0}>
+                <summary className="cursor-pointer text-[0.8125rem] font-semibold text-ink">
                   Advanced options
+                </summary>
+                <p className="pt-1 text-[0.75rem] text-text-secondary">
+                  Extra provider settings passed through to Pi. Most setups don&apos;t
+                  need these.
                 </p>
                 {optionRows.map((row, index) => (
                   <div key={index} className="grid grid-cols-[2fr_1fr_auto] gap-2">
@@ -1021,10 +1059,10 @@ export function ModelConfigPage() {
                 >
                   + Add option
                 </Button>
-              </div>
+              </details>
 
               <div className="flex justify-end gap-2 pt-2">
-                <Button variant="secondary" onClick={() => setEditorOpen(false)}>
+                <Button variant="secondary" onClick={closeEditor}>
                   Cancel
                 </Button>
                 <Button variant="primary" onClick={() => void saveProvider()}>
@@ -1039,11 +1077,20 @@ export function ModelConfigPage() {
       {toast ? (
         <div
           className={cn(
-            "fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-md px-4 py-2 text-[0.8125rem] text-surface shadow-lg",
+            "fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-md px-4 py-2 text-[0.8125rem] text-surface shadow-lg",
             toast.error ? "bg-danger" : "bg-ink"
           )}
         >
-          {toast.text}
+          <span>{toast.text}</span>
+          {toast.error ? (
+            <button
+              className="text-surface/80 hover:text-surface"
+              aria-label="Dismiss"
+              onClick={() => setToast(null)}
+            >
+              ✕
+            </button>
+          ) : null}
         </div>
       ) : null}
     </div>
