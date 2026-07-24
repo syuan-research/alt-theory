@@ -97,6 +97,22 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
 
   const interactive = app.sessionReady && app.wsConnected;
   const hasText = draft.trim().length > 0;
+  const [dragActive, setDragActive] = useState(false);
+
+  // Drag a file onto the composer to attach it (item D, text/doc): the agent
+  // reads it from disk, so we stage the path — same mechanism as "Import
+  // reference". Needs the absolute path, which the Electron bundle exposes on
+  // dropped File objects; in a plain browser `path` is empty and we no-op.
+  const canAttach = app.appMode === "local" && interactive;
+  const handleDropFiles = (event: React.DragEvent) => {
+    event.preventDefault();
+    setDragActive(false);
+    if (!canAttach) return;
+    const paths = Array.from(event.dataTransfer.files)
+      .map((file) => (file as File & { path?: string }).path)
+      .filter((p): p is string => !!p);
+    for (const path of paths) app.stageWorkspacePath(path);
+  };
   const canSend =
     interactive && !app.isRunning && (hasText || app.stagedWorkspacePaths.length > 0);
   const showVisibility =
@@ -131,7 +147,21 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
   const toggle = (key: MenuKey) => setMenu((prev) => (prev === key ? null : key));
 
   return (
-    <div className="composer-wrap">
+    <div
+      className={`composer-wrap${dragActive ? " drag-active" : ""}`}
+      onDragOver={
+        canAttach
+          ? (e) => {
+              if (e.dataTransfer.types.includes("Files")) {
+                e.preventDefault();
+                setDragActive(true);
+              }
+            }
+          : undefined
+      }
+      onDragLeave={canAttach ? () => setDragActive(false) : undefined}
+      onDrop={canAttach ? handleDropFiles : undefined}
+    >
       <div className="composer-col">
         {app.approvals.length > 0 ? (
           <ApprovalDock

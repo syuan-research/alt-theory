@@ -343,6 +343,7 @@
 
   /* composer */
   .composer-wrap { padding: 0 24px 18px; }
+  .composer-wrap.drag-active .composer-col { outline: 2px dashed var(--color-text-muted); outline-offset: 3px; border-radius: var(--r-md); }
   .composer-col { max-width: 660px; margin: 0 auto; }
   .ctx-line { display: flex; align-items: center; gap: 16px; min-width: 0; padding: 0 6px 6px; font-size: 0.8rem; color: var(--text-2); }
   .ctx-picker { display: inline-block; position: relative; min-width: 0; max-width: 45%; }
