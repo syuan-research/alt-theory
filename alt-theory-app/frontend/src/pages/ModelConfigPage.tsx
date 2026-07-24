@@ -314,7 +314,7 @@ interface OptionRow {
   value: string;
 }
 
-export function ModelConfigPage() {
+export function ModelConfigPage({ embedded = false }: { embedded?: boolean } = {}) {
   const [status, setStatus] = useState<ConfigStatus | null>(null);
   const [providers, setProviders] = useState<ProviderView[]>([]);
   const [loading, setLoading] = useState(true);
@@ -461,6 +461,14 @@ export function ModelConfigPage() {
         "Paste the provider API key. Stored keys are local plaintext in Pi's auth.json; env mode stores only the variable name."
     );
     setKeyUrl("keyUrl" in preset ? (preset.keyUrl as string) : null);
+  };
+
+  // Pick a preset card → prefill a NEW provider and open the editor inline.
+  const pickPreset = (preset: ProviderPreset) => {
+    setEditingName(null);
+    setApiKey("");
+    applyPreset(preset);
+    setEditorOpen(true);
   };
 
   const saveProvider = async () => {
@@ -644,8 +652,9 @@ export function ModelConfigPage() {
   };
 
   return (
-    <div className="h-screen overflow-y-auto bg-canvas px-6 py-8 pb-20">
-      <div className="mx-auto max-w-[880px]">
+    <div className={embedded ? "" : "h-screen overflow-y-auto bg-canvas px-6 py-8 pb-20"}>
+      <div className={embedded ? "" : "mx-auto max-w-[880px]"}>
+        {!embedded ? (
         <div className="mb-6 flex items-center justify-between">
           <button
             className="text-[0.8125rem] text-text-secondary hover:text-ink"
@@ -667,7 +676,10 @@ export function ModelConfigPage() {
             </Link>
           ) : null}
         </div>
+        ) : null}
 
+        {!embedded ? (
+        <>
         <PageTitle>
           {firstRun ? "Welcome — connect Alt to an AI model" : "Model & API Key Setup"}
         </PageTitle>
@@ -708,6 +720,8 @@ export function ModelConfigPage() {
             </p>
           </div>
         ) : null}
+        </>
+        ) : null}
 
         <div className="mt-6 rounded-lg border border-hairline bg-card px-4 py-3">
           {loading ? (
@@ -747,19 +761,16 @@ export function ModelConfigPage() {
           ) : null}
         </div>
 
-        <div className="mt-6 flex items-center justify-between gap-3">
-          <h2 className="text-[0.9375rem] font-semibold text-ink">Providers</h2>
-          <Button variant="primary" onClick={() => openEditor()}>
-            + Add provider
-          </Button>
-        </div>
+        {!embedded ? (
+          <h2 className="mt-6 text-[0.9375rem] font-semibold text-ink">
+            Your providers
+          </h2>
+        ) : null}
 
         <div className="mt-3 space-y-3">
           {providers.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-hairline px-4 py-10 text-center">
-              <HintText>
-                No providers configured. Click &quot;Add provider&quot; to begin.
-              </HintText>
+            <div className="rounded-lg border border-dashed border-hairline px-4 py-8 text-center">
+              <HintText>No providers yet — pick one below to get started.</HintText>
             </div>
           ) : (
             providers.map((provider) => (
@@ -804,27 +815,42 @@ export function ModelConfigPage() {
           )}
         </div>
 
+        {/* Always-visible provider picker (owner 2026-07-24): pick a card and the
+            editor expands inline below — no "Add provider" gate, no modal. */}
+        <div className="mt-6 space-y-3">
+          <PresetGroup
+            title="Recommended providers"
+            presets={PROVIDER_PRESETS.filter((preset) => preset.recommended)}
+            onPick={pickPreset}
+          />
+          <PresetGroup
+            title="Other providers"
+            presets={PROVIDER_PRESETS.filter((preset) => !preset.recommended)}
+            onPick={pickPreset}
+            compact
+          />
+          <button
+            type="button"
+            className="flex w-full items-center gap-3 rounded-md border border-dashed border-hairline bg-surface px-3 py-2.5 text-left hover:bg-hover"
+            onClick={() => openEditor()}
+          >
+            <i className="ph ph-sliders-horizontal text-lg text-ink-soft" />
+            <span>
+              <span className="block text-[0.8125rem] font-semibold text-ink">
+                Customize
+              </span>
+              <span className="block text-[0.72rem] text-text-secondary">
+                Set up any provider by hand
+              </span>
+            </span>
+          </button>
+        </div>
+
         {editorOpen ? (
           <div className="mt-4 rounded-lg border border-hairline bg-card p-4">
             <h3 className="text-[0.9375rem] font-semibold text-ink">
-              {editingName ? "Edit provider" : "Add provider"}
+              {editingName ? `Edit ${editingName}` : "New provider"}
             </h3>
-
-            {!editingName ? (
-              <div className="mt-3 space-y-3">
-                <PresetGroup
-                  title="Recommended providers"
-                  presets={PROVIDER_PRESETS.filter((preset) => preset.recommended)}
-                  onPick={applyPreset}
-                />
-                <PresetGroup
-                  title="Other / custom (advanced)"
-                  presets={PROVIDER_PRESETS.filter((preset) => !preset.recommended)}
-                  onPick={applyPreset}
-                  compact
-                />
-              </div>
-            ) : null}
 
             <div className="mt-4 space-y-4">
               <FieldFrame
