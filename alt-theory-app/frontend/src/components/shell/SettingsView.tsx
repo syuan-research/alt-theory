@@ -130,9 +130,12 @@ function ModelsPanel() {
     <div className="set-panel">
       <h2>Models</h2>
       <p className="sub">
-        Providers and models Alt can use. Pick the default here, or manage
-        providers and keys in the full configuration.
+        Connect a provider and choose the model Alt uses — all in one place.
       </p>
+
+      <AuthConnectCard />
+
+      <h3 className="set-subhead">Your models</h3>
       <div className="set-card">
         {error ? (
           <p>Model configuration is managed by this deployment.</p>
@@ -185,11 +188,111 @@ function ModelsPanel() {
         )}
         {local ? (
           <button className="add-btn" onClick={() => navigate("/config")}>
-            <i className="ph ph-gear" />
-            Manage providers &amp; keys
+            <i className="ph ph-plus" />
+            Add or edit a provider with an API key
           </button>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+// Auth-connect PROTOTYPE (v1.2.1 task 8): reserves the place for signing in to a
+// provider instead of pasting an API key, and previews the normal web-auth flow
+// (get a link → authorize in the browser → return). The real sign-in wires to
+// Pi's native auth for grok/codex in a later version (recorded — dependency).
+function AuthConnectCard() {
+  const PROVIDERS = [
+    { id: "anthropic", name: "Claude", sub: "Anthropic", icon: "ph-sparkle" },
+    { id: "xai", name: "Grok", sub: "xAI", icon: "ph-lightning" },
+    { id: "openai", name: "Codex", sub: "OpenAI", icon: "ph-code" },
+  ];
+  const [flow, setFlow] = useState<{
+    provider: (typeof PROVIDERS)[number];
+    step: "link" | "waiting" | "done";
+  } | null>(null);
+
+  return (
+    <div className="set-card auth-card">
+      <div className="row2">
+        <div>
+          <h4>
+            Sign in to a provider <span className="preview-tag">preview</span>
+          </h4>
+          <p>
+            Connect an account instead of pasting an API key. Below is a preview
+            of the sign-in flow; the live version arrives in a later update.
+          </p>
+        </div>
+      </div>
+
+      {!flow ? (
+        <div className="auth-providers">
+          {PROVIDERS.map((p) => (
+            <button
+              key={p.id}
+              className="auth-provider"
+              onClick={() => setFlow({ provider: p, step: "link" })}
+            >
+              <i className={`ph ${p.icon}`} />
+              <span className="apn">{p.name}</span>
+              <span className="aps">{p.sub}</span>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="auth-flow">
+          <div className="auth-flow-head">
+            <span>
+              Sign in to <strong>{flow.provider.name}</strong>
+            </span>
+            <button className="link-btn" onClick={() => setFlow(null)}>
+              Cancel
+            </button>
+          </div>
+          {flow.step === "link" ? (
+            <>
+              <p className="auth-step">
+                1. Open this link in your browser and approve access:
+              </p>
+              <div className="auth-linkrow">
+                <code>https://auth.{flow.provider.id}.example/… (preview)</code>
+                <button
+                  className="add-btn"
+                  onClick={() => setFlow({ ...flow, step: "waiting" })}
+                >
+                  <i className="ph ph-arrow-square-out" />
+                  Open in browser
+                </button>
+              </div>
+            </>
+          ) : flow.step === "waiting" ? (
+            <>
+              <p className="auth-step">
+                2. Finish signing in in your browser, then come back here.
+              </p>
+              <button
+                className="add-btn"
+                onClick={() => setFlow({ ...flow, step: "done" })}
+              >
+                <i className="ph ph-check" />
+                I&apos;ve authorized
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="auth-step auth-done">
+                <i className="ph ph-check-circle" /> Connected to{" "}
+                {flow.provider.name} (preview)
+              </p>
+              <p className="fine">
+                In the real flow this stores the sign-in via Pi&apos;s native auth
+                — no API key to paste.
+              </p>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
