@@ -335,7 +335,7 @@ function describeTransformations(messages: StoredRow[], parts: StoredRow[]): str
     result.push("Current history is selected with OpenCode compaction semantics.");
   }
   if (types.has("reasoning")) {
-    result.push("Reasoning text becomes portable assistant text; provider metadata stays raw-only.");
+    result.push("Reasoning text becomes Pi assistant thinking; provider metadata stays raw-only.");
   }
   if (["step-start", "step-finish", "snapshot", "patch", "agent", "retry"].some((x) => types.has(x))) {
     result.push("OpenCode structural records excluded from its model messages stay raw-only.");
@@ -379,10 +379,10 @@ function describeTransformations(messages: StoredRow[], parts: StoredRow[]): str
     result.push("Non-image attached files are not replayed; they stay as labelled placeholder text with the originals in raw entries.");
   }
   if (messages.some((message) => message.data.system || message.data.tools)) {
-    result.push("Historical OpenCode message configuration stays raw-only; the selected Alt Theory mode owns active instructions and tools.");
+    result.push("Distinct historical OpenCode system snapshots stay labelled and collapsed; source tool configuration stays raw-only and the selected Alt Theory mode owns active instructions and tools.");
   }
   if (messages.some((message) => message.data.role === "assistant" && message.data.error)) {
-    result.push("Assistant error metadata stays raw-only; OpenCode's model-visible assistant parts are replayed without provider metadata.");
+    result.push("Assistant source errors remain visible as labelled attempt endings while full provider metadata stays raw-only.");
   }
   return result;
 }
@@ -407,6 +407,7 @@ function projectToPi(session: Row, messages: StoredRow[], parts: StoredRow[]): s
       timestamp: String(entry.timestamp ?? new Date().toISOString()),
     });
     parentId = id;
+    return id;
   };
   const partsByMessage = new Map<string, StoredRow[]>();
   for (const part of parts) {
@@ -425,12 +426,49 @@ function projectToPi(session: Row, messages: StoredRow[], parts: StoredRow[]): s
     });
   }
 
-  for (const message of currentMessages(messages, partsByMessage)) {
+  const activeMessages = currentMessages(messages, partsByMessage);
+  const compactionMessages = messages.filter(
+    (message) =>
+      message.data.role === "user" &&
+      (partsByMessage.get(message.id) ?? []).some(
+        (part) => part.data.type === "compaction"
+      )
+  );
+  const compactionIds = new Set(compactionMessages.map((message) => message.id));
+  const summaryIds = new Set(
+    messages
+      .filter(
+        (message) =>
+          message.data.role === "assistant" &&
+          message.data.summary &&
+          compactionIds.has(String(message.data.parentID))
+      )
+      .map((message) => message.id)
+  );
+  const entryByMessageId = new Map<string, string>();
+  let previousSystem = "";
+  for (const message of messages) {
     const own = partsByMessage.get(message.id) ?? [];
+    if (compactionIds.has(message.id) || summaryIds.has(message.id)) continue;
+    if (
+      typeof message.data.system === "string" &&
+      message.data.system &&
+      message.data.system !== previousSystem
+    ) {
+      previousSystem = message.data.system;
+      append({
+        type: "custom_message",
+        customType: "source-opencode-system",
+        content: `[Imported OpenCode system context; source role=system]\n${message.data.system}`,
+        display: false,
+        details: { sourceRole: "system" },
+        timestamp: new Date(Number(message.time_created)).toISOString(),
+      });
+    }
     if (message.data.role === "user") {
       const content = userContent(own);
       if (content.length) {
-        append({
+        const id = append({
           type: "message",
           message: {
             role: "user",
@@ -438,12 +476,18 @@ function projectToPi(session: Row, messages: StoredRow[], parts: StoredRow[]): s
             timestamp: Number(message.time_created),
           },
         });
+        entryByMessageId.set(message.id, id);
       }
       continue;
     }
     const content = own.flatMap((part) => {
-      if (part.data.type === "text" || part.data.type === "reasoning") {
+      if (part.data.type === "text") {
         return part.data.text ? [{ type: "text", text: String(part.data.text) }] : [];
+      }
+      if (part.data.type === "reasoning") {
+        return part.data.text
+          ? [{ type: "thinking", thinking: String(part.data.text) }]
+          : [];
       }
       if (part.data.type === "tool") {
         return [
@@ -457,8 +501,15 @@ function projectToPi(session: Row, messages: StoredRow[], parts: StoredRow[]): s
       }
       return [];
     });
+    const error = assistantErrorText(message.data.error);
+    if (error) {
+      content.push({
+        type: "text",
+        text: `[OpenCode assistant attempt ended with a source error: ${error}]`,
+      });
+    }
     if (!content.length) continue;
-    append({
+    const id = append({
       type: "message",
       message: {
         role: "assistant",
@@ -471,6 +522,7 @@ function projectToPi(session: Row, messages: StoredRow[], parts: StoredRow[]): s
         timestamp: Number(message.time_created),
       },
     });
+    entryByMessageId.set(message.id, id);
     for (const part of own.filter((candidate) => candidate.data.type === "tool")) {
       const state = part.data.state;
       const completed = state.status === "completed";
@@ -504,7 +556,59 @@ function projectToPi(session: Row, messages: StoredRow[], parts: StoredRow[]): s
       });
     }
   }
+  const lastCompaction = compactionMessages[compactionMessages.length - 1];
+  if (lastCompaction) {
+    const summary = messages.find(
+      (message) =>
+        summaryIds.has(message.id) &&
+        String(message.data.parentID) === lastCompaction.id
+    );
+    const summaryText = (summary ? partsByMessage.get(summary.id) ?? [] : [])
+      .filter(
+        (part) =>
+          part.data.type === "text" || part.data.type === "reasoning"
+      )
+      .map((part) => String(part.data.text ?? ""))
+      .filter(Boolean)
+      .join("\n");
+    const firstActive = activeMessages.find(
+      (message) => entryByMessageId.has(message.id)
+    );
+    const compactionIndex = messages.indexOf(lastCompaction);
+    const lastBefore = messages
+      .slice(0, compactionIndex)
+      .reverse()
+      .find((message) => entryByMessageId.has(message.id));
+    const firstKeptEntryId =
+      (firstActive && entryByMessageId.get(firstActive.id)) ??
+      (lastBefore && entryByMessageId.get(lastBefore.id));
+    if (firstKeptEntryId) {
+      append({
+        type: "compaction",
+        summary:
+          summaryText ||
+          "OpenCode compacted the earlier conversation; its source summary was empty.",
+        firstKeptEntryId,
+        tokensBefore: 0,
+        details: {
+          displayAfterEntryId:
+            (lastBefore && entryByMessageId.get(lastBefore.id)) ?? null,
+          markerText:
+            "OpenCode compressed the conversation here. Its plaintext summary is used to continue while earlier turns remain visible.",
+          sourceHarness: "opencode",
+        },
+      });
+    }
+  }
   return `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`;
+}
+
+function assistantErrorText(error: unknown): string {
+  if (!error || typeof error !== "object") return "";
+  const value = error as Row;
+  const data = value.data && typeof value.data === "object" ? value.data as Row : {};
+  const message = data.message ?? value.message ?? value.name;
+  return typeof message === "string" ? message.slice(0, 500) : "unknown error";
 }
 
 function currentMessages(

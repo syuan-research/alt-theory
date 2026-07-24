@@ -172,6 +172,21 @@ test("Grok preflight preserves current history and raw source, and refuses unmat
   };
   const history = [
     { type: "system", content: "GROK_SYSTEM_MARKER" },
+    {
+      type: "user",
+      synthetic_reason: "system_reminder",
+      content: [{ type: "text", text: "<system-reminder>GROK_REMINDER_MARKER</system-reminder>" }],
+    },
+    {
+      type: "user",
+      synthetic_reason: "task_completed",
+      content: [{ type: "text", text: "GROK_TASK_COMPLETED_MARKER" }],
+    },
+    {
+      type: "user",
+      synthetic_reason: "compaction_meta",
+      content: [{ type: "text", text: "GROK_COMPACTION_CONTEXT_MARKER" }],
+    },
     { type: "user", content: [{ type: "text", text: "Continue from the recorded tool fact." }], prompt_index: 0 },
     {
       type: "reasoning",
@@ -210,6 +225,34 @@ test("Grok preflight preserves current history and raw source, and refuses unmat
   const entries = preflight.piSessionJsonl.trim().split(/\r?\n/).map(JSON.parse);
   assert.equal(entries.filter((entry) => entry.customType === "source-grok-record").length, history.length);
   assert.ok(entries.some((entry) => entry.message?.content?.some((part: any) => part.type === "thinking")));
+  assert.ok(
+    entries.some(
+      (entry) =>
+        entry.customType === "source-grok-system_reminder" &&
+        entry.content.includes("GROK_REMINDER_MARKER")
+    )
+  );
+  assert.ok(
+    !entries.some(
+      (entry) =>
+        entry.message?.role === "user" &&
+        JSON.stringify(entry.message.content).includes("GROK_REMINDER_MARKER")
+    )
+  );
+  assert.ok(
+    entries.some(
+      (entry) =>
+        entry.customType === "source-grok-compaction_meta" &&
+        entry.content.includes("GROK_COMPACTION_CONTEXT_MARKER")
+    )
+  );
+  assert.ok(
+    !entries.some(
+      (entry) =>
+        entry.message?.role === "user" &&
+        JSON.stringify(entry.message.content).includes("GROK_TASK_COMPLETED_MARKER")
+    )
+  );
 
   const registered = registerGrokImport({
     dataDir,
@@ -458,11 +501,44 @@ test("OpenCode preflight registers complete supported history and refuses unsupp
     "source-model"
   );
   db.prepare("INSERT INTO message VALUES (?, ?, ?, ?, ?)").run(
+    "msg_old_user",
+    "ses_supported",
+    now - 4,
+    now - 4,
+    JSON.stringify({ role: "user", agent: "build" })
+  );
+  db.prepare("INSERT INTO message VALUES (?, ?, ?, ?, ?)").run(
+    "msg_old_assistant",
+    "ses_supported",
+    now - 3,
+    now - 3,
+    JSON.stringify({ role: "assistant", parentID: "msg_old_user", finish: "stop" })
+  );
+  db.prepare("INSERT INTO message VALUES (?, ?, ?, ?, ?)").run(
+    "msg_compaction",
+    "ses_supported",
+    now - 2,
+    now - 2,
+    JSON.stringify({ role: "user", agent: "build" })
+  );
+  db.prepare("INSERT INTO message VALUES (?, ?, ?, ?, ?)").run(
+    "msg_summary",
+    "ses_supported",
+    now - 1,
+    now - 1,
+    JSON.stringify({ role: "assistant", parentID: "msg_compaction", summary: true, finish: "stop" })
+  );
+  db.prepare("INSERT INTO message VALUES (?, ?, ?, ?, ?)").run(
     "msg_user",
     "ses_supported",
     now,
     now,
-    JSON.stringify({ role: "user", agent: "build", model: { providerID: "x", modelID: "y" } })
+    JSON.stringify({
+      role: "user",
+      agent: "build",
+      model: { providerID: "x", modelID: "y" },
+      system: "OPENCODE_SYSTEM_MARKER",
+    })
   );
   db.prepare("INSERT INTO message VALUES (?, ?, ?, ?, ?)").run(
     "msg_assistant",
@@ -479,6 +555,38 @@ test("OpenCode preflight registers complete supported history and refuses unsupp
     })
   );
   const insertPart = db.prepare("INSERT INTO part VALUES (?, ?, ?, ?, ?, ?)");
+  insertPart.run(
+    "prt_old_user",
+    "msg_old_user",
+    "ses_supported",
+    now - 4,
+    now - 4,
+    JSON.stringify({ type: "text", text: "OPENCODE_PRE_COMPACTION_USER" })
+  );
+  insertPart.run(
+    "prt_old_assistant",
+    "msg_old_assistant",
+    "ses_supported",
+    now - 3,
+    now - 3,
+    JSON.stringify({ type: "text", text: "OPENCODE_PRE_COMPACTION_ASSISTANT" })
+  );
+  insertPart.run(
+    "prt_compaction",
+    "msg_compaction",
+    "ses_supported",
+    now - 2,
+    now - 2,
+    JSON.stringify({ type: "compaction", tail_start_id: "msg_old_user" })
+  );
+  insertPart.run(
+    "prt_summary",
+    "msg_summary",
+    "ses_supported",
+    now - 1,
+    now - 1,
+    JSON.stringify({ type: "text", text: "OPENCODE_COMPACTION_SUMMARY" })
+  );
   insertPart.run(
     "prt_user",
     "msg_user",
@@ -526,12 +634,49 @@ test("OpenCode preflight registers complete supported history and refuses unsupp
   const preflight = preflightOpenCodeImport(source);
   assert.match(preflight.piSessionJsonl, /IMPORTED_HISTORY_MARKER/);
   assert.ok(preflight.transformations.some((item) => item.includes("Reasoning")));
-  assert.ok(preflight.transformations.some((item) => item.includes("Assistant error metadata")));
+  assert.ok(preflight.transformations.some((item) => item.includes("source errors")));
+  const projectedEntries = preflight.piSessionJsonl
+    .trim()
+    .split(/\r?\n/)
+    .map((line) => JSON.parse(line));
+  const importedAssistant = projectedEntries.find(
+    (entry) =>
+      entry.message?.role === "assistant" &&
+      entry.message.content?.some((part: any) => part.thinking === "Need the recorded file fact.")
+  );
+  assert.ok(importedAssistant);
+  assert.ok(
+    !importedAssistant.message.content.some(
+      (part: any) =>
+        part.type === "text" && part.text === "Need the recorded file fact."
+    )
+  );
+  const openCodeCompaction = projectedEntries.find((entry) => entry.type === "compaction");
+  assert.ok(openCodeCompaction);
+  assert.match(openCodeCompaction.summary, /OPENCODE_COMPACTION_SUMMARY/);
+  assert.ok(
+    !projectedEntries.some(
+      (entry) =>
+        entry.type === "message" &&
+        JSON.stringify(entry.message).includes("OPENCODE_COMPACTION_SUMMARY")
+    )
+  );
+  assert.ok(
+    projectedEntries.some(
+      (entry) =>
+        entry.customType === "source-opencode-system" &&
+        entry.content.includes("OPENCODE_SYSTEM_MARKER")
+    )
+  );
   const rawEntry = preflight.piSessionJsonl
     .trim()
     .split(/\r?\n/)
     .map((line) => JSON.parse(line))
-    .find((entry) => entry.customType === "source-opencode-record");
+    .find(
+      (entry) =>
+        entry.customType === "source-opencode-record" &&
+        entry.data?.message?.id === "msg_user"
+    );
   assert.equal(rawEntry?.data?.message?.id, "msg_user");
   assert.equal(rawEntry?.data?.parts?.[0]?.id, "prt_user");
   const registered = registerOpenCodeImport({
@@ -545,6 +690,24 @@ test("OpenCode preflight registers complete supported history and refuses unsupp
   assert.ok(detail);
   assert.equal(detail.manifest?.workspace.primaryDir, workspace);
   assert.ok(detail.transcript.some((item) => item.text.includes("IMPORTED_HISTORY_MARKER")));
+  const oldAssistantIndex = detail.transcript.findIndex((item) =>
+    item.text.includes("OPENCODE_PRE_COMPACTION_ASSISTANT")
+  );
+  const compactIndex = detail.transcript.findIndex((item) => item.marker === "compaction");
+  const currentUserIndex = detail.transcript.findIndex((item) =>
+    item.text.includes("Use the imported read result to continue.")
+  );
+  assert.ok(
+    oldAssistantIndex >= 0 &&
+    compactIndex > oldAssistantIndex &&
+    currentUserIndex > compactIndex
+  );
+  const openCodeActive = SessionManager.open(detail.manifest!.piSessionFile)
+    .buildSessionContext();
+  const openCodeActiveText = JSON.stringify(openCodeActive.messages);
+  assert.match(openCodeActiveText, /OPENCODE_COMPACTION_SUMMARY/);
+  assert.match(openCodeActiveText, /OPENCODE_PRE_COMPACTION_USER/);
+  assert.match(openCodeActiveText, /Use the imported read result to continue/);
 
   const [unchanged] = await discoverImportSessions({
     harness: "opencode",
@@ -593,13 +756,15 @@ test("OpenCode preflight registers complete supported history and refuses unsupp
   assert.equal(listSessionSummaries(dataDir).sessions.length, 1);
 });
 
-test("Codex preflight reconstructs effective history after compaction and replays embedded images", async () => {
+test("Codex preflight separates visible history from active context after compaction", async () => {
   const root = mkdtempSync(join(tmpdir(), "alt-theory-codex-compaction-"));
   const dataDir = join(root, "alt-data");
   const sessionsDir = join(root, "codex-sessions", "2026", "07", "21");
   const workspace = join(root, "workspace");
   mkdirSync(sessionsDir, { recursive: true });
   mkdirSync(workspace, { recursive: true });
+  const localImagePath = join(root, "local.png");
+  writeFileSync(localImagePath, Buffer.from("iVBORw0KGgo=", "base64"));
   const timestamp = "2026-07-21T00:00:00.000Z";
   const line = (type: string, payload: Record<string, unknown>, offset = 0) => ({
     timestamp: new Date(Date.parse(timestamp) + offset).toISOString(),
@@ -632,10 +797,15 @@ test("Codex preflight reconstructs effective history after compaction and replay
       content: [{ type: "input_text", text: "PRE_COMPACTION_MARKER" }],
     }, 1),
     line("response_item", {
-      type: "custom_tool_call_output",
-      call_id: "orphan-before-compaction",
-      output: "orphan output dropped by compaction",
+      type: "reasoning",
+      summary: [{ type: "summary_text", text: "PRE_COMPACTION_THINKING_MARKER" }],
+      encrypted_content: "opaque-reasoning",
     }, 2),
+    line("response_item", {
+      type: "message",
+      role: "assistant",
+      content: [{ type: "output_text", text: "PRE_COMPACTION_ASSISTANT_MARKER" }],
+    }, 3),
     line("compacted", {
       message: "",
       replacement_history: [
@@ -646,12 +816,12 @@ test("Codex preflight reconstructs effective history after compaction and replay
         },
         {
           type: "message",
-          role: "assistant",
-          content: [{ type: "output_text", text: "REPLACEMENT_ASSISTANT_MARKER" }],
+          role: "user",
+          content: [{ type: "input_text", text: "REPLACEMENT_SECOND_USER_MARKER" }],
         },
         { type: "compaction", encrypted_content: "opaque" },
       ],
-    }, 3),
+    }, 4),
     line("response_item", {
       type: "message",
       role: "user",
@@ -659,13 +829,13 @@ test("Codex preflight reconstructs effective history after compaction and replay
         { type: "input_text", text: "POST_COMPACTION_MARKER" },
         { type: "input_image", image_url: "data:image/png;base64,QQ==" },
       ],
-    }, 4),
+    }, 5),
     line("response_item", {
       type: "message",
       role: "user",
       content: [{ type: "input_text", text: "Has a local image ref" }],
-      local_images: [{ path: "D:/fixture/local.png" }],
-    }, 5),
+      local_images: [{ path: localImagePath }, { path: "D:/fixture/missing.png" }],
+    }, 6),
     line("turn_context", { turn_id: "turn-spans-compaction" }, 6),
     line("response_item", {
       type: "message",
@@ -771,13 +941,14 @@ test("Codex preflight reconstructs effective history after compaction and replay
   const entries = preflight.piSessionJsonl.trim().split(/\r?\n/).map((value) => JSON.parse(value));
   const projected = entries.filter((entry) => entry.type === "message");
   const projectedText = JSON.stringify(projected);
-  assert.match(projectedText, /REPLACEMENT_USER_MARKER/);
-  assert.match(projectedText, /REPLACEMENT_ASSISTANT_MARKER/);
+  assert.match(projectedText, /PRE_COMPACTION_MARKER/);
+  assert.match(projectedText, /PRE_COMPACTION_ASSISTANT_MARKER/);
+  assert.match(projectedText, /PRE_COMPACTION_THINKING_MARKER/);
+  assert.ok(!projectedText.includes("REPLACEMENT_USER_MARKER"));
+  assert.ok(!projectedText.includes("REPLACEMENT_SECOND_USER_MARKER"));
   assert.match(projectedText, /POST_COMPACTION_MARKER/);
   assert.match(projectedText, /COMPACTION_SPLIT_TURN_MARKER/);
   assert.match(projectedText, /SURVIVING_TURN_MARKER/);
-  assert.ok(!projectedText.includes("PRE_COMPACTION_MARKER"));
-  assert.ok(!projectedText.includes("orphan output dropped by compaction"));
   assert.ok(!projectedText.includes("ROLLED_BACK_TURN_MARKER"));
   assert.ok(!projectedText.includes("COMPLETED_ROLLBACK_MARKER"));
   assert.ok(!projectedText.includes("RAW_ONLY_AGENT_MESSAGE_MARKER"));
@@ -789,13 +960,29 @@ test("Codex preflight reconstructs effective history after compaction and replay
     imageMessage.message.content.find((part: any) => part.type === "image"),
     { type: "image", data: "QQ==", mimeType: "image/png" }
   );
-  assert.match(projectedText, /Local image attached in the source session at D:\/fixture\/local\.png/);
+  assert.ok(
+    projected.some((entry) =>
+      entry.message?.content?.some(
+        (part: any) =>
+          part.type === "image" &&
+          part.mimeType === "image/png" &&
+          part.data === "iVBORw0KGgo="
+      )
+    )
+  );
+  assert.match(projectedText, /Local image attached in the source session at D:\/fixture\/missing\.png/);
+  assert.match(projectedText, /provider-side web search executed by Codex/);
+  const compactionEntry = entries.find((entry) => entry.type === "compaction");
+  assert.ok(compactionEntry);
+  const firstKept = entries.find((entry) => entry.id === compactionEntry.firstKeptEntryId);
+  assert.match(JSON.stringify(firstKept), /POST_COMPACTION_MARKER/);
+  assert.equal(compactionEntry.details.sourceHarness, "codex");
   assert.ok(preflight.transformations.some((item) => item.includes("Source compaction detected")));
   assert.ok(preflight.transformations.some((item) => item.includes("Embedded source images")));
   assert.ok(preflight.transformations.some((item) => item.includes("labelled placeholder")));
   assert.ok(preflight.transformations.some((item) => item.includes("one-turn rollback")));
   assert.ok(preflight.transformations.some((item) => item.includes("tool-search control")));
-  assert.ok(preflight.transformations.some((item) => item.includes("web-search control")));
+  assert.ok(preflight.transformations.some((item) => item.includes("web-search activity")));
   assert.ok(preflight.transformations.some((item) => item.includes("generated PNG/JPEG")));
   assert.ok(preflight.transformations.some((item) => item.includes("codex_function")));
   assert.ok(preflight.transformations.some((item) => item.includes("user-fork lineage")));
@@ -805,6 +992,31 @@ test("Codex preflight reconstructs effective history after compaction and replay
     entries.filter((entry) => entry.customType === "source-codex-record").length,
     compacted.length
   );
+  const registered = registerCodexImport({
+    dataDir,
+    source,
+    preflight,
+    mode: "full",
+    visibility: "private",
+  });
+  const detail = readSessionDetail(dataDir, registered.sessionId);
+  assert.ok(detail);
+  const preIndex = detail.transcript.findIndex((item) =>
+    item.text.includes("PRE_COMPACTION_ASSISTANT_MARKER")
+  );
+  const boundaryIndex = detail.transcript.findIndex(
+    (item) => item.marker === "compaction"
+  );
+  const postIndex = detail.transcript.findIndex((item) =>
+    item.text.includes("POST_COMPACTION_MARKER")
+  );
+  assert.ok(preIndex >= 0 && boundaryIndex > preIndex && postIndex > boundaryIndex);
+  const activeContext = SessionManager.open(detail.manifest!.piSessionFile)
+    .buildSessionContext();
+  const activeText = JSON.stringify(activeContext.messages);
+  assert.match(activeText, /POST_COMPACTION_MARKER/);
+  assert.match(activeText, /encrypted and cannot be transferred/);
+  assert.ok(!activeText.includes("PRE_COMPACTION_ASSISTANT_MARKER"));
 
   const malformed = [
     line("session_meta", { ...meta, id: "codex-malformed-compacted", session_id: "codex-malformed-compacted" }),
@@ -858,7 +1070,7 @@ test("Codex preflight reconstructs effective history after compaction and replay
       error.recordType === "turn_aborted" &&
       error.message.includes("one-turn rollback")
   );
-  assert.equal(listSessionSummaries(dataDir).sessions.length, 0);
+  assert.equal(listSessionSummaries(dataDir).sessions.length, 1);
 });
 
 test("Grok preflight replays user images and keeps tool-result images as placeholders", async () => {

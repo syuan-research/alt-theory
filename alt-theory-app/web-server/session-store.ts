@@ -836,7 +836,34 @@ function buildTranscriptFromEntries(
   inactiveEntryIds = new Set<string>()
 ): TranscriptMessage[] {
   const transcript: TranscriptMessage[] = [];
+  const orderedEntries = [...entries];
   for (const entry of entries) {
+    const value = entry as {
+      id?: unknown;
+      type?: unknown;
+      details?: { displayAfterEntryId?: unknown };
+    };
+    if (
+      value.type !== "compaction" ||
+      typeof value.details?.displayAfterEntryId !== "string"
+    ) {
+      continue;
+    }
+    const currentIndex = orderedEntries.indexOf(entry);
+    const targetIndex = orderedEntries.findIndex(
+      (candidate) =>
+        (candidate as { id?: unknown }).id === value.details?.displayAfterEntryId
+    );
+    if (currentIndex >= 0 && targetIndex >= 0 && currentIndex !== targetIndex + 1) {
+      orderedEntries.splice(currentIndex, 1);
+      const adjustedTarget = orderedEntries.findIndex(
+        (candidate) =>
+          (candidate as { id?: unknown }).id === value.details?.displayAfterEntryId
+      );
+      orderedEntries.splice(adjustedTarget + 1, 0, entry);
+    }
+  }
+  for (const entry of orderedEntries) {
     const value = entry as {
       id?: string;
       type?: string;
@@ -850,7 +877,7 @@ function buildTranscriptFromEntries(
       };
       customType?: string;
       content?: unknown;
-      details?: { sourceRole?: unknown };
+      details?: { sourceRole?: unknown; markerText?: unknown };
     };
     if (
       value.type === "custom_message" &&
@@ -871,7 +898,10 @@ function buildTranscriptFromEntries(
       transcript.push({
         role: "system",
         marker: "compaction",
-        text: "Earlier conversation was compressed here to keep the context small. Alt keeps a summary of it.",
+        text:
+          typeof value.details?.markerText === "string"
+            ? value.details.markerText
+            : "Earlier conversation was compressed here to keep the context small. Alt keeps a summary of it.",
         timestamp: normalizeTimestamp(value.timestamp),
       });
       continue;

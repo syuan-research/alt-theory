@@ -524,10 +524,14 @@ function validateCompleteRollout(records: Row[], meta: Row): void {
     );
   }
   const calls = new Map<string, { name: string; outputs: number }>();
-  for (const record of effectiveHistoryRecords(records)) {
+  for (const record of visibleHistoryRecords(records)) {
     const item = record.payload;
     const type = String(item?.type ?? "missing_response_item_type");
-    if (type === "reasoning" || type === "compaction") continue;
+    if (type === "reasoning") {
+      validateReasoning(item);
+      continue;
+    }
+    if (type === "compaction") continue;
     if (type === "message") {
       validateMessage(item);
       continue;
@@ -653,29 +657,14 @@ function validateCompleteRollout(records: Row[], meta: Row): void {
   }
 }
 
-// Effective current history: the last compacted record's replacement_history
-// payloads plus every top-level response_item after that record. Without any
-// compacted record this is simply all response_item records in file order.
-function effectiveHistoryRecords(records: Row[]): Row[] {
-  const lastCompactedIndex = records.findLastIndex((record) => record.type === "compacted");
-  const suffix = normalizeCurrentSuffix(records, lastCompactedIndex + 1).records;
-  if (lastCompactedIndex < 0) {
-    return suffix.filter((record) => record.type === "response_item");
-  }
-  const compacted = records[lastCompactedIndex]!;
-  const replacement = compacted.payload?.replacement_history;
-  if (!Array.isArray(replacement)) {
-    throw new CodexImportRefusalError(
-      "compacted",
-      1,
-      "compacted record carries no replacement history, so the current effective history is indeterminate"
-    );
-  }
-  const timestamp = compacted.timestamp;
-  return [
-    ...replacement.map((payload) => ({ timestamp, type: "response_item", payload })),
-    ...suffix.filter((record) => record.type === "response_item"),
-  ];
+// Codex stores its visible transcript as top-level response items. Compaction
+// replacement_history is model context, not a UI transcript: current versions
+// commonly retain old user prompts but no old assistant messages there.
+function visibleHistoryRecords(records: Row[]): Row[] {
+  return normalizeCurrentSuffix(
+    records.map((record, sourceIndex) => ({ ...record, sourceIndex })),
+    0
+  ).records.filter((record) => record.type === "response_item");
 }
 
 // Codex records a completed or interrupted attempt, then
@@ -842,12 +831,36 @@ function messageContent(item: Row): Row[] {
   const localImages = Array.isArray(item.local_images) ? item.local_images : [];
   for (const entry of localImages) {
     const path = typeof entry?.path === "string" ? entry.path : "unknown path";
-    parts.push({
-      type: "text",
-      text: `[Local image attached in the source session at ${path}; image content is not replayed, retained in raw source records]`,
-    });
+    parts.push(
+      localImage(path) ?? {
+        type: "text",
+        text: `[Local image attached in the source session at ${path}; image content is not readable as a supported image, retained in raw source records]`,
+      }
+    );
   }
   return parts;
+}
+
+function localImage(path: string): Row | null {
+  if (path === "unknown path") return null;
+  try {
+    const bytes = readFileSync(path);
+    const mimeType =
+      bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+        ? "image/png"
+        : bytes.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]))
+          ? "image/jpeg"
+          : bytes.subarray(0, 6).toString("ascii") === "GIF87a" ||
+              bytes.subarray(0, 6).toString("ascii") === "GIF89a"
+            ? "image/gif"
+            : bytes.subarray(0, 4).toString("ascii") === "RIFF" &&
+                bytes.subarray(8, 12).toString("ascii") === "WEBP"
+              ? "image/webp"
+              : null;
+    return mimeType ? { type: "image", data: bytes.toString("base64"), mimeType } : null;
+  } catch {
+    return null;
+  }
 }
 
 function parseDataImage(url: unknown): Row | null {
@@ -856,6 +869,40 @@ function parseDataImage(url: unknown): Row | null {
   if (comma < 0) return null;
   const mimeType = url.slice("data:".length, comma).split(";")[0] || "application/octet-stream";
   return { type: "image", data: url.slice(comma + 1), mimeType };
+}
+
+function validateReasoning(item: Row): void {
+  if (item.summary == null) return;
+  if (
+    !Array.isArray(item.summary) ||
+    item.summary.some(
+      (part: Row) =>
+        !part ||
+        typeof part !== "object" ||
+        typeof part.type !== "string" ||
+        (part.text != null && typeof part.text !== "string")
+    )
+  ) {
+    throw new CodexImportRefusalError(
+      "reasoning",
+      1,
+      "reasoning summary is malformed"
+    );
+  }
+}
+
+function reasoningSummaryText(item: Row): string {
+  if (!Array.isArray(item.summary)) return "";
+  return item.summary
+    .map((part: Row) => (typeof part?.text === "string" ? part.text : ""))
+    .filter(Boolean)
+    .join("\n");
+}
+
+function webSearchPlaceholder(item: Row): string {
+  const action = item.action && typeof item.action === "object" ? item.action : {};
+  const query = typeof action.query === "string" ? `; query="${action.query}"` : "";
+  return `[Imported provenance, not original conversation content: provider-side web search executed by Codex${query}; results are not replayed, retained in raw source records]`;
 }
 
 function generatedImage(value: unknown): Row | null {
@@ -896,6 +943,7 @@ function projectToPi(records: Row[], meta: Row): string {
     const id = randomUUID();
     entries.push({ ...entry, id, parentId, timestamp: entry.timestamp ?? new Date().toISOString() });
     parentId = id;
+    return id;
   };
   for (const record of records) {
     append({
@@ -905,7 +953,7 @@ function projectToPi(records: Row[], meta: Row): string {
       timestamp: record.timestamp,
     });
   }
-  append({
+  const baseInstructionsId = append({
     type: "custom_message",
     customType: "source-codex-base-instructions",
     content: `[Imported Codex base instructions; source role=system]\n${meta.base_instructions.text}`,
@@ -917,12 +965,48 @@ function projectToPi(records: Row[], meta: Row): string {
     [...records].reverse().find((record) => record.type === "turn_context")?.payload?.model ??
       "source-unknown"
   );
-  for (const record of effectiveHistoryRecords(records)) {
+  const lastCompactedIndex = records.findLastIndex(
+    (record) => record.type === "compacted"
+  );
+  let lastVisibleBeforeCompaction: string | null = null;
+  let firstVisibleAfterCompaction: string | null = null;
+  const rememberVisible = (id: string, record: Row) => {
+    if (lastCompactedIndex < 0) return;
+    if (Number(record.sourceIndex) < lastCompactedIndex) {
+      lastVisibleBeforeCompaction = id;
+    } else if (!firstVisibleAfterCompaction) {
+      firstVisibleAfterCompaction = id;
+    }
+  };
+  let pendingThinking: Array<{ text: string; record: Row }> = [];
+  const takeThinking = (): Row[] => {
+    const result = pendingThinking.map(({ text }) => ({ type: "thinking", thinking: text }));
+    pendingThinking = [];
+    return result;
+  };
+  const flushThinking = (fallback: Row) => {
+    if (!pendingThinking.length) return;
+    const source = pendingThinking[0]?.record ?? fallback;
+    const id = append({
+      type: "message",
+      message: assistantMessage(takeThinking(), model, "stop", source.timestamp),
+      timestamp: source.timestamp,
+    });
+    rememberVisible(id, source);
+  };
+
+  for (const record of visibleHistoryRecords(records)) {
     const item = record.payload;
+    if (item.type === "reasoning") {
+      const text = reasoningSummaryText(item);
+      if (text) pendingThinking.push({ text, record });
+      continue;
+    }
     if (item.type === "message") {
       const parts = messageContent(item);
       if (item.role === "system" || item.role === "developer") {
-        append({
+        flushThinking(record);
+        const id = append({
           type: "custom_message",
           customType: `source-codex-${item.role}`,
           content: `[Imported Codex context; source role=${item.role}]\n${flattenText(parts)}`,
@@ -930,10 +1014,23 @@ function projectToPi(records: Row[], meta: Row): string {
           details: { sourceRole: item.role },
           timestamp: record.timestamp,
         });
+        rememberVisible(id, record);
       } else if (item.role === "user") {
-        append({ type: "message", message: { role: "user", content: parts, timestamp: Date.parse(record.timestamp) }, timestamp: record.timestamp });
+        flushThinking(record);
+        const id = append({ type: "message", message: { role: "user", content: parts, timestamp: Date.parse(record.timestamp) }, timestamp: record.timestamp });
+        rememberVisible(id, record);
       } else {
-        append({ type: "message", message: assistantMessage([{ type: "text", text: flattenText(parts) }], model, "stop", record.timestamp), timestamp: record.timestamp });
+        const id = append({
+          type: "message",
+          message: assistantMessage(
+            [...takeThinking(), { type: "text", text: flattenText(parts) }],
+            model,
+            "stop",
+            record.timestamp
+          ),
+          timestamp: record.timestamp,
+        });
+        rememberVisible(id, record);
       }
       continue;
     }
@@ -944,28 +1041,50 @@ function projectToPi(records: Row[], meta: Row): string {
       const args = item.type === "function_call"
         ? parseArguments(item.arguments, item.type)
         : { input: String(item.input) };
-      append({
+      const id = append({
         type: "message",
-        message: assistantMessage([{ type: "toolCall", id: String(item.call_id), name, arguments: args }], model, "toolUse", record.timestamp),
+        message: assistantMessage(
+          [...takeThinking(), { type: "toolCall", id: String(item.call_id), name, arguments: args }],
+          model,
+          "toolUse",
+          record.timestamp
+        ),
         timestamp: record.timestamp,
       });
+      rememberVisible(id, record);
       continue;
     }
     if (item.type === "image_generation_call") {
-      append({
+      const id = append({
         type: "message",
         message: assistantMessage(
-          [generatedImage(item.result)!],
+          [...takeThinking(), generatedImage(item.result)!],
           model,
           "stop",
           record.timestamp
         ),
         timestamp: record.timestamp,
       });
+      rememberVisible(id, record);
+      continue;
+    }
+    if (item.type === "web_search_call") {
+      const id = append({
+        type: "message",
+        message: assistantMessage(
+          [{ type: "text", text: webSearchPlaceholder(item) }],
+          model,
+          "stop",
+          record.timestamp
+        ),
+        timestamp: record.timestamp,
+      });
+      rememberVisible(id, record);
       continue;
     }
     if (item.type === "function_call_output" || item.type === "custom_tool_call_output") {
-      append({
+      flushThinking(record);
+      const id = append({
         type: "message",
         message: {
           role: "toolResult",
@@ -978,7 +1097,27 @@ function projectToPi(records: Row[], meta: Row): string {
         },
         timestamp: record.timestamp,
       });
+      rememberVisible(id, record);
     }
+  }
+  flushThinking(records[lastCompactedIndex] ?? records[records.length - 1] ?? meta);
+  if (lastCompactedIndex >= 0) {
+    append({
+      type: "compaction",
+      summary:
+        "This conversation was compacted in Codex. Codex's source summary is encrypted and cannot be transferred across harnesses. Earlier turns remain in the imported transcript and source records; search them when older context is relevant.",
+      firstKeptEntryId:
+        firstVisibleAfterCompaction ??
+        lastVisibleBeforeCompaction ??
+        baseInstructionsId,
+      tokensBefore: 0,
+      details: {
+        displayAfterEntryId: lastVisibleBeforeCompaction,
+        markerText:
+          "Codex compressed the conversation here. Its encrypted summary could not be transferred; earlier turns remain available to search.",
+        sourceHarness: "codex",
+      },
+    });
   }
   return `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`;
 }
@@ -995,18 +1134,15 @@ function describeTransformations(records: Row[]): string[] {
   const compactedCount = records.filter((record) => record.type === "compacted").length;
   if (compactedCount) {
     result.push(
-      `Source compaction detected: current effective history reconstructed from the last compacted record's replacement history plus subsequent records; pre-compaction records remain in raw entries.` +
+      `Source compaction detected: recoverable top-level turns remain visible around the real boundary; active context starts from the post-compaction suffix because Codex's encrypted summary is not portable.` +
         (compactedCount > 1
           ? ` ${compactedCount} compacted records exist; only the last one defines the boundary.`
           : "")
     );
   }
-  const effective = effectiveHistoryRecords(records);
-  const effectiveItems = effective.map((record) => record.payload);
-  const normalizedSuffix = normalizeCurrentSuffix(
-    records,
-    records.findLastIndex((record) => record.type === "compacted") + 1
-  );
+  const visible = visibleHistoryRecords(records);
+  const effectiveItems = visible.map((record) => record.payload);
+  const normalizedSuffix = normalizeCurrentSuffix(records, 0);
   if (normalizedSuffix.rolledBackTurns) {
     result.push(
       `${normalizedSuffix.rolledBackTurns} Codex turn(s) were followed by an explicit one-turn rollback; those turns stay in raw records and are excluded from active history.`
@@ -1049,7 +1185,7 @@ function describeTransformations(records: Row[]): string[] {
     result.push("Codex dynamic tool definitions remain in the raw session metadata but are not registered as active Alt Theory tools.");
   }
   if (itemTypes.has("reasoning")) {
-    result.push("Provider reasoning remains raw-only because it is not portable model state.");
+    result.push("Plaintext Codex reasoning summaries become Pi assistant thinking; encrypted reasoning remains raw-only.");
   }
   if (itemTypes.has("custom_tool_call")) {
     result.push("Codex freeform tool input is retained in Pi tool arguments under the input field.");
@@ -1058,7 +1194,7 @@ function describeTransformations(records: Row[]): string[] {
     result.push("Codex tool-search control records and discovered definitions stay raw-only; the selected Alt Theory mode supplies the active tools.");
   }
   if (itemTypes.has("web_search_call")) {
-    result.push("Codex web-search control records stay raw-only; model-visible answers remain in the conversation.");
+    result.push("Codex provider-side web-search activity is shown as labelled provenance; results are not fabricated and the source control record remains raw.");
   }
   if (itemTypes.has("image_generation_call")) {
     result.push("Embedded Codex-generated PNG/JPEG results are replayed as assistant images; generation control metadata stays raw-only.");

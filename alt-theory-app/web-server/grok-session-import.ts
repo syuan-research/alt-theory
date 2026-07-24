@@ -242,7 +242,24 @@ function validateHistory(history: Row[]): void {
     throw new GrokImportRefusalError("system", systems.length, "exactly one text system item is required");
   }
   for (const item of history) {
-    if (item.type === "user") validateContent(item.content, "user");
+    if (item.type === "user") {
+      validateContent(item.content, "user");
+      if (
+        item.synthetic_reason != null &&
+        ![
+          "system_reminder",
+          "project_instructions",
+          "compaction_meta",
+          "task_completed",
+        ].includes(String(item.synthetic_reason))
+      ) {
+        throw new GrokImportRefusalError(
+          "synthetic_reason",
+          1,
+          `unrecognized synthetic user record: ${String(item.synthetic_reason)}`
+        );
+      }
+    }
     if (item.type === "assistant" && typeof item.content !== "string") {
       throw new GrokImportRefusalError("assistant", 1, "assistant content is not text");
     }
@@ -433,6 +450,25 @@ function projectToPi(history: Row[], summary: Row): string {
       if (pendingReasoning.length) {
         throw new GrokImportRefusalError("reasoning", pendingReasoning.length, "reasoning is not followed by an assistant item");
       }
+      const syntheticReason = String(item.synthetic_reason ?? "");
+      if (
+        syntheticReason === "system_reminder" ||
+        syntheticReason === "project_instructions" ||
+        syntheticReason === "compaction_meta"
+      ) {
+        append({
+          type: "custom_message",
+          customType: `source-grok-${syntheticReason}`,
+          content: contentText(item.content),
+          display: false,
+          details: {
+            sourceRole:
+              syntheticReason === "project_instructions" ? "developer" : "system",
+          },
+        });
+        continue;
+      }
+      if (syntheticReason) continue;
       append({
         type: "message",
         message: {
@@ -525,6 +561,11 @@ function describeTransformations(history: Row[]): string[] {
   ];
   if (history.some((item) => item.type === "reasoning")) {
     result.push("Grok reasoning summary text becomes Pi assistant thinking; encrypted reasoning remains raw-only.");
+  }
+  if (history.some((item) => item.type === "user" && item.synthetic_reason != null)) {
+    result.push(
+      "Grok synthetic user records are classified as imported context or lifecycle metadata; they are not replayed as human user messages."
+    );
   }
   if (history.some((item) => item.type === "tool_result")) {
     result.push("Grok tool calls and results are mapped only after exact source call-ID pairing.");
