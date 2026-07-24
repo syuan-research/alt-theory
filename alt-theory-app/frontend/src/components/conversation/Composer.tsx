@@ -411,17 +411,25 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                 <i className="ph ph-lifebuoy" />
                 Ask how Alt works
               </div>
-              {/* Reserved featured-skill slots (owner 2026-07-23): filled or
-                  pruned in 1.2.x/1.3 as the built-in skills land. */}
-              <div className="mi disabled" title="Coming in a later update">
+              <div
+                className="mi"
+                onClick={() => (
+                  app.invokeSkill("adaptive-aligning"),
+                  setMenu(null)
+                )}
+              >
                 <i className="ph ph-chats-circle" />
                 Align on a plan or decision
-                <span className="soon">soon</span>
               </div>
-              <div className="mi disabled" title="Coming in a later update">
+              <div
+                className="mi"
+                onClick={() => (
+                  app.invokeSkill("adaptive-plan-record"),
+                  setMenu(null)
+                )}
+              >
                 <i className="ph ph-list-checks" />
                 Plan &amp; record
-                <span className="soon">soon</span>
               </div>
               <div className="mi disabled" title="Coming in a later update">
                 <i className="ph ph-seal-check" />

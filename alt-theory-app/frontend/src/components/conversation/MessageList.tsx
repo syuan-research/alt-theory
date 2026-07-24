@@ -38,7 +38,7 @@ export function MessageList() {
       1,
       Math.max(0, (clientY - rect.top) / Math.max(1, rect.height)),
     );
-    if (ratio >= 0.98) {
+    if (ratio >= 0.9) {
       stickToBottomRef.current = true;
       container.scrollTop = container.scrollHeight;
       return;
@@ -326,9 +326,12 @@ function TranscriptEntry({
     }
     if (message.marker === "compaction") {
       return (
-        <div className="compact-line" title={message.text}>
-          <span>Conversation compressed here</span>
-        </div>
+        <details className="compact-summary">
+          <summary>
+            <span>Conversation compressed here</span>
+          </summary>
+          <div className="compact-summary-body">{message.text}</div>
+        </details>
       );
     }
     return (

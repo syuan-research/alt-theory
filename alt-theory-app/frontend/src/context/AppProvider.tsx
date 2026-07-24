@@ -357,6 +357,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const reconnectSessionIdRef = useRef<string | null>(null);
   const pendingOpenSessionIdRef = useRef("");
   const pendingAssetSwitchRef = useRef(false);
+  const pendingCompactRef = useRef(false);
   const activeToolsMapRef = useRef<Record<string, ActiveToolState>>({});
   const composerNoticeTimerRef = useRef<number | null>(null);
   const hydratedNamesRef = useRef<Set<string>>(new Set());
@@ -713,6 +714,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
             setConnStatus("idle");
             setConnLabel(message.payload.status || "Ready");
             setIsRunning(false);
+            setToolStatus("");
+            setRunPhaseLabel("");
           }
           if (selectedCatalogSessionId === message.payload.sessionId) {
             void refreshSessionDetail(message.payload.sessionId);
@@ -732,10 +735,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setMessages(message.payload.messages);
           setStreamParts([]);
           activeToolsMapRef.current = {};
-          setConnStatus("idle");
-          setConnLabel("Ready");
-          setToolStatus("");
-          setIsRunning(false);
+          if (
+            pendingCompactRef.current &&
+            message.payload.messages.some(
+              (item) => item.marker === "compaction",
+            )
+          ) {
+            pendingCompactRef.current = false;
+            setComposerNoticeTimed({ text: "Conversation compacted." });
+          }
           break;
 
         case "related_session_created":
@@ -884,6 +892,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           break;
 
         case "error": {
+          pendingCompactRef.current = false;
           if (message.payload.code === "auth_required") {
             setToolStatus("Please sign in to continue.");
             setLoginRequired(true);
@@ -965,6 +974,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const beginNewSession = useCallback(() => {
     reconnectSessionIdRef.current = null;
+    setSelectedCatalogSessionId(null);
     setMessages([]);
     setStreamParts([]);
     setWsError(null);
@@ -979,13 +989,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [clearStagedWorkspace, sendMessage]);
 
   const startNewSession = useCallback(() => {
-    if (isRunning) return;
     beginNewSession();
-  }, [beginNewSession, isRunning]);
+  }, [beginNewSession]);
 
   const compactCurrentSession = useCallback(() => {
     if (!sessionId || isRunning) return;
     if (sendMessage({ type: "compact" })) {
+      pendingCompactRef.current = true;
       setIsRunning(true);
       setConnStatus("running");
       setConnLabel("Compacting...");
@@ -995,7 +1005,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const openCatalogSession = useCallback(
     (targetSessionId: string) => {
-      if (!targetSessionId || isRunning) return;
+      if (!targetSessionId || targetSessionId === sessionId) return;
       const summary = sessions.find((item) => item.sessionId === targetSessionId,);
       if (summary && !summary.hasSessionFile) {
         setToolStatus("Conversation cannot be opened.");
@@ -1017,8 +1027,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         pendingOpenSessionIdRef.current = "";
       }
     },
-    [isRunning, sendMessage, sessions],
+    [sendMessage, sessionId, sessions],
   );
+
+  useEffect(() => {
+    if (!sessions.some((session) => session.runStatus === "running")) return;
+    const timer = window.setInterval(() => void refreshSessions(), 1500);
+    return () => window.clearInterval(timer);
+  }, [refreshSessions, sessions]);
 
   const forkCurrentSession = useCallback(
     (purpose: "fork" | "side" | "helper" | "ab-arm") => {
@@ -1192,8 +1208,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setReviseEntryId(null);
       setIsRunning(true);
       setConnStatus("running");
-      setConnLabel("Revising...");
-      setToolStatus("Revising the conversation...");
+      setConnLabel("Revising…");
+      setToolStatus("Revising from this point…");
       return true;
     },
     [isRunning, sendMessage, sessionId, reviseEntryId],

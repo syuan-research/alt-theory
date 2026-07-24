@@ -34,6 +34,7 @@ import {
 } from "./session-metrics.js";
 import { appendSessionEvent } from "./session-events.js";
 import {
+  buildTranscriptFromEntries,
   getSessionRootForRequest,
   listSessionTextFiles,
   listSessionSummaries,
@@ -41,6 +42,38 @@ import {
   readSessionDetail,
   writeSessionTextFile,
 } from "./session-store.js";
+
+test("compaction transcript keeps visible history and exposes its summary", () => {
+  const transcript = buildTranscriptFromEntries([
+    {
+      type: "message",
+      id: "user-1",
+      timestamp: "2026-07-24T00:00:00.000Z",
+      message: { role: "user", content: "before compact" },
+    },
+    {
+      type: "message",
+      id: "assistant-1",
+      timestamp: "2026-07-24T00:00:01.000Z",
+      message: { role: "assistant", content: "still visible" },
+    },
+    {
+      type: "compaction",
+      id: "compact-1",
+      timestamp: "2026-07-24T00:00:02.000Z",
+      summary: "real compact summary",
+    },
+  ]);
+
+  assert.deepEqual(
+    transcript.map(({ text, marker }) => ({ text, marker })),
+    [
+      { text: "before compact", marker: undefined },
+      { text: "still visible", marker: undefined },
+      { text: "real compact summary", marker: "compaction" },
+    ],
+  );
+});
 import { writeFoundationRecords } from "./session-records.js";
 import {
   hashLoginCode,

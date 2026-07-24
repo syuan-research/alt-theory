@@ -52,6 +52,7 @@ import {
 import {
   latestActiveLeafEntryId,
   listSessionSummaries,
+  buildTranscriptFromEntries,
   readSessionDetail,
   getSessionRootForRequest,
   stripSkillWrapper,
@@ -207,6 +208,7 @@ export type SessionServiceEvent =
   | { type: "tool_finished"; payload: { callId: string; success: boolean } }
   | { type: "run_completed"; payload: SessionSnapshot }
   | { type: "run_failed"; payload: { error: string } }
+  | { type: "session_transcript"; payload: { messages: TranscriptMessage[] } }
   | { type: "session_metrics"; payload: SessionMetrics }
   | { type: "approval_requested"; payload: ApprovalRequest }
   | {
@@ -849,6 +851,7 @@ export class SessionService {
     } else {
       managed.session.sessionManager.resetLeaf();
     }
+    this.publishCurrentBranchTranscript(managed);
     return this.runPromptWithLineage(managed, text);
   }
 
@@ -871,6 +874,7 @@ export class SessionService {
       status: "superseded",
       completedAt: new Date().toISOString(),
     });
+    this.publishCurrentBranchTranscript(managed);
     return this.runPromptWithLineage(managed, text, {
       turnId: run.turnId,
       supersedesRunId: run.runId,
@@ -1391,6 +1395,7 @@ export class SessionService {
       throw new SessionBusyError(sessionId);
     }
     managed.busy = true;
+    const leafBeforeCompact = managed.session.sessionManager.getLeafId();
     this.emitRunPhase(managed, "thinking");
     try {
       await managed.session.compact();
@@ -1408,6 +1413,14 @@ export class SessionService {
         payload: this.persistMetrics(managed),
       });
       return snapshot;
+    } catch (error) {
+      if (
+        leafBeforeCompact &&
+        managed.session.sessionManager.getEntry(leafBeforeCompact)
+      ) {
+        managed.session.sessionManager.branch(leafBeforeCompact);
+      }
+      throw error;
     } finally {
       managed.busy = false;
       this.emitRunPhase(managed, "idle");
@@ -1433,6 +1446,12 @@ export class SessionService {
     return this.snapshot(this.requireSession(sessionId));
   }
 
+  runningSessionIds(): string[] {
+    return [...this.sessions.entries()]
+      .filter(([, managed]) => managed.busy || managed.session.isStreaming)
+      .map(([sessionId]) => sessionId);
+  }
+
   getManifest(sessionId: string): AssemblyManifest {
     return this.requireSession(sessionId).manifest;
   }
@@ -1447,6 +1466,16 @@ export class SessionService {
       readSessionDetail(this.config.dataDir, sessionId)?.transcript ??
       managed.transcript;
     return [...managed.transcript];
+  }
+
+  private publishCurrentBranchTranscript(managed: ManagedSession): void {
+    managed.transcript = buildTranscriptFromEntries(
+      managed.session.sessionManager.getBranch(),
+    );
+    this.emit(managed, {
+      type: "session_transcript",
+      payload: { messages: [...managed.transcript] },
+    });
   }
 
   getSelectors(sessionId: string): SessionSelectors {
@@ -1813,8 +1842,12 @@ export class SessionService {
       fallbackSelectors.rolePresetSlug,
       (slug) => this.resolveOptionalRolePresetPath(slug),
     );
-    const requestedSoulSlug =
-      effectiveConfig?.soulSlug ?? detail.manifest?.soul?.slug;
+    const importedWithoutSoul =
+      existsSync(join(sessionDirs.recordsDir, "session-import-source.json")) &&
+      (effectiveConfig?.soulSlug ?? detail.manifest?.soul?.slug) == null;
+    const requestedSoulSlug = importedWithoutSoul
+      ? fallbackSelectors.soulSlug
+      : effectiveConfig?.soulSlug ?? detail.manifest?.soul?.slug;
     const activeSoulSlug = this.activeOptionalSlug(
       requestedSoulSlug,
       fallbackSelectors.soulSlug,
@@ -2484,7 +2517,7 @@ export class SessionService {
       visibility:
         readV4SessionHeader(managed.manifest.recordsDir)?.visibility ??
         "research",
-      status: managed.session.isStreaming ? "running" : "idle",
+      status: managed.busy || managed.session.isStreaming ? "running" : "idle",
       currentDomain: managed.selectors.kbDomain,
       rolePresetSlug: managed.selectors.rolePresetSlug,
       soulSlug: managed.selectors.soulSlug,
@@ -2662,11 +2695,19 @@ function alignSessionManagerToLatestRun(
 ): void {
   // Imported sessions have valid Pi history before Alt Theory has produced a
   // run record. SessionManager.open() already points at that history's final
-  // entry, so only persisted Alt Theory run state should override the leaf.
+  // entry. A failed/aborted first run has no active entry mapping either, so
+  // it must not be mistaken for an intentional deletion that resets history.
   if (latestRuns.length === 0) return;
+  const activeLeafEntryId = latestActiveLeafEntryId(latestRuns);
+  if (
+    !activeLeafEntryId &&
+    !latestRuns.some((run) => run.status === "deleted")
+  ) {
+    return;
+  }
   alignSessionManagerLeaf(
     sessionManager,
-    latestActiveLeafEntryId(latestRuns),
+    activeLeafEntryId,
     context,
   );
 }

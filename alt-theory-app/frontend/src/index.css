@@ -314,6 +314,10 @@
   .compact-line { max-width: 660px; margin: 0 auto 18px; padding: 0 24px; display: flex; align-items: center; gap: 10px; font-size: 0.72rem; color: var(--text-3); }
   .compact-line::before, .compact-line::after { content: ""; flex: 1; border-top: 1px solid var(--hairline); }
   .compact-line span { flex-shrink: 0; }
+  .compact-summary { max-width: 660px; margin: 0 auto 18px; color: var(--text-3); }
+  .compact-summary summary { display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 0.72rem; }
+  .compact-summary summary::before, .compact-summary summary::after { content: ""; flex: 1; border-top: 1px solid var(--hairline); }
+  .compact-summary-body { margin: 10px 24px 0; padding: 12px 14px; border-radius: 8px; background: var(--surface-2); color: var(--text-2); font-size: 0.78rem; line-height: 1.55; white-space: pre-wrap; }
 
   /* mode explainer under the Understand/Work cards */
   .mode-note { max-width: 520px; margin: 0 auto 22px; text-align: center; font-size: 0.8rem; color: var(--text-2); line-height: 1.5; }
@@ -508,7 +512,7 @@
   .rpanel .head { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--hairline); font-weight: 500; font-size: 0.9rem; white-space: nowrap; }
   .rpanel .head .rp-close { margin-left: auto; border: none; background: transparent; cursor: pointer; color: var(--text-2); padding: 2px; }
   .rpanel .head .back { border: none; background: transparent; cursor: pointer; color: var(--text-2); padding: 2px; display: none; }
-  .rpanel.sub .head .back { display: inline-flex; }
+  .rpanel .head.sub .back { display: inline-flex; }
   .rpanel .body { flex: 1; overflow-y: auto; padding: 10px; }
   .rp-empty { padding: 24px 12px; font-size: 0.8125rem; color: var(--text-3); text-align: center; }
   .sc-item, .file-item { background: var(--surface); border: none; border-radius: var(--r-md); padding: 10px 12px; margin-bottom: 8px; cursor: pointer; width: 100%; text-align: left; display: block; }
@@ -526,6 +530,8 @@
   .working-folder { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 7px; padding: 9px 8px; margin-bottom: 6px; border-radius: var(--r-sm); background: var(--surface); color: var(--ink-soft); }
   .working-folder-role { font-size: 0.78rem; font-weight: 500; }
   .working-folder-path { margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3); font-family: var(--mono); font-size: 0.68rem; }
+  .working-folder-open { display: inline-flex; align-items: center; gap: 5px; margin-top: 6px; padding: 0; border: 0; background: none; color: var(--accent); font: inherit; font-size: 0.72rem; cursor: pointer; }
+  .working-folder-open:hover { text-decoration: underline; }
   .working-folder-missing { margin-top: 3px; color: var(--danger); font-size: 0.7rem; }
   .working-tree { max-height: 240px; overflow: auto; margin: -2px 0 8px 20px; border-left: 1px solid var(--hairline); padding-left: 4px; }
   .working-tree .ti { display: flex; align-items: center; gap: 6px; width: 100%; border: none; background: transparent; color: var(--ink-soft); padding: 4px 6px; text-align: left; font: inherit; font-size: 0.75rem; cursor: pointer; }

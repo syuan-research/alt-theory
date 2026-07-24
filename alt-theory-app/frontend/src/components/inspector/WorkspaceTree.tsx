@@ -8,17 +8,18 @@ import {
 } from "@/api/session-files";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
+import { hasNativeBridge, revealPath } from "@/lib/native";
 import { stagePathAfterUpload } from "@/lib/workspace";
 
-interface TreeNode {
+interface TreeNode<T> {
   name: string;
   path: string;
-  children: Map<string, TreeNode>;
-  entry?: WorkspaceFileEntry;
+  children: Map<string, TreeNode<T>>;
+  entry?: T;
 }
 
-function buildTree(entries: WorkspaceFileEntry[]): TreeNode {
-  const root: TreeNode = { name: "", path: "", children: new Map() };
+function buildTree<T extends { path: string }>(entries: T[]): TreeNode<T> {
+  const root: TreeNode<T> = { name: "", path: "", children: new Map() };
   for (const entry of entries) {
     const parts = entry.path.split("/").filter(Boolean);
     let node = root;
@@ -201,6 +202,15 @@ export function WorkspaceTree() {
                     {folder.managed ? " · conversation folder" : ""}
                   </div>
                   <div className="working-folder-path" title={folder.path}>{folder.path}</div>
+                  {folder.available && hasNativeBridge() ? (
+                    <button
+                      className="working-folder-open"
+                      onClick={() => void revealPath(folder.path)}
+                    >
+                      <i className="ph ph-arrow-square-out" />
+                      Open folder
+                    </button>
+                  ) : null}
                   {!folder.available ? (
                     <div className="working-folder-missing">Folder is not available on this device.</div>
                   ) : null}
@@ -282,32 +292,29 @@ function WorkingTree({
   onOpenFile: (entry: WorkingFileEntry) => void;
 }) {
   if (entries.length === 0) return null;
+  const tree = buildTree(entries);
   return (
     <div className="working-tree">
-      {entries.map((entry) => (
-        <button
-          key={`${entry.folderId}:${entry.path}`}
-          className="ti"
-          disabled={!entry.previewable}
-          title={entry.previewable ? entry.path : "Too large to preview"}
-          onClick={() => onOpenFile(entry)}
-        >
-          <i className="ph ph-file" />
-          <span>{entry.path}</span>
-        </button>
-      ))}
+      <TreeLevel
+        node={tree}
+        depth={0}
+        onOpenFile={onOpenFile}
+        canOpen={(entry) => entry.previewable}
+      />
     </div>
   );
 }
 
-function TreeLevel({
+function TreeLevel<T extends { path: string }>({
   node,
   depth,
   onOpenFile,
+  canOpen = () => true,
 }: {
-  node: TreeNode;
+  node: TreeNode<T>;
   depth: number;
-  onOpenFile: (entry: WorkspaceFileEntry) => void;
+  onOpenFile: (entry: T) => void;
+  canOpen?: (entry: T) => boolean;
 }) {
   const children = [...node.children.values()].sort((a, b) => {
     const aDir = a.children.size > 0 ? 0 : 1;
@@ -325,13 +332,24 @@ function TreeLevel({
             <button
               className={`ti${depth ? " indent" : ""}`}
               style={depth > 1 ? { paddingLeft: 8 + depth * 20 } : undefined}
+              disabled={!isFolder && !!child.entry && !canOpen(child.entry)}
+              title={
+                !isFolder && child.entry && !canOpen(child.entry)
+                  ? "Too large to preview"
+                  : child.path
+              }
               onClick={() => (isFolder ? undefined : child.entry && onOpenFile(child.entry))}
             >
               <i className={isFolder ? "ph ph-folder" : "ph ph-file-text"} />
               {child.name}
             </button>
             {isFolder ? (
-              <TreeLevel node={child} depth={depth + 1} onOpenFile={onOpenFile} />
+              <TreeLevel
+                node={child}
+                depth={depth + 1}
+                onOpenFile={onOpenFile}
+                canOpen={canOpen}
+              />
             ) : null}
           </div>
         );

@@ -767,6 +767,60 @@ test("SessionService keeps imported Pi history as the active leaf before the fir
   }
 });
 
+test("SessionService preserves imported history after an aborted first run", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const created = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const managed = (service as any).sessions.get(created.sessionId);
+  managed.session.sessionManager.appendMessage({
+    role: "user",
+    content: [{ type: "text", text: "history before Alt" }],
+    timestamp: Date.now(),
+  });
+  managed.session.prompt = async () => {
+    managed.session.sessionManager.appendMessage({
+      role: "user",
+      content: [{ type: "text", text: "partial first Alt turn" }],
+      timestamp: Date.now(),
+    });
+    managed.session.sessionManager.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: "partial answer" }],
+      timestamp: Date.now(),
+    });
+    throw new Error("Operation aborted");
+  };
+  await assert.rejects(
+    service.runPrompt(created.sessionId, "first Alt turn").completion,
+    /aborted/,
+  );
+  const failedLeaf = managed.session.sessionManager.getLeafId();
+  await service.disposeAll();
+
+  const reopened = createTestService(fixture);
+  try {
+    await reopened.openSession(created.sessionId, {
+      rolePresetSlug: "role-conceptual-theory-companion",
+      kbDomain: "ep-core",
+      soulSlug: "soul-latest",
+    });
+    const reopenedManaged = (reopened as any).sessions.get(created.sessionId);
+    assert.equal(reopenedManaged.session.sessionManager.getLeafId(), failedLeaf);
+    assert.match(
+      JSON.stringify(
+        reopenedManaged.session.sessionManager.buildSessionContext().messages,
+      ),
+      /history before Alt/,
+    );
+  } finally {
+    await reopened.disposeAll();
+  }
+});
+
 test("related Helper invokes its skill once before promotion", async () => {
   const fixture = setupFixture();
   writeFileSync(
@@ -882,6 +936,62 @@ test("imported session invokes imported-session-context skill once on first run"
     assert.equal(prompt, "Second turn stays plain.");
   } finally {
     await service.disposeAll();
+  }
+});
+
+test("imported session without a soul resumes with the current default soul", async () => {
+  const fixture = setupFixture();
+  const original = createTestService(fixture);
+  const created = await original.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const managed = (original as any).sessions.get(created.sessionId);
+  managed.session.prompt = async (text: string) => {
+    managed.session.sessionManager.appendMessage({
+      role: "user",
+      content: [{ type: "text", text }],
+      timestamp: Date.now(),
+    });
+    managed.session.sessionManager.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: "Imported answer" }],
+      timestamp: Date.now(),
+    });
+  };
+  await original.runPrompt(created.sessionId, "Imported history").completion;
+  await original.replaceSession(
+    created.sessionId,
+    {
+      rolePresetSlug: "role-conceptual-theory-companion",
+      kbDomain: "ep-core",
+      soulSlug: null,
+    },
+    "soul_switch",
+  );
+  const recordsDir = original.getManifest(created.sessionId).recordsDir;
+  writeFileSync(
+    join(recordsDir, "session-import-source.json"),
+    JSON.stringify({ recordType: "session-import-source" }),
+    "utf-8",
+  );
+  await original.disposeAll();
+
+  const reopened = createTestService(fixture);
+  try {
+    const snapshot = await reopened.openSession(created.sessionId, {
+      rolePresetSlug: "role-conceptual-theory-companion",
+      kbDomain: "ep-core",
+      soulSlug: "soul-latest",
+    });
+    assert.equal(snapshot.soulSlug, "soul-latest");
+    assert.equal(
+      reopened.getManifest(created.sessionId).soul?.slug,
+      "soul-latest",
+    );
+  } finally {
+    await reopened.disposeAll();
   }
 });
 
@@ -1636,6 +1746,45 @@ test("SessionService rejects concurrent same-session prompt mutations with sessi
   }
 });
 
+test("SessionService runs different conversations concurrently", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const first = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const second = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+
+  try {
+    const releases: Array<() => void> = [];
+    for (const sessionId of [first.sessionId, second.sessionId]) {
+      const managed = (service as any).sessions.get(sessionId);
+      managed.session.prompt = () =>
+        new Promise<void>((resolve) => releases.push(resolve));
+    }
+
+    const firstRun = service.runPrompt(first.sessionId, "first");
+    const secondRun = service.runPrompt(second.sessionId, "second");
+    assert.deepEqual(
+      new Set(service.runningSessionIds()),
+      new Set([first.sessionId, second.sessionId]),
+    );
+    assert.equal(service.getSnapshot(first.sessionId).status, "running");
+    assert.equal(service.getSnapshot(second.sessionId).status, "running");
+
+    releases.forEach((release) => release());
+    await Promise.all([firstRun.completion, secondRun.completion]);
+    assert.deepEqual(service.runningSessionIds(), []);
+  } finally {
+    await service.disposeAll();
+  }
+});
+
 test("SessionService returns to idle when compaction fails", async () => {
   const fixture = setupFixture();
   const service = createTestService(fixture);
@@ -1645,7 +1794,14 @@ test("SessionService returns to idle when compaction fails", async () => {
     soulSlug: "soul-latest",
   });
   const managed = (service as any).sessions.get(snapshot.sessionId);
+  managed.session.sessionManager.appendMessage({
+    role: "user",
+    content: [{ type: "text", text: "keep this branch" }],
+    timestamp: Date.now(),
+  });
+  const leafBeforeCompact = managed.session.sessionManager.getLeafId();
   managed.session.compact = async () => {
+    managed.session.sessionManager.resetLeaf();
     throw new Error("Nothing to compact (session too small)");
   };
   const events: SessionServiceEvent[] = [];
@@ -1662,6 +1818,10 @@ test("SessionService returns to idle when compaction fails", async () => {
         ? events.at(-1)?.payload.status
         : null,
       "idle",
+    );
+    assert.equal(
+      managed.session.sessionManager.getLeafId(),
+      leafBeforeCompact,
     );
   } finally {
     await service.disposeAll();
@@ -2630,12 +2790,26 @@ test("SessionService reviseAt rewrites from an earlier turn and supersedes later
     const secondRun = runs[1];
     assert.equal(secondRun.status, "completed");
 
+    const transcriptEvents: SessionServiceEvent[] = [];
+    const detach = service.attach(created.sessionId, (event) => {
+      if (event.type === "session_transcript") transcriptEvents.push(event);
+    });
     const revised = service.reviseAt(
       created.sessionId,
       secondRun.userEntryId!,
       "revised-second",
     );
+    const projected = transcriptEvents.at(-1);
+    assert.equal(projected?.type, "session_transcript");
+    if (projected?.type === "session_transcript") {
+      const projectedText = projected.payload.messages
+        .map((message) => message.text)
+        .join("\n");
+      assert.match(projectedText, /first/);
+      assert.doesNotMatch(projectedText, /second|third/);
+    }
     await revised.completion;
+    detach();
 
     const after = latestRunSnapshots(recordsDir);
     assert.equal(

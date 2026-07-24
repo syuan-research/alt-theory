@@ -831,7 +831,7 @@ function inactiveTranscriptEntryIds(latestRuns: RunRecord[]): Set<string> {
   return inactive;
 }
 
-function buildTranscriptFromEntries(
+export function buildTranscriptFromEntries(
   entries: unknown[],
   inactiveEntryIds = new Set<string>()
 ): TranscriptMessage[] {
@@ -878,6 +878,7 @@ function buildTranscriptFromEntries(
       customType?: string;
       content?: unknown;
       details?: { sourceRole?: unknown; markerText?: unknown };
+      summary?: unknown;
     };
     if (
       value.type === "custom_message" &&
@@ -899,8 +900,10 @@ function buildTranscriptFromEntries(
         role: "system",
         marker: "compaction",
         text:
-          typeof value.details?.markerText === "string"
-            ? value.details.markerText
+          typeof value.summary === "string"
+            ? value.summary
+            : typeof value.details?.markerText === "string"
+              ? value.details.markerText
             : "Earlier conversation was compressed here to keep the context small. Alt keeps a summary of it.",
         timestamp: normalizeTimestamp(value.timestamp),
       });

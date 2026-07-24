@@ -445,7 +445,9 @@ function SessionNode({
   const app = useApp();
   const active = app.selectedCatalogSessionId === session.sessionId;
   const children = childrenByParent.get(session.sessionId) ?? [];
-  const running = session.status === "incomplete";
+  const running =
+    session.runStatus === "running" ||
+    (app.sessionId === session.sessionId && app.isRunning);
 
   return (
     <>

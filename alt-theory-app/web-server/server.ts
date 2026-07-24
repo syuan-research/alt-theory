@@ -932,11 +932,15 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     const auth = resolveSessionRestAuth(req, res);
     if (!auth) return;
     const list = listSessionSummaries(dataDir);
+    const running = new Set(sessionService.runningSessionIds());
     res.json({
       ...list,
       sessions: list.sessions.filter((session) =>
         canAccessSessionSummary(auth, session),
-      ),
+      ).map((session) => ({
+        ...session,
+        runStatus: running.has(session.sessionId) ? "running" : "idle",
+      })),
     });
   });
   app.get("/api/sessions/:sessionId", (req, res) => {
@@ -1680,6 +1684,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         break;
       case "run_failed":
         send({ type: "run_failed", payload: event.payload });
+        break;
+      case "session_transcript":
+        send({ type: "session_transcript", payload: event.payload });
         break;
       case "session_metrics":
         send({ type: "session_metrics", payload: event.payload });

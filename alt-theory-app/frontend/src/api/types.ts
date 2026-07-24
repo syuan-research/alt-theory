@@ -168,6 +168,7 @@ export interface SessionSummary {
   updatedAt: string | null;
   deletedAt: string | null;
   status: "available" | "incomplete" | "error";
+  runStatus?: "idle" | "running";
   rolePresetSlug: string | null;
   kbDomain: string | null;
   provider: string | null;
