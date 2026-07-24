@@ -662,9 +662,38 @@ export function ModelConfigPage() {
         </PageTitle>
         <BodyText className="mt-1 text-text-secondary">
           {firstRun
-            ? "Alt needs an AI model service before it can reply. Three steps: pick a provider below, paste its API key, and save — the first model becomes active automatically. Your key is saved only on this computer."
+            ? "Alt is your private AI companion — it runs on your own computer, and your conversations stay here."
             : "Configure one or more providers. This writes Pi's native config files under Alt Theory's local state folder."}
         </BodyText>
+
+        {firstRun ? (
+          <div className="mt-5 rounded-lg border border-hairline bg-surface p-5">
+            <p className="text-[0.9375rem] font-semibold text-ink">
+              One quick setup step
+            </p>
+            <p className="mt-1 text-[0.8125rem] text-text-secondary">
+              Alt talks through an AI model service. Connecting one takes about a
+              minute:
+            </p>
+            <ol className="mt-3 space-y-2 text-[0.8125rem] text-ink">
+              <li>
+                <strong>1.</strong> Pick a provider below — any of the recommended
+                ones works.
+              </li>
+              <li>
+                <strong>2.</strong> Paste the API key it gives you. Use the{" "}
+                <em>“Where do I get a key?”</em> link if you need to find it.
+              </li>
+              <li>
+                <strong>3.</strong> Save. The first model becomes active
+                automatically, and you can start talking.
+              </li>
+            </ol>
+            <p className="mt-3 text-[0.75rem] text-text-muted">
+              Your API key and all conversations are stored only on this computer.
+            </p>
+          </div>
+        ) : null}
 
         <div className="mt-6 rounded-lg border border-hairline bg-card px-4 py-3">
           {loading ? (

@@ -27,6 +27,27 @@
   --radius-xl: 16px;
 }
 
+/* Dark appearance (v1.2.1 #6): override the @theme color tokens so both
+   Tailwind utilities (bg-surface, text-ink, …) and the :root aliases below
+   recolor. Toggled by data-theme="dark" on <html> (ShellContext). */
+:root[data-theme="dark"] {
+  --color-ink: #ececeb;
+  --color-ink-soft: #dedddb;
+  --color-text-secondary: #a6a49e;
+  --color-text-muted: #7b7a74;
+  --color-canvas: #161619;
+  --color-panel: #1e1e22;
+  --color-surface: #25252a;
+  --color-card: #2c2c32;
+  --color-card-2: #29292f;
+  --color-hairline: #38383f;
+  --color-hover: #303036;
+  --color-selected: #343440;
+  --color-success: #5fa574;
+  --color-warning: #d0a24a;
+  --color-danger: #d66c64;
+}
+
 /* Short aliases so the ported prototype CSS below reads verbatim. */
 :root {
   --ink: var(--color-ink);

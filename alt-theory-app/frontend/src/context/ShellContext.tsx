@@ -2,6 +2,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
@@ -62,6 +63,10 @@ export interface ShellContextValue {
   thinkingExpanded: boolean;
   setThinkingExpanded: (on: boolean) => void;
 
+  /** Dark appearance (General). Applied via data-theme on <html>. */
+  darkMode: boolean;
+  setDarkMode: (on: boolean) => void;
+
   /** Session-import dialog (triggered from empty state or the list menu). */
   importOpen: boolean;
   setImportOpen: (open: boolean) => void;
@@ -88,6 +93,7 @@ const LEFT_COLLAPSED_KEY = "alt-theory-left-collapsed";
 const SHOW_THINKING_KEY = "alt-theory-show-thinking";
 const THINKING_EXPANDED_KEY = "alt-theory-thinking-expanded";
 const NEW_MODE_KEY = "alt-theory-new-mode";
+const DARK_MODE_KEY = "alt-theory-dark-mode";
 
 function readFlag(key: string): boolean {
   try {
@@ -124,6 +130,7 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   const [thinkingExpanded, setThinkingExpandedState] = useState(() =>
     readFlag(THINKING_EXPANDED_KEY)
   );
+  const [darkMode, setDarkModeState] = useState(() => readFlag(DARK_MODE_KEY));
   const [importOpen, setImportOpen] = useState(false);
   const [armsComparisonId, setArmsComparisonId] = useState<string | null>(null);
   const [compareOpen, setCompareOpen] = useState(false);
@@ -171,6 +178,18 @@ export function ShellProvider({ children }: { children: ReactNode }) {
     setThinkingExpandedState(on);
     writeFlag(THINKING_EXPANDED_KEY, on);
   }, []);
+
+  const setDarkMode = useCallback((on: boolean) => {
+    setDarkModeState(on);
+    writeFlag(DARK_MODE_KEY, on);
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.setAttribute(
+      "data-theme",
+      darkMode ? "dark" : "light"
+    );
+  }, [darkMode]);
 
   const toggleRail = useCallback((key: RailKey) => {
     setRightSub(null);
@@ -221,6 +240,8 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       setShowThinking,
       thinkingExpanded,
       setThinkingExpanded,
+      darkMode,
+      setDarkMode,
       importOpen,
       setImportOpen,
       compareOpen,
@@ -254,6 +275,8 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       setShowThinking,
       thinkingExpanded,
       setThinkingExpanded,
+      darkMode,
+      setDarkMode,
       importOpen,
       setImportOpen,
       compareOpen,

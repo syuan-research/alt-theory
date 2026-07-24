@@ -211,6 +211,19 @@ function GeneralPanel() {
       <div className="set-card">
         <div className="row2">
           <div>
+            <h4>Dark appearance</h4>
+            <p>Use a dark color theme for the app.</p>
+          </div>
+          <button
+            className={`toggle${shell.darkMode ? " on" : ""}`}
+            aria-pressed={shell.darkMode}
+            onClick={() => shell.setDarkMode(!shell.darkMode)}
+          />
+        </div>
+      </div>
+      <div className="set-card">
+        <div className="row2">
+          <div>
             <h4>Show thinking</h4>
             <p>
               Show Alt&apos;s thinking as a collapsible block above each reply.
