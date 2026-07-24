@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/Button";
 import { FieldFrame, TextInput } from "@/components/ui/Field";
 import { BodyText, HintText, MonoText, PageTitle } from "@/components/ui/Typography";
 import { cn } from "@/lib/cn";
+import { applyTheme, isDarkStored, setDarkStored } from "@/lib/theme";
 
 const PROVIDER_PRESETS = [
   {
@@ -342,6 +343,12 @@ export function ModelConfigPage() {
   } | null>(null);
   const firstRun =
     new URLSearchParams(window.location.search).get("firstRun") === "1";
+  // Appearance is reachable from the first screen too (this route is outside
+  // ShellProvider, so it must apply the stored theme itself).
+  const [dark, setDark] = useState(isDarkStored());
+  useEffect(() => {
+    applyTheme(dark);
+  }, [dark]);
 
   const showToast = useCallback((text: string, isError = false) => {
     setToast({ text, error: isError });
@@ -639,7 +646,18 @@ export function ModelConfigPage() {
   return (
     <div className="h-screen overflow-y-auto bg-canvas px-6 py-8 pb-20">
       <div className="mx-auto max-w-[880px]">
-        <div className="mb-6 flex justify-end">
+        <div className="mb-6 flex items-center justify-between">
+          <button
+            className="text-[0.8125rem] text-text-secondary hover:text-ink"
+            onClick={() => {
+              const next = !dark;
+              setDark(next);
+              setDarkStored(next);
+            }}
+          >
+            <i className={`ph ${dark ? "ph-sun" : "ph-moon"} mr-1`} />
+            {dark ? "Light" : "Dark"}
+          </button>
           {status && !status.activeUsable ? (
             <span
               className="text-[0.8125rem] text-text-muted"
@@ -660,37 +678,40 @@ export function ModelConfigPage() {
         <PageTitle>
           {firstRun ? "Welcome — connect Alt to an AI model" : "Model & API Key Setup"}
         </PageTitle>
-        <BodyText className="mt-1 text-text-secondary">
-          {firstRun
-            ? "Alt is your private AI companion — it runs on your own computer, and your conversations stay here."
-            : "Configure one or more providers. This writes Pi's native config files under Alt Theory's local state folder."}
-        </BodyText>
+        {!firstRun ? (
+          <BodyText className="mt-1 text-text-secondary">
+            Configure one or more providers. This writes Pi&apos;s native config
+            files under Alt Theory&apos;s local state folder.
+          </BodyText>
+        ) : null}
 
         {firstRun ? (
           <div className="mt-5 rounded-lg border border-hairline bg-surface p-5">
             <p className="text-[0.9375rem] font-semibold text-ink">
-              One quick setup step
+              Connect an AI model to begin
             </p>
-            <p className="mt-1 text-[0.8125rem] text-text-secondary">
-              Alt talks through an AI model service. Connecting one takes about a
-              minute:
-            </p>
-            <ol className="mt-3 space-y-2 text-[0.8125rem] text-ink">
-              <li>
-                <strong>1.</strong> Pick a provider below — any of the recommended
-                ones works.
-              </li>
-              <li>
-                <strong>2.</strong> Paste the API key it gives you. Use the{" "}
-                <em>“Where do I get a key?”</em> link if you need to find it.
-              </li>
-              <li>
-                <strong>3.</strong> Save. The first model becomes active
-                automatically, and you can start talking.
-              </li>
-            </ol>
-            <p className="mt-3 text-[0.75rem] text-text-muted">
-              Your API key and all conversations are stored only on this computer.
+            <div className="mt-4">
+              {[
+                "Pick a provider below",
+                "Paste its API key",
+                "Save — you're ready to talk",
+              ].map((step, i, all) => (
+                <div key={i}>
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-ink text-[0.8125rem] font-semibold text-surface">
+                      {i + 1}
+                    </span>
+                    <span className="text-[0.875rem] text-ink">{step}</span>
+                  </div>
+                  {i < all.length - 1 ? (
+                    <i className="ph ph-arrow-down my-0.5 block pl-[9px] text-[0.85rem] text-text-muted" />
+                  ) : null}
+                </div>
+              ))}
+            </div>
+            <p className="mt-4 text-[0.75rem] text-text-muted">
+              Takes about a minute. Your key and conversations stay on this
+              computer.
             </p>
           </div>
         ) : null}
@@ -799,12 +820,12 @@ export function ModelConfigPage() {
             {!editingName ? (
               <div className="mt-3 space-y-3">
                 <PresetGroup
-                  title="MiMo / coding gateways"
+                  title="Recommended providers"
                   presets={PROVIDER_PRESETS.filter((preset) => preset.recommended)}
                   onPick={applyPreset}
                 />
                 <PresetGroup
-                  title="Generic provider templates"
+                  title="Other / custom (advanced)"
                   presets={PROVIDER_PRESETS.filter((preset) => !preset.recommended)}
                   onPick={applyPreset}
                   compact
@@ -879,15 +900,18 @@ export function ModelConfigPage() {
                       checked={keyStorage === "literal"}
                       onChange={() => setKeyStorage("literal")}
                     />
-                    Store key (auth.json)
+                    Save my key on this computer
                   </label>
-                  <label className="flex items-center gap-1">
+                  <label
+                    className="flex items-center gap-1"
+                    title="Advanced: store only the name of an environment variable that holds the key, not the key itself."
+                  >
                     <input
                       type="radio"
                       checked={keyStorage === "env"}
                       onChange={() => setKeyStorage("env")}
                     />
-                    Env var name
+                    Use an environment variable (advanced)
                   </label>
                 </div>
               </FieldFrame>
@@ -1285,31 +1309,22 @@ function PresetGroup({
               "rounded-md border border-hairline bg-surface px-3 py-2 text-left hover:bg-hover",
               compact && "px-2.5 py-1.5"
             )}
+            title={compact ? undefined : preset.description}
             onClick={() => onPick(preset)}
           >
             <span className="block text-[0.8125rem] font-semibold text-ink">
               {preset.label}
             </span>
-            {!compact ? (
-              <>
-                <span className="mt-1 block text-[0.75rem] leading-snug text-text-secondary">
-                  {preset.description}
-                </span>
-                <span className="mt-1 block truncate text-[0.6875rem] text-text-muted">
-                  {preset.models.map((model) => model.id).join(", ")}
-                </span>
-                {(preset as { keyUrl?: string }).keyUrl ? (
-                  <a
-                    className="mt-1 block text-[0.6875rem] text-text-secondary underline underline-offset-2 hover:text-ink"
-                    href={(preset as { keyUrl?: string }).keyUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    Get an API key ↗
-                  </a>
-                ) : null}
-              </>
+            {!compact && (preset as { keyUrl?: string }).keyUrl ? (
+              <a
+                className="mt-1 block text-[0.6875rem] text-text-secondary underline underline-offset-2 hover:text-ink"
+                href={(preset as { keyUrl?: string }).keyUrl}
+                target="_blank"
+                rel="noreferrer"
+                onClick={(e) => e.stopPropagation()}
+              >
+                Get an API key ↗
+              </a>
             ) : null}
           </button>
         ))}
