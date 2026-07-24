@@ -363,6 +363,18 @@ async function createAltTheorySessionWithManager(
       "Alt Theory's bundled skills ship inside the app's read-only assets; never install or edit skills there.",
     ].join("\n")
   );
+  semanticSections.push(
+    [
+      "## Skill Precedence",
+      "Bundled skills are a floor, not the authority. Before auto-invoking a bundled skill, check whether the user has installed a skill of the same category (for example lookup, doc-conversion, summary); if so, prefer the user's skill, or ask which to use when the choice matters.",
+    ].join("\n")
+  );
+  semanticSections.push(
+    [
+      "## Synthesis Honesty",
+      "When you synthesize across multiple workspace files, say which files you actually read. Never imply coverage you did not do; if you read only a subset, say so plainly.",
+    ].join("\n")
+  );
   const pureOnlySections: string[] = [];
   pureOnlySections.push(
     [
@@ -433,6 +445,23 @@ async function createAltTheorySessionWithManager(
           source: "alt-theory",
         })
       : { skills: [], diagnostics: [] };
+  // Bundled-skill mode exposure is app policy, held here as the skill
+  // counterpart of activeToolsForMode: these skills drive bash CLIs that
+  // Pure cannot run, so Pure must not advertise them.
+  const FULL_ONLY_BUNDLED_SKILLS = new Set([
+    "web-search",
+    "page-fetch",
+    "doc-convert",
+  ]);
+  const bundledSkillsForMode = () =>
+    modeState.mode === "full"
+      ? altTheorySkills
+      : {
+          skills: altTheorySkills.skills.filter(
+            (skill) => !FULL_ONLY_BUNDLED_SKILLS.has(skill.name)
+          ),
+          diagnostics: altTheorySkills.diagnostics,
+        };
   // User-enabled external skills, snapshot per mode at session open (spec
   // §6.1). Loaded through Pi's own resolver so files, directories, and skill
   // packages all behave exactly as they would in Pi.
@@ -502,7 +531,7 @@ async function createAltTheorySessionWithManager(
         return { skills: [], diagnostics: [] };
       }
       const selected = mergeSkills(
-        mergeSkills(altTheorySkills, externalSkillsByMode[modeState.mode]),
+        mergeSkills(bundledSkillsForMode(), externalSkillsByMode[modeState.mode]),
         loadWorkspaceSkills()
       );
       return resourceDiscovery === "internal"
