@@ -170,7 +170,8 @@ export function readSessionDetail(
     parts.sessionFile,
     parts.historyDir,
     parts.state,
-    latestRuns
+    latestRuns,
+    existsSync(join(parts.recordsDir, "session-import-source.json")),
   );
   const transcriptPreview = pi.transcript.slice(-12);
 
@@ -605,7 +606,8 @@ function readPiInfo(
   sessionFile: string | null,
   historyDir: string,
   state: ReadState,
-  latestRuns: RunRecord[]
+  latestRuns: RunRecord[],
+  includeDetachedHistory: boolean,
 ): {
   info: SessionDetailResponse["pi"];
   transcript: TranscriptMessage[];
@@ -630,7 +632,7 @@ function readPiInfo(
     const context = sessionManager.buildSessionContext();
     const messages = Array.isArray(context.messages) ? context.messages : [];
     const transcript = buildTranscriptFromEntries(
-      branchEntries,
+      includeDetachedHistory ? entries : branchEntries,
       inactiveTranscriptEntryIds(latestRuns)
     );
     return {

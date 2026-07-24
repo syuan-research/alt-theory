@@ -1469,9 +1469,10 @@ export class SessionService {
   }
 
   private publishCurrentBranchTranscript(managed: ManagedSession): void {
-    managed.transcript = buildTranscriptFromEntries(
-      managed.session.sessionManager.getBranch(),
-    );
+    managed.transcript =
+      readSessionDetail(this.config.dataDir, managed.manifest.sessionId)
+        ?.transcript ??
+      buildTranscriptFromEntries(managed.session.sessionManager.getBranch());
     this.emit(managed, {
       type: "session_transcript",
       payload: { messages: [...managed.transcript] },

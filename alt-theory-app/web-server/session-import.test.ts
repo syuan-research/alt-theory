@@ -95,6 +95,23 @@ test("Pi discovery and managed registration preserve history and workspace", asy
   assert.equal(detail.manifest?.writeDir?.endsWith("workspace"), true);
   assert.notEqual(detail.pi.sessionFile, source.sourceId);
 
+  const splitManager = SessionManager.open(detail.pi.sessionFile!);
+  splitManager.resetLeaf();
+  splitManager.appendMessage({
+    role: "user",
+    content: "continued after an interrupted resume",
+    timestamp: Date.now(),
+  });
+  const splitDetail = readSessionDetail(dataDir, registered.sessionId);
+  assert.match(
+    splitDetail!.transcript.map((message) => message.text).join("\n"),
+    /history that must survive import/,
+  );
+  assert.match(
+    splitDetail!.transcript.map((message) => message.text).join("\n"),
+    /continued after an interrupted resume/,
+  );
+
   const provenance = JSON.parse(
     readFileSync(
       join(
