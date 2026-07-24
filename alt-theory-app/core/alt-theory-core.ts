@@ -438,6 +438,10 @@ async function createAltTheorySessionWithManager(
     ...writableRootsForMode(),
     cwd,
     resolvedKbDir,
+    // Bundled skills are runtime-read assets like the KB; without this,
+    // every skill invocation prompts "read outside your workspace"
+    // (found by the v1.3.0-alpha.1 walkthrough acceptance).
+    ...(resolvedSkillsDir ? [resolvedSkillsDir] : []),
   ];
   const altTheorySkills =
     resourceDiscovery !== "clean" && resolvedSkillsDir

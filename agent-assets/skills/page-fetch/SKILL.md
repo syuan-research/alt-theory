@@ -10,6 +10,9 @@ subtypes: [fetch.readable, fetch.protected]
 Follow the search-policy skill: quote what the page actually says, cite the
 URL, and never present memory as fetched content.
 
+Save fetched output inside the current workspace (or the session's writable
+folder) — not /tmp; files outside the workspace need approval to read back.
+
 ## Readable tier (`fetch.readable`) — default
 
 ```bash
