@@ -58,7 +58,7 @@ export function LeftNav() {
 
       <div
         className="full"
-        style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}
+        style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, }}
       >
         <div className="left-head">
           <span className="wordmark">Alt Theory</span>
@@ -113,7 +113,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
 
   const tree = useMemo(
     () => buildWorkspaceTree(app.sessions, local ? app.knownWorkspaces : []),
-    [app.sessions, app.knownWorkspaces, local]
+    [app.sessions, app.knownWorkspaces, local],
   );
 
   const workspaceDirs = useMemo(() => {
@@ -122,7 +122,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
       if (session.workspacePrimaryDir) dirs.add(session.workspacePrimaryDir);
     }
     return [...dirs].sort((a, b) =>
-      folderLabel(a).localeCompare(folderLabel(b))
+      folderLabel(a).localeCompare(folderLabel(b)),
     );
   }, [app.knownWorkspaces, app.sessions]);
 
@@ -172,7 +172,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
     // opts in explicitly. Only roots are moved; branches follow their root.
     const siblings = sourceDir
       ? (tree.groups.find((g) => g.dir === sourceDir)?.roots ?? []).filter(
-          (s) => s.sessionId !== sessionId
+          (s) => s.sessionId !== sessionId,
         )
       : [];
     const canMigrateFolder = siblings.length > 0;
@@ -182,7 +182,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
         ids.map((id) => app.repointSession(id, target))
       ).catch((error) => {
         window.alert(error instanceof Error ? error.message : String(error));
-      });
+      },);
     };
 
     app.requestConfirm({
@@ -190,9 +190,9 @@ function UserNav({ onImport }: { onImport: () => void }) {
       confirmLabel: "Move",
       checkbox: canMigrateFolder
         ? {
-            label: `Also move all ${siblings.length + 1} conversations in "${
-              folderLabel(sourceDir)
-            }"`,
+            label: `Also move all ${siblings.length + 1} conversations in "${folderLabel(
+              sourceDir,
+            )}"`,
             defaultChecked: true,
             danger: true,
           }
@@ -210,7 +210,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
   return (
     <div
       className="user-nav"
-      style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}
+      style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, }}
     >
       <div className="pad">
         <div className="new-row">
@@ -340,7 +340,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                   local
                     ? () =>
                         setDropTarget((prev) =>
-                          prev === group.dir ? null : prev
+                          prev === group.dir ? null : prev,
                         )
                     : undefined
                 }
@@ -449,7 +449,8 @@ function SessionNode({
 
   return (
     <>
-      <button
+      <div className="session-row">
+        <button
         className={`sess${active ? " active" : ""}`}
         style={indent ? { paddingLeft: 10 + indent * 16 } : undefined}
         onClick={() => onOpen(session.sessionId)}
@@ -460,7 +461,7 @@ function SessionNode({
             ? (e) => {
                 e.dataTransfer.setData(
                   "text/alt-theory-session",
-                  session.sessionId
+                  session.sessionId,
                 );
                 e.dataTransfer.effectAllowed = "move";
               }
@@ -475,6 +476,27 @@ function SessionNode({
         </span>
         {running ? <span className="badge-run">running</span> : null}
       </button>
+        <details className="list-more session-more">
+          <summary title="Conversation actions">
+            <i className="ph ph-dots-three" />
+          </summary>
+          <div className="list-menu">
+            <button
+              onClick=
+      {() => void app.renameSelectedSession(session.sessionId)}
+            >
+              <i className="ph ph-pencil-simple" />
+              Rename
+            </button>
+            <button
+              onClick={() => app.deleteSelectedSession(session.sessionId)}
+            >
+              <i className="ph ph-trash" />
+              Delete
+            </button>
+          </div>
+        </details>
+      </div>
       {children.map((child) => (
         <SessionNode
           key={child.sessionId}

@@ -134,8 +134,8 @@ export interface AppContextValue {
   activeRelatedSessionId: string | null;
   setActiveRelatedSessionId: (sessionId: string | null) => void;
   promoteRelatedSession: (sessionId: string) => Promise<void>;
-  renameSelectedSession: () => Promise<void>;
-  deleteSelectedSession: () => void;
+  renameSelectedSession: (sessionId?: string) => Promise<void>;
+  deleteSelectedSession: (sessionId?: string) => void;
 
   sessionId: string | null;
   sessionReady: boolean;
@@ -166,11 +166,12 @@ export interface AppContextValue {
   setDraftWorkspace: (primaryDir: string | null) => void;
   addKnownWorkspace: (path: string) => Promise<void>;
   /** Re-point any existing session's working folder (drag & drop, M4). */
-  repointSession: (sessionId: string, primaryDir: string | null) => Promise<void>;
+  repointSession: (sessionId: string, primaryDir: string | null,) => Promise<void>;
 
   sessionMode: CapabilityMode;
   switchMode: (mode: CapabilityMode) => void;
   modelOverride: SessionModelOverride | null;
+  currentSessionModel: { provider: string; modelId: string } | null;
   setSessionModel: (override: SessionModelOverride | null) => void;
   studyTag: StudyTag | null;
   setStudyTag: (tag: StudyTag | null) => void;
@@ -198,7 +199,7 @@ export interface AppContextValue {
   approvals: ApprovalRequestPayload[];
   respondApproval: (
     approvalId: string,
-    response: { accept?: boolean; choice?: string | null; text?: string | null }
+    response: { accept?: boolean; choice?: string | null; text?: string | null; },
   ) => void;
   approvalMarkers: string[];
   addApprovalMarker: (text: string) => void;
@@ -207,6 +208,7 @@ export interface AppContextValue {
   metrics: SessionMetrics | null;
 
   startNewSession: () => void;
+  compactCurrentSession: () => void;
   sendPrompt: (text: string) => boolean;
   abortRun: () => void;
   invokeSkill: (skillName: string, userText?: string) => boolean;
@@ -222,7 +224,7 @@ export interface AppContextValue {
 const AppContext = createContext<AppContextValue | null>(null);
 
 function applySnapshotSelectors(
-  payload: SessionSnapshot | SessionDraftSnapshot
+  payload: SessionSnapshot | SessionDraftSnapshot,
 ): SessionSelectors {
   return {
     projectId: payload.projectId ?? null,
@@ -241,7 +243,7 @@ function applySnapshotSelectors(
 function appendStreamText(
   parts: StreamPart[],
   kind: "thinking" | "text",
-  delta: string
+  delta: string,
 ): StreamPart[] {
   const last = parts[parts.length - 1];
   if (last && last.kind === kind) {
@@ -252,14 +254,14 @@ function appendStreamText(
 
 function upsertToolPart(
   parts: StreamPart[],
-  tool: ActiveToolState
+  tool: ActiveToolState,
 ): StreamPart[] {
   const index = parts.findIndex(
-    (part) => part.kind === "tool" && part.tool.callId === tool.callId
+    (part) => part.kind === "tool" && part.tool.callId === tool.callId,
   );
   if (index === -1) return [...parts, { kind: "tool", tool }];
   return parts.map((part, i) =>
-    i === index ? { kind: "tool" as const, tool } : part
+    i === index ? { kind: "tool" as const, tool } : part,
   );
 }
 
@@ -272,7 +274,7 @@ function failRunningToolParts(parts: StreamPart[]): StreamPart[] {
             kind: "tool" as const,
             tool: { ...part.tool, status: "failed" as const, success: false },
           }
-        : part
+        : part,
     );
 }
 
@@ -317,11 +319,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [selectors, setSelectors] = useState<SessionSelectors>(defaultSelectors);
   const [sessionMode, setSessionMode] = useState<CapabilityMode>("pure");
   const [workspacePrimaryDir, setWorkspacePrimaryDir] = useState<string | null>(
-    null
+    null,
   );
   const [knownWorkspaces, setKnownWorkspaces] = useState<string[]>([]);
   const [modelOverride, setModelOverride] =
     useState<SessionModelOverride | null>(null);
+  const [currentSessionModel, setCurrentSessionModel] = useState<{
+    provider: string;
+    modelId: string;
+  } | null>(null);
   const [studyTag, setStudyTagState] = useState<StudyTag | null>(null);
 
   const [messages, setMessages] = useState<TranscriptMessage[]>([]);
@@ -329,16 +335,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [toolStatus, setToolStatus] = useState("");
   const [runPhaseLabel, setRunPhaseLabel] = useState("");
   const [composerNotice, setComposerNotice] = useState<ComposerNotice | null>(
-    null
+    null,
   );
   const [runHint, setRunHint] = useState<string | null>(null);
   const [reviseMode, setReviseMode] = useState(false);
   const [reviseDraft, setReviseDraft] = useState("");
   const [reviseEntryId, setReviseEntryId] = useState<string | null>(null);
-  const [stagedWorkspacePaths, setStagedWorkspacePaths] = useState<string[]>([]);
+  const [stagedWorkspacePaths, setStagedWorkspacePaths] = useState<string[]>([],);
   const [runCompletedCount, setRunCompletedCount] = useState(0);
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(
-    null
+    null,
   );
   const [approvals, setApprovals] = useState<ApprovalRequestPayload[]>([]);
   // Conversation-scoped approval markers, recorded
@@ -370,7 +376,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const stageWorkspacePath = useCallback((path: string) => {
     setStagedWorkspacePaths((prev) =>
-      prev.includes(path) ? prev : [...prev, path]
+      prev.includes(path) ? prev : [...prev, path],
     );
   }, []);
 
@@ -404,7 +410,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }, ttlMs);
       }
     },
-    []
+    [],
   );
 
   const refreshAuth = useCallback(async () => {
@@ -499,7 +505,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setSelectedSessionDetail(null);
       }
     }
-  }, []);
+  }, [],);
 
   const refreshSessions = useCallback(async () => {
     if (loginRequired) return;
@@ -513,12 +519,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setSelectedCatalogSessionId((current) =>
         current && list.some((item) => item.sessionId === current)
           ? current
-          : list[0]?.sessionId ?? null
+          : ( list[0]?.sessionId ?? null
+      ),
       );
     } catch (err) {
       if (requestId === sessionListRequestRef.current) {
         setSessionsError(
-          err instanceof Error ? err.message : "Could not load conversations"
+          err instanceof Error ? err.message : "Could not load conversations",
         );
       }
     } finally {
@@ -557,12 +564,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     (message: ClientMessage): boolean => {
       const sent = wsApiRef.current?.send(message) ?? false;
       if (!sent) {
-        setComposerNoticeTimed({ prefix: "⚠", text: "Not connected", warn: true });
+        setComposerNoticeTimed({ prefix: "⚠", text: "Not connected", warn: true, });
         wsApiRef.current?.reconnect();
       }
       return sent;
     },
-    [setComposerNoticeTimed]
+    [setComposerNoticeTimed],
   );
 
   const requestAssetSwitch = useCallback(
@@ -579,7 +586,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setToolStatus(label);
       return true;
     },
-    [sendMessage]
+    [sendMessage],
   );
 
   const refreshCurrentTranscript = useCallback(async (activeSessionId: string) => {
@@ -591,7 +598,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch {
       // Non-fatal; transcript may arrive via websocket.
     }
-  }, []);
+  }, [],);
 
   const handleServerMessage = useCallback(
     (message: ServerMessage) => {
@@ -606,6 +613,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setSelectors(applySnapshotSelectors(message.payload));
           setSessionMode("pure");
           setModelOverride(message.payload.modelOverride ?? null);
+          setCurrentSessionModel(null);
           setWorkspacePrimaryDir(message.payload.workspacePrimaryDir ?? null);
           setStudyTagState(null);
           setApprovalMarkers([]);
@@ -631,7 +639,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setSessionCreatedHere(
             !pendingOpenSessionIdRef.current &&
               !pendingAssetSwitchRef.current &&
-              message.payload.sessionId !== reconnectSessionIdRef.current
+              message.payload.sessionId !== reconnectSessionIdRef.current,
           );
           setSessionWarnings(message.payload.resumeWarnings ?? []);
           if (
@@ -655,11 +663,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setSelectors(applySnapshotSelectors(message.payload));
           setSessionMode(message.payload.mode ?? "pure");
           setModelOverride(message.payload.modelOverride ?? null);
+          setCurrentSessionModel(message.payload.currentModel ?? null);
           setStudyTagState(message.payload.studyTag ?? null);
           setSessionReady(true);
           setIsRunning(message.payload.status === "running");
-          setConnStatus(message.payload.status === "running" ? "running" : "idle");
-          setConnLabel(message.payload.status === "running" ? "Running" : "Ready");
+          setConnStatus(message.payload.status === "running" ? "running" : "idle",);
+          setConnLabel(message.payload.status === "running" ? "Running" : "Ready",);
           setWsError(null);
           setToolStatus("");
           clearStagedWorkspace();
@@ -689,6 +698,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
           if (message.payload.mode) setSessionMode(message.payload.mode);
           if (message.payload.modelOverride !== undefined) {
             setModelOverride(message.payload.modelOverride);
+          }
+          if (message.payload.currentModel) {
+            setCurrentSessionModel(message.payload.currentModel);
           }
           if (message.payload.studyTag !== undefined) {
             setStudyTagState(message.payload.studyTag);
@@ -740,13 +752,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
           // takes over, so drop the "Thinking…" phase label.
           setRunPhaseLabel("");
           setStreamParts((parts) =>
-            appendStreamText(parts, "text", message.payload.text)
+            appendStreamText(parts, "text", message.payload.text),
           );
           break;
 
         case "thinking_delta":
           setStreamParts((parts) =>
-            appendStreamText(parts, "thinking", message.payload.text)
+            appendStreamText(parts, "thinking", message.payload.text),
           );
           break;
 
@@ -761,7 +773,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           };
           activeToolsMapRef.current[callId] = entry;
           setStreamParts((parts) => upsertToolPart(parts, entry));
-          setToolStatus(`⏳ ${label}`);
+          setToolStatus(label);
           break;
         }
 
@@ -776,7 +788,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             setStreamParts((parts) => upsertToolPart(parts, updated));
             if (message.payload.text) {
               setToolStatus(
-                `⏳ ${toolLabel(entry.toolName, entry.path)} — ${message.payload.text}`
+                `${toolLabel(entry.toolName, entry.path)} — ${message.payload.text}`,
               );
             }
           }
@@ -811,13 +823,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
               ? "Connecting…"
               : message.payload.phase === "thinking"
                 ? "Thinking…"
-                : ""
+                : "",
           );
           break;
 
         case "run_completed":
           setStreamParts([]);
           activeToolsMapRef.current = {};
+          setCurrentSessionModel(message.payload.currentModel ?? null);
           setIsRunning(false);
           setConnStatus("idle");
           setConnLabel("Ready");
@@ -857,8 +870,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         case "approval_resolved":
           setApprovals((prev) =>
             prev.filter(
-              (entry) => entry.approvalId !== message.payload.approvalId
-            )
+              (entry) => entry.approvalId !== message.payload.approvalId,
+            ),
           );
           break;
 
@@ -906,7 +919,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       selectedCatalogSessionId,
       sessionId,
       setComposerNoticeTimed,
-    ]
+    ],
   );
 
   const wsApiRef = useRef<ReturnType<typeof useWebSocket> | null>(null);
@@ -970,10 +983,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     beginNewSession();
   }, [beginNewSession, isRunning]);
 
+  const compactCurrentSession = useCallback(() => {
+    if (!sessionId || isRunning) return;
+    if (sendMessage({ type: "compact" })) {
+      setIsRunning(true);
+      setConnStatus("running");
+      setConnLabel("Compacting...");
+      setToolStatus("Compacting conversation…");
+    }
+  }, [isRunning, sendMessage, sessionId]);
+
   const openCatalogSession = useCallback(
     (targetSessionId: string) => {
       if (!targetSessionId || isRunning) return;
-      const summary = sessions.find((item) => item.sessionId === targetSessionId);
+      const summary = sessions.find((item) => item.sessionId === targetSessionId,);
       if (summary && !summary.hasSessionFile) {
         setToolStatus("Conversation cannot be opened.");
         return;
@@ -994,7 +1017,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         pendingOpenSessionIdRef.current = "";
       }
     },
-    [isRunning, sendMessage, sessions]
+    [isRunning, sendMessage, sessions],
   );
 
   const forkCurrentSession = useCallback(
@@ -1013,11 +1036,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
             ? "Starting a fresh helper…"
             : related
               ? "Starting a related conversation…"
-              : "Branching conversation…"
+              : "Branching conversation…",
         );
       }
     },
-    [isRunning, sendMessage, sessionId]
+    [isRunning, sendMessage, sessionId],
   );
 
   const promoteRelatedSession = useCallback(
@@ -1027,11 +1050,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setActiveRelatedSessionId(null);
       openCatalogSession(targetSessionId);
     },
-    [openCatalogSession, refreshSessions]
+    [openCatalogSession, refreshSessions],
   );
 
-  const renameSelectedSession = useCallback(async () => {
-    const targetId = selectedSessionDetail?.session?.sessionId;
+  const renameSelectedSession = useCallback(async (sessionId?: string) => {
+    const targetId = sessionId ?? selectedSessionDetail?.session?.sessionId;
     if (!targetId) return;
     const current = sessionDisplayNames[targetId]?.alias || "";
     const next = window.prompt("Conversation name", current);
@@ -1046,14 +1069,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setToolStatus("");
     } catch (err) {
       setToolStatus(
-        `Rename failed: ${err instanceof Error ? err.message : String(err)}`
+        `Rename failed: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
-  }, [selectedSessionDetail, sessionDisplayNames]);
+  }, [selectedSessionDetail, sessionDisplayNames],);
 
-  const performDeleteSelectedSession = useCallback(async () => {
-    const targetId = selectedSessionDetail?.session?.sessionId;
-    if (!targetId) return;
+  const performDeleteSelectedSession = useCallback(async (targetId: string) => {
     try {
       await deleteSessionRequest(targetId);
       if (sessionId === targetId) {
@@ -1062,33 +1083,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
         clearStagedWorkspace();
         sendMessage({ type: "new_session" });
       }
+        if (selectedCatalogSessionId === targetId) {
       setSelectedCatalogSessionId(null);
       setSelectedSessionDetail(null);
+        }
       await refreshSessions();
     } catch (err) {
       setToolStatus(
-        `Delete failed: ${err instanceof Error ? err.message : String(err)}`
+        `Delete failed: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   }, [
     clearStagedWorkspace,
     refreshSessions,
-    selectedSessionDetail,
+      selectedCatalogSessionId,
     sendMessage,
     sessionId,
-  ]);
+  ],);
 
-  const deleteSelectedSession = useCallback(() => {
-    const targetId = selectedSessionDetail?.session?.sessionId;
+  const deleteSelectedSession = useCallback((sessionId?: string) => {
+    const targetId = sessionId ?? selectedSessionDetail?.session?.sessionId;
     if (!targetId) return;
     requestConfirm({
       message: "Delete this conversation from the conversation list?",
       confirmLabel: "Delete",
       onConfirm: () => {
-        void performDeleteSelectedSession();
+        void performDeleteSelectedSession(targetId);
       },
     });
-  }, [performDeleteSelectedSession, requestConfirm, selectedSessionDetail]);
+  }, [performDeleteSelectedSession, requestConfirm, selectedSessionDetail],);
 
   const sendPrompt = useCallback(
     (text: string) => {
@@ -1117,7 +1140,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setConnLabel("Thinking…");
       return true;
     },
-    [clearStagedWorkspace, isRunning, sendMessage, stagedWorkspacePaths]
+    [clearStagedWorkspace, isRunning, sendMessage, stagedWorkspacePaths],
   );
 
   const abortRun = useCallback(() => {
@@ -1148,7 +1171,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setConnLabel("Thinking…");
       return true;
     },
-    [isRunning, sendMessage]
+    [isRunning, sendMessage],
   );
 
   const reviseLatest = useCallback(
@@ -1173,7 +1196,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setToolStatus("Revising the conversation...");
       return true;
     },
-    [isRunning, sendMessage, sessionId, reviseEntryId]
+    [isRunning, sendMessage, sessionId, reviseEntryId],
   );
 
   const deleteLatest = useCallback(() => {
@@ -1204,7 +1227,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setWorkspacePrimaryDir(primaryDir);
       }
     },
-    [sendMessage]
+    [sendMessage],
   );
 
   const addKnownWorkspace = useCallback(async (path: string) => {
@@ -1217,7 +1240,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       await setSessionWorkspaceRequest(targetSessionId, primaryDir);
       void refreshSessions();
     },
-    [refreshSessions]
+    [refreshSessions],
   );
 
   useEffect(() => {
@@ -1244,7 +1267,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setToolStatus("Branching from this point…");
       }
     },
-    [sendMessage, sessionId, isRunning]
+    [sendMessage, sessionId, isRunning],
   );
 
   const switchProject = useCallback(
@@ -1254,7 +1277,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (sessionId) void refreshSessions();
       }
     },
-    [refreshSessions, sendMessage, sessionId]
+    [refreshSessions, sendMessage, sessionId],
   );
 
   const switchKb = useCallback(
@@ -1264,7 +1287,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setSelectors((prev) => ({ ...prev, currentDomain: domain }));
       }
     },
-    [sendMessage]
+    [sendMessage],
   );
 
   const switchSoul = useCallback(
@@ -1272,13 +1295,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (
         requestAssetSwitch(
           { type: "switch_soul", payload: { soulSlug } },
-          "Switching soul..."
+          "Switching soul...",
         )
       ) {
         setSelectors((prev) => ({ ...prev, soulSlug }));
       }
     },
-    [requestAssetSwitch]
+    [requestAssetSwitch],
   );
 
   const switchRolePreset = useCallback(
@@ -1286,13 +1309,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (
         requestAssetSwitch(
           { type: "switch_role_preset", payload: { rolePresetSlug } },
-          "Switching role preset..."
+          "Switching role preset...",
         )
       ) {
         setSelectors((prev) => ({ ...prev, rolePresetSlug }));
       }
     },
-    [requestAssetSwitch]
+    [requestAssetSwitch],
   );
 
   const switchInstruction = useCallback(
@@ -1300,13 +1323,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (
         requestAssetSwitch(
           { type: "switch_instruction", payload: { customInstructionRef } },
-          "Switching instruction..."
+          "Switching instruction...",
         )
       ) {
         setSelectors((prev) => ({ ...prev, customInstructionRef }));
       }
     },
-    [requestAssetSwitch]
+    [requestAssetSwitch],
   );
 
   const switchVisibility = useCallback(
@@ -1323,7 +1346,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       }
     },
-    [sendMessage, setComposerNoticeTimed]
+    [sendMessage, setComposerNoticeTimed],
   );
 
   const switchMode = useCallback(
@@ -1332,7 +1355,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setSessionMode(mode);
       }
     },
-    [sendMessage]
+    [sendMessage],
   );
 
   const setSessionModel = useCallback(
@@ -1341,7 +1364,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setModelOverride(override);
       }
     },
-    [sendMessage]
+    [sendMessage],
   );
 
   const setStudyTag = useCallback(
@@ -1351,22 +1374,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (sessionId) void refreshSessions();
       }
     },
-    [refreshSessions, sendMessage, sessionId]
+    [refreshSessions, sendMessage, sessionId],
   );
 
   const respondApproval = useCallback(
     (
       approvalId: string,
-      response: { accept?: boolean; choice?: string | null; text?: string | null }
+      response: { accept?: boolean; choice?: string | null; text?: string | null; },
     ) => {
-      sendMessage({ type: "respond_approval", payload: { approvalId, ...response } });
-      setApprovals((prev) => prev.filter((entry) => entry.approvalId !== approvalId));
+      sendMessage({ type: "respond_approval", payload: { approvalId, ...response }, });
+      setApprovals((prev) => prev.filter((entry) => entry.approvalId !== approvalId),);
     },
-    [sendMessage]
+    [sendMessage],
   );
 
   const addApprovalMarker = useCallback((text: string) => {
-    setApprovalMarkers((prev) => (prev.includes(text) ? prev : [...prev, text]));
+    setApprovalMarkers((prev) =>prev.includes(text) ? prev : [...prev, text],);
   }, []);
 
   const requestMetadata = useCallback(() => {
@@ -1435,6 +1458,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       repointSession,
       switchMode,
       modelOverride,
+      currentSessionModel,
       setSessionModel,
       studyTag,
       setStudyTag,
@@ -1461,6 +1485,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       manifest,
       metrics,
       startNewSession,
+      compactCurrentSession,
       sendPrompt,
       abortRun,
       invokeSkill,
@@ -1526,6 +1551,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       repointSession,
       switchMode,
       modelOverride,
+      currentSessionModel,
       setSessionModel,
       studyTag,
       setStudyTag,
@@ -1552,6 +1578,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       manifest,
       metrics,
       startNewSession,
+      compactCurrentSession,
       sendPrompt,
       abortRun,
       invokeSkill,
@@ -1562,7 +1589,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       cancelReviseMode,
       requestMetadata,
       requestMetrics,
-    ]
+    ],
   );
 
   return (

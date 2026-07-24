@@ -22,9 +22,9 @@
     "build:electron:portable": "npm run build:frontend-v6 && npm run compile:bundle && electron-builder build --win portable"
   },
   "dependencies": {
-    "@earendil-works/pi-agent-core": "^0.80.3",
-    "@earendil-works/pi-ai": "^0.80.3",
-    "@earendil-works/pi-coding-agent": "^0.80.3",
+    "@earendil-works/pi-agent-core": "^0.82.0",
+    "@earendil-works/pi-ai": "^0.82.0",
+    "@earendil-works/pi-coding-agent": "^0.82.0",
     "dotenv": "^16.4.7",
     "express": "^5.2.1",
     "jszip": "^3.10.1",

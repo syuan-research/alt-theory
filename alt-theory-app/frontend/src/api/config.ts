@@ -3,9 +3,64 @@ import type {
   ConfigStatus,
   FetchModelsDraftInput,
   FetchedModel,
+  ProviderAuthFlow,
+  ProviderAuthId,
   ProviderView,
   UpsertProviderInput,
 } from "./types";
+
+export async function listProviderAuthStatus(): Promise<{
+  providers: { provider: ProviderAuthId; connected: boolean }[];
+}> {
+  return fetchJson("/api/config/auth/providers");
+}
+
+export async function startProviderAuth(
+  provider: ProviderAuthId
+): Promise<ProviderAuthFlow> {
+  return fetchJson(
+    `/api/config/auth/providers/${encodeURIComponent(provider)}/login`,
+    { method: "POST" }
+  );
+}
+
+export async function getProviderAuthFlow(
+  flowId: string
+): Promise<ProviderAuthFlow> {
+  return fetchJson(`/api/config/auth/flows/${encodeURIComponent(flowId)}`);
+}
+
+export async function respondToProviderAuth(
+  flowId: string,
+  promptId: string,
+  value: string
+): Promise<ProviderAuthFlow> {
+  return fetchJson(
+    `/api/config/auth/flows/${encodeURIComponent(flowId)}/respond`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ promptId, value }),
+    }
+  );
+}
+
+export async function cancelProviderAuth(
+  flowId: string
+): Promise<ProviderAuthFlow> {
+  return fetchJson(`/api/config/auth/flows/${encodeURIComponent(flowId)}`, {
+    method: "DELETE",
+  });
+}
+
+export async function logoutProviderAuth(
+  provider: ProviderAuthId
+): Promise<{ ok: true }> {
+  return fetchJson(
+    `/api/config/auth/providers/${encodeURIComponent(provider)}/logout`,
+    { method: "POST" }
+  );
+}
 
 export async function getConfigStatus(): Promise<ConfigStatus> {
   return fetchJson<ConfigStatus>("/api/config/status");

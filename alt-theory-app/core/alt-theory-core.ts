@@ -8,7 +8,6 @@
  */
 
 import {
-  AuthStorage,
   createAgentSession,
   createWriteToolDefinition,
   DefaultResourceLoader,
@@ -17,7 +16,7 @@ import {
   loadProjectContextFiles,
   loadSkills,
   loadSkillsFromDir,
-  ModelRegistry,
+  ModelRuntime,
   type ResourceDiagnostic,
   SessionManager,
   type Skill,
@@ -594,24 +593,25 @@ async function createAltTheorySessionWithManager(
     if (!config.modelProvider || !config.modelId) {
       throw new Error("modelProvider and modelId must be configured together");
     }
-    const authStorage = AuthStorage.create();
+    const modelRuntime = await ModelRuntime.create({
+      modelsPath: config.modelsPath ? resolve(config.modelsPath) : undefined,
+    });
     if (config.runtimeApiKey) {
-      authStorage.setRuntimeApiKey(config.modelProvider, config.runtimeApiKey);
+      await modelRuntime.setRuntimeApiKey(
+        config.modelProvider,
+        config.runtimeApiKey
+      );
     }
-    const modelRegistry = config.modelsPath
-      ? ModelRegistry.create(authStorage, resolve(config.modelsPath))
-      : ModelRegistry.create(authStorage);
-    const model = modelRegistry.find(config.modelProvider, config.modelId);
+    const model = modelRuntime.getModel(config.modelProvider, config.modelId);
     if (!model) {
-      const loadError = modelRegistry.getError();
+      const loadError = modelRuntime.getError();
       throw new Error(
         `Unknown model: ${config.modelProvider}/${config.modelId}${
           loadError ? ` (${loadError})` : ""
         }`
       );
     }
-    sessionOpts.authStorage = authStorage;
-    sessionOpts.modelRegistry = modelRegistry;
+    sessionOpts.modelRuntime = modelRuntime;
     sessionOpts.model = model;
   }
   if (config.thinkingLevel) {

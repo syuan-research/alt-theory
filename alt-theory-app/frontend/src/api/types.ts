@@ -114,6 +114,7 @@ export interface SessionSnapshot {
   customInstructionRef?: string | null;
   mode?: CapabilityMode;
   modelOverride?: SessionModelOverride | null;
+  currentModel?: { provider: string; modelId: string };
   studyTag?: StudyTag | null;
   workspace?: { primaryDir: string; additionalDirs: string[] } | null;
   openedFrom?: "new" | "existing";
@@ -279,7 +280,7 @@ export interface ProviderView {
   baseUrl?: string;
   api?: ApiType;
   options?: Record<string, unknown>;
-  keyState: "stored" | "env-set" | "env-missing" | "missing";
+  keyState: "stored" | "oauth" | "env-set" | "env-missing" | "missing";
   hasKey: boolean;
   models: ConfigModel[];
   active: boolean;
@@ -293,6 +294,41 @@ export interface ConfigStatus {
   activeIssue: string | null;
   activeProvider: string | null;
   activeModel: string | null;
+}
+
+export type ProviderAuthId = "openrouter" | "xai" | "openai-codex";
+
+export type ProviderAuthEvent =
+  | { type: "info"; message: string; links?: { url: string; label?: string }[] }
+  | { type: "auth_url"; url: string; instructions?: string }
+  | {
+      type: "device_code";
+      userCode: string;
+      verificationUri: string;
+      intervalSeconds?: number;
+      expiresInSeconds?: number;
+    }
+  | { type: "progress"; message: string };
+
+export interface ProviderAuthPrompt {
+  id: string;
+  type: "text" | "secret" | "select" | "manual_code";
+  message: string;
+  placeholder?: string;
+  options?: readonly {
+    id: string;
+    label: string;
+    description?: string;
+  }[];
+}
+
+export interface ProviderAuthFlow {
+  flowId: string;
+  provider: ProviderAuthId;
+  status: "running" | "connected" | "error" | "cancelled";
+  events: ProviderAuthEvent[];
+  prompt?: ProviderAuthPrompt;
+  error?: string;
 }
 
 export interface FetchModelsDraftInput {
@@ -426,6 +462,7 @@ export interface AssemblyManifest {
 export type ClientMessage =
   | { type: "prompt"; payload: string; attachments?: string[] }
   | { type: "abort" }
+  | { type: "compact" }
   | { type: "switch_kb"; payload: { domain: string } }
   | { type: "switch_role_preset"; payload: { rolePresetSlug: string | null } }
   | { type: "switch_soul"; payload: { soulSlug: string | null } }

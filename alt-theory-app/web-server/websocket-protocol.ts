@@ -26,6 +26,7 @@ export interface SessionSnapshot {
   soulSlug: string | null;
   customInstructionRef?: string | null;
   mode?: "pure" | "full";
+  currentModel?: { provider: string; modelId: string };
   workspace?: { primaryDir: string; additionalDirs: string[] };
   openedFrom?: "new" | "existing";
   resumeWarnings?: string[];
@@ -88,6 +89,7 @@ export interface TranscriptMessage {
 export type ClientMessage =
   | { type: "prompt"; payload: string; attachments?: string[] }
   | { type: "abort" }
+  | { type: "compact" }
   /** domain is a known KB domain, "all", or "none" to disable kb-folder retrieval. */
   | { type: "switch_kb"; payload: { domain: string } }
   | { type: "switch_role_preset"; payload: { rolePresetSlug: string | null } }

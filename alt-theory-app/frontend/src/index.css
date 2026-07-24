@@ -210,7 +210,14 @@
   .group-label .group-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .group-label .tw { font-size: 0.7rem; transition: transform 0.12s; margin-left: auto; }
   .group-label.closed .tw { transform: rotate(-90deg); }
-  .sess { width: 100%; display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: var(--r-sm); cursor: pointer; color: var(--ink-soft); font-size: 0.875rem; text-align: left; white-space: nowrap; overflow: hidden; }
+  .session-row {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+  }
+  .sess {
+    flex: 1;
+    min-width: 0; display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: var(--r-sm); cursor: pointer; color: var(--ink-soft); font-size: 0.875rem; text-align: left; white-space: nowrap; overflow: hidden; }
   .sess:hover { background: var(--hover); }
   .sess.active { background: var(--selected); font-weight: 500; }
   .sess .s-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
@@ -353,6 +360,32 @@
   .list-more > summary::-webkit-details-marker { display: none; }
   .list-more > summary:hover { background: var(--hover); color: var(--ink); }
   .list-more[open] > summary { background: var(--selected); }
+  .session-more {
+    flex: 0 0 auto;
+    opacity: 0;
+  }
+  .session-row:hover .session-more,
+  .session-row:focus-within .session-more,
+  .session-more[open] {
+    opacity: 1;
+  }
+  .session-more > summary {
+    width: 24px;
+    height: 24px;
+  }
+  .run-phase {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .run-phase i {
+    animation: status-spin 0.9s linear infinite;
+  }
+  @keyframes status-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
   .list-menu { position: absolute; right: 0; top: 30px; z-index: 60; background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--r-md); box-shadow: 0 6px 22px rgba(31,30,26,0.12); padding: 4px; min-width: 200px; }
   .list-menu button { display: flex; align-items: center; gap: 8px; width: 100%; border: none; background: none; padding: 7px 10px; border-radius: var(--r-sm); font-size: 0.85rem; color: var(--ink-soft); cursor: pointer; text-align: left; }
   .list-menu button:hover { background: var(--hover); }
@@ -556,7 +589,7 @@
   .set-card h4 { margin: 0 0 4px; font-size: 0.95rem; }
   .set-card p { margin: 0; font-size: 0.8125rem; color: var(--text-2); }
   .set-card .row2 { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-  .set-card input[type=text] { border: 1px solid var(--hairline); border-radius: var(--r-sm); padding: 7px 10px; font: inherit; font-size: 0.875rem; width: 220px; outline: none; }
+  .set-card input[type="text"] { border: 1px solid var(--hairline); border-radius: var(--r-sm); padding: 7px 10px; font: inherit; font-size: 0.875rem; width: 220px; outline: none; }
   .toggle { width: 38px; height: 22px; border-radius: 999px; background: var(--toggle-track); position: relative; cursor: pointer; flex-shrink: 0; border: none; padding: 0; transition: background 0.15s; }
   .toggle::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: var(--toggle-knob); box-shadow: 0 1px 2px rgba(0,0,0,0.25); transition: left 0.15s; }
   .toggle.on { background: var(--toggle-track-on); }

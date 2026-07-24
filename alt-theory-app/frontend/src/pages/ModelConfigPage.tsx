@@ -249,13 +249,18 @@ function stringifyOptionValue(value: unknown): string {
 
 function keyStateLabel(keyState: ProviderView["keyState"]): string {
   if (keyState === "stored") return "key saved";
+  if (keyState === "oauth") return "account connected";
   if (keyState === "env-set") return "env key set";
   if (keyState === "env-missing") return "env var missing";
   return "no key";
 }
 
 function keyStateIsUsable(keyState: ProviderView["keyState"]): boolean {
-  return keyState === "stored" || keyState === "env-set";
+  return (
+    keyState === "stored" ||
+    keyState === "oauth" ||
+    keyState === "env-set"
+  );
 }
 
 const THINKING_FORMAT_OPTIONS = [
@@ -421,6 +426,10 @@ export function ModelConfigPage({ embedded = false }: { embedded?: boolean } = {
           setKeyHint(
             "A key is already saved for this provider. Leave blank to keep it, or paste a new key to replace it."
           );
+        } else if (provider.keyState === "oauth") {
+          setKeyHint(
+            "This provider is connected through Pi OAuth. Leave the API key blank to keep using the connected account."
+          );
         } else if (provider.keyState === "env-set") {
           setKeyHint(
             "An environment-variable key is configured and available in this process. Leave blank to keep it."
@@ -561,6 +570,23 @@ export function ModelConfigPage({ embedded = false }: { embedded?: boolean } = {
     }
     try {
       const data = await fetchProviderModels(provider.name);
+      if (provider.keyState === "oauth") {
+        const available = new Set((data.models || []).map((model) => model.id));
+        setProviders((current) =>
+          current.map((item) =>
+            item.name === provider.name
+              ? {
+                  ...item,
+                  models: item.models.filter((model) => available.has(model.id)),
+                }
+              : item
+          )
+        );
+        showToast(
+          `Verified ${available.size} Pi-supported models for this account`
+        );
+        return;
+      }
       const models = mergeFetchedModels(provider.models, data.models || []);
       if (models.length === 0) {
         showToast("Fetch returned no models.", true);

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ActiveToolState, TranscriptMessage } from "@/api/types";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
@@ -12,6 +12,7 @@ export function MessageList() {
   const shell = useShell();
   const containerRef = useRef<HTMLDivElement>(null);
   const railRef = useRef<HTMLDivElement>(null);
+  const stickToBottomRef = useRef(true);
   const [scrubbing, setScrubbing] = useState(false);
   const developer = app.transcriptView === "developer";
 
@@ -24,7 +25,7 @@ export function MessageList() {
 
   const userMessageCount = useMemo(
     () => app.messages.filter((message) => message.role === "user").length,
-    [app.messages]
+    [app.messages],
   );
 
   // Map a pointer position on the rail to a user message and scroll to it.
@@ -35,8 +36,14 @@ export function MessageList() {
     const rect = rail.getBoundingClientRect();
     const ratio = Math.min(
       1,
-      Math.max(0, (clientY - rect.top) / Math.max(1, rect.height))
+      Math.max(0, (clientY - rect.top) / Math.max(1, rect.height)),
     );
+    if (ratio >= 0.98) {
+      stickToBottomRef.current = true;
+      container.scrollTop = container.scrollHeight;
+      return;
+    }
+    stickToBottomRef.current = false;
     const index = Math.round(ratio * (userMessageCount - 1));
     const target = container.querySelector(`[data-uidx="${index}"]`);
     if (target instanceof HTMLElement) {
@@ -44,11 +51,10 @@ export function MessageList() {
     }
   };
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
-    if (nearBottom) el.scrollTop = el.scrollHeight;
+    if (stickToBottomRef.current) el.scrollTop = el.scrollHeight;
   }, [app.messages, app.streamParts]);
 
   const renderedToolCallIds = new Set<string>();
@@ -56,7 +62,12 @@ export function MessageList() {
 
   return (
     <div className="msgs-wrap">
-    <div className="msgs" ref={containerRef}>
+    <div className="msgs" ref={containerRef}
+        onScroll={(event) => {
+          const el = event.currentTarget;
+          stickToBottomRef.current =
+            el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+        }}>
       {app.sessionId && !app.selectors.soulSlug ? (
         <SysLine>
           <i className="ph ph-warning" />
@@ -73,7 +84,7 @@ export function MessageList() {
             <i className="ph ph-warning" />
             {warning}
           </SysLine>
-        )
+        ),
       )}
       {app.messages.map((message, index) => {
         if (message.role === "user") userOrdinal += 1;
@@ -98,7 +109,8 @@ export function MessageList() {
 
       {app.streamParts.map((part, index) => {
         if (part.kind === "text") {
-          return <AssistantBubble key={`sp-${index}`} text={part.text} streaming />;
+          return ( <AssistantBubble key={`sp-${index}`} text={part.text} streaming />
+            );
         }
         if (part.kind === "thinking") {
           if (!developer && !shell.showThinking) return null;
@@ -194,7 +206,7 @@ function confirmOnce(
   app: ReturnType<typeof useApp>,
   key: string,
   message: string,
-  action: () => void
+  action: () => void,
 ) {
   let seen = false;
   try {
@@ -244,7 +256,7 @@ function TranscriptEntry({
           ? " Files already changed on disk are not reverted."
           : ""
       }`,
-      start
+      start,
     );
   };
 
@@ -253,7 +265,7 @@ function TranscriptEntry({
       app,
       "alt-theory-hint-branch",
       "This starts a new conversation branching from this point. The current conversation stays unchanged.",
-      () => app.branchFromEntry(entryId)
+      () => app.branchFromEntry(entryId),
     );
   };
 
@@ -295,7 +307,7 @@ function TranscriptEntry({
     return (
       <SysLine tone={success ? "ok" : "danger"}>
         <i className={success ? "ph ph-check" : "ph ph-x"} />
-        {toolLabel(message.toolName || message.text || "tool", message.toolPath)}
+        {toolLabel(message.toolName || message.text || "tool", message.toolPath,)}
       </SysLine>
     );
   }
@@ -453,7 +465,7 @@ function StaleWorkspaceNotice({ warning }: { warning: string }) {
   const choose = () => {
     if (!app.sessionId) return;
     void pickDirectory(
-      "Full path of the working folder for this conversation:"
+      "Full path of the working folder for this conversation:",
     ).then((path) => {
       if (!path || !app.sessionId) return;
       void app.repointSession(app.sessionId, path).catch((error) => {
@@ -489,7 +501,7 @@ function SysLine({
         "sys-line",
         tone === "danger" && "sys-danger",
         tone === "ok" && "sys-ok",
-        tone === "running" && "sys-running"
+        tone === "running" && "sys-running",
       )}
     >
       {children}

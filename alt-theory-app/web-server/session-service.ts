@@ -1,4 +1,4 @@
-import { cpSync, existsSync, readFileSync, rmSync, statSync, writeFileSync } from "fs";
+import { cpSync, existsSync, readFileSync, rmSync, statSync, writeFileSync, } from "fs";
 import { randomUUID } from "crypto";
 import type {
   AgentSession,
@@ -72,7 +72,7 @@ import {
 } from "./session-retention.js";
 import {
   appendConfigEvent,
-  buildEffectiveConfig,
+  buildEffectiveConfig
 } from "./config-events.js";
 import { loadInstructionAsset } from "./instruction-assets.js";
 import {
@@ -254,7 +254,7 @@ export class SessionService {
         fallbackConfig && fallbackConfig.enabled
           ? new ModelFallbackCoordinator(
               fallbackConfig,
-              resolveModelFallbackStatePath(this.config.dataDir)
+              resolveModelFallbackStatePath(this.config.dataDir),
             )
           : null;
     } else {
@@ -300,7 +300,7 @@ export class SessionService {
    * §5b) wins over the deployment-global config; thinking falls back global.
    */
   private modelArgsFor(
-    override: SessionModelOverride | null | undefined
+    override: SessionModelOverride | null | undefined,
   ): RuntimeModelConfig & { thinkingLevel?: ThinkingLevel } {
     const base = this.resolveEffectiveRuntimeModelConfig();
     return {
@@ -315,12 +315,12 @@ export class SessionService {
   private persistManifestModel(managed: ManagedSession): void {
     writeJsonAtomic(
       join(managed.manifest.recordsDir, "assembly-manifest.json"),
-      managed.manifest
+      managed.manifest,
     );
     if (managed.openedFrom === "existing") {
       writeJsonAtomic(
         join(managed.manifest.recordsDir, "resume-manifest.json"),
-        managed.manifest
+        managed.manifest,
       );
     }
   }
@@ -357,14 +357,14 @@ export class SessionService {
       if (settings.autoTitle?.enabled === false) return;
 
       const firstUser = firstUserMessageText(
-        managed.session.sessionManager.getEntries()
+        managed.session.sessionManager.getEntries(),
       );
       if (!firstUser) return;
 
       const sessionModel = managed.session.model;
       const pin = settings.autoTitle?.model ?? null;
       const pinnedModel = pin
-        ? managed.session.modelRegistry.find(pin.provider, pin.modelId)
+        ? managed.session.modelRuntime.getModel(pin.provider, pin.modelId)
         : null;
 
       let title = await completeTitle(pinnedModel ?? sessionModel, firstUser);
@@ -388,7 +388,7 @@ export class SessionService {
 
   async createSession(
     selectors: SessionSelectors,
-    metadata: SessionCreationMetadata = {}
+    metadata: SessionCreationMetadata = {},
   ): Promise<SessionSnapshot> {
     const runtimeModelConfig = this.resolveEffectiveRuntimeModelConfig();
     const sessionId = allocateReadableSessionId(this.config.dataDir, {
@@ -400,7 +400,7 @@ export class SessionService {
       createSessionDirs(this.config.dataDir, sessionId),
       selectors,
       metadata,
-      runtimeModelConfig
+      runtimeModelConfig,
     );
     this.sessions.set(managed.manifest.sessionId, managed);
     appendConfigEvent(managed.manifest.recordsDir, {
@@ -409,7 +409,7 @@ export class SessionService {
       reason: "creation",
       effective: buildEffectiveConfig(
         managed.manifest,
-        managed.selectors.projectId
+        managed.selectors.projectId,
       ),
       changedFields: [],
       warnings: [],
@@ -419,7 +419,7 @@ export class SessionService {
 
   async openSession(
     sessionId: string,
-    fallbackSelectors: SessionSelectors
+    fallbackSelectors: SessionSelectors,
   ): Promise<SessionSnapshot> {
     // A live session keeps its managed instance. Re-opening from disk would
     // stack a second runtime over the same files and orphan any in-flight
@@ -431,7 +431,7 @@ export class SessionService {
     }
     const managed = await this.createManagedFromExisting(
       sessionId,
-      fallbackSelectors
+      fallbackSelectors,
     );
     // Reading a private session counts as activity: reopening refreshes the
     // retention timer so a conversation the user still returns to never
@@ -447,7 +447,7 @@ export class SessionService {
   async replaceSession(
     sessionId: string,
     selectors: SessionSelectors,
-    _abortReason: string
+    _abortReason: string,
   ): Promise<SessionSnapshot> {
     const previous = this.requireSession(sessionId);
     if (previous.busy || previous.session.isStreaming) {
@@ -467,7 +467,7 @@ export class SessionService {
         details: { soulSlug: selectors.soulSlug },
       });
     }
-    const dirs = getSessionDirs(this.config.dataDir, previous.manifest.sessionId);
+    const dirs = getSessionDirs(this.config.dataDir, previous.manifest.sessionId,);
     if (!dirs) {
       throw new Error(`Invalid session id: ${previous.manifest.sessionId}`);
     }
@@ -476,7 +476,7 @@ export class SessionService {
       ? await this.createManagedFromExistingWithSelectors(
           previous.manifest.sessionId,
           selectors,
-          previous
+          previous,
         )
       : await this.createManagedFromDirs(dirs, selectors);
     this.sessions.set(replacement.manifest.sessionId, replacement);
@@ -486,7 +486,7 @@ export class SessionService {
       reason: "user_change",
       effective: buildEffectiveConfig(
         replacement.manifest,
-        replacement.selectors.projectId
+        replacement.selectors.projectId,
       ),
       changedFields: configChangedFields(previous.selectors, selectors),
       warnings: [],
@@ -502,7 +502,7 @@ export class SessionService {
    */
   async switchMode(
     sessionId: string,
-    mode: CapabilityMode
+    mode: CapabilityMode,
   ): Promise<SessionSnapshot> {
     const managed = this.requireSession(sessionId);
     if (managed.busy || managed.session.isStreaming) {
@@ -528,7 +528,7 @@ export class SessionService {
       reason: "user_change",
       effective: buildEffectiveConfig(
         managed.manifest,
-        managed.selectors.projectId
+        managed.selectors.projectId,
       ),
       changedFields: ["promptMode"],
       warnings: [],
@@ -543,7 +543,7 @@ export class SessionService {
    */
   async addWorkspaceDir(
     sessionId: string,
-    dir: string
+    dir: string,
   ): Promise<SessionSnapshot> {
     const managed = this.requireSession(sessionId);
     if (managed.busy || managed.session.isStreaming) {
@@ -578,7 +578,7 @@ export class SessionService {
    */
   async setSessionWorkspace(
     sessionId: string,
-    primaryDir: string | null
+    primaryDir: string | null,
   ): Promise<SessionSnapshot | null> {
     const resolved = primaryDir ? resolve(primaryDir) : null;
     if (resolved) {
@@ -626,7 +626,7 @@ export class SessionService {
 
   private async repointOne(
     sessionId: string,
-    resolved: string | null
+    resolved: string | null,
   ): Promise<SessionSnapshot | null> {
     const live = this.sessions.get(sessionId);
     const recordsDir =
@@ -688,7 +688,7 @@ export class SessionService {
   respondApproval(
     sessionId: string,
     approvalId: string,
-    response: ApprovalResponse
+    response: ApprovalResponse,
   ): boolean {
     const managed = this.requireSession(sessionId);
     return managed.approvalBridge.respond(approvalId, response);
@@ -697,14 +697,14 @@ export class SessionService {
   invokeSkill(
     sessionId: string,
     skillName: string,
-    userText?: string
+    userText?: string,
   ): RunHandle {
     const managed = this.requireSession(sessionId);
     if (managed.busy || managed.session.isStreaming) {
       throw new SessionBusyError(sessionId);
     }
     const skill = managed.manifest.skills?.find(
-      (candidate) => candidate.name === skillName
+      (candidate) => candidate.name === skillName,
     );
     if (!skill) {
       throw new Error(`Unknown Alt Theory skill: ${skillName}`);
@@ -716,7 +716,7 @@ export class SessionService {
     });
     return this.runPromptWithLineage(
       managed,
-      `/skill:${skillName}${userText?.trim() ? ` ${userText.trim()}` : ""}`
+      `/skill:${skillName}${userText?.trim() ? ` ${userText.trim()}` : ""}`,
     );
   }
 
@@ -744,7 +744,7 @@ export class SessionService {
           ...managed.manifest.kb,
           domain,
         },
-      }, managed.selectors.projectId),
+      }, managed.selectors.projectId,),
       changedFields: ["kbDomain"],
       warnings: [],
       branchId: managed.branchId,
@@ -752,7 +752,7 @@ export class SessionService {
     return this.snapshot(managed);
   }
 
-  runPrompt(sessionId: string, text: string, attachments?: string[]): RunHandle {
+  runPrompt(sessionId: string, text: string, attachments?: string[],): RunHandle {
     const managed = this.requireSession(sessionId);
     const header = readV4SessionHeader(managed.manifest.recordsDir);
     if (
@@ -766,10 +766,10 @@ export class SessionService {
     // the imported-session-context skill on their first Alt Theory run, so
     // the agent learns what the import preserved and lost before continuing.
     if (
-      existsSync(join(managed.manifest.recordsDir, "session-import-source.json")) &&
+      existsSync(join(managed.manifest.recordsDir, "session-import-source.json"),) &&
       latestRunSnapshots(managed.manifest.recordsDir).length === 0 &&
       managed.manifest.skills?.some(
-        (skill) => skill.name === "imported-session-context"
+        (skill) => skill.name === "imported-session-context",
       )
     ) {
       return this.invokeSkill(sessionId, "imported-session-context", text);
@@ -805,10 +805,10 @@ export class SessionService {
       throw new Error("Revise point must be in the current Pi conversation");
     }
     const allRuns = latestRunSnapshots(managed.manifest.recordsDir).filter(
-      (run) => run.branchId === managed.branchId
+      (run) => run.branchId === managed.branchId,
     );
     const target = allRuns.find(
-      (run) => run.status === "completed" && run.userEntryId === userEntryId
+      (run) => run.status === "completed" && run.userEntryId === userEntryId,
     );
     if (target?.userEntryId) {
       // Rewinding rewrites everything after the target: later completed runs
@@ -824,7 +824,7 @@ export class SessionService {
       return this.reviseFromRun(
         managed,
         target as RunRecord & { userEntryId: string },
-        text
+        text,
       );
     }
     // Inherited turn (fork or import history): the entry predates this
@@ -855,7 +855,7 @@ export class SessionService {
   private reviseFromRun(
     managed: ManagedSession,
     run: RunRecord & { userEntryId: string },
-    text: string
+    text: string,
   ): RunHandle {
     const userEntry = managed.session.sessionManager.getEntry(run.userEntryId);
     if (!userEntry) {
@@ -883,7 +883,7 @@ export class SessionService {
       throw new SessionBusyError(sessionId);
     }
     const latest = this.requireLatestActiveCompletedUserRun(managed, "delete");
-    const userEntry = managed.session.sessionManager.getEntry(latest.userEntryId);
+    const userEntry = managed.session.sessionManager.getEntry(latest.userEntryId,);
     if (!userEntry) {
       throw new Error("Latest user entry is missing from Pi history");
     }
@@ -918,7 +918,7 @@ export class SessionService {
     sessionId: string,
     purpose: ForkPurpose,
     forkPointEntryId?: string,
-    selectorOverrides?: Partial<SessionSelectors>
+    selectorOverrides?: Partial<SessionSelectors>,
   ): Promise<SessionSnapshot> {
     const previous = this.requireSession(sessionId);
     if (previous.busy || previous.session.isStreaming) {
@@ -940,8 +940,7 @@ export class SessionService {
     // "Branch from here" on a user message forks the COMPLETE turn: advance
     // the fork point to that run's last assistant entry so the child doesn't
     // end on a dangling user message.
-    const leafEntry = previous.session.sessionManager.getEntry(leafId) as
-      | { type?: string; message?: { role?: string } }
+    const leafEntry = previous.session.sessionManager.getEntry(leafId) as { type?: string; message?: { role?: string } }
       | undefined;
     if (leafEntry?.type === "message" && leafEntry.message?.role === "user") {
       // Advance to the last entry before the next user message on the active
@@ -1008,7 +1007,7 @@ export class SessionService {
     }
     const copiedForkFile = join(
       forkDirs.piSessionDir,
-      `${forkTimestamp.replace(/[:.]/g, "-")}_${forkPiId}.jsonl`
+      `${forkTimestamp.replace(/[:.]/g, "-")}_${forkPiId}.jsonl`,
     );
     let activated = false;
     // A workspace session's primary is the user's own project directory
@@ -1027,7 +1026,7 @@ export class SessionService {
       writeFileSync(
         copiedForkFile,
         `${forkEntries.map((entry) => JSON.stringify(entry)).join("\n")}\n`,
-        "utf-8"
+        "utf-8",
       );
       const result = await this.openManagedRuntime({
         sessionId: forkSessionId,
@@ -1052,7 +1051,7 @@ export class SessionService {
       });
       writeJsonAtomic(
         join(result.manifest.recordsDir, "assembly-manifest.json"),
-        result.manifest
+        result.manifest,
       );
       const sourceHeader = readV4SessionHeader(previous.manifest.recordsDir);
       writeFoundationRecords({
@@ -1080,7 +1079,7 @@ export class SessionService {
         reason: "creation",
         effective: buildEffectiveConfig(
           result.manifest,
-          result.selectors.projectId
+          result.selectors.projectId,
         ),
         changedFields: [],
         warnings: result.resumeWarnings,
@@ -1131,7 +1130,7 @@ export class SessionService {
     arms: Array<{
       label?: string | null;
       selectorOverrides?: Partial<SessionSelectors>;
-    }>
+    }>,
   ): Promise<AbComparisonRecord> {
     if (!prompt.trim()) {
       throw new Error("A/B comparison requires a prompt");
@@ -1146,7 +1145,7 @@ export class SessionService {
       if (!overrides) continue;
       for (const key of Object.keys(overrides)) {
         if (
-          !["projectId", "rolePresetSlug", "kbDomain", "soulSlug", "customInstructionRef"].includes(key)
+          !["projectId", "rolePresetSlug", "kbDomain", "soulSlug", "customInstructionRef",].includes(key)
         ) {
           throw new Error(`Unknown selector override: ${key}`);
         }
@@ -1178,15 +1177,15 @@ export class SessionService {
         sessionId,
         "ab-arm",
         undefined,
-        arm.selectorOverrides
+        arm.selectorOverrides,
       );
       await this.switchMode(forked.sessionId, "pure");
       armSnapshots.push(forked);
     }
     await Promise.all(
       armSnapshots.map(
-        (snap) => this.runPrompt(snap.sessionId, prompt).completion
-      )
+        (snap) => this.runPrompt(snap.sessionId, prompt).completion,
+      ),
     );
     const candidates = armSnapshots.map((snap, index) => {
       const manifest = this.getManifest(snap.sessionId);
@@ -1224,7 +1223,7 @@ export class SessionService {
       turnId?: string;
       supersedesRunId?: string | null;
       attachments?: string[];
-    } = {}
+    } = {},
   ): RunHandle {
     const sessionId = managed.manifest.sessionId;
     if (managed.busy || managed.session.isStreaming) {
@@ -1241,7 +1240,7 @@ export class SessionService {
     const acceptedAt = new Date().toISOString();
     refreshSessionRetention(managed.manifest.recordsDir, new Date(acceptedAt));
     const beforeEntryIds = new Set(
-      managed.session.sessionManager.getEntries().map((entry) => entry.id)
+      managed.session.sessionManager.getEntries().map((entry) => entry.id),
     );
 
     appendRunRecord(managed.manifest.recordsDir, {
@@ -1268,9 +1267,9 @@ export class SessionService {
       // ImageContent to a model that declares image input; the paths also stay
       // in the prompt text (Attachments: …), so a text-only model still gets the
       // filename and simply says it cannot read the image — never a hard error.
-      const images = imageAttachmentsFor(options.attachments, managed.session.model);
+      const images = imageAttachmentsFor(options.attachments, managed.session.model,);
       try {
-        await managed.session.prompt(text, images.length ? { images } : undefined);
+        await managed.session.prompt(text, images.length ? { images } : undefined,);
       } catch (error) {
         promptError = error;
       }
@@ -1305,7 +1304,8 @@ export class SessionService {
           acceptedAt,
           completedAt: new Date().toISOString(),
         });
-        throw promptError ?? pendingError ?? new Error(finalError ?? "Run failed");
+        throw ( promptError ?? pendingError ?? new Error(finalError ?? "Run failed")
+        );
       }
 
       const entries = managed.session.sessionManager
@@ -1315,13 +1315,13 @@ export class SessionService {
         entries.find(
           (entry) =>
             entry.type === "message" &&
-            (entry.message as { role?: string }).role === "user"
+            (entry.message as { role?: string }).role === "user",
         )?.id ?? null;
       const assistantEntryIds = entries
         .filter(
           (entry) =>
             entry.type === "message" &&
-            (entry.message as { role?: string }).role === "assistant"
+            (entry.message as { role?: string }).role === "assistant",
         )
         .map((entry) => entry.id);
       appendRunRecord(managed.manifest.recordsDir, {
@@ -1374,6 +1374,7 @@ export class SessionService {
 
   async abort(sessionId: string, reason?: string): Promise<void> {
     const managed = this.requireSession(sessionId);
+    managed.session.abortCompaction();
     await managed.session.abort();
     managed.busy = false;
     this.emitRunPhase(managed, "idle");
@@ -1384,9 +1385,42 @@ export class SessionService {
     });
   }
 
+  async compact(sessionId: string): Promise<SessionSnapshot> {
+    const managed = this.requireSession(sessionId);
+    if (managed.busy || managed.session.isStreaming) {
+      throw new SessionBusyError(sessionId);
+    }
+    managed.busy = true;
+    this.emitRunPhase(managed, "thinking");
+    try {
+      await managed.session.compact();
+      managed.busy = false;
+      managed.transcript =
+        readSessionDetail(this.config.dataDir, sessionId)?.transcript ??
+        managed.transcript;
+      const snapshot = this.snapshot(managed);
+      this.emit(managed, {
+        type: "session_transcript",
+        payload: { messages: [...managed.transcript] },
+      });
+      this.emit(managed, {
+        type: "session_metrics",
+        payload: this.persistMetrics(managed),
+      });
+      return snapshot;
+    } finally {
+      managed.busy = false;
+      this.emitRunPhase(managed, "idle");
+      this.emit(managed, {
+        type: "session_updated",
+        payload: this.snapshot(managed),
+      });
+    }
+  }
+
   attach(
     sessionId: string,
-    listener: (event: SessionServiceEvent) => void
+    listener: (event: SessionServiceEvent) => void,
   ): () => void {
     const managed = this.requireSession(sessionId);
     managed.listeners.add(listener);
@@ -1448,7 +1482,7 @@ export class SessionService {
   setVisibility(
     sessionId: string,
     visibility: "research" | "private",
-    consentSnapshot?: SessionCreationMetadata["consentSnapshot"]
+    consentSnapshot?: SessionCreationMetadata["consentSnapshot"],
   ): SessionSnapshot {
     const managed = this.requireSession(sessionId);
     if (managed.busy || managed.session.isStreaming) {
@@ -1498,7 +1532,7 @@ export class SessionService {
     const { studyTag: _dropped, ...rest } = header;
     writeSessionHeader(
       managed.manifest.recordsDir,
-      studyTag ? { ...rest, studyTag } : rest
+      studyTag ? { ...rest, studyTag } : rest,
     );
     appendSessionEvent(managed.manifest.recordsDir, {
       sessionId,
@@ -1516,7 +1550,7 @@ export class SessionService {
    */
   async setSessionModel(
     sessionId: string,
-    override: SessionModelOverride | null
+    override: SessionModelOverride | null,
   ): Promise<SessionSnapshot> {
     const managed = this.requireSession(sessionId);
     if (managed.busy || managed.session.isStreaming) {
@@ -1527,13 +1561,13 @@ export class SessionService {
     const { modelOverride: _dropped, ...rest } = header;
     writeSessionHeader(
       managed.manifest.recordsDir,
-      override ? { ...rest, modelOverride: override } : rest
+      override ? { ...rest, modelOverride: override } : rest,
     );
     let applied = false;
     if (override) {
-      const resolved = managed.session.modelRegistry.find(
+      const resolved = managed.session.modelRuntime.getModel(
         override.provider,
-        override.modelId
+        override.modelId,
       );
       if (resolved) {
         await managed.session.setModel(resolved);
@@ -1549,7 +1583,7 @@ export class SessionService {
       const base = this.resolveEffectiveRuntimeModelConfig();
       const resolved =
         base.modelProvider && base.modelId
-          ? managed.session.modelRegistry.find(base.modelProvider, base.modelId)
+          ? managed.session.modelRuntime.getModel(base.modelProvider, base.modelId,)
           : undefined;
       if (resolved) {
         await managed.session.setModel(resolved);
@@ -1578,14 +1612,14 @@ export class SessionService {
     sessionDirs: SessionDirectories,
     selectors: SessionSelectors,
     metadata: SessionCreationMetadata = {},
-    runtimeModelConfig = this.resolveEffectiveRuntimeModelConfig()
+    runtimeModelConfig = this.resolveEffectiveRuntimeModelConfig(),
   ): Promise<ManagedSession> {
     const rolePresetPath = this.resolveOptionalRolePresetPath(
-      selectors.rolePresetSlug
+      selectors.rolePresetSlug,
     );
     const soulPath = this.resolveOptionalSoulPath(selectors.soulSlug);
     const instruction = this.resolveOptionalInstruction(
-      selectors.customInstructionRef
+      selectors.customInstructionRef,
     );
     // Workspace (spec §5.1): the primary directory replaces the default
     // session workspace as Pi's cwd. The session's own workspace dir stays
@@ -1594,7 +1628,7 @@ export class SessionService {
       ? resolve(metadata.workspace.primaryDir)
       : null;
     if (primaryDir && !statSync(primaryDir, { throwIfNoEntry: false })?.isDirectory()) {
-      throw new Error(`Workspace primary directory does not exist: ${primaryDir}`);
+      throw new Error(`Workspace primary directory does not exist: ${primaryDir}`,);
     }
     const result = await createAltTheorySession({
       ...sessionDirs,
@@ -1639,7 +1673,7 @@ export class SessionService {
               metadata.consentSnapshot?.quoteAfterAnonymization ?? false,
             privateOverride: true,
           }
-        : metadata.consentSnapshot ?? null;
+        : ( metadata.consentSnapshot ?? null);
     writeFoundationRecords({
       sessionRoot: sessionDirs.sessionRoot,
       recordsDir: sessionDirs.recordsDir,
@@ -1687,7 +1721,7 @@ export class SessionService {
   async createRelatedSession(
     sessionId: string,
     purpose: "side" | "helper",
-    forkPointEntryId?: string
+    forkPointEntryId?: string,
   ): Promise<SessionSnapshot> {
     if (purpose === "side") {
       return this.forkSession(sessionId, purpose, forkPointEntryId);
@@ -1718,7 +1752,7 @@ export class SessionService {
       sessionId: child.sessionId,
       type: "session_forked_from",
       details: { sourceSessionId: sessionId, purpose, freshContext: true },
-    });
+    },);
     return child;
   }
 
@@ -1748,7 +1782,7 @@ export class SessionService {
 
   private async createManagedFromExisting(
     sessionId: string,
-    fallbackSelectors: SessionSelectors
+    fallbackSelectors: SessionSelectors,
   ): Promise<ManagedSession> {
     const root = getSessionRootForRequest(this.config.dataDir, sessionId);
     if (root.status === "invalid") {
@@ -1761,7 +1795,7 @@ export class SessionService {
     const detail = readSessionDetail(this.config.dataDir, sessionId);
     if (!detail?.pi.sessionFile) {
       throw new Error(
-        `Session cannot be opened because Pi JSONL is missing: ${sessionId}`
+        `Session cannot be opened because Pi JSONL is missing: ${sessionId}`,
       );
     }
     const sessionDirs = getSessionDirs(this.config.dataDir, sessionId);
@@ -1777,14 +1811,14 @@ export class SessionService {
     const activeRolePresetSlug = this.activeOptionalSlug(
       requestedRoleSlug,
       fallbackSelectors.rolePresetSlug,
-      (slug) => this.resolveOptionalRolePresetPath(slug)
+      (slug) => this.resolveOptionalRolePresetPath(slug),
     );
     const requestedSoulSlug =
       effectiveConfig?.soulSlug ?? detail.manifest?.soul?.slug;
     const activeSoulSlug = this.activeOptionalSlug(
       requestedSoulSlug,
       fallbackSelectors.soulSlug,
-      (slug) => this.resolveOptionalSoulPath(slug)
+      (slug) => this.resolveOptionalSoulPath(slug),
     );
     // Pre-release compat policy: assets referenced by old sessions may vanish
     // between alpha builds. Falling back is fine; doing it silently is not —
@@ -1797,7 +1831,7 @@ export class SessionService {
       assetWarnings.push(
         `This conversation's original role "${requestedRoleSlug}" is not in this build — continuing with ${
           activeRolePresetSlug ? `"${activeRolePresetSlug}"` : "no role"
-        }.`
+        }.`,
       );
     }
     if (
@@ -1807,7 +1841,7 @@ export class SessionService {
       assetWarnings.push(
         `This conversation's original soul "${requestedSoulSlug}" is not in this build — continuing with ${
           activeSoulSlug ? `"${activeSoulSlug}"` : "no soul"
-        }.`
+        }.`,
       );
     }
     const originalDomain =
@@ -1823,12 +1857,12 @@ export class SessionService {
           : fallbackSelectors.kbDomain;
     if (originalDomain && activeDomain !== originalDomain) {
       assetWarnings.push(
-        `This conversation's original knowledge domain "${originalDomain}" is not in this build — continuing with "${activeDomain}".`
+        `This conversation's original knowledge domain "${originalDomain}" is not in this build — continuing with "${activeDomain}".`,
       );
     }
     const activeInstructionRef = this.activeInstructionRef(
       effectiveCustomInstructionRef ?? detail.manifest?.customInstruction?.ref,
-      fallbackSelectors.customInstructionRef
+      fallbackSelectors.customInstructionRef,
     );
     const instruction = this.resolveOptionalInstruction(activeInstructionRef);
     const persistedHeader = readV4SessionHeader(sessionDirs.recordsDir);
@@ -1847,7 +1881,7 @@ export class SessionService {
       !statSync(persistedPrimaryDir, { throwIfNoEntry: false })?.isDirectory();
     if (workspaceMissing) {
       assetWarnings.push(
-        `This conversation's working folder "${persistedPrimaryDir}" no longer exists — continuing without a working folder. Drag the conversation onto a folder, or use the folder selector, to keep working there.`
+        `This conversation's working folder "${persistedPrimaryDir}" no longer exists — continuing without a working folder. Drag the conversation onto a folder, or use the folder selector, to keep working there.`,
       );
     }
 
@@ -1898,14 +1932,14 @@ export class SessionService {
       assetWarnings.push(
         `The model this conversation used (${override.provider}/${override.modelId}) is no longer available — switched to ${
           fallback.modelId ?? "the default model"
-        }. Your next message will use it; you can pick another model any time.`
+        }. Your next message will use it; you can pick another model any time.`,
       );
       result = await openAltTheorySession({ ...openArgs, ...fallback });
     }
     alignSessionManagerToLatestRun(
       result.session.sessionManager,
       latestRunSnapshots(result.manifest.recordsDir),
-      "latest active run"
+      "latest active run",
     );
 
     const managed = await this.createManaged({
@@ -1970,7 +2004,7 @@ export class SessionService {
           detail.manifest?.customInstruction?.ref ??
           null,
       },
-      managed.selectors
+      managed.selectors,
     );
     if (fallbackChangedFields.length > 0) {
       appendConfigEvent(managed.manifest.recordsDir, {
@@ -1978,7 +2012,7 @@ export class SessionService {
         reason: "resume_fallback",
         effective: buildEffectiveConfig(
           managed.manifest,
-          managed.selectors.projectId
+          managed.selectors.projectId,
         ),
         changedFields: fallbackChangedFields,
         warnings: managed.resumeWarnings,
@@ -1991,13 +2025,13 @@ export class SessionService {
   private async createManagedFromExistingWithSelectors(
     sessionId: string,
     selectors: SessionSelectors,
-    previous: ManagedSession
+    previous: ManagedSession,
   ): Promise<ManagedSession> {
     const detail = readSessionDetail(this.config.dataDir, sessionId);
     const sessionFile = detail?.pi.sessionFile ?? previous.session.sessionFile;
     if (!sessionFile) {
       throw new Error(
-        `Session cannot be reconfigured because Pi JSONL is missing: ${sessionId}`
+        `Session cannot be reconfigured because Pi JSONL is missing: ${sessionId}`,
       );
     }
     const sessionDirs = getSessionDirs(this.config.dataDir, sessionId);
@@ -2018,17 +2052,17 @@ export class SessionService {
       appContextPath: this.config.assetPaths.appContextPath,
       soulPath: this.resolveOptionalSoulPath(selectors.soulSlug),
       soulSlug: selectors.soulSlug,
-      rolePresetPath: this.resolveOptionalRolePresetPath(selectors.rolePresetSlug),
+      rolePresetPath: this.resolveOptionalRolePresetPath(selectors.rolePresetSlug,),
       rolePresetSlug: selectors.rolePresetSlug,
       customInstructionPath: this.resolveOptionalInstruction(
-        selectors.customInstructionRef
+        selectors.customInstructionRef,
       )?.path,
       customInstructionRef: selectors.customInstructionRef ?? null,
       kbDir: this.config.kbDir,
       kbDomain: selectors.kbDomain,
       piPromptTemplatesDir: this.config.assetPaths.piPromptTemplatesDir,
       ...this.modelArgsFor(
-        readV4SessionHeader(sessionDirs.recordsDir)?.modelOverride
+        readV4SessionHeader(sessionDirs.recordsDir)?.modelOverride,
       ),
       promptMode: promptModeFromCapabilityMode(persistedMode),
       resourceDiscovery: this.config.resourceDiscovery,
@@ -2044,7 +2078,7 @@ export class SessionService {
       alignSessionManagerToLatestRun(
         result.session.sessionManager,
         latestRunSnapshots(result.manifest.recordsDir),
-        "latest active run"
+        "latest active run",
       );
     }
 
@@ -2077,7 +2111,7 @@ export class SessionService {
     modelOverride?: SessionModelOverride | null;
   }): Promise<ManagedSession> {
     const instruction = this.resolveOptionalInstruction(
-      args.selectors.customInstructionRef
+      args.selectors.customInstructionRef,
     );
     const persistedHeader = readV4SessionHeader(args.sessionDirs.recordsDir);
     const persistedMode =
@@ -2101,7 +2135,7 @@ export class SessionService {
       soulPath: this.resolveOptionalSoulPath(args.selectors.soulSlug),
       soulSlug: args.selectors.soulSlug,
       rolePresetPath: this.resolveOptionalRolePresetPath(
-        args.selectors.rolePresetSlug
+        args.selectors.rolePresetSlug,
       ),
       rolePresetSlug: args.selectors.rolePresetSlug,
       customInstructionPath: instruction?.path ?? null,
@@ -2109,7 +2143,7 @@ export class SessionService {
       kbDir: this.config.kbDir,
       kbDomain: args.selectors.kbDomain,
       piPromptTemplatesDir: this.config.assetPaths.piPromptTemplatesDir,
-      ...this.modelArgsFor(args.modelOverride ?? persistedHeader?.modelOverride),
+      ...this.modelArgsFor(args.modelOverride ?? persistedHeader?.modelOverride,),
       promptMode: promptModeFromCapabilityMode(persistedMode),
       resourceDiscovery: this.config.resourceDiscovery,
       skillsDir: this.config.skillsDir,
@@ -2123,7 +2157,7 @@ export class SessionService {
       alignSessionManagerLeaf(
         result.session.sessionManager,
         args.activeLeafEntryId ?? null,
-        `current Pi leaf for ${args.branchId}`
+        `current Pi leaf for ${args.branchId}`,
       );
     }
     return await this.createManaged({
@@ -2175,18 +2209,18 @@ export class SessionService {
       nextTurnIndex: Math.max(
         1,
         args.counters.turnCount + 1,
-        maxCounter(persistedRuns.map((run) => run.turnId), "turn") + 1
+        maxCounter(persistedRuns.map((run) => run.turnId), "turn",) + 1,
       ),
       nextRevisionIndex:
-        maxCounter(persistedRuns.map((run) => run.revisionId), "rev") + 1,
+        maxCounter(persistedRuns.map((run) => run.revisionId), "rev",) + 1,
       nextRunIndex:
-        maxCounter(persistedRuns.map((run) => run.runId), "run") + 1,
+        maxCounter(persistedRuns.map((run) => run.runId), "run",) + 1,
       branchId: args.branchId ?? "main",
       fallbackAttempts: 0,
       pendingRunWork: null,
     };
     managed.internalUnsubscribe = managed.session.subscribe((event) =>
-      this.handleAgentEvent(managed, event)
+      this.handleAgentEvent(managed, event),
     );
     // Approval bridge (spec §5.2): hand Pi extensions a dialog-capable UI
     // context backed by the web UI. Bound before the session is returned so
@@ -2200,24 +2234,24 @@ export class SessionService {
 
   private requireLatestActiveCompletedUserRun(
     managed: ManagedSession,
-    action: "revise" | "delete"
+    action: "revise" | "delete",
   ): RunRecord & { userEntryId: string } {
     const allRuns = latestRunSnapshots(managed.manifest.recordsDir).filter(
-      (run) => run.branchId === managed.branchId
+      (run) => run.branchId === managed.branchId,
     );
     // Entry IDs whose runs are deleted or superseded remain in Pi's persisted tree
     // for evidence, but no longer count as active transcript turns.
     const inactiveUserEntryIds = new Set(
       allRuns
-        .filter((run) => run.status === "deleted" || run.status === "superseded")
+        .filter((run) => run.status === "deleted" || run.status === "superseded",)
         .map((run) => run.userEntryId)
-        .filter(Boolean) as string[]
+        .filter(Boolean) as string[],
     );
     const latest = allRuns
       .filter((run) => run.status === "completed" && run.userEntryId)
       .at(-1);
     if (!latest?.userEntryId) {
-      throw new Error(`No completed latest user turn is available to ${action}`);
+      throw new Error(`No completed latest user turn is available to ${action}`,);
     }
     const activeUserEntries = managed.session.sessionManager
       .getBranch()
@@ -2225,11 +2259,11 @@ export class SessionService {
         (entry) =>
           entry.type === "message" &&
           (entry.message as { role?: string }).role === "user" &&
-          !inactiveUserEntryIds.has(entry.id)
+          !inactiveUserEntryIds.has(entry.id),
       );
     if (activeUserEntries.at(-1)?.id !== latest.userEntryId) {
       throw new Error(
-        `Only the current latest user turn can be ${action === "revise" ? "revised" : "deleted"}`
+        `Only the current latest user turn can be ${action === "revise" ? "revised" : "deleted"}`,
       );
     }
     return latest as RunRecord & { userEntryId: string };
@@ -2263,7 +2297,7 @@ export class SessionService {
 
   private async tryModelFallback(
     managed: ManagedSession,
-    error: string
+    error: string,
   ): Promise<boolean> {
     const coordinator = this.modelFallback;
     if (!coordinator?.isEnabled()) {
@@ -2292,7 +2326,7 @@ export class SessionService {
       currentModel.provider,
       currentModel.id,
       decision.ruleId ?? "unknown",
-      error
+      error,
     );
 
     let chainCursor = currentModel.id;
@@ -2305,9 +2339,9 @@ export class SessionService {
         return false;
       }
       triedModelIds.add(next.modelId);
-      resolved = managed.session.modelRegistry.find(
+      resolved = managed.session.modelRuntime.getModel(
         next.provider,
-        next.modelId
+        next.modelId,
       );
       if (resolved) {
         break;
@@ -2337,7 +2371,7 @@ export class SessionService {
 
   private handleAgentEvent(
     managed: ManagedSession,
-    event: AgentSessionEvent
+    event: AgentSessionEvent,
   ): void {
     switch (event.type) {
       case "agent_start":
@@ -2429,7 +2463,7 @@ export class SessionService {
 
   private emitRunPhase(
     managed: ManagedSession,
-    phase: "connecting" | "thinking" | "idle"
+    phase: "connecting" | "thinking" | "idle",
   ): void {
     this.emit(managed, { type: "run_phase", payload: { phase } });
   }
@@ -2442,7 +2476,7 @@ export class SessionService {
 
   private snapshot(
     managed: ManagedSession,
-    overrides?: Partial<SessionSnapshot>
+    overrides?: Partial<SessionSnapshot>,
   ): SessionSnapshot {
     return {
       sessionId: managed.manifest.sessionId,
@@ -2456,6 +2490,10 @@ export class SessionService {
       soulSlug: managed.selectors.soulSlug,
       customInstructionRef: managed.selectors.customInstructionRef ?? null,
       mode: managed.getMode(),
+      currentModel: {
+        provider: managed.session.model.provider,
+        modelId: managed.session.model.id,
+      },
       workspace: managed.getWorkspace(),
       openedFrom: managed.openedFrom,
       resumeWarnings: managed.resumeWarnings,
@@ -2480,7 +2518,7 @@ export class SessionService {
       return Array.isArray(context.messages) && context.messages.length > 0;
     } catch {
       return Boolean(
-        managed.session.sessionFile && existsSync(managed.session.sessionFile)
+        managed.session.sessionFile && existsSync(managed.session.sessionFile),
       );
     }
   }
@@ -2517,7 +2555,7 @@ export class SessionService {
     const path = resolveSoulSlug(
       this.config.soulDir,
       slug,
-      this.config.legacySoulPath
+      this.config.legacySoulPath,
     );
     if (!path) {
       throw new Error(`Unknown soul slug: ${slug}`);
@@ -2531,14 +2569,14 @@ export class SessionService {
           this.config.instructionsDir ??
             this.config.assetPaths.instructionsDir ??
             `${this.config.assetPaths.rootDir}/instructions`,
-          ref
+          ref,
         )
       : null;
   }
 
   private activeInstructionRef(
     original: string | null | undefined,
-    fallback: string | null | undefined
+    fallback: string | null | undefined,
   ): string | null {
     if (original === null) return null;
     if (original) {
@@ -2555,7 +2593,7 @@ export class SessionService {
   private activeOptionalSlug(
     original: string | null | undefined,
     fallback: string | null,
-    resolvePath: (slug: string | null) => string | null
+    resolvePath: (slug: string | null) => string | null,
   ): string | null {
     if (original === null) return null;
     if (typeof original === "string") {
@@ -2581,7 +2619,7 @@ function maxCounter(values: string[], prefix: string): number {
 }
 
 function runRecordBody(
-  record: RunRecord
+  record: RunRecord,
 ): Omit<RunRecord, "schemaVersion" | "recordType" | "status"> {
   const {
     schemaVersion: _schemaVersion,
@@ -2599,7 +2637,7 @@ function alignSessionManagerLeaf(
     resetLeaf(): void;
   },
   activeLeafEntryId: string | null,
-  context: string
+  context: string,
 ): void {
   if (!activeLeafEntryId) {
     sessionManager.resetLeaf();
@@ -2607,7 +2645,7 @@ function alignSessionManagerLeaf(
   }
   if (!sessionManager.getEntry(activeLeafEntryId)) {
     throw new Error(
-      `Cannot restore ${context}: active leaf is missing from Pi history`
+      `Cannot restore ${context}: active leaf is missing from Pi history`,
     );
   }
   sessionManager.branch(activeLeafEntryId);
@@ -2620,7 +2658,7 @@ function alignSessionManagerToLatestRun(
     resetLeaf(): void;
   },
   latestRuns: RunRecord[],
-  context: string
+  context: string,
 ): void {
   // Imported sessions have valid Pi history before Alt Theory has produced a
   // run record. SessionManager.open() already points at that history's final
@@ -2629,13 +2667,13 @@ function alignSessionManagerToLatestRun(
   alignSessionManagerLeaf(
     sessionManager,
     latestActiveLeafEntryId(latestRuns),
-    context
+    context,
   );
 }
 
 function configChangedFields(
   before: SessionSelectors,
-  after: SessionSelectors
+  after: SessionSelectors,
 ): string[] {
   const fields: string[] = [];
   if ((before.projectId ?? null) !== (after.projectId ?? null)) {
@@ -2705,7 +2743,7 @@ const IMAGE_MIME_BY_EXT: Record<string, string> = {
  *  unreadable paths are skipped (they remain text mentions). */
 export function imageAttachmentsFor(
   paths: string[] | undefined,
-  model: Model<any> | undefined
+  model: Model<any> | undefined,
 ): ImageContent[] {
   if (!paths?.length || !model?.input?.includes("image")) return [];
   const out: ImageContent[] = [];
@@ -2713,7 +2751,7 @@ export function imageAttachmentsFor(
     const mimeType = IMAGE_MIME_BY_EXT[extname(path).toLowerCase()];
     if (!mimeType) continue;
     try {
-      out.push({ type: "image", data: readFileSync(path).toString("base64"), mimeType });
+      out.push({ type: "image", data: readFileSync(path).toString("base64"), mimeType, });
     } catch {
       // Unreadable (e.g. deleted) — leave it as the text mention.
     }
@@ -2733,7 +2771,7 @@ export function isUnknownModelError(err: unknown): boolean {
  *  title, or null on any failure. */
 async function completeTitle(
   model: Model<any> | undefined,
-  firstUser: string
+  firstUser: string,
 ): Promise<string | null> {
   if (!model) return null;
   try {
@@ -2753,7 +2791,7 @@ async function completeTitle(
     const text = (result.content ?? [])
       .filter(
         (part): part is { type: "text"; text: string } =>
-          !!part && (part as { type?: string }).type === "text"
+          !!part && (part as { type?: string }).type === "text",
       )
       .map((part) => part.text)
       .join(" ");
@@ -2787,7 +2825,7 @@ function contentToText(content: unknown): string {
           ? part
           : part && typeof part === "object" && "text" in part
             ? String((part as { text?: unknown }).text ?? "")
-            : ""
+            : "",
       )
       .filter(Boolean)
       .join("\n");

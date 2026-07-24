@@ -35,7 +35,7 @@ import {
 } from "./asset-registry.js";
 import type {
   ClientMessage,
-  ServerMessage,
+  ServerMessage
 } from "./websocket-protocol.js";
 import {
   getSessionRootForRequest,
@@ -99,6 +99,15 @@ import { resolveConfigGuiHtmlPath } from "./config-gui-path.js";
 import { ensureLocalModeDefaults } from "./local-mode-paths.js";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import {
+  cancelProviderAuth,
+  getProviderAuthFlow,
+  isProviderAuthId,
+  listProviderAuthStatus,
+  logoutProviderAuth,
+  respondToProviderAuth,
+  startProviderAuth,
+} from "./provider-auth.js";
+import {
   IMPORT_HARNESSES,
   ImportHarnessNotImplementedError,
   discoverImportSessions,
@@ -133,7 +142,7 @@ ensureLocalModeDefaults();
 const PROJECT_ROOT = process.cwd();
 const PUBLIC_DIR = resolve(
   PROJECT_ROOT,
-  process.env.ALT_THEORY_PUBLIC_DIR ?? "alt-theory-app/web-server/public"
+  process.env.ALT_THEORY_PUBLIC_DIR ?? "alt-theory-app/web-server/public",
 );
 
 const DEFAULT_ROLE_CONDITION_PRESETS: Record<string, string> = {
@@ -172,14 +181,14 @@ export interface AltTheoryServerOptions {
 }
 
 function parseResourceDiscoveryMode(
-  value: string | undefined
+  value: string | undefined,
 ): ResourceDiscoveryMode {
   if (value === "clean" || value === "internal" || value === "dev-debug") {
     return value;
   }
   if (value) {
     console.warn(
-      `Unknown ALT_THEORY_RESOURCE_DISCOVERY '${value}', using internal`
+      `Unknown ALT_THEORY_RESOURCE_DISCOVERY '${value}', using internal`,
     );
   }
   // internal = Alt bundled skills plus explicitly user-enabled externals.
@@ -223,17 +232,17 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   const modelId = options.modelId ?? process.env.ALT_THEORY_MODEL_ID;
   const modelsPath = assetPaths.modelsPath;
   const promptMode = parsePromptMode(
-    options.promptMode ?? process.env.ALT_THEORY_PROMPT_MODE
+    options.promptMode ?? process.env.ALT_THEORY_PROMPT_MODE,
   );
   const resourceDiscovery = parseResourceDiscoveryMode(
-    options.resourceDiscovery ?? process.env.ALT_THEORY_RESOURCE_DISCOVERY
+    options.resourceDiscovery ?? process.env.ALT_THEORY_RESOURCE_DISCOVERY,
   );
   const skillsDir =
     options.skillsDir ??
     process.env.ALT_THEORY_SKILLS_DIR ??
     (resourceDiscovery === "clean"
       ? undefined
-      : assetPaths.skillsDir ?? resolve(assetPaths.rootDir, "skills"));
+      : ( assetPaths.skillsDir ?? resolve(assetPaths.rootDir, "skills")));
   const instructionsDir =
     options.instructionsDir ??
     assetPaths.instructionsDir ??
@@ -278,10 +287,10 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       setHeaders: (res) => {
         res.setHeader("Cache-Control", "no-store");
       },
-    })
+    }),
   );
   app.get("/vendor/marked.js", (_req, res) => {
-    res.sendFile(resolve(PROJECT_ROOT, "node_modules", "marked", "lib", "marked.umd.js"));
+    res.sendFile(resolve(PROJECT_ROOT, "node_modules", "marked", "lib", "marked.umd.js"),);
   });
   // --- Config GUI (Pi-native model/key management) ---
   // Local-mode only. Hosted/online deployments must not expose server-side
@@ -376,6 +385,71 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     if (!requireLocalConfigMode(res)) return;
     res.json({ providers: listProviders(agentConfigDir()) });
   });
+  app.get("/api/config/auth/providers", (_req, res) => {
+    if (!requireLocalConfigMode(res)) return;
+    res.json({ providers: listProviderAuthStatus(agentConfigDir()) });
+  });
+  app.post("/api/config/auth/providers/:provider/login", (req, res) => {
+    if (!requireLocalConfigMode(res)) return;
+    if (!isProviderAuthId(req.params.provider)) {
+      res.status(400).json({ error: "Unsupported OAuth provider" });
+      return;
+    }
+    res
+      .status(202)
+      .json(startProviderAuth(agentConfigDir(), req.params.provider));
+  });
+  app.post("/api/config/auth/providers/:provider/logout", async (req, res) => {
+    if (!requireLocalConfigMode(res)) return;
+    if (!isProviderAuthId(req.params.provider)) {
+      res.status(400).json({ error: "Unsupported OAuth provider" });
+      return;
+    }
+    try {
+      await logoutProviderAuth(agentConfigDir(), req.params.provider);
+      res.json({ ok: true });
+    } catch (error) {
+      res.status(500).json({
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+  app.get("/api/config/auth/flows/:flowId", (req, res) => {
+    if (!requireLocalConfigMode(res)) return;
+    const flow = getProviderAuthFlow(req.params.flowId);
+    if (!flow) {
+      res.status(404).json({ error: "Unknown auth flow" });
+      return;
+    }
+    res.json(flow);
+  });
+  app.post("/api/config/auth/flows/:flowId/respond", (req, res) => {
+    if (!requireLocalConfigMode(res)) return;
+    const body = req.body as { promptId?: unknown; value?: unknown };
+    if (typeof body.promptId !== "string" || typeof body.value !== "string") {
+      res.status(400).json({ error: "promptId and value are required" });
+      return;
+    }
+    const flow = respondToProviderAuth(
+      req.params.flowId,
+      body.promptId,
+      body.value,
+    );
+    if (!flow) {
+      res.status(409).json({ error: "Auth prompt is no longer active" });
+      return;
+    }
+    res.json(flow);
+  });
+  app.delete("/api/config/auth/flows/:flowId", (req, res) => {
+    if (!requireLocalConfigMode(res)) return;
+    const flow = cancelProviderAuth(req.params.flowId);
+    if (!flow) {
+      res.status(404).json({ error: "Unknown auth flow" });
+      return;
+    }
+    res.json(flow);
+  });
   app.post("/api/config/fetch-models", async (req, res) => {
     if (!requireLocalConfigMode(res)) return;
     const body = req.body as {
@@ -422,7 +496,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               ? body.keyStorage
               : undefined,
           modelId: typeof body.modelId === "string" ? body.modelId : undefined,
-        })
+        }),
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -435,7 +509,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     if (!requireLocalConfigMode(res)) return;
     try {
       res.json({
-        models: await fetchProviderModels(agentConfigDir(), req.params.provider),
+        models: await fetchProviderModels(agentConfigDir(), req.params.provider,),
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -444,7 +518,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       });
     }
   });
-  app.put("/api/config/providers/:provider", (req, res) => {
+  app.put("/api/config/providers/:provider", async (req, res) => {
     if (!requireLocalConfigMode(res)) return;
     const provider = req.params.provider;
     const body = req.body as {
@@ -457,7 +531,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       models?: unknown;
     };
     try {
-      const view = upsertProvider(
+      const view = await upsertProvider(
         agentConfigDir(),
         {
           name: provider,
@@ -482,7 +556,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
                   ? "literal"
                   : undefined,
           clearKey: body.clearKey === true,
-        }
+        },
       );
       res.json(view);
     } catch (error) {
@@ -492,9 +566,10 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       });
     }
   });
-  app.delete("/api/config/providers/:provider", (req, res) => {
+  app.delete("/api/config/providers/:provider", async (req, res) => {
     if (!requireLocalConfigMode(res)) return;
     try {
+      await
       deleteProvider(agentConfigDir(), req.params.provider);
       res.json({ ok: true });
     } catch (error) {
@@ -535,7 +610,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     ].filter(
       (domain, index, allDomains) =>
         allDomains.findIndex((candidate) => candidate.slug === domain.slug) ===
-        index
+        index,
     );
     res.json({ domains: selectableDomains });
   });
@@ -658,7 +733,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       return;
     }
     const sourceIds = Array.isArray(body.sourceIds)
-      ? body.sourceIds.filter((value): value is string => typeof value === "string")
+      ? body.sourceIds.filter((value): value is string => typeof value === "string",)
       : [];
     if (selection === "selected" && sourceIds.length === 0) {
       res.status(400).json({ error: "sourceIds are required for selected import" });
@@ -671,7 +746,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     const visibility = body.visibility === "research" ? "research" : "private";
     const preflightOnly = body.preflightOnly === true;
     if (preflightOnly && harness === "pi") {
-      res.status(400).json({ error: "preflightOnly is currently supported only for converted external sessions" });
+      res.status(400).json({ error: "preflightOnly is currently supported only for converted external sessions", });
       return;
     }
 
@@ -684,7 +759,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       const missingSourceIds =
         selection === "selected"
           ? sourceIds.filter(
-              (sourceId) => !selected.some((source) => source.sourceId === sourceId)
+              (sourceId) => !selected.some((source) => source.sourceId === sourceId),
             )
           : [];
       if (missingSourceIds.length > 0) {
@@ -697,7 +772,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       const metadata = sessionCreationMetadataForAuth(auth, visibility);
       const importSelectors = createDraftSelectorsForAuth(auth);
       const results = selected.map((source) => {
-        if (source.repeat === "unchanged") {
+        if (source.repeat === "unchanged" && changedSourcePolicy !== "copy") {
           return {
             sourceId: source.sourceId,
             status: "unchanged" as const,
@@ -860,7 +935,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     res.json({
       ...list,
       sessions: list.sessions.filter((session) =>
-        canAccessSessionSummary(auth, session)
+        canAccessSessionSummary(auth, session),
       ),
     });
   });
@@ -981,7 +1056,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     try {
       const snapshot = await sessionService.setSessionWorkspace(
         sessionId,
-        primaryDir
+        primaryDir,
       );
       res.json({ sessionId, snapshot });
     } catch (error) {
@@ -1040,7 +1115,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       const input = parseAbComparisonBody(sessionId, req.body);
       const record = appendAbComparisonRecord(
         resolve(dataDir, "sessions", sessionId, "records"),
-        input
+        input,
       );
       res.json({ record });
     } catch (error) {
@@ -1060,7 +1135,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       try {
         const recordsDir = resolve(dataDir, "sessions", sessionId, "records");
         const existing = currentAbComparisonRecords(recordsDir).find(
-          (record) => record.comparisonId === req.params.comparisonId
+          (record) => record.comparisonId === req.params.comparisonId,
         );
         if (!existing) {
           res.status(404).json({
@@ -1085,7 +1160,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           error: error instanceof Error ? error.message : String(error),
         });
       }
-    }
+    },
   );
   app.post(
     "/api/sessions/:sessionId/ab-comparisons/generate",
@@ -1099,7 +1174,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         const record = await sessionService.generateAbComparison(
           sessionId,
           prompt,
-          arms
+          arms,
         );
         res.json({ record });
       } catch (error) {
@@ -1107,7 +1182,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           error: error instanceof Error ? error.message : String(error),
         });
       }
-    }
+    },
   );
   app.get("/api/sessions/:sessionId/files", (req, res) => {
     const sessionId = req.params.sessionId;
@@ -1120,7 +1195,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         const workspace = listWorkspaceFiles(
           dataDir,
           sessionId,
-          auth.accountId
+          auth.accountId,
         );
         const legacy = listSessionTextFiles(dataDir, sessionId, "workspace");
         res.json({
@@ -1167,13 +1242,13 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           sessionId,
           uploadOwner,
           file.originalname,
-          file.buffer
+          file.buffer,
         );
         res.json(result);
       } catch (error) {
         sendFileApiError(res, error);
       }
-    }
+    },
   );
   app.post("/api/sessions/:sessionId/files/retry-extract", async (req, res) => {
     const sessionId = req.params.sessionId;
@@ -1187,7 +1262,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       const result = await retryWorkspaceExtraction(
         dataDir,
         sessionId,
-        body.path
+        body.path,
       );
       res.json(result);
     } catch (error) {
@@ -1209,7 +1284,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         res.json(readWorkingFolderTextFile(dataDir, sessionId, requestedPath));
         return;
       }
-      res.json(readSessionTextFile(dataDir, sessionId, rootName, requestedPath));
+      res.json(readSessionTextFile(dataDir, sessionId, rootName, requestedPath),);
     } catch (error) {
       sendFileApiError(res, error);
     }
@@ -1237,8 +1312,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           sessionId,
           body.root,
           body.path,
-          body.content
-        )
+          body.content,
+        ),
       );
     } catch (error) {
       sendFileApiError(res, error);
@@ -1263,7 +1338,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         dataDir,
         sessionId,
         rootName,
-        requestedPath
+        requestedPath,
       );
       res.attachment(file.path);
       res.type("text/plain").send(file.content);
@@ -1311,7 +1386,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
 
   function defaultInstructionRef(): string | null {
     return listInstructionAssets(instructionsDir).some(
-      (asset) => asset.ref === DEFAULT_INSTRUCTION_REF
+      (asset) => asset.ref === DEFAULT_INSTRUCTION_REF,
     )
       ? DEFAULT_INSTRUCTION_REF
       : null;
@@ -1323,7 +1398,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
 
   function resolveSessionRestAuth(
     req: express.Request,
-    res: Response
+    res: Response,
   ): AuthContext | null {
     const auth = authSessions.resolveRequest(req);
     if (!localMode && auth.role === "anonymous" && hasConfiguredAccounts()) {
@@ -1345,25 +1420,28 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
 
   function canAccessSessionSummary(
     auth: AuthContext,
-    session: SessionSummary
+    session: SessionSummary,
   ): boolean {
     if (localMode) return true;
     if (auth.role === "participant") {
-      return Boolean(auth.accountId) && session.ownerAccountId === auth.accountId;
+      return ( Boolean(auth.accountId) && session.ownerAccountId === auth.accountId
+      );
     }
     return true;
   }
 
   function canAccessSessionContent(
     auth: AuthContext,
-    session: SessionSummary
+    session: SessionSummary,
   ): boolean {
     if (localMode) return true;
     if (session.visibility === "private") {
-      return Boolean(auth.accountId) && session.ownerAccountId === auth.accountId;
+      return ( Boolean(auth.accountId) && session.ownerAccountId === auth.accountId
+      );
     }
     if (auth.role === "participant") {
-      return Boolean(auth.accountId) && session.ownerAccountId === auth.accountId;
+      return ( Boolean(auth.accountId) && session.ownerAccountId === auth.accountId
+      );
     }
     return true;
   }
@@ -1371,7 +1449,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   function requireSessionRestContentAccess(
     req: express.Request,
     res: Response,
-    sessionId: string
+    sessionId: string,
   ): boolean {
     const root = getSessionRootForRequest(dataDir, sessionId);
     if (root.status === "invalid") {
@@ -1432,7 +1510,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             readAppSettings(dataDir),
             discovered.skills
               .filter((skill) => skill.source !== "alt-theory")
-              .map((skill) => skill.path)
+              .map((skill) => skill.path),
           );
         }
       : undefined,
@@ -1444,7 +1522,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     const runtimeConfig = getRuntimeModelConfig(agentConfigDir());
     if (!runtimeConfig.modelProvider || !runtimeConfig.modelId) {
       throw new ConfigValidationError(
-        "No usable local model is active. Open Model setup, save a provider key, choose a model, and set it active."
+        "No usable local model is active. Open Model setup, save a provider key, choose a model, and set it active.",
       );
     }
     return runtimeConfig;
@@ -1452,7 +1530,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
 
   function parseAbComparisonBody(
     sessionId: string,
-    body: unknown
+    body: unknown,
   ): AbComparisonInput {
     const value = asObject(body);
     const trigger = optionalString(value.trigger) ?? "manual";
@@ -1511,7 +1589,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     return { candidateId, metric, value: score.value };
   }
 
-  function parseAbSource(value: unknown): NonNullable<AbComparisonInput["source"]> {
+  function parseAbSource(value: unknown,): NonNullable<AbComparisonInput["source"]> {
     const source = asObject(value);
     return {
       package: optionalString(source.package),
@@ -1528,7 +1606,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   }
 
   function parseAbArtifact(
-    value: unknown
+    value: unknown,
   ): NonNullable<AbComparisonCandidate["artifact"]> {
     const artifact = asObject(value);
     return {
@@ -1573,7 +1651,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
 
   function forwardServiceEvent(
     send: (msg: ServerMessage) => void,
-    event: SessionServiceEvent
+    event: SessionServiceEvent,
   ): void {
     switch (event.type) {
       case "snapshot":
@@ -1621,7 +1699,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   function sendError(
     send: (msg: ServerMessage) => void,
     error: unknown,
-    code?: string
+    code?: string,
   ): void {
     send({
       type: "error",
@@ -1632,7 +1710,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     });
   }
 
-  function sendServiceError(send: (msg: ServerMessage) => void, error: unknown) {
+  function sendServiceError(send: (msg: ServerMessage) => void, error: unknown,) {
     if (error instanceof SessionBusyError) {
       sendError(send, error, error.code);
       return;
@@ -1666,7 +1744,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       DEFAULT_ROLE_CONDITION_PRESETS[conditionId] ?? conditionId;
     if (!resolveRolePresetSlug(rolePresetsDir, rolePresetSlug)) {
       throw new Error(
-        `Role condition '${conditionId}' maps to missing role preset: ${rolePresetSlug}`
+        `Role condition '${conditionId}' maps to missing role preset: ${rolePresetSlug}`,
       );
     }
     return rolePresetSlug;
@@ -1674,7 +1752,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
 
   function sessionCreationMetadataForAuth(
     auth: AuthContext,
-    visibility: "research" | "private"
+    visibility: "research" | "private",
   ) {
     if (auth.role !== "participant" || !auth.accountId) {
       return {
@@ -1728,7 +1806,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     selectors: SessionSelectors,
     visibility: "research" | "private",
     modelOverride: SessionModelOverride | null = null,
-    workspacePrimaryDir: string | null = null
+    workspacePrimaryDir: string | null = null,
   ): void {
     send({
       type: "session_draft",
@@ -1784,9 +1862,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       detach = sessionService.attach(sessionId, (event) => {
         forwardServiceEvent(send, event);
       });
-      send({ type: "session_opened", payload: sessionService.getSnapshot(sessionId) });
-      send({ type: "session_metadata", payload: sessionService.getManifest(sessionId) });
-      send({ type: "session_metrics", payload: sessionService.getMetrics(sessionId) });
+      send({ type: "session_opened", payload: sessionService.getSnapshot(sessionId), });
+      send({ type: "session_metadata", payload: sessionService.getManifest(sessionId), });
+      send({ type: "session_metrics", payload: sessionService.getMetrics(sessionId), });
     };
 
     ws.on("close", () => {
@@ -1799,7 +1877,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     if (initialError) {
       sendServiceError(send, initialError);
     }
-    sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace);
+    sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace,);
 
     ws.on("message", async (data) => {
       let msg: ClientMessage;
@@ -1818,7 +1896,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
                 sendError(
                   send,
                   new Error("Authentication required"),
-                  "auth_required"
+                  "auth_required",
                 );
                 break;
               }
@@ -1830,7 +1908,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
                   workspace: draftWorkspace
                     ? { primaryDir: draftWorkspace }
                     : null,
-                }
+                },
               );
               if (closed) return;
               attachToSession(initial.sessionId);
@@ -1839,7 +1917,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             const run = sessionService.runPrompt(
               currentSessionId,
               msg.payload,
-              msg.attachments
+              msg.attachments,
             );
             await run.completion;
           } catch (error) {
@@ -1858,7 +1936,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         }
         case "abort":
           if (!attachedSessionId) {
-            sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace);
+            sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace,);
             break;
           }
           try {
@@ -1867,17 +1945,43 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             sendError(send, error);
           }
           break;
+        case "compact":
+          if (!attachedSessionId) {
+            sendError(
+              send,
+              new Error("Open a conversation before compacting it"),
+            );
+            break;
+          }
+          try {
+            await sessionService.compact(attachedSessionId);
+            send({
+              type: "extension_notice",
+              payload: { message: "Conversation compacted", level: "info" },
+            });
+          } catch (error) {
+            send({
+              type: "extension_notice",
+              payload: {
+                message: `Compaction failed: ${
+                  error instanceof Error ? error.message : String(error)
+                }`,
+                level: "warning",
+              },
+            });
+          }
+          break;
         case "switch_kb":
           if (!attachedSessionId) {
             if (
               msg.payload.domain !== KB_DISABLED_DOMAIN &&
               !isKnownKbDomain(kbDir, msg.payload.domain)
             ) {
-              sendError(send, new Error(`Unknown KB domain: ${msg.payload.domain}`));
+              sendError(send, new Error(`Unknown KB domain: ${msg.payload.domain}`),);
               break;
             }
-            draftSelectors = { ...draftSelectors, kbDomain: msg.payload.domain };
-            sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace);
+            draftSelectors = { ...draftSelectors, kbDomain: msg.payload.domain, };
+            sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace,);
             break;
           }
           try {
@@ -1890,7 +1994,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           const rolePresetSlug = optionalSlug(msg.payload.rolePresetSlug);
           if (!attachedSessionId) {
             draftSelectors = { ...draftSelectors, rolePresetSlug };
-            sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace);
+            sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace,);
             break;
           }
           const selectors = sessionService.getSelectors(attachedSessionId);
@@ -1898,7 +2002,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             const replacement = await sessionService.replaceSession(
               attachedSessionId,
               { ...selectors, rolePresetSlug },
-              "role_preset_switch"
+              "role_preset_switch",
             );
             if (!closed) attachToSession(replacement.sessionId);
           } catch (error) {
@@ -1910,7 +2014,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           const soulSlug = optionalSlug(msg.payload.soulSlug);
           if (!attachedSessionId) {
             draftSelectors = { ...draftSelectors, soulSlug };
-            sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace);
+            sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace,);
             break;
           }
           const selectors = sessionService.getSelectors(attachedSessionId);
@@ -1918,7 +2022,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             const replacement = await sessionService.replaceSession(
               attachedSessionId,
               { ...selectors, soulSlug },
-              "soul_switch"
+              "soul_switch",
             );
             if (!closed) attachToSession(replacement.sessionId);
           } catch (error) {
@@ -1928,11 +2032,11 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         }
         case "switch_instruction": {
           const customInstructionRef = optionalSlug(
-            msg.payload.customInstructionRef
+            msg.payload.customInstructionRef,
           );
           if (!attachedSessionId) {
             draftSelectors = { ...draftSelectors, customInstructionRef };
-            sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace);
+            sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace,);
             break;
           }
           const selectors = sessionService.getSelectors(attachedSessionId);
@@ -1940,7 +2044,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             const replacement = await sessionService.replaceSession(
               attachedSessionId,
               { ...selectors, customInstructionRef },
-              "instruction_switch"
+              "instruction_switch",
             );
             if (!closed) attachToSession(replacement.sessionId);
           } catch (error) {
@@ -1975,7 +2079,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
                   }
                 : {}),
             };
-            sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace);
+            sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace,);
             break;
           }
           try {
@@ -1997,14 +2101,14 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             try {
               const metadata = sessionCreationMetadataForAuth(
                 auth,
-                msg.payload.visibility
+                msg.payload.visibility,
               );
               send({
                 type: "session_updated",
                 payload: sessionService.setVisibility(
                   attachedSessionId,
                   msg.payload.visibility,
-                  metadata.consentSnapshot
+                  metadata.consentSnapshot,
                 ),
               });
             } catch (error) {
@@ -2013,7 +2117,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             break;
           }
           draftVisibility = msg.payload.visibility;
-          sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace);
+          sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace,);
           break;
         }
         case "set_study_tag": {
@@ -2026,7 +2130,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               type: "session_updated",
               payload: sessionService.setStudyTag(
                 attachedSessionId,
-                msg.payload.studyTag ?? null
+                msg.payload.studyTag ?? null,
               ),
             });
           } catch (error) {
@@ -2046,7 +2150,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             if (!stat?.isDirectory()) {
               sendError(
                 send,
-                new Error(`Working folder does not exist: ${resolved}`)
+                new Error(`Working folder does not exist: ${resolved}`),
               );
               break;
             }
@@ -2059,7 +2163,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           // route instead. No echo needed while attached — a session_draft
           // here would reset the client's live-session state.
           if (!attachedSessionId) {
-            sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace);
+            sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace,);
           }
           break;
         }
@@ -2067,7 +2171,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           if (!attachedSessionId) {
             // Draft state: remember the choice and apply it on materialization.
             draftModelOverride = msg.payload.override ?? null;
-            sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace);
+            sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace,);
             break;
           }
           try {
@@ -2075,7 +2179,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               type: "session_updated",
               payload: await sessionService.setSessionModel(
                 attachedSessionId,
-                msg.payload.override ?? null
+                msg.payload.override ?? null,
               ),
             });
           } catch (error) {
@@ -2090,7 +2194,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
                 sendError(
                   send,
                   new Error("Authentication required"),
-                  "auth_required"
+                  "auth_required",
                 );
                 break;
               }
@@ -2102,7 +2206,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
                   workspace: draftWorkspace
                     ? { primaryDir: draftWorkspace }
                     : null,
-                }
+                },
               );
               if (closed) return;
               attachToSession(initial.sessionId);
@@ -2110,7 +2214,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             const run = sessionService.invokeSkill(
               attachedSessionId,
               msg.payload.skillName,
-              msg.payload.userText
+              msg.payload.userText,
             );
             await run.completion;
           } catch (error) {
@@ -2128,11 +2232,11 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               ? sessionService.reviseAt(
                   attachedSessionId,
                   msg.payload.entryId,
-                  msg.payload.text
+                  msg.payload.text,
                 )
               : sessionService.reviseLatest(
                   attachedSessionId,
-                  msg.payload.text
+                  msg.payload.text,
                 );
             await run.completion;
           } catch (error) {
@@ -2171,7 +2275,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           try {
             const snapshot = await sessionService.switchMode(
               attachedSessionId,
-              msg.payload.mode
+              msg.payload.mode,
             );
             send({ type: "session_updated", payload: snapshot });
           } catch (error) {
@@ -2189,7 +2293,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           if (!localMode) {
             sendError(
               send,
-              new Error("Workspace directories are not enabled on this server")
+              new Error("Workspace directories are not enabled on this server"),
             );
             break;
           }
@@ -2203,7 +2307,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           try {
             const snapshot = await sessionService.addWorkspaceDir(
               attachedSessionId,
-              msg.payload.dir
+              msg.payload.dir,
             );
             send({ type: "session_updated", payload: snapshot });
           } catch (error) {
@@ -2241,7 +2345,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             const forked = await sessionService.forkSession(
               attachedSessionId,
               msg.payload.purpose,
-              msg.payload.forkPointEntryId
+              msg.payload.forkPointEntryId,
             );
             if (!closed) {
               attachToSession(forked.sessionId);
@@ -2266,7 +2370,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             const related = await sessionService.createRelatedSession(
               attachedSessionId,
               msg.payload.purpose,
-              msg.payload.forkPointEntryId
+              msg.payload.forkPointEntryId,
             );
             if (!closed) {
               send({
@@ -2293,7 +2397,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           // Model override is a per-conversation choice; workspace stays
           // sticky for the next conversation.
           draftModelOverride = null;
-          sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace);
+          sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace,);
           break;
         }
         case "open_session": {
@@ -2303,13 +2407,13 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           try {
             const opened = await sessionService.openSession(
               msg.payload.sessionId,
-              selectors
+              selectors,
             );
             if (closed) return;
             attachToSession(opened.sessionId);
             send({
               type: "session_transcript",
-              payload: { messages: sessionService.getTranscript(opened.sessionId) },
+              payload: { messages: sessionService.getTranscript(opened.sessionId), },
             });
           } catch (error) {
             sendError(send, error);
@@ -2318,7 +2422,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         }
         case "get_session_metadata":
           if (!attachedSessionId) {
-            sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace);
+            sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace,);
             break;
           }
           send({
@@ -2328,7 +2432,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           break;
         case "get_session_metrics":
           if (!attachedSessionId) {
-            sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace);
+            sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace,);
             break;
           }
           send({
@@ -2388,53 +2492,53 @@ if (isMain) {
     const explicitModelSelection = Boolean(
       instance.config.modelProvider &&
         instance.config.modelId &&
-        instance.config.modelsPath
+        instance.config.modelsPath,
     );
     console.log(`Alt Theory server running on http://${host}:${port}`);
     console.log(`  Data dir:          ${instance.config.dataDir}`);
     console.log(`  Agent assets:      ${assetPaths.rootDir}`);
     console.log(
-      `  App context:       ${assetPaths.appContextPath} (${existsSync(assetPaths.appContextPath) ? "found" : "missing"})`
+      `  App context:       ${assetPaths.appContextPath} (${existsSync(assetPaths.appContextPath) ? "found" : "missing"})`,
     );
     console.log(
-      `  Soul dir:          ${assetPaths.soulDir} (${existsSync(assetPaths.soulDir) ? "found" : "missing"})`
+      `  Soul dir:          ${assetPaths.soulDir} (${existsSync(assetPaths.soulDir) ? "found" : "missing"})`,
     );
     console.log(
-      `  Default soul:      ${assetPaths.soulPath ?? "(none)"} (${assetPaths.soulPath && existsSync(assetPaths.soulPath) ? "found" : "not loaded"})`
+      `  Default soul:      ${assetPaths.soulPath ?? "(none)"} (${assetPaths.soulPath && existsSync(assetPaths.soulPath) ? "found" : "not loaded"})`,
     );
     if (!assetPaths.soulPath || !existsSync(assetPaths.soulPath)) {
       console.warn(
-        "  WARNING: default soul (soul-latest.md) is missing — new conversations will run WITHOUT a soul. Check agent-assets/soul/."
+        "  WARNING: default soul (soul-latest.md) is missing — new conversations will run WITHOUT a soul. Check agent-assets/soul/.",
       );
     }
     console.log(
-      `  Role presets:      ${assetPaths.rolePresetsDir} (${existsSync(assetPaths.rolePresetsDir) ? "found" : "missing"})`
+      `  Role presets:      ${assetPaths.rolePresetsDir} (${existsSync(assetPaths.rolePresetsDir) ? "found" : "missing"})`,
     );
     console.log(
-      `  KB root:           ${instance.config.kbDir} (${existsSync(instance.config.kbDir) ? "found" : "missing"})`
+      `  KB root:           ${instance.config.kbDir} (${existsSync(instance.config.kbDir) ? "found" : "missing"})`,
     );
     console.log(
-      `  Pi prompts:        ${assetPaths.piPromptTemplatesDir} (${existsSync(assetPaths.piPromptTemplatesDir) ? "found" : "missing"})`
+      `  Pi prompts:        ${assetPaths.piPromptTemplatesDir} (${existsSync(assetPaths.piPromptTemplatesDir) ? "found" : "missing"})`,
     );
-    console.log(`  Models path:       ${instance.config.modelsPath ?? "(Pi default)"}`);
+    console.log(`  Models path:       ${instance.config.modelsPath ?? "(Pi default)"}`,);
     console.log(
-      `  Provider/model:    ${instance.config.modelProvider ?? "(Pi default)"} / ${instance.config.modelId ?? "(Pi default)"}`
+      `  Provider/model:    ${instance.config.modelProvider ?? "(Pi default)"} / ${instance.config.modelId ?? "(Pi default)"}`,
     );
     console.log(
-      `  Model selection:   ${explicitModelSelection ? "explicit" : "Pi default or incomplete"}`
+      `  Model selection:   ${explicitModelSelection ? "explicit" : "Pi default or incomplete"}`,
     );
     console.log(`  Prompt mode:       ${instance.config.promptMode}`);
     console.log(
-      `  Resources:         ${instance.config.resourceDiscovery}${instance.config.skillsDir ? ` (${instance.config.skillsDir})` : ""}`
+      `  Resources:         ${instance.config.resourceDiscovery}${instance.config.skillsDir ? ` (${instance.config.skillsDir})` : ""}`,
     );
     console.log(`  Run label:         ${instance.config.runLabel ?? "(none)"}`);
-    console.log(`  Test batch:        ${instance.config.testBatch ?? "(none)"}`);
+    console.log(`  Test batch:        ${instance.config.testBatch ?? "(none)"}`,);
     if (
       (process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_BASE_URL) &&
       !explicitModelSelection
     ) {
       console.warn(
-        "  Warning: ANTHROPIC_* env vars are set, but ALT_THEORY_MODEL_PROVIDER, ALT_THEORY_MODEL_ID, or ALT_THEORY_MODELS_PATH is missing. Alt Theory may launch with Pi defaults instead of the intended provider/model."
+        "  Warning: ANTHROPIC_* env vars are set, but ALT_THEORY_MODEL_PROVIDER, ALT_THEORY_MODEL_ID, or ALT_THEORY_MODELS_PATH is missing. Alt Theory may launch with Pi defaults instead of the intended provider/model.",
       );
     }
   });

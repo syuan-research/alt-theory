@@ -65,6 +65,15 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
         description: "Start a side conversation without adding it to the list",
         run: () => app.forkCurrentSession("side"),
       },
+      ...(variant === "live"
+        ? [
+            {
+              name: "compact",
+              description: "Compact this conversation to free context space",
+              run: () => app.compactCurrentSession(),
+            },
+          ]
+        : []),
       {
         name: "new",
         description: "Start a new conversation",
@@ -76,13 +85,11 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
         run: (args: string) => app.invokeSkill(skill.name, args),
       })),
     ],
-    [app]
+    [app],
   );
 
   const slashQuery =
-    !app.reviseMode && draft.startsWith("/") && !draft.startsWith("//")
-      ? draft.slice(1)
-      : null;
+    draft.startsWith("/") && !draft.startsWith("//") ? draft.slice(1) : null;
   const slashMatches = useMemo(() => {
     if (slashQuery === null) return [];
     const token = slashQuery.split(/\s+/, 1)[0].toLowerCase();
@@ -93,6 +100,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
   const runSlash = (command: SlashCommand) => {
     const args = slashQuery?.split(/\s+/).slice(1).join(" ") ?? "";
     setDraft("");
+    if (app.reviseMode) app.cancelReviseMode();
     command.run(args);
   };
 
@@ -115,10 +123,13 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
     for (const path of paths) app.stageWorkspacePath(path);
   };
   const canSend =
-    interactive && !app.isRunning && (hasText || app.stagedWorkspacePaths.length > 0);
+    interactive &&
+    !app.isRunning &&
+    (hasText || app.stagedWorkspacePaths.length > 0);
   const showVisibility =
     app.participant?.designated === true || app.viewMode === "researcher";
-  const pureMode = variant === "empty" ? shell.newMode === "pure" : app.sessionMode === "pure";
+  const pureMode =
+    variant === "empty" ? shell.newMode === "pure" : app.sessionMode === "pure";
 
   const handleSubmit = () => {
     if (app.reviseMode) {
@@ -130,22 +141,23 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
 
   // ctx-line labels
   const roleLabel = app.selectors.rolePresetSlug
-    ? app.discovery?.rolePresets.find(
-        (r) => r.slug === app.selectors.rolePresetSlug
+    ? (app.discovery?.rolePresets.find(
+        (r) => r.slug === app.selectors.rolePresetSlug,
       )?.userLabel ??
       app.discovery?.rolePresets.find(
-        (r) => r.slug === app.selectors.rolePresetSlug
+        (r) => r.slug === app.selectors.rolePresetSlug,
       )?.displayName ??
-      app.selectors.rolePresetSlug
+      app.selectors.rolePresetSlug)
     : "No role";
   const kbOff = app.selectors.currentDomain === KB_OFF_VALUE;
   const kbLabel = kbOff
     ? "No knowledge base"
-    : app.discovery?.kbDomains.find(
-        (k) => k.slug === app.selectors.currentDomain
-      )?.displayName ?? "Knowledge base";
+    : (app.discovery?.kbDomains.find(
+        (k) => k.slug === app.selectors.currentDomain,
+      )?.displayName ?? "Knowledge base");
 
-  const toggle = (key: MenuKey) => setMenu((prev) => (prev === key ? null : key));
+  const toggle = (key: MenuKey) =>
+    setMenu((prev) => (prev === key ? null : key));
 
   return (
     <div
@@ -181,11 +193,16 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
             {app.toolStatus ? (
               <span>{app.toolStatus}</span>
             ) : app.isRunning && app.runPhaseLabel ? (
-              <span>⏳ {app.runPhaseLabel}</span>
+              <span className="run-phase">
+                <i className="ph ph-circle-notch" aria-hidden="true" />
+                {app.runPhaseLabel}
+              </span>
             ) : null}
             {app.composerNotice ? (
               <span className={app.composerNotice.warn ? "warn" : ""}>
-                {app.composerNotice.prefix ? `${app.composerNotice.prefix} ` : ""}
+                {app.composerNotice.prefix
+                  ? `${app.composerNotice.prefix} `
+                  : ""}
                 {app.composerNotice.text}
               </span>
             ) : null}
@@ -206,7 +223,9 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               onClick={() => (app.switchRolePreset(null), setMenu(null))}
             >
               <span>No role</span>
-              {!app.selectors.rolePresetSlug ? <i className="ph ph-check check" /> : null}
+              {!app.selectors.rolePresetSlug ? (
+                <i className="ph ph-check check" />
+              ) : null}
             </div>
             {(app.discovery?.rolePresets ?? [])
               .filter((r) => !r.snapshot)
@@ -232,7 +251,10 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                     <div
                       key={r.slug}
                       className="mi"
-                      onClick={() => (app.switchRolePreset(r.slug), setMenu(null))}
+                      onClick={() => (
+                        app.switchRolePreset(r.slug),
+                        setMenu(null)
+                      )}
                     >
                       <span>{r.userLabel || r.displayName}</span>
                       {app.selectors.rolePresetSlug === r.slug ? (
@@ -286,7 +308,9 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               className="ctx-item"
               onClick={() =>
                 app.switchVisibility(
-                  app.selectors.visibility === "private" ? "research" : "private"
+                  app.selectors.visibility === "private"
+                    ? "research"
+                    : "private",
                 )
               }
               title="Private conversations are marked and auto-deleted after 7 inactive days."
@@ -337,7 +361,8 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                   e.preventDefault();
                   const step = e.key === "ArrowDown" ? 1 : -1;
                   setSlashIndex(
-                    (p) => (p + step + slashMatches.length) % slashMatches.length
+                    (p) =>
+                      (p + step + slashMatches.length) % slashMatches.length,
                   );
                   return;
                 }
@@ -378,7 +403,10 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
             >
               <div
                 className="mi"
-                onClick={() => (app.forkCurrentSession("helper"), setMenu(null))}
+                onClick={() => (
+                  app.forkCurrentSession("helper"),
+                  setMenu(null)
+                )}
               >
                 <i className="ph ph-lifebuoy" />
                 Ask how Alt works
@@ -407,7 +435,8 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                   onClick={() => {
                     setMenu(null);
                     void pickFiles("Full path of the file to attach:").then(
-                      (paths) => paths.forEach((p) => app.stageWorkspacePath(p))
+                      (paths) =>
+                        paths.forEach((p) => app.stageWorkspacePath(p)),
                     );
                   }}
                 >
@@ -445,7 +474,9 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                 >
                   <i
                     className={
-                      app.sessionMode === "full" ? "ph ph-hammer" : "ph ph-book-open"
+                      app.sessionMode === "full"
+                        ? "ph ph-hammer"
+                        : "ph ph-book-open"
                     }
                   />
                   {app.sessionMode === "full" ? "Work" : "Understand"}
@@ -478,7 +509,9 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                     <i className="ph ph-hammer" />
                     <span>
                       Work
-                      <span className="d">Can act on files in your working folders.</span>
+                      <span className="d">
+                        Can act on files in your working folders.
+                      </span>
                     </span>
                     {app.sessionMode === "full" ? (
                       <i className="ph ph-check check" />
@@ -488,14 +521,25 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               </>
             ) : null}
 
-            <ModelChip open={menu === "model"} onToggle={() => toggle("model")} />
+            <ModelChip
+              open={menu === "model"}
+              onToggle={() => toggle("model")}
+            />
 
             {app.reviseMode ? (
               <>
-                <button className="flat" onClick={() => (setDraft(""), app.cancelReviseMode())}>
+                <button
+                  className="flat"
+                  onClick={() => (setDraft(""), app.cancelReviseMode())}
+                >
                   Cancel
                 </button>
-                <button className="send" disabled={!canSend} onClick={handleSubmit} title="Save edit">
+                <button
+                  className="send"
+                  disabled={!canSend}
+                  onClick={handleSubmit}
+                  title="Save edit"
+                >
                   <i className="ph ph-check" />
                 </button>
               </>
@@ -509,7 +553,12 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                 <i className="ph ph-square" />
               </button>
             ) : (
-              <button className="send" disabled={!canSend} onClick={handleSubmit} title="Send">
+              <button
+                className="send"
+                disabled={!canSend}
+                onClick={handleSubmit}
+                title="Send"
+              >
                 <i className="ph ph-arrow-up" />
               </button>
             )}

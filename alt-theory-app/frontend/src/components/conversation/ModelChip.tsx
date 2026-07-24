@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { ProviderView, ThinkingLevel } from "@/api/types";
-import { listConfigProviders } from "@/api/config";
+import { getConfigStatus, listConfigProviders } from "@/api/config";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
 
@@ -16,7 +16,11 @@ const THINKING_LEVELS: ThinkingLevel[] = ["off", "low", "high"];
 function flatten(providers: ProviderView[]): ModelOption[] {
   const out: ModelOption[] = [];
   for (const p of providers) {
-    if (!p.hasKey && p.keyState !== "env-set") continue;
+    if (
+      !p.hasKey &&
+      p.keyState !== "oauth" &&
+      p.keyState !== "env-set"
+    ) continue;
     for (const m of p.models) {
       out.push({
         provider: p.name,
@@ -40,14 +44,28 @@ export function ModelChip({
   const app = useApp();
   const shell = useShell();
   const [options, setOptions] = useState<ModelOption[] | null>(null);
+  const [defaultModel, setDefaultModel] = useState<{
+    provider: string;
+    modelId: string;
+  } | null>(null);
   const [error, setError] = useState(false);
 
   useEffect(() => {
-    if (!open || options || error) return;
     let cancelled = false;
-    listConfigProviders()
-      .then((res) => {
-        if (!cancelled) setOptions(flatten(res.providers));
+    setError(false);
+    Promise.all([listConfigProviders(), getConfigStatus()])
+      .then(([res, status]) => {
+        if (!cancelled) {
+          setOptions(flatten(res.providers));
+          setDefaultModel(
+            status.activeProvider && status.activeModel
+              ? {
+                  provider: status.activeProvider,
+                  modelId: status.activeModel,
+                }
+              : null
+          );
+        }
       })
       .catch(() => {
         if (!cancelled) setError(true);
@@ -55,17 +73,20 @@ export function ModelChip({
     return () => {
       cancelled = true;
     };
-  }, [open, options, error]);
+  }, [open]);
 
   const current = app.modelOverride;
-  const defaultLabel = app.localConfig?.activeModel
-    ? `Default · ${app.localConfig.activeModel}`
+  const defaultLabel = defaultModel?.modelId
+    ? `Default · ${defaultModel.provider} / ${defaultModel.modelId}`
     : "Default model";
-  const label = current
-    ? current.thinkingLevel && current.thinkingLevel !== "off"
-      ? `${current.modelId} · ${current.thinkingLevel}`
-      : current.modelId
+  const actual = app.currentSessionModel;
+  const label = actual
+    ? `Conversation · ${actual.provider} / ${actual.modelId}`
     : defaultLabel;
+  const usingDefault =
+    !actual ||
+    (actual.provider === defaultModel?.provider &&
+      actual.modelId === defaultModel.modelId);
 
   const pick = (opt: ModelOption, thinkingLevel?: ThinkingLevel) => {
     app.setSessionModel({
@@ -77,7 +98,7 @@ export function ModelChip({
   };
 
   const isActive = (opt: ModelOption) =>
-    current?.provider === opt.provider && current?.modelId === opt.modelId;
+    actual?.provider === opt.provider && actual?.modelId === opt.modelId;
 
   return (
     <>
@@ -99,8 +120,8 @@ export function ModelChip({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mi" onClick={() => (app.setSessionModel(null), onToggle())}>
-          <span style={{ fontWeight: current ? 400 : 500 }}>{defaultLabel}</span>
-          {!current ? <i className="ph ph-check check" /> : null}
+          <span style={{ fontWeight: usingDefault ? 500 : 400 }}>{defaultLabel}</span>
+          {usingDefault ? <i className="ph ph-check check" /> : null}
         </div>
         <div className="sep" />
         {error ? (

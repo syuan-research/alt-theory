@@ -744,17 +744,18 @@ remain visible as `legacy-v0.3` incomplete projections for recovery.
 ## 7. Model Configuration
 
 The core may receive an explicit Pi `models.json` path plus provider/model
-selection and a runtime-only API key. `ModelRegistry` loads custom model
-definitions independently of Pi's built-in model catalog. Runtime keys use
-`AuthStorage.setRuntimeApiKey()` and are not persisted by Alt Theory.
+selection and a runtime-only API key. Pi's `ModelRuntime` resolves both custom
+and built-in models and owns runtime authentication.
 
 Local mode exposes Pi-native provider/model setup. The full picker + inline
 editor is embedded in Settings → Models (the `ModelConfigPage embedded` prop
 strips the standalone page chrome); the `/config` route also serves it as the
-first-run screen. Settings → Models also renders an "auth-connect" card that
-walks through an account-sign-in flow in the UI only — it performs no
-authentication and has no backend. The GUI writes `models.json`, `auth.json`,
-and `settings.json` under `PI_CODING_AGENT_DIR`;
+first-run screen. Settings → Models also renders an auth-connect card for
+OpenRouter, xAI/Grok, and OpenAI Codex. Its backend delegates OAuth/device-code
+interaction and credential persistence to Pi's native `ModelRuntime`; the
+existing inline frontend panel displays Pi's prompts and opens the
+authorization page. The GUI writes `models.json`, `auth.json`, and
+`settings.json` under `PI_CODING_AGENT_DIR`;
 session creation resolves the current active provider/model at runtime and
 passes that `models.json` path into Pi. Local-mode session materialization
 requires a usable active provider/model; if the active config is missing,
@@ -870,8 +871,10 @@ Limits (current):
   `thinking_delta` is not streamed. Transcript load preserves thinking text for
   Developer view after the turn. Run-phase labels (connecting vs thinking) are
   not exposed (v0.6 §7).
-- Compaction/retry events and provider/auth UI are deferred. Write-path
-  enforcement is hard (guarded write + security extension), but it remains
+- Manual conversation compaction is exposed as `/compact` and delegates to
+  Pi's native session compaction before refreshing the transcript and metrics.
+  Retry events remain deferred. Write-path enforcement is hard (guarded write
+  + security extension), but it remains
   policy in trusted code; OS-level enforcement is out of scope.
 - App-level auth is file-backed and process-local in v0.5.0: account records
   persist in the data directory, but browser auth tokens are in memory and
@@ -901,6 +904,9 @@ Limits (current):
 
 ## Change Log
 
+- 2026-07-24: Upgraded the Pi runtime boundary to `ModelRuntime`, connected
+  native OpenRouter, xAI/Grok, and OpenAI Codex authentication in Settings, and
+  exposed Pi-native manual compaction through `/compact`.
 - 2026-07-24: v1.2.1-alpha polish pass. Resume-time recovery + auto-titling
   (§2.1.1): stale-working-folder degrade-and-warn, removed-per-session-model
   fallback to default (§7), and best-effort LLM titling into `ui-alias.json`

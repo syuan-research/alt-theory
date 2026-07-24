@@ -48,10 +48,10 @@ export function SessionImportDialog({
         setSourceId((current) =>
           next.some((session) => session.sourceId === current)
             ? current
-            : next[0]?.sourceId || ""
+            : next[0]?.sourceId || "",
         );
       })
-      .catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)))
+      .catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)),)
       .finally(() => setBusy(false));
   }, [open, harness]);
 
@@ -63,12 +63,12 @@ export function SessionImportDialog({
         session.name,
         session.preview,
         session.cwd,
-        session.sourceSessionId,
+        session.sourceSessionId
       ]
         .filter(Boolean)
         .join(" ")
         .toLowerCase()
-        .includes(needle)
+        .includes(needle),
     );
   }, [query, sessions]);
 
@@ -100,7 +100,7 @@ export function SessionImportDialog({
 
   const selected = useMemo(
     () => sessions.find((session) => session.sourceId === sourceId) ?? null,
-    [sessions, sourceId]
+    [sessions, sourceId],
   );
 
   if (!open) return null;
@@ -202,22 +202,24 @@ export function SessionImportDialog({
           >
             {workspaceGroups.length === 0 ? (
               <option value="">No matching conversations</option>
-            ) : workspaceGroups.map((group) => (
+            ) : ( workspaceGroups.map((group) => (
               <optgroup key={group.cwd || "no-folder"} label={group.label}>
                 {group.sessions.map((session) => (
                   <option key={session.sourceId} value={session.sourceId}>
-                    {(session.name || session.preview || session.sourceSessionId).slice(0, 100)} · {session.messageCount} messages
+                    {(session.name || session.preview || session.sourceSessionId).slice(0, 100)}{" "} · {session.messageCount} messages
                   </option>
                 ))}
               </optgroup>
-            ))}
+            ))
+            )}
           </select>
         </label>
 
         {selected ? (
           <div className="mt-2 space-y-1 text-xs text-text-muted">
             <p>
-              Updated {new Date(selected.updatedAt).toLocaleString()} · {selected.repeat}
+              Updated {new Date(selected.updatedAt).toLocaleString()} · {" "}
+              {selected.repeat}
             </p>
             <p className="break-all" title={selected.cwd}>
               Working folder: {selected.cwd || "not recorded"}
@@ -240,7 +242,7 @@ export function SessionImportDialog({
               onClick={() => {
                 const path = window.prompt(
                   "Full path of the replacement working folder:",
-                  workspaceOverride
+                  workspaceOverride,
                 );
                 if (!path?.trim()) return;
                 setWorkspaceOverride(path.trim());
@@ -256,6 +258,13 @@ export function SessionImportDialog({
           <p className="mt-3 rounded-md border border-warning/30 bg-warning/5 p-3 text-sm text-text-secondary">
             The source conversation has new activity. Importing it creates a new
             conversation; it does not overwrite or merge your earlier Alt Theory continuation.
+          </p>
+        ) : null}
+        {selected?.repeat === "unchanged" ? (
+
+        <p className="mt-3 rounded-md border border-hairline bg-canvas p-3 text-sm text-text-secondary">
+            This source version was imported before. You can import another copy
+            without changing the existing conversation.
           </p>
         ) : null}
 
@@ -286,7 +295,7 @@ export function SessionImportDialog({
                   Import details ({result.transformations?.length})
                 </summary>
                 <ul className="mt-2 list-disc space-y-1 pl-5">
-                  {result.transformations?.map((item) => <li key={item}>{item}</li>)}
+                  {result.transformations?.map((item) => ( <li key={item}>{item}</li>))}
                 </ul>
               </details>
             ) : null}

@@ -11,9 +11,7 @@ import { join, resolve } from "path";
 import test from "node:test";
 import { mkdtempSync } from "fs";
 import WebSocket from "ws";
-import {
-  AuthStorage,
-  ModelRegistry,
+import { ModelRuntime
 } from "@earendil-works/pi-coding-agent";
 import {
   createAltTheorySession,
@@ -85,12 +83,12 @@ test("asset registry lists safe sorted slugs and resolves known assets", () => {
   ]);
   assert.equal(
     resolveRolePresetSlug(rolePresets, "alpha"),
-    join(rolePresets, "alpha.md")
+    join(rolePresets, "alpha.md"),
   );
   assert.equal(resolveRolePresetSlug(rolePresets, "../alpha"), null);
   assert.equal(
     resolveSoulSlug(souls, "soul-latest"),
-    join(souls, "soul-latest.md")
+    join(souls, "soul-latest.md"),
   );
   assert.equal(resolveSoulSlug(souls, "../soul"), null);
   assert.equal(isKnownKbDomain(kb, "urban"), true);
@@ -100,6 +98,7 @@ test("asset registry lists safe sorted slugs and resolves known assets", () => {
 
 test("local config active model resolves and loads as a Pi custom model", async () => {
   const agentDir = mkdtempSync(join(tmpdir(), "alt-theory-pi-config-"));
+  await
   upsertProvider(
     agentDir,
     {
@@ -109,7 +108,7 @@ test("local config active model resolves and loads as a Pi custom model", async 
       apiKey: "sk-test",
       models: [{ id: "minimax-m3" }],
     },
-    { keyStorage: "literal" }
+    { keyStorage: "literal" },
   );
   await setActive(agentDir, "minimax", "minimax-m3");
 
@@ -120,15 +119,18 @@ test("local config active model resolves and loads as a Pi custom model", async 
     modelsPath: join(agentDir, "models.json"),
   });
 
-  const registry = ModelRegistry.create(
-    AuthStorage.create(join(agentDir, "auth.json")),
-    runtimeConfig.modelsPath
+  const runtime = await ModelRuntime.create({
+    authPath:join(agentDir, "auth.json"),
+    modelsPath:
+    runtimeConfig.modelsPath,
+  }
   );
-  assert.ok(registry.find("minimax", "minimax-m3"));
+  assert.ok(runtime.getModel("minimax", "minimax-m3"));
 });
 
 test("local config runtime ignores literal-key marker when auth key is missing", async () => {
   const agentDir = mkdtempSync(join(tmpdir(), "alt-theory-pi-config-"));
+  await
   upsertProvider(
     agentDir,
     {
@@ -138,9 +140,10 @@ test("local config runtime ignores literal-key marker when auth key is missing",
       apiKey: "sk-test",
       models: [{ id: "minimax-m3" }],
     },
-    { keyStorage: "literal" }
+    { keyStorage: "literal" },
   );
   await setActive(agentDir, "minimax", "minimax-m3");
+  await
   upsertProvider(
     agentDir,
     {
@@ -149,14 +152,33 @@ test("local config runtime ignores literal-key marker when auth key is missing",
       api: "anthropic-messages",
       models: [{ id: "minimax-m3" }],
     },
-    { clearKey: true }
+    { clearKey: true },
   );
 
   assert.deepEqual(getRuntimeModelConfig(agentDir), {});
 });
 
+test("local config resolves a built-in model with OAuth and no custom provider block", async () => {
+  const agentDir = mkdtempSync(join(tmpdir(), "alt-theory-pi-config-"));
+  writeFileSync(
+    join(agentDir, "auth.json"),
+    JSON.stringify({
+      xai: { type: "oauth", access: "test", refresh: "test", expires: 0 },
+    }),
+    "utf-8",
+  );
+  await setActive(agentDir, "xai", "grok-4.5");
+
+  assert.deepEqual(getRuntimeModelConfig(agentDir), {
+    modelProvider: "xai",
+    modelId: "grok-4.5",
+    modelsPath: join(agentDir, "models.json"),
+  });
+});
+
 test("local config refuses to activate a keyless provider", async () => {
   const agentDir = mkdtempSync(join(tmpdir(), "alt-theory-pi-config-"));
+  await
   upsertProvider(agentDir, {
     name: "opencode-go",
     models: [{ id: "mimo-v2.5-pro" }],
@@ -164,7 +186,7 @@ test("local config refuses to activate a keyless provider", async () => {
 
   await assert.rejects(
     () => setActive(agentDir, "opencode-go", "mimo-v2.5-pro"),
-    /needs a saved API key or env-var key/
+    /needs a saved API key or env-var key/,
   );
   const status = getConfigStatus(agentDir);
   assert.equal(status.anyUsable, false);
@@ -173,6 +195,7 @@ test("local config refuses to activate a keyless provider", async () => {
 
 test("local config removes stale invalid custom providers before runtime", async () => {
   const agentDir = mkdtempSync(join(tmpdir(), "alt-theory-pi-config-"));
+  await
   upsertProvider(
     agentDir,
     {
@@ -182,7 +205,7 @@ test("local config removes stale invalid custom providers before runtime", async
       apiKey: "sk-test",
       models: [{ id: "MiniMax-M3" }],
     },
-    { keyStorage: "literal" }
+    { keyStorage: "literal" },
   );
   const modelsPath = join(agentDir, "models.json");
   const modelsFile = JSON.parse(readFileSync(modelsPath, "utf-8")) as {
@@ -193,7 +216,7 @@ test("local config removes stale invalid custom providers before runtime", async
     api: "anthropic-messages",
     models: [{ id: "MiniMax-M3" }],
   };
-  writeFileSync(modelsPath, `${JSON.stringify(modelsFile, null, 2)}\n`, "utf-8");
+  writeFileSync(modelsPath, `${JSON.stringify(modelsFile, null, 2)}\n`, "utf-8",);
   await setActive(agentDir, "mmx-test", "MiniMax-M3");
 
   const runtimeConfig = getRuntimeModelConfig(agentDir);
@@ -207,15 +230,18 @@ test("local config removes stale invalid custom providers before runtime", async
   };
   assert.equal("mmx" in repaired.providers, false);
 
-  const registry = ModelRegistry.create(
-    AuthStorage.create(join(agentDir, "auth.json")),
-    runtimeConfig.modelsPath
+  const runtime = await ModelRuntime.create({
+    authPath:join(agentDir, "auth.json"),
+    modelsPath:
+    runtimeConfig.modelsPath,
+  }
   );
-  assert.ok(registry.find("mmx-test", "MiniMax-M3"));
+  assert.ok(runtime.getModel("mmx-test", "MiniMax-M3"));
 });
 
 test("local config normalizes Anthropic-compatible runtime base URLs", async () => {
   const agentDir = mkdtempSync(join(tmpdir(), "alt-theory-pi-config-"));
+  await
   upsertProvider(
     agentDir,
     {
@@ -225,7 +251,7 @@ test("local config normalizes Anthropic-compatible runtime base URLs", async () 
       apiKey: "sk-test",
       models: [{ id: "MiniMax-M3" }],
     },
-    { keyStorage: "literal" }
+    { keyStorage: "literal" },
   );
   await setActive(agentDir, "mmx-test", "MiniMax-M3");
 
@@ -240,7 +266,7 @@ test("local config normalizes Anthropic-compatible runtime base URLs", async () 
   };
   assert.equal(
     modelsFile.providers["mmx-test"].baseUrl,
-    "https://api.minimaxi.com/anthropic"
+    "https://api.minimaxi.com/anthropic",
   );
 });
 
@@ -256,7 +282,7 @@ test("write-enabled core exposes write without edit/bash and writes notes", asyn
   mkdirSync(join(kb, "ep-core"), { recursive: true });
   writeFileSync(appContextPath, "Write test app context", "utf-8");
   writeFileSync(soulPath, "Write test soul", "utf-8");
-  writeFileSync(join(rolePresets, "role-conceptual-theory-companion-latest.md"), "Write test conceptual theory role", "utf-8");
+  writeFileSync(join(rolePresets, "role-conceptual-theory-companion-latest.md"), "Write test conceptual theory role", "utf-8",);
   writeFileSync(
     modelsPath,
     JSON.stringify({
@@ -283,14 +309,14 @@ test("write-enabled core exposes write without edit/bash and writes notes", asyn
         },
       },
     }),
-    "utf-8"
+    "utf-8",
   );
   const projectRoot = process.cwd();
   const result = await createAltTheorySession({
     ...dirs,
     appContextPath,
     soulPath,
-    rolePresetPath: join(rolePresets, "role-conceptual-theory-companion-latest.md"),
+    rolePresetPath: join(rolePresets, "role-conceptual-theory-companion-latest.md",),
     rolePresetSlug: "role-conceptual-theory-companion-latest",
     kbDir: kb,
     piPromptTemplatesDir: resolve(projectRoot, "agent-assets", "prompts", "pi"),
@@ -310,12 +336,12 @@ test("write-enabled core exposes write without edit/bash and writes notes", asyn
       "grep",
       "ls",
       "read",
-      "write",
+      "write"
     ]);
     assert.match(result.session.agent.state.systemPrompt, /Write Policy/);
     assert.match(
       result.session.agent.state.systemPrompt,
-      /Alt Theory Application Context/
+      /Alt Theory Application Context/,
     );
     assert.match(result.session.agent.state.systemPrompt, /Role/);
     assert.match(result.session.agent.state.systemPrompt, /workspace/);
@@ -326,7 +352,7 @@ test("write-enabled core exposes write without edit/bash and writes notes", asyn
     assert.equal(result.manifest.testBatch, "2026-06-12-smoke");
     assert.equal(result.manifest.appContext.exists, true);
     assert.equal(result.manifest.soul.exists, true);
-    assert.equal(result.manifest.rolePreset.slug, "role-conceptual-theory-companion-latest");
+    assert.equal(result.manifest.rolePreset.slug, "role-conceptual-theory-companion-latest",);
     assert.equal(existsSync(result.session.sessionFile), false);
     result.session.sessionManager.appendMessage({
       role: "assistant",
@@ -354,7 +380,7 @@ test("write-enabled core exposes write without edit/bash and writes notes", asyn
     assert.equal(existsSync(result.session.sessionFile), true);
 
     const writeTool = result.session.agent.state.tools.find(
-      (tool) => tool.name === "write"
+      (tool) => tool.name === "write",
     );
     assert.ok(writeTool);
     const notePath = join(dirs.writeDir, "smoke.md");
@@ -364,14 +390,14 @@ test("write-enabled core exposes write without edit/bash and writes notes", asyn
     });
     assert.equal(readFileSync(notePath, "utf-8"), "# Backend write smoke\n");
     assert.ok(result.manifest.writableRoots.includes(resolve(dirs.writeDir)));
-    assert.ok(result.manifest.writableRoots.includes(resolve("runs/local-assets")));
+    assert.ok(result.manifest.writableRoots.includes(resolve("runs/local-assets")),);
     await assert.rejects(
       () =>
         writeTool.execute("write-outside", {
           path: join(root, "outside.md"),
           content: "outside",
         }),
-      /outside Alt Theory writable roots/
+      /outside Alt Theory writable roots/,
     );
     await assert.rejects(
       () =>
@@ -379,7 +405,7 @@ test("write-enabled core exposes write without edit/bash and writes notes", asyn
           path: join(dirs.writeDir, "..", "escape.md"),
           content: "escape",
         }),
-      /outside Alt Theory writable roots|resolves outside Alt Theory writable roots/
+      /outside Alt Theory writable roots|resolves outside Alt Theory writable roots/,
     );
     await assert.rejects(
       () =>
@@ -387,7 +413,7 @@ test("write-enabled core exposes write without edit/bash and writes notes", asyn
           path: resolve("alt-theory-app", "core", "alt-theory-core.ts"),
           content: "source overwrite attempt",
         }),
-      /outside Alt Theory writable roots|resolves outside Alt Theory writable roots/
+      /outside Alt Theory writable roots|resolves outside Alt Theory writable roots/,
     );
     assert.ok(
       existsSync(join(dirs.recordsDir, "assembly-manifest.json"))
@@ -411,11 +437,11 @@ test("core records resource discovery mode in the assembly manifest", async () =
   mkdirSync(skillsDir, { recursive: true });
   writeFileSync(appContextPath, "Test app context", "utf-8");
   writeFileSync(soulPath, "Test soul", "utf-8");
-  writeFileSync(join(rolePresets, "role-conceptual-theory-companion-latest.md"), "Conceptual theory role", "utf-8");
+  writeFileSync(join(rolePresets, "role-conceptual-theory-companion-latest.md"), "Conceptual theory role", "utf-8",);
   writeFileSync(
     join(skillsDir, "summary.md"),
     "---\nname: summary-test\ndescription: Test summary skill\n---\nSummarize.",
-    "utf-8"
+    "utf-8",
   );
   writeFileSync(instructionPath, "Do not overextend.", "utf-8");
 
@@ -423,7 +449,7 @@ test("core records resource discovery mode in the assembly manifest", async () =
     ...dirs,
     appContextPath,
     soulPath,
-    rolePresetPath: join(rolePresets, "role-conceptual-theory-companion-latest.md"),
+    rolePresetPath: join(rolePresets, "role-conceptual-theory-companion-latest.md",),
     rolePresetSlug: "role-conceptual-theory-companion-latest",
     kbDir: kb,
     kbDomain: "ep-core",
@@ -440,15 +466,15 @@ test("core records resource discovery mode in the assembly manifest", async () =
       skillsDir: resolve(skillsDir),
     });
     assert.equal(result.manifest.customInstruction.ref, "study.rules");
-    assert.match(result.manifest.customInstruction.sha256 ?? "", /^[a-f0-9]{64}$/);
+    assert.match(result.manifest.customInstruction.sha256 ?? "", /^[a-f0-9]{64}$/,);
     assert.deepEqual(
       result.manifest.skills.map((skill) => skill.name),
-      ["summary-test"]
+      ["summary-test"],
     );
     assert.match(result.session.agent.state.systemPrompt, /Do not overextend/);
     assert.match(result.session.agent.state.systemPrompt, /summary-test/);
     const manifest = JSON.parse(
-      readFileSync(join(dirs.recordsDir, "assembly-manifest.json"), "utf-8")
+      readFileSync(join(dirs.recordsDir, "assembly-manifest.json"), "utf-8"),
     );
     assert.deepEqual(manifest.resourceDiscovery, {
       mode: "internal",
@@ -470,13 +496,13 @@ test("alt-only prompt mode replaces Pi base system prompt", async () => {
   mkdirSync(join(kb, "ep-core"), { recursive: true });
   writeFileSync(appContextPath, "Test app context", "utf-8");
   writeFileSync(soulPath, "Test soul", "utf-8");
-  writeFileSync(join(rolePresets, "role-conceptual-theory-companion-latest.md"), "Conceptual theory role", "utf-8");
+  writeFileSync(join(rolePresets, "role-conceptual-theory-companion-latest.md"), "Conceptual theory role", "utf-8",);
 
   const result = await createAltTheorySession({
     ...dirs,
     appContextPath,
     soulPath,
-    rolePresetPath: join(rolePresets, "role-conceptual-theory-companion-latest.md"),
+    rolePresetPath: join(rolePresets, "role-conceptual-theory-companion-latest.md",),
     rolePresetSlug: "role-conceptual-theory-companion-latest",
     kbDir: kb,
     kbDomain: "ep-core",
@@ -552,7 +578,7 @@ test("openAltTheorySession opens existing JSONL and reports runtime drift", asyn
   mkdirSync(rolePresets, { recursive: true });
   writeFileSync(appContextPath, "Open existing app context", "utf-8");
   writeFileSync(soulPath, "Open existing soul", "utf-8");
-  writeFileSync(join(rolePresets, "role-conceptual-theory-companion-latest.md"), "Conceptual theory role", "utf-8");
+  writeFileSync(join(rolePresets, "role-conceptual-theory-companion-latest.md"), "Conceptual theory role", "utf-8",);
   writeFileSync(join(rolePresets, "alternate.md"), "Alternate role", "utf-8");
   writeFileSync(
     modelsPath,
@@ -580,7 +606,7 @@ test("openAltTheorySession opens existing JSONL and reports runtime drift", asyn
         },
       },
     }),
-    "utf-8"
+    "utf-8",
   );
 
   const dirs = createSessionDirs(dataDir, "session-open-existing");
@@ -588,7 +614,7 @@ test("openAltTheorySession opens existing JSONL and reports runtime drift", asyn
     ...dirs,
     appContextPath,
     soulPath,
-    rolePresetPath: join(rolePresets, "role-conceptual-theory-companion-latest.md"),
+    rolePresetPath: join(rolePresets, "role-conceptual-theory-companion-latest.md",),
     rolePresetSlug: "role-conceptual-theory-companion-latest",
     kbDir: kb,
     kbDomain: "ep-core",
@@ -656,30 +682,30 @@ test("openAltTheorySession opens existing JSONL and reports runtime drift", asyn
     const context = opened.session.sessionManager.buildSessionContext();
     assert.equal(
       context.messages.at(-1)?.content?.[0]?.text,
-      "existing session context"
+      "existing session context",
     );
     assert.equal(opened.manifest.openedFrom, "existing");
     assert.equal(opened.manifest.rolePreset.slug, "alternate");
     assert.equal(opened.manifest.kb.domain, "all");
     assert.ok(
       opened.resumeWarnings.some((warning) =>
-        warning.includes("role preset differs")
-      )
+        warning.includes("role preset differs"),
+      ),
     );
     assert.ok(
       opened.resumeWarnings.some((warning) =>
-        warning.includes("KB domain differs")
-      )
+        warning.includes("KB domain differs"),
+      ),
     );
     assert.equal(readFileSync(manifestPath, "utf-8"), originalManifestText);
     const resumeManifest = JSON.parse(
-      readFileSync(join(dirs.recordsDir, "resume-manifest.json"), "utf-8")
+      readFileSync(join(dirs.recordsDir, "resume-manifest.json"), "utf-8"),
     );
     assert.equal(resumeManifest.openedFrom, "existing");
-    assert.equal(resumeManifest.resumedFrom.rolePresetSlug, "role-conceptual-theory-companion-latest");
+    assert.equal(resumeManifest.resumedFrom.rolePresetSlug, "role-conceptual-theory-companion-latest",);
     assert.deepEqual(
       readdirSync(join(dataDir, "sessions")),
-      sessionRootEntriesBefore
+      sessionRootEntriesBefore,
     );
   } finally {
     opened.session.dispose();
@@ -712,7 +738,7 @@ test("buildSessionMetrics combines counters with Pi-native statistics", () => {
         },
       }),
     },
-    { turnCount: 1, toolCallCount: 2, messageCount: 1 }
+    { turnCount: 1, toolCallCount: 2, messageCount: 1 },
   );
 
   assert.equal(metrics.turnCount, 1);
@@ -746,7 +772,7 @@ test("session events are append-only structured records without message bodies",
     .map((line) => JSON.parse(line));
   assert.deepEqual(
     events.map((event) => event.type),
-    ["session_created", "kb_selected"]
+    ["session_created", "kb_selected"],
   );
   assert.equal(raw.includes("message"), false);
   assert.ok(events.every((event) => event.eventId && event.timestamp));
@@ -766,7 +792,7 @@ test("session catalog and detail expose complete and incomplete sessions", async
   mkdirSync(rolePresets, { recursive: true });
   writeFileSync(appContextPath, "Catalog test app context", "utf-8");
   writeFileSync(soulPath, "Catalog test soul", "utf-8");
-  writeFileSync(join(rolePresets, "role-conceptual-theory-companion-latest.md"), "Conceptual theory role", "utf-8");
+  writeFileSync(join(rolePresets, "role-conceptual-theory-companion-latest.md"), "Conceptual theory role", "utf-8",);
   writeFileSync(
     modelsPath,
     JSON.stringify({
@@ -793,7 +819,7 @@ test("session catalog and detail expose complete and incomplete sessions", async
         },
       },
     }),
-    "utf-8"
+    "utf-8",
   );
 
   const completeDirs = createSessionDirs(dataDir, "session-complete");
@@ -801,7 +827,7 @@ test("session catalog and detail expose complete and incomplete sessions", async
     ...completeDirs,
     appContextPath,
     soulPath,
-    rolePresetPath: join(rolePresets, "role-conceptual-theory-companion-latest.md"),
+    rolePresetPath: join(rolePresets, "role-conceptual-theory-companion-latest.md",),
     rolePresetSlug: "role-conceptual-theory-companion-latest",
     kbDir: kb,
     kbDomain: "ep-core",
@@ -866,7 +892,7 @@ test("session catalog and detail expose complete and incomplete sessions", async
     ...emptyV4Dirs,
     appContextPath,
     soulPath,
-    rolePresetPath: join(rolePresets, "role-conceptual-theory-companion-latest.md"),
+    rolePresetPath: join(rolePresets, "role-conceptual-theory-companion-latest.md",),
     rolePresetSlug: "role-conceptual-theory-companion-latest",
     kbDir: kb,
     kbDomain: "ep-core",
@@ -888,26 +914,26 @@ test("session catalog and detail expose complete and incomplete sessions", async
   writeFileSync(
     join(completeDirs.recordsDir, "discussion-summary.md"),
     "# Summary\n",
-    "utf-8"
+    "utf-8",
   );
   writeFileSync(
     join(completeDirs.writeDir, "workspace-note.txt"),
     "workspace note",
-    "utf-8"
+    "utf-8",
   );
 
   const summaries = listSessionSummaries(dataDir).sessions;
   const completeSummary = summaries.find(
-    (session) => session.sessionId === "session-complete"
+    (session) => session.sessionId === "session-complete",
   );
   const incompleteSummary = summaries.find(
-    (session) => session.sessionId === "session-incomplete"
+    (session) => session.sessionId === "session-incomplete",
   );
   const emptyV4Summary = summaries.find(
-    (session) => session.sessionId === "session-v4-empty"
+    (session) => session.sessionId === "session-v4-empty",
   );
   assert.equal(completeSummary?.status, "available");
-  assert.equal(completeSummary?.rolePresetSlug, "role-conceptual-theory-companion-latest");
+  assert.equal(completeSummary?.rolePresetSlug, "role-conceptual-theory-companion-latest",);
   assert.equal(completeSummary?.kbDomain, "ep-core");
   assert.equal(completeSummary?.provider, "test-provider");
   assert.equal(completeSummary?.model, "test-model");
@@ -926,23 +952,23 @@ test("session catalog and detail expose complete and incomplete sessions", async
   assert.equal(directDetail?.pi.contextMessageCount, 1);
   assert.equal(
     directDetail?.transcriptPreview.at(-1)?.text,
-    "catalog preview text"
+    "catalog preview text",
   );
   assert.equal(directDetail?.events.count, 1);
   const directFiles = listSessionTextFiles(dataDir, "session-complete").files;
   assert.ok(
     directFiles.some(
-      (file) => file.root === "records" && file.path === "discussion-summary.md"
-    )
+      (file) => file.root === "records" && file.path === "discussion-summary.md",
+    ),
   );
   assert.equal(
     readSessionTextFile(
       dataDir,
       "session-complete",
       "workspace",
-      "workspace-note.txt"
+      "workspace-note.txt",
     ).content,
-    "workspace note"
+    "workspace note",
   );
   assert.equal(
     writeSessionTextFile(
@@ -950,9 +976,9 @@ test("session catalog and detail expose complete and incomplete sessions", async
       "session-complete",
       "records",
       "discussion-summary.md",
-      "# Updated\n"
+      "# Updated\n",
     ).content,
-    "# Updated\n"
+    "# Updated\n",
   );
   assert.throws(
     () =>
@@ -961,9 +987,9 @@ test("session catalog and detail expose complete and incomplete sessions", async
         "session-complete",
         "records",
         "../escape.md",
-        "bad"
+        "bad",
       ),
-    /inside the selected session root/
+    /inside the selected session root/,
   );
 
   const instance = createAltTheoryServer({
@@ -987,23 +1013,23 @@ test("session catalog and detail expose complete and incomplete sessions", async
     assert.equal(listJson.sessions.length >= 2, true);
     assert.ok(
       listJson.sessions.some(
-        (session: any) => session.sessionId === "session-complete"
-      )
+        (session: any) => session.sessionId === "session-complete",
+      ),
     );
 
     const detailResponse = await fetch(
-      `${baseUrl}/api/sessions/session-complete`
+      `${baseUrl}/api/sessions/session-complete`,
     );
     const detailJson = await detailResponse.json();
     assert.equal(detailJson.session.sessionId, "session-complete");
     assert.equal(detailJson.pi.contextMessageCount, 1);
     assert.equal(
       detailJson.transcriptPreview.at(-1).text,
-      "catalog preview text"
+      "catalog preview text",
     );
 
     const incompleteDetailResponse = await fetch(
-      `${baseUrl}/api/sessions/session-incomplete`
+      `${baseUrl}/api/sessions/session-incomplete`,
     );
     assert.equal(incompleteDetailResponse.status, 200);
     const incompleteDetailJson = await incompleteDetailResponse.json();
@@ -1017,17 +1043,17 @@ test("session catalog and detail expose complete and incomplete sessions", async
     assert.equal(missingResponse.status, 404);
 
     const filesResponse = await fetch(
-      `${baseUrl}/api/sessions/session-complete/files?root=records`
+      `${baseUrl}/api/sessions/session-complete/files?root=records`,
     );
     const filesJson = await filesResponse.json();
     assert.ok(
       filesJson.files.some(
-        (file: any) => file.path === "discussion-summary.md"
-      )
+        (file: any) => file.path === "discussion-summary.md",
+      ),
     );
 
     const contentResponse = await fetch(
-      `${baseUrl}/api/sessions/session-complete/files/content?root=records&path=discussion-summary.md`
+      `${baseUrl}/api/sessions/session-complete/files/content?root=records&path=discussion-summary.md`,
     );
     const contentJson = await contentResponse.json();
     assert.equal(contentJson.content, "# Updated\n");
@@ -1042,12 +1068,12 @@ test("session catalog and detail expose complete and incomplete sessions", async
           path: "discussion-summary.md",
           content: "# Saved over REST\n",
         }),
-      }
+      },
     );
     assert.equal(saveResponse.status, 200);
     assert.equal(
-      readFileSync(join(completeDirs.recordsDir, "discussion-summary.md"), "utf-8"),
-      "# Saved over REST\n"
+      readFileSync(join(completeDirs.recordsDir, "discussion-summary.md"), "utf-8",),
+      "# Saved over REST\n",
     );
 
     const escapeResponse = await fetch(
@@ -1060,29 +1086,29 @@ test("session catalog and detail expose complete and incomplete sessions", async
           path: "../escape.md",
           content: "bad",
         }),
-      }
+      },
     );
     assert.equal(escapeResponse.status, 400);
 
     const deleteResponse = await fetch(
       `${baseUrl}/api/sessions/session-complete`,
-      { method: "DELETE" }
+      { method: "DELETE" },
     );
     assert.equal(deleteResponse.status, 200);
     const deleteJson = await deleteResponse.json();
     assert.equal(deleteJson.deleted.recordType, "deleted-session");
-    assert.equal(existsSync(join(completeDirs.recordsDir, "deleted.json")), true);
+    assert.equal(existsSync(join(completeDirs.recordsDir, "deleted.json")), true,);
 
     const listAfterDelete = await fetch(`${baseUrl}/api/sessions`);
     const listAfterDeleteJson = await listAfterDelete.json();
     assert.equal(
       listAfterDeleteJson.sessions.some(
-        (session: any) => session.sessionId === "session-complete"
+        (session: any) => session.sessionId === "session-complete",
       ),
-      false
+      false,
     );
     const recoverableDetail = await fetch(
-      `${baseUrl}/api/sessions/session-complete`
+      `${baseUrl}/api/sessions/session-complete`,
     );
     assert.equal(recoverableDetail.status, 200);
     assert.ok((await recoverableDetail.json()).session.deletedAt);
@@ -1238,7 +1264,7 @@ test("session REST routes preserve hosted isolation and local access", async () 
   mkdirSync(souls, { recursive: true });
   mkdirSync(join(kb, "ep-core"), { recursive: true });
   writeFileSync(appContextPath, "Auth filter app context", "utf-8");
-  writeFileSync(join(rolePresets, "role-conceptual-theory-companion-latest.md"), "Conceptual theory role", "utf-8");
+  writeFileSync(join(rolePresets, "role-conceptual-theory-companion-latest.md"), "Conceptual theory role", "utf-8",);
   writeFileSync(join(souls, "soul-latest.md"), "Latest soul", "utf-8");
 
   writeAccountStore(dataDir, {
@@ -1304,7 +1330,7 @@ test("session REST routes preserve hosted isolation and local access", async () 
   });
 
   const p01Session = await service.createSession(
-    { rolePresetSlug: "role-conceptual-theory-companion-latest", kbDomain: "ep-core", soulSlug: "soul-latest" },
+    { rolePresetSlug: "role-conceptual-theory-companion-latest", kbDomain: "ep-core", soulSlug: "soul-latest", },
     {
       ownerAccountId: "p01",
       roleCondition: "conceptual-theory",
@@ -1313,10 +1339,10 @@ test("session REST routes preserve hosted isolation and local access", async () 
         quoteAfterAnonymization: true,
         privateOverride: false,
       },
-    }
+    },
   );
   const p01PrivateSession = await service.createSession(
-    { rolePresetSlug: "role-conceptual-theory-companion-latest", kbDomain: "ep-core", soulSlug: "soul-latest" },
+    { rolePresetSlug: "role-conceptual-theory-companion-latest", kbDomain: "ep-core", soulSlug: "soul-latest", },
     {
       ownerAccountId: "p01",
       roleCondition: "conceptual-theory",
@@ -1326,17 +1352,17 @@ test("session REST routes preserve hosted isolation and local access", async () 
         quoteAfterAnonymization: true,
         privateOverride: false,
       },
-    }
+    },
   );
   const p01PrivateWorkspacePath =
-    service.getManifest(p01PrivateSession.sessionId).sessionCwd;
+    service.getManifest(p01PrivateSession.sessionId,).sessionCwd;
   writeFileSync(
     join(p01PrivateWorkspacePath, "private-note.md"),
     "private workspace note",
-    "utf-8"
+    "utf-8",
   );
   const p02Session = await service.createSession(
-    { rolePresetSlug: "role-conceptual-theory-companion-latest", kbDomain: "ep-core", soulSlug: "soul-latest" },
+    { rolePresetSlug: "role-conceptual-theory-companion-latest", kbDomain: "ep-core", soulSlug: "soul-latest", },
     {
       ownerAccountId: "p02",
       roleCondition: "metatheory-oriented",
@@ -1345,7 +1371,7 @@ test("session REST routes preserve hosted isolation and local access", async () 
         quoteAfterAnonymization: false,
         privateOverride: false,
       },
-    }
+    },
   );
   const ownerlessSession = await service.createSession({
     rolePresetSlug: "role-conceptual-theory-companion-latest",
@@ -1358,7 +1384,7 @@ test("session REST routes preserve hosted isolation and local access", async () 
       kbDomain: "ep-core",
       soulSlug: "soul-latest",
     },
-    { visibility: "private" }
+    { visibility: "private" },
   );
   for (const sessionId of [
     p01Session.sessionId,
@@ -1399,7 +1425,7 @@ test("session REST routes preserve hosted isolation and local access", async () 
   assert.ok(address && typeof address === "object");
   const baseUrl = `http://127.0.0.1:${address.port}`;
 
-  async function loginCookie(accountId: string, loginCode: string): Promise<string> {
+  async function loginCookie(accountId: string, loginCode: string,): Promise<string> {
     const response = await fetch(`${baseUrl}/api/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1420,32 +1446,32 @@ test("session REST routes preserve hosted isolation and local access", async () 
     const participantListJson = await participantList.json();
     assert.deepEqual(
       participantListJson.sessions.map((session: any) => session.sessionId),
-      [p01PrivateSession.sessionId, p01Session.sessionId]
+      [p01PrivateSession.sessionId, p01Session.sessionId],
     );
     assert.equal(
       participantListJson.sessions[0].roleCondition,
-      "conceptual-theory"
+      "conceptual-theory",
     );
 
     const ownDetail = await fetch(
       `${baseUrl}/api/sessions/${p01Session.sessionId}`,
-      { headers: { Cookie: participantCookie } }
+      { headers: { Cookie: participantCookie } },
     );
     assert.equal(ownDetail.status, 200);
     const ownPrivateDetail = await fetch(
       `${baseUrl}/api/sessions/${p01PrivateSession.sessionId}`,
-      { headers: { Cookie: participantCookie } }
+      { headers: { Cookie: participantCookie } },
     );
     assert.equal(ownPrivateDetail.status, 200);
     const privateDownload = await fetch(
       `${baseUrl}/api/sessions/${p01PrivateSession.sessionId}/files/download?root=workspace&path=private-note.md`,
-      { headers: { Cookie: participantCookie } }
+      { headers: { Cookie: participantCookie } },
     );
     assert.equal(privateDownload.status, 200);
     assert.equal(await privateDownload.text(), "private workspace note");
     const privateTraversal = await fetch(
       `${baseUrl}/api/sessions/${p01PrivateSession.sessionId}/files/download?root=workspace&path=../session.json`,
-      { headers: { Cookie: participantCookie } }
+      { headers: { Cookie: participantCookie } },
     );
     assert.equal(privateTraversal.status, 400);
     const privateDelete = await fetch(
@@ -1453,23 +1479,23 @@ test("session REST routes preserve hosted isolation and local access", async () 
       {
         method: "DELETE",
         headers: { Cookie: participantCookie },
-      }
+      },
     );
     assert.equal(privateDelete.status, 200);
     assert.equal(
       existsSync(
         join(p01PrivateWorkspacePath, "private-note.md")
       ),
-      false
+      false,
     );
     const otherDetail = await fetch(
       `${baseUrl}/api/sessions/${p02Session.sessionId}`,
-      { headers: { Cookie: participantCookie } }
+      { headers: { Cookie: participantCookie } },
     );
     assert.equal(otherDetail.status, 404);
     const ownerlessDetail = await fetch(
       `${baseUrl}/api/sessions/${ownerlessSession.sessionId}`,
-      { headers: { Cookie: participantCookie } }
+      { headers: { Cookie: participantCookie } },
     );
     assert.equal(ownerlessDetail.status, 404);
 
@@ -1481,34 +1507,34 @@ test("session REST routes preserve hosted isolation and local access", async () 
     assert.equal(researcherListJson.sessions.length, 5);
     assert.ok(
       researcherListJson.sessions.some(
-        (session: any) => session.sessionId === ownerlessSession.sessionId
-      )
+        (session: any) => session.sessionId === ownerlessSession.sessionId,
+      ),
     );
     assert.ok(
       researcherListJson.sessions.some(
         (session: any) =>
           session.sessionId === p01PrivateSession.sessionId &&
-          session.visibility === "private"
-      )
+          session.visibility === "private",
+      ),
     );
     const researcherPrivateDetail = await fetch(
       `${baseUrl}/api/sessions/${p01PrivateSession.sessionId}`,
-      { headers: { Cookie: researcherCookie } }
+      { headers: { Cookie: researcherCookie } },
     );
     assert.equal(researcherPrivateDetail.status, 403);
     const researcherPrivateFile = await fetch(
       `${baseUrl}/api/sessions/${p01PrivateSession.sessionId}/files/content?root=workspace&path=private-note.md`,
-      { headers: { Cookie: researcherCookie } }
+      { headers: { Cookie: researcherCookie } },
     );
     assert.equal(researcherPrivateFile.status, 403);
     const researcherOwnerlessDetail = await fetch(
       `${baseUrl}/api/sessions/${ownerlessSession.sessionId}`,
-      { headers: { Cookie: researcherCookie } }
+      { headers: { Cookie: researcherCookie } },
     );
     assert.equal(researcherOwnerlessDetail.status, 200);
     const researcherOwnerlessPrivateDetail = await fetch(
       `${baseUrl}/api/sessions/${ownerlessPrivateSession.sessionId}`,
-      { headers: { Cookie: researcherCookie } }
+      { headers: { Cookie: researcherCookie } },
     );
     assert.equal(researcherOwnerlessPrivateDetail.status, 403);
   } finally {
@@ -1536,14 +1562,14 @@ test("session REST routes preserve hosted isolation and local access", async () 
   assert.ok(localAddress && typeof localAddress === "object");
   try {
     const localPrivateDetail = await fetch(
-      `http://127.0.0.1:${localAddress.port}/api/sessions/${ownerlessPrivateSession.sessionId}`
+      `http://127.0.0.1:${localAddress.port}/api/sessions/${ownerlessPrivateSession.sessionId}`,
     );
     assert.equal(localPrivateDetail.status, 200);
     const upload = new FormData();
-    upload.append("file", new Blob(["local reference"], { type: "text/plain" }), "reference.txt");
+    upload.append("file", new Blob(["local reference"], { type: "text/plain" }), "reference.txt",);
     const localUpload = await fetch(
       `http://127.0.0.1:${localAddress.port}/api/sessions/${ownerlessPrivateSession.sessionId}/files/upload`,
-      { method: "POST", body: upload }
+      { method: "POST", body: upload },
     );
     assert.equal(localUpload.status, 200);
   } finally {
@@ -1569,14 +1595,14 @@ test("WebSocket open_session replaces current state with an existing session", a
   mkdirSync(rolePresets, { recursive: true });
   writeFileSync(appContextPath, "WS open app context", "utf-8");
   writeFileSync(soulPath, "WS open soul", "utf-8");
-  writeFileSync(join(rolePresets, "role-conceptual-theory-companion-latest.md"), "Conceptual theory role", "utf-8");
+  writeFileSync(join(rolePresets, "role-conceptual-theory-companion-latest.md"), "Conceptual theory role", "utf-8",);
 
   const existingDirs = createSessionDirs(dataDir, "session-ws-open");
   const existing = await createAltTheorySession({
     ...existingDirs,
     appContextPath,
     soulPath,
-    rolePresetPath: join(rolePresets, "role-conceptual-theory-companion-latest.md"),
+    rolePresetPath: join(rolePresets, "role-conceptual-theory-companion-latest.md",),
     rolePresetSlug: "role-conceptual-theory-companion-latest",
     kbDir: kb,
     kbDomain: "ep-core",
@@ -1660,7 +1686,7 @@ test("WebSocket open_session replaces current state with an existing session", a
     return new Promise((resolveMessage, reject) => {
       const timer = setTimeout(
         () => reject(new Error(`Timed out waiting for ${type}`)),
-        10_000
+        10_000,
       );
       const listener = (data: WebSocket.RawData) => {
         const message = JSON.parse(data.toString());
@@ -1680,7 +1706,7 @@ test("WebSocket open_session replaces current state with an existing session", a
   try {
     const initialDraft = await initialDraftPromise;
     assert.equal(initialDraft.payload.status, "draft");
-    assert.equal(initialDraft.payload.rolePresetSlug, "role-conceptual-theory-companion-latest");
+    assert.equal(initialDraft.payload.rolePresetSlug, "role-conceptual-theory-companion-latest",);
     assert.equal(initialDraft.payload.currentDomain, "ep-core");
     const sessionRootsAfterConnect = readdirSync(join(dataDir, "sessions"));
     assert.deepEqual(sessionRootsAfterConnect, ["session-ws-open"]);
@@ -1690,7 +1716,7 @@ test("WebSocket open_session replaces current state with an existing session", a
       JSON.stringify({
         type: "open_session",
         payload: { sessionId: "missing-session" },
-      })
+      }),
     );
     const missingError = await missingErrorPromise;
     assert.match(missingError.payload.error, /Unknown session id/);
@@ -1708,7 +1734,7 @@ test("WebSocket open_session replaces current state with an existing session", a
       JSON.stringify({
         type: "open_session",
         payload: { sessionId: "session-ws-open" },
-      })
+      }),
     );
     const opened = await openedPromise;
     const transcript = await transcriptPromise;
@@ -1737,27 +1763,27 @@ test("WebSocket open_session replaces current state with an existing session", a
           text: "websocket existing context",
           toolType: undefined,
         },
-      ]
+      ],
     );
     assert.equal(
-      transcript.payload.messages.find((message: any) => message.role === "tool")
+      transcript.payload.messages.find((message: any) => message.role === "tool",)
         ?.toolType,
-      "result"
+      "result",
     );
     assert.equal(
-      transcript.payload.messages.find((message: any) => message.role === "assistant")
+      transcript.payload.messages.find((message: any) => message.role === "assistant",)
         ?.thinking,
-      "resume hidden reasoning"
+      "resume hidden reasoning",
     );
     assert.equal(metrics.payload.messageCount, 2);
     assert.deepEqual(
       readdirSync(join(dataDir, "sessions")).sort(),
-      sessionRootsAfterConnect.sort()
+      sessionRootsAfterConnect.sort(),
     );
 
     const eventTypes = readFileSync(
       join(existingDirs.recordsDir, "session-events.jsonl"),
-      "utf-8"
+      "utf-8",
     )
       .trim()
       .split("\n")
@@ -1790,7 +1816,7 @@ test("WebSocket participant first send creates an owned role-conditioned session
   writeFileSync(
     join(rolePresets, "role-conceptual-theory-companion-latest.md"),
     "Conceptual theory role",
-    "utf-8"
+    "utf-8",
   );
   writeFileSync(join(souls, "soul-latest.md"), "Latest soul", "utf-8");
   writeAccountStore(dataDir, {
@@ -1850,7 +1876,7 @@ test("WebSocket participant first send creates an owned role-conditioned session
     return new Promise((resolveMessage, reject) => {
       const timer = setTimeout(
         () => reject(new Error(`Timed out waiting for ${type}`)),
-        10_000
+        10_000,
       );
       const listener = (data: WebSocket.RawData) => {
         const message = JSON.parse(data.toString());
@@ -1887,7 +1913,7 @@ test("WebSocket participant first send creates an owned role-conditioned session
     const draft = await waitForType(ws, "session_draft");
     assert.equal(
       draft.payload.rolePresetSlug,
-      "role-conceptual-theory-companion-latest"
+      "role-conceptual-theory-companion-latest",
     );
     assert.equal(draft.payload.visibility, "research");
 
@@ -1896,7 +1922,7 @@ test("WebSocket participant first send creates an owned role-conditioned session
       JSON.stringify({
         type: "switch_visibility",
         payload: { visibility: "private" },
-      })
+      }),
     );
     const privateDraft = await privateDraftPromise;
     assert.equal(privateDraft.payload.visibility, "private");
@@ -1906,9 +1932,9 @@ test("WebSocket participant first send creates an owned role-conditioned session
     const opened = await openedPromise;
     const sessionJson = JSON.parse(
       readFileSync(
-        join(dataDir, "sessions", opened.payload.sessionId, "records", "session.json"),
-        "utf-8"
-      )
+        join(dataDir, "sessions", opened.payload.sessionId, "records", "session.json",),
+        "utf-8",
+      ),
     );
     assert.equal(sessionJson.ownerAccountId, "p01");
     assert.equal(sessionJson.roleCondition, "conceptual-theory");
@@ -1925,15 +1951,15 @@ test("WebSocket participant first send creates an owned role-conditioned session
       JSON.stringify({
         type: "switch_visibility",
         payload: { visibility: "research" },
-      })
+      }),
     );
     const researchUpdate = await researchUpdatePromise;
     assert.equal(researchUpdate.payload.visibility, "research");
     const researchSessionJson = JSON.parse(
       readFileSync(
-        join(dataDir, "sessions", opened.payload.sessionId, "records", "session.json"),
-        "utf-8"
-      )
+        join(dataDir, "sessions", opened.payload.sessionId, "records", "session.json",),
+        "utf-8",
+      ),
     );
     assert.equal(researchSessionJson.visibility, "research");
     assert.equal(researchSessionJson.retentionDueAt, null);
@@ -1972,19 +1998,19 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
   writeFileSync(
     join(rolePresets, "role-conceptual-theory-companion-latest.md"),
     "Conceptual theory role",
-    "utf-8"
+    "utf-8",
   );
   writeFileSync(
     join(rolePresets, "alternate.md"),
     "Alternate role",
     "utf-8"
   );
-  writeFileSync(join(instructions, "default.md"), "Default instruction.", "utf-8");
+  writeFileSync(join(instructions, "default.md"), "Default instruction.", "utf-8",);
   writeFileSync(join(instructions, "study.rules"), "Stay bounded.", "utf-8");
   writeFileSync(
     join(skills, "summary.md"),
     "---\nname: conversation-summary\ndescription: Summary\n---\nSummarize.",
-    "utf-8"
+    "utf-8",
   );
 
   const instance = createAltTheoryServer({
@@ -2010,7 +2036,7 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
     return new Promise((resolveMessage, reject) => {
       const timer = setTimeout(
         () => reject(new Error(`Timed out waiting for ${type}`)),
-        10_000
+        10_000,
       );
       const listener = (data: WebSocket.RawData) => {
         const message = JSON.parse(data.toString());
@@ -2034,7 +2060,7 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
     assert.deepEqual(await rolePresetsResponse.json(), {
       rolePresets: [
         { slug: "alternate", displayName: "Alternate" },
-        { slug: "role-conceptual-theory-companion-latest", displayName: "Role Conceptual Theory Companion Latest" },
+        { slug: "role-conceptual-theory-companion-latest", displayName: "Role Conceptual Theory Companion Latest", },
       ],
     });
     const soulsResponse = await fetch(`${baseUrl}/api/souls`);
@@ -2052,7 +2078,7 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
         { slug: "ep-core", displayName: "Ep Core" },
       ],
     });
-    const instructionsResponse = await fetch(`${baseUrl}/api/instruction-assets`);
+    const instructionsResponse = await fetch(`${baseUrl}/api/instruction-assets`,);
     assert.deepEqual(await instructionsResponse.json(), {
       instructions: [
         {
@@ -2074,7 +2100,7 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
         name: skill.name,
         source: skill.source,
       })),
-      [{ name: "conversation-summary", source: "alt-theory" }]
+      [{ name: "conversation-summary", source: "alt-theory" }],
     );
     const emptyProjectsResponse = await fetch(`${baseUrl}/api/projects`);
     assert.deepEqual(await emptyProjectsResponse.json(), { projects: [] });
@@ -2094,7 +2120,7 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
           },
           notes: "local test project",
         }),
-      }
+      },
     );
     assert.equal(projectResponse.status, 200);
     const savedProject = await projectResponse.json();
@@ -2120,16 +2146,16 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
             customInstructionRef: "study.rules",
           },
         },
-      ]
+      ],
     );
 
     const [draft1, draft2] = await Promise.all([
       draft1Promise,
-      draft2Promise,
+      draft2Promise
     ]);
     assert.equal(draft1.payload.status, "draft");
     assert.equal(draft2.payload.status, "draft");
-    assert.equal(draft1.payload.rolePresetSlug, "role-conceptual-theory-companion-latest");
+    assert.equal(draft1.payload.rolePresetSlug, "role-conceptual-theory-companion-latest",);
     assert.equal(draft1.payload.soulSlug, "soul-latest");
     assert.equal(draft1.payload.customInstructionRef, "default.md");
     assert.equal(existsSync(join(root, "data", "sessions")), false);
@@ -2139,7 +2165,7 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
       JSON.stringify({
         type: "switch_project",
         payload: { projectId: "manual-role-uat" },
-      })
+      }),
     );
     const projectDraft = await projectDraftPromise;
     assert.equal(projectDraft.payload.projectId, "manual-role-uat");
@@ -2158,7 +2184,7 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
 
     const kbOffDraftPromise = waitForType(ws1, "session_draft");
     ws1.send(
-      JSON.stringify({ type: "switch_kb", payload: { domain: "none" } })
+      JSON.stringify({ type: "switch_kb", payload: { domain: "none" } }),
     );
     const kbOffDraft = await kbOffDraftPromise;
     assert.equal(kbOffDraft.payload.currentDomain, "none");
@@ -2168,7 +2194,7 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
       JSON.stringify({
         type: "switch_soul",
         payload: { soulSlug: null },
-      })
+      }),
     );
     const soulDraft = await soulDraftPromise;
     assert.equal(soulDraft.payload.currentDomain, "none");
@@ -2180,7 +2206,7 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
       JSON.stringify({
         type: "switch_role_preset",
         payload: { rolePresetSlug: "alternate" },
-      })
+      }),
     );
     const roleDraft = await roleDraftPromise;
     assert.equal(roleDraft.payload.currentDomain, "none");
@@ -2191,7 +2217,7 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
     ws2.send(JSON.stringify({ type: "get_session_metadata" }));
     const ws2Draft = await ws2DraftPromise;
     assert.equal(ws2Draft.payload.currentDomain, "ep-core");
-    assert.equal(ws2Draft.payload.rolePresetSlug, "role-conceptual-theory-companion-latest");
+    assert.equal(ws2Draft.payload.rolePresetSlug, "role-conceptual-theory-companion-latest",);
     assert.equal(ws2Draft.payload.soulSlug, "soul-latest");
     assert.equal(ws2Draft.payload.customInstructionRef, "default.md");
 
@@ -2207,7 +2233,7 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
     assert.equal(reopened1.payload.rolePresetSlug, "alternate");
     assert.equal(reopened1.payload.soulSlug, null);
     assert.equal(reopened2.payload.currentDomain, "ep-core");
-    assert.equal(reopened2.payload.rolePresetSlug, "role-conceptual-theory-companion-latest");
+    assert.equal(reopened2.payload.rolePresetSlug, "role-conceptual-theory-companion-latest",);
     assert.equal(reopened2.payload.soulSlug, "soul-latest");
     assert.equal(reopened2.payload.customInstructionRef, "default.md");
     assert.equal(existsSync(join(root, "data", "sessions")), false);
@@ -2235,7 +2261,7 @@ test("local mode refuses prompt materialization without usable active model", as
   mkdirSync(rolePresets, { recursive: true });
   mkdirSync(souls, { recursive: true });
   writeFileSync(appContextPath, "Local app context", "utf-8");
-  writeFileSync(join(rolePresets, "role-conceptual-theory-companion-latest.md"), "Conceptual theory role", "utf-8");
+  writeFileSync(join(rolePresets, "role-conceptual-theory-companion-latest.md"), "Conceptual theory role", "utf-8",);
   writeFileSync(join(souls, "soul-latest.md"), "Latest soul", "utf-8");
 
   const previousMode = process.env.ALT_THEORY_MODE;
@@ -2262,7 +2288,7 @@ test("local mode refuses prompt materialization without usable active model", as
     return new Promise((resolveMessage, reject) => {
       const timer = setTimeout(
         () => reject(new Error(`Timed out waiting for ${type}`)),
-        10_000
+        10_000,
       );
       const listener = (data: WebSocket.RawData) => {
         const message = JSON.parse(data.toString());
@@ -2316,7 +2342,7 @@ test("dev-debug composes configured Alt Theory skills with Pi discovery", async 
   writeFileSync(
     join(skillsDir, "summary.md"),
     "---\nname: alt-summary\ndescription: Alt summary\n---\nSummarize.",
-    "utf-8"
+    "utf-8",
   );
 
   const result = await createAltTheorySession({
@@ -2331,7 +2357,7 @@ test("dev-debug composes configured Alt Theory skills with Pi discovery", async 
   try {
     assert.deepEqual(
       result.manifest.skills.map((skill) => skill.name),
-      ["alt-summary"]
+      ["alt-summary"],
     );
     assert.match(result.session.agent.state.systemPrompt, /alt-summary/);
   } finally {
@@ -2369,7 +2395,7 @@ test("WebSocket set_session_model in draft state stores the override on the draf
     return new Promise((resolveMessage, reject) => {
       const timer = setTimeout(
         () => reject(new Error(`Timed out waiting for ${type}`)),
-        10_000
+        10_000,
       );
       const listener = (data: WebSocket.RawData) => {
         const message = JSON.parse(data.toString());
@@ -2392,8 +2418,8 @@ test("WebSocket set_session_model in draft state stores the override on the draf
     ws.send(
       JSON.stringify({
         type: "set_session_model",
-        payload: { override: { provider: "test", modelId: "test-model", thinkingLevel: "high" } },
-      })
+        payload: { override: { provider: "test", modelId: "test-model", thinkingLevel: "high", }, },
+      }),
     );
     const updated = await updatedPromise;
     assert.deepEqual(updated.payload.modelOverride, {

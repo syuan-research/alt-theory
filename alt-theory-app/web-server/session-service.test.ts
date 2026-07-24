@@ -47,19 +47,27 @@ function setupFixture() {
   mkdirSync(skillsDir, { recursive: true });
   mkdirSync(instructionsDir, { recursive: true });
   writeFileSync(appContextPath, "Session service app context", "utf-8");
-  writeFileSync(join(rolePresetsDir, "role-conceptual-theory-companion.md"), "Conceptual theory role", "utf-8");
-  writeFileSync(join(rolePresetsDir, "alternate.md"), "Alternate role", "utf-8");
+  writeFileSync(
+    join(rolePresetsDir, "role-conceptual-theory-companion.md"),
+    "Conceptual theory role",
+    "utf-8",
+  );
+  writeFileSync(
+    join(rolePresetsDir, "alternate.md"),
+    "Alternate role",
+    "utf-8",
+  );
   writeFileSync(join(soulDir, "soul-latest.md"), "Latest soul", "utf-8");
   writeFileSync(join(soulDir, "soul-test.md"), "Test soul", "utf-8");
   writeFileSync(
     join(instructionsDir, "research.rules"),
     "Do not overextend.",
-    "utf-8"
+    "utf-8",
   );
   writeFileSync(
     join(skillsDir, "summary.md"),
     "---\nname: conversation-summary\ndescription: Test summary\n---\nSummarize.",
-    "utf-8"
+    "utf-8",
   );
 
   return {
@@ -77,7 +85,7 @@ function setupFixture() {
 
 function createTestService(
   fixture: ReturnType<typeof setupFixture>,
-  resourceDiscovery: "clean" | "internal" = "clean"
+  resourceDiscovery: "clean" | "internal" = "clean",
 ) {
   return new SessionService({
     dataDir: fixture.dataDir,
@@ -130,12 +138,18 @@ test("SessionService creates managed sessions with v0.4 foundation records", asy
   try {
     assert.match(
       snapshot.sessionId,
-      /^\d{8}-\d{6}__role-conceptual-theory-c__soul-latest__default$/
+      /^\d{8}-\d{6}__role-conceptual-theory-c__soul-latest__default$/,
     );
     assert.equal(snapshot.rolePresetSlug, "role-conceptual-theory-companion");
     assert.equal(snapshot.projectId, "manual-role-uat");
     assert.equal(snapshot.soulSlug, "soul-latest");
     assert.equal(snapshot.currentDomain, "ep-core");
+    const liveModel = (service as any).sessions.get(snapshot.sessionId).session
+      .model;
+    assert.deepEqual(snapshot.currentModel, {
+      provider: liveModel.provider,
+      modelId: liveModel.id,
+    });
 
     const manifest = service.getManifest(snapshot.sessionId);
     const sessionRecordPath = join(manifest.recordsDir, "session.json");
@@ -156,7 +170,7 @@ test("SessionService creates managed sessions with v0.4 foundation records", asy
         recordType: "session",
         projectId: "manual-role-uat",
         recordModel: "v0.4",
-      }
+      },
     );
 
     const detail = readSessionDetail(fixture.dataDir, snapshot.sessionId);
@@ -165,7 +179,7 @@ test("SessionService creates managed sessions with v0.4 foundation records", asy
     assert.equal(detail?.effectiveConfig?.projectId, "manual-role-uat");
     assert.deepEqual(
       readConfigEvents(manifest.recordsDir).map((event) => event.reason),
-      ["creation"]
+      ["creation"],
     );
   } finally {
     await service.disposeAll();
@@ -182,12 +196,15 @@ test("SessionService records ordinary run trajectory and Pi entry mappings", asy
   });
   const managed = (
     service as unknown as {
-      sessions: Map<string, {
-        session: {
-          prompt(text: string): Promise<void>;
-          sessionManager: { appendMessage(message: unknown): string };
-        };
-      }>;
+      sessions: Map<
+        string,
+        {
+          session: {
+            prompt(text: string): Promise<void>;
+            sessionManager: { appendMessage(message: unknown): string };
+          };
+        }
+      >;
     }
   ).sessions.get(created.sessionId)!;
   let promptText = "";
@@ -240,16 +257,23 @@ test("SessionService revises only the latest turn without creating a branch", as
   });
   const managed = (
     service as unknown as {
-      sessions: Map<string, {
-        session: {
-          prompt(text: string): Promise<void>;
-          sessionManager: {
-            appendMessage(message: unknown): string;
-            buildSessionContext(): { messages: Array<{ content: Array<{ type: string; text: string }> }> };
-            getEntry(id: string): unknown;
+      sessions: Map<
+        string,
+        {
+          session: {
+            prompt(text: string): Promise<void>;
+            sessionManager: {
+              appendMessage(message: unknown): string;
+              buildSessionContext(): {
+                messages: Array<{
+                  content: Array<{ type: string; text: string }>;
+                }>;
+              };
+              getEntry(id: string): unknown;
+            };
           };
-        };
-      }>;
+        }
+      >;
     }
   ).sessions.get(created.sessionId)!;
   managed.session.prompt = async (text: string) => {
@@ -279,16 +303,16 @@ test("SessionService revises only the latest turn without creating a branch", as
     assert.notEqual(revised.ids.revisionId, original.ids.revisionId);
     assert.notEqual(revised.ids.runId, original.ids.runId);
     assert.ok(
-      managed.session.sessionManager.getEntry(originalRecord.userEntryId!)
+      managed.session.sessionManager.getEntry(originalRecord.userEntryId!),
     );
     const latest = latestRunSnapshots(recordsDir);
     assert.equal(
       latest.find((run) => run.runId === original.ids.runId)?.status,
-      "superseded"
+      "superseded",
     );
     assert.equal(
       latest.find((run) => run.runId === revised.ids.runId)?.supersedesRunId,
-      original.ids.runId
+      original.ids.runId,
     );
     const text = managed.session.sessionManager
       .buildSessionContext()
@@ -296,7 +320,7 @@ test("SessionService revises only the latest turn without creating a branch", as
         message.content
           .filter((part) => part.type === "text")
           .map((part) => part.text)
-          .join("")
+          .join(""),
       )
       .join("\n");
     assert.match(text, /revised/);
@@ -306,7 +330,7 @@ test("SessionService revises only the latest turn without creating a branch", as
       .map((message) => message.text)
       .join("\n");
     const userMessages = (detail?.transcript ?? []).filter(
-      (message) => message.role === "user"
+      (message) => message.role === "user",
     );
     assert.equal(userMessages.length, 1);
     assert.equal(userMessages[0]?.text, "revised");
@@ -328,16 +352,23 @@ test("SessionService deletes the latest turn from active context without forking
   });
   const managed = (
     service as unknown as {
-      sessions: Map<string, {
-        session: {
-          prompt(text: string): Promise<void>;
-          sessionManager: {
-            appendMessage(message: unknown): string;
-            buildSessionContext(): { messages: Array<{ content: Array<{ type: string; text: string }> }> };
-            getLeafId(): string | null;
+      sessions: Map<
+        string,
+        {
+          session: {
+            prompt(text: string): Promise<void>;
+            sessionManager: {
+              appendMessage(message: unknown): string;
+              buildSessionContext(): {
+                messages: Array<{
+                  content: Array<{ type: string; text: string }>;
+                }>;
+              };
+              getLeafId(): string | null;
+            };
           };
-        };
-      }>;
+        }
+      >;
     }
   ).sessions.get(created.sessionId)!;
   managed.session.prompt = async (text: string) => {
@@ -365,14 +396,16 @@ test("SessionService deletes the latest turn from active context without forking
     assert.equal(deleted.sessionId, created.sessionId);
     assert.equal(deleted.branchId, undefined);
     assert.equal(
-      latestRunSnapshots(recordsDir).find((run) => run.runId === second.ids.runId)
-        ?.status,
-      "deleted"
+      latestRunSnapshots(recordsDir).find(
+        (run) => run.runId === second.ids.runId,
+      )?.status,
+      "deleted",
     );
     assert.equal(
-      latestRunSnapshots(recordsDir).find((run) => run.runId === first.ids.runId)
-        ?.status,
-      "completed"
+      latestRunSnapshots(recordsDir).find(
+        (run) => run.runId === first.ids.runId,
+      )?.status,
+      "completed",
     );
     const contextText = managed.session.sessionManager
       .buildSessionContext()
@@ -380,7 +413,7 @@ test("SessionService deletes the latest turn from active context without forking
         message.content
           .filter((part) => part.type === "text")
           .map((part) => part.text)
-          .join("")
+          .join(""),
       )
       .join("\n");
     assert.match(contextText, /keep me/);
@@ -401,15 +434,22 @@ test("SessionService restores the active Pi leaf after reopen for conversation a
   });
   const managed = (
     service as unknown as {
-      sessions: Map<string, {
-        session: {
-          prompt(text: string): Promise<void>;
-          sessionManager: {
-            appendMessage(message: unknown): string;
-            buildSessionContext(): { messages: Array<{ content: Array<{ type: string; text: string }> }> };
+      sessions: Map<
+        string,
+        {
+          session: {
+            prompt(text: string): Promise<void>;
+            sessionManager: {
+              appendMessage(message: unknown): string;
+              buildSessionContext(): {
+                messages: Array<{
+                  content: Array<{ type: string; text: string }>;
+                }>;
+              };
+            };
           };
-        };
-      }>;
+        }
+      >;
     }
   ).sessions.get(created.sessionId)!;
   managed.session.prompt = async (text: string) => {
@@ -442,21 +482,28 @@ test("SessionService restores the active Pi leaf after reopen for conversation a
     });
     const reopenedManaged = (
       reopenedService as unknown as {
-        sessions: Map<string, {
-          session: {
-            prompt(text: string): Promise<void>;
-            sessionManager: {
-              appendMessage(message: unknown): string;
-              buildSessionContext(): { messages: Array<{ content: Array<{ type: string; text: string }> }> };
-              getLeafId(): string | null;
+        sessions: Map<
+          string,
+          {
+            session: {
+              prompt(text: string): Promise<void>;
+              sessionManager: {
+                appendMessage(message: unknown): string;
+                buildSessionContext(): {
+                  messages: Array<{
+                    content: Array<{ type: string; text: string }>;
+                  }>;
+                };
+                getLeafId(): string | null;
+              };
             };
-          };
-        }>;
+          }
+        >;
       }
     ).sessions.get(reopened.sessionId)!;
     assert.equal(
       reopenedManaged.session.sessionManager.getLeafId(),
-      mainLeafAfterDelete
+      mainLeafAfterDelete,
     );
     reopenedManaged.session.prompt = async (text: string) => {
       const contextText = reopenedManaged.session.sessionManager
@@ -465,7 +512,7 @@ test("SessionService restores the active Pi leaf after reopen for conversation a
           message.content
             .filter((part) => part.type === "text")
             .map((part) => part.text)
-            .join("")
+            .join(""),
         )
         .join("\n");
       assert.match(contextText, /keep me/);
@@ -525,7 +572,9 @@ test("SessionService revise and default fork use restored Pi leaf after reopen",
       kbDomain: "ep-core",
       soulSlug: "soul-latest",
     });
-    const reviseManaged = (reviseService as any).sessions.get(reopened.sessionId);
+    const reviseManaged = (reviseService as any).sessions.get(
+      reopened.sessionId,
+    );
     reviseManaged.session.prompt = async (text: string) => {
       reviseManaged.session.sessionManager.appendMessage({
         role: "user",
@@ -533,7 +582,10 @@ test("SessionService revise and default fork use restored Pi leaf after reopen",
         timestamp: Date.now(),
       });
     };
-    const revised = reviseService.reviseLatest(reopened.sessionId, "revised first");
+    const revised = reviseService.reviseLatest(
+      reopened.sessionId,
+      "revised first",
+    );
     await revised.completion;
     assert.equal(revised.ids.turnId, first.ids.turnId);
     await reviseService.disposeAll();
@@ -546,12 +598,9 @@ test("SessionService revise and default fork use restored Pi leaf after reopen",
     });
     const piLeafBeforeFork = readSessionDetail(
       fixture.dataDir,
-      created.sessionId
+      created.sessionId,
     )?.transcript.at(-1)?.entryId;
-    const forked = await forkService.forkSession(
-      forkOpened.sessionId,
-      "side"
-    );
+    const forked = await forkService.forkSession(forkOpened.sessionId, "side");
     const sourceDetail = readSessionDetail(fixture.dataDir, created.sessionId);
     const forkDetail = readSessionDetail(fixture.dataDir, forked.sessionId);
     assert.notEqual(forked.sessionId, created.sessionId);
@@ -574,7 +623,7 @@ test("SessionService rejects latest-turn delete when no completed turn exists", 
   try {
     assert.throws(
       () => service.deleteLatest(created.sessionId),
-      /No completed latest user turn/
+      /No completed latest user turn/,
     );
   } finally {
     await service.disposeAll();
@@ -591,17 +640,24 @@ test("SessionService explicit forks create a new session with copied workspace",
       soulSlug: "soul-latest",
     });
     const manifest = service.getManifest(created.sessionId);
-    writeFileSync(join(manifest.sessionCwd, "shared-note.txt"), "source", "utf-8");
+    writeFileSync(
+      join(manifest.sessionCwd, "shared-note.txt"),
+      "source",
+      "utf-8",
+    );
     const managed = (
       service as unknown as {
-        sessions: Map<string, {
-          session: {
-            sessionManager: {
-              appendMessage(message: unknown): string;
-              getLeafId(): string | null;
+        sessions: Map<
+          string,
+          {
+            session: {
+              sessionManager: {
+                appendMessage(message: unknown): string;
+                getLeafId(): string | null;
+              };
             };
-          };
-        }>;
+          }
+        >;
       }
     ).sessions.get(created.sessionId)!;
     managed.session.sessionManager.appendMessage({
@@ -616,9 +672,10 @@ test("SessionService explicit forks create a new session with copied workspace",
     });
     const projectedForkPoint = readSessionDetail(
       fixture.dataDir,
-      created.sessionId
+      created.sessionId,
     )?.transcript.find(
-      (message) => message.role === "assistant" && message.text === "fork answer"
+      (message) =>
+        message.role === "assistant" && message.text === "fork answer",
     )?.entryId;
     assert.equal(projectedForkPoint, forkPoint);
 
@@ -626,9 +683,12 @@ test("SessionService explicit forks create a new session with copied workspace",
       const forked = await service.forkSession(
         created.sessionId,
         purpose,
-        projectedForkPoint ?? undefined
+        projectedForkPoint ?? undefined,
       );
-      const sourceDetail = readSessionDetail(fixture.dataDir, created.sessionId);
+      const sourceDetail = readSessionDetail(
+        fixture.dataDir,
+        created.sessionId,
+      );
       const forkDetail = readSessionDetail(fixture.dataDir, forked.sessionId);
       const forkManifest = service.getManifest(forked.sessionId);
       assert.notEqual(forked.sessionId, created.sessionId);
@@ -637,13 +697,13 @@ test("SessionService explicit forks create a new session with copied workspace",
       assert.notEqual(forkManifest.piSessionFile, manifest.piSessionFile);
       assert.notEqual(forkManifest.sessionCwd, manifest.sessionCwd);
       assert.equal(
-        readFileSync(join(forkManifest.sessionCwd!, "shared-note.txt"), "utf-8"),
-        "source"
+        readFileSync(
+          join(forkManifest.sessionCwd!, "shared-note.txt"),
+          "utf-8",
+        ),
+        "source",
       );
-      assert.equal(
-        forkDetail?.transcript.at(-1)?.text,
-        "fork answer"
-      );
+      assert.equal(forkDetail?.transcript.at(-1)?.text, "fork answer");
     } finally {
       await service.disposeAll();
     }
@@ -674,8 +734,11 @@ test("SessionService keeps imported Pi history as the active leaf before the fir
   });
   const importedLeaf = managed.session.sessionManager.getLeafId();
   assert.match(
-    service.getTranscript(created.sessionId).map((message) => message.text).join("\n"),
-    /imported answer marker/
+    service
+      .getTranscript(created.sessionId)
+      .map((message) => message.text)
+      .join("\n"),
+    /imported answer marker/,
   );
   await service.disposeAll();
 
@@ -686,8 +749,13 @@ test("SessionService keeps imported Pi history as the active leaf before the fir
       kbDomain: "ep-core",
       soulSlug: "soul-latest",
     });
-    const reopenedManaged = (reopenedService as any).sessions.get(reopened.sessionId);
-    assert.equal(reopenedManaged.session.sessionManager.getLeafId(), importedLeaf);
+    const reopenedManaged = (reopenedService as any).sessions.get(
+      reopened.sessionId,
+    );
+    assert.equal(
+      reopenedManaged.session.sessionManager.getLeafId(),
+      importedLeaf,
+    );
     const context = reopenedManaged.session.sessionManager
       .buildSessionContext()
       .messages.map((message: any) => JSON.stringify(message))
@@ -704,7 +772,7 @@ test("related Helper invokes its skill once before promotion", async () => {
   writeFileSync(
     join(fixture.skillsDir, "alt-theory-help.md"),
     "---\nname: alt-theory-help\ndescription: Test helper\n---\nCheck current docs.\n",
-    "utf-8"
+    "utf-8",
   );
   const service = createTestService(fixture, "internal");
   const parent = await service.createSession({
@@ -719,10 +787,13 @@ test("related Helper invokes its skill once before promotion", async () => {
     timestamp: Date.now(),
   });
   try {
-    const helper = await service.createRelatedSession(parent.sessionId, "helper");
+    const helper = await service.createRelatedSession(
+      parent.sessionId,
+      "helper",
+    );
     const helperDetail = readSessionDetail(fixture.dataDir, helper.sessionId);
     const helperHeader = readV4SessionHeader(
-      service.getManifest(helper.sessionId).recordsDir
+      service.getManifest(helper.sessionId).recordsDir,
     );
     assert.deepEqual(helperDetail?.transcript ?? [], []);
     assert.deepEqual(helperHeader?.forkedFrom, {
@@ -730,14 +801,15 @@ test("related Helper invokes its skill once before promotion", async () => {
       purpose: "helper",
     });
     assert.equal(
-      service.getManifest(helper.sessionId).skills?.some(
-        (skill) => skill.name === "alt-theory-help"
-      ),
-      true
+      service
+        .getManifest(helper.sessionId)
+        .skills?.some((skill) => skill.name === "alt-theory-help"),
+      true,
     );
     assert.equal(
-      latestRunSnapshots(service.getManifest(helper.sessionId).recordsDir).length,
-      0
+      latestRunSnapshots(service.getManifest(helper.sessionId).recordsDir)
+        .length,
+      0,
     );
 
     let helperPrompt = "";
@@ -745,18 +817,20 @@ test("related Helper invokes its skill once before promotion", async () => {
     helperManaged.session.prompt = async (text: string) => {
       helperPrompt = text;
     };
-    await service.runPrompt(helper.sessionId, "How do I start locally?").completion;
+    await service.runPrompt(helper.sessionId, "How do I start locally?")
+      .completion;
     assert.equal(
       helperPrompt,
-      "/skill:alt-theory-help How do I start locally?"
+      "/skill:alt-theory-help How do I start locally?",
     );
 
-    await service.runPrompt(helper.sessionId, "Where is that button?").completion;
+    await service.runPrompt(helper.sessionId, "Where is that button?")
+      .completion;
     assert.equal(helperPrompt, "Where is that button?");
 
     service.promoteRelatedSession(helper.sessionId);
     const promoted = readV4SessionHeader(
-      service.getManifest(helper.sessionId).recordsDir
+      service.getManifest(helper.sessionId).recordsDir,
     );
     assert.equal(promoted?.forkedFrom?.purpose, "fork");
   } finally {
@@ -769,7 +843,7 @@ test("imported session invokes imported-session-context skill once on first run"
   writeFileSync(
     join(fixture.skillsDir, "imported-session-context.md"),
     "---\nname: imported-session-context\ndescription: Imported session context\n---\nExplain import losses.\n",
-    "utf-8"
+    "utf-8",
   );
   const service = createTestService(fixture, "internal");
   const created = await service.createSession({
@@ -788,7 +862,7 @@ test("imported session invokes imported-session-context skill once on first run"
       importedAt: new Date().toISOString(),
       transformations: [],
     }),
-    "utf-8"
+    "utf-8",
   );
   try {
     let prompt = "";
@@ -796,13 +870,15 @@ test("imported session invokes imported-session-context skill once on first run"
     managed.session.prompt = async (text: string) => {
       prompt = text;
     };
-    await service.runPrompt(created.sessionId, "Continue the imported work.").completion;
+    await service.runPrompt(created.sessionId, "Continue the imported work.")
+      .completion;
     assert.equal(
       prompt,
-      "/skill:imported-session-context Continue the imported work."
+      "/skill:imported-session-context Continue the imported work.",
     );
 
-    await service.runPrompt(created.sessionId, "Second turn stays plain.").completion;
+    await service.runPrompt(created.sessionId, "Second turn stays plain.")
+      .completion;
     assert.equal(prompt, "Second turn stays plain.");
   } finally {
     await service.disposeAll();
@@ -834,11 +910,19 @@ test("forkSession applies per-arm selector overrides (A/B substrate)", async () 
     const arms = [];
     for (const overrides of [{ soulSlug: null }, {}, { kbDomain: "none" }]) {
       arms.push(
-        await service.forkSession(created.sessionId, "ab-arm", forkPoint, overrides)
+        await service.forkSession(
+          created.sessionId,
+          "ab-arm",
+          forkPoint,
+          overrides,
+        ),
       );
     }
     assert.equal(new Set(arms.map((a) => a.sessionId)).size, 3);
-    assert.equal(service.getManifest(created.sessionId).soul?.slug, "soul-latest");
+    assert.equal(
+      service.getManifest(created.sessionId).soul?.slug,
+      "soul-latest",
+    );
     assert.equal(service.getManifest(arms[0].sessionId).soul?.slug, null);
     assert.equal(service.getManifest(arms[2].sessionId).kb.domain, "none");
     for (const arm of arms) {
@@ -851,7 +935,7 @@ test("forkSession applies per-arm selector overrides (A/B substrate)", async () 
     }
     assert.equal(
       readSessionDetail(fixture.dataDir, created.sessionId)?.session.forkedFrom,
-      null
+      null,
     );
     // The parent was never disposed: same managed instance, still promptable.
     assert.equal((service as any).sessions.get(created.sessionId), managed);
@@ -864,8 +948,9 @@ test("forkSession applies per-arm selector overrides (A/B substrate)", async () 
     };
     await service.runPrompt(created.sessionId, "parent continues").completion;
     assert.equal(
-      readSessionDetail(fixture.dataDir, created.sessionId)?.transcript.at(-1)?.text,
-      "parent continues"
+      readSessionDetail(fixture.dataDir, created.sessionId)?.transcript.at(-1)
+        ?.text,
+      "parent continues",
     );
   } finally {
     await service.disposeAll();
@@ -894,7 +979,11 @@ test("generateAbComparison runs Pure-pinned arms and records candidates on the p
   // Arms are created inside the generator, so stub each one's prompt lazily
   // at run time instead of per-session up front.
   const realRun = (service as any).runPromptWithLineage.bind(service);
-  (service as any).runPromptWithLineage = (armManaged: any, text: string, options?: any) => {
+  (service as any).runPromptWithLineage = (
+    armManaged: any,
+    text: string,
+    options?: any,
+  ) => {
     armManaged.session.prompt = async (t: string) => {
       armManaged.session.sessionManager.appendMessage({
         role: "user",
@@ -915,7 +1004,10 @@ test("generateAbComparison runs Pure-pinned arms and records candidates on the p
     const record = await service.generateAbComparison(
       created.sessionId,
       "which framing is better?",
-      [{ label: "with-soul" }, { label: "no-soul", selectorOverrides: { soulSlug: null } }]
+      [
+        { label: "with-soul" },
+        { label: "no-soul", selectorOverrides: { soulSlug: null } },
+      ],
     );
     assert.equal(record.candidates.length, 2);
     assert.equal(record.trigger, "backend_request");
@@ -927,7 +1019,7 @@ test("generateAbComparison runs Pure-pinned arms and records candidates on the p
     assert.equal(record.candidates[0].role, "role-conceptual-theory-companion");
     // The record lands on the PARENT's records dir and the parent is untouched.
     const stored = readAbComparisonRecords(
-      join(fixture.dataDir, "sessions", created.sessionId, "records")
+      join(fixture.dataDir, "sessions", created.sessionId, "records"),
     );
     assert.equal(stored.length, 1);
     assert.equal(stored[0].comparisonId, record.comparisonId);
@@ -940,7 +1032,7 @@ test("generateAbComparison runs Pure-pinned arms and records candidates on the p
           { selectorOverrides: { kbDomain: "no-such-domain" } },
           {},
         ]),
-      /Unknown KB domain/
+      /Unknown KB domain/,
     );
     assert.equal((service as any).sessions.size, sessionCountBefore);
   } finally {
@@ -974,14 +1066,11 @@ test("SessionService cleans unactivated comparison fork artifacts", async () => 
   try {
     await assert.rejects(
       () => service.forkSession(created.sessionId, "ab-arm", forkPoint),
-      /forced fork open failure/
+      /forced fork open failure/,
     );
     const detail = readSessionDetail(fixture.dataDir, created.sessionId);
     assert.equal(detail?.session.sessionId, created.sessionId);
-    assert.equal(
-      readdirSync(join(fixture.dataDir, "sessions")).length,
-      1
-    );
+    assert.equal(readdirSync(join(fixture.dataDir, "sessions")).length, 1);
   } finally {
     await service.disposeAll();
   }
@@ -1005,13 +1094,13 @@ test("SessionService creates owned sessions with role condition and consent snap
         quoteAfterAnonymization: true,
         privateOverride: false,
       },
-    }
+    },
   );
 
   try {
     const manifest = service.getManifest(snapshot.sessionId);
     const sessionRecord = JSON.parse(
-      readFileSync(join(manifest.recordsDir, "session.json"), "utf-8")
+      readFileSync(join(manifest.recordsDir, "session.json"), "utf-8"),
     );
     assert.equal(sessionRecord.ownerAccountId, "p01");
     assert.equal(sessionRecord.roleCondition, "conceptual-theory");
@@ -1046,16 +1135,19 @@ test("SessionService creates private sessions and refreshes private activity on 
         quoteAfterAnonymization: true,
         privateOverride: false,
       },
-    }
+    },
   );
   const managed = (
     service as unknown as {
-      sessions: Map<string, {
-        session: {
-          prompt(text: string): Promise<void>;
-          sessionManager: { appendMessage(message: unknown): string };
-        };
-      }>;
+      sessions: Map<
+        string,
+        {
+          session: {
+            prompt(text: string): Promise<void>;
+            sessionManager: { appendMessage(message: unknown): string };
+          };
+        }
+      >;
     }
   ).sessions.get(snapshot.sessionId)!;
   managed.session.prompt = async (text: string) => {
@@ -1081,8 +1173,9 @@ test("SessionService creates private sessions and refreshes private activity on 
     };
     writeFileSync(sessionPath, `${JSON.stringify(stale, null, 2)}\n`, "utf-8");
     assert.equal(
-      readSessionDetail(fixture.dataDir, snapshot.sessionId)?.session.visibility,
-      "private"
+      readSessionDetail(fixture.dataDir, snapshot.sessionId)?.session
+        .visibility,
+      "private",
     );
     const afterDetailRead = JSON.parse(readFileSync(sessionPath, "utf-8"));
     assert.equal(afterDetailRead.lastActivityAt, stale.lastActivityAt);
@@ -1140,7 +1233,7 @@ test("SessionService switches role and soul inside the same materialized session
         kbDomain: "all",
         soulSlug: "soul-latest",
       },
-      "test_role_switch"
+      "test_role_switch",
     );
     const switchedSoul = await service.replaceSession(
       snapshot.sessionId,
@@ -1149,7 +1242,7 @@ test("SessionService switches role and soul inside the same materialized session
         kbDomain: "all",
         soulSlug: "soul-test",
       },
-      "test_soul_switch"
+      "test_soul_switch",
     );
     const afterManifest = service.getManifest(snapshot.sessionId);
 
@@ -1163,7 +1256,7 @@ test("SessionService switches role and soul inside the same materialized session
     const detail = readSessionDetail(fixture.dataDir, snapshot.sessionId);
     assert.equal(
       detail?.transcriptPreview.at(-1)?.text,
-      "history before config switch"
+      "history before config switch",
     );
     assert.equal(detail?.effectiveConfig?.rolePresetSlug, "alternate");
     assert.equal(detail?.effectiveConfig?.soulSlug, "soul-test");
@@ -1178,7 +1271,7 @@ test("SessionService switches role and soul inside the same materialized session
         { reason: "user_change", changedFields: ["kbDomain"] },
         { reason: "user_change", changedFields: ["rolePresetSlug"] },
         { reason: "user_change", changedFields: ["soulSlug"] },
-      ]
+      ],
     );
   } finally {
     await service.disposeAll();
@@ -1220,7 +1313,14 @@ test("SessionService preserves disabled kb-domain when resuming an existing sess
     service.setKbDomain(created.sessionId, "none");
     const managed = (
       service as unknown as {
-        sessions: Map<string, { session: { sessionManager: { appendMessage(message: unknown): void } } }>;
+        sessions: Map<
+          string,
+          {
+            session: {
+              sessionManager: { appendMessage(message: unknown): void };
+            };
+          }
+        >;
       }
     ).sessions.get(created.sessionId)!;
     managed.session.sessionManager.appendMessage({
@@ -1261,7 +1361,14 @@ test("SessionService switches custom instruction inside the same materialized se
   try {
     const session = (
       service as unknown as {
-        sessions: Map<string, { session: { sessionManager: { appendMessage(message: unknown): void } } }>;
+        sessions: Map<
+          string,
+          {
+            session: {
+              sessionManager: { appendMessage(message: unknown): void };
+            };
+          }
+        >;
       }
     ).sessions.get(created.sessionId)!.session;
     session.sessionManager.appendMessage({
@@ -1277,7 +1384,7 @@ test("SessionService switches custom instruction inside the same materialized se
         ...service.getSelectors(created.sessionId),
         customInstructionRef: "research.rules",
       },
-      "instruction_switch"
+      "instruction_switch",
     );
     const after = service.getManifest(created.sessionId);
     const detail = readSessionDetail(fixture.dataDir, created.sessionId);
@@ -1286,11 +1393,13 @@ test("SessionService switches custom instruction inside the same materialized se
     assert.equal(after.piSessionFile, before.piSessionFile);
     assert.equal(after.customInstruction.ref, "research.rules");
     assert.match(after.customInstruction.sha256 ?? "", /^[a-f0-9]{64}$/);
-    assert.equal(detail?.effectiveConfig.customInstruction.ref, "research.rules");
-    assert.deepEqual(
-      detail?.configEvents.at(-1)?.changedFields,
-      ["customInstructionRef"]
+    assert.equal(
+      detail?.effectiveConfig.customInstruction.ref,
+      "research.rules",
     );
+    assert.deepEqual(detail?.configEvents.at(-1)?.changedFields, [
+      "customInstructionRef",
+    ]);
   } finally {
     await service.disposeAll();
   }
@@ -1345,15 +1454,18 @@ test("SessionService validates explicit skill invocation against active Alt Theo
   try {
     assert.deepEqual(
       service.getManifest(created.sessionId).skills.map((skill) => skill.name),
-      ["conversation-summary"]
+      ["conversation-summary"],
     );
     assert.throws(
       () => service.invokeSkill(created.sessionId, "debug-only"),
-      /Unknown Alt Theory skill/
+      /Unknown Alt Theory skill/,
     );
     const managed = (
       service as unknown as {
-        sessions: Map<string, { session: { prompt(text: string): Promise<void> } }>;
+        sessions: Map<
+          string,
+          { session: { prompt(text: string): Promise<void> } }
+        >;
       }
     ).sessions.get(created.sessionId)!;
     let promptText = "";
@@ -1363,13 +1475,11 @@ test("SessionService validates explicit skill invocation against active Alt Theo
     const run = service.invokeSkill(
       created.sessionId,
       "conversation-summary",
-      "Focus on decisions"
+      "Focus on decisions",
     );
     await run.completion;
     assert.ok(
-      promptText.endsWith(
-        "/skill:conversation-summary Focus on decisions"
-      )
+      promptText.endsWith("/skill:conversation-summary Focus on decisions"),
     );
     const events = readFileSync(
       join(
@@ -1377,13 +1487,19 @@ test("SessionService validates explicit skill invocation against active Alt Theo
         "sessions",
         created.sessionId,
         "records",
-        "session-events.jsonl"
+        "session-events.jsonl",
       ),
-      "utf-8"
+      "utf-8",
     )
       .trim()
       .split(/\r?\n/)
-      .map((line) => JSON.parse(line) as { type: string; details?: { skillName?: string } });
+      .map(
+        (line) =>
+          JSON.parse(line) as {
+            type: string;
+            details?: { skillName?: string };
+          },
+      );
     assert.equal(events.at(-1)?.type, "skill_invoked");
     assert.equal(events.at(-1)?.details?.skillName, "conversation-summary");
   } finally {
@@ -1469,14 +1585,19 @@ test("SessionService rejects concurrent same-session prompt mutations with sessi
         resolvePrompt = resolve;
       });
 
-    const run = service.runPrompt(snapshot.sessionId, "first prompt without configured model");
+    const run = service.runPrompt(
+      snapshot.sessionId,
+      "first prompt without configured model",
+    );
     assert.throws(
       () => service.runPrompt(snapshot.sessionId, "second prompt"),
-      (error) => error instanceof SessionBusyError && error.code === "session_busy"
+      (error) =>
+        error instanceof SessionBusyError && error.code === "session_busy",
     );
     assert.throws(
       () => service.setKbDomain(snapshot.sessionId, "all"),
-      (error) => error instanceof SessionBusyError && error.code === "session_busy"
+      (error) =>
+        error instanceof SessionBusyError && error.code === "session_busy",
     );
     await assert.rejects(
       () =>
@@ -1487,25 +1608,61 @@ test("SessionService rejects concurrent same-session prompt mutations with sessi
             kbDomain: "ep-core",
             soulSlug: "soul-latest",
           },
-          "busy_role_switch"
+          "busy_role_switch",
         ),
-      (error) => error instanceof SessionBusyError && error.code === "session_busy"
+      (error) =>
+        error instanceof SessionBusyError && error.code === "session_busy",
     );
     assert.throws(
       () => service.reviseLatest(snapshot.sessionId, "revised"),
-      (error) => error instanceof SessionBusyError && error.code === "session_busy"
+      (error) =>
+        error instanceof SessionBusyError && error.code === "session_busy",
     );
     assert.throws(
       () => service.deleteLatest(snapshot.sessionId),
-      (error) => error instanceof SessionBusyError && error.code === "session_busy"
+      (error) =>
+        error instanceof SessionBusyError && error.code === "session_busy",
     );
     await assert.rejects(
       () => service.forkSession(snapshot.sessionId, "side"),
-      (error) => error instanceof SessionBusyError && error.code === "session_busy"
+      (error) =>
+        error instanceof SessionBusyError && error.code === "session_busy",
     );
     assert.ok(resolvePrompt);
     resolvePrompt();
     await run.completion;
+  } finally {
+    await service.disposeAll();
+  }
+});
+
+test("SessionService returns to idle when compaction fails", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const snapshot = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const managed = (service as any).sessions.get(snapshot.sessionId);
+  managed.session.compact = async () => {
+    throw new Error("Nothing to compact (session too small)");
+  };
+  const events: SessionServiceEvent[] = [];
+  service.attach(snapshot.sessionId, (event) => events.push(event));
+
+  try {
+    await assert.rejects(
+      () => service.compact(snapshot.sessionId),
+      /Nothing to compact/,
+    );
+    assert.equal(events.at(-1)?.type, "session_updated");
+    assert.equal(
+      events.at(-1)?.type === "session_updated"
+        ? events.at(-1)?.payload.status
+        : null,
+      "idle",
+    );
   } finally {
     await service.disposeAll();
   }
@@ -1527,8 +1684,14 @@ test("SessionService detach removes listeners without disposing the managed sess
     });
     detach();
 
-    assert.equal(service.getManifest(snapshot.sessionId).sessionId, snapshot.sessionId);
-    assert.equal(service.getSnapshot(snapshot.sessionId).sessionId, snapshot.sessionId);
+    assert.equal(
+      service.getManifest(snapshot.sessionId).sessionId,
+      snapshot.sessionId,
+    );
+    assert.equal(
+      service.getSnapshot(snapshot.sessionId).sessionId,
+      snapshot.sessionId,
+    );
     await service.abort(snapshot.sessionId, "detach-test");
     assert.equal(eventCount, 0);
   } finally {
@@ -1554,7 +1717,7 @@ test("SessionService keeps run completion and busy state open until fallback con
         },
       ],
     }),
-    "utf-8"
+    "utf-8",
   );
   const service = new SessionService({
     dataDir: fixture.dataDir,
@@ -1600,7 +1763,10 @@ test("SessionService keeps run completion and busy state open until fallback con
     configurable: true,
     get: () => currentModel,
   });
-  managed.session.modelRegistry.find = (provider: string, modelId: string) => ({
+  managed.session.modelRuntime.getModel = (
+    provider: string,
+    modelId: string,
+  ) => ({
     provider,
     id: modelId,
   });
@@ -1667,14 +1833,14 @@ test("SessionService keeps run completion and busy state open until fallback con
     assert.equal(completionSettled, false);
     assert.throws(
       () => service.runPrompt(created.sessionId, "second question"),
-      SessionBusyError
+      SessionBusyError,
     );
 
     continueGate.resolve();
     await run.completion;
 
     const latest = latestRunSnapshots(
-      service.getManifest(created.sessionId).recordsDir
+      service.getManifest(created.sessionId).recordsDir,
     )[0];
     assert.equal(latest.status, "completed");
     assert.equal(latest.assistantEntryIds.length, 1);
@@ -1702,7 +1868,7 @@ test("SessionService surfaces fallback continuation failure through run completi
         },
       ],
     }),
-    "utf-8"
+    "utf-8",
   );
   const service = new SessionService({
     dataDir: fixture.dataDir,
@@ -1750,7 +1916,10 @@ test("SessionService surfaces fallback continuation failure through run completi
     configurable: true,
     get: () => currentModel,
   });
-  managed.session.modelRegistry.find = (provider: string, modelId: string) => ({
+  managed.session.modelRuntime.getModel = (
+    provider: string,
+    modelId: string,
+  ) => ({
     provider,
     id: modelId,
   });
@@ -1799,7 +1968,7 @@ test("SessionService surfaces fallback continuation failure through run completi
     await assert.rejects(run.completion, /fallback continue failed/);
 
     const latest = latestRunSnapshots(
-      service.getManifest(created.sessionId).recordsDir
+      service.getManifest(created.sessionId).recordsDir,
     )[0];
     assert.equal(latest.status, "failed");
     assert.equal(managed.busy, false);
@@ -1818,7 +1987,10 @@ test("session store marks sessions without v0.4 records as legacy projection", a
     appContextPath: fixture.appContextPath,
     soulPath: join(fixture.soulDir, "soul-latest.md"),
     soulSlug: "soul-latest",
-    rolePresetPath: join(fixture.rolePresetsDir, "role-conceptual-theory-companion.md"),
+    rolePresetPath: join(
+      fixture.rolePresetsDir,
+      "role-conceptual-theory-companion.md",
+    ),
     rolePresetSlug: "role-conceptual-theory-companion",
     kbDir: fixture.kbDir,
     kbDomain: "ep-core",
@@ -1866,12 +2038,15 @@ test("SessionService switches capability mode in-session and restores it on reop
 
   const managed = (
     service as unknown as {
-      sessions: Map<string, {
-        session: {
-          prompt(text: string): Promise<void>;
-          sessionManager: { appendMessage(message: unknown): string };
-        };
-      }>;
+      sessions: Map<
+        string,
+        {
+          session: {
+            prompt(text: string): Promise<void>;
+            sessionManager: { appendMessage(message: unknown): string };
+          };
+        }
+      >;
     }
   ).sessions.get(created.sessionId)!;
   managed.session.prompt = async (text: string) => {
@@ -1898,7 +2073,7 @@ test("SessionService switches capability mode in-session and restores it on reop
 
     const manifest = service.getManifest(created.sessionId);
     const header = JSON.parse(
-      readFileSync(join(manifest.recordsDir, "session.json"), "utf-8")
+      readFileSync(join(manifest.recordsDir, "session.json"), "utf-8"),
     );
     assert.equal(header.mode, "full");
     const configReasons = readConfigEvents(manifest.recordsDir);
@@ -1938,17 +2113,20 @@ test("SessionService creates workspace sessions and restores workspace on reopen
       kbDomain: "ep-core",
       soulSlug: "soul-latest",
     },
-    { workspace: { primaryDir, additionalDirs: [extraDir] } }
+    { workspace: { primaryDir, additionalDirs: [extraDir] } },
   );
 
   const managed = (
     service as unknown as {
-      sessions: Map<string, {
-        session: {
-          prompt(text: string): Promise<void>;
-          sessionManager: { appendMessage(message: unknown): string };
-        };
-      }>;
+      sessions: Map<
+        string,
+        {
+          session: {
+            prompt(text: string): Promise<void>;
+            sessionManager: { appendMessage(message: unknown): string };
+          };
+        }
+      >;
     }
   ).sessions.get(created.sessionId)!;
   managed.session.prompt = async (text: string) => {
@@ -1972,7 +2150,7 @@ test("SessionService creates workspace sessions and restores workspace on reopen
     const manifest = service.getManifest(created.sessionId);
     assert.equal(manifest.sessionCwd, resolve(primaryDir));
     const header = JSON.parse(
-      readFileSync(join(manifest.recordsDir, "session.json"), "utf-8")
+      readFileSync(join(manifest.recordsDir, "session.json"), "utf-8"),
     );
     assert.deepEqual(header.workspace, {
       primaryDir: resolve(primaryDir),
@@ -1988,7 +2166,7 @@ test("SessionService creates workspace sessions and restores workspace on reopen
       resolve(laterDir),
     ]);
     const updatedHeader = JSON.parse(
-      readFileSync(join(manifest.recordsDir, "session.json"), "utf-8")
+      readFileSync(join(manifest.recordsDir, "session.json"), "utf-8"),
     );
     assert.deepEqual(updatedHeader.workspace.additionalDirs, [
       resolve(extraDir),
@@ -1996,8 +2174,12 @@ test("SessionService creates workspace sessions and restores workspace on reopen
     ]);
 
     await assert.rejects(
-      () => service.addWorkspaceDir(created.sessionId, join(fixture.root, "missing")),
-      /does not exist/
+      () =>
+        service.addWorkspaceDir(
+          created.sessionId,
+          join(fixture.root, "missing"),
+        ),
+      /does not exist/,
     );
   } finally {
     await service.disposeAll();
@@ -2031,17 +2213,20 @@ test("SessionService opens with a missing workspace and warns instead of pointin
       kbDomain: "ep-core",
       soulSlug: "soul-latest",
     },
-    { workspace: { primaryDir, additionalDirs: [] } }
+    { workspace: { primaryDir, additionalDirs: [] } },
   );
 
   const managed = (
     service as unknown as {
-      sessions: Map<string, {
-        session: {
-          prompt(text: string): Promise<void>;
-          sessionManager: { appendMessage(message: unknown): string };
-        };
-      }>;
+      sessions: Map<
+        string,
+        {
+          session: {
+            prompt(text: string): Promise<void>;
+            sessionManager: { appendMessage(message: unknown): string };
+          };
+        }
+      >;
     }
   ).sessions.get(created.sessionId)!;
   managed.session.prompt = async (text: string) => {
@@ -2074,7 +2259,7 @@ test("SessionService opens with a missing workspace and warns instead of pointin
     assert.ok(reopened.sessionId);
     assert.ok(
       reopened.resumeWarnings.some((w) => /no longer exists/.test(w)),
-      `expected a stale-workspace warning, got: ${JSON.stringify(reopened.resumeWarnings)}`
+      `expected a stale-workspace warning, got: ${JSON.stringify(reopened.resumeWarnings)}`,
     );
   } finally {
     await reopenedService.disposeAll();
@@ -2099,9 +2284,15 @@ test("imageAttachmentsFor gates on model image input (item D)", () => {
   assert.equal(built.length, 1); // .txt skipped, stays a text mention
   assert.equal(built[0].type, "image");
   assert.equal(built[0].mimeType, "image/png");
-  assert.equal(built[0].data, Buffer.from([0x89, 0x50, 0x4e, 0x47]).toString("base64"));
+  assert.equal(
+    built[0].data,
+    Buffer.from([0x89, 0x50, 0x4e, 0x47]).toString("base64"),
+  );
   // Missing/unreadable image path → skipped, no throw.
-  assert.deepEqual(imageAttachmentsFor([join(fixture.root, "gone.png")], vision), []);
+  assert.deepEqual(
+    imageAttachmentsFor([join(fixture.root, "gone.png")], vision),
+    [],
+  );
 });
 
 test("isUnknownModelError matches core's removed-model throw (item 2 resume fallback)", () => {
@@ -2109,11 +2300,13 @@ test("isUnknownModelError matches core's removed-model throw (item 2 resume fall
   // won't fall back to the default model and the reopen stays broken.
   assert.equal(
     isUnknownModelError(new Error("Unknown model: minimax/minimax-m3")),
-    true
+    true,
   );
   assert.equal(
-    isUnknownModelError(new Error("Unknown model: x/y (models.json not found)")),
-    true
+    isUnknownModelError(
+      new Error("Unknown model: x/y (models.json not found)"),
+    ),
+    true,
   );
   assert.equal(isUnknownModelError(new Error("some other failure")), false);
   assert.equal(isUnknownModelError("Unknown model: x/y"), false);
@@ -2153,7 +2346,7 @@ test("approval bridge routes extension confirm dialogs through the service", asy
           if (event.toolName !== "bash") return undefined;
           const approved = await ctx.ui.confirm(
             "Approve tool",
-            `Run ${event.toolName}?`
+            `Run ${event.toolName}?`,
           );
           return approved
             ? undefined
@@ -2171,7 +2364,7 @@ test("approval bridge routes extension confirm dialogs through the service", asy
 
   const events: SessionServiceEvent[] = [];
   const detachListener = service.attach(created.sessionId, (event) =>
-    events.push(event)
+    events.push(event),
   );
   const managed = (
     service as unknown as {
@@ -2198,7 +2391,11 @@ test("approval bridge routes extension confirm dialogs through the service", asy
       args: { command: "echo ok" },
     });
     // Wait for the request event to surface, then respond.
-    for (let i = 0; i < 50 && !events.some((e) => e.type === "approval_requested"); i++) {
+    for (
+      let i = 0;
+      i < 50 && !events.some((e) => e.type === "approval_requested");
+      i++
+    ) {
       await new Promise((r) => setTimeout(r, 10));
     }
     const request = events.find((e) => e.type === "approval_requested");
@@ -2209,15 +2406,15 @@ test("approval bridge routes extension confirm dialogs through the service", asy
       service.respondApproval(created.sessionId, request.payload.approvalId, {
         accept: true,
       }),
-      true
+      true,
     );
     assert.equal(await approvedCall, undefined);
     assert.ok(
       events.some(
         (e) =>
           e.type === "approval_resolved" &&
-          e.payload.resolution === "responded"
-      )
+          e.payload.resolution === "responded",
+      ),
     );
 
     // Denied call: reply accept=false → the extension blocks the tool.
@@ -2230,7 +2427,9 @@ test("approval bridge routes extension confirm dialogs through the service", asy
       if (pending.length >= 2) break;
       await new Promise((r) => setTimeout(r, 10));
     }
-    const second = events.filter((e) => e.type === "approval_requested").at(-1)!;
+    const second = events
+      .filter((e) => e.type === "approval_requested")
+      .at(-1)!;
     assert.ok(second.type === "approval_requested");
     service.respondApproval(created.sessionId, second.payload.approvalId, {
       accept: false,
@@ -2244,7 +2443,7 @@ test("approval bridge routes extension confirm dialogs through the service", asy
       service.respondApproval(created.sessionId, "no-such-approval", {
         accept: true,
       }),
-      false
+      false,
     );
   } finally {
     detachListener();
@@ -2263,7 +2462,7 @@ test("security extension escalates risky commands through the approval bridge", 
 
   const events: SessionServiceEvent[] = [];
   const detachListener = service.attach(created.sessionId, (event) =>
-    events.push(event)
+    events.push(event),
   );
   const managed = (
     service as unknown as {
@@ -2310,15 +2509,15 @@ test("security extension escalates risky commands through the approval bridge", 
         toolCall: { id: "sec-2", name: "bash", arguments: {} },
         args: { command: "rm -rf scratch" },
       }),
-      undefined
+      undefined,
     );
     assert.equal(requested().length, 1);
     assert.ok(
       events.some(
         (event) =>
           event.type === "extension_notice" &&
-          event.payload.message.startsWith("Allowed for this session:")
-      )
+          event.payload.message.startsWith("Allowed for this session:"),
+      ),
     );
 
     // The allowance survives a loader reload (mode switch): it lives in the
@@ -2329,7 +2528,7 @@ test("security extension escalates risky commands through the approval bridge", 
         toolCall: { id: "sec-reload", name: "bash", arguments: {} },
         args: { command: "rm -rf scratch" },
       }),
-      undefined
+      undefined,
     );
     assert.equal(requested().length, 1);
 
@@ -2354,7 +2553,7 @@ test("security extension escalates risky commands through the approval bridge", 
         toolCall: { id: "net-2", name: "bash", arguments: {} },
         args: { command: "curl https://example.com/other" },
       }),
-      undefined
+      undefined,
     );
     assert.equal(requested().length, 2);
 
@@ -2390,15 +2589,22 @@ test("SessionService reviseAt rewrites from an earlier turn and supersedes later
   });
   const managed = (
     service as unknown as {
-      sessions: Map<string, {
-        session: {
-          prompt(text: string): Promise<void>;
-          sessionManager: {
-            appendMessage(message: unknown): string;
-            buildSessionContext(): { messages: Array<{ content: Array<{ type: string; text: string }> }> };
+      sessions: Map<
+        string,
+        {
+          session: {
+            prompt(text: string): Promise<void>;
+            sessionManager: {
+              appendMessage(message: unknown): string;
+              buildSessionContext(): {
+                messages: Array<{
+                  content: Array<{ type: string; text: string }>;
+                }>;
+              };
+            };
           };
-        };
-      }>;
+        }
+      >;
     }
   ).sessions.get(created.sessionId)!;
   managed.session.prompt = async (text: string) => {
@@ -2427,26 +2633,26 @@ test("SessionService reviseAt rewrites from an earlier turn and supersedes later
     const revised = service.reviseAt(
       created.sessionId,
       secondRun.userEntryId!,
-      "revised-second"
+      "revised-second",
     );
     await revised.completion;
 
     const after = latestRunSnapshots(recordsDir);
     assert.equal(
       after.find((run) => run.runId === runs[0].runId)?.status,
-      "completed"
+      "completed",
     );
     assert.equal(
       after.find((run) => run.runId === runs[1].runId)?.status,
-      "superseded"
+      "superseded",
     );
     assert.equal(
       after.find((run) => run.runId === runs[2].runId)?.status,
-      "superseded"
+      "superseded",
     );
     assert.equal(
       after.find((run) => run.runId === revised.ids.runId)?.supersedesRunId,
-      secondRun.runId
+      secondRun.runId,
     );
     assert.equal(revised.ids.turnId, secondRun.turnId);
 
@@ -2456,7 +2662,7 @@ test("SessionService reviseAt rewrites from an earlier turn and supersedes later
         message.content
           .filter((part) => part.type === "text")
           .map((part) => part.text)
-          .join("")
+          .join(""),
       )
       .join("\n");
     assert.match(text, /first/);
@@ -2466,11 +2672,11 @@ test("SessionService reviseAt rewrites from an earlier turn and supersedes later
 
     const detail = readSessionDetail(fixture.dataDir, created.sessionId);
     const userMessages = (detail?.transcript ?? []).filter(
-      (message) => message.role === "user"
+      (message) => message.role === "user",
     );
     assert.deepEqual(
       userMessages.map((message) => message.text),
-      ["first", "revised-second"]
+      ["first", "revised-second"],
     );
   } finally {
     await service.disposeAll();
@@ -2488,12 +2694,15 @@ test("SessionService setSessionWorkspace re-points a session's working folder", 
   const folder = mkdtempSync(join(tmpdir(), "alt-theory-ws-repoint-"));
   const managed = (
     service as unknown as {
-      sessions: Map<string, {
-        session: {
-          prompt(text: string): Promise<void>;
-          sessionManager: { appendMessage(message: unknown): string };
-        };
-      }>;
+      sessions: Map<
+        string,
+        {
+          session: {
+            prompt(text: string): Promise<void>;
+            sessionManager: { appendMessage(message: unknown): string };
+          };
+        }
+      >;
     }
   ).sessions.get(created.sessionId)!;
   managed.session.prompt = async (text: string) => {
@@ -2513,7 +2722,7 @@ test("SessionService setSessionWorkspace re-points a session's working folder", 
     await service.runPrompt(created.sessionId, "hello").completion;
     const snapshot = await service.setSessionWorkspace(
       created.sessionId,
-      folder
+      folder,
     );
     assert.equal(snapshot?.workspace?.primaryDir, resolve(folder));
     const recordsDir = service.getManifest(created.sessionId).recordsDir;
@@ -2532,9 +2741,9 @@ test("SessionService setSessionWorkspace re-points a session's working folder", 
       () =>
         service.setSessionWorkspace(
           created.sessionId,
-          join(folder, "does-not-exist")
+          join(folder, "does-not-exist"),
         ),
-      /does not exist/
+      /does not exist/,
     );
   } finally {
     await service.disposeAll();
@@ -2552,13 +2761,16 @@ test("SessionService workspace re-point carries fork children and live listeners
   const folder = mkdtempSync(join(tmpdir(), "alt-theory-ws-family-"));
   const sessions = (
     service as unknown as {
-      sessions: Map<string, {
-        listeners: Set<unknown>;
-        session: {
-          prompt(text: string): Promise<void>;
-          sessionManager: { appendMessage(message: unknown): string };
-        };
-      }>;
+      sessions: Map<
+        string,
+        {
+          listeners: Set<unknown>;
+          session: {
+            prompt(text: string): Promise<void>;
+            sessionManager: { appendMessage(message: unknown): string };
+          };
+        }
+      >;
     }
   ).sessions;
   const managed = sessions.get(created.sessionId)!;
@@ -2585,7 +2797,7 @@ test("SessionService workspace re-point carries fork children and live listeners
 
     // The fork child moved with its parent.
     const childHeader = readV4SessionHeader(
-      service.getManifest(forked.sessionId).recordsDir
+      service.getManifest(forked.sessionId).recordsDir,
     );
     assert.equal(childHeader?.workspace?.primaryDir, resolve(folder));
 
@@ -2610,24 +2822,27 @@ test("SessionService reviseAt edits a turn inherited from the fork parent", asyn
   });
   const sessions = (
     service as unknown as {
-      sessions: Map<string, {
-        session: {
-          prompt(text: string): Promise<void>;
-          sessionManager: {
-            appendMessage(message: unknown): string;
-            getBranch(): Array<{
-              id: string;
-              type?: string;
-              message?: { role?: string };
-            }>;
-            buildSessionContext(): {
-              messages: Array<{
-                content: Array<{ type: string; text?: string }>;
+      sessions: Map<
+        string,
+        {
+          session: {
+            prompt(text: string): Promise<void>;
+            sessionManager: {
+              appendMessage(message: unknown): string;
+              getBranch(): Array<{
+                id: string;
+                type?: string;
+                message?: { role?: string };
               }>;
+              buildSessionContext(): {
+                messages: Array<{
+                  content: Array<{ type: string; text?: string }>;
+                }>;
+              };
             };
           };
-        };
-      }>;
+        }
+      >;
     }
   ).sessions;
   const mockPrompt = (sessionId: string) => {
@@ -2657,13 +2872,13 @@ test("SessionService reviseAt edits a turn inherited from the fork parent", asyn
     const inheritedUser = child.session.sessionManager
       .getBranch()
       .find(
-        (entry) => entry.type === "message" && entry.message?.role === "user"
+        (entry) => entry.type === "message" && entry.message?.role === "user",
       );
     assert.ok(inheritedUser, "fork should inherit the parent's user turn");
     const revised = service.reviseAt(
       forked.sessionId,
       inheritedUser.id,
-      "revised-first"
+      "revised-first",
     );
     await revised.completion;
 
@@ -2673,7 +2888,7 @@ test("SessionService reviseAt edits a turn inherited from the fork parent", asyn
         message.content
           .filter((part) => part.type === "text")
           .map((part) => part.text)
-          .join("")
+          .join(""),
       )
       .join("\n");
     assert.match(text, /revised-first/);

@@ -1,11 +1,21 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  cancelProviderAuth,
   getAutoTitleSettings,
   getDataFolder,
+  getProviderAuthFlow,
   listConfigProviders,
+  listProviderAuthStatus,
+  logoutProviderAuth,
+  respondToProviderAuth,
   saveAutoTitleSettings,
+  startProviderAuth,
   type AutoTitleSettings,
 } from "@/api/config";
+import type {
+  ProviderAuthFlow,
+  ProviderAuthId,
+} from "@/api/types";
 import { ModelConfigPage } from "@/pages/ModelConfigPage";
 import { hasNativeBridge, revealPath } from "@/lib/native";
 import { useApp } from "@/context/AppProvider";
@@ -83,6 +93,11 @@ export function SettingsView() {
 function ModelsPanel() {
   const app = useApp();
   const local = app.appMode === "local";
+  const [configVersion, setConfigVersion] = useState(0);
+  const refreshConfig = useCallback(
+    () => setConfigVersion((version) => version + 1),
+    []
+  );
 
   return (
     <div className="set-panel">
@@ -92,10 +107,10 @@ function ModelsPanel() {
       </p>
       {local ? (
         <>
-          <AuthConnectCard />
+          <AuthConnectCard onChanged={refreshConfig} />
           {/* The provider list, always-visible picker, and inline editor live
               here now (embedded from the config page) — no separate /config trip. */}
-          <ModelConfigPage embedded />
+          <ModelConfigPage embedded key={configVersion} />
         </>
       ) : (
         <div className="set-card">
@@ -106,31 +121,186 @@ function ModelsPanel() {
   );
 }
 
-// Auth-connect PROTOTYPE (v1.2.1 task 8): reserves the place for signing in to a
-// provider instead of pasting an API key, and previews the normal web-auth flow
-// (get a link → authorize in the browser → return). The real sign-in wires to
-// Pi's native auth for grok/codex in a later version (recorded — dependency).
-function AuthConnectCard() {
+function AuthConnectCard({ onChanged }: { onChanged: () => void }) {
   const PROVIDERS = [
-    { id: "anthropic", name: "Claude", sub: "Anthropic", icon: "ph-sparkle" },
+    {
+      id: "openrouter",
+      name: "OpenRouter",
+      sub: "OpenRouter",
+      icon: "ph-compass",
+    },
     { id: "xai", name: "Grok", sub: "xAI", icon: "ph-lightning" },
-    { id: "openai", name: "Codex", sub: "OpenAI", icon: "ph-code" },
-  ];
+    {
+      id: "openai-codex",
+      name: "Codex",
+      sub: "OpenAI",
+      icon: "ph-code",
+    },
+  ] as const;
   const [flow, setFlow] = useState<{
     provider: (typeof PROVIDERS)[number];
     step: "link" | "waiting" | "done";
+    auth?: ProviderAuthFlow;
+    error?: string;
   } | null>(null);
+  const [connected, setConnected] = useState<Set<ProviderAuthId>>(new Set());
+  const [input, setInput] = useState("");
+  const popup = useRef<Window | null>(null);
+  const openedUrl = useRef<string | null>(null);
+
+  const refreshStatus = async () => {
+    const result = await listProviderAuthStatus();
+    setConnected(
+      new Set(
+        result.providers
+          .filter((provider) => provider.connected)
+          .map((provider) => provider.provider)
+      )
+    );
+  };
+
+  useEffect(() => {
+    void refreshStatus();
+  }, []);
+
+  useEffect(() => {
+    const auth = flow?.auth;
+    if (!auth || auth.status !== "running") return;
+    let stopped = false;
+    let timer = 0;
+    const poll = async () => {
+      try {
+        const next = await getProviderAuthFlow(auth.flowId);
+        if (stopped) return;
+        setFlow((current) =>
+          current
+            ? {
+                ...current,
+                auth: next,
+                step: next.status === "connected" ? "done" : "waiting",
+                error: next.status === "error" ? next.error : undefined,
+              }
+            : current
+        );
+        if (next.status === "connected") {
+          await refreshStatus();
+          onChanged();
+          return;
+        }
+        if (next.status === "running") {
+          timer = window.setTimeout(poll, 500);
+        }
+      } catch (error) {
+        if (!stopped) {
+          setFlow((current) =>
+            current
+              ? {
+                  ...current,
+                  error:
+                    error instanceof Error
+                      ? error.message
+                      : "Authentication failed",
+                }
+              : current
+          );
+        }
+      }
+    };
+    timer = window.setTimeout(poll, 250);
+    return () => {
+      stopped = true;
+      window.clearTimeout(timer);
+    };
+  }, [flow?.auth?.flowId, flow?.auth?.status, onChanged]);
+
+  useEffect(() => {
+    const events = flow?.auth?.events ?? [];
+    const target = [...events]
+      .reverse()
+      .find(
+        (event) => event.type === "auth_url" || event.type === "device_code"
+      );
+    const url =
+      target?.type === "auth_url"
+        ? target.url
+        : target?.type === "device_code"
+          ? target.verificationUri
+          : null;
+    if (!url || openedUrl.current === url) return;
+    openedUrl.current = url;
+    if (popup.current && !popup.current.closed) {
+      popup.current.location.href = url;
+    } else {
+      window.open(url, "_blank", "noopener,noreferrer");
+    }
+  }, [flow?.auth?.events]);
+
+  const start = async () => {
+    if (!flow) return;
+    setInput("");
+    openedUrl.current = null;
+    popup.current = window.open("about:blank", "_blank");
+    setFlow({ ...flow, step: "waiting", error: undefined });
+    try {
+      const auth = await startProviderAuth(flow.provider.id);
+      setFlow((current) =>
+        current ? { ...current, step: "waiting", auth } : current
+      );
+    } catch (error) {
+      popup.current?.close();
+      setFlow((current) =>
+        current
+          ? {
+              ...current,
+              error:
+                error instanceof Error ? error.message : "Authentication failed",
+            }
+          : current
+      );
+    }
+  };
+
+  const respond = async (value: string) => {
+    if (!flow?.auth?.prompt) return;
+    const next = await respondToProviderAuth(
+      flow.auth.flowId,
+      flow.auth.prompt.id,
+      value
+    );
+    setInput("");
+    setFlow({ ...flow, auth: next });
+  };
+
+  const cancel = async () => {
+    if (flow?.auth?.status === "running") {
+      await cancelProviderAuth(flow.auth.flowId).catch(() => {});
+    }
+    popup.current?.close();
+    setFlow(null);
+  };
+
+  const disconnect = async () => {
+    if (!flow) return;
+    await logoutProviderAuth(flow.provider.id);
+    await refreshStatus();
+    onChanged();
+    setFlow(null);
+  };
+
+  const latestEvent = flow?.auth?.events.at(-1);
+  const deviceEvent = [...(flow?.auth?.events ?? [])]
+    .reverse()
+    .find((event) => event.type === "device_code");
 
   return (
     <div className="set-card auth-card">
       <div className="row2">
         <div>
           <h4>
-            Sign in to a provider <span className="preview-tag">preview</span>
+            Sign in to a provider
           </h4>
           <p>
-            Connect an account instead of pasting an API key. Below is a preview
-            of the sign-in flow; the live version arrives in a later update.
+            Connect an account through Pi instead of pasting an API key.
           </p>
         </div>
       </div>
@@ -141,11 +311,15 @@ function AuthConnectCard() {
             <button
               key={p.id}
               className="auth-provider"
-              onClick={() => setFlow({ provider: p, step: "link" })}
+              onClick={() =>
+                setFlow({ provider: p, step: "link", error: undefined })
+              }
             >
               <i className={`ph ${p.icon}`} />
               <span className="apn">{p.name}</span>
-              <span className="aps">{p.sub}</span>
+              <span className="aps">
+                {connected.has(p.id) ? "Connected" : p.sub}
+              </span>
             </button>
           ))}
         </div>
@@ -155,48 +329,97 @@ function AuthConnectCard() {
             <span>
               Sign in to <strong>{flow.provider.name}</strong>
             </span>
-            <button className="link-btn" onClick={() => setFlow(null)}>
+            <button className="link-btn" onClick={cancel}>
               Cancel
             </button>
           </div>
           {flow.step === "link" ? (
             <>
               <p className="auth-step">
-                1. Open this link in your browser and approve access:
+                {connected.has(flow.provider.id)
+                  ? "This account is connected. Reconnect or disconnect it."
+                  : "Open the provider sign-in flow and approve access."}
               </p>
               <div className="auth-linkrow">
-                <code>https://auth.{flow.provider.id}.example/… (preview)</code>
                 <button
                   className="add-btn"
-                  onClick={() => setFlow({ ...flow, step: "waiting" })}
+                  onClick={start}
                 >
                   <i className="ph ph-arrow-square-out" />
-                  Open in browser
+                  {connected.has(flow.provider.id)
+                    ? "Reconnect"
+                    : "Open in browser"}
                 </button>
+                {connected.has(flow.provider.id) ? (
+                  <button className="link-btn" onClick={disconnect}>
+                    Disconnect
+                  </button>
+                ) : null}
               </div>
             </>
           ) : flow.step === "waiting" ? (
             <>
               <p className="auth-step">
-                2. Finish signing in in your browser, then come back here.
+                {latestEvent?.type === "progress"
+                  ? latestEvent.message
+                  : latestEvent?.type === "auth_url"
+                    ? latestEvent.instructions ||
+                      "Finish signing in in your browser."
+                    : latestEvent?.type === "device_code"
+                      ? "Enter this code in the provider page:"
+                      : "Preparing the secure sign-in flow…"}
               </p>
-              <button
-                className="add-btn"
-                onClick={() => setFlow({ ...flow, step: "done" })}
-              >
-                <i className="ph ph-check" />
-                I&apos;ve authorized
-              </button>
+              {deviceEvent?.type === "device_code" ? (
+                <div className="auth-linkrow">
+                  <code>{deviceEvent.userCode}</code>
+                </div>
+              ) : null}
+              {flow.auth?.prompt?.type === "select" ? (
+                <div className="auth-linkrow">
+                  {flow.auth.prompt.options?.map((option) => (
+                    <button
+                      key={option.id}
+                      className="add-btn"
+                      onClick={() => void respond(option.id)}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              ) : flow.auth?.prompt ? (
+                <div className="auth-linkrow">
+                  <input
+                    value={input}
+                    type={
+                      flow.auth.prompt.type === "secret" ? "password" : "text"
+                    }
+                    placeholder={flow.auth.prompt.placeholder}
+                    aria-label={flow.auth.prompt.message}
+                    onChange={(event) => setInput(event.target.value)}
+                  />
+                  <button
+                    className="add-btn"
+                    disabled={!input}
+                    onClick={() => void respond(input)}
+                  >
+                    Continue
+                  </button>
+                </div>
+              ) : null}
+              {flow.auth?.prompt ? (
+                <p className="fine">{flow.auth.prompt.message}</p>
+              ) : null}
+              {flow.error ? <p className="fine">{flow.error}</p> : null}
             </>
           ) : (
             <>
               <p className="auth-step auth-done">
                 <i className="ph ph-check-circle" /> Connected to{" "}
-                {flow.provider.name} (preview)
+                {flow.provider.name}
               </p>
               <p className="fine">
-                In the real flow this stores the sign-in via Pi&apos;s native auth
-                — no API key to paste.
+                Pi stored the connection in its native auth file. You can now
+                choose one of this provider&apos;s models below.
               </p>
             </>
           )}
