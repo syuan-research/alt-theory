@@ -42,12 +42,18 @@ import {
   preflightGrokSession,
   type GrokPreflight,
 } from "./grok-session-import.js";
+import {
+  discoverClaudeCodeSessions,
+  preflightClaudeCodeSession,
+  type ClaudeCodePreflight,
+} from "./claude-code-session-import.js";
 
 export const IMPORT_HARNESSES = [
   "pi",
   "codex",
   "opencode",
   "grok-build",
+  "claude-code",
 ] as const;
 
 export type ImportHarness = (typeof IMPORT_HARNESSES)[number];
@@ -102,18 +108,22 @@ export async function discoverImportSessions(args: {
   openCodeDbPath?: string;
   codexSessionsDir?: string;
   grokSessionsDir?: string;
+  claudeCodeProjectsDir?: string;
 }): Promise<ImportSourceSession[]> {
   if (
     args.harness === "opencode" ||
     args.harness === "codex" ||
-    args.harness === "grok-build"
+    args.harness === "grok-build" ||
+    args.harness === "claude-code"
   ) {
     const previous = readImportSourceRecords(args.dataDir);
     const discovered = args.harness === "opencode"
       ? discoverOpenCodeSessions(args.openCodeDbPath)
       : args.harness === "codex"
         ? discoverCodexSessions(args.codexSessionsDir)
-        : discoverGrokSessions(args.grokSessionsDir);
+        : args.harness === "grok-build"
+          ? discoverGrokSessions(args.grokSessionsDir)
+          : discoverClaudeCodeSessions(args.claudeCodeProjectsDir);
     return discovered.map((source) => {
       const priors = previous.filter(
         (candidate) =>
@@ -225,6 +235,15 @@ export function preflightGrokImport(source: ImportSourceSession): GrokPreflight 
   });
 }
 
+export function preflightClaudeCodeImport(
+  source: ImportSourceSession
+): ClaudeCodePreflight {
+  return preflightClaudeCodeSession({
+    sourceSessionId: source.sourceSessionId,
+    sourceStore: source.sourceStore,
+  });
+}
+
 export function registerOpenCodeImport(args: {
   dataDir: string;
   source: ImportSourceSession;
@@ -315,10 +334,40 @@ export function registerGrokImport(args: {
   });
 }
 
+export function registerClaudeCodeImport(args: {
+  dataDir: string;
+  source: ImportSourceSession;
+  preflight: ClaudeCodePreflight;
+  mode: CapabilityMode;
+  workspacePrimaryDir?: string;
+  ownerAccountId?: string | null;
+  roleCondition?: string | null;
+  rolePresetSlug?: string | null;
+  soulSlug?: string | null;
+  visibility?: "research" | "private";
+  consentSnapshot?: {
+    researcherReadable: boolean;
+    quoteAfterAnonymization: boolean;
+    privateOverride: boolean;
+  } | null;
+}): { sessionId: string; sourceFingerprint: string } {
+  return registerPreparedImport({
+    ...args,
+    harness: "claude-code",
+    piSessionJsonl: args.preflight.piSessionJsonl,
+    importedFilename: `claude-code-${args.source.sourceSessionId}.jsonl`,
+    sourceFingerprint: args.preflight.sourceFingerprint,
+    sourceStore: args.source.sourceStore ?? "",
+    sourceVersion: args.preflight.sourceVersion,
+    transformations: args.preflight.transformations,
+    sourceContextFiles: args.preflight.sourceContextFiles,
+  });
+}
+
 function registerPreparedImport(args: {
   dataDir: string;
   source: ImportSourceSession;
-  harness: "pi" | "opencode" | "codex" | "grok-build";
+  harness: "pi" | "opencode" | "codex" | "grok-build" | "claude-code";
   piSessionJsonl: string;
   importedFilename: string;
   sourceFingerprint: string;
@@ -500,6 +549,8 @@ function importAlias(
       ? "OpenCode"
       : harness === "codex"
         ? "Codex"
+        : harness === "claude-code"
+          ? "Claude Code"
         : "Pi";
   const suffix = ` · ${label} import ${importedAt.slice(0, 10)} #${String(ordinal).padStart(2, "0")}`;
   const base = sourceName.trim().replace(/\s+/g, " ");

@@ -32,7 +32,11 @@ export interface ImportResult {
   error?: string;
 }
 
-export type ImportableHarness = "opencode" | "codex" | "grok-build";
+export type ImportableHarness =
+  | "opencode"
+  | "codex"
+  | "grok-build"
+  | "claude-code";
 
 export async function fetchImportSessions(
   harness: ImportableHarness

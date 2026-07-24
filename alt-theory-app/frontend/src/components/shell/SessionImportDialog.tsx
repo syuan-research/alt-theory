@@ -171,6 +171,7 @@ export function SessionImportDialog({
             <option value="opencode">OpenCode</option>
             <option value="codex">Codex</option>
             <option value="grok-build">Grok Build</option>
+            <option value="claude-code">Claude Code</option>
           </select>
         </label>
 

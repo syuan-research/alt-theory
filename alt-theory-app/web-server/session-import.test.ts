@@ -7,16 +7,19 @@ import { DatabaseSync } from "node:sqlite";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import {
   discoverImportSessions,
+  preflightClaudeCodeImport,
   preflightCodexImport,
   preflightGrokImport,
   preflightOpenCodeImport,
   registerCodexImport,
+  registerClaudeCodeImport,
   registerGrokImport,
   registerOpenCodeImport,
   registerPiImport,
 } from "./session-import.js";
 import { CodexImportRefusalError } from "./codex-session-import.js";
 import { GrokImportRefusalError } from "./grok-session-import.js";
+import { ClaudeCodeImportRefusalError } from "./claude-code-session-import.js";
 import { listSessionSummaries, readSessionDetail } from "./session-store.js";
 
 test("Pi discovery and managed registration preserve history and workspace", async () => {
@@ -1505,4 +1508,314 @@ test("Codex uses the state index for roots and archives spawned descendants", as
       item.includes("Child agent sessions")
     )
   );
+});
+
+test("Claude Code discovery falls back from a stale index and imports one integrated root lineage", async () => {
+  const root = mkdtempSync(join(tmpdir(), "alt-theory-claude-code-root-"));
+  const dataDir = join(root, "alt-data");
+  const projectsDir = join(root, "projects");
+  const projectDir = join(projectsDir, "D--fixture-workspace");
+  const workspace = join(root, "workspace");
+  mkdirSync(projectDir, { recursive: true });
+  mkdirSync(workspace, { recursive: true });
+  const sessionId = "claude-root";
+  const timestamp = "2026-07-24T01:00:00.000Z";
+  const row = (value: Record<string, unknown>, offset: number) => ({
+    timestamp: new Date(Date.parse(timestamp) + offset).toISOString(),
+    sessionId,
+    cwd: workspace,
+    isSidechain: false,
+    ...value,
+  });
+  const rows = [
+    { type: "mode", mode: "default", sessionId },
+    row({
+      type: "user",
+      uuid: "meta-root",
+      parentUuid: null,
+      isMeta: true,
+      message: { role: "user", content: "CLAUDE_META_CONTEXT" },
+    }, 1),
+    row({
+      type: "user",
+      uuid: "user-1",
+      parentUuid: "meta-root",
+      message: {
+        role: "user",
+        content: [
+          { type: "text", text: "CLAUDE_USER_MARKER" },
+          {
+            type: "image",
+            source: { type: "base64", media_type: "image/png", data: "QQ==" },
+          },
+        ],
+      },
+    }, 2),
+    row({
+      type: "assistant",
+      uuid: "assistant-thinking",
+      parentUuid: "user-1",
+      message: {
+        role: "assistant",
+        id: "assistant-turn-1",
+        model: "claude-fixture",
+        content: [{ type: "thinking", thinking: "CLAUDE_THINKING_MARKER", signature: "opaque" }],
+      },
+    }, 3),
+    row({
+      type: "assistant",
+      uuid: "assistant-tool",
+      parentUuid: "assistant-thinking",
+      message: {
+        role: "assistant",
+        id: "assistant-turn-1",
+        model: "claude-fixture",
+        stop_reason: "tool_use",
+        content: [
+          { type: "text", text: "CLAUDE_ASSISTANT_MARKER" },
+          { type: "tool_use", id: "tool-1", name: "Read", input: { file_path: "fixture.txt" } },
+        ],
+      },
+    }, 4),
+    row({
+      type: "assistant",
+      uuid: "abandoned-branch",
+      parentUuid: "user-1",
+      message: {
+        role: "assistant",
+        id: "abandoned-turn",
+        model: "claude-fixture",
+        content: [{ type: "text", text: "CLAUDE_ABANDONED_BRANCH" }],
+      },
+    }, 5),
+    row({
+      type: "user",
+      uuid: "tool-result",
+      parentUuid: "assistant-tool",
+      message: {
+        role: "user",
+        content: [{
+          type: "tool_result",
+          tool_use_id: "tool-1",
+          content: [
+            { type: "text", text: "CLAUDE_TOOL_RESULT_MARKER" },
+            {
+              type: "image",
+              source: { type: "base64", media_type: "image/png", data: "Qg==" },
+            },
+          ],
+        }],
+      },
+    }, 6),
+    row({
+      type: "attachment",
+      uuid: "file-context",
+      parentUuid: "tool-result",
+      attachment: { type: "file", filename: "notes.txt", content: "CLAUDE_FILE_CONTEXT" },
+    }, 7),
+    row({
+      type: "assistant",
+      uuid: "assistant-final",
+      parentUuid: "file-context",
+      message: {
+        role: "assistant",
+        id: "assistant-turn-2",
+        model: "claude-fixture",
+        content: [{ type: "text", text: "CLAUDE_FINAL_MARKER" }],
+      },
+    }, 8),
+    row({
+      type: "system",
+      subtype: "turn_duration",
+      uuid: "current-leaf",
+      parentUuid: "assistant-final",
+    }, 9),
+    { type: "last-prompt", sessionId, leafUuid: "current-leaf", lastPrompt: "fixture" },
+    { type: "ai-title", sessionId, aiTitle: "Claude integrated fixture" },
+  ];
+  const sourcePath = join(projectDir, `${sessionId}.jsonl`);
+  writeFileSync(sourcePath, `${rows.map(JSON.stringify).join("\n")}\n`);
+  writeFileSync(
+    join(projectDir, "empty.jsonl"),
+    `${JSON.stringify({ type: "mode", mode: "default", sessionId: "empty" })}\n`
+  );
+  writeFileSync(
+    join(projectDir, "sessions-index.json"),
+    JSON.stringify({
+      version: 1,
+      entries: [{ sessionId: "missing", fullPath: join(projectDir, "missing.jsonl") }],
+      originalPath: workspace,
+    })
+  );
+  const subagentsDir = join(projectDir, sessionId, "subagents");
+  mkdirSync(subagentsDir, { recursive: true });
+  writeFileSync(
+    join(subagentsDir, "agent-fixture.jsonl"),
+    `${JSON.stringify({ type: "assistant", message: { content: "CLAUDE_CHILD_MARKER" } })}\n`
+  );
+
+  const [source, extra] = await discoverImportSessions({
+    harness: "claude-code",
+    dataDir,
+    claudeCodeProjectsDir: projectsDir,
+  });
+  assert.ok(source);
+  assert.equal(extra, undefined);
+  assert.equal(source.name, "Claude integrated fixture");
+  assert.equal(source.messageCount, 3);
+  const preflight = preflightClaudeCodeImport(source);
+  const entries = preflight.piSessionJsonl.trim().split(/\r?\n/).map(JSON.parse);
+  const projected = entries.filter((entry) => entry.type === "message");
+  const projectedText = JSON.stringify(projected);
+  assert.match(projectedText, /CLAUDE_USER_MARKER/);
+  assert.match(projectedText, /CLAUDE_ASSISTANT_MARKER/);
+  assert.match(projectedText, /CLAUDE_THINKING_MARKER/);
+  assert.match(projectedText, /CLAUDE_TOOL_RESULT_MARKER/);
+  assert.match(projectedText, /CLAUDE_FINAL_MARKER/);
+  assert.ok(!projectedText.includes("CLAUDE_ABANDONED_BRANCH"));
+  assert.equal(
+    projected.filter((entry) =>
+      JSON.stringify(entry.message).includes("CLAUDE_ASSISTANT_MARKER")
+    ).length,
+    1
+  );
+  assert.ok(
+    entries.some(
+      (entry) =>
+        entry.customType === "source-claude-code-meta" &&
+        entry.content.includes("CLAUDE_META_CONTEXT")
+    )
+  );
+  assert.ok(
+    entries.some(
+      (entry) =>
+        entry.customType === "source-claude-code-file" &&
+        entry.content.includes("CLAUDE_FILE_CONTEXT")
+    )
+  );
+  assert.equal(preflight.sourceContextFiles.length, 2);
+  assert.match(preflight.sourceContextFiles[1]!.content, /CLAUDE_CHILD_MARKER/);
+  const registered = registerClaudeCodeImport({
+    dataDir,
+    source,
+    preflight,
+    mode: "full",
+    visibility: "private",
+  });
+  assert.match(
+    readFileSync(
+      join(dataDir, "sessions", registered.sessionId, "records", "source-context", "index.json"),
+      "utf-8"
+    ),
+    /claude-code/
+  );
+  const [unchanged] = await discoverImportSessions({
+    harness: "claude-code",
+    dataDir,
+    claudeCodeProjectsDir: projectsDir,
+  });
+  assert.equal(unchanged?.repeat, "unchanged");
+  assert.equal(unchanged?.importedSessionId, registered.sessionId);
+  writeFileSync(
+    join(subagentsDir, "agent-fixture.jsonl"),
+    `${JSON.stringify({ type: "assistant", message: { content: "CLAUDE_CHILD_CHANGED" } })}\n`
+  );
+  const [changed] = await discoverImportSessions({
+    harness: "claude-code",
+    dataDir,
+    claudeCodeProjectsDir: projectsDir,
+  });
+  assert.equal(changed?.repeat, "changed");
+
+  const unknownPath = join(projectDir, "unknown.jsonl");
+  const unknownRows = rows.map((item) =>
+    item === rows[8]
+      ? {
+          ...item,
+          message: {
+            ...(item as any).message,
+            content: [{ type: "future_block", value: "unknown" }],
+          },
+        }
+      : item
+  );
+  writeFileSync(unknownPath, `${unknownRows.map(JSON.stringify).join("\n")}\n`);
+  assert.throws(
+    () => preflightClaudeCodeImport({ ...source, sourceStore: unknownPath }),
+    (error: unknown) =>
+      error instanceof ClaudeCodeImportRefusalError &&
+      error.recordType === "assistant_block:future_block"
+  );
+});
+
+test("Claude Code plaintext compaction preserves visible history and resumes from the current leaf", async () => {
+  const root = mkdtempSync(join(tmpdir(), "alt-theory-claude-code-compact-"));
+  const dataDir = join(root, "alt-data");
+  const projectsDir = join(root, "projects");
+  const projectDir = join(projectsDir, "D--compact-workspace");
+  const workspace = join(root, "workspace");
+  mkdirSync(projectDir, { recursive: true });
+  mkdirSync(workspace, { recursive: true });
+  const sessionId = "claude-compact";
+  const timestamp = "2026-07-24T02:00:00.000Z";
+  const row = (value: Record<string, unknown>, offset: number) => ({
+    timestamp: new Date(Date.parse(timestamp) + offset).toISOString(),
+    sessionId,
+    cwd: workspace,
+    isSidechain: false,
+    ...value,
+  });
+  const rows = [
+    row({ type: "user", uuid: "old-user", parentUuid: null, message: { role: "user", content: "CLAUDE_OLD_USER" } }, 1),
+    row({ type: "assistant", uuid: "old-assistant", parentUuid: "old-user", message: { role: "assistant", id: "old-turn", model: "claude-fixture", content: [{ type: "text", text: "CLAUDE_OLD_ASSISTANT" }] } }, 2),
+    row({ type: "system", subtype: "turn_duration", uuid: "old-leaf", parentUuid: "old-assistant" }, 3),
+    { type: "last-prompt", sessionId, leafUuid: "old-leaf", lastPrompt: "old" },
+    row({ type: "system", subtype: "compact_boundary", uuid: "compact-boundary", parentUuid: null, messageCount: 2 }, 4),
+    row({ type: "user", uuid: "compact-summary", parentUuid: "compact-boundary", isCompactSummary: true, message: { role: "user", content: "CLAUDE_PLAINTEXT_COMPACT_SUMMARY" } }, 5),
+    row({ type: "user", uuid: "post-meta", parentUuid: "compact-summary", isMeta: true, message: { role: "user", content: "CLAUDE_POST_COMPACT_CONTEXT" } }, 6),
+    row({ type: "user", uuid: "post-user", parentUuid: "post-meta", message: { role: "user", content: "CLAUDE_POST_COMPACT_USER" } }, 7),
+    row({ type: "assistant", uuid: "post-thinking", parentUuid: "post-user", message: { role: "assistant", id: "post-turn", model: "claude-fixture", content: [{ type: "thinking", thinking: "CLAUDE_POST_THINKING", signature: "opaque" }] } }, 8),
+    row({ type: "assistant", uuid: "post-assistant", parentUuid: "post-thinking", message: { role: "assistant", id: "post-turn", model: "claude-fixture", content: [{ type: "text", text: "CLAUDE_POST_ASSISTANT" }] } }, 9),
+    row({ type: "system", subtype: "turn_duration", uuid: "post-leaf", parentUuid: "post-assistant" }, 10),
+    { type: "last-prompt", sessionId, leafUuid: "post-leaf", lastPrompt: "post" },
+  ];
+  writeFileSync(
+    join(projectDir, `${sessionId}.jsonl`),
+    `${rows.map(JSON.stringify).join("\n")}\n`
+  );
+  const [source] = await discoverImportSessions({
+    harness: "claude-code",
+    dataDir,
+    claudeCodeProjectsDir: projectsDir,
+  });
+  assert.ok(source);
+  const preflight = preflightClaudeCodeImport(source);
+  const entries = preflight.piSessionJsonl.trim().split(/\r?\n/).map(JSON.parse);
+  const projectedText = JSON.stringify(entries.filter((entry) => entry.type === "message"));
+  assert.match(projectedText, /CLAUDE_OLD_ASSISTANT/);
+  assert.match(projectedText, /CLAUDE_POST_COMPACT_USER/);
+  assert.match(projectedText, /CLAUDE_POST_THINKING/);
+  assert.ok(!projectedText.includes("CLAUDE_PLAINTEXT_COMPACT_SUMMARY"));
+  const compaction = entries.find((entry) => entry.type === "compaction");
+  assert.equal(compaction.summary, "CLAUDE_PLAINTEXT_COMPACT_SUMMARY");
+  const firstKept = entries.find((entry) => entry.id === compaction.firstKeptEntryId);
+  assert.match(JSON.stringify(firstKept), /CLAUDE_POST_COMPACT_CONTEXT/);
+  const registered = registerClaudeCodeImport({
+    dataDir,
+    source,
+    preflight,
+    mode: "pure",
+    visibility: "private",
+  });
+  const detail = readSessionDetail(dataDir, registered.sessionId);
+  assert.ok(detail);
+  const oldIndex = detail.transcript.findIndex((item) => item.text.includes("CLAUDE_OLD_ASSISTANT"));
+  const compactIndex = detail.transcript.findIndex((item) => item.marker === "compaction");
+  const postIndex = detail.transcript.findIndex((item) => item.text.includes("CLAUDE_POST_COMPACT_USER"));
+  assert.ok(oldIndex >= 0 && compactIndex > oldIndex && postIndex > compactIndex);
+  const active = SessionManager.open(detail.manifest!.piSessionFile).buildSessionContext();
+  const activeText = JSON.stringify(active.messages);
+  assert.match(activeText, /CLAUDE_PLAINTEXT_COMPACT_SUMMARY/);
+  assert.match(activeText, /CLAUDE_POST_COMPACT_USER/);
+  assert.ok(!activeText.includes("CLAUDE_OLD_ASSISTANT"));
 });

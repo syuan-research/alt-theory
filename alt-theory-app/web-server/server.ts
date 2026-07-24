@@ -104,9 +104,11 @@ import {
   discoverImportSessions,
   isImportHarness,
   preflightCodexImport,
+  preflightClaudeCodeImport,
   preflightGrokImport,
   preflightOpenCodeImport,
   registerCodexImport,
+  registerClaudeCodeImport,
   registerGrokImport,
   registerOpenCodeImport,
   registerPiImport,
@@ -114,6 +116,7 @@ import {
 import { OpenCodeImportRefusalError } from "./opencode-session-import.js";
 import { CodexImportRefusalError } from "./codex-session-import.js";
 import { GrokImportRefusalError } from "./grok-session-import.js";
+import { ClaudeCodeImportRefusalError } from "./claude-code-session-import.js";
 import {
   readAppSettings,
   resolveExternalSkillPaths,
@@ -748,10 +751,16 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               transformations: preflight.transformations,
             };
           }
-          if (harness === "opencode" || harness === "codex") {
+          if (
+            harness === "opencode" ||
+            harness === "codex" ||
+            harness === "claude-code"
+          ) {
             const preflight = harness === "opencode"
               ? preflightOpenCodeImport(source)
-              : preflightCodexImport(source);
+              : harness === "codex"
+                ? preflightCodexImport(source)
+                : preflightClaudeCodeImport(source);
             if (preflightOnly) {
               return {
                 sourceId: source.sourceId,
@@ -771,7 +780,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             };
             const registered = harness === "opencode"
               ? registerOpenCodeImport({ ...common, preflight })
-              : registerCodexImport({ ...common, preflight });
+              : harness === "codex"
+                ? registerCodexImport({ ...common, preflight })
+                : registerClaudeCodeImport({ ...common, preflight });
             return {
               sourceId: source.sourceId,
               status: preflight.transformations.length
@@ -799,7 +810,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           if (
             error instanceof OpenCodeImportRefusalError ||
             error instanceof CodexImportRefusalError ||
-            error instanceof GrokImportRefusalError
+            error instanceof GrokImportRefusalError ||
+            error instanceof ClaudeCodeImportRefusalError
           ) {
             return {
               sourceId: source.sourceId,
