@@ -523,8 +523,14 @@ function validateCompleteRollout(records: Row[], meta: Row): void {
       "persisted base instructions are required for a faithful supported import"
     );
   }
+  const normalized = normalizeCurrentSuffix(
+    records.map((record, sourceIndex) => ({ ...record, sourceIndex })),
+    0
+  );
   const calls = new Map<string, { name: string; outputs: number }>();
-  for (const record of visibleHistoryRecords(records)) {
+  for (const record of normalized.records.filter(
+    (record) => record.type === "response_item"
+  )) {
     const item = record.payload;
     const type = String(item?.type ?? "missing_response_item_type");
     if (type === "reasoning") {
@@ -651,7 +657,10 @@ function validateCompleteRollout(records: Row[], meta: Row): void {
     }
     throw new CodexImportRefusalError(type, 1, "response item has no verified Pi mapping");
   }
-  const dangling = [...calls.values()].filter((call) => call.outputs !== 1);
+  const dangling = [...calls.entries()].filter(
+    ([callId, call]) =>
+      call.outputs !== 1 && !normalized.interruptedCallIds.has(callId)
+  );
   if (dangling.length) {
     throw new CodexImportRefusalError("tool_call", dangling.length, "tool call has no source output");
   }
@@ -667,19 +676,25 @@ function visibleHistoryRecords(records: Row[]): Row[] {
   ).records.filter((record) => record.type === "response_item");
 }
 
-// Codex records a completed or interrupted attempt, then
-// `thread_rolled_back {num_turns:1}` before the next task. Its own current
-// conversation omits that whole turn. Only this explicit bounded shape is
-// normalized; every other rollback remains a refusal because the current
-// history would be ambiguous.
+// Codex records completed/interrupted task blocks plus explicit
+// `thread_rolled_back {num_turns}` controls. Bounded task starts and the count
+// deterministically identify which current-tip turns to remove; malformed or
+// overreaching controls still refuse.
 function normalizeCurrentSuffix(
   records: Row[],
   startIndex: number
-): { records: Row[]; rolledBackTurns: number; interruptedTurns: number } {
+): {
+  records: Row[];
+  rolledBackTurns: number;
+  interruptedTurns: number;
+  interruptedCallIds: Set<string>;
+} {
   const suffix = records.slice(startIndex);
   const normalized: Row[] = [];
+  const turnStarts: number[] = [];
   let rolledBackTurns = 0;
   let interruptedTurns = 0;
+  const interruptedCallIds = new Set<string>();
   let index = 0;
   const eventType = (record: Row) =>
     record.type === "event_msg" ? String(record.payload?.type ?? "") : "";
@@ -738,6 +753,7 @@ function normalizeCurrentSuffix(
     const aborts = turn.filter((record) => eventType(record) === "turn_aborted");
     const rollbacks = turn.filter((record) => eventType(record) === "thread_rolled_back");
     if (aborts.length === 0 && rollbacks.length === 0) {
+      turnStarts.push(normalized.length);
       normalized.push(...turn);
       index = end;
       continue;
@@ -751,33 +767,82 @@ function normalizeCurrentSuffix(
         String(turn[0]?.payload?.turn_id ?? "");
     const keptInterruption =
       matchingAbort &&
-      rollbacks.length === 0 &&
-      !turn.slice(abortIndex + 1).some((record) => record.type === "response_item");
+      rollbacks.length === 0;
     if (keptInterruption) {
+      turnStarts.push(normalized.length);
       normalized.push(...turn);
+      const outputs = new Set(
+        turn
+          .filter(
+            (record) =>
+              record.type === "response_item" &&
+              ["function_call_output", "custom_tool_call_output"].includes(
+                String(record.payload?.type)
+              )
+          )
+          .map((record) => String(record.payload?.call_id ?? ""))
+      );
+      for (const record of turn) {
+        if (
+          record.type === "response_item" &&
+          ["function_call", "custom_tool_call"].includes(
+            String(record.payload?.type)
+          ) &&
+          !outputs.has(String(record.payload?.call_id ?? ""))
+        ) {
+          interruptedCallIds.add(String(record.payload.call_id));
+        }
+      }
       interruptedTurns += 1;
       index = end;
       continue;
     }
-    const rolledBackTurn =
+    const rollbackCounts = rollbacks.map((record) =>
+      Number(record.payload?.num_turns)
+    );
+    const rollbackCount = rollbackCounts.reduce((sum, value) => sum + value, 0);
+    const validRollback =
       (aborts.length === 0 || matchingAbort) &&
-      rollbacks.length === 1 &&
+      rollbacks.length >= 1 &&
       (aborts.length === 0 || abortIndex < rollbackIndex) &&
-      Number(rollbacks[0]?.payload?.num_turns) === 1 &&
-      !turn.slice(rollbackIndex + 1).some((record) => record.type === "response_item");
-    if (!rolledBackTurn) {
+      rollbackCounts.every(
+        (value) => Number.isInteger(value) && value > 0
+      ) &&
+      !turn
+        .slice(turn.findLastIndex((record) => eventType(record) === "thread_rolled_back") + 1)
+        .some((record) => record.type === "response_item");
+    const currentHasResponse = turn.some(
+      (record) => record.type === "response_item"
+    );
+    const previousTurnsToRemove =
+      rollbackCount - (currentHasResponse ? 1 : 0);
+    if (
+      !validRollback ||
+      previousTurnsToRemove < 0 ||
+      previousTurnsToRemove > turnStarts.length
+    ) {
       const control = [...aborts, ...rollbacks][0];
       throw new CodexImportRefusalError(
         eventType(control),
         aborts.length + rollbacks.length,
-        "rollback control does not match one bounded turn followed by a one-turn rollback"
+        "rollback control does not match bounded task turns and its explicit num_turns"
       );
     }
-    rolledBackTurns += 1;
+    if (previousTurnsToRemove > 0) {
+      const firstRemoved = turnStarts.length - previousTurnsToRemove;
+      normalized.splice(turnStarts[firstRemoved]!);
+      turnStarts.splice(firstRemoved);
+    }
+    rolledBackTurns += rollbackCount;
     index = end;
   }
 
-  return { records: normalized, rolledBackTurns, interruptedTurns };
+  return {
+    records: normalized,
+    rolledBackTurns,
+    interruptedTurns,
+    interruptedCallIds,
+  };
 }
 
 function validateMessage(item: Row): void {
@@ -961,6 +1026,10 @@ function projectToPi(records: Row[], meta: Row): string {
     details: { sourceRole: "system" },
   });
   const callNames = new Map<string, string>();
+  const interruptedCallIds = normalizeCurrentSuffix(
+    records.map((record, sourceIndex) => ({ ...record, sourceIndex })),
+    0
+  ).interruptedCallIds;
   const model = String(
     [...records].reverse().find((record) => record.type === "turn_context")?.payload?.model ??
       "source-unknown"
@@ -1052,6 +1121,25 @@ function projectToPi(records: Row[], meta: Row): string {
         timestamp: record.timestamp,
       });
       rememberVisible(id, record);
+      if (interruptedCallIds.has(String(item.call_id))) {
+        const resultId = append({
+          type: "message",
+          message: {
+            role: "toolResult",
+            toolCallId: String(item.call_id),
+            toolName: name,
+            content: [{
+              type: "text",
+              text: "[Tool execution was interrupted in the source Codex turn; no source output was recorded]",
+            }],
+            details: { sourceInterrupted: true },
+            isError: true,
+            timestamp: Date.parse(record.timestamp),
+          },
+          timestamp: record.timestamp,
+        });
+        rememberVisible(resultId, record);
+      }
       continue;
     }
     if (item.type === "image_generation_call") {
@@ -1145,12 +1233,17 @@ function describeTransformations(records: Row[]): string[] {
   const normalizedSuffix = normalizeCurrentSuffix(records, 0);
   if (normalizedSuffix.rolledBackTurns) {
     result.push(
-      `${normalizedSuffix.rolledBackTurns} Codex turn(s) were followed by an explicit one-turn rollback; those turns stay in raw records and are excluded from active history.`
+      `${normalizedSuffix.rolledBackTurns} Codex turn(s) were removed by explicit bounded rollback controls; those turns stay in raw records and are excluded from active history.`
     );
   }
   if (normalizedSuffix.interruptedTurns) {
     result.push(
       `${normalizedSuffix.interruptedTurns} interrupted Codex turn(s) were not rolled back; their complete recorded messages remain active while interruption metadata stays raw-only.`
+    );
+  }
+  if (normalizedSuffix.interruptedCallIds.size) {
+    result.push(
+      `${normalizedSuffix.interruptedCallIds.size} Codex tool call(s) ended in an explicit interrupted turn without source output; labelled error results close those calls without fabricating output.`
     );
   }
   if (

@@ -567,6 +567,15 @@ function describeTransformations(history: Row[]): string[] {
       "Grok synthetic user records are classified as imported context or lifecycle metadata; they are not replayed as human user messages."
     );
   }
+  if (
+    history.some(
+      (item) => item.type === "user" && item.synthetic_reason === "compaction_meta"
+    )
+  ) {
+    result.push(
+      "Current Grok compaction metadata remains labelled collapsed context. Prior compaction request snapshots are retained but not replayed because the source carries no deterministic link from the current head to one earlier visible chain."
+    );
+  }
   if (history.some((item) => item.type === "tool_result")) {
     result.push("Grok tool calls and results are mapped only after exact source call-ID pairing.");
   }

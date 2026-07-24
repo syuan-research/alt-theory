@@ -983,7 +983,7 @@ test("Codex preflight separates visible history from active context after compac
   assert.ok(preflight.transformations.some((item) => item.includes("Source compaction detected")));
   assert.ok(preflight.transformations.some((item) => item.includes("Embedded source images")));
   assert.ok(preflight.transformations.some((item) => item.includes("labelled placeholder")));
-  assert.ok(preflight.transformations.some((item) => item.includes("one-turn rollback")));
+  assert.ok(preflight.transformations.some((item) => item.includes("bounded rollback")));
   assert.ok(preflight.transformations.some((item) => item.includes("tool-search control")));
   assert.ok(preflight.transformations.some((item) => item.includes("web-search activity")));
   assert.ok(preflight.transformations.some((item) => item.includes("generated PNG/JPEG")));
@@ -1052,6 +1052,39 @@ test("Codex preflight separates visible history from active context after compac
     join(sessionsDir, "rollout-codex-ambiguous-rollback.jsonl"),
     `${ambiguousRollback.map(JSON.stringify).join("\n")}\n`
   );
+  const deterministicRollback = [
+    line("session_meta", {
+      ...meta,
+      id: "codex-deterministic-rollback",
+      session_id: "codex-deterministic-rollback",
+    }),
+    line("event_msg", { type: "task_started", turn_id: "turn-keep" }, 1),
+    line("response_item", { type: "message", role: "user", content: [{ type: "input_text", text: "MULTI_KEEP_USER" }] }, 2),
+    line("response_item", { type: "message", role: "assistant", content: [{ type: "output_text", text: "MULTI_KEEP_ASSISTANT" }] }, 3),
+    line("event_msg", { type: "task_complete", turn_id: "turn-keep" }, 4),
+    line("event_msg", { type: "task_started", turn_id: "turn-remove-one" }, 5),
+    line("response_item", { type: "message", role: "user", content: [{ type: "input_text", text: "MULTI_REMOVE_ONE" }] }, 6),
+    line("response_item", { type: "message", role: "assistant", content: [{ type: "output_text", text: "MULTI_REMOVE_ONE_ASSISTANT" }] }, 7),
+    line("event_msg", { type: "task_complete", turn_id: "turn-remove-one" }, 8),
+    line("event_msg", { type: "task_started", turn_id: "turn-remove-two" }, 9),
+    line("response_item", { type: "message", role: "user", content: [{ type: "input_text", text: "MULTI_REMOVE_TWO" }] }, 10),
+    line("response_item", { type: "function_call", call_id: "rolled-back-call", name: "shell_command", arguments: "{}" }, 11),
+    line("event_msg", { type: "turn_aborted", turn_id: "turn-remove-two", reason: "interrupted" }, 12),
+    line("event_msg", { type: "thread_rolled_back", num_turns: 2 }, 13),
+    line("event_msg", { type: "task_started", turn_id: "turn-interrupted-tool" }, 14),
+    line("response_item", { type: "message", role: "user", content: [{ type: "input_text", text: "INTERRUPTED_TOOL_USER" }] }, 15),
+    line("response_item", { type: "function_call", call_id: "interrupted-call", name: "shell_command", arguments: "{}" }, 16),
+    line("event_msg", { type: "turn_aborted", turn_id: "turn-interrupted-tool", reason: "interrupted" }, 17),
+    line("response_item", { type: "message", role: "assistant", content: [{ type: "output_text", text: "LATE_RECORDED_AFTER_ABORT" }] }, 18),
+    line("event_msg", { type: "task_started", turn_id: "turn-survives-after-rollback" }, 19),
+    line("response_item", { type: "message", role: "user", content: [{ type: "input_text", text: "MULTI_SURVIVING_USER" }] }, 20),
+    line("response_item", { type: "message", role: "assistant", content: [{ type: "output_text", text: "MULTI_SURVIVING_ASSISTANT" }] }, 21),
+    line("event_msg", { type: "task_complete", turn_id: "turn-survives-after-rollback" }, 22),
+  ];
+  writeFileSync(
+    join(sessionsDir, "rollout-codex-deterministic-rollback.jsonl"),
+    `${deterministicRollback.map(JSON.stringify).join("\n")}\n`
+  );
   const sources = await discoverImportSessions({
     harness: "codex",
     dataDir,
@@ -1071,7 +1104,33 @@ test("Codex preflight separates visible history from active context after compac
     (error: unknown) =>
       error instanceof CodexImportRefusalError &&
       error.recordType === "turn_aborted" &&
-      error.message.includes("one-turn rollback")
+      error.message.includes("explicit num_turns")
+  );
+  const deterministic = sources.find(
+    (item) => item.sourceSessionId === "codex-deterministic-rollback"
+  );
+  assert.ok(deterministic);
+  const deterministicPreflight = preflightCodexImport(deterministic);
+  const deterministicProjected = JSON.stringify(
+    deterministicPreflight.piSessionJsonl
+      .trim()
+      .split(/\r?\n/)
+      .map(JSON.parse)
+      .filter((entry) => entry.type === "message")
+  );
+  assert.match(deterministicProjected, /MULTI_KEEP_ASSISTANT/);
+  assert.match(deterministicProjected, /MULTI_SURVIVING_ASSISTANT/);
+  assert.match(deterministicProjected, /LATE_RECORDED_AFTER_ABORT/);
+  assert.ok(!deterministicProjected.includes("MULTI_REMOVE_ONE"));
+  assert.ok(!deterministicProjected.includes("MULTI_REMOVE_TWO"));
+  assert.match(
+    deterministicProjected,
+    /Tool execution was interrupted in the source Codex turn/
+  );
+  assert.ok(
+    deterministicPreflight.transformations.some((item) =>
+      item.includes("labelled error results")
+    )
   );
   assert.equal(listSessionSummaries(dataDir).sessions.length, 1);
 });
