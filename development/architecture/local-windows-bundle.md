@@ -65,6 +65,19 @@ backend serve the React `public-v6` frontend instead of the older hosted pilot
 static frontend. This is why the local bundle can use the newer local model
 setup UI without changing the hosted VPS default frontend.
 
+### Native bridge (v1.2.1)
+
+`electron/preload.cjs` exposes a minimal `window.altElectron` over
+`contextBridge` (contextIsolation stays on): `pickDirectory()`, `pickFiles()`,
+`revealPath(target)`. `main.cjs` registers the matching `ipcMain.handle`
+handlers (`dialog.showOpenDialog`, `shell.showItemInFolder`) and sets the
+preload on the window. The renderer only ever receives paths the user explicitly
+picked. The frontend feature-detects the bridge (`frontend/src/lib/native.ts`):
+inside the bundle it uses the native dialogs (add working folder, Attach file,
+reveal-in-file-manager); in a plain browser (dev/hosted) it falls back to a path
+prompt, and reveal is unavailable. This is the first renderer→main IPC surface;
+before v1.2.1 the window had no preload.
+
 ## Frontend Boundary
 
 The local bundle currently uses the v0.6-derived React frontend. This is an
@@ -93,7 +106,10 @@ Current local UI notes:
 Local model setup belongs here, not in the core session architecture, except
 where it affects runtime provider/model resolution.
 
-The `/config` page is a Pi-native provider/model setup surface:
+Provider/model setup is a Pi-native surface. As of v1.2.1 it is embedded in
+Settings → Models (always-visible provider picker + inline editor, plus an
+auth-connect sign-in preview); the standalone `/config` page remains for the
+first-run screen. Both write the same files:
 
 - writes Pi-compatible `models.json`, `auth.json`, and `settings.json`;
 - stores local state under the configured Pi/Alt Theory local config directory;

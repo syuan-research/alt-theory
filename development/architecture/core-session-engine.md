@@ -202,6 +202,34 @@ The original `records/assembly-manifest.json` is not overwritten on resume.
 Resume-time active runtime facts are written to `records/resume-manifest.json`,
 and drift warnings are returned in the active manifest/snapshot.
 
+### 2.1.1 Resume-time recovery and auto-titling (v1.2.1)
+
+Reopening degrades gracefully instead of failing, and never mutates the
+persisted header (data preserved; the condition self-heals if the environment
+comes back). Both surface through the same `resumeWarnings` vehicle as other
+drift notices.
+
+- **Stale working folder.** `createManagedFromExisting` stat-checks the recorded
+  `workspace.primaryDir`; if it no longer exists (folder renamed/merged/deleted),
+  the session opens WITHOUT pointing Pi's cwd at the dead path and warns. The
+  frontend renders the notice with actions (re-pick folder / continue without).
+- **Removed per-session model.** If the persisted `modelOverride` model is no
+  longer in the registry, core throws `Unknown model`; the service catches it
+  (only when an override exists), reopens with the deployment default
+  (`modelArgsFor(null)`), and warns original→fallback. The stale override stays
+  in the header, so a later reopen restores the original model if it returns.
+  A missing DEPLOYMENT default still refuses (broader misconfig, out of scope).
+  See §7.
+- **Auto-titling.** After the first completed turn, `maybeAutoTitle` best-effort
+  generates a short alias via a bare `completeSimple()` completion (no app system
+  prompt, no tools) on the session's own model — or a Settings-pinned titler model
+  — and writes it to the existing `ui-alias.json` display-name path. Runs once
+  (skipped when any alias already exists — imports seed one, manual rename creates
+  one), fires-and-forgets, swallows all errors, and strips any `<skill>` wrapper
+  from the first user message. Fallback chain: pinned model → session model → the
+  frontend's first-words snippet. Toggle + titler-model live in
+  `app-settings.json` `autoTitle` via `/api/settings/auto-title`.
+
 ## 2.2 Local Session Import
 
 Local mode exposes a harness-discriminated import boundary without adding a
@@ -380,6 +408,22 @@ The manifest also records selected soul/role slugs, including `null` for
 `None`, plus KB root/domain, the workspace (§3.1), Pi prompt-template
 directory, provider/model, session directories, and Pi JSONL path. Full
 content snapshots are deferred.
+
+### User-prompt attachments (v1.2.1)
+
+A user turn can carry attachment paths. The WS `prompt` message gained an
+optional `attachments: string[]` sibling to `payload`; the frontend stages
+those paths (composer file drag-drop, the "Attach file" native picker, or the
+workspace rail) and they also stay in the prompt text as an
+`(Attachments: …)` mention so Full-mode agents can read them from disk.
+`runPrompt(id, text, attachments)` threads them to `runPromptWithLineage`,
+where `imageAttachmentsFor()` reads image-type paths into Pi `ImageContent`
+blocks and passes them to `session.prompt(text, { images })` — but ONLY when the
+live `session.model.input` includes `"image"`. A text-only model gets no image
+blocks and simply sees the filename mention, so it never hard-fails; the
+`model-image-support` skill is how a user records a model's image capability.
+Pi's `prompt()` accepts images natively, so this is a backend + modality-gate
+change with no new message-content plumbing.
 
 ### 3.1 Workspace Model (spec §5.1)
 
@@ -800,8 +844,14 @@ selection and a runtime-only API key. `ModelRegistry` loads custom model
 definitions independently of Pi's built-in model catalog. Runtime keys use
 `AuthStorage.setRuntimeApiKey()` and are not persisted by Alt Theory.
 
-Local mode exposes `/config` for Pi-native provider/model setup. The GUI writes
-`models.json`, `auth.json`, and `settings.json` under `PI_CODING_AGENT_DIR`;
+Local mode exposes Pi-native provider/model setup. As of v1.2.1 the full picker +
+inline editor is embedded IN Settings → Models (the `ModelConfigPage embedded`
+prop strips the standalone page chrome); the `/config` route still serves the
+first-run screen. Settings → Models also carries a preview of an account
+sign-in ("auth-connect") flow — a reserved placeholder for a later version that
+wires Pi's native OAuth for providers like grok/codex instead of pasted keys.
+The GUI writes `models.json`, `auth.json`, and `settings.json` under
+`PI_CODING_AGENT_DIR`;
 session creation resolves the current active provider/model at runtime and
 passes that `models.json` path into Pi. Local-mode session materialization
 requires a usable active provider/model; if the active config is missing,
@@ -829,6 +879,16 @@ switching the live session back. Changes append a `model_override_changed`
 session event. Forked children inherit the parent's override at creation.
 The pickable model list is the configured `models.json` registry — the
 override never introduces models outside the configured registry.
+
+**Model-on-resume fallback (v1.2.1).** The override is applied at open via
+`modelArgsFor`, which passes provider/modelId into `createAltTheorySession`; if
+that model was since removed from `models.json`, core throws `Unknown model`.
+`createManagedFromExisting` catches this (guarded by `isUnknownModelError` +
+the presence of an override), reopens with the deployment default, and appends a
+resume-warning naming original→fallback (§2.1.1). The header's stale override is
+deliberately NOT cleared, so the original model is restored on a later reopen if
+it returns. Only the per-session override is recovered this way; a missing
+deployment default still refuses the prompt (see the paragraph above).
 
 ### Interim model fallback (v0.5.x pilot)
 
@@ -938,6 +998,17 @@ Limits (current):
 
 ## Change Log
 
+- 2026-07-24: v1.2.1-alpha polish pass. Resume-time recovery + auto-titling
+  (§2.1.1): stale-working-folder degrade-and-warn, removed-per-session-model
+  fallback to default (§7), and best-effort LLM titling into `ui-alias.json`
+  (`autoTitle` app-setting + `/api/settings/auto-title`). User-prompt image
+  attachments (§3): WS `prompt.attachments[]` → `runPrompt` → `imageAttachmentsFor`
+  → Pi `session.prompt({images})`, modality-gated on `model.input`, with the
+  `model-image-support` skill recording capability. Provider/model config embedded
+  in Settings → Models (always-visible picker + inline editor) with an
+  auth-connect preview placeholder (§7). Frontend-only in this pass: dark theme
+  (`data-theme` over `--color-*` tokens), Electron native bridge for file/folder
+  pickers + reveal (see `local-windows-bundle.md`).
 - 2026-07-23: Aligned Codex/OpenCode discovery with logical root conversations,
   added portable searchable child-agent sidecars, collapsed imported
   instruction context, normal default soul/role resolution, and numbered
