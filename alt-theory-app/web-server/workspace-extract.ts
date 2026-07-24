@@ -94,6 +94,37 @@ async function extractXlsxNode(filePath: string): Promise<ExtractResult> {
   };
 }
 
+async function extractPptxNode(filePath: string): Promise<ExtractResult> {
+  // A .pptx is a zip; visible text lives in <a:t> runs of ppt/slides/*.xml.
+  // ponytail: regex text-run extraction, no layout/tables/notes — swap in a
+  // real pptx parser if beta users need structure.
+  const JSZip = (await import("jszip")).default;
+  const zip = await JSZip.loadAsync(readFileSync(filePath));
+  const slideNames = Object.keys(zip.files)
+    .filter((name) => /^ppt\/slides\/slide\d+\.xml$/.test(name))
+    .sort(
+      (a, b) =>
+        Number(a.match(/slide(\d+)/)?.[1] ?? 0) -
+        Number(b.match(/slide(\d+)/)?.[1] ?? 0)
+    );
+  if (slideNames.length === 0) {
+    throw new Error("PPTX: no slides");
+  }
+  const parts: string[] = [];
+  for (const name of slideNames) {
+    const xml = await zip.files[name].async("string");
+    const runs = [...xml.matchAll(/<a:t>([^<]*)<\/a:t>/g)]
+      .map((m) => m[1])
+      .filter((text) => text.trim());
+    const slideNo = name.match(/slide(\d+)/)?.[1];
+    parts.push(`## Slide ${slideNo}\n\n${runs.join("\n")}`);
+  }
+  return {
+    content: assertNonEmptyText(parts.join("\n\n"), "PPTX"),
+    outputExt: ".md",
+  };
+}
+
 export async function extractUploadedBinary(
   filePath: string
 ): Promise<ExtractResult> {
@@ -105,6 +136,7 @@ export async function extractUploadedBinary(
   if (ext === ".docx") return extractDocxNode(filePath);
   if (ext === ".pdf") return extractPdfNode(filePath);
   if (ext === ".xlsx") return extractXlsxNode(filePath);
+  if (ext === ".pptx") return extractPptxNode(filePath);
   throw new Error(`Unsupported binary type: ${ext}`);
 }
 
