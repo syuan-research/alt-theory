@@ -4,13 +4,16 @@ import {
   getAutoTitleSettings,
   getDataFolder,
   getProviderAuthFlow,
+  getSkillPrecedence,
   listConfigProviders,
   listProviderAuthStatus,
   logoutProviderAuth,
   respondToProviderAuth,
   saveAutoTitleSettings,
+  saveSkillPrecedence,
   startProviderAuth,
   type AutoTitleSettings,
+  type SkillPrecedence,
 } from "@/api/config";
 import type {
   ProviderAuthFlow,
@@ -489,6 +492,7 @@ function GeneralPanel() {
         </div>
       </div>
       <AutoTitleCard />
+      <SkillPrecedenceCard />
       <div className="set-card">
         <div className="row2">
           <div>
@@ -606,6 +610,54 @@ function AutoTitleCard() {
           </select>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function SkillPrecedenceCard() {
+  const [value, setValue] = useState<SkillPrecedence>("prefer-bundled");
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    void getSkillPrecedence()
+      .then((r) => {
+        if (alive) setValue(r.precedence);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (alive) setLoaded(true);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  return (
+    <div className="set-card">
+      <div className="row2">
+        <div>
+          <h4>When two skills overlap</h4>
+          <p>
+            Alt Theory ships its own skills, and you can install your own. This
+            decides which one is used when both fit the same job. Applies to new
+            and reopened conversations.
+          </p>
+        </div>
+        <select
+          value={value}
+          disabled={!loaded}
+          onChange={(e) => {
+            const next = e.target.value as SkillPrecedence;
+            setValue(next);
+            void saveSkillPrecedence(next).catch(() => {});
+          }}
+        >
+          <option value="prefer-bundled">Prefer Alt Theory&apos;s</option>
+          <option value="prefer-user">Prefer the ones I installed</option>
+          <option value="ask">Ask me each time</option>
+        </select>
+      </div>
     </div>
   );
 }

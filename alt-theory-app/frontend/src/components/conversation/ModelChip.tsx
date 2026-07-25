@@ -83,6 +83,11 @@ export function ModelChip({
   const label = actual
     ? `Conversation · ${actual.provider} / ${actual.modelId}`
     : defaultLabel;
+  // The chip is a narrow slot next to the composer: model name only. The
+  // provider (and the Default/Conversation distinction) live in the tooltip.
+  const chipLabel = actual
+    ? `${actual.modelId}${current?.thinkingLevel ? ` · ${current.thinkingLevel}` : ""}`
+    : (defaultModel?.modelId ?? "Default model");
   const usingDefault =
     !actual ||
     (actual.provider === defaultModel?.provider &&
@@ -110,8 +115,9 @@ export function ModelChip({
           onToggle();
         }}
         disabled={!app.sessionReady}
+        title={label}
       >
-        {label}
+        {chipLabel}
         <i className="ph ph-caret-down caret" />
       </button>
       <div

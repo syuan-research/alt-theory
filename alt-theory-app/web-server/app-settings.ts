@@ -9,8 +9,24 @@ import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { writeJsonAtomic } from "../core/data-dir.js";
 
+/**
+ * Which skill wins when a bundled skill and a user-installed skill cover the
+ * same job (v1.3.0-alpha.3). Default flipped to the bundled one: Alt's skills
+ * carry the product's stance, and a user skill of the same name is usually a
+ * generic import rather than a deliberate replacement.
+ */
+export type SkillPrecedence = "prefer-bundled" | "prefer-user" | "ask";
+
+export const SKILL_PRECEDENCE_VALUES: SkillPrecedence[] = [
+  "prefer-bundled",
+  "prefer-user",
+  "ask",
+];
+
 export interface AppSettings {
   schemaVersion: 1;
+  /** Absent = "prefer-bundled". */
+  skillPrecedence?: SkillPrecedence;
   skills: {
     /**
      * User-enabled external skill paths per capability mode. null = default
@@ -86,6 +102,25 @@ export function readAppSettings(dataDir: string): AppSettings {
               (entry): entry is string => typeof entry === "string"
             ),
           }
+        : {}),
+      // This normalizer whitelists fields, so anything not listed here is
+      // silently dropped on read — autoTitle was, which made the auto-naming
+      // settings write-only until alpha.3.
+      ...(parsed.autoTitle
+        ? {
+            autoTitle: {
+              enabled: parsed.autoTitle.enabled !== false,
+              model:
+                parsed.autoTitle.model &&
+                typeof parsed.autoTitle.model.provider === "string" &&
+                typeof parsed.autoTitle.model.modelId === "string"
+                  ? parsed.autoTitle.model
+                  : null,
+            },
+          }
+        : {}),
+      ...(SKILL_PRECEDENCE_VALUES.includes(parsed.skillPrecedence as SkillPrecedence)
+        ? { skillPrecedence: parsed.skillPrecedence }
         : {}),
     };
   } catch {

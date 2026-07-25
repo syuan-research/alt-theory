@@ -11,6 +11,11 @@ import { Workbench } from "@/components/shell/Workbench";
 import { SessionImportDialog } from "@/components/shell/SessionImportDialog";
 import { hasNativeBridge, pickDirectory, revealPath } from "@/lib/native";
 
+/** A <details> menu never closes itself when an item is clicked — close it here. */
+function closeMenu(e: { currentTarget: HTMLElement }) {
+  e.currentTarget.closest("details")?.removeAttribute("open");
+}
+
 export function LeftNav() {
   const app = useApp();
   const shell = useShell();
@@ -302,7 +307,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
               <div className="list-menu">
                 <button
                   onClick={(e) => {
-                    e.currentTarget.closest("details")?.removeAttribute("open");
+                    closeMenu(e);
                     onImport();
                   }}
                 >
@@ -484,14 +489,28 @@ function SessionNode({
           </summary>
           <div className="list-menu">
             <button
-              onClick=
-      {() => void app.renameSelectedSession(session.sessionId)}
+              onClick={(e) => {
+                closeMenu(e);
+                void app.renameSelectedSession(session.sessionId);
+              }}
             >
               <i className="ph ph-pencil-simple" />
               Rename
             </button>
             <button
-              onClick={() => app.deleteSelectedSession(session.sessionId)}
+              onClick={(e) => {
+                closeMenu(e);
+                app.duplicateSession(session.sessionId);
+              }}
+            >
+              <i className="ph ph-copy" />
+              Duplicate
+            </button>
+            <button
+              onClick={(e) => {
+                closeMenu(e);
+                app.deleteSelectedSession(session.sessionId);
+              }}
             >
               <i className="ph ph-trash" />
               Delete

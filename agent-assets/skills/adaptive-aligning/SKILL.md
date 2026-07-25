@@ -1,6 +1,6 @@
 ---
 name: adaptive-aligning
-description: Reach shared understanding with the user on direction-setting work — pacing questions by your own confidence instead of interrogating one-by-one. Use before large or ambiguous work, when the user says "align with me" or "interview me", or when acting on guesses would be expensive to undo.
+description: Reach shared understanding with the user on direction-setting work — pacing questions by your own confidence instead of interrogating one-by-one. Use before large or ambiguous work; whenever the user asks to align, re-align, realign, sync up, get on the same page, talk it through first, be interviewed, be asked questions before starting, or to work out what they actually want; and in Chinese 對齊 / 對一下 / 重新對齊 / 再對一次 / 先問我 / 先別動手 / 開始前搞清楚 / 我們先聊聊 / 訪談我. Also use when acting on guesses would be expensive to undo.
 category: interaction
 subtypes: [aligning]
 ---
@@ -30,6 +30,20 @@ guess:
   pick from. One round usually raises it to medium.
 
 Keep rounds small. A wall of questions is its own kind of pressure.
+
+## Why every question carries your guesses
+
+The guesses are not politeness, and they are not optional. They exist to
+build **shared situational awareness**: the user cannot tell how far apart
+you two are unless they can see what you currently think the answer is.
+A bare question shows only their cards. An answer to a bare question tells
+you what they want but never reveals that you had misread the problem —
+so the interview converges in the user's head and not in yours, and the
+misreading survives all the way into the work.
+
+So: never send a question without your current best answer attached, even
+when you feel unsure. Being visibly wrong in a listed option is cheap and
+informative; being invisibly wrong is what alignment is supposed to prevent.
 
 Number the questions of each work stage's alignment continuously — Q1, Q2,
 … across rounds — so the user can answer by number ("Q2 yes; Q3 take b but

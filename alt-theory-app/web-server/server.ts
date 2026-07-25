@@ -130,6 +130,8 @@ import {
   readAppSettings,
   resolveExternalSkillPaths,
   writeAppSettings,
+  SKILL_PRECEDENCE_VALUES,
+  type SkillPrecedence,
 } from "./app-settings.js";
 import { discoverSkillResources } from "./resource-discovery.js";
 import {
@@ -381,6 +383,27 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     writeAppSettings(dataDir, next);
     res.json({ ok: true, autoTitle: next.autoTitle });
   });
+  // --- Bundled-vs-user skill precedence (v1.3.0-alpha.3) ---
+  app.get("/api/settings/skill-precedence", (_req, res) => {
+    if (!requireLocalConfigMode(res)) return;
+    res.json({
+      precedence: readAppSettings(dataDir).skillPrecedence ?? "prefer-bundled",
+    });
+  });
+  app.put("/api/settings/skill-precedence", (req, res) => {
+    if (!requireLocalConfigMode(res)) return;
+    const value = (req.body as { precedence?: unknown }).precedence;
+    if (!SKILL_PRECEDENCE_VALUES.includes(value as SkillPrecedence)) {
+      res.status(400).json({ error: "Unknown skill precedence" });
+      return;
+    }
+    writeAppSettings(dataDir, {
+      ...readAppSettings(dataDir),
+      skillPrecedence: value as SkillPrecedence,
+    });
+    res.json({ ok: true, precedence: value });
+  });
+
   app.get("/api/config/providers", (_req, res) => {
     if (!requireLocalConfigMode(res)) return;
     res.json({ providers: listProviders(agentConfigDir()) });
@@ -2344,13 +2367,14 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           break;
         }
         case "fork_session": {
-          if (!attachedSessionId) {
+          const forkSource = msg.payload.sourceSessionId ?? attachedSessionId;
+          if (!forkSource) {
             sendError(send, new Error("A materialized session is required"));
             break;
           }
           try {
             const forked = await sessionService.forkSession(
-              attachedSessionId,
+              forkSource,
               msg.payload.purpose,
               msg.payload.forkPointEntryId,
             );

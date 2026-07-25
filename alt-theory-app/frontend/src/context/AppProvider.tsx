@@ -131,6 +131,7 @@ export interface AppContextValue {
   refreshSessions: () => Promise<void>;
   openCatalogSession: (sessionId: string) => void;
   forkCurrentSession: (purpose: "fork" | "side" | "helper" | "ab-arm") => void;
+  duplicateSession: (sessionId: string) => void;
   activeRelatedSessionId: string | null;
   setActiveRelatedSessionId: (sessionId: string | null) => void;
   promoteRelatedSession: (sessionId: string) => Promise<void>;
@@ -1059,6 +1060,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [isRunning, sendMessage, sessionId],
   );
 
+  // Duplicate straight from the session list — no need to open the source first.
+  // The server attaches to the copy, so the view follows it.
+  const duplicateSession = useCallback(
+    (targetSessionId: string) => {
+      if (sendMessage({
+        type: "fork_session",
+        payload: { purpose: "fork", sourceSessionId: targetSessionId },
+      })) {
+        setIsRunning(true);
+        setConnStatus("running");
+        setConnLabel("Duplicating...");
+        setToolStatus("Making a copy of this conversation…");
+      }
+    },
+    [sendMessage],
+  );
+
   const promoteRelatedSession = useCallback(
     async (targetSessionId: string) => {
       await promoteRelatedSessionRequest(targetSessionId);
@@ -1445,6 +1463,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       refreshSessions,
       openCatalogSession,
       forkCurrentSession,
+      duplicateSession,
       activeRelatedSessionId,
       setActiveRelatedSessionId,
       promoteRelatedSession,
@@ -1539,6 +1558,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       refreshSessions,
       openCatalogSession,
       forkCurrentSession,
+      duplicateSession,
       activeRelatedSessionId,
       promoteRelatedSession,
       renameSelectedSession,

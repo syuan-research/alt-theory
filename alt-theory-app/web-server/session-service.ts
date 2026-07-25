@@ -1692,6 +1692,7 @@ export class SessionService {
       testBatch: this.config.testBatch,
       readOnly: this.config.readOnly,
       externalSkillPaths: this.config.resolveExternalSkillPaths?.(),
+      skillPrecedence: readAppSettings(this.config.dataDir).skillPrecedence,
       extensionFactories: this.config.extensionFactories,
     });
     const visibility = metadata.visibility ?? "research";
@@ -1949,6 +1950,7 @@ export class SessionService {
       testBatch: this.config.testBatch,
       readOnly: this.config.readOnly,
       externalSkillPaths: this.config.resolveExternalSkillPaths?.(),
+      skillPrecedence: readAppSettings(this.config.dataDir).skillPrecedence,
       extensionFactories: this.config.extensionFactories,
     };
     // Model-on-resume recovery (v1.2.1 item 2): a per-session model override can
@@ -2105,6 +2107,7 @@ export class SessionService {
       testBatch: this.config.testBatch,
       readOnly: this.config.readOnly,
       externalSkillPaths: this.config.resolveExternalSkillPaths?.(),
+      skillPrecedence: readAppSettings(this.config.dataDir).skillPrecedence,
       extensionFactories: this.config.extensionFactories,
       overrideSessionCwd: true,
     });
@@ -2185,6 +2188,7 @@ export class SessionService {
       testBatch: this.config.testBatch,
       readOnly: this.config.readOnly,
       externalSkillPaths: this.config.resolveExternalSkillPaths?.(),
+      skillPrecedence: readAppSettings(this.config.dataDir).skillPrecedence,
       extensionFactories: this.config.extensionFactories,
     });
     if ("activeLeafEntryId" in args) {

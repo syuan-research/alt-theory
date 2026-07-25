@@ -79,6 +79,22 @@ export async function getAutoTitleSettings(): Promise<AutoTitleSettings> {
   return fetchJson<AutoTitleSettings>("/api/settings/auto-title");
 }
 
+export type SkillPrecedence = "prefer-bundled" | "prefer-user" | "ask";
+
+export async function getSkillPrecedence(): Promise<{ precedence: SkillPrecedence }> {
+  return fetchJson<{ precedence: SkillPrecedence }>("/api/settings/skill-precedence");
+}
+
+export async function saveSkillPrecedence(
+  precedence: SkillPrecedence
+): Promise<{ ok: true; precedence: SkillPrecedence }> {
+  return fetchJson("/api/settings/skill-precedence", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ precedence }),
+  });
+}
+
 export async function getDataFolder(): Promise<{ dataDir: string }> {
   return fetchJson<{ dataDir: string }>("/api/local/data-folder");
 }

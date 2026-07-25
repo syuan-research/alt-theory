@@ -122,6 +122,8 @@ export type ClientMessage =
       payload: {
         purpose: ForkPurpose;
         forkPointEntryId?: string;
+        /** Fork a session other than the attached one (session-list Duplicate). */
+        sourceSessionId?: string;
       };
     }
   | {

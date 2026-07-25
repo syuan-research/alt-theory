@@ -484,6 +484,7 @@ export type ClientMessage =
       payload: {
         purpose: "fork" | "side" | "helper" | "ab-arm";
         forkPointEntryId?: string;
+        sourceSessionId?: string;
       };
     }
   | {

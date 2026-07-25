@@ -189,6 +189,8 @@ export interface AltTheoryConfig extends SessionDirectories {
    * silently enabled: absent lists mean Alt bundled skills only.
    */
   externalSkillPaths?: { pure?: string[]; full?: string[] };
+  /** App setting (§6.1) deciding bundled-vs-user skill precedence in the prompt. */
+  skillPrecedence?: "prefer-bundled" | "prefer-user" | "ask";
   /**
    * Additional workspace directories (spec §5.1), applied in Full mode only.
    * The primary working directory is sessionCwd. Each added directory
@@ -202,6 +204,19 @@ export interface AltTheoryConfig extends SessionDirectories {
    * (noExtensions, spec §3.4/§4.2); this is the only extension entry point.
    */
   extensionFactories?: ExtensionFactory[];
+}
+
+/** Prompt text for the app-settings skill-precedence choice (default bundled). */
+export function skillPrecedenceGuidance(
+  precedence?: "prefer-bundled" | "prefer-user" | "ask"
+): string {
+  if (precedence === "prefer-user") {
+    return "Bundled skills are a floor, not the authority. Before auto-invoking a bundled skill, check whether the user has installed a skill of the same category (for example lookup, doc-conversion, summary); if so, prefer the user's skill.";
+  }
+  if (precedence === "ask") {
+    return "When a bundled skill and a user-installed skill of the same category (for example lookup, doc-conversion, summary) both fit the task, do not choose silently: name both and ask which to use.";
+  }
+  return "Alt Theory's bundled skills carry this product's stance and are the default choice. When a user-installed skill covers the same category (for example lookup, doc-conversion, summary), still prefer the bundled one unless the user asked for theirs by name or the bundled skill plainly does not cover the task.";
 }
 
 export interface AltTheoryOpenExistingConfig extends AltTheoryConfig {
@@ -364,10 +379,7 @@ async function createAltTheorySessionWithManager(
     ].join("\n")
   );
   semanticSections.push(
-    [
-      "## Skill Precedence",
-      "Bundled skills are a floor, not the authority. Before auto-invoking a bundled skill, check whether the user has installed a skill of the same category (for example lookup, doc-conversion, summary); if so, prefer the user's skill, or ask which to use when the choice matters.",
-    ].join("\n")
+    ["## Skill Precedence", skillPrecedenceGuidance(config.skillPrecedence)].join("\n")
   );
   semanticSections.push(
     [
@@ -381,6 +393,15 @@ async function createAltTheorySessionWithManager(
       "Two bundled skills are foundational — consult them at the relevant moment rather than improvising:",
       "- before any live lookup or when citing anything not in the workspace: the search-policy skill;",
       "- before creating files or folders in the workspace: the workspace-conventions skill.",
+    ].join("\n")
+  );
+  semanticSections.push(
+    [
+      "## Interaction Moments",
+      "Some moments in a conversation have a bundled skill written for them. Recognize the moment, then load the skill — do not improvise the behaviour it already encodes:",
+      "- the user wants to agree on direction before you build, or asks to align, re-align, 對齊, or be interviewed first: the adaptive-aligning skill;",
+      "- the user wants the agreed plan or decision written down: the adaptive-plan-record skill.",
+      "This is about recognizing the moment, not a rule to interview before every task. A small, clear request is just done.",
     ].join("\n")
   );
   const pureOnlySections: string[] = [];

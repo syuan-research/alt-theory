@@ -431,11 +431,25 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                 <i className="ph ph-list-checks" />
                 Plan &amp; record
               </div>
-              <div className="mi disabled" title="Coming in a later update">
-                <i className="ph ph-seal-check" />
-                Strict fact levels
-                <span className="soon">soon</span>
-              </div>
+              {/* web-search is FULL_ONLY_BUNDLED_SKILLS (alt-theory-core.ts:464) —
+                  in Understand mode say why rather than greying out a "soon". */}
+              {pureMode ? (
+                <div
+                  className="mi disabled"
+                  title="Understand mode stays offline: it reads and searches your own files only."
+                >
+                  <i className="ph ph-globe" />
+                  Looking things up online needs Work mode
+                </div>
+              ) : (
+                <div
+                  className="mi"
+                  onClick={() => (app.invokeSkill("web-search"), setMenu(null))}
+                >
+                  <i className="ph ph-globe" />
+                  Look something up online
+                </div>
+              )}
               <div className="sep" />
               {canAttach ? (
                 <div
