@@ -60,6 +60,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { DEFAULT_KB_DOMAIN } from "@/lib/constants";
 import { isInterruptedError } from "@/lib/format";
 import { toolLabel } from "@/lib/tools";
+import { notifyBackground } from "@/lib/notify";
 import { buildOutgoingPrompt } from "@/lib/workspace";
 import {
   defaultTranscriptView,
@@ -84,6 +85,9 @@ const defaultSelectors: SessionSelectors = {
   visibility: "research",
   branchId: "main",
 };
+
+/** Why a conversation in the list is asking for attention (alpha.3). */
+export type SessionAlert = "done" | "failed" | "approval";
 
 export interface ComposerNotice {
   prefix?: string;
@@ -132,6 +136,8 @@ export interface AppContextValue {
   openCatalogSession: (sessionId: string) => void;
   forkCurrentSession: (purpose: "fork" | "side" | "helper" | "ab-arm") => void;
   duplicateSession: (sessionId: string) => void;
+  /** Conversations that changed state while you were looking elsewhere. */
+  sessionAlerts: Record<string, SessionAlert>;
   activeRelatedSessionId: string | null;
   setActiveRelatedSessionId: (sessionId: string | null) => void;
   promoteRelatedSession: (sessionId: string) => Promise<void>;
@@ -354,6 +360,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const [manifest, setManifest] = useState<AssemblyManifest | null>(null);
   const [metrics, setMetrics] = useState<SessionMetrics | null>(null);
+  const [sessionAlerts, setSessionAlerts] = useState<Record<string, SessionAlert>>({});
+  const sessionRunStatusRef = useRef<Record<string, string>>({});
 
   const reconnectSessionIdRef = useRef<string | null>(null);
   const pendingOpenSessionIdRef = useRef("");
@@ -1035,10 +1043,60 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
-    if (!sessions.some((session) => session.runStatus === "running")) return;
+    if (
+      !sessions.some(
+        (session) =>
+          session.runStatus === "running" ||
+          session.runStatus === "awaiting-approval",
+      )
+    )
+      return;
     const timer = window.setInterval(() => void refreshSessions(), 1500);
     return () => window.clearInterval(timer);
   }, [refreshSessions, sessions]);
+
+  // Background visibility (alpha.3). Switching between running Work sessions
+  // already worked, but a session that finished, failed, or stopped for an
+  // approval while you were elsewhere signalled nothing. Watch the polled list
+  // for transitions and leave a mark that survives until the session is opened.
+  useEffect(() => {
+    const previous = sessionRunStatusRef.current;
+    const next: Record<string, string> = {};
+    const raised: Record<string, SessionAlert> = {};
+    for (const session of sessions) {
+      const id = session.sessionId;
+      const now = session.runStatus ?? "idle";
+      next[id] = now;
+      const before = previous[id];
+      if (before === undefined || id === sessionId || now === before) continue;
+      const name = sessionDisplayNames[id]?.alias || "A conversation";
+      if (before === "running" && now === "idle") {
+        raised[id] = "done";
+        notifyBackground("Work finished", `${name} finished its turn.`);
+      } else if (now === "failed") {
+        raised[id] = "failed";
+        notifyBackground("Work stopped", `${name} ran into an error.`);
+      } else if (now === "awaiting-approval") {
+        raised[id] = "approval";
+        notifyBackground("Waiting for you", `${name} needs your approval.`);
+      }
+    }
+    sessionRunStatusRef.current = next;
+    if (Object.keys(raised).length > 0) {
+      setSessionAlerts((prev) => ({ ...prev, ...raised }));
+    }
+  }, [sessions, sessionId, sessionDisplayNames]);
+
+  // Opening a conversation is reading it.
+  useEffect(() => {
+    if (!sessionId) return;
+    setSessionAlerts((prev) => {
+      if (!(sessionId in prev)) return prev;
+      const next = { ...prev };
+      delete next[sessionId];
+      return next;
+    });
+  }, [sessionId]);
 
   const forkCurrentSession = useCallback(
     (purpose: "fork" | "side" | "helper" | "ab-arm") => {
@@ -1467,6 +1525,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       openCatalogSession,
       forkCurrentSession,
       duplicateSession,
+      sessionAlerts,
       activeRelatedSessionId,
       setActiveRelatedSessionId,
       promoteRelatedSession,
@@ -1562,6 +1621,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       openCatalogSession,
       forkCurrentSession,
       duplicateSession,
+      sessionAlerts,
       activeRelatedSessionId,
       promoteRelatedSession,
       renameSelectedSession,

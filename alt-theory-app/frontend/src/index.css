@@ -254,6 +254,15 @@
   .sess .s-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .sess .s-fork { color: var(--text-3); flex-shrink: 0; }
   .badge-run { margin-left: auto; font-size: 0.7rem; color: var(--text-2); background: var(--surface); border-radius: 999px; padding: 1px 8px; flex-shrink: 0; }
+  .badge-run.ok { color: var(--color-success); }
+  .badge-run.warn { color: var(--color-warning); }
+  .badge-run.danger { color: var(--color-danger); }
+  /* "N running" in the conversations header — the only place that knows about
+     work happening in a conversation you are not looking at (alpha.3) */
+  .running-count { display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; font-size: 0.7rem; color: var(--text-3); background: none; border: none; padding: 0; font-family: inherit; cursor: pointer; }
+  .running-count:hover { color: var(--text-2); }
+  .running-count i { animation: spin 1.4s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
 
   /* search overlay */
   .search-overlay { display: none; position: fixed; inset: 0; background: rgba(31,30,26,0.18); z-index: 80; align-items: flex-start; justify-content: center; padding-top: 14vh; }

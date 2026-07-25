@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import type { SessionSummary } from "@/api/types";
-import { useApp } from "@/context/AppProvider";
+import { useApp, type SessionAlert } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
 import {
   buildWorkspaceTree,
@@ -10,6 +10,59 @@ import {
 import { Workbench } from "@/components/shell/Workbench";
 import { SessionImportDialog } from "@/components/shell/SessionImportDialog";
 import { hasNativeBridge, pickDirectory, revealPath } from "@/lib/native";
+
+/**
+ * What a conversation row says about itself when you are not in it (alpha.3).
+ * Live state wins over a leftover mark; both clear once you open it.
+ */
+function sessionRowState(
+  runStatus: SessionSummary["runStatus"],
+  alert: SessionAlert | undefined,
+): { label: string; tone: string; title: string } | null {
+  if (runStatus === "awaiting-approval" || alert === "approval") {
+    return {
+      label: "needs you",
+      tone: "warn",
+      title: "Waiting for your approval before it can continue",
+    };
+  }
+  if (runStatus === "running") {
+    return { label: "running", tone: "", title: "Working right now" };
+  }
+  if (runStatus === "failed" || alert === "failed") {
+    return { label: "stopped", tone: "danger", title: "This conversation ran into an error" };
+  }
+  if (alert === "done") {
+    return { label: "done", tone: "ok", title: "Finished while you were elsewhere" };
+  }
+  return null;
+}
+
+/**
+ * How much work is in flight across every conversation, not just this one.
+ * Clicking scrolls the list to the first running conversation.
+ */
+function RunningCount({ sessions }: { sessions: SessionSummary[] }) {
+  const running = sessions.filter(
+    (session) =>
+      session.runStatus === "running" || session.runStatus === "awaiting-approval",
+  );
+  if (running.length === 0) return null;
+  return (
+    <button
+      className="running-count"
+      title="Conversations working right now"
+      onClick={() => {
+        document
+          .querySelector(`[data-session-id="${running[0].sessionId}"]`)
+          ?.scrollIntoView({ block: "center" });
+      }}
+    >
+      <i className="ph ph-circle-notch" aria-hidden />
+      {running.length} running
+    </button>
+  );
+}
 
 /** A <details> menu never closes itself when an item is clicked — close it here. */
 function closeMenu(e: { currentTarget: HTMLElement }) {
@@ -318,6 +371,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
             </details>
           ) : null}
         </div>
+        <RunningCount sessions={app.sessions} />
       </div>
       <div className="sessions">
         {app.sessionsLoading && app.sessions.length === 0 ? (
@@ -450,15 +504,19 @@ function SessionNode({
   const app = useApp();
   const active = app.selectedCatalogSessionId === session.sessionId;
   const children = childrenByParent.get(session.sessionId) ?? [];
-  const running =
-    session.runStatus === "running" ||
-    (app.sessionId === session.sessionId && app.isRunning);
+  // The active session's own run state is live in the app, ahead of the poll.
+  const runStatus =
+    app.sessionId === session.sessionId && app.isRunning
+      ? "running"
+      : session.runStatus;
+  const state = sessionRowState(runStatus, app.sessionAlerts[session.sessionId]);
 
   return (
     <>
       <div className="session-row">
         <button
         className={`sess${active ? " active" : ""}`}
+        data-session-id={session.sessionId}
         style={indent ? { paddingLeft: 10 + indent * 16 } : undefined}
         onClick={() => onOpen(session.sessionId)}
         title={sessionTitle(session, app.sessionDisplayNames)}
@@ -481,7 +539,11 @@ function SessionNode({
         <span className="s-title">
           {sessionTitle(session, app.sessionDisplayNames)}
         </span>
-        {running ? <span className="badge-run">running</span> : null}
+        {state ? (
+          <span className={`badge-run ${state.tone}`} title={state.title}>
+            {state.label}
+          </span>
+        ) : null}
       </button>
         <details className="list-more session-more">
           <summary title="Conversation actions">

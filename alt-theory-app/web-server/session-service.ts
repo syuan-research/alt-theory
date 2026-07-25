@@ -1453,6 +1453,26 @@ export class SessionService {
       .map(([sessionId]) => sessionId);
   }
 
+  /**
+   * Per-session run state for the sessions list (alpha.3). Running sessions
+   * you are not looking at used to signal nothing but a badge; a session that
+   * stops for an approval, or fails, needs to be visible from anywhere.
+   */
+  sessionActivity(): Map<string, "running" | "awaiting-approval" | "failed"> {
+    const activity = new Map<string, "running" | "awaiting-approval" | "failed">();
+    for (const [sessionId, managed] of this.sessions) {
+      const running = managed.busy || managed.session.isStreaming;
+      if (running && managed.approvalBridge.listPending().length > 0) {
+        activity.set(sessionId, "awaiting-approval");
+      } else if (running) {
+        activity.set(sessionId, "running");
+      } else if (managed.session.state.errorMessage) {
+        activity.set(sessionId, "failed");
+      }
+    }
+    return activity;
+  }
+
   getManifest(sessionId: string): AssemblyManifest {
     return this.requireSession(sessionId).manifest;
   }

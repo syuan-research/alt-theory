@@ -955,14 +955,14 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     const auth = resolveSessionRestAuth(req, res);
     if (!auth) return;
     const list = listSessionSummaries(dataDir);
-    const running = new Set(sessionService.runningSessionIds());
+    const activity = sessionService.sessionActivity();
     res.json({
       ...list,
       sessions: list.sessions.filter((session) =>
         canAccessSessionSummary(auth, session),
       ).map((session) => ({
         ...session,
-        runStatus: running.has(session.sessionId) ? "running" : "idle",
+        runStatus: activity.get(session.sessionId) ?? "idle",
       })),
     });
   });
