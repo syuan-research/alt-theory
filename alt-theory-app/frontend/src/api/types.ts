@@ -141,6 +141,16 @@ export interface SessionMetrics {
   } | null;
 }
 
+/** What a tool call did, for the expandable tool line (alpha.3). */
+export type ToolDetailKind = "prose" | "diff" | "command" | "skill";
+
+export interface ToolDetail {
+  kind: ToolDetailKind;
+  body: string;
+  skillName?: string;
+  passages?: { before: string; after: string }[];
+}
+
 export interface TranscriptMessage {
   role: "user" | "assistant" | "system" | "tool" | "other";
   text: string;
@@ -151,6 +161,7 @@ export interface TranscriptMessage {
   toolCallId?: string;
   toolName?: string;
   toolPath?: string | null;
+  toolDetail?: ToolDetail;
   success?: boolean;
   truncated?: boolean;
   /** Non-message boundary markers rendered specially (e.g. context compaction). */
@@ -545,7 +556,7 @@ export type ServerMessage =
       type: "run_phase";
       payload: { phase: "connecting" | "thinking" | "idle" };
     }
-  | { type: "tool_started"; payload: { toolName: string; callId: string; path?: string | null } }
+  | { type: "tool_started"; payload: { toolName: string; callId: string; path?: string | null; detail?: ToolDetail } }
   | { type: "tool_updated"; payload: { callId: string; text?: string; progress?: number } }
   | { type: "tool_finished"; payload: { callId: string; success: boolean; output?: unknown } }
   | { type: "run_completed"; payload: SessionSnapshot }
@@ -568,6 +579,7 @@ export interface ActiveToolState {
   callId: string;
   toolName: string;
   path?: string | null;
+  detail?: ToolDetail | null;
   status: "running" | "finished" | "failed";
   progressText?: string;
   success?: boolean;

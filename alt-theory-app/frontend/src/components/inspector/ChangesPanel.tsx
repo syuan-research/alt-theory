@@ -33,9 +33,19 @@ export function ChangesPanel() {
   }, [sessionId, runCount]);
 
   // Back arrow (panel head) clears rightSub; drop the drill-in when it does.
+  // A `changes:<path>` sub can also arrive from outside — the turn-end card in
+  // the conversation opens a file directly — so honour it once the list loads.
   useEffect(() => {
-    if (!shell.rightSub) setSelected(null);
-  }, [shell.rightSub]);
+    const key = shell.rightSub?.key;
+    if (!key) {
+      setSelected(null);
+      return;
+    }
+    if (!key.startsWith("changes:")) return;
+    const path = key.slice("changes:".length);
+    const match = files?.find((file) => file.path === path);
+    if (match && match.path !== selected?.path) setSelected(match);
+  }, [shell.rightSub, files, selected?.path]);
 
   if (selected) {
     return <DiffView file={selected} />;

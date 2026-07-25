@@ -19,6 +19,10 @@ import {
   resolveSessionsRoot,
 } from "../core/data-dir.js";
 import type { SessionEvent } from "./session-events.js";
+import {
+  extractToolDetail,
+  extractToolPath as extractSharedToolPath,
+} from "./tool-detail.js";
 import type { SessionMetrics, TranscriptMessage } from "./websocket-protocol.js";
 import {
   readV4SessionHeader,
@@ -1022,6 +1026,7 @@ function assistantContentToTranscript(
         toolCallId:
           typeof typedPart.id === "string" ? typedPart.id : undefined,
         toolPath: extractToolPath(typedPart.arguments),
+        toolDetail: extractToolDetail(toolName, typedPart.arguments) ?? undefined,
         success: true,
         timestamp,
       });
@@ -1091,28 +1096,7 @@ function extractText(content: unknown): string {
 }
 
 function extractToolPath(args: unknown): string | null {
-  if (!args || typeof args !== "object") return null;
-  const value = args as {
-    path?: unknown;
-    file?: unknown;
-    filePath?: unknown;
-    file_path?: unknown;
-    dir?: unknown;
-    directory?: unknown;
-  };
-  for (const candidate of [
-    value.path,
-    value.file,
-    value.filePath,
-    value.file_path,
-    value.dir,
-    value.directory,
-  ]) {
-    if (typeof candidate === "string" && candidate.trim()) {
-      return candidate;
-    }
-  }
-  return null;
+  return extractSharedToolPath(args);
 }
 
 function stripContextPrefix(text: string): string {

@@ -1,9 +1,9 @@
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { ActiveToolState, TranscriptMessage } from "@/api/types";
+import type { ActiveToolState, ToolDetail, TranscriptMessage } from "@/api/types";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
-import { renderMarkdown } from "@/lib/markdown";
-import { toolLabel } from "@/lib/tools";
+import { MarkdownBody } from "@/components/conversation/MarkdownBody";
+import { fileName, toolLabel } from "@/lib/tools";
 import { cn } from "@/lib/cn";
 import { pickDirectory } from "@/lib/native";
 
@@ -124,6 +124,8 @@ export function MessageList() {
         }
         return <ToolLine key={part.tool.callId} tool={part.tool} />;
       })}
+
+      <TurnChangesCard />
     </div>
     {userMessageCount > 1 ? (
       <div
@@ -150,9 +152,79 @@ export function MessageList() {
   );
 }
 
+/**
+ * What the last turn changed on disk (v1.3.0-alpha.3).
+ *
+ * Machine facts only — file names and line counts, no interpretation and no
+ * claim about sources. Counted from the turn's own tool calls rather than the
+ * session-wide changes projection, so the numbers belong to this turn.
+ * Imported history carries no tool log, so nothing renders there.
+ */
+function TurnChangesCard() {
+  const app = useApp();
+  const shell = useShell();
+
+  const files = useMemo(() => {
+    const totals = new Map<string, { added: number; removed: number }>();
+    for (let i = app.messages.length - 1; i >= 0; i -= 1) {
+      const message = app.messages[i];
+      if (message.role === "user") break;
+      if (message.role !== "tool" || !message.toolPath) continue;
+      const detail = message.toolDetail;
+      if (!detail || detail.kind === "command" || detail.kind === "skill") continue;
+      const entry = totals.get(message.toolPath) ?? { added: 0, removed: 0 };
+      if (detail.passages) {
+        for (const passage of detail.passages) {
+          entry.removed += countLines(passage.before);
+          entry.added += countLines(passage.after);
+        }
+      } else if (detail.kind === "prose") {
+        entry.added += countLines(detail.body);
+      } else {
+        for (const line of detail.body.split("\n")) {
+          if (line.startsWith("+")) entry.added += 1;
+          else if (line.startsWith("-")) entry.removed += 1;
+        }
+      }
+      totals.set(message.toolPath, entry);
+    }
+    return [...totals.entries()].map(([path, counts]) => ({ path, ...counts }));
+  }, [app.messages]);
+
+  if (app.isRunning || files.length === 0) return null;
+
+  return (
+    <div className="turn-changes">
+      <span className="tc-head">
+        <i className="ph ph-pencil-simple-line" aria-hidden="true" />
+        {files.length === 1 ? "1 file changed" : `${files.length} files changed`}
+      </span>
+      {files.map((file) => (
+        <button
+          key={file.path}
+          className="tc-file"
+          onClick={() => {
+            shell.openRail("changes");
+            shell.openSub({ key: `changes:${file.path}`, title: file.path });
+          }}
+        >
+          <span className="tc-name">{fileName(file.path)}</span>
+          {file.added ? <span className="tc-add">+{file.added}</span> : null}
+          {file.removed ? <span className="tc-del">−{file.removed}</span> : null}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function countLines(text: string): number {
+  return text.trim() ? text.split(/\r?\n/).length : 0;
+}
+
 function ToolLine({ tool }: { tool: ActiveToolState }) {
   return (
     <SysLine
+      detail={tool.status === "running" ? null : tool.detail}
       tone={
         tool.status === "failed"
           ? "danger"
@@ -170,7 +242,7 @@ function ToolLine({ tool }: { tool: ActiveToolState }) {
               : "ph ph-check"
         }
       />
-      {toolLabel(tool.toolName, tool.path)}
+      {toolLabel(tool.toolName, tool.path, tool.detail)}
       {tool.progressText ? ` — ${tool.progressText}` : ""}
     </SysLine>
   );
@@ -305,9 +377,13 @@ function TranscriptEntry({
     if (callId) renderedToolCallIds.add(callId);
     const success = message.success !== false;
     return (
-      <SysLine tone={success ? "ok" : "danger"}>
+      <SysLine tone={success ? "ok" : "danger"} detail={message.toolDetail}>
         <i className={success ? "ph ph-check" : "ph ph-x"} />
-        {toolLabel(message.toolName || message.text || "tool", message.toolPath,)}
+        {toolLabel(
+          message.toolName || message.text || "tool",
+          message.toolPath,
+          message.toolDetail,
+        )}
       </SysLine>
     );
   }
@@ -371,10 +447,7 @@ function UserBubble({
     <div className="msg user" data-uidx={userIndex}>
       <div className="who">You</div>
       <div className="bubble">
-        <div
-          className="markdown-body"
-          dangerouslySetInnerHTML={{ __html: renderMarkdown(trimmed) }}
-        />
+        <MarkdownBody text={trimmed} />
       </div>
       <div className="msg-actions">
         <button
@@ -428,10 +501,7 @@ function AssistantBubble({
     <div className="msg assistant">
       <div className="who">Alt{streaming ? " · typing…" : ""}</div>
       <div className="bubble">
-        <div
-          className="markdown-body"
-          dangerouslySetInnerHTML={{ __html: renderMarkdown(trimmed) }}
-        />
+        <MarkdownBody text={trimmed} />
       </div>
       {onBranch && entryId ? (
         <div className="msg-actions">
@@ -494,20 +564,71 @@ function StaleWorkspaceNotice({ warning }: { warning: string }) {
 function SysLine({
   children,
   tone,
+  detail,
 }: {
   children: React.ReactNode;
   tone?: "danger" | "ok" | "running";
+  /** When present the line becomes expandable — see ToolDetailBody. */
+  detail?: ToolDetail | null;
 }) {
+  const className = cn(
+    "sys-line",
+    tone === "danger" && "sys-danger",
+    tone === "ok" && "sys-ok",
+    tone === "running" && "sys-running",
+  );
+  if (!detail || detail.kind === "skill") {
+    return <div className={className}>{children}</div>;
+  }
   return (
-    <div
-      className={cn(
-        "sys-line",
-        tone === "danger" && "sys-danger",
-        tone === "ok" && "sys-ok",
-        tone === "running" && "sys-running",
-      )}
-    >
-      {children}
+    <details className={cn(className, "sys-detail")}>
+      <summary>{children}</summary>
+      <ToolDetailBody detail={detail} />
+    </details>
+  );
+}
+
+/**
+ * The expandable half of a tool line, layered by the KIND of change rather
+ * than by depth: prose is read as prose, code as a diff, a command as itself.
+ * A researcher checking whether a plan document says the right thing should
+ * not have to read "+120 −3".
+ */
+function ToolDetailBody({ detail }: { detail: ToolDetail }) {
+  if (detail.kind === "command") {
+    return <pre className="tool-detail cmd">{detail.body}</pre>;
+  }
+  if (detail.kind === "prose") {
+    if (detail.passages?.length) {
+      return (
+        <div className="tool-detail">
+          {detail.passages.map((passage, index) => (
+            <div className="passage" key={index}>
+              <div className="passage-before">{passage.before}</div>
+              <div className="passage-after">{passage.after}</div>
+            </div>
+          ))}
+        </div>
+      );
+    }
+    return (
+      <MarkdownBody className="tool-detail" text={detail.body} />
+    );
+  }
+  return (
+    <div className="tool-detail">
+      {detail.body.split("\n").map((line, index) => (
+        <div
+          key={index}
+          className={cn(
+            "diffline",
+            line.startsWith("+") && "add",
+            line.startsWith("-") && "del",
+          )}
+        >
+          {line}
+        </div>
+      ))}
     </div>
   );
 }

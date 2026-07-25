@@ -772,12 +772,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
           break;
 
         case "tool_started": {
-          const { toolName, callId, path } = message.payload;
-          const label = toolLabel(toolName, path);
+          const { toolName, callId, path, detail } = message.payload;
+          const label = toolLabel(toolName, path, detail);
           const entry: ActiveToolState = {
             callId,
             toolName,
             path,
+            detail,
             status: "running",
           };
           activeToolsMapRef.current[callId] = entry;
@@ -847,6 +848,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setRunPhaseLabel("");
           setRunHint("");
           setRunCompletedCount((count) => count + 1);
+          // Keep the composer's context ring honest without polling.
+          sendMessage({ type: "get_session_metrics" });
           if (message.payload.sessionId) {
             reconnectSessionIdRef.current = message.payload.sessionId;
             void refreshCurrentTranscript(message.payload.sessionId);

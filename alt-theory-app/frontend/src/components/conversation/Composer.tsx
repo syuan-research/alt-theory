@@ -3,6 +3,7 @@ import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
 import { ApprovalDock } from "@/components/conversation/ApprovalDock";
 import { ModelChip } from "@/components/conversation/ModelChip";
+import { ContextRing } from "@/components/conversation/ContextRing";
 import { DEFAULT_KB_DOMAIN, KB_OFF_VALUE } from "@/lib/constants";
 import { pickFiles } from "@/lib/native";
 
@@ -547,6 +548,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               open={menu === "model"}
               onToggle={() => toggle("model")}
             />
+            <ContextRing />
 
             {app.reviseMode ? (
               <>

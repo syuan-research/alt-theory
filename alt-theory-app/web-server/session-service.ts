@@ -58,6 +58,7 @@ import {
   stripSkillWrapper,
 } from "./session-store.js";
 import { readAppSettings } from "./app-settings.js";
+import { extractToolDetail, extractToolPath } from "./tool-detail.js";
 import {
   readV4SessionHeader,
   writeFoundationRecords,
@@ -2443,6 +2444,11 @@ export class SessionService {
             toolName: event.toolName,
             callId: event.toolCallId,
             path: extractToolPathFromEvent(event),
+            detail:
+              extractToolDetail(
+                event.toolName,
+                (event as { args?: unknown }).args
+              ) ?? undefined,
           },
         });
         break;
@@ -2740,29 +2746,7 @@ function configChangedFields(
 }
 
 function extractToolPathFromEvent(event: AgentSessionEvent): string | null {
-  const args = (event as { args?: unknown }).args;
-  if (!args || typeof args !== "object") return null;
-  const value = args as {
-    path?: unknown;
-    file?: unknown;
-    filePath?: unknown;
-    file_path?: unknown;
-    dir?: unknown;
-    directory?: unknown;
-  };
-  for (const candidate of [
-    value.path,
-    value.file,
-    value.filePath,
-    value.file_path,
-    value.dir,
-    value.directory,
-  ]) {
-    if (typeof candidate === "string" && candidate.trim()) {
-      return candidate;
-    }
-  }
-  return null;
+  return extractToolPath((event as { args?: unknown }).args);
 }
 
 /** Whether a session cwd lives inside the app data dir (a managed session

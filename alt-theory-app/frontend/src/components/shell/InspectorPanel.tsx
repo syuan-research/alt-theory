@@ -5,13 +5,13 @@ import { useApp } from "@/context/AppProvider";
 import { useShell, type RailKey } from "@/context/ShellContext";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { sessionTitle } from "@/lib/sessionList";
-import { renderMarkdown } from "@/lib/markdown";
 import { ApprovalDock } from "@/components/conversation/ApprovalDock";
 import { RecordsPanel } from "@/components/inspector/RecordsPanel";
 import { ProvenancePanel } from "@/components/inspector/ProvenancePanel";
 import { RuntimePanel } from "@/components/inspector/RuntimePanel";
 import { WorkspaceTree } from "@/components/inspector/WorkspaceTree";
 import { ChangesPanel } from "@/components/inspector/ChangesPanel";
+import { MarkdownBody } from "@/components/conversation/MarkdownBody";
 
 const RAIL_META: Record<RailKey, { title: string; icon: string; adv?: boolean }> = {
   chats: { title: "Related conversations", icon: "ph-arrows-split" },
@@ -339,10 +339,7 @@ function RelatedConversation({ sessionId }: { sessionId: string }) {
         {messages.map((message, index) => (
           <div className="cm" key={`${index}-${message.timestamp ?? "message"}`}>
             <div className="w">{message.role === "user" ? "You" : message.role}</div>
-            <div
-              className="markdown-body"
-              dangerouslySetInnerHTML={{ __html: renderMarkdown(message.text) }}
-            />
+            <MarkdownBody text={message.text} />
           </div>
         ))}
         {streaming ? (

@@ -397,6 +397,12 @@ async function createAltTheorySessionWithManager(
   );
   semanticSections.push(
     [
+      "## Diagrams",
+      "The conversation renders ```mermaid code blocks as real diagrams. When the point is a relationship, a flow, or a structure — a causal path, a study design, a decision tree, a set of competing accounts — draw it as a small mermaid diagram alongside the prose rather than describing the shape in words. Keep diagrams small and labelled in the user's language; prose still carries the argument.",
+    ].join("\n")
+  );
+  semanticSections.push(
+    [
       "## Interaction Moments",
       "Some moments in a conversation have a bundled skill written for them. Recognize the moment, then load the skill — do not improvise the behaviour it already encodes:",
       "- the user wants to agree on direction before you build, or asks to align, re-align, 對齊, or be interviewed first: the adaptive-aligning skill;",

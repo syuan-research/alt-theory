@@ -192,6 +192,16 @@
     background: var(--color-card);
     font-weight: 500;
   }
+
+  .mermaid-figure {
+    margin: 0 0 0.75rem;
+    overflow-x: auto;
+  }
+
+  .mermaid-figure svg {
+    max-width: 100%;
+    height: auto;
+  }
 }
 
 /* ============================================================
@@ -332,6 +342,34 @@
   .group-more:hover { background: var(--card-2); color: var(--text-2); }
   .sys-line.sys-ok { border-left-color: var(--color-success); }
   .sys-line.sys-running { border-left-color: var(--color-text-muted); }
+
+  /* an expandable tool line: the action stays one quiet line, the evidence
+     is one click away and never competes with the conversation (alpha.3) */
+  .sys-line.sys-detail { display: block; }
+  .sys-line.sys-detail > summary { display: flex; align-items: baseline; gap: 6px; cursor: pointer; list-style: none; }
+  .sys-line.sys-detail > summary::-webkit-details-marker { display: none; }
+  .sys-line.sys-detail > summary:hover { color: var(--text-2); }
+  .tool-detail { margin: 6px 0 0 20px; max-height: 320px; overflow: auto; border-left: 2px solid var(--hairline); padding-left: 10px; }
+  .tool-detail.cmd { font-family: var(--mono); font-size: 0.76rem; white-space: pre-wrap; word-break: break-word; margin-top: 6px; color: var(--text-2); }
+  .tool-detail.markdown-body { font-size: 0.8125rem; color: var(--text-2); }
+  .tool-detail .passage { margin-bottom: 10px; }
+  .tool-detail .passage-before { white-space: pre-wrap; color: var(--text-3); text-decoration: line-through; text-decoration-color: var(--color-danger); opacity: 0.75; }
+  .tool-detail .passage-after { white-space: pre-wrap; color: var(--ink-soft); margin-top: 4px; }
+
+  /* turn-end changed-files card (alpha.3): machine facts, one click to the diff */
+  .turn-changes { max-width: 660px; margin: 0 auto 22px; padding: 8px 24px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 0.75rem; color: var(--text-3); }
+  .turn-changes .tc-head { display: inline-flex; align-items: center; gap: 5px; }
+  .turn-changes .tc-file { display: inline-flex; align-items: center; gap: 5px; background: var(--card-2); border: 1px solid var(--hairline); border-radius: var(--r-sm); padding: 2px 8px; font: inherit; color: var(--text-2); cursor: pointer; }
+  .turn-changes .tc-file:hover { background: var(--hover); color: var(--ink-soft); }
+  .turn-changes .tc-name { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .turn-changes .tc-add { color: var(--color-success); }
+  .turn-changes .tc-del { color: var(--color-danger); }
+
+  /* context fullness, next to the model chip (alpha.3) */
+  .ctx-ring { display: inline-flex; align-items: center; gap: 5px; font-size: 0.72rem; color: var(--text-3); cursor: default; white-space: nowrap; }
+  .ctx-ring.warn { color: var(--color-warning); }
+  .ctx-ring.danger { color: var(--color-danger); }
+  .ctx-ring-dial { width: 11px; height: 11px; border-radius: 50%; background: conic-gradient(currentColor var(--pct), var(--hairline) 0); }
 
   /* compaction boundary: gray divider with label */
   .compact-line { max-width: 660px; margin: 0 auto 18px; padding: 0 24px; display: flex; align-items: center; gap: 10px; font-size: 0.72rem; color: var(--text-3); }

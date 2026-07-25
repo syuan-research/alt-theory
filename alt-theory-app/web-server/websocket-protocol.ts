@@ -64,6 +64,9 @@ export interface SessionMetrics {
   } | null;
 }
 
+export type { ToolDetail, ToolDetailKind } from "./tool-detail.js";
+import type { ToolDetail } from "./tool-detail.js";
+
 export interface TranscriptMessage {
   role: "user" | "assistant" | "system" | "tool" | "other";
   text: string;
@@ -75,6 +78,8 @@ export interface TranscriptMessage {
   toolCallId?: string;
   toolName?: string;
   toolPath?: string | null;
+  /** What the call did, for the expandable tool line (alpha.3). */
+  toolDetail?: ToolDetail;
   success?: boolean;
   truncated?: boolean;
   /** Non-message boundary markers rendered specially (e.g. context compaction). */
@@ -165,7 +170,7 @@ export type ServerMessage =
       type: "run_phase";
       payload: { phase: "connecting" | "thinking" | "idle" };
     }
-  | { type: "tool_started"; payload: { toolName: string; callId: string; path?: string | null } }
+  | { type: "tool_started"; payload: { toolName: string; callId: string; path?: string | null; detail?: ToolDetail } }
   | { type: "tool_updated"; payload: { callId: string; text?: string; progress?: number } }
   | { type: "tool_finished"; payload: { callId: string; success: boolean; output?: unknown } }
   | { type: "run_completed"; payload: SessionSnapshot }
