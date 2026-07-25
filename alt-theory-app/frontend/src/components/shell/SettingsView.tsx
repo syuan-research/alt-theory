@@ -127,6 +127,12 @@ function ModelsPanel() {
 function AuthConnectCard({ onChanged }: { onChanged: () => void }) {
   const PROVIDERS = [
     {
+      id: "anthropic",
+      name: "Claude",
+      sub: "Anthropic subscription",
+      icon: "ph-sparkle",
+    },
+    {
       id: "openrouter",
       name: "OpenRouter",
       sub: "OpenRouter",

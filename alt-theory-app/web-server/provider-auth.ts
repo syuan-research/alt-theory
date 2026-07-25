@@ -7,6 +7,10 @@ import {
 } from "@earendil-works/pi-coding-agent";
 
 export const PROVIDER_AUTH_IDS = [
+  // Pi ships OAuth flows for anthropic/openrouter/xai/openai-codex (and more);
+  // the Claude subscription is the one beta users are most likely to already
+  // have, so it leads the list. Adding a provider here is the whole change.
+  "anthropic",
   "openrouter",
   "xai",
   "openai-codex",

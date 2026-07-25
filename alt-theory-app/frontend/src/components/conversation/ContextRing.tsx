@@ -9,17 +9,23 @@ import { useApp } from "@/context/AppProvider";
  * answered is "how much room is left", not "how many tokens".
  */
 export function ContextRing() {
-  const usage = useApp().metrics?.contextUsage;
+  const metrics = useApp().metrics;
+  const usage = metrics?.contextUsage;
   if (!usage || usage.percent === null) return null;
 
   const percent = Math.max(0, Math.min(100, Math.round(usage.percent)));
   const tone = percent >= 90 ? "danger" : percent >= 75 ? "warn" : "";
   const tokens = usage.tokens ?? 0;
+  // Cost rides along in the tooltip: an unattended job that flails for an hour
+  // is exactly the surprise both user lenses named as a reason to stop paying.
+  const cost = metrics?.cost
+    ? `\nThis conversation has cost about $${metrics.cost.toFixed(2)} so far.`
+    : "";
 
   return (
     <span
       className={`ctx-ring ${tone}`}
-      title={`Context ${percent}% full — ${tokens.toLocaleString()} of ${usage.contextWindow.toLocaleString()} tokens. Older messages are summarized automatically when it fills up.`}
+      title={`Context ${percent}% full — ${tokens.toLocaleString()} of ${usage.contextWindow.toLocaleString()} tokens. Older messages are summarized automatically when it fills up.${cost}`}
     >
       <span
         className="ctx-ring-dial"

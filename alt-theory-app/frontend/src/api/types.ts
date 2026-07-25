@@ -308,7 +308,11 @@ export interface ConfigStatus {
   activeModel: string | null;
 }
 
-export type ProviderAuthId = "openrouter" | "xai" | "openai-codex";
+export type ProviderAuthId =
+  | "anthropic"
+  | "openrouter"
+  | "xai"
+  | "openai-codex";
 
 export type ProviderAuthEvent =
   | { type: "info"; message: string; links?: { url: string; label?: string }[] }
