@@ -2857,12 +2857,14 @@ test("SessionService retries a failed latest turn without losing earlier turns",
         .map((message: any) => message.text),
       ["first", "second"],
     );
+    // Break-point retry (alpha.5 M0): the failed attempt's completed work is
+    // adopted by the replacement run and stays visible, not hidden.
     assert.deepEqual(
       retryTranscripts
         .at(-1)
         ?.filter((message: any) => message.role === "assistant")
         .map((message: any) => message.text),
-      ["answer:first"],
+      ["answer:first", "answer:second"],
     );
     await retried.completion;
 
@@ -2875,6 +2877,14 @@ test("SessionService retries a failed latest turn without losing earlier turns",
     assert.equal(retryRecord.status, "completed");
     assert.equal(retryRecord.turnId, failed.turnId);
     assert.equal(retryRecord.supersedesRunId, failed.runId);
+    // The replacement run adopts the failed attempt's entries (preserved
+    // work) in addition to its own continuation entries.
+    for (const entryId of failed.assistantEntryIds) {
+      assert.ok(retryRecord.assistantEntryIds.includes(entryId));
+    }
+    assert.ok(
+      retryRecord.assistantEntryIds.length > failed.assistantEntryIds.length,
+    );
 
     const detail = readSessionDetail(fixture.dataDir, created.sessionId);
     assert.deepEqual(

@@ -115,6 +115,14 @@ export function MessageList() {
             />
           );
         }
+        if (part.kind === "notice") {
+          return (
+            <SysLine key={`sp-${index}`}>
+              <i className="ph ph-arrows-clockwise" />
+              {part.text}
+            </SysLine>
+          );
+        }
         return <ToolLine key={part.tool.callId} tool={part.tool} />;
       })}
 

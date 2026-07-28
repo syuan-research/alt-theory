@@ -846,18 +846,43 @@ export function AppProvider({ children }: { children: ReactNode }) {
           break;
         }
 
-        case "run_phase":
-          setRunPhaseLabel({
-            connecting: "Connecting…",
-            processing: "Processing…",
-            thinking: "Thinking…",
-            tool: "Using a tool…",
-            compacting: "Compacting conversation…",
-            "awaiting-user": "Waiting for your approval…",
-            idle: "",
-            error: "",
-          }[message.payload.phase]);
+        case "run_phase": {
+          const retry = message.payload.retry;
+          if (message.payload.phase === "retrying" && retry) {
+            setRunPhaseLabel(
+              `Connection issue — retrying (${retry.attempt}/${retry.maxAttempts})…`,
+            );
+            // Everything already produced stays; only the interrupted stream
+            // is regenerated. A divider keeps the resumed text from being
+            // glued onto the partial it replaces.
+            setStreamParts((parts) =>
+              parts.length === 0 || parts[parts.length - 1].kind === "notice"
+                ? parts
+                : [
+                    ...parts,
+                    {
+                      kind: "notice",
+                      text: "Connection dropped — continuing from where it left off",
+                    },
+                  ],
+            );
+            break;
+          }
+          setRunPhaseLabel(
+            {
+              connecting: "Connecting…",
+              processing: "Processing…",
+              thinking: "Thinking…",
+              tool: "Using a tool…",
+              compacting: "Compacting conversation…",
+              retrying: "Connection issue — retrying…",
+              "awaiting-user": "Waiting for your approval…",
+              idle: "",
+              error: "",
+            }[message.payload.phase],
+          );
           break;
+        }
 
         case "run_completed":
           setCanRetryFailed(false);

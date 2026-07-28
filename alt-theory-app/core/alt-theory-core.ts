@@ -31,6 +31,7 @@ import {
   createSecurityExtension,
   isPathInside,
 } from "./security-extension.js";
+import { createTurnContinuityExtension } from "./turn-continuity.js";
 import { createWebAccessToolDefinitions } from "./web-access-tools.js";
 import {
   writeJsonAtomic,
@@ -548,6 +549,10 @@ async function createAltTheorySessionWithManager(
     noExtensions: true,
     extensionFactories: [
       ...(config.extensionFactories ?? []),
+      // Strips orphaned toolCall blocks from errored/aborted partial
+      // assistant messages so preserved break-point context never sends a
+      // tool_use without its tool_result (alpha.5 M0 continuity repair).
+      createTurnContinuityExtension(),
       createSecurityExtension({
         sessionCwd: cwd,
         getWritableRoots: writableRootsForMode,

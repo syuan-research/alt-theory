@@ -580,9 +580,11 @@ export type ServerMessage =
           | "thinking"
           | "tool"
           | "compacting"
+          | "retrying"
           | "awaiting-user"
           | "idle"
           | "error";
+        retry?: { attempt: number; maxAttempts: number; delayMs: number };
       };
     }
   | { type: "tool_started"; payload: { toolName: string; callId: string; path?: string | null; detail?: ToolDetail } }
@@ -618,7 +620,9 @@ export interface ActiveToolState {
 export type StreamPart =
   | { kind: "thinking"; text: string }
   | { kind: "text"; text: string }
-  | { kind: "tool"; tool: ActiveToolState };
+  | { kind: "tool"; tool: ActiveToolState }
+  /** In-stream status divider, e.g. a connection retry boundary. */
+  | { kind: "notice"; text: string };
 
 export interface SessionSelectors {
   projectId: string | null;

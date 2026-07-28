@@ -217,9 +217,13 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
             ) : null}
             {app.runHint ? <span>{app.runHint}</span> : null}
             {app.canRetryFailed ? (
-              <button className="flat retry-run" onClick={app.retryFailed}>
+              <button
+                className="flat retry-run"
+                onClick={app.retryFailed}
+                title="Completed work is kept; the answer resumes from the break point"
+              >
                 <i className="ph ph-arrow-clockwise" aria-hidden="true" />
-                Retry
+                Continue from break point
               </button>
             ) : null}
             {app.attachmentHint ? <span>{app.attachmentHint}</span> : null}

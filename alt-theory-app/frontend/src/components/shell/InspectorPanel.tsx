@@ -252,6 +252,7 @@ function RelatedConversation({ sessionId }: { sessionId: string }) {
             thinking: "Thinking…",
             tool: "Using a tool…",
             compacting: "Compacting…",
+            retrying: "Retrying…",
             "awaiting-user": "Waiting for approval…",
             idle: "Ready",
             error: "Error",

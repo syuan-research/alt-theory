@@ -212,9 +212,11 @@ export type SessionServiceEvent =
           | "thinking"
           | "tool"
           | "compacting"
+          | "retrying"
           | "awaiting-user"
           | "idle"
           | "error";
+        retry?: { attempt: number; maxAttempts: number; delayMs: number };
       };
     }
   | {
@@ -864,17 +866,18 @@ export class SessionService {
 
   /**
    * Retry a failed/no-answer attempt without creating a second user message.
-   * The existing user entry stays on the active branch; only the failed
-   * assistant continuation is abandoned.
+   * The existing user entry stays on the active branch, and every completed
+   * step of the failed attempt (tool calls, tool results, partial output)
+   * is preserved: the replacement run adopts those entries and the agent
+   * resumes from the break point instead of rerunning the whole turn.
+   * Only the trailing errored/aborted assistant message is regenerated
+   * (stripped in continueAgentTurnAfterModelSwitch, kept in Pi history).
    */
   private retryRunInPlace(
     managed: ManagedSession,
     run: RunRecord & { userEntryId: string },
   ): RunHandle {
     const sessionId = managed.manifest.sessionId;
-    managed.session.sessionManager.branch(run.userEntryId);
-    managed.session.state.messages =
-      managed.session.sessionManager.buildSessionContext().messages;
     appendRunRecord(managed.manifest.recordsDir, {
       ...runRecordBody(run),
       status: "superseded",
@@ -899,7 +902,10 @@ export class SessionService {
       status: "accepted",
       piSessionFile: managed.session.sessionFile ?? null,
       userEntryId: run.userEntryId,
-      assistantEntryIds: [],
+      // Adopt the failed attempt's entries so its completed work stays
+      // active (visible and in context) while the superseded record hides
+      // nothing that still belongs to this turn.
+      assistantEntryIds: [...run.assistantEntryIds],
       supersedesRunId: run.runId,
       acceptedAt,
       completedAt: null,
@@ -923,15 +929,18 @@ export class SessionService {
         pendingError = error;
       }
 
-      const assistantEntryIds = managed.session.sessionManager
-        .getEntries()
-        .filter(
-          (entry) =>
-            !beforeEntryIds.has(entry.id) &&
-            entry.type === "message" &&
-            (entry.message as { role?: string }).role === "assistant",
-        )
-        .map((entry) => entry.id);
+      const assistantEntryIds = [
+        ...run.assistantEntryIds,
+        ...managed.session.sessionManager
+          .getEntries()
+          .filter(
+            (entry) =>
+              !beforeEntryIds.has(entry.id) &&
+              entry.type === "message" &&
+              (entry.message as { role?: string }).role === "assistant",
+          )
+          .map((entry) => entry.id),
+      ];
       const finalError =
         managed.session.state.errorMessage ??
         (pendingError instanceof Error
@@ -2726,6 +2735,16 @@ export class SessionService {
           this.emitRunPhase(managed, "processing");
         }
         break;
+      case "auto_retry_start":
+        // Pi is waiting out a transient provider error before resuming the
+        // turn from the last completed step. Completed tool calls stay in
+        // context; only the dropped stream's partial message is regenerated.
+        this.emitRunPhase(managed, "retrying", {
+          attempt: event.attempt,
+          maxAttempts: event.maxAttempts,
+          delayMs: event.delayMs,
+        });
+        break;
       case "agent_end": {
         if (event.willRetry) {
           // Pi auto-retries this error and emits another agent_end afterwards;
@@ -2771,11 +2790,16 @@ export class SessionService {
       | "thinking"
       | "tool"
       | "compacting"
+      | "retrying"
       | "awaiting-user"
       | "idle"
       | "error",
+    retry?: { attempt: number; maxAttempts: number; delayMs: number },
   ): void {
-    this.emit(managed, { type: "run_phase", payload: { phase } });
+    this.emit(managed, {
+      type: "run_phase",
+      payload: retry ? { phase, retry } : { phase },
+    });
   }
 
   private emit(managed: ManagedSession, event: SessionServiceEvent): void {

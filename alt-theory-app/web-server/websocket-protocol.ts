@@ -182,9 +182,12 @@ export type ServerMessage =
           | "thinking"
           | "tool"
           | "compacting"
+          | "retrying"
           | "awaiting-user"
           | "idle"
           | "error";
+        /** Present when phase is "retrying": Pi auto-retry progress. */
+        retry?: { attempt: number; maxAttempts: number; delayMs: number };
       };
     }
   | { type: "tool_started"; payload: { toolName: string; callId: string; path?: string | null; detail?: ToolDetail } }
