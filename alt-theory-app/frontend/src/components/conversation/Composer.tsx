@@ -486,21 +486,6 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                 </div>
               )}
               <div className="sep" />
-              {canAttach ? (
-                <div
-                  className="mi"
-                  onClick={() => {
-                    setMenu(null);
-                    void pickFiles("Full path of the file to attach:").then(
-                      (paths) =>
-                        paths.forEach((p) => app.stageWorkspacePath(p)),
-                    );
-                  }}
-                >
-                  <i className="ph ph-paperclip" />
-                  Attach file
-                </div>
-              ) : null}
               {pureMode && app.sessionId ? (
                 <div
                   className="mi"

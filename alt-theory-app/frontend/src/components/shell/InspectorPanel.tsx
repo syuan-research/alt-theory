@@ -169,20 +169,51 @@ function RelatedConversations() {
     worker: "ph-robot",
   };
 
+  // Orientation when the open conversation is itself a branch/side/helper:
+  // a way back to where it started, so a fresh fork never shows a dead end.
+  const current = app.sessions.find((s) => s.sessionId === app.sessionId);
+  const parent = current?.forkedFrom
+    ? app.sessions.find(
+        (s) => s.sessionId === current.forkedFrom?.sessionId && !s.deletedAt,
+      )
+    : undefined;
+
   if (activeChildId) {
     return <RelatedConversation sessionId={activeChildId} />;
   }
 
+  const parentRow = parent ? (
+    <button
+      key="parent"
+      className="sc-item"
+      onClick={() => {
+        shell.openApp();
+        app.setActiveRelatedSessionId(null);
+        app.openCatalogSession(parent.sessionId);
+      }}
+    >
+      <div className="t">
+        <i className="ph ph-arrow-u-up-left" />
+        {sessionTitle(parent, app.sessionDisplayNames)}
+      </div>
+      <div className="d">Where this branch started — go back anytime</div>
+    </button>
+  ) : null;
+
   if (children.length === 0) {
     return (
-      <div className="rp-empty">
-        No related conversations. Use <b>/branch</b> or <b>/btw</b>, or open Helper.
-      </div>
+      <>
+        {parentRow}
+        <div className="rp-empty">
+          No related conversations. Use <b>/branch</b> or <b>/btw</b>, or open Helper.
+        </div>
+      </>
     );
   }
 
   return (
     <>
+      {parentRow}
       {children.map((child) => (
         <button
           key={child.sessionId}

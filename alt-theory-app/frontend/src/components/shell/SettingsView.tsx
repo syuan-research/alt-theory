@@ -54,7 +54,7 @@ export function SettingsView() {
           },
         ]
       : []),
-    { key: "features", label: "What Alt can do", icon: "ph-sparkle", soon: true },
+    { key: "features", label: "What Alt can do", icon: "ph-sparkle" },
     { key: "about", label: "About", icon: "ph-info" },
   ];
 
@@ -948,17 +948,71 @@ function AboutPanel() {
   );
 }
 
-// Reserved placeholder (owner 2026-07-24): a plain-language guide to what Alt
-// can do. Marked "soon" until the copy lands, alongside the user-docs pass.
 function FeaturesPanel() {
   return (
     <div className="set-panel">
       <h2>What Alt can do</h2>
       <p className="sub">
-        A short guide to what Alt can help with is coming here. For now, the
-        Understand and Work modes on the new-conversation screen explain the
-        basics before you send your first message.
+        A short guide. For anything here, you can also just ask — open a
+        Helper conversation from the right panel and Alt will answer from the
+        current documentation.
       </p>
+      <div className="set-card">
+        <h4>Think through research questions with you</h4>
+        <p>
+          In <strong>Understand</strong>, Alt works only with what you bring
+          into the conversation. It separates what it found from what it
+          inferred, marks uncertainty instead of papering over it, and moves
+          in steps you can steer — built for research design, framing, and
+          interpretation, where being agreeably wrong is worse than being
+          slower.
+        </p>
+      </div>
+      <div className="set-card">
+        <h4>Do concrete work on your materials</h4>
+        <p>
+          In <strong>Work</strong>, the same conversation can read and produce
+          documents, work through the files in your working folders, and
+          search the web and literature. Actions that cross a boundary ask
+          for your approval first. Switching modes never moves or changes
+          your folders.
+        </p>
+      </div>
+      <div className="set-card">
+        <h4>Keep every direction you explore</h4>
+        <p>
+          Conversations are durable: close the app and pick any of them up
+          later. From any reply you can edit your message, try the same
+          prompt again, or branch into a related conversation — the original
+          always stays intact. Related conversations live in the right panel.
+        </p>
+      </div>
+      <div className="set-card">
+        <h4>Delegate parts of a task</h4>
+        <p>
+          On larger Work tasks, Alt can hand a bounded piece to a worker
+          agent and keep going. Workers appear in the right panel like any
+          related conversation — you can watch them, message them directly,
+          or stop them at any point.
+        </p>
+      </div>
+      <div className="set-card">
+        <h4>Draw on roles, knowledge sets, and skills</h4>
+        <p>
+          A role shapes who Alt speaks as; a knowledge set gives it material
+          to ground answers in; skills are readable instruction files that
+          carry its working methods. You can read every bundled skill and add
+          your own — see the Role &amp; Knowledge panel here in Settings.
+        </p>
+      </div>
+      <div className="set-card">
+        <h4>What Alt will not do</h4>
+        <p>
+          It will not invent citations, silently act outside its approved
+          folders, or paper over what it could not verify. When something is
+          genuinely open, it says so and offers realistic options.
+        </p>
+      </div>
     </div>
   );
 }

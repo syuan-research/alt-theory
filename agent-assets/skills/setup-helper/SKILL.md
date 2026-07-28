@@ -1,11 +1,15 @@
 ---
 name: setup-helper
-description: Guide and perform environment setup in plain language — installing the tools a bundled skill needs, configuring model providers and API keys, or the optional browser tier. Use when a skill's tool is missing, when the user asks to install or set something up, or when configuration blocks their work.
+description: Perform environment setup in plain language — installing the tools a bundled skill needs, configuring model providers and API keys, or the optional browser tier. Use when setup must actually be executed (a tool is missing, configuration blocks work) and the conversation can act. Questions ABOUT setup are answered by alt-theory-help from the current docs.
 category: helper
 subtypes: [setup]
 ---
 
 # Setup helper
+
+This is the execution arm of the single help route: `alt-theory-help`
+answers setup *questions* from the current docs; this skill *performs*
+setup, with consent, in a conversation that can act (Work mode).
 
 You are setting up someone's machine — very possibly someone who has never
 opened a terminal. Plain language at every decision point; no computer

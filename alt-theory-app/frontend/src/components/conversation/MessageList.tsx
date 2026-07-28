@@ -325,7 +325,7 @@ function TranscriptEntry({
     confirmOnce(
       app,
       "alt-theory-hint-edit",
-      `Editing rewrites the conversation from this message: Alt answers again, and everything after it becomes a previous version — kept, not deleted.${
+      `Rewording a question often changes the answer more than you'd expect. Your edit opens a new branch from this point and Alt answers there — this conversation stays whole, so you can compare the two.${
         app.sessionMode === "full"
           ? " Files already changed on disk are not reverted."
           : ""
@@ -344,9 +344,16 @@ function TranscriptEntry({
   };
 
   const trySamePrompt = (text: string, entryId: string | null) => {
-    if (app.branchRevision(text, entryId ?? undefined)) {
-      shell.openRail("chats");
-    }
+    confirmOnce(
+      app,
+      "alt-theory-hint-try-same",
+      "The same question can get a genuinely different answer — comparing a second take shows what holds steady and what was one framing among several. This opens a new branch; the answer here stays.",
+      () => {
+        if (app.branchRevision(text, entryId ?? undefined)) {
+          shell.openRail("chats");
+        }
+      },
+    );
   };
 
   if (message.role === "user") {
@@ -483,8 +490,8 @@ function UserBubble({
         </button>
         {canEdit ? (
           <button
-            title="Edit and branch"
-            aria-label="Edit message and rewrite from here"
+            title="Edit and ask again (opens a new branch; this conversation stays)"
+            aria-label="Edit message and ask again in a new branch"
             disabled={isRunning}
             onClick={() => onEdit(trimmed, entryId)}
           >
@@ -492,8 +499,8 @@ function UserBubble({
           </button>
         ) : null}
         <button
-          title="Try same prompt again (branches; the original answer stays)"
-          aria-label="Try the same prompt again in a new branch"
+          title="Ask the same question again (opens a new branch; this answer stays)"
+          aria-label="Ask the same question again in a new branch"
           disabled={isRunning}
           onClick={() => onTrySame(trimmed, entryId)}
         >
