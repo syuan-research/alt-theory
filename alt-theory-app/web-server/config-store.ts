@@ -28,6 +28,7 @@ import {
   getBuiltinProviders,
   type BuiltinProvider,
 } from "@earendil-works/pi-ai/providers/all";
+import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import {
   existsSync,
   mkdirSync,
@@ -38,6 +39,7 @@ import {
 import { dirname, join, resolve } from "path";
 import { randomUUID } from "crypto";
 import { ensureLocalModeDefaults } from "./local-mode-paths.js";
+import { catalogThinkingLevels } from "./models-dev-metadata.js";
 
 // ---------------------------------------------------------------------------
 // Paths (Pi-native; local bundle points this at %USERPROFILE%\.alt-theory\pi-agent)
@@ -87,6 +89,13 @@ export interface ConfigModel {
   id: string;
   name?: string;
   reasoning?: boolean;
+  /** Optional user correction persisted in models.json. */
+  thinkingLevels?: ThinkingLevel[];
+  /** Resolved catalog/user levels returned to the UI; never persisted. */
+  availableThinkingLevels?: ThinkingLevel[];
+  thinkingLevelMap?: Partial<
+    Record<"off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max", string | null>
+  >;
   input?: ("text" | "image")[];
   contextWindow?: number;
   maxTokens?: number;
@@ -132,15 +141,13 @@ export interface ConfigStatus {
   activeModel: string | null;
 }
 
-export interface FetchedModel {
-  id: string;
-  name?: string;
-}
+export interface FetchedModel extends ConfigModel {}
 
 export interface RuntimeModelConfig {
   modelProvider?: string;
   modelId?: string;
   modelsPath?: string;
+  authPath?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -321,17 +328,30 @@ export function listProviders(agentDir: string): ProviderView[] {
   return [...names].map((name) => {
     const block = models.providers?.[name] ?? {};
     const configuredModels = Array.isArray(block.models) ? block.models : [];
-    const viewModels =
+    const sourceModels =
       configuredModels.length > 0
         ? configuredModels
         : builtinConfigModels(name);
     const firstBuiltin = builtinModelList(name).find(
-      (model) => model.id === viewModels[0]?.id,
+      (model) => model.id === sourceModels[0]?.id,
     );
+    const baseUrl = block.baseUrl ?? firstBuiltin?.baseUrl;
+    const viewModels = sourceModels.map((model) => {
+      const builtin = builtinModelList(name).find(
+        (candidate) => candidate.id === model.id,
+      );
+      return {
+        ...model,
+        availableThinkingLevels:
+          model.thinkingLevels ??
+          catalogThinkingLevels(agentDir, name, baseUrl, model.id) ??
+          piBuiltinThinkingLevels(builtin),
+      };
+    });
     const keyState = keyStateForProvider(agentDir, name, block);
     return {
       name,
-      baseUrl: block.baseUrl ?? firstBuiltin?.baseUrl,
+      baseUrl,
       api:
         keyState === "oauth"
           ? undefined
@@ -350,6 +370,20 @@ export function listProviders(agentDir: string): ProviderView[] {
   });
 }
 
+export function initialThinkingLevelForModel(
+  agentDir: string,
+  providerName: string,
+  modelId: string,
+): ThinkingLevel {
+  const model = listProviders(agentDir)
+    .find((provider) => provider.name === providerName)
+    ?.models.find((candidate) => candidate.id === modelId);
+  if (!model?.reasoning) return "off";
+  const levels =
+    model.availableThinkingLevels?.filter((level) => level !== "off") ?? [];
+  return levels[Math.floor((levels.length - 1) / 2)] ?? "off";
+}
+
 function isBuiltInProvider(name: string): boolean {
   return (getBuiltinProviders() as string[]).includes(name);
 }
@@ -364,12 +398,34 @@ function builtinConfigModels(name: string): ConfigModel[] {
     id: model.id,
     name: model.name,
     reasoning: model.reasoning,
+    thinkingLevelMap: model.thinkingLevelMap,
     input: model.input,
     contextWindow: model.contextWindow,
     maxTokens: model.maxTokens,
     compat: model.compat,
     cost: model.cost,
   }));
+}
+
+function piBuiltinThinkingLevels(
+  model:
+    | {
+        reasoning?: boolean;
+        thinkingLevelMap?: ConfigModel["thinkingLevelMap"];
+      }
+    | undefined,
+): ThinkingLevel[] {
+  if (!model?.reasoning) return [];
+  const map = model.thinkingLevelMap;
+  const levels: ThinkingLevel[] = (
+    ["off", "minimal", "low", "medium", "high"] as const
+  ).filter(
+    (level) => map?.[level] !== null,
+  );
+  for (const level of ["xhigh", "max"] as const) {
+    if (typeof map?.[level] === "string") levels.push(level);
+  }
+  return levels;
 }
 
 function customProviderNeedsApiKey(
@@ -521,11 +577,11 @@ export async function fetchProviderModels(
     const accessible = new Set(fetched.map((model) => model.id));
     return builtins
       .filter((model) => accessible.has(model.id))
-      .map(({ id, name }) => ({ id, name }));
+      .map((model) => ({ ...model }));
   }
   if (!block) {
     if (builtins.length > 0) {
-      return builtins.map(({ id, name }) => ({ id, name }));
+      return builtins.map((model) => ({ ...model }));
     }
     throw new ConfigValidationError(`Unknown provider: ${provider}`);
   }
@@ -652,6 +708,7 @@ export function getRuntimeModelConfig(agentDir: string): RuntimeModelConfig {
     modelProvider: active.provider,
     modelId: active.model,
     modelsPath: modelsJsonPath(agentDir),
+    authPath: authJsonPath(agentDir),
   };
 }
 
@@ -696,9 +753,40 @@ export function getConfigStatus(agentDir: string): ConfigStatus {
   };
 }
 
+/**
+ * Verify an expired active OAuth credential through the same ModelRuntime
+ * resolver used by real turns. A stored refresh token is connection metadata,
+ * not proof that the active model is currently usable.
+ */
+export async function getVerifiedConfigStatus(
+  agentDir: string,
+  resolveOAuth: (provider: string) => Promise<boolean> = async (provider) => {
+    const runtime = await runtimeFor(agentDir);
+    return Boolean(await runtime.getAuth(provider));
+  },
+): Promise<ConfigStatus> {
+  const status = getConfigStatus(agentDir);
+  if (!status.activeUsable || !status.activeProvider) return status;
+  const credential = storedCredential(agentDir, status.activeProvider);
+  if (credential?.type !== "oauth" || credential.expires > Date.now()) {
+    return status;
+  }
+  try {
+    if (await resolveOAuth(status.activeProvider)) return getConfigStatus(agentDir);
+  } catch {
+    // The precise provider error remains in the runtime/send path. Config UI
+    // only needs a safe, actionable truth state without exposing auth details.
+  }
+  return {
+    ...status,
+    activeUsable: false,
+    activeIssue: `OAuth for '${status.activeProvider}' could not be refreshed. Reconnect this account before starting a conversation.`,
+  };
+}
+
 export class ConfigValidationError extends Error {}
 
-function normalizeModelListPayload(payload: unknown): FetchedModel[] {
+export function normalizeModelListPayload(payload: unknown): FetchedModel[] {
   const source = Array.isArray(payload)
     ? payload
     : payload &&
@@ -709,25 +797,127 @@ function normalizeModelListPayload(payload: unknown): FetchedModel[] {
   const seen = new Set<string>();
   const result: FetchedModel[] = [];
   for (const item of source) {
+    const row =
+      item && typeof item === "object"
+        ? (item as Record<string, unknown>)
+        : null;
     const id =
       typeof item === "string"
         ? item
-        : item && typeof item === "object"
+        : row
           ? String(
-              (item as { id?: unknown; name?: unknown; model?: unknown }).id ??
-                (item as { id?: unknown; name?: unknown; model?: unknown })
-                  .name ??
-                (item as { id?: unknown; name?: unknown; model?: unknown })
-                  .model ??
+              row.id ??
+                row.name ??
+                row.model ??
                 "",
             )
           : "";
     const normalized = id.trim();
     if (!normalized || seen.has(normalized)) continue;
     seen.add(normalized);
-    result.push({ id: normalized, name: normalized });
+    const name =
+      typeof row?.name === "string" && row.name.trim()
+        ? row.name.trim()
+        : normalized;
+    const contextWindow = positiveInteger(
+      row?.contextWindow ??
+        row?.context_window ??
+        row?.context_length ??
+        row?.max_context_length,
+    );
+    const maxTokens = positiveInteger(
+      row?.maxTokens ?? row?.max_tokens ?? row?.max_output_tokens,
+    );
+    const input = normalizeModelInput(row?.input ?? row?.input_modalities);
+    const thinkingLevels =
+      normalizeThinkingLevels(row?.thinkingLevels ?? row?.thinking_levels) ??
+      normalizeReasoningOptions(row?.reasoning_options);
+    const thinkingLevelMap = normalizeThinkingLevelMap(
+      row?.thinkingLevelMap ?? row?.thinking_level_map,
+    );
+    result.push({
+      id: normalized,
+      name,
+      ...(typeof row?.reasoning === "boolean"
+        ? { reasoning: row.reasoning }
+        : thinkingLevels?.length
+          ? { reasoning: true }
+          : {}),
+      ...(thinkingLevels !== undefined ? { thinkingLevels } : {}),
+      ...(thinkingLevelMap ? { thinkingLevelMap } : {}),
+      ...(input ? { input } : {}),
+      ...(contextWindow ? { contextWindow } : {}),
+      ...(maxTokens ? { maxTokens } : {}),
+    });
   }
   return result;
+}
+
+function positiveInteger(value: unknown): number | undefined {
+  const number = typeof value === "number" ? value : Number(value);
+  return Number.isInteger(number) && number > 0 ? number : undefined;
+}
+
+function normalizeModelInput(value: unknown): ("text" | "image")[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const input = value.filter(
+    (entry): entry is "text" | "image" => entry === "text" || entry === "image",
+  );
+  return input.length > 0 ? [...new Set(input)] : undefined;
+}
+
+function normalizeThinkingLevels(
+  value: unknown,
+): ThinkingLevel[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const allowed = new Set<ThinkingLevel>([
+    "off",
+    "minimal",
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max",
+  ]);
+  const result: ThinkingLevel[] = [];
+  for (const entry of value) {
+    const normalized = entry === "none" ? "off" : entry;
+    if (
+      typeof normalized === "string" &&
+      allowed.has(normalized as ThinkingLevel) &&
+      !result.includes(normalized as ThinkingLevel)
+    ) {
+      result.push(normalized as ThinkingLevel);
+    }
+  }
+  return result;
+}
+
+function normalizeReasoningOptions(value: unknown): ThinkingLevel[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const effort = value.find(
+    (entry) =>
+      entry &&
+      typeof entry === "object" &&
+      (entry as { type?: unknown }).type === "effort",
+  ) as { values?: unknown } | undefined;
+  return effort ? (normalizeThinkingLevels(effort.values) ?? []) : [];
+}
+
+function normalizeThinkingLevelMap(
+  value: unknown,
+): ConfigModel["thinkingLevelMap"] | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const allowed = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
+  const result: NonNullable<ConfigModel["thinkingLevelMap"]> = {};
+  for (const level of allowed) {
+    const mapped = (value as Record<string, unknown>)[level];
+    if (typeof mapped === "string") result[level] = mapped;
+    else if (mapped === null) result[level] = null;
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
 }
 
 function assertValidProviderName(name: string): void {
@@ -770,7 +960,7 @@ export async function upsertProvider(
   agentDir: string,
   input: ConfigProviderInput,
   options: { keyStorage?: "literal" | "env"; clearKey?: boolean } = {},
-): ProviderView {
+): Promise<ProviderView> {
   assertValidProviderName(input.name);
   assertValidApiType(input.api);
   assertNotCommandKey(input.apiKey);
@@ -788,7 +978,19 @@ export async function upsertProvider(
   const existingBlock = models.providers[input.name];
 
   const runtimeBaseUrl = normalizeRuntimeBaseUrl(input.api, input.baseUrl);
-  const providerBlock: Record<string, unknown> = { models: input.models };
+  const persistedModels = input.models.map(
+    ({
+      availableThinkingLevels: _availableThinkingLevels,
+      thinkingLevels,
+      ...model
+    }) => ({
+      ...model,
+      ...(thinkingLevels !== undefined
+        ? { thinkingLevels: normalizeThinkingLevels(thinkingLevels) ?? [] }
+        : {}),
+    }),
+  );
+  const providerBlock: Record<string, unknown> = { models: persistedModels };
   if (runtimeBaseUrl) providerBlock.baseUrl = runtimeBaseUrl;
   if (input.api) providerBlock.api = input.api;
   if (input.options && Object.keys(input.options).length > 0) {
@@ -831,7 +1033,7 @@ export async function upsertProvider(
     providerHasModels({ models: input.models }) &&
     customProviderNeedsApiKey(input.name, {
       baseUrl: runtimeBaseUrl,
-      models: input.models,
+      models: persistedModels,
     }) &&
     !runtimeBaseUrl
   ) {
@@ -868,7 +1070,7 @@ export async function upsertProvider(
     options: input.options,
     keyState: options.clearKey ? "missing" : keyState,
     hasKey: options.clearKey ? false : keyState === "stored",
-    models: input.models,
+    models: persistedModels,
     active: false,
   };
 }

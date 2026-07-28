@@ -221,7 +221,6 @@ test("SessionService records ordinary run trajectory and Pi entry mappings", asy
       timestamp: Date.now(),
     });
   };
-
   try {
     const run = service.runPrompt(created.sessionId, "question");
     await run.completion;
@@ -288,7 +287,6 @@ test("SessionService revises only the latest turn without creating a branch", as
       timestamp: Date.now(),
     });
   };
-
   try {
     const original = service.runPrompt(created.sessionId, "original");
     await original.completion;
@@ -798,6 +796,12 @@ test("SessionService preserves imported history after an aborted first run", asy
     service.runPrompt(created.sessionId, "first Alt turn").completion,
     /aborted/,
   );
+  const abortedRun = latestRunSnapshots(
+    service.getManifest(created.sessionId).recordsDir,
+  ).at(-1)!;
+  assert.equal(abortedRun.status, "aborted");
+  assert.ok(abortedRun.userEntryId);
+  assert.equal(abortedRun.assistantEntryIds.length, 1);
   const failedLeaf = managed.session.sessionManager.getLeafId();
   await service.disposeAll();
 
@@ -1912,6 +1916,10 @@ test("SessionService keeps run completion and busy state open until fallback con
   });
   const internal = service as any;
   const managed = internal.sessions.get(created.sessionId);
+  const events: SessionServiceEvent[] = [];
+  const detachListener = service.attach(created.sessionId, (event) =>
+    events.push(event),
+  );
   const continueGate = createDeferred<void>();
   let completionSettled = false;
 
@@ -2005,7 +2013,16 @@ test("SessionService keeps run completion and busy state open until fallback con
     assert.equal(latest.status, "completed");
     assert.equal(latest.assistantEntryIds.length, 1);
     assert.equal(currentModel.id, "qwen3.7-plus");
+    assert.ok(
+      events.some(
+        (event) =>
+          event.type === "extension_notice" &&
+          event.payload.message ===
+            "Switched from qwen-bailian-beijing/qwen3.7-max to qwen-bailian-beijing/qwen3.7-plus after a model error.",
+      ),
+    );
   } finally {
+    detachListener();
     await service.disposeAll();
   }
 });
@@ -2254,6 +2271,42 @@ test("SessionService switches capability mode in-session and restores it on reop
     assert.equal(reopened.mode, "full");
   } finally {
     await reopenedService.disposeAll();
+  }
+});
+
+test("SessionService materializes draft mode and study tag in the first snapshot", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  try {
+    const created = await service.createSession(
+      {
+        rolePresetSlug: "role-conceptual-theory-companion",
+        kbDomain: "ep-core",
+        soulSlug: "soul-latest",
+      },
+      {
+        mode: "full",
+        studyTag: { studyId: "draft-study", batch: "a" },
+      },
+    );
+    assert.equal(created.mode, "full");
+    assert.deepEqual(created.studyTag, {
+      studyId: "draft-study",
+      batch: "a",
+    });
+    const header = JSON.parse(
+      readFileSync(
+        join(service.getManifest(created.sessionId).recordsDir, "session.json"),
+        "utf-8",
+      ),
+    );
+    assert.equal(header.mode, "full");
+    assert.deepEqual(header.studyTag, {
+      studyId: "draft-study",
+      batch: "a",
+    });
+  } finally {
+    await service.disposeAll();
   }
 });
 
@@ -2739,6 +2792,103 @@ test("security extension escalates risky commands through the approval bridge", 
   }
 });
 
+test("SessionService retries a failed latest turn without losing earlier turns", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const created = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const managed = (service as any).sessions.get(created.sessionId);
+  let shouldFail = false;
+  managed.session.prompt = async (text: string) => {
+    managed.session.state.errorMessage = shouldFail
+      ? "connection dropped"
+      : null;
+    managed.session.sessionManager.appendMessage({
+      role: "user",
+      content: [{ type: "text", text }],
+      timestamp: Date.now(),
+    });
+    managed.session.sessionManager.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: `answer:${text}` }],
+      timestamp: Date.now(),
+    });
+  };
+  managed.session.agent.continue = async () => {
+    managed.session.state.errorMessage = shouldFail
+      ? "connection dropped"
+      : null;
+    managed.session.sessionManager.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: "answer:second" }],
+      timestamp: Date.now(),
+    });
+  };
+  const retryTranscripts: any[] = [];
+  const detach = service.attach(created.sessionId, (event) => {
+    if (event.type === "session_transcript") {
+      retryTranscripts.push(event.payload.messages);
+    }
+  });
+
+  try {
+    await service.runPrompt(created.sessionId, "first").completion;
+    shouldFail = true;
+    await assert.rejects(
+      service.runPrompt(created.sessionId, "second").completion,
+      /connection dropped/,
+    );
+
+    const recordsDir = service.getManifest(created.sessionId).recordsDir;
+    const failed = latestRunSnapshots(recordsDir).at(-1)!;
+    assert.equal(failed.status, "failed");
+    assert.ok(failed.userEntryId);
+    assert.equal(failed.assistantEntryIds.length, 1);
+
+    shouldFail = false;
+    const retried = service.retryFailed(created.sessionId);
+    assert.deepEqual(
+      retryTranscripts
+        .at(-1)
+        ?.filter((message: any) => message.role === "user")
+        .map((message: any) => message.text),
+      ["first", "second"],
+    );
+    assert.deepEqual(
+      retryTranscripts
+        .at(-1)
+        ?.filter((message: any) => message.role === "assistant")
+        .map((message: any) => message.text),
+      ["answer:first"],
+    );
+    await retried.completion;
+
+    const runs = latestRunSnapshots(recordsDir);
+    assert.equal(
+      runs.find((run) => run.runId === failed.runId)?.status,
+      "superseded",
+    );
+    const retryRecord = runs.find((run) => run.runId === retried.ids.runId)!;
+    assert.equal(retryRecord.status, "completed");
+    assert.equal(retryRecord.turnId, failed.turnId);
+    assert.equal(retryRecord.supersedesRunId, failed.runId);
+
+    const detail = readSessionDetail(fixture.dataDir, created.sessionId);
+    assert.deepEqual(
+      (detail?.transcript ?? [])
+        .filter((message) => message.role === "user")
+        .map((message) => message.text),
+      ["first", "second"],
+    );
+  } finally {
+    detach();
+    await service.disposeAll();
+  }
+});
+
 test("SessionService reviseAt rewrites from an earlier turn and supersedes later runs", async () => {
   const fixture = setupFixture();
   const service = createTestService(fixture);
@@ -3067,6 +3217,21 @@ test("SessionService reviseAt edits a turn inherited from the fork parent", asyn
       .join("\n");
     assert.match(text, /revised-first/);
     assert.doesNotMatch(text, /answer:first/);
+    const originalText = sessions
+      .get(created.sessionId)!
+      .session.sessionManager.buildSessionContext()
+      .messages.map((message) =>
+        message.content
+          .filter((part) => part.type === "text")
+          .map((part) => part.text)
+          .join(""),
+      )
+      .join("\n");
+    assert.match(originalText, /answer:first/);
+    assert.deepEqual(
+      readSessionDetail(fixture.dataDir, forked.sessionId)?.session.forkedFrom,
+      { sessionId: created.sessionId, purpose: "fork" },
+    );
   } finally {
     await service.disposeAll();
   }

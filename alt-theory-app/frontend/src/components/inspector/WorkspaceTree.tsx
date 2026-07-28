@@ -10,6 +10,7 @@ import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
 import { hasNativeBridge, revealPath } from "@/lib/native";
 import { stagePathAfterUpload } from "@/lib/workspace";
+import { MarkdownBody } from "@/components/conversation/MarkdownBody";
 
 interface TreeNode<T> {
   name: string;
@@ -54,6 +55,10 @@ export function WorkspaceTree() {
     source: "managed" | "working";
   } | null>(null);
   const [uploadStatus, setUploadStatus] = useState("");
+  const [previewView, setPreviewView] = useState<"rendered" | "source">(
+    "rendered",
+  );
+  const [previewExpanded, setPreviewExpanded] = useState(false);
   const uploadInput = useRef<HTMLInputElement>(null);
 
   const sessionId = app.sessionId;
@@ -92,6 +97,30 @@ export function WorkspaceTree() {
     if (!shell.rightSub) setPreview(null);
   }, [shell.rightSub]);
 
+  useEffect(() => {
+    setPreview(null);
+  }, [sessionId]);
+
+  useEffect(() => {
+    if (!sessionId || !preview) return;
+    const selected = preview;
+    const root = selected.source === "working" ? "working" : "workspace";
+    let cancelled = false;
+    getSessionFileContent(sessionId, root, selected.path)
+      .then((res) => {
+        if (cancelled) return;
+        setPreview((current) =>
+          current?.path === selected.path && current.source === selected.source
+            ? { ...current, content: res.content }
+            : current,
+        );
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId, runCount]);
+
   const referenceEntries = useMemo(
     () => (entries ?? []).filter((entry) => /^(uploads|extracted)\//.test(entry.path)),
     [entries]
@@ -110,6 +139,8 @@ export function WorkspaceTree() {
     if (!sessionId || entry.kind === "binary-original") return;
     try {
       const res = await getSessionFileContent(sessionId, "workspace", entry.path);
+      setPreviewView("rendered");
+      setPreviewExpanded(false);
       setPreview({ path: entry.path, content: res.content, source: "managed" });
       shell.openSub({ key: `ws:${entry.path}`, title: entry.path });
     } catch (e) {
@@ -127,6 +158,8 @@ export function WorkspaceTree() {
     const path = `${entry.folderId}/${entry.path}`;
     try {
       const res = await getSessionFileContent(sessionId, "working", path);
+      setPreviewView("rendered");
+      setPreviewExpanded(false);
       setPreview({ path, content: res.content, source: "working" });
       shell.openSub({ key: `working:${path}`, title: entry.path });
     } catch (e) {
@@ -164,13 +197,40 @@ export function WorkspaceTree() {
 
   if (preview) {
     const staged = app.stagedWorkspacePaths.includes(preview.path);
+    const renderedAvailable = /\.md$/i.test(preview.path);
     return (
       <div className="preview">
-        <div className="pv-card">
-          <pre style={{ whiteSpace: "pre-wrap", margin: 0, fontFamily: "var(--mono)", fontSize: "0.8rem" }}>
-            {preview.content}
-          </pre>
+        {renderedAvailable ? (
+          <div className="change-preview-toolbar">
+            <button
+              className={`flat${previewView === "rendered" ? " on" : ""}`}
+              onClick={() => setPreviewView("rendered")}
+            >
+              Rendered
+            </button>
+            <button
+              className={`flat${previewView === "source" ? " on" : ""}`}
+              onClick={() => setPreviewView("source")}
+            >
+              Source
+            </button>
+          </div>
+        ) : null}
+        <div className={`pv-card change-preview-body${previewExpanded ? " expanded" : ""}`}>
+          {renderedAvailable && previewView === "rendered" ? (
+            <MarkdownBody text={preview.content} />
+          ) : (
+            <pre>{preview.content}</pre>
+          )}
         </div>
+        {preview.content.split("\n").length > 10 || preview.content.length > 1200 ? (
+          <button
+            className="flat change-preview-more"
+            onClick={() => setPreviewExpanded((open) => !open)}
+          >
+            {previewExpanded ? "Show less" : "Show full file"}
+          </button>
+        ) : null}
         {preview.source === "managed" ? (
           <button
             className="wb-apply"
@@ -316,6 +376,7 @@ function TreeLevel<T extends { path: string }>({
   onOpenFile: (entry: T) => void;
   canOpen?: (entry: T) => boolean;
 }) {
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const children = [...node.children.values()].sort((a, b) => {
     const aDir = a.children.size > 0 ? 0 : 1;
     const bDir = b.children.size > 0 ? 0 : 1;
@@ -327,6 +388,7 @@ function TreeLevel<T extends { path: string }>({
     <>
       {children.map((child) => {
         const isFolder = child.children.size > 0;
+        const isCollapsed = isFolder && collapsed.has(child.path);
         return (
           <div key={child.path}>
             <button
@@ -338,12 +400,37 @@ function TreeLevel<T extends { path: string }>({
                   ? "Too large to preview"
                   : child.path
               }
-              onClick={() => (isFolder ? undefined : child.entry && onOpenFile(child.entry))}
+              aria-expanded={isFolder ? !isCollapsed : undefined}
+              onClick={() => {
+                if (isFolder) {
+                  setCollapsed((current) => {
+                    const next = new Set(current);
+                    if (next.has(child.path)) next.delete(child.path);
+                    else next.add(child.path);
+                    return next;
+                  });
+                } else if (child.entry) {
+                  onOpenFile(child.entry);
+                }
+              }}
             >
-              <i className={isFolder ? "ph ph-folder" : "ph ph-file-text"} />
-              {child.name}
+              {isFolder ? (
+                <i
+                  className={`ph ph-caret-down tree-caret${isCollapsed ? " closed" : ""}`}
+                />
+              ) : (
+                <i className="tree-caret-placeholder" />
+              )}
+              <i
+                className={
+                  isFolder
+                    ? `ph ${isCollapsed ? "ph-folder" : "ph-folder-open"}`
+                    : "ph ph-file-text"
+                }
+              />
+              <span>{child.name}</span>
             </button>
-            {isFolder ? (
+            {isFolder && !isCollapsed ? (
               <TreeLevel
                 node={child}
                 depth={depth + 1}

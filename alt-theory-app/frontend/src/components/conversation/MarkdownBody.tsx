@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { renderMarkdown } from "@/lib/markdown";
 import { cn } from "@/lib/cn";
 
@@ -39,15 +39,22 @@ function decodeEntities(text: string): string {
 export function MarkdownBody({
   text,
   className,
+  renderMermaid = true,
 }: {
   text: string;
   className?: string;
+  renderMermaid?: boolean;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
+  const sourceHtml = useMemo(() => renderMarkdown(text), [text]);
+  const [diagramHtml, setDiagramHtml] = useState<{
+    source: string;
+    rendered: string;
+  } | null>(null);
 
   useEffect(() => {
-    const host = ref.current;
-    if (!host) return;
+    if (!renderMermaid) return;
+    const host = document.createElement("div");
+    host.innerHTML = sourceHtml;
     const blocks = host.querySelectorAll<HTMLElement>("code.language-mermaid");
     if (blocks.length === 0) return;
     let cancelled = false;
@@ -69,17 +76,24 @@ export function MarkdownBody({
           // Leave the source visible — a broken diagram is still readable text.
         }
       }
+      if (!cancelled) {
+        setDiagramHtml({ source: sourceHtml, rendered: host.innerHTML });
+      }
     });
     return () => {
       cancelled = true;
     };
-  }, [text]);
+  }, [renderMermaid, sourceHtml]);
+
+  const html =
+    renderMermaid && diagramHtml?.source === sourceHtml
+      ? diagramHtml.rendered
+      : sourceHtml;
 
   return (
     <div
-      ref={ref}
       className={cn("markdown-body", className)}
-      dangerouslySetInnerHTML={{ __html: renderMarkdown(text) }}
+      dangerouslySetInnerHTML={{ __html: html }}
     />
   );
 }

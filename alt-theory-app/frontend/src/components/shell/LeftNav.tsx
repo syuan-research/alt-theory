@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { SessionSummary } from "@/api/types";
 import { useApp, type SessionAlert } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
@@ -162,12 +162,25 @@ export function LeftNav() {
 function UserNav({ onImport }: { onImport: () => void }) {
   const app = useApp();
   const shell = useShell();
+  const navRef = useRef<HTMLDivElement>(null);
   const [closedGroups, setClosedGroups] = useState<Set<string>>(new Set());
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const local = app.appMode === "local";
   // Newest N per folder so one busy folder can't bury the others (item 4b).
   const GROUP_CAP = 8;
+
+  useEffect(() => {
+    const closeOpenMenus = (event: PointerEvent) => {
+      navRef.current
+        ?.querySelectorAll<HTMLDetailsElement>("details.list-more[open]")
+        .forEach((details) => {
+          if (!details.contains(event.target as Node)) details.open = false;
+        });
+    };
+    document.addEventListener("pointerdown", closeOpenMenus);
+    return () => document.removeEventListener("pointerdown", closeOpenMenus);
+  }, []);
 
   const tree = useMemo(
     () => buildWorkspaceTree(app.sessions, local ? app.knownWorkspaces : []),
@@ -211,6 +224,34 @@ function UserNav({ onImport }: { onImport: () => void }) {
     } catch (error) {
       window.alert(error instanceof Error ? error.message : String(error));
     }
+  };
+
+  const removeFolder = (dir: string, sessionIds: string[]) => {
+    const finish = async () => {
+      if (app.workspacePrimaryDir === dir) app.setDraftWorkspace(null);
+      await app.removeKnownWorkspace(dir);
+    };
+    const run = async () => {
+      await Promise.all(sessionIds.map((id) => app.repointSession(id, null)));
+      await finish();
+    };
+    if (sessionIds.length === 0) {
+      void finish().catch((error) =>
+        window.alert(error instanceof Error ? error.message : String(error)),
+      );
+      return;
+    }
+    app.requestConfirm({
+      message:
+        "Move this folder's conversations to No folder, then remove the working folder from the list? Conversations and files are not deleted.",
+      confirmLabel: "Move conversations and remove",
+      cancelLabel: "Keep working folder",
+      onConfirm: () => {
+        void run().catch((error) =>
+          window.alert(error instanceof Error ? error.message : String(error)),
+        );
+      },
+    });
   };
 
   const dropSession = (dir: string, event: React.DragEvent) => {
@@ -267,6 +308,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
 
   return (
     <div
+      ref={navRef}
       className="user-nav"
       style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, }}
     >
@@ -415,25 +457,46 @@ function UserNav({ onImport }: { onImport: () => void }) {
                     <span className="group-name">{group.label}</span>
                     <i className="ph ph-caret-down tw" />
                   </button>
-                  {local && group.dir && hasNativeBridge() ? (
-                    <button
-                      className="group-add"
-                      title={`Show folder in file manager`}
-                      onClick={() => void revealPath(group.dir)}
-                    >
-                      <i className="ph ph-folder-open" />
-                    </button>
-                  ) : null}
                   {local && group.dir ? (
-                    <button
-                      className="group-add"
-                      title={`Copy folder path: ${group.dir}`}
-                      onClick={() => {
-                        void navigator.clipboard?.writeText(group.dir);
-                      }}
-                    >
-                      <i className="ph ph-copy" />
-                    </button>
+                    <details className="list-more group-folder-more">
+                      <summary title="Working folder actions">
+                        <i className="ph ph-dots-three" />
+                      </summary>
+                      <div className="list-menu">
+                        {hasNativeBridge() ? (
+                          <button
+                            onClick={(event) => {
+                              closeMenu(event);
+                              void revealPath(group.dir);
+                            }}
+                          >
+                            <i className="ph ph-folder-open" />
+                            Show in file manager
+                          </button>
+                        ) : null}
+                        <button
+                          onClick={(event) => {
+                            closeMenu(event);
+                            void navigator.clipboard?.writeText(group.dir);
+                          }}
+                        >
+                          <i className="ph ph-copy" />
+                          Copy folder path
+                        </button>
+                        <button
+                          onClick={(event) => {
+                            closeMenu(event);
+                            removeFolder(
+                              group.dir,
+                              group.roots.map((root) => root.sessionId),
+                            );
+                          }}
+                        >
+                          <i className="ph ph-minus-circle" />
+                          Remove from working folders
+                        </button>
+                      </div>
+                    </details>
                   ) : null}
                   {local ? (
                     <button

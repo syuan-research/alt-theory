@@ -104,6 +104,7 @@ export function InspectorPanel() {
               manifest={app.manifest}
               currentDomain={app.selectors.currentDomain}
               metrics={app.metrics}
+              approvalMarkers={app.approvalMarkers}
               discovery={app.discovery}
               onRefresh={() => {
                 app.requestMetadata();
@@ -245,7 +246,16 @@ function RelatedConversation({ sessionId }: { sessionId: string }) {
           setStreaming((current) => current + message.payload.text);
           break;
         case "run_phase":
-          setStatus(message.payload.phase === "idle" ? "Ready" : "Working…");
+          setStatus({
+            connecting: "Connecting…",
+            processing: "Processing…",
+            thinking: "Thinking…",
+            tool: "Using a tool…",
+            compacting: "Compacting…",
+            "awaiting-user": "Waiting for approval…",
+            idle: "Ready",
+            error: "Error",
+          }[message.payload.phase]);
           break;
         case "run_completed":
           setRunning(false);
@@ -270,7 +280,12 @@ function RelatedConversation({ sessionId }: { sessionId: string }) {
           );
           break;
         case "extension_notice":
-          setError(message.payload.message);
+          if (message.payload.level === "info") {
+            setStatus(message.payload.message);
+            setError("");
+          } else {
+            setError(message.payload.message);
+          }
           break;
         case "error":
           setRunning(false);

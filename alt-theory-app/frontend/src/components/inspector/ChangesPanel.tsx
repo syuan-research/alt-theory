@@ -3,6 +3,7 @@ import type { FileChange } from "@/api/types";
 import { fetchSessionChanges } from "@/api/session-files";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
+import { MarkdownBody } from "@/components/conversation/MarkdownBody";
 
 /**
  * Agent-modified files for the current conversation (M7 §2), from the read-only
@@ -44,7 +45,7 @@ export function ChangesPanel() {
     if (!key.startsWith("changes:")) return;
     const path = key.slice("changes:".length);
     const match = files?.find((file) => file.path === path);
-    if (match && match.path !== selected?.path) setSelected(match);
+    if (match && match !== selected) setSelected(match);
   }, [shell.rightSub, files, selected?.path]);
 
   if (selected) {
@@ -82,27 +83,77 @@ export function ChangesPanel() {
 }
 
 function DiffView({ file }: { file: FileChange }) {
+  const renderedAvailable =
+    /\.md$/i.test(file.path) && file.currentContent !== undefined;
+  const [view, setView] = useState<"rendered" | "source">(
+    renderedAvailable ? "rendered" : "source",
+  );
+  const [expanded, setExpanded] = useState(false);
+  const source = file.currentContent ?? file.diff;
+  const sourceLines = source ? source.split("\n") : [];
   const lines = file.diff ? file.diff.split("\n") : [];
   return (
     <div className="preview">
-      <div className="pv-card" style={{ padding: "8px 0" }}>
-        {lines.length === 0 ? (
-          <div className="rp-empty">No diff available.</div>
+      <div className="change-preview-toolbar">
+        {renderedAvailable ? (
+          <>
+            <button
+              className={`flat${view === "rendered" ? " on" : ""}`}
+              onClick={() => setView("rendered")}
+            >
+              Rendered
+            </button>
+            <button
+              className={`flat${view === "source" ? " on" : ""}`}
+              onClick={() => setView("source")}
+            >
+              Source
+            </button>
+          </>
         ) : (
-          lines.map((line, i) => {
-            const cls = line.startsWith("+")
-              ? "diffline add"
-              : line.startsWith("-")
-                ? "diffline del"
-                : "diffline";
-            return (
-              <div key={i} className={cls}>
-                {line}
-              </div>
-            );
-          })
+          <span>
+            {file.currentContent !== undefined ? "Current source" : "Conversation diff"}
+          </span>
+        )}
+        {file.currentUpdatedAt ? (
+          <span className="change-preview-time">
+            Updated {new Date(file.currentUpdatedAt).toLocaleTimeString()}
+          </span>
+        ) : null}
+      </div>
+      <div className={`pv-card change-preview-body${expanded ? " expanded" : ""}`}>
+        {!source ? (
+          <div className="rp-empty">The current file is not available.</div>
+        ) : view === "rendered" && renderedAvailable ? (
+          <MarkdownBody text={source} />
+        ) : (
+          <pre>{source}</pre>
         )}
       </div>
+      {sourceLines.length > 10 || source.length > 1200 ? (
+        <button className="flat change-preview-more" onClick={() => setExpanded((open) => !open)}>
+          {expanded ? "Show less" : "Show full file"}
+        </button>
+      ) : null}
+      {lines.length > 0 ? (
+        <details className="change-diff">
+          <summary>Conversation diff</summary>
+          <div className="pv-card" style={{ padding: "8px 0" }}>
+            {lines.map((line, i) => {
+              const cls = line.startsWith("+")
+                ? "diffline add"
+                : line.startsWith("-")
+                  ? "diffline del"
+                  : "diffline";
+              return (
+                <div key={i} className={cls}>
+                  {line}
+                </div>
+              );
+            })}
+          </div>
+        </details>
+      ) : null}
     </div>
   );
 }

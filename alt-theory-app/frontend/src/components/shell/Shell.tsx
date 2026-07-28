@@ -13,7 +13,7 @@ type PaneSide = "left" | "right";
 
 const PANE_WIDTHS = {
   left: { key: "alt-theory-left-width", initial: 264, min: 200, max: 420, collapsed: 52 },
-  right: { key: "alt-theory-right-width", initial: 400, min: 280, max: 640, collapsed: 48 },
+  right: { key: "alt-theory-right-width", initial: 480, min: 320, max: 760, collapsed: 48 },
 } as const;
 
 function readPaneWidth(side: PaneSide): number {

@@ -20,7 +20,7 @@ export function FieldFrame({ label, hint, children, className }: FieldFrameProps
 }
 
 const controlClasses =
-  "w-full rounded-md border border-transparent bg-surface px-2.5 py-2 text-[0.9375rem] text-ink outline-none transition-colors placeholder:text-text-muted/85 focus:border-ink-soft disabled:cursor-not-allowed disabled:text-text-muted";
+  "w-full rounded-md border border-hairline bg-surface px-2.5 py-2 text-[0.9375rem] text-ink outline-none transition-colors placeholder:text-text-muted/85 focus:border-ink-soft disabled:cursor-not-allowed disabled:text-text-muted";
 
 export function TextInput({
   className,

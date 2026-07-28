@@ -7,7 +7,7 @@ import { ContextRing } from "@/components/conversation/ContextRing";
 import { DEFAULT_KB_DOMAIN, KB_OFF_VALUE } from "@/lib/constants";
 import { pickFiles } from "@/lib/native";
 
-type MenuKey = "plus" | "mode" | "model" | "role" | "kb" | null;
+type MenuKey = "plus" | "model" | "role" | "kb" | null;
 
 interface SlashCommand {
   name: string;
@@ -56,18 +56,18 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
 
   const slashCommands = useMemo<SlashCommand[]>(
     () => [
-      {
-        name: "branch",
-        description: "Branch this conversation into a new direction",
-        run: () => app.forkCurrentSession("fork"),
-      },
-      {
-        name: "btw",
-        description: "Start a side conversation without adding it to the list",
-        run: () => app.forkCurrentSession("side"),
-      },
       ...(variant === "live"
         ? [
+            {
+              name: "branch",
+              description: "Branch this conversation into a new direction",
+              run: () => app.forkCurrentSession("fork"),
+            },
+            {
+              name: "btw",
+              description: "Start a side conversation without adding it to the list",
+              run: () => app.forkCurrentSession("side"),
+            },
             {
               name: "compact",
               description: "Compact this conversation to free context space",
@@ -134,7 +134,10 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
 
   const handleSubmit = () => {
     if (app.reviseMode) {
-      if (app.reviseLatest(draft)) setDraft("");
+      if (app.reviseLatest(draft)) {
+        setDraft("");
+        shell.openRail("chats");
+      }
       return;
     }
     if (app.sendPrompt(draft)) setDraft("");
@@ -189,15 +192,20 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
         (app.isRunning && app.runPhaseLabel) ||
         app.composerNotice ||
         app.runHint ||
+        app.canRetryFailed ||
         app.attachmentHint ? (
           <div className="composer-notes">
-            {app.toolStatus ? (
-              <span>{app.toolStatus}</span>
-            ) : app.isRunning && app.runPhaseLabel ? (
-              <span className="run-phase">
+            {app.isRunning && app.runPhaseLabel ? (
+              <span
+                className={`run-phase${
+                  app.runPhaseLabel === "Processing…" ? " processing" : ""
+                }`}
+              >
                 <i className="ph ph-circle-notch" aria-hidden="true" />
                 {app.runPhaseLabel}
               </span>
+            ) : app.toolStatus ? (
+              <span>{app.toolStatus}</span>
             ) : null}
             {app.composerNotice ? (
               <span className={app.composerNotice.warn ? "warn" : ""}>
@@ -208,6 +216,12 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               </span>
             ) : null}
             {app.runHint ? <span>{app.runHint}</span> : null}
+            {app.canRetryFailed ? (
+              <button className="flat retry-run" onClick={app.retryFailed}>
+                <i className="ph ph-arrow-clockwise" aria-hidden="true" />
+                Retry
+              </button>
+            ) : null}
             {app.attachmentHint ? <span>{app.attachmentHint}</span> : null}
           </div>
         ) : null}
@@ -402,16 +416,18 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               style={{ left: 0 }}
               onClick={(e) => e.stopPropagation()}
             >
-              <div
-                className="mi"
-                onClick={() => (
-                  app.forkCurrentSession("helper"),
-                  setMenu(null)
-                )}
-              >
-                <i className="ph ph-lifebuoy" />
-                Ask how Alt works
-              </div>
+              {variant === "live" ? (
+                <div
+                  className="mi"
+                  onClick={() => (
+                    app.forkCurrentSession("helper"),
+                    setMenu(null)
+                  )}
+                >
+                  <i className="ph ph-lifebuoy" />
+                  Ask how Alt works
+                </div>
+              ) : null}
               <div
                 className="mi"
                 onClick={() => (
@@ -437,7 +453,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               {pureMode ? (
                 <div
                   className="mi disabled"
-                  title="Understand mode stays offline: it reads and searches your own files only."
+                  title="Switch to Work when you want Alt to look up current information."
                 >
                   <i className="ph ph-globe" />
                   Looking things up online needs Work mode
@@ -467,7 +483,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                   Attach file
                 </div>
               ) : null}
-              {pureMode ? (
+              {pureMode && app.sessionId ? (
                 <div
                   className="mi"
                   onClick={() => (shell.openRail("workspace"), setMenu(null))}
@@ -487,61 +503,34 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
 
             {/* morph mode switch (live only; empty state uses the cards) */}
             {variant === "live" ? (
-              <>
-                <button
-                  className="flat"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggle("mode");
-                  }}
-                >
-                  <i
-                    className={
-                      app.sessionMode === "full"
-                        ? "ph ph-hammer"
-                        : "ph ph-book-open"
-                    }
-                  />
-                  {app.sessionMode === "full" ? "Work" : "Understand"}
-                  <i className="ph ph-caret-down caret" />
-                </button>
-                <div
-                  className={`menu${menu === "mode" ? " on" : ""}`}
-                  style={{ left: 40 }}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <div
-                    className="mi"
-                    onClick={() => (app.switchMode("pure"), setMenu(null))}
-                  >
-                    <i className="ph ph-book-open" />
-                    <span>
-                      Understand
-                      <span className="d">
-                        Reads and discusses. Asks before touching anything.
-                      </span>
-                    </span>
-                    {app.sessionMode === "pure" ? (
-                      <i className="ph ph-check check" />
-                    ) : null}
-                  </div>
-                  <div
-                    className="mi"
-                    onClick={() => (app.switchMode("full"), setMenu(null))}
-                  >
-                    <i className="ph ph-hammer" />
-                    <span>
-                      Work
-                      <span className="d">
-                        Can act on files in your working folders.
-                      </span>
-                    </span>
-                    {app.sessionMode === "full" ? (
-                      <i className="ph ph-check check" />
-                    ) : null}
-                  </div>
-                </div>
-              </>
+              <button
+                className="flat mode-switch"
+                role="switch"
+                aria-checked={app.sessionMode === "full"}
+                title={
+                  app.sessionMode === "full"
+                    ? "Work mode: research, analyze data, and create or update files while keeping the same careful thinking. Switch to Understand."
+                    : "Understand mode: clarify questions, compare explanations, and develop ideas with your materials. Switch to Work."
+                }
+                onClick={() =>
+                  app.switchMode(app.sessionMode === "full" ? "pure" : "full")
+                }
+              >
+                <i
+                  className={
+                    app.sessionMode === "full"
+                      ? "ph ph-hammer"
+                      : "ph ph-book-open"
+                  }
+                />
+                {app.sessionMode === "full" ? "Work" : "Understand"}
+                <span
+                  className={`toggle mode-toggle${
+                    app.sessionMode === "full" ? " on" : ""
+                  }`}
+                  aria-hidden="true"
+                />
+              </button>
             ) : null}
 
             <ModelChip

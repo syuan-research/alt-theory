@@ -100,13 +100,6 @@ export function MessageList() {
         );
       })}
 
-      {app.approvalMarkers.map((marker) => (
-        <SysLine key={marker}>
-          <i className="ph ph-check" />
-          {marker} — allowed for this conversation
-        </SysLine>
-      ))}
-
       {app.streamParts.map((part, index) => {
         if (part.kind === "text") {
           return ( <AssistantBubble key={`sp-${index}`} text={part.text} streaming />
@@ -265,7 +258,7 @@ function ThinkingBlock({
       <summary>
         <i className="ph ph-brain" aria-hidden="true" /> Thinking
       </summary>
-      <div className="think-body">{text}</div>
+      <MarkdownBody className="think-body" text={text} renderMermaid={false} />
     </details>
   );
 }
@@ -315,7 +308,8 @@ function TranscriptEntry({
   userIndex?: number;
 }) {
   const app = useApp();
-  const { thinkingExpanded, showThinking } = useShell();
+  const shell = useShell();
+  const { thinkingExpanded, showThinking } = shell;
 
   const editMessage = (text: string, entryId: string | null) => {
     const start = () => app.startReviseMode(text, entryId ?? undefined);
@@ -341,6 +335,12 @@ function TranscriptEntry({
     );
   };
 
+  const trySamePrompt = (text: string, entryId: string | null) => {
+    if (app.branchRevision(text, entryId ?? undefined)) {
+      shell.openRail("chats");
+    }
+  };
+
   if (message.role === "user") {
     return (
       <UserBubble
@@ -349,7 +349,7 @@ function TranscriptEntry({
         isLatest={isLatestUser}
         isRunning={app.isRunning}
         onEdit={editMessage}
-        onBranch={branchMessage}
+        onTrySame={trySamePrompt}
         userIndex={userIndex}
       />
     );
@@ -427,7 +427,7 @@ function UserBubble({
   isLatest,
   isRunning,
   onEdit,
-  onBranch,
+  onTrySame,
   userIndex,
 }: {
   text: string;
@@ -435,7 +435,7 @@ function UserBubble({
   isLatest: boolean;
   isRunning: boolean;
   onEdit: (text: string, entryId: string | null) => void;
-  onBranch: (entryId: string) => void;
+  onTrySame: (text: string, entryId: string | null) => void;
   userIndex?: number;
 }) {
   const trimmed = (text || "").trim();
@@ -459,7 +459,7 @@ function UserBubble({
         </button>
         {canEdit ? (
           <button
-            title="Edit"
+            title="Edit and branch"
             aria-label="Edit message and rewrite from here"
             disabled={isRunning}
             onClick={() => onEdit(trimmed, entryId)}
@@ -467,16 +467,29 @@ function UserBubble({
             <i className="ph ph-pencil-simple" aria-hidden="true" />
           </button>
         ) : null}
-        {entryId ? (
-          <button
-            title="Branch from here"
-            aria-label="Branch a new conversation from here"
-            disabled={isRunning}
-            onClick={() => onBranch(entryId)}
-          >
-            <i className="ph ph-git-branch" aria-hidden="true" />
-          </button>
-        ) : null}
+        <details
+          className="message-more"
+          onBlur={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget)) {
+              event.currentTarget.open = false;
+            }
+          }}
+        >
+          <summary title="More" aria-label="More message actions">
+            <i className="ph ph-dots-three" aria-hidden="true" />
+          </summary>
+          <div className="message-more-menu">
+            <button
+              disabled={isRunning}
+              onClick={(event) => {
+                event.currentTarget.closest("details")?.removeAttribute("open");
+                onTrySame(trimmed, entryId);
+              }}
+            >
+              Try same prompt again
+            </button>
+          </div>
+        </details>
       </div>
     </div>
   );
@@ -501,7 +514,7 @@ function AssistantBubble({
     <div className="msg assistant">
       <div className="who">Alt{streaming ? " · typing…" : ""}</div>
       <div className="bubble">
-        <MarkdownBody text={trimmed} />
+        <MarkdownBody text={trimmed} renderMermaid={!streaming} />
       </div>
       {onBranch && entryId ? (
         <div className="msg-actions">

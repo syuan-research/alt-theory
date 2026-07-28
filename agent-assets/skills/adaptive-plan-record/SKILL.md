@@ -14,9 +14,9 @@ living document: being revised is its normal state, not a failure.
 
 ## Goal map first
 
-Start from goals, not steps. Users often carry MORE THAN ONE purpose, and
-upstream/downstream goals are not always a single chain — sketch a small
-goal map (a short list with relations is enough). When discussion reveals
+Start from goals, not steps. Keep the goal map brief; a short list with
+relations is enough. Users often carry MORE THAN ONE purpose, and
+upstream/downstream goals are not always a single chain. When discussion reveals
 a new goal, append it to the map rather than silently re-aiming the plan.
 When the map grows past what one plan can serve honestly, say so and
 suggest splitting into separate plans — a plan that serves five goals

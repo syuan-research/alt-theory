@@ -74,8 +74,11 @@ export interface SessionDraftSnapshot {
   rolePresetSlug: string | null;
   soulSlug: string | null;
   customInstructionRef?: string | null;
+  mode: CapabilityMode;
   modelOverride?: SessionModelOverride | null;
+  studyTag?: StudyTag | null;
   workspacePrimaryDir?: string | null;
+  resetComposer?: boolean;
 }
 
 export type ThinkingLevel =
@@ -84,7 +87,8 @@ export type ThinkingLevel =
   | "low"
   | "medium"
   | "high"
-  | "xhigh";
+  | "xhigh"
+  | "max";
 
 /** Study designation, session level (M7 §3); absent = daily use. */
 export interface StudyTag {
@@ -261,6 +265,8 @@ export interface FileChange {
   added: number;
   removed: number;
   diff: string;
+  currentContent?: string;
+  currentUpdatedAt?: string;
 }
 
 export interface SessionChanges {
@@ -283,8 +289,19 @@ export interface ConfigModel {
   id: string;
   name?: string;
   reasoning?: boolean;
+  thinkingLevels?: ThinkingLevel[];
+  availableThinkingLevels?: ThinkingLevel[];
+  thinkingLevelMap?: Partial<Record<ThinkingLevel, string | null>>;
+  input?: ("text" | "image")[];
   contextWindow?: number;
+  maxTokens?: number;
   compat?: ModelCompat;
+  cost?: {
+    input: number;
+    output: number;
+    cacheRead: number;
+    cacheWrite: number;
+  };
 }
 
 export interface ProviderView {
@@ -309,7 +326,6 @@ export interface ConfigStatus {
 }
 
 export type ProviderAuthId =
-  | "anthropic"
   | "openrouter"
   | "xai"
   | "openai-codex";
@@ -355,10 +371,7 @@ export interface FetchModelsDraftInput {
   keyStorage?: "literal" | "env";
 }
 
-export interface FetchedModel {
-  id: string;
-  name?: string;
-}
+export interface FetchedModel extends ConfigModel {}
 
 export interface UpsertProviderInput {
   baseUrl?: string;
@@ -493,6 +506,8 @@ export type ClientMessage =
       payload: { skillName: string; userText?: string };
     }
   | { type: "revise_latest"; payload: { text: string; entryId?: string } }
+  | { type: "branch_revision"; payload: { text: string; entryId?: string } }
+  | { type: "retry_failed" }
   | { type: "delete_latest" }
   | {
       type: "fork_session";
@@ -558,7 +573,17 @@ export type ServerMessage =
   | { type: "thinking_delta"; payload: { text: string } }
   | {
       type: "run_phase";
-      payload: { phase: "connecting" | "thinking" | "idle" };
+      payload: {
+        phase:
+          | "connecting"
+          | "processing"
+          | "thinking"
+          | "tool"
+          | "compacting"
+          | "awaiting-user"
+          | "idle"
+          | "error";
+      };
     }
   | { type: "tool_started"; payload: { toolName: string; callId: string; path?: string | null; detail?: ToolDetail } }
   | { type: "tool_updated"; payload: { callId: string; text?: string; progress?: number } }

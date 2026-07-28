@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
-import { projectChangesFromEntries } from "./session-store.js";
+import {
+  projectChangesFromEntries,
+  readCurrentChangedFile,
+} from "./session-store.js";
 
 function toolCallEntry(name: string, args: unknown) {
   return { message: { content: [{ type: "toolCall", name, arguments: args }] } };
@@ -49,4 +55,22 @@ test("most-recently-touched file comes first", () => {
     files.map((f) => f.path),
     ["second.md", "first.md"]
   );
+});
+
+test("current changed-file preview reads the latest safe workspace text", () => {
+  const root = mkdtempSync(join(tmpdir(), "alt-theory-change-preview-"));
+  const notes = join(root, "notes");
+  mkdirSync(notes);
+  writeFileSync(join(notes, "draft.md"), "# Current\n\nlatest text", "utf-8");
+  writeFileSync(join(root, "binary.md"), Buffer.from([0, 1, 2]));
+
+  try {
+    const current = readCurrentChangedFile([root], "notes/draft.md");
+    assert.equal(current.currentContent, "# Current\n\nlatest text");
+    assert.ok(current.currentUpdatedAt);
+    assert.deepEqual(readCurrentChangedFile([root], "../outside.md"), {});
+    assert.deepEqual(readCurrentChangedFile([root], "binary.md"), {});
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

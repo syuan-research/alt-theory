@@ -68,6 +68,7 @@ import {
   type SessionModelOverride,
   type SessionSelectors,
   type SessionServiceEvent,
+  type StudyTag,
 } from "./session-service.js";
 import { getProject, listProjects, upsertProject } from "./projects.js";
 import { listInstructionAssets } from "./instruction-assets.js";
@@ -80,13 +81,15 @@ import {
   fetchProviderModels,
   fetchProviderModelsFromDraft,
   getRuntimeModelConfig,
-  getConfigStatus,
+  getVerifiedConfigStatus,
+  initialThinkingLevelForModel,
   listProviders,
   setActive,
   upsertProvider,
   type ApiType,
   type RuntimeModelConfig,
 } from "./config-store.js";
+import { refreshModelsDevMetadata } from "./models-dev-metadata.js";
 import {
   AuthSessionManager,
   anonymousAuthContext,
@@ -174,6 +177,7 @@ export interface AltTheoryServerOptions {
   modelProvider?: string;
   modelId?: string;
   modelsPath?: string;
+  authPath?: string;
   runtimeApiKey?: string;
   thinkingLevel?: ThinkingLevel;
   promptMode?: PromptMode;
@@ -301,9 +305,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     if (!requireLocalConfigMode(res)) return;
     res.sendFile(resolveConfigGuiHtmlPath(publicDir));
   });
-  app.get("/api/config/status", (_req, res) => {
+  app.get("/api/config/status", async (_req, res) => {
     if (!requireLocalConfigMode(res)) return;
-    res.json(getConfigStatus(agentConfigDir()));
+    res.json(await getVerifiedConfigStatus(agentConfigDir()));
   });
   // --- Resource discovery + per-mode skill enablement (spec §6.1) ---
   app.get("/api/resources", (_req, res) => {
@@ -404,8 +408,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     res.json({ ok: true, precedence: value });
   });
 
-  app.get("/api/config/providers", (_req, res) => {
+  app.get("/api/config/providers", async (_req, res) => {
     if (!requireLocalConfigMode(res)) return;
+    await refreshModelsDevMetadata(agentConfigDir());
     res.json({ providers: listProviders(agentConfigDir()) });
   });
   app.get("/api/config/auth/providers", (_req, res) => {
@@ -611,7 +616,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     }
     try {
       await setActive(agentConfigDir(), body.provider, body.model);
-      res.json(getConfigStatus(agentConfigDir()));
+      res.json(await getVerifiedConfigStatus(agentConfigDir()));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       res.status(error instanceof ConfigValidationError ? 400 : 500).json({
@@ -667,7 +672,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     clearAuthCookie(res);
     res.json({ ok: true });
   });
-  app.get("/api/auth/me", (req, res) => {
+  app.get("/api/auth/me", async (req, res) => {
     const auth = authSessions.resolveRequest(req);
     // Study designation (M7 §3): hosted = the account role; local = the
     // install-level flag. Non-designated users get zero study surfaces.
@@ -680,7 +685,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       auth,
       app: { mode: appMode },
       participant,
-      localConfig: localMode ? getConfigStatus(agentConfigDir()) : null,
+      localConfig: localMode
+        ? await getVerifiedConfigStatus(agentConfigDir())
+        : null,
     });
   });
   app.get("/api/session-import/harnesses", (_req, res) => {
@@ -1130,6 +1137,27 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     }
     res.json({ workspaces: readAppSettings(dataDir).knownWorkspaces ?? [] });
   });
+  app.delete("/api/workspaces", (req, res) => {
+    if (!localMode) {
+      res.status(403).json({ error: "Workspaces are local-mode only" });
+      return;
+    }
+    const body = req.body as { path?: unknown };
+    const raw = typeof body.path === "string" ? body.path.trim() : "";
+    if (!raw) {
+      res.status(400).json({ error: "path is required" });
+      return;
+    }
+    const target = resolve(raw);
+    const settings = readAppSettings(dataDir);
+    writeAppSettings(dataDir, {
+      ...settings,
+      knownWorkspaces: (settings.knownWorkspaces ?? []).filter(
+        (workspace) => workspace !== target,
+      ),
+    });
+    res.json({ workspaces: readAppSettings(dataDir).knownWorkspaces ?? [] });
+  });
   app.post("/api/sessions/:sessionId/ab-comparisons", (req, res) => {
     const sessionId = req.params.sessionId;
     if (!requireSessionRestContentAccess(req, res, sessionId)) return;
@@ -1513,6 +1541,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     modelProvider,
     modelId,
     modelsPath: modelsPath ?? undefined,
+    authPath: options.authPath,
     runtimeApiKey:
       options.runtimeApiKey ?? process.env.ALT_THEORY_MODEL_API_KEY,
     thinkingLevel: options.thinkingLevel,
@@ -1524,6 +1553,14 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     testBatch,
     resolveRuntimeModelConfig: localMode
       ? () => requireLocalRuntimeModelConfig()
+      : undefined,
+    resolveInitialThinkingLevel: localMode
+      ? (provider, selectedModelId) =>
+          initialThinkingLevelForModel(
+            agentConfigDir(),
+            provider,
+            selectedModelId,
+          )
       : undefined,
     // Discovery of machine-local resources is a local-app capability; hosted
     // deployments never read the server's ~/.pi or ~/.agents directories.
@@ -1835,8 +1872,11 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     send: (msg: ServerMessage) => void,
     selectors: SessionSelectors,
     visibility: "research" | "private",
+    mode: CapabilityMode,
     modelOverride: SessionModelOverride | null = null,
+    studyTag: StudyTag | null = null,
     workspacePrimaryDir: string | null = null,
+    resetComposer = false,
   ): void {
     send({
       type: "session_draft",
@@ -1848,8 +1888,11 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         rolePresetSlug: selectors.rolePresetSlug,
         soulSlug: selectors.soulSlug,
         customInstructionRef: selectors.customInstructionRef ?? null,
+        mode,
         modelOverride,
+        studyTag,
         workspacePrimaryDir,
+        resetComposer,
       },
     });
   }
@@ -1867,7 +1910,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     let closed = false;
     let draftSelectors: SessionSelectors;
     let draftVisibility: "research" | "private" = defaultDraftVisibility();
+    let draftMode: CapabilityMode = "pure";
     let draftModelOverride: SessionModelOverride | null = null;
+    let draftStudyTag: StudyTag | null = null;
     // Sticky across new_session: the workspace selector chooses where NEW
     // conversations go until the user changes it (M4).
     let draftWorkspace: string | null = null;
@@ -1884,6 +1929,18 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify(msg));
       }
+    };
+    const sendCurrentDraft = (resetComposer = false) => {
+      sendDraft(
+        send,
+        draftSelectors,
+        draftVisibility,
+        draftMode,
+        draftModelOverride,
+        draftStudyTag,
+        draftWorkspace,
+        resetComposer,
+      );
     };
 
     const attachToSession = (sessionId: string) => {
@@ -1907,7 +1964,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     if (initialError) {
       sendServiceError(send, initialError);
     }
-    sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace,);
+    sendCurrentDraft(true);
 
     ws.on("message", async (data) => {
       let msg: ClientMessage;
@@ -1934,7 +1991,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
                 draftSelectors,
                 {
                   ...sessionCreationMetadataForAuth(auth, draftVisibility),
+                  mode: draftMode,
                   modelOverride: draftModelOverride,
+                  studyTag: draftStudyTag,
                   workspace: draftWorkspace
                     ? { primaryDir: draftWorkspace }
                     : null,
@@ -1966,7 +2025,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         }
         case "abort":
           if (!attachedSessionId) {
-            sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace,);
+            sendCurrentDraft();
             break;
           }
           try {
@@ -2011,7 +2070,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               break;
             }
             draftSelectors = { ...draftSelectors, kbDomain: msg.payload.domain, };
-            sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace,);
+            sendCurrentDraft();
             break;
           }
           try {
@@ -2024,7 +2083,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           const rolePresetSlug = optionalSlug(msg.payload.rolePresetSlug);
           if (!attachedSessionId) {
             draftSelectors = { ...draftSelectors, rolePresetSlug };
-            sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace,);
+            sendCurrentDraft();
             break;
           }
           const selectors = sessionService.getSelectors(attachedSessionId);
@@ -2044,7 +2103,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           const soulSlug = optionalSlug(msg.payload.soulSlug);
           if (!attachedSessionId) {
             draftSelectors = { ...draftSelectors, soulSlug };
-            sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace,);
+            sendCurrentDraft();
             break;
           }
           const selectors = sessionService.getSelectors(attachedSessionId);
@@ -2066,7 +2125,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           );
           if (!attachedSessionId) {
             draftSelectors = { ...draftSelectors, customInstructionRef };
-            sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace,);
+            sendCurrentDraft();
             break;
           }
           const selectors = sessionService.getSelectors(attachedSessionId);
@@ -2109,7 +2168,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
                   }
                 : {}),
             };
-            sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace,);
+            sendCurrentDraft();
             break;
           }
           try {
@@ -2147,12 +2206,13 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             break;
           }
           draftVisibility = msg.payload.visibility;
-          sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace,);
+          sendCurrentDraft();
           break;
         }
         case "set_study_tag": {
           if (!attachedSessionId) {
-            sendError(send, new Error("A materialized session is required"));
+            draftStudyTag = msg.payload.studyTag ?? null;
+            sendCurrentDraft();
             break;
           }
           try {
@@ -2193,7 +2253,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           // route instead. No echo needed while attached — a session_draft
           // here would reset the client's live-session state.
           if (!attachedSessionId) {
-            sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace,);
+            sendCurrentDraft();
           }
           break;
         }
@@ -2201,7 +2261,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           if (!attachedSessionId) {
             // Draft state: remember the choice and apply it on materialization.
             draftModelOverride = msg.payload.override ?? null;
-            sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace,);
+            sendCurrentDraft();
             break;
           }
           try {
@@ -2232,7 +2292,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
                 draftSelectors,
                 {
                   ...sessionCreationMetadataForAuth(auth, draftVisibility),
+                  mode: draftMode,
                   modelOverride: draftModelOverride,
+                  studyTag: draftStudyTag,
                   workspace: draftWorkspace
                     ? { primaryDir: draftWorkspace }
                     : null,
@@ -2274,6 +2336,52 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           }
           break;
         }
+        case "branch_revision": {
+          if (!attachedSessionId) {
+            sendError(send, new Error("A materialized session is required"));
+            break;
+          }
+          try {
+            const sourceSessionId = attachedSessionId;
+            const targetEntryId =
+              msg.payload.entryId ??
+              sessionService
+                .getTranscript(sourceSessionId)
+                .filter((message) => message.role === "user")
+                .at(-1)?.entryId;
+            if (!targetEntryId) {
+              throw new Error("No user prompt is available to edit");
+            }
+            const forked = await sessionService.forkSession(
+              sourceSessionId,
+              "fork",
+            );
+            if (closed) break;
+            attachToSession(forked.sessionId);
+            const run = sessionService.reviseAt(
+              forked.sessionId,
+              targetEntryId,
+              msg.payload.text,
+            );
+            await run.completion;
+          } catch (error) {
+            sendServiceError(send, error);
+          }
+          break;
+        }
+        case "retry_failed": {
+          if (!attachedSessionId) {
+            sendError(send, new Error("A materialized session is required"));
+            break;
+          }
+          try {
+            const run = sessionService.retryFailed(attachedSessionId);
+            await run.completion;
+          } catch (error) {
+            sendServiceError(send, error);
+          }
+          break;
+        }
         case "delete_latest": {
           if (!attachedSessionId) {
             sendError(send, new Error("A materialized session is required"));
@@ -2294,12 +2402,13 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           break;
         }
         case "switch_mode": {
-          if (!attachedSessionId) {
-            sendError(send, new Error("A materialized session is required"));
-            break;
-          }
           if (msg.payload.mode !== "pure" && msg.payload.mode !== "full") {
             sendError(send, new Error("Unknown mode"));
+            break;
+          }
+          if (!attachedSessionId) {
+            draftMode = msg.payload.mode;
+            sendCurrentDraft();
             break;
           }
           try {
@@ -2427,8 +2536,10 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           draftVisibility = defaultDraftVisibility();
           // Model override is a per-conversation choice; workspace stays
           // sticky for the next conversation.
+          draftMode = "pure";
           draftModelOverride = null;
-          sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace,);
+          draftStudyTag = null;
+          sendCurrentDraft(true);
           break;
         }
         case "open_session": {
@@ -2453,7 +2564,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         }
         case "get_session_metadata":
           if (!attachedSessionId) {
-            sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace,);
+            sendCurrentDraft();
             break;
           }
           send({
@@ -2463,7 +2574,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           break;
         case "get_session_metrics":
           if (!attachedSessionId) {
-            sendDraft(send, draftSelectors, draftVisibility, draftModelOverride, draftWorkspace,);
+            sendCurrentDraft();
             break;
           }
           send({

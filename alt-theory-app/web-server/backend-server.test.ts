@@ -74,6 +74,63 @@ test("compaction transcript keeps visible history and exposes its summary", () =
     ],
   );
 });
+
+test("persisted tool results keep call order and failure state", () => {
+  const transcript = buildTranscriptFromEntries([
+    {
+      type: "message",
+      id: "assistant-tool",
+      message: {
+        role: "assistant",
+        content: [
+          { type: "text", text: "before tool" },
+          {
+            type: "toolCall",
+            id: "call-1",
+            name: "read",
+            arguments: { path: "missing.md" },
+          },
+          { type: "text", text: "after tool" },
+        ],
+      },
+    },
+    {
+      type: "message",
+      id: "tool-result",
+      message: {
+        role: "toolResult",
+        toolCallId: "call-1",
+        toolName: "read",
+        content: [{ type: "text", text: "not found" }],
+        isError: true,
+      },
+    },
+  ]);
+
+  assert.deepEqual(
+    transcript.map(({ role, text, toolType, success }) => ({
+      role,
+      text,
+      toolType,
+      success,
+    })),
+    [
+      {
+        role: "assistant",
+        text: "before tool",
+        toolType: undefined,
+        success: undefined,
+      },
+      { role: "tool", text: "not found", toolType: "call", success: false },
+      {
+        role: "assistant",
+        text: "after tool",
+        toolType: undefined,
+        success: undefined,
+      },
+    ],
+  );
+});
 import { writeFoundationRecords } from "./session-records.js";
 import {
   hashLoginCode,
@@ -82,10 +139,186 @@ import {
 } from "./auth-accounts.js";
 import {
   getConfigStatus,
+  getVerifiedConfigStatus,
   getRuntimeModelConfig,
+  initialThinkingLevelForModel,
+  listProviders,
+  normalizeModelListPayload,
   setActive,
   upsertProvider,
 } from "./config-store.js";
+
+test("initial thinking effort uses the lower positional middle of model levels", async () => {
+  const agentDir = mkdtempSync(join(tmpdir(), "alt-theory-thinking-levels-"));
+  await upsertProvider(
+    agentDir,
+    {
+      name: "effort-test",
+      baseUrl: "https://example.invalid/v1",
+      api: "openai-responses",
+      apiKey: "test-key",
+      models: [
+        {
+          id: "high-max",
+          reasoning: true,
+          thinkingLevels: ["off", "high", "max"],
+        },
+        {
+          id: "four-levels",
+          reasoning: true,
+          thinkingLevels: ["off", "low", "medium", "high", "xhigh"],
+        },
+      ],
+    },
+    { keyStorage: "literal" },
+  );
+
+  assert.equal(
+    initialThinkingLevelForModel(agentDir, "effort-test", "high-max"),
+    "high",
+  );
+  assert.equal(
+    initialThinkingLevelForModel(agentDir, "effort-test", "four-levels"),
+    "medium",
+  );
+});
+
+test("models.dev effort metadata is provider-specific rather than universal", async () => {
+  const agentDir = mkdtempSync(join(tmpdir(), "alt-theory-models-dev-"));
+  writeFileSync(
+    join(agentDir, "models-dev-cache.json"),
+    JSON.stringify({
+      openai: {
+        models: {
+          "gpt-5.6-terra": {
+            reasoning_options: [
+              {
+                type: "effort",
+                values: ["none", "low", "medium", "high", "xhigh", "max"],
+              },
+            ],
+          },
+        },
+      },
+      "opencode-go": {
+        api: "https://opencode.ai/zen/go/v1",
+        models: {
+          "mimo-v2.5-pro": {
+            reasoning_options: [],
+          },
+        },
+      },
+    }),
+    "utf-8",
+  );
+  await upsertProvider(
+    agentDir,
+    {
+      name: "opencode-go-local",
+      baseUrl: "https://opencode.ai/zen/go/v1",
+      api: "openai-completions",
+      apiKey: "test-key",
+      models: [{ id: "mimo-v2.5-pro", reasoning: true }],
+    },
+    { keyStorage: "literal" },
+  );
+  await upsertProvider(
+    agentDir,
+    {
+      name: "openai-codex",
+      apiKey: "test-key",
+      models: [{ id: "gpt-5.6-terra", reasoning: true }],
+    },
+    { keyStorage: "literal" },
+  );
+
+  const providers = listProviders(agentDir);
+  const mimo = providers
+    .find((provider) => provider.name === "opencode-go-local")
+    ?.models[0];
+  const terra = providers
+    .find((provider) => provider.name === "openai-codex")
+    ?.models[0];
+  assert.deepEqual(mimo?.availableThinkingLevels, []);
+  assert.deepEqual(terra?.availableThinkingLevels, [
+    "off",
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max",
+  ]);
+  assert.equal(
+    initialThinkingLevelForModel(
+      agentDir,
+      "opencode-go-local",
+      "mimo-v2.5-pro",
+    ),
+    "off",
+  );
+  assert.equal(
+    initialThinkingLevelForModel(
+      agentDir,
+      "openai-codex",
+      "gpt-5.6-terra",
+    ),
+    "high",
+  );
+});
+
+test("Pi built-in effort metadata remains available without a models.dev cache", async () => {
+  const agentDir = mkdtempSync(join(tmpdir(), "alt-theory-pi-effort-"));
+  await upsertProvider(
+    agentDir,
+    {
+      name: "openai-codex",
+      apiKey: "test-key",
+      models: [{ id: "gpt-5.6-terra", reasoning: true }],
+    },
+    { keyStorage: "literal" },
+  );
+
+  const terra = listProviders(agentDir)
+    .find((provider) => provider.name === "openai-codex")
+    ?.models[0];
+  assert.ok(terra?.availableThinkingLevels?.includes("high"));
+  assert.notEqual(
+    initialThinkingLevelForModel(agentDir, "openai-codex", "gpt-5.6-terra"),
+    "off",
+  );
+});
+
+test("model-list normalization preserves available runtime metadata", () => {
+  assert.deepEqual(
+    normalizeModelListPayload({
+      data: [
+        {
+          id: "reasoner-1",
+          name: "Reasoner 1",
+          context_window: 131072,
+          max_output_tokens: 32768,
+          input_modalities: ["text", "image"],
+          reasoning_options: [
+            { type: "effort", values: ["none", "high", "max"] },
+          ],
+          thinking_level_map: { high: "high", xhigh: "xhigh", max: null },
+        },
+      ],
+    }),
+    [
+      {
+        id: "reasoner-1",
+        name: "Reasoner 1",
+        reasoning: true,
+        contextWindow: 131072,
+        maxTokens: 32768,
+        input: ["text", "image"],
+        thinkingLevels: ["off", "high", "max"],
+        thinkingLevelMap: { high: "high", xhigh: "xhigh", max: null },
+      },
+    ],
+  );
+});
 
 test("asset registry lists safe sorted slugs and resolves known assets", () => {
   const root = mkdtempSync(join(tmpdir(), "alt-theory-assets-"));
@@ -150,14 +383,13 @@ test("local config active model resolves and loads as a Pi custom model", async 
     modelProvider: "minimax",
     modelId: "minimax-m3",
     modelsPath: join(agentDir, "models.json"),
+    authPath: join(agentDir, "auth.json"),
   });
 
   const runtime = await ModelRuntime.create({
-    authPath:join(agentDir, "auth.json"),
-    modelsPath:
-    runtimeConfig.modelsPath,
-  }
-  );
+    authPath: runtimeConfig.authPath,
+    modelsPath: runtimeConfig.modelsPath,
+  });
   assert.ok(runtime.getModel("minimax", "minimax-m3"));
 });
 
@@ -206,7 +438,21 @@ test("local config resolves a built-in model with OAuth and no custom provider b
     modelProvider: "xai",
     modelId: "grok-4.5",
     modelsPath: join(agentDir, "models.json"),
+    authPath: join(agentDir, "auth.json"),
   });
+
+  const failedRefresh = await getVerifiedConfigStatus(
+    agentDir,
+    async () => false,
+  );
+  assert.equal(failedRefresh.activeUsable, false);
+  assert.match(failedRefresh.activeIssue ?? "", /could not be refreshed/);
+
+  const successfulRefresh = await getVerifiedConfigStatus(
+    agentDir,
+    async () => true,
+  );
+  assert.equal(successfulRefresh.activeUsable, true);
 });
 
 test("local config refuses to activate a keyless provider", async () => {
@@ -257,6 +503,7 @@ test("local config removes stale invalid custom providers before runtime", async
     modelProvider: "mmx-test",
     modelId: "MiniMax-M3",
     modelsPath,
+    authPath: join(agentDir, "auth.json"),
   });
   const repaired = JSON.parse(readFileSync(modelsPath, "utf-8")) as {
     providers: Record<string, unknown>;
@@ -264,11 +511,9 @@ test("local config removes stale invalid custom providers before runtime", async
   assert.equal("mmx" in repaired.providers, false);
 
   const runtime = await ModelRuntime.create({
-    authPath:join(agentDir, "auth.json"),
-    modelsPath:
-    runtimeConfig.modelsPath,
-  }
-  );
+    authPath: runtimeConfig.authPath,
+    modelsPath: runtimeConfig.modelsPath,
+  });
   assert.ok(runtime.getModel("mmx-test", "MiniMax-M3"));
 });
 
@@ -293,6 +538,7 @@ test("local config normalizes Anthropic-compatible runtime base URLs", async () 
     modelProvider: "mmx-test",
     modelId: "MiniMax-M3",
     modelsPath,
+    authPath: join(agentDir, "auth.json"),
   });
   const modelsFile = JSON.parse(readFileSync(modelsPath, "utf-8")) as {
     providers: Record<string, { baseUrl?: string }>;
@@ -2398,7 +2644,7 @@ test("dev-debug composes configured Alt Theory skills with Pi discovery", async 
   }
 });
 
-test("WebSocket set_session_model in draft state stores the override on the draft", async () => {
+test("WebSocket draft state retains model, mode, and study tag before materialization", async () => {
   const root = mkdtempSync(join(tmpdir(), "alt-theory-ws-draft-model-"));
   const dataDir = join(root, "data");
   const rolePresets = join(root, "role-presets");
@@ -2446,6 +2692,8 @@ test("WebSocket set_session_model in draft state stores the override on the draf
   try {
     const draft = await waitForType(ws, "session_draft");
     assert.equal(draft.payload.modelOverride ?? null, null);
+    assert.equal(draft.payload.mode, "pure");
+    assert.equal(draft.payload.resetComposer, true);
 
     const updatedPromise = waitForType(ws, "session_draft");
     ws.send(
@@ -2460,6 +2708,33 @@ test("WebSocket set_session_model in draft state stores the override on the draf
       modelId: "test-model",
       thinkingLevel: "high",
     });
+    assert.equal(updated.payload.resetComposer, false);
+
+    const modePromise = waitForType(ws, "session_draft");
+    ws.send(
+      JSON.stringify({
+        type: "switch_mode",
+        payload: { mode: "full" },
+      }),
+    );
+    const modeUpdated = await modePromise;
+    assert.equal(modeUpdated.payload.mode, "full");
+    assert.deepEqual(modeUpdated.payload.modelOverride, updated.payload.modelOverride);
+
+    const studyPromise = waitForType(ws, "session_draft");
+    ws.send(
+      JSON.stringify({
+        type: "set_study_tag",
+        payload: { studyTag: { studyId: "draft-study", batch: "a" } },
+      }),
+    );
+    const studyUpdated = await studyPromise;
+    assert.deepEqual(studyUpdated.payload.studyTag, {
+      studyId: "draft-study",
+      batch: "a",
+    });
+    assert.equal(studyUpdated.payload.mode, "full");
+    assert.deepEqual(studyUpdated.payload.modelOverride, updated.payload.modelOverride);
   } finally {
     ws.close();
     await new Promise<void>((resolveClose) => {

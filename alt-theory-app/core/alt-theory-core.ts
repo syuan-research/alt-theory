@@ -170,6 +170,8 @@ export interface AltTheoryConfig extends SessionDirectories {
   readOnly: boolean;
   /** Optional custom Pi models.json path */
   modelsPath?: string;
+  /** Optional Pi auth.json path; paired with modelsPath in local mode. */
+  authPath?: string;
   /** Explicit provider/model selection */
   modelProvider?: string;
   modelId?: string;
@@ -621,6 +623,7 @@ async function createAltTheorySessionWithManager(
       throw new Error("modelProvider and modelId must be configured together");
     }
     const modelRuntime = await ModelRuntime.create({
+      authPath: config.authPath ? resolve(config.authPath) : undefined,
       modelsPath: config.modelsPath ? resolve(config.modelsPath) : undefined,
     });
     if (config.runtimeApiKey) {

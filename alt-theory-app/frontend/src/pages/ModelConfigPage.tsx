@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import {
   deleteConfigProvider,
   fetchModelsFromDraft,
   testConnectionFromDraft,
-  fetchProviderModels,
   getConfigStatus,
   listConfigProviders,
   setActiveModel,
@@ -15,10 +14,11 @@ import type {
   ConfigModel,
   ConfigStatus,
   ProviderView,
+  ThinkingLevel,
 } from "@/api/types";
 import { Button } from "@/components/ui/Button";
 import { FieldFrame, TextInput } from "@/components/ui/Field";
-import { BodyText, HintText, MonoText, PageTitle } from "@/components/ui/Typography";
+import { BodyText, HintText, PageTitle } from "@/components/ui/Typography";
 import { cn } from "@/lib/cn";
 import { applyTheme, isDarkStored, setDarkStored } from "@/lib/theme";
 
@@ -247,27 +247,15 @@ function stringifyOptionValue(value: unknown): string {
   return String(value);
 }
 
-function keyStateLabel(keyState: ProviderView["keyState"]): string {
-  if (keyState === "stored") return "key saved";
-  if (keyState === "oauth") return "account connected";
-  if (keyState === "env-set") return "env key set";
-  if (keyState === "env-missing") return "env var missing";
-  return "no key";
-}
-
-function keyStateIsUsable(keyState: ProviderView["keyState"]): boolean {
-  return (
-    keyState === "stored" ||
-    keyState === "oauth" ||
-    keyState === "env-set"
-  );
-}
-
-const THINKING_FORMAT_OPTIONS = [
-  { value: "", label: "(none)" },
-  { value: "deepseek", label: "deepseek (MiMo, DeepSeek)" },
-  { value: "qwen", label: "qwen (Qwen 3.x)" },
-] as const;
+const THINKING_LEVEL_OPTIONS: ThinkingLevel[] = [
+  "off",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+];
 
 interface ModelRow {
   id: string;
@@ -275,6 +263,14 @@ interface ModelRow {
   reasoning: boolean;
   thinkingFormat: string;
   requiresReasoningContent: boolean;
+  contextWindow: string;
+  maxTokens: string;
+  input?: ("text" | "image")[];
+  thinkingLevels?: ThinkingLevel[];
+  availableThinkingLevels: ThinkingLevel[];
+  thinkingLevelMap?: ConfigModel["thinkingLevelMap"];
+  cost?: ConfigModel["cost"];
+  maxTokensField: string;
 }
 
 function configModelToRow(model: ConfigModel): ModelRow {
@@ -285,6 +281,14 @@ function configModelToRow(model: ConfigModel): ModelRow {
     thinkingFormat: model.compat?.thinkingFormat || "",
     requiresReasoningContent:
       model.compat?.requiresReasoningContentOnAssistantMessages ?? false,
+    contextWindow: model.contextWindow ? String(model.contextWindow) : "",
+    maxTokens: model.maxTokens ? String(model.maxTokens) : "",
+    input: model.input,
+    thinkingLevels: model.thinkingLevels,
+    availableThinkingLevels: model.availableThinkingLevels ?? [],
+    thinkingLevelMap: model.thinkingLevelMap,
+    cost: model.cost,
+    maxTokensField: model.compat?.maxTokensField || "",
   };
 }
 
@@ -295,6 +299,10 @@ function emptyModelRow(): ModelRow {
     reasoning: false,
     thinkingFormat: "",
     requiresReasoningContent: false,
+    contextWindow: "",
+    maxTokens: "",
+    availableThinkingLevels: [],
+    maxTokensField: "",
   };
 }
 
@@ -305,11 +313,26 @@ function rowToConfigModel(row: ModelRow): ConfigModel | null {
   const modelName = row.name.trim();
   if (modelName) model.name = modelName;
   if (row.reasoning) model.reasoning = true;
+  const contextWindow = Number(row.contextWindow);
+  if (Number.isInteger(contextWindow) && contextWindow > 0) {
+    model.contextWindow = contextWindow;
+  }
+  const maxTokens = Number(row.maxTokens);
+  if (Number.isInteger(maxTokens) && maxTokens > 0) {
+    model.maxTokens = maxTokens;
+  }
+  if (row.input) model.input = row.input;
+  if (row.thinkingLevels !== undefined) {
+    model.thinkingLevels = row.thinkingLevels;
+  }
+  if (row.thinkingLevelMap) model.thinkingLevelMap = row.thinkingLevelMap;
+  if (row.cost) model.cost = row.cost;
   const compat: NonNullable<ConfigModel["compat"]> = {};
   if (row.thinkingFormat) compat.thinkingFormat = row.thinkingFormat;
   if (row.requiresReasoningContent) {
     compat.requiresReasoningContentOnAssistantMessages = true;
   }
+  if (row.maxTokensField) compat.maxTokensField = row.maxTokensField;
   if (Object.keys(compat).length > 0) model.compat = compat;
   return model;
 }
@@ -319,7 +342,30 @@ interface OptionRow {
   value: string;
 }
 
-export function ModelConfigPage({ embedded = false }: { embedded?: boolean } = {}) {
+function editorFingerprint(input: {
+  name: string;
+  baseUrl: string;
+  apiType: ApiType;
+  apiKey: string;
+  keyStorage: "literal" | "env";
+  modelRows: ModelRow[];
+  optionRows: OptionRow[];
+}): string {
+  return JSON.stringify({
+    ...input,
+    name: input.name.trim(),
+    baseUrl: input.baseUrl.trim(),
+    keyStorage: input.apiKey ? input.keyStorage : null,
+  });
+}
+
+export function ModelConfigPage({
+  embedded = false,
+  addProviderTop,
+}: {
+  embedded?: boolean;
+  addProviderTop?: ReactNode;
+} = {}) {
   const [status, setStatus] = useState<ConfigStatus | null>(null);
   const [providers, setProviders] = useState<ProviderView[]>([]);
   const [loading, setLoading] = useState(true);
@@ -330,6 +376,9 @@ export function ModelConfigPage({ embedded = false }: { embedded?: boolean } = {
 
   const [editingName, setEditingName] = useState<string | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
+  const [addingProvider, setAddingProvider] = useState(false);
+  const initialized = useRef(false);
+  const editorBaseline = useRef("");
   const [name, setName] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
   const [apiType, setApiType] = useState<ApiType>("openai-completions");
@@ -338,7 +387,7 @@ export function ModelConfigPage({ embedded = false }: { embedded?: boolean } = {
   const [modelRows, setModelRows] = useState<ModelRow[]>([emptyModelRow()]);
   const [optionRows, setOptionRows] = useState<OptionRow[]>([]);
   const [keyHint, setKeyHint] = useState(
-    "Some providers require the key before fetching models. Stored keys are local plaintext in Pi's auth.json; env mode stores only the variable name."
+    "Enter an API key before fetching models or saving."
   );
   const [keyUrl, setKeyUrl] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
@@ -386,7 +435,16 @@ export function ModelConfigPage({ embedded = false }: { embedded?: boolean } = {
   // Unsaved-changes guard (#7): warn on tab close/reload while the provider
   // editor is open with content the user hasn't saved.
   const editorDirty =
-    editorOpen && (!!name.trim() || !!apiKey || !!baseUrl.trim());
+    editorOpen &&
+    editorFingerprint({
+      name,
+      baseUrl,
+      apiType,
+      apiKey,
+      keyStorage,
+      modelRows,
+      optionRows,
+    }) !== editorBaseline.current;
   useEffect(() => {
     if (!editorDirty) return;
     const handler = (event: BeforeUnloadEvent) => {
@@ -399,64 +457,80 @@ export function ModelConfigPage({ embedded = false }: { embedded?: boolean } = {
 
   const closeEditor = () => {
     if (editorDirty && !window.confirm("Discard unsaved provider changes?")) return;
-    setEditorOpen(false);
+    if (editingName) {
+      openEditor(editingName);
+    } else {
+      setEditorOpen(false);
+      setAddingProvider(true);
+    }
   };
 
   const openEditor = (existingName?: string) => {
+    const provider = existingName
+      ? providers.find((item) => item.name === existingName)
+      : undefined;
+    const nextName = existingName || "";
+    const nextBaseUrl = provider?.baseUrl || "";
+    const nextApiType = provider?.api ?? "openai-completions";
+    const nextModelRows = provider?.models.length
+      ? provider.models.map((model) => configModelToRow(model))
+      : [emptyModelRow()];
+    const nextOptionRows = Object.entries(provider?.options || {}).map(
+      ([key, value]) => ({ key, value: stringifyOptionValue(value) }),
+    );
+    let nextKeyHint = "Enter an API key before fetching models or saving.";
+    if (provider?.keyState === "stored") {
+      nextKeyHint =
+        "A key is already saved for this provider. Leave blank to keep it, or paste a new key to replace it.";
+    } else if (provider?.keyState === "oauth") {
+      nextKeyHint =
+        "Connected with OAuth. Leave the API key blank to keep using this account.";
+    } else if (provider?.keyState === "env-set") {
+      nextKeyHint =
+        "An environment-variable key is configured and available in this process. Leave blank to keep it.";
+    } else if (provider?.keyState === "env-missing") {
+      nextKeyHint =
+        "An environment-variable key is configured but not available in this process. Enter a key or env var name before fetching models.";
+    } else if (provider?.models.length) {
+      nextKeyHint =
+        "No key is saved for this provider yet. Enter a key (or env var name) before saving.";
+    }
+    editorBaseline.current = editorFingerprint({
+      name: nextName,
+      baseUrl: nextBaseUrl,
+      apiType: nextApiType,
+      apiKey: "",
+      keyStorage: "literal",
+      modelRows: nextModelRows,
+      optionRows: nextOptionRows,
+    });
+    setAddingProvider(false);
     setEditingName(existingName ?? null);
     setEditorOpen(true);
-    setName(existingName || "");
-    setBaseUrl("");
-    setApiType("openai-completions");
+    setName(nextName);
+    setBaseUrl(nextBaseUrl);
+    setApiType(nextApiType);
     setApiKey("");
     setKeyStorage("literal");
-    setModelRows([emptyModelRow()]);
-    setOptionRows([]);
+    setModelRows(nextModelRows);
+    setOptionRows(nextOptionRows);
     setKeyUrl(null);
-    setKeyHint(
-      "Some providers require the key before fetching models. Stored keys are local plaintext in Pi's auth.json; env mode stores only the variable name."
-    );
-
-    if (existingName) {
-      const provider = providers.find((item) => item.name === existingName);
-      if (provider) {
-        setBaseUrl(provider.baseUrl || "");
-        if (provider.api) setApiType(provider.api);
-        if (provider.keyState === "stored") {
-          setKeyHint(
-            "A key is already saved for this provider. Leave blank to keep it, or paste a new key to replace it."
-          );
-        } else if (provider.keyState === "oauth") {
-          setKeyHint(
-            "This provider is connected through Pi OAuth. Leave the API key blank to keep using the connected account."
-          );
-        } else if (provider.keyState === "env-set") {
-          setKeyHint(
-            "An environment-variable key is configured and available in this process. Leave blank to keep it."
-          );
-        } else if (provider.keyState === "env-missing") {
-          setKeyHint(
-            "An environment-variable key is configured but not available in this process. Enter a key or env var name before fetching models."
-          );
-        } else if (provider.models.length > 0) {
-          setKeyHint(
-            "No key is saved for this provider yet. Enter a key (or env var name) before saving."
-          );
-        }
-        setModelRows(
-          provider.models.length
-            ? provider.models.map((model) => configModelToRow(model))
-            : [emptyModelRow()]
-        );
-        setOptionRows(
-          Object.entries(provider.options || {}).map(([key, value]) => ({
-            key,
-            value: stringifyOptionValue(value),
-          }))
-        );
-      }
-    }
+    setKeyHint(nextKeyHint);
   };
+
+  useEffect(() => {
+    if (loading || initialized.current) return;
+    initialized.current = true;
+    if (providers.length === 0) {
+      setAddingProvider(true);
+      return;
+    }
+    const initial =
+      providers.find((provider) => provider.active) ?? providers[0];
+    if (initial) openEditor(initial.name);
+    // Initial selection is deliberately one-shot; later clicks own the editor.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
 
   const applyPreset = (preset: ProviderPreset) => {
     setName(preset.name);
@@ -467,13 +541,14 @@ export function ModelConfigPage({ embedded = false }: { embedded?: boolean } = {
     setKeyStorage("literal");
     setKeyHint(
       preset.keyHint ||
-        "Paste the provider API key. Stored keys are local plaintext in Pi's auth.json; env mode stores only the variable name."
+        "Paste the provider API key."
     );
     setKeyUrl("keyUrl" in preset ? (preset.keyUrl as string) : null);
   };
 
   // Pick a preset card → prefill a NEW provider and open the editor inline.
   const pickPreset = (preset: ProviderPreset) => {
+    setAddingProvider(false);
     setEditingName(null);
     setApiKey("");
     applyPreset(preset);
@@ -524,84 +599,26 @@ export function ModelConfigPage({ embedded = false }: { embedded?: boolean } = {
             ? `Saved ${trimmedName}`
             : `Added ${trimmedName}`
       );
-      setEditorOpen(false);
+      const savedName = trimmedName;
+      const savedBaseUrl = baseUrl.trim();
+      setName(savedName);
+      setBaseUrl(savedBaseUrl);
+      setApiKey("");
+      editorBaseline.current = editorFingerprint({
+        name: savedName,
+        baseUrl: savedBaseUrl,
+        apiType,
+        apiKey: "",
+        keyStorage,
+        modelRows,
+        optionRows,
+      });
+      setEditingName(trimmedName);
+      setEditorOpen(true);
+      setAddingProvider(false);
       await refresh();
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Save failed", true);
-    }
-  };
-
-  const mergeFetchedModels = (
-    existing: ConfigModel[],
-    fetched: { id: string; name?: string }[]
-  ): ConfigModel[] => {
-    const merged = new Map<string, ConfigModel>();
-    for (const model of existing) {
-      if (model.id) merged.set(model.id, model);
-    }
-    for (const model of fetched) {
-      const id = model.id.trim();
-      if (!id) continue;
-      const prior = merged.get(id);
-      merged.set(id, {
-        id,
-        name: model.name || prior?.name,
-        contextWindow: prior?.contextWindow,
-        reasoning: prior?.reasoning,
-        compat: prior?.compat,
-      });
-    }
-    return [...merged.values()];
-  };
-
-  const fetchModelsForProvider = async (provider: ProviderView) => {
-    const manualHint = manualModelListHint(provider.name);
-    if (manualHint) {
-      showToast(manualHint, true);
-      return;
-    }
-    if (!provider.baseUrl) {
-      showToast("Built-in providers have no fetch endpoint. Edit to add models.", true);
-      return;
-    }
-    if (!keyStateIsUsable(provider.keyState)) {
-      showToast("Set an API key before fetching models for this provider.", true);
-      return;
-    }
-    try {
-      const data = await fetchProviderModels(provider.name);
-      if (provider.keyState === "oauth") {
-        const available = new Set((data.models || []).map((model) => model.id));
-        setProviders((current) =>
-          current.map((item) =>
-            item.name === provider.name
-              ? {
-                  ...item,
-                  models: item.models.filter((model) => available.has(model.id)),
-                }
-              : item
-          )
-        );
-        showToast(
-          `Verified ${available.size} Pi-supported models for this account`
-        );
-        return;
-      }
-      const models = mergeFetchedModels(provider.models, data.models || []);
-      if (models.length === 0) {
-        showToast("Fetch returned no models.", true);
-        return;
-      }
-      await upsertConfigProvider(provider.name, {
-        baseUrl: provider.baseUrl,
-        api: provider.api,
-        models,
-        options: provider.options,
-      });
-      showToast(`Updated ${provider.name} with ${data.models?.length || 0} fetched models`);
-      await refresh();
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : "Fetch failed", true);
     }
   };
 
@@ -667,15 +684,48 @@ export function ModelConfigPage({ embedded = false }: { embedded?: boolean } = {
         ...(apiKey ? { keyStorage } : {}),
       });
       setModelRows(
-        (data.models || []).map((model) =>
-          configModelToRow({ id: model.id, name: model.name })
-        )
+        (data.models || []).map((model) => configModelToRow(model))
       );
       showToast(`Fetched ${data.models?.length || 0} models`);
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Fetch failed", true);
     }
   };
+
+  const statusSummary = (
+    <>
+      {loading ? (
+        <HintText>Loading…</HintText>
+      ) : error ? (
+        <HintText className="text-warning">{error}</HintText>
+      ) : status ? (
+        <BodyText className="text-[0.8125rem]">
+          {status.activeUsable ? (
+            <span className="text-success">Ready.</span>
+          ) : status.anyUsable ? (
+            <span className="text-warning">
+              Choose an active model to use the app.
+            </span>
+          ) : (
+            <span className="text-warning">No provider has a key yet.</span>
+          )}{" "}
+          {status.activeProvider && status.activeModel ? (
+            <>
+              Active:{" "}
+              <strong>
+                {status.activeProvider} / {status.activeModel}
+              </strong>
+            </>
+          ) : (
+            " No active model selected."
+          )}
+        </BodyText>
+      ) : null}
+      {status?.activeIssue ? (
+        <HintText className="mt-1 text-warning">{status.activeIssue}</HintText>
+      ) : null}
+    </>
+  );
 
   return (
     <div className={embedded ? "" : "h-screen overflow-y-auto bg-canvas px-6 py-8 pb-20"}>
@@ -711,8 +761,7 @@ export function ModelConfigPage({ embedded = false }: { embedded?: boolean } = {
         </PageTitle>
         {!firstRun ? (
           <BodyText className="mt-1 text-text-secondary">
-            Configure one or more providers. This writes Pi&apos;s native config
-            files under Alt Theory&apos;s local state folder.
+            Connect providers and choose the model Alt Theory uses.
           </BodyText>
         ) : null}
 
@@ -723,9 +772,9 @@ export function ModelConfigPage({ embedded = false }: { embedded?: boolean } = {
             </p>
             <div className="mt-4">
               {[
-                "Pick a provider below",
-                "Paste its API key",
-                "Save — you're ready to talk",
+                "Choose a provider below",
+                "Sign in or add an API key",
+                "Choose a model and start",
               ].map((step, i, all) => (
                 <div key={i}>
                   <div className="flex items-center gap-3">
@@ -741,147 +790,198 @@ export function ModelConfigPage({ embedded = false }: { embedded?: boolean } = {
               ))}
             </div>
             <p className="mt-4 text-[0.75rem] text-text-muted">
-              Takes about a minute. Your key and conversations stay on this
-              computer.
+              Takes about a minute.
             </p>
           </div>
         ) : null}
         </>
         ) : null}
 
-        <div className="mt-6 rounded-lg border border-hairline bg-card px-4 py-3">
-          {loading ? (
-            <HintText>Loading…</HintText>
-          ) : error ? (
-            <HintText className="text-warning">{error}</HintText>
-          ) : status ? (
-            <BodyText className="text-[0.8125rem]">
-              {status.activeUsable ? (
-                <span className="text-success">Ready.</span>
-              ) : status.anyUsable ? (
-                <span className="text-warning">
-                  Choose an active model to use the app.
-                </span>
-              ) : (
-                <span className="text-warning">No provider has a key yet.</span>
-              )}{" "}
-              {status.activeProvider && status.activeModel ? (
-                <>
-                  Active:{" "}
-                  <strong>
-                    {status.activeProvider} / {status.activeModel}
-                  </strong>
-                </>
-              ) : (
-                " No active model selected."
-              )}
-            </BodyText>
-          ) : null}
-          {status?.activeIssue ? (
-            <HintText className="mt-2 text-warning">{status.activeIssue}</HintText>
-          ) : null}
-          {status?.agentDir ? (
-            <MonoText className="mt-2 block break-all text-[0.75rem] text-text-muted">
-              Config dir: {status.agentDir}
-            </MonoText>
-          ) : null}
-        </div>
+        {embedded ? (
+          <div className="model-config-heading">
+            <h2>Models</h2>
+            <div className="model-config-status">{statusSummary}</div>
+          </div>
+        ) : (
+          <div className="model-config-status">{statusSummary}</div>
+        )}
 
-        {!embedded ? (
-          <h2 className="mt-6 text-[0.9375rem] font-semibold text-ink">
-            Your providers
-          </h2>
-        ) : null}
-
-        <div className="mt-3 space-y-3">
-          {providers.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-hairline px-4 py-8 text-center">
-              <HintText>No providers yet — pick one below to get started.</HintText>
+        <div className="model-config-layout">
+          <aside className="provider-master" aria-label="Configured providers">
+            <button
+              type="button"
+              className="add-provider-primary"
+              onClick={() => {
+                if (editorDirty && !window.confirm("Discard unsaved provider changes?")) {
+                  return;
+                }
+                setEditorOpen(false);
+                setEditingName(null);
+                setAddingProvider(true);
+              }}
+            >
+              <i className="ph ph-plus" aria-hidden />
+              Add provider
+            </button>
+            <div className="provider-master-list">
+              {[...providers]
+                .sort((a, b) => {
+                  const authOrder =
+                    Number(b.keyState === "oauth") - Number(a.keyState === "oauth");
+                  if (authOrder !== 0) return authOrder;
+                  if (a.active !== b.active) return a.active ? -1 : 1;
+                  return a.name.localeCompare(b.name);
+                })
+                .map((provider) => (
+                  <button
+                    type="button"
+                    key={provider.name}
+                    className={cn(
+                      "provider-master-row",
+                      editingName === provider.name && !addingProvider && "on",
+                    )}
+                    onClick={() => {
+                      if (
+                        editorDirty &&
+                        editingName !== provider.name &&
+                        !window.confirm("Discard unsaved provider changes?")
+                      ) {
+                        return;
+                      }
+                      openEditor(provider.name);
+                    }}
+                  >
+                    <span className="provider-master-name">{provider.name}</span>
+                    {provider.keyState === "oauth" ? (
+                      <span className="provider-oauth-mark">OAuth</span>
+                    ) : null}
+                    {provider.active ? (
+                      <i className="ph ph-check provider-active-check" title="Active" />
+                    ) : null}
+                  </button>
+                ))}
             </div>
-          ) : (
-            providers.map((provider) => (
-              <ProviderCard
-                key={provider.name}
-                provider={provider}
-                onFetchModels={() => void fetchModelsForProvider(provider)}
-                onSetActive={async (model) => {
-                  try {
-                    await setActiveModel(provider.name, model);
-                    showToast(`Set active: ${provider.name} / ${model}`);
-                    await refresh();
-                  } catch (err) {
-                    showToast(
-                      err instanceof Error ? err.message : "Failed",
-                      true
-                    );
-                  }
-                }}
-                onEdit={() => openEditor(provider.name)}
-                onDelete={async () => {
-                  if (
-                    !window.confirm(
-                      `Delete provider "${provider.name}" and its saved key?`
-                    )
-                  ) {
-                    return;
-                  }
-                  try {
-                    await deleteConfigProvider(provider.name);
-                    showToast(`Deleted ${provider.name}`);
-                    await refresh();
-                  } catch (err) {
-                    showToast(
-                      err instanceof Error ? err.message : "Delete failed",
-                      true
-                    );
-                  }
-                }}
-              />
-            ))
-          )}
-        </div>
-
-        {/* Always-visible provider picker (owner 2026-07-24): pick a card and the
-            editor expands inline below — no "Add provider" gate, no modal. */}
-        <div className="mt-6 space-y-3">
-          <PresetGroup
-            title="Recommended providers"
-            presets={PROVIDER_PRESETS.filter((preset) => preset.recommended)}
-            onPick={pickPreset}
-          />
-          <PresetGroup
-            title="Other providers"
-            presets={PROVIDER_PRESETS.filter((preset) => !preset.recommended)}
-            onPick={pickPreset}
-            compact
-          />
-          <button
-            type="button"
-            className="flex w-full items-center gap-3 rounded-md border border-dashed border-hairline bg-surface px-3 py-2.5 text-left hover:bg-hover"
-            onClick={() => openEditor()}
-          >
-            <i className="ph ph-sliders-horizontal text-lg text-ink-soft" />
-            <span>
-              <span className="block text-[0.8125rem] font-semibold text-ink">
-                Customize
-              </span>
-              <span className="block text-[0.72rem] text-text-secondary">
-                Set up any provider by hand
-              </span>
-            </span>
-          </button>
-        </div>
+          </aside>
+          <section className="provider-detail">
+            {addingProvider ? (
+              <div className="provider-add-panel">
+                <h3>Add provider</h3>
+                {addProviderTop ? (
+                  <>
+                    <p className="provider-section-label">OAuth</p>
+                    {addProviderTop}
+                    <div className="provider-add-divider" />
+                  </>
+                ) : null}
+                <div className="provider-preset-list">
+                  {[
+                    ...PROVIDER_PRESETS.filter((preset) => preset.recommended),
+                    ...PROVIDER_PRESETS.filter((preset) => !preset.recommended),
+                  ].map((preset) => (
+                    <button
+                      type="button"
+                      key={preset.name}
+                      className="provider-preset-row"
+                      onClick={() => pickPreset(preset)}
+                    >
+                      <span>
+                        <strong>{preset.label}</strong>
+                        <small>{preset.description}</small>
+                      </span>
+                      <i className="ph ph-caret-right" aria-hidden />
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  className="provider-custom-row"
+                  onClick={() => openEditor()}
+                >
+                  <i className="ph ph-sliders-horizontal" aria-hidden />
+                  Configure another provider
+                </button>
+              </div>
+            ) : null}
 
         {editorOpen ? (
-          <div className="mt-4 rounded-lg border border-hairline bg-card p-4">
-            <h3 className="text-[0.9375rem] font-semibold text-ink">
-              {editingName ? `Edit ${editingName}` : "New provider"}
-            </h3>
+          <div className="provider-editor">
+            <div className="provider-editor-head">
+              <h3 className="text-[0.9375rem] font-semibold text-ink">
+                {editingName ? editingName : "New provider"}
+              </h3>
+              {editingName ? (
+                <button
+                  type="button"
+                  className="provider-delete"
+                  onClick={async () => {
+                    if (
+                      !window.confirm(
+                        `Delete provider "${editingName}" and its saved key?`,
+                      )
+                    ) {
+                      return;
+                    }
+                    try {
+                      await deleteConfigProvider(editingName);
+                      showToast(`Deleted ${editingName}`);
+                      initialized.current = false;
+                      setEditorOpen(false);
+                      setEditingName(null);
+                      await refresh();
+                    } catch (err) {
+                      showToast(
+                        err instanceof Error ? err.message : "Delete failed",
+                        true,
+                      );
+                    }
+                  }}
+                >
+                  Delete
+                </button>
+              ) : null}
+            </div>
+
+            {editingName ? (
+              <label className="provider-active-model">
+                <span>Active model</span>
+                <select
+                  value={
+                    status?.activeProvider === editingName
+                      ? status.activeModel ?? ""
+                      : ""
+                  }
+                  onChange={async (event) => {
+                    if (!event.target.value) return;
+                    try {
+                      await setActiveModel(editingName, event.target.value);
+                      showToast(`Using ${event.target.value}`);
+                      await refresh();
+                    } catch (err) {
+                      showToast(
+                        err instanceof Error ? err.message : "Could not change model",
+                        true,
+                      );
+                    }
+                  }}
+                >
+                  <option value="" disabled>
+                    Choose a model
+                  </option>
+                  {modelRows
+                    .filter((row) => row.id.trim())
+                    .map((row) => (
+                      <option key={row.id} value={row.id}>
+                        {row.name || row.id}
+                      </option>
+                    ))}
+                </select>
+              </label>
+            ) : null}
 
             <div className="mt-4 space-y-4">
               <FieldFrame
                 label="Provider name"
-                hint="Used as the key in models.json. Alphanumeric, dash, dot, underscore."
+                hint="A short unique name. Use letters, numbers, dash, dot, or underscore."
               >
                 <TextInput
                   value={name}
@@ -965,8 +1065,7 @@ export function ModelConfigPage({ embedded = false }: { embedded?: boolean } = {
                 <div>
                   <p className="text-[0.8125rem] font-semibold text-ink">Models</p>
                   <HintText className="mt-0.5">
-                    Reasoning models (MiMo, Qwen, DeepSeek) need compat flags so Pi
-                    serializes thinking blocks correctly.
+                    Correct model limits and the effort choices shown in the composer.
                   </HintText>
                 </div>
                 {modelRows.map((row, index) => (
@@ -1009,64 +1108,132 @@ export function ModelConfigPage({ embedded = false }: { embedded?: boolean } = {
                         ✕
                       </Button>
                     </div>
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[0.75rem] text-text-secondary">
-                      <label className="flex items-center gap-1.5">
-                        <input
-                          type="checkbox"
-                          checked={row.reasoning}
+                    <div className="grid gap-2 sm:grid-cols-3">
+                      <label className="space-y-1 text-[0.72rem] text-text-secondary">
+                        <span>Context window</span>
+                        <TextInput
+                          type="number"
+                          min="1"
+                          placeholder="tokens"
+                          value={row.contextWindow}
                           onChange={(event) =>
                             setModelRows((prev) =>
                               prev.map((item, i) =>
                                 i === index
-                                  ? { ...item, reasoning: event.target.checked }
-                                  : item
-                              )
+                                  ? { ...item, contextWindow: event.target.value }
+                                  : item,
+                              ),
                             )
                           }
                         />
-                        Reasoning model
                       </label>
-                      <label className="flex items-center gap-1.5">
-                        <span>Thinking format</span>
-                        <select
-                          className="rounded-md border border-hairline bg-surface px-2 py-1 text-[0.75rem]"
-                          value={row.thinkingFormat}
+                      <label className="space-y-1 text-[0.72rem] text-text-secondary">
+                        <span>Max output tokens</span>
+                        <TextInput
+                          type="number"
+                          min="1"
+                          placeholder="tokens"
+                          value={row.maxTokens}
                           onChange={(event) =>
                             setModelRows((prev) =>
                               prev.map((item, i) =>
                                 i === index
-                                  ? { ...item, thinkingFormat: event.target.value }
-                                  : item
-                              )
+                                  ? { ...item, maxTokens: event.target.value }
+                                  : item,
+                              ),
                             )
                           }
-                        >
-                          {THINKING_FORMAT_OPTIONS.map((option) => (
-                            <option key={option.value || "none"} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
+                        />
                       </label>
-                      <label className="flex items-center gap-1.5">
+                      <label className="flex items-end gap-1.5 pb-2 text-[0.75rem] text-text-secondary">
                         <input
                           type="checkbox"
-                          checked={row.requiresReasoningContent}
+                          checked={row.input?.includes("image") ?? false}
                           onChange={(event) =>
                             setModelRows((prev) =>
                               prev.map((item, i) =>
                                 i === index
                                   ? {
                                       ...item,
-                                      requiresReasoningContent: event.target.checked,
+                                      input: event.target.checked
+                                        ? ["text", "image"]
+                                        : item.input
+                                          ? ["text"]
+                                          : undefined,
                                     }
-                                  : item
-                              )
+                                  : item,
+                              ),
                             )
                           }
                         />
-                        Requires reasoning on assistant turns
+                        Image input
                       </label>
+                    </div>
+                    <div className="model-effort-editor">
+                      <span>Available thinking effort</span>
+                      <div className="model-effort-levels">
+                        {THINKING_LEVEL_OPTIONS.map((level) => {
+                          const effectiveLevels =
+                            row.thinkingLevels ??
+                            row.availableThinkingLevels;
+                          const enabled = effectiveLevels.includes(level);
+                          return (
+                            <label key={level}>
+                              <input
+                                type="checkbox"
+                                checked={enabled}
+                                onChange={(event) =>
+                                  setModelRows((previous) =>
+                                    previous.map((item, itemIndex) => {
+                                      if (itemIndex !== index) return item;
+                                      const levels = new Set(
+                                        item.thinkingLevels ??
+                                          item.availableThinkingLevels,
+                                      );
+                                      if (event.target.checked) levels.add(level);
+                                      else levels.delete(level);
+                                      const thinkingLevels =
+                                        THINKING_LEVEL_OPTIONS.filter(
+                                          (candidate) => levels.has(candidate),
+                                        );
+                                      return {
+                                        ...item,
+                                        reasoning:
+                                          item.reasoning ||
+                                          thinkingLevels.some(
+                                            (candidate) => candidate !== "off",
+                                          ),
+                                        thinkingLevels,
+                                      };
+                                    }),
+                                  )
+                                }
+                              />
+                              {level}
+                            </label>
+                          );
+                        })}
+                      </div>
+                      <HintText>
+                        The composer offers only the checked levels.
+                      </HintText>
+                      {row.thinkingLevels !== undefined ? (
+                        <button
+                          type="button"
+                          className="text-[0.75rem] text-muted underline"
+                          onClick={() =>
+                            setModelRows((previous) =>
+                              previous.map((item, itemIndex) =>
+                                itemIndex === index
+                                  ? { ...item, thinkingLevels: undefined }
+                                  : item,
+                              ),
+                            )
+                          }
+                        >
+                          Use fetched levels
+                        </button>
+                      ) : null}
                     </div>
                   </div>
                 ))}
@@ -1170,6 +1337,8 @@ export function ModelConfigPage({ embedded = false }: { embedded?: boolean } = {
             </div>
           </div>
         ) : null}
+          </section>
+        </div>
       </div>
 
       {toast ? (
@@ -1194,194 +1363,5 @@ export function ModelConfigPage({ embedded = false }: { embedded?: boolean } = {
     </div>
   );
 }
-
-function ProviderCard({
-  provider,
-  onFetchModels,
-  onSetActive,
-  onEdit,
-  onDelete,
-}: {
-  provider: ProviderView;
-  onFetchModels: () => void;
-  onSetActive: (model: string) => void;
-  onEdit: () => void;
-  onDelete: () => void;
-}) {
-  const manualFetchHint = manualModelListHint(provider.name);
-  const canFetch = Boolean(
-    provider.baseUrl && keyStateIsUsable(provider.keyState) && !manualFetchHint
-  );
-  const modelIds = provider.models.map((model) => model.id).join("\u0000");
-  const [selectedModel, setSelectedModel] = useState(provider.models[0]?.id || "");
-
-  useEffect(() => {
-    setSelectedModel((current) =>
-      provider.models.some((model) => model.id === current)
-        ? current
-        : provider.models[0]?.id || ""
-    );
-  }, [provider.name, modelIds, provider.models]);
-
-  return (
-    <div
-      className={cn(
-        "rounded-lg border bg-surface px-4 py-3",
-        provider.active ? "border-ink-soft shadow-[inset_3px_0_0_#555]" : "border-hairline"
-      )}
-    >
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-[0.875rem] font-semibold text-ink">{provider.name}</p>
-          <HintText className="break-all">
-            {provider.baseUrl || "(built-in endpoint)"}
-          </HintText>
-        </div>
-        <div className="flex flex-wrap gap-1">
-          <span
-            className={cn(
-              "rounded-full border px-2 py-0.5 text-[0.6875rem]",
-              keyStateIsUsable(provider.keyState)
-                ? "border-success/30 bg-success/10 text-success"
-                : "border-warning/30 bg-warning/10 text-warning"
-            )}
-          >
-            {keyStateLabel(provider.keyState)}
-          </span>
-          {provider.active ? (
-            <span className="rounded-full border border-hairline bg-selected px-2 py-0.5 text-[0.6875rem] font-semibold">
-              active
-            </span>
-          ) : null}
-          {provider.api ? (
-            <span className="rounded-full border border-hairline px-2 py-0.5 text-[0.6875rem] text-text-muted">
-              {provider.api}
-            </span>
-          ) : null}
-        </div>
-      </div>
-
-      {provider.warning ? (
-        <HintText className="mt-2 text-warning">{provider.warning}</HintText>
-      ) : null}
-
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <select
-          className="min-w-[180px] flex-1 rounded-md border border-hairline bg-surface px-2 py-1.5 text-[0.8125rem]"
-          value={selectedModel}
-          onChange={(event) => setSelectedModel(event.target.value)}
-          disabled={provider.models.length === 0}
-        >
-          {provider.models.map((model) => (
-            <option key={model.id} value={model.id}>
-              {model.id}
-            </option>
-          ))}
-        </select>
-        <Button
-          variant="secondary"
-          disabled={!selectedModel}
-          onClick={() => selectedModel && onSetActive(selectedModel)}
-        >
-          Set active
-        </Button>
-        <Button
-          variant="secondary"
-          disabled={!canFetch}
-          title={
-            manualFetchHint
-              ? manualFetchHint
-              : canFetch
-                ? "Refresh model list from provider API"
-              : "Needs base URL and a saved or available env key"
-          }
-          onClick={onFetchModels}
-        >
-          Fetch models
-        </Button>
-        <Button variant="secondary" onClick={onEdit}>
-          Edit
-        </Button>
-        <Button variant="ghost" className="text-danger" onClick={onDelete}>
-          Delete
-        </Button>
-      </div>
-
-      <div className="mt-2 space-y-0.5 text-[0.75rem] text-text-muted">
-        {provider.models.map((model) => (
-          <div key={model.id} className="flex flex-wrap items-center gap-2">
-            <span>{model.id}</span>
-            {model.reasoning ? (
-              <span className="rounded border border-hairline px-1.5 py-0.5 text-[0.6875rem]">
-                reasoning
-              </span>
-            ) : null}
-            {model.compat?.thinkingFormat ? (
-              <span className="rounded border border-hairline px-1.5 py-0.5 text-[0.6875rem]">
-                {model.compat.thinkingFormat}
-              </span>
-            ) : null}
-            {model.contextWindow ? <span>{model.contextWindow} ctx</span> : null}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function PresetGroup({
-  title,
-  presets,
-  onPick,
-  compact = false,
-}: {
-  title: string;
-  presets: ProviderPreset[];
-  onPick: (preset: ProviderPreset) => void;
-  compact?: boolean;
-}) {
-  return (
-    <div>
-      <p className="text-[0.75rem] font-semibold uppercase tracking-wide text-text-muted">
-        {title}
-      </p>
-      <div className={cn("mt-2 grid gap-2", compact ? "sm:grid-cols-3" : "md:grid-cols-3")}>
-        {presets.map((preset) => (
-          <button
-            key={preset.label}
-            type="button"
-            className={cn(
-              "rounded-md border border-hairline bg-surface px-3 py-2 text-left hover:bg-hover",
-              compact && "px-2.5 py-1.5"
-            )}
-            title={compact ? undefined : preset.description}
-            onClick={() => onPick(preset)}
-          >
-            <span className="block text-[0.8125rem] font-semibold text-ink">
-              {preset.label}
-            </span>
-            {!compact && (preset as { keyUrl?: string }).keyUrl ? (
-              <a
-                className="mt-1 block text-[0.6875rem] text-text-secondary underline underline-offset-2 hover:text-ink"
-                href={(preset as { keyUrl?: string }).keyUrl}
-                target="_blank"
-                rel="noreferrer"
-                onClick={(e) => e.stopPropagation()}
-              >
-                Get an API key ↗
-              </a>
-            ) : null}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-
-
-
-
-
 
 

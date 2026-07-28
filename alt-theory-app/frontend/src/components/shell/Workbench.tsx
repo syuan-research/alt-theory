@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
 import { sessionTitle } from "@/lib/sessionList";
@@ -117,6 +117,11 @@ function StudyTagCard() {
   const app = useApp();
   const [studyId, setStudyId] = useState(app.studyTag?.studyId ?? "");
   const [batch, setBatch] = useState(app.studyTag?.batch ?? "");
+
+  useEffect(() => {
+    setStudyId(app.studyTag?.studyId ?? "");
+    setBatch(app.studyTag?.batch ?? "");
+  }, [app.studyTag?.batch, app.studyTag?.studyId]);
 
   const dirty =
     studyId.trim() !== (app.studyTag?.studyId ?? "") ||

@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { fetchAuthMe } from "@/api/auth";
+import { AuthConnectCard } from "@/components/shell/SettingsView";
 import { BodyText, HintText, PageTitle } from "@/components/ui/Typography";
 import { ModelConfigPage } from "@/pages/ModelConfigPage";
 
 export function ConfigRoute() {
   const [mode, setMode] = useState<"loading" | "local" | "hosted">("loading");
+  const [configVersion, setConfigVersion] = useState(0);
 
   useEffect(() => {
     void fetchAuthMe()
@@ -41,5 +43,14 @@ export function ConfigRoute() {
     );
   }
 
-  return <ModelConfigPage />;
+  return (
+    <ModelConfigPage
+      key={configVersion}
+      addProviderTop={
+        <AuthConnectCard
+          onChanged={() => setConfigVersion((version) => version + 1)}
+        />
+      }
+    />
+  );
 }

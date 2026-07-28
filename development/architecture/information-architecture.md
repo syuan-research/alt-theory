@@ -1,0 +1,255 @@
+---
+title: Alt Theory information architecture
+status: v2
+last_updated: 2026-07-28
+scope: where user-facing things live, how the major surfaces relate, and which information belongs in each
+---
+
+# Alt Theory information architecture
+
+This document is the product rule for adding, moving, or reshaping user-facing
+surfaces. It describes architecture and structure, not exact copy, dimensions,
+or visual styling. Revise it through product discussion when the structure
+changes; do not silently bypass it during implementation.
+
+Alt Theory serves two overlapping audiences: people who want to understand a
+problem, and people who want efficiency without giving up understanding. The
+local bundle must work for non-technical social-science users. Researcher-only
+surfaces remain designation-gated and absent for everyone else.
+
+## Governing principles
+
+1. **Put an entry where its product object lives.** Conversation creation,
+   list management, message actions, files, and settings each have their own
+   home. Do not place an action in global navigation merely because there is
+   available space.
+2. **Permanent conversation chrome contains conversation configuration.**
+   Mode, model and thinking effort, role, knowledge, workspace, and send/run
+   controls may live around the composer. Skills and setup workflows do not
+   become permanent top-level chrome.
+3. **The UI is not a projection of backend schemas.** A control belongs in the
+   product only when its intended user can understand it, make a meaningful
+   choice, and recognize the result. Folding an internal field under
+   "Advanced" does not make it usable.
+4. **Show ordinary state quietly; mark only meaningful exceptions.** Do not
+   label every common model as reasoning-capable or every ordinary provider as
+   API-key based. Surface a distinction only when it changes the user's current
+   choice or explains an exceptional state.
+5. **Keep live choices current and make consequential silent changes visible.**
+   The effective model, thinking effort, mode, workspace, approvals, and run
+   state must not silently contradict the user's last visible choice. Stable
+   identifiers and paths remain available on demand rather than occupying the
+   default view.
+6. **Use the agent for complexity after a minimal bootstrap.** Before any model
+   works, the product must offer a short deterministic path to one usable
+   provider and model. Once Alt can run, complicated provider setup and
+   recovery should be assistable through the existing Helper capability rather
+   than teaching protocol details in the settings UI.
+7. **Promises are statements, not features.** Stable assurances such as local
+   storage belong in first-run/About copy, not as permanent controls.
+
+## Surface map
+
+- **Composer and empty state**
+  - Empty state presents the Understand/Work choice without forcing a modal.
+  - Live composer chrome carries mode, model and effective thinking effort,
+    role, knowledge, workspace context where applicable, and run controls.
+  - Import may appear as a quiet conversation-creation action.
+- **Model menu**
+  - Shows the effective model and, where supported, the effective thinking
+    effort.
+  - The active provider's models are directly visible. Other providers appear
+    by provider first, then model.
+  - Thinking effort is a second-level choice for the selected model, not a row
+    of protocol metadata.
+  - The menu links to Settings > Models without losing the current draft.
+- **Toolbox and slash palette**
+  - The toolbox contains a small curated set of common capabilities.
+  - The slash palette is the complete home for skills and commands.
+  - Skills do not receive permanent navigation entries merely because they are
+    installed.
+- **Messages**
+  - User messages keep a familiar pencil for editing; its tooltip may say
+    `Edit and branch`. Editing after an answer preserves the original in a
+    sibling conversation and reveals the related-conversation rail.
+  - The user-message overflow may offer `Try same prompt again`; it has the
+    same sibling-branch behavior without forcing novice users to understand
+    Git terminology.
+  - `Retry` is only for failed/no-answer attempts. It stays above the composer
+    and reruns in place without creating a visible branch.
+  - History-changing actions explain their consequence at the moment of first
+    use.
+  - Resolved conversation permissions do not become transcript events. When
+    retained for inspection, they live collapsed in advanced Runtime.
+  - Thinking, tool activity, compaction boundaries, and connection/run states
+    render as conversation events, not settings.
+- **Conversation list**
+  - Conversations are grouped by workspace.
+  - List-level actions live in the list overflow.
+  - Side chats, Helper conversations, and provisional comparison arms do not
+    become ordinary list rows.
+- **Right rail**
+  - Holds files/changes and one selected side conversation or Helper thread.
+  - File preview occupies the rail as a real reading surface; rendered Markdown
+    is the default for non-technical users, with source available on demand.
+- **Settings**
+  - General: app behavior and ordinary preferences.
+  - Models: provider connection, model choice, and model capability correction.
+  - Role & Knowledge: role, knowledge sets, and related paths when implemented.
+  - What Alt can do: a curated capability guide sharing its source with Helper.
+  - About: version, changes, and stable storage statements.
+- **Researcher-only surfaces**
+  - Inspector, comparison, provenance, and study controls are
+    designation-gated and have zero presence otherwise.
+
+## Model and provider configuration
+
+### User mental model
+
+- A **provider** connects Alt to an AI service.
+- A **model** is a choice available through that provider.
+- A model's **supported thinking levels** are provider-specific capability
+  metadata. Alt obtains them from the maintained models.dev catalog used
+  upstream by OpenCode and Pi, with a short cache and explicit user correction
+  as the override. `reasoning: true` alone never implies a universal level set.
+- A model's **recommended initial effort** is model metadata when a reliable
+  upstream supplies it; it is not an app-wide user preference.
+- The **selected thinking effort** is conversation state. It is chosen in the
+  composer/model menu from the levels supported by that model.
+
+Do not collapse these concepts into one settings form.
+
+### Settings > Models layout
+
+The Models surface uses a master-detail structure:
+
+- The left side is a compact list of existing providers.
+- Selecting any provider opens its editor in the right detail area; do not
+  require the user to find a small Edit button.
+- The active provider/model is legible without expanding every model's
+  metadata.
+- OAuth-connected providers sort before ordinary API-key providers.
+- OAuth-connected providers may carry the single low-key word `OAuth`.
+  Ordinary API-key providers need no corresponding badge.
+- A visually clear `+ Add provider` action opens the add flow in the right
+  detail area.
+- With no providers configured, the add flow is open by default.
+
+Provider rows do not enumerate context windows, output limits, reasoning
+flags, costs, modalities, or metadata provenance. Those facts do not help the
+user scan or choose a provider.
+
+### Add provider
+
+The right-side add flow is flat rather than a stack of nested cards:
+
+1. Pi-native OAuth/auth options supported by the product;
+2. one quiet divider;
+3. recommended API-key provider presets;
+4. agent-assisted or manual custom setup as secondary paths.
+
+OAuth choices appear before API-key presets. Preserve Pi's supported auth
+capacity rather than implementing another credential system. Claude
+subscription login is not a supported product entry; Anthropic API-key
+providers remain possible.
+
+Once at least one usable model exists, complicated setup should offer an
+**Ask Alt to add a provider** path through Helper. Manual configuration remains
+available for users who deliberately seek it, but it is not the default
+teaching path.
+
+Before Alt can run, the add flow may instead link to the public setup guide and
+its copyable prompt for getting help from another AI.
+
+### Edit provider and model
+
+The normal provider editor focuses on actions the user can understand:
+connection state, available models, active model, refresh where meaningful,
+and save/delete actions.
+
+An intentionally opened advanced model editor may correct model capability
+data that affects runtime behavior, including:
+
+- model id and display name;
+- context limits;
+- supported thinking levels and their provider-specific value mapping;
+- recommended initial effort when it needs a manual correction;
+- other human-understandable capabilities only after a real correction use
+  case exists.
+
+The advanced editor is not a raw compatibility-schema editor. Wire-format
+fields such as `thinkingFormat` and
+`requiresReasoningContentOnAssistantMessages` belong to presets, adapters, or
+Pi metadata. They are not understandable user choices and must not appear in
+the normal or advanced product UI.
+
+### Conversation model and effort
+
+- A model selected before the first message remains visibly selected and is
+  used when the conversation materializes.
+- The composer shows the effective thinking effort, not an ambiguous unset
+  value.
+- A new draft without an explicit effort uses a reliable upstream
+  recommendation when one exists. Otherwise, order that model's actual
+  supported non-off levels and choose the positional middle; for an even
+  number of levels choose the lower of the two middle values. Do not equate
+  the literal label `medium` with the middle of an expanding level set.
+- Only levels supported by the selected model are offered. A model may expose
+  none plus a small set such as high/max, while another may expose several
+  levels.
+- Reasoning models whose upstream metadata exposes only automatic/toggle
+  reasoning, or no effort variants for that provider, do not receive a
+  fabricated effort menu.
+- Editing supported levels in model settings changes the available choices;
+  choosing the current effort remains a conversation action.
+- No model switch, fallback, or reset may be silent.
+
+### Draft-to-live continuity
+
+Before the first message, model/effort, role, knowledge, mode, visibility,
+workspace, study tag, and attachments are one coherent draft. A selector echo
+must preserve the other draft fields. The first send materializes that exact
+state; it must not create a default session and repair it afterward.
+
+Actions that require an existing parent conversation, such as branching,
+side conversations, and Helper forking, are not shown as active draft actions
+until a parentless form has an explicit product meaning. Draft-only affordances
+must not clear input or close a menu while doing nothing.
+
+## Agent-assisted setup boundary
+
+Helper is part of the configuration architecture, not merely documentation.
+It can help a user understand what they are connecting, inspect relevant
+configuration and failure context, propose a change, apply it with normal user
+approval, and verify that the provider/model can actually run.
+
+Helper may receive the relevant configuration and failure context. Protocol
+details do not become default user-facing explanations. If no model is
+available to run Helper, the deterministic OAuth/recommended-provider
+bootstrap remains the fallback.
+
+After the public GitHub help documentation exists, the same setup Markdown
+provides a copyable prompt that points another AI to those docs. It contains
+two clearly separated routes without becoming two pages:
+
+- an on-device agent can inspect and help edit the local configuration;
+- an online chatbot with web access can read the public docs and guide the
+  user through the same setup without local machine access.
+
+This external-agent route raises first-run accessibility before Alt itself can
+run; it complements rather than replaces the shortest built-in bootstrap.
+
+## Review and change rule
+
+Before implementing a UI change, review the affected journey from the target
+user's perspective and check:
+
+- Is this the correct surface for the object or action?
+- Does the intended user understand and control what is shown?
+- Is common information being repeated while the primary action is buried?
+- Can existing product or Helper capability handle the complexity instead?
+- Does the change preserve visible draft/live state across navigation?
+
+Exact labels and layouts may evolve through prototype review and product discussion.
+The surface ownership and boundaries above remain authoritative until this
+document is explicitly revised.

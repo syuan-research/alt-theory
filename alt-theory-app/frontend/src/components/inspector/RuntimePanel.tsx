@@ -11,6 +11,7 @@ interface RuntimePanelProps {
   manifest: AssemblyManifest | null;
   currentDomain?: string | null;
   metrics: SessionMetrics | null;
+  approvalMarkers?: string[];
   discovery?: DiscoveryLists | null;
   onRefresh: () => void;
   disabled?: boolean;
@@ -32,6 +33,7 @@ export function RuntimePanel({
   manifest,
   currentDomain,
   metrics,
+  approvalMarkers = [],
   discovery,
   onRefresh,
   disabled,
@@ -156,6 +158,17 @@ export function RuntimePanel({
         <p className="text-[0.75rem] font-semibold text-text-secondary">Cost</p>
         <MonoText>{formatCost(metrics?.cost)}</MonoText>
       </section>
+
+      {approvalMarkers.length > 0 ? (
+        <details className="text-[0.75rem] text-text-muted">
+          <summary className="cursor-pointer">Conversation permissions</summary>
+          <ul className="mt-2 space-y-1 pl-4">
+            {approvalMarkers.map((marker) => (
+              <li key={marker}>{marker}</li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
 
       {!manifest && !metrics ? (
         <HintText>

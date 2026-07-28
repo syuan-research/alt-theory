@@ -114,6 +114,7 @@ export interface SessionServiceConfig {
   modelProvider?: string;
   modelId?: string;
   modelsPath?: string;
+  authPath?: string;
   runtimeApiKey?: string;
   thinkingLevel?: ThinkingLevel;
   promptMode: PromptMode;
@@ -123,6 +124,10 @@ export interface SessionServiceConfig {
   runLabel: string | null;
   testBatch: string | null;
   resolveRuntimeModelConfig?: () => RuntimeModelConfig;
+  resolveInitialThinkingLevel?: (
+    provider: string,
+    modelId: string,
+  ) => ThinkingLevel;
   /**
    * Per-mode user-enabled external skill paths (spec §6.1). Read at every
    * session open so settings changes apply on reload without touching
@@ -142,6 +147,7 @@ interface RuntimeModelConfig {
   modelProvider?: string;
   modelId?: string;
   modelsPath?: string;
+  authPath?: string;
   runtimeApiKey?: string;
 }
 
@@ -199,7 +205,17 @@ export type SessionServiceEvent =
   | { type: "thinking_delta"; payload: { text: string } }
   | {
       type: "run_phase";
-      payload: { phase: "connecting" | "thinking" | "idle" };
+      payload: {
+        phase:
+          | "connecting"
+          | "processing"
+          | "thinking"
+          | "tool"
+          | "compacting"
+          | "awaiting-user"
+          | "idle"
+          | "error";
+      };
     }
   | {
       type: "tool_started";
@@ -271,6 +287,7 @@ export class SessionService {
         modelProvider: this.config.modelProvider,
         modelId: this.config.modelId,
         modelsPath: this.config.modelsPath,
+        authPath: this.config.authPath,
         runtimeApiKey: this.config.runtimeApiKey,
       }
     );
@@ -300,7 +317,8 @@ export class SessionService {
 
   /**
    * Model args for opening a session: a persisted per-session override (M7
-   * §5b) wins over the deployment-global config; thinking falls back global.
+   * §5b) wins over the deployment-global config; thinking uses the model's
+   * supported-level midpoint unless the session has an explicit level.
    */
   private modelArgsFor(
     override: SessionModelOverride | null | undefined,
@@ -311,8 +329,23 @@ export class SessionService {
       ...(override
         ? { modelProvider: override.provider, modelId: override.modelId }
         : {}),
-      thinkingLevel: override?.thinkingLevel ?? this.config.thinkingLevel,
+      thinkingLevel:
+        override?.thinkingLevel ??
+        this.initialThinkingLevel(
+          override?.provider ?? base.modelProvider,
+          override?.modelId ?? base.modelId,
+        ),
     };
+  }
+
+  private initialThinkingLevel(
+    provider: string | undefined,
+    modelId: string | undefined,
+  ): ThinkingLevel {
+    if (provider && modelId && this.config.resolveInitialThinkingLevel) {
+      return this.config.resolveInitialThinkingLevel(provider, modelId);
+    }
+    return this.config.thinkingLevel ?? "medium";
   }
 
   private persistManifestModel(managed: ManagedSession): void {
@@ -789,6 +822,164 @@ export class SessionService {
     return this.reviseFromRun(managed, latest, text);
   }
 
+  retryFailed(sessionId: string): RunHandle {
+    const managed = this.requireSession(sessionId);
+    if (managed.busy || managed.session.isStreaming) {
+      throw new SessionBusyError(sessionId);
+    }
+    const latest = latestRunSnapshots(managed.manifest.recordsDir)
+      .filter(
+        (run) =>
+          run.branchId === managed.branchId &&
+          run.userEntryId &&
+          run.status !== "deleted" &&
+          run.status !== "superseded",
+      )
+      .at(-1);
+    if (
+      !latest?.userEntryId ||
+      (latest.status !== "failed" && latest.status !== "aborted")
+    ) {
+      throw new Error("No failed latest turn is available to retry");
+    }
+    const userEntry = managed.session.sessionManager.getEntry(
+      latest.userEntryId,
+    ) as
+      | { type?: string; message?: { role?: string; content?: unknown } }
+      | undefined;
+    if (userEntry?.type !== "message" || userEntry.message?.role !== "user") {
+      throw new Error("Failed turn user message is missing from Pi history");
+    }
+    const text = stripSkillWrapper(
+      contentToText(userEntry.message.content),
+    ).trim();
+    if (!text) {
+      throw new Error("Failed turn has no retryable user text");
+    }
+    return this.retryRunInPlace(
+      managed,
+      latest as RunRecord & { userEntryId: string },
+    );
+  }
+
+  /**
+   * Retry a failed/no-answer attempt without creating a second user message.
+   * The existing user entry stays on the active branch; only the failed
+   * assistant continuation is abandoned.
+   */
+  private retryRunInPlace(
+    managed: ManagedSession,
+    run: RunRecord & { userEntryId: string },
+  ): RunHandle {
+    const sessionId = managed.manifest.sessionId;
+    managed.session.sessionManager.branch(run.userEntryId);
+    managed.session.state.messages =
+      managed.session.sessionManager.buildSessionContext().messages;
+    appendRunRecord(managed.manifest.recordsDir, {
+      ...runRecordBody(run),
+      status: "superseded",
+      completedAt: new Date().toISOString(),
+    });
+
+    managed.busy = true;
+    managed.fallbackAttempts = 0;
+    const revisionId = formatCounter("rev", managed.nextRevisionIndex++);
+    const runId = formatCounter("run", managed.nextRunIndex++);
+    const acceptedAt = new Date().toISOString();
+    refreshSessionRetention(managed.manifest.recordsDir, new Date(acceptedAt));
+    const beforeEntryIds = new Set(
+      managed.session.sessionManager.getEntries().map((entry) => entry.id),
+    );
+    appendRunRecord(managed.manifest.recordsDir, {
+      sessionId,
+      branchId: managed.branchId,
+      turnId: run.turnId,
+      revisionId,
+      runId,
+      status: "accepted",
+      piSessionFile: managed.session.sessionFile ?? null,
+      userEntryId: run.userEntryId,
+      assistantEntryIds: [],
+      supersedesRunId: run.runId,
+      acceptedAt,
+      completedAt: null,
+    });
+    // Publish only after the replacement run owns the same user entry;
+    // otherwise run-record filtering briefly hides the user's retry prompt.
+    this.publishCurrentBranchTranscript(managed);
+    this.emitRunPhase(managed, "connecting");
+
+    const completion = (async () => {
+      let retryError: unknown = null;
+      let pendingError: unknown = null;
+      try {
+        await continueAgentTurnAfterModelSwitch(managed.session);
+      } catch (error) {
+        retryError = error;
+      }
+      try {
+        await this.waitForPendingRunWork(managed);
+      } catch (error) {
+        pendingError = error;
+      }
+
+      const assistantEntryIds = managed.session.sessionManager
+        .getEntries()
+        .filter(
+          (entry) =>
+            !beforeEntryIds.has(entry.id) &&
+            entry.type === "message" &&
+            (entry.message as { role?: string }).role === "assistant",
+        )
+        .map((entry) => entry.id);
+      const finalError =
+        managed.session.state.errorMessage ??
+        (pendingError instanceof Error
+          ? pendingError.message
+          : pendingError
+            ? String(pendingError)
+            : null);
+      const failed = Boolean(
+        finalError || retryError || pendingError,
+      );
+      appendRunRecord(managed.manifest.recordsDir, {
+        sessionId,
+        branchId: managed.branchId,
+        turnId: run.turnId,
+        revisionId,
+        runId,
+        status: failed ? "failed" : "completed",
+        piSessionFile: managed.session.sessionFile ?? null,
+        userEntryId: run.userEntryId,
+        assistantEntryIds,
+        supersedesRunId: run.runId,
+        acceptedAt,
+        completedAt: new Date().toISOString(),
+      });
+      if (failed) {
+        throw (
+          retryError ??
+          pendingError ??
+          new Error(finalError ?? "Retry failed")
+        );
+      }
+    })().finally(() => {
+      managed.busy = false;
+    });
+
+    return {
+      ids: {
+        sessionId,
+        branchId: managed.branchId,
+        turnId: run.turnId,
+        revisionId,
+        runId,
+      },
+      completion,
+      abort: () => this.abort(sessionId, "run_handle_abort"),
+    };
+  }
+
   /**
    * Rewind to ANY earlier completed user turn on the current branch and re-run
    * it with new text ("edit" in the UI). The target turn and every completed
@@ -811,13 +1002,22 @@ export class SessionService {
       (run) => run.branchId === managed.branchId,
     );
     const target = allRuns.find(
-      (run) => run.status === "completed" && run.userEntryId === userEntryId,
+      (run) =>
+        run.userEntryId === userEntryId &&
+        run.status !== "deleted" &&
+        run.status !== "superseded",
     );
     if (target?.userEntryId) {
       // Rewinding rewrites everything after the target: later completed runs
       // on this branch are superseded alongside it.
       for (const run of allRuns.slice(allRuns.indexOf(target) + 1)) {
-        if (run.status !== "completed") continue;
+        if (
+          !run.userEntryId ||
+          run.status === "deleted" ||
+          run.status === "superseded"
+        ) {
+          continue;
+        }
         appendRunRecord(managed.manifest.recordsDir, {
           ...runRecordBody(run),
           status: "superseded",
@@ -840,7 +1040,13 @@ export class SessionService {
       throw new Error("Revise point must be a user message");
     }
     for (const run of allRuns) {
-      if (run.status !== "completed") continue;
+      if (
+        !run.userEntryId ||
+        run.status === "deleted" ||
+        run.status === "superseded"
+      ) {
+        continue;
+      }
       appendRunRecord(managed.manifest.recordsDir, {
         ...runRecordBody(run),
         status: "superseded",
@@ -1285,6 +1491,22 @@ export class SessionService {
         pendingError = error;
       }
 
+      const entries = managed.session.sessionManager
+        .getEntries()
+        .filter((entry) => !beforeEntryIds.has(entry.id));
+      const userEntryId =
+        entries.find(
+          (entry) =>
+            entry.type === "message" &&
+            (entry.message as { role?: string }).role === "user",
+        )?.id ?? null;
+      const assistantEntryIds = entries
+        .filter(
+          (entry) =>
+            entry.type === "message" &&
+            (entry.message as { role?: string }).role === "assistant",
+        )
+        .map((entry) => entry.id);
       const finalError =
         managed.session.state.errorMessage ??
         (pendingError instanceof Error
@@ -1303,8 +1525,8 @@ export class SessionService {
             ? "aborted"
             : "failed",
           piSessionFile: managed.session.sessionFile ?? null,
-          userEntryId: null,
-          assistantEntryIds: [],
+          userEntryId,
+          assistantEntryIds,
           supersedesRunId: options.supersedesRunId ?? null,
           acceptedAt,
           completedAt: new Date().toISOString(),
@@ -1313,22 +1535,6 @@ export class SessionService {
         );
       }
 
-      const entries = managed.session.sessionManager
-        .getEntries()
-        .filter((entry) => !beforeEntryIds.has(entry.id));
-      const userEntryId =
-        entries.find(
-          (entry) =>
-            entry.type === "message" &&
-            (entry.message as { role?: string }).role === "user",
-        )?.id ?? null;
-      const assistantEntryIds = entries
-        .filter(
-          (entry) =>
-            entry.type === "message" &&
-            (entry.message as { role?: string }).role === "assistant",
-        )
-        .map((entry) => entry.id);
       appendRunRecord(managed.manifest.recordsDir, {
         sessionId,
         branchId: managed.branchId,
@@ -1397,7 +1603,7 @@ export class SessionService {
     }
     managed.busy = true;
     const leafBeforeCompact = managed.session.sessionManager.getLeafId();
-    this.emitRunPhase(managed, "thinking");
+    this.emitRunPhase(managed, "compacting");
     try {
       await managed.session.compact();
       managed.busy = false;
@@ -1627,9 +1833,10 @@ export class SessionService {
         this.persistManifestModel(managed);
         applied = true;
       }
-      if (override.thinkingLevel) {
-        managed.session.setThinkingLevel(override.thinkingLevel);
-      }
+      managed.session.setThinkingLevel(
+        override.thinkingLevel ??
+          this.initialThinkingLevel(override.provider, override.modelId),
+      );
     } else {
       const base = this.resolveEffectiveRuntimeModelConfig();
       const resolved =
@@ -1643,12 +1850,27 @@ export class SessionService {
         this.persistManifestModel(managed);
         applied = true;
       }
-      managed.session.setThinkingLevel(this.config.thinkingLevel ?? "off");
+      managed.session.setThinkingLevel(
+        this.initialThinkingLevel(base.modelProvider, base.modelId),
+      );
     }
     appendSessionEvent(managed.manifest.recordsDir, {
       sessionId,
       type: "model_override_changed",
       details: { override, appliedLive: applied },
+    });
+    const notice = override
+      ? applied
+        ? `Conversation model: ${override.provider}/${override.modelId}${
+            override.thinkingLevel ? ` (${override.thinkingLevel} thinking)` : ""
+          }.`
+        : `Conversation model saved: ${override.provider}/${override.modelId}. It will be resolved when this conversation reopens.`
+      : applied
+        ? `Using default model: ${managed.manifest.provider}/${managed.manifest.model}.`
+        : "Conversation model override cleared; the app default will be resolved when this conversation reopens.";
+    this.emit(managed, {
+      type: "extension_notice",
+      payload: { message: notice, level: "info" },
     });
     return this.snapshot(managed);
   }
@@ -1703,7 +1925,11 @@ export class SessionService {
           }
         : {}),
       thinkingLevel:
-        metadata.modelOverride?.thinkingLevel ?? this.config.thinkingLevel,
+        metadata.modelOverride?.thinkingLevel ??
+        this.initialThinkingLevel(
+          metadata.modelOverride?.provider ?? runtimeModelConfig.modelProvider,
+          metadata.modelOverride?.modelId ?? runtimeModelConfig.modelId,
+        ),
       promptMode: metadata.mode
         ? promptModeFromCapabilityMode(metadata.mode)
         : this.config.promptMode,
@@ -2246,13 +2472,17 @@ export class SessionService {
   }): Promise<ManagedSession> {
     const persistedRuns = latestRunSnapshots(args.manifest.recordsDir);
     const approvalBridge = new ApprovalBridge({
-      onRequest: (request) =>
-        this.emit(managed, { type: "approval_requested", payload: request }),
-      onResolve: (approvalId, resolution) =>
+      onRequest: (request) => {
+        this.emitRunPhase(managed, "awaiting-user");
+        this.emit(managed, { type: "approval_requested", payload: request });
+      },
+      onResolve: (approvalId, resolution) => {
         this.emit(managed, {
           type: "approval_resolved",
           payload: { approvalId, resolution },
-        }),
+        });
+        this.emitRunPhase(managed, managed.busy ? "processing" : "idle");
+      },
       onNotify: (message, level) =>
         this.emit(managed, {
           type: "extension_notice",
@@ -2350,7 +2580,7 @@ export class SessionService {
       type: "run_failed",
       details: { error },
     });
-    this.emitRunPhase(managed, "idle");
+    this.emitRunPhase(managed, "error");
     this.emit(managed, { type: "run_failed", payload: { error } });
   }
 
@@ -2423,6 +2653,13 @@ export class SessionService {
         error,
       },
     });
+    this.emit(managed, {
+      type: "extension_notice",
+      payload: {
+        message: `Switched from ${currentModel.provider}/${currentModel.id} to ${next.provider}/${next.modelId} after a model error.`,
+        level: "info",
+      },
+    });
 
     await continueAgentTurnAfterModelSwitch(managed.session);
     return true;
@@ -2434,6 +2671,7 @@ export class SessionService {
   ): void {
     switch (event.type) {
       case "agent_start":
+        this.emitRunPhase(managed, "processing");
         this.emit(managed, {
           type: "snapshot",
           payload: this.snapshot(managed, { status: "running" }),
@@ -2448,7 +2686,7 @@ export class SessionService {
             payload: { text: assistantEvent.delta ?? "" },
           });
         } else if (assistantEvent?.type === "text_delta") {
-          this.emitRunPhase(managed, "idle");
+          this.emitRunPhase(managed, "processing");
           this.emit(managed, {
             type: "assistant_delta",
             payload: { text: assistantEvent.delta ?? "" },
@@ -2457,7 +2695,7 @@ export class SessionService {
         break;
       }
       case "tool_execution_start":
-        this.emitRunPhase(managed, "idle");
+        this.emitRunPhase(managed, "tool");
         this.emit(managed, {
           type: "tool_started",
           payload: {
@@ -2485,7 +2723,7 @@ export class SessionService {
           payload: { callId: event.toolCallId, success: !event.isError },
         });
         if (managed.busy || managed.session.isStreaming) {
-          this.emitRunPhase(managed, "connecting");
+          this.emitRunPhase(managed, "processing");
         }
         break;
       case "agent_end": {
@@ -2527,7 +2765,15 @@ export class SessionService {
 
   private emitRunPhase(
     managed: ManagedSession,
-    phase: "connecting" | "thinking" | "idle",
+    phase:
+      | "connecting"
+      | "processing"
+      | "thinking"
+      | "tool"
+      | "compacting"
+      | "awaiting-user"
+      | "idle"
+      | "error",
   ): void {
     this.emit(managed, { type: "run_phase", payload: { phase } });
   }
@@ -2542,22 +2788,23 @@ export class SessionService {
     managed: ManagedSession,
     overrides?: Partial<SessionSnapshot>,
   ): SessionSnapshot {
+    const header = readV4SessionHeader(managed.manifest.recordsDir);
     return {
       sessionId: managed.manifest.sessionId,
       projectId: managed.selectors.projectId ?? null,
-      visibility:
-        readV4SessionHeader(managed.manifest.recordsDir)?.visibility ??
-        "research",
+      visibility: header?.visibility ?? "research",
       status: managed.busy || managed.session.isStreaming ? "running" : "idle",
       currentDomain: managed.selectors.kbDomain,
       rolePresetSlug: managed.selectors.rolePresetSlug,
       soulSlug: managed.selectors.soulSlug,
       customInstructionRef: managed.selectors.customInstructionRef ?? null,
       mode: managed.getMode(),
+      modelOverride: header?.modelOverride ?? null,
       currentModel: {
         provider: managed.session.model.provider,
         modelId: managed.session.model.id,
       },
+      studyTag: header?.studyTag ?? null,
       workspace: managed.getWorkspace(),
       openedFrom: managed.openedFrom,
       resumeWarnings: managed.resumeWarnings,

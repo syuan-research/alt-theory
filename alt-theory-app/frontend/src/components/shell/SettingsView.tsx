@@ -103,18 +103,13 @@ function ModelsPanel() {
   );
 
   return (
-    <div className="set-panel">
-      <h2>Models</h2>
-      <p className="sub">
-        Connect a provider and choose the model Alt uses — all in one place.
-      </p>
+    <div className="set-panel models-panel">
       {local ? (
-        <>
-          <AuthConnectCard onChanged={refreshConfig} />
-          {/* The provider list, always-visible picker, and inline editor live
-              here now (embedded from the config page) — no separate /config trip. */}
-          <ModelConfigPage embedded key={configVersion} />
-        </>
+        <ModelConfigPage
+          embedded
+          key={configVersion}
+          addProviderTop={<AuthConnectCard onChanged={refreshConfig} />}
+        />
       ) : (
         <div className="set-card">
           <p>Model configuration is managed by this deployment.</p>
@@ -124,25 +119,17 @@ function ModelsPanel() {
   );
 }
 
-function AuthConnectCard({ onChanged }: { onChanged: () => void }) {
+export function AuthConnectCard({ onChanged }: { onChanged: () => void }) {
   const PROVIDERS = [
-    {
-      id: "anthropic",
-      name: "Claude",
-      sub: "Anthropic subscription",
-      icon: "ph-sparkle",
-    },
     {
       id: "openrouter",
       name: "OpenRouter",
-      sub: "OpenRouter",
       icon: "ph-compass",
     },
-    { id: "xai", name: "Grok", sub: "xAI", icon: "ph-lightning" },
+    { id: "xai", name: "Grok", icon: "ph-lightning" },
     {
       id: "openai-codex",
       name: "Codex",
-      sub: "OpenAI",
       icon: "ph-code",
     },
   ] as const;
@@ -302,18 +289,7 @@ function AuthConnectCard({ onChanged }: { onChanged: () => void }) {
     .find((event) => event.type === "device_code");
 
   return (
-    <div className="set-card auth-card">
-      <div className="row2">
-        <div>
-          <h4>
-            Sign in to a provider
-          </h4>
-          <p>
-            Connect an account through Pi instead of pasting an API key.
-          </p>
-        </div>
-      </div>
-
+    <div className="oauth-options">
       {!flow ? (
         <div className="auth-providers">
           {PROVIDERS.map((p) => (
@@ -326,9 +302,7 @@ function AuthConnectCard({ onChanged }: { onChanged: () => void }) {
             >
               <i className={`ph ${p.icon}`} />
               <span className="apn">{p.name}</span>
-              <span className="aps">
-                {connected.has(p.id) ? "Connected" : p.sub}
-              </span>
+              {connected.has(p.id) ? <span className="aps">Connected</span> : null}
             </button>
           ))}
         </div>
@@ -427,8 +401,7 @@ function AuthConnectCard({ onChanged }: { onChanged: () => void }) {
                 {flow.provider.name}
               </p>
               <p className="fine">
-                Pi stored the connection in its native auth file. You can now
-                choose one of this provider&apos;s models below.
+                Connected. Choose one of this provider&apos;s models below.
               </p>
             </>
           )}

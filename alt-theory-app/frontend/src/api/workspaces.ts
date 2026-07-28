@@ -16,6 +16,16 @@ export async function addWorkspace(
   });
 }
 
+export async function removeWorkspace(
+  path: string
+): Promise<{ workspaces: string[] }> {
+  return fetchJson<{ workspaces: string[] }>("/api/workspaces", {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path }),
+  });
+}
+
 /** Re-point an existing session's working folder (M4). */
 export async function setSessionWorkspace(
   sessionId: string,

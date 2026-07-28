@@ -18,11 +18,10 @@ implements: []
 Backend support for everything below EXISTS and is tested (see
 `core-session-engine.md`, change log 2026-07-15/16). The frontend is the
 React app in `alt-theory-app/frontend/` (built to `web-server/public-v6/`).
-The v1-alpha information architecture is owner-approved AND now realized in
-the React app (2026-07-16 frontend build; typecheck + `build:frontend-v6` +
-backend tests green). The owner subsequently completed the local Pure/Full
-development flow. A distributable v1-alpha bundle remains a delivery concern,
-not a frontend-architecture gap. The retained public design rationale for pane
+The current cross-surface product structure is defined by
+`information-architecture.md`; consult it before changing navigation, settings,
+or entry points. This document is the narrower source for frontend and
+researcher-console behavior. The retained public design rationale for pane
 logic, view-mode collapse, study designation, sharing rules, and deferred
 assumptions is in
 `development/compound/2026-07-16-decision-v1-alpha-m7-ia-principles-and-research-assumptions.md`.

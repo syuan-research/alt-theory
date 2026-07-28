@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
 import { Composer } from "@/components/conversation/Composer";
@@ -10,25 +10,24 @@ export function ConversationPanel() {
   const app = useApp();
   const shell = useShell();
   const live = Boolean(app.sessionId);
-  const prevSessionId = useRef<string | null>(null);
 
-  // When a brand-new conversation opens with Work selected, apply full mode.
-  // Only for sessions created here: reopening an existing Pure conversation
-  // must never silently expand its tools (Codex review 2026-07-24).
+  // Draft mode must reach the server before the first prompt materializes.
+  // Reopened conversations bypass this path and retain their persisted mode.
   useEffect(() => {
     if (
-      app.sessionId &&
-      app.sessionId !== prevSessionId.current &&
+      !app.sessionId &&
       app.sessionReady &&
-      app.sessionCreatedHere &&
-      shell.newMode === "full" &&
-      app.sessionMode !== "full"
+      app.sessionMode !== shell.newMode
     ) {
-      app.switchMode("full");
+      app.switchMode(shell.newMode);
     }
-    prevSessionId.current = app.sessionId;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [app.sessionId, app.sessionReady]);
+  }, [
+    app.sessionId,
+    app.sessionMode,
+    app.sessionReady,
+    app.switchMode,
+    shell.newMode,
+  ]);
 
   return (
     <main className="center">
@@ -56,31 +55,38 @@ function EmptyState() {
         <div className="greet">Where shall we begin?</div>
         <div className="mode-pick">
           <button
-            className={`mode-card${shell.newMode === "pure" ? " on" : ""}`}
+            className={`mode-card understand${shell.newMode === "pure" ? " on" : ""}`}
             onClick={() => shell.setNewMode("pure")}
+            aria-pressed={shell.newMode === "pure"}
+            title="For clarifying questions, comparing explanations, and developing ideas with your materials."
           >
             <div className="t">
               <i className="ph ph-book-open" />
               Understand
               <span className="def">default</span>
             </div>
-            <div className="d">Reads and discusses. Asks before touching anything.</div>
+            <ul>
+              <li>Clarify questions, compare explanations, and develop ideas.</li>
+              <li>Read and discuss your materials and selected knowledge.</li>
+              <li>Create notes or drafts while keeping understanding at the center.</li>
+            </ul>
           </button>
           <button
-            className={`mode-card${shell.newMode === "full" ? " on" : ""}`}
+            className={`mode-card work${shell.newMode === "full" ? " on" : ""}`}
             onClick={() => shell.setNewMode("full")}
+            aria-pressed={shell.newMode === "full"}
+            title="For the same careful thinking plus research, data analysis, and direct work across files."
           >
             <div className="t">
               <i className="ph ph-hammer" />
               Work
             </div>
-            <div className="d">Can act on files in your working folders.</div>
+            <ul>
+              <li>Keep the same careful thinking while advancing a concrete task.</li>
+              <li>Research and verify information, analyze data, and work across documents.</li>
+              <li>Create or update documents, spreadsheets, presentations, and other files in your working folders.</li>
+            </ul>
           </button>
-        </div>
-        <div className="mode-note">
-          {shell.newMode === "pure"
-            ? "Alt reads, thinks, and talks things through with you. It will not change anything on your computer."
-            : "Alt can read, edit, and create files in the working folders you choose. Anything risky asks for your approval first."}
         </div>
         {app.appMode === "local" ? (
           <button

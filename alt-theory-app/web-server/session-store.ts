@@ -670,6 +670,9 @@ export interface FileChange {
   removed: number;
   /** Display-oriented diff, capped for transport. */
   diff: string;
+  /** Current on-disk text, when the changed path still resolves safely. */
+  currentContent?: string;
+  currentUpdatedAt?: string;
 }
 
 export interface SessionChanges {
@@ -700,7 +703,53 @@ export function readSessionChanges(
     return { files: [] };
   }
 
-  return projectChangesFromEntries(branchEntries);
+  const changes = projectChangesFromEntries(branchEntries);
+  const roots = parts.v4Session?.workspace
+    ? [
+        parts.v4Session.workspace.primaryDir,
+        ...parts.v4Session.workspace.additionalDirs,
+      ]
+    : [join(parts.sessionRoot, "workspace")];
+  return {
+    files: changes.files.map((file) => ({
+      ...file,
+      ...readCurrentChangedFile(roots, file.path),
+    })),
+  };
+}
+
+const CHANGE_PREVIEW_EXTENSIONS = new Set([
+  ".md",
+  ".txt",
+  ".json",
+  ".csv",
+  ".tsv",
+  ".html",
+]);
+const MAX_CHANGE_PREVIEW_BYTES = 1024 * 1024;
+
+export function readCurrentChangedFile(
+  roots: string[],
+  requestedPath: string,
+): Pick<FileChange, "currentContent" | "currentUpdatedAt"> {
+  for (const rootPath of roots) {
+    const root = resolve(rootPath);
+    const target = isAbsolute(requestedPath)
+      ? resolve(requestedPath)
+      : resolve(root, requestedPath);
+    const rel = relative(root, target);
+    if (!rel || rel.startsWith("..") || isAbsolute(rel)) continue;
+    if (!CHANGE_PREVIEW_EXTENSIONS.has(extname(target).toLowerCase())) continue;
+    const stats = statSync(target, { throwIfNoEntry: false });
+    if (!stats?.isFile() || stats.size > MAX_CHANGE_PREVIEW_BYTES) continue;
+    const buffer = readFileSync(target);
+    if (buffer.includes(0)) continue;
+    return {
+      currentContent: buffer.toString("utf-8"),
+      currentUpdatedAt: stats.mtime.toISOString(),
+    };
+  }
+  return {};
 }
 
 /**
@@ -790,15 +839,22 @@ function prefixLines(text: string, prefix: string): string {
 }
 
 export function latestActiveLeafEntryId(latestRuns: RunRecord[]): string | null {
+  const active = activeRunEntryIds(latestRuns);
   const inactive = new Set<string>();
   for (const run of latestRuns) {
     if (run.status !== "deleted" && run.status !== "superseded") continue;
-    if (run.userEntryId) inactive.add(run.userEntryId);
-    for (const entryId of run.assistantEntryIds) inactive.add(entryId);
+    if (run.userEntryId && !active.has(run.userEntryId)) {
+      inactive.add(run.userEntryId);
+    }
+    for (const entryId of run.assistantEntryIds) {
+      if (!active.has(entryId)) inactive.add(entryId);
+    }
   }
   for (let index = latestRuns.length - 1; index >= 0; index--) {
     const run = latestRuns[index];
-    if (run.status !== "completed") continue;
+    if (run.status === "deleted" || run.status === "superseded") {
+      continue;
+    }
     const assistant = run.assistantEntryIds
       .slice()
       .reverse()
@@ -826,15 +882,28 @@ function alignSessionManagerLeaf(
 }
 
 function inactiveTranscriptEntryIds(latestRuns: RunRecord[]): Set<string> {
+  const active = activeRunEntryIds(latestRuns);
   const inactive = new Set<string>();
   for (const run of latestRuns) {
     if (run.status !== "deleted" && run.status !== "superseded") continue;
-    if (run.userEntryId) inactive.add(run.userEntryId);
+    if (run.userEntryId && !active.has(run.userEntryId)) {
+      inactive.add(run.userEntryId);
+    }
     for (const entryId of run.assistantEntryIds) {
-      inactive.add(entryId);
+      if (!active.has(entryId)) inactive.add(entryId);
     }
   }
   return inactive;
+}
+
+function activeRunEntryIds(latestRuns: RunRecord[]): Set<string> {
+  const active = new Set<string>();
+  for (const run of latestRuns) {
+    if (run.status === "deleted" || run.status === "superseded") continue;
+    if (run.userEntryId) active.add(run.userEntryId);
+    for (const entryId of run.assistantEntryIds) active.add(entryId);
+  }
+  return active;
 }
 
 export function buildTranscriptFromEntries(
@@ -880,6 +949,8 @@ export function buildTranscriptFromEntries(
         timestamp?: string | number;
         toolCallId?: unknown;
         toolName?: unknown;
+        isError?: unknown;
+        details?: { is_error?: unknown };
       };
       customType?: string;
       content?: unknown;
@@ -944,13 +1015,33 @@ export function buildTranscriptFromEntries(
         typeof (value.message as { toolCallId?: unknown }).toolCallId === "string"
           ? ((value.message as { toolCallId?: string }).toolCallId ?? undefined)
           : undefined;
+      const success = !(
+        value.message.isError === true ||
+        value.message.details?.is_error === true
+      );
+      const callIndex = toolCallId
+        ? transcript.findIndex(
+            (message) =>
+              message.role === "tool" &&
+              message.toolType === "call" &&
+              message.toolCallId === toolCallId,
+          )
+        : -1;
+      if (callIndex >= 0) {
+        transcript[callIndex] = {
+          ...transcript[callIndex],
+          text: text || transcript[callIndex].text,
+          success,
+        };
+        continue;
+      }
       transcript.push({
         role: "tool",
         toolType: "result",
         text,
         toolName,
         toolCallId,
-        success: true,
+        success,
         truncated: false,
         timestamp,
       });

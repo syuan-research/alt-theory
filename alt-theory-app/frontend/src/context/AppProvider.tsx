@@ -52,6 +52,7 @@ import type {
 import {
   addWorkspace as addWorkspaceRequest,
   listWorkspaces,
+  removeWorkspace as removeWorkspaceRequest,
   setSessionWorkspace as setSessionWorkspaceRequest,
 } from "@/api/workspaces";
 import { useWebSocket } from "@/hooks/useWebSocket";
@@ -98,6 +99,7 @@ export interface ComposerNotice {
 export interface ConfirmRequest {
   message: string;
   confirmLabel?: string;
+  cancelLabel?: string;
   onConfirm: (result?: { checkboxChecked: boolean }) => void;
   /** Optional opt-in checkbox (e.g. whole-folder migration, item 4). */
   checkbox?: { label: string; defaultChecked?: boolean; danger?: boolean };
@@ -172,6 +174,7 @@ export interface AppContextValue {
   /** Choose the working folder for the next (or current) conversation. */
   setDraftWorkspace: (primaryDir: string | null) => void;
   addKnownWorkspace: (path: string) => Promise<void>;
+  removeKnownWorkspace: (path: string) => Promise<void>;
   /** Re-point any existing session's working folder (drag & drop, M4). */
   repointSession: (sessionId: string, primaryDir: string | null,) => Promise<void>;
 
@@ -190,6 +193,7 @@ export interface AppContextValue {
   runPhaseLabel: string;
   composerNotice: ComposerNotice | null;
   runHint: string | null;
+  canRetryFailed: boolean;
   reviseMode: boolean;
   reviseDraft: string;
 
@@ -220,6 +224,8 @@ export interface AppContextValue {
   abortRun: () => void;
   invokeSkill: (skillName: string, userText?: string) => boolean;
   reviseLatest: (text: string) => boolean;
+  branchRevision: (text: string, entryId?: string) => boolean;
+  retryFailed: () => boolean;
   deleteLatest: () => void;
   branchFromEntry: (entryId: string) => void;
   startReviseMode: (text: string, entryId?: string) => string;
@@ -345,6 +351,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     null,
   );
   const [runHint, setRunHint] = useState<string | null>(null);
+  const [canRetryFailed, setCanRetryFailed] = useState(false);
   const [reviseMode, setReviseMode] = useState(false);
   const [reviseDraft, setReviseDraft] = useState("");
   const [reviseEntryId, setReviseEntryId] = useState<string | null>(null);
@@ -439,6 +446,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         mode === "local" &&
         me.localConfig &&
         !me.localConfig.activeUsable &&
+        !me.localConfig.anyUsable &&
         window.location.pathname !== "/config"
       ) {
         navigate("/config?firstRun=1", { replace: true });
@@ -614,6 +622,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     (message: ServerMessage) => {
       switch (message.type) {
         case "session_draft":
+          setCanRetryFailed(false);
           if (reconnectSessionIdRef.current) break;
           setSessionId(null);
           setSessionReady(true);
@@ -621,11 +630,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setSessionWarnings([]);
           setIsRunning(false);
           setSelectors(applySnapshotSelectors(message.payload));
-          setSessionMode("pure");
+          setSessionMode(message.payload.mode ?? "pure");
           setModelOverride(message.payload.modelOverride ?? null);
           setCurrentSessionModel(null);
           setWorkspacePrimaryDir(message.payload.workspacePrimaryDir ?? null);
-          setStudyTagState(null);
+          setStudyTagState(message.payload.studyTag ?? null);
           setApprovalMarkers([]);
           setManifest(null);
           setMetrics(null);
@@ -634,14 +643,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
           activeToolsMapRef.current = {};
           setConnStatus("idle");
           setConnLabel("Ready");
+          setRunPhaseLabel("");
           setWsError(null);
           pendingAssetSwitchRef.current = false;
           pendingOpenSessionIdRef.current = "";
-          clearStagedWorkspace();
+          if (message.payload.resetComposer) clearStagedWorkspace();
           void refreshSessions();
           break;
 
         case "session_opened": {
+          setCanRetryFailed(false);
           // Decide "created here" before the pending refs are consumed below:
           // an explicit open, an asset-switch rebuild, or a reconnect to the
           // same id is NOT a new conversation (persisted Work mode must not
@@ -681,6 +692,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setConnLabel(message.payload.status === "running" ? "Running" : "Ready",);
           setWsError(null);
           setToolStatus("");
+          setRunPhaseLabel(
+            message.payload.status === "running" ? "Processing…" : "",
+          );
           clearStagedWorkspace();
           void refreshSessions();
           if (selectedCatalogSessionId === message.payload.sessionId) {
@@ -791,7 +805,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           };
           activeToolsMapRef.current[callId] = entry;
           setStreamParts((parts) => upsertToolPart(parts, entry));
-          setToolStatus(label);
+          setRunPhaseLabel(label);
           break;
         }
 
@@ -805,7 +819,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             activeToolsMapRef.current[message.payload.callId] = updated;
             setStreamParts((parts) => upsertToolPart(parts, updated));
             if (message.payload.text) {
-              setToolStatus(
+              setRunPhaseLabel(
                 `${toolLabel(entry.toolName, entry.path)} — ${message.payload.text}`,
               );
             }
@@ -827,25 +841,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
             setStreamParts((parts) => upsertToolPart(parts, updated));
           }
           if (Object.keys(activeToolsMapRef.current).length === 0) {
-            setToolStatus("");
+            setRunPhaseLabel("Processing…");
           }
           break;
         }
 
         case "run_phase":
-          // Live liveness label for the main view (backend already streams it;
-          // previously only the researcher inspector consumed it). Shown in the
-          // composer while no tool is active — fills the pre-stream "thinking" gap.
-          setRunPhaseLabel(
-            message.payload.phase === "connecting"
-              ? "Connecting…"
-              : message.payload.phase === "thinking"
-                ? "Thinking…"
-                : "",
-          );
+          setRunPhaseLabel({
+            connecting: "Connecting…",
+            processing: "Processing…",
+            thinking: "Thinking…",
+            tool: "Using a tool…",
+            compacting: "Compacting conversation…",
+            "awaiting-user": "Waiting for your approval…",
+            idle: "",
+            error: "",
+          }[message.payload.phase]);
           break;
 
         case "run_completed":
+          setCanRetryFailed(false);
           setStreamParts([]);
           activeToolsMapRef.current = {};
           setCurrentSessionModel(message.payload.currentModel ?? null);
@@ -870,6 +885,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setStreamParts((parts) => failRunningToolParts(parts));
           activeToolsMapRef.current = {};
           setIsRunning(false);
+          setCanRetryFailed(true);
+          setToolStatus("");
           setRunPhaseLabel("");
           setConnStatus(interrupted ? "idle" : "error");
           setConnLabel(interrupted ? "Ready" : "Error");
@@ -992,11 +1009,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setWsError(null);
     setReviseMode(false);
     setRunHint(null);
+    setRunPhaseLabel("");
     clearStagedWorkspace();
     if (sendMessage({ type: "new_session" })) {
       setIsRunning(true);
       setConnStatus("running");
       setConnLabel("Starting...");
+      setRunPhaseLabel("Connecting…");
     }
   }, [clearStagedWorkspace, sendMessage]);
 
@@ -1011,7 +1030,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setIsRunning(true);
       setConnStatus("running");
       setConnLabel("Compacting...");
-      setToolStatus("Compacting conversation…");
+      setToolStatus("");
+      setRunPhaseLabel("Compacting conversation…");
     }
   }, [isRunning, sendMessage, sessionId]);
 
@@ -1034,7 +1054,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setIsRunning(true);
         setConnStatus("running");
         setConnLabel("Opening...");
-        setToolStatus("Opening selected conversation…");
+        setToolStatus("");
+        setRunPhaseLabel("Opening conversation…");
       } else {
         pendingOpenSessionIdRef.current = "";
       }
@@ -1228,6 +1249,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setStreamParts([]);
       setWsError(null);
       setRunHint("");
+      setCanRetryFailed(false);
+      setToolStatus("");
+      setRunPhaseLabel("Connecting…");
       setReviseMode(false);
       clearStagedWorkspace();
       setIsRunning(true);
@@ -1240,7 +1264,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const abortRun = useCallback(() => {
     if (sendMessage({ type: "abort" })) {
-      setToolStatus("Stopping…");
+      setToolStatus("");
+      setRunPhaseLabel("Stopping…");
       setRunHint("You can edit or delete your latest message.");
     }
   }, [sendMessage]);
@@ -1264,35 +1289,60 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setIsRunning(true);
       setConnStatus("running");
       setConnLabel("Thinking…");
+      setToolStatus("");
+      setRunPhaseLabel("Connecting…");
       return true;
     },
     [isRunning, sendMessage],
   );
 
-  const reviseLatest = useCallback(
-    (text: string) => {
+  const branchRevision = useCallback(
+    (text: string, entryId?: string) => {
       const trimmed = text.trim();
       if (!trimmed || isRunning || !sessionId) return false;
       if (
         !sendMessage({
-          type: "revise_latest",
-          payload: reviseEntryId
-            ? { text: trimmed, entryId: reviseEntryId }
+          type: "branch_revision",
+          payload: entryId
+            ? { text: trimmed, entryId }
             : { text: trimmed },
         })
       )
         return false;
+      setCanRetryFailed(false);
+      setIsRunning(true);
+      setConnStatus("running");
+      setConnLabel("Creating alternative…");
+      setToolStatus("");
+      setRunPhaseLabel("Connecting…");
+      return true;
+    },
+    [isRunning, sendMessage, sessionId],
+  );
+
+  const reviseLatest = useCallback(
+    (text: string) => {
+      if (!branchRevision(text, reviseEntryId ?? undefined)) return false;
       setReviseMode(false);
       setReviseDraft("");
       setReviseEntryId(null);
-      setIsRunning(true);
-      setConnStatus("running");
-      setConnLabel("Revising…");
-      setToolStatus("Revising from this point…");
       return true;
     },
-    [isRunning, sendMessage, sessionId, reviseEntryId],
+    [branchRevision, reviseEntryId],
   );
+
+  const retryFailed = useCallback(() => {
+    if (isRunning || !sessionId || !sendMessage({ type: "retry_failed" })) {
+      return false;
+    }
+    setCanRetryFailed(false);
+    setIsRunning(true);
+    setConnStatus("running");
+    setConnLabel("Retrying…");
+    setToolStatus("");
+    setRunPhaseLabel("Connecting…");
+    return true;
+  }, [isRunning, sendMessage, sessionId]);
 
   const deleteLatest = useCallback(() => {
     if (!sendMessage({ type: "delete_latest" })) return;
@@ -1327,6 +1377,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const addKnownWorkspace = useCallback(async (path: string) => {
     const result = await addWorkspaceRequest(path);
+    setKnownWorkspaces(result.workspaces);
+  }, []);
+
+  const removeKnownWorkspace = useCallback(async (path: string) => {
+    const result = await removeWorkspaceRequest(path);
     setKnownWorkspaces(result.workspaces);
   }, []);
 
@@ -1552,6 +1607,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       knownWorkspaces,
       setDraftWorkspace,
       addKnownWorkspace,
+      removeKnownWorkspace,
       repointSession,
       switchMode,
       modelOverride,
@@ -1565,6 +1621,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       runPhaseLabel,
       composerNotice,
       runHint,
+      canRetryFailed,
       reviseMode,
       reviseDraft,
       stagedWorkspacePaths,
@@ -1587,6 +1644,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       abortRun,
       invokeSkill,
       reviseLatest,
+      branchRevision,
+      retryFailed,
       deleteLatest,
       branchFromEntry,
       startReviseMode,
@@ -1647,6 +1706,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       knownWorkspaces,
       setDraftWorkspace,
       addKnownWorkspace,
+      removeKnownWorkspace,
       repointSession,
       switchMode,
       modelOverride,
@@ -1660,6 +1720,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       runPhaseLabel,
       composerNotice,
       runHint,
+      canRetryFailed,
       reviseMode,
       reviseDraft,
       stagedWorkspacePaths,
@@ -1682,6 +1743,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       abortRun,
       invokeSkill,
       reviseLatest,
+      branchRevision,
+      retryFailed,
       deleteLatest,
       branchFromEntry,
       startReviseMode,
@@ -1698,6 +1761,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         open={Boolean(confirmRequest)}
         message={confirmRequest?.message ?? ""}
         confirmLabel={confirmRequest?.confirmLabel}
+        cancelLabel={confirmRequest?.cancelLabel}
         checkbox={confirmRequest?.checkbox}
         onConfirm={(result) => {
           confirmRequest?.onConfirm(result);

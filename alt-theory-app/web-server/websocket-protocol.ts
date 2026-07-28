@@ -26,7 +26,9 @@ export interface SessionSnapshot {
   soulSlug: string | null;
   customInstructionRef?: string | null;
   mode?: "pure" | "full";
+  modelOverride?: SessionModelOverride | null;
   currentModel?: { provider: string; modelId: string };
+  studyTag?: StudyTag | null;
   workspace?: { primaryDir: string; additionalDirs: string[] };
   openedFrom?: "new" | "existing";
   resumeWarnings?: string[];
@@ -41,8 +43,11 @@ export interface SessionDraftSnapshot {
   rolePresetSlug: string | null;
   soulSlug: string | null;
   customInstructionRef?: string | null;
+  mode: "pure" | "full";
   modelOverride?: SessionModelOverride | null;
+  studyTag?: StudyTag | null;
   workspacePrimaryDir?: string | null;
+  resetComposer?: boolean;
 }
 
 export interface SessionMetrics {
@@ -110,6 +115,8 @@ export type ClientMessage =
       payload: { skillName: string; userText?: string };
     }
   | { type: "revise_latest"; payload: { text: string; entryId?: string } }
+  | { type: "branch_revision"; payload: { text: string; entryId?: string } }
+  | { type: "retry_failed" }
   | { type: "delete_latest" }
   | { type: "switch_mode"; payload: { mode: "pure" | "full" } }
   | { type: "add_workspace_dir"; payload: { dir: string } }
@@ -168,7 +175,17 @@ export type ServerMessage =
   | { type: "thinking_delta"; payload: { text: string } }
   | {
       type: "run_phase";
-      payload: { phase: "connecting" | "thinking" | "idle" };
+      payload: {
+        phase:
+          | "connecting"
+          | "processing"
+          | "thinking"
+          | "tool"
+          | "compacting"
+          | "awaiting-user"
+          | "idle"
+          | "error";
+      };
     }
   | { type: "tool_started"; payload: { toolName: string; callId: string; path?: string | null; detail?: ToolDetail } }
   | { type: "tool_updated"; payload: { callId: string; text?: string; progress?: number } }
