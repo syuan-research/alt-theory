@@ -1004,6 +1004,21 @@ export function buildTranscriptFromEntries(
           value.id ?? null
         )
       );
+      // A break-point retry keeps the abandoned errored/aborted partial as
+      // evidence; without a boundary the truncated text reads as glued to
+      // the replacement answer that follows it.
+      const stopReason = (value.message as { stopReason?: unknown }).stopReason;
+      if (stopReason === "error" || stopReason === "aborted") {
+        transcript.push({
+          role: "system",
+          marker: "retry-boundary",
+          text:
+            stopReason === "aborted"
+              ? "Stopped here — the answer below continues from this point."
+              : "The connection dropped here — the answer below continues from this point.",
+          timestamp,
+        });
+      }
       continue;
     }
     if (role === "tool" || value.message.role === "toolResult") {
@@ -1046,6 +1061,11 @@ export function buildTranscriptFromEntries(
         timestamp,
       });
     }
+  }
+  // A trailing boundary has no continuation below it (the failed turn is the
+  // last thing that happened) — the composer's error state covers that case.
+  while (transcript.at(-1)?.marker === "retry-boundary") {
+    transcript.pop();
   }
   return transcript;
 }

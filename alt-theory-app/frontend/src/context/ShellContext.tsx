@@ -4,10 +4,12 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import type { CapabilityMode } from "@/api/types";
+import { getDefaultMode } from "@/api/config";
 
 /** Full-screen surface. `app` is the 3-pane shell; the others take over. */
 export type Surface = "app" | "settings" | "review";
@@ -143,13 +145,26 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       return "pure";
     }
   });
+  // An explicit Settings > General default wins at launch over the sticky
+  // last-used mode, but never over a choice the user already made this run.
+  const userPickedModeRef = useRef(false);
   const setNewMode = useCallback((mode: CapabilityMode) => {
+    userPickedModeRef.current = true;
     setNewModeState(mode);
     try {
       localStorage.setItem(NEW_MODE_KEY, mode);
     } catch {
       /* ignore */
     }
+  }, []);
+  useEffect(() => {
+    getDefaultMode()
+      .then(({ mode }) => {
+        if (mode && !userPickedModeRef.current) setNewModeState(mode);
+      })
+      .catch(() => {
+        /* hosted mode or offline: keep the sticky default */
+      });
   }, []);
 
   const openApp = useCallback(() => setSurface("app"), []);

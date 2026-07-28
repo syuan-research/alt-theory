@@ -418,6 +418,14 @@ function TranscriptEntry({
         </details>
       );
     }
+    if (message.marker === "retry-boundary") {
+      return (
+        <SysLine>
+          <i className="ph ph-arrows-clockwise" />
+          {message.text}
+        </SysLine>
+      );
+    }
     return (
       <SysLine>
         <i className="ph ph-info" />
@@ -475,29 +483,14 @@ function UserBubble({
             <i className="ph ph-pencil-simple" aria-hidden="true" />
           </button>
         ) : null}
-        <details
-          className="message-more"
-          onBlur={(event) => {
-            if (!event.currentTarget.contains(event.relatedTarget)) {
-              event.currentTarget.open = false;
-            }
-          }}
+        <button
+          title="Try same prompt again (branches; the original answer stays)"
+          aria-label="Try the same prompt again in a new branch"
+          disabled={isRunning}
+          onClick={() => onTrySame(trimmed, entryId)}
         >
-          <summary title="More" aria-label="More message actions">
-            <i className="ph ph-dots-three" aria-hidden="true" />
-          </summary>
-          <div className="message-more-menu">
-            <button
-              disabled={isRunning}
-              onClick={(event) => {
-                event.currentTarget.closest("details")?.removeAttribute("open");
-                onTrySame(trimmed, entryId);
-              }}
-            >
-              Try same prompt again
-            </button>
-          </div>
-        </details>
+          <i className="ph ph-arrow-counter-clockwise" aria-hidden="true" />
+        </button>
       </div>
     </div>
   );

@@ -88,7 +88,7 @@ export interface TranscriptMessage {
   success?: boolean;
   truncated?: boolean;
   /** Non-message boundary markers rendered specially (e.g. context compaction). */
-  marker?: "compaction" | "imported-context";
+  marker?: "compaction" | "imported-context" | "retry-boundary";
   sourceRole?: "system" | "developer";
 }
 
@@ -194,7 +194,7 @@ export type ServerMessage =
   | { type: "tool_updated"; payload: { callId: string; text?: string; progress?: number } }
   | { type: "tool_finished"; payload: { callId: string; success: boolean; output?: unknown } }
   | { type: "run_completed"; payload: SessionSnapshot }
-  | { type: "run_failed"; payload: { error: string } }
+  | { type: "run_failed"; payload: { error: string; canRetry?: boolean } }
   | {
       type: "approval_requested";
       payload: {

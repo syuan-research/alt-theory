@@ -42,7 +42,29 @@ export function sanitizeOrphanedToolCalls(
       sanitized.push({ ...message, content });
     }
   }
-  return changed ? sanitized : messages;
+  // Break-point retries keep the abandoned errored partial in the tree (it
+  // stays visible in the transcript), so a rebuilt context can contain two
+  // assistant messages in a row. Providers reject non-alternating roles
+  // (Anthropic 400s), so drop every assistant message directly followed by
+  // another — the later one is always the replacement.
+  const collapsed: AgentMessage[] = [];
+  for (let index = 0; index < sanitized.length; index++) {
+    const message = sanitized[index];
+    const next = sanitized[index + 1];
+    if (
+      message &&
+      "role" in message &&
+      message.role === "assistant" &&
+      next &&
+      "role" in next &&
+      next.role === "assistant"
+    ) {
+      changed = true;
+      continue;
+    }
+    collapsed.push(message);
+  }
+  return changed ? collapsed : messages;
 }
 
 export function createTurnContinuityExtension(): ExtensionFactory {

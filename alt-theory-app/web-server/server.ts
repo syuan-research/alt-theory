@@ -8,9 +8,9 @@
 import "dotenv/config";
 import express, { type Response } from "express";
 import multer from "multer";
-import { existsSync, statSync } from "fs";
+import { copyFileSync, existsSync, mkdirSync, statSync } from "fs";
 import { createServer } from "http";
-import { resolve } from "path";
+import { basename, resolve } from "path";
 import { fileURLToPath } from "url";
 import WebSocket, { WebSocketServer } from "ws";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
@@ -32,6 +32,7 @@ import {
   listSouls,
   resolveRolePresetSlug,
   resolveSoulSlug,
+  setExtraAssetDirs,
 } from "./asset-registry.js";
 import type {
   ClientMessage,
@@ -229,6 +230,17 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   });
   const kbDir = assetPaths.kbDir;
   const rolePresetsDir = assetPaths.rolePresetsDir;
+  // User-added asset locations (alpha.5, add-only): the data-dir upload
+  // folder for roles is always scanned; Settings can add more directories.
+  const userRolePresetsDir = resolve(dataDir, "role-presets");
+  const applyExtraAssetDirs = () => {
+    const settings = readAppSettings(dataDir);
+    setExtraAssetDirs({
+      roleDirs: [userRolePresetsDir, ...(settings.extraRolePresetDirs ?? [])],
+      kbDirs: settings.extraKbDirs ?? [],
+    });
+  };
+  applyExtraAssetDirs();
   const soulDir = assetPaths.soulDir;
   const legacySoulPath = assetPaths.soulPath;
   const publicDir = resolve(options.publicDir ?? PUBLIC_DIR);
@@ -406,6 +418,95 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       skillPrecedence: value as SkillPrecedence,
     });
     res.json({ ok: true, precedence: value });
+  });
+
+  // --- User-added role/KB locations (v1.3.0-alpha.5, add-only) ---
+  app.get("/api/settings/asset-dirs", (_req, res) => {
+    if (!requireLocalConfigMode(res)) return;
+    const settings = readAppSettings(dataDir);
+    res.json({
+      userRolePresetsDir,
+      extraRolePresetDirs: settings.extraRolePresetDirs ?? [],
+      extraKbDirs: settings.extraKbDirs ?? [],
+    });
+  });
+  app.put("/api/settings/asset-dirs", (req, res) => {
+    if (!requireLocalConfigMode(res)) return;
+    const body = req.body as { roleDirs?: unknown; kbDirs?: unknown };
+    const clean = (value: unknown): string[] | null =>
+      Array.isArray(value)
+        ? value
+            .filter((entry): entry is string => typeof entry === "string")
+            .map((entry) => resolve(entry))
+            .filter((entry) => existsSync(entry))
+        : null;
+    const roleDirs = clean(body.roleDirs);
+    const kbDirs = clean(body.kbDirs);
+    const current = readAppSettings(dataDir);
+    writeAppSettings(dataDir, {
+      ...current,
+      ...(roleDirs ? { extraRolePresetDirs: roleDirs } : {}),
+      ...(kbDirs ? { extraKbDirs: kbDirs } : {}),
+    });
+    applyExtraAssetDirs();
+    const saved = readAppSettings(dataDir);
+    res.json({
+      ok: true,
+      extraRolePresetDirs: saved.extraRolePresetDirs ?? [],
+      extraKbDirs: saved.extraKbDirs ?? [],
+    });
+  });
+  // Copy a picked .md file into the user's role folder — never touches the
+  // bundled role-presets directory.
+  app.post("/api/role-presets/upload", (req, res) => {
+    if (!requireLocalConfigMode(res)) return;
+    const source = (req.body as { path?: unknown }).path;
+    if (typeof source !== "string" || !source.trim()) {
+      res.status(400).json({ error: "path is required" });
+      return;
+    }
+    const resolved = resolve(source.trim());
+    if (!existsSync(resolved) || !statSync(resolved).isFile()) {
+      res.status(400).json({ error: "File not found" });
+      return;
+    }
+    if (!resolved.toLowerCase().endsWith(".md")) {
+      res.status(400).json({ error: "A role preset is a Markdown (.md) file" });
+      return;
+    }
+    try {
+      mkdirSync(userRolePresetsDir, { recursive: true });
+      const target = resolve(userRolePresetsDir, basename(resolved));
+      copyFileSync(resolved, target);
+      res.json({ ok: true, slug: basename(resolved, ".md"), path: target });
+    } catch (error) {
+      res.status(500).json({
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
+  // --- Default mode for new conversations (v1.3.0-alpha.5) ---
+  app.get("/api/settings/default-mode", (_req, res) => {
+    if (!requireLocalConfigMode(res)) return;
+    res.json({ mode: readAppSettings(dataDir).defaultMode ?? null });
+  });
+  app.put("/api/settings/default-mode", (req, res) => {
+    if (!requireLocalConfigMode(res)) return;
+    const mode = (req.body as { mode?: unknown }).mode as
+      | "pure"
+      | "full"
+      | null
+      | undefined;
+    if (mode !== "pure" && mode !== "full" && mode !== null) {
+      res.status(400).json({ error: "Unknown mode" });
+      return;
+    }
+    const settings = readAppSettings(dataDir);
+    if (mode === null) delete settings.defaultMode;
+    else settings.defaultMode = mode;
+    writeAppSettings(dataDir, settings);
+    res.json({ ok: true, mode });
   });
 
   app.get("/api/config/providers", async (_req, res) => {
@@ -2017,6 +2118,11 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
                 type: "run_failed",
                 payload: {
                   error: error instanceof Error ? error.message : String(error),
+                  // A preflight failure (no API key, unknown model) records no
+                  // user entry; offering Retry there errors on click.
+                  canRetry: attachedSessionId
+                    ? sessionService.canRetryFailed(attachedSessionId)
+                    : false,
                 },
               });
             }

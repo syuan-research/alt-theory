@@ -360,10 +360,18 @@ interface AgentSessionWithContinue {
 }
 
 export function stripLastErrorAssistantMessage(session: AgentSession): void {
-  const messages = session.messages;
-  const last = messages.at(-1);
-  if (last && "role" in last && last.role === "assistant") {
-    session.state.messages = messages.slice(0, -1);
+  // A session that auto-retried and still failed carries a CHAIN of trailing
+  // errored assistant partials (Pi strips them from live state but keeps
+  // them in the file, so a reopen restores all of them). Strip every one;
+  // agent.continue() refuses an assistant-last context.
+  let messages = session.messages;
+  while (messages.length > 0) {
+    const last = messages[messages.length - 1];
+    if (!last || !("role" in last) || last.role !== "assistant") break;
+    messages = messages.slice(0, -1);
+  }
+  if (messages !== session.messages) {
+    session.state.messages = messages;
   }
 }
 

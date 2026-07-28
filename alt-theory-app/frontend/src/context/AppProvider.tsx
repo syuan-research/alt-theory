@@ -123,6 +123,8 @@ export interface AppContextValue {
   setTranscriptView: (view: TranscriptView) => void;
 
   discovery: DiscoveryLists | null;
+  /** Re-fetch role/KB/skill lists after the user adds assets in Settings. */
+  refreshDiscovery: () => Promise<void>;
   /** Local-mode model config status; carries the active default model. */
   localConfig: ConfigStatus | null;
 
@@ -276,19 +278,6 @@ function upsertToolPart(
   return parts.map((part, i) =>
     i === index ? { kind: "tool" as const, tool } : part,
   );
-}
-
-function failRunningToolParts(parts: StreamPart[]): StreamPart[] {
-  return parts
-    .filter((part) => part.kind === "tool")
-    .map((part) =>
-      part.kind === "tool" && part.tool.status === "running"
-        ? {
-            kind: "tool" as const,
-            tool: { ...part.tool, status: "failed" as const, success: false },
-          }
-        : part,
-    );
 }
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -524,6 +513,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     }
   }, [],);
+
+  const refreshDiscovery = useCallback(async () => {
+    try {
+      setDiscovery(await fetchDiscovery());
+    } catch {
+      /* keep the current lists */
+    }
+  }, []);
 
   const refreshSessions = useCallback(async () => {
     if (loginRequired) return;
@@ -907,10 +904,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         case "run_failed": {
           const interrupted = isInterruptedError(message.payload.error);
-          setStreamParts((parts) => failRunningToolParts(parts));
+          // The transcript refresh below re-renders everything from the
+          // authoritative persisted entries; leftover stream parts would
+          // render the same tool calls twice.
+          setStreamParts([]);
           activeToolsMapRef.current = {};
           setIsRunning(false);
-          setCanRetryFailed(true);
+          setCanRetryFailed(message.payload.canRetry !== false);
           setToolStatus("");
           setRunPhaseLabel("");
           setConnStatus(interrupted ? "idle" : "error");
@@ -1592,6 +1592,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       transcriptView,
       setTranscriptView,
       discovery,
+      refreshDiscovery,
       localConfig,
       sessions,
       sessionSearch,
@@ -1693,6 +1694,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       participant,
       transcriptView,
       discovery,
+      refreshDiscovery,
       localConfig,
       sessions,
       sessionSearch,

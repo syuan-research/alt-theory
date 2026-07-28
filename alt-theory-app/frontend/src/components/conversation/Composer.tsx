@@ -415,6 +415,20 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               <i className="ph ph-toolbox" />
               {!toolboxSeen ? <span className="badge-dot" /> : null}
             </button>
+            {canAttach ? (
+              <button
+                className="flat"
+                title="Attach a file to this message"
+                aria-label="Attach a file"
+                onClick={() => {
+                  void pickFiles("Full path of the file to attach:").then(
+                    (paths) => paths.forEach((p) => app.stageWorkspacePath(p)),
+                  );
+                }}
+              >
+                <i className="ph ph-paperclip" />
+              </button>
+            ) : null}
             <div
               className={`menu${menu === "plus" ? " on" : ""}`}
               style={{ left: 0 }}

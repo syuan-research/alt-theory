@@ -99,6 +99,55 @@ export async function getDataFolder(): Promise<{ dataDir: string }> {
   return fetchJson<{ dataDir: string }>("/api/local/data-folder");
 }
 
+export interface AssetDirs {
+  userRolePresetsDir: string;
+  extraRolePresetDirs: string[];
+  extraKbDirs: string[];
+}
+
+export async function getAssetDirs(): Promise<AssetDirs> {
+  return fetchJson<AssetDirs>("/api/settings/asset-dirs");
+}
+
+export async function saveAssetDirs(dirs: {
+  roleDirs?: string[];
+  kbDirs?: string[];
+}): Promise<{ ok: true; extraRolePresetDirs: string[]; extraKbDirs: string[] }> {
+  return fetchJson("/api/settings/asset-dirs", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(dirs),
+  });
+}
+
+export async function uploadRolePreset(
+  path: string,
+): Promise<{ ok: true; slug: string; path: string }> {
+  return fetchJson("/api/role-presets/upload", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path }),
+  });
+}
+
+export async function getDefaultMode(): Promise<{
+  mode: "pure" | "full" | null;
+}> {
+  return fetchJson<{ mode: "pure" | "full" | null }>(
+    "/api/settings/default-mode",
+  );
+}
+
+export async function saveDefaultMode(
+  mode: "pure" | "full" | null,
+): Promise<{ ok: true; mode: "pure" | "full" | null }> {
+  return fetchJson("/api/settings/default-mode", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mode }),
+  });
+}
+
 export async function saveAutoTitleSettings(
   input: AutoTitleSettings
 ): Promise<{ ok: true; autoTitle: AutoTitleSettings }> {

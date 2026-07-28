@@ -29,6 +29,7 @@ import { extname, isAbsolute, join, relative, resolve } from "path";
 import type { AgentAssetPaths } from "../core/agent-assets.js";
 import {
   isKnownKbDomain,
+  resolveKbDirForDomain,
   resolveRolePresetSlug,
   resolveSoulSlug,
 } from "./asset-registry.js";
@@ -226,7 +227,7 @@ export type SessionServiceEvent =
   | { type: "tool_updated"; payload: { callId: string } }
   | { type: "tool_finished"; payload: { callId: string; success: boolean } }
   | { type: "run_completed"; payload: SessionSnapshot }
-  | { type: "run_failed"; payload: { error: string } }
+  | { type: "run_failed"; payload: { error: string; canRetry?: boolean } }
   | { type: "session_transcript"; payload: { messages: TranscriptMessage[] } }
   | { type: "session_metrics"; payload: SessionMetrics }
   | { type: "approval_requested"; payload: ApprovalRequest }
@@ -824,11 +825,9 @@ export class SessionService {
     return this.reviseFromRun(managed, latest, text);
   }
 
-  retryFailed(sessionId: string): RunHandle {
-    const managed = this.requireSession(sessionId);
-    if (managed.busy || managed.session.isStreaming) {
-      throw new SessionBusyError(sessionId);
-    }
+  private latestRetryableRun(
+    managed: ManagedSession,
+  ): (RunRecord & { userEntryId: string }) | null {
     const latest = latestRunSnapshots(managed.manifest.recordsDir)
       .filter(
         (run) =>
@@ -842,6 +841,24 @@ export class SessionService {
       !latest?.userEntryId ||
       (latest.status !== "failed" && latest.status !== "aborted")
     ) {
+      return null;
+    }
+    return latest as RunRecord & { userEntryId: string };
+  }
+
+  /** Whether the Retry / continue-from-break-point action can succeed now. */
+  canRetryFailed(sessionId: string): boolean {
+    const managed = this.sessions.get(sessionId);
+    return Boolean(managed && this.latestRetryableRun(managed));
+  }
+
+  retryFailed(sessionId: string): RunHandle {
+    const managed = this.requireSession(sessionId);
+    if (managed.busy || managed.session.isStreaming) {
+      throw new SessionBusyError(sessionId);
+    }
+    const latest = this.latestRetryableRun(managed);
+    if (!latest) {
       throw new Error("No failed latest turn is available to retry");
     }
     const userEntry = managed.session.sessionManager.getEntry(
@@ -1067,6 +1084,7 @@ export class SessionService {
     } else {
       managed.session.sessionManager.resetLeaf();
     }
+    resyncAgentContext(managed.session);
     this.publishCurrentBranchTranscript(managed);
     return this.runPromptWithLineage(managed, text);
   }
@@ -1085,6 +1103,7 @@ export class SessionService {
     } else {
       managed.session.sessionManager.resetLeaf();
     }
+    resyncAgentContext(managed.session);
     appendRunRecord(managed.manifest.recordsDir, {
       ...runRecordBody(run),
       status: "superseded",
@@ -1112,6 +1131,7 @@ export class SessionService {
     } else {
       managed.session.sessionManager.resetLeaf();
     }
+    resyncAgentContext(managed.session);
     const activeLeafEntryId = managed.session.sessionManager.getLeafId() ?? null;
     appendRunRecord(managed.manifest.recordsDir, {
       ...runRecordBody(latest),
@@ -1635,6 +1655,7 @@ export class SessionService {
         managed.session.sessionManager.getEntry(leafBeforeCompact)
       ) {
         managed.session.sessionManager.branch(leafBeforeCompact);
+        resyncAgentContext(managed.session);
       }
       throw error;
     } finally {
@@ -1923,7 +1944,7 @@ export class SessionService {
       rolePresetSlug: selectors.rolePresetSlug,
       customInstructionPath: instruction?.path ?? null,
       customInstructionRef: instruction?.ref ?? null,
-      kbDir: this.config.kbDir,
+      kbDir: resolveKbDirForDomain(this.config.kbDir, selectors.kbDomain),
       kbDomain: selectors.kbDomain,
       piPromptTemplatesDir: this.config.assetPaths.piPromptTemplatesDir,
       ...runtimeModelConfig,
@@ -2195,7 +2216,7 @@ export class SessionService {
       rolePresetSlug: activeRolePresetSlug,
       customInstructionPath: instruction?.path ?? null,
       customInstructionRef: instruction?.ref ?? null,
-      kbDir: this.config.kbDir,
+      kbDir: resolveKbDirForDomain(this.config.kbDir, activeDomain),
       kbDomain: activeDomain,
       piPromptTemplatesDir: this.config.assetPaths.piPromptTemplatesDir,
       ...this.modelArgsFor(persistedHeader?.modelOverride),
@@ -2233,6 +2254,7 @@ export class SessionService {
       latestRunSnapshots(result.manifest.recordsDir),
       "latest active run",
     );
+    resyncAgentContext(result.session);
 
     const managed = await this.createManaged({
       ...result,
@@ -2350,7 +2372,7 @@ export class SessionService {
         selectors.customInstructionRef,
       )?.path,
       customInstructionRef: selectors.customInstructionRef ?? null,
-      kbDir: this.config.kbDir,
+      kbDir: resolveKbDirForDomain(this.config.kbDir, selectors.kbDomain),
       kbDomain: selectors.kbDomain,
       piPromptTemplatesDir: this.config.assetPaths.piPromptTemplatesDir,
       ...this.modelArgsFor(
@@ -2373,6 +2395,7 @@ export class SessionService {
         latestRunSnapshots(result.manifest.recordsDir),
         "latest active run",
       );
+      resyncAgentContext(result.session);
     }
 
     return await this.createManaged({
@@ -2433,7 +2456,7 @@ export class SessionService {
       rolePresetSlug: args.selectors.rolePresetSlug,
       customInstructionPath: instruction?.path ?? null,
       customInstructionRef: instruction?.ref ?? null,
-      kbDir: this.config.kbDir,
+      kbDir: resolveKbDirForDomain(this.config.kbDir, args.selectors.kbDomain),
       kbDomain: args.selectors.kbDomain,
       piPromptTemplatesDir: this.config.assetPaths.piPromptTemplatesDir,
       ...this.modelArgsFor(args.modelOverride ?? persistedHeader?.modelOverride,),
@@ -2453,6 +2476,7 @@ export class SessionService {
         args.activeLeafEntryId ?? null,
         `current Pi leaf for ${args.branchId}`,
       );
+      resyncAgentContext(result.session);
     }
     return await this.createManaged({
       ...result,
@@ -2538,12 +2562,24 @@ export class SessionService {
       (run) => run.branchId === managed.branchId,
     );
     // Entry IDs whose runs are deleted or superseded remain in Pi's persisted tree
-    // for evidence, but no longer count as active transcript turns.
-    const inactiveUserEntryIds = new Set(
+    // for evidence, but no longer count as active transcript turns — unless an
+    // active run also claims the entry (a break-point retry adopts the failed
+    // run's user entry; that turn must stay revisable).
+    const activeUserEntryIds = new Set(
       allRuns
-        .filter((run) => run.status === "deleted" || run.status === "superseded",)
+        .filter(
+          (run) => run.status !== "deleted" && run.status !== "superseded",
+        )
         .map((run) => run.userEntryId)
         .filter(Boolean) as string[],
+    );
+    const inactiveUserEntryIds = new Set(
+      (
+        allRuns
+          .filter((run) => run.status === "deleted" || run.status === "superseded",)
+          .map((run) => run.userEntryId)
+          .filter(Boolean) as string[]
+      ).filter((entryId) => !activeUserEntryIds.has(entryId)),
     );
     const latest = allRuns
       .filter((run) => run.status === "completed" && run.userEntryId)
@@ -2963,6 +2999,19 @@ function runRecordBody(
     ...body
   } = record;
   return body;
+}
+
+/**
+ * Pi's own tree navigation always follows `branch()` with a rebuild of
+ * `agent.state.messages` from the new leaf path. Alt must do the same after
+ * every branch/resetLeaf/leaf-align on a LIVE session, or the model keeps
+ * receiving the pre-branch context (stale edited/deleted turns).
+ */
+function resyncAgentContext(session: {
+  state: { messages: unknown[] };
+  sessionManager: { buildSessionContext(): { messages: unknown[] } };
+}): void {
+  session.state.messages = session.sessionManager.buildSessionContext().messages;
 }
 
 function alignSessionManagerLeaf(

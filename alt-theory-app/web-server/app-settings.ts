@@ -59,6 +59,20 @@ export interface AppSettings {
     enabled: boolean;
     model: { provider: string; modelId: string } | null;
   };
+  /**
+   * Which capability mode a new conversation starts in (alpha.5). Absent =
+   * "pure" (Understand), the established default. The per-conversation
+   * toggle is unaffected — this only seeds new drafts.
+   */
+  defaultMode?: "pure" | "full";
+  /**
+   * User-added role-preset directories (alpha.5, add-only). The bundled
+   * role-presets dir and the data-dir upload folder are always included and
+   * never change; these are extra scanned locations.
+   */
+  extraRolePresetDirs?: string[];
+  /** User-added knowledge-base directories (alpha.5, add-only). */
+  extraKbDirs?: string[];
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -121,6 +135,23 @@ export function readAppSettings(dataDir: string): AppSettings {
         : {}),
       ...(SKILL_PRECEDENCE_VALUES.includes(parsed.skillPrecedence as SkillPrecedence)
         ? { skillPrecedence: parsed.skillPrecedence }
+        : {}),
+      ...(parsed.defaultMode === "pure" || parsed.defaultMode === "full"
+        ? { defaultMode: parsed.defaultMode }
+        : {}),
+      ...(Array.isArray(parsed.extraRolePresetDirs)
+        ? {
+            extraRolePresetDirs: parsed.extraRolePresetDirs.filter(
+              (entry): entry is string => typeof entry === "string"
+            ),
+          }
+        : {}),
+      ...(Array.isArray(parsed.extraKbDirs)
+        ? {
+            extraKbDirs: parsed.extraKbDirs.filter(
+              (entry): entry is string => typeof entry === "string"
+            ),
+          }
         : {}),
     };
   } catch {

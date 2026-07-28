@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   cancelProviderAuth,
   getAutoTitleSettings,
+  getDefaultMode,
+  saveDefaultMode,
   getDataFolder,
   getProviderAuthFlow,
   getSkillPrecedence,
@@ -12,6 +14,10 @@ import {
   saveAutoTitleSettings,
   saveSkillPrecedence,
   startProviderAuth,
+  getAssetDirs,
+  saveAssetDirs,
+  uploadRolePreset,
+  type AssetDirs,
   type AutoTitleSettings,
   type SkillPrecedence,
 } from "@/api/config";
@@ -20,7 +26,7 @@ import type {
   ProviderAuthId,
 } from "@/api/types";
 import { ModelConfigPage } from "@/pages/ModelConfigPage";
-import { hasNativeBridge, revealPath } from "@/lib/native";
+import { hasNativeBridge, pickDirectory, pickFiles, revealPath } from "@/lib/native";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
 
@@ -38,7 +44,7 @@ export function SettingsView() {
   const items: NavItem[] = [
     { key: "models", label: "Models", icon: "ph-cpu" },
     { key: "general", label: "General", icon: "ph-gear" },
-    { key: "rolekb", label: "Role & Knowledge", icon: "ph-books", soon: true },
+    { key: "rolekb", label: "Role & Knowledge", icon: "ph-books" },
     ...(shell.participantTabEnabled
       ? [
           {
@@ -470,6 +476,7 @@ function GeneralPanel() {
           />
         </div>
       </div>
+      <DefaultModeCard />
       <AutoTitleCard />
       <SkillPrecedenceCard />
       <div className="set-card">
@@ -487,6 +494,56 @@ function GeneralPanel() {
             onClick={() => shell.setParticipantTabEnabled(!shell.participantTabEnabled)}
           />
         </div>
+      </div>
+    </div>
+  );
+}
+
+function DefaultModeCard() {
+  const shell = useShell();
+  const [mode, setMode] = useState<"pure" | "full" | null>(null);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    getDefaultMode()
+      .then(({ mode: value }) => {
+        if (alive) setMode(value);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (alive) setLoaded(true);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const persist = (next: "pure" | "full") => {
+    setMode(next);
+    shell.setNewMode(next);
+    void saveDefaultMode(next).catch(() => {});
+  };
+
+  return (
+    <div className="set-card">
+      <div className="row2">
+        <div>
+          <h4>New conversations start in</h4>
+          <p>
+            Understand talks things through without changing files; Work can
+            act in your working folders. Each conversation can still switch
+            its own mode.
+          </p>
+        </div>
+        <select
+          value={mode ?? shell.newMode}
+          disabled={!loaded}
+          onChange={(e) => persist(e.target.value as "pure" | "full")}
+        >
+          <option value="pure">Understand</option>
+          <option value="full">Work</option>
+        </select>
       </div>
     </div>
   );
@@ -642,13 +699,148 @@ function SkillPrecedenceCard() {
 }
 
 function RoleKbPanel() {
+  const app = useApp();
+  const [dirs, setDirs] = useState<AssetDirs | null>(null);
+  const [notice, setNotice] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+    getAssetDirs()
+      .then((value) => {
+        if (alive) setDirs(value);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const roles = (app.discovery?.rolePresets ?? []).filter((r) => !r.snapshot);
+  const kbDomains = (app.discovery?.kbDomains ?? []).filter(
+    (d) => d.slug !== "off" && d.slug !== "all",
+  );
+
+  const addRoleFile = () => {
+    void pickFiles("Full path of the role file (.md) to add:").then(
+      async (paths) => {
+        for (const path of paths) {
+          try {
+            const result = await uploadRolePreset(path);
+            setNotice(`Added role "${result.slug}".`);
+          } catch (err) {
+            setNotice(err instanceof Error ? err.message : "Could not add role");
+          }
+        }
+        if (paths.length) void app.refreshDiscovery();
+      },
+    );
+  };
+
+  const addKbDir = () => {
+    void pickDirectory("Full path of the knowledge folder to add:").then(
+      async (path) => {
+        if (!path || !dirs) return;
+        try {
+          const saved = await saveAssetDirs({
+            kbDirs: [...dirs.extraKbDirs, path],
+          });
+          setDirs({ ...dirs, extraKbDirs: saved.extraKbDirs });
+          setNotice(
+            saved.extraKbDirs.includes(path) ||
+              saved.extraKbDirs.some((d) => path.startsWith(d))
+              ? "Knowledge folder added."
+              : "That folder could not be added (does it exist?).",
+          );
+          void app.refreshDiscovery();
+        } catch (err) {
+          setNotice(err instanceof Error ? err.message : "Could not add folder");
+        }
+      },
+    );
+  };
+
+  const removeKbDir = (dir: string) => {
+    if (!dirs) return;
+    void saveAssetDirs({
+      kbDirs: dirs.extraKbDirs.filter((d) => d !== dir),
+    }).then((saved) => {
+      setDirs({ ...dirs, extraKbDirs: saved.extraKbDirs });
+      void app.refreshDiscovery();
+    });
+  };
+
   return (
     <div className="set-panel">
       <h2>Role &amp; Knowledge</h2>
       <p className="sub">
-        Managing roles, knowledge sets, and extra scanned paths lands in a later
-        version. The pickers above the composer already cover daily use.
+        What Alt speaks as, and what it draws on. New conversations start with
+        no role and the bundled knowledge set until you pick otherwise above
+        the composer. Adding here never changes the bundled files.
       </p>
+      {notice ? <p className="sub">{notice}</p> : null}
+      <div className="set-card">
+        <div className="row2">
+          <div>
+            <h4>Roles</h4>
+            <p>
+              A role is a Markdown file describing who Alt should be for a
+              conversation. Files you add are stored in your own folder and
+              appear in the role picker.
+            </p>
+            <ul className="asset-list">
+              {roles.map((role) => (
+                <li key={role.slug}>
+                  {role.displayName}
+                  {role.source === "added" ? <em> · added by you</em> : null}
+                </li>
+              ))}
+              {roles.length === 0 ? <li>No roles found.</li> : null}
+            </ul>
+          </div>
+          <button className="flat" onClick={addRoleFile}>
+            <i className="ph ph-plus" aria-hidden="true" /> Add role file
+          </button>
+        </div>
+      </div>
+      <div className="set-card">
+        <div className="row2">
+          <div>
+            <h4>Knowledge sets</h4>
+            <p>
+              Each knowledge set is a folder of material Alt can ground its
+              answers in. Add a folder of your own to make it selectable; the
+              bundled sets stay untouched.
+            </p>
+            <ul className="asset-list">
+              {kbDomains.map((domain) => (
+                <li key={domain.slug}>
+                  {domain.displayName}
+                  {domain.source === "added" ? <em> · added by you</em> : null}
+                </li>
+              ))}
+            </ul>
+            {dirs && dirs.extraKbDirs.length > 0 ? (
+              <ul className="asset-list">
+                {dirs.extraKbDirs.map((dir) => (
+                  <li key={dir}>
+                    <code>{dir}</code>{" "}
+                    <button
+                      className="flat"
+                      title="Stop scanning this folder (the folder itself is not deleted)"
+                      onClick={() => removeKbDir(dir)}
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+          <button className="flat" onClick={addKbDir}>
+            <i className="ph ph-plus" aria-hidden="true" /> Add knowledge folder
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

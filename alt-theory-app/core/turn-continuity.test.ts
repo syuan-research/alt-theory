@@ -52,6 +52,32 @@ test("drops orphaned tool calls from an errored partial message", () => {
   assert.equal(result.length, 4);
 });
 
+test("collapses consecutive assistant messages so roles alternate (reopen after break-point retry)", () => {
+  const messages = [
+    { role: "user", content: [{ type: "text", text: "q" }], timestamp: 1 } as any,
+    asst([{ type: "toolCall", id: "a", name: "read", arguments: {} }]),
+    toolResult("a"),
+    asst([{ type: "text", text: "partial" }], "error"),
+    asst([{ type: "text", text: "full answer" }], "stop"),
+  ];
+  const result = sanitizeOrphanedToolCalls(messages);
+  const roles = result.map((m: any) => m.role);
+  assert.deepEqual(roles, ["user", "assistant", "toolResult", "assistant"]);
+  assert.equal((result[3] as any).content[0].text, "full answer");
+  // A chain of two errored partials before the replacement also collapses.
+  const chained = sanitizeOrphanedToolCalls([
+    messages[0],
+    asst([{ type: "text", text: "p1" }], "error"),
+    asst([{ type: "text", text: "p2" }], "error"),
+    asst([{ type: "text", text: "final" }], "stop"),
+  ]);
+  assert.deepEqual(
+    chained.map((m: any) => m.role),
+    ["user", "assistant"],
+  );
+  assert.equal((chained[1] as any).content[0].text, "final");
+});
+
 test("drops an assistant message left empty after orphan removal", () => {
   const messages = [
     asst([{ type: "toolCall", id: "b", name: "read", arguments: {} }], "error"),

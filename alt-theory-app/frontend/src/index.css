@@ -521,13 +521,6 @@
   .msg-actions i { font-size: 0.9rem; }
   .msg-actions button:hover:not(:disabled) { background: var(--hover); color: var(--ink); }
   .msg-actions button:disabled { opacity: 0.4; cursor: default; }
-  .message-more { position: relative; }
-  .message-more > summary { list-style: none; color: var(--text-3); font-size: 0.72rem; padding: 2px 6px; border-radius: var(--r-sm); cursor: pointer; }
-  .message-more > summary::-webkit-details-marker { display: none; }
-  .message-more > summary:hover { background: var(--hover); color: var(--ink); }
-  .message-more-menu { position: absolute; right: 0; top: 24px; z-index: 40; min-width: 180px; padding: 5px; border: 1px solid var(--hairline); border-radius: var(--r-md); background: var(--surface); box-shadow: 0 6px 22px rgba(31,30,26,0.12); }
-  .message-more-menu button { width: 100%; padding: 7px 9px; text-align: left; white-space: nowrap; color: var(--ink-soft); font-size: 0.78rem; }
-
   /* composer */
   .composer-wrap { padding: 16px 24px 18px; }
   .composer-wrap.drag-active .composer-col { outline: 2px dashed var(--color-text-muted); outline-offset: 3px; border-radius: var(--r-md); }
@@ -741,6 +734,10 @@
   .set-card { background: var(--surface); border: none; border-radius: var(--r-md); padding: 16px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(31,30,26,0.04); }
   .set-card h4 { margin: 0 0 4px; font-size: 0.95rem; }
   .set-card p { margin: 0; font-size: 0.8125rem; color: var(--text-2); }
+  .asset-list { margin: 8px 0 0; padding-left: 18px; font-size: 0.8125rem; color: var(--text-2); }
+  .asset-list li { margin: 2px 0; }
+  .asset-list em { color: var(--text-3); font-style: normal; }
+  .asset-list code { font-size: 0.75rem; }
   .set-card .row2 { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
   .set-card input[type="text"] { border: 1px solid var(--hairline); border-radius: var(--r-sm); padding: 7px 10px; font: inherit; font-size: 0.875rem; width: 220px; outline: none; }
   .toggle { width: 38px; height: 22px; border-radius: 999px; background: var(--toggle-track); position: relative; cursor: pointer; flex-shrink: 0; border: none; padding: 0; transition: background 0.15s; }
