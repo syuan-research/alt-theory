@@ -20,6 +20,7 @@ import {
   type ResourceDiagnostic,
   SessionManager,
   type Skill,
+  type ToolDefinition,
   type WriteOperations,
 } from "@earendil-works/pi-coding-agent";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
@@ -207,6 +208,14 @@ export interface AltTheoryConfig extends SessionDirectories {
    * (noExtensions, spec §3.4/§4.2); this is the only extension entry point.
    */
   extensionFactories?: ExtensionFactory[];
+  /**
+   * Per-session custom tools active in EVERY capability mode (alpha.5 M2:
+   * the agent-team tool surface). Unlike the web-access tools, these join
+   * the active set — they carry their own policy in their implementations.
+   */
+  extraTools?: ToolDefinition[];
+  /** Extra semantic system-prompt sections (alpha.5 M2: delegation contract). */
+  extraPromptSections?: string[];
 }
 
 /** Prompt text for the app-settings skill-precedence choice (default bundled). */
@@ -404,6 +413,9 @@ async function createAltTheorySessionWithManager(
       "The conversation renders ```mermaid code blocks as real diagrams. When the point is a relationship, a flow, or a structure — a causal path, a study design, a decision tree, a set of competing accounts — draw it as a small mermaid diagram alongside the prose rather than describing the shape in words. Keep diagrams small and labelled in the user's language; prose still carries the argument.",
     ].join("\n")
   );
+  for (const section of config.extraPromptSections ?? []) {
+    semanticSections.push(section);
+  }
   semanticSections.push(
     [
       "## Interaction Moments",
@@ -669,10 +681,18 @@ async function createAltTheorySessionWithManager(
     // security-extension SSRF coverage exist, but absent from every mode's
     // active set (activeToolsForMode). Enablement is a post-1.3 decision.
     ...createWebAccessToolDefinitions(),
+    ...(config.extraTools ?? []),
+  ];
+
+  // Extra tools (agent team) are active in every capability mode.
+  const extraToolNames = (config.extraTools ?? []).map((tool) => tool.name);
+  const activeTools = (mode: CapabilityMode) => [
+    ...activeToolsForMode(mode, readOnly),
+    ...extraToolNames,
   ];
 
   const { session } = await createAgentSession(sessionOpts);
-  session.setActiveToolsByName(activeToolsForMode(modeState.mode, readOnly));
+  session.setActiveToolsByName(activeTools(modeState.mode));
   const createdAt = new Date().toISOString();
   if (openMode.openedFrom === "new") {
     session.sessionManager.appendCustomEntry("alt-theory-session-created", {
@@ -803,7 +823,7 @@ async function createAltTheorySessionWithManager(
       if (next === modeState.mode) return;
       modeState.mode = next;
       await loader.reload();
-      session.setActiveToolsByName(activeToolsForMode(next, readOnly));
+      session.setActiveToolsByName(activeTools(next));
     },
     getWorkspace: () => ({
       primaryDir: cwd,

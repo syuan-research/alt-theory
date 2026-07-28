@@ -88,7 +88,7 @@ export interface TranscriptMessage {
   success?: boolean;
   truncated?: boolean;
   /** Non-message boundary markers rendered specially (e.g. context compaction). */
-  marker?: "compaction" | "imported-context" | "retry-boundary";
+  marker?: "compaction" | "imported-context" | "retry-boundary" | "agent-team";
   sourceRole?: "system" | "developer";
 }
 

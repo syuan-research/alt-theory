@@ -166,6 +166,7 @@ function RelatedConversations() {
     helper: "ph-lifebuoy",
     "ab-arm": "ph-git-fork",
     fork: "ph-git-branch",
+    worker: "ph-robot",
   };
 
   if (activeChildId) {
@@ -206,9 +207,11 @@ function RelatedConversations() {
           <div className="d">
             {child.forkedFrom?.purpose === "helper"
               ? "Ask how Alt works · fresh context"
-              : child.forkedFrom?.purpose === "fork"
-                ? `Branch · ${child.messageCount ?? 0} messages`
-                : `Side conversation · ${child.messageCount ?? 0} messages`}
+              : child.forkedFrom?.purpose === "worker"
+                ? `Worker agent · ${child.messageCount ?? 0} messages — you can join in`
+                : child.forkedFrom?.purpose === "fork"
+                  ? `Branch · ${child.messageCount ?? 0} messages`
+                  : `Side conversation · ${child.messageCount ?? 0} messages`}
           </div>
         </button>
       ))}
@@ -319,12 +322,16 @@ function RelatedConversation({ sessionId }: { sessionId: string }) {
 
   const send = () => {
     const text = draft.trim();
-    if (!text || running) return;
+    if (!text) return;
+    // Sending while the worker runs steers the running turn (Pi behavior);
+    // the server confirms with an extension notice.
     if (socket.send({ type: "prompt", payload: text })) {
       setDraft("");
       setError("");
-      setRunning(true);
-      setStatus("Working…");
+      if (!running) {
+        setRunning(true);
+        setStatus("Working…");
+      }
     }
   };
 
@@ -373,14 +380,17 @@ function RelatedConversation({ sessionId }: { sessionId: string }) {
       <div className="mini-composer">
         <input
           value={draft}
-          disabled={running}
-          placeholder="Reply in this related conversation"
+          placeholder={
+            running
+              ? "Message the running agent — it sees it at its next step"
+              : "Reply in this related conversation"
+          }
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey) send();
           }}
         />
-        <button disabled={!draft.trim() || running} onClick={send} title="Send">
+        <button disabled={!draft.trim()} onClick={send} title="Send">
           <i className="ph ph-arrow-up" />
         </button>
         {running ? (

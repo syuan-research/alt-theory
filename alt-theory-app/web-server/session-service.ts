@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import type {
   AgentSession,
   AgentSessionEvent,
+  ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { ImageContent, Model } from "@earendil-works/pi-ai";
@@ -95,6 +96,22 @@ import {
   type ModelRef,
   resolveModelFallbackStatePath,
 } from "../core/model-fallback.js";
+import {
+  appendAgentMail,
+  formatEnvelopeForContext,
+  markAgentMailDelivered,
+  undeliveredAgentMail,
+  type AgentMailEnvelope,
+} from "./agent-mail.js";
+import {
+  clampWorkerMode,
+  createAgentTeamTools,
+  LEAD_DELEGATION_PROMPT_SECTION,
+  resolveModelTier,
+  WORKER_PROMPT_SECTION,
+  type AgentTeamBridge,
+  type SpawnWorkerOptions,
+} from "./agent-team.js";
 
 export class SessionBusyError extends Error {
   readonly code = "session_busy";
@@ -262,11 +279,21 @@ interface ManagedSession {
   branchId: string;
   fallbackAttempts: number;
   pendingRunWork: Promise<void> | null;
+  /** Set when this session is a worker child: its lead conversation's id. */
+  workerParentId: string | null;
 }
 
-export class SessionService {
+/** Background worker runs allowed at once; further first-runs queue FIFO. */
+const WORKER_CONCURRENCY = 3;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+export class SessionService implements AgentTeamBridge {
   private readonly sessions = new Map<string, ManagedSession>();
   private readonly modelFallback: ModelFallbackCoordinator | null;
+  private runningWorkerRuns = 0;
+  private readonly workerQueue: Array<() => void> = [];
+  private readonly queuedWorkerIds = new Set<string>();
 
   constructor(private readonly config: SessionServiceConfig) {
     const fallbackConfigPath = this.config.modelFallbackConfigPath;
@@ -480,6 +507,27 @@ export class SessionService {
       refreshSessionRetention(managed.manifest.recordsDir);
     }
     this.sessions.set(managed.manifest.sessionId, managed);
+    // Agent mail that arrived while this session was closed: inject it into
+    // context (no turn — the user is present) and surface it in the
+    // transcript as agent-team lines. Durable inbox -> nothing was lost.
+    const undelivered = undeliveredAgentMail(managed.manifest.recordsDir);
+    if (undelivered.length > 0) {
+      for (const envelope of undelivered) {
+        await managed.session.sendCustomMessage(
+          {
+            customType: "agent-team",
+            content: formatEnvelopeForContext(
+              envelope,
+              this.agentMailLabel(envelope.from, managed),
+            ),
+            display: true,
+            details: { from: envelope.from, event: envelope.event ?? null },
+          },
+          { triggerTurn: false },
+        );
+      }
+      markAgentMailDelivered(managed.manifest.recordsDir);
+    }
     return this.snapshot(managed);
   }
 
@@ -1272,6 +1320,7 @@ export class SessionService {
         sessionId: forkSessionId,
         sessionFile: copiedForkFile,
         sessionDirs: forkDirs,
+        forkPurpose: purpose,
         selectors: childSelectors,
         originalManifest: previous.manifest,
         branchId: "main",
@@ -1463,6 +1512,8 @@ export class SessionService {
       turnId?: string;
       supersedesRunId?: string | null;
       attachments?: string[];
+      /** Worker runs started by the agent team: mail the outcome to the lead. */
+      notifyParent?: boolean;
     } = {},
   ): RunHandle {
     const sessionId = managed.manifest.sessionId;
@@ -1544,15 +1595,14 @@ export class SessionService {
             ? String(pendingError)
             : null);
       if (finalError || /abort|interrupt/i.test(String(promptError))) {
+        const aborted = /abort|interrupt/i.test(String(promptError));
         appendRunRecord(managed.manifest.recordsDir, {
           sessionId,
           branchId: managed.branchId,
           turnId,
           revisionId,
           runId,
-          status: /abort|interrupt/i.test(String(promptError))
-            ? "aborted"
-            : "failed",
+          status: aborted ? "aborted" : "failed",
           piSessionFile: managed.session.sessionFile ?? null,
           userEntryId,
           assistantEntryIds,
@@ -1560,6 +1610,15 @@ export class SessionService {
           acceptedAt,
           completedAt: new Date().toISOString(),
         });
+        if (options.notifyParent && managed.workerParentId) {
+          this.deliverWorkerOutcome(
+            managed,
+            aborted ? "interrupted" : "failed",
+            aborted
+              ? "The worker's turn was stopped. Its completed work is kept; it can continue from the break point."
+              : `The worker's turn failed: ${finalError ?? String(promptError ?? "unknown error")}`,
+          );
+        }
         throw ( promptError ?? pendingError ?? new Error(finalError ?? "Run failed")
         );
       }
@@ -1578,6 +1637,22 @@ export class SessionService {
         acceptedAt,
         completedAt: new Date().toISOString(),
       });
+
+      if (options.notifyParent && managed.workerParentId) {
+        const lastAssistant = entries
+          .filter(
+            (entry) =>
+              entry.type === "message" &&
+              (entry.message as { role?: string }).role === "assistant",
+          )
+          .at(-1) as { message?: { content?: unknown } } | undefined;
+        const answer = contentToText(lastAssistant?.message?.content).trim();
+        this.deliverWorkerOutcome(
+          managed,
+          "completed",
+          answer || "(the worker finished without a text answer)",
+        );
+      }
 
       // Auto-name the conversation once, after its first real turn (v1.2.1).
       // Fire-and-forget: title generation must never affect the run.
@@ -1610,6 +1685,18 @@ export class SessionService {
         }
       }
     }
+  }
+
+  /**
+   * Deliver user text into a RUNNING session as a Pi steering message (the
+   * Pi TUI's type-while-running behavior). Returns false when the session is
+   * idle — the caller should run a normal prompt instead.
+   */
+  steerRunningSession(sessionId: string, text: string): boolean {
+    const managed = this.requireSession(sessionId);
+    if (!managed.busy && !managed.session.isStreaming) return false;
+    void managed.session.steer(text).catch(() => {});
+    return true;
   }
 
   async abort(sessionId: string, reason?: string): Promise<void> {
@@ -1911,6 +1998,30 @@ export class SessionService {
     await Promise.all(sessions.map((managed) => this.disposeManaged(managed)));
   }
 
+  /**
+   * Agent-team surface per session kind (alpha.5 M2): leads get the
+   * spawn/steer/wait tool set, worker children get message_parent (depth 1),
+   * A/B arms get none — they are comparison instruments, not delegators.
+   */
+  private agentTeamArgsFor(
+    sessionId: string,
+    purpose: ForkPurpose | null | undefined,
+  ): { extraTools: ToolDefinition[]; extraPromptSections: string[] } {
+    if (purpose === "worker") {
+      return {
+        extraTools: createAgentTeamTools(this, sessionId, "worker"),
+        extraPromptSections: [WORKER_PROMPT_SECTION],
+      };
+    }
+    if (purpose === "ab-arm") {
+      return { extraTools: [], extraPromptSections: [] };
+    }
+    return {
+      extraTools: createAgentTeamTools(this, sessionId, "lead"),
+      extraPromptSections: [LEAD_DELEGATION_PROMPT_SECTION],
+    };
+  }
+
   private async createManagedFromDirs(
     sessionDirs: SessionDirectories,
     selectors: SessionSelectors,
@@ -1971,6 +2082,10 @@ export class SessionService {
       externalSkillPaths: this.config.resolveExternalSkillPaths?.(),
       skillPrecedence: readAppSettings(this.config.dataDir).skillPrecedence,
       extensionFactories: this.config.extensionFactories,
+      ...this.agentTeamArgsFor(
+        sessionDirs.sessionId,
+        metadata.forkedFrom?.purpose ?? null,
+      ),
     });
     const visibility = metadata.visibility ?? "research";
     const consentSnapshot =
@@ -2071,7 +2186,11 @@ export class SessionService {
     if (!header?.forkedFrom) {
       throw new Error("Only a related child can be promoted");
     }
-    if (!(["side", "helper"] as ForkPurpose[]).includes(header.forkedFrom.purpose)) {
+    if (
+      !(["side", "helper", "worker"] as ForkPurpose[]).includes(
+        header.forkedFrom.purpose,
+      )
+    ) {
       throw new Error("This related conversation is already a normal branch");
     }
     const previousPurpose = header.forkedFrom.purpose;
@@ -2086,6 +2205,477 @@ export class SessionService {
     });
     const live = this.sessions.get(sessionId);
     return live ? this.snapshot(live) : null;
+  }
+
+  // -------------------------------------------------------------------------
+  // Agent team (alpha.5 M2) — AgentTeamBridge implementation.
+  //
+  // Children are real sessions (forkedFrom purpose "worker") on the same
+  // substrate as helper/side children: durable records, run lineage, M0
+  // break-point continuity, the right-rail shell, promotion, and direct user
+  // messaging all come for free. This block adds only: spawn, addressed
+  // envelopes (agent-mail.jsonl), and wake delivery.
+  // -------------------------------------------------------------------------
+
+  async spawnWorker(
+    parentSessionId: string,
+    options: SpawnWorkerOptions,
+  ): Promise<{ report: string; sessionId: string }> {
+    const parent = this.requireSession(parentSessionId);
+    if (parent.workerParentId) {
+      throw new Error("Worker agents cannot spawn workers of their own");
+    }
+    const header = readV4SessionHeader(parent.manifest.recordsDir);
+    const mode = clampWorkerMode(parent.getMode(), options.mode);
+
+    // Relative model tier, resolved against models configured AND usable now.
+    let modelOverride = header?.modelOverride ?? null;
+    let tierNote = "";
+    const tier = options.modelTier ?? "same";
+    if (tier !== "same" && parent.session.model) {
+      const available = await parent.session.modelRuntime.getAvailable();
+      const resolved = resolveModelTier(
+        available.map((model) => ({
+          provider: model.provider,
+          id: model.id,
+          cost: model.cost,
+        })),
+        { provider: parent.session.model.provider, id: parent.session.model.id },
+        tier,
+      );
+      if (resolved) {
+        modelOverride = { provider: resolved.provider, modelId: resolved.id };
+        tierNote = `, model ${resolved.provider}/${resolved.id}`;
+      } else {
+        tierNote = `, no usable ${tier}-tier model — using the same model`;
+      }
+    }
+
+    const child = await this.createSession(parent.selectors, {
+      ownerAccountId: header?.ownerAccountId ?? null,
+      roleCondition: header?.roleCondition ?? null,
+      visibility: header?.visibility ?? "research",
+      consentSnapshot: header?.consentSnapshot ?? null,
+      workspace: header?.workspace ?? null,
+      studyTag: header?.studyTag ?? null,
+      modelOverride,
+      forkedFrom: { sessionId: parentSessionId, purpose: "worker" },
+      mode,
+    });
+    const childManaged = this.requireSession(child.sessionId);
+    const label =
+      options.name?.trim() || `worker-${this.workerChildren(parentSessionId).length}`;
+    writeJsonAtomic(join(childManaged.manifest.recordsDir, "ui-alias.json"), {
+      schemaVersion: 1,
+      alias: label,
+      updatedAt: new Date().toISOString(),
+    });
+    appendSessionEvent(parent.manifest.recordsDir, {
+      sessionId: parentSessionId,
+      type: "worker_spawned",
+      details: { childSessionId: child.sessionId, label, mode },
+    });
+    appendAgentMail(parent.manifest.recordsDir, {
+      at: new Date().toISOString(),
+      from: child.sessionId,
+      to: parentSessionId,
+      kind: "lifecycle",
+      event: "spawned",
+      body: `Worker "${label}" spawned.`,
+      delivered: true,
+    });
+
+    const prompt = options.context?.trim()
+      ? `${options.task.trim()}\n\nContext from the lead conversation:\n${options.context.trim()}`
+      : options.task.trim();
+    const started = this.startWorkerRun(
+      child.sessionId,
+      prompt,
+      !options.wait,
+    );
+    const report = [
+      `Spawned worker "${label}" (session ${child.sessionId}, ${mode === "pure" ? "understand" : "work"} mode${tierNote}).`,
+      started === "queued"
+        ? `It is queued behind ${WORKER_CONCURRENCY} running workers and starts automatically.`
+        : "It is working in the background.",
+      options.wait
+        ? ""
+        : "Its completion will arrive in this conversation automatically; keep working meanwhile.",
+    ]
+      .filter(Boolean)
+      .join(" ");
+    return { report, sessionId: child.sessionId };
+  }
+
+  async waitForWorkerResult(
+    parentSessionId: string,
+    agent: string,
+  ): Promise<string> {
+    const childId = this.resolveWorkerId(parentSessionId, agent);
+    const deadline = Date.now() + 600_000;
+    while (Date.now() < deadline) {
+      const child = this.sessions.get(childId);
+      if (
+        child &&
+        !child.busy &&
+        !child.session.isStreaming &&
+        !this.queuedWorkerIds.has(childId)
+      ) {
+        return this.workerResultText(childId);
+      }
+      await sleep(250);
+    }
+    return `Timed out after 600s waiting for worker ${agent}; it keeps running in the background — its completion will arrive automatically.`;
+  }
+
+  async sendToWorker(
+    parentSessionId: string,
+    agent: string,
+    message: string,
+    startTurn: boolean,
+  ): Promise<string> {
+    const childId = this.resolveWorkerId(parentSessionId, agent);
+    if (!this.sessions.get(childId)) {
+      const parent = this.requireSession(parentSessionId);
+      await this.openSession(childId, parent.selectors);
+    }
+    const child = this.requireSession(childId);
+    const envelope: AgentMailEnvelope = {
+      at: new Date().toISOString(),
+      from: parentSessionId,
+      to: childId,
+      kind: "message",
+      body: message,
+      delivered: true,
+    };
+    appendAgentMail(child.manifest.recordsDir, envelope);
+    const fragment = formatEnvelopeForContext(envelope, "lead");
+    if (child.busy || child.session.isStreaming) {
+      await child.session.steer(fragment);
+      return "Delivered: the worker sees your message at its next step.";
+    }
+    if (startTurn) {
+      const queued = this.startWorkerRun(childId, fragment, true);
+      return queued === "queued"
+        ? "The worker is queued; it acts on your message when a slot frees up."
+        : "The worker is acting on your message now.";
+    }
+    await child.session.sendCustomMessage(
+      {
+        customType: "agent-team",
+        content: fragment,
+        display: true,
+        details: { from: parentSessionId },
+      },
+      { triggerTurn: false },
+    );
+    return "Queued: the worker sees your message with its next turn.";
+  }
+
+  async checkWorker(
+    parentSessionId: string,
+    agent: string,
+    verbose: boolean,
+  ): Promise<string> {
+    const childId = this.resolveWorkerId(parentSessionId, agent);
+    const lines = [this.workerStatusLine(parentSessionId, childId)];
+    if (verbose) {
+      const transcript =
+        readSessionDetail(this.config.dataDir, childId)?.transcript ?? [];
+      for (const message of transcript.slice(-6)) {
+        lines.push(`${message.role}: ${clip(message.text, 300)}`);
+      }
+    } else {
+      const result = this.workerResultText(childId, 800);
+      if (result) lines.push(`last output: ${result}`);
+    }
+    return lines.join("\n");
+  }
+
+  async waitForWorkers(
+    parentSessionId: string,
+    agents: string[] | null,
+    timeoutS: number,
+  ): Promise<string> {
+    const watched = agents?.length
+      ? agents.map((agent) => this.resolveWorkerId(parentSessionId, agent))
+      : this.workerChildren(parentSessionId)
+          .map((child) => child.sessionId)
+          .filter((id) => this.workerIsActive(id));
+    if (watched.length === 0) {
+      return "No running workers to wait for.";
+    }
+    const initiallyActive = watched.filter((id) => this.workerIsActive(id));
+    const deadline = Date.now() + timeoutS * 1000;
+    while (
+      Date.now() < deadline &&
+      initiallyActive.length > 0 &&
+      !initiallyActive.some((id) => !this.workerIsActive(id))
+    ) {
+      await sleep(300);
+    }
+    return watched
+      .map((id) => this.workerStatusLine(parentSessionId, id))
+      .join("\n");
+  }
+
+  async interruptWorker(
+    parentSessionId: string,
+    agent: string,
+  ): Promise<string> {
+    const childId = this.resolveWorkerId(parentSessionId, agent);
+    const child = this.sessions.get(childId);
+    if (!child || (!child.busy && !child.session.isStreaming)) {
+      return "The worker is not running; nothing to interrupt.";
+    }
+    await this.abort(childId, "interrupt_agent");
+    return "Interrupted. The worker's completed work is kept; message it with send_to_agent to continue.";
+  }
+
+  async listWorkers(parentSessionId: string): Promise<string> {
+    const children = this.workerChildren(parentSessionId);
+    if (children.length === 0) {
+      return "No worker agents in this conversation. Use spawn_agent to delegate a task.";
+    }
+    return children
+      .map((child) => this.workerStatusLine(parentSessionId, child.sessionId))
+      .join("\n");
+  }
+
+  async messageParent(
+    childSessionId: string,
+    message: string,
+    kind: "update" | "blocker",
+  ): Promise<string> {
+    const child = this.requireSession(childSessionId);
+    const parentId = child.workerParentId;
+    if (!parentId) {
+      throw new Error("This conversation has no lead conversation to message");
+    }
+    this.deliverEnvelope(parentId, {
+      at: new Date().toISOString(),
+      from: childSessionId,
+      to: parentId,
+      kind: "message",
+      ...(kind === "blocker" ? { event: "input-requested" as const } : {}),
+      body: message,
+    });
+    return kind === "blocker"
+      ? "Blocker sent to the lead conversation. Continue any work that does not depend on the answer."
+      : "Update sent to the lead conversation.";
+  }
+
+  /**
+   * Direct worker children of a session, with their display aliases. Live
+   * sessions first: a just-spawned worker has no persisted turn yet, so the
+   * durable catalog (which filters empty sessions) cannot be the only source.
+   */
+  private workerChildren(
+    parentSessionId: string,
+  ): Array<{ sessionId: string; alias: string | null }> {
+    const ids = new Set<string>();
+    for (const [sessionId, managed] of this.sessions) {
+      if (managed.workerParentId === parentSessionId) ids.add(sessionId);
+    }
+    for (const summary of listSessionSummaries(this.config.dataDir).sessions) {
+      if (
+        summary.forkedFrom?.sessionId === parentSessionId &&
+        summary.forkedFrom.purpose === "worker" &&
+        !summary.deletedAt
+      ) {
+        ids.add(summary.sessionId);
+      }
+    }
+    return [...ids].map((sessionId) => ({
+      sessionId,
+      alias: this.sessionAlias(sessionId),
+    }));
+  }
+
+  private resolveWorkerId(parentSessionId: string, agent: string): string {
+    const needle = agent.trim();
+    const children = this.workerChildren(parentSessionId);
+    const match =
+      children.find((child) => child.sessionId === needle) ??
+      children.find(
+        (child) => child.alias?.toLowerCase() === needle.toLowerCase(),
+      );
+    if (!match) {
+      throw new Error(
+        `Unknown worker agent "${agent}". Use list_agents to see this conversation's workers.`,
+      );
+    }
+    return match.sessionId;
+  }
+
+  private sessionAlias(sessionId: string): string | null {
+    const dirs = getSessionDirs(this.config.dataDir, sessionId);
+    if (!dirs) return null;
+    try {
+      const raw = JSON.parse(
+        readFileSync(join(dirs.recordsDir, "ui-alias.json"), "utf-8"),
+      ) as { alias?: unknown };
+      return typeof raw.alias === "string" ? raw.alias : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private workerIsActive(sessionId: string): boolean {
+    if (this.queuedWorkerIds.has(sessionId)) return true;
+    const managed = this.sessions.get(sessionId);
+    return Boolean(managed && (managed.busy || managed.session.isStreaming));
+  }
+
+  private workerStatusLine(parentSessionId: string, sessionId: string): string {
+    const alias = this.sessionAlias(sessionId) ?? sessionId;
+    let status = "idle";
+    if (this.queuedWorkerIds.has(sessionId)) {
+      status = "queued";
+    } else if (this.workerIsActive(sessionId)) {
+      status = "running";
+    } else {
+      const dirs = getSessionDirs(this.config.dataDir, sessionId);
+      const latest = dirs
+        ? latestRunSnapshots(dirs.recordsDir).at(-1)
+        : undefined;
+      if (latest?.status === "failed") status = "failed";
+      else if (latest?.status === "aborted") status = "interrupted";
+      else if (latest?.status === "completed") status = "finished";
+    }
+    return `${alias} (${sessionId}): ${status}`;
+  }
+
+  /** Final answer text of a worker's latest completed turn. */
+  private workerResultText(sessionId: string, maxChars = 4000): string {
+    const transcript =
+      readSessionDetail(this.config.dataDir, sessionId)?.transcript ?? [];
+    const lastAssistant = [...transcript]
+      .reverse()
+      .find((message) => message.role === "assistant" && message.text.trim());
+    return clip(
+      lastAssistant?.text.trim() ??
+        "(the worker has produced no text answer yet)",
+      maxChars,
+    );
+  }
+
+  /**
+   * Start (or queue) a worker turn. Background worker turns are capped at
+   * WORKER_CONCURRENCY; excess first-runs start FIFO as slots free up.
+   */
+  private startWorkerRun(
+    childId: string,
+    prompt: string,
+    notifyParent: boolean,
+  ): "started" | "queued" {
+    const start = () => {
+      this.queuedWorkerIds.delete(childId);
+      let handle: RunHandle;
+      try {
+        handle = this.runPromptWithLineage(this.requireSession(childId), prompt, {
+          notifyParent,
+        });
+      } catch (error) {
+        const child = this.sessions.get(childId);
+        if (notifyParent && child) {
+          this.deliverWorkerOutcome(
+            child,
+            "failed",
+            `The worker's turn could not start: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        }
+        return;
+      }
+      this.runningWorkerRuns += 1;
+      void handle.completion
+        .catch(() => {})
+        .finally(() => {
+          this.runningWorkerRuns -= 1;
+          this.drainWorkerQueue();
+        });
+    };
+    if (this.runningWorkerRuns >= WORKER_CONCURRENCY) {
+      this.queuedWorkerIds.add(childId);
+      this.workerQueue.push(start);
+      return "queued";
+    }
+    start();
+    return "started";
+  }
+
+  private drainWorkerQueue(): void {
+    while (
+      this.runningWorkerRuns < WORKER_CONCURRENCY &&
+      this.workerQueue.length > 0
+    ) {
+      this.workerQueue.shift()?.();
+    }
+  }
+
+  private deliverWorkerOutcome(
+    child: ManagedSession,
+    event: "completed" | "failed" | "interrupted",
+    body: string,
+  ): void {
+    if (!child.workerParentId) return;
+    this.deliverEnvelope(child.workerParentId, {
+      at: new Date().toISOString(),
+      from: child.manifest.sessionId,
+      to: child.workerParentId,
+      kind: "lifecycle",
+      event,
+      body,
+    });
+  }
+
+  /**
+   * Wake-and-deliver (design record, "Wake and delivery"):
+   * - receiver running -> steer (seen at its next step boundary);
+   * - receiver open and idle -> a notification turn through the normal
+   *   run-record path, so lineage stays truthful and a failed wake still
+   *   leaves a visible failed-run line;
+   * - receiver closed -> the envelope stays undelivered in its durable inbox
+   *   and is injected into context on next open (openSession).
+   */
+  private deliverEnvelope(
+    targetSessionId: string,
+    envelope: Omit<AgentMailEnvelope, "delivered">,
+  ): void {
+    const dirs = getSessionDirs(this.config.dataDir, targetSessionId);
+    if (!dirs) return;
+    const target = this.sessions.get(targetSessionId);
+    if (!target) {
+      appendAgentMail(dirs.recordsDir, { ...envelope, delivered: false });
+      return;
+    }
+    // ponytail: delivered is recorded before the async steer/turn settles;
+    // the envelope itself is durable either way.
+    appendAgentMail(dirs.recordsDir, { ...envelope, delivered: true });
+    const fragment = formatEnvelopeForContext(
+      { ...envelope, delivered: true },
+      this.agentMailLabel(envelope.from, target),
+    );
+    if (target.busy || target.session.isStreaming) {
+      void target.session.steer(fragment).catch(() => {});
+      return;
+    }
+    try {
+      const handle = this.runPromptWithLineage(target, fragment);
+      void handle.completion.catch(() => {});
+    } catch (error) {
+      if (error instanceof SessionBusyError) {
+        void target.session.steer(fragment).catch(() => {});
+      }
+    }
+  }
+
+  private agentMailLabel(from: string, target: ManagedSession): string {
+    if (from === "user") return "user";
+    if (target.workerParentId === from) return "lead";
+    return this.sessionAlias(from) ?? from;
   }
 
   private async createManagedFromExisting(
@@ -2229,6 +2819,10 @@ export class SessionService {
       externalSkillPaths: this.config.resolveExternalSkillPaths?.(),
       skillPrecedence: readAppSettings(this.config.dataDir).skillPrecedence,
       extensionFactories: this.config.extensionFactories,
+      ...this.agentTeamArgsFor(
+        sessionId,
+        persistedHeader?.forkedFrom?.purpose ?? null,
+      ),
     };
     // Model-on-resume recovery (v1.2.1 item 2): a per-session model override can
     // point at a model that's since been removed from config — core then throws
@@ -2387,6 +2981,10 @@ export class SessionService {
       externalSkillPaths: this.config.resolveExternalSkillPaths?.(),
       skillPrecedence: readAppSettings(this.config.dataDir).skillPrecedence,
       extensionFactories: this.config.extensionFactories,
+      ...this.agentTeamArgsFor(
+        previous.manifest.sessionId,
+        readV4SessionHeader(sessionDirs.recordsDir)?.forkedFrom?.purpose ?? null,
+      ),
       overrideSessionCwd: true,
     });
     if (detail) {
@@ -2425,6 +3023,8 @@ export class SessionService {
     mode?: CapabilityMode;
     workspace?: { primaryDir: string; additionalDirs: string[] };
     modelOverride?: SessionModelOverride | null;
+    /** Fork flows call this before the child's header exists on disk. */
+    forkPurpose?: ForkPurpose;
   }): Promise<ManagedSession> {
     const instruction = this.resolveOptionalInstruction(
       args.selectors.customInstructionRef,
@@ -2469,6 +3069,10 @@ export class SessionService {
       externalSkillPaths: this.config.resolveExternalSkillPaths?.(),
       skillPrecedence: readAppSettings(this.config.dataDir).skillPrecedence,
       extensionFactories: this.config.extensionFactories,
+      ...this.agentTeamArgsFor(
+        args.sessionId,
+        args.forkPurpose ?? persistedHeader?.forkedFrom?.purpose ?? null,
+      ),
     });
     if ("activeLeafEntryId" in args) {
       alignSessionManagerLeaf(
@@ -2522,12 +3126,19 @@ export class SessionService {
           payload: { message, level },
         }),
     });
+    const headerForkedFrom = readV4SessionHeader(
+      args.manifest.recordsDir,
+    )?.forkedFrom;
     const managed: ManagedSession = {
       ...args,
       approvalBridge,
       listeners: new Set(),
       internalUnsubscribe: () => {},
       busy: false,
+      workerParentId:
+        headerForkedFrom?.purpose === "worker"
+          ? headerForkedFrom.sessionId
+          : null,
       nextTurnIndex: Math.max(
         1,
         args.counters.turnCount + 1,
@@ -2978,6 +3589,10 @@ export class SessionService {
   }
 }
 
+function clip(text: string, maxChars: number): string {
+  return text.length > maxChars ? `${text.slice(0, maxChars)}…` : text;
+}
+
 function formatCounter(prefix: string, value: number): string {
   return `${prefix}-${String(value).padStart(6, "0")}`;
 }
@@ -3018,6 +3633,8 @@ function alignSessionManagerLeaf(
   sessionManager: {
     branch(entryId: string): void;
     getEntry(entryId: string): unknown;
+    getEntries(): ReadonlyArray<unknown>;
+    getLeafId(): string | null;
     resetLeaf(): void;
   },
   activeLeafEntryId: string | null,
@@ -3033,12 +3650,34 @@ function alignSessionManagerLeaf(
     );
   }
   sessionManager.branch(activeLeafEntryId);
+  // Keep agent-team mail injected beyond the last run's leaf in the active
+  // path (run records never claim custom entries; see session-store's
+  // transcript-side counterpart).
+  let advanced = true;
+  while (advanced) {
+    advanced = false;
+    const leafId = sessionManager.getLeafId();
+    for (const entry of sessionManager.getEntries()) {
+      const value = entry as { id?: string; parentId?: string; type?: string };
+      if (
+        value.parentId === leafId &&
+        value.type === "custom_message" &&
+        value.id
+      ) {
+        sessionManager.branch(value.id);
+        advanced = true;
+        break;
+      }
+    }
+  }
 }
 
 function alignSessionManagerToLatestRun(
   sessionManager: {
     branch(entryId: string): void;
     getEntry(entryId: string): unknown;
+    getEntries(): ReadonlyArray<unknown>;
+    getLeafId(): string | null;
     resetLeaf(): void;
   },
   latestRuns: RunRecord[],

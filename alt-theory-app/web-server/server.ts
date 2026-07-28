@@ -2112,7 +2112,24 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             await run.completion;
           } catch (error) {
             if (error instanceof SessionBusyError) {
-              sendError(send, error, error.code);
+              // Pi TUI behavior: typing while a turn runs steers the turn
+              // instead of erroring — required for messaging running worker
+              // agents directly (alpha.5 M2).
+              if (
+                attachedSessionId &&
+                sessionService.steerRunningSession(attachedSessionId, msg.payload)
+              ) {
+                send({
+                  type: "extension_notice",
+                  payload: {
+                    message:
+                      "Delivered to the running turn — Alt sees it at its next step.",
+                    level: "info",
+                  },
+                });
+              } else {
+                sendError(send, error, error.code);
+              }
             } else {
               send({
                 type: "run_failed",

@@ -426,6 +426,14 @@ function TranscriptEntry({
         </SysLine>
       );
     }
+    if (message.marker === "agent-team") {
+      return (
+        <SysLine>
+          <i className="ph ph-users-three" />
+          {message.text}
+        </SysLine>
+      );
+    }
     return (
       <SysLine>
         <i className="ph ph-info" />

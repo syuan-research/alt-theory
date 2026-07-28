@@ -24,6 +24,7 @@ import {
   extractToolPath as extractSharedToolPath,
 } from "./tool-detail.js";
 import type { SessionMetrics, TranscriptMessage } from "./websocket-protocol.js";
+import { parseAgentMailFragment } from "./agent-mail.js";
 import {
   readV4SessionHeader,
   type ForkPurpose,
@@ -869,6 +870,8 @@ function alignSessionManagerLeaf(
   sessionManager: {
     branch(entryId: string): void;
     getEntry(entryId: string): unknown;
+    getEntries(): ReadonlyArray<unknown>;
+    getLeafId(): string | null;
   },
   activeLeafEntryId: string | null | undefined
 ): void {
@@ -879,6 +882,27 @@ function alignSessionManagerLeaf(
     throw new Error("active Pi leaf is missing from Pi history");
   }
   sessionManager.branch(activeLeafEntryId);
+  // Agent-team mail injected while a session sat idle appends custom_message
+  // entries BEYOND the last run's leaf; they are active content, so extend
+  // the leaf through any trailing chain of them (run records never claim
+  // custom entries, so realignment alone would hide them).
+  let advanced = true;
+  while (advanced) {
+    advanced = false;
+    const leafId = sessionManager.getLeafId();
+    for (const entry of sessionManager.getEntries()) {
+      const value = entry as { id?: string; parentId?: string; type?: string };
+      if (
+        value.parentId === leafId &&
+        value.type === "custom_message" &&
+        value.id
+      ) {
+        sessionManager.branch(value.id);
+        advanced = true;
+        break;
+      }
+    }
+  }
 }
 
 function inactiveTranscriptEntryIds(latestRuns: RunRecord[]): Set<string> {
@@ -959,6 +983,19 @@ export function buildTranscriptFromEntries(
     };
     if (
       value.type === "custom_message" &&
+      (value as { customType?: unknown }).customType === "agent-team" &&
+      typeof value.content === "string"
+    ) {
+      transcript.push({
+        role: "system",
+        marker: "agent-team",
+        text: agentMailDisplayText(value.content),
+        timestamp: normalizeTimestamp(value.timestamp),
+      });
+      continue;
+    }
+    if (
+      value.type === "custom_message" &&
       (value.details?.sourceRole === "system" ||
         value.details?.sourceRole === "developer") &&
       typeof value.content === "string"
@@ -993,6 +1030,19 @@ export function buildTranscriptFromEntries(
     const timestamp = normalizeTimestamp(value.message.timestamp ?? value.timestamp);
     if (role === "user") {
       const text = stripSkillWrapper(extractText(value.message.content)).trim();
+      // Agent-team envelopes travel as tagged user-role fragments (steered
+      // or wake turns); render them as addressed system lines, not as words
+      // the user typed.
+      const mail = parseAgentMailFragment(text);
+      if (mail) {
+        transcript.push({
+          role: "system",
+          marker: "agent-team",
+          text: agentMailDisplayText(text),
+          timestamp,
+        });
+        continue;
+      }
       if (text) transcript.push({ role: "user", text, timestamp, entryId: value.id ?? null });
       continue;
     }
@@ -1170,6 +1220,14 @@ function extractThinkingText(part: { type?: string; text?: unknown; thinking?: u
       .join("\n");
   }
   return "";
+}
+
+/** "<label> · <event>: <body>" display line for an agent-team fragment. */
+function agentMailDisplayText(raw: string): string {
+  const mail = parseAgentMailFragment(raw);
+  if (!mail) return raw;
+  const eventLabel = mail.event && mail.event !== "update" ? ` · ${mail.event}` : "";
+  return `${mail.fromLabel}${eventLabel}: ${mail.body}`;
 }
 
 function normalizeRole(role: string | undefined): TranscriptMessage["role"] {

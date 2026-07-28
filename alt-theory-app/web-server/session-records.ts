@@ -11,7 +11,7 @@ export const V4_SCHEMA_VERSION = 1;
  * from it: only roots and "fork" appear in the list; a chosen A/B arm is
  * rewritten to "fork" when it becomes the continuation.
  */
-export type ForkPurpose = "fork" | "side" | "helper" | "ab-arm";
+export type ForkPurpose = "fork" | "side" | "helper" | "ab-arm" | "worker";
 
 /** Pre-M7 records used the original two purposes; normalize on read. */
 const LEGACY_FORK_PURPOSE: Record<string, ForkPurpose> = {

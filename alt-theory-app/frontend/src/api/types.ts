@@ -171,7 +171,7 @@ export interface TranscriptMessage {
   success?: boolean;
   truncated?: boolean;
   /** Non-message boundary markers rendered specially (e.g. context compaction). */
-  marker?: "compaction" | "imported-context" | "retry-boundary";
+  marker?: "compaction" | "imported-context" | "retry-boundary" | "agent-team";
   sourceRole?: "system" | "developer";
 }
 
@@ -199,7 +199,7 @@ export interface SessionSummary {
   /** Fork lineage (M5 substrate); null = a root conversation. */
   forkedFrom: {
     sessionId: string;
-    purpose: "fork" | "side" | "helper" | "ab-arm";
+    purpose: "fork" | "side" | "helper" | "ab-arm" | "worker";
   } | null;
   /** Study designation (M7 §3); null = daily use. */
   studyTag: StudyTag | null;
@@ -514,7 +514,7 @@ export type ClientMessage =
   | {
       type: "fork_session";
       payload: {
-        purpose: "fork" | "side" | "helper" | "ab-arm";
+        purpose: "fork" | "side" | "helper" | "ab-arm" | "worker";
         forkPointEntryId?: string;
         sourceSessionId?: string;
       };
