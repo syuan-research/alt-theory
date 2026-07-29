@@ -1,7 +1,7 @@
 ---
 title: Alt Theory information architecture
 status: v2
-last_updated: 2026-07-28
+last_updated: 2026-07-29
 scope: where user-facing things live, how the major surfaces relate, and which information belongs in each
 ---
 
@@ -86,10 +86,24 @@ surfaces remain designation-gated and absent for everyone else.
 - **Conversation list**
   - Conversations are grouped by workspace.
   - List-level actions live in the list overflow.
-  - Side chats, Helper conversations, and provisional comparison arms do not
-    become ordinary list rows.
+  - Side chats, Helper conversations, workers, and provisional comparison arms
+    do not become ordinary list rows unless the user promotes them (or they are
+    forks with purpose `fork`, which are list members by default).
+  - Related children in the list or Related switcher show an **English prefix
+    plus the real title**, not a rename: e.g. `Branch 1 · …`, `BTW 1 · …`,
+    `Helper 1 · …`, `Worker 1 · …`. Numbering is per parent + purpose. Do not
+    overwrite `ui-alias` to a bare token like `branch1`.
 - **Right rail**
-  - Holds files/changes and one selected side conversation or Helper thread.
+  - Holds files/changes and one selected related conversation (Branch, BTW,
+    Helper, or worker).
+  - **Branch / retry (purpose `fork`)** open the child in this rail at roughly
+    **half of the center+right work area** (not half the browser window).
+  - **BTW, Helper, and workers** open at the ordinary default rail width
+    (~480 or the user’s last dragged width).
+  - Leaving a related child (Back, collapse rail, switch rail tab) clears the
+    active related session so re-selecting the same child opens it again.
+  - Center multi-arm A/B comparison stays on Workbench compare surfaces only;
+    branch/retry must not open a second center-column “compare pane.”
   - File preview occupies the rail as a real reading surface; rendered Markdown
     is the default for non-technical users, with source available on demand.
 - **Settings**
@@ -149,14 +163,20 @@ Fetch.
 ### Composer and related conversations (alpha.6 follow-up)
 
 - Run tips while a turn runs rotate every **10s** (after a short first delay).
-- Related/branch switcher in the right rail is horizontally scrollable with a
-  low-key scrollbar; clicking a branch opens that child explicitly.
+- Related/branch switcher in the right rail is horizontally scrollable (CSS
+  overflow + **mouse wheel maps to horizontal** when the strip overflows);
+  clicking a child opens it explicitly.
 - When a related child is open, the outer inspector body does not double-scroll
   the conversation area.
+- Main and related composers stay **visually the same card height** when
+  side-by-side; the related composer stays feature-light (reply + send) and
+  does not clone mode/model chrome.
 - First-level attach control is **Understand-only**; Work keeps attach in the
   toolbox.
 - Mode toggle is compact (~20% shorter than earlier chrome).
 - Local mode: left-foot avatar tooltip states local / no account.
+- v6 serve uses static `web-server/public-v6` — frontend source changes require
+  `npm run build:frontend-v6` before they appear in `dev:web:*:v6`.
 
 ### Add provider
 

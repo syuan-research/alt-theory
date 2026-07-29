@@ -63,15 +63,17 @@ gate (unchanged since v0.5).
   configuration never goes there. The separation test: actions are clicked
   frequently mid-session, configuration is set and sits still.
 - **Right = conversation-derived, optional detail**, collapsed by default,
-  event-driven auto-open. `Related conversations` is the narrow relationship
-  container for Branch, BTW, and Helper children. BTW and Helper run there
-  with their own transcript/composer while the parent remains in the center;
-  either can be promoted to an ordinary Branch. Other object classes include
-  file review and (provisionally) full-width side-by-side A/B arm reading,
-  Changes list (agent-modified files aggregated from mediation records)
-  vs Workspace (tree + full-panel preview) as two distinct tabs. Advanced
-  inspector tabs (Records/Provenance/Paths/Runtime) stay researcher-only
-  right-pane detail.
+  event-driven auto-open. `Related conversations` is the relationship
+  container for Branch, BTW, Helper, and worker children. They run there with
+  their own transcript/composer while the parent remains in the center; listed
+  promotion keeps purpose labels (alpha.6). **Branch/retry** open the rail at
+  ~half of center+right work area; **BTW / Helper / workers** use default rail
+  width. Center A/B multi-arm remains Workbench-only (not a branch side pane).
+  Other object classes include file review and (provisionally) full-width
+  side-by-side A/B arm reading, Changes list (agent-modified files aggregated
+  from mediation records) vs Workspace (tree + full-panel preview) as two
+  distinct tabs. Advanced inspector tabs (Records/Provenance/Paths/Runtime)
+  stay researcher-only right-pane detail.
 - **Settings = first-level gear** (bottom-left) opening a dedicated
   surface: general; provider/model config (existing route folds in, sits
   high in the nav); participant panel (§4); reserved data-and-sharing
@@ -95,9 +97,11 @@ gate (unchanged since v0.5).
   Manage-models entry — backed by WS `set_session_model`. No permission
   control until a second permission level exists.
 - **Conversation list membership**: only roots and `forkedFrom.purpose:"fork"`
-  appear; side chats (`side`), `helper`, and pending `ab-arm` children are
-  reachable from their parent conversation only; the chosen A/B arm is
-  rewritten to the list continuation.
+  (and children the user promotes with `listed`) appear; side chats (`side`),
+  `helper`, workers, and pending `ab-arm` children are reachable from their
+  parent’s Related rail unless listed. Display titles for related children use
+  English prefixes (`Branch N · title`, `BTW N · …`, …) — prefix, not rename.
+  The chosen A/B arm is rewritten to the list continuation.
 - **Approvals**: low-key dock above the composer (no alarm styling), with
   an "allowed for this conversation" marker in the transcript for TTL
   approvals.
@@ -180,6 +184,11 @@ public repo.
   The implementation plan is retained in private development records.
 - 2026-07-20: Updated owner-acceptance status after the local Pure/Full flow
   passed. Bundle delivery remains separate from the React architecture.
+- 2026-07-29 (alpha.6 residual): Branch/retry open in Related at ~half of
+  center+right (not whole window); BTW/Helper/worker use default rail width.
+  List/switcher titles use `Branch N · title` style prefixes (not rename).
+  Center A/B multi-arm stays Workbench-only. Related Back clears sticky open
+  so re-select works.
 - 2026-07-21: Reopened the prototype mismatch as a real flow gap: BTW and
   fresh-context Helper now run in Related conversations through their own
   WebSocket connection and can be promoted; Branch remains a listed center
