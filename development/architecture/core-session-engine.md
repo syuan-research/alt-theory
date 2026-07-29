@@ -4,7 +4,7 @@ slug: core-session-engine
 scope: Alt Theory core session engine and Pi Coding Agent integration
 summary: Creates persistent, asset-configured Pi sessions through an application-owned service used by WebSocket adapters
 status: current
-last_reviewed: 2026-07-28
+last_reviewed: 2026-07-29
 tags: [core, backend, pi-agent, session]
 depends_on: []
 implements:
@@ -72,11 +72,13 @@ and Pi adapter prompt templates from `agent-assets/prompts/pi/`.
   REST APIs.
 - **Role condition**: participant/study condition stored separately from
   `projectId` and mapped to a role preset slug at WebSocket draft creation.
-- **Private session**: session with `visibility: private` in
+- **Private session** (hosted only): session with `visibility: private` in
   `records/session.json`. It is owner-readable but blocked from normal
-  researcher/admin detail and file routes.
-- **Inactive retention**: private sessions are due for hard deletion at
-  `lastActivityAt + 7 days`; opening or reading detail does not refresh it.
+  researcher/admin detail and file routes, and it expires (see below). The
+  local equivalent marker is `no-export`, which does none of that — §2.3.
+- **Inactive retention** (hosted only): private sessions are due for hard
+  deletion at `lastActivityAt + 7 days`. Prompts and reopening refresh it;
+  reading detail from the catalog does not. Local sessions never have one.
 
 ## 1. Structure
 
@@ -134,8 +136,9 @@ Code anchors:
   foundation records and branch-aware path helpers.
 - `alt-theory-app/web-server/session-store.ts`: historical session catalog,
   detail inspection, v0.4/legacy projection, Pi JSONL discovery, and bounded preview.
-- `alt-theory-app/web-server/session-retention.ts`: private retention due-date
-  calculation, activity refresh, and explicit expired-private-session cleanup.
+- `alt-theory-app/web-server/session-retention.ts`: hosted-only private
+  retention due-date calculation, activity refresh, and the expired-session
+  sweep wired at hosted boot.
 - `alt-theory-app/web-server/websocket-protocol.ts`: shared transport types.
 
 ## 2. Session Creation
@@ -161,9 +164,51 @@ Code anchors:
    in the manifest as `runLabel` and `testBatch`.
 9. For participant auth contexts, `records/session.json` also records
    `ownerAccountId`, `roleCondition`, `visibility`, `consentSnapshot`,
-   `lastActivityAt`, and `retentionDueAt`. Private creation forces
-   `consentSnapshot.privateOverride: true` and calculates the first
-   `retentionDueAt` from creation activity.
+   `lastActivityAt`, and `retentionDueAt`. A withheld conversation forces
+   `consentSnapshot.privateOverride: true`; only a hosted deployment ever
+   writes a non-null `retentionDueAt` (§2.3).
+
+## 2.3 Deployment Mode, Visibility, And Retention
+
+`ALT_THEORY_MODE` selects the deployment. **It defaults to `local`**;
+`hosted` must be set explicitly (`server.ts`). The Electron bundle sets
+`local` itself (`electron/main.cjs`); `dev:web:local*` scripts set it too, so
+a plain `tsx server.ts` is also local.
+
+> **When the VPS pilot moves to 1.x, set `ALT_THEORY_MODE=hosted` on the
+> server before deploying.** Without it a multi-user deployment silently
+> loses participant/researcher access control, and conversations a
+> participant marked private stop being deleted — both promises broken
+> quietly. The v0.5.x VPS predates this default and is unaffected.
+
+`visibility` carries two DISJOINT vocabularies, one per deployment
+(`SessionVisibility` in `session-records.ts`); `isVisibilityForMode()` rejects
+the other deployment's values at the WebSocket boundary.
+
+| | hosted (VPS study) | local (downloadable app) |
+|---|---|---|
+| values | `research` / `private` | `exportable` / `no-export` |
+| default | `research` | `no-export`, or `exportable` when the install is designated |
+| withheld value's effect | researchers cannot read it (`canAccessSessionContent`), not exported, **hard-deleted 7 inactive days after last use** | a marker for a future export filter — nothing is hidden, uploaded, or deleted |
+| retention written | yes, for `private` | never (`retentionDueAt` is always null) |
+| access control | owner/consent gates apply | none — `localMode` short-circuits every gate |
+
+On hosted, deletion is HOW "don't keep this" is kept: a study account is not
+long-lived, so a private conversation that outlives the study would break the
+promise. Retention is therefore not a separate "temporary" axis — there is no
+such flag. Locally there is no research team, no upload, and no expiry, so the
+marker is inert until an export feature consumes it.
+
+`SessionService` writes retention only when `localMode === false` (absent
+config = local, the safe default): creation, `setVisibility`, per-turn
+activity refresh, and reopen-counts-as-activity are all gated on it.
+`sweepExpiredPrivateSessions` (hard delete, skipping any session currently
+open) is wired at hosted boot and runs daily; local installs never start it.
+
+Prior to v1.3.0-alpha.6 both deployments shared one vocabulary, so a local
+install defaulting to `private` also defaulted to "queued for deletion" — the
+safest-sounding default was the destructive one. The vocabulary split, not a
+mode branch, is what makes that unreachable now.
 
 ## 2.1 Session Catalog And Open
 
@@ -977,6 +1022,14 @@ Limits (current):
 
 ## Change Log
 
+- 2026-07-29: v1.3.0-alpha.6. Deployment mode, visibility, and retention
+  (§2.3): `ALT_THEORY_MODE` now defaults to `local`; `visibility` split into
+  two disjoint per-deployment vocabularies (`research`/`private` hosted,
+  `exportable`/`no-export` local) with `isVisibilityForMode()` enforcing the
+  boundary; retention writes gated on `localMode === false`;
+  `sweepExpiredPrivateSessions` wired at hosted boot (daily, skips open
+  sessions) — previously the cleanup existed but had no call site anywhere.
+  Local conversations can no longer carry `retentionDueAt`.
 - 2026-07-28: v1.3.0-alpha.5. Mid-turn continuity (§5.2): turn-continuity
   context-sanitation extension, break-point retry-in-place adopting the
   failed attempt's entries, visible `retrying` phase from Pi's

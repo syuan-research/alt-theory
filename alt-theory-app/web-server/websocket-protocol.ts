@@ -8,6 +8,7 @@ import type { AssemblyManifest } from "../core/alt-theory-core.js";
 import type {
   ForkPurpose,
   SessionModelOverride,
+  SessionVisibility,
   StudyTag,
 } from "./session-records.js";
 
@@ -20,7 +21,9 @@ export interface SessionSnapshot {
   projectId: string | null;
   branchId?: string;
   status: "idle" | "running" | "error";
-  visibility?: "research" | "private";
+  visibility?: SessionVisibility;
+  /** Hosted-only expiry for a "private" conversation; null everywhere else. */
+  retentionDueAt?: string | null;
   currentDomain: string;
   rolePresetSlug: string | null;
   soulSlug: string | null;
@@ -38,7 +41,7 @@ export interface SessionSnapshot {
 export interface SessionDraftSnapshot {
   status: "draft";
   projectId: string | null;
-  visibility: "research" | "private";
+  visibility: SessionVisibility;
   currentDomain: string;
   rolePresetSlug: string | null;
   soulSlug: string | null;
@@ -109,7 +112,7 @@ export type ClientMessage =
       payload: { customInstructionRef: string | null };
     }
   | { type: "switch_project"; payload: { projectId: string | null } }
-  | { type: "switch_visibility"; payload: { visibility: "research" | "private" } }
+  | { type: "switch_visibility"; payload: { visibility: SessionVisibility } }
   | {
       type: "invoke_skill";
       payload: { skillName: string; userText?: string };

@@ -69,7 +69,7 @@ export async function submitSessionImport(args: {
       ...(args.workspaceOverride
         ? { workspaceOverrides: { [args.sourceId]: args.workspaceOverride } }
         : {}),
-      visibility: "private",
+      visibility: "no-export",
     }),
   });
   const body = (await response.json().catch(() => ({}))) as {

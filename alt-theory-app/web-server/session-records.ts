@@ -37,6 +37,53 @@ export interface RecordEnvelope {
   recordType: string;
 }
 
+/**
+ * What happens to a conversation beyond this machine. TWO DISJOINT
+ * VOCABULARIES, one per deployment — never mix them:
+ *
+ * - **hosted** (`ALT_THEORY_MODE=hosted`, the VPS study): `"research"` |
+ *   `"private"`. `"private"` is the participant saying "don't keep this":
+ *   researchers cannot read it, it is not exported, and it is hard-deleted
+ *   after 7 inactive days. Deletion is HOW that promise is kept, not a side
+ *   effect — a study account is not long-lived, so a private conversation
+ *   that outlives the study would break the promise.
+ * - **local** (the downloadable app): `"exportable"` | `"no-export"`. A
+ *   marker for a future export filter, nothing more. Nothing is hidden,
+ *   uploaded, or deleted, ever.
+ *
+ * A local install can never write `"private"`, so the retention sweeper
+ * (`session-retention.ts`, hosted-only) can never match locally created
+ * data. That is the fix for the defect where "local conversations default to
+ * private" also meant "local conversations default to queued for deletion":
+ * the safest-sounding default was the destructive one.
+ */
+export type SessionVisibility =
+  | "research"
+  | "private"
+  | "exportable"
+  | "no-export";
+
+/** Vocabulary check — the guard that keeps the two deployments apart. */
+export function isVisibilityForMode(
+  visibility: string,
+  localMode: boolean,
+): visibility is SessionVisibility {
+  return localMode
+    ? visibility === "exportable" || visibility === "no-export"
+    : visibility === "research" || visibility === "private";
+}
+
+/**
+ * Whether this conversation is withheld from the research team. True for the
+ * hosted `"private"` and the local `"no-export"`. Distinct from retention:
+ * only `"private"` is ever deleted.
+ */
+export function withholdsFromResearch(
+  visibility: SessionVisibility | undefined,
+): boolean {
+  return visibility === "private" || visibility === "no-export";
+}
+
 export interface V4SessionHeader extends RecordEnvelope {
   recordType: "session";
   sessionId: string;
@@ -45,7 +92,7 @@ export interface V4SessionHeader extends RecordEnvelope {
   recordModel: "v0.4";
   ownerAccountId?: string | null;
   roleCondition?: string | null;
-  visibility?: "research" | "private";
+  visibility?: SessionVisibility;
   consentSnapshot?: {
     researcherReadable: boolean;
     quoteAfterAnonymization: boolean;
@@ -76,7 +123,7 @@ export function writeFoundationRecords(args: {
   projectId?: string | null;
   ownerAccountId?: string | null;
   roleCondition?: string | null;
-  visibility?: "research" | "private";
+  visibility?: SessionVisibility;
   consentSnapshot?: {
     researcherReadable: boolean;
     quoteAfterAnonymization: boolean;

@@ -63,10 +63,12 @@ import { readAppSettings } from "./app-settings.js";
 import { extractToolDetail, extractToolPath } from "./tool-detail.js";
 import {
   readV4SessionHeader,
+  withholdsFromResearch,
   writeFoundationRecords,
   writeSessionHeader,
   type ForkPurpose,
   type SessionModelOverride,
+  type SessionVisibility,
   type StudyTag,
 } from "./session-records.js";
 import {
@@ -129,6 +131,13 @@ export interface SessionServiceConfig {
   soulDir: string;
   legacySoulPath: string | null;
   readOnly: boolean;
+  /**
+   * Absent = local (the safe default). Retention — the only thing that ever
+   * deletes a conversation — exists ONLY on hosted deployments; see
+   * `SessionVisibility` in session-records.ts for why the two deployments use
+   * disjoint visibility vocabularies.
+   */
+  localMode?: boolean;
   modelProvider?: string;
   modelId?: string;
   modelsPath?: string;
@@ -180,7 +189,7 @@ export interface SessionSelectors {
 export interface SessionCreationMetadata {
   ownerAccountId?: string | null;
   roleCondition?: string | null;
-  visibility?: "research" | "private";
+  visibility?: SessionVisibility;
   consentSnapshot?: {
     researcherReadable: boolean;
     quoteAfterAnonymization: boolean;
@@ -295,6 +304,21 @@ export class SessionService implements AgentTeamBridge {
   private readonly workerQueue: Array<{ childId: string; start: () => void }> =
     [];
   private readonly queuedWorkerIds = new Set<string>();
+
+  /** Retention is hosted-only; absent config means local, the safe default. */
+  private get retentionEnabled(): boolean {
+    return this.config.localMode === false;
+  }
+
+  /** Deployment's withheld-by-default value, in that deployment's vocabulary. */
+  private get fallbackVisibility(): SessionVisibility {
+    return this.retentionEnabled ? "research" : "no-export";
+  }
+
+  /** Retention sweep guard — never delete a conversation that is open. */
+  isOpen(sessionId: string): boolean {
+    return this.sessions.has(sessionId);
+  }
 
   constructor(private readonly config: SessionServiceConfig) {
     const fallbackConfigPath = this.config.modelFallbackConfigPath;
@@ -500,12 +524,14 @@ export class SessionService implements AgentTeamBridge {
       sessionId,
       fallbackSelectors,
     );
-    // Reading a private session counts as activity: reopening refreshes the
-    // retention timer so a conversation the user still returns to never
-    // expires out from under them (owner decision 2026-07-23).
-    const header = readV4SessionHeader(managed.manifest.recordsDir);
-    if (header?.visibility === "private") {
-      refreshSessionRetention(managed.manifest.recordsDir);
+    // Hosted only: reopening a private conversation counts as activity, so a
+    // conversation the participant still returns to never expires out from
+    // under them. Local conversations have no expiry at all.
+    if (this.retentionEnabled) {
+      const header = readV4SessionHeader(managed.manifest.recordsDir);
+      if (header?.visibility === "private") {
+        refreshSessionRetention(managed.manifest.recordsDir);
+      }
     }
     this.sessions.set(managed.manifest.sessionId, managed);
     // Agent mail that arrived while this session was closed: inject it into
@@ -955,7 +981,9 @@ export class SessionService implements AgentTeamBridge {
     const revisionId = formatCounter("rev", managed.nextRevisionIndex++);
     const runId = formatCounter("run", managed.nextRunIndex++);
     const acceptedAt = new Date().toISOString();
-    refreshSessionRetention(managed.manifest.recordsDir, new Date(acceptedAt));
+    if (this.retentionEnabled) {
+      refreshSessionRetention(managed.manifest.recordsDir, new Date(acceptedAt));
+    }
     const beforeEntryIds = new Set(
       managed.session.sessionManager.getEntries().map((entry) => entry.id),
     );
@@ -1351,7 +1379,7 @@ export class SessionService implements AgentTeamBridge {
         projectId: childSelectors.projectId ?? null,
         ownerAccountId: sourceHeader?.ownerAccountId ?? null,
         roleCondition: sourceHeader?.roleCondition ?? null,
-        visibility: sourceHeader?.visibility ?? "research",
+        visibility: sourceHeader?.visibility ?? this.fallbackVisibility,
         consentSnapshot: sourceHeader?.consentSnapshot ?? null,
         lastActivityAt: result.manifest.createdAt,
         retentionDueAt: sourceHeader?.retentionDueAt ?? null,
@@ -1530,7 +1558,9 @@ export class SessionService implements AgentTeamBridge {
     const revisionId = formatCounter("rev", managed.nextRevisionIndex++);
     const runId = formatCounter("run", managed.nextRunIndex++);
     const acceptedAt = new Date().toISOString();
-    refreshSessionRetention(managed.manifest.recordsDir, new Date(acceptedAt));
+    if (this.retentionEnabled) {
+      refreshSessionRetention(managed.manifest.recordsDir, new Date(acceptedAt));
+    }
     const beforeEntryIds = new Set(
       managed.session.sessionManager.getEntries().map((entry) => entry.id),
     );
@@ -1856,7 +1886,7 @@ export class SessionService implements AgentTeamBridge {
 
   setVisibility(
     sessionId: string,
-    visibility: "research" | "private",
+    visibility: SessionVisibility,
     consentSnapshot?: SessionCreationMetadata["consentSnapshot"],
   ): SessionSnapshot {
     const managed = this.requireSession(sessionId);
@@ -1872,7 +1902,7 @@ export class SessionService implements AgentTeamBridge {
       ...header,
       visibility,
       consentSnapshot:
-        visibility === "private"
+        withholdsFromResearch(visibility)
           ? {
               researcherReadable: false,
               quoteAfterAnonymization: false,
@@ -1885,7 +1915,7 @@ export class SessionService implements AgentTeamBridge {
               : undefined,
     };
     const next =
-      visibility === "private"
+      this.retentionEnabled && visibility === "private"
         ? refreshRetention(nextBase, new Date())
         : {
             ...nextBase,
@@ -2088,9 +2118,9 @@ export class SessionService implements AgentTeamBridge {
         metadata.forkedFrom?.purpose ?? null,
       ),
     });
-    const visibility = metadata.visibility ?? "research";
+    const visibility = metadata.visibility ?? this.fallbackVisibility;
     const consentSnapshot =
-      visibility === "private"
+      withholdsFromResearch(visibility)
         ? {
             researcherReadable: metadata.consentSnapshot?.researcherReadable ?? false,
             quoteAfterAnonymization:
@@ -2109,7 +2139,7 @@ export class SessionService implements AgentTeamBridge {
       consentSnapshot,
       lastActivityAt: result.manifest.createdAt,
       retentionDueAt:
-        visibility === "private"
+        this.retentionEnabled && visibility === "private"
           ? calculateRetentionDueAt(result.manifest.createdAt)
           : null,
       mode: result.getMode(),
@@ -2159,7 +2189,7 @@ export class SessionService implements AgentTeamBridge {
     const child = await this.createSession(parent.selectors, {
       ownerAccountId: header?.ownerAccountId ?? null,
       roleCondition: header?.roleCondition ?? null,
-      visibility: header?.visibility ?? "research",
+      visibility: header?.visibility ?? this.fallbackVisibility,
       consentSnapshot: header?.consentSnapshot ?? null,
       workspace: header?.workspace ?? null,
       studyTag: header?.studyTag ?? null,
@@ -2255,7 +2285,7 @@ export class SessionService implements AgentTeamBridge {
     const child = await this.createSession(parent.selectors, {
       ownerAccountId: header?.ownerAccountId ?? null,
       roleCondition: header?.roleCondition ?? null,
-      visibility: header?.visibility ?? "research",
+      visibility: header?.visibility ?? this.fallbackVisibility,
       consentSnapshot: header?.consentSnapshot ?? null,
       workspace: header?.workspace ?? null,
       studyTag: header?.studyTag ?? null,
@@ -3474,7 +3504,8 @@ export class SessionService implements AgentTeamBridge {
     return {
       sessionId: managed.manifest.sessionId,
       projectId: managed.selectors.projectId ?? null,
-      visibility: header?.visibility ?? "research",
+      visibility: header?.visibility ?? this.fallbackVisibility,
+      retentionDueAt: header?.retentionDueAt ?? null,
       status: managed.busy || managed.session.isStreaming ? "running" : "idle",
       currentDomain: managed.selectors.kbDomain,
       rolePresetSlug: managed.selectors.rolePresetSlug,

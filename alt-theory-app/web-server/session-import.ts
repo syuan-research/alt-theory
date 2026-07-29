@@ -25,7 +25,10 @@ import {
   resolveSessionsRoot,
   writeJsonAtomic,
 } from "../core/data-dir.js";
-import { writeFoundationRecords } from "./session-records.js";
+import {
+  writeFoundationRecords,
+  type SessionVisibility,
+} from "./session-records.js";
 import {
   discoverOpenCodeSessions,
   preflightOpenCodeSession,
@@ -190,7 +193,7 @@ export function registerPiImport(args: {
   roleCondition?: string | null;
   rolePresetSlug?: string | null;
   soulSlug?: string | null;
-  visibility?: "research" | "private";
+  visibility?: SessionVisibility;
   consentSnapshot?: {
     researcherReadable: boolean;
     quoteAfterAnonymization: boolean;
@@ -254,7 +257,7 @@ export function registerOpenCodeImport(args: {
   roleCondition?: string | null;
   rolePresetSlug?: string | null;
   soulSlug?: string | null;
-  visibility?: "research" | "private";
+  visibility?: SessionVisibility;
   consentSnapshot?: {
     researcherReadable: boolean;
     quoteAfterAnonymization: boolean;
@@ -284,7 +287,7 @@ export function registerCodexImport(args: {
   roleCondition?: string | null;
   rolePresetSlug?: string | null;
   soulSlug?: string | null;
-  visibility?: "research" | "private";
+  visibility?: SessionVisibility;
   consentSnapshot?: {
     researcherReadable: boolean;
     quoteAfterAnonymization: boolean;
@@ -314,7 +317,7 @@ export function registerGrokImport(args: {
   roleCondition?: string | null;
   rolePresetSlug?: string | null;
   soulSlug?: string | null;
-  visibility?: "research" | "private";
+  visibility?: SessionVisibility;
   consentSnapshot?: {
     researcherReadable: boolean;
     quoteAfterAnonymization: boolean;
@@ -344,7 +347,7 @@ export function registerClaudeCodeImport(args: {
   roleCondition?: string | null;
   rolePresetSlug?: string | null;
   soulSlug?: string | null;
-  visibility?: "research" | "private";
+  visibility?: SessionVisibility;
   consentSnapshot?: {
     researcherReadable: boolean;
     quoteAfterAnonymization: boolean;
@@ -382,7 +385,7 @@ function registerPreparedImport(args: {
   roleCondition?: string | null;
   rolePresetSlug?: string | null;
   soulSlug?: string | null;
-  visibility?: "research" | "private";
+  visibility?: SessionVisibility;
   consentSnapshot?: {
     researcherReadable: boolean;
     quoteAfterAnonymization: boolean;

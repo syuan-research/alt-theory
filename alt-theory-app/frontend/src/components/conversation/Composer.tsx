@@ -6,6 +6,8 @@ import { ModelChip } from "@/components/conversation/ModelChip";
 import { ContextRing } from "@/components/conversation/ContextRing";
 import { DEFAULT_KB_DOMAIN, KB_OFF_VALUE } from "@/lib/constants";
 import { pickFiles } from "@/lib/native";
+import { isWithheld } from "@/api/types";
+import { fmtTime } from "@/lib/format";
 import { t } from "@/i18n";
 
 type MenuKey = "plus" | "model" | "role" | "kb" | null;
@@ -130,6 +132,15 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
     (hasText || app.stagedWorkspacePaths.length > 0);
   const showVisibility =
     app.participant?.designated === true || app.viewMode === "researcher";
+  // Only a hosted study deployment has a research team to withhold from — and
+  // only there does "private" mean the conversation is eventually deleted.
+  const hostedStudy = app.appMode === "hosted";
+  const withheld = isWithheld(app.selectors.visibility);
+  // The expiry is only real on hosted; say WHEN, not just "in 7 days".
+  const expiresOn =
+    hostedStudy && withheld && app.retentionDueAt
+      ? fmtTime(app.retentionDueAt)
+      : null;
   const pureMode =
     variant === "empty" ? shell.newMode === "pure" : app.sessionMode === "pure";
 
@@ -328,21 +339,35 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               className="ctx-item"
               onClick={() =>
                 app.switchVisibility(
-                  app.selectors.visibility === "private"
-                    ? "research"
-                    : "private",
+                  withheld
+                    ? hostedStudy
+                      ? "research"
+                      : "exportable"
+                    : hostedStudy
+                      ? "private"
+                      : "no-export",
                 )
               }
-              title={t("Private conversations are marked and auto-deleted after 7 inactive days.")}
+              title={
+                hostedStudy
+                  ? expiresOn
+                    ? t("Kept from the research team. Unless you use it again, this conversation and its files are deleted on {date}.", { date: expiresOn })
+                    : t("Private conversations are kept from the research team and deleted 7 days after you last use them.")
+                  : t("A marker only: nothing here is hidden, sent anywhere, or deleted. It sets whether a future export includes this conversation.")
+              }
             >
               <i
-                className={
-                  app.selectors.visibility === "private"
-                    ? "ph ph-lock-simple"
-                    : "ph ph-share-network"
-                }
+                className={withheld ? "ph ph-lock-simple" : "ph ph-share-network"}
               />
-              {app.selectors.visibility === "private" ? t("Private") : t("Shared")}
+              {hostedStudy
+                ? withheld
+                  ? expiresOn
+                    ? t("Private · until {date}", { date: expiresOn })
+                    : t("Private")
+                  : t("Shared")
+                : withheld
+                  ? t("Not for export")
+                  : t("Exportable")}
             </button>
           ) : null}
         </div>

@@ -1433,6 +1433,7 @@ test("auth routes support cookie round trip without leaking account secrets", as
     ],
   });
 
+  const restoreMode = useHostedMode();
   const instance = createAltTheoryServer({
     dataDir,
     readOnly: true,
@@ -1521,6 +1522,7 @@ test("auth routes support cookie round trip without leaking account secrets", as
     const afterLogoutJson = await afterLogout.json();
     assert.equal(afterLogoutJson.auth.role, "anonymous");
   } finally {
+    restoreMode();
     await new Promise<void>((resolveClose) => {
       instance.wss.close(() => {
         instance.httpServer.close(() => resolveClose());
@@ -1528,6 +1530,20 @@ test("auth routes support cookie round trip without leaking account secrets", as
     });
   }
 });
+
+/**
+ * Hosted deployments must opt in explicitly: ALT_THEORY_MODE now defaults to
+ * local so a mis-launched server never applies study semantics (private =>
+ * deleted after 7 inactive days) to someone's own machine.
+ */
+function useHostedMode(): () => void {
+  const previous = process.env.ALT_THEORY_MODE;
+  process.env.ALT_THEORY_MODE = "hosted";
+  return () => {
+    if (previous === undefined) delete process.env.ALT_THEORY_MODE;
+    else process.env.ALT_THEORY_MODE = previous;
+  };
+}
 
 test("session REST routes preserve hosted isolation and local access", async () => {
   const root = mkdtempSync(join(tmpdir(), "alt-theory-auth-filter-"));
@@ -1689,6 +1705,7 @@ test("session REST routes preserve hosted isolation and local access", async () 
   }
   await service.disposeAll();
 
+  const restoreMode = useHostedMode();
   const instance = createAltTheoryServer({
     dataDir,
     appContextPath,
@@ -1817,6 +1834,7 @@ test("session REST routes preserve hosted isolation and local access", async () 
     );
     assert.equal(researcherOwnerlessPrivateDetail.status, 403);
   } finally {
+    restoreMode();
     await new Promise<void>((resolveClose) => {
       instance.wss.close(() => {
         instance.httpServer.close(() => resolveClose());
@@ -2136,6 +2154,7 @@ test("WebSocket participant first send creates an owned role-conditioned session
     };
   };
 
+  const restoreMode = useHostedMode();
   const instance = createAltTheoryServer({
     dataDir,
     appContextPath,
@@ -2249,6 +2268,7 @@ test("WebSocket participant first send creates an owned role-conditioned session
     });
     ws.close();
   } finally {
+    restoreMode();
     SessionService.prototype.runPrompt = originalRunPrompt;
     await new Promise<void>((resolveClose) => {
       instance.wss.close(() => {

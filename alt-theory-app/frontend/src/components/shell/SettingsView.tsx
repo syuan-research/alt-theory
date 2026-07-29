@@ -915,12 +915,14 @@ function ParticipantPanel({
           <div className="set-card">
             <h4>{t("Sharing conversations with the research team")}</h4>
             <p>
-              {t("This install is designated as a study participant, so new conversations are shared with the research team by default. You can make any single conversation private with the Shared/Private control next to the composer.")}
+              {local
+                ? t("This install is designated as a study participant, so new conversations are marked as exportable by default. You can mark any single conversation with the control next to the composer.")
+                : t("This install is designated as a study participant, so new conversations are shared with the research team by default. You can make any single conversation private with the Shared/Private control next to the composer.")}
             </p>
             <div className="fine">
               {local
-                ? t("On this local install, sharing only MARKS a conversation; nothing is uploaded automatically. You send an export to the research team yourself later.")
-                : t("On the hosted (account) version, shared conversations reach the research team automatically.")}{" "}
+                ? t("On this local install the label only MARKS a conversation: nothing is hidden, uploaded, or deleted. You send an export to the research team yourself later.")
+                : t("On the hosted (account) version, shared conversations reach the research team automatically, and a private conversation is deleted 7 days after you last use it.")}{" "}
               {t("Installs obtained outside a study never share anything.")}
             </div>
           </div>

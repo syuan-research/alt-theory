@@ -86,8 +86,10 @@ function setupFixture() {
 function createTestService(
   fixture: ReturnType<typeof setupFixture>,
   resourceDiscovery: "clean" | "internal" = "clean",
+  localMode = true,
 ) {
   return new SessionService({
+    localMode,
     dataDir: fixture.dataDir,
     assetPaths: {
       rootDir: fixture.root,
@@ -1231,9 +1233,9 @@ test("SessionService creates owned sessions with role condition and consent snap
   }
 });
 
-test("SessionService creates private sessions and refreshes private activity on prompt", async () => {
+test("hosted: private sessions carry a retention date and prompts refresh it", async () => {
   const fixture = setupFixture();
-  const service = createTestService(fixture);
+  const service = createTestService(fixture, "clean", false);
   const snapshot = await service.createSession(
     {
       rolePresetSlug: "role-conceptual-theory-companion",
@@ -1302,6 +1304,46 @@ test("SessionService creates private sessions and refreshes private activity on 
     assert.equal(refreshed.consentSnapshot.privateOverride, true);
     assert.notEqual(refreshed.lastActivityAt, stale.lastActivityAt);
     assert.notEqual(refreshed.retentionDueAt, stale.retentionDueAt);
+  } finally {
+    await service.disposeAll();
+  }
+});
+
+/**
+ * The regression this whole split exists to prevent: locally, marking a
+ * conversation withheld must never give it an expiry. Before the fix, local
+ * conversations defaulted to "private" AND "private" meant "delete after 7
+ * inactive days" — so the safest-sounding default was the destructive one.
+ */
+test("local: a withheld conversation never gets a retention date", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const snapshot = await service.createSession(
+    {
+      rolePresetSlug: "role-conceptual-theory-companion",
+      kbDomain: "ep-core",
+      soulSlug: "soul-latest",
+    },
+    { visibility: "no-export" },
+  );
+  try {
+    const sessionPath = join(
+      service.getManifest(snapshot.sessionId).recordsDir,
+      "session.json",
+    );
+    const created = JSON.parse(readFileSync(sessionPath, "utf-8"));
+    assert.equal(created.visibility, "no-export");
+    // Withheld from a future export, but consent-wise identical to hosted
+    // private: never readable by a research team.
+    assert.equal(created.consentSnapshot.privateOverride, true);
+    assert.equal(created.retentionDueAt, null);
+
+    // Even switching the marker by hand cannot introduce one.
+    service.setVisibility(snapshot.sessionId, "exportable");
+    service.setVisibility(snapshot.sessionId, "no-export");
+    const after = JSON.parse(readFileSync(sessionPath, "utf-8"));
+    assert.equal(after.visibility, "no-export");
+    assert.equal(after.retentionDueAt, null);
   } finally {
     await service.disposeAll();
   }

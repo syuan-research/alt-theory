@@ -42,6 +42,7 @@ import type {
   SessionSelectors,
   SessionSnapshot,
   SessionSummary,
+  SessionVisibility,
   StreamPart,
   StudyTag,
   TranscriptMessage,
@@ -168,7 +169,7 @@ export interface AppContextValue {
   switchSoul: (soulSlug: string | null) => void;
   switchRolePreset: (rolePresetSlug: string | null) => void;
   switchInstruction: (customInstructionRef: string | null) => void;
-  switchVisibility: (visibility: "research" | "private") => void;
+  switchVisibility: (visibility: SessionVisibility) => void;
 
   /** Working folder for the draft/current conversation; null = none. */
   workspacePrimaryDir: string | null;
@@ -187,6 +188,8 @@ export interface AppContextValue {
   currentSessionModel: { provider: string; modelId: string } | null;
   setSessionModel: (override: SessionModelOverride | null) => void;
   studyTag: StudyTag | null;
+  /** Hosted-only deletion date for a "private" conversation; null locally. */
+  retentionDueAt: string | null;
   setStudyTag: (tag: StudyTag | null) => void;
 
   messages: TranscriptMessage[];
@@ -332,6 +335,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     modelId: string;
   } | null>(null);
   const [studyTag, setStudyTagState] = useState<StudyTag | null>(null);
+  // Hosted-only: when a "private" conversation gets deleted. Null locally —
+  // local conversations have no expiry at all.
+  const [retentionDueAt, setRetentionDueAt] = useState<string | null>(null);
 
   const [messages, setMessages] = useState<TranscriptMessage[]>([]);
   const [streamParts, setStreamParts] = useState<StreamPart[]>([]);
@@ -633,6 +639,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setCurrentSessionModel(null);
           setWorkspacePrimaryDir(message.payload.workspacePrimaryDir ?? null);
           setStudyTagState(message.payload.studyTag ?? null);
+          setRetentionDueAt(null);
           setApprovalMarkers([]);
           setManifest(null);
           setMetrics(null);
@@ -684,6 +691,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setModelOverride(message.payload.modelOverride ?? null);
           setCurrentSessionModel(message.payload.currentModel ?? null);
           setStudyTagState(message.payload.studyTag ?? null);
+          setRetentionDueAt(message.payload.retentionDueAt ?? null);
           setSessionReady(true);
           setIsRunning(message.payload.status === "running");
           setConnStatus(message.payload.status === "running" ? "running" : "idle",);
@@ -726,6 +734,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }
           if (message.payload.studyTag !== undefined) {
             setStudyTagState(message.payload.studyTag);
+          }
+          if (message.payload.retentionDueAt !== undefined) {
+            setRetentionDueAt(message.payload.retentionDueAt);
           }
           if (message.payload.status === "running") {
             setConnStatus("running");
@@ -1512,15 +1523,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   const switchVisibility = useCallback(
-    (visibility: "research" | "private") => {
+    (visibility: SessionVisibility) => {
       if (
         sendMessage({ type: "switch_visibility", payload: { visibility } })
       ) {
         setSelectors((prev) => ({ ...prev, visibility }));
+        // Hosted "private" is the one value that really deletes — say so, and
+        // say when. Local markers change nothing about what is kept.
         if (visibility === "private") {
           setComposerNoticeTimed({
             prefix: "⏏",
-            text: t("Private conversations and their files are deleted after 7 inactive days. Download anything you want to keep."),
+            text: t("Private conversations and their files are deleted 7 days after you last use them. Download anything you want to keep."),
+          });
+        } else if (visibility === "no-export") {
+          setComposerNoticeTimed({
+            prefix: "🔖",
+            text: t("Marked as not for export. Nothing is deleted or sent anywhere — this only affects what a future export includes."),
           });
         }
       }
@@ -1644,6 +1662,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       currentSessionModel,
       setSessionModel,
       studyTag,
+      retentionDueAt,
       setStudyTag,
       messages,
       streamParts,
@@ -1744,6 +1763,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       currentSessionModel,
       setSessionModel,
       studyTag,
+      retentionDueAt,
       setStudyTag,
       messages,
       streamParts,

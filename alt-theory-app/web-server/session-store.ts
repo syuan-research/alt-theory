@@ -29,6 +29,7 @@ import { t } from "./i18n.js";
 import {
   readV4SessionHeader,
   type ForkPurpose,
+  type SessionVisibility,
   type V4SessionHeader,
 } from "./session-records.js";
 import {
@@ -57,7 +58,9 @@ export interface SessionSummary {
   projectId: string | null;
   ownerAccountId: string | null;
   roleCondition: string | null;
-  visibility: "research" | "private";
+  visibility: SessionVisibility;
+  /** Hosted-only expiry for a "private" conversation; null everywhere else. */
+  retentionDueAt: string | null;
   createdAt: string | null;
   updatedAt: string | null;
   deletedAt: string | null;
@@ -493,6 +496,7 @@ function buildSummary(sessionId: string, parts: SessionParts): SessionSummary {
     ownerAccountId: parts.v4Session?.ownerAccountId ?? null,
     roleCondition: parts.v4Session?.roleCondition ?? null,
     visibility: parts.v4Session?.visibility ?? "research",
+    retentionDueAt: parts.v4Session?.retentionDueAt ?? null,
     createdAt: parts.manifest?.createdAt ?? null,
     updatedAt: newestTimestamp([
       parts.sessionRoot,

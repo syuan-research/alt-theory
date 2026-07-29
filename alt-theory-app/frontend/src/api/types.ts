@@ -6,6 +6,25 @@ export type AccountRole =
 
 export type ViewMode = "user" | "researcher";
 
+/**
+ * What happens to a conversation beyond this machine. Two disjoint
+ * vocabularies, one per deployment (backend: `session-records.ts`):
+ * hosted uses `research` / `private` — where `private` really is deleted
+ * after 7 inactive days, because that is how "don't keep this" is kept —
+ * and local uses `exportable` / `no-export`, a marker for a future export
+ * filter that never hides, uploads, or deletes anything.
+ */
+export type SessionVisibility =
+  | "research"
+  | "private"
+  | "exportable"
+  | "no-export";
+
+/** True for the values that withhold a conversation from the research team. */
+export function isWithheld(visibility: SessionVisibility | undefined): boolean {
+  return visibility === "private" || visibility === "no-export";
+}
+
 export type TranscriptView = "user" | "developer";
 
 export interface AuthContext {
@@ -71,7 +90,7 @@ export interface DiscoveryLists {
 export interface SessionDraftSnapshot {
   status: "draft";
   projectId: string | null;
-  visibility: "research" | "private";
+  visibility: SessionVisibility;
   currentDomain: string;
   rolePresetSlug: string | null;
   soulSlug: string | null;
@@ -113,7 +132,9 @@ export interface SessionSnapshot {
   projectId: string | null;
   branchId?: string;
   status: "idle" | "running" | "error";
-  visibility?: "research" | "private";
+  visibility?: SessionVisibility;
+  /** Hosted-only expiry for a "private" conversation; null everywhere else. */
+  retentionDueAt?: string | null;
   currentDomain: string;
   rolePresetSlug: string | null;
   soulSlug: string | null;
@@ -180,7 +201,7 @@ export interface SessionSummary {
   projectId: string | null;
   ownerAccountId: string | null;
   roleCondition: string | null;
-  visibility: "research" | "private";
+  visibility: SessionVisibility;
   createdAt: string | null;
   updatedAt: string | null;
   deletedAt: string | null;
@@ -502,7 +523,7 @@ export type ClientMessage =
       payload: { customInstructionRef: string | null };
     }
   | { type: "switch_project"; payload: { projectId: string | null } }
-  | { type: "switch_visibility"; payload: { visibility: "research" | "private" } }
+  | { type: "switch_visibility"; payload: { visibility: SessionVisibility } }
   | {
       type: "invoke_skill";
       payload: { skillName: string; userText?: string };
@@ -632,7 +653,7 @@ export interface SessionSelectors {
   rolePresetSlug: string | null;
   soulSlug: string | null;
   customInstructionRef: string | null;
-  visibility: "research" | "private";
+  visibility: SessionVisibility;
   branchId: string;
 }
 

@@ -102,6 +102,12 @@ import { readAccountStore } from "./auth-accounts.js";
 import type { AuthContext } from "./auth-session.js";
 import { resolveConfigGuiHtmlPath } from "./config-gui-path.js";
 import { ensureLocalModeDefaults } from "./local-mode-paths.js";
+import {
+  isVisibilityForMode,
+  withholdsFromResearch,
+  type SessionVisibility,
+} from "./session-records.js";
+import { sweepExpiredPrivateSessions } from "./session-retention.js";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import {
   cancelProviderAuth,
@@ -271,7 +277,18 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     options.runLabel ?? process.env.ALT_THEORY_RUN_LABEL ?? null;
   const testBatch =
     options.testBatch ?? process.env.ALT_THEORY_TEST_BATCH ?? null;
-  const appMode = process.env.ALT_THEORY_MODE === "local" ? "local" : "hosted";
+  /**
+   * DEFAULT IS LOCAL — the downloadable app must never inherit study
+   * semantics. A hosted deployment MUST set `ALT_THEORY_MODE=hosted`
+   * explicitly.
+   *
+   * !! WHEN THE VPS PILOT MOVES TO 1.x, SET `ALT_THEORY_MODE=hosted` ON THE
+   * SERVER FIRST. !! Without it a multi-user deployment silently loses
+   * participant/researcher access control, and conversations a participant
+   * marked "private" stop being deleted — both promises broken quietly.
+   * Deployment-mode notes: development/architecture/core-session-engine.md.
+   */
+  const appMode = process.env.ALT_THEORY_MODE === "hosted" ? "hosted" : "local";
   const localMode = appMode === "local";
 
   const app = express();
@@ -908,7 +925,10 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       body.workspaceOverrides && typeof body.workspaceOverrides === "object"
         ? (body.workspaceOverrides as Record<string, unknown>)
         : {};
-    const visibility = body.visibility === "research" ? "research" : "private";
+    // Import is local-only, so this is the local vocabulary: imported
+    // conversations are withheld from a future export unless asked otherwise.
+    const visibility =
+      body.visibility === "exportable" ? "exportable" : "no-export";
     const preflightOnly = body.preflightOnly === true;
     if (preflightOnly && harness === "pi") {
       res.status(400).json({ error: "preflightOnly is currently supported only for converted external sessions", });
@@ -1673,6 +1693,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     soulDir,
     legacySoulPath,
     readOnly,
+    localMode,
     modelProvider,
     modelId,
     modelsPath: modelsPath ?? undefined,
@@ -1716,6 +1737,22 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     modelFallbackConfigPath:
       process.env.ALT_THEORY_MODEL_FALLBACK_PATH ?? null,
   });
+
+  // Hosted only. A participant marking a conversation "private" means "don't
+  // keep this"; deleting it after 7 inactive days is how that is kept. Local
+  // installs never reach this — they cannot produce a "private" conversation.
+  if (!localMode) {
+    const stopRetentionSweep = sweepExpiredPrivateSessions(
+      dataDir,
+      (sessionId) => sessionService.isOpen(sessionId),
+      (result) => {
+        console.log(
+          `Private retention: deleted ${result.deleted.length} expired conversation(s).`,
+        );
+      },
+    );
+    httpServer.on("close", stopRetentionSweep);
+  }
 
   function requireLocalRuntimeModelConfig(): RuntimeModelConfig {
     const runtimeConfig = getRuntimeModelConfig(agentConfigDir());
@@ -1954,19 +1991,19 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
 
   function sessionCreationMetadataForAuth(
     auth: AuthContext,
-    visibility: "research" | "private",
+    visibility: SessionVisibility,
   ) {
+    const withheld = withholdsFromResearch(visibility);
     if (auth.role !== "participant" || !auth.accountId) {
       return {
         visibility,
-        consentSnapshot:
-          visibility === "private"
-            ? {
-                researcherReadable: false,
-                quoteAfterAnonymization: false,
-                privateOverride: true,
-              }
-            : null,
+        consentSnapshot: withheld
+          ? {
+              researcherReadable: false,
+              quoteAfterAnonymization: false,
+              privateOverride: true,
+            }
+          : null,
       };
     }
     return {
@@ -1974,15 +2011,13 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       roleCondition: auth.defaultRoleCondition,
       visibility,
       consentSnapshot: {
-        researcherReadable:
-          visibility === "private"
-            ? false
-            : Boolean(auth.defaultConsent?.researcherReadable),
-        quoteAfterAnonymization:
-          visibility === "private"
-            ? false
-            : Boolean(auth.defaultConsent?.quoteAfterAnonymization),
-        privateOverride: visibility === "private",
+        researcherReadable: withheld
+          ? false
+          : Boolean(auth.defaultConsent?.researcherReadable),
+        quoteAfterAnonymization: withheld
+          ? false
+          : Boolean(auth.defaultConsent?.quoteAfterAnonymization),
+        privateOverride: withheld,
       },
     };
   }
@@ -1992,21 +2027,23 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   }
 
   /**
-   * Sharing default follows study designation (M7 §4). Hosted deployments
-   * keep the pre-existing default (participants consented); a local install
-   * defaults to private unless the install is designated at handout.
+   * Sharing default follows study designation (M7 §4), stated in the
+   * deployment's own vocabulary. Hosted keeps the pre-existing default
+   * (participants consented). A local install withholds by default unless it
+   * was designated at handout — and locally that is a marker for a future
+   * export filter, never an expiry.
    */
-  function defaultDraftVisibility(): "research" | "private" {
-    if (hasConfiguredAccounts()) return "research";
+  function defaultDraftVisibility(): SessionVisibility {
+    if (!localMode) return "research";
     return readAppSettings(dataDir).participant?.designated
-      ? "research"
-      : "private";
+      ? "exportable"
+      : "no-export";
   }
 
   function sendDraft(
     send: (msg: ServerMessage) => void,
     selectors: SessionSelectors,
-    visibility: "research" | "private",
+    visibility: SessionVisibility,
     mode: CapabilityMode,
     modelOverride: SessionModelOverride | null = null,
     studyTag: StudyTag | null = null,
@@ -2044,7 +2081,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     let detach = () => {};
     let closed = false;
     let draftSelectors: SessionSelectors;
-    let draftVisibility: "research" | "private" = defaultDraftVisibility();
+    let draftVisibility: SessionVisibility = defaultDraftVisibility();
     let draftMode: CapabilityMode = "pure";
     let draftModelOverride: SessionModelOverride | null = null;
     let draftStudyTag: StudyTag | null = null;
@@ -2337,10 +2374,10 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           break;
         }
         case "switch_visibility": {
-          if (
-            msg.payload.visibility !== "research" &&
-            msg.payload.visibility !== "private"
-          ) {
+          // The guard that keeps the deployments apart: a local install can
+          // never write "private" (the only retention-bearing value), and a
+          // hosted one can never write the local export markers.
+          if (!isVisibilityForMode(msg.payload.visibility, localMode)) {
             sendError(send, new Error("Invalid visibility"));
             break;
           }
