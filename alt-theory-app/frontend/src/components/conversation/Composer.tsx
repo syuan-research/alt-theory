@@ -17,6 +17,12 @@ interface SlashCommand {
   name: string;
   description: string;
   run: (args: string) => void;
+  /**
+   * Runs on click with nothing typed. False for skills: a skill invoked with
+   * no question makes the agent hunt for one. Those arm the composer instead —
+   * `/name ` lands in the box and the user says what they want.
+   */
+  immediate?: boolean;
 }
 
 /** Composer variant: `empty` = new-conversation (mode via cards, no switch). */
@@ -27,6 +33,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
   const [slashIndex, setSlashIndex] = useState(0);
   const [menu, setMenu] = useState<MenuKey>(null);
   const rowRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [toolboxSeen, setToolboxSeen] = useState(() => {
     try {
       return localStorage.getItem("alt-theory-toolbox-seen") === "1";
@@ -71,6 +78,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
         name: "helper",
         description: t("Ask how Alt works, or get setup and configuration fixed"),
         run: () => openHelper(),
+        immediate: true,
       },
       ...(variant === "live"
         ? [
@@ -78,16 +86,19 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               name: "branch",
               description: t("Branch this conversation into a new direction"),
               run: () => app.forkCurrentSession("fork"),
+              immediate: true,
             },
             {
               name: "btw",
               description: t("Start a side conversation without adding it to the list"),
               run: () => app.forkCurrentSession("side"),
+              immediate: true,
             },
             {
               name: "compact",
               description: t("Compact this conversation to free context space"),
               run: () => app.compactCurrentSession(),
+              immediate: true,
             },
           ]
         : []),
@@ -95,6 +106,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
         name: "new",
         description: t("Start a new conversation"),
         run: () => app.startNewSession(),
+        immediate: true,
       },
       ...(app.discovery?.skills ?? []).map((skill) => ({
         name: skill.name,
@@ -104,6 +116,13 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
     ],
     [app],
   );
+
+  /** Put `/name ` in the box, focused, waiting for the user's actual request. */
+  const armCommand = (name: string) => {
+    setDraft(`/${name} `);
+    setMenu(null);
+    window.setTimeout(() => textareaRef.current?.focus(), 0);
+  };
 
   const slashQuery =
     draft.startsWith("/") && !draft.startsWith("//") ? draft.slice(1) : null;
@@ -116,6 +135,9 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
 
   const runSlash = (command: SlashCommand) => {
     const args = slashQuery?.split(/\s+/).slice(1).join(" ") ?? "";
+    // A skill with no question sends the agent looking for one. Arm the
+    // composer and let the user say what they want first.
+    if (!command.immediate && !args.trim()) return armCommand(command.name);
     setDraft("");
     if (app.reviseMode) app.cancelReviseMode();
     command.run(args);
@@ -404,6 +426,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
 
         <div className="composer">
           <textarea
+            ref={textareaRef}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             placeholder={
@@ -483,20 +506,14 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               ) : null}
               <div
                 className="mi"
-                onClick={() => (
-                  app.invokeSkill("adaptive-aligning"),
-                  setMenu(null)
-                )}
+                onClick={() => armCommand("adaptive-aligning")}
               >
                 <i className="ph ph-chats-circle" />
                 {t("Align on a plan or decision")}
               </div>
               <div
                 className="mi"
-                onClick={() => (
-                  app.invokeSkill("adaptive-plan-record"),
-                  setMenu(null)
-                )}
+                onClick={() => armCommand("adaptive-plan-record")}
               >
                 <i className="ph ph-list-checks" />
                 {t("Plan & record")}
@@ -514,7 +531,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               ) : (
                 <div
                   className="mi"
-                  onClick={() => (app.invokeSkill("web-search"), setMenu(null))}
+                  onClick={() => armCommand("web-search")}
                 >
                   <i className="ph ph-globe" />
                   {t("Look something up online")}
