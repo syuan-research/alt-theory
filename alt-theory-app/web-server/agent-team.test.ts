@@ -399,3 +399,95 @@ test("sendToWorker queues a message for an idle worker without starting a turn",
     await service.disposeAll();
   }
 });
+
+test("formatEnvelopeForContext survives quotes in a worker label", () => {
+  const fragment = formatEnvelopeForContext(
+    {
+      at: new Date().toISOString(),
+      from: "child-1",
+      to: "parent-1",
+      kind: "message",
+      body: "hello",
+      delivered: true,
+    },
+    'my "cool" worker',
+  );
+  const parsed = parseAgentMailFragment(fragment);
+  assert.ok(parsed, "fragment with quoted label must still parse");
+  assert.equal(parsed!.fromLabel, "my 'cool' worker");
+  assert.equal(parsed!.body, "hello");
+});
+
+test("a queued worker is not double-queued by send_to_agent and can be removed by interrupt", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  try {
+    const parent = await service.createSession(SELECTORS);
+    const workers: string[] = [];
+    for (let index = 0; index < 4; index++) {
+      const child = await service.createSession(SELECTORS, {
+        forkedFrom: { sessionId: parent.sessionId, purpose: "worker" },
+      });
+      workers.push(child.sessionId);
+    }
+    // Three gated runs fill every concurrency slot; the fourth queues.
+    const gates: Array<() => void> = [];
+    for (const id of workers.slice(0, 3)) {
+      const managed = managedOf(service, id);
+      managed.session.prompt = (text: string) =>
+        new Promise<void>((resolve) => {
+          gates.push(() => {
+            managed.session.sessionManager.appendMessage({
+              role: "user",
+              content: [{ type: "text", text }],
+              timestamp: Date.now(),
+            });
+            managed.session.sessionManager.appendMessage({
+              role: "assistant",
+              content: [{ type: "text", text: "done" }],
+              timestamp: Date.now(),
+            });
+            resolve();
+          });
+        });
+    }
+    const queuedPrompts = stubEchoPrompt(managedOf(service, workers[3]), "late");
+    const svc = service as unknown as {
+      startWorkerRun(id: string, prompt: string, notify: boolean): string;
+      workerQueue: unknown[];
+      queuedWorkerIds: Set<string>;
+    };
+    for (const id of workers.slice(0, 3)) {
+      assert.equal(svc.startWorkerRun(id, "hold a slot", false), "started");
+    }
+    assert.equal(svc.startWorkerRun(workers[3], "the task", false), "queued");
+
+    // send_to_agent with start_turn on a queued worker must not queue a
+    // second run; the message joins its context instead.
+    const reply = await service.sendToWorker(
+      parent.sessionId,
+      workers[3],
+      "extra context",
+      true,
+    );
+    assert.match(reply, /next turn/);
+    assert.equal(svc.workerQueue.length, 1);
+
+    // interrupt_agent on a queued worker removes it before it starts.
+    const interrupted = await service.interruptWorker(
+      parent.sessionId,
+      workers[3],
+    );
+    assert.match(interrupted, /Removed from the queue/);
+    assert.equal(svc.workerQueue.length, 0);
+    assert.ok(!svc.queuedWorkerIds.has(workers[3]));
+
+    for (const release of gates) release();
+    await waitFor(() =>
+      workers.slice(0, 3).every((id) => !managedOf(service, id).busy),
+    );
+    assert.equal(queuedPrompts.length, 0, "removed worker must never start");
+  } finally {
+    await service.disposeAll();
+  }
+});

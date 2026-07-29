@@ -353,12 +353,6 @@ export class ModelFallbackCoordinator {
   }
 }
 
-interface AgentSessionWithContinue {
-  agent: {
-    continue: () => Promise<void>;
-  };
-}
-
 export function stripLastErrorAssistantMessage(session: AgentSession): void {
   // A session that auto-retried and still failed carries a CHAIN of trailing
   // errored assistant partials (Pi strips them from live state but keeps
@@ -379,10 +373,11 @@ export function continueAgentTurnAfterModelSwitch(
   session: AgentSession
 ): Promise<void> {
   stripLastErrorAssistantMessage(session);
-  const runtime = session as unknown as AgentSessionWithContinue;
+  // session.agent and Agent.continue() are public Pi API — a rename in a Pi
+  // upgrade must fail here at compile time, not at runtime.
   return new Promise((resolve, reject) => {
     setTimeout(() => {
-      void runtime.agent.continue().then(resolve, reject);
+      void session.agent.continue().then(resolve, reject);
     }, 0);
   });
 }

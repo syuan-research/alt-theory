@@ -86,9 +86,12 @@ export function formatEnvelopeForContext(
   envelope: AgentMailEnvelope,
   fromLabel: string,
 ): string {
+  // Quotes in a user-chosen worker name would break the attribute syntax
+  // (and the round-trip parse below), so normalize them.
+  const safeLabel = fromLabel.replace(/"/g, "'");
   const header = envelope.event
-    ? `from="${fromLabel}" event="${envelope.event}"`
-    : `from="${fromLabel}"`;
+    ? `from="${safeLabel}" event="${envelope.event}"`
+    : `from="${safeLabel}"`;
   return `<${AGENT_MAIL_TAG} ${header}>\n${envelope.body}\n</${AGENT_MAIL_TAG}>`;
 }
 

@@ -4,7 +4,7 @@ slug: core-session-engine
 scope: Alt Theory core session engine and Pi Coding Agent integration
 summary: Creates persistent, asset-configured Pi sessions through an application-owned service used by WebSocket adapters
 status: current
-last_reviewed: 2026-07-20
+last_reviewed: 2026-07-28
 tags: [core, backend, pi-agent, session]
 depends_on: []
 implements:
@@ -613,6 +613,79 @@ Code anchors:
   `resolveOptionalRolePresetPath()`
 - `agent-assets/README.md`: role-presets asset layout and archive naming
 
+### 5.2 Mid-Turn Continuity And Break-Point Retry (v1.3.0-alpha.5 M0)
+
+A failed or aborted turn keeps its completed work; retry resumes from the
+break point instead of rerunning the whole turn.
+
+- **Context sanitation** (`core/turn-continuity.ts`): an always-loaded Pi
+  extension hooks the `context` event and, before every LLM call, drops
+  `toolCall` blocks with no matching `toolResult` anywhere in the outgoing
+  context, drops assistant messages left empty by that removal, and collapses
+  consecutive assistant messages (the later one is the replacement) so
+  provider role-alternation rules hold. Pi keeps errored partials in session
+  history by design; this extension is why preserved break-point context is
+  still provider-legal.
+- **Retry in place** (`SessionService.retryRunInPlace`): the replacement run
+  adopts the failed attempt's `assistantEntryIds` (completed tool calls,
+  results, partial output stay active and visible), marks the old run record
+  `superseded`, and resumes via `continueAgentTurnAfterModelSwitch` →
+  Pi `agent.continue()`. Only the trailing errored assistant partial is
+  regenerated; its partial *text* is dropped from model context (kept in the
+  transcript).
+- **Visible auto-retry**: Pi's own `auto_retry_start` events (exponential
+  backoff on transient provider errors) map to a `retrying` run phase with
+  `{attempt, maxAttempts, delayMs}`; Alt implements no second retry loop.
+- **Retry offerability**: `run_failed` carries `canRetry` (from
+  `canRetryFailed`) so the UI offers Retry only when a retryable run record
+  exists — preflight failures (no key, unknown model) record none.
+- **Steering while running**: user text sent to a busy session is delivered
+  as a Pi steering message (`steerRunningSession`) instead of a
+  `session_busy` error, matching the Pi TUI's type-while-running behavior.
+
+### 5.3 Agent Team: Worker Sessions And Addressed Mail (v1.3.0-alpha.5 M2)
+
+Lead conversations can delegate bounded tasks to worker agents. Design
+record: `development/compound/2026-07-28-decision-v1.3-agent-team.md`.
+
+- **Workers are real sessions**: children created with
+  `forkedFrom: { sessionId, purpose: "worker" }` on the same substrate as
+  helper/side children — durable records, run lineage, break-point
+  continuity, right-rail visibility, direct user messaging, and promotion
+  all apply. Depth is 1: a worker gets no spawn tool
+  (`ManagedSession.workerParentId` guards the service side).
+- **Tool surface** (`web-server/agent-team.ts`): leads get `spawn_agent`,
+  `send_to_agent`, `check_agent`, `wait_for_agents`, `interrupt_agent`,
+  `list_agents`; workers get `message_parent` only; A/B arms get none. The
+  module owns only the model-facing contract; behavior lives in
+  `SessionService` behind the `AgentTeamBridge` interface. Tools join the
+  active set in every capability mode
+  (`alt-theory-core.ts` `extraTools`/`extraPromptSections`).
+- **Capability and model**: child mode is clamped to the parent's
+  (`clampWorkerMode`: Understand parents spawn only Understand children;
+  Work parents default to Understand). `model_tier: lower|same|higher`
+  resolves against configured-and-usable models by cost metadata
+  (`resolveModelTier`); an unresolvable tier falls back to `same` and says
+  so in the spawn report.
+- **Concurrency**: background worker runs are capped at 3
+  (`WORKER_CONCURRENCY`); excess first-runs queue FIFO. `interrupt_agent`
+  on a queued worker removes it from the queue; `send_to_agent` with
+  `start_turn` on a queued worker joins its context instead of
+  double-queuing.
+- **Addressed mail** (`web-server/agent-mail.ts`): one durable JSONL inbox
+  per session (`recordsDir/agent-mail.jsonl`) carries parent↔child messages
+  and child lifecycle events (`spawned/completed/failed/interrupted/
+  input-requested`). Envelopes render into context as tagged user-role
+  fragments (`<agent-team-mail from="…">`); the transcript builder detects
+  the tag and renders an addressed system line, never a user bubble
+  (`session-store.ts`).
+- **Wake and delivery**: receiver running → Pi steer (seen at the next step
+  boundary); receiver open and idle → a normal recorded notification turn,
+  so lineage stays truthful; receiver closed → the envelope stays
+  undelivered in the inbox and is injected into context on next open
+  (`openSession`), with `alignSessionManagerLeaf` extending the active leaf
+  through trailing injected `custom_message` entries.
+
 ## 6. Discovery And Introspection
 
 REST:
@@ -904,6 +977,33 @@ Limits (current):
 
 ## Change Log
 
+- 2026-07-28: v1.3.0-alpha.5. Mid-turn continuity (§5.2): turn-continuity
+  context-sanitation extension, break-point retry-in-place adopting the
+  failed attempt's entries, visible `retrying` phase from Pi's
+  `auto_retry_start`, `canRetry` on `run_failed`, steer-instead-of-busy for
+  user text during a running turn. Agent team (§5.3): worker sessions as
+  `forkedFrom` purpose `worker` children, lead/worker tool surfaces over the
+  `AgentTeamBridge`, mode clamp + relative model tier, 3-slot worker run
+  queue, durable per-session agent-mail inbox with steer/turn/on-open wake
+  delivery, and addressed transcript rendering.
+- 2026-07-28: v1.3.0-alpha.4 continuity/model-setup repairs: stabilized
+  retry/edit history, draft-to-live state transitions, provider/model
+  metadata, and thinking-effort handling ahead of the alpha.5 break-point
+  work.
+- 2026-07-25: v1.3.0-alpha.3. Transparency: shared tool-argument reader
+  (`web-server/tool-detail.ts`) emitting payloads layered by kind of change
+  (prose, before/after passages, code diff, bash command, skill load), used
+  by both the live event path and the transcript projection; context-usage
+  ring and conversation cost surfaced from the already-published
+  `SessionMetrics`. Background visibility: `sessionActivity()` per-session
+  run state exposed as `runStatus` on `/api/sessions`
+  (running / needs-you / stopped / done-unread). Auth: Pi's `anthropic`
+  OAuth flow added to `PROVIDER_AUTH_IDS` (Claude subscription login).
+  `fork_session` gained optional `sourceSessionId` (duplicate from the
+  list); `skillPrecedence` app-setting selects the skill-precedence prompt
+  section.
+- 2026-07-24: Preserved conversation state across compact and revise; kept
+  detached imported history visible.
 - 2026-07-24: Upgraded the Pi runtime boundary to `ModelRuntime`, connected
   native OpenRouter, xAI/Grok, and OpenAI Codex authentication in Settings, and
   exposed Pi-native manual compaction through `/compact`.

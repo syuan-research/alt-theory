@@ -292,7 +292,8 @@ export class SessionService implements AgentTeamBridge {
   private readonly sessions = new Map<string, ManagedSession>();
   private readonly modelFallback: ModelFallbackCoordinator | null;
   private runningWorkerRuns = 0;
-  private readonly workerQueue: Array<() => void> = [];
+  private readonly workerQueue: Array<{ childId: string; start: () => void }> =
+    [];
   private readonly queuedWorkerIds = new Set<string>();
 
   constructor(private readonly config: SessionServiceConfig) {
@@ -2354,12 +2355,14 @@ export class SessionService implements AgentTeamBridge {
       await child.session.steer(fragment);
       return "Delivered: the worker sees your message at its next step.";
     }
-    if (startTurn) {
+    if (startTurn && !this.queuedWorkerIds.has(childId)) {
       const queued = this.startWorkerRun(childId, fragment, true);
       return queued === "queued"
         ? "The worker is queued; it acts on your message when a slot frees up."
         : "The worker is acting on your message now.";
     }
+    // A queued worker already has a pending run; starting another would
+    // double-queue it, so the message joins its context instead.
     await child.session.sendCustomMessage(
       {
         customType: "agent-team",
@@ -2424,6 +2427,14 @@ export class SessionService implements AgentTeamBridge {
     agent: string,
   ): Promise<string> {
     const childId = this.resolveWorkerId(parentSessionId, agent);
+    if (this.queuedWorkerIds.has(childId)) {
+      this.queuedWorkerIds.delete(childId);
+      const queued = this.workerQueue.findIndex(
+        (entry) => entry.childId === childId,
+      );
+      if (queued >= 0) this.workerQueue.splice(queued, 1);
+      return "Removed from the queue before it started. Use send_to_agent with start_turn to give it a task later.";
+    }
     const child = this.sessions.get(childId);
     if (!child || (!child.busy && !child.session.isStreaming)) {
       return "The worker is not running; nothing to interrupt.";
@@ -2599,7 +2610,7 @@ export class SessionService implements AgentTeamBridge {
     };
     if (this.runningWorkerRuns >= WORKER_CONCURRENCY) {
       this.queuedWorkerIds.add(childId);
-      this.workerQueue.push(start);
+      this.workerQueue.push({ childId, start });
       return "queued";
     }
     start();
@@ -2611,7 +2622,7 @@ export class SessionService implements AgentTeamBridge {
       this.runningWorkerRuns < WORKER_CONCURRENCY &&
       this.workerQueue.length > 0
     ) {
-      this.workerQueue.shift()?.();
+      this.workerQueue.shift()?.start();
     }
   }
 
