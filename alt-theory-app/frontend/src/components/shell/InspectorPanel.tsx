@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { useApp } from "@/context/AppProvider";
 import { useShell, type RailKey } from "@/context/ShellContext";
 import { t } from "@/i18n";
+import { shouldClearRelatedOnSubChange } from "@/lib/relatedOpen";
 import { sessionTitle } from "@/lib/sessionList";
 import { ChildConversation } from "@/components/conversation/ChildConversation";
 import { RecordsPanel } from "@/components/inspector/RecordsPanel";
@@ -78,6 +79,24 @@ export function InspectorPanel() {
     shell.setRightPaneForRelated,
   ]);
 
+  // Back / closeRight / openRail only clear rightSub. When we *leave* a related
+  // sub (transition related:* → not), clear app.activeRelatedSessionId too so
+  // re-clicking the same child re-runs open (setState same id is a no-op and
+  // openedChildRef would early-return). Transition-only: do not clear on open.
+  const prevRightSubRef = useRef(shell.rightSub);
+  useEffect(() => {
+    const prev = prevRightSubRef.current;
+    prevRightSubRef.current = shell.rightSub;
+    if (!shouldClearRelatedOnSubChange(prev?.key, shell.rightSub?.key)) return;
+    openedChildRef.current = null;
+    if (app.activeRelatedSessionId) app.setActiveRelatedSessionId(null);
+  }, [shell.rightSub, app.activeRelatedSessionId, app.setActiveRelatedSessionId]);
+
+  const leaveRelated = () => {
+    app.setActiveRelatedSessionId(null);
+    shell.closeSub();
+  };
+
   return (
     <aside className={`right${open ? " open" : ""}`}>
       <div className="rpanel">
@@ -85,10 +104,17 @@ export function InspectorPanel() {
           <div className={`head${shell.rightSub ? " sub" : ""}`}>
             {/* Collapse sits on the inner edge: on a narrow window the outer
                 edge is the first thing to go off-screen. */}
-            <button className="rp-close" onClick={shell.closeRight} title={t("Collapse")}>
+            <button
+              className="rp-close"
+              onClick={() => {
+                app.setActiveRelatedSessionId(null);
+                shell.closeRight();
+              }}
+              title={t("Collapse")}
+            >
               <i className="ph ph-sidebar-simple" style={{ transform: "scaleX(-1)" }} />
             </button>
-            <button className="back" onClick={shell.closeSub} title={t("Back")}>
+            <button className="back" onClick={leaveRelated} title={t("Back")}>
               <i className="ph ph-arrow-left" />
             </button>
             <span>{title}</span>
