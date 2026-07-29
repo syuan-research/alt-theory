@@ -12,6 +12,30 @@ usage details. Click it to switch models for this conversation — the
 change applies from the next turn, and the conversation continues
 unbroken.
 
+## Thinking level, context window, and model metadata
+
+Providers advertise different capabilities. Alt Theory stores those facts
+on each model entry (via Settings → Models, or in `models.json`):
+
+- **Thinking / reasoning levels** — which effort options the composer may
+  offer (for example off / low / medium / high). Only levels you enable
+  appear in the chip. If a model does not reason, the chip omits effort.
+- **Context window** — approximate token budget for the conversation. The
+  context ring near the composer uses this when the provider reports usage.
+- **Max output tokens** — soft cap for a single reply when the model
+  entry records one.
+- **Image input** — whether the model accepts images in the turn.
+
+**Fetch model list** (in the provider editor, above the model list) is the
+preferred way to refresh ids and capability flags from the provider. When
+the provider does not expose a list (some presets), enter model ids by
+hand and correct metadata so the composer and context ring stay honest.
+
+Default model for **new** conversations is set with **Set as default** at
+the top of Settings → Models — selecting a model inside a provider editor
+does not change the default by itself. (If no default exists yet, saving
+your first provider sets its first model as default.)
+
 ## Setting up a provider
 
 Configuration lives in **Settings → Models**, and the same surface serves
@@ -22,8 +46,8 @@ as the first-run setup screen. Two kinds of access are supported:
   entry; keys are stored locally in the app's configuration and never
   shown back once saved.
 - **Subscription sign-in** — supported providers (currently OpenRouter,
-  xAI, OpenAI Codex, and Anthropic) can be connected through their own
-  sign-in flow instead of a key.
+  xAI, and OpenAI Codex) can be connected through their own sign-in flow
+  instead of a key.
 
 A conversation cannot start until at least one provider is valid and
 active — the app refuses clearly rather than failing strangely mid-turn.
@@ -36,6 +60,9 @@ language — where to get a key, where it goes, and how to confirm it
 works. Keys belong in Settings, not in chat messages; if you paste one
 into a conversation, the agent will help you move it to the right place
 and suggest not sharing keys in chat.
+
+Prefer a general chatbot to draft the file first? Use
+[Configure models with a chatbot](configure-models-with-chatbot.md).
 
 ### Where that configuration actually lives
 

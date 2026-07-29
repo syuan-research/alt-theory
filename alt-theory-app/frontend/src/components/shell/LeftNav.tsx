@@ -160,7 +160,14 @@ export function LeftNav() {
             <i className="ph ph-gear" />
             {t("Settings")}
           </button>
-          <div className="avatar" title={app.auth.displayLabel ?? undefined}>
+          <div
+            className="avatar"
+            title={
+              app.appMode === "local"
+                ? t("Local mode — no account")
+                : (app.auth.displayLabel ?? t("Signed in"))
+            }
+          >
             {avatarLetter}
           </div>
         </div>

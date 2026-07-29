@@ -557,17 +557,33 @@
 
   .composer { background: var(--surface); border: none; border-radius: var(--r-lg); padding: 10px 12px 8px; box-shadow: 0 1px 2px rgba(31,30,26,0.05), 0 4px 18px rgba(31,30,26,0.07); }
   .composer textarea { width: 100%; border: none; resize: none; outline: none; font: inherit; color: var(--ink); background: transparent; min-height: 42px; }
-  .composer .row { display: flex; align-items: center; gap: 14px; margin-top: 4px; position: relative; }
+  .composer .row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 4px;
+    position: relative;
+    flex-wrap: nowrap;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--hairline) transparent;
+  }
+  .composer .row::-webkit-scrollbar { height: 6px; }
+  .composer .row::-webkit-scrollbar-thumb { background: var(--hairline); border-radius: 3px; }
+  .composer .row > .flat,
+  .composer .row > .send,
+  .composer .row > .mode-switch { flex: 0 0 auto; }
   .flat { display: inline-flex; align-items: center; gap: 5px; font-size: 0.8125rem; color: var(--text-2); cursor: pointer; background: none; border: none; padding: 2px 4px; border-radius: var(--r-sm); }
   .flat:hover { background: var(--hover); color: var(--ink); }
   .flat:disabled { opacity: 0.5; cursor: default; }
   .flat:disabled:hover { background: none; color: var(--text-2); }
   .flat i.caret { font-size: 0.7rem; color: var(--text-3); }
-  .mode-switch { gap: 7px; padding: 3px 5px; color: var(--text-2); }
-  .mode-switch .mode-toggle { width: 34px; height: 20px; background: var(--mode-understand); }
-  .mode-switch .mode-toggle::after { width: 16px; height: 16px; }
+  .mode-switch { gap: 6px; padding: 2px 4px; color: var(--text-2); }
+  .mode-switch .mode-toggle { width: 28px; height: 16px; background: var(--mode-understand); }
+  .mode-switch .mode-toggle::after { width: 12px; height: 12px; }
   .mode-switch .mode-toggle.on { background: var(--mode-work); }
-  .mode-switch .mode-toggle.on::after { left: 16px; }
+  .mode-switch .mode-toggle.on::after { left: 14px; }
   .send { width: 34px; height: 30px; border-radius: var(--r-md); border: none; background: var(--ink); color: var(--on-ink); cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
   .send:disabled { opacity: 0.4; cursor: default; }
 
@@ -642,7 +658,33 @@
   .rpanel .head .back { border: none; background: transparent; cursor: pointer; color: var(--text-2); padding: 2px; display: none; }
   .rpanel .head.sub .back { display: inline-flex; }
   .rpanel .head > span { overflow: hidden; text-overflow: ellipsis; }
-  .rpanel .body { flex: 1; overflow-y: auto; padding: 10px; }
+  /* Panel body: only the list scrolls; child conversation owns its own msgs. */
+  .rpanel .body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 10px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--hairline) transparent;
+  }
+  .rpanel .body::-webkit-scrollbar { width: 8px; }
+  .rpanel .body::-webkit-scrollbar-track { background: transparent; }
+  .rpanel .body::-webkit-scrollbar-thumb {
+    background: var(--hairline);
+    border-radius: 4px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  .rpanel .body:hover::-webkit-scrollbar-thumb { background: var(--text-3); background-clip: padding-box; }
+  /* When a related child is open, the outer body must not double-scroll. */
+  .rpanel .body:has(.child-conv) {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding-bottom: 0;
+  }
+  .rpanel .body:has(.child-conv) .child-switch { flex: 0 0 auto; }
+  .rpanel .body:has(.child-conv) .child-conv { flex: 1; min-height: 0; }
   .rp-empty { padding: 24px 12px; font-size: 0.8125rem; color: var(--text-3); text-align: center; }
   .sc-item, .file-item { background: var(--surface); border: none; border-radius: var(--r-md); padding: 10px 12px; margin-bottom: 8px; cursor: pointer; width: 100%; text-align: left; display: block; }
   .sc-item:hover, .file-item:hover { box-shadow: 0 2px 8px rgba(31,30,26,0.08); }
@@ -691,9 +733,38 @@
   /* ------- other conversations: side panel and 50/50 comparison -------
      Same bubbles, same composer as the center conversation; only the width
      and the one-line header differ (alpha.6). */
-  .child-switch { display: flex; gap: 6px; overflow-x: auto; padding: 0 2px 8px; scrollbar-width: none; }
-  .child-switch::-webkit-scrollbar { display: none; }
-  .child-switch button { display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto; max-width: 150px; border: none; background: var(--surface); color: var(--text-2); border-radius: var(--r-sm); padding: 4px 8px; font: inherit; font-size: 0.72rem; cursor: pointer; }
+  .child-switch {
+    display: flex;
+    gap: 4px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0 2px 8px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--hairline) transparent;
+    -webkit-overflow-scrolling: touch;
+  }
+  .child-switch::-webkit-scrollbar { height: 6px; }
+  .child-switch::-webkit-scrollbar-track { background: transparent; }
+  .child-switch::-webkit-scrollbar-thumb {
+    background: var(--hairline);
+    border-radius: 3px;
+  }
+  .child-switch:hover::-webkit-scrollbar-thumb { background: var(--text-3); }
+  .child-switch button {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex: 0 0 auto;
+    max-width: 110px;
+    border: none;
+    background: var(--surface);
+    color: var(--text-2);
+    border-radius: var(--r-sm);
+    padding: 4px 6px;
+    font: inherit;
+    font-size: 0.7rem;
+    cursor: pointer;
+  }
   .child-switch button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .child-switch button:hover { background: var(--hover); }
   .child-switch button.on { background: var(--ink); color: var(--on-ink); }
@@ -794,6 +865,59 @@
   .model-config-heading h2 { margin: 0; }
   .model-config-heading .model-config-status { margin: 0; min-height: 0; text-align: right; }
   .model-config-status { margin: 16px 0 12px; min-height: 26px; padding: 0 2px; }
+  .active-model-overflow { display: inline-block; max-width: 100%; text-align: left; }
+  .active-model-summary {
+    cursor: pointer;
+    list-style: none;
+    font-size: 0.95rem;
+    line-height: 1.35;
+  }
+  .active-model-summary::-webkit-details-marker { display: none; }
+  .active-model-name { font-size: 1.05rem; font-weight: 600; }
+  .active-model-panel {
+    margin-top: 8px;
+    padding: 10px 12px;
+    border: 1px solid var(--hairline);
+    border-radius: var(--r-md);
+    background: var(--card);
+    text-align: left;
+  }
+  .default-model-picker {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 8px;
+    font-size: 0.8rem;
+    color: var(--text-2);
+  }
+  .default-model-picker select {
+    min-width: 200px;
+    max-width: 100%;
+    border: 1px solid var(--hairline);
+    border-radius: var(--r-sm);
+    background: var(--surface);
+    padding: 5px 8px;
+    color: var(--ink);
+    font: inherit;
+    font-size: 0.8rem;
+  }
+  .chatbot-config-hint {
+    margin: 8px 0 10px;
+    padding: 0 2px;
+    font-size: 0.72rem;
+    color: var(--text-3);
+    line-height: 1.35;
+  }
+  .chatbot-config-hint a { color: var(--text-2); text-decoration: underline; }
+  .provider-default-note {
+    margin: 10px 0 0;
+    padding: 8px 10px;
+    border-radius: var(--r-md);
+    background: var(--card);
+    font-size: 0.75rem;
+    color: var(--text-2);
+  }
   .model-config-layout { display: grid; grid-template-columns: minmax(180px, 230px) minmax(0, 1fr); min-height: 520px; border: 1px solid var(--hairline); border-radius: var(--r-lg); overflow: hidden; background: var(--surface); }
   .provider-master { padding: 12px; border-right: 1px solid var(--hairline); background: var(--panel); }
   .add-provider-primary { width: 100%; display: flex; align-items: center; justify-content: center; gap: 7px; padding: 9px 12px; border: 1px solid var(--ink); border-radius: var(--r-md); background: var(--ink); color: var(--on-ink); font: inherit; font-size: 0.84rem; font-weight: 600; cursor: pointer; }

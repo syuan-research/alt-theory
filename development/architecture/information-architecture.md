@@ -126,18 +126,37 @@ The Models surface uses a master-detail structure:
 - The left side is a compact list of existing providers.
 - Selecting any provider opens its editor in the right detail area; do not
   require the user to find a small Edit button.
-- The active provider/model is legible without expanding every model's
-  metadata.
+- **Default model** for new conversations is controlled only from an explicit
+  control at the top of Models (overflow/summary of the active default).
+  Choosing a model inside a provider editor does **not** silently set default.
+- Under the **Models** heading inside a provider editor, **Add model**,
+  **Fetch model list**, and **Test connection** sit **above** the per-model
+  rows so Fetch is findable.
 - OAuth-connected providers sort before ordinary API-key providers.
 - OAuth-connected providers may carry the single low-key word `OAuth`.
   Ordinary API-key providers need no corresponding badge.
 - A visually clear `+ Add provider` action opens the add flow in the right
   detail area.
+- Directly under Add provider: a low-key entry to the chatbot/agent model
+  configuration guide (docs: configure-models-with-chatbot).
 - With no providers configured, the add flow is open by default.
 
 Provider rows do not enumerate context windows, output limits, reasoning
 flags, costs, modalities, or metadata provenance. Those facts do not help the
-user scan or choose a provider.
+user scan or choose a provider; they live in the provider editor and after
+Fetch.
+
+### Composer and related conversations (alpha.6 follow-up)
+
+- Run tips while a turn runs rotate every **10s** (after a short first delay).
+- Related/branch switcher in the right rail is horizontally scrollable with a
+  low-key scrollbar; clicking a branch opens that child explicitly.
+- When a related child is open, the outer inspector body does not double-scroll
+  the conversation area.
+- First-level attach control is **Understand-only**; Work keeps attach in the
+  toolbox.
+- Mode toggle is compact (~20% shorter than earlier chrome).
+- Local mode: left-foot avatar tooltip states local / no account.
 
 ### Add provider
 

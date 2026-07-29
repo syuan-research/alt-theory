@@ -9,7 +9,7 @@
  */
 import { existsSync } from "fs";
 import { homedir } from "os";
-import { join } from "path";
+import { dirname, join, resolve } from "path";
 import { loadSkillsFromDir } from "@earendil-works/pi-coding-agent";
 
 export type SkillSource = "alt-theory" | "pi-user" | "agents-global";
@@ -26,12 +26,26 @@ export interface ResourceDiscoveryResult {
   diagnostics: Array<{ message: string; path?: string }>;
 }
 
+/**
+ * Dev/local experimental skills: agent-assets/experimental/skills
+ * (sibling of agent-assets/skills). Packaged builds exclude experimental/;
+ * when present on disk they are still discoverable for owner testing.
+ */
+function experimentalSkillsDir(altSkillsDir: string | null | undefined): string | null {
+  if (!altSkillsDir) return null;
+  return resolve(dirname(altSkillsDir), "experimental", "skills");
+}
+
 export function discoverSkillResources(options: {
   altSkillsDir?: string | null;
   agentDir: string;
 }): ResourceDiscoveryResult {
+  const experimental = experimentalSkillsDir(options.altSkillsDir ?? null);
   const locations: Array<{ dir: string | null | undefined; source: SkillSource }> = [
     { dir: options.altSkillsDir, source: "alt-theory" },
+    // Experimental skills share the alt-theory source label so Settings can
+    // enable them like other bundled skills; they are simply not in the pack.
+    { dir: experimental, source: "alt-theory" },
     { dir: join(options.agentDir, "skills"), source: "pi-user" },
     { dir: join(homedir(), ".agents", "skills"), source: "agents-global" },
   ];

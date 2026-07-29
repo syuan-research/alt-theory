@@ -1,6 +1,21 @@
 import { existsSync, readdirSync } from "fs";
-import { basename, extname, resolve } from "path";
+import { basename, dirname, extname, resolve } from "path";
 import { loadKbDomainMetadata } from "../core/kb-metadata.js";
+
+/**
+ * Dev/local experimental assets live under agent-assets/experimental/ and are
+ * excluded from electron-builder packaging. When present on disk they are still
+ * discoverable so the owner's machine sees experimental roles/KB without shipping them.
+ */
+function experimentalRoleDir(rolePresetsDir: string): string {
+  // role-presets → agent-assets/experimental/role-presets
+  return resolve(dirname(rolePresetsDir), "experimental", "role-presets");
+}
+
+function experimentalKbDir(kbDir: string): string {
+  // kb → agent-assets/experimental/kb
+  return resolve(dirname(kbDir), "experimental", "kb");
+}
 
 export interface DiscoveredAsset {
   slug: string;
@@ -77,11 +92,18 @@ function listWithSnapshots(dir: string): DiscoveredAsset[] {
 export function listRolePresets(rolePresetsDir: string): DiscoveredAsset[] {
   const seen = new Set<string>();
   const merged: DiscoveredAsset[] = [];
-  for (const [index, dir] of [resolve(rolePresetsDir), ...extraRoleDirs].entries()) {
+  const experimental = experimentalRoleDir(rolePresetsDir);
+  const dirs = [
+    resolve(rolePresetsDir),
+    ...(existsSync(experimental) ? [experimental] : []),
+    ...extraRoleDirs,
+  ];
+  for (const [index, dir] of dirs.entries()) {
     for (const asset of listWithSnapshots(dir)) {
       const key = `${asset.slug}${asset.snapshot ? ":snapshot" : ""}`;
       if (seen.has(key)) continue;
       seen.add(key);
+      // index 0 = bundled primary; experimental + user-added are "added"
       merged.push(index === 0 ? asset : { ...asset, source: "added" });
     }
   }
@@ -131,8 +153,25 @@ function listKbDomainsInDir(kbDir: string): DiscoveredAsset[] {
 export function listKbDomains(kbDir: string): DiscoveredAsset[] {
   const seen = new Set<string>();
   const merged: DiscoveredAsset[] = [];
-  for (const [index, dir] of [resolve(kbDir), ...extraKbDirs].entries()) {
+  // Experimental KB is scanned for local/dev only; pack excludes experimental/.
+  // Primary product domain remains ep-core (domains.json). Duplicate historical
+  // trees under experimental are not dual-shipped in the installer.
+  const experimental = experimentalKbDir(kbDir);
+  const dirs = [
+    resolve(kbDir),
+    ...(existsSync(experimental) ? [experimental] : []),
+    ...extraKbDirs,
+  ];
+  for (const [index, dir] of dirs.entries()) {
     for (const asset of listKbDomainsInDir(dir)) {
+      // Prefer the canonical ep-core slug; skip legacy duplicate names if both exist.
+      if (
+        asset.slug === "ep-core-v0-2-0" &&
+        (seen.has("ep-core") ||
+          listKbDomainsInDir(resolve(kbDir)).some((d) => d.slug === "ep-core"))
+      ) {
+        continue;
+      }
       if (seen.has(asset.slug)) continue;
       seen.add(asset.slug);
       merged.push(index === 0 ? asset : { ...asset, source: "added" });
@@ -168,7 +207,13 @@ export function resolveRolePresetSlug(
   slug: string
 ): string | null {
   if (!/^[A-Za-z0-9][A-Za-z0-9._ -]*$/.test(slug)) return null;
-  for (const dir of [resolve(rolePresetsDir), ...extraRoleDirs]) {
+  const experimental = experimentalRoleDir(rolePresetsDir);
+  const dirs = [
+    resolve(rolePresetsDir),
+    ...(existsSync(experimental) ? [experimental] : []),
+    ...extraRoleDirs,
+  ];
+  for (const dir of dirs) {
     for (const candidate of [
       resolve(dir, `${slug}.md`),
       resolve(dir, "snapshots", `${slug}.md`),

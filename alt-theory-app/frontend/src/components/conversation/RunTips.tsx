@@ -41,7 +41,8 @@ export const SITUATIONAL_TIPS = {
 };
 
 const FIRST_DELAY_MS = 2000;
-const ROTATE_MS = 7000;
+/** Owner: +3s so tips are readable while a turn runs (was 7s). */
+const ROTATE_MS = 10000;
 
 export function RunTips({
   running,

@@ -180,18 +180,27 @@ function RelatedConversations() {
   // related conversations should not cost a round trip through a list.
   const switcher =
     children.length > 0 ? (
-      <div className="child-switch">
+      <div className="child-switch" role="tablist" aria-label={t("Related conversations")}>
         {children.map((child) => (
           <button
             key={child.sessionId}
+            type="button"
+            role="tab"
+            aria-selected={child.sessionId === activeChildId}
             className={child.sessionId === activeChildId ? "on" : ""}
             title={sessionTitle(child, app.sessionDisplayNames)}
             onClick={() => {
-              shell.openApp();
-              app.setActiveRelatedSessionId(
-                child.sessionId === activeChildId ? null : child.sessionId,
-              );
-              if (child.sessionId === activeChildId) shell.closeSub();
+              // Explicit openSub so switching branches always remounts the
+              // child pane even when the one-shot effect already ran for a
+              // previous related id.
+              if (child.sessionId === activeChildId) {
+                app.setActiveRelatedSessionId(null);
+                shell.closeSub();
+                return;
+              }
+              app.setActiveRelatedSessionId(child.sessionId);
+              shell.openRail("chats");
+              shell.openSub({ key: `related:${child.sessionId}` });
             }}
           >
             <i className={`ph ${PURPOSE_ICON[child.forkedFrom?.purpose ?? "side"]}`} />
@@ -254,10 +263,12 @@ function RelatedConversations() {
       {children.map((child) => (
         <button
           key={child.sessionId}
+          type="button"
           className="sc-item"
           onClick={() => {
-            shell.openApp();
             app.setActiveRelatedSessionId(child.sessionId);
+            shell.openRail("chats");
+            shell.openSub({ key: `related:${child.sessionId}` });
           }}
         >
           <div className="t">

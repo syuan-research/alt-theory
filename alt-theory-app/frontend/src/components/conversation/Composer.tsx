@@ -150,6 +150,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
   // reads it from disk, so we stage the path — same mechanism as "Import
   // reference". Needs the absolute path, which the Electron bundle exposes on
   // dropped File objects; in a plain browser `path` is empty and we no-op.
+  // Attach paths are local-only (Electron absolute path on File).
   const canAttach = app.appMode === "local" && interactive;
   const handleDropFiles = (event: React.DragEvent) => {
     event.preventDefault();
@@ -177,6 +178,8 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
       : null;
   const pureMode =
     variant === "empty" ? shell.newMode === "pure" : app.sessionMode === "pure";
+  // First-level paperclip: Understand only. Work keeps attach in the toolbox.
+  const attachFirstLevel = canAttach && pureMode;
 
   const handleSubmit = () => {
     if (app.reviseMode) {
@@ -559,6 +562,22 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                 {t("All skills…")}
               </div>
             </div>
+
+            {/* First-level attach: Understand only (Work uses toolbox). */}
+            {attachFirstLevel ? (
+              <button
+                className="flat"
+                title={t("Attach a file")}
+                aria-label={t("Attach a file")}
+                onClick={() => {
+                  void pickFiles(t("Full path of the file to attach:")).then(
+                    (paths) => paths.forEach((p) => app.stageWorkspacePath(p)),
+                  );
+                }}
+              >
+                <i className="ph ph-paperclip" />
+              </button>
+            ) : null}
 
             {/* morph mode switch (live only; empty state uses the cards) */}
             {variant === "live" ? (

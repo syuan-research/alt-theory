@@ -44,6 +44,7 @@ use it, how to check its current state, and how to recover.
 
 - [Conversations and History](system-guide/conversations-and-history.md)
 - [Models, Providers, and Access](system-guide/models-providers-access.md)
+- [Configure models with a chatbot](system-guide/configure-models-with-chatbot.md)
 - [Working Folders, Files, and Paths](system-guide/working-folders-files-paths.md)
 - [Knowledge Bases and Context](system-guide/knowledge-bases-and-context.md)
 - [Working with Responses and Conversation Controls](system-guide/responses-and-controls.md)

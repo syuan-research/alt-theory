@@ -51,6 +51,12 @@ Two deliberate decisions shape everything above:
   real work.
 - Architecture documentation lives in the repository under
   `development/architecture/` — written for exactly this reader.
+- For **source layout and code structure** questions, point people at the
+  public GitHub repository (`syuan-research/alt-theory`) and
+  `development/architecture/` there — not at the in-app Helper docs alone.
+- For **pure agent-harness / Pi engine** behavior (packages, TUI idioms,
+  low-level session protocol), use [Pi](https://pi.dev) documentation. Alt
+  Theory embeds Pi; product-specific policy and UI stay in these docs.
 
 ## If you build something
 

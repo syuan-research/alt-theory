@@ -591,6 +591,11 @@ test("write-enabled core exposes write without edit/bash and writes notes", asyn
     "utf-8",
   );
   const projectRoot = process.cwd();
+  // resourceDiscovery internal + empty skillsDir: this test is about write
+  // tools/roots, not skill discovery. Ambient/dev-debug skill scans have
+  // made this case multi-minute on cold Windows runs and block the suite.
+  const emptySkills = join(root, "skills-empty");
+  mkdirSync(emptySkills, { recursive: true });
   const result = await createAltTheorySession({
     ...dirs,
     appContextPath,
@@ -598,6 +603,8 @@ test("write-enabled core exposes write without edit/bash and writes notes", asyn
     rolePresetPath: join(rolePresets, "role-conceptual-theory-companion-latest.md",),
     rolePresetSlug: "role-conceptual-theory-companion-latest",
     kbDir: kb,
+    skillsDir: emptySkills,
+    resourceDiscovery: "internal",
     piPromptTemplatesDir: resolve(projectRoot, "agent-assets", "prompts", "pi"),
     modelsPath,
     modelProvider: "test-provider",

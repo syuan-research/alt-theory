@@ -6,8 +6,9 @@ that cover the most common reasons to reach for something beyond typing.
 
 ## The entries
 
-- **Ask how Alt works** — opens the [Helper](helper-and-guidance.md), the
-  fresh-context assistant for questions about the app itself.
+- **Ask how Alt works, or fix setup** — opens the
+  [Helper](helper-and-guidance.md), the fresh-context side conversation for
+  questions about the app itself (and guided setup).
 - **Align on a plan or decision** — invokes the
   [aligning skill](bundled-skills.md#adaptive-aligning): the agent
   interviews you to build shared understanding before direction-setting

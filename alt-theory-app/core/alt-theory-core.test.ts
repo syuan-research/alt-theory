@@ -111,6 +111,54 @@ test("external skills are enabled per mode and re-apply on mode switch", async (
   await session.dispose();
 });
 
+test("experimental skills beside agent-assets/skills load into the session", async () => {
+  // Layout mirrors agent-assets/skills + agent-assets/experimental/skills
+  const root = mkdtempSync(join(tmpdir(), "alt-theory-core-exp-skills-"));
+  const agentAssets = join(root, "agent-assets");
+  const skillsDir = join(agentAssets, "skills");
+  const experimental = join(
+    agentAssets,
+    "experimental",
+    "skills",
+    "theory-innovation-loop",
+  );
+  const appContextPath = join(root, "ALTTHEORY.md");
+  const kbDir = join(root, "kb");
+  mkdirSync(skillsDir, { recursive: true });
+  mkdirSync(experimental, { recursive: true });
+  mkdirSync(kbDir, { recursive: true });
+  writeFileSync(appContextPath, "Experimental skills context", "utf-8");
+  writeFileSync(
+    join(skillsDir, "summary.md"),
+    "---\nname: alt-summary\ndescription: Bundled\n---\nSummarize.",
+    "utf-8",
+  );
+  writeFileSync(
+    join(experimental, "SKILL.md"),
+    "---\nname: theory-innovation-loop\ndescription: Experimental loop\n---\nLoop body EXP-MARKER.",
+    "utf-8",
+  );
+
+  const result = await createAltTheorySession({
+    ...createSessionDirs(join(root, "data"), "exp-skills-test"),
+    appContextPath,
+    kbDir,
+    kbDomain: "none",
+    readOnly: true,
+    promptMode: "alt-only",
+    resourceDiscovery: "internal",
+    skillsDir,
+  });
+  const names = result.manifest.skills.map((s) => s.name).sort();
+  assert.deepEqual(names, ["alt-summary", "theory-innovation-loop"]);
+  assert.ok(
+    result.manifest.skills.some(
+      (s) => s.name === "theory-innovation-loop" && s.source === "alt-theory",
+    ),
+  );
+  await result.session.dispose();
+});
+
 test("workspace directories apply in full mode only and extend guarded write", async () => {
   const root = mkdtempSync(join(tmpdir(), "alt-theory-core-workspace-"));
   const appContextPath = join(root, "ALTTHEORY.md");

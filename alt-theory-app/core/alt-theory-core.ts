@@ -26,7 +26,7 @@ import {
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { appendFileSync, existsSync, readFileSync, statSync } from "fs";
 import { mkdir, writeFile } from "fs/promises";
-import { join, resolve } from "path";
+import { dirname, join, resolve } from "path";
 import {
   assertWritablePath,
   createSecurityExtension,
@@ -483,6 +483,12 @@ async function createAltTheorySessionWithManager(
   // knowledge base (which legitimately lives outside cwd). Reads outside these
   // escalate to approval; reading is not the security boundary (spec §5.3),
   // this only matches the OpenCode/Claude Code external-directory prompt.
+  // Local-only experimental skills: agent-assets/experimental/skills
+  // (packaged builds omit this tree; when present on disk, sessions must load
+  // them or Settings discovery would list skills the runtime cannot run).
+  const experimentalSkillsDir = resolvedSkillsDir
+    ? resolve(dirname(resolvedSkillsDir), "experimental", "skills")
+    : null;
   const readableRootsForMode = () => [
     ...writableRootsForMode(),
     cwd,
@@ -491,14 +497,27 @@ async function createAltTheorySessionWithManager(
     // every skill invocation prompts "read outside your workspace"
     // (found by the v1.3.0-alpha.1 walkthrough acceptance).
     ...(resolvedSkillsDir ? [resolvedSkillsDir] : []),
+    ...(experimentalSkillsDir && existsSync(experimentalSkillsDir)
+      ? [experimentalSkillsDir]
+      : []),
   ];
-  const altTheorySkills =
+  const bundledOnlySkills =
     resourceDiscovery !== "clean" && resolvedSkillsDir
       ? loadSkillsFromDir({
           dir: resolvedSkillsDir,
           source: "alt-theory",
         })
       : { skills: [], diagnostics: [] };
+  const experimentalSkills =
+    resourceDiscovery !== "clean" &&
+    experimentalSkillsDir &&
+    existsSync(experimentalSkillsDir)
+      ? loadSkillsFromDir({
+          dir: experimentalSkillsDir,
+          source: "alt-theory",
+        })
+      : { skills: [], diagnostics: [] };
+  const altTheorySkills = mergeSkills(bundledOnlySkills, experimentalSkills);
   // Bundled-skill mode exposure is app policy, held here as the skill
   // counterpart of activeToolsForMode: these skills drive bash CLIs that
   // Pure cannot run, so Pure must not advertise them.
@@ -729,8 +748,13 @@ async function createAltTheorySessionWithManager(
       .getSkills()
       .skills.flatMap((skill) => {
         const path = resolve(skill.filePath);
+        // Bundled skillsDir and agent-assets/experimental/skills both count as
+        // alt-theory so local experimental assets stay listable and invokable.
         const source =
-          resolvedSkillsDir && isPathInside(resolvedSkillsDir, path)
+          (resolvedSkillsDir && isPathInside(resolvedSkillsDir, path)) ||
+          (experimentalSkillsDir &&
+            existsSync(experimentalSkillsDir) &&
+            isPathInside(experimentalSkillsDir, path))
             ? ("alt-theory" as const)
             : externalPaths.has(path)
               ? ("external" as const)

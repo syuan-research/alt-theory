@@ -29,9 +29,24 @@ specific page.
   directories, and how to move between them" — the migration steps).
   A provider question routed only to the Settings page will miss this;
   the app uses `~/.alt-theory/pi-agent/` and never reads `~/.pi/agent/`.
+- **Thinking level / context window / model metadata / default model**:
+  `docs/system-guide/models-providers-access.md` (chip + metadata section)
+  and Settings → Models (**Set as default** is outside provider cards;
+  **Fetch model list** is above the model list in the provider editor).
+- **Draft models.json with an external chatbot**:
+  `docs/system-guide/configure-models-with-chatbot.md` (copyable prompt).
+- **Code structure / architecture / modifying the app**:
+  `docs/advanced/modifying-alt-theory.md` and the public GitHub repo
+  `syuan-research/alt-theory` → `development/architecture/` — do not invent
+  code maps from memory.
+- **Pure Pi engine behavior** (not Alt product policy): https://pi.dev —
+  say so when the answer is harness-level rather than Alt-Theory-specific.
 - **Something is wrong / limits / terms**: `docs/help/` —
   troubleshooting, FAQ, compatibility and limitations, glossary, releases.
 - **Power use and modification**: `docs/advanced/`.
+- **User-facing Chinese docs** (not Helper corpus): repo-root
+  `docs/zh-Hans/` (parallel pages for people; not under this skill's
+  `references/docs/`). Helper continues to read the English tree only.
 
 Also current and verified:
 

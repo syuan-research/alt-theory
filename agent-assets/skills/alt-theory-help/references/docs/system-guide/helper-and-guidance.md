@@ -24,8 +24,8 @@ Two properties define it:
   steps from memory. An honest "I can't confirm this, check here" is in
   its vocabulary by design.
 
-Open it from the Toolbox ("Ask how Alt works"). If a Helper exchange
-turns out to matter to your project, promote it to a branch and it
+Open it from the Toolbox ("Ask how Alt works, or fix setup"). If a Helper
+exchange turns out to matter to your project, promote it to a branch and it
 becomes a normal conversation.
 
 ## Guided setup

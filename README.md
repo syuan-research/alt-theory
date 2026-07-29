@@ -8,6 +8,29 @@ local and hosted use.
 The repository is an alpha-stage research and software project. Interfaces,
 configuration, and packaging may still change.
 
+## What the app does today (factual)
+
+- **Understand and Work modes** in one conversation: clarify and compare
+  carefully (Understand), or also act on files and tools (Work), with the same
+  continuity of context.
+- **Local Windows app and browser UI** over a session engine built on the
+  [Pi](https://pi.dev) agent harness, with approvals for boundary-crossing
+  tools.
+- **Providers and models** configured in Settings → Models (API keys and
+  supported sign-in flows); per-conversation model and thinking-effort chip;
+  explicit default model for new conversations.
+- **Materials**: working folders, attach paths, knowledge-base domains, role
+  presets, and skills (including Helper, plan-record, web search in Work).
+- **Conversation controls**: branch / same-prompt retry with side-by-side
+  comparison, BTW side chats, Helper as a fresh-context side conversation,
+  worker agents (agent team) with addressable mail, import of cross-harness
+  sessions.
+- **In-app documentation** (English Helper corpus under
+  `agent-assets/skills/alt-theory-help/references/docs/`) plus **Chinese
+  user-facing docs** under `docs/zh-Hans/` (and PDF build via
+  `npm run docs:zh-pdf` when Pandoc is installed).
+- **UI languages**: English, 简体中文, 繁體中文（香港）via Settings → General.
+
 ## Repository Map
 
 - `alt-theory-app/` — core session engine, web server, and frontend.

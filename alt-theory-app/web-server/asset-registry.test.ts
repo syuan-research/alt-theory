@@ -57,3 +57,46 @@ test("user-added role and KB locations merge behind the bundled ones", () => {
     setExtraAssetDirs({ roleDirs: [], kbDirs: [] });
   }
 });
+
+test("experimental role-presets beside agent-assets are discovered on disk", () => {
+  const root = mkdtempSync(join(tmpdir(), "alt-assets-exp-"));
+  // Layout mirrors agent-assets/role-presets + agent-assets/experimental/role-presets
+  const agentAssets = join(root, "agent-assets");
+  const roles = join(agentAssets, "role-presets");
+  const experimental = join(agentAssets, "experimental", "role-presets");
+  mkdirSync(roles, { recursive: true });
+  mkdirSync(experimental, { recursive: true });
+  writeFileSync(join(roles, "role-stable.md"), "# stable");
+  writeFileSync(join(experimental, "role-three-mode-minimal-latest.md"), "# exp");
+
+  setExtraAssetDirs({ roleDirs: [], kbDirs: [] });
+  try {
+    const listed = listRolePresets(roles);
+    assert.ok(listed.some((r) => r.slug === "role-stable"));
+    const exp = listed.find((r) => r.slug === "role-three-mode-minimal-latest");
+    assert.ok(exp, "experimental role visible locally");
+    assert.equal(exp?.source, "added");
+    assert.equal(
+      resolveRolePresetSlug(roles, "role-three-mode-minimal-latest"),
+      join(experimental, "role-three-mode-minimal-latest.md"),
+    );
+  } finally {
+    setExtraAssetDirs({ roleDirs: [], kbDirs: [] });
+  }
+});
+
+test("ep-core-v0-2-0 is skipped when ep-core already exists", () => {
+  const root = mkdtempSync(join(tmpdir(), "alt-assets-ep-"));
+  const agentAssets = join(root, "agent-assets");
+  const kb = join(agentAssets, "kb");
+  const experimentalKb = join(agentAssets, "experimental", "kb");
+  mkdirSync(join(kb, "ep-core"), { recursive: true });
+  mkdirSync(join(experimentalKb, "ep-core-v0-2-0"), { recursive: true });
+  setExtraAssetDirs({ roleDirs: [], kbDirs: [] });
+  try {
+    const domains = listKbDomains(kb).map((d) => d.slug);
+    assert.deepEqual(domains, ["ep-core"]);
+  } finally {
+    setExtraAssetDirs({ roleDirs: [], kbDirs: [] });
+  }
+});

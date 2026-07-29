@@ -695,6 +695,11 @@ export function ModelConfigPage({
     }
   };
 
+  const activeLabel =
+    status?.activeProvider && status.activeModel
+      ? `${status.activeProvider} / ${status.activeModel}`
+      : null;
+
   const statusSummary = (
     <>
       {loading ? (
@@ -702,27 +707,74 @@ export function ModelConfigPage({
       ) : error ? (
         <HintText className="text-warning">{error}</HintText>
       ) : status ? (
-        <BodyText className="text-[0.8125rem]">
-          {status.activeUsable ? (
-            <span className="text-success">{t("Ready.")}</span>
-          ) : status.anyUsable ? (
-            <span className="text-warning">
-              {t("Choose an active model to use the app.")}
-            </span>
-          ) : (
-            <span className="text-warning">{t("No provider has a key yet.")}</span>
-          )}{" "}
-          {status.activeProvider && status.activeModel ? (
-            <>
-              {t("Active")}{" "}
-              <strong>
-                {status.activeProvider} / {status.activeModel}
-              </strong>
-            </>
-          ) : (
-            t("No active model selected.")
-          )}
-        </BodyText>
+        <details className="active-model-overflow">
+          <summary className="active-model-summary">
+            {status.activeUsable ? (
+              <span className="text-success">{t("Ready.")}</span>
+            ) : status.anyUsable ? (
+              <span className="text-warning">
+                {t("Choose a default model to use the app.")}
+              </span>
+            ) : (
+              <span className="text-warning">{t("No provider has a key yet.")}</span>
+            )}{" "}
+            {activeLabel ? (
+              <>
+                {t("Default")}{" "}
+                <strong className="active-model-name">{activeLabel}</strong>
+              </>
+            ) : (
+              t("No default model selected.")
+            )}
+          </summary>
+          <div className="active-model-panel">
+            <p className="text-[0.78rem] text-text-secondary">
+              {t("Default model is used for new conversations. Picking a model inside a provider only edits that provider — it does not change the default.")}
+            </p>
+            <label className="default-model-picker">
+              <span>{t("Set as default")}</span>
+              <select
+                value={
+                  status.activeProvider && status.activeModel
+                    ? `${status.activeProvider}::${status.activeModel}`
+                    : ""
+                }
+                onChange={async (event) => {
+                  const value = event.target.value;
+                  if (!value) return;
+                  const sep = value.indexOf("::");
+                  if (sep < 0) return;
+                  const provider = value.slice(0, sep);
+                  const modelId = value.slice(sep + 2);
+                  try {
+                    await setActiveModel(provider, modelId);
+                    showToast(t("Default model: {model}", { model: modelId }));
+                    await refresh();
+                  } catch (err) {
+                    showToast(
+                      err instanceof Error ? err.message : t("Could not change model"),
+                      true,
+                    );
+                  }
+                }}
+              >
+                <option value="" disabled>
+                  {t("Choose a model")}
+                </option>
+                {providers.flatMap((provider) =>
+                  (provider.models ?? []).map((model) => (
+                    <option
+                      key={`${provider.name}::${model.id}`}
+                      value={`${provider.name}::${model.id}`}
+                    >
+                      {provider.name} / {model.name || model.id}
+                    </option>
+                  )),
+                )}
+              </select>
+            </label>
+          </div>
+        </details>
       ) : null}
       {status?.activeIssue ? (
         <HintText className="mt-1 text-warning">{status.activeIssue}</HintText>
@@ -826,6 +878,12 @@ export function ModelConfigPage({
               <i className="ph ph-plus" aria-hidden />
               {t("Add provider")}
             </button>
+            <details className="chatbot-config-hint">
+              <summary>{t("Prefer a chatbot or agent to write the config?")}</summary>
+              <p>
+                {t("Copy a setup prompt from the docs page “Configure models with a chatbot”, then paste it into ChatGPT, Kimi, DeepSeek, Gemini, or a local agent that can edit files. It walks you through models.json under ~/.alt-theory/pi-agent/. See also Helper → models and providers.")}
+              </p>
+            </details>
             <div className="provider-master-list">
               {[...providers]
                 .sort((a, b) => {
@@ -944,41 +1002,17 @@ export function ModelConfigPage({
               ) : null}
             </div>
 
-            {editingName ? (
-              <label className="provider-active-model">
-                <span>{t("Active model")}</span>
-                <select
-                  value={
-                    status?.activeProvider === editingName
-                      ? status.activeModel ?? ""
-                      : ""
-                  }
-                  onChange={async (event) => {
-                    if (!event.target.value) return;
-                    try {
-                      await setActiveModel(editingName, event.target.value);
-                      showToast(t("Using {model}", { model: event.target.value }));
-                      await refresh();
-                    } catch (err) {
-                      showToast(
-                        err instanceof Error ? err.message : t("Could not change model"),
-                        true,
-                      );
-                    }
-                  }}
-                >
-                  <option value="" disabled>
-                    {t("Choose a model")}
-                  </option>
-                  {modelRows
-                    .filter((row) => row.id.trim())
-                    .map((row) => (
-                      <option key={row.id} value={row.id}>
-                        {row.name || row.id}
-                      </option>
-                    ))}
-                </select>
-              </label>
+            {editingName && status?.activeProvider === editingName ? (
+              <p className="provider-default-note">
+                {t("Default for new conversations:")}{" "}
+                <strong>{status.activeModel}</strong>
+                {" — "}
+                {t("change it from the Default control at the top of Models.")}
+              </p>
+            ) : editingName ? (
+              <p className="provider-default-note">
+                {t("This provider is not the default. Use Set as default at the top of Models when you want new conversations to use one of its models.")}
+              </p>
             ) : null}
 
             <div className="mt-4 space-y-4">
@@ -1070,6 +1104,39 @@ export function ModelConfigPage({
                   <HintText className="mt-0.5">
                     {t("Correct model limits and the effort choices shown in the composer.")}
                   </HintText>
+                </div>
+                {/* Actions sit under the Models heading, above the list so Fetch is findable. */}
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="secondary"
+                    onClick={() =>
+                      setModelRows((prev) => [...prev, emptyModelRow()])
+                    }
+                  >
+                    {t("+ Add model")}
+                  </Button>
+                  <Button variant="secondary" onClick={() => void fetchModels()}>
+                    {t("Fetch model list")}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    disabled={testing}
+                    onClick={() => void testConnection()}
+                  >
+                    {testing ? t("Testing…") : t("Test connection")}
+                  </Button>
+                  {testResult ? (
+                    <HintText
+                      className={
+                        testResult.ok ? "text-success" : "text-warning"
+                      }
+                    >
+                      {testResult.message}
+                    </HintText>
+                  ) : null}
+                  {manualModelListHint(name.trim()) ? (
+                    <HintText>{manualModelListHint(name.trim())}</HintText>
+                  ) : null}
                 </div>
                 {modelRows.map((row, index) => (
                   <div
@@ -1240,38 +1307,6 @@ export function ModelConfigPage({
                     </div>
                   </div>
                 ))}
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    variant="secondary"
-                    onClick={() =>
-                      setModelRows((prev) => [...prev, emptyModelRow()])
-                    }
-                  >
-                    {t("+ Add model")}
-                  </Button>
-                  <Button variant="secondary" onClick={() => void fetchModels()}>
-                    {t("Fetch model list")}
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    disabled={testing}
-                    onClick={() => void testConnection()}
-                  >
-                    {testing ? t("Testing…") : t("Test connection")}
-                  </Button>
-                  {testResult ? (
-                    <HintText
-                      className={
-                        testResult.ok ? "text-success" : "text-warning"
-                      }
-                    >
-                      {testResult.message}
-                    </HintText>
-                  ) : null}
-                  {manualModelListHint(name.trim()) ? (
-                    <HintText>{manualModelListHint(name.trim())}</HintText>
-                  ) : null}
-                </div>
               </div>
 
               <details className="config-advanced space-y-2" open={optionRows.length > 0}>
