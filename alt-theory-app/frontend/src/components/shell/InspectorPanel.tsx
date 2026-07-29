@@ -1,18 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ApprovalRequestPayload, ServerMessage, TranscriptMessage } from "@/api/types";
-import { fetchSessionDetail } from "@/api/sessions";
+import { useEffect, useMemo, useRef } from "react";
 import { useApp } from "@/context/AppProvider";
 import { useShell, type RailKey } from "@/context/ShellContext";
 import { t } from "@/i18n";
-import { useWebSocket } from "@/hooks/useWebSocket";
 import { sessionTitle } from "@/lib/sessionList";
-import { ApprovalDock } from "@/components/conversation/ApprovalDock";
+import { ChildConversation } from "@/components/conversation/ChildConversation";
 import { RecordsPanel } from "@/components/inspector/RecordsPanel";
 import { ProvenancePanel } from "@/components/inspector/ProvenancePanel";
 import { RuntimePanel } from "@/components/inspector/RuntimePanel";
 import { WorkspaceTree } from "@/components/inspector/WorkspaceTree";
 import { ChangesPanel } from "@/components/inspector/ChangesPanel";
-import { MarkdownBody } from "@/components/conversation/MarkdownBody";
 
 const RAIL_META: Record<RailKey, { title: string; icon: string; adv?: boolean }> = {
   chats: { title: t("Related conversations"), icon: "ph-arrows-split" },
@@ -47,35 +43,36 @@ export function InspectorPanel() {
 
   const title = shell.rightSub?.title ?? (active ? RAIL_META[active].title : "");
 
+  // Opening a child panel is a one-shot per child id. It used to depend on
+  // `app.sessions`, so every refreshSessions() (one per worker output) re-ran
+  // it and slammed the panel back open on whatever child was last active.
+  const openedChildRef = useRef<string | null>(null);
   useEffect(() => {
     const childId = app.activeRelatedSessionId;
-    if (!childId) return;
-    const child = app.sessions.find((item) => item.sessionId === childId);
+    if (!childId) {
+      openedChildRef.current = null;
+      return;
+    }
+    if (openedChildRef.current === childId) return;
+    openedChildRef.current = childId;
     shell.openRail("chats");
-    shell.openSub({
-      key: `related:${childId}`,
-      title: child ? sessionTitle(child, app.sessionDisplayNames) : t("Related conversation"),
-    });
-  }, [
-    app.activeRelatedSessionId,
-    app.sessionDisplayNames,
-    app.sessions,
-    shell.openRail,
-    shell.openSub,
-  ]);
+    shell.openSub({ key: `related:${childId}` });
+  }, [app.activeRelatedSessionId, shell.openRail, shell.openSub]);
 
   return (
     <aside className={`right${open ? " open" : ""}`}>
       <div className="rpanel">
         {active ? (
           <div className={`head${shell.rightSub ? " sub" : ""}`}>
+            {/* Collapse sits on the inner edge: on a narrow window the outer
+                edge is the first thing to go off-screen. */}
+            <button className="rp-close" onClick={shell.closeRight} title={t("Collapse")}>
+              <i className="ph ph-sidebar-simple" style={{ transform: "scaleX(-1)" }} />
+            </button>
             <button className="back" onClick={shell.closeSub} title={t("Back")}>
               <i className="ph ph-arrow-left" />
             </button>
             <span>{title}</span>
-            <button className="rp-close" onClick={shell.closeRight} title={t("Collapse")}>
-              <i className="ph ph-sidebar-simple" style={{ transform: "scaleX(-1)" }} />
-            </button>
           </div>
         ) : null}
         <div className="body">
@@ -179,8 +176,46 @@ function RelatedConversations() {
       )
     : undefined;
 
+  // One row of small buttons, then the conversation itself: switching between
+  // related conversations should not cost a round trip through a list.
+  const switcher =
+    children.length > 0 ? (
+      <div className="child-switch">
+        {children.map((child) => (
+          <button
+            key={child.sessionId}
+            className={child.sessionId === activeChildId ? "on" : ""}
+            title={sessionTitle(child, app.sessionDisplayNames)}
+            onClick={() => {
+              shell.openApp();
+              app.setActiveRelatedSessionId(
+                child.sessionId === activeChildId ? null : child.sessionId,
+              );
+              if (child.sessionId === activeChildId) shell.closeSub();
+            }}
+          >
+            <i className={`ph ${PURPOSE_ICON[child.forkedFrom?.purpose ?? "side"]}`} />
+            <span>{sessionTitle(child, app.sessionDisplayNames)}</span>
+            {child.status === "incomplete" ? <span className="dot" /> : null}
+          </button>
+        ))}
+      </div>
+    ) : null;
+
   if (activeChildId) {
-    return <RelatedConversation sessionId={activeChildId} />;
+    return (
+      <>
+        {switcher}
+        <ChildConversation
+          sessionId={activeChildId}
+          variant="panel"
+          onClose={() => {
+            app.setActiveRelatedSessionId(null);
+            shell.closeSub();
+          }}
+        />
+      </>
+    );
   }
 
   const parentRow = parent ? (
@@ -197,7 +232,7 @@ function RelatedConversations() {
         <i className="ph ph-arrow-u-up-left" />
         {sessionTitle(parent, app.sessionDisplayNames)}
       </div>
-      <div className="d">Where this branch started — go back anytime</div>
+      <div className="d">{t("Where this branch started — go back anytime")}</div>
     </button>
   ) : null;
 
@@ -214,6 +249,7 @@ function RelatedConversations() {
 
   return (
     <>
+      {switcher}
       {parentRow}
       {children.map((child) => (
         <button
@@ -221,19 +257,14 @@ function RelatedConversations() {
           className="sc-item"
           onClick={() => {
             shell.openApp();
-            if (child.forkedFrom?.purpose === "fork") {
-              app.setActiveRelatedSessionId(null);
-              app.openCatalogSession(child.sessionId);
-            } else {
-              app.setActiveRelatedSessionId(child.sessionId);
-            }
+            app.setActiveRelatedSessionId(child.sessionId);
           }}
         >
           <div className="t">
             <i className={`ph ${PURPOSE_ICON[child.forkedFrom?.purpose ?? "side"]}`} />
             {sessionTitle(child, app.sessionDisplayNames)}
             {child.status === "incomplete" ? (
-              <span className="badge-run">running</span>
+              <span className="badge-run">{t("running")}</span>
             ) : null}
           </div>
           <div className="d">
@@ -248,198 +279,5 @@ function RelatedConversations() {
         </button>
       ))}
     </>
-  );
-}
-
-function RelatedConversation({ sessionId }: { sessionId: string }) {
-  const app = useApp();
-  const shell = useShell();
-  const [messages, setMessages] = useState<TranscriptMessage[]>([]);
-  const [streaming, setStreaming] = useState("");
-  const [draft, setDraft] = useState("");
-  const [running, setRunning] = useState(false);
-  const [status, setStatus] = useState("Connecting…");
-  const [error, setError] = useState("");
-  const [approvals, setApprovals] = useState<ApprovalRequestPayload[]>([]);
-  const messagesRef = useRef<HTMLDivElement>(null);
-
-  const refreshTranscript = useCallback(async () => {
-    const detail = await fetchSessionDetail(sessionId);
-    setMessages(detail.transcript ?? []);
-  }, [sessionId]);
-
-  const onMessage = useCallback(
-    (message: ServerMessage) => {
-      switch (message.type) {
-        case "session_transcript":
-          setMessages(message.payload.messages);
-          setStreaming("");
-          setRunning(false);
-          setStatus("Ready");
-          break;
-        case "assistant_delta":
-          setStreaming((current) => current + message.payload.text);
-          break;
-        case "run_phase":
-          setStatus({
-            connecting: t("Connecting…"),
-            processing: t("Processing…"),
-            thinking: t("Thinking…"),
-            tool: t("Using a tool…"),
-            compacting: t("Compacting…"),
-            retrying: t("Retrying…"),
-            "awaiting-user": t("Waiting for approval…"),
-            idle: t("Ready"),
-            error: t("Error"),
-          }[message.payload.phase]);
-          break;
-        case "run_completed":
-          setRunning(false);
-          setStreaming("");
-          setStatus("Ready");
-          void refreshTranscript();
-          void app.refreshSessions();
-          break;
-        case "run_failed":
-          setRunning(false);
-          setStreaming("");
-          setError(message.payload.error);
-          setStatus("Error");
-          void refreshTranscript();
-          break;
-        case "approval_requested":
-          setApprovals((current) => [...current, message.payload]);
-          break;
-        case "approval_resolved":
-          setApprovals((current) =>
-            current.filter((item) => item.approvalId !== message.payload.approvalId)
-          );
-          break;
-        case "extension_notice":
-          if (message.payload.level === "info") {
-            setStatus(message.payload.message);
-            setError("");
-          } else {
-            setError(message.payload.message);
-          }
-          break;
-        case "error":
-          setRunning(false);
-          setError(message.payload.error);
-          setStatus("Error");
-          break;
-        default:
-          break;
-      }
-    },
-    [app, refreshTranscript]
-  );
-
-  const socket = useWebSocket({
-    enabled: true,
-    reconnectSessionId: sessionId,
-    onMessage,
-    onStatus: (next) => {
-      if (next === "open") setStatus(t("Opening…"));
-      else if (next === "connecting") setStatus(t("Connecting…"));
-      else if (next === "closed") setStatus(t("Reconnecting…"));
-      else setStatus(t("Connection error"));
-    },
-  });
-
-  useEffect(() => {
-    const el = messagesRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [messages, streaming]);
-
-  const send = () => {
-    const text = draft.trim();
-    if (!text) return;
-    // Sending while the worker runs steers the running turn (Pi behavior);
-    // the server confirms with an extension notice.
-    if (socket.send({ type: "prompt", payload: text })) {
-      setDraft("");
-      setError("");
-      if (!running) {
-        setRunning(true);
-        setStatus("Working…");
-      }
-    }
-  };
-
-  const respondApproval = (
-    approvalId: string,
-    response: { accept?: boolean; choice?: string | null; text?: string | null }
-  ) => {
-    socket.send({ type: "respond_approval", payload: { approvalId, ...response } });
-    setApprovals((current) => current.filter((item) => item.approvalId !== approvalId));
-  };
-
-  return (
-    <div className="related-live">
-      <div className="related-actions">
-        <span>{status}</span>
-        <button
-          title={t("Turn this side chat into a listed conversation of its own — everything said here is kept.")}
-          onClick={() => {
-            void app.promoteRelatedSession(sessionId).catch((reason) =>
-              setError(reason instanceof Error ? reason.message : String(reason))
-            );
-          }}
-        >
-          <i className="ph ph-arrow-square-out" /> {t("Promote to branch")}
-        </button>
-      </div>
-      <div className="child-msgs" ref={messagesRef}>
-        {messages.map((message, index) => (
-          <div className="cm" key={`${index}-${message.timestamp ?? "message"}`}>
-            <div className="w">{message.role === "user" ? "You" : message.role}</div>
-            <MarkdownBody text={message.text} />
-          </div>
-        ))}
-        {streaming ? (
-          <div className="cm"><div className="w">{t("Alt · typing…")}</div>{streaming}</div>
-        ) : null}
-      </div>
-      {approvals[0] ? (
-        <ApprovalDock
-          request={approvals[0]}
-          onRespond={respondApproval}
-          onSessionAllow={() => undefined}
-        />
-      ) : null}
-      {error ? <div className="related-error">{error}</div> : null}
-      <div className="mini-composer">
-        <input
-          value={draft}
-          placeholder={
-            running
-              ? t("Message the running agent — it sees it at its next step")
-              : t("Reply in this related conversation")
-          }
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) send();
-          }}
-        />
-        <button disabled={!draft.trim()} onClick={send} title={t("Send")}>
-          <i className="ph ph-arrow-up" />
-        </button>
-        {running ? (
-          <button onClick={() => socket.send({ type: "abort" })} title={t("Stop")}>
-            <i className="ph ph-stop" />
-          </button>
-        ) : null}
-      </div>
-      <button
-        className="related-back"
-        onClick={() => {
-          app.setActiveRelatedSessionId(null);
-          shell.closeSub();
-        }}
-      >
-        {t("Back to related conversations")}
-      </button>
-    </div>
   );
 }

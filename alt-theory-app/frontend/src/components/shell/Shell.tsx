@@ -4,6 +4,7 @@ import { useShell } from "@/context/ShellContext";
 import { t } from "@/i18n";
 import { LeftNav } from "@/components/shell/LeftNav";
 import { ConversationPanel } from "@/components/shell/ConversationPanel";
+import { ChildConversation } from "@/components/conversation/ChildConversation";
 import { InspectorPanel } from "@/components/shell/InspectorPanel";
 import { SettingsView } from "@/components/shell/SettingsView";
 import { ReviewPage } from "@/components/shell/ReviewPage";
@@ -156,6 +157,18 @@ export function Shell() {
             onKeyDown={(event) => resizeKey("left", event.key)}
           />
           <ConversationPanel />
+          {app.compareSessionId ? (
+            <>
+              <div className="pane-resizer compare-resizer" role="separator" aria-orientation="vertical" />
+              <div className="compare-pane">
+                <ChildConversation
+                  sessionId={app.compareSessionId}
+                  variant="compare"
+                  onClose={() => app.setCompareSessionId(null)}
+                />
+              </div>
+            </>
+          ) : null}
           <div
             className="pane-resizer"
             role="separator"

@@ -888,11 +888,14 @@ test("related Helper invokes its skill once before promotion", async () => {
       .completion;
     assert.equal(helperPrompt, "Where is that button?");
 
+    // "Add to conversation list": it earns a list place and KEEPS its purpose,
+    // so the list can still say where it came from (alpha.6).
     service.promoteRelatedSession(helper.sessionId);
     const promoted = readV4SessionHeader(
       service.getManifest(helper.sessionId).recordsDir,
     );
-    assert.equal(promoted?.forkedFrom?.purpose, "fork");
+    assert.equal(promoted?.forkedFrom?.purpose, "helper");
+    assert.equal(promoted?.forkedFrom?.listed, true);
   } finally {
     await service.disposeAll();
   }

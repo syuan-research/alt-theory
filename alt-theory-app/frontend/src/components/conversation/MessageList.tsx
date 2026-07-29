@@ -61,6 +61,16 @@ export function MessageList() {
   const renderedToolCallIds = new Set<string>();
   let userOrdinal = -1;
 
+  // No confirm gates: editing, retrying and branching all open a branch and
+  // leave this conversation intact. The composer's tip strip says so instead.
+  const actions: TranscriptActions = {
+    onEdit: (text, entryId) => app.startReviseMode(text, entryId ?? undefined),
+    onTrySame: (text, entryId) => {
+      app.branchRevision(text, entryId ?? undefined);
+    },
+    onBranch: (entryId) => app.branchFromEntry(entryId),
+  };
+
   return (
     <div className="msgs-wrap">
     <div className="msgs" ref={containerRef}
@@ -97,6 +107,8 @@ export function MessageList() {
             isLatestUser={index === latestUserIndex}
             renderedToolCallIds={renderedToolCallIds}
             userIndex={message.role === "user" ? userOrdinal : undefined}
+            isRunning={app.isRunning}
+            actions={actions}
           />
         );
       })}
@@ -273,88 +285,34 @@ function ThinkingBlock({
 }
 
 /**
- * One-time explanation before a history-rewriting action. Shown once per
- * action kind (localStorage flag), then the action runs directly.
+ * Per-message actions. Absent in a side / comparison pane, where the bubbles
+ * render identically but branching stays with the conversation in the center.
  */
-function confirmOnce(
-  app: ReturnType<typeof useApp>,
-  key: string,
-  message: string,
-  action: () => void,
-) {
-  let seen = false;
-  try {
-    seen = Boolean(localStorage.getItem(key));
-  } catch {
-    seen = true;
-  }
-  if (seen) return action();
-  app.requestConfirm({
-    message,
-    confirmLabel: t("Continue"),
-    onConfirm: () => {
-      try {
-        localStorage.setItem(key, "1");
-      } catch {
-        /* ignore */
-      }
-      action();
-    },
-  });
+export interface TranscriptActions {
+  onEdit: (text: string, entryId: string | null) => void;
+  onTrySame: (text: string, entryId: string | null) => void;
+  onBranch: (entryId: string) => void;
 }
 
-function TranscriptEntry({
+export function TranscriptEntry({
   message,
   developer,
   isLatestUser,
   renderedToolCallIds,
   userIndex,
+  isRunning,
+  actions,
 }: {
   message: TranscriptMessage;
   developer: boolean;
   isLatestUser: boolean;
   renderedToolCallIds: Set<string>;
   userIndex?: number;
+  isRunning: boolean;
+  actions?: TranscriptActions;
 }) {
-  const app = useApp();
   const shell = useShell();
   const { thinkingExpanded, showThinking } = shell;
-
-  const editMessage = (text: string, entryId: string | null) => {
-    const start = () => app.startReviseMode(text, entryId ?? undefined);
-    if (isLatestUser) return start();
-    const msg = app.sessionMode === "full"
-      ? t("Rewording a question often changes the answer more than you'd expect. Your edit opens a new branch from this point and Alt answers there — this conversation stays whole, so you can compare the two. Files already changed on disk are not reverted.")
-      : t("Rewording a question often changes the answer more than you'd expect. Your edit opens a new branch from this point and Alt answers there — this conversation stays whole, so you can compare the two.");
-    confirmOnce(
-      app,
-      "alt-theory-hint-edit",
-      msg,
-      start,
-    );
-  };
-
-  const branchMessage = (entryId: string) => {
-    confirmOnce(
-      app,
-      "alt-theory-hint-branch",
-      t("This starts a new conversation branching from this point. The current conversation stays unchanged."),
-      () => app.branchFromEntry(entryId),
-    );
-  };
-
-  const trySamePrompt = (text: string, entryId: string | null) => {
-    confirmOnce(
-      app,
-      "alt-theory-hint-try-same",
-      t("The same question can get a genuinely different answer — comparing a second take shows what holds steady and what was one framing among several. This opens a new branch; the answer here stays."),
-      () => {
-        if (app.branchRevision(text, entryId ?? undefined)) {
-          shell.openRail("chats");
-        }
-      },
-    );
-  };
 
   if (message.role === "user") {
     return (
@@ -362,9 +320,9 @@ function TranscriptEntry({
         text={message.text}
         entryId={message.entryId ?? null}
         isLatest={isLatestUser}
-        isRunning={app.isRunning}
-        onEdit={editMessage}
-        onTrySame={trySamePrompt}
+        isRunning={isRunning}
+        onEdit={actions?.onEdit}
+        onTrySame={actions?.onTrySame}
         userIndex={userIndex}
       />
     );
@@ -379,8 +337,8 @@ function TranscriptEntry({
         <AssistantBubble
           text={message.text}
           entryId={message.entryId ?? null}
-          isRunning={app.isRunning}
-          onBranch={branchMessage}
+          isRunning={isRunning}
+          onBranch={actions?.onBranch}
         />
       </>
     );
@@ -464,8 +422,8 @@ function UserBubble({
   entryId: string | null;
   isLatest: boolean;
   isRunning: boolean;
-  onEdit: (text: string, entryId: string | null) => void;
-  onTrySame: (text: string, entryId: string | null) => void;
+  onEdit?: (text: string, entryId: string | null) => void;
+  onTrySame?: (text: string, entryId: string | null) => void;
   userIndex?: number;
 }) {
   const trimmed = (text || "").trim();
@@ -487,7 +445,7 @@ function UserBubble({
         >
           <i className="ph ph-copy" aria-hidden="true" />
         </button>
-        {canEdit ? (
+        {canEdit && onEdit ? (
           <button
             title={t("Edit and ask again (opens a new branch; this conversation stays)")}
             aria-label={t("Edit message and ask again in a new branch")}
@@ -497,20 +455,22 @@ function UserBubble({
             <i className="ph ph-pencil-simple" aria-hidden="true" />
           </button>
         ) : null}
-        <button
-          title={t("Ask the same question again (opens a new branch; this answer stays)")}
-          aria-label={t("Ask the same question again in a new branch")}
-          disabled={isRunning}
-          onClick={() => onTrySame(trimmed, entryId)}
-        >
-          <i className="ph ph-arrow-counter-clockwise" aria-hidden="true" />
-        </button>
+        {onTrySame ? (
+          <button
+            title={t("Ask the same question again (opens a new branch; this answer stays)")}
+            aria-label={t("Ask the same question again in a new branch")}
+            disabled={isRunning}
+            onClick={() => onTrySame(trimmed, entryId)}
+          >
+            <i className="ph ph-arrow-counter-clockwise" aria-hidden="true" />
+          </button>
+        ) : null}
       </div>
     </div>
   );
 }
 
-function AssistantBubble({
+export function AssistantBubble({
   text,
   streaming,
   entryId,

@@ -2210,29 +2210,35 @@ export class SessionService implements AgentTeamBridge {
     return child;
   }
 
+  /**
+   * "Add to conversation list" (alpha.6): the child earns a place in the
+   * session list while KEEPING its purpose, so the list can say where it came
+   * from ("From worker", "From BTW"). Renaming a worker into a branch was the
+   * old behavior and it read as a lie.
+   */
   promoteRelatedSession(sessionId: string): SessionSnapshot | null {
     const dirs = getSessionDirs(this.config.dataDir, sessionId);
     if (!dirs) throw new Error(`Unknown session id: ${sessionId}`);
     const header = readV4SessionHeader(dirs.recordsDir);
     if (!header?.forkedFrom) {
-      throw new Error("Only a related child can be promoted");
+      throw new Error("Only a related child can be added to the list");
     }
     if (
       !(["side", "helper", "worker"] as ForkPurpose[]).includes(
         header.forkedFrom.purpose,
       )
     ) {
-      throw new Error("This related conversation is already a normal branch");
+      throw new Error("This related conversation is already in the list");
     }
     const previousPurpose = header.forkedFrom.purpose;
     writeSessionHeader(dirs.recordsDir, {
       ...header,
-      forkedFrom: { ...header.forkedFrom, purpose: "fork" },
+      forkedFrom: { ...header.forkedFrom, listed: true },
     });
     appendSessionEvent(dirs.recordsDir, {
       sessionId,
       type: "related_session_promoted",
-      details: { previousPurpose, purpose: "fork" },
+      details: { previousPurpose, purpose: previousPurpose, listed: true },
     });
     const live = this.sessions.get(sessionId);
     return live ? this.snapshot(live) : null;

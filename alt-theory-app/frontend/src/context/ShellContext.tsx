@@ -26,7 +26,9 @@ export type RailKey =
 export interface RightSub {
   /** Which drill-in view is open, e.g. a side chat, a file diff, a preview. */
   key: string;
-  title: string;
+  /** Header label. Omitted for related conversations — the panel says what
+   *  it is in its own words instead of repeating the child's name. */
+  title?: string;
 }
 
 export interface ShellContextValue {

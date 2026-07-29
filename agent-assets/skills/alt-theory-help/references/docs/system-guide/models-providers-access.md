@@ -37,6 +37,27 @@ works. Keys belong in Settings, not in chat messages; if you paste one
 into a conversation, the agent will help you move it to the right place
 and suggest not sharing keys in chat.
 
+### Where that configuration actually lives
+
+You never need these paths to use the app, but they are the truth behind
+the Settings screen, and they matter if you already run Pi:
+
+- The local app keeps its model configuration in **`~/.alt-theory/pi-agent/`**
+  (on Windows, `%USERPROFILE%\.alt-theory\pi-agent`): `models.json` for
+  providers and models, `auth.json` for keys and sign-in tokens.
+- It **does not read `~/.pi/agent/`**. Alt Theory does not inherit, share,
+  or sync a Pi installation's provider configuration — that separation is
+  deliberate ([Ownership](../advanced/shared-configuration-and-assets.md#ownership)).
+- The files are Pi-compatible in *format*, so moving configuration between
+  the two is a copy, not a conversion.
+
+**Coming from Pi with a provider already working there**: either add the
+provider again in Settings → Models (a minute, and the safest), or ask a
+Helper conversation to migrate it — it inspects your existing config with
+you and copies what is useful, visibly, without touching the Pi side.
+[Shared Configuration and Assets](../advanced/shared-configuration-and-assets.md)
+is the full story on what is shared and what is not.
+
 ## Costs and usage
 
 Model use is billed by your provider, under your account and their

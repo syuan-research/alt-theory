@@ -174,6 +174,12 @@ export type ServerMessage =
       type: "related_session_created";
       payload: { sessionId: string; purpose: "side" | "helper" };
     }
+  | {
+      /** An edit / same-prompt retry opened a branch. The connection stays on
+       *  the source; the client opens this one beside it for comparison. */
+      type: "branch_created";
+      payload: { sessionId: string; sourceSessionId: string };
+    }
   | { type: "assistant_delta"; payload: { text: string } }
   | { type: "thinking_delta"; payload: { text: string } }
   | {

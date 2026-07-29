@@ -221,6 +221,8 @@ export interface SessionSummary {
   forkedFrom: {
     sessionId: string;
     purpose: "fork" | "side" | "helper" | "ab-arm" | "worker";
+    /** Added to the conversation list by the user, purpose kept (alpha.6). */
+    listed?: boolean;
   } | null;
   /** Study designation (M7 §3); null = daily use. */
   studyTag: StudyTag | null;
@@ -591,6 +593,10 @@ export type ServerMessage =
   | {
       type: "related_session_created";
       payload: { sessionId: string; purpose: "side" | "helper" };
+    }
+  | {
+      type: "branch_created";
+      payload: { sessionId: string; sourceSessionId: string };
     }
   | { type: "assistant_delta"; payload: { text: string } }
   | { type: "thinking_delta"; payload: { text: string } }

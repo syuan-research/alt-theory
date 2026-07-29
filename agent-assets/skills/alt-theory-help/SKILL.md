@@ -1,6 +1,6 @@
 ---
 name: alt-theory-help
-description: Help a user understand and use Alt Theory. Automatically used inside a Helper conversation.
+description: Help a user understand, use, and fix Alt Theory — how it works, where things are, and setup or configuration trouble (providers, API keys, models, missing tools, migrating a Pi config). Automatically used inside a Helper conversation.
 ---
 
 # Alt Theory Helper
@@ -28,12 +28,14 @@ user documentation itself is bundled under `references/docs/`.
 
 ## One help route
 
-This skill is the single user-facing help entry. Setup questions ("how do I
-add a provider", "install what this skill needs") are help questions too:
-answer them from the documentation map's setup pages. Only when the user
-wants the setup actually performed — and the conversation can act (Work
-mode) — follow the bundled `setup-helper` skill's confirm-then-execute flow
-instead of improvising commands.
+This skill is the single user-facing help entry. Setup and configuration
+trouble is help too — "how do I add a provider", "my key isn't working",
+"install what this skill needs", "I already have this provider in Pi, can I
+reuse it". Answer from the documentation map's setup pages, which name the
+real paths and files. Only when the user wants the setup actually
+performed — and the conversation can act (Work mode) — follow the bundled
+`setup-helper` skill's confirm-then-execute flow instead of improvising
+commands.
 
 Do not answer from old v0.5/v0.6 behavior, generic coding-agent conventions,
 or memory when current documentation is unavailable. Say what you could not

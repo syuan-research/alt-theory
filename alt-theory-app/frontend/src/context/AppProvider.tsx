@@ -146,6 +146,9 @@ export interface AppContextValue {
   sessionAlerts: Record<string, SessionAlert>;
   activeRelatedSessionId: string | null;
   setActiveRelatedSessionId: (sessionId: string | null) => void;
+  /** Conversation shown beside the current one for comparison (50/50 split). */
+  compareSessionId: string | null;
+  setCompareSessionId: (sessionId: string | null) => void;
   promoteRelatedSession: (sessionId: string) => Promise<void>;
   renameSelectedSession: (sessionId?: string) => Promise<void>;
   deleteSelectedSession: (sessionId?: string) => void;
@@ -301,6 +304,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [activeRelatedSessionId, setActiveRelatedSessionId] = useState<string | null>(null);
+  const [compareSessionId, setCompareSessionId] = useState<string | null>(null);
   const [sessionSearch, setSessionSearch] = useState("");
   const [selectedCatalogSessionId, setSelectedCatalogSessionId] = useState<
     string | null
@@ -633,6 +637,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setSessionCreatedHere(false);
           setSessionWarnings([]);
           setIsRunning(false);
+          // A draft answers asset switches with this message and nothing else,
+          // so the "Switching role preset…" status has to be cleared here or it
+          // sits on the new-conversation screen forever.
+          pendingAssetSwitchRef.current = false;
+          setToolStatus("");
+          setConnStatus("idle");
+          setConnLabel(t("Ready"));
           setSelectors(applySnapshotSelectors(message.payload));
           setSessionMode(message.payload.mode ?? "pure");
           setModelOverride(message.payload.modelOverride ?? null);
@@ -784,6 +795,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setConnStatus("idle");
           setConnLabel("Ready");
           setToolStatus("");
+          void refreshSessions();
+          break;
+
+        case "branch_created":
+          // This conversation is untouched; the branch answers beside it.
+          setCompareSessionId(message.payload.sessionId);
+          setIsRunning(false);
+          setConnStatus("idle");
+          setConnLabel("Ready");
+          setToolStatus("");
+          setRunPhaseLabel("");
           void refreshSessions();
           break;
 
@@ -1084,6 +1106,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return;
       }
       setSelectedCatalogSessionId(targetSessionId);
+      // The comparison pane belongs to the conversation you were looking at.
+      setCompareSessionId(null);
       pendingOpenSessionIdRef.current = targetSessionId;
       if (
         sendMessage({
@@ -1349,15 +1373,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
         })
       )
         return false;
+      // This conversation keeps running its own life — the branch answers in
+      // the comparison pane, which opens on `branch_created`.
       setCanRetryFailed(false);
-      setIsRunning(true);
-      setConnStatus("running");
-      setConnLabel(t("Creating alternative…"));
-      setToolStatus("");
-      setRunPhaseLabel(t("Connecting…"));
+      setComposerNoticeTimed({
+        text: entryId
+          ? t("Same question, fresh answer. What repeats is probably solid; what changes was a choice.")
+          : t("Both takes are kept — read them side by side and decide which holds up."),
+      });
       return true;
     },
-    [isRunning, sendMessage, sessionId],
+    [isRunning, sendMessage, sessionId, setComposerNoticeTimed],
   );
 
   const reviseLatest = useCallback(
@@ -1631,6 +1657,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       sessionAlerts,
       activeRelatedSessionId,
       setActiveRelatedSessionId,
+      compareSessionId,
+      setCompareSessionId,
       promoteRelatedSession,
       renameSelectedSession,
       deleteSelectedSession,

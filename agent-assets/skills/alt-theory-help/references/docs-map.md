@@ -21,6 +21,14 @@ specific page.
   `docs/system-guide/models-providers-access.md` for what to answer; for
   actually performing installs or configuration in a Work conversation,
   follow the bundled `setup-helper` skill's flow.
+- **Config on disk, and anything involving Pi** (where models/keys are
+  stored, "can I reuse my Pi provider", migrating a provider): read BOTH
+  `docs/system-guide/models-providers-access.md` ("Where that
+  configuration actually lives") AND
+  `docs/advanced/shared-configuration-and-assets.md` ("The two
+  directories, and how to move between them" — the migration steps).
+  A provider question routed only to the Settings page will miss this;
+  the app uses `~/.alt-theory/pi-agent/` and never reads `~/.pi/agent/`.
 - **Something is wrong / limits / terms**: `docs/help/` —
   troubleshooting, FAQ, compatibility and limitations, glossary, releases.
 - **Power use and modification**: `docs/advanced/`.

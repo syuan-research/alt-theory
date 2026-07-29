@@ -111,6 +111,12 @@ export interface V4SessionHeader extends RecordEnvelope {
   forkedFrom?: {
     sessionId: string;
     purpose: ForkPurpose;
+    /**
+     * The user asked for this child to appear in the conversation list
+     * (alpha.6). The purpose is KEPT so the list can still say where it came
+     * from — a worker that earned a place in the list is not a branch.
+     */
+    listed?: boolean;
   };
   studyTag?: StudyTag;
   modelOverride?: SessionModelOverride;

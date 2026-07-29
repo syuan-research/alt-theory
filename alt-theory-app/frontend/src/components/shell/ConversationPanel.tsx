@@ -64,7 +64,6 @@ function EmptyState() {
             <div className="t">
               <i className="ph ph-book-open" />
               {t("Understand")}
-              <span className="def">{t("default")}</span>
             </div>
             <ul>
               <li>{t("Clarify questions, compare explanations, and develop ideas.")}</li>

@@ -79,6 +79,8 @@ export interface SessionSummary {
   forkedFrom: {
     sessionId: string;
     purpose: ForkPurpose;
+    /** Added to the conversation list by the user, purpose kept (alpha.6). */
+    listed?: boolean;
   } | null;
   /** Study designation (M7 §3); null = daily use. */
   studyTag: { studyId: string; batch?: string } | null;

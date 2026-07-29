@@ -2552,7 +2552,17 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               "fork",
             );
             if (closed) break;
-            attachToSession(forked.sessionId);
+            // The branch is a comparison, not a destination: this connection
+            // stays on the source conversation and the client opens the fork
+            // in its own pane (own socket). Re-attaching here is what used to
+            // swallow the typed text and glue the new answer under the old.
+            send({
+              type: "branch_created",
+              payload: {
+                sessionId: forked.sessionId,
+                sourceSessionId,
+              },
+            });
             const run = sessionService.reviseAt(
               forked.sessionId,
               targetEntryId,

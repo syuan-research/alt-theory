@@ -4,6 +4,7 @@ import { useShell } from "@/context/ShellContext";
 import { ApprovalDock } from "@/components/conversation/ApprovalDock";
 import { ModelChip } from "@/components/conversation/ModelChip";
 import { ContextRing } from "@/components/conversation/ContextRing";
+import { RunTips } from "@/components/conversation/RunTips";
 import { DEFAULT_KB_DOMAIN, KB_OFF_VALUE } from "@/lib/constants";
 import { pickFiles } from "@/lib/native";
 import { isWithheld } from "@/api/types";
@@ -57,8 +58,20 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
     return () => document.removeEventListener("click", onDoc);
   }, [menu]);
 
+  // Helper is a child of a real conversation; from a blank screen the same
+  // request starts one and invokes the help skill in it.
+  const openHelper = () => {
+    if (app.sessionId) app.forkCurrentSession("helper");
+    else app.invokeSkill("alt-theory-help");
+  };
+
   const slashCommands = useMemo<SlashCommand[]>(
     () => [
+      {
+        name: "helper",
+        description: t("Ask how Alt works, or get setup and configuration fixed"),
+        run: () => openHelper(),
+      },
       ...(variant === "live"
         ? [
             {
@@ -201,7 +214,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
         ) : null}
 
         {app.toolStatus ||
-        (app.isRunning && app.runPhaseLabel) ||
+        app.isRunning ||
         app.composerNotice ||
         app.runHint ||
         app.canRetryFailed ||
@@ -239,6 +252,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               </button>
             ) : null}
             {app.attachmentHint ? <span>{app.attachmentHint}</span> : null}
+            <RunTips running={app.isRunning} />
           </div>
         ) : null}
 
@@ -441,35 +455,30 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               <i className="ph ph-toolbox" />
               {!toolboxSeen ? <span className="badge-dot" /> : null}
             </button>
-            {canAttach ? (
-              <button
-                className="flat"
-                title={t("Attach a file to this message")}
-                aria-label={t("Attach a file")}
-                onClick={() => {
-                  void pickFiles(t("Full path of the file to attach:")).then(
-                    (paths) => paths.forEach((p) => app.stageWorkspacePath(p)),
-                  );
-                }}
-              >
-                <i className="ph ph-paperclip" />
-              </button>
-            ) : null}
             <div
               className={`menu${menu === "plus" ? " on" : ""}`}
               style={{ left: 0 }}
               onClick={(e) => e.stopPropagation()}
             >
-              {variant === "live" ? (
+              {/* Always here: help that comes and goes with the screen you are
+                  on is help you cannot rely on. In a conversation it opens a
+                  Helper child; on a blank screen it starts one. */}
+              <div className="mi" onClick={() => (openHelper(), setMenu(null))}>
+                <i className="ph ph-lifebuoy" />
+                {t("Ask how Alt works, or fix setup")}
+              </div>
+              {canAttach ? (
                 <div
                   className="mi"
-                  onClick={() => (
-                    app.forkCurrentSession("helper"),
-                    setMenu(null)
-                  )}
+                  onClick={() => {
+                    setMenu(null);
+                    void pickFiles(t("Full path of the file to attach:")).then(
+                      (paths) => paths.forEach((p) => app.stageWorkspacePath(p)),
+                    );
+                  }}
                 >
-                  <i className="ph ph-lifebuoy" />
-                  {t("Ask how Alt works")}
+                  <i className="ph ph-paperclip" />
+                  {t("Attach a file")}
                 </div>
               ) : null}
               <div

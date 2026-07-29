@@ -6,6 +6,7 @@ import { t } from "@/i18n";
 import {
   buildWorkspaceTree,
   folderLabel,
+  listedOriginLabel,
   sessionTitle,
 } from "@/lib/sessionList";
 import { Workbench } from "@/components/shell/Workbench";
@@ -16,6 +17,18 @@ import { hasNativeBridge, pickDirectory, revealPath } from "@/lib/native";
  * What a conversation row says about itself when you are not in it (alpha.3).
  * Live state wins over a leftover mark; both clear once you open it.
  */
+/** Hover text saying where a listed child came from (alpha.6). */
+function originTitle(session: SessionSummary): string | undefined {
+  const label = listedOriginLabel(session);
+  if (!label) return undefined;
+  return {
+    Branch: t("Branch of another conversation"),
+    "From worker": t("Came from a worker agent"),
+    "From Helper": t("Came from a Helper conversation"),
+    "From BTW": t("Came from a BTW side conversation"),
+  }[label];
+}
+
 function sessionRowState(
   runStatus: SessionSummary["runStatus"],
   alert: SessionAlert | undefined,
@@ -596,7 +609,19 @@ function SessionNode({
         }
       >
         {session.forkedFrom ? (
-          <i className="ph ph-git-branch s-fork" aria-hidden />
+          <i
+            className={`ph ${
+              session.forkedFrom.purpose === "worker"
+                ? "ph-robot"
+                : session.forkedFrom.purpose === "helper"
+                  ? "ph-lifebuoy"
+                  : session.forkedFrom.purpose === "side"
+                    ? "ph-arrows-split"
+                    : "ph-git-branch"
+            } s-fork`}
+            aria-hidden
+            title={originTitle(session)}
+          />
         ) : null}
         <span className="s-title">
           {sessionTitle(session, app.sessionDisplayNames)}

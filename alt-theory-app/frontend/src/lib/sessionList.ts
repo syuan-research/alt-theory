@@ -20,13 +20,26 @@ export function compareByRecency(a: SessionSummary, b: SessionSummary): number {
 }
 
 /**
- * Session-list membership (M7 §3): only roots and `forkedFrom.purpose:"fork"`
- * appear in the list. side / helper / ab-arm children are reachable from their
- * parent's side-chats panel, never listed here.
+ * Session-list membership: roots, branches, and children the user explicitly
+ * added to the list (alpha.6 — they keep their purpose so the row can say where
+ * they came from). Everything else is reachable from its parent's panel.
  */
 export function isListMember(session: SessionSummary): boolean {
-  const purpose = session.forkedFrom?.purpose;
-  return !purpose || purpose === "fork";
+  const fork = session.forkedFrom;
+  if (!fork) return true;
+  return fork.purpose === "fork" || fork.listed === true;
+}
+
+/** Row label for a listed child: where it came from, not a made-up identity. */
+export function listedOriginLabel(session: SessionSummary): string | null {
+  const fork = session.forkedFrom;
+  if (!fork) return null;
+  if (fork.purpose === "fork") return "Branch";
+  if (!fork.listed) return null;
+  if (fork.purpose === "worker") return "From worker";
+  if (fork.purpose === "helper") return "From Helper";
+  if (fork.purpose === "side") return "From BTW";
+  return null;
 }
 
 export function matchesQuery(
