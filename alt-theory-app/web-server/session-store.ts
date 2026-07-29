@@ -25,6 +25,7 @@ import {
 } from "./tool-detail.js";
 import type { SessionMetrics, TranscriptMessage } from "./websocket-protocol.js";
 import { parseAgentMailFragment } from "./agent-mail.js";
+import { t } from "./i18n.js";
 import {
   readV4SessionHeader,
   type ForkPurpose,
@@ -1223,11 +1224,42 @@ function extractThinkingText(part: { type?: string; text?: unknown; thinking?: u
 }
 
 /** "<label> · <event>: <body>" display line for an agent-team fragment. */
+/**
+ * Display prefix is translated; the BODY stays verbatim — it is the same
+ * text the model saw in context, and fixed backend templates there are
+ * deliberately English (model-facing). Walkthrough decides if more is needed.
+ */
+function agentMailEventLabel(event: string): string {
+  switch (event) {
+    case "spawned":
+      return t("spawned");
+    case "completed":
+      return t("completed");
+    case "failed":
+      return t("failed");
+    case "interrupted":
+      return t("interrupted");
+    case "input-requested":
+      return t("needs input");
+    default:
+      return event;
+  }
+}
+
 function agentMailDisplayText(raw: string): string {
   const mail = parseAgentMailFragment(raw);
   if (!mail) return raw;
-  const eventLabel = mail.event && mail.event !== "update" ? ` · ${mail.event}` : "";
-  return `${mail.fromLabel}${eventLabel}: ${mail.body}`;
+  const eventLabel =
+    mail.event && mail.event !== "update"
+      ? ` · ${agentMailEventLabel(mail.event)}`
+      : "";
+  const from =
+    mail.fromLabel === "lead"
+      ? t("lead")
+      : mail.fromLabel === "user"
+        ? t("user")
+        : mail.fromLabel;
+  return `${from}${eventLabel}: ${mail.body}`;
 }
 
 function normalizeRole(role: string | undefined): TranscriptMessage["role"] {

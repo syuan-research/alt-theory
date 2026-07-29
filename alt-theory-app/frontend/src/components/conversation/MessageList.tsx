@@ -6,6 +6,7 @@ import { MarkdownBody } from "@/components/conversation/MarkdownBody";
 import { fileName, toolLabel } from "@/lib/tools";
 import { cn } from "@/lib/cn";
 import { pickDirectory } from "@/lib/native";
+import { t } from "@/i18n";
 
 export function MessageList() {
   const app = useApp();
@@ -71,7 +72,7 @@ export function MessageList() {
       {app.sessionId && !app.selectors.soulSlug ? (
         <SysLine>
           <i className="ph ph-warning" />
-          Soul not loaded — this conversation runs without Alt&apos;s persona.
+          {t("Soul not loaded — this conversation runs without Alt's persona.")}
         </SysLine>
       ) : null}
       {app.sessionWarnings.map((warning) =>
@@ -198,7 +199,7 @@ function TurnChangesCard() {
     <div className="turn-changes">
       <span className="tc-head">
         <i className="ph ph-pencil-simple-line" aria-hidden="true" />
-        {files.length === 1 ? "1 file changed" : `${files.length} files changed`}
+        {files.length === 1 ? t("1 file changed") : t("{count} files changed", { count: files.length })}
       </span>
       {files.map((file) => (
         <button
@@ -264,7 +265,7 @@ function ThinkingBlock({
       onToggle={(event) => setOpen(event.currentTarget.open)}
     >
       <summary>
-        <i className="ph ph-brain" aria-hidden="true" /> Thinking
+        <i className="ph ph-brain" aria-hidden="true" /> {t("Thinking")}
       </summary>
       <MarkdownBody className="think-body" text={text} renderMermaid={false} />
     </details>
@@ -290,7 +291,7 @@ function confirmOnce(
   if (seen) return action();
   app.requestConfirm({
     message,
-    confirmLabel: "Continue",
+    confirmLabel: t("Continue"),
     onConfirm: () => {
       try {
         localStorage.setItem(key, "1");
@@ -322,14 +323,13 @@ function TranscriptEntry({
   const editMessage = (text: string, entryId: string | null) => {
     const start = () => app.startReviseMode(text, entryId ?? undefined);
     if (isLatestUser) return start();
+    const msg = app.sessionMode === "full"
+      ? t("Rewording a question often changes the answer more than you'd expect. Your edit opens a new branch from this point and Alt answers there — this conversation stays whole, so you can compare the two. Files already changed on disk are not reverted.")
+      : t("Rewording a question often changes the answer more than you'd expect. Your edit opens a new branch from this point and Alt answers there — this conversation stays whole, so you can compare the two.");
     confirmOnce(
       app,
       "alt-theory-hint-edit",
-      `Rewording a question often changes the answer more than you'd expect. Your edit opens a new branch from this point and Alt answers there — this conversation stays whole, so you can compare the two.${
-        app.sessionMode === "full"
-          ? " Files already changed on disk are not reverted."
-          : ""
-      }`,
+      msg,
       start,
     );
   };
@@ -338,7 +338,7 @@ function TranscriptEntry({
     confirmOnce(
       app,
       "alt-theory-hint-branch",
-      "This starts a new conversation branching from this point. The current conversation stays unchanged.",
+      t("This starts a new conversation branching from this point. The current conversation stays unchanged."),
       () => app.branchFromEntry(entryId),
     );
   };
@@ -347,7 +347,7 @@ function TranscriptEntry({
     confirmOnce(
       app,
       "alt-theory-hint-try-same",
-      "The same question can get a genuinely different answer — comparing a second take shows what holds steady and what was one framing among several. This opens a new branch; the answer here stays.",
+      t("The same question can get a genuinely different answer — comparing a second take shows what holds steady and what was one framing among several. This opens a new branch; the answer here stays."),
       () => {
         if (app.branchRevision(text, entryId ?? undefined)) {
           shell.openRail("chats");
@@ -408,8 +408,7 @@ function TranscriptEntry({
       return (
         <details className="think-block">
           <summary>
-            <i className="ph ph-file-text" aria-hidden="true" /> Imported{" "}
-            {message.sourceRole || "instruction"} context
+            <i className="ph ph-file-text" aria-hidden="true" /> {t("Imported {role} context", { role: message.sourceRole || "instruction" })}
           </summary>
           <div className="think-body">{message.text}</div>
         </details>
@@ -419,7 +418,7 @@ function TranscriptEntry({
       return (
         <details className="compact-summary">
           <summary>
-            <span>Conversation compressed here</span>
+            <span>{t("Conversation compressed here")}</span>
           </summary>
           <div className="compact-summary-body">{message.text}</div>
         </details>
@@ -476,22 +475,22 @@ function UserBubble({
   const canEdit = isLatest || Boolean(entryId);
   return (
     <div className="msg user" data-uidx={userIndex}>
-      <div className="who">You</div>
+      <div className="who">{t("You")}</div>
       <div className="bubble">
         <MarkdownBody text={trimmed} />
       </div>
       <div className="msg-actions">
         <button
-          title="Copy"
-          aria-label="Copy message"
+          title={t("Copy")}
+          aria-label={t("Copy message")}
           onClick={() => void navigator.clipboard?.writeText(trimmed)}
         >
           <i className="ph ph-copy" aria-hidden="true" />
         </button>
         {canEdit ? (
           <button
-            title="Edit and ask again (opens a new branch; this conversation stays)"
-            aria-label="Edit message and ask again in a new branch"
+            title={t("Edit and ask again (opens a new branch; this conversation stays)")}
+            aria-label={t("Edit message and ask again in a new branch")}
             disabled={isRunning}
             onClick={() => onEdit(trimmed, entryId)}
           >
@@ -499,8 +498,8 @@ function UserBubble({
           </button>
         ) : null}
         <button
-          title="Ask the same question again (opens a new branch; this answer stays)"
-          aria-label="Ask the same question again in a new branch"
+          title={t("Ask the same question again (opens a new branch; this answer stays)")}
+          aria-label={t("Ask the same question again in a new branch")}
           disabled={isRunning}
           onClick={() => onTrySame(trimmed, entryId)}
         >
@@ -528,22 +527,22 @@ function AssistantBubble({
   if (!trimmed) return null;
   return (
     <div className="msg assistant">
-      <div className="who">Alt{streaming ? " · typing…" : ""}</div>
+      <div className="who">{streaming ? t("Alt · typing…") : t("Alt")}</div>
       <div className="bubble">
         <MarkdownBody text={trimmed} renderMermaid={!streaming} />
       </div>
       {onBranch && entryId ? (
         <div className="msg-actions">
           <button
-            title="Copy"
-            aria-label="Copy message"
+            title={t("Copy")}
+            aria-label={t("Copy message")}
             onClick={() => void navigator.clipboard?.writeText(trimmed)}
           >
             <i className="ph ph-copy" aria-hidden="true" />
           </button>
           <button
-            title="Branch from here"
-            aria-label="Branch a new conversation from here"
+            title={t("Branch from here")}
+            aria-label={t("Branch a new conversation from here")}
             disabled={isRunning}
             onClick={() => onBranch(entryId)}
           >
@@ -567,7 +566,7 @@ function StaleWorkspaceNotice({ warning }: { warning: string }) {
   const choose = () => {
     if (!app.sessionId) return;
     void pickDirectory(
-      "Full path of the working folder for this conversation:",
+      t("Full path of the working folder for this conversation:"),
     ).then((path) => {
       if (!path || !app.sessionId) return;
       void app.repointSession(app.sessionId, path).catch((error) => {
@@ -581,10 +580,10 @@ function StaleWorkspaceNotice({ warning }: { warning: string }) {
       <i className="ph ph-warning" />
       <span style={{ flex: 1 }}>{warning}</span>
       <button className="link-btn" onClick={choose}>
-        Choose folder…
+        {t("Choose folder…")}
       </button>
       <button className="link-btn" onClick={() => setDismissed(true)}>
-        Continue without
+        {t("Continue without")}
       </button>
     </SysLine>
   );

@@ -21,10 +21,11 @@ import { FieldFrame, TextInput } from "@/components/ui/Field";
 import { BodyText, HintText, PageTitle } from "@/components/ui/Typography";
 import { cn } from "@/lib/cn";
 import { applyTheme, isDarkStored, setDarkStored } from "@/lib/theme";
+import { t } from "@/i18n";
 
 const PROVIDER_PRESETS = [
   {
-    label: "Xiaomi MiMo Token Plan (CN)",
+    label: t("Xiaomi MiMo Token Plan (CN)"),
     name: "xiaomi-mimo-token-plan-cn",
     api: "openai-completions" as ApiType,
     baseUrl: "https://token-plan-cn.xiaomimimo.com/v1",
@@ -47,12 +48,12 @@ const PROVIDER_PRESETS = [
       },
     ],
     description:
-      "Xiaomi MiMo Token Plan China endpoint. Use this only for keys issued for that product.",
+      t("Xiaomi MiMo Token Plan China endpoint. Use this only for keys issued for that product."),
     recommended: true,
     manualModels: true,
   },
   {
-    label: "Xiaomi MiMo API (CN)",
+    label: t("Xiaomi MiMo API (CN)"),
     name: "xiaomi-mimo-api-cn",
     api: "openai-completions" as ApiType,
     baseUrl: "",
@@ -75,12 +76,12 @@ const PROVIDER_PRESETS = [
       },
     ],
     description:
-      "Normal Xiaomi MiMo API, China region. Paste the Base URL from the MiMo console/docs; do not reuse the Token Plan endpoint.",
+      t("Normal Xiaomi MiMo API, China region. Paste the Base URL from the MiMo console/docs; do not reuse the Token Plan endpoint."),
     recommended: true,
     manualModels: true,
   },
   {
-    label: "Xiaomi MiMo API (Global)",
+    label: t("Xiaomi MiMo API (Global)"),
     name: "xiaomi-mimo-api-global",
     api: "openai-completions" as ApiType,
     baseUrl: "",
@@ -103,12 +104,12 @@ const PROVIDER_PRESETS = [
       },
     ],
     description:
-      "Normal Xiaomi MiMo API, global region. Paste the regional Base URL from the MiMo console/docs.",
+      t("Normal Xiaomi MiMo API, global region. Paste the regional Base URL from the MiMo console/docs."),
     recommended: true,
     manualModels: true,
   },
   {
-    label: "OpenCode Go (OpenAI-compatible)",
+    label: t("OpenCode Go (OpenAI-compatible)"),
     name: "opencode-go-openai",
     api: "openai-completions" as ApiType,
     baseUrl: "https://opencode.ai/zen/go/v1",
@@ -134,12 +135,12 @@ const PROVIDER_PRESETS = [
       { id: "glm-5.2" },
     ],
     description:
-      "OpenCode Go models served through /v1/chat/completions, including MiMo, DeepSeek, Kimi, and GLM.",
+      t("OpenCode Go models served through /v1/chat/completions, including MiMo, DeepSeek, Kimi, and GLM."),
     recommended: true,
     manualModels: true,
   },
   {
-    label: "OpenCode Go (Anthropic-compatible)",
+    label: t("OpenCode Go (Anthropic-compatible)"),
     name: "opencode-go-anthropic",
     api: "anthropic-messages" as ApiType,
     baseUrl: "https://opencode.ai/zen/go",
@@ -157,12 +158,12 @@ const PROVIDER_PRESETS = [
       { id: "minimax-m3" },
     ],
     description:
-      "OpenCode Go models served through /v1/messages, including Qwen 3.7 and MiniMax.",
+      t("OpenCode Go models served through /v1/messages, including Qwen 3.7 and MiniMax."),
     recommended: true,
     manualModels: true,
   },
   {
-    label: "Qwen 3.7 Max (Bailian)",
+    label: t("Qwen 3.7 Max (Bailian)"),
     name: "qwen-bailian-beijing",
     api: "openai-responses" as ApiType,
     baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
@@ -173,39 +174,39 @@ const PROVIDER_PRESETS = [
         compat: { thinkingFormat: "qwen" },
       },
     ],
-    description: "Alibaba/Bailian path for the current Qwen 3.7 label.",
+    description: t("Alibaba/Bailian path for the current Qwen 3.7 label."),
     keyUrl: "https://bailian.console.aliyun.com/?apiKey=1",
     recommended: true,
-    keyHint: "Paste a DashScope API key, or choose env var name and enter DASHSCOPE_API_KEY.",
+    keyHint: t("Paste a DashScope API key, or choose env var name and enter DASHSCOPE_API_KEY."),
     manualModels: true,
   },
   {
-    label: "OpenRouter",
+    label: t("OpenRouter"),
     name: "openrouter",
     api: "openai-completions" as ApiType,
     baseUrl: "https://openrouter.ai/api/v1",
     models: [{ id: "anthropic/claude-sonnet-4" }],
-    description: "One OpenRouter key for many upstream models.",
+    description: t("One OpenRouter key for many upstream models."),
     keyUrl: "https://openrouter.ai/keys",
     recommended: false,
   },
   {
-    label: "OpenAI API",
+    label: t("OpenAI API"),
     name: "openai",
     api: "openai-responses" as ApiType,
     baseUrl: "https://api.openai.com/v1",
     models: [{ id: "gpt-4.1" }, { id: "gpt-4.1-mini" }],
-    description: "Generic OpenAI account. Not a Xiaomi/MiMo entry.",
+    description: t("Generic OpenAI account. Not a Xiaomi/MiMo entry."),
     keyUrl: "https://platform.openai.com/api-keys",
     recommended: false,
   },
   {
-    label: "Anthropic API",
+    label: t("Anthropic API"),
     name: "anthropic",
     api: "anthropic-messages" as ApiType,
     baseUrl: "https://api.anthropic.com",
     models: [{ id: "claude-sonnet-4-20250514" }],
-    description: "Generic Anthropic account. Not a Xiaomi/MiMo entry.",
+    description: t("Generic Anthropic account. Not a Xiaomi/MiMo entry."),
     keyUrl: "https://console.anthropic.com/settings/keys",
     recommended: false,
   },
@@ -221,7 +222,7 @@ const MANUAL_MODEL_PROVIDER_NAMES = new Set(
 
 function manualModelListHint(providerName: string): string | null {
   if (!MANUAL_MODEL_PROVIDER_NAMES.has(providerName)) return null;
-  return "This preset already includes the expected model ids; the provider may not expose a /models endpoint. Use Test connection to check your key works.";
+  return t("This preset already includes the expected model ids; the provider may not expose a /models endpoint. Use Test connection to check your key works.");
 }
 
 function parseOptionValue(raw: string): unknown {
@@ -387,7 +388,7 @@ export function ModelConfigPage({
   const [modelRows, setModelRows] = useState<ModelRow[]>([emptyModelRow()]);
   const [optionRows, setOptionRows] = useState<OptionRow[]>([]);
   const [keyHint, setKeyHint] = useState(
-    "Enter an API key before fetching models or saving."
+    t("Enter an API key before fetching models or saving.")
   );
   const [keyUrl, setKeyUrl] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
@@ -456,7 +457,7 @@ export function ModelConfigPage({
   }, [editorDirty]);
 
   const closeEditor = () => {
-    if (editorDirty && !window.confirm("Discard unsaved provider changes?")) return;
+    if (editorDirty && !window.confirm(t("Discard unsaved provider changes?"))) return;
     if (editingName) {
       openEditor(editingName);
     } else {
@@ -478,22 +479,22 @@ export function ModelConfigPage({
     const nextOptionRows = Object.entries(provider?.options || {}).map(
       ([key, value]) => ({ key, value: stringifyOptionValue(value) }),
     );
-    let nextKeyHint = "Enter an API key before fetching models or saving.";
+    let nextKeyHint = t("Enter an API key before fetching models or saving.");
     if (provider?.keyState === "stored") {
       nextKeyHint =
-        "A key is already saved for this provider. Leave blank to keep it, or paste a new key to replace it.";
+        t("A key is already saved for this provider. Leave blank to keep it, or paste a new key to replace it.");
     } else if (provider?.keyState === "oauth") {
       nextKeyHint =
-        "Connected with OAuth. Leave the API key blank to keep using this account.";
+        t("Connected with OAuth. Leave the API key blank to keep using this account.");
     } else if (provider?.keyState === "env-set") {
       nextKeyHint =
-        "An environment-variable key is configured and available in this process. Leave blank to keep it.";
+        t("An environment-variable key is configured and available in this process. Leave blank to keep it.");
     } else if (provider?.keyState === "env-missing") {
       nextKeyHint =
-        "An environment-variable key is configured but not available in this process. Enter a key or env var name before fetching models.";
+        t("An environment-variable key is configured but not available in this process. Enter a key or env var name before fetching models.");
     } else if (provider?.models.length) {
       nextKeyHint =
-        "No key is saved for this provider yet. Enter a key (or env var name) before saving.";
+        t("No key is saved for this provider yet. Enter a key (or env var name) before saving.");
     }
     editorBaseline.current = editorFingerprint({
       name: nextName,
@@ -541,7 +542,7 @@ export function ModelConfigPage({
     setKeyStorage("literal");
     setKeyHint(
       preset.keyHint ||
-        "Paste the provider API key."
+        t("Paste the provider API key.")
     );
     setKeyUrl("keyUrl" in preset ? (preset.keyUrl as string) : null);
   };
@@ -570,11 +571,11 @@ export function ModelConfigPage({
     }
 
     if (!trimmedName) {
-      showToast("Provider name is required", true);
+      showToast(t("Provider name is required"), true);
       return;
     }
     if (models.length === 0) {
-      showToast("At least one model is required", true);
+      showToast(t("At least one model is required"), true);
       return;
     }
 
@@ -594,10 +595,12 @@ export function ModelConfigPage({
       }
       showToast(
         shouldSetActive
-          ? `${editingName ? "Saved" : "Added"} ${trimmedName} and set active`
+          ? editingName
+            ? t("Saved {name} and set active", { name: trimmedName })
+            : t("Added {name} and set active", { name: trimmedName })
           : editingName
-            ? `Saved ${trimmedName}`
-            : `Added ${trimmedName}`
+            ? t("Saved {name}", { name: trimmedName })
+            : t("Added {name}", { name: trimmedName })
       );
       const savedName = trimmedName;
       const savedBaseUrl = baseUrl.trim();
@@ -618,7 +621,7 @@ export function ModelConfigPage({
       setAddingProvider(false);
       await refresh();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "Save failed", true);
+      showToast(err instanceof Error ? err.message : t("Save failed"), true);
     }
   };
 
@@ -631,7 +634,7 @@ export function ModelConfigPage({
     if (!trimmedName || !trimmedBaseUrl || !firstModelId) {
       setTestResult({
         ok: false,
-        message: "Provider name, Base URL, and at least one model id are needed first.",
+        message: t("Provider name, Base URL, and at least one model id are needed first."),
       });
       return;
     }
@@ -647,12 +650,12 @@ export function ModelConfigPage({
       });
       setTestResult({
         ok: true,
-        message: `Connected — ${result.modelId} answered.`,
+        message: t("Connected — {modelId} answered.", { modelId: result.modelId }),
       });
     } catch (err) {
       setTestResult({
         ok: false,
-        message: err instanceof Error ? err.message : "Connection test failed",
+        message: err instanceof Error ? err.message : t("Connection test failed"),
       });
     } finally {
       setTesting(false);
@@ -668,11 +671,11 @@ export function ModelConfigPage({
       return;
     }
     if (!trimmedName) {
-      showToast("Provider name is required before fetching models.", true);
+      showToast(t("Provider name is required before fetching models."), true);
       return;
     }
     if (!trimmedBaseUrl) {
-      showToast("Base URL is required before fetching models.", true);
+      showToast(t("Base URL is required before fetching models."), true);
       return;
     }
     try {
@@ -686,38 +689,38 @@ export function ModelConfigPage({
       setModelRows(
         (data.models || []).map((model) => configModelToRow(model))
       );
-      showToast(`Fetched ${data.models?.length || 0} models`);
+      showToast(t("Fetched {count} models", { count: String(data.models?.length || 0) }));
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "Fetch failed", true);
+      showToast(err instanceof Error ? err.message : t("Fetch failed"), true);
     }
   };
 
   const statusSummary = (
     <>
       {loading ? (
-        <HintText>Loading…</HintText>
+        <HintText>{t("Loading…")}</HintText>
       ) : error ? (
         <HintText className="text-warning">{error}</HintText>
       ) : status ? (
         <BodyText className="text-[0.8125rem]">
           {status.activeUsable ? (
-            <span className="text-success">Ready.</span>
+            <span className="text-success">{t("Ready.")}</span>
           ) : status.anyUsable ? (
             <span className="text-warning">
-              Choose an active model to use the app.
+              {t("Choose an active model to use the app.")}
             </span>
           ) : (
-            <span className="text-warning">No provider has a key yet.</span>
+            <span className="text-warning">{t("No provider has a key yet.")}</span>
           )}{" "}
           {status.activeProvider && status.activeModel ? (
             <>
-              Active:{" "}
+              {t("Active")}{" "}
               <strong>
                 {status.activeProvider} / {status.activeModel}
               </strong>
             </>
           ) : (
-            " No active model selected."
+            t("No active model selected.")
           )}
         </BodyText>
       ) : null}
@@ -741,14 +744,14 @@ export function ModelConfigPage({
             }}
           >
             <i className={`ph ${dark ? "ph-sun" : "ph-moon"} mr-1`} />
-            {dark ? "Light" : "Dark"}
+            {dark ? t("Light") : t("Dark")}
           </button>
           {status && status.activeUsable ? (
             <Link
               to="/"
               className="text-[0.8125rem] text-text-secondary hover:text-ink"
             >
-              ← Back to app
+              {t("← Back to app")}
             </Link>
           ) : null}
         </div>
@@ -757,24 +760,24 @@ export function ModelConfigPage({
         {!embedded ? (
         <>
         <PageTitle>
-          {firstRun ? "Welcome — connect Alt to an AI model" : "Model & API Key Setup"}
+          {firstRun ? t("Welcome — connect Alt to an AI model") : t("Model & API Key Setup")}
         </PageTitle>
         {!firstRun ? (
           <BodyText className="mt-1 text-text-secondary">
-            Connect providers and choose the model Alt Theory uses.
+            {t("Connect providers and choose the model Alt Theory uses.")}
           </BodyText>
         ) : null}
 
         {firstRun ? (
           <div className="mt-5 rounded-lg border border-hairline bg-surface p-5">
             <p className="text-[0.9375rem] font-semibold text-ink">
-              Connect an AI model to begin
+              {t("Connect an AI model to begin")}
             </p>
             <div className="mt-4">
               {[
-                "Choose a provider below",
-                "Sign in or add an API key",
-                "Choose a model and start",
+                t("Choose a provider below"),
+                t("Sign in or add an API key"),
+                t("Choose a model and start"),
               ].map((step, i, all) => (
                 <div key={i}>
                   <div className="flex items-center gap-3">
@@ -790,7 +793,7 @@ export function ModelConfigPage({
               ))}
             </div>
             <p className="mt-4 text-[0.75rem] text-text-muted">
-              Takes about a minute.
+              {t("Takes about a minute.")}
             </p>
           </div>
         ) : null}
@@ -807,12 +810,12 @@ export function ModelConfigPage({
         )}
 
         <div className="model-config-layout">
-          <aside className="provider-master" aria-label="Configured providers">
+          <aside className="provider-master" aria-label={t("Configured providers")}>
             <button
               type="button"
               className="add-provider-primary"
               onClick={() => {
-                if (editorDirty && !window.confirm("Discard unsaved provider changes?")) {
+                if (editorDirty && !window.confirm(t("Discard unsaved provider changes?"))) {
                   return;
                 }
                 setEditorOpen(false);
@@ -821,7 +824,7 @@ export function ModelConfigPage({
               }}
             >
               <i className="ph ph-plus" aria-hidden />
-              Add provider
+              {t("Add provider")}
             </button>
             <div className="provider-master-list">
               {[...providers]
@@ -853,10 +856,10 @@ export function ModelConfigPage({
                   >
                     <span className="provider-master-name">{provider.name}</span>
                     {provider.keyState === "oauth" ? (
-                      <span className="provider-oauth-mark">OAuth</span>
+                      <span className="provider-oauth-mark">{t("OAuth")}</span>
                     ) : null}
                     {provider.active ? (
-                      <i className="ph ph-check provider-active-check" title="Active" />
+                      <i className="ph ph-check provider-active-check" title={t("Active")} />
                     ) : null}
                   </button>
                 ))}
@@ -865,10 +868,10 @@ export function ModelConfigPage({
           <section className="provider-detail">
             {addingProvider ? (
               <div className="provider-add-panel">
-                <h3>Add provider</h3>
+                <h3>{t("Add provider")}</h3>
                 {addProviderTop ? (
                   <>
-                    <p className="provider-section-label">OAuth</p>
+                    <p className="provider-section-label">{t("OAuth")}</p>
                     {addProviderTop}
                     <div className="provider-add-divider" />
                   </>
@@ -898,7 +901,7 @@ export function ModelConfigPage({
                   onClick={() => openEditor()}
                 >
                   <i className="ph ph-sliders-horizontal" aria-hidden />
-                  Configure another provider
+                  {t("Configure another provider")}
                 </button>
               </div>
             ) : null}
@@ -907,7 +910,7 @@ export function ModelConfigPage({
           <div className="provider-editor">
             <div className="provider-editor-head">
               <h3 className="text-[0.9375rem] font-semibold text-ink">
-                {editingName ? editingName : "New provider"}
+                {editingName ? editingName : t("New provider")}
               </h3>
               {editingName ? (
                 <button
@@ -916,34 +919,34 @@ export function ModelConfigPage({
                   onClick={async () => {
                     if (
                       !window.confirm(
-                        `Delete provider "${editingName}" and its saved key?`,
+                        t('Delete provider "{name}" and its saved key?', { name: editingName }),
                       )
                     ) {
                       return;
                     }
                     try {
                       await deleteConfigProvider(editingName);
-                      showToast(`Deleted ${editingName}`);
+                      showToast(t("Deleted {name}", { name: editingName }));
                       initialized.current = false;
                       setEditorOpen(false);
                       setEditingName(null);
                       await refresh();
                     } catch (err) {
                       showToast(
-                        err instanceof Error ? err.message : "Delete failed",
+                        err instanceof Error ? err.message : t("Delete failed"),
                         true,
                       );
                     }
                   }}
                 >
-                  Delete
+                  {t("Delete")}
                 </button>
               ) : null}
             </div>
 
             {editingName ? (
               <label className="provider-active-model">
-                <span>Active model</span>
+                <span>{t("Active model")}</span>
                 <select
                   value={
                     status?.activeProvider === editingName
@@ -954,18 +957,18 @@ export function ModelConfigPage({
                     if (!event.target.value) return;
                     try {
                       await setActiveModel(editingName, event.target.value);
-                      showToast(`Using ${event.target.value}`);
+                      showToast(t("Using {model}", { model: event.target.value }));
                       await refresh();
                     } catch (err) {
                       showToast(
-                        err instanceof Error ? err.message : "Could not change model",
+                        err instanceof Error ? err.message : t("Could not change model"),
                         true,
                       );
                     }
                   }}
                 >
                   <option value="" disabled>
-                    Choose a model
+                    {t("Choose a model")}
                   </option>
                   {modelRows
                     .filter((row) => row.id.trim())
@@ -980,8 +983,8 @@ export function ModelConfigPage({
 
             <div className="mt-4 space-y-4">
               <FieldFrame
-                label="Provider name"
-                hint="A short unique name. Use letters, numbers, dash, dot, or underscore."
+                label={t("Provider name")}
+                hint={t("A short unique name. Use letters, numbers, dash, dot, or underscore.")}
               >
                 <TextInput
                   value={name}
@@ -992,8 +995,8 @@ export function ModelConfigPage({
               </FieldFrame>
 
               <FieldFrame
-                label="Base URL"
-                hint="Required for custom / local / proxy providers."
+                label={t("Base URL")}
+                hint={t("Required for custom / local / proxy providers.")}
               >
                 <TextInput
                   value={baseUrl}
@@ -1002,7 +1005,7 @@ export function ModelConfigPage({
                 />
               </FieldFrame>
 
-              <FieldFrame label="API type">
+              <FieldFrame label={t("API type")}>
                 <select
                   className="w-full rounded-md border border-hairline bg-surface px-2.5 py-2 text-[0.9375rem]"
                   value={apiType}
@@ -1011,17 +1014,17 @@ export function ModelConfigPage({
                   }
                 >
                   <option value="openai-completions">
-                    openai-completions (most compatible)
+                    {t("openai-completions (most compatible)")}
                   </option>
-                  <option value="openai-responses">openai-responses</option>
-                  <option value="anthropic-messages">anthropic-messages</option>
+                  <option value="openai-responses">{t("openai-responses")}</option>
+                  <option value="anthropic-messages">{t("anthropic-messages")}</option>
                   <option value="google-generative-ai">
-                    google-generative-ai
+                    {t("google-generative-ai")}
                   </option>
                 </select>
               </FieldFrame>
 
-              <FieldFrame label="API key" hint={keyHint}>
+              <FieldFrame label={t("API key")} hint={keyHint}>
                 <TextInput
                   type="password"
                   value={apiKey}
@@ -1035,7 +1038,7 @@ export function ModelConfigPage({
                     target="_blank"
                     rel="noreferrer"
                   >
-                    Where do I get a key?
+                    {t("Where do I get a key?")}
                   </a>
                 ) : null}
                 <div className="mt-2 flex gap-4 text-[0.75rem] text-text-secondary">
@@ -1045,27 +1048,27 @@ export function ModelConfigPage({
                       checked={keyStorage === "literal"}
                       onChange={() => setKeyStorage("literal")}
                     />
-                    Save my key on this computer
+                    {t("Save my key on this computer")}
                   </label>
                   <label
                     className="flex items-center gap-1"
-                    title="Advanced: store only the name of an environment variable that holds the key, not the key itself."
+                    title={t("Advanced: store only the name of an environment variable that holds the key, not the key itself.")}
                   >
                     <input
                       type="radio"
                       checked={keyStorage === "env"}
                       onChange={() => setKeyStorage("env")}
                     />
-                    Use an environment variable (advanced)
+                    {t("Use an environment variable (advanced)")}
                   </label>
                 </div>
               </FieldFrame>
 
               <div className="space-y-3">
                 <div>
-                  <p className="text-[0.8125rem] font-semibold text-ink">Models</p>
+                  <p className="text-[0.8125rem] font-semibold text-ink">{t("Models")}</p>
                   <HintText className="mt-0.5">
-                    Correct model limits and the effort choices shown in the composer.
+                    {t("Correct model limits and the effort choices shown in the composer.")}
                   </HintText>
                 </div>
                 {modelRows.map((row, index) => (
@@ -1075,7 +1078,7 @@ export function ModelConfigPage({
                   >
                     <div className="grid grid-cols-[2fr_1fr_auto] gap-2">
                       <TextInput
-                        placeholder="model id (required)"
+                        placeholder={t("model id (required)")}
                         value={row.id}
                         onChange={(event) =>
                           setModelRows((prev) =>
@@ -1086,7 +1089,7 @@ export function ModelConfigPage({
                         }
                       />
                       <TextInput
-                        placeholder="display name"
+                        placeholder={t("display name")}
                         value={row.name}
                         onChange={(event) =>
                           setModelRows((prev) =>
@@ -1110,11 +1113,11 @@ export function ModelConfigPage({
                     </div>
                     <div className="grid gap-2 sm:grid-cols-3">
                       <label className="space-y-1 text-[0.72rem] text-text-secondary">
-                        <span>Context window</span>
+                        <span>{t("Context window")}</span>
                         <TextInput
                           type="number"
                           min="1"
-                          placeholder="tokens"
+                          placeholder={t("tokens")}
                           value={row.contextWindow}
                           onChange={(event) =>
                             setModelRows((prev) =>
@@ -1128,11 +1131,11 @@ export function ModelConfigPage({
                         />
                       </label>
                       <label className="space-y-1 text-[0.72rem] text-text-secondary">
-                        <span>Max output tokens</span>
+                        <span>{t("Max output tokens")}</span>
                         <TextInput
                           type="number"
                           min="1"
-                          placeholder="tokens"
+                          placeholder={t("tokens")}
                           value={row.maxTokens}
                           onChange={(event) =>
                             setModelRows((prev) =>
@@ -1166,11 +1169,11 @@ export function ModelConfigPage({
                             )
                           }
                         />
-                        Image input
+                        {t("Image input")}
                       </label>
                     </div>
                     <div className="model-effort-editor">
-                      <span>Available thinking effort</span>
+                      <span>{t("Available thinking effort")}</span>
                       <div className="model-effort-levels">
                         {THINKING_LEVEL_OPTIONS.map((level) => {
                           const effectiveLevels =
@@ -1215,7 +1218,7 @@ export function ModelConfigPage({
                         })}
                       </div>
                       <HintText>
-                        The composer offers only the checked levels.
+                        {t("The composer offers only the checked levels.")}
                       </HintText>
                       {row.thinkingLevels !== undefined ? (
                         <button
@@ -1231,7 +1234,7 @@ export function ModelConfigPage({
                             )
                           }
                         >
-                          Use fetched levels
+                          {t("Use fetched levels")}
                         </button>
                       ) : null}
                     </div>
@@ -1244,17 +1247,17 @@ export function ModelConfigPage({
                       setModelRows((prev) => [...prev, emptyModelRow()])
                     }
                   >
-                    + Add model
+                    {t("+ Add model")}
                   </Button>
                   <Button variant="secondary" onClick={() => void fetchModels()}>
-                    Fetch model list
+                    {t("Fetch model list")}
                   </Button>
                   <Button
                     variant="secondary"
                     disabled={testing}
                     onClick={() => void testConnection()}
                   >
-                    {testing ? "Testing…" : "Test connection"}
+                    {testing ? t("Testing…") : t("Test connection")}
                   </Button>
                   {testResult ? (
                     <HintText
@@ -1273,16 +1276,15 @@ export function ModelConfigPage({
 
               <details className="config-advanced space-y-2" open={optionRows.length > 0}>
                 <summary className="cursor-pointer text-[0.8125rem] font-semibold text-ink">
-                  Advanced options
+                  {t("Advanced options")}
                 </summary>
                 <p className="pt-1 text-[0.75rem] text-text-secondary">
-                  Extra provider settings passed through to Pi. Most setups don&apos;t
-                  need these.
+                  {t("Extra provider settings passed through to Pi. Most setups don't need these.")}
                 </p>
                 {optionRows.map((row, index) => (
                   <div key={index} className="grid grid-cols-[2fr_1fr_auto] gap-2">
                     <TextInput
-                      placeholder="option key"
+                      placeholder={t("option key")}
                       value={row.key}
                       onChange={(event) =>
                         setOptionRows((prev) =>
@@ -1293,7 +1295,7 @@ export function ModelConfigPage({
                       }
                     />
                     <TextInput
-                      placeholder="value"
+                      placeholder={t("value")}
                       value={row.value}
                       onChange={(event) =>
                         setOptionRows((prev) =>
@@ -1322,16 +1324,16 @@ export function ModelConfigPage({
                     setOptionRows((prev) => [...prev, { key: "", value: "" }])
                   }
                 >
-                  + Add option
+                  {t("+ Add option")}
                 </Button>
               </details>
 
               <div className="flex justify-end gap-2 pt-2">
                 <Button variant="secondary" onClick={closeEditor}>
-                  Cancel
+                  {t("Cancel")}
                 </Button>
                 <Button variant="primary" onClick={() => void saveProvider()}>
-                  Save provider
+                  {t("Save provider")}
                 </Button>
               </div>
             </div>
@@ -1352,7 +1354,7 @@ export function ModelConfigPage({
           {toast.error ? (
             <button
               className="text-surface/80 hover:text-surface"
-              aria-label="Dismiss"
+              aria-label={t("Dismiss")}
               onClick={() => setToast(null)}
             >
               ✕

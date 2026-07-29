@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { ApprovalRequestPayload } from "@/api/types";
+import { t } from "@/i18n";
 
 interface ApprovalDockProps {
   request: ApprovalRequestPayload;
@@ -64,10 +65,10 @@ export function ApprovalDock({ request, onRespond, onSessionAllow }: ApprovalDoc
             className="primary"
             onClick={() => onRespond(request.approvalId, { accept: true })}
           >
-            Allow
+            {t("Allow")}
           </button>
           <button className="deny" onClick={deny}>
-            Block
+            {t("Block")}
           </button>
         </>
       ) : null}
@@ -88,10 +89,10 @@ export function ApprovalDock({ request, onRespond, onSessionAllow }: ApprovalDoc
             className="primary"
             onClick={() => onRespond(request.approvalId, { text })}
           >
-            Submit
+            {t("Submit")}
           </button>
           <button className="deny" onClick={deny}>
-            Cancel
+            {t("Cancel")}
           </button>
         </>
       ) : null}

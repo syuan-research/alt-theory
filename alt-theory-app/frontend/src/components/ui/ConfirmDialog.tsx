@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { t } from "@/i18n";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/cn";
 
@@ -15,12 +16,14 @@ interface ConfirmDialogProps {
 export function ConfirmDialog({
   open,
   message,
-  confirmLabel = "Confirm",
-  cancelLabel = "Cancel",
+  confirmLabel,
+  cancelLabel,
   checkbox,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  const finalConfirmLabel = confirmLabel ?? t("Confirm");
+  const finalCancelLabel = cancelLabel ?? t("Cancel");
   const [checked, setChecked] = useState(checkbox?.defaultChecked ?? false);
 
   // Reset to the request's default each time the dialog (re)opens.
@@ -65,13 +68,13 @@ export function ConfirmDialog({
         ) : null}
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="secondary" onClick={onCancel}>
-            {cancelLabel}
+            {finalCancelLabel}
           </Button>
           <Button
             variant="primary"
             onClick={() => onConfirm({ checkboxChecked: checked })}
           >
-            {confirmLabel}
+            {finalConfirmLabel}
           </Button>
         </div>
       </div>

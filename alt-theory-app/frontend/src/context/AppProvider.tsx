@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { useNavigate } from "react-router-dom";
+import { t } from "@/i18n";
 import {
   detectAccountsConfigured,
   fetchAuthMe,
@@ -315,7 +316,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [sessionWarnings, setSessionWarnings] = useState<string[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [connStatus, setConnStatus] = useState<ConnStatus>("connecting");
-  const [connLabel, setConnLabel] = useState("Connecting");
+  const [connLabel, setConnLabel] = useState(t("Connecting"));
   const [wsError, setWsError] = useState<string | null>(null);
   const [wsConnected, setWsConnected] = useState(false);
   const [selectors, setSelectors] = useState<SessionSelectors>(defaultSelectors);
@@ -464,7 +465,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setAccountsConfigured(false);
       setLoginRequired(false);
       setDiscovery(null);
-      setAuthError(err instanceof Error ? err.message : "Auth check failed");
+      setAuthError(err instanceof Error ? err.message : t("Auth check failed"));
     } finally {
       setLoading(false);
     }
@@ -540,7 +541,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       if (requestId === sessionListRequestRef.current) {
         setSessionsError(
-          err instanceof Error ? err.message : "Could not load conversations",
+          err instanceof Error ? err.message : t("Could not load conversations"),
         );
       }
     } finally {
@@ -579,7 +580,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     (message: ClientMessage): boolean => {
       const sent = wsApiRef.current?.send(message) ?? false;
       if (!sent) {
-        setComposerNoticeTimed({ prefix: "⚠", text: "Not connected", warn: true, });
+        setComposerNoticeTimed({ prefix: "⚠", text: t("Not connected"), warn: true, });
         wsApiRef.current?.reconnect();
       }
       return sent;
@@ -597,7 +598,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       setIsRunning(true);
       setConnStatus("running");
-      setConnLabel("Switching...");
+      setConnLabel(t("Switching..."));
       setToolStatus(label);
       return true;
     },
@@ -639,7 +640,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setStreamParts([]);
           activeToolsMapRef.current = {};
           setConnStatus("idle");
-          setConnLabel("Ready");
+          setConnLabel(t("Ready"));
           setRunPhaseLabel("");
           setWsError(null);
           pendingAssetSwitchRef.current = false;
@@ -686,7 +687,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setSessionReady(true);
           setIsRunning(message.payload.status === "running");
           setConnStatus(message.payload.status === "running" ? "running" : "idle",);
-          setConnLabel(message.payload.status === "running" ? "Running" : "Ready",);
+          setConnLabel(message.payload.status === "running" ? t("Running") : t("Ready"),);
           setWsError(null);
           setToolStatus("");
           setRunPhaseLabel(
@@ -728,11 +729,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }
           if (message.payload.status === "running") {
             setConnStatus("running");
-            setConnLabel("Running");
+            setConnLabel(t("Running"));
             setIsRunning(true);
           } else {
             setConnStatus("idle");
-            setConnLabel(message.payload.status || "Ready");
+            setConnLabel(message.payload.status || t("Ready"));
             setIsRunning(false);
             setToolStatus("");
             setRunPhaseLabel("");
@@ -762,7 +763,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             )
           ) {
             pendingCompactRef.current = false;
-            setComposerNoticeTimed({ text: "Conversation compacted." });
+            setComposerNoticeTimed({ text: t("Conversation compacted.") });
           }
           break;
 
@@ -838,7 +839,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             setStreamParts((parts) => upsertToolPart(parts, updated));
           }
           if (Object.keys(activeToolsMapRef.current).length === 0) {
-            setRunPhaseLabel("Processing…");
+            setRunPhaseLabel(t("Processing…"));
           }
           break;
         }
@@ -847,7 +848,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
           const retry = message.payload.retry;
           if (message.payload.phase === "retrying" && retry) {
             setRunPhaseLabel(
-              `Connection issue — retrying (${retry.attempt}/${retry.maxAttempts})…`,
+              t("Connection issue — retrying ({attempt}/{maxAttempts})…", {
+                attempt: retry.attempt,
+                maxAttempts: retry.maxAttempts,
+              }),
             );
             // Everything already produced stays; only the interrupted stream
             // is regenerated. A divider keeps the resumed text from being
@@ -859,7 +863,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                     ...parts,
                     {
                       kind: "notice",
-                      text: "Connection dropped — continuing from where it left off",
+                      text: t("Connection dropped — continuing from where it left off"),
                     },
                   ],
             );
@@ -867,13 +871,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }
           setRunPhaseLabel(
             {
-              connecting: "Connecting…",
-              processing: "Processing…",
-              thinking: "Thinking…",
-              tool: "Using a tool…",
-              compacting: "Compacting conversation…",
-              retrying: "Connection issue — retrying…",
-              "awaiting-user": "Waiting for your approval…",
+              connecting: t("Connecting…"),
+              processing: t("Processing…"),
+              thinking: t("Thinking…"),
+              tool: t("Using a tool…"),
+              compacting: t("Compacting conversation…"),
+              retrying: t("Connection issue — retrying…"),
+              "awaiting-user": t("Waiting for your approval…"),
               idle: "",
               error: "",
             }[message.payload.phase],
@@ -914,10 +918,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setToolStatus("");
           setRunPhaseLabel("");
           setConnStatus(interrupted ? "idle" : "error");
-          setConnLabel(interrupted ? "Ready" : "Error");
+          setConnLabel(interrupted ? t("Ready") : t("Error"));
           setComposerNoticeTimed({
             prefix: interrupted ? undefined : "⚠",
-            text: `${interrupted ? "Run interrupted: " : "Run failed: "}${message.payload.error}`,
+            text: `${interrupted ? t("Run interrupted: ") : t("Run failed: ")}${message.payload.error}`,
             warn: !interrupted,
           });
           if (!interrupted) setRunHint("");
@@ -948,7 +952,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         case "error": {
           pendingCompactRef.current = false;
           if (message.payload.code === "auth_required") {
-            setToolStatus("Please sign in to continue.");
+            setToolStatus(t("Please sign in to continue."));
             setLoginRequired(true);
             setIsRunning(false);
             break;
@@ -999,7 +1003,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setConnLabel(detail?.label ?? "Connected");
         if (resuming) {
           setIsRunning(true);
-          setToolStatus("Restoring conversation…");
+          setToolStatus(t("Restoring conversation…"));
         }
       } else if (status === "closed") {
         reconnectSessionIdRef.current = sessionId || reconnectSessionIdRef.current;
@@ -1011,15 +1015,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setConnLabel(detail?.label ?? "Disconnected");
         setStreamParts([]);
         activeToolsMapRef.current = {};
-        setToolStatus("Reconnecting...");
+        setToolStatus(t("Reconnecting..."));
       } else if (status === "error") {
         setWsConnected(false);
         setConnStatus("error");
-        setConnLabel(detail?.label ?? "Connection error");
+        setConnLabel(detail?.label ?? t("Connection error"));
       } else {
         setWsConnected(false);
         setConnStatus("connecting");
-        setConnLabel(detail?.label ?? "Connecting");
+        setConnLabel(detail?.label ?? t("Connecting"));
       }
     },
   });
@@ -1039,8 +1043,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (sendMessage({ type: "new_session" })) {
       setIsRunning(true);
       setConnStatus("running");
-      setConnLabel("Starting...");
-      setRunPhaseLabel("Connecting…");
+      setConnLabel(t("Starting..."));
+      setRunPhaseLabel(t("Connecting…"));
     }
   }, [clearStagedWorkspace, sendMessage]);
 
@@ -1054,9 +1058,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       pendingCompactRef.current = true;
       setIsRunning(true);
       setConnStatus("running");
-      setConnLabel("Compacting...");
+      setConnLabel(t("Compacting..."));
       setToolStatus("");
-      setRunPhaseLabel("Compacting conversation…");
+      setRunPhaseLabel(t("Compacting conversation…"));
     }
   }, [isRunning, sendMessage, sessionId]);
 
@@ -1065,7 +1069,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (!targetSessionId || targetSessionId === sessionId) return;
       const summary = sessions.find((item) => item.sessionId === targetSessionId,);
       if (summary && !summary.hasSessionFile) {
-        setToolStatus("Conversation cannot be opened.");
+        setToolStatus(t("Conversation cannot be opened."));
         return;
       }
       setSelectedCatalogSessionId(targetSessionId);
@@ -1078,9 +1082,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ) {
         setIsRunning(true);
         setConnStatus("running");
-        setConnLabel("Opening...");
+        setConnLabel(t("Opening..."));
         setToolStatus("");
-        setRunPhaseLabel("Opening conversation…");
+        setRunPhaseLabel(t("Opening conversation…"));
       } else {
         pendingOpenSessionIdRef.current = "";
       }
@@ -1115,16 +1119,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       next[id] = now;
       const before = previous[id];
       if (before === undefined || id === sessionId || now === before) continue;
-      const name = sessionDisplayNames[id]?.alias || "A conversation";
+      const name = sessionDisplayNames[id]?.alias || t("A conversation");
       if (before === "running" && now === "idle") {
         raised[id] = "done";
-        notifyBackground("Work finished", `${name} finished its turn.`);
+        notifyBackground(t("Work finished"), t("{name} finished its turn.", { name }));
       } else if (now === "failed") {
         raised[id] = "failed";
-        notifyBackground("Work stopped", `${name} ran into an error.`);
+        notifyBackground(t("Work stopped"), t("{name} ran into an error.", { name }));
       } else if (now === "awaiting-approval") {
         raised[id] = "approval";
-        notifyBackground("Waiting for you", `${name} needs your approval.`);
+        notifyBackground(t("Waiting for you"), t("{name} needs your approval.", { name }));
       }
     }
     sessionRunStatusRef.current = next;
@@ -1154,13 +1158,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (sendMessage(message)) {
         setIsRunning(true);
         setConnStatus("running");
-        setConnLabel(related ? "Creating..." : "Forking...");
+        setConnLabel(related ? t("Creating...") : t("Forking..."));
         setToolStatus(
           purpose === "helper"
-            ? "Starting a fresh helper…"
+            ? t("Starting a fresh helper…")
             : related
-              ? "Starting a related conversation…"
-              : "Branching conversation…",
+              ? t("Starting a related conversation…")
+              : t("Branching conversation…"),
         );
       }
     },
@@ -1177,8 +1181,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       })) {
         setIsRunning(true);
         setConnStatus("running");
-        setConnLabel("Duplicating...");
-        setToolStatus("Making a copy of this conversation…");
+        setConnLabel(t("Duplicating..."));
+        setToolStatus(t("Making a copy of this conversation…"));
       }
     },
     [sendMessage],
@@ -1246,8 +1250,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const targetId = sessionId ?? selectedSessionDetail?.session?.sessionId;
     if (!targetId) return;
     requestConfirm({
-      message: "Delete this conversation from the conversation list?",
-      confirmLabel: "Delete",
+      message: t("Delete this conversation from the conversation list?"),
+      confirmLabel: t("Delete"),
       onConfirm: () => {
         void performDeleteSelectedSession(targetId);
       },
@@ -1276,12 +1280,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setRunHint("");
       setCanRetryFailed(false);
       setToolStatus("");
-      setRunPhaseLabel("Connecting…");
+      setRunPhaseLabel(t("Connecting…"));
       setReviseMode(false);
       clearStagedWorkspace();
       setIsRunning(true);
       setConnStatus("running");
-      setConnLabel("Thinking…");
+      setConnLabel(t("Thinking…"));
       return true;
     },
     [clearStagedWorkspace, isRunning, sendMessage, stagedWorkspacePaths],
@@ -1290,8 +1294,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const abortRun = useCallback(() => {
     if (sendMessage({ type: "abort" })) {
       setToolStatus("");
-      setRunPhaseLabel("Stopping…");
-      setRunHint("You can edit or delete your latest message.");
+      setRunPhaseLabel(t("Stopping…"));
+      setRunHint(t("You can edit or delete your latest message."));
     }
   }, [sendMessage]);
 
@@ -1307,15 +1311,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
         ...prev,
         {
           role: "user",
-          text: userText?.trim() || `Invoke ${skillName}`,
+          text: userText?.trim() || t("Invoke {skillName}", { skillName }),
           timestamp: null,
         },
       ]);
       setIsRunning(true);
       setConnStatus("running");
-      setConnLabel("Thinking…");
+      setConnLabel(t("Thinking…"));
       setToolStatus("");
-      setRunPhaseLabel("Connecting…");
+      setRunPhaseLabel(t("Connecting…"));
       return true;
     },
     [isRunning, sendMessage],
@@ -1337,9 +1341,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setCanRetryFailed(false);
       setIsRunning(true);
       setConnStatus("running");
-      setConnLabel("Creating alternative…");
+      setConnLabel(t("Creating alternative…"));
       setToolStatus("");
-      setRunPhaseLabel("Connecting…");
+      setRunPhaseLabel(t("Connecting…"));
       return true;
     },
     [isRunning, sendMessage, sessionId],
@@ -1363,15 +1367,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setCanRetryFailed(false);
     setIsRunning(true);
     setConnStatus("running");
-    setConnLabel("Retrying…");
+    setConnLabel(t("Retrying…"));
     setToolStatus("");
-    setRunPhaseLabel("Connecting…");
+    setRunPhaseLabel(t("Connecting…"));
     return true;
   }, [isRunning, sendMessage, sessionId]);
 
   const deleteLatest = useCallback(() => {
     if (!sendMessage({ type: "delete_latest" })) return;
-    setToolStatus("Deleting latest turn...");
+    setToolStatus(t("Deleting latest turn..."));
     setRunHint("");
   }, [sendMessage]);
 
@@ -1438,8 +1442,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ) {
         setIsRunning(true);
         setConnStatus("running");
-        setConnLabel("Branching...");
-        setToolStatus("Branching from this point…");
+        setConnLabel(t("Branching..."));
+        setToolStatus(t("Branching from this point…"));
       }
     },
     [sendMessage, sessionId, isRunning],
@@ -1516,7 +1520,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (visibility === "private") {
           setComposerNoticeTimed({
             prefix: "⏏",
-            text: "Private conversations and their files are deleted after 7 inactive days. Download anything you want to keep.",
+            text: t("Private conversations and their files are deleted after 7 inactive days. Download anything you want to keep."),
           });
         }
       }

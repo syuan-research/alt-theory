@@ -66,6 +66,13 @@ export interface AppSettings {
    */
   defaultMode?: "pure" | "full";
   /**
+   * App UI (and backend user-visible text) language (alpha.6). Absent =
+   * "auto": the frontend follows the system language; the backend treats
+   * auto as English. Conversation language is unaffected — the assistant
+   * follows the user's input language natively.
+   */
+  lang?: "auto" | "en" | "zh-Hans" | "zh-Hant-HK";
+  /**
    * User-added role-preset directories (alpha.5, add-only). The bundled
    * role-presets dir and the data-dir upload folder are always included and
    * never change; these are extra scanned locations.
@@ -138,6 +145,12 @@ export function readAppSettings(dataDir: string): AppSettings {
         : {}),
       ...(parsed.defaultMode === "pure" || parsed.defaultMode === "full"
         ? { defaultMode: parsed.defaultMode }
+        : {}),
+      ...(parsed.lang === "auto" ||
+      parsed.lang === "en" ||
+      parsed.lang === "zh-Hans" ||
+      parsed.lang === "zh-Hant-HK"
+        ? { lang: parsed.lang }
         : {}),
       ...(Array.isArray(parsed.extraRolePresetDirs)
         ? {

@@ -1,6 +1,7 @@
 import { useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
+import { t } from "@/i18n";
 import { LeftNav } from "@/components/shell/LeftNav";
 import { ConversationPanel } from "@/components/shell/ConversationPanel";
 import { InspectorPanel } from "@/components/shell/InspectorPanel";
@@ -111,7 +112,7 @@ export function Shell() {
   if (app.loading) {
     return (
       <div className="app-root" style={{ alignItems: "center", justifyContent: "center" }}>
-        <div className="rp-empty">Loading app state…</div>
+        <div className="rp-empty">{t("Loading app state…")}</div>
       </div>
     );
   }
@@ -145,7 +146,7 @@ export function Shell() {
           <div
             className="pane-resizer"
             role="separator"
-            aria-label="Resize conversation list"
+            aria-label={t("Resize conversation list")}
             aria-orientation="vertical"
             aria-valuemin={0}
             aria-valuemax={PANE_WIDTHS.left.max}
@@ -158,7 +159,7 @@ export function Shell() {
           <div
             className="pane-resizer"
             role="separator"
-            aria-label="Resize files and details panel"
+            aria-label={t("Resize files and details panel")}
             aria-orientation="vertical"
             aria-valuemin={0}
             aria-valuemax={PANE_WIDTHS.right.max}

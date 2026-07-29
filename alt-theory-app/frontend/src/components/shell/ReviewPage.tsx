@@ -3,6 +3,7 @@ import type { AbComparisonRecord } from "@/api/types";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
 import { fmtTime, shortId } from "@/lib/format";
+import { t } from "@/i18n";
 
 /**
  * Review page (M7 §2): reads the records layer only. v1-alpha reads the loaded
@@ -28,30 +29,29 @@ export function ReviewPage() {
   return (
     <div className="page">
       <div className="page-inner">
-        <h2>Review</h2>
+        <h2>{t("Review")}</h2>
         <p className="sub">
-          Comparisons and records for the open conversation. Reads records only;
-          nothing here touches live conversations.
+          {t("Comparisons and records for the open conversation. Reads records only; nothing here touches live conversations.")}
         </p>
         <div className="filters">
           <button className="export" onClick={shell.openApp}>
             <i className="ph ph-arrow-left" />
-            Back to app
+            {t("Back to app")}
           </button>
         </div>
         {comparisons.length === 0 ? (
           <div className="rp-empty">
-            No comparison records for this conversation.
+            {t("No comparison records for this conversation.")}
           </div>
         ) : (
           <table className="review">
             <tbody>
               <tr>
-                <th>Comparison</th>
-                <th>Created</th>
-                <th>Arms</th>
-                <th>Chosen</th>
-                <th>Decided</th>
+                <th>{t("Comparison")}</th>
+                <th>{t("Created")}</th>
+                <th>{t("Arms")}</th>
+                <th>{t("Chosen")}</th>
+                <th>{t("Decided")}</th>
               </tr>
               {comparisons.map((rec) => {
                 const chosen = chosenLabel(rec);

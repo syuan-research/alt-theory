@@ -4,6 +4,7 @@ import { chooseAbCandidate, fetchSessionDetail } from "@/api/sessions";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
 import { shortId } from "@/lib/format";
+import { t } from "@/i18n";
 
 /**
  * Full-width side-by-side reader of an A/B comparison (M6/M7 §5). "Continue with
@@ -28,7 +29,7 @@ export function ArmSplit() {
           (c) => c.comparisonId === comparisonId
         );
         setRecord(found ?? null);
-        if (!found) setError("Comparison not found.");
+        if (!found) setError(t("Comparison not found."));
       })
       .catch((e) => !cancelled && setError(e?.message ?? "Failed to load comparison"));
     return () => {
@@ -45,7 +46,7 @@ export function ArmSplit() {
       shell.closeArms();
       app.openCatalogSession(candidateId);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to choose");
+      setError(e instanceof Error ? e.message : t("Failed to choose"));
       setChoosing(false);
     }
   };
@@ -66,7 +67,7 @@ export function ArmSplit() {
     return (
       <div className="arm-split">
         <div className="rp-empty" style={{ margin: "auto" }}>
-          Loading comparison…
+          {t("Loading comparison…")}
         </div>
       </div>
     );
@@ -82,27 +83,27 @@ export function ArmSplit() {
           <div className="arm-pane" key={cand.candidateId}>
             <div className="ah">
               <i className="ph ph-user-circle" />
-              {cand.label || `Arm ${i + 1}`}
+              {cand.label || t("Arm {num}", { num: i + 1 })}
               {cand.role ? ` · ${cand.role}` : ""}
-              {chosen ? <span className="badge-run">chosen</span> : null}
+              {chosen ? <span className="badge-run">{t("chosen")}</span> : null}
               {i === record.candidates.length - 1 ? (
-                <button className="close" onClick={shell.closeArms} title="Close">
+                <button className="close" onClick={shell.closeArms} title={t("Close")}>
                   <i className="ph ph-x" />
                 </button>
               ) : null}
             </div>
-            <div className="ab">{cand.outputText || "(no output)"}</div>
+            <div className="ab">{cand.outputText || t("(no output)")}</div>
             <div className="af">
               <button
                 disabled={decided || choosing}
                 onClick={() => choose(cand.candidateId)}
-                title="Record this choice and continue the conversation in this arm"
+                title={t("Record this choice and continue the conversation in this arm")}
               >
                 {chosen
-                  ? "Chosen"
+                  ? t("Chosen")
                   : decided
                     ? shortId(record.selectedCandidateId ?? "")
-                    : "Continue with this response"}
+                    : t("Continue with this response")}
               </button>
             </div>
           </div>

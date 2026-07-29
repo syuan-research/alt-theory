@@ -6,6 +6,7 @@ import { ModelChip } from "@/components/conversation/ModelChip";
 import { ContextRing } from "@/components/conversation/ContextRing";
 import { DEFAULT_KB_DOMAIN, KB_OFF_VALUE } from "@/lib/constants";
 import { pickFiles } from "@/lib/native";
+import { t } from "@/i18n";
 
 type MenuKey = "plus" | "model" | "role" | "kb" | null;
 
@@ -60,29 +61,29 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
         ? [
             {
               name: "branch",
-              description: "Branch this conversation into a new direction",
+              description: t("Branch this conversation into a new direction"),
               run: () => app.forkCurrentSession("fork"),
             },
             {
               name: "btw",
-              description: "Start a side conversation without adding it to the list",
+              description: t("Start a side conversation without adding it to the list"),
               run: () => app.forkCurrentSession("side"),
             },
             {
               name: "compact",
-              description: "Compact this conversation to free context space",
+              description: t("Compact this conversation to free context space"),
               run: () => app.compactCurrentSession(),
             },
           ]
         : []),
       {
         name: "new",
-        description: "Start a new conversation",
+        description: t("Start a new conversation"),
         run: () => app.startNewSession(),
       },
       ...(app.discovery?.skills ?? []).map((skill) => ({
         name: skill.name,
-        description: skill.description || "Alt Theory skill",
+        description: skill.description || t("Alt Theory skill"),
         run: (args: string) => app.invokeSkill(skill.name, args),
       })),
     ],
@@ -220,10 +221,10 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               <button
                 className="flat retry-run"
                 onClick={app.retryFailed}
-                title="Completed work is kept; the answer resumes from the break point"
+                title={t("Completed work is kept; the answer resumes from the break point")}
               >
                 <i className="ph ph-arrow-clockwise" aria-hidden="true" />
-                Continue from break point
+                {t("Continue from break point")}
               </button>
             ) : null}
             {app.attachmentHint ? <span>{app.attachmentHint}</span> : null}
@@ -241,7 +242,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               className="mi"
               onClick={() => (app.switchRolePreset(null), setMenu(null))}
             >
-              <span>No role</span>
+              <span>{t("No role")}</span>
               {!app.selectors.rolePresetSlug ? (
                 <i className="ph ph-check check" />
               ) : null}
@@ -263,7 +264,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
             {app.viewMode === "researcher" &&
             (app.discovery?.rolePresets ?? []).some((r) => r.snapshot) ? (
               <details className="menu-history">
-                <summary>History</summary>
+                <summary>{t("History")}</summary>
                 {(app.discovery?.rolePresets ?? [])
                   .filter((r) => r.snapshot)
                   .map((r) => (
@@ -295,7 +296,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               className="mi"
               onClick={() => (app.switchKb(DEFAULT_KB_DOMAIN), setMenu(null))}
             >
-              <span>EP knowledge base</span>
+              <span>{t("EP knowledge base")}</span>
               {!kbOff ? <i className="ph ph-check check" /> : null}
             </div>
             {(app.discovery?.kbDomains ?? [])
@@ -317,7 +318,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               className="mi"
               onClick={() => (app.switchKb(KB_OFF_VALUE), setMenu(null))}
             >
-              <span>No knowledge base</span>
+              <span>{t("No knowledge base")}</span>
               {kbOff ? <i className="ph ph-check check" /> : null}
             </div>
           </CtxPicker>
@@ -332,7 +333,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                     : "private",
                 )
               }
-              title="Private conversations are marked and auto-deleted after 7 inactive days."
+              title={t("Private conversations are marked and auto-deleted after 7 inactive days.")}
             >
               <i
                 className={
@@ -341,7 +342,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                     : "ph ph-share-network"
                 }
               />
-              {app.selectors.visibility === "private" ? "Private" : "Shared"}
+              {app.selectors.visibility === "private" ? t("Private") : t("Shared")}
             </button>
           ) : null}
         </div>
@@ -368,10 +369,10 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
             onChange={(e) => setDraft(e.target.value)}
             placeholder={
               !interactive
-                ? "Connecting…"
+                ? t("Connecting…")
                 : app.reviseMode
-                  ? "Editing your latest message. Send to update."
-                  : "Message Alt. Type / for commands."
+                  ? t("Editing your latest message. Send to update.")
+                  : t("Message Alt. Type / for commands.")
             }
             disabled={!interactive || (app.isRunning && !app.reviseMode)}
             onKeyDown={(e) => {
@@ -405,7 +406,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
             {/* toolbox: featured skills + actions */}
             <button
               className="flat toolbox-btn"
-              title="Toolbox"
+              title={t("Toolbox")}
               onClick={(e) => {
                 e.stopPropagation();
                 markToolboxSeen();
@@ -418,10 +419,10 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
             {canAttach ? (
               <button
                 className="flat"
-                title="Attach a file to this message"
-                aria-label="Attach a file"
+                title={t("Attach a file to this message")}
+                aria-label={t("Attach a file")}
                 onClick={() => {
-                  void pickFiles("Full path of the file to attach:").then(
+                  void pickFiles(t("Full path of the file to attach:")).then(
                     (paths) => paths.forEach((p) => app.stageWorkspacePath(p)),
                   );
                 }}
@@ -443,7 +444,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                   )}
                 >
                   <i className="ph ph-lifebuoy" />
-                  Ask how Alt works
+                  {t("Ask how Alt works")}
                 </div>
               ) : null}
               <div
@@ -454,7 +455,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                 )}
               >
                 <i className="ph ph-chats-circle" />
-                Align on a plan or decision
+                {t("Align on a plan or decision")}
               </div>
               <div
                 className="mi"
@@ -464,17 +465,17 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                 )}
               >
                 <i className="ph ph-list-checks" />
-                Plan &amp; record
+                {t("Plan & record")}
               </div>
               {/* web-search is FULL_ONLY_BUNDLED_SKILLS (alt-theory-core.ts:464) —
                   in Understand mode say why rather than greying out a "soon". */}
               {pureMode ? (
                 <div
                   className="mi disabled"
-                  title="Switch to Work when you want Alt to look up current information."
+                  title={t("Switch to Work when you want Alt to look up current information.")}
                 >
                   <i className="ph ph-globe" />
-                  Looking things up online needs Work mode
+                  {t("Looking things up online needs Work mode")}
                 </div>
               ) : (
                 <div
@@ -482,7 +483,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                   onClick={() => (app.invokeSkill("web-search"), setMenu(null))}
                 >
                   <i className="ph ph-globe" />
-                  Look something up online
+                  {t("Look something up online")}
                 </div>
               )}
               <div className="sep" />
@@ -492,7 +493,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                   onClick={() => (shell.openRail("workspace"), setMenu(null))}
                 >
                   <i className="ph ph-folder-open" />
-                  Browse working folder
+                  {t("Browse working folder")}
                 </div>
               ) : null}
               <div
@@ -500,7 +501,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                 onClick={() => (setDraft("/"), setMenu(null))}
               >
                 <i className="ph ph-slash-forward" />
-                All skills…
+                {t("All skills…")}
               </div>
             </div>
 
@@ -512,8 +513,8 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                 aria-checked={app.sessionMode === "full"}
                 title={
                   app.sessionMode === "full"
-                    ? "Work mode: research, analyze data, and create or update files while keeping the same careful thinking. Switch to Understand."
-                    : "Understand mode: clarify questions, compare explanations, and develop ideas with your materials. Switch to Work."
+                    ? t("Work mode: research, analyze data, and create or update files while keeping the same careful thinking. Switch to Understand.")
+                    : t("Understand mode: clarify questions, compare explanations, and develop ideas with your materials. Switch to Work.")
                 }
                 onClick={() =>
                   app.switchMode(app.sessionMode === "full" ? "pure" : "full")
@@ -526,7 +527,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                       : "ph ph-book-open"
                   }
                 />
-                {app.sessionMode === "full" ? "Work" : "Understand"}
+                {app.sessionMode === "full" ? t("Work") : t("Understand")}
                 <span
                   className={`toggle mode-toggle${
                     app.sessionMode === "full" ? " on" : ""
@@ -548,13 +549,13 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                   className="flat"
                   onClick={() => (setDraft(""), app.cancelReviseMode())}
                 >
-                  Cancel
+                  {t("Cancel")}
                 </button>
                 <button
                   className="send"
                   disabled={!canSend}
                   onClick={handleSubmit}
-                  title="Save edit"
+                  title={t("Save edit")}
                 >
                   <i className="ph ph-check" />
                 </button>
@@ -564,7 +565,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                 className="send"
                 style={{ background: "var(--danger)" }}
                 onClick={app.abortRun}
-                title="Stop"
+                title={t("Stop")}
               >
                 <i className="ph ph-square" />
               </button>
@@ -573,7 +574,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                 className="send"
                 disabled={!canSend}
                 onClick={handleSubmit}
-                title="Send"
+                title={t("Send")}
               >
                 <i className="ph ph-arrow-up" />
               </button>

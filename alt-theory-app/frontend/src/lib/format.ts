@@ -1,13 +1,14 @@
 import type { SessionSummary } from "@/api/types";
+import { t } from "@/i18n";
 import { KB_OFF_VALUE } from "./constants";
 
 export function displayKb(value: string | null | undefined): string {
-  if (value === KB_OFF_VALUE) return "Off";
+  if (value === KB_OFF_VALUE) return t("Off");
   return value || "—";
 }
 
 export function displaySlug(value: string | null | undefined): string {
-  return value || "none";
+  return value || t("none");
 }
 
 export function shortId(sessionId: string): string {

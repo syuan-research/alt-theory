@@ -3,6 +3,7 @@ import type { ApprovalRequestPayload, ServerMessage, TranscriptMessage } from "@
 import { fetchSessionDetail } from "@/api/sessions";
 import { useApp } from "@/context/AppProvider";
 import { useShell, type RailKey } from "@/context/ShellContext";
+import { t } from "@/i18n";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { sessionTitle } from "@/lib/sessionList";
 import { ApprovalDock } from "@/components/conversation/ApprovalDock";
@@ -14,12 +15,12 @@ import { ChangesPanel } from "@/components/inspector/ChangesPanel";
 import { MarkdownBody } from "@/components/conversation/MarkdownBody";
 
 const RAIL_META: Record<RailKey, { title: string; icon: string; adv?: boolean }> = {
-  chats: { title: "Related conversations", icon: "ph-arrows-split" },
-  changes: { title: "Changes", icon: "ph-pencil-simple-line" },
-  workspace: { title: "Files", icon: "ph-folder" },
-  records: { title: "Records", icon: "ph-scroll", adv: true },
-  provenance: { title: "Provenance", icon: "ph-tree-structure", adv: true },
-  runtime: { title: "Runtime", icon: "ph-pulse", adv: true },
+  chats: { title: t("Related conversations"), icon: "ph-arrows-split" },
+  changes: { title: t("Changes"), icon: "ph-pencil-simple-line" },
+  workspace: { title: t("Files"), icon: "ph-folder" },
+  records: { title: t("Records"), icon: "ph-scroll", adv: true },
+  provenance: { title: t("Provenance"), icon: "ph-tree-structure", adv: true },
+  runtime: { title: t("Runtime"), icon: "ph-pulse", adv: true },
 };
 
 const PRIMARY: RailKey[] = ["chats", "changes", "workspace"];
@@ -53,7 +54,7 @@ export function InspectorPanel() {
     shell.openRail("chats");
     shell.openSub({
       key: `related:${childId}`,
-      title: child ? sessionTitle(child, app.sessionDisplayNames) : "Related conversation",
+      title: child ? sessionTitle(child, app.sessionDisplayNames) : t("Related conversation"),
     });
   }, [
     app.activeRelatedSessionId,
@@ -68,11 +69,11 @@ export function InspectorPanel() {
       <div className="rpanel">
         {active ? (
           <div className={`head${shell.rightSub ? " sub" : ""}`}>
-            <button className="back" onClick={shell.closeSub} title="Back">
+            <button className="back" onClick={shell.closeSub} title={t("Back")}>
               <i className="ph ph-arrow-left" />
             </button>
             <span>{title}</span>
-            <button className="rp-close" onClick={shell.closeRight} title="Collapse">
+            <button className="rp-close" onClick={shell.closeRight} title={t("Collapse")}>
               <i className="ph ph-sidebar-simple" style={{ transform: "scaleX(-1)" }} />
             </button>
           </div>
@@ -205,7 +206,7 @@ function RelatedConversations() {
       <>
         {parentRow}
         <div className="rp-empty">
-          No related conversations. Use <b>/branch</b> or <b>/btw</b>, or open Helper.
+          {t("No related conversations. Use ")} <b>/branch</b> {t(" or ")} <b>/btw</b>, {t(" or open Helper.")}
         </div>
       </>
     );
@@ -237,12 +238,12 @@ function RelatedConversations() {
           </div>
           <div className="d">
             {child.forkedFrom?.purpose === "helper"
-              ? "Ask how Alt works · fresh context"
+              ? t("Ask how Alt works · fresh context")
               : child.forkedFrom?.purpose === "worker"
-                ? `Worker agent · ${child.messageCount ?? 0} messages — you can join in`
+                ? t("Worker agent · {count} messages — you can join in", { count: child.messageCount ?? 0 })
                 : child.forkedFrom?.purpose === "fork"
-                  ? `Branch · ${child.messageCount ?? 0} messages`
-                  : `Side conversation · ${child.messageCount ?? 0} messages`}
+                  ? t("Branch · {count} messages", { count: child.messageCount ?? 0 })
+                  : t("Side conversation · {count} messages", { count: child.messageCount ?? 0 })}
           </div>
         </button>
       ))}
@@ -281,15 +282,15 @@ function RelatedConversation({ sessionId }: { sessionId: string }) {
           break;
         case "run_phase":
           setStatus({
-            connecting: "Connecting…",
-            processing: "Processing…",
-            thinking: "Thinking…",
-            tool: "Using a tool…",
-            compacting: "Compacting…",
-            retrying: "Retrying…",
-            "awaiting-user": "Waiting for approval…",
-            idle: "Ready",
-            error: "Error",
+            connecting: t("Connecting…"),
+            processing: t("Processing…"),
+            thinking: t("Thinking…"),
+            tool: t("Using a tool…"),
+            compacting: t("Compacting…"),
+            retrying: t("Retrying…"),
+            "awaiting-user": t("Waiting for approval…"),
+            idle: t("Ready"),
+            error: t("Error"),
           }[message.payload.phase]);
           break;
         case "run_completed":
@@ -339,10 +340,10 @@ function RelatedConversation({ sessionId }: { sessionId: string }) {
     reconnectSessionId: sessionId,
     onMessage,
     onStatus: (next) => {
-      if (next === "open") setStatus("Opening…");
-      else if (next === "connecting") setStatus("Connecting…");
-      else if (next === "closed") setStatus("Reconnecting…");
-      else setStatus("Connection error");
+      if (next === "open") setStatus(t("Opening…"));
+      else if (next === "connecting") setStatus(t("Connecting…"));
+      else if (next === "closed") setStatus(t("Reconnecting…"));
+      else setStatus(t("Connection error"));
     },
   });
 
@@ -379,14 +380,14 @@ function RelatedConversation({ sessionId }: { sessionId: string }) {
       <div className="related-actions">
         <span>{status}</span>
         <button
-          title="Turn this side chat into a listed conversation of its own — everything said here is kept."
+          title={t("Turn this side chat into a listed conversation of its own — everything said here is kept.")}
           onClick={() => {
             void app.promoteRelatedSession(sessionId).catch((reason) =>
               setError(reason instanceof Error ? reason.message : String(reason))
             );
           }}
         >
-          <i className="ph ph-arrow-square-out" /> Promote to branch
+          <i className="ph ph-arrow-square-out" /> {t("Promote to branch")}
         </button>
       </div>
       <div className="child-msgs" ref={messagesRef}>
@@ -397,7 +398,7 @@ function RelatedConversation({ sessionId }: { sessionId: string }) {
           </div>
         ))}
         {streaming ? (
-          <div className="cm"><div className="w">Alt · typing…</div>{streaming}</div>
+          <div className="cm"><div className="w">{t("Alt · typing…")}</div>{streaming}</div>
         ) : null}
       </div>
       {approvals[0] ? (
@@ -413,19 +414,19 @@ function RelatedConversation({ sessionId }: { sessionId: string }) {
           value={draft}
           placeholder={
             running
-              ? "Message the running agent — it sees it at its next step"
-              : "Reply in this related conversation"
+              ? t("Message the running agent — it sees it at its next step")
+              : t("Reply in this related conversation")
           }
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey) send();
           }}
         />
-        <button disabled={!draft.trim()} onClick={send} title="Send">
+        <button disabled={!draft.trim()} onClick={send} title={t("Send")}>
           <i className="ph ph-arrow-up" />
         </button>
         {running ? (
-          <button onClick={() => socket.send({ type: "abort" })} title="Stop">
+          <button onClick={() => socket.send({ type: "abort" })} title={t("Stop")}>
             <i className="ph ph-stop" />
           </button>
         ) : null}
@@ -437,7 +438,7 @@ function RelatedConversation({ sessionId }: { sessionId: string }) {
           shell.closeSub();
         }}
       >
-        Back to related conversations
+        {t("Back to related conversations")}
       </button>
     </div>
   );

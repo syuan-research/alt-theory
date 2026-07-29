@@ -1,4 +1,5 @@
 import type { AssemblyManifest, DiscoveryLists, SessionMetrics } from "@/api/types";
+import { t } from "@/i18n";
 import { Button } from "@/components/ui/Button";
 import { StatusBadge, type ConnStatus } from "@/components/ui/StatusBadge";
 import { HintText, MonoText, SectionTitle } from "@/components/ui/Typography";
@@ -46,13 +47,13 @@ export function RuntimePanel({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2">
-        <SectionTitle>Runtime</SectionTitle>
+        <SectionTitle>{t("Runtime")}</SectionTitle>
         <Button
           variant="ghost"
           className="min-h-7 px-2 text-[0.75rem]"
           onClick={onRefresh}
           disabled={disabled}
-          title="Refresh metadata & metrics"
+          title={t("Refresh metadata & metrics")}
         >
           ↻
         </Button>
@@ -60,26 +61,26 @@ export function RuntimePanel({
 
       <section className="space-y-1">
         <p className="text-[0.75rem] font-semibold text-text-secondary">
-          Session ID
+          {t("Session ID")}
         </p>
         <MonoText
           className="block break-all"
           title={sessionId ?? undefined}
         >
-          {sessionId ?? "draft"}
+          {sessionId ?? t("draft")}
         </MonoText>
       </section>
 
       <section className="space-y-1">
         <p className="text-[0.75rem] font-semibold text-text-secondary">
-          Connection Status
+          {t("Connection Status")}
         </p>
         <StatusBadge status={connStatus} label={connLabel} />
       </section>
 
       <section className="space-y-1">
         <p className="text-[0.75rem] font-semibold text-text-secondary">
-          Active KB / Soul / Role
+          {t("Active KB / Soul / Role")}
         </p>
         <MonoText className="block">{displayKb(kbDomain, discovery)}</MonoText>
         <MonoText className="block">{displaySlug(soulSlug)}</MonoText>
@@ -88,7 +89,7 @@ export function RuntimePanel({
 
       <section className="space-y-1">
         <p className="text-[0.75rem] font-semibold text-text-secondary">
-          Model / Provider
+          {t("Model / Provider")}
         </p>
         <MonoText className="block">{manifest?.model ?? "—"}</MonoText>
         <MonoText className="block">{manifest?.provider ?? "—"}</MonoText>
@@ -96,16 +97,16 @@ export function RuntimePanel({
 
       <section className="space-y-2">
         <p className="text-[0.75rem] font-semibold text-text-secondary">
-          Counters
+          {t("Counters")}
         </p>
         <div className="grid grid-cols-2 gap-x-3 gap-y-1">
-          <MetricRow label="Turns" value={formatNumber(metrics?.turnCount)} />
+          <MetricRow label={t("Turns")} value={formatNumber(metrics?.turnCount)} />
           <MetricRow
-            label="Messages"
+            label={t("Messages")}
             value={formatNumber(metrics?.messageCount)}
           />
           <MetricRow
-            label="Tool Calls"
+            label={t("Tool Calls")}
             value={formatNumber(metrics?.toolCallCount)}
           />
         </div>
@@ -113,38 +114,38 @@ export function RuntimePanel({
 
       <section className="space-y-2">
         <p className="text-[0.75rem] font-semibold text-text-secondary">
-          Tokens
+          {t("Tokens")}
         </p>
         <div className="grid grid-cols-2 gap-x-3 gap-y-1">
-          <MetricRow label="Input" value={formatNumber(metrics?.tokens.input)} />
-          <MetricRow label="Output" value={formatNumber(metrics?.tokens.output)} />
+          <MetricRow label={t("Input")} value={formatNumber(metrics?.tokens.input)} />
+          <MetricRow label={t("Output")} value={formatNumber(metrics?.tokens.output)} />
           <MetricRow
-            label="Cache Read"
+            label={t("Cache Read")}
             value={formatNumber(metrics?.tokens.cacheRead)}
           />
           <MetricRow
-            label="Cache Write"
+            label={t("Cache Write")}
             value={formatNumber(metrics?.tokens.cacheWrite)}
           />
-          <MetricRow label="Total" value={formatNumber(metrics?.tokens.total)} />
+          <MetricRow label={t("Total")} value={formatNumber(metrics?.tokens.total)} />
         </div>
       </section>
 
       <section className="space-y-2">
         <p className="text-[0.75rem] font-semibold text-text-secondary">
-          Context
+          {t("Context")}
         </p>
         <div className="grid grid-cols-2 gap-x-3 gap-y-1">
           <MetricRow
-            label="Tokens"
+            label={t("Tokens")}
             value={formatNumber(metrics?.contextUsage?.tokens)}
           />
           <MetricRow
-            label="Window"
+            label={t("Window")}
             value={formatNumber(metrics?.contextUsage?.contextWindow)}
           />
           <MetricRow
-            label="Usage"
+            label={t("Usage")}
             value={
               metrics?.contextUsage?.percent != null
                 ? `${metrics.contextUsage.percent.toFixed(1)}%`
@@ -155,13 +156,13 @@ export function RuntimePanel({
       </section>
 
       <section className="space-y-1">
-        <p className="text-[0.75rem] font-semibold text-text-secondary">Cost</p>
+        <p className="text-[0.75rem] font-semibold text-text-secondary">{t("Cost")}</p>
         <MonoText>{formatCost(metrics?.cost)}</MonoText>
       </section>
 
       {approvalMarkers.length > 0 ? (
         <details className="text-[0.75rem] text-text-muted">
-          <summary className="cursor-pointer">Conversation permissions</summary>
+          <summary className="cursor-pointer">{t("Conversation permissions")}</summary>
           <ul className="mt-2 space-y-1 pl-4">
             {approvalMarkers.map((marker) => (
               <li key={marker}>{marker}</li>
@@ -172,7 +173,7 @@ export function RuntimePanel({
 
       {!manifest && !metrics ? (
         <HintText>
-          Metadata appears after a session is materialized or when you refresh.
+          {t("Metadata appears after a session is materialized or when you refresh.")}
         </HintText>
       ) : null}
     </div>

@@ -5,6 +5,7 @@ import {
   putSessionFileContent,
 } from "@/api/session-files";
 import type { SessionTextFile } from "@/api/types";
+import { t } from "@/i18n";
 import { Button } from "@/components/ui/Button";
 import { TextArea } from "@/components/ui/Field";
 import { HintText, SectionTitle } from "@/components/ui/Typography";
@@ -33,16 +34,16 @@ export function RecordsPanel({
       setFiles([]);
       setSelected(null);
       setEditorValue("");
-      setStatus("No session selected.");
+      setStatus(t("No session selected."));
       return;
     }
     setLoading(true);
-    setStatus("Loading...");
+    setStatus(t("Loading..."));
     try {
       const data = await listSessionFiles(sessionId);
       const nextFiles = Array.isArray(data.files) ? data.files : [];
       setFiles(nextFiles);
-      setStatus(nextFiles.length ? "" : "No records.");
+      setStatus(nextFiles.length ? "" : t("No records."));
       if (
         selected &&
         !nextFiles.some(
@@ -56,7 +57,7 @@ export function RecordsPanel({
       setFiles([]);
       setSelected(null);
       setEditorValue("");
-      setStatus("Could not load records.");
+      setStatus(t("Could not load records."));
     } finally {
       setLoading(false);
     }
@@ -75,31 +76,31 @@ export function RecordsPanel({
     setSelected(file);
     setEditorValue("");
     setSaving(false);
-    setStatus("Opening...");
+    setStatus(t("Opening..."));
     try {
       const data = await getSessionFileContent(sessionId, file.root, file.path);
       setSelected({ root: data.root, path: data.path, size: data.size, updatedAt: data.updatedAt });
       setEditorValue(data.content || "");
       setStatus(`${data.root}/${data.path}`);
     } catch {
-      setStatus("Could not open file.");
+      setStatus(t("Could not open file."));
     }
   };
 
   const saveFile = async () => {
     if (!sessionId || !selected) return;
     setSaving(true);
-    setStatus("Saving...");
+    setStatus(t("Saving..."));
     try {
       const data = await putSessionFileContent(sessionId, {
         root: selected.root,
         path: selected.path,
         content: editorValue,
       });
-      setStatus(`Saved ${data.root}/${data.path}`);
+      setStatus(t("Saved {path}", { path: `${data.root}/${data.path}` }));
       await refresh();
     } catch {
-      setStatus("Could not save file.");
+      setStatus(t("Could not save file."));
     } finally {
       setSaving(false);
     }
@@ -108,13 +109,13 @@ export function RecordsPanel({
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
-        <SectionTitle>Session Records</SectionTitle>
+        <SectionTitle>{t("Session Records")}</SectionTitle>
         <Button
           variant="ghost"
           className="min-h-7 px-2 text-[0.75rem]"
           onClick={() => void refresh()}
           disabled={!sessionReady || !sessionId || loading}
-          title="Refresh records"
+          title={t("Refresh records")}
         >
           ↻
         </Button>
@@ -122,7 +123,7 @@ export function RecordsPanel({
 
       <div className="max-h-36 space-y-1 overflow-auto">
         {files.length === 0 ? (
-          <HintText>No editable records.</HintText>
+          <HintText>{t("No editable records.")}</HintText>
         ) : (
           files.map((file) => {
             const isSelected =
@@ -165,7 +166,7 @@ export function RecordsPanel({
           onClick={() => void saveFile()}
           disabled={!selected || saving}
         >
-          Save
+          {t("Save")}
         </Button>
       </div>
     </div>

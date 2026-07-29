@@ -3,6 +3,7 @@ import type { ProviderView, ThinkingLevel } from "@/api/types";
 import { getConfigStatus, listConfigProviders } from "@/api/config";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
+import { t } from "@/i18n";
 
 interface ModelOption {
   provider: string;
@@ -130,14 +131,14 @@ export function ModelChip({
           ? ` · ${effectiveThinking}`
           : ""
       }`
-    : "Choose model";
+    : t("Choose model");
   const title = effectiveModel
     ? `${effectiveModel.provider} / ${effectiveModel.modelId}${
         selectedOption?.thinkingLevels.some((level) => level !== "off")
           ? ` · ${effectiveThinking}`
           : ""
       }`
-    : "Choose a model";
+    : t("Choose a model");
 
   const pick = (option: ModelOption, thinkingLevel?: ThinkingLevel) => {
     const selectedThinking =
@@ -181,7 +182,7 @@ export function ModelChip({
               className="mi model-effort-trigger"
               onClick={() => setEffortOpen((value) => !value)}
             >
-              <span>Thinking effort</span>
+              <span>{t("Thinking effort")}</span>
               <span className="model-effort-value">{effectiveThinking}</span>
               <i
                 className={`ph ph-caret-${effortOpen ? "up" : "down"} caret`}
@@ -238,7 +239,7 @@ export function ModelChip({
           }}
         >
           <span>
-            App default
+            {t("App default")}
             {defaultModel ? ` · ${defaultModel.modelId}` : ""}
           </span>
           {usingDefault ? <i className="ph ph-check check" /> : null}
@@ -246,15 +247,15 @@ export function ModelChip({
         <div className="sep" />
         {error ? (
           <div className="rp-empty" style={{ padding: "8px 10px" }}>
-            Models unavailable here.
+            {t("Models unavailable here.")}
           </div>
         ) : !providers ? (
           <div className="rp-empty" style={{ padding: "8px 10px" }}>
-            Loading…
+            {t("Loading…")}
           </div>
         ) : providers.length === 0 ? (
           <div className="rp-empty" style={{ padding: "8px 10px" }}>
-            No models configured.
+            {t("No models configured.")}
           </div>
         ) : (
           <>
@@ -293,7 +294,7 @@ export function ModelChip({
         <div className="sep" />
         <div className="mi" onClick={() => shell.openSettings("models")}>
           <i className="ph ph-cpu" />
-          Manage models
+          {t("Manage models")}
         </div>
       </div>
     </>

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { SessionSummary } from "@/api/types";
 import { useApp, type SessionAlert } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
+import { t } from "@/i18n";
 import {
   buildWorkspaceTree,
   folderLabel,
@@ -21,19 +22,19 @@ function sessionRowState(
 ): { label: string; tone: string; title: string } | null {
   if (runStatus === "awaiting-approval" || alert === "approval") {
     return {
-      label: "needs you",
+      label: t("needs you"),
       tone: "warn",
-      title: "Waiting for your approval before it can continue",
+      title: t("Waiting for your approval before it can continue"),
     };
   }
   if (runStatus === "running") {
-    return { label: "running", tone: "", title: "Working right now" };
+    return { label: t("running"), tone: "", title: t("Working right now") };
   }
   if (runStatus === "failed" || alert === "failed") {
-    return { label: "stopped", tone: "danger", title: "This conversation ran into an error" };
+    return { label: t("stopped"), tone: "danger", title: t("This conversation ran into an error") };
   }
   if (alert === "done") {
-    return { label: "done", tone: "ok", title: "Finished while you were elsewhere" };
+    return { label: t("done"), tone: "ok", title: t("Finished while you were elsewhere") };
   }
   return null;
 }
@@ -51,7 +52,7 @@ function RunningCount({ sessions }: { sessions: SessionSummary[] }) {
   return (
     <button
       className="running-count"
-      title="Conversations working right now"
+      title={t("Conversations working right now")}
       onClick={() => {
         document
           .querySelector(`[data-session-id="${running[0].sessionId}"]`)
@@ -59,7 +60,7 @@ function RunningCount({ sessions }: { sessions: SessionSummary[] }) {
       }}
     >
       <i className="ph ph-circle-notch" aria-hidden />
-      {running.length} running
+      {t("{count} running", { count: running.length })}
     </button>
   );
 }
@@ -87,13 +88,13 @@ export function LeftNav() {
       <div className="mini">
         <button
           className="mono"
-          title="Expand"
+          title={t("Expand")}
           onClick={() => shell.setLeftCollapsed(false)}
         >
           A
         </button>
         <button
-          title="New conversation"
+          title={t("New conversation")}
           onClick={() => {
             shell.openApp();
             app.startNewSession();
@@ -101,12 +102,12 @@ export function LeftNav() {
         >
           <i className="ph ph-plus" />
         </button>
-        <button title="Search" onClick={() => shell.setSearchOpen(true)}>
+        <button title={t("Search")} onClick={() => shell.setSearchOpen(true)}>
           <i className="ph ph-magnifying-glass" />
         </button>
         <div style={{ flex: 1 }} />
         <button
-          title="Settings"
+          title={t("Settings")}
           style={{ marginBottom: 10 }}
           onClick={() => shell.openSettings()}
         >
@@ -119,18 +120,18 @@ export function LeftNav() {
         style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, }}
       >
         <div className="left-head">
-          <span className="wordmark">Alt Theory</span>
+          <span className="wordmark">{t("Alt Theory")}</span>
           <div className="icons">
             <button
               className="icon-btn"
-              title="Search"
+              title={t("Search")}
               onClick={() => shell.setSearchOpen(true)}
             >
               <i className="ph ph-magnifying-glass" />
             </button>
             <button
               className="icon-btn"
-              title="Collapse"
+              title={t("Collapse")}
               onClick={() => shell.setLeftCollapsed(true)}
             >
               <i className="ph ph-sidebar-simple" />
@@ -144,7 +145,7 @@ export function LeftNav() {
         <div className="left-foot">
           <button className="gear" onClick={() => shell.openSettings()}>
             <i className="ph ph-gear" />
-            Settings
+            {t("Settings")}
           </button>
           <div className="avatar" title={app.auth.displayLabel ?? undefined}>
             {avatarLetter}
@@ -243,9 +244,9 @@ function UserNav({ onImport }: { onImport: () => void }) {
     }
     app.requestConfirm({
       message:
-        "Move this folder's conversations to No folder, then remove the working folder from the list? Conversations and files are not deleted.",
-      confirmLabel: "Move conversations and remove",
-      cancelLabel: "Keep working folder",
+        t("Move this folder's conversations to No folder, then remove the working folder from the list? Conversations and files are not deleted."),
+      confirmLabel: t("Move conversations and remove"),
+      cancelLabel: t("Keep working folder"),
       onConfirm: () => {
         void run().catch((error) =>
           window.alert(error instanceof Error ? error.message : String(error)),
@@ -285,13 +286,11 @@ function UserNav({ onImport }: { onImport: () => void }) {
     };
 
     app.requestConfirm({
-      message: `Move this conversation to work in "${label}"? Its branches move with it. Alt will ask for permissions again in the new folder. Files already on disk are not moved.`,
-      confirmLabel: "Move",
+      message: t("Move this conversation to work in \"{label}\"? Its branches move with it. Alt will ask for permissions again in the new folder. Files already on disk are not moved.", { label }),
+      confirmLabel: t("Move"),
       checkbox: canMigrateFolder
         ? {
-            label: `Also move all ${siblings.length + 1} conversations in "${folderLabel(
-              sourceDir,
-            )}"`,
+            label: t("Also move all {count} conversations in \"{folder}\"", { count: siblings.length + 1, folder: folderLabel(sourceDir) }),
             defaultChecked: true,
             danger: true,
           }
@@ -318,13 +317,13 @@ function UserNav({ onImport }: { onImport: () => void }) {
             <div className="split-new">
               <details className="list-more ws-pick">
                 <summary
-                  title={app.workspacePrimaryDir ?? "No working folder"}
+                  title={app.workspacePrimaryDir ?? t("No working folder")}
                 >
                   <i className="ph ph-folder-simple" />
                   <span className="ws-label">
                     {app.workspacePrimaryDir
                       ? folderLabel(app.workspacePrimaryDir)
-                      : "No folder"}
+                      : t("No folder")}
                   </span>
                   <i className="ph ph-caret-down caret" />
                 </summary>
@@ -336,7 +335,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                     }}
                   >
                     <i className="ph ph-prohibit" />
-                    No folder
+                    {t("No folder")}
                     {!app.workspacePrimaryDir ? (
                       <i className="ph ph-check check" />
                     ) : null}
@@ -367,7 +366,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                     }}
                   >
                     <i className="ph ph-plus" />
-                    Add working folder…
+                    {t("Add working folder…")}
                   </button>
                 </div>
               </details>
@@ -391,7 +390,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
               }}
             >
               <i className="ph ph-plus" />
-              New conversation
+              {t("New conversation")}
             </button>
           )}
           {local ? (
@@ -407,7 +406,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                   }}
                 >
                   <i className="ph ph-download-simple" />
-                  Import conversations…
+                  {t("Import conversations…")}
                 </button>
               </div>
             </details>
@@ -417,11 +416,11 @@ function UserNav({ onImport }: { onImport: () => void }) {
       </div>
       <div className="sessions">
         {app.sessionsLoading && app.sessions.length === 0 ? (
-          <div className="rp-empty">Loading conversations…</div>
+          <div className="rp-empty">{t("Loading conversations…")}</div>
         ) : app.sessionsError && app.sessions.length === 0 ? (
           <div className="rp-empty">{app.sessionsError}</div>
         ) : tree.groups.length === 0 ? (
-          <div className="rp-empty">No conversations yet.</div>
+          <div className="rp-empty">{t("No conversations yet.")}</div>
         ) : (
           tree.groups.map((group) => {
             const closed = closedGroups.has(group.dir);
@@ -471,7 +470,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                             }}
                           >
                             <i className="ph ph-folder-open" />
-                            Show in file manager
+                            {t("Show in file manager")}
                           </button>
                         ) : null}
                         <button
@@ -481,7 +480,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                           }}
                         >
                           <i className="ph ph-copy" />
-                          Copy folder path
+                          {t("Copy folder path")}
                         </button>
                         <button
                           onClick={(event) => {
@@ -493,7 +492,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                           }}
                         >
                           <i className="ph ph-minus-circle" />
-                          Remove from working folders
+                          {t("Remove from working folders")}
                         </button>
                       </div>
                     </details>
@@ -501,7 +500,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                   {local ? (
                     <button
                       className="group-add"
-                      title={`New conversation in ${group.label}`}
+                      title={t("New conversation in {label}", { label: group.label })}
                       onClick={() => startConversationIn(group.dir || null)}
                     >
                       <i className="ph ph-plus" />
@@ -509,7 +508,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                   ) : null}
                 </div>
                 {!closed && group.roots.length === 0 ? (
-                  <div className="rp-empty ws-empty">No conversations yet.</div>
+                  <div className="rp-empty ws-empty">{t("No conversations yet.")}</div>
                 ) : null}
                 {!closed &&
                   (expandedGroups.has(group.dir)
@@ -538,8 +537,8 @@ function UserNav({ onImport }: { onImport: () => void }) {
                     }
                   >
                     {expandedGroups.has(group.dir)
-                      ? "Show less"
-                      : `Show all (${group.roots.length})`}
+                      ? t("Show less")
+                      : t("Show all ({count})", { count: group.roots.length })}
                   </button>
                 ) : null}
               </div>
@@ -620,7 +619,7 @@ function SessionNode({
               }}
             >
               <i className="ph ph-pencil-simple" />
-              Rename
+              {t("Rename")}
             </button>
             <button
               onClick={(e) => {
@@ -629,7 +628,7 @@ function SessionNode({
               }}
             >
               <i className="ph ph-copy" />
-              Duplicate
+              {t("Duplicate")}
             </button>
             <button
               onClick={(e) => {
@@ -638,7 +637,7 @@ function SessionNode({
               }}
             >
               <i className="ph ph-trash" />
-              Delete
+              {t("Delete")}
             </button>
           </div>
         </details>

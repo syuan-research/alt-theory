@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { fetchSessionDetail } from "@/api/sessions";
 import type { DiscoveryLists, SessionDetailResponse } from "@/api/types";
+import { t } from "@/i18n";
 import { Button } from "@/components/ui/Button";
 import { HintText, MonoText, SectionTitle } from "@/components/ui/Typography";
 import { displayKb } from "@/lib/manifest";
@@ -82,22 +83,22 @@ export function ProvenancePanel({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2">
-        <SectionTitle>Effective Configuration</SectionTitle>
+        <SectionTitle>{t("Effective Configuration")}</SectionTitle>
         <Button
           variant="ghost"
           className="min-h-7 px-2 text-[0.75rem]"
           onClick={() => void refresh()}
           disabled={!sessionReady || !sessionId || loading}
-          title="Refresh provenance"
+          title={t("Refresh provenance")}
         >
           ↻
         </Button>
       </div>
 
       {!sessionId ? (
-        <HintText>No session selected.</HintText>
+        <HintText>{t("No session selected.")}</HintText>
       ) : loading && !detail ? (
-        <HintText>Loading...</HintText>
+        <HintText>{t("Loading...")}</HintText>
       ) : error ? (
         <HintText className="text-danger">{error}</HintText>
       ) : (
@@ -109,11 +110,11 @@ export function ProvenancePanel({
       )}
 
       <div className="space-y-2">
-        <SectionTitle>Recent Runs</SectionTitle>
+        <SectionTitle>{t("Recent Runs")}</SectionTitle>
         {!sessionId ? (
-          <HintText>No run history.</HintText>
+          <HintText>{t("No run history.")}</HintText>
         ) : runs.length === 0 ? (
-          <HintText>No run history.</HintText>
+          <HintText>{t("No run history.")}</HintText>
         ) : (
           <div className="space-y-2">
             {runs.map((run) => (

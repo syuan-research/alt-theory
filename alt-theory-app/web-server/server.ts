@@ -34,6 +34,7 @@ import {
   resolveSoulSlug,
   setExtraAssetDirs,
 } from "./asset-registry.js";
+import { setBackendLang, t } from "./i18n.js";
 import type {
   ClientMessage,
   ServerMessage
@@ -241,6 +242,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     });
   };
   applyExtraAssetDirs();
+  setBackendLang(readAppSettings(dataDir).lang ?? null);
   const soulDir = assetPaths.soulDir;
   const legacySoulPath = assetPaths.soulPath;
   const publicDir = resolve(options.publicDir ?? PUBLIC_DIR);
@@ -507,6 +509,38 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     else settings.defaultMode = mode;
     writeAppSettings(dataDir, settings);
     res.json({ ok: true, mode });
+  });
+
+  // --- App language (v1.3.0-alpha.6) ---
+  app.get("/api/settings/lang", (_req, res) => {
+    if (!requireLocalConfigMode(res)) return;
+    res.json({ lang: readAppSettings(dataDir).lang ?? null });
+  });
+  app.put("/api/settings/lang", (req, res) => {
+    if (!requireLocalConfigMode(res)) return;
+    const lang = (req.body as { lang?: unknown }).lang as
+      | "auto"
+      | "en"
+      | "zh-Hans"
+      | "zh-Hant-HK"
+      | null
+      | undefined;
+    if (
+      lang !== "auto" &&
+      lang !== "en" &&
+      lang !== "zh-Hans" &&
+      lang !== "zh-Hant-HK" &&
+      lang !== null
+    ) {
+      res.status(400).json({ error: "Unknown language" });
+      return;
+    }
+    const settings = readAppSettings(dataDir);
+    if (lang === null) delete settings.lang;
+    else settings.lang = lang;
+    writeAppSettings(dataDir, settings);
+    setBackendLang(lang);
+    res.json({ ok: true, lang });
   });
 
   app.get("/api/config/providers", async (_req, res) => {
@@ -2122,8 +2156,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
                 send({
                   type: "extension_notice",
                   payload: {
-                    message:
+                    message: t(
                       "Delivered to the running turn — Alt sees it at its next step.",
+                    ),
                     level: "info",
                   },
                 });

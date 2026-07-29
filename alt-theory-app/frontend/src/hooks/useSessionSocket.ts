@@ -6,6 +6,7 @@ import type {
   SessionSnapshot,
   TranscriptMessage,
 } from "@/api/types";
+import { t } from "@/i18n";
 import {
   createAltTheorySocket,
   sendClientMessage,
@@ -46,7 +47,7 @@ export function useSessionSocket(enabled: boolean) {
     sessionReady: false,
     isRunning: false,
     connStatus: "connecting",
-    connLabel: "Connecting",
+    connLabel: t("Connecting"),
     messages: [],
     error: null,
     manifest: null,
@@ -70,7 +71,7 @@ export function useSessionSocket(enabled: boolean) {
           sessionReady: true,
           isRunning: false,
           connStatus: "idle",
-          connLabel: "Draft ready",
+          connLabel: t("Draft ready"),
           manifest: null,
           metrics: null,
         }));
@@ -101,7 +102,7 @@ export function useSessionSocket(enabled: boolean) {
           sessionReady: true,
           isRunning: snapshot.status === "running",
           connStatus: snapshot.status === "running" ? "running" : "idle",
-          connLabel: snapshot.status === "running" ? "Running" : "Ready",
+          connLabel: snapshot.status === "running" ? t("Running") : t("Ready"),
         }));
         break;
       }
@@ -118,7 +119,7 @@ export function useSessionSocket(enabled: boolean) {
           messages,
           isRunning: false,
           connStatus: "idle",
-          connLabel: "Ready",
+          connLabel: t("Ready"),
         }));
         break;
       }
@@ -156,7 +157,7 @@ export function useSessionSocket(enabled: boolean) {
           ...prev,
           isRunning: false,
           connStatus: "idle",
-          connLabel: "Ready",
+          connLabel: t("Ready"),
           messages: prev.messages.map((entry) =>
             entry.streaming ? { ...entry, streaming: false } : entry
           ),
@@ -175,7 +176,7 @@ export function useSessionSocket(enabled: boolean) {
           ...prev,
           isRunning: false,
           connStatus: "error",
-          connLabel: "Error",
+          connLabel: t("Error"),
           error: errorText,
           messages: prev.messages.map((entry) =>
             entry.streaming ? { ...entry, streaming: false } : entry
@@ -206,7 +207,7 @@ export function useSessionSocket(enabled: boolean) {
         if (status === "open") {
           reconnectAttemptRef.current = 0;
           const resuming = reconnectSessionIdRef.current;
-          updateConn("idle", resuming ? "Reconnected" : "Connected");
+          updateConn("idle", resuming ? t("Reconnected") : t("Connected"));
           if (resuming) {
             sendClientMessage(ws, {
               type: "open_session",
@@ -214,7 +215,7 @@ export function useSessionSocket(enabled: boolean) {
             });
           }
         } else if (status === "closed") {
-          updateConn("disconnected", "Disconnected");
+          updateConn("disconnected", t("Disconnected"));
           setState((prev) => ({
             ...prev,
             sessionReady: false,
@@ -228,13 +229,13 @@ export function useSessionSocket(enabled: boolean) {
           reconnectAttemptRef.current += 1;
           reconnectTimerRef.current = window.setTimeout(() => {
             reconnectTimerRef.current = null;
-            updateConn("disconnected", "Reconnecting...");
+            updateConn("disconnected", t("Reconnecting..."));
             connect();
           }, delay);
         } else if (status === "error") {
-          updateConn("error", detail ?? "Connection error");
+          updateConn("error", detail ?? t("Connection error"));
         } else {
-          updateConn("connecting", "Connecting");
+          updateConn("connecting", t("Connecting"));
         }
       }
     );
@@ -269,7 +270,7 @@ export function useSessionSocket(enabled: boolean) {
       error: null,
       isRunning: true,
       connStatus: "running",
-      connLabel: "Running",
+      connLabel: t("Running"),
       messages: [
         ...prev.messages,
         { id: nextId(), role: "user", text: trimmed },
@@ -317,13 +318,13 @@ export function useSessionSocket(enabled: boolean) {
       error: null,
       isRunning: true,
       connStatus: "running",
-      connLabel: "Running",
+      connLabel: t("Running"),
       messages: [
         ...prev.messages,
         {
           id: nextId(),
           role: "user",
-          text: userText || `Invoke ${skillName}`,
+          text: userText || t("Invoke {skillName}", { skillName }),
         },
       ],
     }));

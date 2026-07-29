@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { FileChange } from "@/api/types";
 import { fetchSessionChanges } from "@/api/session-files";
+import { t } from "@/i18n";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
 import { MarkdownBody } from "@/components/conversation/MarkdownBody";
@@ -53,9 +54,9 @@ export function ChangesPanel() {
   }
 
   if (error) return <div className="rp-empty">{error}</div>;
-  if (!files) return <div className="rp-empty">Loading…</div>;
+  if (!files) return <div className="rp-empty">{t("Loading…")}</div>;
   if (files.length === 0) {
-    return <div className="rp-empty">No file changes in this conversation yet.</div>;
+    return <div className="rp-empty">{t("No file changes in this conversation yet.")}</div>;
   }
 
   return (
@@ -101,29 +102,29 @@ function DiffView({ file }: { file: FileChange }) {
               className={`flat${view === "rendered" ? " on" : ""}`}
               onClick={() => setView("rendered")}
             >
-              Rendered
+              {t("Rendered")}
             </button>
             <button
               className={`flat${view === "source" ? " on" : ""}`}
               onClick={() => setView("source")}
             >
-              Source
+              {t("Source")}
             </button>
           </>
         ) : (
           <span>
-            {file.currentContent !== undefined ? "Current source" : "Conversation diff"}
+            {file.currentContent !== undefined ? t("Current source") : t("Conversation diff")}
           </span>
         )}
         {file.currentUpdatedAt ? (
           <span className="change-preview-time">
-            Updated {new Date(file.currentUpdatedAt).toLocaleTimeString()}
+            {t("Updated {time}", { time: new Date(file.currentUpdatedAt).toLocaleTimeString() })}
           </span>
         ) : null}
       </div>
       <div className={`pv-card change-preview-body${expanded ? " expanded" : ""}`}>
         {!source ? (
-          <div className="rp-empty">The current file is not available.</div>
+          <div className="rp-empty">{t("The current file is not available.")}</div>
         ) : view === "rendered" && renderedAvailable ? (
           <MarkdownBody text={source} />
         ) : (
@@ -132,12 +133,12 @@ function DiffView({ file }: { file: FileChange }) {
       </div>
       {sourceLines.length > 10 || source.length > 1200 ? (
         <button className="flat change-preview-more" onClick={() => setExpanded((open) => !open)}>
-          {expanded ? "Show less" : "Show full file"}
+          {expanded ? t("Show less") : t("Show full file")}
         </button>
       ) : null}
       {lines.length > 0 ? (
         <details className="change-diff">
-          <summary>Conversation diff</summary>
+          <summary>{t("Conversation diff")}</summary>
           <div className="pv-card" style={{ padding: "8px 0" }}>
             {lines.map((line, i) => {
               const cls = line.startsWith("+")

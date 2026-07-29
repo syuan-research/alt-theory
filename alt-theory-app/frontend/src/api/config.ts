@@ -148,6 +148,24 @@ export async function saveDefaultMode(
   });
 }
 
+export type LangSettingValue = "auto" | "en" | "zh-Hans" | "zh-Hant-HK";
+
+export async function getLangSetting(): Promise<{
+  lang: LangSettingValue | null;
+}> {
+  return fetchJson<{ lang: LangSettingValue | null }>("/api/settings/lang");
+}
+
+export async function saveLangSetting(
+  lang: LangSettingValue | null,
+): Promise<{ ok: true; lang: LangSettingValue | null }> {
+  return fetchJson("/api/settings/lang", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ lang }),
+  });
+}
+
 export async function saveAutoTitleSettings(
   input: AutoTitleSettings
 ): Promise<{ ok: true; autoTitle: AutoTitleSettings }> {
