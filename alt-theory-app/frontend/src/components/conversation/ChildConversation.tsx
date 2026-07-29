@@ -17,11 +17,12 @@ import { AssistantBubble, TranscriptEntry } from "@/components/conversation/Mess
  */
 export function ChildConversation({
   sessionId,
-  variant,
+  variant = "panel",
   onClose,
 }: {
   sessionId: string;
-  variant: "panel" | "compare";
+  /** @deprecated Only "panel" remains; center compare pane was removed (A/B uses Comparison/ArmSplit). */
+  variant?: "panel" | "compare";
   onClose: () => void;
 }) {
   const app = useApp();
@@ -267,10 +268,7 @@ export function ChildConversation({
 }
 
 /** One lowkey line saying what this pane is — not a repeat of the title. */
-function childBlurb(purpose: string, variant: "panel" | "compare"): string {
-  if (variant === "compare") {
-    return t("A branch of this conversation — compare the two, both stay.");
-  }
+function childBlurb(purpose: string, _variant?: "panel" | "compare"): string {
   if (purpose === "helper") {
     return t("Questions about Alt itself, and setup fixes — fresh context.");
   }

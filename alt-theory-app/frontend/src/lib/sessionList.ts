@@ -3,14 +3,114 @@ import { shortId } from "@/lib/format";
 
 export type DisplayNames = Record<string, { alias: string; snippet: string }>;
 
+type RelatedPurpose = "fork" | "side" | "helper" | "worker";
+
+/** English marker with space + number: "Branch 1", "BTW 2", "Helper 1", "Worker 3". */
+const PURPOSE_MARKER: Record<RelatedPurpose, string> = {
+  fork: "Branch",
+  side: "BTW",
+  helper: "Helper",
+  worker: "Worker",
+};
+
+/**
+ * 1-based index among living siblings of the same parent + purpose
+ * (birth order by createdAt).
+ */
+export function relatedSiblingIndex(
+  session: SessionSummary,
+  allSessions: SessionSummary[],
+): number | null {
+  const fork = session.forkedFrom;
+  if (!fork) return null;
+  if (fork.purpose === "ab-arm") return null;
+  const purpose = fork.purpose as RelatedPurpose;
+  if (!(purpose in PURPOSE_MARKER)) return null;
+
+  const siblings = allSessions
+    .filter(
+      (s) =>
+        s.forkedFrom?.sessionId === fork.sessionId &&
+        s.forkedFrom.purpose === purpose &&
+        !s.deletedAt,
+    )
+    .sort(
+      (a, b) =>
+        new Date(a.createdAt || 0).getTime() -
+        new Date(b.createdAt || 0).getTime(),
+    );
+  const idx = siblings.findIndex((s) => s.sessionId === session.sessionId);
+  return idx >= 0 ? idx + 1 : null;
+}
+
+/**
+ * Display marker only, e.g. "Branch 1". Null for roots / ab-arms.
+ */
+export function relatedDisplayMarker(
+  session: SessionSummary,
+  allSessions?: SessionSummary[],
+): string | null {
+  const fork = session.forkedFrom;
+  if (!fork || fork.purpose === "ab-arm") return null;
+  const purpose = fork.purpose as RelatedPurpose;
+  const word = PURPOSE_MARKER[purpose];
+  if (!word) return null;
+  if (!allSessions?.length) return word;
+  const n = relatedSiblingIndex(session, allSessions);
+  return n == null ? word : `${word} ${n}`;
+}
+
+/** True when base is only a bare machine token (worker-1, branch1, Worker 1). */
+function isBareMarkerToken(base: string, marker: string): boolean {
+  const b = base.trim();
+  const m = marker.trim();
+  if (b.localeCompare(m, undefined, { sensitivity: "accent" }) === 0) return true;
+  // legacy mashed forms: branch1, worker-2, btw3
+  const mashed = m.replace(/\s+/g, "");
+  if (b.localeCompare(mashed, undefined, { sensitivity: "accent" }) === 0) {
+    return true;
+  }
+  const legacy = b.match(/^(branch|btw|helper|worker)[-_]?(\d+)$/i);
+  if (legacy) {
+    const word = PURPOSE_MARKER[
+      legacy[1].toLowerCase() === "branch"
+        ? "fork"
+        : legacy[1].toLowerCase() === "btw"
+          ? "side"
+          : (legacy[1].toLowerCase() as RelatedPurpose)
+    ];
+    return Boolean(word && m.toLowerCase().startsWith(word.toLowerCase()));
+  }
+  return false;
+}
+
+/**
+ * List / switcher title.
+ * Related children get an English prefix (Branch 1 · …), not a rename that
+ * replaces the real title with "branch1".
+ */
 export function sessionTitle(
   session: SessionSummary,
-  displayNames: DisplayNames
+  displayNames: DisplayNames,
+  allSessions?: SessionSummary[],
 ): string {
   const cached = displayNames[session.sessionId];
-  if (cached?.alias) return cached.alias;
-  if (cached?.snippet) return cached.snippet;
-  return shortId(session.sessionId);
+  const base =
+    (cached?.alias && cached.alias.trim()) ||
+    (cached?.snippet && cached.snippet.trim()) ||
+    shortId(session.sessionId);
+
+  const marker = relatedDisplayMarker(session, allSessions);
+  if (!marker) return base;
+
+  if (isBareMarkerToken(base, marker)) return marker;
+
+  // Already prefixed (user typed it, or prior display form)
+  const prefix = `${marker} · `;
+  if (base.toLowerCase().startsWith(prefix.toLowerCase())) return base;
+  if (base.toLowerCase().startsWith(`${marker.toLowerCase()} `)) return base;
+
+  return `${marker} · ${base}`;
 }
 
 export function compareByRecency(a: SessionSummary, b: SessionSummary): number {

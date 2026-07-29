@@ -3287,6 +3287,13 @@ test("SessionService reviseAt edits a turn inherited from the fork parent", asyn
       readSessionDetail(fixture.dataDir, forked.sessionId)?.session.forkedFrom,
       { sessionId: created.sessionId, purpose: "fork" },
     );
+    // Fork must not rename via ui-alias to a bare "branch1" token — list
+    // display adds "Branch N · …" in the frontend.
+    const aliasPath = join(
+      service.getManifest(forked.sessionId).recordsDir,
+      "ui-alias.json",
+    );
+    assert.equal(existsSync(aliasPath), false);
   } finally {
     await service.disposeAll();
   }

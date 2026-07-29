@@ -35,7 +35,7 @@ const GENERAL_TIPS = (): string[] => [
 /** Shown right after the action that produced it, then rotation takes over. */
 export const SITUATIONAL_TIPS = {
   branch: () =>
-    t("Both takes are kept — read them side by side and decide which holds up."),
+    t("Both takes are kept — the branch is in Related conversations on the right."),
   retry: () =>
     t("Same question, fresh answer. What repeats is probably solid; what changes was a choice."),
 };

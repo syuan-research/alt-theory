@@ -601,7 +601,7 @@ function SessionNode({
         data-session-id={session.sessionId}
         style={indent ? { paddingLeft: 10 + indent * 16 } : undefined}
         onClick={() => onOpen(session.sessionId)}
-        title={sessionTitle(session, app.sessionDisplayNames)}
+        title={sessionTitle(session, app.sessionDisplayNames, app.sessions)}
         draggable={draggable}
         onDragStart={
           draggable
@@ -631,7 +631,7 @@ function SessionNode({
           />
         ) : null}
         <span className="s-title">
-          {sessionTitle(session, app.sessionDisplayNames)}
+          {sessionTitle(session, app.sessionDisplayNames, app.sessions)}
         </span>
         {state ? (
           <span className={`badge-run ${state.tone}`} title={state.title}>

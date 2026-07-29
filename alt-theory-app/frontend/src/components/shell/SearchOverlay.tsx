@@ -26,7 +26,10 @@ export function SearchOverlay() {
     const q = query.trim().toLowerCase();
     return app.sessions
       .filter(isListMember)
-      .map((s) => ({ session: s, title: sessionTitle(s, app.sessionDisplayNames) }))
+      .map((s) => ({
+        session: s,
+        title: sessionTitle(s, app.sessionDisplayNames, app.sessions),
+      }))
       .filter(({ session, title }) => matchesQuery(session, q, title))
       .slice(0, 12);
   }, [app.sessions, app.sessionDisplayNames, query]);

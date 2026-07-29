@@ -1426,6 +1426,8 @@ export class SessionService implements AgentTeamBridge {
           purpose,
         },
       });
+      // List labels: display-layer prefix only (e.g. "Branch 1 · …") — do not
+      // rewrite ui-alias to a bare number token; that is a rename, not a prefix.
       return this.snapshot(result);
     } catch (error) {
       if (!activated && existsSync(forkDirs.sessionRoot)) {
@@ -2300,8 +2302,13 @@ export class SessionService implements AgentTeamBridge {
       mode,
     });
     const childManaged = this.requireSession(child.sessionId);
+    // Prefer a human name when given. Default is English "Worker N" (space),
+    // not "worker-N". List UI still prefixes siblings as "Worker N · …".
+    const priorWorkers = this.workerChildren(parentSessionId).filter(
+      (w) => w.sessionId !== child.sessionId,
+    );
     const label =
-      options.name?.trim() || `worker-${this.workerChildren(parentSessionId).length}`;
+      options.name?.trim() || `Worker ${priorWorkers.length + 1}`;
     writeJsonAtomic(join(childManaged.manifest.recordsDir, "ui-alias.json"), {
       schemaVersion: 1,
       alias: label,

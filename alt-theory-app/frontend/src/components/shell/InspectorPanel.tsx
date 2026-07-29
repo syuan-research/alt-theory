@@ -55,9 +55,28 @@ export function InspectorPanel() {
     }
     if (openedChildRef.current === childId) return;
     openedChildRef.current = childId;
+
+    // Width depends on conversation kind (branch/retry ≈ 50%; btw/helper default).
+    // Prefer the explicit hint from branch_created / related_session_created;
+    // when the user picks from the switcher, fall back to purpose on the summary.
+    let size = app.relatedPaneSize;
+    if (!size) {
+      const child = app.sessions.find((s) => s.sessionId === childId);
+      const purpose = child?.forkedFrom?.purpose;
+      // Branch/retry only: half work area. Worker / btw / helper: default ~480.
+      size = purpose === "fork" ? "half" : "default";
+    }
+    shell.setRightPaneForRelated(size);
     shell.openRail("chats");
     shell.openSub({ key: `related:${childId}` });
-  }, [app.activeRelatedSessionId, shell.openRail, shell.openSub]);
+  }, [
+    app.activeRelatedSessionId,
+    app.relatedPaneSize,
+    app.sessions,
+    shell.openRail,
+    shell.openSub,
+    shell.setRightPaneForRelated,
+  ]);
 
   return (
     <aside className={`right${open ? " open" : ""}`}>
@@ -167,44 +186,64 @@ function RelatedConversations() {
     worker: "ph-robot",
   };
 
-  // Orientation when the open conversation is itself a branch/side/helper:
-  // a way back to where it started, so a fresh fork never shows a dead end.
-  const current = app.sessions.find((s) => s.sessionId === app.sessionId);
-  const parent = current?.forkedFrom
-    ? app.sessions.find(
-        (s) => s.sessionId === current.forkedFrom?.sessionId && !s.deletedAt,
-      )
-    : undefined;
+  // Switcher click: setActiveRelatedSessionId only; openSub + width are owned
+  // by the one-shot effect on activeRelatedSessionId. Do NOT dual-write openSub.
+  //
+  // parentRow ("Where this branch started — go back anytime") is intentionally
+  // gone. Branch/retry open the child in this Related rail via
+  // branch_created → activeRelatedSessionId (not center compare). Center
+  // session is chosen only from the left list.
+
+  const sizeForChild = (purpose: string | undefined): "half" | "default" =>
+    purpose === "fork" ? "half" : "default";
+
+  // Wheel → horizontal: trackpads/mice emit vertical delta; without this the
+  // strip only moves via the scrollbar thumb.
+  const switchRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = switchRef.current;
+    if (!el) return;
+    const onWheel = (event: WheelEvent) => {
+      if (el.scrollWidth <= el.clientWidth + 1) return;
+      const dominantY = Math.abs(event.deltaY) >= Math.abs(event.deltaX);
+      if (!dominantY && event.deltaX === 0) return;
+      const dx = dominantY ? event.deltaY : event.deltaX;
+      if (dx === 0) return;
+      const next = el.scrollLeft + dx;
+      const max = el.scrollWidth - el.clientWidth;
+      if (next <= 0 && el.scrollLeft <= 0) return;
+      if (next >= max && el.scrollLeft >= max) return;
+      event.preventDefault();
+      el.scrollLeft = Math.max(0, Math.min(max, next));
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [children.length, activeChildId]);
 
   // One row of small buttons, then the conversation itself: switching between
   // related conversations should not cost a round trip through a list.
   const switcher =
     children.length > 0 ? (
-      <div className="child-switch" role="tablist" aria-label={t("Related conversations")}>
+      <div className="child-switch" ref={switchRef}>
         {children.map((child) => (
           <button
             key={child.sessionId}
-            type="button"
-            role="tab"
-            aria-selected={child.sessionId === activeChildId}
             className={child.sessionId === activeChildId ? "on" : ""}
-            title={sessionTitle(child, app.sessionDisplayNames)}
+            title={sessionTitle(child, app.sessionDisplayNames, app.sessions)}
             onClick={() => {
-              // Explicit openSub so switching branches always remounts the
-              // child pane even when the one-shot effect already ran for a
-              // previous related id.
+              shell.openApp();
               if (child.sessionId === activeChildId) {
                 app.setActiveRelatedSessionId(null);
                 shell.closeSub();
-                return;
+              } else {
+                app.setActiveRelatedSessionId(child.sessionId, {
+                  size: sizeForChild(child.forkedFrom?.purpose),
+                });
               }
-              app.setActiveRelatedSessionId(child.sessionId);
-              shell.openRail("chats");
-              shell.openSub({ key: `related:${child.sessionId}` });
             }}
           >
             <i className={`ph ${PURPOSE_ICON[child.forkedFrom?.purpose ?? "side"]}`} />
-            <span>{sessionTitle(child, app.sessionDisplayNames)}</span>
+            <span>{sessionTitle(child, app.sessionDisplayNames, app.sessions)}</span>
             {child.status === "incomplete" ? <span className="dot" /> : null}
           </button>
         ))}
@@ -216,6 +255,7 @@ function RelatedConversations() {
       <>
         {switcher}
         <ChildConversation
+          key={activeChildId}
           sessionId={activeChildId}
           variant="panel"
           onClose={() => {
@@ -227,53 +267,31 @@ function RelatedConversations() {
     );
   }
 
-  const parentRow = parent ? (
-    <button
-      key="parent"
-      className="sc-item"
-      onClick={() => {
-        shell.openApp();
-        app.setActiveRelatedSessionId(null);
-        app.openCatalogSession(parent.sessionId);
-      }}
-    >
-      <div className="t">
-        <i className="ph ph-arrow-u-up-left" />
-        {sessionTitle(parent, app.sessionDisplayNames)}
-      </div>
-      <div className="d">{t("Where this branch started — go back anytime")}</div>
-    </button>
-  ) : null;
-
   if (children.length === 0) {
     return (
-      <>
-        {parentRow}
-        <div className="rp-empty">
-          {t("No related conversations. Use ")} <b>/branch</b> {t(" or ")} <b>/btw</b>, {t(" or open Helper.")}
-        </div>
-      </>
+      <div className="rp-empty">
+        {t("No related conversations. Use ")} <b>/branch</b> {t(" or ")} <b>/btw</b>, {t(" or open Helper.")}
+      </div>
     );
   }
 
   return (
     <>
       {switcher}
-      {parentRow}
       {children.map((child) => (
         <button
           key={child.sessionId}
-          type="button"
           className="sc-item"
           onClick={() => {
-            app.setActiveRelatedSessionId(child.sessionId);
-            shell.openRail("chats");
-            shell.openSub({ key: `related:${child.sessionId}` });
+            shell.openApp();
+            app.setActiveRelatedSessionId(child.sessionId, {
+              size: sizeForChild(child.forkedFrom?.purpose),
+            });
           }}
         >
           <div className="t">
             <i className={`ph ${PURPOSE_ICON[child.forkedFrom?.purpose ?? "side"]}`} />
-            {sessionTitle(child, app.sessionDisplayNames)}
+            {sessionTitle(child, app.sessionDisplayNames, app.sessions)}
             {child.status === "incomplete" ? (
               <span className="badge-run">{t("running")}</span>
             ) : null}

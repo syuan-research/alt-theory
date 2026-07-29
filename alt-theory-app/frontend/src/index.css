@@ -661,8 +661,10 @@
   /* Panel body: only the list scrolls; child conversation owns its own msgs. */
   .rpanel .body {
     flex: 1;
+    min-width: 0;
     min-height: 0;
     overflow-y: auto;
+    overflow-x: hidden;
     padding: 10px;
     scrollbar-width: thin;
     scrollbar-color: var(--hairline) transparent;
@@ -683,8 +685,15 @@
     overflow: hidden;
     padding-bottom: 0;
   }
-  .rpanel .body:has(.child-conv) .child-switch { flex: 0 0 auto; }
-  .rpanel .body:has(.child-conv) .child-conv { flex: 1; min-height: 0; }
+  /* min-width:0 + max-width:100% so overflow-x on .child-switch can scroll
+     instead of expanding the flex item to content width. */
+  .rpanel .body:has(.child-conv) .child-switch {
+    flex: 0 0 auto;
+    min-width: 0;
+    max-width: 100%;
+    width: 100%;
+  }
+  .rpanel .body:has(.child-conv) .child-conv { flex: 1; min-width: 0; min-height: 0; }
   .rp-empty { padding: 24px 12px; font-size: 0.8125rem; color: var(--text-3); text-align: center; }
   .sc-item, .file-item { background: var(--surface); border: none; border-radius: var(--r-md); padding: 10px 12px; margin-bottom: 8px; cursor: pointer; width: 100%; text-align: left; display: block; }
   .sc-item:hover, .file-item:hover { box-shadow: 0 2px 8px rgba(31,30,26,0.08); }
@@ -735,7 +744,10 @@
      and the one-line header differ (alpha.6). */
   .child-switch {
     display: flex;
+    flex-wrap: nowrap;
     gap: 4px;
+    min-width: 0;
+    max-width: 100%;
     overflow-x: auto;
     overflow-y: hidden;
     padding: 0 2px 8px;
@@ -779,11 +791,27 @@
   .child-conv .child-msgs { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 8px; }
   .child-conv .approval-dock { flex-wrap: wrap; margin: 8px 0 0; }
   .related-error { color: var(--danger); font-size: 0.75rem; padding: 6px 2px 0; }
-  .child-composer { margin-top: 8px; }
-  .child-composer textarea { min-height: 44px; }
+  /* Same card geometry as main .composer (do not stretch with flex:1 — that
+     made the child taller with empty air under "Reply here"). */
+  .composer,
+  .child-composer {
+    box-sizing: border-box;
+    min-height: 94px;
+  }
+  .child-composer {
+    margin-top: 8px;
+    margin-bottom: 10px;
+  }
+  .child-composer textarea {
+    min-height: 42px;
+    height: 42px;
+  }
+  .child-composer .row {
+    margin-top: 4px;
+    justify-content: flex-end;
+    min-height: 30px;
+  }
 
-  .compare-pane { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; padding: 12px 14px; background: var(--canvas); overflow: hidden; }
-  .compare-resizer { cursor: default; }
 
   /* ------- full pages (review / settings) ------- */
   .page { flex: 1; overflow-y: auto; background: var(--canvas); }

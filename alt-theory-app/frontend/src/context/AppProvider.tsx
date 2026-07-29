@@ -148,10 +148,15 @@ export interface AppContextValue {
   /** Conversations that changed state while you were looking elsewhere. */
   sessionAlerts: Record<string, SessionAlert>;
   activeRelatedSessionId: string | null;
-  setActiveRelatedSessionId: (sessionId: string | null) => void;
-  /** Conversation shown beside the current one for comparison (50/50 split). */
-  compareSessionId: string | null;
-  setCompareSessionId: (sessionId: string | null) => void;
+  /**
+   * Preferred right-rail width when this related conversation is opened:
+   * half ≈ branch/retry only; default ≈ btw/helper/worker.
+   */
+  relatedPaneSize: "half" | "default" | null;
+  setActiveRelatedSessionId: (
+    sessionId: string | null,
+    opts?: { size?: "half" | "default" },
+  ) => void;
   /** Question to send once into a just-created child conversation. */
   childSeed: { sessionId: string; text: string } | null;
   clearChildSeed: () => void;
@@ -309,8 +314,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [transcriptView, setTranscriptView] = useState<TranscriptView>("user");
 
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
-  const [activeRelatedSessionId, setActiveRelatedSessionId] = useState<string | null>(null);
-  const [compareSessionId, setCompareSessionId] = useState<string | null>(null);
+  const [activeRelatedSessionId, setActiveRelatedSessionIdState] = useState<
+    string | null
+  >(null);
+  const [relatedPaneSize, setRelatedPaneSize] = useState<
+    "half" | "default" | null
+  >(null);
+  const setActiveRelatedSessionId = useCallback(
+    (sessionId: string | null, opts?: { size?: "half" | "default" }) => {
+      setActiveRelatedSessionIdState(sessionId);
+      if (!sessionId) setRelatedPaneSize(null);
+      else if (opts?.size) setRelatedPaneSize(opts.size);
+    },
+    [],
+  );
   /** First question to ask in the child about to be created (helper / btw). */
   const pendingChildSeedRef = useRef<string | null>(null);
   const [childSeed, setChildSeed] = useState<
@@ -801,7 +818,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
           break;
 
         case "related_session_created":
-          setActiveRelatedSessionId(message.payload.sessionId);
+          // btw / helper: keep the original compact default (~480), not 50%.
+          setActiveRelatedSessionId(message.payload.sessionId, {
+            size: "default",
+          });
           if (pendingChildSeedRef.current) {
             setChildSeed({
               sessionId: message.payload.sessionId,
@@ -817,8 +837,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
           break;
 
         case "branch_created":
-          // This conversation is untouched; the branch answers beside it.
-          setCompareSessionId(message.payload.sessionId);
+          // Main conversation stays in the center. Branched work (incl. retry /
+          // edit-and-ask-again) opens in the right Related rail at ~50% width.
+          // Center multi-arm compare stays on Workbench A/B only.
+          setActiveRelatedSessionId(message.payload.sessionId, {
+            size: "half",
+          });
           setIsRunning(false);
           setConnStatus("idle");
           setConnLabel("Ready");
@@ -1036,6 +1060,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       refreshSessions,
       selectedCatalogSessionId,
       sessionId,
+      setActiveRelatedSessionId,
       setComposerNoticeTimed,
     ],
   );
@@ -1124,8 +1149,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return;
       }
       setSelectedCatalogSessionId(targetSessionId);
-      // The comparison pane belongs to the conversation you were looking at.
-      setCompareSessionId(null);
       pendingOpenSessionIdRef.current = targetSessionId;
       if (
         sendMessage({
@@ -1396,13 +1419,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         })
       )
         return false;
-      // This conversation keeps running its own life — the branch answers in
-      // the comparison pane, which opens on `branch_created`.
+      // This conversation keeps running its own life — the branch opens in
+      // the right Related panel on `branch_created`.
       setCanRetryFailed(false);
       setComposerNoticeTimed({
         text: entryId
           ? t("Same question, fresh answer. What repeats is probably solid; what changes was a choice.")
-          : t("Both takes are kept — read them side by side and decide which holds up."),
+          : t("Both takes are kept — the branch is in Related conversations on the right."),
       });
       return true;
     },
@@ -1679,9 +1702,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       duplicateSession,
       sessionAlerts,
       activeRelatedSessionId,
+      relatedPaneSize,
       setActiveRelatedSessionId,
-      compareSessionId,
-      setCompareSessionId,
       childSeed,
       clearChildSeed,
       promoteRelatedSession,
@@ -1785,6 +1807,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       duplicateSession,
       sessionAlerts,
       activeRelatedSessionId,
+      relatedPaneSize,
+      setActiveRelatedSessionId,
+      childSeed,
+      clearChildSeed,
       promoteRelatedSession,
       renameSelectedSession,
       deleteSelectedSession,

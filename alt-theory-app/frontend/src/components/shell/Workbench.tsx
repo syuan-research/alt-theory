@@ -194,7 +194,7 @@ function SessionsView() {
               }}
             >
               <span className="s-title">
-                {sessionTitle(s, app.sessionDisplayNames)}
+                {sessionTitle(s, app.sessionDisplayNames, app.sessions)}
               </span>
               <span className="tag">{s.studyTag?.batch ?? s.studyTag?.studyId}</span>
             </button>

@@ -1,10 +1,9 @@
 import { useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { useApp } from "@/context/AppProvider";
-import { useShell } from "@/context/ShellContext";
+import { RIGHT_PANE, useShell } from "@/context/ShellContext";
 import { t } from "@/i18n";
 import { LeftNav } from "@/components/shell/LeftNav";
 import { ConversationPanel } from "@/components/shell/ConversationPanel";
-import { ChildConversation } from "@/components/conversation/ChildConversation";
 import { InspectorPanel } from "@/components/shell/InspectorPanel";
 import { SettingsView } from "@/components/shell/SettingsView";
 import { ReviewPage } from "@/components/shell/ReviewPage";
@@ -13,28 +12,30 @@ import { LoginOverlay } from "@/components/auth/LoginOverlay";
 
 type PaneSide = "left" | "right";
 
-const PANE_WIDTHS = {
-  left: { key: "alt-theory-left-width", initial: 264, min: 200, max: 420, collapsed: 52 },
-  right: { key: "alt-theory-right-width", initial: 480, min: 320, max: 760, collapsed: 48 },
+const LEFT_PANE = {
+  key: "alt-theory-left-width",
+  initial: 264,
+  min: 200,
+  max: 420,
+  collapsed: 52,
 } as const;
 
-function readPaneWidth(side: PaneSide): number {
-  const config = PANE_WIDTHS[side];
+function readLeftWidth(): number {
   try {
-    const stored = localStorage.getItem(config.key);
-    if (stored === null) return config.initial;
+    const stored = localStorage.getItem(LEFT_PANE.key);
+    if (stored === null) return LEFT_PANE.initial;
     const value = Number(stored);
     return Number.isFinite(value)
-      ? Math.min(config.max, Math.max(config.min, value))
-      : config.initial;
+      ? Math.min(LEFT_PANE.max, Math.max(LEFT_PANE.min, value))
+      : LEFT_PANE.initial;
   } catch {
-    return config.initial;
+    return LEFT_PANE.initial;
   }
 }
 
-function savePaneWidth(side: PaneSide, width: number): void {
+function saveLeftWidth(width: number): void {
   try {
-    localStorage.setItem(PANE_WIDTHS[side].key, String(width));
+    localStorage.setItem(LEFT_PANE.key, String(width));
   } catch {
     /* ignore */
   }
@@ -43,36 +44,35 @@ function savePaneWidth(side: PaneSide, width: number): void {
 export function Shell() {
   const app = useApp();
   const shell = useShell();
-  const [leftWidth, setLeftWidth] = useState(() => readPaneWidth("left"));
-  const [rightWidth, setRightWidth] = useState(() => readPaneWidth("right"));
+  const [leftWidth, setLeftWidth] = useState(() => readLeftWidth());
   const lastRightPanel = useRef(shell.rightPanel ?? "workspace");
   if (shell.rightPanel) lastRightPanel.current = shell.rightPanel;
 
-  const setPaneWidth = (side: PaneSide, value: number, persist = false) => {
-    const { min, max } = PANE_WIDTHS[side];
-    const width = Math.min(max, Math.max(min, value));
-    if (side === "left") setLeftWidth(width);
-    else setRightWidth(width);
-    if (persist) savePaneWidth(side, width);
+  const setLeftPaneWidth = (value: number, persist = false) => {
+    const width = Math.min(LEFT_PANE.max, Math.max(LEFT_PANE.min, value));
+    setLeftWidth(width);
+    if (persist) saveLeftWidth(width);
   };
 
   const beginResize = (side: PaneSide, event: ReactPointerEvent<HTMLDivElement>) => {
     event.preventDefault();
     const startX = event.clientX;
     let collapsed = side === "left" ? shell.leftCollapsed : !shell.rightPanel;
-    const config = PANE_WIDTHS[side];
+    const min = side === "left" ? LEFT_PANE.min : RIGHT_PANE.min;
+    const max = side === "left" ? LEFT_PANE.max : RIGHT_PANE.max;
+    const collapsedW = side === "left" ? LEFT_PANE.collapsed : RIGHT_PANE.collapsed;
     const startWidth = collapsed
-      ? config.collapsed
+      ? collapsedW
       : side === "left"
         ? leftWidth
-        : rightWidth;
-    let nextWidth = side === "left" ? leftWidth : rightWidth;
+        : shell.rightWidth;
+    let nextWidth = side === "left" ? leftWidth : shell.rightWidth;
     document.body.classList.add("resizing-pane");
 
     const move = (moveEvent: PointerEvent) => {
       const delta = moveEvent.clientX - startX;
       const raw = startWidth + (side === "left" ? delta : -delta);
-      const nextCollapsed = raw < config.min / 2;
+      const nextCollapsed = raw < min / 2;
       if (nextCollapsed !== collapsed) {
         if (side === "left") shell.setLeftCollapsed(nextCollapsed);
         else if (nextCollapsed) shell.closeRight();
@@ -80,15 +80,17 @@ export function Shell() {
         collapsed = nextCollapsed;
       }
       if (!collapsed) {
-        nextWidth = Math.min(config.max, Math.max(config.min, raw));
-        setPaneWidth(side, nextWidth);
+        nextWidth = Math.min(max, Math.max(min, raw));
+        if (side === "left") setLeftPaneWidth(nextWidth);
+        else shell.setRightPaneWidth(nextWidth);
       }
     };
     const end = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", end);
       document.body.classList.remove("resizing-pane");
-      savePaneWidth(side, nextWidth);
+      if (side === "left") saveLeftWidth(nextWidth);
+      else shell.setRightPaneWidth(nextWidth, true);
     };
 
     window.addEventListener("pointermove", move);
@@ -105,9 +107,15 @@ export function Shell() {
       if (key === "ArrowLeft") shell.openRail(lastRightPanel.current);
       return;
     }
-    const direction = key === "ArrowRight" ? 16 : -16;
-    const current = side === "left" ? leftWidth : rightWidth;
-    setPaneWidth(side, current + (side === "left" ? direction : -direction), true);
+    // Left handle: ArrowRight grows left. Right handle sits on the panel's left
+    // edge, so ArrowLeft grows the right pane and ArrowRight shrinks it.
+    if (side === "left") {
+      const direction = key === "ArrowRight" ? 16 : -16;
+      setLeftPaneWidth(leftWidth + direction, true);
+    } else {
+      const delta = key === "ArrowLeft" ? 16 : -16;
+      shell.setRightPaneWidth(shell.rightWidth + delta, true);
+    }
   };
 
   if (app.loading) {
@@ -139,7 +147,7 @@ export function Shell() {
           style={
             {
               "--left-width": `${leftWidth}px`,
-              "--right-width": `${rightWidth}px`,
+              "--right-width": `${shell.rightWidth}px`,
             } as CSSProperties
           }
         >
@@ -150,33 +158,21 @@ export function Shell() {
             aria-label={t("Resize conversation list")}
             aria-orientation="vertical"
             aria-valuemin={0}
-            aria-valuemax={PANE_WIDTHS.left.max}
+            aria-valuemax={LEFT_PANE.max}
             aria-valuenow={shell.leftCollapsed ? 0 : leftWidth}
             tabIndex={0}
             onPointerDown={(event) => beginResize("left", event)}
             onKeyDown={(event) => resizeKey("left", event.key)}
           />
           <ConversationPanel />
-          {app.compareSessionId ? (
-            <>
-              <div className="pane-resizer compare-resizer" role="separator" aria-orientation="vertical" />
-              <div className="compare-pane">
-                <ChildConversation
-                  sessionId={app.compareSessionId}
-                  variant="compare"
-                  onClose={() => app.setCompareSessionId(null)}
-                />
-              </div>
-            </>
-          ) : null}
           <div
             className="pane-resizer"
             role="separator"
             aria-label={t("Resize files and details panel")}
             aria-orientation="vertical"
             aria-valuemin={0}
-            aria-valuemax={PANE_WIDTHS.right.max}
-            aria-valuenow={shell.rightPanel ? rightWidth : 0}
+            aria-valuemax={RIGHT_PANE.max}
+            aria-valuenow={shell.rightPanel ? shell.rightWidth : 0}
             tabIndex={0}
             onPointerDown={(event) => beginResize("right", event)}
             onKeyDown={(event) => resizeKey("right", event.key)}
