@@ -32,6 +32,7 @@ export function ChildConversation({
   const [status, setStatus] = useState(t("Connecting…"));
   const [error, setError] = useState("");
   const [approvals, setApprovals] = useState<ApprovalRequestPayload[]>([]);
+  const [connected, setConnected] = useState(false);
   const messagesRef = useRef<HTMLDivElement>(null);
   const developer = app.transcriptView === "developer";
 
@@ -117,6 +118,7 @@ export function ChildConversation({
     reconnectSessionId: sessionId,
     onMessage,
     onStatus: (next) => {
+      setConnected(next === "open");
       if (next === "open") setStatus(t("Opening…"));
       else if (next === "connecting") setStatus(t("Connecting…"));
       else if (next === "closed") setStatus(t("Reconnecting…"));
@@ -128,6 +130,21 @@ export function ChildConversation({
     const el = messagesRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages, streaming]);
+
+  // A Helper/BTW opened with a question already typed asks it straight away
+  // instead of greeting the user with "what can I help with?".
+  const seed = app.childSeed;
+  const seedSentRef = useRef(false);
+  useEffect(() => {
+    if (!seed || seed.sessionId !== sessionId || seedSentRef.current) return;
+    if (!connected) return;
+    if (socket.send({ type: "prompt", payload: seed.text })) {
+      seedSentRef.current = true;
+      setRunning(true);
+      setStatus(t("Working…"));
+      app.clearChildSeed();
+    }
+  }, [app, connected, seed, sessionId, socket]);
 
   const send = () => {
     const text = draft.trim();
@@ -255,7 +272,7 @@ function childBlurb(purpose: string, variant: "panel" | "compare"): string {
     return t("A branch of this conversation — compare the two, both stay.");
   }
   if (purpose === "helper") {
-    return t("Questions about Alt itself, with fresh context.");
+    return t("Questions about Alt itself, and setup fixes — fresh context.");
   }
   if (purpose === "worker") {
     return t("A worker agent working on its own — you can join in.");

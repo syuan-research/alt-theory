@@ -140,7 +140,10 @@ export interface AppContextValue {
   sessionsError: string | null;
   refreshSessions: () => Promise<void>;
   openCatalogSession: (sessionId: string) => void;
-  forkCurrentSession: (purpose: "fork" | "side" | "helper" | "ab-arm") => void;
+  forkCurrentSession: (
+    purpose: "fork" | "side" | "helper" | "ab-arm",
+    seedPrompt?: string,
+  ) => void;
   duplicateSession: (sessionId: string) => void;
   /** Conversations that changed state while you were looking elsewhere. */
   sessionAlerts: Record<string, SessionAlert>;
@@ -149,6 +152,9 @@ export interface AppContextValue {
   /** Conversation shown beside the current one for comparison (50/50 split). */
   compareSessionId: string | null;
   setCompareSessionId: (sessionId: string | null) => void;
+  /** Question to send once into a just-created child conversation. */
+  childSeed: { sessionId: string; text: string } | null;
+  clearChildSeed: () => void;
   promoteRelatedSession: (sessionId: string) => Promise<void>;
   renameSelectedSession: (sessionId?: string) => Promise<void>;
   deleteSelectedSession: (sessionId?: string) => void;
@@ -305,6 +311,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [activeRelatedSessionId, setActiveRelatedSessionId] = useState<string | null>(null);
   const [compareSessionId, setCompareSessionId] = useState<string | null>(null);
+  /** First question to ask in the child about to be created (helper / btw). */
+  const pendingChildSeedRef = useRef<string | null>(null);
+  const [childSeed, setChildSeed] = useState<
+    { sessionId: string; text: string } | null
+  >(null);
   const [sessionSearch, setSessionSearch] = useState("");
   const [selectedCatalogSessionId, setSelectedCatalogSessionId] = useState<
     string | null
@@ -791,6 +802,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         case "related_session_created":
           setActiveRelatedSessionId(message.payload.sessionId);
+          if (pendingChildSeedRef.current) {
+            setChildSeed({
+              sessionId: message.payload.sessionId,
+              text: pendingChildSeedRef.current,
+            });
+            pendingChildSeedRef.current = null;
+          }
           setIsRunning(false);
           setConnStatus("idle");
           setConnLabel("Ready");
@@ -1184,12 +1202,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [sessionId]);
 
   const forkCurrentSession = useCallback(
-    (purpose: "fork" | "side" | "helper" | "ab-arm") => {
+    (purpose: "fork" | "side" | "helper" | "ab-arm", seedPrompt?: string) => {
       if (!sessionId || isRunning) return;
       const related = purpose === "side" || purpose === "helper";
       const message: ClientMessage = related
         ? { type: "create_related_session", payload: { purpose } }
         : { type: "fork_session", payload: { purpose } };
+      // The child asks the question the user already typed, instead of opening
+      // with "what can I help with?".
+      pendingChildSeedRef.current = seedPrompt?.trim() || null;
       if (sendMessage(message)) {
         setIsRunning(true);
         setConnStatus("running");
@@ -1222,6 +1243,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     },
     [sendMessage],
   );
+
+  const clearChildSeed = useCallback(() => setChildSeed(null), []);
 
   const promoteRelatedSession = useCallback(
     async (targetSessionId: string) => {
@@ -1659,6 +1682,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setActiveRelatedSessionId,
       compareSessionId,
       setCompareSessionId,
+      childSeed,
+      clearChildSeed,
       promoteRelatedSession,
       renameSelectedSession,
       deleteSelectedSession,

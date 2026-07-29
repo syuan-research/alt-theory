@@ -67,18 +67,17 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
 
   // Helper is a child of a real conversation; from a blank screen the same
   // request starts one and invokes the help skill in it.
-  const openHelper = () => {
-    if (app.sessionId) app.forkCurrentSession("helper");
-    else app.invokeSkill("alt-theory-help");
+  const openHelper = (question: string) => {
+    if (app.sessionId) app.forkCurrentSession("helper", question);
+    else app.invokeSkill("alt-theory-help", question);
   };
 
   const slashCommands = useMemo<SlashCommand[]>(
     () => [
       {
         name: "helper",
-        description: t("Ask how Alt works, or get setup and configuration fixed"),
-        run: () => openHelper(),
-        immediate: true,
+        description: t("Ask how Alt works, or get setup fixed — in a new conversation on the side"),
+        run: (args: string) => openHelper(args),
       },
       ...(variant === "live"
         ? [
@@ -486,9 +485,14 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               {/* Always here: help that comes and goes with the screen you are
                   on is help you cannot rely on. In a conversation it opens a
                   Helper child; on a blank screen it starts one. */}
-              <div className="mi" onClick={() => (openHelper(), setMenu(null))}>
+              <div
+                className="mi"
+                title={t("Opens a separate conversation beside this one, with fresh context. It answers questions about Alt and can fix setup — providers, keys, models, missing tools.")}
+                onClick={() => armCommand("helper")}
+              >
                 <i className="ph ph-lifebuoy" />
                 {t("Ask how Alt works, or fix setup")}
+                <span className="mi-note">{t("new conversation on the side")}</span>
               </div>
               {canAttach ? (
                 <div

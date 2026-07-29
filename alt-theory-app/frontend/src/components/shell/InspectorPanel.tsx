@@ -269,7 +269,7 @@ function RelatedConversations() {
           </div>
           <div className="d">
             {child.forkedFrom?.purpose === "helper"
-              ? t("Ask how Alt works · fresh context")
+              ? t("How Alt works, and fixing setup · fresh context")
               : child.forkedFrom?.purpose === "worker"
                 ? t("Worker agent · {count} messages — you can join in", { count: child.messageCount ?? 0 })
                 : child.forkedFrom?.purpose === "fork"

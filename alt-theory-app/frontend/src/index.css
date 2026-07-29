@@ -433,6 +433,7 @@
   .toolbox-btn .badge-dot { position: absolute; top: 2px; right: 2px; width: 8px; height: 8px; border-radius: 50%; background: var(--color-warning); box-shadow: 0 0 0 2px var(--surface); }
   .mi.disabled { opacity: 0.45; cursor: default; }
   .mi.disabled:hover { background: none; }
+  .mi .mi-note { margin-left: auto; font-size: 0.68rem; color: var(--text-3); }
   .mi .soon { margin-left: auto; font-size: 0.68rem; color: var(--text-3); border: 1px solid var(--hairline); border-radius: 999px; padding: 1px 7px; }
 
   /* quiet secondary import entry on the empty state */
