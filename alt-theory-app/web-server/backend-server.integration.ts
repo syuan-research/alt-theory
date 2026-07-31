@@ -215,7 +215,10 @@ test("model-list normalization preserves available runtime metadata", () => {
   );
 });
 
-test("provider Fetch keeps only models for the selected SDK family", async () => {
+test("provider Fetch keeps every model its own endpoint lists", async () => {
+  // The provider entry's api/baseUrl already decide the SDK, so a model the
+  // catalog has not indexed — or a catalog that never loaded because the
+  // network was down — must not delete a model the provider itself returned.
   const agentDir = mkdtempSync(join(tmpdir(), "alt-theory-sdk-family-"));
   writeFileSync(
     join(agentDir, "models-dev-cache.json"),
@@ -223,10 +226,7 @@ test("provider Fetch keeps only models for the selected SDK family", async () =>
       "opencode-go": {
         api: "https://opencode.ai/zen/go/v1",
         npm: "@ai-sdk/openai-compatible",
-        models: {
-          "openai-model": {},
-          "anthropic-model": { provider: { npm: "@ai-sdk/anthropic" } },
-        },
+        models: { "known-model": {} },
       },
     }),
     "utf-8",
@@ -234,27 +234,45 @@ test("provider Fetch keeps only models for the selected SDK family", async () =>
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () =>
     new Response(JSON.stringify({
-      data: [
-        { id: "openai-model" },
-        { id: "anthropic-model" },
-        { id: "unclassified-model" },
-      ],
+      data: [{ id: "known-model" }, { id: "released-last-week" }],
     }), { status: 200 });
   try {
-    const openai = await fetchProviderModelsFromDraft(agentDir, {
+    const fetched = await fetchProviderModelsFromDraft(agentDir, {
       provider: "opencode-go",
       baseUrl: "https://opencode.ai/zen/go/v1",
       api: "openai-completions",
       apiKey: "test-key",
     });
-    const anthropic = await fetchProviderModelsFromDraft(agentDir, {
+    assert.deepEqual(fetched.map((model) => model.id), [
+      "known-model",
+      "released-last-week",
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("provider Fetch retries a 5xx once before giving up", async () => {
+  const agentDir = mkdtempSync(join(tmpdir(), "alt-theory-fetch-retry-"));
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    return calls === 1
+      ? new Response("upstream hiccup", { status: 503 })
+      : new Response(JSON.stringify({ data: [{ id: "after-retry" }] }), {
+          status: 200,
+        });
+  };
+  try {
+    const fetched = await fetchProviderModelsFromDraft(agentDir, {
       provider: "opencode-go",
       baseUrl: "https://opencode.ai/zen/go/v1",
-      api: "anthropic-messages",
+      api: "openai-completions",
       apiKey: "test-key",
     });
-    assert.deepEqual(openai.map((model) => model.id), ["openai-model"]);
-    assert.deepEqual(anthropic.map((model) => model.id), ["anthropic-model"]);
+    assert.equal(calls, 2);
+    assert.deepEqual(fetched.map((model) => model.id), ["after-retry"]);
   } finally {
     globalThis.fetch = originalFetch;
   }

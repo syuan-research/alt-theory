@@ -453,9 +453,6 @@
   .split-new .split-plus { flex: 0 0 auto; width: 34px; display: flex; align-items: center; justify-content: center; border: none; border-left: 1px solid var(--hairline); background: none; border-radius: 0 var(--r-md) var(--r-md) 0; cursor: pointer; color: var(--ink); }
   .split-new .split-plus:hover { background: var(--hover); }
   .list-menu .check { margin-left: auto; }
-  .menu-history > summary { list-style: none; cursor: pointer; font-size: 0.72rem; color: var(--text-3); padding: 6px 10px 2px; }
-  .menu-history > summary::-webkit-details-marker { display: none; }
-  .menu-history > summary:hover { color: var(--ink); }
   .list-menu .sep { height: 1px; background: var(--hairline); margin: 4px 2px; }
 
   /* workspace group rows (M4) */
@@ -704,7 +701,9 @@
   .tree .ti:hover { background: var(--hover); }
   .tree .ti span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .tree .ti.indent { padding-left: 28px; }
-  .files-section-title { margin: 8px 4px 6px; color: var(--text-3); font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+  /* No text-transform: the label is ordinary prose ("Working folders"), and
+     forcing caps here made every attempt to fix the wording look ignored. */
+  .files-section-title { margin: 8px 4px 6px; color: var(--text-3); font-size: 0.72rem; font-weight: 600; }
   .working-folders { margin-bottom: 10px; }
   .working-folder { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 7px; padding: 9px 8px; margin-bottom: 6px; border-radius: var(--r-sm); background: var(--surface); color: var(--ink-soft); }
   .working-folder-role { font-size: 0.78rem; font-weight: 500; }
@@ -841,20 +840,20 @@
   .set-panel.models-panel { max-width: 1040px; }
   .set-panel h2 { font-family: var(--brand); font-weight: 600; font-size: 1.4rem; margin: 0 0 4px; }
   .set-panel .sub { color: var(--text-2); font-size: 0.875rem; margin: 0 0 24px; }
-  .set-card { background: var(--surface); border: none; border-radius: var(--r-md); padding: 16px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(31,30,26,0.04); }
+  .set-card { background: var(--surface); border: none; border-radius: var(--r-md); padding: 14px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(31,30,26,0.04); }
   .set-card h4 { margin: 0 0 4px; font-size: 0.95rem; }
   .set-card p { margin: 0; font-size: 0.8125rem; color: var(--text-2); }
   .asset-list { margin: 8px 0 0; padding-left: 18px; font-size: 0.8125rem; color: var(--text-2); }
   .asset-list li { margin: 2px 0; }
   .asset-list em { color: var(--text-3); font-style: normal; }
   .asset-list code { font-size: 0.75rem; }
-  .set-card .row2 { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+  .set-card .row2 { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
   .set-card input[type="text"] { border: 1px solid var(--hairline); border-radius: var(--r-sm); padding: 7px 10px; font: inherit; font-size: 0.875rem; width: 220px; outline: none; }
   .toggle { width: 38px; height: 22px; border-radius: 999px; background: var(--toggle-track); position: relative; cursor: pointer; flex-shrink: 0; border: none; padding: 0; transition: background 0.15s; }
   .toggle::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: var(--toggle-knob); box-shadow: 0 1px 2px rgba(0,0,0,0.25); transition: left 0.15s; }
   .toggle.on { background: var(--toggle-track-on); }
   .toggle.on::after { left: 18px; }
-  .set-card .fine { font-size: 0.75rem; color: var(--text-3); margin-top: 8px; line-height: 1.5; }
+  .set-card .fine { font-size: 0.75rem; color: var(--text-3); margin-top: 7px; line-height: 1.45; }
   .participant-label { font-family: var(--mono); font-size: 0.85rem; color: var(--ink); background: var(--card); border: 1px solid var(--hairline); border-radius: var(--r-sm); padding: 4px 10px; }
   .model-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid var(--hairline); font-size: 0.875rem; }
   .model-row:first-of-type { border-top: none; }
@@ -900,6 +899,21 @@
   }
   .active-model-summary::-webkit-details-marker { display: none; }
   .active-model-name { font-size: 1.05rem; font-weight: 600; }
+  .active-model-change {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    margin-left: 4px;
+    padding: 2px 8px;
+    border: 1px solid var(--hairline);
+    border-radius: 999px;
+    background: var(--surface);
+    font-size: 0.74rem;
+    color: var(--text-2);
+    white-space: nowrap;
+  }
+  .active-model-summary:hover .active-model-change { background: var(--hover); color: var(--ink); }
+  .active-model-overflow[open] .active-model-change i { transform: rotate(180deg); }
   .active-model-panel {
     margin-top: 8px;
     padding: 10px 12px;
@@ -928,13 +942,26 @@
     font: inherit;
     font-size: 0.8rem;
   }
-  .chatbot-config-hint {
-    margin: 8px 0 10px;
-    padding: 0 2px;
-    font-size: 0.72rem;
-    color: var(--text-3);
-    line-height: 1.35;
+  /* An alternative route to a working setup, not a footnote: the summary
+     reads as a second button under "Add provider". */
+  .chatbot-config-hint { margin: 8px 0 10px; line-height: 1.4; }
+  .chatbot-config-hint > summary {
+    list-style: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 8px 12px;
+    border: 1px solid var(--hairline);
+    border-radius: var(--r-md);
+    background: var(--surface);
+    font-size: 0.8rem;
+    color: var(--text-2);
+    cursor: pointer;
   }
+  .chatbot-config-hint > summary::-webkit-details-marker { display: none; }
+  .chatbot-config-hint > summary:hover { background: var(--hover); color: var(--ink); }
+  .chatbot-config-hint p { margin: 8px 2px 0; font-size: 0.74rem; color: var(--text-3); }
   .chatbot-config-hint a { color: var(--text-2); text-decoration: underline; }
   .provider-default-note {
     margin: 10px 0 0;

@@ -58,12 +58,11 @@ test("skill discovery lists alt bundled and pi-user locations with sources", () 
   assert.ok(bySource.has("pi-user:pi-external"));
 });
 
-test("skill discovery includes experimental skills beside agent-assets/skills", () => {
+test("skill discovery includes skills nested under agent-assets/skills", () => {
   const root = mkdtempSync(join(tmpdir(), "alt-theory-discovery-exp-"));
-  // Mirrors agent-assets/skills + agent-assets/experimental/skills
   const agentAssets = join(root, "agent-assets");
   const altSkillsDir = join(agentAssets, "skills");
-  const experimental = join(agentAssets, "experimental", "skills", "theory-innovation-loop");
+  const experimental = join(altSkillsDir, "experimental", "theory-innovation-loop");
   mkdirSync(altSkillsDir, { recursive: true });
   mkdirSync(experimental, { recursive: true });
   writeFileSync(
@@ -88,15 +87,14 @@ test("skill discovery includes experimental skills beside agent-assets/skills", 
   );
 });
 
-test("listAltTheorySkills (/api/skills) includes experimental skills", async () => {
+test("listAltTheorySkills (/api/skills) includes nested skills", async () => {
   const { listAltTheorySkills } = await import("./skill-assets.js");
   const root = mkdtempSync(join(tmpdir(), "alt-theory-list-skills-"));
   const agentAssets = join(root, "agent-assets");
   const skillsDir = join(agentAssets, "skills");
   const experimental = join(
-    agentAssets,
+    skillsDir,
     "experimental",
-    "skills",
     "theory-innovation-loop",
   );
   mkdirSync(skillsDir, { recursive: true });

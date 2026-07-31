@@ -58,9 +58,6 @@ export interface DiscoveredAsset {
   shortLabel?: string;
   userLabel?: string;
   description?: string;
-  /** Historical snapshot; hidden from user-facing pickers, shown collapsed
-   *  under "History" in researcher surfaces. */
-  snapshot?: boolean;
   /** Present when the asset comes from a user-added location. */
   source?: "added";
 }

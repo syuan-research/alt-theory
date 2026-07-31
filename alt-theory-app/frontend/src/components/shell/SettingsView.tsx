@@ -51,6 +51,7 @@ export function SettingsView() {
     { key: "models", label: t("Models"), icon: "ph-cpu" },
     { key: "general", label: t("General"), icon: "ph-gear" },
     { key: "rolekb", label: t("Role & Knowledge"), icon: "ph-books" },
+    { key: "skills", label: t("Skills"), icon: "ph-toolbox" },
     ...(shell.participantTabEnabled
       ? [
           {
@@ -95,6 +96,7 @@ export function SettingsView() {
         {shell.settingsPanel === "models" ? <ModelsPanel /> : null}
         {shell.settingsPanel === "general" ? <GeneralPanel /> : null}
         {shell.settingsPanel === "rolekb" ? <RoleKbPanel /> : null}
+        {shell.settingsPanel === "skills" ? <SkillsPanel /> : null}
         {shell.settingsPanel === "participant" ? (
           <ParticipantPanel designated={app.participant?.designated ?? false} label={app.participant?.label ?? null} local={app.appMode === "local"} />
         ) : null}
@@ -447,9 +449,7 @@ function GeneralPanel() {
         <div className="row2">
           <div>
             <h4>{t("Show thinking")}</h4>
-            <p>
-              {t("Show Alt's thinking as a collapsible block above each reply. Off by default — some models think at great length.")}
-            </p>
+            <p>{t("Show Alt's thinking above each reply. Some models think at great length.")}</p>
           </div>
           <button
             className={`toggle${shell.showThinking ? " on" : ""}`}
@@ -462,9 +462,7 @@ function GeneralPanel() {
         <div className="row2">
           <div>
             <h4>{t("Expand thinking")}</h4>
-            <p>
-              {t("Show the assistant's thinking blocks expanded by default. When off, thinking stays collapsed and can be opened per block.")}
-            </p>
+            <p>{t("Open thinking blocks by default instead of collapsed.")}</p>
           </div>
           <button
             className={`toggle${shell.thinkingExpanded ? " on" : ""}`}
@@ -476,7 +474,7 @@ function GeneralPanel() {
       <RuntimeCard />
       <DefaultModeCard />
       <AutoTitleCard />
-      <SkillPrecedenceCard />
+      <NativePiSkillsCard />
       <div className="set-card">
         <div className="row2">
           <div>
@@ -642,7 +640,7 @@ function RuntimeCard() {
           <h4>{t("Agent behavior")}</h4>
           <p>
             {t(
-              "Alt Theory adds its behavior, roles, soul, and knowledge context. Native Pi keeps the same app and safety infrastructure but uses Pi's normal coding-agent behavior.",
+              "Native Pi drops Alt's roles, soul, and knowledge context and works like an ordinary coding agent. Safety and approvals are unchanged.",
             )}
           </p>
         </div>
@@ -660,6 +658,37 @@ function RuntimeCard() {
           <option value="native-pi">Native Pi</option>
         </select>
       </div>
+    </div>
+  );
+}
+
+/** Only meaningful while Native Pi is the runtime, so it only appears then. */
+function NativePiSkillsCard() {
+  const [mode, setMode] = useState<"alt-theory" | "native-pi">("alt-theory");
+  const [scanAltSkills, setScanAltSkills] = useState(true);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    getRuntimeSettings()
+      .then((settings) => {
+        if (!alive) return;
+        setMode(settings.mode);
+        setScanAltSkills(settings.nativePiScanAltSkills);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (alive) setLoaded(true);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  if (!loaded || mode !== "native-pi") return null;
+
+  return (
+    <div className="set-card">
       <div className="row2">
         <div>
           <h4>{t("Native Pi: scan Alt Theory bundled skills")}</h4>
@@ -672,8 +701,13 @@ function RuntimeCard() {
         <button
           className={`toggle${scanAltSkills ? " on" : ""}`}
           aria-pressed={scanAltSkills}
-          disabled={!loaded || mode !== "native-pi"}
-          onClick={() => persist(mode, !scanAltSkills)}
+          onClick={() => {
+            const next = !scanAltSkills;
+            setScanAltSkills(next);
+            void saveRuntimeSettings({ mode, nativePiScanAltSkills: next })
+              .then(() => window.location.reload())
+              .catch(() => {});
+          }}
         />
       </div>
     </div>
@@ -780,6 +814,18 @@ function AutoTitleCard() {
   );
 }
 
+function SkillsPanel() {
+  return (
+    <div className="set-panel">
+      <h2>{t("Skills")}</h2>
+      <p className="sub">
+        {t("Skills are instruction files that carry a way of working. Alt Theory ships its own; you can add your own from the toolbox.")}
+      </p>
+      <SkillPrecedenceCard />
+    </div>
+  );
+}
+
 function SkillPrecedenceCard() {
   const [value, setValue] = useState<SkillPrecedence>("prefer-bundled");
   const [loaded, setLoaded] = useState(false);
@@ -805,7 +851,7 @@ function SkillPrecedenceCard() {
         <div>
           <h4>{t("When two skills overlap")}</h4>
           <p>
-            {t("Alt Theory ships its own skills, and you can install your own. This decides which one is used when both fit the same job. Applies to new and reopened conversations.")}
+            {t("Which one wins when a bundled skill and one of yours fit the same job.")}
           </p>
         </div>
         <select
@@ -843,7 +889,7 @@ function RoleKbPanel() {
     };
   }, []);
 
-  const roles = (app.discovery?.rolePresets ?? []).filter((r) => !r.snapshot);
+  const roles = app.discovery?.rolePresets ?? [];
   const kbDomains = (app.discovery?.kbDomains ?? []).filter(
     (d) => d.slug !== "off" && d.slug !== "all",
   );
@@ -1085,9 +1131,9 @@ function FeaturesPanel() {
         </p>
       </div>
       <div className="set-card">
-        <h4>{t("Keep every direction you explore")}</h4>
+        <h4>{t("Compare different lines of inquiry")}</h4>
         <p>
-          {t("Conversations are durable: close the app and pick any of them up later. From any reply you can edit your message, try the same prompt again, or branch into a related conversation — the original always stays intact. Related conversations live in the right panel.")}
+          {t("AI answers can change—or conflict—when a question is framed differently. At important moments, edit your question or retry it to open a comparison, then continue from the answer that offers the stronger direction.")}
         </p>
       </div>
       <div className="set-card">
@@ -1097,15 +1143,9 @@ function FeaturesPanel() {
         </p>
       </div>
       <div className="set-card">
-        <h4>{t("Draw on roles, knowledge sets, and skills")}</h4>
+        <h4>{t("Use roles, knowledge sets, and skills")}</h4>
         <p>
-          {t("A role shapes who Alt speaks as; a knowledge set gives it material to ground answers in; skills are readable instruction files that carry its working methods. You can read every bundled skill and add your own — see the Role & Knowledge panel here in Settings.")}
-        </p>
-      </div>
-      <div className="set-card">
-        <h4>{t("What Alt will not do")}</h4>
-        <p>
-          {t("It will not invent citations, silently act outside its approved folders, or paper over what it could not verify. When something is genuinely open, it says so and offers realistic options.")}
+          {t("Roles shape how Alt interprets a situation, identifies what matters, and organizes its response; knowledge sets provide material it can draw on; skills provide reusable ways of working.")}
         </p>
       </div>
     </div>

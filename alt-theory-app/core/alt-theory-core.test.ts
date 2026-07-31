@@ -128,15 +128,14 @@ test("external skills are enabled per mode and re-apply on mode switch", async (
   await session.dispose();
 });
 
-test("experimental skills beside agent-assets/skills load into the session", async () => {
-  // Layout mirrors agent-assets/skills + agent-assets/experimental/skills
+test("skills nested under agent-assets/skills load into the session", async () => {
+  // Optional skills are ordinary skills in a subdirectory of the one root.
   const root = mkdtempSync(join(tmpdir(), "alt-theory-core-exp-skills-"));
   const agentAssets = join(root, "agent-assets");
   const skillsDir = join(agentAssets, "skills");
   const experimental = join(
-    agentAssets,
+    skillsDir,
     "experimental",
-    "skills",
     "theory-innovation-loop",
   );
   const appContextPath = join(root, "ALTTHEORY.md");

@@ -116,27 +116,6 @@ function normalizeUrl(value: string | undefined): string | null {
   }
 }
 
-export type CatalogSdkFamily = "openai" | "anthropic";
-
-/** Resolve a model's SDK family from models.dev, including model overrides. */
-export function catalogSdkFamily(
-  agentDir: string,
-  providerName: string,
-  baseUrl: string | undefined,
-  modelId: string,
-): CatalogSdkFamily | undefined {
-  const catalog = loadCache(agentDir);
-  if (!catalog) return undefined;
-  for (const provider of providerCandidates(catalog, providerName, baseUrl)) {
-    const model = provider.models?.[modelId];
-    if (!model) continue;
-    const npm = model.provider?.npm ?? provider.npm;
-    if (npm?.includes("anthropic")) return "anthropic";
-    if (npm?.includes("openai")) return "openai";
-  }
-  return undefined;
-}
-
 function providerCandidates(
   catalog: ModelsDevCatalog,
   providerName: string,

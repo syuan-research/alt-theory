@@ -455,12 +455,6 @@ async function createAltTheorySessionWithManager(
   // knowledge base (which legitimately lives outside cwd). Reads outside these
   // escalate to approval; reading is not the security boundary (spec §5.3),
   // this only matches the OpenCode/Claude Code external-directory prompt.
-  // Local-only experimental skills: agent-assets/experimental/skills
-  // (packaged builds omit this tree; when present on disk, sessions must load
-  // them or Settings discovery would list skills the runtime cannot run).
-  const experimentalSkillsDir = resolvedSkillsDir
-    ? resolve(dirname(resolvedSkillsDir), "experimental", "skills")
-    : null;
   const readableRootsForMode = () => [
     ...writableRootsForMode(),
     cwd,
@@ -469,27 +463,17 @@ async function createAltTheorySessionWithManager(
     // every skill invocation prompts "read outside your workspace"
     // (found by the v1.3.0-alpha.1 walkthrough acceptance).
     ...(resolvedSkillsDir ? [resolvedSkillsDir] : []),
-    ...(experimentalSkillsDir && existsSync(experimentalSkillsDir)
-      ? [experimentalSkillsDir]
-      : []),
   ];
-  const bundledOnlySkills =
+  // One scan of the skills root. Pi's loader already descends into
+  // subdirectories, so optional skills are just skills that a packaged build
+  // does not carry.
+  const altTheorySkills =
     resourceDiscovery !== "clean" && resolvedSkillsDir
       ? loadSkillsFromDir({
           dir: resolvedSkillsDir,
           source: "alt-theory",
         })
       : { skills: [], diagnostics: [] };
-  const experimentalSkills =
-    resourceDiscovery !== "clean" &&
-    experimentalSkillsDir &&
-    existsSync(experimentalSkillsDir)
-      ? loadSkillsFromDir({
-          dir: experimentalSkillsDir,
-          source: "alt-theory",
-        })
-      : { skills: [], diagnostics: [] };
-  const altTheorySkills = mergeSkills(bundledOnlySkills, experimentalSkills);
   const WORK_ONLY_BUNDLED_SKILLS = new Set([
     "web-search",
     "page-fetch",
@@ -733,13 +717,8 @@ async function createAltTheorySessionWithManager(
       .getSkills()
       .skills.flatMap((skill) => {
         const path = resolve(skill.filePath);
-        // Bundled skillsDir and agent-assets/experimental/skills both count as
-        // alt-theory so local experimental assets stay listable and invokable.
         const source =
-          (resolvedSkillsDir && isPathInside(resolvedSkillsDir, path)) ||
-          (experimentalSkillsDir &&
-            existsSync(experimentalSkillsDir) &&
-            isPathInside(experimentalSkillsDir, path))
+          resolvedSkillsDir && isPathInside(resolvedSkillsDir, path)
             ? ("alt-theory" as const)
             : externalPaths.has(path)
               ? ("external" as const)

@@ -124,9 +124,11 @@ Future topics, not solved in this slice:
   always before an experiment/benchmark run — copy the latest file into
   `snapshots/` with a date suffix (`name-YYYYMMDD-n.md`). Never edit a
   snapshot.
-- Experiments and A/B arms select explicit snapshot versions, not `-latest`
-  (researcher pickers show snapshots collapsed under "History"; user-facing
-  pickers hide them).
+- Experiments and A/B arms select explicit snapshot versions, not `-latest`.
+- `snapshots/` and `experimental/` are ordinary subfolders of an asset root.
+  The backend scans each root recursively and attaches no meaning to either
+  name; packaging is what decides that an installed build carries neither, so
+  a development tree lists them in the pickers and a friend's build does not.
 - Provenance floor: every session manifest records the sha256 of the exact
   asset content it loaded, so sessions remain traceable to content even when
   `-latest` has moved on.

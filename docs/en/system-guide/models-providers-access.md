@@ -67,6 +67,43 @@ the secret itself. Use Settings for ordinary edits; this shape is here so
 Helper and advanced users can inspect or migrate configuration without
 reverse-engineering the app.
 
+### Configure models with a chatbot
+
+Settings is the ordinary route, and the [Helper](helper-and-guidance.md) can
+walk you through it inside the app. If you would rather hand the job to a
+chatbot you already use — ChatGPT, Kimi, DeepSeek, Gemini, or any local agent
+that can edit files — copy the prompt below and paste it there.
+
+```text
+I use an app called Alt Theory. It reads its model configuration from
+~/.alt-theory/pi-agent/models.json (Windows: %USERPROFILE%\.alt-theory\pi-agent\models.json).
+It does NOT read ~/.pi/ or any other agent's configuration.
+
+The file looks like this:
+
+{
+  "providers": {
+    "<provider-name>": {
+      "baseUrl": "<endpoint URL>",
+      "api": "openai-completions" | "openai-responses" | "anthropic-messages",
+      "apiKey": "<the key, or the name of an environment variable>",
+      "models": [{ "id": "<model id>" }]
+    }
+  }
+}
+
+Please ask me which provider I have access to and what my key is, then show
+me the exact file contents to save. Explain anything I need to check first.
+Do not invent model ids: after the provider entry exists, I will click
+"Fetch model list" in Alt Theory's Settings and it will ask the provider
+itself.
+```
+
+Two things to know before you paste it anywhere: an API key is a password, so
+only give it to a tool you trust, and after the provider entry exists, Fetch
+in Settings is more reliable than any chatbot's memory of which model ids
+exist today.
+
 ## Per-session model and thinking effort
 
 - A session can carry its own model override, which wins over the default

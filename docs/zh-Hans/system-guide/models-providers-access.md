@@ -46,6 +46,36 @@ settings.json  { defaultProvider, defaultModel, ... }
 
 `models.json` 中的 `apiKey` 可以是环境变量标记，而非密钥本身。普通修改请使用设置页；这里保留结构，是为了让助手和高级用户无需反向阅读代码也能检查或迁移配置。
 
+### 用聊天机器人配置模型
+
+设置页是常规途径，应用内的[帮手](helper-and-guidance.md)也能带你走完。如果你更想把这件事交给已经在用的聊天机器人——ChatGPT、Kimi、DeepSeek、Gemini，或任何能编辑文件的本地代理——复制下面这段提示词粘贴过去即可。
+
+```text
+我在用一个叫 Alt Theory 的应用。它从
+~/.alt-theory/pi-agent/models.json 读取模型配置
+（Windows：%USERPROFILE%\.alt-theory\pi-agent\models.json）。
+它不会读取 ~/.pi/ 或其他代理的配置。
+
+文件结构如下：
+
+{
+  "providers": {
+    "<提供方名称>": {
+      "baseUrl": "<接口地址>",
+      "api": "openai-completions" | "openai-responses" | "anthropic-messages",
+      "apiKey": "<密钥，或环境变量名>",
+      "models": [{ "id": "<模型 id>" }]
+    }
+  }
+}
+
+请先问我有哪个提供方的访问权限、密钥是什么，然后给出我该保存的完整文件内容，
+并说明我需要先确认哪些事。不要臆造模型 id：提供方条目建好之后，我会在
+Alt Theory 的设置里点「获取模型列表」，由它去问提供方本身。
+```
+
+粘贴之前记住两点：API 密钥等同于密码，只交给你信任的工具；提供方条目建好之后，设置页里的「获取模型列表」比任何聊天机器人对当前可用模型 id 的记忆都更可靠。
+
 ## 每会话模型与思考强度
 
 - 会话可携带自身模型覆盖，每次打开都胜出默认。清除即回到默认。

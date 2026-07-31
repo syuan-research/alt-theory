@@ -39,11 +39,7 @@ import {
 import { dirname, join, resolve } from "path";
 import { randomUUID } from "crypto";
 import { ensureLocalModeDefaults } from "./local-mode-paths.js";
-import {
-  catalogSdkFamily,
-  catalogThinkingLevels,
-  refreshModelsDevMetadata,
-} from "./models-dev-metadata.js";
+import { catalogThinkingLevels } from "./models-dev-metadata.js";
 
 // ---------------------------------------------------------------------------
 // Paths (Pi-native; local bundle points this at %USERPROFILE%\.alt-theory\pi-agent)
@@ -633,7 +629,6 @@ async function fetchModelsFromEndpoint(
       "Model refresh needs a Base URL. Use manual model entry for built-in providers.",
     );
   }
-  await refreshModelsDevMetadata(agentDir);
 
   const apiKey =
     input.apiKey ?? (await resolvedProviderApiKey(agentDir, input.provider));
@@ -651,19 +646,32 @@ async function fetchModelsFromEndpoint(
 
   const errors: string[] = [];
   for (const endpoint of modelListUrls(input.api, input.baseUrl)) {
-    let response: Response;
-    try {
-      response = await fetch(endpoint, {
-        method: "GET",
-        headers,
-        signal: AbortSignal.timeout(10000),
-      });
-    } catch (error) {
-      errors.push(
-        `${endpoint}: ${error instanceof Error ? error.message : "request failed"}`,
-      );
-      continue;
+    // One retry: a dropped connection or a 5xx is usually the network having a
+    // bad second, and making the user click Fetch again teaches them the
+    // feature is unreliable.
+    let response: Response | null = null;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        const attempted = await fetch(endpoint, {
+          method: "GET",
+          headers,
+          signal: AbortSignal.timeout(10000),
+        });
+        if (attempted.ok || attempted.status < 500 || attempt === 1) {
+          response = attempted;
+          break;
+        }
+        errors.push(`${endpoint}: HTTP ${attempted.status}`);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "request failed";
+        if (attempt === 1) {
+          errors.push(`${endpoint}: ${message}`);
+          break;
+        }
+      }
     }
+    if (!response) continue;
     if (!response.ok) {
       errors.push(`${endpoint}: HTTP ${response.status}`);
       continue;
@@ -680,27 +688,12 @@ async function fetchModelsFromEndpoint(
       errors.push(`${endpoint}: no recognizable model ids`);
       continue;
     }
-    const expectedFamily =
-      input.api === "anthropic-messages"
-        ? "anthropic"
-        : input.api === "openai-completions" || input.api === "openai-responses"
-          ? "openai"
-          : null;
-    if (!expectedFamily) return candidates;
-    const classified = candidates.map((model) => ({
-      model,
-      family: catalogSdkFamily(
-        agentDir,
-        input.provider,
-        input.baseUrl,
-        model.id,
-      ),
-    }));
-    return classified.some(({ family }) => family)
-      ? classified
-          .filter(({ family }) => family === expectedFamily)
-          .map(({ model }) => model)
-      : candidates;
+    // The provider entry already declares its SDK through its API type and
+    // base URL, and that is what the runtime will speak to these models. A
+    // third-party catalog is metadata, never a gate: an id it has not indexed
+    // yet — or a lookup that failed because models.dev was unreachable — must
+    // not make a model the provider itself listed disappear.
+    return candidates;
   }
   if (
     anthropicBearerAuthRequired(input.api, input.baseUrl) &&

@@ -301,43 +301,18 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                 <i className="ph ph-check check" />
               ) : null}
             </div>
-            {(app.discovery?.rolePresets ?? [])
-              .filter((r) => !r.snapshot)
-              .map((r) => (
-                <div
-                  key={r.slug}
-                  className="mi"
-                  onClick={() => (app.switchRolePreset(r.slug), setMenu(null))}
-                >
-                  <span>{r.userLabel || r.displayName}</span>
-                  {app.selectors.rolePresetSlug === r.slug ? (
-                    <i className="ph ph-check check" />
-                  ) : null}
-                </div>
-              ))}
-            {app.viewMode === "researcher" &&
-            (app.discovery?.rolePresets ?? []).some((r) => r.snapshot) ? (
-              <details className="menu-history">
-                <summary>{t("History")}</summary>
-                {(app.discovery?.rolePresets ?? [])
-                  .filter((r) => r.snapshot)
-                  .map((r) => (
-                    <div
-                      key={r.slug}
-                      className="mi"
-                      onClick={() => (
-                        app.switchRolePreset(r.slug),
-                        setMenu(null)
-                      )}
-                    >
-                      <span>{r.userLabel || r.displayName}</span>
-                      {app.selectors.rolePresetSlug === r.slug ? (
-                        <i className="ph ph-check check" />
-                      ) : null}
-                    </div>
-                  ))}
-              </details>
-            ) : null}
+            {(app.discovery?.rolePresets ?? []).map((r) => (
+              <div
+                key={r.slug}
+                className="mi"
+                onClick={() => (app.switchRolePreset(r.slug), setMenu(null))}
+              >
+                <span>{r.userLabel || r.displayName}</span>
+                {app.selectors.rolePresetSlug === r.slug ? (
+                  <i className="ph ph-check check" />
+                ) : null}
+              </div>
+            ))}
           </CtxPicker>
 
           <CtxPicker

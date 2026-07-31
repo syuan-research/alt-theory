@@ -1,21 +1,13 @@
 import { existsSync, readdirSync } from "fs";
-import { basename, dirname, extname, resolve } from "path";
+import { basename, dirname, extname, join, resolve } from "path";
 import { loadKbDomainMetadata } from "../core/kb-metadata.js";
 
 /**
- * Dev/local experimental assets live under agent-assets/experimental/ and are
- * excluded from electron-builder packaging. When present on disk they are still
- * discoverable so the owner's machine sees experimental roles/KB without shipping them.
+ * Every asset root is scanned recursively and nothing here knows what a
+ * subdirectory is called. Optional assets (history snapshots, experimental
+ * work) are ordinary assets that packaging leaves out of the installed app,
+ * so the owner's tree and a friend's build differ by their contents alone.
  */
-function experimentalRoleDir(rolePresetsDir: string): string {
-  // role-presets → agent-assets/experimental/role-presets
-  return resolve(dirname(rolePresetsDir), "experimental", "role-presets");
-}
-
-function experimentalKbDir(kbDir: string): string {
-  // kb → agent-assets/experimental/kb
-  return resolve(dirname(kbDir), "experimental", "kb");
-}
 
 export interface DiscoveredAsset {
   slug: string;
@@ -23,9 +15,6 @@ export interface DiscoveredAsset {
   shortLabel?: string;
   userLabel?: string;
   description?: string;
-  /** Historical snapshot (lives in <dir>/snapshots); hidden from user-facing
-   *  pickers, collapsed under "History" in researcher surfaces (M5). */
-  snapshot?: boolean;
   /** Present when the asset comes from a user-added location (alpha.5).
    *  Bundled assets carry no source. */
   source?: "added";
@@ -61,49 +50,48 @@ function displayName(slug: string): string {
     .join(" ");
 }
 
-function listMarkdownAssets(dir: string): DiscoveredAsset[] {
+/**
+ * Every Markdown file under a root, its own files before its subdirectories,
+ * so a slug that exists at both levels resolves to the top-level one.
+ */
+function scanMarkdownAssets(dir: string): Array<{ slug: string; path: string }> {
   const root = resolve(dir);
-  if (!existsSync(root)) {
-    return [];
-  }
-
-  return readdirSync(root, { withFileTypes: true })
+  if (!existsSync(root)) return [];
+  const entries = readdirSync(root, { withFileTypes: true }).filter(
+    (entry) => !entry.name.startsWith(".")
+  );
+  const files = entries
     .filter(
-      (entry) =>
-        entry.isFile() &&
-        !entry.name.startsWith(".") &&
-        extname(entry.name).toLowerCase() === ".md"
+      (entry) => entry.isFile() && extname(entry.name).toLowerCase() === ".md"
     )
-    .map((entry) => basename(entry.name, extname(entry.name)))
-    .sort((left, right) => left.localeCompare(right))
-    .map((slug) => ({ slug, displayName: displayName(slug) }));
+    .map((entry) => ({
+      slug: basename(entry.name, extname(entry.name)),
+      path: join(root, entry.name),
+    }))
+    .sort((left, right) => left.slug.localeCompare(right.slug));
+  const nested = entries
+    .filter((entry) => entry.isDirectory())
+    .sort((left, right) => left.name.localeCompare(right.name))
+    .flatMap((entry) => scanMarkdownAssets(join(root, entry.name)));
+  return [...files, ...nested];
 }
 
-function listWithSnapshots(dir: string): DiscoveredAsset[] {
-  return [
-    ...listMarkdownAssets(dir),
-    ...listMarkdownAssets(resolve(dir, "snapshots")).map((asset) => ({
-      ...asset,
-      snapshot: true as const,
-    })),
-  ];
+function listMarkdownAssets(dir: string): DiscoveredAsset[] {
+  return scanMarkdownAssets(dir).map(({ slug }) => ({
+    slug,
+    displayName: displayName(slug),
+  }));
 }
 
 export function listRolePresets(rolePresetsDir: string): DiscoveredAsset[] {
   const seen = new Set<string>();
   const merged: DiscoveredAsset[] = [];
-  const experimental = experimentalRoleDir(rolePresetsDir);
-  const dirs = [
-    resolve(rolePresetsDir),
-    ...(existsSync(experimental) ? [experimental] : []),
-    ...extraRoleDirs,
-  ];
+  const dirs = [resolve(rolePresetsDir), ...extraRoleDirs];
   for (const [index, dir] of dirs.entries()) {
-    for (const asset of listWithSnapshots(dir)) {
-      const key = `${asset.slug}${asset.snapshot ? ":snapshot" : ""}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      // index 0 = bundled primary; experimental + user-added are "added"
+    for (const asset of listMarkdownAssets(dir)) {
+      if (seen.has(asset.slug)) continue;
+      seen.add(asset.slug);
+      // index 0 = bundled primary; user-added dirs are "added"
       merged.push(index === 0 ? asset : { ...asset, source: "added" });
     }
   }
@@ -117,18 +105,16 @@ export function listSouls(
   soulDir: string,
   _legacySoulPath?: string | null
 ): DiscoveredAsset[] {
-  return listWithSnapshots(soulDir);
+  return listMarkdownAssets(soulDir);
 }
 
-function listKbDomainsInDir(kbDir: string): DiscoveredAsset[] {
-  const root = resolve(kbDir);
-  if (!existsSync(root)) {
-    return [];
-  }
-  const metadataBySlug = new Map(
-    loadKbDomainMetadata(root).map((domain) => [domain.slug, domain])
-  );
-
+/**
+ * A KB domain is a directory holding the Markdown itself — the files inside it
+ * are its material, not separate assets. Directories that only hold other
+ * directories are grouping, so the scan keeps descending through them.
+ */
+function scanKbDomainDirs(root: string): string[] {
+  if (!existsSync(root)) return [];
   return readdirSync(root, { withFileTypes: true })
     .filter(
       (entry) =>
@@ -136,7 +122,34 @@ function listKbDomainsInDir(kbDir: string): DiscoveredAsset[] {
         !entry.name.startsWith(".") &&
         entry.name !== "metadata"
     )
-    .map((entry) => entry.name)
+    .sort((left, right) => left.name.localeCompare(right.name))
+    .flatMap((entry) => {
+      const dir = join(root, entry.name);
+      if (dirHoldsMarkdown(dir)) return [dir];
+      // Only a directory that groups other domains is not one itself; an
+      // empty domain is still the domain the user made.
+      const nested = scanKbDomainDirs(dir);
+      return nested.length ? nested : [dir];
+    });
+}
+
+function dirHoldsMarkdown(dir: string): boolean {
+  return readdirSync(dir, { withFileTypes: true }).some(
+    (entry) =>
+      entry.isFile() &&
+      !entry.name.startsWith(".") &&
+      extname(entry.name).toLowerCase() === ".md"
+  );
+}
+
+function listKbDomainsInDir(kbDir: string): DiscoveredAsset[] {
+  const root = resolve(kbDir);
+  const metadataBySlug = new Map(
+    loadKbDomainMetadata(root).map((domain) => [domain.slug, domain])
+  );
+
+  return scanKbDomainDirs(root)
+    .map((dir) => basename(dir))
     .sort((left, right) => left.localeCompare(right))
     .map((slug) => {
       const metadata = metadataBySlug.get(slug);
@@ -153,25 +166,12 @@ function listKbDomainsInDir(kbDir: string): DiscoveredAsset[] {
 export function listKbDomains(kbDir: string): DiscoveredAsset[] {
   const seen = new Set<string>();
   const merged: DiscoveredAsset[] = [];
-  // Experimental KB is scanned for local/dev only; pack excludes experimental/.
-  // Primary product domain remains ep-core (domains.json). Duplicate historical
-  // trees under experimental are not dual-shipped in the installer.
-  const experimental = experimentalKbDir(kbDir);
-  const dirs = [
-    resolve(kbDir),
-    ...(existsSync(experimental) ? [experimental] : []),
-    ...extraKbDirs,
-  ];
+  const dirs = [resolve(kbDir), ...extraKbDirs];
   for (const [index, dir] of dirs.entries()) {
     for (const asset of listKbDomainsInDir(dir)) {
-      // Prefer the canonical ep-core slug; skip legacy duplicate names if both exist.
-      if (
-        asset.slug === "ep-core-v0-2-0" &&
-        (seen.has("ep-core") ||
-          listKbDomainsInDir(resolve(kbDir)).some((d) => d.slug === "ep-core"))
-      ) {
-        continue;
-      }
+      // The historical EP tree keeps its versioned directory name; the product
+      // domain is ep-core, and listing both would offer the same knowledge twice.
+      if (asset.slug === "ep-core-v0-2-0" && seen.has("ep-core")) continue;
       if (seen.has(asset.slug)) continue;
       seen.add(asset.slug);
       merged.push(index === 0 ? asset : { ...asset, source: "added" });
@@ -181,9 +181,9 @@ export function listKbDomains(kbDir: string): DiscoveredAsset[] {
 }
 
 /**
- * The directory that owns a KB domain slug — the bundled dir when it hosts
- * the domain (or for "all"/off/unknown), otherwise the first user-added dir
- * that does. Sessions keep a single kbDir; this picks the right one.
+ * The directory a KB domain sits directly inside — sessions carry one kbDir and
+ * join the domain onto it, so a domain nested deeper (or in a user-added
+ * location) has to report its own parent.
  */
 export function resolveKbDirForDomain(
   kbDir: string,
@@ -191,13 +191,11 @@ export function resolveKbDirForDomain(
 ): string {
   const primary = resolve(kbDir);
   if (!domain || domain === "all") return primary;
-  if (listKbDomainsInDir(primary).some((entry) => entry.slug === domain)) {
-    return primary;
-  }
-  for (const dir of extraKbDirs) {
-    if (listKbDomainsInDir(dir).some((entry) => entry.slug === domain)) {
-      return dir;
-    }
+  for (const dir of [primary, ...extraKbDirs]) {
+    const match = scanKbDomainDirs(dir).find(
+      (candidate) => basename(candidate) === domain
+    );
+    if (match) return dirname(match);
   }
   return primary;
 }
@@ -207,19 +205,9 @@ export function resolveRolePresetSlug(
   slug: string
 ): string | null {
   if (!/^[A-Za-z0-9][A-Za-z0-9._ -]*$/.test(slug)) return null;
-  const experimental = experimentalRoleDir(rolePresetsDir);
-  const dirs = [
-    resolve(rolePresetsDir),
-    ...(existsSync(experimental) ? [experimental] : []),
-    ...extraRoleDirs,
-  ];
-  for (const dir of dirs) {
-    for (const candidate of [
-      resolve(dir, `${slug}.md`),
-      resolve(dir, "snapshots", `${slug}.md`),
-    ]) {
-      if (existsSync(candidate)) return candidate;
-    }
+  for (const dir of [resolve(rolePresetsDir), ...extraRoleDirs]) {
+    const match = scanMarkdownAssets(dir).find((asset) => asset.slug === slug);
+    if (match) return match.path;
   }
   return null;
 }
@@ -230,23 +218,12 @@ export const resolveProfileSlug = resolveRolePresetSlug;
 export function resolveSoulSlug(
   soulDir: string,
   slug: string,
-  legacySoulPath?: string | null
+  _legacySoulPath?: string | null
 ): string | null {
-  const match = listSouls(soulDir, legacySoulPath).find(
-    (soul) => soul.slug === slug
+  return (
+    scanMarkdownAssets(soulDir).find((asset) => asset.slug === slug)?.path ??
+    null
   );
-  if (!match) {
-    return null;
-  }
-
-  const candidate = match.snapshot
-    ? resolve(soulDir, "snapshots", `${slug}.md`)
-    : resolve(soulDir, `${slug}.md`);
-  if (existsSync(candidate)) {
-    return candidate;
-  }
-
-  return null;
 }
 
 export function isKnownKbDomain(kbDir: string, slug: string): boolean {

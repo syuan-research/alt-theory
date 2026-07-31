@@ -584,9 +584,12 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     res.json({ ok: true, lang });
   });
 
-  app.get("/api/config/providers", async (_req, res) => {
+  app.get("/api/config/providers", (_req, res) => {
     if (!requireLocalConfigMode(res)) return;
-    await refreshModelsDevMetadata(agentConfigDir());
+    // Answer from what is on disk and let models.dev catch up in the
+    // background: awaiting a third-party host here made opening the model
+    // settings page wait seconds on a stale cache or a slow network.
+    void refreshModelsDevMetadata(agentConfigDir());
     res.json({ providers: listProviders(agentConfigDir()) });
   });
   app.get("/api/config/auth/providers", (_req, res) => {

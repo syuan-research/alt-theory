@@ -19,6 +19,16 @@ const LEGACY_FORK_PURPOSE: Record<string, ForkPurpose> = {
   comparison: "ab-arm",
 };
 
+/**
+ * v1-alpha records named the capability mode pure/full. The runtime indexes
+ * per-mode maps by this value, so an un-normalized "pure" reopened as
+ * `undefined` and took the whole session open down with it.
+ */
+const LEGACY_MODE: Record<string, "understand" | "work"> = {
+  pure: "understand",
+  full: "work",
+};
+
 /** Study designation, session level (M7 decision doc §3); absent = daily use. */
 export interface StudyTag {
   studyId: string;
@@ -191,6 +201,9 @@ export function readV4SessionHeader(recordsDir: string): V4SessionHeader | null 
       header.forkedFrom.purpose =
         LEGACY_FORK_PURPOSE[header.forkedFrom.purpose] ??
         header.forkedFrom.purpose;
+    }
+    if (header.mode) {
+      header.mode = LEGACY_MODE[header.mode] ?? header.mode;
     }
     return header;
   }

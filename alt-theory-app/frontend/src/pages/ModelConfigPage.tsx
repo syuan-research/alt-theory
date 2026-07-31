@@ -647,16 +647,22 @@ export function ModelConfigPage({
         ...(apiKey ? { apiKey } : {}),
         ...(apiKey ? { keyStorage } : {}),
       });
+      let added = 0;
       setModelRows((current) => {
         const existing = new Set(current.map((row) => row.id.trim()));
-        return [
-          ...current,
-          ...(data.models || [])
-            .filter((model) => !existing.has(model.id))
-            .map((model) => configModelToRow(model)),
-        ];
+        const fresh = (data.models || []).filter(
+          (model) => !existing.has(model.id),
+        );
+        added = fresh.length;
+        return [...current, ...fresh.map((model) => configModelToRow(model))];
       });
-      showToast(t("Fetched {count} models", { count: String(data.models?.length || 0) }));
+      // Report what changed, not what came back: fetching twice adds nothing
+      // the second time, and "fetched 40 models" would read like it did.
+      showToast(
+        added
+          ? t("Added {count} new models", { count: String(added) })
+          : t("No new models — the list is already up to date"),
+      );
     } catch (err) {
       showToast(err instanceof Error ? err.message : t("Fetch failed"), true);
     }
@@ -692,11 +698,17 @@ export function ModelConfigPage({
               </>
             ) : (
               t("No default model selected.")
-            )}
+            )}{" "}
+            {/* Without this the line reads as a report on the app's state, and
+                the picker underneath never gets opened. */}
+            <span className="active-model-change">
+              {t("Change")}
+              <i className="ph ph-caret-down" aria-hidden />
+            </span>
           </summary>
           <div className="active-model-panel">
             <p className="text-[0.78rem] text-text-secondary">
-              {t("Default model is used for new conversations. Picking a model inside a provider only edits that provider — it does not change the default.")}
+              {t("New conversations start with the default model. Editing a provider's model list does not change it.")}
             </p>
             <label className="default-model-picker">
               <span>{t("Set as default")}</span>
@@ -846,9 +858,12 @@ export function ModelConfigPage({
               {t("Add provider")}
             </button>
             <details className="chatbot-config-hint">
-              <summary>{t("Prefer a chatbot or agent to write the config?")}</summary>
+              <summary>
+                <i className="ph ph-chats-circle" aria-hidden />
+                {t("Let a chatbot write the config")}
+              </summary>
               <p>
-                {t("Copy a setup prompt from the docs page “Configure models with a chatbot”, then paste it into ChatGPT, Kimi, DeepSeek, Gemini, or a local agent that can edit files. It walks you through models.json under ~/.alt-theory/pi-agent/. See also Helper → models and providers.")}
+                {t("The user guide has a prompt you can paste into ChatGPT, Kimi, DeepSeek, Gemini, or a local agent — see Models, Providers, and Access. Helper can also do it here.")}
               </p>
             </details>
             <div className="provider-master-list">
@@ -1072,8 +1087,13 @@ export function ModelConfigPage({
                     {t("Correct model limits and the effort choices shown in the composer.")}
                   </HintText>
                 </div>
-                {/* Actions sit under the Models heading, above the list so Fetch is findable. */}
+                {/* Actions sit under the Models heading, above the list.
+                    Fetch leads: asking the provider what it offers is the
+                    normal way to fill this in, typing ids by hand the fallback. */}
                 <div className="flex flex-wrap gap-2">
+                  <Button variant="primary" onClick={() => void fetchModels()}>
+                    {t("Fetch model list")}
+                  </Button>
                   <Button
                     variant="secondary"
                     onClick={() =>
@@ -1081,9 +1101,6 @@ export function ModelConfigPage({
                     }
                   >
                     {t("+ Add model")}
-                  </Button>
-                  <Button variant="secondary" onClick={() => void fetchModels()}>
-                    {t("Fetch model list")}
                   </Button>
                   <Button
                     variant="secondary"
