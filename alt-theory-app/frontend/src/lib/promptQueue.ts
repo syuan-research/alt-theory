@@ -5,3 +5,10 @@ export function mergeQueuedPrompts<T>(
   const attachments = items.flatMap((item) => item.attachments);
   return text || attachments.length ? { text, attachments } : undefined;
 }
+
+export function shouldFlushQueuedPrompts(
+  outcome: "completed" | "interrupted",
+  interruptAndSend: boolean,
+): boolean {
+  return outcome === "completed" || interruptAndSend;
+}

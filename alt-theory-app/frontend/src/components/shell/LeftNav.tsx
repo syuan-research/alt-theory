@@ -12,6 +12,12 @@ import {
 import { Workbench } from "@/components/shell/Workbench";
 import { SessionImportDialog } from "@/components/shell/SessionImportDialog";
 import { hasNativeBridge, pickDirectory, revealPath } from "@/lib/native";
+import { fetchSessionDetail } from "@/api/sessions";
+import {
+  downloadMarkdown,
+  markdownFileName,
+  sessionTranscriptToMarkdown,
+} from "@/lib/sessionMarkdown";
 
 /**
  * What a conversation row says about itself when you are not in it (alpha.3).
@@ -592,6 +598,19 @@ function SessionNode({
       ? "running"
       : session.runStatus;
   const state = sessionRowState(runStatus, app.sessionAlerts[session.sessionId]);
+  const title = sessionTitle(session, app.sessionDisplayNames, app.sessions);
+
+  const exportMarkdown = async () => {
+    try {
+      const detail = await fetchSessionDetail(session.sessionId);
+      downloadMarkdown(
+        markdownFileName(title),
+        sessionTranscriptToMarkdown(title, detail.transcript ?? []),
+      );
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : String(error));
+    }
+  };
 
   return (
     <>
@@ -601,7 +620,7 @@ function SessionNode({
         data-session-id={session.sessionId}
         style={indent ? { paddingLeft: 10 + indent * 16 } : undefined}
         onClick={() => onOpen(session.sessionId)}
-        title={sessionTitle(session, app.sessionDisplayNames, app.sessions)}
+        title={title}
         draggable={draggable}
         onDragStart={
           draggable
@@ -631,7 +650,7 @@ function SessionNode({
           />
         ) : null}
         <span className="s-title">
-          {sessionTitle(session, app.sessionDisplayNames, app.sessions)}
+          {title}
         </span>
         {state ? (
           <span className={`badge-run ${state.tone}`} title={state.title}>
@@ -661,6 +680,15 @@ function SessionNode({
             >
               <i className="ph ph-copy" />
               {t("Duplicate")}
+            </button>
+            <button
+              onClick={(e) => {
+                closeMenu(e);
+                void exportMarkdown();
+              }}
+            >
+              <i className="ph ph-download-simple" />
+              {t("Export Markdown")}
             </button>
             <button
               onClick={(e) => {

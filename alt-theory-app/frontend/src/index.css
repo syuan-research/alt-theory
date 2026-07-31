@@ -449,6 +449,7 @@
   /* split new-conversation control: [folder picker | +] (M4) */
   .split-new { flex: 1; display: flex; align-items: stretch; min-width: 0; border: 1px solid var(--hairline); border-radius: var(--r-md); background: var(--surface); overflow: visible; }
   .split-new .ws-pick { flex: 1; min-width: 0; }
+  .split-new .ws-pick > .list-menu { left: 0; right: auto; width: min(320px, calc(100vw - 24px)); }
   .split-new .ws-pick > summary { width: 100%; height: 100%; padding: 6px 8px; display: flex; align-items: center; gap: 6px; border-radius: var(--r-md) 0 0 var(--r-md); font-size: 0.85rem; color: var(--ink-soft); }
   .split-new .ws-pick > summary .ws-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .split-new .ws-pick > summary .caret { margin-left: auto; font-size: 0.7rem; color: var(--text-3); }
@@ -552,10 +553,18 @@
   .composer-notes .warn { color: var(--danger); }
   .composer-notes .retry-run { align-self: flex-start; padding: 2px 0; }
   .composer-notes .run-tip { display: flex; align-items: center; gap: 6px; min-height: 1.25em; color: var(--text-3); font-family: inherit; }
+  .staged-attachments { display: flex; flex-wrap: wrap; gap: 5px; margin: 0 4px 8px; }
+  .attachment-chip { display: inline-flex; align-items: center; gap: 5px; max-width: min(260px, 100%); padding: 4px 7px; background: var(--selected); border: 1px solid var(--hairline); border-radius: var(--r-sm); color: var(--ink); font-size: 0.75rem; }
+  .attachment-chip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .attachment-chip button { display: inline-flex; flex: 0 0 auto; padding: 0; border: 0; background: transparent; color: var(--text-2); cursor: pointer; }
   .queued-prompts { display: flex; flex-direction: column; gap: 4px; margin: 0 4px 8px; }
   .queued-prompt { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 5px 8px; background: var(--card); border: 1px solid var(--hairline); border-radius: var(--r-sm); color: var(--text-2); font-size: 0.75rem; }
-  .queued-prompt input { flex: 1; min-width: 0; border: none; outline: none; background: transparent; color: var(--ink); font: inherit; }
+  .queued-prompt-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
   .queued-prompt > span { display: inline-flex; align-items: center; gap: 2px; flex: 0 0 auto; }
+  .queued-prompt > .queued-prompt-text { flex: 1 1 auto; }
+  .queued-prompt-action { flex: 0 0 auto; padding: 3px 6px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text-2); font: inherit; cursor: pointer; }
+  .queued-prompt-action:hover { background: var(--hover); color: var(--ink); }
+  .queued-prompt-action.primary { color: var(--accent); }
   .slash-palette { margin-bottom: 6px; max-height: 200px; overflow-y: auto; background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--r-md); box-shadow: 0 6px 22px rgba(31,30,26,0.1); padding: 4px; }
   .slash-item { display: flex; align-items: baseline; gap: 10px; width: 100%; text-align: left; padding: 6px 10px; border: none; background: none; border-radius: var(--r-sm); cursor: pointer; }
   .slash-item.on { background: var(--selected); }
@@ -822,6 +831,7 @@
   }
   .child-composer textarea {
     min-height: 42px;
+    height: 42px;
   }
   .child-composer .row {
     margin-top: 4px;

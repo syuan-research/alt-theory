@@ -84,7 +84,12 @@ export interface DiscoveryLists {
   souls: DiscoveredAsset[];
   kbDomains: DiscoveredAsset[];
   instructions: InstructionAsset[];
-  skills: Array<{ name: string; displayName?: string; description?: string }>;
+  skills: Array<{
+    name: string;
+    displayName?: string;
+    description?: string;
+    enabled?: { understand: boolean; work: boolean };
+  }>;
   projects: ResearchProject[];
 }
 

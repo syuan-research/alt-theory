@@ -277,6 +277,32 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   const appMode = process.env.ALT_THEORY_MODE === "hosted" ? "hosted" : "local";
   const localMode = appMode === "local";
 
+  const discoverConfiguredSkills = () => {
+    const discovered = discoverSkillResources({
+      altSkillsDir: skillsDir,
+      agentDir: getAgentDir(),
+    });
+    const externalPaths = discovered.skills
+      .filter((skill) => skill.source !== "alt-theory")
+      .map((skill) => skill.path);
+    const enabled = resolveExternalSkillPaths(readAppSettings(dataDir), externalPaths);
+    const enabledUnderstand = new Set(enabled.understand);
+    const enabledWork = new Set(enabled.work);
+    return {
+      ...discovered,
+      skills: discovered.skills.map((skill) => ({
+        ...skill,
+        enabled:
+          skill.source === "alt-theory"
+            ? { understand: true, work: true }
+            : {
+                understand: enabledUnderstand.has(skill.path),
+                work: enabledWork.has(skill.path),
+              },
+      })),
+    };
+  };
+
   const app = express();
   const httpServer = createServer(app);
   const wss = new WebSocketServer({ server: httpServer });
@@ -329,28 +355,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   // --- Resource discovery + per-mode skill enablement (spec §6.1) ---
   app.get("/api/resources", (_req, res) => {
     if (!requireLocalConfigMode(res)) return;
-    const settings = readAppSettings(dataDir);
-    const discovered = discoverSkillResources({
-      altSkillsDir: skillsDir,
-      agentDir: getAgentDir(),
-    });
-    const externalPaths = discovered.skills
-      .filter((skill) => skill.source !== "alt-theory")
-      .map((skill) => skill.path);
-    const enabled = resolveExternalSkillPaths(settings, externalPaths);
-    const enabledUnderstand = new Set(enabled.understand);
-    const enabledWork = new Set(enabled.work);
+    const discovered = discoverConfiguredSkills();
     res.json({
-      skills: discovered.skills.map((skill) => ({
-        ...skill,
-        enabled:
-          skill.source === "alt-theory"
-            ? { understand: true, work: true }
-            : {
-                understand: enabledUnderstand.has(skill.path),
-                work: enabledWork.has(skill.path),
-              },
-      })),
+      skills: discovered.skills,
       diagnostics: discovered.diagnostics,
       note: "Settings apply to new and reopened sessions, not running ones.",
     });
@@ -826,8 +833,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   });
   app.get("/api/skills", (_req, res) => {
     res.json({
-      skills:
-        resourceDiscovery === "clean" || !skillsDir
+      skills: localMode
+        ? discoverConfiguredSkills().skills
+        : resourceDiscovery === "clean" || !skillsDir
           ? []
           : listAltTheorySkills(skillsDir),
     });

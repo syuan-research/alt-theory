@@ -67,7 +67,7 @@ test("models.dev effort metadata stays provider-specific", async () => {
       "opencode-go-local",
       "mimo-v2.5-pro",
     ),
-    "off",
+    "medium",
   );
   assert.equal(
     initialThinkingLevelForModel(agentDir, "openai-codex", "gpt-5.6-terra"),

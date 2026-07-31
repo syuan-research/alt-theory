@@ -78,6 +78,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
     if (app.sessionId) app.forkCurrentSession("helper", question);
     else app.invokeSkill("alt-theory-help", question);
   };
+  const slashMode = variant === "empty" ? shell.newMode : app.sessionMode;
 
   const slashCommands = useMemo<SlashCommand[]>(
     () => [
@@ -114,11 +115,13 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
         run: () => app.startNewSession(),
         immediate: true,
       },
-      ...(app.discovery?.skills ?? []).map((skill) => ({
-        name: skill.name,
-        description: skill.description || t("Alt Theory skill"),
-        run: (args: string) => app.invokeSkill(skill.name, args),
-      })),
+      ...(app.discovery?.skills ?? [])
+        .filter((skill) => skill.enabled?.[slashMode] !== false)
+        .map((skill) => ({
+          name: skill.name,
+          description: skill.description || t("Alt Theory skill"),
+          run: (args: string) => app.invokeSkill(skill.name, args),
+        })),
     ],
     [app],
   );
@@ -127,6 +130,13 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
   const armCommand = (name: string) => {
     setDraft(`/${name} `);
     setMenu(null);
+    window.setTimeout(() => textareaRef.current?.focus(), 0);
+  };
+
+  const restoreQueuedPrompt = (id: string) => {
+    const text = app.restoreQueuedPrompt(id);
+    if (text === null) return;
+    setDraft((current) => [text, current].filter((part) => part.trim()).join("\n"));
     window.setTimeout(() => textareaRef.current?.focus(), 0);
   };
 
@@ -221,8 +231,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
         app.isRunning ||
         app.composerNotice ||
         app.runHint ||
-        app.canRetryFailed ||
-        app.attachmentHint ? (
+        app.canRetryFailed ? (
           <div className="composer-notes">
             {/* One stable status row while a turn runs. Clearing the label on
                 each assistant_delta used to collapse this strip and reflow the
@@ -263,8 +272,26 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                 {t("Continue from break point")}
               </button>
             ) : null}
-            {app.attachmentHint ? <span>{app.attachmentHint}</span> : null}
             <RunTips running={app.isRunning} />
+          </div>
+        ) : null}
+
+        {app.stagedWorkspacePaths.length > 0 ? (
+          <div className="staged-attachments" aria-label={t("Attached files")}>
+            {app.stagedWorkspacePaths.map((path) => (
+              <span className="attachment-chip" key={path} title={path}>
+                <i className="ph ph-paperclip" aria-hidden="true" />
+                <span>{path.split(/[\\/]/).pop() || path}</span>
+                <button
+                  type="button"
+                  onClick={() => app.unstageWorkspacePaths([path])}
+                  title={t("Remove attached file")}
+                  aria-label={t("Remove attached file")}
+                >
+                  <i className="ph ph-x" aria-hidden="true" />
+                </button>
+              </span>
+            ))}
           </div>
         ) : null}
 
@@ -273,13 +300,9 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
             {app.queuedPrompts.map((item) => (
               <div className="queued-prompt" key={item.id}>
                 <i className="ph ph-clock" aria-hidden="true" />
-                <input
-                  value={item.text}
-                  onChange={(event) =>
-                    app.editQueuedPrompt(item.id, event.target.value)
-                  }
-                  aria-label={t("Edit queued message")}
-                />
+                <span className="queued-prompt-text" title={item.text}>
+                  {item.text}
+                </span>
                 {item.attachments.length > 0 ? (
                   <span title={item.attachments.join("\n")}>
                     <i className="ph ph-paperclip" aria-hidden="true" />
@@ -287,12 +310,33 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                   </span>
                 ) : null}
                 <button
-                  className="flat"
+                  type="button"
+                  className="queued-prompt-action primary"
+                  onClick={() =>
+                    app.isRunning
+                      ? app.interruptAndSendQueuedPrompt(item.id)
+                      : app.sendQueuedPromptNow(item.id)
+                  }
+                >
+                  {app.isRunning ? t("Interrupt & send") : t("Send")}
+                </button>
+                <button
+                  type="button"
+                  className="queued-prompt-action"
+                  onClick={() => restoreQueuedPrompt(item.id)}
+                  title={t("Edit queued message")}
+                  aria-label={t("Edit queued message")}
+                >
+                  <i className="ph ph-pencil-simple" aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  className="queued-prompt-action"
                   onClick={() => app.deleteQueuedPrompt(item.id)}
                   title={t("Delete queued message")}
                   aria-label={t("Delete queued message")}
                 >
-                  <i className="ph ph-x" aria-hidden="true" />
+                  <i className="ph ph-trash" aria-hidden="true" />
                 </button>
               </div>
             ))}

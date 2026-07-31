@@ -23,10 +23,10 @@ function thinkingLevelsFor(model: ProviderView["models"][number]): ThinkingLevel
 
 function initialThinkingFor(option: ModelOption): ThinkingLevel {
   const enabled = option.thinkingLevels.filter((level) => level !== "off");
-  if (enabled.length === 0) return "off";
+  if (enabled.length === 0) return "medium";
   // Pick the positional middle of this model's actual levels. With an even
   // count, floor selects the lower of the two middle levels.
-  return enabled[Math.floor((enabled.length - 1) / 2)] ?? "off";
+  return enabled[Math.floor((enabled.length - 1) / 2)] ?? "medium";
 }
 
 function groupProviders(providers: ProviderView[]): ProviderOptions[] {
@@ -114,7 +114,7 @@ export function ModelChip({
   );
   const effectiveThinking =
     app.modelOverride?.thinkingLevel ??
-    (selectedOption ? initialThinkingFor(selectedOption) : "off");
+    (selectedOption ? initialThinkingFor(selectedOption) : "medium");
   const activeProvider = effectiveModel?.provider ?? defaultModel?.provider ?? null;
   const activeGroup =
     providers?.find((provider) => provider.name === activeProvider) ?? null;

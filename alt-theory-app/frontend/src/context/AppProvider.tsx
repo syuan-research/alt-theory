@@ -10,7 +10,10 @@ import {
 } from "react";
 import { useNavigate } from "react-router-dom";
 import { t } from "@/i18n";
-import { mergeQueuedPrompts } from "@/lib/promptQueue";
+import {
+  mergeQueuedPrompts,
+  shouldFlushQueuedPrompts,
+} from "@/lib/promptQueue";
 import {
   detectAccountsConfigured,
   fetchAuthMe,
@@ -227,7 +230,6 @@ export interface AppContextValue {
   reviseDraft: string;
 
   stagedWorkspacePaths: string[];
-  attachmentHint: string;
   toggleWorkspaceStage: (path: string, staged: boolean) => void;
   stageWorkspacePath: (path: string) => void;
   unstageWorkspacePaths: (paths: string[]) => void;
@@ -251,8 +253,10 @@ export interface AppContextValue {
   compactCurrentSession: () => void;
   sendPrompt: (text: string) => boolean;
   queuedPrompts: QueuedPrompt[];
-  editQueuedPrompt: (id: string, text: string) => void;
+  restoreQueuedPrompt: (id: string) => string | null;
   deleteQueuedPrompt: (id: string) => void;
+  sendQueuedPromptNow: (id: string) => void;
+  interruptAndSendQueuedPrompt: (id: string) => void;
   abortRun: () => void;
   invokeSkill: (skillName: string, userText?: string) => boolean;
   reviseLatest: (text: string) => boolean;
@@ -365,10 +369,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [isRunning, setIsRunning] = useState(false);
   const [queuedPrompts, setQueuedPrompts] = useState<QueuedPrompt[]>([]);
   const queuedPromptsRef = useRef<QueuedPrompt[]>([]);
+  const sendQueueAfterInterruptRef = useRef<string | null>(null);
   const startPromptRef = useRef<
     (text: string, attachments: string[]) => boolean
   >(() => false);
-  const flushQueuedPromptRef = useRef<() => void>(() => {});
+  const flushQueuedPromptRef = useRef<(id?: string) => void>(() => {});
   const [connStatus, setConnStatus] = useState<ConnStatus>("connecting");
   const [connLabel, setConnLabel] = useState(t("Connecting"));
   const [wsError, setWsError] = useState<string | null>(null);
@@ -453,12 +458,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const requestConfirm = useCallback((request: ConfirmRequest) => {
     setConfirmRequest(request);
   }, []);
-
-  const attachmentHint = useMemo(() => {
-    const count = stagedWorkspacePaths.length;
-    if (!count) return "";
-    return `${count} file${count === 1 ? "" : "s"} will be attached when you send`;
-  }, [stagedWorkspacePaths.length]);
 
   const setComposerNoticeTimed = useCallback(
     (notice: ComposerNotice | null, ttlMs = 4500) => {
@@ -982,6 +981,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
 
         case "run_completed":
+          sendQueueAfterInterruptRef.current = null;
           setCanRetryFailed(false);
           setStreamParts([]);
           activeToolsMapRef.current = {};
@@ -1005,6 +1005,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         case "run_failed": {
           const interrupted = isInterruptedError(message.payload.error);
+          const queuedPromptId = interrupted
+            ? sendQueueAfterInterruptRef.current
+            : null;
+          sendQueueAfterInterruptRef.current = null;
           // The transcript refresh below re-renders everything from the
           // authoritative persisted entries; leftover stream parts would
           // render the same tool calls twice.
@@ -1023,8 +1027,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
           });
           if (!interrupted) setRunHint("");
           if (sessionId) void refreshCurrentTranscript(sessionId);
-          if (interrupted) {
-            queueMicrotask(() => flushQueuedPromptRef.current());
+          if (
+            interrupted &&
+            shouldFlushQueuedPrompts("interrupted", Boolean(queuedPromptId))
+          ) {
+            queueMicrotask(() =>
+              flushQueuedPromptRef.current(queuedPromptId!),
+            );
           }
           break;
         }
@@ -1409,10 +1418,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
   startPromptRef.current = startPrompt;
 
-  const flushQueuedPrompt = useCallback(() => {
-    const queued = queuedPromptsRef.current;
+  const flushQueuedPrompt = useCallback((onlyId?: string) => {
+    const allQueued = queuedPromptsRef.current;
+    const queued = onlyId
+      ? allQueued.filter((item) => item.id === onlyId)
+      : allQueued;
     const merged = mergeQueuedPrompts(queued);
-    replaceQueuedPrompts(() => []);
+    replaceQueuedPrompts((current) =>
+      onlyId ? current.filter((item) => item.id !== onlyId) : [],
+    );
     if (!merged) return;
     if (!startPromptRef.current(merged.text, merged.attachments)) {
       replaceQueuedPrompts((current) => [...queued, ...current]);
@@ -1420,14 +1434,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [replaceQueuedPrompts]);
   flushQueuedPromptRef.current = flushQueuedPrompt;
 
-  const editQueuedPrompt = useCallback(
-    (id: string, text: string) => {
-      replaceQueuedPrompts((current) =>
-        current.map((item) => (item.id === id ? { ...item, text } : item)),
-      );
-    },
-    [replaceQueuedPrompts],
-  );
+  const restoreQueuedPrompt = useCallback((id: string) => {
+    const queued = queuedPromptsRef.current.find((item) => item.id === id);
+    if (!queued) return null;
+    replaceQueuedPrompts((current) =>
+      current.filter((item) => item.id !== id),
+    );
+    setStagedWorkspacePaths((current) => [
+      ...new Set([...current, ...queued.attachments]),
+    ]);
+    return queued.text;
+  }, [replaceQueuedPrompts]);
 
   const deleteQueuedPrompt = useCallback(
     (id: string) => {
@@ -1469,10 +1486,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   const abortRun = useCallback(() => {
+    sendQueueAfterInterruptRef.current = null;
     if (sendMessage({ type: "abort" })) {
       setToolStatus("");
       setRunPhaseLabel(t("Stopping…"));
       setRunHint(t("You can edit or delete your latest message."));
+    }
+  }, [sendMessage]);
+
+  const interruptAndSendQueuedPrompt = useCallback((id: string) => {
+    if (!queuedPromptsRef.current.some((item) => item.id === id)) return;
+    sendQueueAfterInterruptRef.current = id;
+    if (sendMessage({ type: "abort" })) {
+      setToolStatus("");
+      setRunPhaseLabel(t("Stopping…"));
+    } else {
+      sendQueueAfterInterruptRef.current = null;
     }
   }, [sendMessage]);
 
@@ -1846,7 +1875,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       reviseMode,
       reviseDraft,
       stagedWorkspacePaths,
-      attachmentHint,
       toggleWorkspaceStage,
       stageWorkspacePath,
       unstageWorkspacePaths,
@@ -1863,8 +1891,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       compactCurrentSession,
       sendPrompt,
       queuedPrompts,
-      editQueuedPrompt,
+      restoreQueuedPrompt,
       deleteQueuedPrompt,
+      sendQueuedPromptNow: flushQueuedPrompt,
+      interruptAndSendQueuedPrompt,
       abortRun,
       invokeSkill,
       reviseLatest,
@@ -1955,7 +1985,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       reviseMode,
       reviseDraft,
       stagedWorkspacePaths,
-      attachmentHint,
       toggleWorkspaceStage,
       stageWorkspacePath,
       unstageWorkspacePaths,
@@ -1972,8 +2001,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       compactCurrentSession,
       sendPrompt,
       queuedPrompts,
-      editQueuedPrompt,
+      restoreQueuedPrompt,
       deleteQueuedPrompt,
+      flushQueuedPrompt,
+      interruptAndSendQueuedPrompt,
       abortRun,
       invokeSkill,
       reviseLatest,

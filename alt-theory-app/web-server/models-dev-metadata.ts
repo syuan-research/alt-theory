@@ -19,7 +19,11 @@ export type CatalogThinkingLevel =
   | "max";
 
 interface ModelsDevModel {
+  name?: string;
+  reasoning?: boolean;
   provider?: { npm?: string };
+  modalities?: { input?: unknown };
+  limit?: { context?: unknown; output?: unknown };
   reasoning_options?: Array<{
     type?: string;
     values?: unknown;
@@ -116,6 +120,77 @@ function normalizeUrl(value: string | undefined): string | null {
   }
 }
 
+export type CatalogSdkFamily = "openai" | "anthropic";
+
+/** Resolve a model's SDK family from models.dev, including model overrides. */
+export function catalogSdkFamily(
+  agentDir: string,
+  providerName: string,
+  baseUrl: string | undefined,
+  modelId: string,
+): CatalogSdkFamily | undefined {
+  const catalog = loadCache(agentDir);
+  if (!catalog) return undefined;
+  for (const provider of providerCandidates(catalog, providerName, baseUrl)) {
+    const model = provider.models?.[modelId];
+    if (!model) continue;
+    const npm = model.provider?.npm ?? provider.npm;
+    if (npm?.includes("anthropic")) return "anthropic";
+    if (npm?.includes("openai")) return "openai";
+  }
+  return undefined;
+}
+
+export interface CatalogModelMetadata {
+  name?: string;
+  reasoning?: boolean;
+  availableThinkingLevels?: CatalogThinkingLevel[];
+  input?: ("text" | "image")[];
+  contextWindow?: number;
+  maxTokens?: number;
+}
+
+/** Fill fields omitted by bare /models endpoints without persisting a fallback. */
+export function catalogModelMetadata(
+  agentDir: string,
+  providerName: string,
+  baseUrl: string | undefined,
+  modelId: string,
+): CatalogModelMetadata | undefined {
+  const catalog = loadCache(agentDir);
+  if (!catalog) return undefined;
+  for (const provider of providerCandidates(catalog, providerName, baseUrl)) {
+    const model = provider.models?.[modelId];
+    if (!model) continue;
+    const input = Array.isArray(model.modalities?.input)
+      ? model.modalities.input.filter(
+          (value): value is "text" | "image" =>
+            value === "text" || value === "image",
+        )
+      : [];
+    const contextWindow = Number(model.limit?.context);
+    const maxTokens = Number(model.limit?.output);
+    return {
+      ...(model.name ? { name: model.name } : {}),
+      ...(typeof model.reasoning === "boolean"
+        ? { reasoning: model.reasoning }
+        : {}),
+      ...(Array.isArray(model.reasoning_options)
+        ? {
+            availableThinkingLevels:
+              thinkingLevelsFromModel(model) ?? [],
+          }
+        : {}),
+      ...(input.length ? { input } : {}),
+      ...(Number.isInteger(contextWindow) && contextWindow > 0
+        ? { contextWindow }
+        : {}),
+      ...(Number.isInteger(maxTokens) && maxTokens > 0 ? { maxTokens } : {}),
+    };
+  }
+  return undefined;
+}
+
 function providerCandidates(
   catalog: ModelsDevCatalog,
   providerName: string,
@@ -161,27 +236,33 @@ export function catalogThinkingLevels(
   for (const provider of providerCandidates(catalog, providerName, baseUrl)) {
     const model = provider.models?.[modelId];
     if (!model || !Array.isArray(model.reasoning_options)) continue;
-    const effort = model.reasoning_options.find(
-      (option) => option?.type === "effort",
-    );
-    if (!effort || !Array.isArray(effort.values)) return [];
-    const levels: CatalogThinkingLevel[] = [];
-    for (const value of effort.values) {
-      const normalized = value === "none" ? "off" : value;
-      if (
-        (normalized === "off" ||
-          normalized === "minimal" ||
-          normalized === "low" ||
-          normalized === "medium" ||
-          normalized === "high" ||
-          normalized === "xhigh" ||
-          normalized === "max") &&
-        !levels.includes(normalized)
-      ) {
-        levels.push(normalized);
-      }
-    }
-    return levels;
+    return thinkingLevelsFromModel(model) ?? [];
   }
   return undefined;
+}
+
+function thinkingLevelsFromModel(
+  model: ModelsDevModel,
+): CatalogThinkingLevel[] | undefined {
+  const effort = model.reasoning_options?.find(
+    (option) => option?.type === "effort",
+  );
+  if (!effort || !Array.isArray(effort.values)) return undefined;
+  const levels: CatalogThinkingLevel[] = [];
+  for (const value of effort.values) {
+    const normalized = value === "none" ? "off" : value;
+    if (
+      (normalized === "off" ||
+        normalized === "minimal" ||
+        normalized === "low" ||
+        normalized === "medium" ||
+        normalized === "high" ||
+        normalized === "xhigh" ||
+        normalized === "max") &&
+      !levels.includes(normalized)
+    ) {
+      levels.push(normalized);
+    }
+  }
+  return levels;
 }

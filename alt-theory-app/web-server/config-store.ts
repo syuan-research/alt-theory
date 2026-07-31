@@ -39,7 +39,12 @@ import {
 import { dirname, join, resolve } from "path";
 import { randomUUID } from "crypto";
 import { ensureLocalModeDefaults } from "./local-mode-paths.js";
-import { catalogThinkingLevels } from "./models-dev-metadata.js";
+import {
+  catalogModelMetadata,
+  catalogSdkFamily,
+  catalogThinkingLevels,
+  refreshModelsDevMetadata,
+} from "./models-dev-metadata.js";
 
 // ---------------------------------------------------------------------------
 // Paths (Pi-native; local bundle points this at %USERPROFILE%\.alt-theory\pi-agent)
@@ -378,10 +383,9 @@ export function initialThinkingLevelForModel(
   const model = listProviders(agentDir)
     .find((provider) => provider.name === providerName)
     ?.models.find((candidate) => candidate.id === modelId);
-  if (!model?.reasoning) return "off";
   const levels =
     model.availableThinkingLevels?.filter((level) => level !== "off") ?? [];
-  return levels[Math.floor((levels.length - 1) / 2)] ?? "off";
+  return levels[Math.floor((levels.length - 1) / 2)] ?? "medium";
 }
 
 function isBuiltInProvider(name: string): boolean {
@@ -512,6 +516,18 @@ function modelListUrls(api: ApiType | undefined, baseUrl: string): string[] {
   return [...new Set(urls)];
 }
 
+function isOpenCodeGoBaseUrl(baseUrl: string): boolean {
+  try {
+    const url = new URL(baseUrl);
+    return (
+      url.hostname === "opencode.ai" &&
+      url.pathname.replace(/\/+$/, "").replace(/\/v1$/i, "") === "/zen/go"
+    );
+  } catch {
+    return false;
+  }
+}
+
 function sanitizeCustomProviderAuth(
   agentDir: string,
   models: ModelsFile,
@@ -629,6 +645,8 @@ async function fetchModelsFromEndpoint(
       "Model refresh needs a Base URL. Use manual model entry for built-in providers.",
     );
   }
+  const splitOpenCodeGo = isOpenCodeGoBaseUrl(input.baseUrl);
+  if (splitOpenCodeGo) await refreshModelsDevMetadata(agentDir);
 
   const apiKey =
     input.apiKey ?? (await resolvedProviderApiKey(agentDir, input.provider));
@@ -688,12 +706,32 @@ async function fetchModelsFromEndpoint(
       errors.push(`${endpoint}: no recognizable model ids`);
       continue;
     }
-    // The provider entry already declares its SDK through its API type and
-    // base URL, and that is what the runtime will speak to these models. A
-    // third-party catalog is metadata, never a gate: an id it has not indexed
-    // yet — or a lookup that failed because models.dev was unreachable — must
-    // not make a model the provider itself listed disappear.
-    return candidates;
+    if (!splitOpenCodeGo) return candidates;
+    const expectedFamily =
+      input.api === "anthropic-messages" ? "anthropic" : "openai";
+    const classified = candidates.map((model) => ({
+      model,
+      family: catalogSdkFamily(
+        agentDir,
+        input.provider,
+        input.baseUrl,
+        model.id,
+      ),
+    }));
+    const selected = classified.some(({ family }) => family)
+      ? classified
+          .filter(({ family }) => !family || family === expectedFamily)
+          .map(({ model }) => model)
+      : candidates;
+    return selected.map((model) => ({
+      ...model,
+      ...catalogModelMetadata(
+        agentDir,
+        input.provider,
+        input.baseUrl,
+        model.id,
+      ),
+    }));
   }
   if (
     anthropicBearerAuthRequired(input.api, input.baseUrl) &&

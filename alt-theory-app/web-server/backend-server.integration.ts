@@ -168,6 +168,7 @@ test("initial thinking effort uses the lower positional middle of model levels",
           reasoning: true,
           thinkingLevels: ["off", "low", "medium", "high", "xhigh"],
         },
+        { id: "no-level-metadata" },
       ],
     },
     { keyStorage: "literal" },
@@ -179,6 +180,10 @@ test("initial thinking effort uses the lower positional middle of model levels",
   );
   assert.equal(
     initialThinkingLevelForModel(agentDir, "effort-test", "four-levels"),
+    "medium",
+  );
+  assert.equal(
+    initialThinkingLevelForModel(agentDir, "effort-test", "no-level-metadata"),
     "medium",
   );
 });
@@ -273,6 +278,68 @@ test("provider Fetch retries a 5xx once before giving up", async () => {
     });
     assert.equal(calls, 2);
     assert.deepEqual(fetched.map((model) => model.id), ["after-retry"]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("OpenCode Go Fetch keeps only models for the selected SDK family", async () => {
+  const agentDir = mkdtempSync(join(tmpdir(), "alt-theory-sdk-family-"));
+  writeFileSync(
+    join(agentDir, "models-dev-cache.json"),
+    JSON.stringify({
+      "opencode-go": {
+        api: "https://opencode.ai/zen/go/v1",
+        npm: "@ai-sdk/openai-compatible",
+        models: {
+          "openai-model": {
+            name: "OpenAI Model",
+            reasoning: true,
+            reasoning_options: [
+              { type: "effort", values: ["low", "high"] },
+            ],
+            modalities: { input: ["text", "image", "video"] },
+            limit: { context: 1000000, output: 65536 },
+          },
+          "anthropic-model": { provider: { npm: "@ai-sdk/anthropic" } },
+        },
+      },
+    }),
+    "utf-8",
+  );
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () =>
+    new Response(
+      JSON.stringify({
+        data: [{ id: "openai-model" }, { id: "anthropic-model" }],
+      }),
+      { status: 200 },
+    );
+  try {
+    const openai = await fetchProviderModelsFromDraft(agentDir, {
+      provider: "opencode-go-openai",
+      baseUrl: "https://opencode.ai/zen/go/v1",
+      api: "openai-completions",
+      apiKey: "test-key",
+    });
+    const anthropic = await fetchProviderModelsFromDraft(agentDir, {
+      provider: "opencode-go-anthropic",
+      baseUrl: "https://opencode.ai/zen/go",
+      api: "anthropic-messages",
+      apiKey: "test-key",
+    });
+    assert.deepEqual(openai, [
+      {
+        id: "openai-model",
+        name: "OpenAI Model",
+        reasoning: true,
+        availableThinkingLevels: ["low", "high"],
+        input: ["text", "image"],
+        contextWindow: 1000000,
+        maxTokens: 65536,
+      },
+    ]);
+    assert.deepEqual(anthropic.map((model) => model.id), ["anthropic-model"]);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -2207,13 +2274,11 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
     });
     const skillsResponse = await fetch(`${baseUrl}/api/skills`);
     const skillsJson = await skillsResponse.json();
-    assert.deepEqual(
-      skillsJson.skills.map((skill: any) => ({
-        name: skill.name,
-        source: skill.source,
-      })),
-      [{ name: "conversation-summary", source: "alt-theory" }],
+    const bundledSkill = skillsJson.skills.find(
+      (skill: { name: string; source: string }) =>
+        skill.name === "conversation-summary" && skill.source === "alt-theory",
     );
+    assert.deepEqual(bundledSkill?.enabled, { understand: true, work: true });
     const emptyProjectsResponse = await fetch(`${baseUrl}/api/projects`);
     assert.deepEqual(await emptyProjectsResponse.json(), { projects: [] });
     const projectResponse = await fetch(
@@ -2361,7 +2426,7 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
   assert.equal(existsSync(join(root, "data", "sessions")), false);
 });
 
-test("local mode refuses prompt materialization without usable active model", async () => {
+test("local mode exposes installed skills and refuses prompts without a model", async () => {
   const root = mkdtempSync(join(tmpdir(), "alt-theory-local-config-"));
   const dataDir = join(root, "data");
   const agentDir = join(root, "pi-agent");
@@ -2370,11 +2435,17 @@ test("local mode refuses prompt materialization without usable active model", as
   const kb = join(root, "kb");
   const appContextPath = join(root, "ALTTHEORY.md");
   mkdirSync(join(kb, "ep-core"), { recursive: true });
+  mkdirSync(join(agentDir, "skills", "local-test"), { recursive: true });
   mkdirSync(rolePresets, { recursive: true });
   mkdirSync(souls, { recursive: true });
   writeFileSync(appContextPath, "Local app context", "utf-8");
   writeFileSync(join(rolePresets, "role-conceptual-theory-companion-latest.md"), "Conceptual theory role", "utf-8",);
   writeFileSync(join(souls, "soul-latest.md"), "Latest soul", "utf-8");
+  writeFileSync(
+    join(agentDir, "skills", "local-test", "SKILL.md"),
+    "---\nname: local-test\ndescription: Installed locally\n---\nUse this skill.",
+    "utf-8",
+  );
 
   const previousMode = process.env.ALT_THEORY_MODE;
   const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
@@ -2416,7 +2487,16 @@ test("local mode refuses prompt materialization without usable active model", as
 
   const ws = new WebSocket(`ws://127.0.0.1:${address.port}`);
   try {
-    await waitForType(ws, "session_draft");
+    const draft = waitForType(ws, "session_draft");
+    const skillsResponse = await fetch(
+      `http://127.0.0.1:${address.port}/api/skills`,
+    );
+    const skillsJson = await skillsResponse.json();
+    const localSkill = skillsJson.skills.find(
+      (skill: { name: string }) => skill.name === "local-test",
+    );
+    assert.deepEqual(localSkill?.enabled, { understand: false, work: true });
+    await draft;
     const failed = waitForType(ws, "run_failed");
     ws.send(JSON.stringify({ type: "prompt", payload: "hello" }));
     const message = await failed;
