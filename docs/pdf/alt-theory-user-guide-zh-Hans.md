@@ -1,3 +1,5 @@
+<a id="doc-00-readme"></a>
+
 # Alt Theory 用户文档（简体中文）
 
 本目录与英文 Helper 文档平行，供熟人阅读与 PDF。**应用内 Helper 只读英文 docs。**
@@ -8,6 +10,8 @@ PDF：`npm run docs:zh-pdf`（需要 Pandoc）
 页数：38（与英文 corpus 对齐）。
 
 ---
+
+<a id="doc-readme"></a>
 
 # Alt Theory 文档（简体中文）
 
@@ -21,59 +25,61 @@ PDF：`npm run docs:zh-pdf`（需要 Pandoc）
 
 ## 从这里开始
 
-- [简介](start-here/what-alt-theory-is.md)
-- [安装与启动](start-here/install-and-launch.md)
-- [开始第一次对话](start-here/first-conversation.md)
-- [理解模式与工作模式](start-here/understand-and-work.md)
-- [带入材料与上下文](start-here/bring-in-materials.md)
-- [继续、转向与稍后返回](start-here/continue-and-return.md)
-- [应用与外挂](start-here/app-and-plugins.md)
+- [简介](#doc-start-here-what-alt-theory-is)
+- [安装与启动](#doc-start-here-install-and-launch)
+- [开始第一次对话](#doc-start-here-first-conversation)
+- [理解模式与工作模式](#doc-start-here-understand-and-work)
+- [带入材料与上下文](#doc-start-here-bring-in-materials)
+- [继续、转向与稍后返回](#doc-start-here-continue-and-return)
+- [应用与外挂](#doc-start-here-app-and-plugins)
 
 ## 使用 Alt Theory 应用
 
-- [以理解为目标](using-the-app/when-understanding-is-the-goal.md)
-- [在关键时刻想得更清楚](using-the-app/think-better-at-key-moments.md)
-- [以具体工作为主任务](using-the-app/when-concrete-work-is-the-main-task.md)
-- [应对不确定性](using-the-app/when-things-are-uncertain.md)
+- [以理解为目标](#doc-using-the-app-when-understanding-is-the-goal)
+- [在关键时刻想得更清楚](#doc-using-the-app-think-better-at-key-moments)
+- [以具体工作为主任务](#doc-using-the-app-when-concrete-work-is-the-main-task)
+- [应对不确定性](#doc-using-the-app-when-things-are-uncertain)
 
 ## 系统指南
 
-- [对话与历史](system-guide/conversations-and-history.md)
-- [模型、提供方与访问](system-guide/models-providers-access.md)
-- [工作目录、文件与路径](system-guide/working-folders-files-paths.md)
-- [知识库与上下文](system-guide/knowledge-bases-and-context.md)
-- [处理回复与控制](system-guide/responses-and-controls.md)
-- [检索、来源与网页内容](system-guide/search-sources-web.md)
-- [文档、图像与其他输入](system-guide/documents-images-inputs.md)
-- [技能如何工作](system-guide/how-skills-work.md)
-- [内置技能](system-guide/bundled-skills.md)
-- [添加与管理技能](system-guide/add-and-manage-skills.md)
-- [命令](system-guide/commands.md)
-- [工具箱](system-guide/toolbox.md)
-- [权限、授权与智能体活动](system-guide/permissions-approvals-agent-activity.md)
-- [智能体团队与子代理会话](system-guide/agent-team-and-subagents.md)
-- [导入、交接与跨工具连续性](system-guide/imports-and-continuity.md)
-- [助手与界面内引导](system-guide/helper-and-guidance.md)
-- [设置与配置](system-guide/settings-and-configuration.md)
+- [对话与历史](#doc-system-guide-conversations-and-history)
+- [模型、提供方与访问](#doc-system-guide-models-providers-access)
+- [工作目录、文件与路径](#doc-system-guide-working-folders-files-paths)
+- [知识库与上下文](#doc-system-guide-knowledge-bases-and-context)
+- [处理回复与控制](#doc-system-guide-responses-and-controls)
+- [检索、来源与网页内容](#doc-system-guide-search-sources-web)
+- [文档、图像与其他输入](#doc-system-guide-documents-images-inputs)
+- [技能如何工作](#doc-system-guide-how-skills-work)
+- [内置技能](#doc-system-guide-bundled-skills)
+- [添加与管理技能](#doc-system-guide-add-and-manage-skills)
+- [命令](#doc-system-guide-commands)
+- [工具箱](#doc-system-guide-toolbox)
+- [权限、授权与智能体活动](#doc-system-guide-permissions-approvals-agent-activity)
+- [智能体团队与子代理会话](#doc-system-guide-agent-team-and-subagents)
+- [导入、交接与跨工具连续性](#doc-system-guide-imports-and-continuity)
+- [助手与界面内引导](#doc-system-guide-helper-and-guidance)
+- [设置与配置](#doc-system-guide-settings-and-configuration)
 
 ## 进阶
 
-- [外挂与能力差异](advanced/plugins-and-capability-differences.md)
-- [跨工具工作与连续性](advanced/cross-harness-work.md)
-- [共享配置、技能、模型与资产](advanced/shared-configuration-and-assets.md)
-- [不修改 Alt Theory 的自定义](advanced/customization-without-changing.md)
-- [修改 Alt Theory 及其扩展边界](advanced/modifying-alt-theory.md)
-- [兼容性、更新与集成调试](advanced/compatibility-updates-debugging.md)
+- [外挂与能力差异](#doc-advanced-plugins-and-capability-differences)
+- [跨工具工作与连续性](#doc-advanced-cross-harness-work)
+- [共享配置、技能、模型与资产](#doc-advanced-shared-configuration-and-assets)
+- [不修改 Alt Theory 的自定义](#doc-advanced-customization-without-changing)
+- [修改 Alt Theory 及其扩展边界](#doc-advanced-modifying-alt-theory)
+- [兼容性、更新与集成调试](#doc-advanced-compatibility-updates-debugging)
 
 ## 帮助与参考
 
-- [常见问题](help/common-questions.md)
-- [兼容性、格式与已知限制](help/compatibility-formats-limitations.md)
-- [术语](help/glossary.md)
+- [常见问题](#doc-help-common-questions)
+- [兼容性、格式与已知限制](#doc-help-compatibility-formats-limitations)
+- [术语](#doc-help-glossary)
 
 会话级来源说明见 [README-SOURCE-SESSION.md](README-SOURCE-SESSION.md)。
 
 ---
+
+<a id="doc-start-here-app-and-plugins"></a>
 
 # 应用与外挂
 
@@ -91,7 +97,7 @@ Alt Theory 不止一种形态。
 - 一份按所用工具自有格式写的智能体定义，承载 Alt Theory 的身份与原则
 - 可选地，一个放在工具可读取位置的知识库
 
-仍属应用独有的是产品界面，即模式开关、授权界面、各选择器与导入，由所用工具以自己的方式提供。详见[外挂与能力差异](../advanced/plugins-and-capability-differences.md)。
+仍属应用独有的是产品界面，即模式开关、授权界面、各选择器与导入，由所用工具以自己的方式提供。详见[外挂与能力差异](#doc-advanced-plugins-and-capability-differences)。
 
 ## 应用的构建基础
 
@@ -99,7 +105,7 @@ Alt Theory 不止一种形态。
 
 - 对话以 Pi 兼容格式存储，因此用户的工作始终留在本地，不会被锁进 Alt Theory
 - 技能遵循生态约定，所以安装的技能在两边都能用，Alt Theory 的技能也能用在别处
-- 来自其他工具的对话可[导入](../system-guide/imports-and-continuity.md)并继续
+- 来自其他工具的对话可[导入](#doc-system-guide-imports-and-continuity)并继续
 
 ## 应用与外挂的选择
 
@@ -108,6 +114,8 @@ Alt Theory 不止一种形态。
 - 两者皆用也是实在的选项。研究对话用应用，已在用的地方用外挂。材料与技能可在两者之间共享。
 
 ---
+
+<a id="doc-start-here-bring-in-materials"></a>
 
 # 导入材料与上下文
 
@@ -128,17 +136,19 @@ Alt Theory 不止一种形态。
 
 ## 真实文件
 
-Alt Theory 读取科研常用的格式（Word、PDF、Excel、PowerPoint），转换后的副本以 `_converted` 后缀出现在原件旁边。图片以同样方式附上，智能体能否看见它们取决于所选用的模型。详见[文档、图像与其他输入](../system-guide/documents-images-inputs.md)。
+Alt Theory 读取科研常用的格式（Word、PDF、Excel、PowerPoint），转换后的副本以 `_converted` 后缀出现在原件旁边。图片以同样方式附上，智能体能否看见它们取决于所选用的模型。详见[文档、图像与其他输入](#doc-system-guide-documents-images-inputs)。
 
 智能体修订文档时遵循一条约定，写入一份副本或一个命名清晰的新文件，并告知写的是哪一个。原文件保持原样。
 
 ## 完整说明在哪里
 
-- 文件夹与路径：[工作目录、文件与路径](../system-guide/working-folders-files-paths.md)
-- 知识库：[知识库与上下文](../system-guide/knowledge-bases-and-context.md)
-- 格式与图像：[文档、图像与其他输入](../system-guide/documents-images-inputs.md)
+- 文件夹与路径：[工作目录、文件与路径](#doc-system-guide-working-folders-files-paths)
+- 知识库：[知识库与上下文](#doc-system-guide-knowledge-bases-and-context)
+- 格式与图像：[文档、图像与其他输入](#doc-system-guide-documents-images-inputs)
 
 ---
+
+<a id="doc-start-here-continue-and-return"></a>
 
 # 继续、转向与稍后返回
 
@@ -157,7 +167,7 @@ Alt Theory 读取科研常用的格式（Word、PDF、Excel、PowerPoint），�
 - 分叉（开启一场相关对话，基于同一份累积上下文追求不同方向）。
 - 顺带（BTW，开启一个侧边对话，携带当前上下文，用于不该污染主线的旁支）。
 
-这些操作开启的比较面板见[处理回复与对话控制](../system-guide/responses-and-controls.md)。
+这些操作开启的比较面板见[处理回复与对话控制](#doc-system-guide-responses-and-controls)。
 
 ## 长对话仍能工作
 
@@ -170,9 +180,11 @@ Alt Theory 读取科研常用的格式（Word、PDF、Excel、PowerPoint），�
 - 若工作目录移动或重命名，应用会警告，让用户重新选择该目录，或改为不挂载该目录继续。
 - 若文件自上次工作后已变动，智能体在真实工作中第一步是读取当前文件，而非信赖对那些文件的记忆。
 
-当计划的一个阶段完成时，重新对齐以细化剩余部分。详见[在关键时刻想得更清楚](../using-the-app/think-better-at-key-moments.md)。
+当计划的一个阶段完成时，重新对齐以细化剩余部分。详见[在关键时刻想得更清楚](#doc-using-the-app-think-better-at-key-moments)。
 
 ---
+
+<a id="doc-start-here-first-conversation"></a>
 
 # 首次对话
 
@@ -188,13 +200,15 @@ Alt Theory 在真实、尚未成形的思考上才显出本色，以下提示为
 
 ## 回复内容
 
-思考、工具行（读取、检索、技能使用），以及就地渲染的表格与图示。详见[处理回复与对话控制](../system-guide/responses-and-controls.md)。
+思考、工具行（读取、检索、技能使用），以及就地渲染的表格与图示。详见[处理回复与对话控制](#doc-system-guide-responses-and-controls)。
 
 ## 下一步
 
-模式卡片是应用中最重要的选择，详见[理解模式与工作模式](understand-and-work.md)。
+模式卡片是应用中最重要的选择，详见[理解模式与工作模式](#doc-start-here-understand-and-work)。
 
 ---
+
+<a id="doc-start-here-install-and-launch"></a>
 
 # 安装与启动
 
@@ -232,7 +246,7 @@ npm run build:frontend-v6
 第一屏就是应用本身，一段等待开始的对话。应用至少需要配置一个模型提供方，之后才能开始对话。Alt Theory 提供工作目录与方法，模型由用户配置的提供方提供。
 
 - 若应用来自 Alt Theory 团队，提供方可能已配置好。
-- 否则首次启动的设置界面会引导用户添加提供方，例如一个 API 密钥，或用受支持的订阅登录。详见[模型、提供方与访问](../system-guide/models-providers-access.md)。应用内的[助手](../system-guide/helper-and-guidance.md)可逐步引导。
+- 否则首次启动的设置界面会引导用户添加提供方，例如一个 API 密钥，或用受支持的订阅登录。详见[模型、提供方与访问](#doc-system-guide-models-providers-access)。应用内的[助手](#doc-system-guide-helper-and-guidance)可逐步引导。
 
 ## 费用
 
@@ -246,9 +260,11 @@ npm run build:frontend-v6
 
 对话数据是单一应用数据目录下的普通本地文件。复制该目录即可备份全部内容，把它放到另一台机器上，应用会自动识别。
 
-提供方激活后，可进入[开始第一次对话](first-conversation.md)。
+提供方激活后，可进入[开始第一次对话](#doc-start-here-first-conversation)。
 
 ---
+
+<a id="doc-start-here-understand-and-work"></a>
 
 # 理解模式与工作模式
 
@@ -280,7 +296,7 @@ npm run build:frontend-v6
 - 在附上的工作目录内，智能体逐步工作，不就每一步打断用户。
 - 读取这些目录之外的内容、超出内置检索工具的联网访问，以及任何安装，都会弹出授权请求，说明请求的内容与所授予的权限。
 
-完整说明见[权限、授权与智能体活动](../system-guide/permissions-approvals-agent-activity.md)。
+完整说明见[权限、授权与智能体活动](#doc-system-guide-permissions-approvals-agent-activity)。
 
 ## 切换模式
 
@@ -291,6 +307,8 @@ npm run build:frontend-v6
 希望仅保留思考、不让其他东西移动时，选理解模式。希望对话能触及文件与实时世界时，选工作模式。答案改变时随时切换。
 
 ---
+
+<a id="doc-start-here-what-alt-theory-is"></a>
 
 # 简介
 
@@ -325,6 +343,7 @@ Alt Theory 的技能（skills）均可以自动触发，也可以有用户按需
 不同技能在不同的角色设定中有不同侧重，并持续扩展。
 
 规划、对齐和问题理解技能（英文 id 为可调用名，如 `/adaptive-aligning`）：
+
 - `adaptive-aligning`（自适应对齐）：在定方向工作之前，让智能体先以成批问题（每个带自己的最佳猜测）与用户对齐，使用户原本的设想与它的理解之间的偏差暴露出来。
 - `adaptive-plan-record`（计划记录）：为多步工作建立活计划，跨会话保持。
 - `workspace-conventions`（工作区约定）：决定智能体在项目内创建文件的位置与命名，并且根据问题的确定和不确定提出灵活可扩展的文件系统结构。
@@ -332,12 +351,14 @@ Alt Theory 的技能（skills）均可以自动触发，也可以有用户按需
 - `search-policy`（检索策略）：规范实时查核的时机与来源标注；理解模式下管辖无查核时的回退。
 
 基础工具技能：
+
 - `web-search`（网页检索，工作模式）：实时通用与学术检索。
 - `page-fetch`（页面抓取，工作模式）：把 URL 抓取为可读文本，按 `search-policy` 引用。
 - `doc-convert`（文档转换，工作模式）：文档格式转换与生成。
 - `precise-edit`（精确编辑）：处理接近定稿文本时（用户发送已成形文稿做语言润色）启用克制编辑。
 
 APP 设置和使用帮助：
+
 - `imported-session-context`（导入会话上下文）：在导入自其他工具的会话中启用，处理来源缺失与恢复。
 - `alt-theory-help`（应用帮助）：关于 Alt Theory、环境设置、bug 与模型能力检查的唯一帮助入口。
 
@@ -346,11 +367,11 @@ APP 设置和使用帮助：
 - 理解模式是为传统 ai 应用用户准备的以讨论和文档记录讨论为主导的模式，通过有限的权限提高安全性。
 - 工作模式在同样的"应对、解决不确定"的基础之上，增加了实时检索、文档生成与指令执行，支持与 “理解阶段” 交错的 “工作阶段” 。
 
-例如，其可以连接本机已经配备的程序和工具，讨论研究假设和问题（理解），进行探索性性的r、python数据分析（工作），再讨论分析结果的意义、对研究问题的回应（理解），制作后续的ppt和表格和与合作者讨论的材料（工作）等。详见[理解模式与工作模式](understand-and-work.md)。
+例如，其可以连接本机已经配备的程序和工具，讨论研究假设和问题（理解），进行探索性性的r、python数据分析（工作），再讨论分析结果的意义、对研究问题的回应（理解），制作后续的ppt和表格和与合作者讨论的材料（工作）等。详见[理解模式与工作模式](#doc-start-here-understand-and-work)。
 
 ## 适用用户
 
-适用于社会科学领域的学生与研究者，从第一次构思问题的硕士生，到判断某工具是否该写进研究计划的资深研究者。从理论和研究设计讨论、到完成实际任务，都可以在不同模式得到支持。详见[理解模式与工作模式](understand-and-work.md)。
+适用于社会科学领域的学生与研究者，从第一次构思问题的硕士生，到判断某工具是否该写进研究计划的资深研究者。从理论和研究设计讨论、到完成实际任务，都可以在不同模式得到支持。详见[理解模式与工作模式](#doc-start-here-understand-and-work)。
 
 同样适用于泛研究类知识工作，可以通过设置为更加接近一般知识工作要和编码工具的模式。(planned)
 
@@ -362,14 +383,16 @@ APP 设置和使用帮助：
 - pi coding agent
 - opencode
 
-详见[应用与外挂](app-and-plugins.md)。
+详见[应用与外挂](#doc-start-here-app-and-plugins)。
 
 ## 延伸阅读
 
-- [安装并启动 Alt Theory](install-and-launch.md)
-- [使用 Alt Theory 应用](../README.md#using-the-alt-theory-app)
+- [安装并启动 Alt Theory](#doc-start-here-install-and-launch)
+- [使用 Alt Theory 应用](#doc-readme)
 
 ---
+
+<a id="doc-using-the-app-think-better-at-key-moments"></a>
 
 # 在关键时刻想得更清楚
 
@@ -395,9 +418,11 @@ APP 设置和使用帮助：
 
 针对相互竞争的设计，用分叉。针对不该带偏主线的旁支问题，用顺带（BTW）。编辑早先的一条消息，会在不同的切入角度下重跑讨论，原线保持完整。当计划的一个阶段完成时，重新对齐以细化剩余部分。
 
-详见[内置技能](../system-guide/bundled-skills.md)与[处理回复与控制](../system-guide/responses-and-controls.md)。
+详见[内置技能](#doc-system-guide-bundled-skills)与[处理回复与控制](#doc-system-guide-responses-and-controls)。
 
 ---
+
+<a id="doc-using-the-app-when-concrete-work-is-the-main-task"></a>
 
 # 以具体工作为主
 
@@ -417,7 +442,7 @@ APP 设置和使用帮助：
 - 抓取的页面引述并附 URL 引用。若只有摘要可用，则仅返回摘要，并附说明。
 - 抓取不绕过付费墙。
 
-详见[检索、来源与网页内容](../system-guide/search-sources-web.md)。
+详见[检索、来源与网页内容](#doc-system-guide-search-sources-web)。
 
 ## 文档
 
@@ -431,9 +456,11 @@ APP 设置和使用帮助：
 
 ## 委派有边界的任务
 
-一场牵头对话可把有边界的任务委派给子代理，后者作为独立会话运行，用户可在右侧栏观察并留言。详见[智能体团队与子代理会话](../system-guide/agent-team-and-subagents.md)。
+一场牵头对话可把有边界的任务委派给子代理，后者作为独立会话运行，用户可在右侧栏观察并留言。详见[智能体团队与子代理会话](#doc-system-guide-agent-team-and-subagents)。
 
 ---
+
+<a id="doc-using-the-app-when-things-are-uncertain"></a>
 
 # 应对不确定性
 
@@ -441,17 +468,17 @@ APP 设置和使用帮助：
 
 - **与智能体失谐。** 澄清重置开启一小段重新对齐的过程。(planned)
 
-- **方向未定。** `adaptive-aligning`（自适应对齐）在定方向工作前访谈用户，成批问题各带智能体的最佳猜测。详见[在关键时刻想得更清楚](think-better-at-key-moments.md)。
+- **方向未定。** `adaptive-aligning`（自适应对齐）在定方向工作前访谈用户，成批问题各带智能体的最佳猜测。详见[在关键时刻想得更清楚](#doc-using-the-app-think-better-at-key-moments)。
 
-- **理解不完整。** 默认情况下，智能体返回不确定性空间（确定的内容与可用的选项），而非裁决。一个分层「为什么」层解释为什么，关联用户的需求。(planned) 详见[以理解为目标](when-understanding-is-the-goal.md)。
+- **理解不完整。** 默认情况下，智能体返回不确定性空间（确定的内容与可用的选项），而非裁决。一个分层「为什么」层解释为什么，关联用户的需求。(planned) 详见[以理解为目标](#doc-using-the-app-when-understanding-is-the-goal)。
 
-- **未经核实的断言。** 每条断言都标注为现场查得（附引用）、记忆提取（标注未核实）、或推断所得。详见[检索、来源与网页内容](../system-guide/search-sources-web.md)。
+- **未经核实的断言。** 每条断言都标注为现场查得（附引用）、记忆提取（标注未核实）、或推断所得。详见[检索、来源与网页内容](#doc-system-guide-search-sources-web)。
 
-- **上下文长到放不下。** 压缩将早先的轮次凝聚成摘要，由智能体带着向前走，以一条可见的分隔线标出。详见[对话与历史](../system-guide/conversations-and-history.md)。
+- **上下文长到放不下。** 压缩将早先的轮次凝聚成摘要，由智能体带着向前走，以一条可见的分隔线标出。详见[对话与历史](#doc-system-guide-conversations-and-history)。
 
-- **回到旧工作。** 返回时，智能体重新读取当前的文件，而非信赖陈旧记忆。若工作目录移动，它会警告并让用户重新选择，或改在不带该目录的情况下继续。详见[继续、转向与稍后返回](../start-here/continue-and-return.md)。
+- **回到旧工作。** 返回时，智能体重新读取当前的文件，而非信赖陈旧记忆。若工作目录移动，它会警告并让用户重新选择，或改在不带该目录的情况下继续。详见[继续、转向与稍后返回](#doc-start-here-continue-and-return)。
 
-- **换个角度试。** 编辑、再次尝试同一提示、或分叉，都会生成在原版旁以等宽开启的第二个版本。两支以上对比，用工作台 A/B 界面。详见[处理回复与控制](../system-guide/responses-and-controls.md)。
+- **换个角度试。** 编辑、再次尝试同一提示、或分叉，都会生成在原版旁以等宽开启的第二个版本。两支以上对比，用工作台 A/B 界面。详见[处理回复与控制](#doc-system-guide-responses-and-controls)。
 
 - **尚未收敛的研究。** 引导模式在 `adaptive-aligning` 之后、以及在演绎或归纳的理论工作期间，提供下一步。(planned)
 
@@ -461,13 +488,15 @@ APP 设置和使用帮助：
 
 ---
 
+<a id="doc-using-the-app-when-understanding-is-the-goal"></a>
+
 # 以理解为目标
 
 理解是一个目标，不是一种模式。它通常位于理解模式，但当需要实时检索时会转入工作模式。
 
 ## 工作前的对齐
 
-对于定方向的工作，智能体先与用户对齐，而不是凭猜测行动。`adaptive-aligning`（自适应对齐）发送成批的问题，每个都带着智能体自己的最佳猜测，让提问角度与解读之间的偏差在据此构建任何东西之前就显明。详见[在关键时刻想得更清楚](think-better-at-key-moments.md)。
+对于定方向的工作，智能体先与用户对齐，而不是凭猜测行动。`adaptive-aligning`（自适应对齐）发送成批的问题，每个都带着智能体自己的最佳猜测，让提问角度与解读之间的偏差在据此构建任何东西之前就显明。详见[在关键时刻想得更清楚](#doc-using-the-app-think-better-at-key-moments)。
 
 ## 选项而非结论
 
@@ -475,13 +504,15 @@ APP 设置和使用帮助：
 
 ## 核实
 
-在理解模式下没有实时查核，因此回忆起的信息标注为未核实。下一步需要核实时，切换到工作模式进行带 DOI 可核引用的学术检索。详见[检索、来源与网页内容](../system-guide/search-sources-web.md)。
+在理解模式下没有实时查核，因此回忆起的信息标注为未核实。下一步需要核实时，切换到工作模式进行带 DOI 可核引用的学术检索。详见[检索、来源与网页内容](#doc-system-guide-search-sources-web)。
 
 ## 保留长讨论
 
-在停顿点请求对话摘要（`conversation-summary`），或保存关键状态到文件。详见[内置技能](../system-guide/bundled-skills.md)。
+在停顿点请求对话摘要（`conversation-summary`），或保存关键状态到文件。详见[内置技能](#doc-system-guide-bundled-skills)。
 
 ---
+
+<a id="doc-system-guide-add-and-manage-skills"></a>
 
 # 添加与管理技能
 
@@ -503,15 +534,17 @@ APP 设置和使用帮助：
 
 ## 优先级
 
-技能优先级是全局设置三档：优先内置（默认）、优先用户、或冲突时询问。冲突指同一类别（两个检索类技能），不是任意两个技能。多个内置技能对同类用户技能让位（`doc-convert`、`page-fetch`、`web-search`）。细粒度规则见[共享配置与资产](../advanced/shared-configuration-and-assets.md)。
+技能优先级是全局设置三档：优先内置（默认）、优先用户、或冲突时询问。冲突指同一类别（两个检索类技能），不是任意两个技能。多个内置技能对同类用户技能让位（`doc-convert`、`page-fetch`、`web-search`）。细粒度规则见[共享配置与资产](#doc-advanced-shared-configuration-and-assets)。
 
 ## 故障排查
 
-- 一个技能始终未触发：在[命令面板](commands.md)中按英文 id 调用它（例如 `/my-skill`），然后检查它的 `SKILL.md` 描述。触发匹配的是该描述。目前没有中文别名。
+- 一个技能始终未触发：在[命令面板](#doc-system-guide-commands)中按英文 id 调用它（例如 `/my-skill`），然后检查它的 `SKILL.md` 描述。触发匹配的是该描述。目前没有中文别名。
 - 错误的技能胜出：检查优先级设置，检查两者是否属于同一类别。不相关的技能会同时加载。
 - 项目技能缺失：确认该文件夹已附上，且对话处于工作模式。
 
 ---
+
+<a id="doc-system-guide-agent-team-and-subagents"></a>
 
 # 智能体团队与子代理
 
@@ -548,9 +581,11 @@ APP 设置和使用帮助：
 
 ---
 
+<a id="doc-system-guide-bundled-skills"></a>
+
 # 内置技能
 
-内置技能是 Alt Theory 的方法，写在文件里。每一份都是可读文件，你可以查阅。你自己的技能可以优先（[添加与管理技能](add-and-manage-skills.md)）。
+内置技能是 Alt Theory 的方法，写在文件里。每一份都是可读文件，你可以查阅。你自己的技能可以优先（[添加与管理技能](#doc-system-guide-add-and-manage-skills)）。
 
 可调用名是英文 id（与文件夹名、`/技能id` 一致）。下列每条以英文 id 打头，括号内为中文释义。目前没有中文别名。
 
@@ -571,7 +606,7 @@ APP 设置和使用帮助：
 - `adaptive-aligning`（自适应对齐）是定方向工作前的对齐访谈：成批问题，每个带着智能体自己的最佳猜测，使高置信度的点成为确认。由你主动要求对齐时、或在凭猜测行动代价昂贵时触发。调用示例：`/adaptive-aligning`。
 - `adaptive-plan-record`（计划记录）是多步工作的活计划，跨越单场对话：目标在前，阶段宽松持有，每步揭示的内容，已定、假定与未定各是什么。存在工作目录中，不受压缩影响。
 - `conversation-summary`（对话摘要）把当前对话转成一段保存的 markdown 摘要或交接说明，保留来源，留待问题保持开放。
-- `imported-session-context`（导入会话上下文）规范[导入](imports-and-continuity.md)的对话：读取当前文件，绝不发明导入未携带的内容，从导入记录中回答「遗失了什么」的问题。
+- `imported-session-context`（导入会话上下文）规范[导入](#doc-system-guide-imports-and-continuity)的对话：读取当前文件，绝不发明导入未携带的内容，从导入记录中回答「遗失了什么」的问题。
 
 ## 应用自身
 
@@ -579,9 +614,11 @@ APP 设置和使用帮助：
 
 ## 委派
 
-智能体团队工具集（spawn_agent、send_to_agent、check_agent、wait_for_agents、interrupt_agent、list_agents，子代理仅可使用 message_parent）是子代理委派的底层机制，不是技能。详见[智能体团队与子代理会话](agent-team-and-subagents.md)。
+智能体团队工具集（spawn_agent、send_to_agent、check_agent、wait_for_agents、interrupt_agent、list_agents，子代理仅可使用 message_parent）是子代理委派的底层机制，不是技能。详见[智能体团队与子代理会话](#doc-system-guide-agent-team-and-subagents)。
 
 ---
+
+<a id="doc-system-guide-commands"></a>
 
 # 命令
 
@@ -591,7 +628,7 @@ APP 设置和使用帮助：
 
 ## 面板内容
 
-- 所有启用的技能，按 `/技能id` 调用，例如 `/adaptive-aligning`、`/conversation-summary`。完整目录见[内置技能](bundled-skills.md)。
+- 所有启用的技能，按 `/技能id` 调用，例如 `/adaptive-aligning`、`/conversation-summary`。完整目录见[内置技能](#doc-system-guide-bundled-skills)。
 - 对话命令：
   - `/branch`（分叉）从此处分叉本对话
   - `/btw`（顺带）开启携带当前上下文的侧边对话
@@ -606,6 +643,8 @@ APP 设置和使用帮助：
 面板里的命令不是执行某一操作的唯一方式。「在这里分叉」「总结这段对话」作为普通句子同样有效。面板的存在是为了精确、速度与发现。用哪种取决于当下。
 
 ---
+
+<a id="doc-system-guide-conversations-and-history"></a>
 
 # 对话与历史
 
@@ -627,7 +666,7 @@ APP 设置和使用帮助：
 - 编辑或修订你早先的一条消息。对话从该点继续，使用你的新措辞，后续轮次离开当前线。首次使用时，应用在执行前提示这一行为。
 - 从任意消息分叉，在一场相关对话中推进一个方向，原线保持不变。
 
-各选项保留的内容比较见[处理回复与控制](responses-and-controls.md)。
+各选项保留的内容比较见[处理回复与控制](#doc-system-guide-responses-and-controls)。
 
 ## 压缩
 
@@ -637,7 +676,7 @@ APP 设置和使用帮助：
 - 运行时显示状态，可随时停止，对话仍然可用。
 - 在停顿点用 `/compact` 主动触发。
 
-摘要有损。关键事实写入 [`adaptive-plan-record`（计划记录）](bundled-skills.md#adaptive-plan-record) 或文件，文件不被压缩。
+摘要有损。关键事实写入 [`adaptive-plan-record`（计划记录）](#doc-system-guide-bundled-skills) 或文件，文件不被压缩。
 
 ## 删除对话
 
@@ -645,15 +684,17 @@ APP 设置和使用帮助：
 
 ## 导出
 
-- 给阅读者与同行：markdown 形式的 [`conversation-summary`（对话摘要 / 交接说明）](bundled-skills.md#conversation-summary)，或转录的 HTML 导出。
-- 给其他工具续接：对话的 Pi 兼容文件，可被另一工具接起。详见[跨工具工作](../advanced/cross-harness-work.md)。
+- 给阅读者与同行：markdown 形式的 [`conversation-summary`（对话摘要 / 交接说明）](#doc-system-guide-bundled-skills)，或转录的 HTML 导出。
+- 给其他工具续接：对话的 Pi 兼容文件，可被另一工具接起。详见[跨工具工作](#doc-advanced-cross-harness-work)。
 
 ## 故障排查
 
 - 一轮被中断（停止、崩溃、网络）：对话仍可用，已完成的动作记录在转录中。
-- 重开后对话看起来异常：先刷新一次。若仍异常，见[常见问题](../help/common-questions.md)，并注明对话的年龄与是否经过导入或压缩。
+- 重开后对话看起来异常：先刷新一次。若仍异常，见[常见问题](#doc-help-common-questions)，并注明对话的年龄与是否经过导入或压缩。
 
 ---
+
+<a id="doc-system-guide-documents-images-inputs"></a>
 
 # 文档、图像与其他输入
 
@@ -671,7 +712,7 @@ APP 设置和使用帮助：
 ## 附件与目录访问
 
 - 附件将特定文件放到智能体面前，仅供本场对话使用：使用附上按钮，或从文件面板发送。
-- 工作目录访问（工作模式）让智能体自己查找并读取项目文件（[详情](working-folders-files-paths.md)）。
+- 工作目录访问（工作模式）让智能体自己查找并读取项目文件（[详情](#doc-system-guide-working-folders-files-paths)）。
 
 ## 图像
 
@@ -681,9 +722,9 @@ APP 设置和使用帮助：
 
 ## 生成文档
 
-请求"以文档形式输出"会在工作目录生成一个命名清晰的新文件，从不覆盖你的任何文件。需要生成组件的格式（.docx、.pptx、.xlsx）可能要求一次性安装依赖，通过[引导设置](helper-and-guidance.md)提出，且仅在你确认后才执行。
+请求"以文档形式输出"会在工作目录生成一个命名清晰的新文件，从不覆盖你的任何文件。需要生成组件的格式（.docx、.pptx、.xlsx）可能要求一次性安装依赖，通过[引导设置](#doc-system-guide-helper-and-guidance)提出，且仅在你确认后才执行。
 
-一条边界：修订你的 Word 文档会输出一份编辑后的副本与一段简明变更说明。不支持输出 Word 的跟踪修订格式。详见[已知限制](../help/compatibility-formats-limitations.md)。
+一条边界：修订你的 Word 文档会输出一份编辑后的副本与一段简明变更说明。不支持输出 Word 的跟踪修订格式。详见[已知限制](#doc-help-compatibility-formats-limitations)。
 
 ## 故障排查
 
@@ -693,13 +734,15 @@ APP 设置和使用帮助：
 
 ---
 
+<a id="doc-system-guide-helper-and-guidance"></a>
+
 # 助手与界面内引导
 
 ## 助手
 
 一个用于 Alt Theory 自身问题的侧边对话：原理与机制、设置所在位置、提供方、密钥与工具的引导式配置。
 
-- 它以新会话开始，不读取当前对话。这让助手可在任何场景复用：空白屏幕上与项目进行中都一样。需要保留当前上下文的旁支问题，用[顺带](responses-and-controls.md)。
+- 它以新会话开始，不读取当前对话。这让助手可在任何场景复用：空白屏幕上与项目进行中都一样。需要保留当前上下文的旁支问题，用[顺带](#doc-system-guide-responses-and-controls)。
 - 助手按当前文档回答。具体或可变的内容会查阅产品文档，对无法核实的步骤宁愿承认而不编造。
 
 从工具箱（询问 Alt 如何工作）打开，或用 `/helper`。如果助手对话的内容对你项目有用，将它加入对话列表即成为普通对话。
@@ -718,9 +761,11 @@ APP 设置和使用帮助：
 
 ## 助手不够时
 
-问题见[常见问题](../help/common-questions.md)，限制见[已知限制](../help/compatibility-formats-limitations.md)，bug、反馈或研究计划见[README](../README.md#releases-bug-reports-and-the-research-program)。
+问题见[常见问题](#doc-help-common-questions)，限制见[已知限制](#doc-help-compatibility-formats-limitations)，bug、反馈或研究计划见[README](#doc-readme)。
 
 ---
+
+<a id="doc-system-guide-how-skills-work"></a>
 
 # 技能如何工作
 
@@ -732,8 +777,8 @@ APP 设置和使用帮助：
 
 三类来源，都在设置中可见：
 
-- 内置：随产品发布，承载其方法（[目录](bundled-skills.md)）。
-- 用户安装：放在标准技能文件夹中（[方法](add-and-manage-skills.md)）。
+- 内置：随产品发布，承载其方法（[目录](#doc-system-guide-bundled-skills)）。
+- 用户安装：放在标准技能文件夹中（[方法](#doc-system-guide-add-and-manage-skills)）。
 - 项目技能：在附上的工作目录内。随项目进出（工作模式）。
 
 ## 技能如何被激活
@@ -741,7 +786,7 @@ APP 设置和使用帮助：
 两条路径：
 
 - 匹配。每份技能声明其用途。当你的请求与之匹配，智能体加载该技能并遵循。匹配按语义进行，不按关键词。
-- 显式调用。在[命令面板](commands.md)或[工具箱](toolbox.md)入口按英文 id 调用任何技能（例如 `/adaptive-aligning`）。目前没有中文别名。
+- 显式调用。在[命令面板](#doc-system-guide-commands)或[工具箱](#doc-system-guide-toolbox)入口按英文 id 调用任何技能（例如 `/adaptive-aligning`）。目前没有中文别名。
 
 技能加载是可见的：回复中有一行说明当前使用的技能。
 
@@ -751,9 +796,11 @@ APP 设置和使用帮助：
 
 ## 技能重叠
 
-你可以安装与某内置技能同一领域的技能。优先级设置选择「优先内置」「优先用户」或「每次询问」，部分内置技能会在其文本中让位给同类的用户技能。标准详见[添加与管理技能](add-and-manage-skills.md)。高级组合见[共享配置与资产](../advanced/shared-configuration-and-assets.md)。
+你可以安装与某内置技能同一领域的技能。优先级设置选择「优先内置」「优先用户」或「每次询问」，部分内置技能会在其文本中让位给同类的用户技能。标准详见[添加与管理技能](#doc-system-guide-add-and-manage-skills)。高级组合见[共享配置与资产](#doc-advanced-shared-configuration-and-assets)。
 
 ---
+
+<a id="doc-system-guide-imports-and-continuity"></a>
 
 # 导入、交接与跨工具连续性
 
@@ -761,7 +808,7 @@ APP 设置和使用帮助：
 
 ## 导入
 
-支持来源：Claude Code、Codex、OpenCode、Grok Build（Pi 格式会话直接导入，详见[跨工具工作](../advanced/cross-harness-work.md)）。导入入口与创建对话入口在同一位置。
+支持来源：Claude Code、Codex、OpenCode、Grok Build（Pi 格式会话直接导入，详见[跨工具工作](#doc-advanced-cross-harness-work)）。导入入口与创建对话入口在同一位置。
 
 流程：
 
@@ -785,16 +832,18 @@ APP 设置和使用帮助：
 
 ## 交接工作出去
 
-- `conversation-summary`（对话摘要与交接说明）（[内置技能](bundled-skills.md#conversation-summary)）以 markdown 形式附上来源落地，可由协作者或另一工具阅读。
-- 对话以 Pi 格式存储，可在 Pi 中续接并来回。详见[跨工具工作](../advanced/cross-harness-work.md)。
+- `conversation-summary`（对话摘要与交接说明）（[内置技能](#doc-system-guide-bundled-skills)）以 markdown 形式附上来源落地，可由协作者或另一工具阅读。
+- 对话以 Pi 格式存储，可在 Pi 中续接并来回。详见[跨工具工作](#doc-advanced-cross-harness-work)。
 
 ## 核验与故障排查
 
 - 这次导入携带了什么？问智能体，或查看对话的导入记录。
-- 不在导入列表中：源的数据必须在本机，且源必须被支持。详见[常见问题](../help/common-questions.md)。
+- 不在导入列表中：源的数据必须在本机，且源必须被支持。详见[常见问题](#doc-help-common-questions)。
 - 导入被拒绝：显示的原因属实，通常是源记录不完整或含糊。源对话保持原样。
 
 ---
+
+<a id="doc-system-guide-knowledge-bases-and-context"></a>
 
 # 知识库与上下文
 
@@ -807,7 +856,7 @@ APP 设置和使用帮助：
 
 ## 启用
 
-输入框旁的知识库选择器为这场对话选择知识库。应用自带领域知识库（环境心理学核心是第一个），你可以添加自己的（[自定义](../advanced/customization-without-changing.md)）。选择无表示没有知识库可用，工作目录与附件不受影响。可以在对话中途切换知识库，从下一轮开始生效。
+输入框旁的知识库选择器为这场对话选择知识库。应用自带领域知识库（环境心理学核心是第一个），你可以添加自己的（[自定义](#doc-advanced-customization-without-changing)）。选择无表示没有知识库可用，工作目录与附件不受影响。可以在对话中途切换知识库，从下一轮开始生效。
 
 ## 智能体如何使用知识库
 
@@ -819,6 +868,8 @@ APP 设置和使用帮助：
 - 对话中途切换知识库后感觉陈旧：变更从新的轮次起效，之前回答基于当时启用的知识库。重新提出真正重要的问题。
 
 ---
+
+<a id="doc-system-guide-models-providers-access"></a>
 
 # 模型、提供方与访问
 
@@ -837,9 +888,9 @@ AI 模型来自你配置的提供方。Alt Theory 提供环境、方法与界面
 
 至少有一个有效且激活的提供方才能开始对话。配置多个，按对话选择。密钥属于设置，不属于聊天消息。
 
-如果以上不熟悉，[助手](helper-and-guidance.md)会用日常语言逐步引导提供方配置。
+如果以上不熟悉，[助手](#doc-system-guide-helper-and-guidance)会用日常语言逐步引导提供方配置。
 
-Alt Theory 不会自动读取 Pi 的提供方配置。迁移现有 Pi 设置是一次性的引导复制，详见[共享配置与资产](../advanced/shared-configuration-and-assets.md)。
+Alt Theory 不会自动读取 Pi 的提供方配置。迁移现有 Pi 设置是一次性的引导复制，详见[共享配置与资产](#doc-advanced-shared-configuration-and-assets)。
 
 ### 当前提供方路径
 
@@ -868,6 +919,36 @@ settings.json  { defaultProvider, defaultModel, ... }
 
 `models.json` 中的 `apiKey` 可以是环境变量标记，而非密钥本身。普通修改请使用设置页；这里保留结构，是为了让助手和高级用户无需反向阅读代码也能检查或迁移配置。
 
+### 用聊天机器人配置模型
+
+设置页是常规途径，应用内的[帮手](#doc-system-guide-helper-and-guidance)也能带你走完。如果你更想把这件事交给已经在用的聊天机器人——ChatGPT、Kimi、DeepSeek、Gemini，或任何能编辑文件的本地代理——复制下面这段提示词粘贴过去即可。
+
+```text
+我在用一个叫 Alt Theory 的应用。它从
+~/.alt-theory/pi-agent/models.json 读取模型配置
+（Windows：%USERPROFILE%\.alt-theory\pi-agent\models.json）。
+它不会读取 ~/.pi/ 或其他代理的配置。
+
+文件结构如下：
+
+{
+  "providers": {
+    "<提供方名称>": {
+      "baseUrl": "<接口地址>",
+      "api": "openai-completions" | "openai-responses" | "anthropic-messages",
+      "apiKey": "<密钥，或环境变量名>",
+      "models": [{ "id": "<模型 id>" }]
+    }
+  }
+}
+
+请先问我有哪个提供方的访问权限、密钥是什么，然后给出我该保存的完整文件内容，
+并说明我需要先确认哪些事。不要臆造模型 id：提供方条目建好之后，我会在
+Alt Theory 的设置里点「获取模型列表」，由它去问提供方本身。
+```
+
+粘贴之前记住两点：API 密钥等同于密码，只交给你信任的工具；提供方条目建好之后，设置页里的「获取模型列表」比任何聊天机器人对当前可用模型 id 的记忆都更可靠。
+
 ## 每会话模型与思考强度
 
 - 会话可携带自身模型覆盖，每次打开都胜出默认。清除即回到默认。
@@ -876,15 +957,17 @@ settings.json  { defaultProvider, defaultModel, ... }
 
 ## 费用与用量
 
-模型使用按你的提供方与你的账号计费。应用不加价。输入框旁的上下文环（[见处理回复与控制](responses-and-controls.md)）显示上下文用量，其提示包含输入输出 token 数与截至当前的提供方报告费用。费用只在智能体正在回复或工作时累计。
+模型使用按你的提供方与你的账号计费。应用不加价。输入框旁的上下文环（[见处理回复与控制](#doc-system-guide-responses-and-controls)）显示上下文用量，其提示包含输入输出 token 数与截至当前的提供方报告费用。费用只在智能体正在回复或工作时累计。
 
 ## 故障排查：已配置但不能工作
 
 1. 提供方是否已保存并激活？草稿条目（已保存但没有有效密钥）会被存储但不可用。
 2. 重新打开对话。配置变更应用于新对话与重开的对话，不在轮次进行中悄然生效。
-3. 仍卡住：[助手](helper-and-guidance.md)可检查你的配置，或见[常见问题](../help/common-questions.md)。
+3. 仍卡住：[助手](#doc-system-guide-helper-and-guidance)可检查你的配置，或见[常见问题](#doc-help-common-questions)。
 
 ---
+
+<a id="doc-system-guide-permissions-approvals-agent-activity"></a>
 
 # 权限、授权与智能体活动
 
@@ -914,7 +997,7 @@ settings.json  { defaultProvider, defaultModel, ... }
 
 ## 查看智能体在做什么
 
-- 在对话中：每个动作以一条[工具行](responses-and-controls.md)实时出现。改动文件的轮次以改动文件卡片收尾。
+- 在对话中：每个动作以一条[工具行](#doc-system-guide-responses-and-controls)实时出现。改动文件的轮次以改动文件卡片收尾。
 - 跨对话：列表上每行的状态标记（运行中、已完成未读、失败、等待授权）。当窗口位于后台时，完成、失败或被授权打断的运行会触发系统通知。
 
 ## 故障排查
@@ -925,13 +1008,15 @@ settings.json  { defaultProvider, defaultModel, ... }
 
 ---
 
+<a id="doc-system-guide-responses-and-controls"></a>
+
 # 处理回复与对话控制
 
 这些控制的核心用途是对照。大语言模型易于附和、对措辞敏感、且基于采样，单一答案不足以信任：需要看到答案在改变提示、提问角度或模型时是否变化。编辑、同提示重试与分叉都生成一份与原版等宽并列的版本，不干扰原版。
 
 ## 上下文环
 
-输入框旁的环显示本场对话已用上下文窗口的比例。提示分解输入输出 token、缓存使用与提供方报告的费用。当环接近填满时，压缩是让对话继续的方式（[见对话与历史](conversations-and-history.md)）。
+输入框旁的环显示本场对话已用上下文窗口的比例。提示分解输入输出 token、缓存使用与提供方报告的费用。当环接近填满时，压缩是让对话继续的方式（[见对话与历史](#doc-system-guide-conversations-and-history)）。
 
 ## 运行中的引导
 
@@ -951,8 +1036,8 @@ settings.json  { defaultProvider, defaultModel, ... }
 ## 侧边对话
 
 - 顺带（BTW）开启携带当前上下文的侧边对话，用于不该干扰主线的旁支。
-- 助手以全新视角开始，不读取你的讨论，用于应用相关问题（[详情](helper-and-guidance.md)）。
-- 牵头对话可把有边界任务委派给子代理，作为独立会话运行（[详情](agent-team-and-subagents.md)）。
+- 助手以全新视角开始，不读取你的讨论，用于应用相关问题（[详情](#doc-system-guide-helper-and-guidance)）。
+- 牵头对话可把有边界任务委派给子代理，作为独立会话运行（[详情](#doc-system-guide-agent-team-and-subagents)）。
 
 侧边对话共用对话样式，但停在一个窄面板中，它们不占 50/50 对照位置，该位置仅用于分叉、编辑与同提示重试。
 
@@ -962,6 +1047,8 @@ settings.json  { defaultProvider, defaultModel, ... }
 
 ---
 
+<a id="doc-system-guide-search-sources-web"></a>
+
 # 检索、来源与网页内容
 
 实时查核让智能体对你说的话可以与外部世界对照。
@@ -970,7 +1057,7 @@ settings.json  { defaultProvider, defaultModel, ... }
 
 - 学术检索直接查询学术索引（OpenAlex 与 Crossref），返回可核元数据：标题、年份、DOI、引用数与摘要。无需账号或密钥。文献检索的首选，因为带 DOI 的结果是可以交付给同行的引用。
 - 通用网页检索覆盖时事、软件文档与机构页面。亦无密钥。
-- `page-fetch`（页面抓取）把特定页面取回为可读文本，令陈述可附源引用。两档：默认快速档，与用于反爬墙期刊站点的较重浏览器档（首次需要时通过[引导设置](helper-and-guidance.md)另行安装）。学术与通用检索由 `web-search`（网页检索）承担，并受 `search-policy`（检索策略）约束。
+- `page-fetch`（页面抓取）把特定页面取回为可读文本，令陈述可附源引用。两档：默认快速档，与用于反爬墙期刊站点的较重浏览器档（首次需要时通过[引导设置](#doc-system-guide-helper-and-guidance)另行安装）。学术与通用检索由 `web-search`（网页检索）承担，并受 `search-policy`（检索策略）约束。
 
 工具箱的「在线查资料」入口调用此功能，直接询问亦然。需要安装的检索工具会在使用前通过授权流程一次性提议。
 
@@ -987,7 +1074,7 @@ settings.json  { defaultProvider, defaultModel, ... }
 - 少数结果是有偏样本。一条片段支持「一个来源说」，不是「领域共识」。当结果冲突时，你会看到分布，而不是悄悄选一个。
 - 综合报告会标明它实际读了哪些来源。「读了 40 篇 PDF」就是 40 篇，否则不会这么说。
 
-任何系统都无法杜绝编造。未标注的断言是值得[上报](../README.md#releases-bug-reports-and-the-research-program)的 bug。
+任何系统都无法杜绝编造。未标注的断言是值得[上报](#doc-readme)的 bug。
 
 ## 付费墙与访问限制
 
@@ -1005,6 +1092,8 @@ settings.json  { defaultProvider, defaultModel, ... }
 
 ---
 
+<a id="doc-system-guide-settings-and-configuration"></a>
+
 # 设置与配置
 
 设置集合应用级配置。每场对话的选择（模式、模型、角色、知识库、工作目录）存在对话中，不在设置中。设置屏列出自己的若干区块，本页只覆盖打开设置屏幕不直观可见的内容。
@@ -1019,13 +1108,15 @@ settings.json  { defaultProvider, defaultModel, ... }
 - 应用拥有自身的模型、提供方与技能启用配置，存于本地目录。它不镜像其他工具的配置。模型配置位于 `~/.alt-theory/pi-agent/`，不是 `~/.pi/agent/`。
 - 应用从生态中读取：标准跨工具位置的技能、附上工作目录中的项目资源。是发现，不是同步。
 - 工作目录在附上时贡献其上下文与技能。
-- 已有 Pi 或其他工具配置可一次性迁移。助手检查你的配置并显式带过有用的部分。优先级：[共享配置与资产](../advanced/shared-configuration-and-assets.md)。
+- 已有 Pi 或其他工具配置可一次性迁移。助手检查你的配置并显式带过有用的部分。优先级：[共享配置与资产](#doc-advanced-shared-configuration-and-assets)。
 
 ## 配置在磁盘上的位置
 
-应用所有数据（配置、对话、记录）存于一个本地应用数据目录（[数据去向](../start-here/install-and-launch.md#where-your-data-goes)）。模型与提供方配置以 Pi 兼容文件存储，每场对话记录它创建时所用的资产与配置，使历史对话在设置变更后仍可解读。详见[兼容性、更新与集成调试](../advanced/compatibility-updates-debugging.md)。
+应用所有数据（配置、对话、记录）存于一个本地应用数据目录（[数据去向](#doc-start-here-install-and-launch)）。模型与提供方配置以 Pi 兼容文件存储，每场对话记录它创建时所用的资产与配置，使历史对话在设置变更后仍可解读。详见[兼容性、更新与集成调试](#doc-advanced-compatibility-updates-debugging)。
 
 ---
+
+<a id="doc-system-guide-toolbox"></a>
 
 # 工具箱
 
@@ -1033,11 +1124,11 @@ settings.json  { defaultProvider, defaultModel, ... }
 
 ## 各条目
 
-- 询问 Alt 如何工作：打开[助手](helper-and-guidance.md)，一个用新上下文回答应用相关问题的助理。
-- 在计划或决定上对齐：调用 [`adaptive-aligning`（自适应对齐）](bundled-skills.md#adaptive-aligning)，智能体在定方向工作前访谈你以建立共同理解。
-- 计划与记录：调用 [`adaptive-plan-record`（计划记录）](bundled-skills.md#adaptive-plan-record)，用于值得跨对话追踪的工作。
-- 在线查资料（工作模式）：调用[实时检索](search-sources-web.md)（技能侧为 `web-search` / `page-fetch`）。在理解模式下此项不是一个被禁用的按钮，而是一行说明，理解模式没有实时查核，需切换到工作模式才能搜索。
-- 全部技能：跳到[命令面板](commands.md)，且已预输入 `/`。
+- 询问 Alt 如何工作：打开[助手](#doc-system-guide-helper-and-guidance)，一个用新上下文回答应用相关问题的助理。
+- 在计划或决定上对齐：调用 [`adaptive-aligning`（自适应对齐）](#doc-system-guide-bundled-skills)，智能体在定方向工作前访谈你以建立共同理解。
+- 计划与记录：调用 [`adaptive-plan-record`（计划记录）](#doc-system-guide-bundled-skills)，用于值得跨对话追踪的工作。
+- 在线查资料（工作模式）：调用[实时检索](#doc-system-guide-search-sources-web)（技能侧为 `web-search` / `page-fetch`）。在理解模式下此项不是一个被禁用的按钮，而是一行说明，理解模式没有实时查核，需切换到工作模式才能搜索。
+- 全部技能：跳到[命令面板](#doc-system-guide-commands)，且已预输入 `/`。
 
 ## 待发与即发
 
@@ -1048,6 +1139,8 @@ settings.json  { defaultProvider, defaultModel, ... }
 它不是技能系统本身，只是精选的入口。每条目都有等效的命令或普通句子版本，未在此列出的内容用一个 `/` 即可到达。
 
 ---
+
+<a id="doc-system-guide-working-folders-files-paths"></a>
 
 # 工作目录、文件与路径
 
@@ -1064,12 +1157,12 @@ settings.json  { defaultProvider, defaultModel, ... }
 ## 智能体在不同位置的权限
 
 - 在附上的目录内：按工作需要读取、创建、编辑文件，无需逐步打扰。所有动作在对话中可见。
-- 在附上的目录之外：读取未附上的文件或目录会触发[授权请求](permissions-approvals-agent-activity.md)，你看到路径后决定。对附上目录外执行写入不可用。工作目录是修改的硬边界。
+- 在附上的目录之外：读取未附上的文件或目录会触发[授权请求](#doc-system-guide-permissions-approvals-agent-activity)，你看到路径后决定。对附上目录外执行写入不可用。工作目录是修改的硬边界。
 - 在理解模式下：项目目录不会被附上。理解对话保留一个私人工作空间，智能体可在其中保存你要求的内容，但你的文件只能作为附件进入，超出该边界的读取需经授权。
 
 ## 智能体如何对待你的项目
 
-约定属于[内置技能](bundled-skills.md)的一部分，且本身可读：
+约定属于[内置技能](#doc-system-guide-bundled-skills)的一部分，且本身可读：
 
 - 先读。智能体在写入前先读懂项目的组织方式，并遵循既有结构而非自己的默认。
 - 原件不被触碰。修订文档意味着写入副本或一个命名清晰的新文件，绝不就地修改原件。
@@ -1080,7 +1173,7 @@ settings.json  { defaultProvider, defaultModel, ... }
 
 右侧面板以文件树形式显示工作目录：浏览、打开文件查看，或在 Finder / 资源管理器中显示。文件可从面板加入讨论，面板也是工作完成后查看改动的地方。
 
-当智能体提到文件时，倾向于显示相对于工作目录的路径。文档的转换副本以 `_converted` 后缀出现在原件旁边（[详情](documents-images-inputs.md)）。
+当智能体提到文件时，倾向于显示相对于工作目录的路径。文档的转换副本以 `_converted` 后缀出现在原件旁边（[详情](#doc-system-guide-documents-images-inputs)）。
 
 ## 故障排查
 
@@ -1090,46 +1183,48 @@ settings.json  { defaultProvider, defaultModel, ... }
 
 ---
 
+<a id="doc-help-common-questions"></a>
+
 # 常见问题
 
 跨特性的问题与疑问。已确定涉及哪个特性时，优先回到该特性在系统指南中的页面，路径更短。
 
 ## 对话无法启动
 
-问题几乎总在提供方配置链。按[模型、提供方与访问](../system-guide/models-providers-access.md)中的清单逐项排查，包括提供方已保存并启用、密钥有效且有余额、模型 ID 仍可识别，然后重新打开。没有有效的提供方，应用不会开启对话，修复点在设置中，不在重试。
+问题几乎总在提供方配置链。按[模型、提供方与访问](#doc-system-guide-models-providers-access)中的清单逐项排查，包括提供方已保存并启用、密钥有效且有余额、模型 ID 仍可识别，然后重新打开。没有有效的提供方，应用不会开启对话，修复点在设置中，不在重试。
 
 ## 检索、抓取或文档读取反复失败
 
 - 全部失败，问题出在工具本身。是否已安装？可让智能体检查其检索工具。是否网络屏蔽了目标站点？
-- 单个文档失败，见[文档、图像与其他输入](../system-guide/documents-images-inputs.md)。
+- 单个文档失败，见[文档、图像与其他输入](#doc-system-guide-documents-images-inputs)。
 
 ## 重开后对话看起来异常
 
-尾部缺失、渲染异常、模型不符，先刷新一次，再查看是否有可见提示（工作目录失效、模型回退、资产回退），每条提示说明发生了什么与如何处理（[参考](../advanced/compatibility-updates-debugging.md)）。导入的对话中带占位块，那是标签显示，不是损坏（[占位符的含义](../system-guide/imports-and-continuity.md)）。
+尾部缺失、渲染异常、模型不符，先刷新一次，再查看是否有可见提示（工作目录失效、模型回退、资产回退），每条提示说明发生了什么与如何处理（[参考](#doc-advanced-compatibility-updates-debugging)）。导入的对话中带占位块，那是标签显示，不是损坏（[占位符的含义](#doc-system-guide-imports-and-continuity)）。
 
 ## 引用是否会被编造
 
-引用来自带 DOI 的实时学术检索，或被明确标注为未核实。记忆内容不会以检索结果的形式呈现。「无法核实」本身就是正常的回答。详见[检索、来源与网页内容](../system-guide/search-sources-web.md)。没有任何系统能让编造彻底消失。在这里，编造违反产品的明确规则，不是流畅度的可接受代价。
+引用来自带 DOI 的实时学术检索，或被明确标注为未核实。记忆内容不会以检索结果的形式呈现。「无法核实」本身就是正常的回答。详见[检索、来源与网页内容](#doc-system-guide-search-sources-web)。没有任何系统能让编造彻底消失。在这里，编造违反产品的明确规则，不是流畅度的可接受代价。
 
 ## 模型的选用
 
-应用与模型无关，质量跟随模型，因此判断密集的工作应选用预算允许下最强的模型。产品的机制（来源标注、不确定性标注）在各模型间都成立，因为它们由产品自身的指令而非模型层级强制。配置多个并[按对话切换](../system-guide/models-providers-access.md)。日常用便宜的模型，关键时刻用强模型，是合理的搭配。
+应用与模型无关，质量跟随模型，因此判断密集的工作应选用预算允许下最强的模型。产品的机制（来源标注、不确定性标注）在各模型间都成立，因为它们由产品自身的指令而非模型层级强制。配置多个并[按对话切换](#doc-system-guide-models-providers-access)。日常用便宜的模型，关键时刻用强模型，是合理的搭配。
 
 ## 费用情况
 
-本软件免费开源。模型按用量由各提供方按其定价收费，应用不加价，并[在过程中显示用量与费用](../system-guide/responses-and-controls.md#the-context-ring)。
+本软件免费开源。模型按用量由各提供方按其定价收费，应用不加价，并[在过程中显示用量与费用](#doc-system-guide-responses-and-controls)。
 
 ## 数据隐私
 
-所有内容都存储在本机。离开本机的内容，仅限于发往所配置模型提供方的请求，以及工作模式下的检索流量。简明数据说明在[安装页](../start-here/install-and-launch.md)。对于在数据使用协议下工作的研究用户，本地存储是默认，托管模式需显式启用并设置相应环境变量。
+所有内容都存储在本机。离开本机的内容，仅限于发往所配置模型提供方的请求，以及工作模式下的检索流量。简明数据说明在[安装页](#doc-start-here-install-and-launch)。对于在数据使用协议下工作的研究用户，本地存储是默认，托管模式需显式启用并设置相应环境变量。
 
 ## 与通用助手的差异
 
-三点结构性差异：行为面向研究判断而非讨好性回答，理解/工作边界由用户掌控而非一刀切的代理访问，采用本地优先存储配合可读、可移植的格式。详见[Alt Theory 简介](../start-here/what-alt-theory-is.md)。
+三点结构性差异：行为面向研究判断而非讨好性回答，理解/工作边界由用户掌控而非一刀切的代理访问，采用本地优先存储配合可读、可移植的格式。详见[Alt Theory 简介](#doc-start-here-what-alt-theory-is)。
 
 ## 与 Claude Code 或 Pi 的差异
 
-共享同一生态，并可[从它们导入](../system-guide/imports-and-continuity.md)，但定位不同，主打以理解为先的研究工作，代理机制则承载在为学者设计的界面与行为模型中。已在工具生态内深度工作的用户，可能觉得[外挂形态](../advanced/plugins-and-capability-differences.md)更贴合。
+共享同一生态，并可[从它们导入](#doc-system-guide-imports-and-continuity)，但定位不同，主打以理解为先的研究工作，代理机制则承载在为学者设计的界面与行为模型中。已在工具生态内深度工作的用户，可能觉得[外挂形态](#doc-advanced-plugins-and-capability-differences)更贴合。
 
 ## 多语言使用
 
@@ -1139,13 +1234,15 @@ settings.json  { defaultProvider, defaultModel, ... }
 
 最省时的分级思路如下。
 
-1. 在新对话中用默认设置复现。如不复现，配置问题，与工作默认对照（[诊断顺序](../advanced/compatibility-updates-debugging.md#debugging-an-integration)）。
+1. 在新对话中用默认设置复现。如不复现，配置问题，与工作默认对照（[诊断顺序](#doc-advanced-compatibility-updates-debugging)）。
 2. 同提示，换不同模型或提供方。如随提供方变化，则是提供方限制（速率、上下文大小、能力），修复在提供方侧或模型选择。
 3. 在不同提供方下用默认设置仍复现，可能是真实 bug。报告时附上具体的操作、观察到的现象、预期结果、应用版本、平台，以及该对话是否经过导入或压缩。
 
-排查前先确认问题是边界而非故障（扫描版 PDF、跟踪修订输出、云端文档），然后查看[已知限制](compatibility-formats-limitations.md)。
+排查前先确认问题是边界而非故障（扫描版 PDF、跟踪修订输出、云端文档），然后查看[已知限制](#doc-help-compatibility-formats-limitations)。
 
 ---
+
+<a id="doc-help-compatibility-formats-limitations"></a>
 
 # 兼容性、格式与已知限制
 
@@ -1191,7 +1288,7 @@ settings.json  { defaultProvider, defaultModel, ... }
 | Grok Build | 支持 |
 | 其他工具 | 不支持，从源工具导出为 Markdown 是手动路径 |
 
-导入仅限本地（源工具的数据必须在本机），对源是只读的。边界细节见[导入](../system-guide/imports-and-continuity.md)。
+导入仅限本地（源工具的数据必须在本机），对源是只读的。边界细节见[导入](#doc-system-guide-imports-and-continuity)。
 
 ## 提供方访问
 
@@ -1202,93 +1299,97 @@ API 密钥适用于任何已配置的兼容提供方（含 Anthropic）。订阅
 - 不输出带修订标记的 Word。修改 .docx 时，输出一份编辑后的副本和一段简明变更说明，不是 Word 的修订标记。
 - 无 OCR。扫描版或纯图像 PDF 没有可提取的文本。
 - 无云端文档集成。Google Docs、Overleaf 等不在范围内，只能通过手动导出与导入文件。
-- 理解模式无实时检索。理解模式改为使用标注代替（[原因](../system-guide/search-sources-web.md)）。
+- 理解模式无实时检索。理解模式改为使用标注代替（[原因](#doc-system-guide-search-sources-web)）。
 - 不绕过付费墙。付费来源只能拿到公开摘要。
 - 不集成参考管理器。文档中 Zotero 或 EndNote 的字段代码在原文件中保留不变（原文件从不被修改），但应用不读写参考管理器数据。
 - 一个窗口焦点对应一场对话。多个工作对话可并行运行并报告状态，但只有一个活动视图，重度多代理编排不是本产品的方向。
-- Alpha 期变动。界面与内置资产在版本间可能调整，[策略说明](../advanced/compatibility-updates-debugging.md)哪些受保护、哪些可能改变。
+- Alpha 期变动。界面与内置资产在版本间可能调整，[策略说明](#doc-advanced-compatibility-updates-debugging)哪些受保护、哪些可能改变。
 
 ---
+
+<a id="doc-help-glossary"></a>
 
 # 术语
 
 本产品的术语集中定义。交叉引用指向每个术语的完整页面。
 
 **理解模式**，谨慎对话的能力模式，触及范围受限，不执行命令、不访问实时网络、不挂载项目文件夹。是完整的使用方式，而非工作模式的预览。
-[→ 理解模式与工作模式](../start-here/understand-and-work.md)
+[→ 理解模式与工作模式](#doc-start-here-understand-and-work)
 
 **工作模式**，具备实际触及范围的能力模式，包括工作目录、实时检索与抓取、文档生成、命令，均在可见的授权下进行。
-[→ 理解模式与工作模式](../start-here/understand-and-work.md)
+[→ 理解模式与工作模式](#doc-start-here-understand-and-work)
 
 **对话**，使用 Alt Theory 的基本单位。一条讨论与行动的线索，各自带有历史、模式、模型与材料。持久、可接续、可移植。
-[→ 对话与历史](../system-guide/conversations-and-history.md)
+[→ 对话与历史](#doc-system-guide-conversations-and-history)
 
 **分叉**，从某条消息分出的一场相关对话，携带到该点为止的所有内容，原线保持完整。用于对比回复的控制之一。
-[→ 处理回复与控制](../system-guide/responses-and-controls.md)
+[→ 处理回复与控制](#doc-system-guide-responses-and-controls)
 
 **对比面板**，分叉或同提示重试后，中央区域按 50/50 比例开启的视图，便于并排阅读两个版本的回复。顺带、助手与工作者保持在窄侧栏。
-[→ 处理回复与控制](../system-guide/responses-and-controls.md)
+[→ 处理回复与控制](#doc-system-guide-responses-and-controls)
 
 **顺带（BTW）**，主对话旁的侧边对话，携带当前上下文，用于发散话题。
-[→ 处理回复与控制](../system-guide/responses-and-controls.md)
+[→ 处理回复与控制](#doc-system-guide-responses-and-controls)
 
 **助手**，应用内置的助理，用于回答关于 Alt Theory 自身的问题。每次以新会话开始（不读取当前对话），依据当前文档回答。
-[→ 助手与界面内引导](../system-guide/helper-and-guidance.md)
+[→ 助手与界面内引导](#doc-system-guide-helper-and-guidance)
 
 **工作者**，一场由牵头对话委派有边界任务的子对话。它以独立会话运行，采用受限的模式，模型层级可低于、等于或高于牵头方，最多三个并行。`(planned)` 技能（技能按钮、角色强度）扩展这一层，但尚未实现。
-[→ 智能体团队与子代理会话](../system-guide/agent-team-and-subagents.md)
+[→ 智能体团队与子代理会话](#doc-system-guide-agent-team-and-subagents)
 
 **工作目录**，附在工作对话上的本机文件夹，智能体可在其中读写文件，也是其可修改范围的边界。
-[→ 工作目录、文件与路径](../system-guide/working-folders-files-paths.md)
+[→ 工作目录、文件与路径](#doc-system-guide-working-folders-files-paths)
 
 **知识库（KB）**，经过精选的参考资料，每场对话可选，供智能体在讨论中援引为事实依据。区别于工作目录。
-[→ 知识库与上下文](../system-guide/knowledge-bases-and-context.md)
+[→ 知识库与上下文](#doc-system-guide-knowledge-bases-and-context)
 
 **角色**，一种可选的呈现层，包括语气、节奏、教学风格。改变智能体的呈现方式，从不改变其原则。
-[→ 自定义](../advanced/customization-without-changing.md)
+[→ 自定义](#doc-advanced-customization-without-changing)
 
 **灵魂**，身份层本身，包含智能体的世界观与原则，任何角色都不能覆盖。与其他一切一样，是一份可读的文件。
-[→ 自定义](../advanced/customization-without-changing.md)
+[→ 自定义](#doc-advanced-customization-without-changing)
 
 **技能**，一份可读的指令文件，规定智能体处理某类任务的方式。内置技能承载产品的机制，用户自有的技能与之并列。
-[→ 技能如何工作](../system-guide/how-skills-work.md)
+[→ 技能如何工作](#doc-system-guide-how-skills-work)
 
 **技能按钮** `(planned)`，一个跨多轮保持开启的技能，而非一次性调用。激活时按钮变深，之后渐淡，双击锁定。尚未进入界面或代码。
-[→ 以理解为目标](../using-the-app/when-understanding-is-the-goal.md)
+[→ 以理解为目标](#doc-using-the-app-when-understanding-is-the-goal)
 
 **命令**，在 `/` 面板中按名称调用的任何内容，包括技能，以及 `/branch`、`/compact` 等对话操作。
-[→ 命令](../system-guide/commands.md)
+[→ 命令](#doc-system-guide-commands)
 
 **技能与命令的命名**，可调用标识符以英文 id 为准，须与文件夹名、slash 面板中的字符串完全一致（含连字符与大小写）。文档写法为英文在前、中文释义在括号内，例如 `adaptive-aligning（自适应对齐）`、`/branch`（分叉）。概念类用语（技能、命令、理解模式）可继续用中文。目前没有中文别名；只写中文名无法在 `/` 面板中激活。
 
 **工具箱**，输入框旁的常用操作菜单，是入口，不是完整清单。
-[→ 工具箱](../system-guide/toolbox.md)
+[→ 工具箱](#doc-system-guide-toolbox)
 
 **授权**，当一项操作越过对话边界（外部读取、网络访问、安装）时显示的请求。拒绝总是安全的，未表态视为不同意。
-[→ 权限](../system-guide/permissions-approvals-agent-activity.md)
+[→ 权限](#doc-system-guide-permissions-approvals-agent-activity)
 
 **压缩**，将长对话早先的轮次可见地凝缩为摘要，以便对话在模型上下文窗口内继续。
-[→ 对话与历史](../system-guide/conversations-and-history.md)
+[→ 对话与历史](#doc-system-guide-conversations-and-history)
 
 **软删除**，删除对话会从列表中隐藏，但数据保留在磁盘上，可在清理前恢复。例外是托管的私密会话，在一段时间无活动后会被硬删除。
-[→ 对话与历史](../system-guide/conversations-and-history.md)
+[→ 对话与历史](#doc-system-guide-conversations-and-history)
 
 **导入**，把另一工具（Pi、Claude Code、Codex、OpenCode、Grok Build）中的对话带入 Alt Theory，作为普通的可续接对话，对损失部分明确标注，而非掩盖。
-[→ 导入与连续性](../system-guide/imports-and-continuity.md)
+[→ 导入与连续性](#doc-system-guide-imports-and-continuity)
 
 **外挂**，Alt Theory 的资产打包后供其他工具使用，内置技能保持原样，外加一份按该工具格式编写的智能体定义，承载产品身份。
-[→ 外挂与能力差异](../advanced/plugins-and-capability-differences.md)
+[→ 外挂与能力差异](#doc-advanced-plugins-and-capability-differences)
 
 **Pi**，应用所基于的开源代理工具。对话、技能与配置遵循生态约定而非自有约定，原因正在于此。
-[→ 应用与外挂](../start-here/app-and-plugins.md)
+[→ 应用与外挂](#doc-start-here-app-and-plugins)
 
 **模型 / 提供方**，为对话提供能力的 AI 模型，以及按用户账号提供该模型的服务。应用与模型无关，每场对话可选。
-[→ 模型、提供方与访问](../system-guide/models-providers-access.md)
+[→ 模型、提供方与访问](#doc-system-guide-models-providers-access)
 
 **来源标注**，每条断言均按来源标注，包括现场查得（附引用）、模型记忆（标注为未核实）或推断所得（明确说明）。
-[→ 检索、来源与网页内容](../system-guide/search-sources-web.md)
+[→ 检索、来源与网页内容](#doc-system-guide-search-sources-web)
 
 ---
+
+<a id="doc-advanced-compatibility-updates-debugging"></a>
 
 # 兼容性、更新与集成调试
 
@@ -1324,7 +1425,7 @@ API 密钥适用于任何已配置的兼容提供方（含 Anthropic）。订阅
 2. 检查对话的加载资产记录与预期是否一致（对的技能？对的来源？对的模型？）。
 3. 检查设置中的优先级与启用（按模式）。
 4. 检查应用之外的生态，共享技能文件夹是否变了？提供方是否下线了该模型？附上的工作目录中是否有项目技能在覆盖全局技能？
-5. 之后才怀疑构建，把复现带到[常见问题](../help/common-questions.md)。
+5. 之后才怀疑构建，把复现带到[常见问题](#doc-help-common-questions)。
 
 ## 回滚
 
@@ -1333,6 +1434,8 @@ API 密钥适用于任何已配置的兼容提供方（含 Anthropic）。订阅
 - 已迁移的配置，迁移副本是普通配置文件。引导流程可重跑，之前的状态就是提供方文件在改动前的内容（试验时保留副本）。
 
 ---
+
+<a id="doc-advanced-cross-harness-work"></a>
 
 # 跨工具工作与连续性
 
@@ -1344,7 +1447,7 @@ Alt Theory 的对话以 Pi 的 JSONL 会话格式存储，应用没有另造一�
 
 ## 按重度用户所需的深度导入
 
-[用户级页面](../system-guide/imports-and-continuity.md)介绍流程。背后的机制在边角情况下用得上，主要包括以下几点。
+[用户级页面](#doc-system-guide-imports-and-continuity)介绍流程。背后的机制在边角情况下用得上，主要包括以下几点。
 
 - 三种表征保持区分，即可见的转录（人所见）、活跃的上下文（模型携带的内容）、原始来源证据（保留、可检索、绝不重放）。混同这三者，正是工具虚构历史的根源。
 - 生成任何内容之前先做完整预检，即先完整解析并验证整个源，只有通过验证的投影才成为会话。
@@ -1354,7 +1457,7 @@ Alt Theory 的对话以 Pi 的 JSONL 会话格式存储，应用没有另造一�
 
 ## 在其他工具中续接应用对话
 
-在 Pi 中续接的 Alt Theory 对话保留会话主体，但脱离应用层（理解/工作的强制、授权、应用资产）。智能体身份只有在用户主动带入时才会迁移（[外挂](plugins-and-capability-differences.md)）。对人类读者或非代理工具，Markdown 摘要与 HTML 导出是合适的载体（可读，但不是续接格式）。
+在 Pi 中续接的 Alt Theory 对话保留会话主体，但脱离应用层（理解/工作的强制、授权、应用资产）。智能体身份只有在用户主动带入时才会迁移（[外挂](#doc-advanced-plugins-and-capability-differences)）。对人类读者或非代理工具，Markdown 摘要与 HTML 导出是合适的载体（可读，但不是续接格式）。
 
 ## 迁移与保留
 
@@ -1362,7 +1465,7 @@ Alt Theory 的对话以 Pi 的 JSONL 会话格式存储，应用没有另造一�
 |---|---|
 | 对话主体（轮次、工具、图像） | 是，Pi 兼容 JSONL |
 | 压缩摘要 | 是，源中可读的部分 |
-| 技能 | 是，经由共享位置（[详情](shared-configuration-and-assets.md)） |
+| 技能 | 是，经由共享位置（[详情](#doc-advanced-shared-configuration-and-assets)） |
 | 模型/提供方配置 | 否，各工具各自持有，迁移一次 |
 | 模式、授权、应用设置 | 否，应用层 |
 | 应用级记录（显示状态、来源标注） | 随应用副本保留 |
@@ -1373,13 +1476,15 @@ Alt Theory 的对话以 Pi 的 JSONL 会话格式存储，应用没有另造一�
 
 ---
 
+<a id="doc-advanced-customization-without-changing"></a>
+
 # 不修改 Alt Theory 的自定义
 
 用户想要的大部分改动不需要动应用。行为由可读资产承载，技能、角色、灵魂、知识库、模型配置。每一层都可扩展。
 
 ## 自己的技能
 
-最大的自定义面，详见[添加与管理技能](../system-guide/add-and-manage-skills.md)与[共享配置](shared-configuration-and-assets.md)。简版，写一份 `SKILL.md`，放进共享或项目的技能位置，若与内置方法重叠就设置优先级。一份技能可以承载从学科引用规范到完整分析工作流的任何内容。
+最大的自定义面，详见[添加与管理技能](#doc-system-guide-add-and-manage-skills)与[共享配置](#doc-advanced-shared-configuration-and-assets)。简版，写一份 `SKILL.md`，放进共享或项目的技能位置，若与内置方法重叠就设置优先级。一份技能可以承载从学科引用规范到完整分析工作流的任何内容。
 
 ## 角色
 
@@ -1405,9 +1510,11 @@ Alt Theory 的对话以 Pi 的 JSONL 会话格式存储，应用没有另造一�
 
 ## 边界在哪
 
-以上都是数据，放入资产目录与配置的文件，升级安全、可分享。应用本身行为的差异（新工具、不同的模式边界、UI 改动）超出自定义，跨入[修改 Alt Theory](modifying-alt-theory.md)。
+以上都是数据，放入资产目录与配置的文件，升级安全、可分享。应用本身行为的差异（新工具、不同的模式边界、UI 改动）超出自定义，跨入[修改 Alt Theory](#doc-advanced-modifying-alt-theory)。
 
 ---
+
+<a id="doc-advanced-modifying-alt-theory"></a>
 
 # 修改 Alt Theory 与扩展边界
 
@@ -1417,7 +1524,7 @@ Alt Theory 开源，软件采用 MIT 协议，原创文档与智能体资产采�
 
 按触及范围粗排，
 
-1. 资产，技能、角色、灵魂、知识库、指令（[上一页](customization-without-changing.md)）。数据而非代码，升级安全。
+1. 资产，技能、角色、灵魂、知识库、指令（[上一页](#doc-advanced-customization-without-changing)）。数据而非代码，升级安全。
 2. 配置，提供方、模型、按模式启用技能、优先级。升级安全。
 3. 底下的 Pi 生态。应用嵌入了 Pi 代理运行时，因此作为 Pi 生态资源（包、扩展、工具）存在的能力是新增代理能力的应有路径。在那里构建或采用，而不是再教核心新技能。两条边界成立，包必须使用嵌入式运行时的库（要求不同 Pi 核心的包会被禁用并显示可见的诊断，而非悄悄并存），应用的安全层无论哪个扩展提供了工具，都居间处理工具执行。
 4. 应用本身，后端、前端、打包。MIT 协议下可随意改动，但需要承担与上游演进的合并，alpha 期内上游演进很快。
@@ -1431,7 +1538,7 @@ Alt Theory 开源，软件采用 MIT 协议，原创文档与智能体资产采�
 
 ## 源码构建的实务提示
 
-- 仓库 README 提供当前的构建与测试命令。[安装页](../start-here/install-and-launch.md)有简版。
+- 仓库 README 提供当前的构建与测试命令。[安装页](#doc-start-here-install-and-launch)有简版。
 - 后端测试套件与前端类型检查是改后的快速检查。在用修改后的构建做真实工作之前跑一遍。
 - 架构文档在仓库的 `development/architecture/` 中，面向本读者撰写。
 
@@ -1441,6 +1548,8 @@ Alt Theory 开源，软件采用 MIT 协议，原创文档与智能体资产采�
 
 ---
 
+<a id="doc-advanced-plugins-and-capability-differences"></a>
+
 # 外挂与能力差异
 
 面向在应用与外挂形态之间选择，或同时使用两者的读者。
@@ -1449,7 +1558,7 @@ Alt Theory 开源，软件采用 MIT 协议，原创文档与智能体资产采�
 
 外挂是 Alt Theory 的资产按所用工具的标准转换而来，并非应用的移植。
 
-- 内置技能保持原样，即与应用发布的是同一份方法文件（[目录](../system-guide/bundled-skills.md)）。
+- 内置技能保持原样，即与应用发布的是同一份方法文件（[目录](#doc-system-guide-bundled-skills)）。
 - 按所用工具自有格式编写的智能体定义，承载 Alt Theory 的身份与原则。
 - 可选地，一份放在所用工具可读取位置的知识库。
 
@@ -1477,13 +1586,15 @@ Alt Theory 开源，软件采用 MIT 协议，原创文档与智能体资产采�
 
 - 需要方法，且工作已在工具中，外挂。
 - 需要强制的环境、研究界面与 UI，应用。
-- 两者都想要，受支持。共享位置存放的技能同时服务两者，对话可在[两者间移动](cross-harness-work.md)。
+- 两者都想要，受支持。共享位置存放的技能同时服务两者，对话可在[两者间移动](#doc-advanced-cross-harness-work)。
 
 ## 可用性
 
 外挂包装跟随应用的发布线，各工具的当前安装说明见仓库。(planned)
 
 ---
+
+<a id="doc-advanced-shared-configuration-and-assets"></a>
 
 # 共享配置、技能、模型与资产
 
@@ -1515,7 +1626,7 @@ Alt Theory 开源，软件采用 MIT 协议，原创文档与智能体资产采�
 | 共享跨工具目录 | `~/.agents/skills/` 中的技能 | 启用时 |
 | 附上的工作目录 | 项目技能与上下文文件 | 工作模式，附上时 |
 
-每场对话在创建时都精确记录加载了哪些资产、从何处加载，以便日后回答「它当时为何如此表现」（[检视](compatibility-updates-debugging.md)）。
+每场对话在创建时都精确记录加载了哪些资产、从何处加载，以便日后回答「它当时为何如此表现」（[检视](#doc-advanced-compatibility-updates-debugging)）。
 
 ## 迁移已有的 Pi 或其他工具配置
 

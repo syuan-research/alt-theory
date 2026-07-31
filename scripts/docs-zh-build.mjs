@@ -51,6 +51,32 @@ function ensureDir(filePath) {
   mkdirSync(dirname(filePath), { recursive: true });
 }
 
+function bundledDocAnchor(relPath) {
+  return `doc-${relPath
+    .replace(/\\/g, "/")
+    .replace(/\.md$/i, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")}`;
+}
+
+function prepareBundledDoc(relPath, knownDocs) {
+  const source = readFileSync(join(zhRoot, relPath), "utf8").trimEnd();
+  const rewritten = source.replace(
+    /\]\(([^)\s]+\.md)(?:#[^)]*)?\)/gi,
+    (match, target) => {
+      const targetRel = relative(
+        zhRoot,
+        resolve(zhRoot, dirname(relPath), target),
+      ).replace(/\\/g, "/");
+      return knownDocs.has(targetRel)
+        ? `](#${bundledDocAnchor(targetRel)})`
+        : match;
+    },
+  );
+  return `<a id="${bundledDocAnchor(relPath)}"></a>\n\n${rewritten}`;
+}
+
 /** Lightweight glossary wrap when no live translator is available. */
 function structureChinese(enText, relPath) {
   return `---
@@ -223,7 +249,6 @@ function buildPdf() {
     ),
   ].filter((f, i, arr) => existsSync(join(zhRoot, f)) && arr.indexOf(f) === i);
 
-  const inputs = ordered.map((f) => join(zhRoot, f));
   const pandoc = process.platform === "win32" ? "pandoc.exe" : "pandoc";
   const which = spawnSync(process.platform === "win32" ? "where.exe" : "which", [
     pandoc.replace(/\.exe$/, ""),
@@ -231,9 +256,12 @@ function buildPdf() {
   // On Windows pandoc is on PATH as pandoc.exe
   // Always write the concatenated markdown guide (portable, no LaTeX).
   const bundle = join(pdfDir, "alt-theory-user-guide-zh-Hans.md");
+  const knownDocs = new Set(ordered);
   writeFileSync(
     bundle,
-    `${inputs.map((p) => readFileSync(p, "utf8").trimEnd()).join("\n\n---\n\n")}\n`,
+    `${ordered
+      .map((relPath) => prepareBundledDoc(relPath, knownDocs))
+      .join("\n\n---\n\n")}\n`,
     "utf8",
   );
   console.log("wrote", bundle, "bytes", statSync(bundle).size);
