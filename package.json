@@ -22,7 +22,6 @@
     "dev:electron": "electron electron/main.cjs",
     "compile:bundle": "node scripts/compile-bundle.cjs",
     "build:electron": "npm run build:frontend-v6 && npm run compile:bundle && electron-builder build --dir",
-    "build:electron:portable": "npm run build:frontend-v6 && npm run compile:bundle && electron-builder build --win portable",
     "docs:zh": "node scripts/docs-zh-build.mjs --no-pdf",
     "docs:zh-pdf": "node scripts/docs-zh-build.mjs --pdf-only"
   },
@@ -93,11 +92,6 @@
           ]
         }
       ]
-    },
-    "portable": {
-      "artifactName": "AltTheory-Portable-${version}.${ext}",
-      "unpackDirName": "AltTheory",
-      "splashImage": "build/splash.bmp"
     }
   }
 }

@@ -1,5 +1,5 @@
 /**
- * Alt Theory — Electron main (Windows bundle entry).
+ * Alt Theory — Electron desktop bundle entry.
  *
  * Starts the bundled backend IN-PROCESS (compiled JS, not tsx; no child spawn)
  * and loads the shell in a desktop window.

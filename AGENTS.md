@@ -13,11 +13,14 @@ workspace layout from this public file.
 2. For any UI surface, navigation, settings, or entry-point work, read
    `development/architecture/information-architecture.md`.
 3. Read the relevant map under `development/architecture/`.
-4. Read the matching private development `swe-plan` when one is provided.
+4. Before building a desktop friend bundle, read
+   `development/releases/desktop-friend-bundle.md`. It is the canonical bundle
+   procedure for Windows and macOS.
+5. Read the matching private development `swe-plan` when one is provided.
    GPT-5.6, Kimi K3, Claude Opus, Fable, and comparable models normally do not
    need feature or issue scaffolding; stronger models made those default gates
    more constraining than helpful.
-5. Check the exact Git status before editing and keep unrelated changes intact.
+6. Check the exact Git status before editing and keep unrelated changes intact.
 
 ## Source Boundaries
 
@@ -47,6 +50,10 @@ npm run build:frontend-v6
 ```
 
 Run both for cross-layer or release-facing changes.
+
+For a friend bundle, the checks above are not the release procedure. Follow
+`development/releases/desktop-friend-bundle.md`, including its clean-commit,
+package-content, extraction, launch, and short-filename checks.
 
 ## Safety
 

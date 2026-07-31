@@ -75,7 +75,7 @@ do not commit credentials.
 - [changelog](CHANGELOG.md)
 - [session engine architecture](development/architecture/core-session-engine.md)
 - [researcher console architecture](development/architecture/researcher-console.md)
-- [local Windows bundle architecture](development/architecture/local-windows-bundle.md)
+- [desktop friend-bundle guide](development/releases/desktop-friend-bundle.md)
 
 ## License
 
