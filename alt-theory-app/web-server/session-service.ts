@@ -3462,7 +3462,6 @@ export class SessionService implements AgentTeamBridge {
             payload: { text: assistantEvent.delta ?? "" },
           });
         } else if (assistantEvent?.type === "text_delta") {
-          this.emitRunPhase(managed, "processing");
           this.emit(managed, {
             type: "assistant_delta",
             payload: { text: assistantEvent.delta ?? "" },

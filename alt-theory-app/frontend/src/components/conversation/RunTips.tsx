@@ -78,8 +78,10 @@ export function RunTips({
   const text = seedTip ?? (visible ? GENERAL_TIPS()[index] : null);
   if (!text) return null;
 
+  // Stable key: remounting on every tip change re-ran tip-in and could nudge
+  // the composer-notes band. Swap text in place instead.
   return (
-    <span className="run-tip" key={text}>
+    <span className="run-tip">
       <i className="ph ph-lightbulb" aria-hidden="true" />
       {text}
     </span>

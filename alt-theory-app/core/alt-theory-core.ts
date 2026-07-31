@@ -395,6 +395,7 @@ async function createAltTheorySessionWithManager(
   understandOnlySections.push(
     [
       "## Alt Theory Tool Harness",
+      "Current mode: Understand. Live lookup, attached working folders, edit, and shell need Work mode; the user switches mode in the UI. Session-workspace notes may still be writable here.",
       "You are operating inside the Pi harness as the tool runtime for Alt Theory.",
       "This describes your tool environment, not your identity; do not describe yourself as Pi.",
       "Available tools:",

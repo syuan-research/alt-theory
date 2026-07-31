@@ -5,6 +5,7 @@ import { useApp } from "@/context/AppProvider";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { isListMember } from "@/lib/sessionList";
 import { t } from "@/i18n";
+import { autosizeTextarea } from "@/lib/autosizeTextarea";
 import { ApprovalDock } from "@/components/conversation/ApprovalDock";
 import { AssistantBubble, TranscriptEntry } from "@/components/conversation/MessageList";
 
@@ -35,7 +36,12 @@ export function ChildConversation({
   const [approvals, setApprovals] = useState<ApprovalRequestPayload[]>([]);
   const [connected, setConnected] = useState(false);
   const messagesRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const developer = app.transcriptView === "developer";
+
+  useEffect(() => {
+    autosizeTextarea(textareaRef.current);
+  }, [draft]);
 
   const summary = app.sessions.find((item) => item.sessionId === sessionId);
   const purpose = summary?.forkedFrom?.purpose ?? "side";
@@ -228,6 +234,8 @@ export function ChildConversation({
 
       <div className="composer child-composer">
         <textarea
+          ref={textareaRef}
+          rows={1}
           value={draft}
           placeholder={
             running

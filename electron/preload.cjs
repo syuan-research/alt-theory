@@ -6,10 +6,18 @@
  * feature-detects `window.altElectron` and falls back to a path prompt when
  * running in a plain browser (dev / hosted).
  */
-const { contextBridge, ipcRenderer } = require("electron");
+const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
 contextBridge.exposeInMainWorld("altElectron", {
   pickDirectory: () => ipcRenderer.invoke("alt:pickDirectory"),
   pickFiles: () => ipcRenderer.invoke("alt:pickFiles"),
   revealPath: (target) => ipcRenderer.invoke("alt:revealPath", target),
+  /** Absolute path for a File from a desktop drag-drop (not available in plain browsers). */
+  getPathForFile: (file) => {
+    try {
+      return webUtils.getPathForFile(file);
+    } catch {
+      return "";
+    }
+  },
 });

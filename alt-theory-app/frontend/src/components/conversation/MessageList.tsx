@@ -14,6 +14,8 @@ export function MessageList() {
   const containerRef = useRef<HTMLDivElement>(null);
   const railRef = useRef<HTMLDivElement>(null);
   const stickToBottomRef = useRef(true);
+  /** Last scrollHeight we pinned to — ignore transient shrink so the bottom clip edge does not chew the last line. */
+  const pinnedScrollHeightRef = useRef(0);
   const [scrubbing, setScrubbing] = useState(false);
   const developer = app.transcriptView === "developer";
 
@@ -52,10 +54,18 @@ export function MessageList() {
     }
   };
 
+  // Stick-to-bottom only when the user is already near the bottom. Only move
+  // scroll when content *grows*. Stream markdown can make scrollHeight jitter
+  // by a few px; pinning every frame made the last line sit on the overflow
+  // clip edge just above the composer and flash (background covering text).
   useLayoutEffect(() => {
     const el = containerRef.current;
-    if (!el) return;
-    if (stickToBottomRef.current) el.scrollTop = el.scrollHeight;
+    if (!el || !stickToBottomRef.current) return;
+    const next = el.scrollHeight;
+    if (next >= pinnedScrollHeightRef.current) {
+      pinnedScrollHeightRef.current = next;
+      el.scrollTop = next;
+    }
   }, [app.messages, app.streamParts]);
 
   const renderedToolCallIds = new Set<string>();
@@ -76,8 +86,12 @@ export function MessageList() {
     <div className="msgs" ref={containerRef}
         onScroll={(event) => {
           const el = event.currentTarget;
-          stickToBottomRef.current =
+          const nearBottom =
             el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+          stickToBottomRef.current = nearBottom;
+          if (nearBottom) {
+            pinnedScrollHeightRef.current = el.scrollHeight;
+          }
         }}>
       {app.sessionId && !app.selectors.soulSlug ? (
         <SysLine>
@@ -483,13 +497,20 @@ export function AssistantBubble({
   isRunning?: boolean;
   onBranch?: (entryId: string) => void;
 }) {
-  const trimmed = (text || "").trim();
-  if (!trimmed) return null;
+  // v0.5 streams raw text (no trim) so trailing newlines do not thrash layout.
+  const raw = text || "";
+  const trimmed = raw.trim();
+  if (streaming ? !raw : !trimmed) return null;
+  const body = streaming ? raw : trimmed;
   return (
     <div className="msg assistant">
       <div className="who">{streaming ? t("Alt · typing…") : t("Alt")}</div>
       <div className="bubble">
-        <MarkdownBody text={trimmed} renderMermaid={!streaming} />
+        <MarkdownBody
+          text={body}
+          renderMermaid={!streaming}
+          streaming={Boolean(streaming)}
+        />
       </div>
       {onBranch && entryId ? (
         <div className="msg-actions">

@@ -29,6 +29,7 @@ test("Alt mode switches prompt layers and active tools on the live session", asy
   const understandPrompt = session.systemPrompt;
   assert.ok(understandPrompt.includes("Alt Theory Application Context"));
   assert.ok(understandPrompt.includes("Alt Theory Tool Harness"));
+  assert.ok(understandPrompt.includes("Current mode: Understand"));
   assert.deepEqual(
     [...session.getActiveToolNames()].sort(),
     ["find", "grep", "ls", "read"]

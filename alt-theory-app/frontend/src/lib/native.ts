@@ -6,6 +6,8 @@ interface AltElectron {
   pickDirectory(): Promise<string | null>;
   pickFiles(): Promise<string[]>;
   revealPath(target: string): Promise<void>;
+  /** Electron only — real absolute path for a dropped File. */
+  getPathForFile?(file: File): string;
 }
 
 function bridge(): AltElectron | null {
@@ -36,4 +38,20 @@ export async function pickFiles(promptLabel: string): Promise<string[]> {
 /** Reveal a path in the OS file manager (Electron only; no-op elsewhere). */
 export async function revealPath(target: string): Promise<void> {
   await bridge()?.revealPath(target);
+}
+
+/**
+ * Resolve absolute paths for files dropped on the composer.
+ * Electron: webUtils.getPathForFile. Plain browser: empty (no real local path).
+ */
+export function pathsFromDroppedFiles(fileList: FileList | File[]): string[] {
+  const el = bridge();
+  const files = Array.from(fileList);
+  if (!el?.getPathForFile) return [];
+  const paths: string[] = [];
+  for (const file of files) {
+    const path = el.getPathForFile(file)?.trim();
+    if (path) paths.push(path);
+  }
+  return paths;
 }

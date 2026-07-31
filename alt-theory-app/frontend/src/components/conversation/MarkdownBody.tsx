@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { renderMarkdown } from "@/lib/markdown";
 import { cn } from "@/lib/cn";
 
@@ -30,29 +30,72 @@ function decodeEntities(text: string): string {
 }
 
 /**
+ * Split on blank lines: prefix is treated as finished blocks; suffix is still
+ * growing. Finished prefix must not be DOM-replaced on every token — that is
+ * what made already-stable lines in the *current* reply flash (including when
+ * those lines sat in the viewport while later parts updated off-screen).
+ */
+function splitFinishedAndTail(text: string): { finished: string; tail: string } {
+  const cut = text.lastIndexOf("\n\n");
+  if (cut < 0) return { finished: "", tail: text };
+  return { finished: text.slice(0, cut + 2), tail: text.slice(cut + 2) };
+}
+
+/**
  * Rendered markdown, with ```mermaid fences drawn as diagrams (alpha.3).
  *
- * Relationships and flows are what a theory discussion keeps drawing in prose;
- * a diagram the user can actually see is worth the dependency. A fence that
- * fails to parse falls back to its source text rather than breaking the reply.
+ * Streaming: freeze HTML for blank-line-finished blocks; only re-parse the
+ * growing tail. Final (non-streaming) messages still render as one document
+ * so mermaid and full structure match the settled text.
  */
 export function MarkdownBody({
   text,
   className,
   renderMermaid = true,
+  streaming = false,
 }: {
   text: string;
   className?: string;
   renderMermaid?: boolean;
+  streaming?: boolean;
 }) {
-  const sourceHtml = useMemo(() => renderMarkdown(text), [text]);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const finishedRef = useRef<HTMLDivElement>(null);
+  const tailRef = useRef<HTMLDivElement>(null);
+  const frozenFinishedRef = useRef("");
+
+  useLayoutEffect(() => {
+    if (!streaming) {
+      frozenFinishedRef.current = "";
+      return;
+    }
+    const finishedEl = finishedRef.current;
+    const tailEl = tailRef.current;
+    if (!finishedEl || !tailEl) return;
+
+    const { finished, tail } = splitFinishedAndTail(text);
+
+    // Only when a new finished block appears do we touch the frozen region.
+    if (finished !== frozenFinishedRef.current) {
+      frozenFinishedRef.current = finished;
+      finishedEl.innerHTML = finished ? renderMarkdown(finished) : "";
+    }
+
+    tailEl.innerHTML = tail ? renderMarkdown(tail) : "";
+  }, [text, streaming]);
+
+  const sourceHtml = useMemo(
+    () => (streaming ? "" : renderMarkdown(text)),
+    [text, streaming],
+  );
+
   const [diagramHtml, setDiagramHtml] = useState<{
     source: string;
     rendered: string;
   } | null>(null);
 
   useEffect(() => {
-    if (!renderMermaid) return;
+    if (!renderMermaid || streaming) return;
     const host = document.createElement("div");
     host.innerHTML = sourceHtml;
     const blocks = host.querySelectorAll<HTMLElement>("code.language-mermaid");
@@ -61,8 +104,6 @@ export function MarkdownBody({
     void loadMermaid().then(async (mermaid) => {
       for (const block of blocks) {
         if (cancelled) return;
-        // renderMarkdown escapes the text before marked escapes it again, so
-        // textContent still holds one entity layer — "A --&gt; B", not "A --> B".
         const source = decodeEntities(block.textContent ?? "");
         const target = block.parentElement ?? block;
         try {
@@ -83,7 +124,16 @@ export function MarkdownBody({
     return () => {
       cancelled = true;
     };
-  }, [renderMermaid, sourceHtml]);
+  }, [renderMermaid, sourceHtml, streaming]);
+
+  if (streaming) {
+    return (
+      <div ref={rootRef} className={cn("markdown-body", className)}>
+        <div ref={finishedRef} className="md-stream-finished" />
+        <div ref={tailRef} className="md-stream-tail" />
+      </div>
+    );
+  }
 
   const html =
     renderMermaid && diagramHtml?.source === sourceHtml

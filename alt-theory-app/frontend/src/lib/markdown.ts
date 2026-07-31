@@ -37,6 +37,7 @@ function sanitizeRenderedHtml(html: string): string {
   return template.innerHTML;
 }
 
+/** Same path as v0.5 `public/client.js` renderMarkdown: escape → marked → sanitize. */
 export function renderMarkdown(text: string): string {
   const escaped = escapeHtml(text);
   const rawHtml = marked.parse(escaped) as string;

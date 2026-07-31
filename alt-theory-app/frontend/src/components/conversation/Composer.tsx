@@ -6,10 +6,11 @@ import { ModelChip } from "@/components/conversation/ModelChip";
 import { ContextRing } from "@/components/conversation/ContextRing";
 import { RunTips } from "@/components/conversation/RunTips";
 import { DEFAULT_KB_DOMAIN, KB_OFF_VALUE } from "@/lib/constants";
-import { pickFiles } from "@/lib/native";
+import { hasNativeBridge, pathsFromDroppedFiles, pickFiles } from "@/lib/native";
 import { isWithheld } from "@/api/types";
 import { fmtTime } from "@/lib/format";
 import { t } from "@/i18n";
+import { autosizeTextarea } from "@/lib/autosizeTextarea";
 
 type MenuKey = "plus" | "model" | "role" | "kb" | null;
 
@@ -32,6 +33,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
   const [draft, setDraft] = useState("");
   const [slashIndex, setSlashIndex] = useState(0);
   const [menu, setMenu] = useState<MenuKey>(null);
+  const [fileDragOver, setFileDragOver] = useState(false);
   const rowRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [toolboxSeen, setToolboxSeen] = useState(() => {
@@ -54,6 +56,11 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
   useEffect(() => {
     if (app.reviseMode) setDraft(app.reviseDraft);
   }, [app.reviseMode, app.reviseDraft]);
+
+  // Grow with content up to the CSS max-height (~8 lines), then scroll.
+  useEffect(() => {
+    autosizeTextarea(textareaRef.current);
+  }, [draft]);
 
   // Close menus on outside click (mirrors the prototype's body-click close).
   useEffect(() => {
@@ -217,17 +224,25 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
         app.canRetryFailed ||
         app.attachmentHint ? (
           <div className="composer-notes">
-            {app.isRunning && app.runPhaseLabel ? (
-              <span
-                className={`run-phase${
-                  app.runPhaseLabel === "Processing…" ? " processing" : ""
-                }`}
-              >
-                <i className="ph ph-circle-notch" aria-hidden="true" />
-                {app.runPhaseLabel}
+            {/* One stable status row while a turn runs. Clearing the label on
+                each assistant_delta used to collapse this strip and reflow the
+                whole column — a fixed screen band just above the composer
+                flashed over user and assistant text alike. */}
+            {app.isRunning || app.toolStatus ? (
+              <span className="run-phase-slot">
+                {app.isRunning && app.runPhaseLabel ? (
+                  <span className="run-phase">
+                    <i className="ph ph-circle-notch" aria-hidden="true" />
+                    {app.runPhaseLabel}
+                  </span>
+                ) : app.toolStatus ? (
+                  <span>{app.toolStatus}</span>
+                ) : (
+                  <span className="run-phase-slot-fill" aria-hidden="true">
+                    &nbsp;
+                  </span>
+                )}
               </span>
-            ) : app.toolStatus ? (
-              <span>{app.toolStatus}</span>
             ) : null}
             {app.composerNotice ? (
               <span className={app.composerNotice.warn ? "warn" : ""}>
@@ -407,9 +422,35 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
           </div>
         ) : null}
 
-        <div className="composer">
+        <div
+          className={`composer${fileDragOver ? " file-drag-over" : ""}`}
+          onDragEnter={(e) => {
+            if (!canAttach || !hasNativeBridge()) return;
+            if (![...e.dataTransfer.types].includes("Files")) return;
+            e.preventDefault();
+            setFileDragOver(true);
+          }}
+          onDragOver={(e) => {
+            if (!canAttach || !hasNativeBridge()) return;
+            if (![...e.dataTransfer.types].includes("Files")) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "copy";
+          }}
+          onDragLeave={(e) => {
+            if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+            setFileDragOver(false);
+          }}
+          onDrop={(e) => {
+            setFileDragOver(false);
+            if (!canAttach || !hasNativeBridge()) return;
+            e.preventDefault();
+            const paths = pathsFromDroppedFiles(e.dataTransfer.files);
+            paths.forEach((p) => app.stageWorkspacePath(p));
+          }}
+        >
           <textarea
             ref={textareaRef}
+            rows={1}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             placeholder={

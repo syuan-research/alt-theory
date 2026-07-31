@@ -2093,6 +2093,32 @@ test("SessionService detach removes listeners without disposing the managed sess
   }
 });
 
+test("SessionService does not re-emit processing for every text delta", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const snapshot = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const events: SessionServiceEvent[] = [];
+  const detach = service.attach(snapshot.sessionId, (event) => events.push(event));
+
+  try {
+    const internal = service as any;
+    internal.handleAgentEvent(internal.sessions.get(snapshot.sessionId), {
+      type: "message_update",
+      assistantMessageEvent: { type: "text_delta", delta: "hello" },
+    });
+    assert.deepEqual(events, [
+      { type: "assistant_delta", payload: { text: "hello" } },
+    ]);
+  } finally {
+    detach();
+    await service.disposeAll();
+  }
+});
+
 test("SessionService keeps run completion and busy state open until fallback continuation finishes", async () => {
   const fixture = setupFixture();
   const fallbackConfigPath = join(fixture.root, "model-fallback.json");
