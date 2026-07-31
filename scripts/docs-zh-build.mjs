@@ -278,9 +278,8 @@ function buildPdf() {
         "--from",
         "markdown",
         "--standalone",
-        "--toc",
-        "--metadata",
-        "title=Alt Theory 用户指南（简体中文）",
+        // No --toc / --metadata title: the PDF should start at 00-README;
+        // the pandoc-generated global TOC (and title header) before it is redundant.
       ],
       { stdio: "inherit", timeout: 60_000 },
     );
