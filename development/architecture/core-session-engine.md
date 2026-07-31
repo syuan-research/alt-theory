@@ -1042,7 +1042,7 @@ Limits (current):
   in Settings → Models (always-visible picker + inline editor) with a
   UI-only auth-connect card that has no backend (§7). Frontend-only in this pass: dark theme
   (`data-theme` over `--color-*` tokens), Electron native bridge for file/folder
-  pickers + reveal (see `local-windows-bundle.md`).
+  pickers + reveal (see `../releases/desktop-friend-bundle.md`).
 - 2026-07-23: Aligned Codex/OpenCode discovery with logical root conversations,
   added portable searchable child-agent sidecars, collapsed imported
   instruction context, normal default soul/role resolution, and numbered
