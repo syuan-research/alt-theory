@@ -6,7 +6,7 @@ import { sessionTitle } from "./sessionList.ts";
 function child(
   sessionId: string,
   parentId: string,
-  purpose: "fork" | "side" | "helper" | "worker",
+  purpose: "fork" | "side" | "helper" | "subagent",
   createdAt: string,
 ): SessionSummary {
   return {
@@ -70,19 +70,19 @@ test("btw and helper get BTW N / Helper N prefixes", () => {
   );
 });
 
-test("worker keeps custom name under Worker N prefix", () => {
-  const w = child("w", "parent", "worker", "2026-07-01T00:00:00.000Z");
+test("subagent keeps custom name under Subagent N prefix", () => {
+  const w = child("w", "parent", "subagent", "2026-07-01T00:00:00.000Z");
   assert.equal(
     sessionTitle(w, { w: { alias: "Cite check", snippet: "" } }, [w]),
-    "Worker 1 · Cite check",
+    "Subagent 1 · Cite check",
   );
 });
 
 test("does not double-prefix when base is already only the marker", () => {
-  const w = child("w", "parent", "worker", "2026-07-01T00:00:00.000Z");
+  const w = child("w", "parent", "subagent", "2026-07-01T00:00:00.000Z");
   assert.equal(
-    sessionTitle(w, { w: { alias: "Worker 1", snippet: "" } }, [w]),
-    "Worker 1",
+    sessionTitle(w, { w: { alias: "Subagent 1", snippet: "" } }, [w]),
+    "Subagent 1",
   );
 });
 

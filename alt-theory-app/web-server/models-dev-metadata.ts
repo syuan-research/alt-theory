@@ -19,6 +19,7 @@ export type CatalogThinkingLevel =
   | "max";
 
 interface ModelsDevModel {
+  provider?: { npm?: string };
   reasoning_options?: Array<{
     type?: string;
     values?: unknown;
@@ -27,6 +28,7 @@ interface ModelsDevModel {
 
 interface ModelsDevProvider {
   api?: string;
+  npm?: string;
   models?: Record<string, ModelsDevModel>;
 }
 
@@ -108,10 +110,31 @@ function normalizeUrl(value: string | undefined): string | null {
   if (!value) return null;
   try {
     const url = new URL(value);
-    return `${url.origin}${url.pathname.replace(/\/+$/, "")}`;
+    return `${url.origin}${url.pathname.replace(/\/+$/, "").replace(/\/v1$/i, "")}`;
   } catch {
     return null;
   }
+}
+
+export type CatalogSdkFamily = "openai" | "anthropic";
+
+/** Resolve a model's SDK family from models.dev, including model overrides. */
+export function catalogSdkFamily(
+  agentDir: string,
+  providerName: string,
+  baseUrl: string | undefined,
+  modelId: string,
+): CatalogSdkFamily | undefined {
+  const catalog = loadCache(agentDir);
+  if (!catalog) return undefined;
+  for (const provider of providerCandidates(catalog, providerName, baseUrl)) {
+    const model = provider.models?.[modelId];
+    if (!model) continue;
+    const npm = model.provider?.npm ?? provider.npm;
+    if (npm?.includes("anthropic")) return "anthropic";
+    if (npm?.includes("openai")) return "openai";
+  }
+  return undefined;
 }
 
 function providerCandidates(

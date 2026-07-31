@@ -8,8 +8,8 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { CapabilityMode } from "@/api/types";
-import { getDefaultMode } from "@/api/config";
+import type { AltMode } from "@/api/types";
+import { getDefaultAltMode } from "@/api/config";
 
 /** Full-screen surface. `app` is the 3-pane shell; the others take over. */
 export type Surface = "app" | "settings" | "review";
@@ -100,9 +100,9 @@ export interface ShellContextValue {
   openArms: (comparisonId: string) => void;
   closeArms: () => void;
 
-  /** Chosen capability mode for the next new conversation (Understand/Work). */
-  newMode: CapabilityMode;
-  setNewMode: (mode: CapabilityMode) => void;
+  /** Chosen Alt mode for the next new conversation (Understand/Work). */
+  newMode: AltMode;
+  setNewMode: (mode: AltMode) => void;
 }
 
 const ShellContext = createContext<ShellContextValue | null>(null);
@@ -211,17 +211,17 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   const [compareOpen, setCompareOpen] = useState(false);
   // Persisted: a user who prefers Work should not reset to Understand on
   // every launch (settings review 2026-07-23).
-  const [newMode, setNewModeState] = useState<CapabilityMode>(() => {
+  const [newMode, setNewModeState] = useState<AltMode>(() => {
     try {
-      return localStorage.getItem(NEW_MODE_KEY) === "full" ? "full" : "pure";
+      return localStorage.getItem(NEW_MODE_KEY) === "work" ? "work" : "understand";
     } catch {
-      return "pure";
+      return "understand";
     }
   });
   // An explicit Settings > General default wins at launch over the sticky
   // last-used mode, but never over a choice the user already made this run.
   const userPickedModeRef = useRef(false);
-  const setNewMode = useCallback((mode: CapabilityMode) => {
+  const setNewMode = useCallback((mode: AltMode) => {
     userPickedModeRef.current = true;
     setNewModeState(mode);
     try {
@@ -231,7 +231,7 @@ export function ShellProvider({ children }: { children: ReactNode }) {
     }
   }, []);
   useEffect(() => {
-    getDefaultMode()
+    getDefaultAltMode()
       .then(({ mode }) => {
         if (mode && !userPickedModeRef.current) setNewModeState(mode);
       })
@@ -304,7 +304,7 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   const setRightPaneForRelated = useCallback(
     (size: RelatedPaneSize) => {
       if (size === "half") {
-        // Branch / retry only: ~half of center+right. Worker/btw/helper use default.
+        // Branch / retry only: ~half of center+right. Subagent/btw/helper use default.
         setRightPaneWidth(halfCenterRightWorkArea(), false);
       } else {
         setRightPaneWidth(readStoredRightWidth(), false);

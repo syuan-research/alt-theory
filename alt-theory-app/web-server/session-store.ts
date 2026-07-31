@@ -211,7 +211,7 @@ function inferEffectiveConfig(
   manifest: AssemblyManifest | null
 ): EffectiveSessionConfig | null {
   if (!manifest) return null;
-  if (!manifest.promptMode || !manifest.resourceDiscovery?.mode) {
+  if (!manifest.altMode || !manifest.resourceDiscovery?.mode) {
     return null;
   }
   return buildEffectiveConfig(manifest);
@@ -761,7 +761,7 @@ export function readCurrentChangedFile(
 }
 
 /**
- * Pure projection of write/edit tool calls into per-file changes. Split out so
+ * Deterministic projection of write/edit tool calls into per-file changes. Split out so
  * the parsing is unit-testable without a Pi session on disk.
  */
 export function projectChangesFromEntries(branchEntries: unknown[]): SessionChanges {

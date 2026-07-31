@@ -28,8 +28,8 @@ const GENERAL_TIPS = (): string[] => [
   t("Ask for a summary or handoff note and it lands as a file you can share."),
   t("Denying an approval is safe — Alt takes another route or says what it can't do."),
   t("Alt would rather say it can't verify something than invent a citation."),
-  t("Long answers can be delegated: Alt can hand a bounded piece to a worker agent and keep going."),
-  t("You can message a worker agent directly while it runs — it sees you at its next step."),
+  t("Long answers can be delegated: Alt can hand a bounded piece to a subagent and keep going."),
+  t("You can message a subagent directly while it runs — it sees you at its next step."),
 ];
 
 /** Shown right after the action that produced it, then rotation takes over. */

@@ -39,7 +39,11 @@ import {
 import { dirname, join, resolve } from "path";
 import { randomUUID } from "crypto";
 import { ensureLocalModeDefaults } from "./local-mode-paths.js";
-import { catalogThinkingLevels } from "./models-dev-metadata.js";
+import {
+  catalogSdkFamily,
+  catalogThinkingLevels,
+  refreshModelsDevMetadata,
+} from "./models-dev-metadata.js";
 
 // ---------------------------------------------------------------------------
 // Paths (Pi-native; local bundle points this at %USERPROFILE%\.alt-theory\pi-agent)
@@ -629,6 +633,7 @@ async function fetchModelsFromEndpoint(
       "Model refresh needs a Base URL. Use manual model entry for built-in providers.",
     );
   }
+  await refreshModelsDevMetadata(agentDir);
 
   const apiKey =
     input.apiKey ?? (await resolvedProviderApiKey(agentDir, input.provider));
@@ -646,22 +651,56 @@ async function fetchModelsFromEndpoint(
 
   const errors: string[] = [];
   for (const endpoint of modelListUrls(input.api, input.baseUrl)) {
-    const response = await fetch(endpoint, {
-      method: "GET",
-      headers,
-      signal: AbortSignal.timeout(10000),
-    });
+    let response: Response;
+    try {
+      response = await fetch(endpoint, {
+        method: "GET",
+        headers,
+        signal: AbortSignal.timeout(10000),
+      });
+    } catch (error) {
+      errors.push(
+        `${endpoint}: ${error instanceof Error ? error.message : "request failed"}`,
+      );
+      continue;
+    }
     if (!response.ok) {
       errors.push(`${endpoint}: HTTP ${response.status}`);
       continue;
     }
-    const payload = (await response.json()) as unknown;
+    let payload: unknown;
+    try {
+      payload = await response.json();
+    } catch {
+      errors.push(`${endpoint}: invalid JSON`);
+      continue;
+    }
     const candidates = normalizeModelListPayload(payload);
     if (candidates.length === 0) {
       errors.push(`${endpoint}: no recognizable model ids`);
       continue;
     }
-    return candidates;
+    const expectedFamily =
+      input.api === "anthropic-messages"
+        ? "anthropic"
+        : input.api === "openai-completions" || input.api === "openai-responses"
+          ? "openai"
+          : null;
+    if (!expectedFamily) return candidates;
+    const classified = candidates.map((model) => ({
+      model,
+      family: catalogSdkFamily(
+        agentDir,
+        input.provider,
+        input.baseUrl,
+        model.id,
+      ),
+    }));
+    return classified.some(({ family }) => family)
+      ? classified
+          .filter(({ family }) => family === expectedFamily)
+          .map(({ model }) => model)
+      : candidates;
   }
   if (
     anthropicBearerAuthRequired(input.api, input.baseUrl) &&
@@ -671,7 +710,9 @@ async function fetchModelsFromEndpoint(
       "MiMo Token Plan CN Anthropic-compatible endpoint does not expose a model list API. Enter the model id manually (for example mimo-v2.5-pro).",
     );
   }
-  throw new ConfigValidationError(`Model refresh failed: ${errors.join("; ")}`);
+  throw new ConfigValidationError(
+    `Model refresh failed: ${errors[0] ?? "no model-list endpoint responded"}`,
+  );
 }
 
 export function getRuntimeModelConfig(agentDir: string): RuntimeModelConfig {

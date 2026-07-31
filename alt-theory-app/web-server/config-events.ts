@@ -2,8 +2,8 @@ import { randomUUID } from "crypto";
 import { existsSync, readFileSync, appendFileSync } from "fs";
 import { join } from "path";
 import type {
+  AltMode,
   AssemblyManifest,
-  PromptMode,
   ResourceDiscoveryMode,
 } from "../core/alt-theory-core.js";
 
@@ -25,7 +25,7 @@ export interface EffectiveSessionConfig {
     sha256: string | null;
     source: "alt-theory" | "external" | "workspace";
   }>;
-  promptMode: PromptMode;
+  altMode: AltMode;
   resourceDiscovery: ResourceDiscoveryMode;
 }
 
@@ -59,7 +59,7 @@ export function buildEffectiveConfig(
       sha256: manifest.customInstruction?.sha256 ?? null,
     },
     skills: manifest.skills ?? [],
-    promptMode: manifest.promptMode,
+    altMode: manifest.altMode,
     resourceDiscovery: manifest.resourceDiscovery.mode,
   };
 }

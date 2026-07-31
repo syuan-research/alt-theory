@@ -26,7 +26,7 @@ export function SessionImportDialog({
   const [sourceId, setSourceId] = useState("");
   const [query, setQuery] = useState("");
   const [workspaceOverride, setWorkspaceOverride] = useState("");
-  const [mode, setMode] = useState<"pure" | "full">(shell.newMode);
+  const [mode, setMode] = useState<"understand" | "work">(shell.newMode);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -271,11 +271,11 @@ export function SessionImportDialog({
           <legend className="text-sm font-medium text-ink">{t("Continue in")}</legend>
           <div className="mt-2 flex gap-5 text-sm">
             <label className="flex items-center gap-2">
-              <input type="radio" checked={mode === "full"} onChange={() => setMode("full")} />
+              <input type="radio" checked={mode === "work"} disabled={app.runtimeMode === "native-pi"} onChange={() => setMode("work")} />
               {t("Work (tools and working folder)")}
             </label>
             <label className="flex items-center gap-2">
-              <input type="radio" checked={mode === "pure"} onChange={() => setMode("pure")} />
+              <input type="radio" checked={mode === "understand"} disabled={app.runtimeMode === "native-pi"} onChange={() => setMode("understand")} />
               {t("Understand (conversation only)")}
             </label>
           </div>

@@ -28,7 +28,7 @@ export interface SessionSnapshot {
   rolePresetSlug: string | null;
   soulSlug: string | null;
   customInstructionRef?: string | null;
-  mode?: "pure" | "full";
+  mode?: "understand" | "work";
   modelOverride?: SessionModelOverride | null;
   currentModel?: { provider: string; modelId: string };
   studyTag?: StudyTag | null;
@@ -46,7 +46,7 @@ export interface SessionDraftSnapshot {
   rolePresetSlug: string | null;
   soulSlug: string | null;
   customInstructionRef?: string | null;
-  mode: "pure" | "full";
+  mode: "understand" | "work";
   modelOverride?: SessionModelOverride | null;
   studyTag?: StudyTag | null;
   workspacePrimaryDir?: string | null;
@@ -121,7 +121,7 @@ export type ClientMessage =
   | { type: "branch_revision"; payload: { text: string; entryId?: string } }
   | { type: "retry_failed" }
   | { type: "delete_latest" }
-  | { type: "switch_mode"; payload: { mode: "pure" | "full" } }
+  | { type: "switch_mode"; payload: { mode: "understand" | "work" } }
   | { type: "add_workspace_dir"; payload: { dir: string } }
   | {
       type: "respond_approval";

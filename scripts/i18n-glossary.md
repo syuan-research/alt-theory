@@ -13,7 +13,7 @@ product tokens marked "keep" stay in English everywhere.
 | Branch | 分支 | related conversation for another direction |
 | BTW | BTW | keep — product name for a side conversation |
 | Helper | 帮手 | fresh-context help conversation |
-| worker agent / worker | 子代理 | background delegated agent |
+| subagent | 子代理 | delegated child agent |
 | lead conversation | 主对话 | |
 | promote (to a branch) | 转为分支 | |
 | soul | Soul | keep — product concept |

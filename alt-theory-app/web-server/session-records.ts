@@ -11,7 +11,7 @@ export const V4_SCHEMA_VERSION = 1;
  * from it: only roots and "fork" appear in the list; a chosen A/B arm is
  * rewritten to "fork" when it becomes the continuation.
  */
-export type ForkPurpose = "fork" | "side" | "helper" | "ab-arm" | "worker";
+export type ForkPurpose = "fork" | "side" | "helper" | "ab-arm" | "subagent";
 
 /** Pre-M7 records used the original two purposes; normalize on read. */
 const LEGACY_FORK_PURPOSE: Record<string, ForkPurpose> = {
@@ -100,9 +100,9 @@ export interface V4SessionHeader extends RecordEnvelope {
   };
   lastActivityAt?: string;
   retentionDueAt?: string | null;
-  /** Capability mode (spec §4); absent = pure (all pre-v1-alpha sessions). */
-  mode?: "pure" | "full";
-  /** Full workspace (spec §5.1); absent = default session workspace only. */
+  /** Per-session Alt Theory behavior mode. */
+  mode?: "understand" | "work";
+  /** Work/Native workspace (spec §5.1); absent = default session workspace only. */
   workspace?: {
     primaryDir: string;
     additionalDirs: string[];
@@ -114,7 +114,7 @@ export interface V4SessionHeader extends RecordEnvelope {
     /**
      * The user asked for this child to appear in the conversation list
      * (alpha.6). The purpose is KEPT so the list can still say where it came
-     * from — a worker that earned a place in the list is not a branch.
+     * from — a subagent that earned a place in the list is not a branch.
      */
     listed?: boolean;
   };
@@ -137,7 +137,7 @@ export function writeFoundationRecords(args: {
   } | null;
   lastActivityAt?: string;
   retentionDueAt?: string | null;
-  mode?: "pure" | "full";
+  mode?: "understand" | "work";
   workspace?: {
     primaryDir: string;
     additionalDirs: string[];

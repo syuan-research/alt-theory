@@ -2,10 +2,11 @@
 /**
  * Build user-facing zh-Hans parallel docs + Chinese PDF.
  *
- * Source of truth for Helper remains English under
- * agent-assets/skills/alt-theory-help/references/docs/
- * This script mirrors that tree into docs/zh-Hans/ (repo user docs) and
- * optionally generates docs/pdf/alt-theory-user-guide-zh-Hans.pdf via Pandoc.
+ * DEPRECATED workflow note (2026-07-30):
+ * User docs are hand-maintained under docs/en/ and docs/zh-Hans/.
+ * Helper no longer embeds references/docs/. This script may still build a
+ * PDF from docs/zh-Hans/ or mirror from docs/en/; do not treat it as the
+ * primary authoring path.
  *
  * Usage:
  *   node scripts/docs-zh-build.mjs              # mirror + translate missing via model if configured
@@ -22,15 +23,12 @@ import {
   statSync,
 } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { homedir } from "node:os";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, "..");
-const enRoot = join(
-  repoRoot,
-  "agent-assets/skills/alt-theory-help/references/docs",
-);
+const enRoot = join(repoRoot, "docs/en");
 const zhRoot = join(repoRoot, "docs/zh-Hans");
 const pdfDir = join(repoRoot, "docs/pdf");
 const pdfPath = join(pdfDir, "alt-theory-user-guide-zh-Hans.pdf");
@@ -57,7 +55,7 @@ function ensureDir(filePath) {
 function structureChinese(enText, relPath) {
   return `---
 lang: zh-Hans
-source: agent-assets/skills/alt-theory-help/references/docs/${relPath.replace(/\\/g, "/")}
+source: docs/en/${relPath.replace(/\\/g, "/")}
 note: 用户向中文文档（Helper 仍只读英文 corpus）。若正文仍为英文，表示待人工或同步工具润色。
 ---
 
@@ -185,7 +183,7 @@ async function buildZh() {
 
 本目录与英文 Helper 文档平行，供熟人阅读与 PDF。**应用内 Helper 只读英文 docs。**
 
-生成：\`node scripts/docs-zh-build.mjs\`  
+生成：\`node scripts/docs-zh-build.mjs\`
 PDF：\`npm run docs:zh-pdf\`（需要 Pandoc）
 
 页数：${files.length}（与英文 corpus 对齐）。
@@ -235,7 +233,7 @@ function buildPdf() {
   const bundle = join(pdfDir, "alt-theory-user-guide-zh-Hans.md");
   writeFileSync(
     bundle,
-    inputs.map((p) => readFileSync(p, "utf8")).join("\n\n---\n\n"),
+    `${inputs.map((p) => readFileSync(p, "utf8").trimEnd()).join("\n\n---\n\n")}\n`,
     "utf8",
   );
   console.log("wrote", bundle, "bytes", statSync(bundle).size);
@@ -267,14 +265,37 @@ function buildPdf() {
     if (pdfTry.status === 0 && existsSync(pdfPath) && statSync(pdfPath).size > 1000) {
       console.log("wrote", pdfPath, "bytes", statSync(pdfPath).size);
     } else {
-      // Second attempt: pure HTML retained; write a stub note for PDF.
+      const browser = process.platform === "win32"
+        ? [
+            "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+            "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
+            "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+          ].find(existsSync)
+        : null;
+      const browserPdf = browser
+        ? spawnSync(
+            browser,
+            [
+              "--headless",
+              "--disable-gpu",
+              "--no-pdf-header-footer",
+              `--print-to-pdf=${pdfPath}`,
+              pathToFileURL(htmlPath).href,
+            ],
+            { encoding: "utf8", timeout: 60_000 },
+          )
+        : null;
+      if (browserPdf?.status === 0 && existsSync(pdfPath) && statSync(pdfPath).size > 1000) {
+        console.log("wrote", pdfPath, "bytes", statSync(pdfPath).size);
+        return;
+      }
       writeFileSync(
         join(pdfDir, "PDF-README.md"),
         `# Chinese user guide artifacts
 
 - \`alt-theory-user-guide-zh-Hans.md\` — full concatenated guide (primary).
 - \`alt-theory-user-guide-zh-Hans.html\` — standalone HTML (print to PDF from a browser if needed).
-- PDF via Pandoc LaTeX is not required for friend distribution; use the HTML print path.
+- No supported browser or PDF engine was available; use the HTML print path.
 
 Regenerate: \`node scripts/docs-zh-build.mjs --pdf-only\`
 `,

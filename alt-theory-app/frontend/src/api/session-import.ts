@@ -53,7 +53,7 @@ export async function fetchImportSessions(
 export async function submitSessionImport(args: {
   harness: ImportableHarness;
   sourceId: string;
-  mode: "pure" | "full";
+  mode: "understand" | "work";
   preflightOnly: boolean;
   workspaceOverride?: string;
 }): Promise<ImportResult> {

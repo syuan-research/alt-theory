@@ -20,7 +20,7 @@ export type SessionEventType =
   | "session_forked_from"
   | "related_session_created"
   | "related_session_promoted"
-  | "worker_spawned"
+  | "subagent_spawned"
   | "visibility_changed"
   | "latest_turn_deleted"
   | "run_completed"

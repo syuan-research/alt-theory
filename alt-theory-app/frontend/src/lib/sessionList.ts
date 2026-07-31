@@ -3,14 +3,14 @@ import { shortId } from "@/lib/format";
 
 export type DisplayNames = Record<string, { alias: string; snippet: string }>;
 
-type RelatedPurpose = "fork" | "side" | "helper" | "worker";
+type RelatedPurpose = "fork" | "side" | "helper" | "subagent";
 
-/** English marker with space + number: "Branch 1", "BTW 2", "Helper 1", "Worker 3". */
+/** English marker with space + number: "Branch 1", "BTW 2", "Helper 1", "Subagent 3". */
 const PURPOSE_MARKER: Record<RelatedPurpose, string> = {
   fork: "Branch",
   side: "BTW",
   helper: "Helper",
-  worker: "Worker",
+  subagent: "Subagent",
 };
 
 /**
@@ -60,17 +60,17 @@ export function relatedDisplayMarker(
   return n == null ? word : `${word} ${n}`;
 }
 
-/** True when base is only a bare machine token (worker-1, branch1, Worker 1). */
+/** True when base is only a bare machine token (subagent-1, branch1, Subagent 1). */
 function isBareMarkerToken(base: string, marker: string): boolean {
   const b = base.trim();
   const m = marker.trim();
   if (b.localeCompare(m, undefined, { sensitivity: "accent" }) === 0) return true;
-  // legacy mashed forms: branch1, worker-2, btw3
+  // legacy mashed forms: branch1, subagent-2, btw3
   const mashed = m.replace(/\s+/g, "");
   if (b.localeCompare(mashed, undefined, { sensitivity: "accent" }) === 0) {
     return true;
   }
-  const legacy = b.match(/^(branch|btw|helper|worker)[-_]?(\d+)$/i);
+  const legacy = b.match(/^(branch|btw|helper|subagent)[-_]?(\d+)$/i);
   if (legacy) {
     const word = PURPOSE_MARKER[
       legacy[1].toLowerCase() === "branch"
@@ -136,7 +136,7 @@ export function listedOriginLabel(session: SessionSummary): string | null {
   if (!fork) return null;
   if (fork.purpose === "fork") return "Branch";
   if (!fork.listed) return null;
-  if (fork.purpose === "worker") return "From worker";
+  if (fork.purpose === "subagent") return "From subagent";
   if (fork.purpose === "helper") return "From Helper";
   if (fork.purpose === "side") return "From BTW";
   return null;

@@ -23,7 +23,7 @@ function originTitle(session: SessionSummary): string | undefined {
   if (!label) return undefined;
   return {
     Branch: t("Branch of another conversation"),
-    "From worker": t("Came from a worker agent"),
+    "From subagent": t("Came from a subagent"),
     "From Helper": t("Came from a Helper conversation"),
     "From BTW": t("Came from a BTW side conversation"),
   }[label];
@@ -618,7 +618,7 @@ function SessionNode({
         {session.forkedFrom ? (
           <i
             className={`ph ${
-              session.forkedFrom.purpose === "worker"
+              session.forkedFrom.purpose === "subagent"
                 ? "ph-robot"
                 : session.forkedFrom.purpose === "helper"
                   ? "ph-lifebuoy"

@@ -1,52 +1,48 @@
 # Current Alt Theory documentation map
 
-The bundled user documentation lives in `references/docs/` next to this
-file. It is the primary source for help answers. Start from
-`references/docs/README.md` (the full table of contents), then read the
-specific page.
+User documentation is **not** bundled inside this skill.
+
+Canonical trees (paths from repository root):
+
+- English: `docs/en/`
+- Simplified Chinese: `docs/zh-Hans/`
+
+Start from `docs/en/README.md` (table of contents), then open the page
+below.
 
 ## Where to look, by question
 
 - **What Alt Theory is / who it is for / first steps**:
-  `docs/start-here/` — installation and launch, first conversation,
-  Understand vs Work, bringing in materials, continuing later.
-- **How to work well with it** (understanding-first sessions, key research
-  moments, concrete work): `docs/using-the-app/`.
-- **Concrete feature behavior** (conversations and history, models and
-  providers, working folders and files, knowledge bases, skills, commands,
-  toolbox, imports, permissions and approvals, settings, data and
-  privacy, search and web): `docs/system-guide/`.
+  `docs/en/start-here/` — install and launch, first conversation,
+  Understand vs Work, materials, continuing later.
+- **How to work well with it**:
+  `docs/en/using-the-app/`.
+- **Concrete feature behavior** (conversations, models, folders, knowledge
+  bases, skills, commands, toolbox, imports, permissions, settings, search):
+  `docs/en/system-guide/`.
 - **Setup and installation** (providers, API keys, tools a skill needs):
-  `docs/start-here/install-and-launch.md` and
-  `docs/system-guide/models-providers-access.md` for what to answer; for
-  actually performing installs or configuration in a Work conversation,
-  follow the bundled `setup-helper` skill's flow.
-- **Config on disk, and anything involving Pi** (where models/keys are
-  stored, "can I reuse my Pi provider", migrating a provider): read BOTH
-  `docs/system-guide/models-providers-access.md` ("Where that
-  configuration actually lives") AND
-  `docs/advanced/shared-configuration-and-assets.md` ("The two
-  directories, and how to move between them" — the migration steps).
-  A provider question routed only to the Settings page will miss this;
-  the app uses `~/.alt-theory/pi-agent/` and never reads `~/.pi/agent/`.
+  `docs/en/start-here/install-and-launch.md` and
+  `docs/en/system-guide/models-providers-access.md` for what to answer; for
+  actually performing installs in a Work conversation, follow
+  `references/setup-procedure.md`.
+- **Config on disk, and anything involving Pi**:
+  read both `docs/en/system-guide/models-providers-access.md` and
+  `docs/en/advanced/shared-configuration-and-assets.md`.
+  The app uses `~/.alt-theory/pi-agent/` and does not read `~/.pi/agent/`.
 - **Thinking level / context window / model metadata / default model**:
-  `docs/system-guide/models-providers-access.md` (chip + metadata section)
-  and Settings → Models (**Set as default** is outside provider cards;
-  **Fetch model list** is above the model list in the provider editor).
-- **Draft models.json with an external chatbot**:
-  `docs/system-guide/configure-models-with-chatbot.md` (copyable prompt).
-- **Code structure / architecture / modifying the app**:
-  `docs/advanced/modifying-alt-theory.md` and the public GitHub repo
-  `syuan-research/alt-theory` → `development/architecture/` — do not invent
-  code maps from memory.
-- **Pure Pi engine behavior** (not Alt product policy): https://pi.dev —
-  say so when the answer is harness-level rather than Alt-Theory-specific.
-- **Something is wrong / limits / terms**: `docs/help/` —
-  troubleshooting, FAQ, compatibility and limitations, glossary, releases.
-- **Power use and modification**: `docs/advanced/`.
-- **User-facing Chinese docs** (not Helper corpus): repo-root
-  `docs/zh-Hans/` (parallel pages for people; not under this skill's
-  `references/docs/`). Helper continues to read the English tree only.
+  `docs/en/system-guide/models-providers-access.md` and Settings → Models.
+- **Code structure / modifying the app**:
+  `docs/en/advanced/modifying-alt-theory.md` and
+  `development/architecture/` — do not invent code maps from memory.
+- **Native Pi engine behavior** (not Alt product policy): https://pi.dev
+- **Something is wrong / limits / terms**:
+  `docs/en/help/` — common questions, compatibility and limitations,
+  glossary.
+- **Power use and modification**:
+  `docs/en/advanced/`.
+- **Chinese pages for people** (optional parallel tree):
+  `docs/zh-Hans/`. Prefer English `docs/en/` when answering as Helper unless
+  the user is clearly reading Chinese docs.
 
 Also current and verified:
 
@@ -54,13 +50,11 @@ Also current and verified:
   `development/releases/v1-alpha/local-testing-guide.zh.md` (repo checkouts
   only; not bundled in the packaged app).
 
-## Honesty note for this documentation set
+## Honesty note
 
-These docs are the current draft paired with the v1.3 alpha line; a release
-audit is still pending, so a page may describe behavior slightly ahead of
-the running build. When a page's concrete claim contradicts visible runtime
-state, trust the runtime, answer from what you can see, and say which page
-you could not confirm. If a concrete question is covered by neither the
-bundled docs nor visible runtime state, say the behavior is not documented
-well enough to answer safely — do not fill the gap with architecture notes
-unless the user explicitly asks for a technical explanation.
+These docs were generated from code, process notes, and human review that
+is still in progress. Features marked `(planned)` and the product itself
+still move. When a page contradicts visible runtime state, trust the
+runtime, answer from what you can see, and say which page you could not
+confirm. If neither the docs tree nor runtime state covers a concrete
+question, say the behavior is not documented well enough to answer safely.

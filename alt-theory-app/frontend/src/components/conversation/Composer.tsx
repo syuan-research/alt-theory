@@ -144,26 +144,9 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
 
   const interactive = app.sessionReady && app.wsConnected;
   const hasText = draft.trim().length > 0;
-  const [dragActive, setDragActive] = useState(false);
-
-  // Drag a file onto the composer to attach it (item D, text/doc): the agent
-  // reads it from disk, so we stage the path — same mechanism as "Import
-  // reference". Needs the absolute path, which the Electron bundle exposes on
-  // dropped File objects; in a plain browser `path` is empty and we no-op.
-  // Attach paths are local-only (Electron absolute path on File).
   const canAttach = app.appMode === "local" && interactive;
-  const handleDropFiles = (event: React.DragEvent) => {
-    event.preventDefault();
-    setDragActive(false);
-    if (!canAttach) return;
-    const paths = Array.from(event.dataTransfer.files)
-      .map((file) => (file as File & { path?: string }).path)
-      .filter((p): p is string => !!p);
-    for (const path of paths) app.stageWorkspacePath(path);
-  };
   const canSend =
     interactive &&
-    !app.isRunning &&
     (hasText || app.stagedWorkspacePaths.length > 0);
   const showVisibility =
     app.participant?.designated === true || app.viewMode === "researcher";
@@ -176,10 +159,14 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
     hostedStudy && withheld && app.retentionDueAt
       ? fmtTime(app.retentionDueAt)
       : null;
-  const pureMode =
-    variant === "empty" ? shell.newMode === "pure" : app.sessionMode === "pure";
+  const altControlsDisabled = app.runtimeMode === "native-pi";
+  const understandMode =
+    !altControlsDisabled &&
+    (variant === "empty"
+      ? shell.newMode === "understand"
+      : app.sessionMode === "understand");
   // First-level paperclip: Understand only. Work keeps attach in the toolbox.
-  const attachFirstLevel = canAttach && pureMode;
+  const attachFirstLevel = canAttach && understandMode;
 
   const handleSubmit = () => {
     if (app.reviseMode) {
@@ -213,21 +200,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
     setMenu((prev) => (prev === key ? null : key));
 
   return (
-    <div
-      className={`composer-wrap${dragActive ? " drag-active" : ""}`}
-      onDragOver={
-        canAttach
-          ? (e) => {
-              if (e.dataTransfer.types.includes("Files")) {
-                e.preventDefault();
-                setDragActive(true);
-              }
-            }
-          : undefined
-      }
-      onDragLeave={canAttach ? () => setDragActive(false) : undefined}
-      onDrop={canAttach ? handleDropFiles : undefined}
-    >
+    <div className="composer-wrap">
       <div className="composer-col">
         {app.approvals.length > 0 ? (
           <ApprovalDock
@@ -280,12 +253,44 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
           </div>
         ) : null}
 
+        {app.queuedPrompts.length > 0 ? (
+          <div className="queued-prompts" aria-label={t("Queued messages")}>
+            {app.queuedPrompts.map((item) => (
+              <div className="queued-prompt" key={item.id}>
+                <i className="ph ph-clock" aria-hidden="true" />
+                <input
+                  value={item.text}
+                  onChange={(event) =>
+                    app.editQueuedPrompt(item.id, event.target.value)
+                  }
+                  aria-label={t("Edit queued message")}
+                />
+                {item.attachments.length > 0 ? (
+                  <span title={item.attachments.join("\n")}>
+                    <i className="ph ph-paperclip" aria-hidden="true" />
+                    {item.attachments.length}
+                  </span>
+                ) : null}
+                <button
+                  className="flat"
+                  onClick={() => app.deleteQueuedPrompt(item.id)}
+                  title={t("Delete queued message")}
+                  aria-label={t("Delete queued message")}
+                >
+                  <i className="ph ph-x" aria-hidden="true" />
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
         <div className="ctx-line">
           <CtxPicker
             icon="ph-user-circle"
             label={roleLabel}
             open={menu === "role"}
             onToggle={() => toggle("role")}
+            disabled={altControlsDisabled}
           >
             <div
               className="mi"
@@ -340,6 +345,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
             label={kbLabel}
             open={menu === "kb"}
             onToggle={() => toggle("kb")}
+            disabled={altControlsDisabled}
           >
             <div
               className="mi"
@@ -438,7 +444,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                   ? t("Editing your latest message. Send to update.")
                   : t("Message Alt. Type / for commands.")
             }
-            disabled={!interactive || (app.isRunning && !app.reviseMode)}
+            disabled={!interactive}
             onKeyDown={(e) => {
               if (slashMatches.length > 0) {
                 if (e.key === "ArrowDown" || e.key === "ArrowUp") {
@@ -458,7 +464,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               }
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
-                if (!app.isRunning || app.reviseMode) handleSubmit();
+                handleSubmit();
               }
               if (e.key === "Escape" && app.reviseMode) {
                 setDraft("");
@@ -527,7 +533,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               </div>
               {/* web-search is FULL_ONLY_BUNDLED_SKILLS (alt-theory-core.ts:464) —
                   in Understand mode say why rather than greying out a "soon". */}
-              {pureMode ? (
+              {understandMode ? (
                 <div
                   className="mi disabled"
                   title={t("Switch to Work when you want Alt to look up current information.")}
@@ -545,7 +551,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                 </div>
               )}
               <div className="sep" />
-              {pureMode && app.sessionId ? (
+              {understandMode && app.sessionId ? (
                 <div
                   className="mi"
                   onClick={() => (shell.openRail("workspace"), setMenu(null))}
@@ -584,27 +590,30 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               <button
                 className="flat mode-switch"
                 role="switch"
-                aria-checked={app.sessionMode === "full"}
+                aria-checked={app.sessionMode === "work"}
+                disabled={altControlsDisabled}
                 title={
-                  app.sessionMode === "full"
+                  altControlsDisabled
+                    ? t("Understand and Work are preserved but inactive while Native Pi is on.")
+                    : app.sessionMode === "work"
                     ? t("Work mode: research, analyze data, and create or update files while keeping the same careful thinking. Switch to Understand.")
                     : t("Understand mode: clarify questions, compare explanations, and develop ideas with your materials. Switch to Work.")
                 }
                 onClick={() =>
-                  app.switchMode(app.sessionMode === "full" ? "pure" : "full")
+                  app.switchMode(app.sessionMode === "work" ? "understand" : "work")
                 }
               >
                 <i
                   className={
-                    app.sessionMode === "full"
+                    app.sessionMode === "work"
                       ? "ph ph-hammer"
                       : "ph ph-book-open"
                   }
                 />
-                {app.sessionMode === "full" ? t("Work") : t("Understand")}
+                {app.sessionMode === "work" ? t("Work") : t("Understand")}
                 <span
                   className={`toggle mode-toggle${
-                    app.sessionMode === "full" ? " on" : ""
+                    app.sessionMode === "work" ? " on" : ""
                   }`}
                   aria-hidden="true"
                 />
@@ -635,14 +644,24 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                 </button>
               </>
             ) : app.isRunning ? (
-              <button
-                className="send"
-                style={{ background: "var(--danger)" }}
-                onClick={app.abortRun}
-                title={t("Stop")}
-              >
-                <i className="ph ph-square" />
-              </button>
+              <>
+                <button
+                  className="send"
+                  disabled={!canSend}
+                  onClick={handleSubmit}
+                  title={t("Queue message")}
+                >
+                  <i className="ph ph-arrow-up" />
+                </button>
+                <button
+                  className="send"
+                  style={{ background: "var(--danger)" }}
+                  onClick={app.abortRun}
+                  title={t("Stop")}
+                >
+                  <i className="ph ph-square" />
+                </button>
+              </>
             ) : (
               <button
                 className="send"
@@ -665,12 +684,14 @@ function CtxPicker({
   label,
   open,
   onToggle,
+  disabled = false,
   children,
 }: {
   icon: string;
   label: string;
   open: boolean;
   onToggle: () => void;
+  disabled?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -678,6 +699,7 @@ function CtxPicker({
       <button
         className="ctx-item"
         title={label}
+        disabled={disabled}
         onClick={(e) => {
           e.stopPropagation();
           onToggle();

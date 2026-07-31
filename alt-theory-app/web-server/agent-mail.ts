@@ -86,7 +86,7 @@ export function formatEnvelopeForContext(
   envelope: AgentMailEnvelope,
   fromLabel: string,
 ): string {
-  // Quotes in a user-chosen worker name would break the attribute syntax
+  // Quotes in a user-chosen subagent name would break the attribute syntax
   // (and the round-trip parse below), so normalize them.
   const safeLabel = fromLabel.replace(/"/g, "'");
   const header = envelope.event

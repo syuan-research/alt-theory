@@ -5,7 +5,7 @@
  * code or mutates external directories.
  *
  * Project-level locations (.pi/skills, .agents/skills under working
- * directories) join in M3 when Full sessions gain user working directories.
+ * directories) join when Work/Native sessions use working directories.
  */
 import { existsSync } from "fs";
 import { homedir } from "os";

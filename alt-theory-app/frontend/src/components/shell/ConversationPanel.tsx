@@ -56,10 +56,15 @@ function EmptyState() {
         <div className="greet">{t("Where shall we begin?")}</div>
         <div className="mode-pick">
           <button
-            className={`mode-card understand${shell.newMode === "pure" ? " on" : ""}`}
-            onClick={() => shell.setNewMode("pure")}
-            aria-pressed={shell.newMode === "pure"}
-            title={t("For clarifying questions, comparing explanations, and developing ideas with your materials.")}
+            className={`mode-card understand${shell.newMode === "understand" ? " on" : ""}`}
+            onClick={() => shell.setNewMode("understand")}
+            aria-pressed={shell.newMode === "understand"}
+            disabled={app.runtimeMode === "native-pi"}
+            title={
+              app.runtimeMode === "native-pi"
+                ? t("Understand and Work are preserved but inactive while Native Pi is on.")
+                : t("For clarifying questions, comparing explanations, and developing ideas with your materials.")
+            }
           >
             <div className="t">
               <i className="ph ph-book-open" />
@@ -72,10 +77,15 @@ function EmptyState() {
             </ul>
           </button>
           <button
-            className={`mode-card work${shell.newMode === "full" ? " on" : ""}`}
-            onClick={() => shell.setNewMode("full")}
-            aria-pressed={shell.newMode === "full"}
-            title={t("For the same careful thinking plus research, data analysis, and direct work across files.")}
+            className={`mode-card work${shell.newMode === "work" ? " on" : ""}`}
+            onClick={() => shell.setNewMode("work")}
+            aria-pressed={shell.newMode === "work"}
+            disabled={app.runtimeMode === "native-pi"}
+            title={
+              app.runtimeMode === "native-pi"
+                ? t("Understand and Work are preserved but inactive while Native Pi is on.")
+                : t("For the same careful thinking plus research, data analysis, and direct work across files.")
+            }
           >
             <div className="t">
               <i className="ph ph-hammer" />

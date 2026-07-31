@@ -523,7 +523,6 @@
   .msg-actions button:disabled { opacity: 0.4; cursor: default; }
   /* composer */
   .composer-wrap { padding: 16px 24px 18px; }
-  .composer-wrap.drag-active .composer-col { outline: 2px dashed var(--color-text-muted); outline-offset: 3px; border-radius: var(--r-md); }
   .composer-col { max-width: 660px; margin: 0 auto; }
   .ctx-line { display: flex; align-items: center; gap: 16px; min-width: 0; padding: 0 6px 6px; font-size: 0.8rem; color: var(--text-2); }
   .ctx-picker { display: inline-block; position: relative; min-width: 0; max-width: 45%; }
@@ -548,6 +547,10 @@
   .composer-notes .retry-run { align-self: flex-start; padding: 2px 0; }
   .composer-notes .run-tip { display: flex; align-items: center; gap: 6px; color: var(--text-3); font-family: inherit; animation: tip-in 0.4s ease; }
   @keyframes tip-in { from { opacity: 0; } to { opacity: 1; } }
+  .queued-prompts { display: flex; flex-direction: column; gap: 4px; margin: 0 4px 8px; }
+  .queued-prompt { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 5px 8px; background: var(--card); border: 1px solid var(--hairline); border-radius: var(--r-sm); color: var(--text-2); font-size: 0.75rem; }
+  .queued-prompt input { flex: 1; min-width: 0; border: none; outline: none; background: transparent; color: var(--ink); font: inherit; }
+  .queued-prompt > span { display: inline-flex; align-items: center; gap: 2px; flex: 0 0 auto; }
   .slash-palette { margin-bottom: 6px; max-height: 200px; overflow-y: auto; background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--r-md); box-shadow: 0 6px 22px rgba(31,30,26,0.1); padding: 4px; }
   .slash-item { display: flex; align-items: baseline; gap: 10px; width: 100%; text-align: left; padding: 6px 10px; border: none; background: none; border-radius: var(--r-sm); cursor: pointer; }
   .slash-item.on { background: var(--selected); }
@@ -563,14 +566,9 @@
     gap: 10px;
     margin-top: 4px;
     position: relative;
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
     min-width: 0;
-    overflow-x: auto;
-    scrollbar-width: thin;
-    scrollbar-color: var(--hairline) transparent;
   }
-  .composer .row::-webkit-scrollbar { height: 6px; }
-  .composer .row::-webkit-scrollbar-thumb { background: var(--hairline); border-radius: 3px; }
   .composer .row > .flat,
   .composer .row > .send,
   .composer .row > .mode-switch { flex: 0 0 auto; }

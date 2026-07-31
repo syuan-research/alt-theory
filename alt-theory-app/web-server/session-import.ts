@@ -16,7 +16,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import type {
   AssemblyManifest,
-  CapabilityMode,
+  AltMode,
 } from "../core/alt-theory-core.js";
 import { emptyFileRef } from "../core/agent-assets.js";
 import {
@@ -187,7 +187,7 @@ export async function discoverImportSessions(args: {
 export function registerPiImport(args: {
   dataDir: string;
   source: ImportSourceSession;
-  mode: CapabilityMode;
+  mode: AltMode;
   workspacePrimaryDir?: string;
   ownerAccountId?: string | null;
   roleCondition?: string | null;
@@ -251,7 +251,7 @@ export function registerOpenCodeImport(args: {
   dataDir: string;
   source: ImportSourceSession;
   preflight: OpenCodePreflight;
-  mode: CapabilityMode;
+  mode: AltMode;
   workspacePrimaryDir?: string;
   ownerAccountId?: string | null;
   roleCondition?: string | null;
@@ -281,7 +281,7 @@ export function registerCodexImport(args: {
   dataDir: string;
   source: ImportSourceSession;
   preflight: CodexPreflight;
-  mode: CapabilityMode;
+  mode: AltMode;
   workspacePrimaryDir?: string;
   ownerAccountId?: string | null;
   roleCondition?: string | null;
@@ -311,7 +311,7 @@ export function registerGrokImport(args: {
   dataDir: string;
   source: ImportSourceSession;
   preflight: GrokPreflight;
-  mode: CapabilityMode;
+  mode: AltMode;
   workspacePrimaryDir?: string;
   ownerAccountId?: string | null;
   roleCondition?: string | null;
@@ -341,7 +341,7 @@ export function registerClaudeCodeImport(args: {
   dataDir: string;
   source: ImportSourceSession;
   preflight: ClaudeCodePreflight;
-  mode: CapabilityMode;
+  mode: AltMode;
   workspacePrimaryDir?: string;
   ownerAccountId?: string | null;
   roleCondition?: string | null;
@@ -379,7 +379,7 @@ function registerPreparedImport(args: {
   transformations: string[];
   sourceContextFiles?: Array<{ filename: string; content: string }>;
   rawSourceDir?: string;
-  mode: CapabilityMode;
+  mode: AltMode;
   workspacePrimaryDir?: string;
   ownerAccountId?: string | null;
   roleCondition?: string | null;
@@ -468,15 +468,15 @@ function registerPreparedImport(args: {
       piSessionFile: importedPath,
       recordsDir: dirs.recordsDir,
       writeDir: dirs.writeDir,
-      // Pure can write only inside the managed session workspace. Full-mode
+      // Understand can write only inside the managed session workspace. Work
       // roots are rebuilt by the normal reopen path from workspace metadata.
       writableRoots:
-        args.mode === "pure"
+        args.mode === "understand"
           ? [dirs.writeDir]
           : [dirs.writeDir, workspacePrimaryDir],
       model: null,
       provider: null,
-      promptMode: args.mode === "pure" ? "alt-only" : "pi-default",
+      altMode: args.mode,
       resourceDiscovery: { mode: "clean", skillsDir: null },
       runLabel: null,
       testBatch: null,

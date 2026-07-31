@@ -10,6 +10,7 @@ import {
 } from "react";
 import { useNavigate } from "react-router-dom";
 import { t } from "@/i18n";
+import { mergeQueuedPrompts } from "@/lib/promptQueue";
 import {
   detectAccountsConfigured,
   fetchAuthMe,
@@ -31,7 +32,7 @@ import type {
   ApprovalRequestPayload,
   AssemblyManifest,
   AuthContext,
-  CapabilityMode,
+  AltMode,
   ClientMessage,
   DiscoveryLists,
   ServerMessage,
@@ -50,6 +51,7 @@ import type {
   ViewMode,
   ParticipantInfo,
   ConfigStatus,
+  RuntimeMode,
 } from "@/api/types";
 import {
   addWorkspace as addWorkspaceRequest,
@@ -98,6 +100,12 @@ export interface ComposerNotice {
   warn?: boolean;
 }
 
+export interface QueuedPrompt {
+  id: string;
+  text: string;
+  attachments: string[];
+}
+
 export interface ConfirmRequest {
   message: string;
   confirmLabel?: string;
@@ -110,6 +118,7 @@ export interface ConfirmRequest {
 export interface AppContextValue {
   auth: AuthContext;
   appMode: "local" | "hosted";
+  runtimeMode: RuntimeMode;
   accountsConfigured: boolean;
   loginRequired: boolean;
   loading: boolean;
@@ -150,7 +159,7 @@ export interface AppContextValue {
   activeRelatedSessionId: string | null;
   /**
    * Preferred right-rail width when this related conversation is opened:
-   * half ≈ branch/retry only; default ≈ btw/helper/worker.
+   * half ≈ branch/retry only; default ≈ btw/helper/subagent.
    */
   relatedPaneSize: "half" | "default" | null;
   setActiveRelatedSessionId: (
@@ -196,8 +205,8 @@ export interface AppContextValue {
   /** Re-point any existing session's working folder (drag & drop, M4). */
   repointSession: (sessionId: string, primaryDir: string | null,) => Promise<void>;
 
-  sessionMode: CapabilityMode;
-  switchMode: (mode: CapabilityMode) => void;
+  sessionMode: AltMode;
+  switchMode: (mode: AltMode) => void;
   modelOverride: SessionModelOverride | null;
   currentSessionModel: { provider: string; modelId: string } | null;
   setSessionModel: (override: SessionModelOverride | null) => void;
@@ -241,6 +250,9 @@ export interface AppContextValue {
   startNewSession: () => void;
   compactCurrentSession: () => void;
   sendPrompt: (text: string) => boolean;
+  queuedPrompts: QueuedPrompt[];
+  editQueuedPrompt: (id: string, text: string) => void;
+  deleteQueuedPrompt: (id: string) => void;
   abortRun: () => void;
   invokeSkill: (skillName: string, userText?: string) => boolean;
   reviseLatest: (text: string) => boolean;
@@ -302,6 +314,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const [auth, setAuth] = useState<AuthContext>(anonymousAuth);
   const [appMode, setAppMode] = useState<"local" | "hosted">("hosted");
+  const [runtimeMode, setRuntimeMode] = useState<RuntimeMode>("alt-theory");
   const [accountsConfigured, setAccountsConfigured] = useState(false);
   const [loginRequired, setLoginRequired] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -350,12 +363,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [sessionCreatedHere, setSessionCreatedHere] = useState(false);
   const [sessionWarnings, setSessionWarnings] = useState<string[]>([]);
   const [isRunning, setIsRunning] = useState(false);
+  const [queuedPrompts, setQueuedPrompts] = useState<QueuedPrompt[]>([]);
+  const queuedPromptsRef = useRef<QueuedPrompt[]>([]);
+  const startPromptRef = useRef<
+    (text: string, attachments: string[]) => boolean
+  >(() => false);
+  const flushQueuedPromptRef = useRef<() => void>(() => {});
   const [connStatus, setConnStatus] = useState<ConnStatus>("connecting");
   const [connLabel, setConnLabel] = useState(t("Connecting"));
   const [wsError, setWsError] = useState<string | null>(null);
   const [wsConnected, setWsConnected] = useState(false);
   const [selectors, setSelectors] = useState<SessionSelectors>(defaultSelectors);
-  const [sessionMode, setSessionMode] = useState<CapabilityMode>("pure");
+  const [sessionMode, setSessionMode] = useState<AltMode>("understand");
   const [workspacePrimaryDir, setWorkspacePrimaryDir] = useState<string | null>(
     null,
   );
@@ -483,6 +502,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       setAuth(me.auth ?? anonymousAuth);
       setAppMode(mode);
+      setRuntimeMode(me.app?.runtimeMode ?? "alt-theory");
       setAccountsConfigured(accounts);
       setLoginRequired(required);
       setViewMode(nextViewMode);
@@ -500,6 +520,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       setAuth(anonymousAuth);
       setAppMode("hosted");
+      setRuntimeMode("alt-theory");
       setAccountsConfigured(false);
       setLoginRequired(false);
       setDiscovery(null);
@@ -673,7 +694,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setConnStatus("idle");
           setConnLabel(t("Ready"));
           setSelectors(applySnapshotSelectors(message.payload));
-          setSessionMode(message.payload.mode ?? "pure");
+          setSessionMode(message.payload.mode ?? "understand");
           setModelOverride(message.payload.modelOverride ?? null);
           setCurrentSessionModel(null);
           setWorkspacePrimaryDir(message.payload.workspacePrimaryDir ?? null);
@@ -700,7 +721,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           // Decide "created here" before the pending refs are consumed below:
           // an explicit open, an asset-switch rebuild, or a reconnect to the
           // same id is NOT a new conversation (persisted Work mode must not
-          // silently expand an existing Pure session's tools).
+          // silently expand an existing Understand session's tools).
           setSessionCreatedHere(
             !pendingOpenSessionIdRef.current &&
               !pendingAssetSwitchRef.current &&
@@ -726,7 +747,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setSessionId(message.payload.sessionId);
           reconnectSessionIdRef.current = message.payload.sessionId;
           setSelectors(applySnapshotSelectors(message.payload));
-          setSessionMode(message.payload.mode ?? "pure");
+          setSessionMode(message.payload.mode ?? "understand");
           setModelOverride(message.payload.modelOverride ?? null);
           setCurrentSessionModel(message.payload.currentModel ?? null);
           setStudyTagState(message.payload.studyTag ?? null);
@@ -979,6 +1000,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             void refreshCurrentTranscript(message.payload.sessionId);
             void refreshSessions();
           }
+          queueMicrotask(() => flushQueuedPromptRef.current());
           break;
 
         case "run_failed": {
@@ -1001,6 +1023,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
           });
           if (!interrupted) setRunHint("");
           if (sessionId) void refreshCurrentTranscript(sessionId);
+          if (interrupted) {
+            queueMicrotask(() => flushQueuedPromptRef.current());
+          }
           break;
         }
 
@@ -1109,6 +1134,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const beginNewSession = useCallback(() => {
     reconnectSessionIdRef.current = null;
     setSelectedCatalogSessionId(null);
+    queuedPromptsRef.current = [];
+    setQueuedPrompts([]);
     setMessages([]);
     setStreamParts([]);
     setWsError(null);
@@ -1148,6 +1175,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setToolStatus(t("Conversation cannot be opened."));
         return;
       }
+      queuedPromptsRef.current = [];
+      setQueuedPrompts([]);
       setSelectedCatalogSessionId(targetSessionId);
       pendingOpenSessionIdRef.current = targetSessionId;
       if (
@@ -1305,6 +1334,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       await deleteSessionRequest(targetId);
       if (sessionId === targetId) {
         reconnectSessionIdRef.current = null;
+        queuedPromptsRef.current = [];
+        setQueuedPrompts([]);
         setMessages([]);
         clearStagedWorkspace();
         sendMessage({ type: "new_session" });
@@ -1339,19 +1370,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   }, [performDeleteSelectedSession, requestConfirm, selectedSessionDetail],);
 
-  const sendPrompt = useCallback(
-    (text: string) => {
-      const trimmed = text.trim();
-      const outgoing = buildOutgoingPrompt(trimmed, stagedWorkspacePaths);
-      if (!outgoing || isRunning) return false;
-      // Staged paths also travel as structured attachments so the backend can
-      // send image files as real pixels to a vision-capable model (v1.2.1 D);
-      // they stay in the prompt text too, so text-only models still see the path.
-      const attachments = stagedWorkspacePaths.length
-        ? [...stagedWorkspacePaths]
-        : undefined;
-      if (!sendMessage({ type: "prompt", payload: outgoing, attachments }))
+  const replaceQueuedPrompts = useCallback(
+    (update: (current: QueuedPrompt[]) => QueuedPrompt[]) => {
+      setQueuedPrompts((current) => {
+        const next = update(current);
+        queuedPromptsRef.current = next;
+        return next;
+      });
+    },
+    [],
+  );
+
+  const startPrompt = useCallback(
+    (text: string, attachmentPaths: string[]) => {
+      const outgoing = buildOutgoingPrompt(text.trim(), attachmentPaths);
+      if (!outgoing) return false;
+      const attachments = attachmentPaths.length ? attachmentPaths : undefined;
+      if (!sendMessage({ type: "prompt", payload: outgoing, attachments })) {
         return false;
+      }
       setMessages((prev) => [
         ...prev,
         { role: "user", text: outgoing, timestamp: null },
@@ -1363,13 +1400,72 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setToolStatus("");
       setRunPhaseLabel(t("Connecting…"));
       setReviseMode(false);
-      clearStagedWorkspace();
       setIsRunning(true);
       setConnStatus("running");
       setConnLabel(t("Thinking…"));
       return true;
     },
-    [clearStagedWorkspace, isRunning, sendMessage, stagedWorkspacePaths],
+    [sendMessage],
+  );
+  startPromptRef.current = startPrompt;
+
+  const flushQueuedPrompt = useCallback(() => {
+    const queued = queuedPromptsRef.current;
+    const merged = mergeQueuedPrompts(queued);
+    replaceQueuedPrompts(() => []);
+    if (!merged) return;
+    if (!startPromptRef.current(merged.text, merged.attachments)) {
+      replaceQueuedPrompts((current) => [...queued, ...current]);
+    }
+  }, [replaceQueuedPrompts]);
+  flushQueuedPromptRef.current = flushQueuedPrompt;
+
+  const editQueuedPrompt = useCallback(
+    (id: string, text: string) => {
+      replaceQueuedPrompts((current) =>
+        current.map((item) => (item.id === id ? { ...item, text } : item)),
+      );
+    },
+    [replaceQueuedPrompts],
+  );
+
+  const deleteQueuedPrompt = useCallback(
+    (id: string) => {
+      replaceQueuedPrompts((current) =>
+        current.filter((item) => item.id !== id),
+      );
+    },
+    [replaceQueuedPrompts],
+  );
+
+  const sendPrompt = useCallback(
+    (text: string) => {
+      const trimmed = text.trim();
+      const attachments = [...stagedWorkspacePaths];
+      if (!trimmed && attachments.length === 0) return false;
+      if (isRunning) {
+        replaceQueuedPrompts((current) => [
+          ...current,
+          {
+            id: crypto.randomUUID(),
+            text: trimmed,
+            attachments,
+          },
+        ]);
+        clearStagedWorkspace();
+        return true;
+      }
+      if (!startPrompt(trimmed, attachments)) return false;
+      clearStagedWorkspace();
+      return true;
+    },
+    [
+      clearStagedWorkspace,
+      isRunning,
+      replaceQueuedPrompts,
+      stagedWorkspacePaths,
+      startPrompt,
+    ],
   );
 
   const abortRun = useCallback(() => {
@@ -1619,7 +1715,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   const switchMode = useCallback(
-    (mode: CapabilityMode) => {
+    (mode: AltMode) => {
       if (sendMessage({ type: "switch_mode", payload: { mode } })) {
         setSessionMode(mode);
       }
@@ -1673,6 +1769,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     () => ({
       auth,
       appMode,
+      runtimeMode,
       accountsConfigured,
       loginRequired,
       loading,
@@ -1765,6 +1862,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       startNewSession,
       compactCurrentSession,
       sendPrompt,
+      queuedPrompts,
+      editQueuedPrompt,
+      deleteQueuedPrompt,
       abortRun,
       invokeSkill,
       reviseLatest,
@@ -1780,6 +1880,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [
       auth,
       appMode,
+      runtimeMode,
       accountsConfigured,
       loginRequired,
       loading,
@@ -1870,6 +1971,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       startNewSession,
       compactCurrentSession,
       sendPrompt,
+      queuedPrompts,
+      editQueuedPrompt,
+      deleteQueuedPrompt,
       abortRun,
       invokeSkill,
       reviseLatest,

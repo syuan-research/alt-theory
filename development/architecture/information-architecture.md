@@ -86,19 +86,19 @@ surfaces remain designation-gated and absent for everyone else.
 - **Conversation list**
   - Conversations are grouped by workspace.
   - List-level actions live in the list overflow.
-  - Side chats, Helper conversations, workers, and provisional comparison arms
+  - Side chats, Helper conversations, subagents, and provisional comparison arms
     do not become ordinary list rows unless the user promotes them (or they are
     forks with purpose `fork`, which are list members by default).
   - Related children in the list or Related switcher show an **English prefix
     plus the real title**, not a rename: e.g. `Branch 1 · …`, `BTW 1 · …`,
-    `Helper 1 · …`, `Worker 1 · …`. Numbering is per parent + purpose. Do not
+    `Helper 1 · …`, `Subagent 1 · …`. Numbering is per parent + purpose. Do not
     overwrite `ui-alias` to a bare token like `branch1`.
 - **Right rail**
   - Holds files/changes and one selected related conversation (Branch, BTW,
-    Helper, or worker).
+    Helper, or subagent).
   - **Branch / retry (purpose `fork`)** open the child in this rail at roughly
     **half of the center+right work area** (not half the browser window).
-  - **BTW, Helper, and workers** open at the ordinary default rail width
+  - **BTW, Helper, and subagents** open at the ordinary default rail width
     (~480 or the user’s last dragged width).
   - Leaving a related child (Back, collapse rail, switch rail tab) clears the
     active related session so re-selecting the same child opens it again.

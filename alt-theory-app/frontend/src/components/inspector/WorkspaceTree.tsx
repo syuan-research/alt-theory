@@ -64,7 +64,11 @@ export function WorkspaceTree() {
 
   const sessionId = app.sessionId;
   const runCount = app.runCompletedCount;
-  const pureMode = sessionId ? app.sessionMode === "pure" : shell.newMode === "pure";
+  const understandMode =
+    app.runtimeMode === "alt-theory" &&
+    (sessionId
+      ? app.sessionMode === "understand"
+      : shell.newMode === "understand");
 
   useEffect(() => {
     setUploadStatus("");
@@ -293,7 +297,7 @@ export function WorkspaceTree() {
           </div>
         </div>
       ) : null}
-      {pureMode ? (
+      {understandMode ? (
         <div className="pv-card">
           <button
             className="wb-apply"

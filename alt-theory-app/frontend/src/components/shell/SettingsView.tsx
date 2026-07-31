@@ -2,8 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   cancelProviderAuth,
   getAutoTitleSettings,
-  getDefaultMode,
-  saveDefaultMode,
+  getDefaultAltMode,
+  saveDefaultAltMode,
+  getRuntimeSettings,
+  saveRuntimeSettings,
   getLangSetting,
   saveLangSetting,
   type LangSettingValue,
@@ -471,6 +473,7 @@ function GeneralPanel() {
           />
         </div>
       </div>
+      <RuntimeCard />
       <DefaultModeCard />
       <AutoTitleCard />
       <SkillPrecedenceCard />
@@ -550,12 +553,12 @@ function LanguageCard() {
 
 function DefaultModeCard() {
   const shell = useShell();
-  const [mode, setMode] = useState<"pure" | "full" | null>(null);
+  const [mode, setMode] = useState<"understand" | "work" | null>(null);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     let alive = true;
-    getDefaultMode()
+    getDefaultAltMode()
       .then(({ mode: value }) => {
         if (alive) setMode(value);
       })
@@ -568,10 +571,10 @@ function DefaultModeCard() {
     };
   }, []);
 
-  const persist = (next: "pure" | "full") => {
+  const persist = (next: "understand" | "work") => {
     setMode(next);
     shell.setNewMode(next);
-    void saveDefaultMode(next).catch(() => {});
+    void saveDefaultAltMode(next).catch(() => {});
   };
 
   return (
@@ -586,11 +589,92 @@ function DefaultModeCard() {
         <select
           value={mode ?? shell.newMode}
           disabled={!loaded}
-          onChange={(e) => persist(e.target.value as "pure" | "full")}
+          onChange={(e) => persist(e.target.value as "understand" | "work")}
         >
-          <option value="pure">{t("Understand")}</option>
-          <option value="full">{t("Work")}</option>
+          <option value="understand">{t("Understand")}</option>
+          <option value="work">{t("Work")}</option>
         </select>
+      </div>
+    </div>
+  );
+}
+
+function RuntimeCard() {
+  const [mode, setMode] = useState<"alt-theory" | "native-pi">("alt-theory");
+  const [scanAltSkills, setScanAltSkills] = useState(true);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    getRuntimeSettings()
+      .then((settings) => {
+        if (!alive) return;
+        setMode(settings.mode);
+        setScanAltSkills(settings.nativePiScanAltSkills);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (alive) setLoaded(true);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const persist = (
+    nextMode: "alt-theory" | "native-pi",
+    nextScanAltSkills: boolean,
+  ) => {
+    setMode(nextMode);
+    setScanAltSkills(nextScanAltSkills);
+    void saveRuntimeSettings({
+      mode: nextMode,
+      nativePiScanAltSkills: nextScanAltSkills,
+    })
+      .then(() => window.location.reload())
+      .catch(() => {});
+  };
+
+  return (
+    <div className="set-card">
+      <div className="row2">
+        <div>
+          <h4>{t("Agent behavior")}</h4>
+          <p>
+            {t(
+              "Alt Theory adds its behavior, roles, soul, and knowledge context. Native Pi keeps the same app and safety infrastructure but uses Pi's normal coding-agent behavior.",
+            )}
+          </p>
+        </div>
+        <select
+          value={mode}
+          disabled={!loaded}
+          onChange={(event) =>
+            persist(
+              event.target.value as "alt-theory" | "native-pi",
+              scanAltSkills,
+            )
+          }
+        >
+          <option value="alt-theory">Alt Theory</option>
+          <option value="native-pi">Native Pi</option>
+        </select>
+      </div>
+      <div className="row2">
+        <div>
+          <h4>{t("Native Pi: scan Alt Theory bundled skills")}</h4>
+          <p>
+            {t(
+              "Keep Alt Theory's bundled skills discoverable in Native Pi. This does not add Alt Theory behavior.",
+            )}
+          </p>
+        </div>
+        <button
+          className={`toggle${scanAltSkills ? " on" : ""}`}
+          aria-pressed={scanAltSkills}
+          disabled={!loaded || mode !== "native-pi"}
+          onClick={() => persist(mode, !scanAltSkills)}
+        />
       </div>
     </div>
   );
@@ -1009,7 +1093,7 @@ function FeaturesPanel() {
       <div className="set-card">
         <h4>{t("Delegate parts of a task")}</h4>
         <p>
-          {t("On larger Work tasks, Alt can hand a bounded piece to a worker agent and keep going. Workers appear in the right panel like any related conversation — you can watch them, message them directly, or stop them at any point.")}
+          {t("On larger Work tasks, Alt can hand a bounded piece to a subagent and keep going. Subagents appear in the right panel like any related conversation — you can watch them, message them directly, or stop them at any point.")}
         </p>
       </div>
       <div className="set-card">

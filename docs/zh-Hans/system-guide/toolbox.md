@@ -1,19 +1,19 @@
-# Toolbox（工具箱）
+# 工具箱
 
-Toolbox 是输入区旁的小菜单——通向应用重点动作的前门。它刻意很短：少数几个入口，覆盖除打字之外最常见的需求。
+工具箱是输入框旁的小菜单：覆盖超出键入之外最常用操作的一组精选动作。
 
-## 入口
+## 各条目
 
-- **问 Alt 怎么用，或修设置** — 打开
-  [Helper](helper-and-guidance.md)，面向关于应用本身问题（及引导式设置）的干净上下文旁线对话。
-- **对齐计划或决策** — 调用
-  [对齐技能](bundled-skills.md#adaptive-aligning)：智能体访谈你，在方向设定工作前建立共识。
-- **计划与记录** — 调用
-  [计划记录技能](bundled-skills.md#adaptive-plan-record)，用于值得跨对话跟踪的工作。
-- **在线查找** *(Work)* — 调用
-  [实时搜索](search-sources-web.md)。在 Understand 模式此入口不是变灰的按钮：而是一句话，说明 Understand 没有实时检索，切到 Work 才是搜索方式。
-- **所有技能…** — 进入[命令面板](commands.md)，`/` 已预填，一切可调用之物都在那里。
+- 询问 Alt 如何工作：打开[助手](helper-and-guidance.md)，一个用新上下文回答应用相关问题的助理。
+- 在计划或决定上对齐：调用 [`adaptive-aligning`（自适应对齐）](bundled-skills.md#adaptive-aligning)，智能体在定方向工作前访谈你以建立共同理解。
+- 计划与记录：调用 [`adaptive-plan-record`（计划记录）](bundled-skills.md#adaptive-plan-record)，用于值得跨对话追踪的工作。
+- 在线查资料（工作模式）：调用[实时检索](search-sources-web.md)（技能侧为 `web-search` / `page-fetch`）。在理解模式下此项不是一个被禁用的按钮，而是一行说明，理解模式没有实时查核，需切换到工作模式才能搜索。
+- 全部技能：跳到[命令面板](commands.md)，且已预输入 `/`。
 
-## Toolbox 不是什么
+## 待发与即发
 
-它不是技能系统——只是策展过的前门。每个 Toolbox 入口都有长写等价物（命令，或普通句子），这里未突出的一切距离 `/` 只有一步。若你不再需要前门，什么都不会丢。
+在工具箱或面板中点击一个技能，会把输入框填充为 `/技能id `（英文 id，例如 `/adaptive-aligning `）并聚焦，以便在执行前输入问题。只有无需提示的命令（`/new`、`/branch`、`/btw`、`/compact`、`/helper`）在点击时立即执行。
+
+## 工具箱不是什么
+
+它不是技能系统本身，只是精选的入口。每条目都有等效的命令或普通句子版本，未在此列出的内容用一个 `/` 即可到达。

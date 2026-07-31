@@ -2,7 +2,7 @@
 doc_type: architecture
 slug: researcher-console
 scope: v1-alpha frontend and research surfaces — view modes, pane logic, researcher workbench/review, study designation, A/B comparison
-summary: Two view modes (user/researcher) over one React frontend; the M7 IA is realized and the local Pure/Full development flow has passed owner testing.
+summary: Two view modes (user/researcher) over one React frontend; the M7 IA is realized and the local Understand/Work flow has passed owner testing.
 status: current
 last_reviewed: 2026-07-21
 tags: [frontend, researcher-console, research, view-modes, ia]
@@ -64,10 +64,10 @@ gate (unchanged since v0.5).
   frequently mid-session, configuration is set and sits still.
 - **Right = conversation-derived, optional detail**, collapsed by default,
   event-driven auto-open. `Related conversations` is the relationship
-  container for Branch, BTW, Helper, and worker children. They run there with
+  container for Branch, BTW, Helper, and subagent children. They run there with
   their own transcript/composer while the parent remains in the center; listed
   promotion keeps purpose labels (alpha.6). **Branch/retry** open the rail at
-  ~half of center+right work area; **BTW / Helper / workers** use default rail
+  ~half of center+right work area; **BTW / Helper / subagents** use default rail
   width. Center A/B multi-arm remains Workbench-only (not a branch side pane).
   Other object classes include file review and (provisionally) full-width
   side-by-side A/B arm reading, Changes list (agent-modified files aggregated
@@ -98,7 +98,7 @@ gate (unchanged since v0.5).
   control until a second permission level exists.
 - **Conversation list membership**: only roots and `forkedFrom.purpose:"fork"`
   (and children the user promotes with `listed`) appear; side chats (`side`),
-  `helper`, workers, and pending `ab-arm` children are reachable from their
+  `helper`, subagents, and pending `ab-arm` children are reachable from their
   parent’s Related rail unless listed. Display titles for related children use
   English prefixes (`Branch N · title`, `BTW N · …`, …) — prefix, not rename.
   The chosen A/B arm is rewritten to the list continuation.
@@ -130,7 +130,7 @@ One primitive, two levels (decision doc §3), all backend-complete:
   panel content.
 - **Sharing default follows designation** (consent-based): designated →
   sharing on by default, everyone else → private by default, regardless of
-  Pure/Full and deployment. The per-session switch overrides either way.
+  Understand/Work and deployment. The per-session switch overrides either way.
   Two semantics the UI copy must distinguish (owner-verbatim examples live
   in decision doc §8): account-login deployments share automatically;
   local installs only MARK conversations — the app has no upload
@@ -146,7 +146,7 @@ Tab/surface-level increments, per the pane logic: left workbench
 (configuration + comparison setup + compact session list), center-top
 action strip (A/B trigger), full-page review route, advanced right-pane
 inspector tabs, and a reserved view-as-participant toggle. The A/B flow
-itself is provisional: the current M6 probe forks Pure-pinned arms off the
+itself is provisional: the current M6 probe forks Understand-pinned arms off the
 live parent and records to append-only `ab-comparisons.jsonl`, but comparison,
 choice, and continuation behavior are not a final product contract.
 
@@ -182,10 +182,10 @@ public repo.
   session allowances now emit the existing `extension_notice` signal.
   Deferred to v1.0.x: cross-study review aggregate (currently per-session).
   The implementation plan is retained in private development records.
-- 2026-07-20: Updated owner-acceptance status after the local Pure/Full flow
+- 2026-07-20: Updated owner-acceptance status after the local Understand/Work flow
   passed. Bundle delivery remains separate from the React architecture.
 - 2026-07-29 (alpha.6 residual): Branch/retry open in Related at ~half of
-  center+right (not whole window); BTW/Helper/worker use default rail width.
+  center+right (not whole window); BTW/Helper/subagent use default rail width.
   List/switcher titles use `Branch N · title` style prefixes (not rename).
   Center A/B multi-arm stays Workbench-only. Related Back clears sticky open
   so re-select works.

@@ -10,7 +10,7 @@ import { AssistantBubble, TranscriptEntry } from "@/components/conversation/Mess
 
 /**
  * A conversation other than the one in the center: a branch shown beside it for
- * comparison, a BTW/Helper side chat, or a worker agent. Same bubbles, same
+ * comparison, a BTW/Helper side chat, or a subagent. Same bubbles, same
  * composer, same send button as the main conversation — only the width and the
  * header line differ. Per-message branching stays with the center conversation;
  * open this one from the list if you want to branch off it.
@@ -272,8 +272,8 @@ function childBlurb(purpose: string, _variant?: "panel" | "compare"): string {
   if (purpose === "helper") {
     return t("Questions about Alt itself, and setup fixes — fresh context.");
   }
-  if (purpose === "worker") {
-    return t("A worker agent working on its own — you can join in.");
+  if (purpose === "subagent") {
+    return t("A subagent working on its own — you can join in.");
   }
   if (purpose === "fork") {
     return t("A branch of this conversation.");

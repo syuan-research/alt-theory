@@ -17,9 +17,10 @@
  */
 import { readFileSync, writeFileSync, readdirSync, statSync } from "fs";
 import { homedir } from "os";
-import { join, resolve, sep } from "path";
+import { join, sep } from "path";
+import { fileURLToPath } from "url";
 
-const ROOT = resolve(new URL("..", import.meta.url).pathname);
+const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const FRONTEND_SRC = join(ROOT, "alt-theory-app", "frontend", "src");
 const BACKEND_SRC = join(ROOT, "alt-theory-app", "web-server");
 const CATALOGS = {
@@ -175,15 +176,17 @@ const hans = readCatalog(CATALOGS["zh-Hans"]);
 const hk = readCatalog(CATALOGS["zh-Hant-HK"]);
 
 const missingHans = [...keys].filter((key) => !(key in hans));
+const missingHk = [...keys].filter((key) => !(key in hk));
 const orphans = Object.keys(hans).filter((key) => !keys.has(key));
 
 if (CHECK) {
-  const missingHk = [...keys].filter((key) => !(key in hk));
   console.log(`missing zh-Hans: ${missingHans.length}, missing zh-Hant-HK: ${missingHk.length}, orphaned: ${orphans.length}`);
+  if (missingHans.length) console.log(`missing: ${missingHans.join(" | ")}`);
+  if (orphans.length) console.log(`orphaned: ${orphans.join(" | ")}`);
   process.exit(missingHans.length || missingHk.length || orphans.length ? 1 : 0);
 }
 
-const config = modelConfig();
+const config = missingHans.length || missingHk.length ? modelConfig() : null;
 for (let index = 0; index < missingHans.length; index += BATCH) {
   const slice = missingHans.slice(index, index + BATCH);
   const result = await translateBatchSafe(config, SYSTEM_HANS, slice, "zh-Hans");
@@ -195,7 +198,6 @@ for (let index = 0; index < missingHans.length; index += BATCH) {
 }
 for (const key of orphans) delete hans[key];
 
-const missingHk = [...keys].filter((key) => !(key in hk) && key in hans);
 for (let index = 0; index < missingHk.length; index += BATCH) {
   const slice = missingHk.slice(index, index + BATCH);
   const items = slice.map((key) => ({ en: key, zh: hans[key] }));

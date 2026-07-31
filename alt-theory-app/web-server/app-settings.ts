@@ -8,6 +8,7 @@
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { writeJsonAtomic } from "../core/data-dir.js";
+import type { AltMode, RuntimeMode } from "../core/alt-theory-core.js";
 
 /**
  * Which skill wins when a bundled skill and a user-installed skill cover the
@@ -29,12 +30,11 @@ export interface AppSettings {
   skillPrecedence?: SkillPrecedence;
   skills: {
     /**
-     * User-enabled external skill paths per capability mode. null = default
-     * policy: Pure enables no external skills (spec §3.4); Full enables every
-     * discovered external skill (Pi's native posture).
+     * User-enabled external skill paths per Alt mode. null = default policy:
+     * Understand enables none; Work enables every discovered external skill.
      */
-    pure: { enabledPaths: string[] | null };
-    full: { enabledPaths: string[] | null };
+    understand: { enabledPaths: string[] | null };
+    work: { enabledPaths: string[] | null };
   };
   /**
    * Install-level participant designation (M7 §3). Local carrier of the
@@ -60,11 +60,14 @@ export interface AppSettings {
     model: { provider: string; modelId: string } | null;
   };
   /**
-   * Which capability mode a new conversation starts in (alpha.5). Absent =
-   * "pure" (Understand), the established default. The per-conversation
+   * Which Alt Theory mode a new conversation starts in. The per-conversation
    * toggle is unaffected — this only seeds new drafts.
    */
-  defaultMode?: "pure" | "full";
+  defaultAltMode?: AltMode;
+  /** App-wide behavior runtime. Absent = Alt Theory. */
+  runtimeMode?: RuntimeMode;
+  /** Native Pi may add Alt Theory's bundled skills to Pi's own discovery. */
+  nativePiScanAltSkills?: boolean;
   /**
    * App UI (and backend user-visible text) language (alpha.6). Absent =
    * "auto": the frontend follows the system language; the backend treats
@@ -85,8 +88,8 @@ export interface AppSettings {
 const DEFAULT_SETTINGS: AppSettings = {
   schemaVersion: 1,
   skills: {
-    pure: { enabledPaths: null },
-    full: { enabledPaths: null },
+    understand: { enabledPaths: null },
+    work: { enabledPaths: null },
   },
 };
 
@@ -103,8 +106,10 @@ export function readAppSettings(dataDir: string): AppSettings {
     return {
       schemaVersion: 1,
       skills: {
-        pure: { enabledPaths: normalizePaths(parsed.skills?.pure?.enabledPaths) },
-        full: { enabledPaths: normalizePaths(parsed.skills?.full?.enabledPaths) },
+        understand: {
+          enabledPaths: normalizePaths(parsed.skills?.understand?.enabledPaths),
+        },
+        work: { enabledPaths: normalizePaths(parsed.skills?.work?.enabledPaths) },
       },
       ...(parsed.participant
         ? {
@@ -143,8 +148,14 @@ export function readAppSettings(dataDir: string): AppSettings {
       ...(SKILL_PRECEDENCE_VALUES.includes(parsed.skillPrecedence as SkillPrecedence)
         ? { skillPrecedence: parsed.skillPrecedence }
         : {}),
-      ...(parsed.defaultMode === "pure" || parsed.defaultMode === "full"
-        ? { defaultMode: parsed.defaultMode }
+      ...(parsed.defaultAltMode === "understand" || parsed.defaultAltMode === "work"
+        ? { defaultAltMode: parsed.defaultAltMode }
+        : {}),
+      ...(parsed.runtimeMode === "alt-theory" || parsed.runtimeMode === "native-pi"
+        ? { runtimeMode: parsed.runtimeMode }
+        : {}),
+      ...(typeof parsed.nativePiScanAltSkills === "boolean"
+        ? { nativePiScanAltSkills: parsed.nativePiScanAltSkills }
         : {}),
       ...(parsed.lang === "auto" ||
       parsed.lang === "en" ||
@@ -183,10 +194,10 @@ export function writeAppSettings(dataDir: string, settings: AppSettings): void {
 export function resolveExternalSkillPaths(
   settings: AppSettings,
   discoveredExternalPaths: string[]
-): { pure: string[]; full: string[] } {
+): { understand: string[]; work: string[] } {
   return {
-    pure: settings.skills.pure.enabledPaths ?? [],
-    full: settings.skills.full.enabledPaths ?? [...discoveredExternalPaths],
+    understand: settings.skills.understand.enabledPaths ?? [],
+    work: settings.skills.work.enabledPaths ?? [...discoveredExternalPaths],
   };
 }
 

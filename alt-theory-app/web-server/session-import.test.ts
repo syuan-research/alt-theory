@@ -74,7 +74,7 @@ test("Pi discovery and managed registration preserve history and workspace", asy
   const registered = registerPiImport({
     dataDir,
     source,
-    mode: "pure",
+    mode: "understand",
     rolePresetSlug: "role-conceptual-theory-companion",
     soulSlug: "soul-latest",
     visibility: "private",
@@ -150,7 +150,7 @@ test("Pi discovery and managed registration preserve history and workspace", asy
   const reimported = registerPiImport({
     dataDir,
     source: changed!,
-    mode: "pure",
+    mode: "understand",
     rolePresetSlug: "role-conceptual-theory-companion",
     soulSlug: "soul-latest",
     visibility: "private",
@@ -278,7 +278,7 @@ test("Grok preflight preserves current history and raw source, and refuses unmat
     dataDir,
     source,
     preflight,
-    mode: "full",
+    mode: "work",
     visibility: "private",
   });
   const snapshot = join(
@@ -437,7 +437,7 @@ test("Codex preflight maps supported rollout history and refuses unmatched tool 
     dataDir,
     source,
     preflight,
-    mode: "full",
+    mode: "work",
     visibility: "private",
   });
   const detail = readSessionDetail(dataDir, registered.sessionId);
@@ -703,7 +703,7 @@ test("OpenCode preflight registers complete supported history and refuses unsupp
     dataDir,
     source,
     preflight,
-    mode: "full",
+    mode: "work",
     visibility: "private",
   });
   const detail = readSessionDetail(dataDir, registered.sessionId);
@@ -1016,7 +1016,7 @@ test("Codex preflight separates visible history from active context after compac
     dataDir,
     source,
     preflight,
-    mode: "full",
+    mode: "work",
     visibility: "private",
   });
   const detail = readSessionDetail(dataDir, registered.sessionId);
@@ -1441,7 +1441,7 @@ test("OpenCode lists roots and archives child sessions beside the imported root"
     dataDir,
     source,
     preflight,
-    mode: "full",
+    mode: "work",
     rolePresetSlug: "role-conceptual-theory-companion",
     soulSlug: "soul-latest",
     visibility: "private",
@@ -1775,7 +1775,7 @@ test("Claude Code discovery falls back from a stale index and imports one integr
     dataDir,
     source,
     preflight,
-    mode: "full",
+    mode: "work",
     visibility: "private",
   });
   assert.match(
@@ -1880,7 +1880,7 @@ test("Claude Code plaintext compaction preserves visible history and resumes fro
     dataDir,
     source,
     preflight,
-    mode: "pure",
+    mode: "understand",
     visibility: "private",
   });
   const detail = readSessionDetail(dataDir, registered.sessionId);

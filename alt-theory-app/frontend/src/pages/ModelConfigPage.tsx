@@ -113,54 +113,20 @@ const PROVIDER_PRESETS = [
     name: "opencode-go-openai",
     api: "openai-completions" as ApiType,
     baseUrl: "https://opencode.ai/zen/go/v1",
-    models: [
-      {
-        id: "mimo-v2.5-pro",
-        reasoning: true,
-        compat: {
-          thinkingFormat: "deepseek",
-          requiresReasoningContentOnAssistantMessages: true,
-        },
-      },
-      {
-        id: "mimo-v2.5",
-        reasoning: true,
-        compat: {
-          thinkingFormat: "deepseek",
-          requiresReasoningContentOnAssistantMessages: true,
-        },
-      },
-      { id: "deepseek-v4-pro" },
-      { id: "kimi-k2.7" },
-      { id: "glm-5.2" },
-    ],
+    models: [],
     description:
       t("OpenCode Go models served through /v1/chat/completions, including MiMo, DeepSeek, Kimi, and GLM."),
     recommended: true,
-    manualModels: true,
   },
   {
     label: t("OpenCode Go (Anthropic-compatible)"),
     name: "opencode-go-anthropic",
     api: "anthropic-messages" as ApiType,
     baseUrl: "https://opencode.ai/zen/go",
-    models: [
-      {
-        id: "qwen3.7-max",
-        reasoning: true,
-        compat: { thinkingFormat: "qwen" },
-      },
-      {
-        id: "qwen3.7-plus",
-        reasoning: true,
-        compat: { thinkingFormat: "qwen" },
-      },
-      { id: "minimax-m3" },
-    ],
+    models: [],
     description:
       t("OpenCode Go models served through /v1/messages, including Qwen 3.7 and MiniMax."),
     recommended: true,
-    manualModels: true,
   },
   {
     label: t("Qwen 3.7 Max (Bailian)"),
@@ -665,11 +631,6 @@ export function ModelConfigPage({
   const fetchModels = async () => {
     const trimmedName = name.trim();
     const trimmedBaseUrl = baseUrl.trim();
-    const manualHint = manualModelListHint(trimmedName);
-    if (manualHint) {
-      showToast(manualHint, true);
-      return;
-    }
     if (!trimmedName) {
       showToast(t("Provider name is required before fetching models."), true);
       return;
@@ -686,9 +647,15 @@ export function ModelConfigPage({
         ...(apiKey ? { apiKey } : {}),
         ...(apiKey ? { keyStorage } : {}),
       });
-      setModelRows(
-        (data.models || []).map((model) => configModelToRow(model))
-      );
+      setModelRows((current) => {
+        const existing = new Set(current.map((row) => row.id.trim()));
+        return [
+          ...current,
+          ...(data.models || [])
+            .filter((model) => !existing.has(model.id))
+            .map((model) => configModelToRow(model)),
+        ];
+      });
       showToast(t("Fetched {count} models", { count: String(data.models?.length || 0) }));
     } catch (err) {
       showToast(err instanceof Error ? err.message : t("Fetch failed"), true);

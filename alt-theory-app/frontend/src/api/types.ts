@@ -43,7 +43,11 @@ export interface ParticipantInfo {
 
 export interface AuthMeResponse {
   auth: AuthContext;
-  app: { mode: "local" | "hosted" };
+  app: {
+    mode: "local" | "hosted";
+    runtimeMode: RuntimeMode;
+    nativePiScanAltSkills: boolean;
+  };
   participant: ParticipantInfo | null;
   localConfig: ConfigStatus | null;
 }
@@ -95,7 +99,7 @@ export interface SessionDraftSnapshot {
   rolePresetSlug: string | null;
   soulSlug: string | null;
   customInstructionRef?: string | null;
-  mode: CapabilityMode;
+  mode: AltMode;
   modelOverride?: SessionModelOverride | null;
   studyTag?: StudyTag | null;
   workspacePrimaryDir?: string | null;
@@ -124,8 +128,8 @@ export interface SessionModelOverride {
   thinkingLevel?: ThinkingLevel;
 }
 
-/** Capability mode (spec §4): Understand = pure, Work = full. */
-export type CapabilityMode = "pure" | "full";
+export type AltMode = "understand" | "work";
+export type RuntimeMode = "alt-theory" | "native-pi";
 
 export interface SessionSnapshot {
   sessionId: string;
@@ -139,7 +143,7 @@ export interface SessionSnapshot {
   rolePresetSlug: string | null;
   soulSlug: string | null;
   customInstructionRef?: string | null;
-  mode?: CapabilityMode;
+  mode?: AltMode;
   modelOverride?: SessionModelOverride | null;
   currentModel?: { provider: string; modelId: string };
   studyTag?: StudyTag | null;
@@ -220,7 +224,7 @@ export interface SessionSummary {
   /** Fork lineage (M5 substrate); null = a root conversation. */
   forkedFrom: {
     sessionId: string;
-    purpose: "fork" | "side" | "helper" | "ab-arm" | "worker";
+    purpose: "fork" | "side" | "helper" | "ab-arm" | "subagent";
     /** Added to the conversation list by the user, purpose kept (alpha.6). */
     listed?: boolean;
   } | null;
@@ -537,7 +541,7 @@ export type ClientMessage =
   | {
       type: "fork_session";
       payload: {
-        purpose: "fork" | "side" | "helper" | "ab-arm" | "worker";
+        purpose: "fork" | "side" | "helper" | "ab-arm" | "subagent";
         forkPointEntryId?: string;
         sourceSessionId?: string;
       };
@@ -549,7 +553,7 @@ export type ClientMessage =
         forkPointEntryId?: string;
       };
     }
-  | { type: "switch_mode"; payload: { mode: CapabilityMode } }
+  | { type: "switch_mode"; payload: { mode: AltMode } }
   | { type: "set_study_tag"; payload: { studyTag: StudyTag | null } }
   | {
       type: "set_session_model";

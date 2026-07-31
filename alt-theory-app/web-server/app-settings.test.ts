@@ -10,12 +10,12 @@ import {
 } from "./app-settings.js";
 import { discoverSkillResources } from "./resource-discovery.js";
 
-test("app settings default policy: pure gets no external skills, full gets all", () => {
+test("app settings default policy: Understand gets no external skills, Work gets all", () => {
   const dataDir = mkdtempSync(join(tmpdir(), "alt-theory-settings-"));
   const settings = readAppSettings(dataDir);
   const resolved = resolveExternalSkillPaths(settings, ["/x/skill-a", "/x/skill-b"]);
-  assert.deepEqual(resolved.pure, []);
-  assert.deepEqual(resolved.full, ["/x/skill-a", "/x/skill-b"]);
+  assert.deepEqual(resolved.understand, []);
+  assert.deepEqual(resolved.work, ["/x/skill-a", "/x/skill-b"]);
 });
 
 test("app settings persist immediately and round-trip explicit selections", () => {
@@ -23,14 +23,14 @@ test("app settings persist immediately and round-trip explicit selections", () =
   writeAppSettings(dataDir, {
     schemaVersion: 1,
     skills: {
-      pure: { enabledPaths: ["/x/skill-a"] },
-      full: { enabledPaths: [] },
+      understand: { enabledPaths: ["/x/skill-a"] },
+      work: { enabledPaths: [] },
     },
   });
   const settings = readAppSettings(dataDir);
   const resolved = resolveExternalSkillPaths(settings, ["/x/skill-a", "/x/skill-b"]);
-  assert.deepEqual(resolved.pure, ["/x/skill-a"]);
-  assert.deepEqual(resolved.full, []);
+  assert.deepEqual(resolved.understand, ["/x/skill-a"]);
+  assert.deepEqual(resolved.work, []);
 });
 
 test("skill discovery lists alt bundled and pi-user locations with sources", () => {

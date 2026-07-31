@@ -45,7 +45,7 @@ export function InspectorPanel() {
   const title = shell.rightSub?.title ?? (active ? RAIL_META[active].title : "");
 
   // Opening a child panel is a one-shot per child id. It used to depend on
-  // `app.sessions`, so every refreshSessions() (one per worker output) re-ran
+  // `app.sessions`, so every refreshSessions() (one per subagent output) re-ran
   // it and slammed the panel back open on whatever child was last active.
   const openedChildRef = useRef<string | null>(null);
   useEffect(() => {
@@ -64,7 +64,7 @@ export function InspectorPanel() {
     if (!size) {
       const child = app.sessions.find((s) => s.sessionId === childId);
       const purpose = child?.forkedFrom?.purpose;
-      // Branch/retry only: half work area. Worker / btw / helper: default ~480.
+      // Branch/retry only: half work area. Subagent / btw / helper: default ~480.
       size = purpose === "fork" ? "half" : "default";
     }
     shell.setRightPaneForRelated(size);
@@ -209,7 +209,7 @@ function RelatedConversations() {
     helper: "ph-lifebuoy",
     "ab-arm": "ph-git-fork",
     fork: "ph-git-branch",
-    worker: "ph-robot",
+    subagent: "ph-robot",
   };
 
   // Switcher click: setActiveRelatedSessionId only; openSub + width are owned
@@ -325,8 +325,8 @@ function RelatedConversations() {
           <div className="d">
             {child.forkedFrom?.purpose === "helper"
               ? t("How Alt works, and fixing setup · fresh context")
-              : child.forkedFrom?.purpose === "worker"
-                ? t("Worker agent · {count} messages — you can join in", { count: child.messageCount ?? 0 })
+              : child.forkedFrom?.purpose === "subagent"
+                ? t("Subagent · {count} messages — you can join in", { count: child.messageCount ?? 0 })
                 : child.forkedFrom?.purpose === "fork"
                   ? t("Branch · {count} messages", { count: child.messageCount ?? 0 })
                   : t("Side conversation · {count} messages", { count: child.messageCount ?? 0 })}

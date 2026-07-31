@@ -130,21 +130,40 @@ export async function uploadRolePreset(
   });
 }
 
-export async function getDefaultMode(): Promise<{
-  mode: "pure" | "full" | null;
+export async function getDefaultAltMode(): Promise<{
+  mode: "understand" | "work" | null;
 }> {
-  return fetchJson<{ mode: "pure" | "full" | null }>(
-    "/api/settings/default-mode",
+  return fetchJson<{ mode: "understand" | "work" | null }>(
+    "/api/settings/default-alt-mode",
   );
 }
 
-export async function saveDefaultMode(
-  mode: "pure" | "full" | null,
-): Promise<{ ok: true; mode: "pure" | "full" | null }> {
-  return fetchJson("/api/settings/default-mode", {
+export async function saveDefaultAltMode(
+  mode: "understand" | "work" | null,
+): Promise<{ ok: true; mode: "understand" | "work" | null }> {
+  return fetchJson("/api/settings/default-alt-mode", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ mode }),
+  });
+}
+
+export interface RuntimeSettings {
+  mode: "alt-theory" | "native-pi";
+  nativePiScanAltSkills: boolean;
+}
+
+export async function getRuntimeSettings(): Promise<RuntimeSettings> {
+  return fetchJson("/api/settings/runtime");
+}
+
+export async function saveRuntimeSettings(
+  settings: RuntimeSettings,
+): Promise<{ ok: true } & RuntimeSettings> {
+  return fetchJson("/api/settings/runtime", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(settings),
   });
 }
 

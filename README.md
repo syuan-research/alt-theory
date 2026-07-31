@@ -23,12 +23,12 @@ configuration, and packaging may still change.
   presets, and skills (including Helper, plan-record, web search in Work).
 - **Conversation controls**: branch / same-prompt retry with side-by-side
   comparison, BTW side chats, Helper as a fresh-context side conversation,
-  worker agents (agent team) with addressable mail, import of cross-harness
+  subagent agents (agent team) with addressable mail, import of cross-harness
   sessions.
-- **In-app documentation** (English Helper corpus under
-  `agent-assets/skills/alt-theory-help/references/docs/`) plus **Chinese
-  user-facing docs** under `docs/zh-Hans/` (and PDF build via
-  `npm run docs:zh-pdf` when Pandoc is installed).
+- **User documentation** under `docs/en/` (English) and `docs/zh-Hans/`
+  (Simplified Chinese). Helper maps questions via
+  `agent-assets/skills/alt-theory-help/references/docs-map.md` and reads
+  those trees; docs are not embedded inside the Helper skill.
 - **UI languages**: English, 简体中文, 繁體中文（香港）via Settings → General.
 
 ## Repository Map
@@ -37,8 +37,8 @@ configuration, and packaging may still change.
 - `agent-assets/` — runtime prompts, role presets, knowledge-base material, and
   bundled skills used by Alt Theory.
 - `electron/` and `scripts/` — local Windows packaging and development tools.
-- `docs/about/` — current high-level product and version material. Broader
-  public documentation will be designed separately.
+- `docs/en/`, `docs/zh-Hans/` — user documentation (English / Simplified Chinese).
+- `docs/about/` — high-level product and version material.
 - `development/architecture/` — current technical architecture.
 - `development/features/` and `development/issues/` — retained feature design,
   acceptance, and issue evidence.

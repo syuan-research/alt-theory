@@ -4,7 +4,7 @@ slug: core-session-engine
 scope: Alt Theory core session engine and Pi Coding Agent integration
 summary: Creates persistent, asset-configured Pi sessions through an application-owned service used by WebSocket adapters
 status: current
-last_reviewed: 2026-07-29
+last_reviewed: 2026-07-30
 tags: [core, backend, pi-agent, session]
 depends_on: []
 implements:
@@ -52,7 +52,7 @@ and Pi adapter prompt templates from `agent-assets/prompts/pi/`.
   manifests for grouping manual UAT sessions without changing provider/model
   identity.
 - **Effective config**: analysis-facing snapshot of the active project, KB,
-  soul, role preset, provider/model, prompt mode, and resource discovery mode.
+  soul, role preset, provider/model, Alt mode, and resource discovery mode.
 - **Config event**: append-only record in `records/config-events.jsonl` for
   creation, user config changes, and resume fallback.
 - **Research project**: optional local JSON record under `{dataDir}/projects`
@@ -115,6 +115,8 @@ Code anchors:
   deterministic assembly.
 - `alt-theory-app/core/alt-theory-core.ts`: resource loader, tool policy,
   persistent Pi session creation/opening, and manifest.
+- `prompt-cache-safety.md`: short-horizon prompt-cache continuity decisions,
+  API-shape constraints, coverage boundaries, and verification.
 - `alt-theory-app/web-server/asset-registry.ts`: safe role/KB slugs.
 - `alt-theory-app/web-server/auth-accounts.ts`: data-dir backed account store,
   login-code hashing, verification, and safe account serialization.
@@ -152,10 +154,11 @@ Code anchors:
    the same session ID.
 4. `DefaultResourceLoader` loads Pi adapter prompt templates from
    `agent-assets/prompts/pi/`.
-5. Prompt layers are appended in this order: Alt Theory application context,
-   selected soul when present, optional core-soul modules, selected role preset
-   when present, KB declaration, selected KB domain metadata when present,
-   optional write policy.
+5. The current application runtime resolves prompt composition. Alt Theory
+   assembles application context, optional soul and role, KB declaration,
+   optional Custom Instruction, and generated facts. Native Pi keeps Pi's base,
+   Custom Instruction, and generated infrastructure facts. The conceptual
+   layers are specified in `agent-behavior-and-assets.md`.
 6. Pi returns the reserved timestamped JSONL path. Pi physically writes it once
    an assistant message is present.
 7. Alt Theory atomically writes `records/assembly-manifest.json` and appends
@@ -297,48 +300,26 @@ Upstream harness storage research is separate under
 
 ## 3. Prompt Assembly And Injection
 
-Current model-visible content has two levels.
+The conceptual behavior composition, layer authority, and Native Pi versus Alt
+Theory mode differences live in
+[`agent-behavior-and-assets.md`](agent-behavior-and-assets.md). This document
+keeps only session-engine facts.
 
-### Session-Creation Assembly
+`createAltTheorySession()` builds one `DefaultResourceLoader`. The application
+runtime is app-wide (`alt-theory` or `native-pi`); each session separately
+persists its Alt mode (`understand` or `work`). A live runtime or Alt-mode
+change reloads the same loader and swaps the active tool set without replacing
+the session ID or Pi JSONL.
 
-`createAltTheorySession()` creates a `DefaultResourceLoader` with:
+The assembly manifest records selected asset references and hashes, loaded
+skills and their sources, KB/workspace facts, model/provider, and session
+paths. The app-wide runtime is not persisted as a per-session override.
 
-- Pi adapter prompt templates from `agent-assets/prompts/pi/`;
-- no Alt Theory runtime `AGENTS.md` file;
-Since v1-alpha M1 (2026-07-15), the session has a per-session capability mode
-(`pure`/`full`, spec §3.2) that decides how the layers apply. The semantic
-sections are, in order:
-  1. `agent-assets/ALTTHEORY.md`;
-  2. selected `agent-assets/soul/{slug}.md`, when a soul is selected;
-  3. selected `agent-assets/role-presets/{slug}.md`, when a role preset is
-     selected;
-  4. selected custom instruction text asset, when present;
-  5. KB root declaration;
-  6. selected KB domain metadata from `agent-assets/kb/metadata/domains.json`,
-     when a concrete KB domain such as `ep-core` is selected.
-
-In Pure, `systemPromptOverride` replaces Pi's default prompt with these
-sections plus two Pure-only sections (tool harness description; write policy
-when write tools are enabled). In Full, Pi's default prompt is preserved and
-the semantic sections are appended via `appendSystemPromptOverride`. Mode is
-mutable on the live session: `setMode` re-runs `loader.reload()` and swaps the
-active tool set; Pi applies both from the next turn. Mode persists in
-`session.json` (`mode`, absent = pure) and maps 1:1 onto the manifest
-`promptMode` field (`alt-only` = pure, `pi-default` = full).
-
-The assembly manifest records the selected paths, existence flags, and SHA-256
-hashes for app context, soul, role preset, and custom instruction when present.
-It also records the loaded skills with their source: `alt-theory` (bundled
-skill directory), `external` (user-enabled via app settings, spec §6.1), or
-`workspace` (project skills from a Full-mode working directory, spec §5.1).
-Per-mode external skill enablement lives in `{dataDir}/app-settings.json`
-(null = default policy: Pure none, Full all discovered), is snapshot at
-session open, and is served/edited through `GET /api/resources` +
-`PUT /api/resources/skills` (local mode only). Base discovery posture stays
-the `resourceDiscovery` knob: `clean` loads no skills, `internal` (the
-default) loads Alt bundled + user-enabled externals, and `dev-debug`
-additionally merges Pi's ambient global/project discovery for debugging
-(ambient skills are not recorded in the manifest).
+Per-Alt-mode external skill enablement lives in
+`{dataDir}/app-settings.json`. Base discovery posture remains the
+`resourceDiscovery` development knob: `clean` loads no skills, `internal`
+loads the configured product resources, and `dev-debug` also merges ambient Pi
+discovery for debugging.
 
 Pi extension posture since M3/M4 (2026-07-15): ambient extension discovery
 stays off in every mode (`noExtensions`); only explicit factories load through
@@ -355,7 +336,7 @@ timeout, or no reply reads as rejection (spec §5.2/§5.3).
 
 The manifest also records selected soul/role slugs, including `null` for
 `None`, plus KB root/domain, the workspace (§3.1), Pi prompt-template
-directory, provider/model, session directories, and Pi JSONL path. Full
+  directory, provider/model, session directories, and Pi JSONL path. Full
 content snapshots are deferred.
 
 ### User-prompt attachments (v1.2.1)
@@ -364,22 +345,22 @@ A user turn can carry attachment paths. The WS `prompt` message gained an
 optional `attachments: string[]` sibling to `payload`; the frontend stages
 those paths (composer file drag-drop, the "Attach file" native picker, or the
 workspace rail) and they also stay in the prompt text as an
-`(Attachments: …)` mention so Full-mode agents can read them from disk.
+`(Attachments: …)` mention so work-capable agents can read them from disk.
 `runPrompt(id, text, attachments)` threads them to `runPromptWithLineage`,
 where `imageAttachmentsFor()` reads image-type paths into Pi `ImageContent`
 blocks and passes them to `session.prompt(text, { images })` — but ONLY when the
 live `session.model.input` includes `"image"`. A text-only model gets no image
 blocks and simply sees the filename mention, so it never hard-fails; the
-`model-image-support` skill is how a user records a model's image capability.
+the Helper's image-support procedure is how a user records a model's image capability.
 Pi's `prompt()` accepts images natively, so this is a backend + modality-gate
 change with no new message-content plumbing.
 
 ### 3.1 Workspace Model (spec §5.1)
 
-A Full-capable session has a workspace: the primary working directory (the
+A work-capable session has a workspace: the primary working directory (the
 session cwd; defaults to the data-dir `workspace/`, or a user-chosen directory
 passed at creation) plus zero or more additional directories added
-intentionally mid-session. In Full mode only:
+intentionally mid-session. In Alt Theory Work and Native Pi:
 
 - the primary directory receives Pi's own project-context discovery (global
   agent-dir context plus the ancestor AGENTS.md/CLAUDE.md chain via
@@ -389,7 +370,7 @@ intentionally mid-session. In Full mode only:
   .agents/skills}` with manifest source `workspace`;
 - the guarded-write roots grow to the primary and added directories.
 
-Pure receives none of this. `addWorkspaceDir` mutates closure state and calls
+Alt Theory Understand receives none of this. `addWorkspaceDir` mutates closure state and calls
 `session.reload()` (a bare `loader.reload()` would not rebuild the system
 prompt). The workspace persists in the `V4SessionHeader` and manifest; reopen
 restores the primary as the session cwd, and a fork whose primary lies outside
@@ -451,40 +432,31 @@ Code anchors:
 - `alt-theory-app/web-server/session-store.ts`: old hidden-prefix transcript
   cleanup.
 
-## 4. Tool Policy
+## 4. Tool And Action Policy
 
-Since v1-alpha M1, the session keeps Pi's full tool registry and restricts the
-ACTIVE tool set per capability mode (an allowlist would be a lifetime registry
-filter and block in-session mode switches):
+The session keeps Pi's tool registry so application-runtime and Alt-mode
+changes can replace the active set without rebuilding history:
 
-- Pure read-only: `read`, `ls`, `grep`, `find`.
-- Pure write-enabled: the same tools plus `write`.
-- Full: Pi's default active set (`read`, `bash`, `edit`, `write`). Since M4
-  Full is exposed at the policy boundary; the `ALT_THEORY_ENABLE_FULL` gate is
-  removed.
-- The write tool is the Alt Theory guarded implementation in every mode: it
-  shadows Pi's builtin write and hard-enforces the mode's writable roots
-  (Pure: Alt writable roots; Full: plus workspace primary and added
-  directories), including symlink dereference
-  (`createGuardedWriteOperations`).
-- The security extension (`core/security-extension.ts`, a vendored light fork
-  per `development/compound/2026-07-15-decision-v1-alpha-security-extension.md`)
-  mediates every tool call through Pi's native `tool_call` → `{ block }`
-  interception: bash commands are scanned per chain segment and substitution
-  body on the NFKC-normalized, de-obfuscated form — a hard blocklist (fs
-  destruction, privilege escalation, user management) blocks outright, a
-  risky list (`rm`, `curl`, `ssh`, `chmod`, …) and credential-path references
-  escalate to the §5.2 approval path (deny / allow once / allow for this
-  session with a 30-minute TTL; fail closed without a UI); `edit`/`write`
-  paths are bounded to the same writable roots via the shared
-  realpath+`path.relative` containment (which lives in this file); credential
-  stores (`~/.ssh`, `~/.aws`, `~/.pi/agent/auth.json`, …) are blocked for
-  read and write in every mode; URL-shaped custom-tool inputs are checked
-  against cloud-metadata/internal-host patterns. Blocked and approved calls
-  append to `records/security-audit.jsonl`.
-- All of the above is a policy check in trusted code, not an OS sandbox. The
-  UI must describe it as policy checks and approvals — guard rails, never a
-  sandbox (spec §5.3); OS-level enforcement is out of v1.0-alpha scope.
+- Native Pi and Alt Theory Work use Pi's normal coding set: `read`, `bash`,
+  `edit`, and `write`.
+- Alt Theory Understand uses `read`, `ls`, `grep`, and `find`; a single
+  `understandReadOnly` deployment policy decides whether its bounded `write`
+  tool is also active. That policy has no effect on Work or Native Pi.
+- application-infrastructure tools such as subagent communication are shared
+  rather than used as evidence of an Alt behavior mode.
+
+The guarded write implementation shadows Pi's builtin write. Work and Native
+Pi use the primary workspace, added workspaces, Alt output roots, and any
+folder explicitly approved for the session. Understand remains within its Alt
+output roots unless the user explicitly approves another folder.
+
+The shared security extension (`core/security-extension.ts`) mediates both
+application runtimes through Pi's native `tool_call` interception. It hard
+blocks destructive/system and credential access, visibly asks for risky
+commands and external read/write boundaries, keeps conversation-lifetime
+allowances, checks URL-shaped inputs against cloud-metadata/internal-host
+patterns, and appends decisions to `records/security-audit.jsonl`. These are
+trusted policy checks and approvals, not an OS sandbox.
 
 ## 5. Application-Owned Session Service
 
@@ -495,7 +467,7 @@ session and receives forwarded runtime events.
 `SessionService` owns:
 
 - the current Pi `AgentSession` for each managed session;
-- assembly manifest, selected KB/role/soul, open mode, resume warnings,
+- assembly manifest, selected KB/role/soul, Alt mode, resume warnings,
   counters, and transcript cache;
 - a single internal Pi subscription per managed session;
 - attached WebSocket listeners;
@@ -581,7 +553,7 @@ When no active leaf can be derived, the reader keeps Pi's default opened leaf.
 Opening or reconfiguring a managed session also aligns Pi's leaf from run
 evidence before revise/delete guards run.
 
-Explicit Fork (M5 substrate, 2026-07-15) creates a NEW full session, not a
+Explicit Fork (M5 substrate, 2026-07-15) creates a complete new session, not a
 `fork-NNN` branch:
 
 - the child's Pi JSONL is built by COPYING the parent's persisted branch path
@@ -688,34 +660,34 @@ break point instead of rerunning the whole turn.
   as a Pi steering message (`steerRunningSession`) instead of a
   `session_busy` error, matching the Pi TUI's type-while-running behavior.
 
-### 5.3 Agent Team: Worker Sessions And Addressed Mail (v1.3.0-alpha.5 M2)
+### 5.3 Agent Team: Subagent Sessions And Addressed Mail (v1.3.0-alpha.5 M2)
 
-Lead conversations can delegate bounded tasks to worker agents. Design
+Lead conversations can delegate bounded tasks to subagents. Design
 record: `development/compound/2026-07-28-decision-v1.3-agent-team.md`.
 
-- **Workers are real sessions**: children created with
-  `forkedFrom: { sessionId, purpose: "worker" }` on the same substrate as
+- **Subagents are real sessions**: children created with
+  `forkedFrom: { sessionId, purpose: "subagent" }` on the same substrate as
   helper/side children — durable records, run lineage, break-point
   continuity, right-rail visibility, direct user messaging, and promotion
-  all apply. Depth is 1: a worker gets no spawn tool
-  (`ManagedSession.workerParentId` guards the service side).
+  all apply. Depth is 1: a subagent gets no spawn tool
+  (`ManagedSession.subagentParentId` guards the service side).
 - **Tool surface** (`web-server/agent-team.ts`): leads get `spawn_agent`,
   `send_to_agent`, `check_agent`, `wait_for_agents`, `interrupt_agent`,
-  `list_agents`; workers get `message_parent` only; A/B arms get none. The
+  `list_agents`; subagents get `message_parent` only; A/B arms get none. The
   module owns only the model-facing contract; behavior lives in
   `SessionService` behind the `AgentTeamBridge` interface. Tools join the
-  active set in every capability mode
+  active set in both application runtimes and both Alt modes
   (`alt-theory-core.ts` `extraTools`/`extraPromptSections`).
 - **Capability and model**: child mode is clamped to the parent's
-  (`clampWorkerMode`: Understand parents spawn only Understand children;
+  (`clampSubagentMode`: Understand parents spawn only Understand children;
   Work parents default to Understand). `model_tier: lower|same|higher`
   resolves against configured-and-usable models by cost metadata
   (`resolveModelTier`); an unresolvable tier falls back to `same` and says
   so in the spawn report.
-- **Concurrency**: background worker runs are capped at 3
-  (`WORKER_CONCURRENCY`); excess first-runs queue FIFO. `interrupt_agent`
-  on a queued worker removes it from the queue; `send_to_agent` with
-  `start_turn` on a queued worker joins its context instead of
+- **Concurrency**: background subagent runs are capped at 3
+  (`SUBAGENT_CONCURRENCY`); excess first-runs queue FIFO. `interrupt_agent`
+  on a queued subagent removes it from the queue; `send_to_agent` with
+  `start_turn` on a queued subagent joins its context instead of
   double-queuing.
 - **Addressed mail** (`web-server/agent-mail.ts`): one durable JSONL inbox
   per session (`recordsDir/agent-mail.jsonl`) carries parent↔child messages
@@ -788,7 +760,7 @@ workspace. It resolves only the persisted primary/additional workspace roots,
 omits hidden and common dependency/cache trees, caps the listing at 1,000
 files, and rechecks containment before a bounded text preview. This lets Files
 show the directory the agent actually works in without mislabeling imported
-references as the entire workspace. Switching Pure/Full changes mediation
+references as the entire workspace. Switching Understand/Work changes mediation
 capability, not these persisted folder identities.
 
 The daily Files UI labels persisted primary/additional locations as working
@@ -1034,9 +1006,9 @@ Limits (current):
   context-sanitation extension, break-point retry-in-place adopting the
   failed attempt's entries, visible `retrying` phase from Pi's
   `auto_retry_start`, `canRetry` on `run_failed`, steer-instead-of-busy for
-  user text during a running turn. Agent team (§5.3): worker sessions as
-  `forkedFrom` purpose `worker` children, lead/worker tool surfaces over the
-  `AgentTeamBridge`, mode clamp + relative model tier, 3-slot worker run
+  user text during a running turn. Agent team (§5.3): subagent sessions as
+  `forkedFrom` purpose `subagent` children, lead/subagent tool surfaces over the
+  `AgentTeamBridge`, mode clamp + relative model tier, 3-slot subagent run
   queue, durable per-session agent-mail inbox with steer/turn/on-open wake
   delivery, and addressed transcript rendering.
 - 2026-07-28: v1.3.0-alpha.4 continuity/model-setup repairs: stabilized
@@ -1066,7 +1038,7 @@ Limits (current):
   (`autoTitle` app-setting + `/api/settings/auto-title`). User-prompt image
   attachments (§3): WS `prompt.attachments[]` → `runPrompt` → `imageAttachmentsFor`
   → Pi `session.prompt({images})`, modality-gated on `model.input`, with the
-  `model-image-support` skill recording capability. Provider/model config embedded
+  the Helper image-support procedure recording capability. Provider/model config embedded
   in Settings → Models (always-visible picker + inline editor) with a
   UI-only auth-connect card that has no backend (§7). Frontend-only in this pass: dark theme
   (`data-theme` over `--color-*` tokens), Electron native bridge for file/folder
@@ -1101,7 +1073,7 @@ Limits (current):
   (sharing default follows designation, M7 decision doc §4). Fork section
   rewritten to describe the M5 copy-fork substrate. Registered here after
   the M7 IA design pass (`compound/2026-07-16-decision-v1-alpha-m7-ia-*`).
-- 2026-07-15: v1-alpha M1–M4 refresh. Per-session capability mode (§3/§4),
+- 2026-07-15: v1-alpha M1–M4 refresh. Per-session Alt mode (§3/§4),
   workspace model with primary + added directories (§3.1), approval bridge
   binding extension dialogs to the web UI, always-on vendored security
   extension with session-records audit (§4), workspace skill source in the
