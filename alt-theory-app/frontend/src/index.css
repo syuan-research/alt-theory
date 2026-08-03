@@ -281,14 +281,19 @@
     align-items: center;
     min-width: 0;
   }
+  .session-rename-inline { flex: 1; min-width: 0; display: flex; align-items: center; gap: 3px; padding: 2px 4px; }
+  .session-rename-inline input { flex: 1; min-width: 0; height: 26px; border: 1px solid var(--hairline); border-radius: var(--r-sm); background: var(--surface); color: var(--ink); padding: 3px 7px; outline: none; font-size: 0.82rem; }
+  .session-rename-inline input:focus { border-color: var(--text-3); }
+  .session-rename-inline button { flex: 0 0 auto; width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border: none; border-radius: var(--r-sm); background: transparent; color: var(--text-2); cursor: pointer; }
+  .session-rename-inline button:hover { background: var(--hover); color: var(--ink); }
   .sess {
     flex: 1;
     min-width: 0; display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: var(--r-sm); cursor: pointer; color: var(--ink-soft); font-size: 0.875rem; text-align: left; white-space: nowrap; overflow: hidden; }
   .sess:hover { background: var(--hover); }
-  .sess.active { background: var(--selected); font-weight: 500; }
+  .sess.active { background: color-mix(in srgb, var(--panel) 92%, var(--ink)); font-weight: 500; }
   .sess .s-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .sess .s-fork { color: var(--text-3); flex-shrink: 0; }
-  .badge-run { margin-left: auto; font-size: 0.7rem; color: var(--text-2); background: var(--surface); border-radius: 999px; padding: 1px 8px; flex-shrink: 0; }
+  .badge-run { margin-left: auto; font-size: 0.7rem; color: var(--text-2); background: var(--card); border-radius: 999px; padding: 1px 8px; flex-shrink: 0; }
   .badge-run.ok { color: var(--color-success); }
   .badge-run.warn { color: var(--color-warning); }
   .badge-run.danger { color: var(--color-danger); }
@@ -323,7 +328,7 @@
   .wb-tabs button.on { background: var(--surface); color: var(--ink); font-weight: 500; }
   .wb-view { display: none; flex-direction: column; flex: 1; min-height: 0; }
   .wb-view.on { display: flex; }
-  .wb-card { background: var(--surface); border: none; border-radius: var(--r-md); margin: 12px 12px 0; padding: 12px; }
+  .wb-card { background: var(--canvas); border: none; border-radius: var(--r-md); margin: 12px 12px 0; padding: 12px; }
   .wb-card h4 { margin: 0 0 8px; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-3); font-weight: 600; }
   .wb-row { display: flex; justify-content: space-between; font-size: 0.85rem; padding: 3px 0; gap: 12px; }
   .wb-row .k { color: var(--text-2); }
@@ -335,7 +340,7 @@
   .wb-apply:hover:not(:disabled) { background: var(--ink); color: var(--on-ink); }
   .wb-apply:disabled { opacity: 0.45; cursor: default; }
   .wb-actions { display: flex; flex-direction: column; gap: 8px; margin: 12px 12px 0; }
-  .wb-actions button { display: flex; align-items: center; gap: 8px; border: none; background: var(--surface); border-radius: var(--r-md); padding: 8px 12px; font-size: 0.8125rem; cursor: pointer; color: var(--ink-soft); text-align: left; }
+  .wb-actions button { display: flex; align-items: center; gap: 8px; border: none; background: var(--canvas); border-radius: var(--r-md); padding: 8px 12px; font-size: 0.8125rem; cursor: pointer; color: var(--ink-soft); text-align: left; }
   .wb-actions button:hover { background: var(--hover); }
   .wb-sessions { flex: 1; overflow-y: auto; margin-top: 8px; padding: 0 8px; }
   .wb-sess { display: flex; align-items: center; gap: 8px; padding: 5px 10px; border-radius: var(--r-sm); font-size: 0.8125rem; color: var(--ink-soft); cursor: pointer; white-space: nowrap; overflow: hidden; }
@@ -447,7 +452,7 @@
   .new-row .btn-new { flex: 1; }
 
   /* split new-conversation control: [folder picker | +] (M4) */
-  .split-new { flex: 1; display: flex; align-items: stretch; min-width: 0; border: 1px solid var(--hairline); border-radius: var(--r-md); background: var(--surface); overflow: visible; }
+  .split-new { flex: 1; display: flex; align-items: stretch; min-width: 0; border: 1px solid var(--hairline); border-radius: var(--r-md); background: var(--canvas); overflow: visible; }
   .split-new .ws-pick { flex: 1; min-width: 0; }
   .split-new .ws-pick > .list-menu { left: 0; right: auto; width: min(320px, calc(100vw - 24px)); }
   .split-new .ws-pick > summary { width: 100%; height: 100%; padding: 6px 8px; display: flex; align-items: center; gap: 6px; border-radius: var(--r-md) 0 0 var(--r-md); font-size: 0.85rem; color: var(--ink-soft); }
@@ -508,9 +513,12 @@
       transform: rotate(360deg);
     }
   }
-  .list-menu { position: absolute; right: 0; top: 30px; z-index: 60; background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--r-md); box-shadow: 0 6px 22px rgba(31,30,26,0.12); padding: 4px; min-width: 200px; }
+  .list-menu { position: absolute; right: 0; top: 30px; z-index: 60; background: var(--canvas); border: 1px solid var(--hairline); border-radius: var(--r-md); box-shadow: 0 6px 22px rgba(31,30,26,0.12); padding: 4px; min-width: 200px; }
   .list-menu button { display: flex; align-items: center; gap: 8px; width: 100%; border: none; background: none; padding: 7px 10px; border-radius: var(--r-sm); font-size: 0.85rem; color: var(--ink-soft); cursor: pointer; text-align: left; }
   .list-menu button:hover { background: var(--hover); }
+  .list-menu-confirm { display: flex; align-items: center; }
+  .list-menu-confirm button { justify-content: center; }
+  .list-menu-confirm .danger { color: var(--danger); font-weight: 600; }
 
   /* thinking block: collapsible, amber bar (v0.5.x lineage) */
   .think-block { max-width: 660px; margin: 0 auto 18px; padding: 0 24px; font-size: 0.75rem; color: var(--text-3); border-left: 2px solid var(--color-warning); }
@@ -528,6 +536,13 @@
   .msg-actions i { font-size: 0.9rem; }
   .msg-actions button:hover:not(:disabled) { background: var(--hover); color: var(--ink); }
   .msg-actions button:disabled { opacity: 0.4; cursor: default; }
+  .edit-action-cluster { display: inline-flex; position: relative; }
+  .edit-setup-action { position: absolute; z-index: 4; top: calc(100% + 3px); right: 0; width: max-content; opacity: 0; visibility: hidden; background: var(--card) !important; border: 1px solid var(--line) !important; box-shadow: var(--shadow-sm); padding: 5px 8px !important; pointer-events: none; transition: opacity 100ms ease; }
+  .edit-action-cluster:hover .edit-setup-action,
+  .edit-action-cluster:focus-within .edit-setup-action { opacity: 1; visibility: visible; pointer-events: auto; }
+  .inline-edit-textarea { width: 100%; resize: none; border: 0; outline: 0; background: transparent; color: inherit; font: inherit; line-height: inherit; }
+  .inline-edit-actions { max-width: 660px; margin: 6px auto 0; padding: 0 24px; display: flex; justify-content: flex-end; gap: 6px; }
+  .inline-edit-actions .send { width: auto; min-width: 42px; padding-inline: 12px; }
   /* composer */
   .composer-wrap { padding: 16px 24px 18px; }
   .composer-col { max-width: 660px; margin: 0 auto; }
@@ -720,7 +735,7 @@
   }
   .rpanel .body:has(.child-conv) .child-conv { flex: 1; min-width: 0; min-height: 0; }
   .rp-empty { padding: 24px 12px; font-size: 0.8125rem; color: var(--text-3); text-align: center; }
-  .sc-item, .file-item { background: var(--surface); border: none; border-radius: var(--r-md); padding: 10px 12px; margin-bottom: 8px; cursor: pointer; width: 100%; text-align: left; display: block; }
+  .sc-item, .file-item { background: var(--canvas); border: none; border-radius: var(--r-md); padding: 10px 12px; margin-bottom: 8px; cursor: pointer; width: 100%; text-align: left; display: block; }
   .sc-item:hover, .file-item:hover { box-shadow: 0 2px 8px rgba(31,30,26,0.08); }
   .sc-item .t { font-size: 0.875rem; font-weight: 500; display: flex; align-items: center; gap: 6px; }
   .sc-item .d { font-size: 0.78rem; color: var(--text-3); margin-top: 2px; }
@@ -734,14 +749,15 @@
   /* No text-transform: the label is ordinary prose ("Working folders"), and
      forcing caps here made every attempt to fix the wording look ignored. */
   .files-section-title { margin: 8px 4px 6px; color: var(--text-3); font-size: 0.72rem; font-weight: 600; }
-  .working-folders { margin-bottom: 10px; }
-  .working-folder { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 7px; padding: 9px 8px; margin-bottom: 6px; border-radius: var(--r-sm); background: var(--surface); color: var(--ink-soft); }
+  .working-folders { margin-bottom: 10px; padding: 4px 8px 10px; border-radius: var(--r-md); background: var(--canvas); }
+  .working-folder-group + .working-folder-group { border-top: 1px solid var(--hairline); padding-top: 6px; }
+  .working-folder { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 7px; padding: 9px 8px 5px; border-radius: var(--r-sm); background: transparent; color: var(--ink-soft); }
   .working-folder-role { font-size: 0.78rem; font-weight: 500; }
   .working-folder-path { margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3); font-family: var(--mono); font-size: 0.68rem; }
   .working-folder-open { display: inline-flex; align-items: center; gap: 5px; margin-top: 6px; padding: 0; border: 0; background: none; color: var(--accent); font: inherit; font-size: 0.72rem; cursor: pointer; }
   .working-folder-open:hover { text-decoration: underline; }
   .working-folder-missing { margin-top: 3px; color: var(--danger); font-size: 0.7rem; }
-  .working-tree { max-height: 62vh; overflow: auto; margin: -2px 0 8px 20px; border-left: 1px solid var(--hairline); padding-left: 4px; }
+  .working-tree { max-height: 62vh; overflow: auto; margin: 0 0 8px 20px; border-left: 1px solid var(--hairline); padding-left: 4px; }
   .working-tree .ti { display: flex; align-items: center; gap: 6px; width: 100%; border: none; background: transparent; color: var(--ink-soft); padding: 4px 6px; text-align: left; font: inherit; font-size: 0.75rem; cursor: pointer; }
   .working-tree .ti span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .working-tree .ti:hover { background: var(--hover); }
@@ -759,7 +775,7 @@
   .change-diff { margin-top: 8px; }
   .change-diff summary { cursor: pointer; color: var(--text-2); font-size: 0.75rem; }
   .preview { font-size: 0.85rem; }
-  .preview .pv-card { background: var(--surface); border: none; border-radius: var(--r-md); padding: 14px 16px; color: var(--ink-soft); }
+  .preview .pv-card { background: var(--canvas); border: none; border-radius: var(--r-md); padding: 14px 16px; color: var(--ink-soft); }
   .preview .pv-card h5 { margin: 0 0 8px; font-size: 0.9rem; }
   .preview .pv-card p { margin: 0 0 8px; }
   .diffline { font-family: var(--mono); font-size: 0.76rem; padding: 1px 8px; white-space: pre-wrap; word-break: break-word; }
@@ -829,6 +845,8 @@
     margin-top: 8px;
     margin-bottom: 10px;
   }
+  .child-ctx-line { padding: 4px 18px 0; gap: 12px; }
+  .child-slash-palette { margin: 4px 16px -4px; position: relative; }
   .child-composer textarea {
     min-height: 42px;
     height: 42px;
@@ -920,37 +938,13 @@
   .model-config-heading h2 { margin: 0; }
   .model-config-heading .model-config-status { margin: 0; min-height: 0; text-align: right; }
   .model-config-status { margin: 16px 0 12px; min-height: 26px; padding: 0 2px; }
-  .active-model-overflow { display: inline-block; max-width: 100%; text-align: left; }
   .active-model-summary {
-    cursor: pointer;
-    list-style: none;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
     font-size: 0.95rem;
     line-height: 1.35;
-  }
-  .active-model-summary::-webkit-details-marker { display: none; }
-  .active-model-name { font-size: 1.05rem; font-weight: 600; }
-  .active-model-change {
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-    margin-left: 4px;
-    padding: 2px 8px;
-    border: 1px solid var(--hairline);
-    border-radius: 999px;
-    background: var(--surface);
-    font-size: 0.74rem;
-    color: var(--text-2);
-    white-space: nowrap;
-  }
-  .active-model-summary:hover .active-model-change { background: var(--hover); color: var(--ink); }
-  .active-model-overflow[open] .active-model-change i { transform: rotate(180deg); }
-  .active-model-panel {
-    margin-top: 8px;
-    padding: 10px 12px;
-    border: 1px solid var(--hairline);
-    border-radius: var(--r-md);
-    background: var(--card);
-    text-align: left;
   }
   .default-model-picker {
     display: flex;
@@ -972,6 +966,8 @@
     font: inherit;
     font-size: 0.8rem;
   }
+  .default-model-picker.active-model-inline { display: inline-flex; margin: 0; gap: 6px; }
+  .active-model-inline select { min-width: 260px; max-width: min(460px, 52vw); }
   /* An alternative route to a working setup, not a footnote: the summary
      reads as a second button under "Add provider". */
   .chatbot-config-hint { margin: 8px 0 10px; line-height: 1.4; }
@@ -1009,6 +1005,12 @@
   .provider-master-row { display: flex; align-items: center; gap: 7px; width: 100%; padding: 8px 9px; border: none; border-radius: var(--r-sm); background: transparent; color: var(--ink-soft); font: inherit; font-size: 0.82rem; cursor: pointer; text-align: left; }
   .provider-master-row:hover { background: var(--hover); }
   .provider-master-row.on { background: var(--selected); color: var(--ink); }
+  .provider-master-entry { min-width: 0; }
+  .provider-discard-confirm { margin: 3px 4px 6px; padding: 7px 8px; border-radius: var(--r-sm); background: var(--card); color: var(--text-3); font-size: 0.72rem; line-height: 1.35; }
+  .provider-discard-confirm > div { display: flex; justify-content: flex-end; gap: 4px; margin-top: 5px; }
+  .provider-discard-confirm button { border: none; border-radius: var(--r-sm); background: transparent; color: var(--text-2); padding: 2px 5px; cursor: pointer; font: inherit; }
+  .provider-discard-confirm button:hover { background: var(--hover); color: var(--ink); }
+  .provider-discard-confirm button.danger { color: var(--danger); font-weight: 600; }
   .provider-master-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .provider-oauth-mark { margin-left: auto; color: var(--text-3); font-size: 0.68rem; }
   .provider-active-check { margin-left: auto; color: var(--ink); }

@@ -312,7 +312,12 @@ function UserNav({ onImport }: { onImport: () => void }) {
     };
 
     app.requestConfirm({
-      message: t("Move this conversation to work in \"{label}\"? Its branches move with it. Alt will ask for permissions again in the new folder. Files already on disk are not moved.", { label }),
+      message: t("Move this conversation to work in \"{label}\"?", { label }),
+      details: [
+        t("Its branches move with it."),
+        t("Alt will ask for permissions again in the new folder."),
+        t("Files already on disk are not moved."),
+      ],
       confirmLabel: t("Move"),
       checkbox: canMigrateFolder
         ? {
@@ -356,6 +361,25 @@ function UserNav({ onImport }: { onImport: () => void }) {
                 <div className="list-menu">
                   <button
                     onClick={(e) => {
+                      closeMenu(e);
+                      void addFolder();
+                    }}
+                  >
+                    <i className="ph ph-folder-plus" />
+                    {t("Add working folder…")}
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      closeMenu(e);
+                      onImport();
+                    }}
+                  >
+                    <i className="ph ph-download-simple" />
+                    {t("Import conversations…")}
+                  </button>
+                  <div className="sep" />
+                  <button
+                    onClick={(e) => {
                       e.currentTarget.closest("details")?.removeAttribute("open");
                       app.setDraftWorkspace(null);
                     }}
@@ -384,16 +408,6 @@ function UserNav({ onImport }: { onImport: () => void }) {
                       ) : null}
                     </button>
                   ))}
-                  <div className="sep" />
-                  <button
-                    onClick={(e) => {
-                      e.currentTarget.closest("details")?.removeAttribute("open");
-                      void addFolder();
-                    }}
-                  >
-                    <i className="ph ph-plus" />
-                    {t("Add working folder…")}
-                  </button>
                 </div>
               </details>
               <button
@@ -419,24 +433,6 @@ function UserNav({ onImport }: { onImport: () => void }) {
               {t("New conversation")}
             </button>
           )}
-          {local ? (
-            <details className="list-more">
-              <summary title="More">
-                <i className="ph ph-dots-three" />
-              </summary>
-              <div className="list-menu">
-                <button
-                  onClick={(e) => {
-                    closeMenu(e);
-                    onImport();
-                  }}
-                >
-                  <i className="ph ph-download-simple" />
-                  {t("Import conversations…")}
-                </button>
-              </div>
-            </details>
-          ) : null}
         </div>
         <RunningCount sessions={app.sessions} />
       </div>
@@ -590,6 +586,9 @@ function SessionNode({
   draggable?: boolean;
 }) {
   const app = useApp();
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState("");
   const active = app.selectedCatalogSessionId === session.sessionId;
   const children = childrenByParent.get(session.sessionId) ?? [];
   // The active session's own run state is live in the app, ahead of the poll.
@@ -615,50 +614,83 @@ function SessionNode({
   return (
     <>
       <div className="session-row">
-        <button
-        className={`sess${active ? " active" : ""}`}
-        data-session-id={session.sessionId}
-        style={indent ? { paddingLeft: 10 + indent * 16 } : undefined}
-        onClick={() => onOpen(session.sessionId)}
-        title={title}
-        draggable={draggable}
-        onDragStart={
-          draggable
-            ? (e) => {
-                e.dataTransfer.setData(
-                  "text/alt-theory-session",
-                  session.sessionId,
-                );
-                e.dataTransfer.effectAllowed = "move";
-              }
-            : undefined
-        }
-      >
-        {session.forkedFrom ? (
-          <i
-            className={`ph ${
-              session.forkedFrom.purpose === "subagent"
-                ? "ph-robot"
-                : session.forkedFrom.purpose === "helper"
-                  ? "ph-lifebuoy"
-                  : session.forkedFrom.purpose === "side"
-                    ? "ph-arrows-split"
-                    : "ph-git-branch"
-            } s-fork`}
-            aria-hidden
-            title={originTitle(session)}
-          />
-        ) : null}
-        <span className="s-title">
-          {title}
-        </span>
-        {state ? (
-          <span className={`badge-run ${state.tone}`} title={state.title}>
-            {state.label}
-          </span>
-        ) : null}
-      </button>
-        <details className="list-more session-more">
+        {renaming ? (
+          <form
+            className="session-rename-inline"
+            style={indent ? { marginLeft: 10 + indent * 16 } : undefined}
+            onSubmit={(event) => {
+              event.preventDefault();
+              void app.renameSelectedSession(session.sessionId, renameValue).then((saved) =>
+                saved && setRenaming(false),
+              );
+            }}
+          >
+            <input
+              autoFocus
+              aria-label={t("Conversation name")}
+              value={renameValue}
+              onChange={(event) => setRenameValue(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") setRenaming(false);
+              }}
+            />
+            <button type="button" title={t("Cancel")} onClick={() => setRenaming(false)}>
+              <i className="ph ph-x" />
+            </button>
+            <button type="submit" title={t("Save")}>
+              <i className="ph ph-check" />
+            </button>
+          </form>
+        ) : (
+          <button
+            className={`sess${active ? " active" : ""}`}
+            data-session-id={session.sessionId}
+            style={indent ? { paddingLeft: 10 + indent * 16 } : undefined}
+            onClick={() => onOpen(session.sessionId)}
+            title={title}
+            draggable={draggable}
+            onDragStart={
+              draggable
+                ? (e) => {
+                    e.dataTransfer.setData(
+                      "text/alt-theory-session",
+                      session.sessionId,
+                    );
+                    e.dataTransfer.effectAllowed = "move";
+                  }
+                : undefined
+            }
+          >
+            {session.forkedFrom ? (
+              <i
+                className={`ph ${
+                  session.forkedFrom.purpose === "subagent"
+                    ? "ph-robot"
+                    : session.forkedFrom.purpose === "helper"
+                      ? "ph-lifebuoy"
+                      : session.forkedFrom.purpose === "side"
+                        ? "ph-arrows-split"
+                        : "ph-git-branch"
+                } s-fork`}
+                aria-hidden
+                title={originTitle(session)}
+              />
+            ) : null}
+            <span className="s-title">{title}</span>
+            {state ? (
+              <span className={`badge-run ${state.tone}`} title={state.title}>
+                {state.label}
+              </span>
+            ) : null}
+          </button>
+        )}
+        {!renaming ? (
+        <details
+          className="list-more session-more"
+          onToggle={(event) => {
+            if (!event.currentTarget.open) setConfirmDelete(false);
+          }}
+        >
           <summary title="Conversation actions">
             <i className="ph ph-dots-three" />
           </summary>
@@ -666,7 +698,8 @@ function SessionNode({
             <button
               onClick={(e) => {
                 closeMenu(e);
-                void app.renameSelectedSession(session.sessionId);
+                setRenameValue(app.sessionDisplayNames[session.sessionId]?.alias || title);
+                setRenaming(true);
               }}
             >
               <i className="ph ph-pencil-simple" />
@@ -690,17 +723,28 @@ function SessionNode({
               <i className="ph ph-download-simple" />
               {t("Export Markdown")}
             </button>
-            <button
-              onClick={(e) => {
-                closeMenu(e);
-                app.deleteSelectedSession(session.sessionId);
-              }}
-            >
-              <i className="ph ph-trash" />
-              {t("Delete")}
-            </button>
+            {confirmDelete ? (
+              <div className="list-menu-confirm">
+                <button onClick={() => setConfirmDelete(false)}>{t("Cancel")}</button>
+                <button
+                  className="danger"
+                  onClick={(event) => {
+                    closeMenu(event);
+                    app.deleteSelectedSession(session.sessionId);
+                  }}
+                >
+                  {t("Delete")}
+                </button>
+              </div>
+            ) : (
+              <button onClick={() => setConfirmDelete(true)}>
+                <i className="ph ph-trash" />
+                {t("Delete")}
+              </button>
+            )}
           </div>
         </details>
+        ) : null}
       </div>
       {children.map((child) => (
         <SessionNode

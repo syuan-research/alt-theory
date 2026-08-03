@@ -2626,13 +2626,34 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           }
           break;
         }
-        case "retry_failed": {
+        case "prepare_branch_revision": {
           if (!attachedSessionId) {
             sendError(send, new Error("A materialized session is required"));
             break;
           }
           try {
-            const run = sessionService.retryFailed(attachedSessionId);
+            const sourceSessionId = attachedSessionId;
+            const forked = await sessionService.prepareRevisionBranch(
+              sourceSessionId,
+              msg.payload.entryId,
+            );
+            if (closed) break;
+            send({
+              type: "branch_created",
+              payload: { sessionId: forked.sessionId, sourceSessionId },
+            });
+          } catch (error) {
+            sendServiceError(send, error);
+          }
+          break;
+        }
+        case "retry_latest": {
+          if (!attachedSessionId) {
+            sendError(send, new Error("A materialized session is required"));
+            break;
+          }
+          try {
+            const run = sessionService.retryLatestFromStart(attachedSessionId);
             await run.completion;
           } catch (error) {
             sendServiceError(send, error);
@@ -2745,13 +2766,23 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               msg.payload.forkPointEntryId,
             );
             if (!closed) {
-              attachToSession(forked.sessionId);
-              send({
-                type: "session_transcript",
-                payload: {
-                  messages: sessionService.getTranscript(forked.sessionId),
-                },
-              });
+              if (msg.payload.sourceSessionId) {
+                // Session-list Duplicate intentionally follows its copy.
+                attachToSession(forked.sessionId);
+                send({
+                  type: "session_transcript",
+                  payload: {
+                    messages: sessionService.getTranscript(forked.sessionId),
+                  },
+                });
+              } else {
+                // `/branch` is an idle Related conversation; keep this socket
+                // attached to its source just like edit comparison.
+                send({
+                  type: "branch_created",
+                  payload: { sessionId: forked.sessionId, sourceSessionId: forkSource },
+                });
+              }
             }
           } catch (error) {
             sendServiceError(send, error);

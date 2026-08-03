@@ -1,7 +1,7 @@
 ---
 title: Alt Theory information architecture
 status: v2
-last_updated: 2026-07-29
+last_updated: 2026-08-03
 scope: where user-facing things live, how the major surfaces relate, and which information belongs in each
 ---
 
@@ -47,6 +47,13 @@ surfaces remain designation-gated and absent for everyone else.
    than teaching protocol details in the settings UI.
 7. **Promises are statements, not features.** Stable assurances such as local
    storage belong in first-run/About copy, not as permanent controls.
+8. **Keep follow-up choices near their trigger and preserve spatial stability.**
+   Lightweight confirmation, a single-value setting, or a secondary action
+   should complete at the object the user just clicked. Prefer an anchored menu,
+   same-row replacement, or stable inline selector over a distant modal or an
+   expanding panel. Revealing a choice must not move its trigger under the
+   pointer. Use a modal or expanding form only when the user must read substantial
+   consequences or provide additional information.
 
 ## Surface map
 
@@ -69,16 +76,18 @@ surfaces remain designation-gated and absent for everyone else.
   - Skills do not receive permanent navigation entries merely because they are
     installed.
 - **Messages**
-  - User messages keep a familiar pencil for editing; its tooltip may say
-    `Edit and branch`. Editing after an answer preserves the original in a
-    sibling conversation and reveals the related-conversation rail.
-  - The user-message overflow may offer `Try same prompt again`; it has the
-    same sibling-branch behavior without forcing novice users to understand
-    Git terminology.
-  - `Retry` is only for failed/no-answer attempts. It stays above the composer
-    and reruns in place without creating a visible branch.
-  - History-changing actions explain their consequence at the moment of first
-    use.
+  - The pencil means **Edit and compare**. Editing stays in the user bubble;
+    Send preserves the original and runs the edit in a sibling conversation.
+  - The edit state also offers `Adjust model or role…`. It opens an idle Related
+    branch, prefilled with the edit but forked before that user message, so the
+    user may change configuration before Send. Hover/focus may reveal the same
+    secondary action; it is not a separate mode.
+  - `Retry` reruns the latest user message from the start in the same visible
+    conversation, whether the previous answer completed or was stopped. It does
+    not create a Related child or list branch. Automatic provider retry remains
+    runtime recovery, not this user action.
+  - Traditional Branch is the second-level `/branch` command, not a message
+    button. It opens an idle Related branch without sending.
   - Resolved conversation permissions do not become transcript events. When
     retained for inspection, they live collapsed in advanced Runtime.
   - Thinking, tool activity, compaction boundaries, and connection/run states
@@ -96,14 +105,17 @@ surfaces remain designation-gated and absent for everyone else.
 - **Right rail**
   - Holds files/changes and one selected related conversation (Branch, BTW,
     Helper, or subagent).
-  - **Branch / retry (purpose `fork`)** open the child in this rail at roughly
+  - **Branch / edited comparisons (purpose `fork`)** open the child in this rail at roughly
     **half of the center+right work area** (not half the browser window).
   - **BTW, Helper, and subagents** open at the ordinary default rail width
     (~480 or the user’s last dragged width).
   - Leaving a related child (Back, collapse rail, switch rail tab) clears the
     active related session so re-selecting the same child opens it again.
+  - A Related conversation uses the same history, live thinking/tool rendering,
+    approvals, skills, and slash commands as the center. It exposes model and
+    role; mode chrome is omitted only because the rail is narrow.
   - Center multi-arm A/B comparison stays on Workbench compare surfaces only;
-    branch/retry must not open a second center-column “compare pane.”
+    branches must not open a second center-column “compare pane.”
   - File preview occupies the rail as a real reading surface; rendered Markdown
     is the default for non-technical users, with source available on demand.
 - **Settings**
@@ -169,8 +181,9 @@ Fetch.
 - When a related child is open, the outer inspector body does not double-scroll
   the conversation area.
 - Main and related composers stay **visually the same card height** when
-  side-by-side; the related composer stays feature-light (reply + send) and
-  does not clone mode/model chrome.
+  side-by-side. Related is a compact variant of the same conversation surface:
+  it keeps slash commands, skills, model, and role; only mode chrome is hidden
+  for space.
 - First-level attach control is **Understand-only**; Work keeps attach in the
   toolbox.
 - Mode toggle is compact (~20% shorter than earlier chrome).

@@ -119,7 +119,8 @@ export type ClientMessage =
     }
   | { type: "revise_latest"; payload: { text: string; entryId?: string } }
   | { type: "branch_revision"; payload: { text: string; entryId?: string } }
-  | { type: "retry_failed" }
+  | { type: "prepare_branch_revision"; payload: { entryId: string } }
+  | { type: "retry_latest" }
   | { type: "delete_latest" }
   | { type: "switch_mode"; payload: { mode: "understand" | "work" } }
   | { type: "add_workspace_dir"; payload: { dir: string } }
@@ -175,7 +176,7 @@ export type ServerMessage =
       payload: { sessionId: string; purpose: "side" | "helper" };
     }
   | {
-      /** An edit / same-prompt retry opened a branch. The connection stays on
+      /** An edit comparison opened a branch. The connection stays on
        *  the source; the client opens this one beside it for comparison. */
       type: "branch_created";
       payload: { sessionId: string; sourceSessionId: string };

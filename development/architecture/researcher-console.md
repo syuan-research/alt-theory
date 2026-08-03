@@ -66,9 +66,13 @@ gate (unchanged since v0.5).
   event-driven auto-open. `Related conversations` is the relationship
   container for Branch, BTW, Helper, and subagent children. They run there with
   their own transcript/composer while the parent remains in the center; listed
-  promotion keeps purpose labels (alpha.6). **Branch/retry** open the rail at
+  promotion keeps purpose labels (alpha.6). **Branch/edited comparison** open the rail at
   ~half of center+right work area; **BTW / Helper / subagents** use default rail
-  width. Center A/B multi-arm remains Workbench-only (not a branch side pane).
+  width. Related reuses the center conversation's history, live thinking/tools,
+  approvals, skills, and slash behavior; model and role remain selectable while
+  mode chrome is omitted for space. Center A/B multi-arm remains Workbench-only
+  (not a branch side pane). User Retry instead reruns the latest prompt from the
+  start in the same visible conversation.
   Other object classes include file review and (provisionally) full-width
   side-by-side A/B arm reading, Changes list (agent-modified files aggregated
   from mediation records) vs Workspace (tree + full-panel preview) as two
@@ -184,7 +188,7 @@ public repo.
   The implementation plan is retained in private development records.
 - 2026-07-20: Updated owner-acceptance status after the local Understand/Work flow
   passed. Bundle delivery remains separate from the React architecture.
-- 2026-07-29 (alpha.6 residual): Branch/retry open in Related at ~half of
+- 2026-07-29 (alpha.6 residual, superseded for Retry by alpha.6.2): Branch/retry opened in Related at ~half of
   center+right (not whole window); BTW/Helper/subagent use default rail width.
   List/switcher titles use `Branch N · title` style prefixes (not rename).
   Center A/B multi-arm stays Workbench-only. Related Back clears sticky open

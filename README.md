@@ -21,8 +21,8 @@ configuration, and packaging may still change.
   explicit default model for new conversations.
 - **Materials**: working folders, attach paths, knowledge-base domains, role
   presets, and skills (including Helper, plan-record, web search in Work).
-- **Conversation controls**: branch / same-prompt retry with side-by-side
-  comparison, BTW side chats, Helper as a fresh-context side conversation,
+- **Conversation controls**: inline Edit-and-compare, same-conversation Retry,
+  traditional `/branch`, BTW side chats, Helper as a fresh-context conversation,
   subagent agents (agent team) with addressable mail, import of cross-harness
   sessions.
 - **User documentation** under `docs/en/` (English) and `docs/zh-Hans/`

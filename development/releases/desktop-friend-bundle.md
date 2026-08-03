@@ -26,6 +26,19 @@ User state is not part of the bundle. Existing conversations and configuration
 remain under the user's Alt Theory data directory and must survive replacement
 of the app folder.
 
+### When macOS hardware is required
+
+Do not rebuild macOS merely because a Windows bundle is refreshed. Reuse the
+last successful macOS packaging evidence for frontend, copy, CSS, and ordinary
+application-logic changes that do not alter the desktop packaging boundary.
+
+Build and validate on a Mac when shipping a new Mac ZIP, or when a change
+touches Electron, native dependencies, `package.json`/`package-lock.json`,
+`build.files`, preload or desktop bridges, architecture, signing, entitlements,
+archive format, or packaged runtime-file assumptions. The Mac agent follows
+this same document from the exact intended commit; there is no separate Mac
+release process to drift.
+
 ## What the bundle reads
 
 The executable source of truth is `build.files` in `package.json`. The current

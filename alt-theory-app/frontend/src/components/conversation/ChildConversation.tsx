@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ApprovalRequestPayload, ServerMessage, TranscriptMessage } from "@/api/types";
+import type { ActiveToolState, ApprovalRequestPayload, ServerMessage, SessionSnapshot, StreamPart, TranscriptMessage } from "@/api/types";
 import { fetchSessionDetail } from "@/api/sessions";
 import { useApp } from "@/context/AppProvider";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { isListMember } from "@/lib/sessionList";
 import { t } from "@/i18n";
 import { ApprovalDock } from "@/components/conversation/ApprovalDock";
-import { AssistantBubble, TranscriptEntry } from "@/components/conversation/MessageList";
+import { StreamPartsView, TranscriptEntry } from "@/components/conversation/MessageList";
+import { handleConversationStreamMessage } from "@/lib/conversationStream";
+import { ModelChip } from "@/components/conversation/ModelChip";
 
 /**
  * A conversation other than the one in the center: a branch shown beside it for
@@ -27,13 +29,17 @@ export function ChildConversation({
 }) {
   const app = useApp();
   const [messages, setMessages] = useState<TranscriptMessage[]>([]);
-  const [streaming, setStreaming] = useState("");
+  const [streamParts, setStreamParts] = useState<StreamPart[]>([]);
   const [draft, setDraft] = useState("");
   const [running, setRunning] = useState(false);
   const [status, setStatus] = useState(t("Connecting…"));
   const [error, setError] = useState("");
   const [approvals, setApprovals] = useState<ApprovalRequestPayload[]>([]);
   const [connected, setConnected] = useState(false);
+  const [snapshot, setSnapshot] = useState<SessionSnapshot | null>(null);
+  const [menu, setMenu] = useState<"role" | "model" | null>(null);
+  const [slashIndex, setSlashIndex] = useState(0);
+  const activeToolsRef = useRef<Record<string, ActiveToolState>>({});
   const messagesRef = useRef<HTMLDivElement>(null);
   const developer = app.transcriptView === "developer";
 
@@ -48,40 +54,44 @@ export function ChildConversation({
 
   const onMessage = useCallback(
     (message: ServerMessage) => {
+      if (handleConversationStreamMessage(message, {
+        activeTools: activeToolsRef,
+        setParts: setStreamParts,
+        setPhaseLabel: setStatus,
+      })) {
+        if (message.type !== "run_phase" || message.payload.phase !== "idle") setRunning(true);
+        return;
+      }
       switch (message.type) {
+        case "session_opened":
+        case "session_updated":
+          setSnapshot(message.payload);
+          setRunning(message.payload.status === "running");
+          break;
         case "session_transcript":
           setMessages(message.payload.messages);
-          setStreaming("");
+          setStreamParts([]);
+          activeToolsRef.current = {};
           setRunning(false);
           setStatus(t("Ready"));
           break;
-        case "assistant_delta":
-          setStreaming((current) => current + message.payload.text);
-          setRunning(true);
-          break;
-        case "run_phase":
-          setStatus({
-            connecting: t("Connecting…"),
-            processing: t("Processing…"),
-            thinking: t("Thinking…"),
-            tool: t("Using a tool…"),
-            compacting: t("Compacting…"),
-            retrying: t("Retrying…"),
-            "awaiting-user": t("Waiting for approval…"),
-            idle: t("Ready"),
-            error: t("Error"),
-          }[message.payload.phase]);
-          break;
         case "run_completed":
+          setSnapshot((current) => current ? {
+            ...current,
+            status: "idle",
+            currentModel: message.payload.currentModel ?? current.currentModel,
+          } : current);
           setRunning(false);
-          setStreaming("");
+          setStreamParts([]);
+          activeToolsRef.current = {};
           setStatus(t("Ready"));
           void refreshTranscript();
           void app.refreshSessions();
           break;
         case "run_failed":
           setRunning(false);
-          setStreaming("");
+          setStreamParts([]);
+          activeToolsRef.current = {};
           setError(message.payload.error);
           setStatus(t("Error"));
           void refreshTranscript();
@@ -93,6 +103,14 @@ export function ChildConversation({
           setApprovals((current) =>
             current.filter((item) => item.approvalId !== message.payload.approvalId),
           );
+          break;
+        case "branch_created":
+          app.setActiveRelatedSessionId(message.payload.sessionId, { size: "half" });
+          void app.refreshSessions();
+          break;
+        case "related_session_created":
+          app.setActiveRelatedSessionId(message.payload.sessionId, { size: "default" });
+          void app.refreshSessions();
           break;
         case "extension_notice":
           if (message.payload.level === "info") {
@@ -130,7 +148,7 @@ export function ChildConversation({
   useEffect(() => {
     const el = messagesRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [messages, streaming]);
+  }, [messages, streamParts]);
 
   // A Helper/BTW opened with a question already typed asks it straight away
   // instead of greeting the user with "what can I help with?".
@@ -139,6 +157,12 @@ export function ChildConversation({
   useEffect(() => {
     if (!seed || seed.sessionId !== sessionId || seedSentRef.current) return;
     if (!connected) return;
+    if (!seed.autoSend) {
+      seedSentRef.current = true;
+      setDraft(seed.text);
+      app.clearChildSeed();
+      return;
+    }
     if (socket.send({ type: "prompt", payload: seed.text })) {
       seedSentRef.current = true;
       setRunning(true);
@@ -160,6 +184,36 @@ export function ChildConversation({
         setStatus(t("Working…"));
       }
     }
+  };
+
+  const slashCommands = useMemo(() => [
+    { name: "helper", description: t("Ask how Alt works, or get setup fixed — in a new conversation on the side"), run: () => socket.send({ type: "create_related_session", payload: { purpose: "helper" } }), immediate: true },
+    { name: "branch", description: t("Branch this conversation into a new direction"), run: () => socket.send({ type: "fork_session", payload: { purpose: "fork" } }), immediate: true },
+    { name: "btw", description: t("Start a side conversation without adding it to the list"), run: () => socket.send({ type: "create_related_session", payload: { purpose: "side" } }), immediate: true },
+    { name: "compact", description: t("Compact this conversation to free context space"), run: () => socket.send({ type: "compact" }), immediate: true },
+    { name: "new", description: t("Start a new conversation"), run: () => app.startNewSession(), immediate: true },
+    ...(app.discovery?.skills ?? []).filter((skill) => skill.enabled?.[snapshot?.mode ?? "understand"] !== false).map((skill) => ({
+      name: skill.name,
+      description: skill.description || t("Alt Theory skill"),
+      run: (args: string) => socket.send({ type: "invoke_skill", payload: { skillName: skill.name, ...(args.trim() ? { userText: args.trim() } : {}) } }),
+      immediate: false,
+    })),
+  ], [app, socket]);
+  const slashQuery = draft.startsWith("/") && !draft.startsWith("//") ? draft.slice(1) : null;
+  const slashMatches = useMemo(() => {
+    if (slashQuery === null) return [];
+    const token = slashQuery.split(/\s+/, 1)[0].toLowerCase();
+    return slashCommands.filter((command) => command.name.toLowerCase().startsWith(token));
+  }, [slashCommands, slashQuery]);
+  useEffect(() => setSlashIndex(0), [slashMatches.length]);
+  const runSlash = (command: (typeof slashCommands)[number]) => {
+    const args = slashQuery?.split(/\s+/).slice(1).join(" ") ?? "";
+    if (!command.immediate && !args.trim()) {
+      setDraft(`/${command.name} `);
+      return;
+    }
+    setDraft("");
+    command.run(args);
   };
 
   const respondApproval = (
@@ -214,7 +268,7 @@ export function ChildConversation({
             isRunning={running}
           />
         ))}
-        {streaming ? <AssistantBubble text={streaming} streaming /> : null}
+        <StreamPartsView parts={streamParts} developer={developer} />
       </div>
 
       {approvals[0] ? (
@@ -226,6 +280,46 @@ export function ChildConversation({
       ) : null}
       {error ? <div className="related-error">{error}</div> : null}
 
+      <div className="ctx-line child-ctx-line">
+        <div className="ctx-picker">
+          <button className="ctx-item" onClick={() => setMenu(menu === "role" ? null : "role")}>
+            <i className="ph ph-user-circle" />
+            {snapshot?.rolePresetSlug
+              ? (app.discovery?.rolePresets.find((role) => role.slug === snapshot.rolePresetSlug)?.userLabel ?? snapshot.rolePresetSlug)
+              : t("No role")}
+          </button>
+          <div className={`menu${menu === "role" ? " on" : ""}`}>
+            <div className="mi" onClick={() => (socket.send({ type: "switch_role_preset", payload: { rolePresetSlug: null } }), setMenu(null))}>
+              <span>{t("No role")}</span>
+            </div>
+            {(app.discovery?.rolePresets ?? []).map((role) => (
+              <div key={role.slug} className="mi" onClick={() => (socket.send({ type: "switch_role_preset", payload: { rolePresetSlug: role.slug } }), setMenu(null))}>
+                <span>{role.userLabel || role.displayName}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <ModelChip
+          open={menu === "model"}
+          onToggle={() => setMenu(menu === "model" ? null : "model")}
+          session={{
+            ready: connected && Boolean(snapshot),
+            modelOverride: snapshot?.modelOverride ?? null,
+            currentModel: snapshot?.currentModel ?? null,
+            setModel: (override) => socket.send({ type: "set_session_model", payload: { override } }),
+          }}
+        />
+      </div>
+      {slashMatches.length > 0 ? (
+        <div className="slash-palette child-slash-palette">
+          {slashMatches.map((command, index) => (
+            <button key={command.name} className={`slash-item${index === slashIndex ? " on" : ""}`} onMouseEnter={() => setSlashIndex(index)} onClick={() => runSlash(command)}>
+              <span className="cmd">/{command.name}</span>
+              <span className="desc">{command.description}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
       <div className="composer child-composer">
         <textarea
           rows={1}
@@ -237,6 +331,19 @@ export function ChildConversation({
           }
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={(event) => {
+            if (slashMatches.length > 0) {
+              if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                event.preventDefault();
+                const step = event.key === "ArrowDown" ? 1 : -1;
+                setSlashIndex((index) => (index + step + slashMatches.length) % slashMatches.length);
+                return;
+              }
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                runSlash(slashMatches[slashIndex]);
+                return;
+              }
+            }
             if (event.key === "Enter" && !event.shiftKey) {
               event.preventDefault();
               send();

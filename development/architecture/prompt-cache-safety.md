@@ -95,7 +95,8 @@ the provider payload.
 
 ### 4.2 An Alt Theory branch is a new Pi session
 
-Edit and same-prompt retry use the ordinary `branch_revision` path:
+Edit and compare uses the ordinary `branch_revision` path; user Retry now
+revises the latest run in the same session from its original user message:
 
 1. copy the selected Pi conversation path into a new session file;
 2. allocate a new Alt Theory session ID and Pi header ID;
@@ -215,7 +216,7 @@ longer cache.
 | Situation | Current protection |
 |---|---|
 | Same-session continuation or failed-turn retry | Pi session identity and normal prefix remain stable |
-| Edit or same-prompt retry in no-workspace Understand | Incidental cwd omitted; root cache family inherited |
+| Edit comparison or same-session Retry in no-workspace Understand | Incidental cwd omitted; root cache family inherited |
 | Edit/branch/BTW in Understand with an external workspace | Workspace path already stable; root cache family inherited |
 | Edit/branch/BTW in Work with an external workspace | Truthful workspace path remains stable; root cache family inherited |
 | No-workspace Work branch | Cache family is stable, but copied cwd changes the prompt; a full prefix hit is not promised |

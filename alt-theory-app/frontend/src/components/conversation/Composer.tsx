@@ -53,10 +53,6 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
     }
   };
 
-  useEffect(() => {
-    if (app.reviseMode) setDraft(app.reviseDraft);
-  }, [app.reviseMode, app.reviseDraft]);
-
   // Grow with content up to the CSS max-height (~8 lines), then scroll.
   useEffect(() => {
     autosizeTextarea(textareaRef.current);
@@ -155,7 +151,6 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
     // composer and let the user say what they want first.
     if (!command.immediate && !args.trim()) return armCommand(command.name);
     setDraft("");
-    if (app.reviseMode) app.cancelReviseMode();
     command.run(args);
   };
 
@@ -186,13 +181,6 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
   const attachFirstLevel = canAttach && understandMode;
 
   const handleSubmit = () => {
-    if (app.reviseMode) {
-      if (app.reviseLatest(draft)) {
-        setDraft("");
-        shell.openRail("chats");
-      }
-      return;
-    }
     if (app.sendPrompt(draft)) setDraft("");
   };
 
@@ -265,11 +253,11 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
             {app.canRetryFailed ? (
               <button
                 className="flat retry-run"
-                onClick={app.retryFailed}
-                title={t("Completed work is kept; the answer resumes from the break point")}
+                onClick={app.retryLatest}
+                title={t("Run the latest message again from the start")}
               >
                 <i className="ph ph-arrow-clockwise" aria-hidden="true" />
-                {t("Continue from break point")}
+                {t("Retry")}
               </button>
             ) : null}
             <RunTips running={app.isRunning} />
@@ -497,13 +485,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
             rows={1}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            placeholder={
-              !interactive
-                ? t("Connecting…")
-                : app.reviseMode
-                  ? t("Editing your latest message. Send to update.")
-                  : t("Message Alt. Type / for commands.")
-            }
+            placeholder={!interactive ? t("Connecting…") : t("Message Alt. Type / for commands.")}
             disabled={!interactive}
             onKeyDown={(e) => {
               if (slashMatches.length > 0) {
@@ -525,10 +507,6 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 handleSubmit();
-              }
-              if (e.key === "Escape" && app.reviseMode) {
-                setDraft("");
-                app.cancelReviseMode();
               }
             }}
           />
@@ -686,24 +664,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
             />
             <ContextRing />
 
-            {app.reviseMode ? (
-              <>
-                <button
-                  className="flat"
-                  onClick={() => (setDraft(""), app.cancelReviseMode())}
-                >
-                  {t("Cancel")}
-                </button>
-                <button
-                  className="send"
-                  disabled={!canSend}
-                  onClick={handleSubmit}
-                  title={t("Save edit")}
-                >
-                  <i className="ph ph-check" />
-                </button>
-              </>
-            ) : app.isRunning ? (
+            {app.isRunning ? (
               <>
                 <button
                   className="send"

@@ -344,6 +344,7 @@ export function ModelConfigPage({
   const [editingName, setEditingName] = useState<string | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [addingProvider, setAddingProvider] = useState(false);
+  const [pendingProviderTarget, setPendingProviderTarget] = useState<string | null>(null);
   const initialized = useRef(false);
   const editorBaseline = useRef("");
   const [name, setName] = useState("");
@@ -422,16 +423,6 @@ export function ModelConfigPage({
     return () => window.removeEventListener("beforeunload", handler);
   }, [editorDirty]);
 
-  const closeEditor = () => {
-    if (editorDirty && !window.confirm(t("Discard unsaved provider changes?"))) return;
-    if (editingName) {
-      openEditor(editingName);
-    } else {
-      setEditorOpen(false);
-      setAddingProvider(true);
-    }
-  };
-
   const openEditor = (existingName?: string) => {
     const provider = existingName
       ? providers.find((item) => item.name === existingName)
@@ -484,6 +475,45 @@ export function ModelConfigPage({
     setKeyUrl(null);
     setKeyHint(nextKeyHint);
   };
+
+  const applyProviderTarget = (target: string) => {
+    setPendingProviderTarget(null);
+    if (target === "add") {
+      setEditorOpen(false);
+      setEditingName(null);
+      setAddingProvider(true);
+    } else if (target === "close") {
+      if (editingName) openEditor(editingName);
+      else {
+        setEditorOpen(false);
+        setAddingProvider(true);
+      }
+    } else {
+      openEditor(target.slice("provider:".length));
+    }
+  };
+
+  const requestProviderTarget = (target: string) => {
+    if (editorDirty) setPendingProviderTarget(target);
+    else applyProviderTarget(target);
+  };
+
+  const discardPrompt = (target: string) =>
+    pendingProviderTarget === target ? (
+      <div className="provider-discard-confirm">
+        <span>{t("Discard unsaved provider changes?")}</span>
+        <div>
+          <button type="button" onClick={() => setPendingProviderTarget(null)}>
+            {t("Cancel")}
+          </button>
+          <button type="button" className="danger" onClick={() => applyProviderTarget(target)}>
+            {t("Discard")}
+          </button>
+        </div>
+      </div>
+    ) : null;
+
+  const closeEditor = () => requestProviderTarget("close");
 
   useEffect(() => {
     if (loading || initialized.current) return;
@@ -585,6 +615,7 @@ export function ModelConfigPage({
       setEditingName(trimmedName);
       setEditorOpen(true);
       setAddingProvider(false);
+      setPendingProviderTarget(null);
       await refresh();
     } catch (err) {
       showToast(err instanceof Error ? err.message : t("Save failed"), true);
@@ -668,11 +699,6 @@ export function ModelConfigPage({
     }
   };
 
-  const activeLabel =
-    status?.activeProvider && status.activeModel
-      ? `${status.activeProvider} / ${status.activeModel}`
-      : null;
-
   const statusSummary = (
     <>
       {loading ? (
@@ -680,8 +706,11 @@ export function ModelConfigPage({
       ) : error ? (
         <HintText className="text-warning">{error}</HintText>
       ) : status ? (
-        <details className="active-model-overflow">
-          <summary className="active-model-summary">
+        <div
+          className="active-model-summary"
+          title={t("New conversations start with the default model. Editing a provider's model list does not change it.")}
+        >
+          <span>
             {status.activeUsable ? (
               <span className="text-success">{t("Ready.")}</span>
             ) : status.anyUsable ? (
@@ -690,70 +719,46 @@ export function ModelConfigPage({
               </span>
             ) : (
               <span className="text-warning">{t("No provider has a key yet.")}</span>
-            )}{" "}
-            {activeLabel ? (
-              <>
-                {t("Default")}{" "}
-                <strong className="active-model-name">{activeLabel}</strong>
-              </>
-            ) : (
-              t("No default model selected.")
-            )}{" "}
-            {/* Without this the line reads as a report on the app's state, and
-                the picker underneath never gets opened. */}
-            <span className="active-model-change">
-              {t("Change")}
-              <i className="ph ph-caret-down" aria-hidden />
-            </span>
-          </summary>
-          <div className="active-model-panel">
-            <p className="text-[0.78rem] text-text-secondary">
-              {t("New conversations start with the default model. Editing a provider's model list does not change it.")}
-            </p>
-            <label className="default-model-picker">
-              <span>{t("Set as default")}</span>
-              <select
-                value={
-                  status.activeProvider && status.activeModel
-                    ? `${status.activeProvider}::${status.activeModel}`
-                    : ""
+            )}
+          </span>
+          <label className="default-model-picker active-model-inline">
+            <span>{t("Default")}</span>
+            <select
+              value={
+                status.activeProvider && status.activeModel
+                  ? `${status.activeProvider}::${status.activeModel}`
+                  : ""
+              }
+              onChange={async (event) => {
+                const value = event.target.value;
+                if (!value) return;
+                const sep = value.indexOf("::");
+                if (sep < 0) return;
+                const provider = value.slice(0, sep);
+                const modelId = value.slice(sep + 2);
+                try {
+                  await setActiveModel(provider, modelId);
+                  showToast(t("Default model: {model}", { model: modelId }));
+                  await refresh();
+                } catch (err) {
+                  showToast(
+                    err instanceof Error ? err.message : t("Could not change model"),
+                    true,
+                  );
                 }
-                onChange={async (event) => {
-                  const value = event.target.value;
-                  if (!value) return;
-                  const sep = value.indexOf("::");
-                  if (sep < 0) return;
-                  const provider = value.slice(0, sep);
-                  const modelId = value.slice(sep + 2);
-                  try {
-                    await setActiveModel(provider, modelId);
-                    showToast(t("Default model: {model}", { model: modelId }));
-                    await refresh();
-                  } catch (err) {
-                    showToast(
-                      err instanceof Error ? err.message : t("Could not change model"),
-                      true,
-                    );
-                  }
-                }}
-              >
-                <option value="" disabled>
-                  {t("Choose a model")}
-                </option>
-                {providers.flatMap((provider) =>
-                  (provider.models ?? []).map((model) => (
-                    <option
-                      key={`${provider.name}::${model.id}`}
-                      value={`${provider.name}::${model.id}`}
-                    >
-                      {provider.name} / {model.name || model.id}
-                    </option>
-                  )),
-                )}
-              </select>
-            </label>
-          </div>
-        </details>
+              }}
+            >
+              <option value="" disabled>{t("Choose a model")}</option>
+              {providers.flatMap((provider) =>
+                (provider.models ?? []).map((model) => (
+                  <option key={`${provider.name}::${model.id}`} value={`${provider.name}::${model.id}`}>
+                    {provider.name} / {model.name || model.id}
+                  </option>
+                )),
+              )}
+            </select>
+          </label>
+        </div>
       ) : null}
       {status?.activeIssue ? (
         <HintText className="mt-1 text-warning">{status.activeIssue}</HintText>
@@ -845,18 +850,12 @@ export function ModelConfigPage({
             <button
               type="button"
               className="add-provider-primary"
-              onClick={() => {
-                if (editorDirty && !window.confirm(t("Discard unsaved provider changes?"))) {
-                  return;
-                }
-                setEditorOpen(false);
-                setEditingName(null);
-                setAddingProvider(true);
-              }}
+              onClick={() => requestProviderTarget("add")}
             >
               <i className="ph ph-plus" aria-hidden />
               {t("Add provider")}
             </button>
+            {discardPrompt("add")}
             <details className="chatbot-config-hint">
               <summary>
                 <i className="ph ph-chats-circle" aria-hidden />
@@ -875,34 +874,33 @@ export function ModelConfigPage({
                   if (a.active !== b.active) return a.active ? -1 : 1;
                   return a.name.localeCompare(b.name);
                 })
-                .map((provider) => (
-                  <button
-                    type="button"
-                    key={provider.name}
-                    className={cn(
-                      "provider-master-row",
-                      editingName === provider.name && !addingProvider && "on",
-                    )}
-                    onClick={() => {
-                      if (
-                        editorDirty &&
-                        editingName !== provider.name &&
-                        !window.confirm("Discard unsaved provider changes?")
-                      ) {
-                        return;
-                      }
-                      openEditor(provider.name);
-                    }}
-                  >
-                    <span className="provider-master-name">{provider.name}</span>
-                    {provider.keyState === "oauth" ? (
-                      <span className="provider-oauth-mark">{t("OAuth")}</span>
-                    ) : null}
-                    {provider.active ? (
-                      <i className="ph ph-check provider-active-check" title={t("Active")} />
-                    ) : null}
-                  </button>
-                ))}
+                .map((provider) => {
+                  const target = `provider:${provider.name}`;
+                  return (
+                    <div className="provider-master-entry" key={provider.name}>
+                      <button
+                        type="button"
+                        className={cn(
+                          "provider-master-row",
+                          editingName === provider.name && !addingProvider && "on",
+                        )}
+                        onClick={() => {
+                          if (editingName === provider.name && !addingProvider) return;
+                          requestProviderTarget(target);
+                        }}
+                      >
+                        <span className="provider-master-name">{provider.name}</span>
+                        {provider.keyState === "oauth" ? (
+                          <span className="provider-oauth-mark">{t("OAuth")}</span>
+                        ) : null}
+                        {provider.active ? (
+                          <i className="ph ph-check provider-active-check" title={t("Active")} />
+                        ) : null}
+                      </button>
+                      {discardPrompt(target)}
+                    </div>
+                  );
+                })}
             </div>
           </aside>
           <section className="provider-detail">
@@ -1347,6 +1345,7 @@ export function ModelConfigPage({
                 </Button>
               </details>
 
+              {discardPrompt("close")}
               <div className="flex justify-end gap-2 pt-2">
                 <Button variant="secondary" onClick={closeEditor}>
                   {t("Cancel")}

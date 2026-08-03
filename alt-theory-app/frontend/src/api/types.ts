@@ -538,7 +538,8 @@ export type ClientMessage =
     }
   | { type: "revise_latest"; payload: { text: string; entryId?: string } }
   | { type: "branch_revision"; payload: { text: string; entryId?: string } }
-  | { type: "retry_failed" }
+  | { type: "prepare_branch_revision"; payload: { entryId: string } }
+  | { type: "retry_latest" }
   | { type: "delete_latest" }
   | {
       type: "fork_session";

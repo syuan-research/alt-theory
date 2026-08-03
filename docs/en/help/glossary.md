@@ -23,9 +23,9 @@ everything up to that point, leaving the original intact. One of the
 controls used to compare answers.
 [→ Responses and Controls](../system-guide/responses-and-controls.md)
 
-**Compare pane**: the 50/50 split of the center area opened after a
-branch or same-prompt retry, so two versions of an answer can be read
-side by side. BTW, helper, and subagent stay in the narrow rail instead.
+**Comparison rail**: the wider Related view opened for a branch or edited
+comparison, so two versions can be read side by side. Retry stays in the same
+conversation. BTW, helper, and subagent stay in the narrow rail instead.
 [→ Responses and Controls](../system-guide/responses-and-controls.md)
 
 **BTW**: a side conversation in a panel beside the main one, carrying

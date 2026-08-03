@@ -939,6 +939,60 @@ export class SessionService implements AgentTeamBridge {
     return this.reviseFromRun(managed, latest, text);
   }
 
+  /** Run the latest user message again from its start, without a visible child. */
+  retryLatestFromStart(sessionId: string): RunHandle {
+    const managed = this.requireSession(sessionId);
+    if (managed.busy || managed.session.isStreaming) {
+      throw new SessionBusyError(sessionId);
+    }
+    const runs = latestRunSnapshots(managed.manifest.recordsDir).filter(
+      (run) =>
+        run.branchId === managed.branchId &&
+        run.userEntryId &&
+        run.status !== "deleted" &&
+        run.status !== "superseded",
+    );
+    const latest = runs.at(-1) as (RunRecord & { userEntryId: string }) | undefined;
+    if (!latest) throw new Error("No latest user turn is available to retry");
+    const latestUserEntry = managed.session.sessionManager
+      .getBranch()
+      .filter(
+        (entry) =>
+          entry.type === "message" &&
+          (entry.message as { role?: string }).role === "user",
+      )
+      .at(-1);
+    if (latestUserEntry?.id !== latest.userEntryId) {
+      throw new Error("Only the current latest user turn can be retried");
+    }
+    const entry = managed.session.sessionManager.getEntry(latest.userEntryId) as
+      | { type?: string; message?: { role?: string; content?: unknown } }
+      | undefined;
+    if (entry?.type !== "message" || entry.message?.role !== "user") {
+      throw new Error("Latest user message is missing from Pi history");
+    }
+    const text = retryPromptFromStoredUserContent(
+      contentToText(entry.message.content),
+    );
+    if (!text) throw new Error("Latest user message is empty");
+    const skillName = text.match(/^\/skill:([^\s]+)/)?.[1];
+    if (skillName) {
+      const skill = managed.manifest.skills?.find(
+        (candidate) => candidate.name === skillName,
+      );
+      if (!skill) throw new Error(`Unknown Alt Theory skill: ${skillName}`);
+      appendSessionEvent(managed.manifest.recordsDir, {
+        sessionId,
+        type: "skill_invoked",
+        details: { skillName, skillPath: skill.path },
+      });
+    }
+    // `invokeSkill` also enters Pi through runPromptWithLineage(`/skill:…`).
+    // Passing the reconstructed command here therefore re-runs the same skill
+    // extension after reviseFromRun rewinds the old attempt.
+    return this.reviseFromRun(managed, latest, text);
+  }
+
   private latestRetryableRun(
     managed: ManagedSession,
   ): (RunRecord & { userEntryId: string }) | null {
@@ -1274,8 +1328,9 @@ export class SessionService implements AgentTeamBridge {
   async forkSession(
     sessionId: string,
     purpose: ForkPurpose,
-    forkPointEntryId?: string,
+    forkPointEntryId?: string | null,
     selectorOverrides?: Partial<SessionSelectors>,
+    options?: { exactForkPoint?: boolean; allowEmpty?: boolean },
   ): Promise<SessionSnapshot> {
     const previous = this.requireSession(sessionId);
     if (previous.busy || previous.session.isStreaming) {
@@ -1289,17 +1344,25 @@ export class SessionService implements AgentTeamBridge {
     const childSelectors: SessionSelectors = selectorOverrides
       ? { ...previous.selectors, ...selectorOverrides }
       : previous.selectors;
-    let leafId =
-      forkPointEntryId ?? previous.session.sessionManager.getLeafId();
-    if (!leafId) {
+    let leafId = options?.exactForkPoint
+      ? (forkPointEntryId ?? null)
+      : (forkPointEntryId ?? previous.session.sessionManager.getLeafId());
+    if (!leafId && !options?.allowEmpty) {
       throw new Error("Fork requires an existing conversation entry");
     }
     // "Branch from here" on a user message forks the COMPLETE turn: advance
     // the fork point to that run's last assistant entry so the child doesn't
     // end on a dangling user message.
-    const leafEntry = previous.session.sessionManager.getEntry(leafId) as { type?: string; message?: { role?: string } }
-      | undefined;
-    if (leafEntry?.type === "message" && leafEntry.message?.role === "user") {
+    const leafEntry = leafId
+      ? (previous.session.sessionManager.getEntry(leafId) as
+          | { type?: string; message?: { role?: string } }
+          | undefined)
+      : undefined;
+    if (
+      !options?.exactForkPoint &&
+      leafEntry?.type === "message" &&
+      leafEntry.message?.role === "user"
+    ) {
       // Advance to the last entry before the next user message on the active
       // path. Scanning the Pi branch (not run records) also covers inherited
       // fork/import history that has no local run records.
@@ -1321,6 +1384,7 @@ export class SessionService implements AgentTeamBridge {
       }
     }
     if (
+      leafId &&
       !previous.session.sessionManager
         .getBranch()
         .some((entry) => entry.id === leafId)
@@ -1366,7 +1430,7 @@ export class SessionService implements AgentTeamBridge {
     // and re-chain parentIds so the retained path stays a valid chain.
     const forkPath: Array<Record<string, unknown>> = [];
     let forkParentId: string | null = null;
-    for (const entry of parentManager.getBranch(leafId)) {
+    for (const entry of leafId ? parentManager.getBranch(leafId) : []) {
       if (entry.type === "label") continue;
       forkPath.push({ ...entry, parentId: forkParentId });
       forkParentId = entry.id;
@@ -1488,6 +1552,31 @@ export class SessionService implements AgentTeamBridge {
       }
       throw error;
     }
+  }
+
+  /** Create an idle comparison branch whose context ends before a user message. */
+  async prepareRevisionBranch(
+    sessionId: string,
+    userEntryId: string,
+  ): Promise<SessionSnapshot> {
+    const managed = this.requireSession(sessionId);
+    const entry = managed.session.sessionManager.getEntry(userEntryId) as
+      | { id?: string; parentId?: string | null; type?: string; message?: { role?: string } }
+      | undefined;
+    if (
+      entry?.type !== "message" ||
+      entry.message?.role !== "user" ||
+      !managed.session.sessionManager.getBranch().some((item) => item.id === userEntryId)
+    ) {
+      throw new Error("Edit comparison requires a user message in this conversation");
+    }
+    return this.forkSession(
+      sessionId,
+      "fork",
+      entry.parentId ?? null,
+      undefined,
+      { exactForkPoint: true, allowEmpty: true },
+    );
   }
 
   /**
@@ -3709,6 +3798,17 @@ export class SessionService implements AgentTeamBridge {
     }
     return fallback;
   }
+}
+
+/** Turn Pi's persisted expanded skill body back into the invocation it came from. */
+export function retryPromptFromStoredUserContent(content: string): string {
+  const trimmed = content.trim();
+  const skill = trimmed.match(
+    /^<skill\b[^>]*\bname="([^"]+)"[^>]*>[\s\S]*?<\/skill>\s*([\s\S]*)$/,
+  );
+  if (!skill) return trimmed;
+  const args = skill[2].trim();
+  return `/skill:${skill[1]}${args ? ` ${args}` : ""}`;
 }
 
 function clip(text: string, maxChars: number): string {

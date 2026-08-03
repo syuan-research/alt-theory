@@ -6,6 +6,7 @@ import { cn } from "@/lib/cn";
 interface ConfirmDialogProps {
   open: boolean;
   message: string;
+  details?: string[];
   confirmLabel?: string;
   cancelLabel?: string;
   checkbox?: { label: string; defaultChecked?: boolean; danger?: boolean };
@@ -16,6 +17,7 @@ interface ConfirmDialogProps {
 export function ConfirmDialog({
   open,
   message,
+  details,
   confirmLabel,
   cancelLabel,
   checkbox,
@@ -51,6 +53,11 @@ export function ConfirmDialog({
         <p id="confirm-dialog-message" className="text-[0.9375rem] text-ink">
           {message}
         </p>
+        {details?.length ? (
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-[0.8125rem] text-text-muted">
+            {details.map((detail) => <li key={detail}>{detail}</li>)}
+          </ul>
+        ) : null}
         {checkbox ? (
           <label
             className={cn(

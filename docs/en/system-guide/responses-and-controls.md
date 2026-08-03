@@ -3,9 +3,8 @@
 The core use of these controls is comparison. Large language models are
 agreeable, sensitive to phrasing, and run on sampling, so a single answer
 is not enough to trust: you need to see the answer change, or not change,
-when you vary the prompt, the framing, or the model. Edit,
-try-same-prompt, and branch all generate a second version you can read
-beside the first at equal width, without disturbing the original.
+when you vary the prompt, the framing, or the model. Edit and compare creates
+a second version beside the first without disturbing the original.
 
 ## The context ring
 
@@ -23,20 +22,15 @@ same way typing while a turn runs works in the Pi TUI.
 
 ## Generating a version to compare
 
-Edit, try-same-prompt, and branch open the new version beside the original
-at equal width, and the original is never modified. There is no
-confirmation dialog: these are non-destructive.
+The pencil means Edit and compare. Editing stays in your message bubble, and
+the original is never modified. There is no confirmation dialog.
 
-- Edit an earlier message of yours reruns the discussion from that point
-  with your new wording. Use it to test whether a different framing of the
-  same question changes the answer.
-- Retry reruns a failed or empty attempt in place, above the composer. It
-  does not open a side version; it is for recovery, not comparison.
-- Try same prompt again runs the same prompt once more as a sibling. Use
-  it to see how much the answer varies run to run on the same input.
-- Branch starts a related conversation from any message, carrying
-  everything up to it. Use it to pursue a different direction against the
-  same accumulated context.
+- Send an edit to run it as a sibling with inherited model and role.
+- Choose **Adjust model or role…** to open the sibling first, with the edited
+  prompt still in its composer. Changing configuration is optional.
+- Retry runs the latest user message again from the start in the same
+  conversation, including after Stop. It creates no side or list branch.
+- `/branch` opens a traditional idle branch from the current context.
 
 To compare more than two arms of the same task at once, use the Workbench
 A/B comparison surface rather than stacking branches.
@@ -50,9 +44,10 @@ A/B comparison surface rather than stacking branches.
 - A lead conversation can delegate a bounded task to a subagent, which runs
   as its own session ([details](agent-team-and-subagents.md)).
 
-Side conversations share the conversation styling but stay in a narrow
-panel; they do not take the 50/50 split, which is for the comparison
-arms (branch, edit, and same-prompt retry) only.
+Related conversations have the same thinking, tools, skills, approvals, slash
+commands, and history as the center. Model and role are available there; mode
+is hidden to save space. Side conversations stay narrow, while branches and
+edited comparisons use the wider comparison rail.
 
 ## Adding a side conversation to the list
 

@@ -21,10 +21,20 @@ import {
 import {
   imageAttachmentsFor,
   isUnknownModelError,
+  retryPromptFromStoredUserContent,
   SessionBusyError,
   SessionService,
   type SessionServiceEvent,
 } from "./session-service.js";
+
+test("retry reconstructs a persisted skill invocation", () => {
+  assert.equal(
+    retryPromptFromStoredUserContent(
+      '<skill name="conversation-summary">expanded body</skill> Focus on decisions',
+    ),
+    "/skill:conversation-summary Focus on decisions",
+  );
+});
 import { readSessionDetail } from "./session-store.js";
 import { readAbComparisonRecords } from "./ab-records.js";
 import { readV4SessionHeader } from "./session-records.js";
@@ -713,6 +723,52 @@ test("SessionService explicit forks create a new session with copied workspace",
 
   await runCase("side");
   await runCase("ab-arm");
+});
+
+test("SessionService prepares an idle edit comparison before the target prompt", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const created = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const managed = (service as any).sessions.get(created.sessionId);
+  managed.session.sessionManager.appendMessage({
+    role: "user",
+    content: [{ type: "text", text: "first question" }],
+    timestamp: Date.now(),
+  });
+  managed.session.sessionManager.appendMessage({
+    role: "assistant",
+    content: [{ type: "text", text: "first answer" }],
+    timestamp: Date.now(),
+  });
+  const target = managed.session.sessionManager.appendMessage({
+    role: "user",
+    content: [{ type: "text", text: "edit this" }],
+    timestamp: Date.now(),
+  });
+  managed.session.sessionManager.appendMessage({
+    role: "assistant",
+    content: [{ type: "text", text: "old answer" }],
+    timestamp: Date.now(),
+  });
+
+  try {
+    const forked = await service.prepareRevisionBranch(created.sessionId, target);
+    assert.deepEqual(
+      readSessionDetail(fixture.dataDir, forked.sessionId)?.transcript.map(
+        (message) => [message.role, message.text],
+      ),
+      [
+        ["user", "first question"],
+        ["assistant", "first answer"],
+      ],
+    );
+  } finally {
+    await service.disposeAll();
+  }
 });
 
 test("SessionService edit/retry forks preserve the cacheable conversation family", async () => {
@@ -3151,6 +3207,49 @@ test("SessionService retries a failed latest turn without losing earlier turns",
     );
   } finally {
     detach();
+    await service.disposeAll();
+  }
+});
+
+test("SessionService retries the latest message from the start in the same session", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const created = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const managed = (service as any).sessions.get(created.sessionId);
+  let attempt = 0;
+  managed.session.prompt = async (text: string) => {
+    attempt += 1;
+    managed.session.state.errorMessage = null;
+    managed.session.sessionManager.appendMessage({
+      role: "user",
+      content: [{ type: "text", text }],
+      timestamp: Date.now(),
+    });
+    managed.session.sessionManager.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: `attempt ${attempt}` }],
+      timestamp: Date.now(),
+    });
+  };
+
+  try {
+    await service.runPrompt(created.sessionId, "same question").completion;
+    await service.retryLatestFromStart(created.sessionId).completion;
+    const detail = readSessionDetail(fixture.dataDir, created.sessionId);
+    assert.deepEqual(
+      detail?.transcript
+        .filter((message) => message.role === "user" || message.role === "assistant")
+        .map((message) => [message.role, message.text]),
+      [
+        ["user", "same question"],
+        ["assistant", "attempt 2"],
+      ],
+    );
+  } finally {
     await service.disposeAll();
   }
 });

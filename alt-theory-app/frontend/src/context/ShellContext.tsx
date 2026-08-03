@@ -54,7 +54,7 @@ export interface ShellContextValue {
   openRail: (key: RailKey) => void;
   closeRight: () => void;
 
-  /** Right panel width in px (branch/retry ≈ 50%; btw/helper ≈ 480 default). */
+  /** Right panel width in px (branch/edit ≈ 50%; btw/helper ≈ 480 default). */
   rightWidth: number;
   /** Clamp + optionally persist. Used by the resizer and related open sizing. */
   setRightPaneWidth: (width: number, persist?: boolean) => void;
@@ -115,7 +115,7 @@ const NEW_MODE_KEY = "alt-theory-new-mode";
 const DARK_MODE_KEY = "alt-theory-dark-mode";
 const RIGHT_WIDTH_KEY = "alt-theory-right-width";
 
-/** Default / btw / helper rail. Branch/retry open at ~50% of center+right. */
+/** Default / btw / helper rail. Branch/edit comparison opens at ~50%. */
 export const RIGHT_PANE = {
   initial: 480,
   min: 320,

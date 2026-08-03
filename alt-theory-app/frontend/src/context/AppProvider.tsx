@@ -67,7 +67,7 @@ import type { ConnStatus } from "@/components/ui/StatusBadge";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { DEFAULT_KB_DOMAIN } from "@/lib/constants";
 import { isInterruptedError } from "@/lib/format";
-import { toolLabel } from "@/lib/tools";
+import { handleConversationStreamMessage } from "@/lib/conversationStream";
 import { notifyBackground } from "@/lib/notify";
 import { buildOutgoingPrompt } from "@/lib/workspace";
 import {
@@ -111,6 +111,7 @@ export interface QueuedPrompt {
 
 export interface ConfirmRequest {
   message: string;
+  details?: string[];
   confirmLabel?: string;
   cancelLabel?: string;
   onConfirm: (result?: { checkboxChecked: boolean }) => void;
@@ -162,18 +163,18 @@ export interface AppContextValue {
   activeRelatedSessionId: string | null;
   /**
    * Preferred right-rail width when this related conversation is opened:
-   * half ≈ branch/retry only; default ≈ btw/helper/subagent.
+   * half ≈ branch/edit comparison; default ≈ btw/helper/subagent.
    */
   relatedPaneSize: "half" | "default" | null;
   setActiveRelatedSessionId: (
     sessionId: string | null,
     opts?: { size?: "half" | "default" },
   ) => void;
-  /** Question to send once into a just-created child conversation. */
-  childSeed: { sessionId: string; text: string } | null;
+  /** Draft for a just-created child; helper sends immediately, compare waits. */
+  childSeed: { sessionId: string; text: string; autoSend: boolean } | null;
   clearChildSeed: () => void;
   promoteRelatedSession: (sessionId: string) => Promise<void>;
-  renameSelectedSession: (sessionId?: string) => Promise<void>;
+  renameSelectedSession: (sessionId: string, name: string) => Promise<boolean>;
   deleteSelectedSession: (sessionId?: string) => void;
 
   sessionId: string | null;
@@ -226,8 +227,6 @@ export interface AppContextValue {
   composerNotice: ComposerNotice | null;
   runHint: string | null;
   canRetryFailed: boolean;
-  reviseMode: boolean;
-  reviseDraft: string;
 
   stagedWorkspacePaths: string[];
   toggleWorkspaceStage: (path: string, staged: boolean) => void;
@@ -259,13 +258,10 @@ export interface AppContextValue {
   interruptAndSendQueuedPrompt: (id: string) => void;
   abortRun: () => void;
   invokeSkill: (skillName: string, userText?: string) => boolean;
-  reviseLatest: (text: string) => boolean;
   branchRevision: (text: string, entryId?: string) => boolean;
-  retryFailed: () => boolean;
+  prepareBranchRevision: (text: string, entryId: string) => boolean;
+  retryLatest: () => boolean;
   deleteLatest: () => void;
-  branchFromEntry: (entryId: string) => void;
-  startReviseMode: (text: string, entryId?: string) => string;
-  cancelReviseMode: () => void;
   requestMetadata: () => void;
   requestMetrics: () => void;
 }
@@ -287,31 +283,6 @@ function applySnapshotSelectors(
         ? (payload as SessionSnapshot).branchId || "main"
         : "main",
   };
-}
-
-function appendStreamText(
-  parts: StreamPart[],
-  kind: "thinking" | "text",
-  delta: string,
-): StreamPart[] {
-  const last = parts[parts.length - 1];
-  if (last && last.kind === kind) {
-    return [...parts.slice(0, -1), { kind, text: last.text + delta }];
-  }
-  return [...parts, { kind, text: delta }];
-}
-
-function upsertToolPart(
-  parts: StreamPart[],
-  tool: ActiveToolState,
-): StreamPart[] {
-  const index = parts.findIndex(
-    (part) => part.kind === "tool" && part.tool.callId === tool.callId,
-  );
-  if (index === -1) return [...parts, { kind: "tool", tool }];
-  return parts.map((part, i) =>
-    i === index ? { kind: "tool" as const, tool } : part,
-  );
 }
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -345,10 +316,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     },
     [],
   );
-  /** First question to ask in the child about to be created (helper / btw). */
-  const pendingChildSeedRef = useRef<string | null>(null);
+  const pendingChildSeedRef = useRef<{ text: string; autoSend: boolean } | null>(null);
   const [childSeed, setChildSeed] = useState<
-    { sessionId: string; text: string } | null
+    { sessionId: string; text: string; autoSend: boolean } | null
   >(null);
   const [sessionSearch, setSessionSearch] = useState("");
   const [selectedCatalogSessionId, setSelectedCatalogSessionId] = useState<
@@ -404,9 +374,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
   const [runHint, setRunHint] = useState<string | null>(null);
   const [canRetryFailed, setCanRetryFailed] = useState(false);
-  const [reviseMode, setReviseMode] = useState(false);
-  const [reviseDraft, setReviseDraft] = useState("");
-  const [reviseEntryId, setReviseEntryId] = useState<string | null>(null);
   const [stagedWorkspacePaths, setStagedWorkspacePaths] = useState<string[]>([],);
   const [runCompletedCount, setRunCompletedCount] = useState(0);
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(
@@ -845,7 +812,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           if (pendingChildSeedRef.current) {
             setChildSeed({
               sessionId: message.payload.sessionId,
-              text: pendingChildSeedRef.current,
+              ...pendingChildSeedRef.current,
             });
             pendingChildSeedRef.current = null;
           }
@@ -857,12 +824,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
           break;
 
         case "branch_created":
-          // Main conversation stays in the center. Branched work (incl. retry /
-          // edit-and-ask-again) opens in the right Related rail at ~50% width.
+          // Main conversation stays in the center. Branched edit work opens in
+          // the right Related rail at ~50% width.
           // Center multi-arm compare stays on Workbench A/B only.
           setActiveRelatedSessionId(message.payload.sessionId, {
             size: "half",
           });
+          if (pendingChildSeedRef.current) {
+            setChildSeed({
+              sessionId: message.payload.sessionId,
+              ...pendingChildSeedRef.current,
+            });
+            pendingChildSeedRef.current = null;
+          }
           setIsRunning(false);
           setConnStatus("idle");
           setConnLabel("Ready");
@@ -872,113 +846,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
           break;
 
         case "assistant_delta":
-          // Real answer text is streaming now — the bubble's "typing…" indicator
-          // takes over, so drop the "Thinking…" phase label.
-          setRunPhaseLabel("");
-          setStreamParts((parts) =>
-            appendStreamText(parts, "text", message.payload.text),
-          );
-          break;
-
         case "thinking_delta":
-          setStreamParts((parts) =>
-            appendStreamText(parts, "thinking", message.payload.text),
-          );
+        case "tool_started":
+        case "tool_updated":
+        case "tool_finished":
+        case "run_phase":
+          handleConversationStreamMessage(message, {
+            activeTools: activeToolsMapRef,
+            setParts: setStreamParts,
+            setPhaseLabel: setRunPhaseLabel,
+          });
           break;
-
-        case "tool_started": {
-          const { toolName, callId, path, detail } = message.payload;
-          const label = toolLabel(toolName, path, detail);
-          const entry: ActiveToolState = {
-            callId,
-            toolName,
-            path,
-            detail,
-            status: "running",
-          };
-          activeToolsMapRef.current[callId] = entry;
-          setStreamParts((parts) => upsertToolPart(parts, entry));
-          setRunPhaseLabel(label);
-          break;
-        }
-
-        case "tool_updated": {
-          const entry = activeToolsMapRef.current[message.payload.callId];
-          if (entry) {
-            const updated = {
-              ...entry,
-              progressText: message.payload.text,
-            };
-            activeToolsMapRef.current[message.payload.callId] = updated;
-            setStreamParts((parts) => upsertToolPart(parts, updated));
-            if (message.payload.text) {
-              setRunPhaseLabel(
-                `${toolLabel(entry.toolName, entry.path)} — ${message.payload.text}`,
-              );
-            }
-          }
-          break;
-        }
-
-        case "tool_finished": {
-          const entry = activeToolsMapRef.current[message.payload.callId];
-          if (entry) {
-            const updated: ActiveToolState = {
-              ...entry,
-              status: message.payload.success ? "finished" : "failed",
-              success: message.payload.success,
-            };
-            const remaining = { ...activeToolsMapRef.current };
-            delete remaining[message.payload.callId];
-            activeToolsMapRef.current = remaining;
-            setStreamParts((parts) => upsertToolPart(parts, updated));
-          }
-          if (Object.keys(activeToolsMapRef.current).length === 0) {
-            setRunPhaseLabel(t("Processing…"));
-          }
-          break;
-        }
-
-        case "run_phase": {
-          const retry = message.payload.retry;
-          if (message.payload.phase === "retrying" && retry) {
-            setRunPhaseLabel(
-              t("Connection issue — retrying ({attempt}/{maxAttempts})…", {
-                attempt: retry.attempt,
-                maxAttempts: retry.maxAttempts,
-              }),
-            );
-            // Everything already produced stays; only the interrupted stream
-            // is regenerated. A divider keeps the resumed text from being
-            // glued onto the partial it replaces.
-            setStreamParts((parts) =>
-              parts.length === 0 || parts[parts.length - 1].kind === "notice"
-                ? parts
-                : [
-                    ...parts,
-                    {
-                      kind: "notice",
-                      text: t("Connection dropped — continuing from where it left off"),
-                    },
-                  ],
-            );
-            break;
-          }
-          setRunPhaseLabel(
-            {
-              connecting: t("Connecting…"),
-              processing: t("Processing…"),
-              thinking: t("Thinking…"),
-              tool: t("Using a tool…"),
-              compacting: t("Compacting conversation…"),
-              retrying: t("Connection issue — retrying…"),
-              "awaiting-user": t("Waiting for your approval…"),
-              idle: "",
-              error: "",
-            }[message.payload.phase],
-          );
-          break;
-        }
 
         case "run_completed":
           sendQueueAfterInterruptRef.current = null;
@@ -1148,7 +1026,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setMessages([]);
     setStreamParts([]);
     setWsError(null);
-    setReviseMode(false);
     setRunHint(null);
     setRunPhaseLabel("");
     clearStagedWorkspace();
@@ -1271,7 +1148,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         : { type: "fork_session", payload: { purpose } };
       // The child asks the question the user already typed, instead of opening
       // with "what can I help with?".
-      pendingChildSeedRef.current = seedPrompt?.trim() || null;
+      pendingChildSeedRef.current = seedPrompt?.trim()
+        ? { text: seedPrompt.trim(), autoSend: true }
+        : null;
       if (sendMessage(message)) {
         setIsRunning(true);
         setConnStatus("running");
@@ -1317,13 +1196,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [openCatalogSession, refreshSessions],
   );
 
-  const renameSelectedSession = useCallback(async (sessionId?: string) => {
-    const targetId = sessionId ?? selectedSessionDetail?.session?.sessionId;
-    if (!targetId) return;
-    const current = sessionDisplayNames[targetId]?.alias || "";
-    const next = window.prompt("Conversation name", current);
-    if (next === null) return;
-    const alias = normalizeSessionAlias(next);
+  const renameSelectedSession = useCallback(async (targetId: string, name: string) => {
+    const alias = normalizeSessionAlias(name);
     try {
       await saveSessionAlias(targetId, alias);
       setSessionDisplayNames((prev) => ({
@@ -1331,12 +1205,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         [targetId]: { ...(prev[targetId] ?? { snippet: "" }), alias },
       }));
       setToolStatus("");
+      return true;
     } catch (err) {
       setToolStatus(
         `Rename failed: ${err instanceof Error ? err.message : String(err)}`,
       );
+      return false;
     }
-  }, [selectedSessionDetail, sessionDisplayNames],);
+  }, []);
 
   const performDeleteSelectedSession = useCallback(async (targetId: string) => {
     try {
@@ -1370,14 +1246,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const deleteSelectedSession = useCallback((sessionId?: string) => {
     const targetId = sessionId ?? selectedSessionDetail?.session?.sessionId;
     if (!targetId) return;
-    requestConfirm({
-      message: t("Delete this conversation from the conversation list?"),
-      confirmLabel: t("Delete"),
-      onConfirm: () => {
-        void performDeleteSelectedSession(targetId);
-      },
-    });
-  }, [performDeleteSelectedSession, requestConfirm, selectedSessionDetail],);
+    void performDeleteSelectedSession(targetId);
+  }, [performDeleteSelectedSession, selectedSessionDetail],);
 
   const replaceQueuedPrompts = useCallback(
     (update: (current: QueuedPrompt[]) => QueuedPrompt[]) => {
@@ -1408,7 +1278,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setCanRetryFailed(false);
       setToolStatus("");
       setRunPhaseLabel(t("Connecting…"));
-      setReviseMode(false);
       setIsRunning(true);
       setConnStatus("running");
       setConnLabel(t("Thinking…"));
@@ -1557,19 +1426,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [isRunning, sendMessage, sessionId, setComposerNoticeTimed],
   );
 
-  const reviseLatest = useCallback(
-    (text: string) => {
-      if (!branchRevision(text, reviseEntryId ?? undefined)) return false;
-      setReviseMode(false);
-      setReviseDraft("");
-      setReviseEntryId(null);
+  const prepareBranchRevision = useCallback(
+    (text: string, entryId: string) => {
+      const trimmed = text.trim();
+      if (!trimmed || !entryId || isRunning || !sessionId) return false;
+      pendingChildSeedRef.current = { text: trimmed, autoSend: false };
+      if (!sendMessage({ type: "prepare_branch_revision", payload: { entryId } })) {
+        pendingChildSeedRef.current = null;
+        return false;
+      }
+      setIsRunning(true);
+      setConnStatus("running");
+      setConnLabel(t("Branching..."));
+      setToolStatus(t("Preparing comparison…"));
       return true;
     },
-    [branchRevision, reviseEntryId],
+    [isRunning, sendMessage, sessionId],
   );
 
-  const retryFailed = useCallback(() => {
-    if (isRunning || !sessionId || !sendMessage({ type: "retry_failed" })) {
+  const retryLatest = useCallback(() => {
+    if (isRunning || !sessionId || !sendMessage({ type: "retry_latest" })) {
       return false;
     }
     setCanRetryFailed(false);
@@ -1587,19 +1463,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setRunHint("");
   }, [sendMessage]);
 
-  const startReviseMode = useCallback((text: string, entryId?: string) => {
-    setReviseDraft(text);
-    setReviseEntryId(entryId ?? null);
-    setReviseMode(true);
-    setRunHint(null);
-    return text;
-  }, []);
-
-  const cancelReviseMode = useCallback(() => {
-    setReviseMode(false);
-    setReviseDraft("");
-    setReviseEntryId(null);
-  }, []);
 
   const setDraftWorkspace = useCallback(
     (primaryDir: string | null) => {
@@ -1638,24 +1501,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         /* hosted or endpoint unavailable */
       });
   }, [appMode]);
-
-  const branchFromEntry = useCallback(
-    (entryId: string) => {
-      if (!sessionId || isRunning) return;
-      if (
-        sendMessage({
-          type: "fork_session",
-          payload: { purpose: "fork", forkPointEntryId: entryId },
-        })
-      ) {
-        setIsRunning(true);
-        setConnStatus("running");
-        setConnLabel(t("Branching..."));
-        setToolStatus(t("Branching from this point…"));
-      }
-    },
-    [sendMessage, sessionId, isRunning],
-  );
 
   const switchProject = useCallback(
     (projectId: string | null) => {
@@ -1872,8 +1717,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       composerNotice,
       runHint,
       canRetryFailed,
-      reviseMode,
-      reviseDraft,
       stagedWorkspacePaths,
       toggleWorkspaceStage,
       stageWorkspacePath,
@@ -1897,13 +1740,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       interruptAndSendQueuedPrompt,
       abortRun,
       invokeSkill,
-      reviseLatest,
       branchRevision,
-      retryFailed,
+      prepareBranchRevision,
+      retryLatest,
       deleteLatest,
-      branchFromEntry,
-      startReviseMode,
-      cancelReviseMode,
       requestMetadata,
       requestMetrics,
     }),
@@ -1982,8 +1822,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       composerNotice,
       runHint,
       canRetryFailed,
-      reviseMode,
-      reviseDraft,
       stagedWorkspacePaths,
       toggleWorkspaceStage,
       stageWorkspacePath,
@@ -2007,13 +1845,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       interruptAndSendQueuedPrompt,
       abortRun,
       invokeSkill,
-      reviseLatest,
       branchRevision,
-      retryFailed,
+      prepareBranchRevision,
+      retryLatest,
       deleteLatest,
-      branchFromEntry,
-      startReviseMode,
-      cancelReviseMode,
       requestMetadata,
       requestMetrics,
     ],
@@ -2025,6 +1860,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       <ConfirmDialog
         open={Boolean(confirmRequest)}
         message={confirmRequest?.message ?? ""}
+        details={confirmRequest?.details}
         confirmLabel={confirmRequest?.confirmLabel}
         cancelLabel={confirmRequest?.cancelLabel}
         checkbox={confirmRequest?.checkbox}

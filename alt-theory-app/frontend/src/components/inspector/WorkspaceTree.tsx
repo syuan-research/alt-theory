@@ -258,7 +258,7 @@ export function WorkspaceTree() {
         <div className="working-folders">
           <div className="files-section-title">{t("Working folders")}</div>
           {workingFolders.map((folder) => (
-            <div key={folder.id}>
+            <div className="working-folder-group" key={folder.id}>
               <div className="working-folder">
                 <i className="ph ph-folder-open" />
                 <div>

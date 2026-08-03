@@ -57,14 +57,14 @@ export function InspectorPanel() {
     if (openedChildRef.current === childId) return;
     openedChildRef.current = childId;
 
-    // Width depends on conversation kind (branch/retry ≈ 50%; btw/helper default).
+    // Width depends on conversation kind (branch/edit ≈ 50%; btw/helper default).
     // Prefer the explicit hint from branch_created / related_session_created;
     // when the user picks from the switcher, fall back to purpose on the summary.
     let size = app.relatedPaneSize;
     if (!size) {
       const child = app.sessions.find((s) => s.sessionId === childId);
       const purpose = child?.forkedFrom?.purpose;
-      // Branch/retry only: half work area. Subagent / btw / helper: default ~480.
+      // Branch/edit only: half work area. Subagent / btw / helper: default ~480.
       size = purpose === "fork" ? "half" : "default";
     }
     shell.setRightPaneForRelated(size);
@@ -216,7 +216,7 @@ function RelatedConversations() {
   // by the one-shot effect on activeRelatedSessionId. Do NOT dual-write openSub.
   //
   // parentRow ("Where this branch started — go back anytime") is intentionally
-  // gone. Branch/retry open the child in this Related rail via
+  // gone. Branch/edit comparisons open the child in this Related rail via
   // branch_created → activeRelatedSessionId (not center compare). Center
   // session is chosen only from the left list.
 

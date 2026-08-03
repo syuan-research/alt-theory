@@ -782,26 +782,31 @@ WebSocket:
 - client: `get_session_metadata`, `get_session_metrics`, `open_session`
 - client: `switch_visibility`, `switch_mode`
 - client: `add_workspace_dir` (local form only), `respond_approval`
-- client: `revise_latest`, `delete_latest`, `fork_session`,
-  `create_related_session`
+- client: `branch_revision`, `prepare_branch_revision`, `retry_latest`,
+  `delete_latest`, `fork_session`, `create_related_session`
 - client: `set_study_tag`, `set_session_model` (M7, 2026-07-16)
 
-`revise_latest` starts a model run and completes with the normal run lifecycle
-events (`run_completed` / `run_failed`). The browser refreshes transcript from
-REST after completion.
+`branch_revision` creates a comparison child and starts the edited run there;
+`prepare_branch_revision` creates the child before the edited user message and
+leaves the edit as an unsent draft. `retry_latest` supersedes the latest attempt
+and reruns its exact model-facing user message from the start in the same
+session. Runs complete with the normal lifecycle events.
 
 `delete_latest` is synchronous: the server replies with `session_updated` and
 `session_transcript` for the same attached session.
 
-`fork_session` creates a logical Branch from a selected Pi entry on the active
-branch and attaches the requesting socket to it. `create_related_session`
+`fork_session` creates an idle logical Branch from the active Pi path. The
+ordinary `/branch` path keeps the requesting socket on its parent and opens the
+child in Related; list-level Duplicate passes `sourceSessionId` and intentionally
+attaches to the copy. `create_related_session`
 creates BTW (cloned) or Helper (fresh) without attaching the parent socket;
 the frontend opens a second socket for the right-panel child. Promotion is an
 explicit catalog mutation, not an alias for opening the child.
 The branch workspace is copied at creation time, so later file/tool side
 effects do not share a mutable workspace. Collaboration-oriented shared space
 should be modeled through projects or another explicit shared-space layer, not
-through the Branch button.
+through `/branch`. There is no standalone message-level Branch button; Edit and
+compare owns the common prompt-comparison journey.
 
 `session_draft` contains only selector state and no session ID. The browser may
 enable input/config controls in draft, but records, paths, and metrics remain
