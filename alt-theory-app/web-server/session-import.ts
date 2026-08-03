@@ -1,6 +1,7 @@
 import { createHash } from "crypto";
 import {
   existsSync,
+  copyFileSync,
   cpSync,
   mkdirSync,
   readFileSync,
@@ -304,6 +305,7 @@ export function registerCodexImport(args: {
     sourceVersion: args.preflight.sourceVersion,
     transformations: args.preflight.transformations,
     sourceContextFiles: args.preflight.sourceContextFiles,
+    rawSourceFile: args.source.sourceStore,
   });
 }
 
@@ -379,6 +381,7 @@ function registerPreparedImport(args: {
   transformations: string[];
   sourceContextFiles?: Array<{ filename: string; content: string }>;
   rawSourceDir?: string;
+  rawSourceFile?: string;
   mode: AltMode;
   workspacePrimaryDir?: string;
   ownerAccountId?: string | null;
@@ -410,7 +413,14 @@ function registerPreparedImport(args: {
     writeFileSync(importedPath, args.piSessionJsonl);
     SessionManager.open(importedPath);
     let sourceSnapshot: string | undefined;
-    if (args.rawSourceDir) {
+    if (args.rawSourceFile) {
+      sourceSnapshot = "source-rollout.jsonl";
+      const snapshotPath = join(dirs.recordsDir, sourceSnapshot);
+      copyFileSync(resolve(args.rawSourceFile), snapshotPath);
+      if (fingerprintFile(snapshotPath) !== args.sourceFingerprint) {
+        throw new Error("Codex source changed while its managed snapshot was copied");
+      }
+    } else if (args.rawSourceDir) {
       sourceSnapshot = "source-snapshot";
       const snapshotPath = join(dirs.recordsDir, sourceSnapshot);
       cpSync(resolve(args.rawSourceDir), snapshotPath, {

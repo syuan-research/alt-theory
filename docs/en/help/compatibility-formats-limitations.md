@@ -8,8 +8,8 @@ changes.
 
 | Platform | Status |
 |---|---|
-| macOS (Apple Silicon) | Supported (packaged app and source build) |
-| Windows (x86) | Supported (packaged app and source build) |
+| Windows x64 | Public Beta folder ZIP and tested source build |
+| macOS (Apple Silicon) | Planned before v1.4; internal hard-bug validation remains |
 | Other combinations (Intel Mac, Windows ARM, Linux) | Not tested, not claimed; source builds may work but are unverified |
 
 ## Interface languages
@@ -17,8 +17,8 @@ changes.
 | Language | Status |
 |---|---|
 | English | Current |
-| Chinese, simplified (zh-Hans) | Current (alpha.6) |
-| Chinese, traditional Hong Kong (zh-Hant-HK) | Current (alpha.6) |
+| Chinese, simplified (zh-Hans) | Current |
+| Chinese, traditional Hong Kong (zh-Hant-HK) | Current |
 
 Conversation language is model-dependent and effectively unrestricted:
 the agent answers in the language you use.
@@ -73,6 +73,6 @@ with compatible APIs can be configured as providers.
 - One conversation per window focus. Parallel Work conversations run and
   signal their state, but there is one active view; heavy multi-agent
   orchestration is not this product.
-- Alpha movement. Interfaces and bundled assets may still change between
+- Beta movement. Interfaces and bundled assets may still change between
   releases; [the policy](../advanced/compatibility-updates-debugging.md)
   states what is and is not protected.

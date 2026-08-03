@@ -4,30 +4,30 @@ Alt Theory 在本机运行，获取方式有两种。
 
 ## 打包应用
 
-在内部测试阶段，打包后的桌面应用直接发给测试者与协作者 （现阶段），公开测试阶段在 github release 可获取。
+Windows x64 Beta 可从 [GitHub Release](https://github.com/syuan-research/alt-theory/releases/tag/v1.3.0-beta.1) 下载。下载 `AltTheory-b1-win.zip`，完整解压 `AltTheory` 文件夹，然后运行 `AltTheory.exe`。使用打包应用不需要安装 Node.js 或 npm。
 
 支持以下平台：
 
-- 配备 Apple Silicon 的 macOS
-- x86 架构的 Windows
+- Windows x64：提供 Beta 文件夹 ZIP
+- Apple Silicon macOS：计划在 v1.4 前上线，仍在进行内部硬性 bug 检查
 
 其他组合未经测试，不作保证。
 
-首次启动时，操作系统可能警告该应用来自未识别的开发者，因为它未经平台应用商店分发。在 macOS 上，首次打开请右键点击应用并选择「打开」。在 Windows 上，于 SmartScreen 对话框中选择「更多信息，然后仍要运行」。下面从源码构建可避开此提示。
+首次启动时，Windows 可能警告该应用来自未识别的开发者，因为 Beta 尚未代码签名。仅在 ZIP 来自本仓库 GitHub Release 时选择「更多信息 → 仍要运行」。
 
 
 ## 从仓库构建 （需一定编程经验）
 
-完整源码公开，使用当前版本的 Node.js 与 npm。
+完整源码公开。当前 Windows 构建使用 Node.js 24 与 npm 11 测试。
 
 ```bash
 git clone https://github.com/syuan-research/alt-theory
 cd alt-theory
 npm ci
 npm --prefix alt-theory-app/frontend ci
-npm run build:frontend-v6
+npm run build:electron
 ```
-用平台启动脚本启动本机应用（当前命令见仓库 README）。应用提供一个本地 Web 界面并在窗口中打开，不托管在任何服务器上。
+Windows 未打包目录输出到 `dist/win-unpacked/`。打包与验证步骤见仓库 README 和标准桌面 bundle 指南。
 
 ## 首次启动
 

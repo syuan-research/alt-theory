@@ -4,30 +4,30 @@ Alt Theory runs on the local machine. There are two ways to get it.
 
 ## The packaged app
 
-During internal testing, the packaged desktop app is given directly to testers and collaborators (current stage). In a public testing stage it will be available from the GitHub release.
+The Windows x64 Beta is available from the [GitHub Release](https://github.com/syuan-research/alt-theory/releases/tag/v1.3.0-beta.1). Download `AltTheory-b1-win.zip`, extract the complete `AltTheory` folder, and run `AltTheory.exe`. Node.js and npm are not required for the packaged app.
 
 Supported platforms:
 
-- macOS on Apple Silicon
-- Windows on x86
+- Windows x64: available as the Beta folder ZIP
+- macOS on Apple Silicon: planned before v1.4; internal hard-bug validation remains
 
 Other combinations are untested and not claimed.
 
-On first launch the operating system may warn that the app is from an unidentified developer, because it is not distributed through the platform app stores. On macOS, right-click the app and choose Open the first time. On Windows, choose "More info, then Run anyway" on the SmartScreen dialog. Building from source below avoids this prompt.
+On first launch Windows may warn that the app is from an unidentified developer because the Beta is not code-signed. Choose **More info → Run anyway** only when the ZIP came from this repository's GitHub Release.
 
 ## Building from the repository (some programming experience)
 
-The full source is public. Use a current Node.js release and npm.
+The full source is public. The current Windows build is tested with Node.js 24 and npm 11.
 
 ```bash
 git clone https://github.com/syuan-research/alt-theory
 cd alt-theory
 npm ci
 npm --prefix alt-theory-app/frontend ci
-npm run build:frontend-v6
+npm run build:electron
 ```
 
-Start the local app with the platform start script (see the repository README for the current command). The app serves a local web interface and opens it in a window; nothing is hosted on a remote server.
+The Windows unpacked app is written to `dist/win-unpacked/`. See the repository README and canonical desktop bundle guide for packaging and verification.
 
 ## First launch
 

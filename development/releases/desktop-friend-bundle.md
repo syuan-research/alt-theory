@@ -17,9 +17,14 @@ artifact without appearing in its commit.
 Before building:
 
 1. confirm the intended commit and a clean tracked worktree;
-2. close any Alt Theory process running from that checkout;
-3. restore dependencies from `package-lock.json` with `npm ci`;
-4. do not change Pi, Electron, providers, ASAR, or distribution format as part
+2. confirm the root `package.json` version matches the intended tag and channel;
+   this version drives Electron metadata and the in-app About panel; prerelease
+   builds also give `shortVersionWindows` the numeric Windows mapping (for
+   example, Beta 1 uses `1.3.0.1`);
+3. close any Alt Theory process running from that checkout;
+4. restore both lockfiles with `npm ci` and
+   `npm --prefix alt-theory-app/frontend ci`;
+5. do not change Pi, Electron, providers, ASAR, or distribution format as part
    of packaging.
 
 User state is not part of the bundle. Existing conversations and configuration
@@ -55,6 +60,7 @@ Run on each platform:
 
 ```text
 npm ci
+npm --prefix alt-theory-app/frontend ci
 npm run build:electron
 ```
 
@@ -118,7 +124,11 @@ Automated content checks:
 4. the longest relative path inside Windows `resources/app` is at most 180
    characters;
 5. the archive has the required single top-level name;
-6. record artifact size, entry count, commit, and SHA-256.
+6. the executable ProductVersion, FileVersion, CompanyName, description, and
+   icon match the release metadata in the root `package.json`;
+7. the in-app About version matches the tag and executable ProductVersion;
+8. record artifact version, size, entry count, commit, and SHA-256 in
+   `BUILD-INFO.txt`.
 
 Manual acceptance:
 

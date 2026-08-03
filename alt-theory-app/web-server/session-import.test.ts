@@ -429,10 +429,7 @@ test("Codex preflight maps supported rollout history and refuses unmatched tool 
   assert.ok(preflight.transformations.some((item) => item.includes("user-role priority")));
   assert.ok(preflight.transformations.some((item) => item.includes("not registered as active")));
   const entries = preflight.piSessionJsonl.trim().split(/\r?\n/).map((value) => JSON.parse(value));
-  assert.equal(
-    entries.filter((entry) => entry.customType === "source-codex-record").length,
-    supported.length
-  );
+  assert.equal(entries.some((entry) => entry.customType === "source-codex-record"), false);
   const registered = registerCodexImport({
     dataDir,
     source,
@@ -442,6 +439,13 @@ test("Codex preflight maps supported rollout history and refuses unmatched tool 
   });
   const detail = readSessionDetail(dataDir, registered.sessionId);
   assert.ok(detail);
+  assert.equal(
+    readFileSync(
+      join(dataDir, "sessions", registered.sessionId, "records", "source-rollout.jsonl"),
+      "utf-8"
+    ),
+    readFileSync(supportedPath, "utf-8")
+  );
   assert.ok(
     detail.transcript.some(
       (message) =>
@@ -1008,10 +1012,7 @@ test("Codex preflight separates visible history from active context after compac
   assert.ok(preflight.transformations.some((item) => item.includes("user-fork lineage")));
   assert.ok(preflight.transformations.some((item) => item.includes("inter-agent messages")));
   assert.ok(preflight.transformations.some((item) => item.includes("were not rolled back")));
-  assert.equal(
-    entries.filter((entry) => entry.customType === "source-codex-record").length,
-    compacted.length
-  );
+  assert.equal(entries.some((entry) => entry.customType === "source-codex-record"), false);
   const registered = registerCodexImport({
     dataDir,
     source,

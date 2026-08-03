@@ -165,6 +165,7 @@ export function ChildConversation({
     }
     if (socket.send({ type: "prompt", payload: seed.text })) {
       seedSentRef.current = true;
+      setMessages((current) => [...current, { role: "user", text: seed.text, timestamp: null }]);
       setRunning(true);
       setStatus(t("Working…"));
       app.clearChildSeed();
@@ -177,6 +178,7 @@ export function ChildConversation({
     // Sending while it runs steers the running turn (Pi behavior); the server
     // confirms with an extension notice.
     if (socket.send({ type: "prompt", payload: text })) {
+      setMessages((current) => [...current, { role: "user", text, timestamp: null }]);
       setDraft("");
       setError("");
       if (!running) {

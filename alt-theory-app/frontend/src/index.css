@@ -260,10 +260,12 @@
   .app-root.leftCol .left .full { display: none !important; }
   .left .mini { display: none; flex-direction: column; align-items: center; gap: 6px; padding-top: 12px; flex: 1; }
   .app-root.leftCol .left .mini { display: flex; }
-  .mini button { width: 36px; height: 36px; border: none; background: transparent; border-radius: var(--r-sm); color: var(--text-2); cursor: pointer; font-size: 1.05rem; }
+  .mini button { width: 36px; height: 36px; border: none; background: transparent; border-radius: var(--r-sm); color: var(--text-2); cursor: pointer; font-size: 1.05rem; display: inline-flex; align-items: center; justify-content: center; }
   .mini button:hover { background: var(--hover); }
   .mini .mono { font-family: var(--brand); font-weight: 600; font-size: 1rem; color: var(--ink); }
   .left-head { display: flex; align-items: center; padding: 12px 12px 4px; }
+  .brand-lockup { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+  .brand-mark { display: block; width: 24px; height: 24px; flex: none; object-fit: contain; }
   .wordmark { font-family: var(--brand); font-weight: 600; font-size: 1.05rem; }
   .left-head .icons { margin-left: auto; display: flex; gap: 2px; }
   .icon-btn { width: 30px; height: 30px; border: none; background: transparent; border-radius: var(--r-sm); color: var(--text-2); cursor: pointer; font-size: 1rem; display: inline-flex; align-items: center; justify-content: center; }
@@ -896,6 +898,10 @@
   .asset-list em { color: var(--text-3); font-style: normal; }
   .asset-list code { font-size: 0.75rem; }
   .set-card .row2 { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+  .trash-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .trash-actions button { border: 1px solid var(--hairline); border-radius: var(--r-sm); background: transparent; color: var(--text-2); padding: 6px 9px; font: inherit; font-size: 0.75rem; cursor: pointer; }
+  .trash-actions button:hover { background: var(--hover); color: var(--ink); }
+  .trash-actions button.danger { color: var(--danger); }
   .set-card input[type="text"] { border: 1px solid var(--hairline); border-radius: var(--r-sm); padding: 7px 10px; font: inherit; font-size: 0.875rem; width: 220px; outline: none; }
   .toggle { width: 38px; height: 22px; border-radius: 999px; background: var(--toggle-track); position: relative; cursor: pointer; flex-shrink: 0; border: none; padding: 0; transition: background 0.15s; }
   .toggle::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: var(--toggle-knob); box-shadow: 0 1px 2px rgba(0,0,0,0.25); transition: left 0.15s; }

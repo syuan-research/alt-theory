@@ -207,7 +207,7 @@ export function SessionImportDialog({
               <optgroup key={group.cwd || "no-folder"} label={group.label}>
                 {group.sessions.map((session) => (
                   <option key={session.sourceId} value={session.sourceId}>
-                    {(session.name || session.preview || session.sourceSessionId).slice(0, 100)}{" "} · {session.messageCount} messages
+                    {session.messageCount} messages · {(session.name || session.preview || session.sourceSessionId).trim().replace(/\s+/g, " ").slice(0, 56)}
                   </option>
                 ))}
               </optgroup>

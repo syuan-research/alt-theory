@@ -8,6 +8,7 @@ import {
   readdirSync,
   readFileSync,
   renameSync,
+  rmSync,
   statSync,
   unlinkSync,
   writeFileSync,
@@ -48,7 +49,9 @@ import {
   type AbComparisonRecord,
 } from "./ab-records.js";
 import {
+  deletedSessionDueAt,
   readDeletedSessionRecord,
+  removeDeletedSessionRecord,
   writeDeletedSessionRecord,
   type DeletedSessionRecord,
 } from "./session-deletion.js";
@@ -64,6 +67,7 @@ export interface SessionSummary {
   createdAt: string | null;
   updatedAt: string | null;
   deletedAt: string | null;
+  trashDueAt: string | null;
   status: "available" | "incomplete" | "error";
   rolePresetSlug: string | null;
   kbDomain: string | null;
@@ -146,6 +150,31 @@ interface SessionParts {
 }
 
 export function listSessionSummaries(dataDir: string): SessionListResponse {
+  return listSessionSummariesByDeletion(dataDir, false);
+}
+
+export function listDeletedSessionSummaries(dataDir: string): SessionListResponse {
+  const list = listSessionSummariesByDeletion(dataDir, true);
+  return {
+    ...list,
+    sessions: list.sessions.filter((session) => {
+      const root = resolveSessionRoot(dataDir, session.sessionId);
+      if (!root) return false;
+      const deleted = readDeletedSessionRecord(join(root, "records"));
+      return (
+        deleted?.reason !== "user_permanently_deleted" &&
+        deleted?.reason !== "trash_retention_expired" &&
+        (!deleted?.cascadeRootSessionId ||
+          deleted.cascadeRootSessionId === session.sessionId)
+      );
+    }),
+  };
+}
+
+function listSessionSummariesByDeletion(
+  dataDir: string,
+  deleted: boolean,
+): SessionListResponse {
   const resolvedDataDir = resolve(dataDir);
   const sessionsRoot = resolveSessionsRoot(resolvedDataDir);
   if (!existsSync(sessionsRoot)) {
@@ -154,7 +183,7 @@ export function listSessionSummaries(dataDir: string): SessionListResponse {
 
   const sessions = readdirSync(sessionsRoot, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
-    .map((entry) => readSessionSummary(resolvedDataDir, entry.name))
+    .map((entry) => readSessionSummary(resolvedDataDir, entry.name, deleted))
     .filter((summary): summary is SessionSummary => summary !== null)
     .sort(compareSummaries);
 
@@ -237,7 +266,150 @@ export function softDeleteSession(
   if (!isDurableCatalogSession(summary, parts)) {
     throw new Error(`Session is not available for deletion: ${sessionId}`);
   }
-  return writeDeletedSessionRecord(parts.recordsDir, sessionId);
+  const summaries = allSessionSummaries(dataDir);
+  const targets = attachedDeletionTargets(sessionId, summaries);
+  const deletedAt = new Date().toISOString();
+  for (const targetId of targets) {
+    const targetRoot = resolveSessionRoot(dataDir, targetId);
+    if (!targetRoot) continue;
+    writeDeletedSessionRecord(join(targetRoot, "records"), targetId, {
+      deletedAt,
+      reason: "user_deleted",
+      cascadeRootSessionId: sessionId,
+    });
+  }
+  return readDeletedSessionRecord(parts.recordsDir)!;
+}
+
+export function restoreDeletedSession(dataDir: string, sessionId: string): string[] {
+  assertDirectTrashEntry(dataDir, sessionId);
+  const restored: string[] = [];
+  for (const summary of allSessionSummaries(dataDir)) {
+    const root = resolveSessionRoot(dataDir, summary.sessionId);
+    if (!root) continue;
+    const recordsDir = join(root, "records");
+    const deleted = readDeletedSessionRecord(recordsDir);
+    if (!deleted) continue;
+    if (
+      summary.sessionId === sessionId ||
+      deleted.cascadeRootSessionId === sessionId
+    ) {
+      removeDeletedSessionRecord(recordsDir);
+      restored.push(summary.sessionId);
+    }
+  }
+  if (!restored.includes(sessionId)) {
+    throw new Error(`Session is not in Trash: ${sessionId}`);
+  }
+  return restored;
+}
+
+export function permanentlyDeleteSession(
+  dataDir: string,
+  sessionId: string,
+  isOpen: (sessionId: string) => boolean = () => false,
+  reason: "user_permanently_deleted" | "trash_retention_expired" =
+    "user_permanently_deleted",
+  now: Date = new Date(),
+): string[] {
+  assertDirectTrashEntry(dataDir, sessionId);
+  const targets = allSessionSummaries(dataDir)
+    .filter((summary) => {
+      const root = resolveSessionRoot(dataDir, summary.sessionId);
+      if (!root) return false;
+      const deleted = readDeletedSessionRecord(join(root, "records"));
+      return (
+        summary.sessionId === sessionId ||
+        deleted?.cascadeRootSessionId === sessionId
+      );
+    })
+    .map((summary) => summary.sessionId);
+  if (!targets.includes(sessionId)) {
+    throw new Error(`Session is not in Trash: ${sessionId}`);
+  }
+  const open = targets.find(isOpen);
+  if (open) throw new Error(`Close the conversation before permanent deletion: ${open}`);
+  for (const targetId of targets) {
+    const root = resolveSessionRoot(dataDir, targetId);
+    if (!root) continue;
+    const recordsDir = join(root, "records");
+    rmSync(join(root, "history"), { recursive: true, force: true });
+    rmSync(join(root, "branches"), { recursive: true, force: true });
+    for (const entry of readdirSync(recordsDir, { withFileTypes: true })) {
+      if (entry.name === "deleted.json") continue;
+      rmSync(join(recordsDir, entry.name), { recursive: true, force: true });
+    }
+    removeDeletedSessionRecord(recordsDir);
+    writeDeletedSessionRecord(recordsDir, targetId, {
+      deletedAt: now.toISOString(),
+      reason,
+    });
+  }
+  return targets;
+}
+
+function assertDirectTrashEntry(dataDir: string, sessionId: string): void {
+  const root = resolveSessionRoot(dataDir, sessionId);
+  const deleted = root
+    ? readDeletedSessionRecord(join(root, "records"))
+    : null;
+  if (
+    !deleted ||
+    (deleted.cascadeRootSessionId &&
+      deleted.cascadeRootSessionId !== sessionId)
+  ) {
+    throw new Error(`Session is not a direct Trash entry: ${sessionId}`);
+  }
+  if (
+    deleted.reason === "user_permanently_deleted" ||
+    deleted.reason === "trash_retention_expired"
+  ) {
+    throw new Error(`Session is no longer recoverable: ${sessionId}`);
+  }
+}
+
+export function purgeExpiredDeletedSessions(
+  dataDir: string,
+  now: Date = new Date(),
+  isOpen: (sessionId: string) => boolean = () => false,
+): string[] {
+  const deleted: string[] = [];
+  for (const summary of listDeletedSessionSummaries(dataDir).sessions) {
+    if (!summary.trashDueAt || Date.parse(summary.trashDueAt) > now.getTime()) continue;
+    try {
+      deleted.push(
+        ...permanentlyDeleteSession(
+          dataDir,
+          summary.sessionId,
+          isOpen,
+          "trash_retention_expired",
+          now,
+        ),
+      );
+    } catch (error) {
+      if (!(error instanceof Error) || !error.message.startsWith("Close the conversation")) {
+        throw error;
+      }
+    }
+  }
+  return deleted;
+}
+
+export function sweepExpiredDeletedSessions(
+  dataDir: string,
+  isOpen: (sessionId: string) => boolean,
+): () => void {
+  const run = () => {
+    try {
+      purgeExpiredDeletedSessions(dataDir, new Date(), isOpen);
+    } catch (error) {
+      console.error("Trash retention sweep failed:", error);
+    }
+  };
+  run();
+  const timer = setInterval(run, 24 * 60 * 60 * 1000);
+  timer.unref?.();
+  return () => clearInterval(timer);
 }
 
 export function listSessionTextFiles(
@@ -327,13 +499,53 @@ export function deleteSessionTextFile(
 
 function readSessionSummary(
   dataDir: string,
-  sessionId: string
+  sessionId: string,
+  deleted = false,
 ): SessionSummary | null {
   const parts = readSessionParts(dataDir, sessionId);
   if (!parts) return null;
   const summary = buildSummary(sessionId, parts);
-  if (parts.deleted || !isDurableCatalogSession(summary, parts)) return null;
+  if (Boolean(parts.deleted) !== deleted || !isDurableCatalogSession(summary, parts)) {
+    return null;
+  }
   return summary;
+}
+
+function allSessionSummaries(dataDir: string): SessionSummary[] {
+  const active = listSessionSummariesByDeletion(dataDir, false).sessions;
+  const deleted = listSessionSummariesByDeletion(dataDir, true).sessions;
+  return [...active, ...deleted];
+}
+
+function attachedDeletionTargets(
+  sessionId: string,
+  summaries: SessionSummary[],
+): string[] {
+  const children = new Map<string, SessionSummary[]>();
+  for (const summary of summaries) {
+    const parentId = summary.forkedFrom?.sessionId;
+    if (!parentId) continue;
+    const list = children.get(parentId) ?? [];
+    list.push(summary);
+    children.set(parentId, list);
+  }
+  const targets: string[] = [];
+  const visit = (id: string) => {
+    targets.push(id);
+    for (const child of children.get(id) ?? []) {
+      const fork = child.forkedFrom;
+      if (
+        !fork ||
+        fork.listed ||
+        !["side", "helper", "subagent"].includes(fork.purpose)
+      ) {
+        continue;
+      }
+      visit(child.sessionId);
+    }
+  };
+  visit(sessionId);
+  return targets;
 }
 
 const TEXT_FILE_ROOTS = ["records", "workspace"] as const;
@@ -523,6 +735,9 @@ function buildSummary(sessionId: string, parts: SessionParts): SessionSummary {
     recordModel: parts.v4Session ? "v0.4" : "legacy-v0.3",
     warnings: uniqueWarnings(warnings),
     deletedAt: parts.deleted?.deletedAt ?? null,
+    trashDueAt: parts.deleted
+      ? deletedSessionDueAt(parts.deleted.deletedAt)
+      : null,
     forkedFrom: parts.v4Session?.forkedFrom ?? null,
     studyTag: parts.v4Session?.studyTag ?? null,
     workspacePrimaryDir: parts.v4Session?.workspace?.primaryDir ?? null,

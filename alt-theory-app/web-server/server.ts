@@ -41,13 +41,17 @@ import type {
 } from "./websocket-protocol.js";
 import {
   getSessionRootForRequest,
+  listDeletedSessionSummaries,
   listSessionTextFiles,
   listSessionSummaries,
+  permanentlyDeleteSession,
+  restoreDeletedSession,
   readSessionTextFile,
   readSessionDetail,
   readSessionChanges,
   type SessionSummary,
   softDeleteSession,
+  sweepExpiredDeletedSessions,
   writeSessionTextFile,
 } from "./session-store.js";
 import {
@@ -1168,6 +1172,17 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       })),
     });
   });
+  app.get("/api/sessions/trash", (req, res) => {
+    const auth = resolveSessionRestAuth(req, res);
+    if (!auth) return;
+    const list = listDeletedSessionSummaries(dataDir);
+    res.json({
+      ...list,
+      sessions: list.sessions.filter((session) =>
+        canAccessSessionSummary(auth, session),
+      ),
+    });
+  });
   app.get("/api/sessions/:sessionId", (req, res) => {
     const sessionId = req.params.sessionId;
     const root = getSessionRootForRequest(dataDir, sessionId);
@@ -1250,6 +1265,34 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     }
     try {
       res.json({ deleted: softDeleteSession(dataDir, sessionId) });
+    } catch (error) {
+      res.status(409).json({
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+  app.post("/api/sessions/:sessionId/restore", (req, res) => {
+    const sessionId = req.params.sessionId;
+    if (!requireSessionRestContentAccess(req, res, sessionId)) return;
+    try {
+      res.json({ restored: restoreDeletedSession(dataDir, sessionId) });
+    } catch (error) {
+      res.status(409).json({
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+  app.delete("/api/sessions/:sessionId/permanent", (req, res) => {
+    const sessionId = req.params.sessionId;
+    if (!requireSessionRestContentAccess(req, res, sessionId)) return;
+    try {
+      res.json({
+        deleted: permanentlyDeleteSession(
+          dataDir,
+          sessionId,
+          (id) => sessionService.isOpen(id),
+        ),
+      });
     } catch (error) {
       res.status(409).json({
         error: error instanceof Error ? error.message : String(error),
@@ -1792,6 +1835,11 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     );
     httpServer.on("close", stopRetentionSweep);
   }
+  const stopTrashSweep = sweepExpiredDeletedSessions(
+    dataDir,
+    (sessionId) => sessionService.isOpen(sessionId),
+  );
+  httpServer.on("close", stopTrashSweep);
 
   function requireLocalRuntimeModelConfig(): RuntimeModelConfig {
     const runtimeConfig = getRuntimeModelConfig(agentConfigDir());
@@ -2155,6 +2203,20 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       );
     };
 
+    const requireSessionWsContentAccess = (sessionId: string): SessionSummary => {
+      const detail = readSessionDetail(dataDir, sessionId);
+      if (!detail || !canAccessSessionSummary(auth, detail.session)) {
+        throw new Error(`Unknown session id: ${sessionId}`);
+      }
+      if (!canAccessSessionContent(auth, detail.session)) {
+        throw new Error("Session content is private");
+      }
+      if (detail.session.deletedAt) {
+        throw new Error("Conversation is in Trash");
+      }
+      return detail.session;
+    };
+
     const attachToSession = (sessionId: string) => {
       detach();
       attachedSessionId = sessionId;
@@ -2197,6 +2259,17 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           new Error("This Alt Theory control is inactive while Native Pi is on"),
         );
         return;
+      }
+      if (attachedSessionId && msg.type !== "new_session") {
+        try {
+          requireSessionWsContentAccess(attachedSessionId);
+        } catch (error) {
+          detach();
+          detach = () => {};
+          attachedSessionId = null;
+          sendError(send, error);
+          return;
+        }
       }
 
       switch (msg.type) {
@@ -2760,6 +2833,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             break;
           }
           try {
+            requireSessionWsContentAccess(forkSource);
             const forked = await sessionService.forkSession(
               forkSource,
               msg.payload.purpose,
@@ -2836,6 +2910,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             ? sessionService.getSelectors(attachedSessionId)
             : draftSelectors;
           try {
+            requireSessionWsContentAccess(msg.payload.sessionId);
             const opened = await sessionService.openSession(
               msg.payload.sessionId,
               selectors,

@@ -13,6 +13,7 @@ import { Workbench } from "@/components/shell/Workbench";
 import { SessionImportDialog } from "@/components/shell/SessionImportDialog";
 import { hasNativeBridge, pickDirectory, revealPath } from "@/lib/native";
 import { fetchSessionDetail } from "@/api/sessions";
+import altTheoryMark from "@/assets/alt-theory-mark.svg";
 import {
   downloadMarkdown,
   markdownFileName,
@@ -110,7 +111,7 @@ export function LeftNav() {
           title={t("Expand")}
           onClick={() => shell.setLeftCollapsed(false)}
         >
-          A
+          <img className="brand-mark" src={altTheoryMark} alt="" />
         </button>
         <button
           title={t("New conversation")}
@@ -139,7 +140,10 @@ export function LeftNav() {
         style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, }}
       >
         <div className="left-head">
-          <span className="wordmark">{t("Alt Theory")}</span>
+          <span className="brand-lockup">
+            <img className="brand-mark" src={altTheoryMark} alt="" />
+            <span className="wordmark">{t("Alt Theory")}</span>
+          </span>
           <div className="icons">
             <button
               className="icon-btn"

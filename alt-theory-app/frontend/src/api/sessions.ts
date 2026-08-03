@@ -95,6 +95,35 @@ export async function deleteSession(sessionId: string): Promise<void> {
   }
 }
 
+export async function fetchTrashSessions(): Promise<SessionSummary[]> {
+  const res = await fetch("/api/sessions/trash");
+  if (!res.ok) throw new Error(`Trash list failed (${res.status})`);
+  const data = (await res.json()) as { sessions?: SessionSummary[] };
+  return Array.isArray(data.sessions) ? data.sessions : [];
+}
+
+export async function restoreSession(sessionId: string): Promise<void> {
+  const res = await fetch(
+    `/api/sessions/${encodeURIComponent(sessionId)}/restore`,
+    { method: "POST" },
+  );
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error || `Restore failed (${res.status})`);
+  }
+}
+
+export async function permanentlyDeleteSession(sessionId: string): Promise<void> {
+  const res = await fetch(
+    `/api/sessions/${encodeURIComponent(sessionId)}/permanent`,
+    { method: "DELETE" },
+  );
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error || `Permanent delete failed (${res.status})`);
+  }
+}
+
 export async function fetchSessionAlias(sessionId: string): Promise<string> {
   const qs = new URLSearchParams({ root: "records", path: "ui-alias.json" });
   const res = await fetch(

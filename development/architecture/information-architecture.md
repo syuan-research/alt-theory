@@ -95,9 +95,20 @@ surfaces remain designation-gated and absent for everyone else.
 - **Conversation list**
   - Conversations are grouped by workspace.
   - List-level actions live in the list overflow.
+  - Root conversations and Branches (purpose `fork`) have the same functional
+    status: both are first-class conversations that users may compare, keep, or
+    delete independently. Deleting either never deletes its parent, sibling
+    Branches, or child Branches. This independence exists because facilitating
+    comparison is a core product purpose.
   - Side chats, Helper conversations, subagents, and provisional comparison arms
     do not become ordinary list rows unless the user promotes them (or they are
     forks with purpose `fork`, which are list members by default).
+  - BTW, Helper, and subagent conversations are attached to their owning
+    conversation by default and are deleted with it. **Show in conversation
+    list** is an identity and lifecycle transition, not merely a display toggle:
+    a promoted child becomes independently retainable and is no longer deleted
+    with its parent, while keeping its original purpose and provenance label.
+    Its own unpromoted BTW, Helper, and subagent children remain attached to it.
   - Related children in the list or Related switcher show an **English prefix
     plus the real title**, not a rename: e.g. `Branch 1 · …`, `BTW 1 · …`,
     `Helper 1 · …`, `Subagent 1 · …`. Numbering is per parent + purpose. Do not
@@ -123,6 +134,11 @@ surfaces remain designation-gated and absent for everyone else.
   - Models: provider connection, model choice, and model capability correction.
   - Role & Knowledge: role, knowledge sets, and related paths when implemented.
   - What Alt can do: a curated capability guide sharing its source with Helper.
+  - Trash: deleted conversations remain recoverable for 30 days. Restore and
+    permanent-delete actions live here rather than in persistent conversation
+    navigation. Permanent conversation deletion removes conversation/session
+    records, including a managed import-source copy, but not attachments or
+    working files.
   - About: version, changes, and stable storage statements.
 - **Researcher-only surfaces**
   - Inspector, comparison, provenance, and study controls are

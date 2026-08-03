@@ -21,7 +21,7 @@ conversation. Its central behavior is treating uncertainty (about
 direction, sources, memory, communication) as the work to do, not a
 weakness to smooth over.
 
-The app is in active alpha. Interfaces and configuration may change
+The app is in public Beta. Interfaces and configuration may change
 between releases; current limits are listed on
 [Known Limitations](help/compatibility-formats-limitations.md).
 
@@ -83,10 +83,10 @@ Organized by the kind of work.
 
 ## Releases, bug reports, and the research program
 
-Versions carry their maturity in the name: an `-alpha` tag means active
-development, usable and in real research use, while still moving. The
+Versions carry their maturity in the name: the current `-beta` tag is intended
+for real research use while interfaces and compatibility may still move. The
 repository changelog records what each release changed in plain terms.
-What alpha means for compatibility (what is protected, what may change)
+What Beta means for compatibility (what is protected, what may change)
 is in [the compatibility
 policy](advanced/compatibility-updates-debugging.md).
 
@@ -117,9 +117,4 @@ the project through the repository.
 
 ## Documentation version baseline
 
-These docs describe Alt Theory at commit `7cf2cca` (2026-07-29): the
-alpha.6 development tip, 15 commits past v1.3.0-alpha.4, not yet tagged.
-The repository changelog records what moved between this baseline and a
-later release. Features written here as implemented match the code at
-that commit; features marked `(planned)` exist in the product's planning
-but not yet in the code at that baseline.
+These docs ship with Alt Theory v1.3.0-beta.1. The running app and repository code remain authoritative when a page has not yet caught up; features marked `(planned)` are directions rather than current Beta claims.

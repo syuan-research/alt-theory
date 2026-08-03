@@ -211,6 +211,7 @@ export interface SessionSummary {
   createdAt: string | null;
   updatedAt: string | null;
   deletedAt: string | null;
+  trashDueAt?: string | null;
   status: "available" | "incomplete" | "error";
   runStatus?: "idle" | "running" | "awaiting-approval" | "failed";
   rolePresetSlug: string | null;

@@ -1425,7 +1425,7 @@ function useHostedMode(): () => void {
   };
 }
 
-test("session REST routes preserve hosted isolation and local access", async () => {
+test("session routes preserve hosted isolation and local access", async () => {
   const root = mkdtempSync(join(tmpdir(), "alt-theory-auth-filter-"));
   const dataDir = join(root, "data");
   const rolePresets = join(root, "role-presets");
@@ -1611,6 +1611,24 @@ test("session REST routes preserve hosted isolation and local access", async () 
     return response.headers.get("set-cookie")?.split(";")[0] ?? "";
   }
 
+  function waitForWsType(ws: WebSocket, type: string): Promise<any> {
+    return new Promise((resolveMessage, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error(`Timed out waiting for ${type}`)),
+        10_000,
+      );
+      const listener = (data: WebSocket.RawData) => {
+        const message = JSON.parse(data.toString());
+        if (message.type !== type) return;
+        clearTimeout(timer);
+        ws.off("message", listener);
+        resolveMessage(message);
+      };
+      ws.on("message", listener);
+    });
+  }
+
+  let participantWs: WebSocket | null = null;
   try {
     const anonymousList = await fetch(`${baseUrl}/api/sessions`);
     assert.equal(anonymousList.status, 401);
@@ -1674,6 +1692,22 @@ test("session REST routes preserve hosted isolation and local access", async () 
       { headers: { Cookie: participantCookie } },
     );
     assert.equal(ownerlessDetail.status, 404);
+    participantWs = new WebSocket(`ws://127.0.0.1:${address.port}`, {
+      headers: { Cookie: participantCookie },
+    });
+    await waitForWsType(participantWs, "session_draft");
+    let wsErrorPromise = waitForWsType(participantWs, "error");
+    participantWs.send(JSON.stringify({
+      type: "open_session",
+      payload: { sessionId: p02Session.sessionId },
+    }));
+    assert.match((await wsErrorPromise).payload.error, /Unknown session id/);
+    wsErrorPromise = waitForWsType(participantWs, "error");
+    participantWs.send(JSON.stringify({
+      type: "fork_session",
+      payload: { sourceSessionId: p02Session.sessionId, purpose: "fork" },
+    }));
+    assert.match((await wsErrorPromise).payload.error, /Unknown session id/);
 
     const researcherCookie = await loginCookie("researcher", "research-code");
     const researcherList = await fetch(`${baseUrl}/api/sessions`, {
@@ -1713,7 +1747,19 @@ test("session REST routes preserve hosted isolation and local access", async () 
       { headers: { Cookie: researcherCookie } },
     );
     assert.equal(researcherOwnerlessPrivateDetail.status, 403);
+    const deleteOwn = await fetch(
+      `${baseUrl}/api/sessions/${p01Session.sessionId}`,
+      { method: "DELETE", headers: { Cookie: participantCookie } },
+    );
+    assert.equal(deleteOwn.status, 200);
+    wsErrorPromise = waitForWsType(participantWs, "error");
+    participantWs.send(JSON.stringify({
+      type: "open_session",
+      payload: { sessionId: p01Session.sessionId },
+    }));
+    assert.match((await wsErrorPromise).payload.error, /Conversation is in Trash/);
   } finally {
+    participantWs?.close();
     restoreMode();
     await new Promise<void>((resolveClose) => {
       instance.wss.close(() => {

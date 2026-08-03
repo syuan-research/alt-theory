@@ -29,12 +29,21 @@ import {
 import type {
   ProviderAuthFlow,
   ProviderAuthId,
+  SessionSummary,
 } from "@/api/types";
 import { ModelConfigPage } from "@/pages/ModelConfigPage";
 import { hasNativeBridge, pickDirectory, pickFiles, revealPath } from "@/lib/native";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
 import { t } from "@/i18n";
+import {
+  fetchTrashSessions,
+  hydrateSessionDisplayName,
+  permanentlyDeleteSession,
+  restoreSession,
+  type SessionDisplayName,
+} from "@/api/sessions";
+import { sessionTitle } from "@/lib/sessionList";
 
 interface NavItem {
   key: string;
@@ -62,6 +71,7 @@ export function SettingsView() {
         ]
       : []),
     { key: "features", label: t("What Alt can do"), icon: "ph-sparkle" },
+    { key: "trash", label: t("Trash"), icon: "ph-trash" },
     { key: "about", label: t("About"), icon: "ph-info" },
   ];
 
@@ -101,8 +111,111 @@ export function SettingsView() {
           <ParticipantPanel designated={app.participant?.designated ?? false} label={app.participant?.label ?? null} local={app.appMode === "local"} />
         ) : null}
         {shell.settingsPanel === "features" ? <FeaturesPanel /> : null}
+        {shell.settingsPanel === "trash" ? <TrashPanel /> : null}
         {shell.settingsPanel === "about" ? <AboutPanel /> : null}
       </div>
+    </div>
+  );
+}
+
+function TrashPanel() {
+  const app = useApp();
+  const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  const [names, setNames] = useState<Record<string, SessionDisplayName>>({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const next = await fetchTrashSessions();
+      setSessions(next);
+      const entries = await Promise.all(
+        next.map(async (session) => [
+          session.sessionId,
+          await hydrateSessionDisplayName(session.sessionId),
+        ] as const),
+      );
+      setNames(Object.fromEntries(entries));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const restore = async (sessionId: string) => {
+    try {
+      await restoreSession(sessionId);
+      await Promise.all([load(), app.refreshSessions()]);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    }
+  };
+
+  const remove = (sessionId: string) => {
+    app.requestConfirm({
+      message: t("Permanently delete this conversation?"),
+      details: [
+        t("This cannot be undone."),
+        t("Attachments and working files will be kept."),
+      ],
+      confirmLabel: t("Delete permanently"),
+      cancelLabel: t("Cancel"),
+      onConfirm: () => {
+        void permanentlyDeleteSession(sessionId)
+          .then(load)
+          .catch((reason) =>
+            setError(reason instanceof Error ? reason.message : String(reason)),
+          );
+      },
+    });
+  };
+
+  return (
+    <div className="set-panel">
+      <h2>{t("Trash")}</h2>
+      <p className="sub">{t("Deleted conversations are kept for 30 days.")}</p>
+      {error ? <p className="fine">{error}</p> : null}
+      {loading ? (
+        <div className="set-card"><p>{t("Loading conversations…")}</p></div>
+      ) : sessions.length === 0 ? (
+        <div className="set-card"><p>{t("Trash is empty.")}</p></div>
+      ) : (
+        sessions.map((session) => {
+          const due = session.trashDueAt ? Date.parse(session.trashDueAt) : NaN;
+          const days = Number.isNaN(due)
+            ? null
+            : Math.max(0, Math.ceil((due - Date.now()) / (24 * 60 * 60 * 1000)));
+          return (
+            <div className="set-card" key={session.sessionId}>
+              <div className="row2">
+                <div>
+                  <h4>{sessionTitle(session, names, sessions)}</h4>
+                  <p>
+                    {days == null
+                      ? t("Scheduled for deletion")
+                      : t("Deletes in {count} days", { count: days })}
+                  </p>
+                </div>
+                <div className="trash-actions">
+                  <button onClick={() => void restore(session.sessionId)}>
+                    {t("Restore")}
+                  </button>
+                  <button className="danger" onClick={() => remove(session.sessionId)}>
+                    {t("Delete permanently")}
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })
+      )}
     </div>
   );
 }
@@ -1086,7 +1199,7 @@ function AboutPanel() {
   return (
     <div className="set-panel">
       <h2>{t("About")}</h2>
-      <p className="sub">{t("Alt Theory, v1 alpha.")}</p>
+      <p className="sub">Alt Theory v{__ALT_THEORY_VERSION__}.</p>
       {dataDir ? (
         <div className="set-card">
           <div className="row2">
