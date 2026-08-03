@@ -41,7 +41,7 @@ Original Alt Theory material in the following paths is licensed under the
 - `agent-assets/`
 - `docs/`
 - `development/`
-- `AGENTS.md`, `CHANGELOG.md`, and `README.md`
+- `AGENTS.md`, `CHANGELOG.md`, and `README*.md`
 
 Attribution should identify **Shuai Yuan / Alt Theory**, name the material,
 link to this repository when practical, and indicate whether changes were

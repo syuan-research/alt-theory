@@ -1,5 +1,11 @@
 # Alt Theory
 
+[![Release](https://img.shields.io/github/v/release/syuan-research/alt-theory?include_prereleases&label=Release)](https://github.com/syuan-research/alt-theory/releases)
+[![License](https://img.shields.io/badge/License-MIT%20%2B%20CC%20BY%204.0-59636e)](LICENSE.md)
+[![Windows x64](https://img.shields.io/badge/Windows-x64-59636e?logo=windows11&logoColor=white)](https://github.com/syuan-research/alt-theory/releases/download/v1.3.0-beta.1/AltTheory-b1-win.zip)
+
+[English](README.md) · [简体中文](README.zh-Hans.md) · [繁體中文（香港）](README.zh-Hant-HK.md)
+
 > “Efficiency is doing things right; effectiveness is doing the right things.”
 > — Peter Drucker
 
