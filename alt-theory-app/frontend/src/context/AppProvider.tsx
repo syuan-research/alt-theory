@@ -875,10 +875,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
           sendMessage({ type: "get_session_metrics" });
           if (message.payload.sessionId) {
             reconnectSessionIdRef.current = message.payload.sessionId;
-            void refreshCurrentTranscript(message.payload.sessionId);
             void refreshSessions();
+            // Flush only after the transcript refresh lands: the refresh
+            // replaces the whole message list with what the server persisted
+            // BEFORE the queued prompt, so flushing first would wipe the
+            // queued message's bubble until the next run finishes.
+            void refreshCurrentTranscript(message.payload.sessionId).finally(
+              () => flushQueuedPromptRef.current(),
+            );
+          } else {
+            queueMicrotask(() => flushQueuedPromptRef.current());
           }
-          queueMicrotask(() => flushQueuedPromptRef.current());
           break;
 
         case "run_failed": {
@@ -904,14 +911,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
             warn: !interrupted,
           });
           if (!interrupted) setRunHint("");
-          if (sessionId) void refreshCurrentTranscript(sessionId);
-          if (
-            interrupted &&
-            shouldFlushQueuedPrompts("interrupted", Boolean(queuedPromptId))
-          ) {
-            queueMicrotask(() =>
-              flushQueuedPromptRef.current(queuedPromptId!),
-            );
+          {
+            // Same ordering as run_completed: the refresh full-replaces the
+            // message list, so it must land before the queued prompt's
+            // optimistic bubble is appended or the bubble disappears.
+            const refreshed = sessionId
+              ? refreshCurrentTranscript(sessionId)
+              : Promise.resolve();
+            if (
+              interrupted &&
+              shouldFlushQueuedPrompts("interrupted", Boolean(queuedPromptId))
+            ) {
+              void refreshed.finally(() =>
+                flushQueuedPromptRef.current(queuedPromptId ?? undefined),
+              );
+            }
           }
           break;
         }
