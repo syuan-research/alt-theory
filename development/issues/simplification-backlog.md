@@ -1,7 +1,7 @@
 ---
 doc_type: backlog
 slug: simplification-backlog
-status: open
+status: applied-v1.4-round-2
 created: 2026-08-04
 target: v1.4
 tags: [over-engineering, dead-code, cleanup, backend, frontend]
@@ -22,7 +22,14 @@ they intersect in three places, marked **[perf]** below.
 **Verification status.** Findings marked ✅ were re-verified directly: the
 grep was repeated and the claim held. Everything else came from the audit with
 its own grep evidence and should get a caller check before the delete, not
-after. Nothing here has been applied.
+after.
+
+**Applied 2026-08-04 (v1.4 round 2, commits 9faa448..f237b64):** items 1–12
+executed (importers all kept per owner — item 9's helper merge only; item 12
+deleted whole per owner). Owner rulings: VPS apparatus stays (13), fallback
+chain stays minus DashScope defaults (14). Item 15 (A/B stack, incl. the
+parseAb cut and the ab-arm orphan) and item 16 remain open — banked for the
+round-2 walkthrough.
 
 ---
 

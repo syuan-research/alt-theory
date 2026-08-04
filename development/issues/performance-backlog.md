@@ -1,7 +1,7 @@
 ---
 doc_type: backlog
 slug: performance-backlog
-status: open
+status: applied-v1.4-round-2
 created: 2026-08-04
 target: v1.4
 tags: [performance, scale, backend, frontend]
@@ -17,6 +17,13 @@ each item gets worse on its own — with conversation length, with conversation
 count, or with how long the app has been used. Each entry states the
 user-visible cost first, then where it comes from, then a direction rather
 than a prescribed patch.
+
+**Applied 2026-08-04 (v1.4 round 2, commits 8aa1072 / fdf1577 / f237b64):**
+items 1–7 all addressed (4 via the projects-feature deletion, ed171cb; 3 as
+its own commit after studying cherry studio / open-webui / the Vercel AI SDK
+block-memoization pattern). The Trash-sweep silent abort is fixed; the
+ab-arm orphan is verified live-but-untriggered (0 arms in the real store)
+and stays open pending the owner's product call.
 
 **Measurement basis.** Numbers below were measured on 2026-08-04 against the
 real store at `~/.alt-theory/sessions` (80 conversations, 5.2 MB) and against
