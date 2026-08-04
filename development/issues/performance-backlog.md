@@ -10,65 +10,122 @@ tags: [performance, scale, backend, frontend]
 # Performance backlog
 
 One running list of the work Alt Theory does that costs more than it needs to.
+Add to this file rather than opening a note per finding.
+
 Everything here is important and not urgent: none of it is wrong today, and
 each item gets worse on its own — with conversation length, with conversation
-count, or with how long the app has been used. Add to this file rather than
-opening a new note per finding.
+count, or with how long the app has been used. Each entry states the
+user-visible cost first, then where it comes from, then a direction rather
+than a prescribed patch.
 
-Each entry states the user-visible cost first, then where it comes from, then
-the direction — not a prescribed patch.
+**Measurement basis.** Numbers below were measured on 2026-08-04 against the
+real store at `~/.alt-theory/sessions` (80 conversations, 5.2 MB) and against
+copies of it grown to 200 and 500 conversations, on the development Mac.
+Anything not measured says so.
 
-## 1. Every conversation action re-reads the whole conversation from disk
+## 1. Every conversation action re-reads the whole conversation file
 
 **Cost.** A delay in front of every prompt, abort, tool approval, model switch
-and mode switch, growing with the length of the conversation. Invisible on a
-short conversation; worst exactly where the product wants to be strongest —
-the long continuing conversation.
+and mode switch. Measured on a copied real conversation, growing only its Pi
+JSONL:
+
+| entries in the conversation file | cost added to every action |
+|---|---|
+| ~10 (a fresh conversation) | 0.4 ms |
+| ~500 | 8.7 ms |
+| ~2,000 | 34 ms |
+| ~8,000 | 137 ms |
+
+**The sharp part.** The cost tracks the *file*, not the conversation the user
+sees. In the measurement above the visible transcript stayed at 8 messages
+while the cost went to 137 ms, because the read parses every entry in the
+file — superseded turns, abandoned retries, and every branch. Branching,
+retrying and comparing are what Alt Theory is *for*, so the feature that makes
+the product worth using is also what inflates this number.
 
 **Source.** The WebSocket access guard (`server.ts`,
 `requireSessionWsContentAccess`) runs on every client message except
 `new_session` and calls `readSessionDetail`, which parses the entire Pi
-transcript plus all run records, session events and A/B comparison records.
-It needs two things from all of that: the deletion marker and the visibility
+transcript plus all run records, session events and A/B comparison records. It
+needs two things out of all that: the deletion marker and the visibility
 fields.
 
-**Direction.** A single-session summary read covers the guard's needs; the
-transcript is never consulted. `readSessionSummary` already exists inside
-`session-store.ts` and is private.
+**Direction.** A single-session summary read covers what the guard checks;
+the transcript is never consulted. `readSessionSummary` already exists inside
+`session-store.ts` and is private to it.
 
-Introduced by the Beta 1 change that stopped a trashed conversation from
-accepting new work — the guard is right, its reading is oversized.
+Introduced by the Beta 1 change that stopped a conversation in Trash from
+accepting new work. The guard is right; its reading is oversized.
 
 ## 2. Reading the transcript re-reads it from disk every time
 
-**Cost.** Same shape as item 1 and on the same hot path: the cost of showing a
-conversation scales with its length even when nothing has changed.
+**Cost.** The same file and therefore the same table as item 1, on the same
+hot path: showing a conversation costs in proportion to its whole history even
+when nothing has changed.
 
 **Source.** `SessionService.getTranscript` refreshes from
-`readSessionDetail(...).transcript` on every call rather than serving the
+`readSessionDetail(...).transcript` on every call instead of serving the
 transcript the service already holds in memory for the open session.
 
-**Direction.** The open session is the authority on its own transcript; a full
-re-read belongs where the file actually changed underneath us, not on read.
+**Direction.** The open session is the authority on its own transcript. A full
+re-read belongs where the file actually changed underneath us, not on every
+read.
 
-## 3. The conversation list re-parses every conversation's config log
+## 3. Every streaming token re-renders the entire transcript
 
-**Cost.** The sidebar refresh gets slower in proportion to the number of
-conversations and to how much each has been reconfigured — and it refreshes
-after every completed answer, not only when the user opens the list.
+**Cost.** While an answer streams, the interface does work proportional to
+`length of the conversation × tokens per second`. The visible symptom is the
+window becoming less responsive during long answers in long conversations —
+exactly the situation the product is built around. **Not measured**; the
+mechanism is structural and was read from the code, so it should be confirmed
+with a profiler before anyone optimises against it.
+
+**Source.** Three things combine:
+
+- `AppProvider` exposes one memoised context value that includes
+  `streamParts`, which is replaced on every streaming delta;
+- `MessageList` consumes that context and maps every settled message;
+- there is no `React.memo` anywhere under `frontend/src/components`
+  (0 occurrences).
+
+So a new context value per token invalidates every consumer, and every settled
+message re-renders. The markdown *parse* is safe — `MarkdownBody` memoises
+`renderMarkdown(text)` per message — but the React work is not.
+
+**Direction.** Streaming state does not belong in the same context as settled
+conversation state. Split it out (its own context, or a ref plus a subscribe
+hook) so that a token invalidates only what is drawing the token. Memoising
+the message row is the smaller, second-best version of the same fix.
+
+## 4. The conversation list re-parses every conversation's config log
+
+**Cost.** The sidebar refresh is linear in the number of conversations, and it
+runs after every completed answer, not only when the user opens the list:
+
+| conversations | one list refresh |
+|---|---|
+| 80 (the real store today) | 5.5 ms |
+| 200 | 21 ms |
+| 500 | 54 ms |
 
 **Source.** `buildSummary` (`session-store.ts`) resolves `projectId` as
 `v4Session?.projectId ?? readConfigEvents(recordsDir).at(-1)?...`, and
 `readConfigEvents` reads and JSON-parses the whole `config-events.jsonl`. The
-`??` does short-circuit, so a conversation assigned to a project is cheap —
-but a conversation with no project falls through and pays the full parse every
-single refresh, and most conversations have no project.
+`??` short-circuits, so this was expected to be a rare legacy path — measured,
+it is the normal path: **80 of 80 real conversations carry `projectId: null`
+in their header and fall through to the log on every single refresh.**
 
-**Direction.** Absence of a project is a normal state, not a reason to consult
-a history log. Either record it in the session header the way every other
-summary field is, or read the tail of the log rather than all of it.
+**Direction.** Having no project is a normal state, not a reason to consult a
+history log. Record it in the session header the way every other summary field
+is, or read the tail of the log instead of all of it.
 
-## 4. Permanently deleted conversations are never gone from scans
+**But look at item 4 of `simplification-backlog.md` first.** No conversation
+can be *given* a project — the whole projects feature has no reachable
+entry point — which is why 80 of 80 headers are null. Deleting the feature
+removes this cost entirely; optimising the fallback alone leaves the dead
+feature in place. They are one change.
+
+## 5. Permanently deleted conversations are never gone from scans
 
 **Cost.** The app gets slower in proportion to how much the user has deleted —
 permanently, with no way to reclaim it. A researcher who runs and discards
@@ -84,40 +141,77 @@ it, but every directory scan still walks it forever.
 remove the session directory outright once nothing inside it is retained —
 which interacts with the workspace question at the end of this file.
 
-## 5. Whole-directory scans repeated inside one operation
+## 6. Whole-directory scans repeated inside one operation
 
-**Cost.** None at present scale. Listed so it is a known cost rather than a
-surprise when a data directory grows.
+**Cost.** Negligible at present scale. Listed so it is a known cost rather
+than a surprise when a data directory grows.
 
 **Source.** `softDeleteSession`, `restoreDeletedSession` and
 `permanentlyDeleteSession` each call `allSessionSummaries`, itself two full
 scans; the 30-day sweep calls `permanentlyDeleteSession` once per expired
-entry, making the pass quadratic in the number of conversations.
+entry, making that pass quadratic in the number of conversations.
+
+## 7. Waiting for a subagent polls instead of awaiting
+
+**Cost.** Up to 250 ms of dead time after a subagent has actually finished,
+every time the lead conversation waits for one. Not a CPU cost — the poll is
+cheap — but it is latency added to a feature whose whole point is delegation.
+
+**Source.** `SessionService.waitForSubagentResult` loops on `sleep(250)`
+against a 600-second deadline, checking `busy` / `isStreaming` flags, rather
+than awaiting the run's own completion promise.
+
+**Direction.** The run already resolves a promise when it ends; wait on that
+and keep the deadline as a timeout around it.
 
 ---
 
+## Checked and found fine
+
+Recorded so nobody re-investigates these:
+
+- **Streaming markdown** already freezes blocks finished by a blank line and
+  re-parses only the growing tail (`MarkdownBody`). The naive "re-parse the
+  whole message per token" cost is not present.
+- **Bundle size.** 3.8 MB of JavaScript is built, but Mermaid, Cytoscape and
+  KaTeX are behind a dynamic `import()`; first paint loads roughly 500 KB from
+  localhost. Not worth work.
+- **Startup** performs one full conversation scan (the Trash retention sweep
+  runs immediately on boot) — 54 ms at 500 conversations. Electron and
+  Chromium dominate launch time; this does not.
+- **models.dev metadata** was made non-blocking in alpha.6; the provider list
+  no longer waits on a third-party host.
+
 ## Found in the same review, not performance
 
-Kept here so they are not lost to a second fragment; move them out if this
-file ever needs to stay purely about cost.
+Kept here so they do not become a second fragment; move them out if this file
+ever needs to stay purely about cost.
 
 **The 30-day Trash sweep stops at the first damaged conversation, silently.**
 `purgeExpiredDeletedSessions` re-throws any error that is not the English
 string `Close the conversation…`, so one unreadable session directory aborts
-the whole pass, and the failure is logged to a console no desktop user sees.
-Trash then quietly stops emptying while the interface keeps promising a
-30-day removal. Fail per entry, and stop deciding control flow by matching an
-English error message.
+the whole pass, and the failure goes to a console no desktop user sees. Trash
+then quietly stops emptying while the interface keeps promising 30-day
+removal. Fail per entry, and stop deciding control flow by matching an English
+error message.
 
-**A/B comparison arms are orphaned by Delete.** `ab-arm` children are neither
-list members nor deletion-cascade targets, so deleting the parent leaves each
-arm on disk holding a copy of the parent transcript, unreachable from both the
-list and Trash: the user believes the conversation is gone and it is not.
-Latent in Beta 1 — nothing can create an arm, because `compareResponses` has
-no HTTP or WebSocket caller. Owner's decision (2026-08-04): an arm is the
-live-research form of a Branch, and its visibility and lifecycle are settled
-by the change that actually exposes A/B comparison. **That change must resolve
-this.**
+**A/B comparison arms are orphaned by Delete — live in Beta 1.** `ab-arm`
+children are neither list members nor deletion-cascade targets, so deleting
+the parent leaves each arm on disk holding a copy of the parent transcript,
+absent from both the conversation list and Trash, with no way to remove it:
+the user believes the conversation is gone and it is not.
+
+This was first recorded as latent on the strength of a grep for
+`compareResponses` — a name taken from a doc comment. The real method is
+`generateAbComparison`, and it has a complete chain: the Workbench "Compare
+responses" button → `Comparison.tsx` → `server.ts:1478` → arms forked as
+`ab-arm`. `researcherDoorOpen()` returns true for any local install, so the
+button is reachable on every Beta 1 machine. **The bug is live.**
+
+The cascade fix is one word — add `"ab-arm"` to the deletion targets in
+`attachedDeletionTargets`. Whether arms should instead become visible
+conversations like Branches is a product question and remains open; see item
+15 of `simplification-backlog.md`.
 
 **"Gone" means two different things.** Permanent delete and the 30-day expiry
 keep `workspace/` — attachments and working files — and the confirmation
@@ -135,9 +229,9 @@ macOS artifact shipped, so they are not open work:
 
 - Delete did not stop the run it was burying: the conversation left the list
   while the model kept writing, kept calling tools and kept spending, and the
-  guard above then rejected `abort` — the only button that could have stopped
-  it. Delete now aborts everything it moves into Trash, subagents included.
-- Trash listed conversations that had already been emptied by hosted private
-  retention as recoverable, breaking the retention promise and offering a
-  Restore that could only return a blank conversation. Membership is now an
-  allowlist: Trash lists what the user deleted, nothing else.
+  guard in item 1 then rejected `abort` — the only button that could have
+  stopped it. Delete now aborts everything it moves into Trash, subagents
+  included.
+- Trash listed conversations already emptied by hosted private retention as
+  recoverable, breaking the retention promise and offering a Restore that
+  could only return a blank conversation. Membership is now an allowlist.
