@@ -1488,9 +1488,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const repointSession = useCallback(
     async (targetSessionId: string, primaryDir: string | null) => {
       await setSessionWorkspaceRequest(targetSessionId, primaryDir);
+      // The server reopened the session against the new folder; the attached
+      // conversation's local state must follow or the file tree and folder
+      // indicator keep showing the old workspace until a manual reopen.
+      if (targetSessionId === sessionId) {
+        setWorkspacePrimaryDir(primaryDir);
+      }
       void refreshSessions();
     },
-    [refreshSessions],
+    [refreshSessions, sessionId],
   );
 
   useEffect(() => {

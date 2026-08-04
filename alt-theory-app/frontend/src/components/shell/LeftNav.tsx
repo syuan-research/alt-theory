@@ -247,6 +247,36 @@ function UserNav({ onImport }: { onImport: () => void }) {
     app.startNewSession();
   };
 
+  // Header folder selector. With a conversation open this must MOVE that
+  // conversation (server re-point: permissions + file tree rebuild in the new
+  // folder) — a draft-only change would leave the UI claiming a workspace the
+  // session never got. Without a session it stays the draft picker for the
+  // next conversation.
+  const chooseFolder = (dir: string | null) => {
+    if (!app.sessionId) {
+      app.setDraftWorkspace(dir);
+      return;
+    }
+    if ((dir ?? "") === (app.workspacePrimaryDir ?? "")) return;
+    const label = dir ? folderLabel(dir) : "no working folder";
+    app.requestConfirm({
+      message: t("Move this conversation to work in \"{label}\"?", { label }),
+      details: [
+        t("Its branches move with it."),
+        t("Alt will ask for permissions again in the new folder."),
+        t("Files already on disk are not moved."),
+      ],
+      confirmLabel: t("Move"),
+      onConfirm: () => {
+        void app
+          .repointSession(app.sessionId as string, dir)
+          .catch((error) =>
+            window.alert(error instanceof Error ? error.message : String(error)),
+          );
+      },
+    });
+  };
+
   const addFolder = async () => {
     const path = await pickDirectory("Full path of the working folder to add:");
     if (!path) return;
@@ -385,7 +415,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                   <button
                     onClick={(e) => {
                       e.currentTarget.closest("details")?.removeAttribute("open");
-                      app.setDraftWorkspace(null);
+                      chooseFolder(null);
                     }}
                   >
                     <i className="ph ph-prohibit" />
@@ -402,7 +432,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                         e.currentTarget
                           .closest("details")
                           ?.removeAttribute("open");
-                        app.setDraftWorkspace(dir);
+                        chooseFolder(dir);
                       }}
                     >
                       <i className="ph ph-folder-simple" />
