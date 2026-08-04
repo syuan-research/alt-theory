@@ -79,6 +79,7 @@
     "asar": false,
     "mac": {
       "category": "public.app-category.education",
+      "icon": "electron/assets/icon.icns",
       "identity": null,
       "target": [
         {
