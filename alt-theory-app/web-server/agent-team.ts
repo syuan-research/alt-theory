@@ -139,6 +139,7 @@ export const LEAD_DELEGATION_PROMPT_SECTION = [
   "- Never state or assume a pending subagent's result; wait for its completion notification, or use check_agent / wait_for_agents. Use wait sparingly — prefer continuing your own work.",
   "- Subagents sharing your workspace can collide on files; partition file work explicitly in each task.",
   "- Message a running subagent with send_to_agent; stop one with interrupt_agent. A subagent's completion, failure, and messages arrive in this conversation automatically.",
+  "- The user can also open a subagent's conversation and talk to it directly, without you. Do not assume you must relay everything, and do not be surprised when a subagent already knows something the user told it.",
 ].join("\n");
 
 export const SUBAGENT_PROMPT_SECTION = [
