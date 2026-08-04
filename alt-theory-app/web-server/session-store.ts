@@ -554,12 +554,29 @@ function attachedDeletionTargets(
   const targets: string[] = [];
   const visit = (id: string) => {
     targets.push(id);
-    for (const child of children.get(id) ?? []) {
+    const kids = children.get(id) ?? [];
+    // Branches are transcript copies: one forked AFTER a subagent existed
+    // still references that subagent's work. Owner rule (v1.4 round 1): a
+    // subagent survives while any history-sharing branch survives. side and
+    // helper never appear in the copied transcript, so branches don't
+    // protect them.
+    const branchForkTimes = kids
+      .filter((k) => k.forkedFrom?.purpose === "fork" && !k.deletedAt)
+      .map((k) => k.createdAt)
+      .filter((at): at is string => !!at);
+    for (const child of kids) {
       const fork = child.forkedFrom;
       if (
         !fork ||
         fork.listed ||
         !["side", "helper", "subagent"].includes(fork.purpose)
+      ) {
+        continue;
+      }
+      if (
+        fork.purpose === "subagent" &&
+        child.createdAt &&
+        branchForkTimes.some((at) => at > (child.createdAt as string))
       ) {
         continue;
       }
@@ -733,7 +750,7 @@ function buildSummary(sessionId: string, parts: SessionParts): SessionSummary {
     roleCondition: parts.v4Session?.roleCondition ?? null,
     visibility: parts.v4Session?.visibility ?? "research",
     retentionDueAt: parts.v4Session?.retentionDueAt ?? null,
-    createdAt: parts.manifest?.createdAt ?? null,
+    createdAt: parts.manifest?.createdAt ?? parts.v4Session?.createdAt ?? null,
     updatedAt: newestTimestamp([
       parts.sessionRoot,
       join(parts.recordsDir, "assembly-manifest.json"),

@@ -245,7 +245,7 @@ export function ChildConversation({
         <span className="child-status">{status}</span>
         {inList ? null : (
           <button
-            className="flat"
+            className="flat promote-action"
             title={t("Keep this conversation in your list, with where it came from.")}
             onClick={() => {
               void app.promoteRelatedSession(sessionId).catch((reason) =>
@@ -253,7 +253,7 @@ export function ChildConversation({
               );
             }}
           >
-            <i className="ph ph-list-plus" aria-hidden="true" />{" "}
+            <i className="ph ph-arrow-line-up" aria-hidden="true" />{" "}
             {t("Add to conversation list")}
           </button>
         )}

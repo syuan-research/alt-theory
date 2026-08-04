@@ -553,7 +553,7 @@ const catalog: Record<string, string> = {
   "Study id (blank = daily use)": "研究 ID（空白=日常使用）",
   "Study participant options": "研究參與者選項",
   "Study tag": "研究標籤",
-  "Subagent · {count} messages — you can join in": "子代理 · {count}條訊息 — 您可以加入",
+  "Subagent · {count} messages": "子代理 · {count} 條消息",
   "Submit": "提交",
   "Switch models mid-conversation from the model chip — the conversation continues.": "從模型標籤切換模型—對話繼續。",
   "Switch to Work when you want Alt to look up current information.": "當您希望Alt查找當前資訊時，請切換到工作模式。",

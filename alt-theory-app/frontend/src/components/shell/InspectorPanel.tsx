@@ -193,16 +193,36 @@ function RelatedConversations() {
   const activeChildId = shell.rightSub?.key.startsWith("related:")
     ? shell.rightSub.key.slice("related:".length)
     : null;
-  const children = useMemo(
-    () =>
-      app.sessions.filter(
-        (s) =>
-          s.forkedFrom?.sessionId === app.sessionId &&
-          s.forkedFrom.purpose !== "ab-arm" &&
-          !s.deletedAt
-      ),
-    [app.sessions, app.sessionId]
-  );
+  const children = useMemo(() => {
+    if (!app.sessionId) return [];
+    const related: typeof app.sessions = [];
+    const seen = new Set<string>();
+    const addChildrenOf = (parentId: string, beforeFork: string | null) => {
+      for (const s of app.sessions) {
+        if (s.forkedFrom?.sessionId !== parentId) continue;
+        if (s.forkedFrom.purpose === "ab-arm" || s.deletedAt) continue;
+        if (seen.has(s.sessionId)) continue;
+        // Inherited pass: a branch's transcript only references subagents
+        // that already existed when it was forked.
+        if (beforeFork) {
+          if (s.forkedFrom.purpose !== "subagent") continue;
+          if (!s.createdAt || s.createdAt >= beforeFork) continue;
+        }
+        seen.add(s.sessionId);
+        related.push(s);
+      }
+    };
+    addChildrenOf(app.sessionId, null);
+    // Walk the fork ancestry: pre-fork subagents are part of this branch's
+    // shared history, even when an ancestor is deleted or already purged.
+    const byId = new Map(app.sessions.map((s) => [s.sessionId, s]));
+    let node = byId.get(app.sessionId);
+    while (node?.forkedFrom && node.createdAt) {
+      addChildrenOf(node.forkedFrom.sessionId, node.createdAt);
+      node = byId.get(node.forkedFrom.sessionId);
+    }
+    return related;
+  }, [app.sessions, app.sessionId]);
 
   const PURPOSE_ICON: Record<string, string> = {
     side: "ph-arrows-split",
@@ -326,7 +346,7 @@ function RelatedConversations() {
             {child.forkedFrom?.purpose === "helper"
               ? t("How Alt works, and fixing setup · fresh context")
               : child.forkedFrom?.purpose === "subagent"
-                ? t("Subagent · {count} messages — you can join in", { count: child.messageCount ?? 0 })
+                ? t("Subagent · {count} messages", { count: child.messageCount ?? 0 })
                 : child.forkedFrom?.purpose === "fork"
                   ? t("Branch · {count} messages", { count: child.messageCount ?? 0 })
                   : t("Side conversation · {count} messages", { count: child.messageCount ?? 0 })}

@@ -831,6 +831,8 @@
   .child-head { display: flex; align-items: center; gap: 8px; padding: 0 2px 8px; color: var(--text-3); font-size: 0.72rem; }
   .child-head .child-what { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .child-head .child-status { flex: 0 0 auto; }
+  /* Promotion is a real decision, not chrome: give it a visible button. */
+  .child-head .promote-action { flex: 0 0 auto; border: 1px solid var(--accent); border-radius: 6px; color: var(--accent); padding: 3px 8px; white-space: nowrap; }
   .child-head button { display: inline-flex; align-items: center; gap: 4px; border: none; background: transparent; color: var(--text-2); cursor: pointer; font: inherit; font-size: 0.72rem; padding: 2px 4px; border-radius: var(--r-sm); }
   .child-head button:hover { background: var(--hover); }
   .child-conv .child-msgs { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 8px; }

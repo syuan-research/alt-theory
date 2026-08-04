@@ -31,12 +31,13 @@ function createSession(
   dataDir: string,
   sessionId: string,
   forkedFrom?: { sessionId: string; purpose: ForkPurpose; listed?: boolean },
+  createdAt: string = CREATED_AT,
 ) {
   const dirs = createSessionDirs(dataDir, sessionId);
   const manifest = {
     schemaVersion: 1,
     sessionId,
-    createdAt: CREATED_AT,
+    createdAt,
     openedFrom: "new",
     recordsDir: dirs.recordsDir,
     sessionCwd: dirs.sessionCwd,
@@ -117,6 +118,37 @@ test("Delete follows attached conversations but stops at Branches and promoted c
 
   softDeleteSession(dataDir, "branch");
   assert.deepEqual(ids(dataDir), ["promoted-helper", "root", "side", "subagent"]);
+});
+
+test("Deleting a parent keeps subagents a surviving branch still references", () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "alt-theory-trash-shared-"));
+  createSession(dataDir, "root");
+  createSession(
+    dataDir,
+    "sa-before",
+    { sessionId: "root", purpose: "subagent" },
+    "2026-08-01T01:00:00.000Z",
+  );
+  createSession(
+    dataDir,
+    "branch",
+    { sessionId: "root", purpose: "fork" },
+    "2026-08-01T02:00:00.000Z",
+  );
+  createSession(
+    dataDir,
+    "sa-after",
+    { sessionId: "root", purpose: "subagent" },
+    "2026-08-01T03:00:00.000Z",
+  );
+
+  softDeleteSession(dataDir, "root");
+  // sa-before predates the branch fork, so the branch transcript references
+  // its work; sa-after exists only in the deleted mainline.
+  assert.deepEqual(ids(dataDir), ["branch", "sa-before"]);
+
+  restoreDeletedSession(dataDir, "root");
+  assert.deepEqual(ids(dataDir), ["branch", "root", "sa-after", "sa-before"]);
 });
 
 test("Delete reports every conversation it will bury, so a live run can be stopped first", () => {
