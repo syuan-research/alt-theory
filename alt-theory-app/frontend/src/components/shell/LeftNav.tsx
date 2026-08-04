@@ -11,6 +11,7 @@ import {
 } from "@/lib/sessionList";
 import { Workbench } from "@/components/shell/Workbench";
 import { SessionImportDialog } from "@/components/shell/SessionImportDialog";
+import { promoteToMainline as promoteToMainlineRequest } from "@/api/sessions";
 import { hasNativeBridge, pickDirectory, revealPath } from "@/lib/native";
 import { fetchSessionDetail } from "@/api/sessions";
 import altTheoryMark from "@/assets/alt-theory-mark.svg";
@@ -729,6 +730,24 @@ function SessionNode({
             <i className="ph ph-dots-three" />
           </summary>
           <div className="list-menu">
+            {session.forkedFrom?.purpose === "fork" ? (
+              <button
+                onClick={(e) => {
+                  closeMenu(e);
+                  void promoteToMainlineRequest(session.sessionId)
+                    .then(() => app.refreshSessions())
+                    .catch((error) =>
+                      window.alert(
+                        error instanceof Error ? error.message : String(error),
+                      ),
+                    );
+                }}
+                title={t("This conversation takes the list spot; the current one stays available from its Related rail.")}
+              >
+                <i className="ph ph-crown-simple" />
+                {t("Make this the main conversation")}
+              </button>
+            ) : null}
             <button
               onClick={(e) => {
                 closeMenu(e);

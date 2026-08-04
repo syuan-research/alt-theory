@@ -15,6 +15,7 @@ import {
   listDeletedSessionSummaries,
   listSessionSummaries,
   permanentlyDeleteSession,
+  promoteToMainlineRecords,
   purgeExpiredDeletedSessions,
   restoreDeletedSession,
   sessionsAttachedToDeletion,
@@ -168,6 +169,37 @@ test("Deleting a parent keeps subagents and btw a surviving branch shares", () =
     "sa-after",
     "sa-before",
   ]);
+});
+
+test("Mainline promotion is a reversible role swap with a living representative", () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "alt-theory-mainline-"));
+  createSession(dataDir, "root");
+  createSession(
+    dataDir,
+    "branch",
+    { sessionId: "root", purpose: "fork" },
+    "2026-08-01T02:00:00.000Z",
+  );
+  const summary = (id: string) =>
+    listSessionSummaries(dataDir).sessions.find((s) => s.sessionId === id)!;
+
+  // Promote: branch takes the list spot, root cedes it, both stay alive,
+  // lineage untouched.
+  promoteToMainlineRecords(dataDir, "branch");
+  assert.equal(summary("branch").forkedFrom?.listed, true);
+  assert.equal(summary("root").delisted, true);
+  assert.equal(summary("branch").forkedFrom?.sessionId, "root");
+
+  // Reverse from the delisted root: the listed branch steps down.
+  promoteToMainlineRecords(dataDir, "root");
+  assert.notEqual(summary("root").delisted, true);
+  assert.notEqual(summary("branch").forkedFrom?.listed, true);
+
+  // Deleting the only listed member auto-relists the living ancestor, so
+  // the tree never vanishes from the list.
+  promoteToMainlineRecords(dataDir, "branch");
+  softDeleteSession(dataDir, "branch");
+  assert.notEqual(summary("root").delisted, true);
 });
 
 test("Delete reports every conversation it will bury, so a live run can be stopped first", () => {

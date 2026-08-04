@@ -29,6 +29,7 @@ import { parseAgentMailFragment } from "./agent-mail.js";
 import { t } from "./i18n.js";
 import {
   readV4SessionHeader,
+  writeSessionHeader,
   type ForkPurpose,
   type SessionVisibility,
   type V4SessionHeader,
@@ -68,6 +69,8 @@ export interface SessionSummary {
   updatedAt: string | null;
   deletedAt: string | null;
   trashDueAt: string | null;
+  /** Root that ceded its list spot to a promoted branch (v1.4 M4b). */
+  delisted?: boolean;
   status: "available" | "incomplete" | "error";
   rolePresetSlug: string | null;
   kbDomain: string | null;
@@ -277,7 +280,150 @@ export function softDeleteSession(
       cascadeRootSessionId: sessionId,
     });
   }
+  // Living-representative invariant (M4b): while any member of the fork
+  // tree is alive, the list keeps one representative — deleting the only
+  // listed member must not make the whole tree invisible.
+  const after = allSessionSummaries(dataDir);
+  const members = forkTreeMembers(sessionId, after);
+  const living = members.filter((m) => !m.deletedAt);
+  if (living.length > 0 && !living.some(isListVisible)) {
+    const byId = new Map(after.map((s) => [s.sessionId, s]));
+    let representative: SessionSummary | null = null;
+    let cursor = byId.get(sessionId)?.forkedFrom
+      ? byId.get(byId.get(sessionId)!.forkedFrom!.sessionId)
+      : undefined;
+    while (cursor) {
+      if (!cursor.deletedAt) {
+        representative = cursor;
+        break;
+      }
+      cursor = cursor.forkedFrom
+        ? byId.get(cursor.forkedFrom.sessionId)
+        : undefined;
+    }
+    if (!representative) {
+      representative =
+        living
+          .filter((m) => !m.forkedFrom || m.forkedFrom.purpose === "fork")
+          .sort((a, b) =>
+            (b.updatedAt ?? b.createdAt ?? "").localeCompare(
+              a.updatedAt ?? a.createdAt ?? "",
+            ),
+          )[0] ?? living[0];
+    }
+    if (representative) writeListFlags(dataDir, representative.sessionId, true);
+  }
   return readDeletedSessionRecord(parts.recordsDir)!;
+}
+
+/** In the conversation list: an undeleted root without delisted, or a child the user listed. */
+function isListVisible(s: SessionSummary): boolean {
+  if (s.deletedAt) return false;
+  return s.forkedFrom ? s.forkedFrom.listed === true : s.delisted !== true;
+}
+
+/** Flip a session's list visibility. Lineage is never touched (M4b). */
+function writeListFlags(
+  dataDir: string,
+  sessionId: string,
+  makeListed: boolean,
+): void {
+  const root = resolveSessionRoot(dataDir, sessionId);
+  if (!root) return;
+  const recordsDir = join(root, "records");
+  const header = readV4SessionHeader(recordsDir);
+  if (!header) return;
+  if (header.forkedFrom) {
+    writeSessionHeader(recordsDir, {
+      ...header,
+      forkedFrom: {
+        ...header.forkedFrom,
+        listed: makeListed ? true : undefined,
+      },
+    });
+  } else {
+    writeSessionHeader(recordsDir, {
+      ...header,
+      delisted: makeListed ? undefined : true,
+    });
+  }
+}
+
+/** Every member of the fork tree reachable from sessionId (root + descendants). */
+function forkTreeMembers(
+  sessionId: string,
+  summaries: SessionSummary[],
+): SessionSummary[] {
+  const byId = new Map(summaries.map((s) => [s.sessionId, s]));
+  let rootId = sessionId;
+  while (byId.get(rootId)?.forkedFrom) {
+    const parentId = byId.get(rootId)!.forkedFrom!.sessionId;
+    if (!byId.has(parentId)) break; // purged ancestor: reachable root wins
+    rootId = parentId;
+  }
+  const members: SessionSummary[] = [];
+  const seen = new Set<string>();
+  const queue = [rootId];
+  while (queue.length > 0) {
+    const id = queue.shift() as string;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const summary = byId.get(id);
+    if (summary) members.push(summary);
+    for (const child of summaries) {
+      if (child.forkedFrom?.sessionId === id) queue.push(child.sessionId);
+    }
+  }
+  return members;
+}
+
+/**
+ * Role swap (v1.4 M4b): make sessionId the tree's listed representative.
+ * The current representative steps down — the nearest list-visible ancestor,
+ * or, when re-listing a delisted ancestor, the most recently updated
+ * list-visible descendant. `forkedFrom` is immutable provenance and never
+ * changes; only listed/delisted presentation flags move.
+ */
+export function promoteToMainlineRecords(
+  dataDir: string,
+  sessionId: string,
+): { delistedSessionId: string | null } {
+  const summaries = allSessionSummaries(dataDir);
+  const byId = new Map(summaries.map((s) => [s.sessionId, s]));
+  const target = byId.get(sessionId);
+  if (!target) throw new Error(`Unknown session id: ${sessionId}`);
+  if (target.deletedAt) {
+    throw new Error("A conversation in Trash cannot become the mainline");
+  }
+  if (isListVisible(target) && !target.forkedFrom) {
+    return { delistedSessionId: null }; // already the listed root
+  }
+  let stepDown: SessionSummary | null = null;
+  let cursor = target.forkedFrom
+    ? byId.get(target.forkedFrom.sessionId)
+    : undefined;
+  while (cursor) {
+    if (isListVisible(cursor)) {
+      stepDown = cursor;
+      break;
+    }
+    cursor = cursor.forkedFrom
+      ? byId.get(cursor.forkedFrom.sessionId)
+      : undefined;
+  }
+  if (!stepDown) {
+    stepDown =
+      forkTreeMembers(sessionId, summaries)
+        .filter((m) => m.sessionId !== sessionId && isListVisible(m))
+        .sort((a, b) =>
+          (b.updatedAt ?? b.createdAt ?? "").localeCompare(
+            a.updatedAt ?? a.createdAt ?? "",
+          ),
+        )[0] ?? null;
+  }
+  writeListFlags(dataDir, sessionId, true);
+  if (stepDown) writeListFlags(dataDir, stepDown.sessionId, false);
+  return { delistedSessionId: stepDown?.sessionId ?? null };
 }
 
 export function restoreDeletedSession(dataDir: string, sessionId: string): string[] {
@@ -751,6 +897,7 @@ function buildSummary(sessionId: string, parts: SessionParts): SessionSummary {
     visibility: parts.v4Session?.visibility ?? "research",
     retentionDueAt: parts.v4Session?.retentionDueAt ?? null,
     createdAt: parts.manifest?.createdAt ?? parts.v4Session?.createdAt ?? null,
+    ...(parts.v4Session?.delisted ? { delisted: true } : {}),
     updatedAt: newestTimestamp([
       parts.sessionRoot,
       join(parts.recordsDir, "assembly-manifest.json"),

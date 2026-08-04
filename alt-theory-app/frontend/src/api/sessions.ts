@@ -208,3 +208,15 @@ export async function promoteRelatedSession(sessionId: string): Promise<void> {
     throw new Error(body.error || `Promotion failed (${res.status})`);
   }
 }
+
+/** M4b role swap: this conversation becomes the tree's listed representative. */
+export async function promoteToMainline(sessionId: string): Promise<void> {
+  const res = await fetch(
+    `/api/sessions/${encodeURIComponent(sessionId)}/promote-mainline`,
+    { method: "POST" }
+  );
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error || `Promotion failed (${res.status})`);
+  }
+}

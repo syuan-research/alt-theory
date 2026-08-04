@@ -126,7 +126,9 @@ export function compareByRecency(a: SessionSummary, b: SessionSummary): number {
  */
 export function isListMember(session: SessionSummary): boolean {
   const fork = session.forkedFrom;
-  if (!fork) return true;
+  // M4b role swap: a delisted root ceded its list spot to a promoted
+  // branch; it stays reachable from the branch's Related rail.
+  if (!fork) return session.delisted !== true;
   return fork.purpose === "fork" || fork.listed === true;
 }
 

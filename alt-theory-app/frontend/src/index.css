@@ -559,7 +559,9 @@
   .ctx-item > i { flex-shrink: 0; }
   /* Steer bar (v1.4 round 1): tinted band + filled CTA buttons — the same
      emphasis family as the approval dock, per owner direction. */
-  .preset-bar { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; overflow-x: auto; background: color-mix(in srgb, var(--accent) 7%, var(--canvas)); border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent); border-radius: var(--r-md); padding: 6px 8px; }
+  /* wrap, never clip: with 4-5 buttons the bar overflows the ctx-line and
+     an overflow-x scroll hid the tail buttons with no affordance. */
+  .preset-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; min-width: 0; flex: 1; background: color-mix(in srgb, var(--accent) 7%, var(--canvas)); border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent); border-radius: var(--r-md); padding: 6px 8px; }
   .preset-btn { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--accent); border-radius: var(--r-sm); background: var(--accent); color: var(--card); font: inherit; font-size: 0.76rem; padding: 5px 10px; cursor: pointer; white-space: nowrap; max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
   .preset-btn:hover { opacity: 0.9; }
   .preset-btn:disabled { opacity: 0.45; cursor: default; }

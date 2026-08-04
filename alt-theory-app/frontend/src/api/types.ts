@@ -212,6 +212,8 @@ export interface SessionSummary {
   updatedAt: string | null;
   deletedAt: string | null;
   trashDueAt?: string | null;
+  /** Root that ceded its list spot to a promoted branch (M4b role swap). */
+  delisted?: boolean;
   status: "available" | "incomplete" | "error";
   runStatus?: "idle" | "running" | "awaiting-approval" | "failed";
   rolePresetSlug: string | null;

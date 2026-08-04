@@ -223,7 +223,19 @@ function RelatedConversations() {
     let node = byId.get(app.sessionId);
     while (node?.forkedFrom) {
       addChildrenOf(node.forkedFrom.sessionId, true);
-      node = byId.get(node.forkedFrom.sessionId);
+      const parent = byId.get(node.forkedFrom.sessionId);
+      // A delisted origin (M4b role swap) stays reachable from here — it is
+      // in no list, so this rail row is its only door.
+      if (
+        parent &&
+        !parent.deletedAt &&
+        parent.delisted &&
+        !seen.has(parent.sessionId)
+      ) {
+        seen.add(parent.sessionId);
+        related.push(parent);
+      }
+      node = parent;
     }
     return related;
   }, [app.sessions, app.sessionId]);
@@ -347,13 +359,15 @@ function RelatedConversations() {
             ) : null}
           </div>
           <div className="d">
-            {child.forkedFrom?.purpose === "helper"
-              ? t("How Alt works, and fixing setup · fresh context")
-              : child.forkedFrom?.purpose === "subagent"
-                ? t("Subagent · {count} messages", { count: child.messageCount ?? 0 })
-                : child.forkedFrom?.purpose === "fork"
-                  ? t("Branch · {count} messages", { count: child.messageCount ?? 0 })
-                  : t("Side conversation · {count} messages", { count: child.messageCount ?? 0 })}
+            {child.delisted && !child.forkedFrom
+              ? t("Origin conversation · {count} messages", { count: child.messageCount ?? 0 })
+              : child.forkedFrom?.purpose === "helper"
+                ? t("How Alt works, and fixing setup · fresh context")
+                : child.forkedFrom?.purpose === "subagent"
+                  ? t("Subagent · {count} messages", { count: child.messageCount ?? 0 })
+                  : child.forkedFrom?.purpose === "fork"
+                    ? t("Branch · {count} messages", { count: child.messageCount ?? 0 })
+                    : t("Side conversation · {count} messages", { count: child.messageCount ?? 0 })}
           </div>
         </button>
       ))}

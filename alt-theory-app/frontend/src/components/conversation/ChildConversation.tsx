@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ActiveToolState, ApprovalRequestPayload, ServerMessage, SessionSnapshot, StreamPart, TranscriptMessage } from "@/api/types";
-import { fetchSessionDetail } from "@/api/sessions";
+import {
+  fetchSessionDetail,
+  promoteToMainline as promoteToMainlineRequest,
+} from "@/api/sessions";
 import { useApp } from "@/context/AppProvider";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { isListMember } from "@/lib/sessionList";
@@ -46,6 +49,15 @@ export function ChildConversation({
   const summary = app.sessions.find((item) => item.sessionId === sessionId);
   const purpose = summary?.forkedFrom?.purpose ?? "side";
   const inList = summary ? isListMember(summary) : true;
+  // M4b role swap entry points: a branch can take the list spot; a delisted
+  // origin can take it back.
+  const mainlineAction = summary
+    ? summary.forkedFrom?.purpose === "fork"
+      ? t("Make this the main conversation")
+      : !summary.forkedFrom && summary.delisted
+        ? t("Make this the main conversation again")
+        : null
+    : null;
 
   const refreshTranscript = useCallback(async () => {
     const detail = await fetchSessionDetail(sessionId);
@@ -243,7 +255,24 @@ export function ChildConversation({
         </button>
         <span className="child-what">{childBlurb(purpose, variant)}</span>
         <span className="child-status">{status}</span>
-        {inList ? null : (
+        {mainlineAction ? (
+          <button
+            className="flat promote-action"
+            title={t("This conversation takes the list spot; the current one stays available from its Related rail.")}
+            onClick={() => {
+              void promoteToMainlineRequest(sessionId)
+                .then(() => app.refreshSessions())
+                .catch((reason) =>
+                  setError(
+                    reason instanceof Error ? reason.message : String(reason),
+                  ),
+                );
+            }}
+          >
+            <i className="ph ph-crown-simple" aria-hidden="true" />{" "}
+            {mainlineAction}
+          </button>
+        ) : inList ? null : (
           <button
             className="flat promote-action"
             title={t("Keep this conversation in your list, with where it came from.")}

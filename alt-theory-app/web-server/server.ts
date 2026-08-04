@@ -1339,6 +1339,19 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       });
     }
   });
+  // M4b: role swap — this conversation becomes the tree's listed
+  // representative; the current one steps down.
+  app.post("/api/sessions/:sessionId/promote-mainline", (req, res) => {
+    const sessionId = req.params.sessionId;
+    if (!requireSessionRestContentAccess(req, res, sessionId)) return;
+    try {
+      res.json({ sessionId, ...sessionService.promoteToMainline(sessionId) });
+    } catch (error) {
+      res.status(409).json({
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
   // M4: re-point a session's working folder (local form only, like
   // add_workspace_dir). primaryDir null = back to the managed default.
   app.put("/api/sessions/:sessionId/workspace", async (req, res) => {

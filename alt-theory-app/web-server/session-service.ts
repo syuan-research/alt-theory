@@ -54,6 +54,7 @@ import {
   latestActiveLeafEntryId,
   listSessionSummaries,
   buildTranscriptFromEntries,
+  promoteToMainlineRecords,
   readSessionDetail,
   getSessionRootForRequest,
   stripSkillWrapper,
@@ -2392,6 +2393,25 @@ export class SessionService implements AgentTeamBridge {
     });
     const live = this.sessions.get(sessionId);
     return live ? this.snapshot(live) : null;
+  }
+
+  /**
+   * Role swap (v1.4 M4b): make this conversation the fork tree's listed
+   * representative; the current representative steps down. Lineage never
+   * changes. Works in both directions (promote a branch / re-list a
+   * delisted ancestor).
+   */
+  promoteToMainline(sessionId: string): { delistedSessionId: string | null } {
+    const result = promoteToMainlineRecords(this.config.dataDir, sessionId);
+    const dirs = getSessionDirs(this.config.dataDir, sessionId);
+    if (dirs) {
+      appendSessionEvent(dirs.recordsDir, {
+        sessionId,
+        type: "mainline_promoted",
+        details: { delistedSessionId: result.delistedSessionId },
+      });
+    }
+    return result;
   }
 
   // -------------------------------------------------------------------------
