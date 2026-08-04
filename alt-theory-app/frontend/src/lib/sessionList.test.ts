@@ -11,7 +11,6 @@ function child(
 ): SessionSummary {
   return {
     sessionId,
-    projectId: null,
     ownerAccountId: null,
     roleCondition: null,
     visibility: "research",

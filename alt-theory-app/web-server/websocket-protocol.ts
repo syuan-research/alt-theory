@@ -18,7 +18,6 @@ import type {
 
 export interface SessionSnapshot {
   sessionId: string;
-  projectId: string | null;
   branchId?: string;
   status: "idle" | "running" | "error";
   visibility?: SessionVisibility;
@@ -40,7 +39,6 @@ export interface SessionSnapshot {
 
 export interface SessionDraftSnapshot {
   status: "draft";
-  projectId: string | null;
   visibility: SessionVisibility;
   currentDomain: string;
   rolePresetSlug: string | null;
@@ -111,7 +109,6 @@ export type ClientMessage =
       type: "switch_instruction";
       payload: { customInstructionRef: string | null };
     }
-  | { type: "switch_project"; payload: { projectId: string | null } }
   | { type: "switch_visibility"; payload: { visibility: SessionVisibility } }
   | {
       type: "invoke_skill";

@@ -68,17 +68,6 @@ export interface InstructionAsset {
   size?: number;
 }
 
-export interface ResearchProject {
-  projectId: string;
-  displayName: string;
-  defaults?: {
-    rolePresetSlug?: string | null;
-    soulSlug?: string | null;
-    kbDomain?: string | null;
-    customInstructionRef?: string | null;
-  };
-}
-
 export interface DiscoveryLists {
   rolePresets: DiscoveredAsset[];
   souls: DiscoveredAsset[];
@@ -90,12 +79,10 @@ export interface DiscoveryLists {
     description?: string;
     enabled?: { understand: boolean; work: boolean };
   }>;
-  projects: ResearchProject[];
 }
 
 export interface SessionDraftSnapshot {
   status: "draft";
-  projectId: string | null;
   visibility: SessionVisibility;
   currentDomain: string;
   rolePresetSlug: string | null;
@@ -135,7 +122,6 @@ export type RuntimeMode = "alt-theory" | "native-pi";
 
 export interface SessionSnapshot {
   sessionId: string;
-  projectId: string | null;
   branchId?: string;
   status: "idle" | "running" | "error";
   visibility?: SessionVisibility;
@@ -204,7 +190,6 @@ export interface TranscriptMessage {
 
 export interface SessionSummary {
   sessionId: string;
-  projectId: string | null;
   ownerAccountId: string | null;
   roleCondition: string | null;
   visibility: SessionVisibility;
@@ -242,7 +227,6 @@ export interface SessionSummary {
 }
 
 export interface EffectiveSessionConfig {
-  projectId: string | null;
   rolePresetSlug: string | null;
   soulSlug: string | null;
   kbDomain: string;
@@ -535,7 +519,6 @@ export type ClientMessage =
       type: "switch_instruction";
       payload: { customInstructionRef: string | null };
     }
-  | { type: "switch_project"; payload: { projectId: string | null } }
   | { type: "switch_visibility"; payload: { visibility: SessionVisibility } }
   | {
       type: "invoke_skill";
@@ -666,7 +649,6 @@ export type StreamPart =
   | { kind: "notice"; text: string };
 
 export interface SessionSelectors {
-  projectId: string | null;
   currentDomain: string;
   rolePresetSlug: string | null;
   soulSlug: string | null;

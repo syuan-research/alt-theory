@@ -83,16 +83,6 @@ export function sendSwitchInstruction(
   });
 }
 
-export function sendSwitchProject(
-  ws: WebSocket | null,
-  projectId: string | null
-): boolean {
-  return sendClientMessage(ws, {
-    type: "switch_project",
-    payload: { projectId },
-  });
-}
-
 export function sendSwitchVisibility(
   ws: WebSocket | null,
   visibility: "research" | "private"

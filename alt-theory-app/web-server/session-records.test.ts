@@ -21,7 +21,6 @@ test("readV4SessionHeader normalizes legacy fork purposes", () => {
         recordType: "session",
         sessionId: "s1",
         createdAt: "2026-07-16T00:00:00.000Z",
-        projectId: null,
         recordModel: "v0.4",
         forkedFrom: { sessionId: "parent", purpose: stored },
       })
@@ -48,7 +47,6 @@ test("readV4SessionHeader normalizes the v1-alpha capability mode", () => {
         recordType: "session",
         sessionId: "s-mode",
         createdAt: "2026-07-16T00:00:00.000Z",
-        projectId: null,
         recordModel: "v0.4",
         mode: stored,
       })
@@ -66,7 +64,6 @@ test("readV4SessionHeader passes studyTag and modelOverride through", () => {
       recordType: "session",
       sessionId: "s2",
       createdAt: "2026-07-16T00:00:00.000Z",
-      projectId: null,
       recordModel: "v0.4",
       studyTag: { studyId: "pilot-1", batch: "b2" },
       modelOverride: {

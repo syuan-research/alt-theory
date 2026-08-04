@@ -8,7 +8,6 @@ import type {
 } from "../core/alt-theory-core.js";
 
 export interface EffectiveSessionConfig {
-  projectId: string | null;
   rolePresetSlug: string | null;
   soulSlug: string | null;
   kbDomain: string;
@@ -43,11 +42,9 @@ export interface ConfigEvent {
 }
 
 export function buildEffectiveConfig(
-  manifest: AssemblyManifest,
-  projectId: string | null = null
+  manifest: AssemblyManifest
 ): EffectiveSessionConfig {
   return {
-    projectId,
     rolePresetSlug: manifest.rolePreset?.slug ?? null,
     soulSlug: manifest.soul?.slug ?? null,
     kbDomain: manifest.kb?.domain ?? manifest.kbDomain ?? "all",

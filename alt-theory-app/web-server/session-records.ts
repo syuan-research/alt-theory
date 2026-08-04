@@ -98,7 +98,6 @@ export interface V4SessionHeader extends RecordEnvelope {
   recordType: "session";
   sessionId: string;
   createdAt: string;
-  projectId: string | null;
   recordModel: "v0.4";
   ownerAccountId?: string | null;
   roleCondition?: string | null;
@@ -144,7 +143,6 @@ export function writeFoundationRecords(args: {
   sessionRoot: string;
   recordsDir: string;
   manifest: AssemblyManifest;
-  projectId?: string | null;
   ownerAccountId?: string | null;
   roleCondition?: string | null;
   visibility?: SessionVisibility;
@@ -173,7 +171,6 @@ export function writeFoundationRecords(args: {
     recordType: "session",
     sessionId: args.manifest.sessionId,
     createdAt,
-    projectId: args.projectId ?? null,
     recordModel: "v0.4",
     ownerAccountId: args.ownerAccountId ?? null,
     roleCondition: args.roleCondition ?? null,

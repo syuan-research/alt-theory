@@ -77,7 +77,6 @@ import {
   type SessionServiceEvent,
   type StudyTag,
 } from "./session-service.js";
-import { getProject, listProjects, upsertProject } from "./projects.js";
 import { listInstructionAssets } from "./instruction-assets.js";
 import { listAltTheorySkills } from "./skill-assets.js";
 import {
@@ -1158,19 +1157,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       res.status(500).json({ error: message });
     }
   });
-  app.get("/api/projects", (_req, res) => {
-    res.json(listProjects(dataDir));
-  });
-  app.put("/api/projects/:projectId", (req, res) => {
-    try {
-      res.json(upsertProject(dataDir, req.params.projectId, req.body ?? {}));
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      res.status(/Invalid|required/.test(message) ? 400 : 500).json({
-        error: message,
-      });
-    }
-  });
   app.get("/api/sessions", (req, res) => {
     const auth = resolveSessionRestAuth(req, res);
     if (!auth) return;
@@ -2083,7 +2069,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
 
   function createDraftSelectors(): SessionSelectors {
     return {
-      projectId: null,
       rolePresetSlug: defaultRolePresetSlug(),
       kbDomain: "ep-core",
       soulSlug: defaultSoulSlug(),
@@ -2178,7 +2163,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       type: "session_draft",
       payload: {
         status: "draft",
-        projectId: selectors.projectId ?? null,
         visibility,
         currentDomain: selectors.kbDomain,
         rolePresetSlug: selectors.rolePresetSlug,
@@ -2493,43 +2477,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               "instruction_switch",
             );
             if (!closed) attachToSession(replacement.sessionId);
-          } catch (error) {
-            sendServiceError(send, error);
-          }
-          break;
-        }
-        case "switch_project": {
-          const projectId = optionalSlug(msg.payload.projectId);
-          const project = projectId ? getProject(dataDir, projectId) : null;
-          if (projectId && !project) {
-            sendError(send, new Error(`Unknown project: ${projectId}`));
-            break;
-          }
-          if (!attachedSessionId) {
-            draftSelectors = {
-              ...draftSelectors,
-              projectId,
-              ...(project?.defaults.rolePresetSlug !== undefined
-                ? { rolePresetSlug: project.defaults.rolePresetSlug }
-                : {}),
-              ...(project?.defaults.soulSlug !== undefined
-                ? { soulSlug: project.defaults.soulSlug }
-                : {}),
-              ...(project?.defaults.kbDomain
-                ? { kbDomain: project.defaults.kbDomain }
-                : {}),
-              ...(project?.defaults.customInstructionRef !== undefined
-                ? {
-                    customInstructionRef:
-                      project.defaults.customInstructionRef,
-                  }
-                : {}),
-            };
-            sendCurrentDraft();
-            break;
-          }
-          try {
-            sessionService.setProjectId(attachedSessionId, projectId);
           } catch (error) {
             sendServiceError(send, error);
           }

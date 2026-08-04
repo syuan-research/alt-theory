@@ -67,7 +67,6 @@ export function ProvenancePanel({
 
   const summaryItems: Array<[string, string]> = detail
     ? [
-        ["Project", detail.session.projectId || "none"],
         ["Role", effective?.rolePresetSlug || "none"],
         ["Soul", effective?.soulSlug || "none"],
         ["KB", displayKb(effective?.kbDomain || "all", discovery)],

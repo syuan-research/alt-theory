@@ -143,7 +143,6 @@ test("SessionService creates managed sessions with v0.4 foundation records", asy
   const fixture = setupFixture();
   const service = createTestService(fixture);
   const snapshot = await service.createSession({
-    projectId: "manual-role-uat",
     rolePresetSlug: "role-conceptual-theory-companion",
     kbDomain: "ep-core",
     soulSlug: "soul-latest",
@@ -155,7 +154,6 @@ test("SessionService creates managed sessions with v0.4 foundation records", asy
       /^\d{8}-\d{6}__role-conceptual-theory-c__soul-latest__default$/,
     );
     assert.equal(snapshot.rolePresetSlug, "role-conceptual-theory-companion");
-    assert.equal(snapshot.projectId, "manual-role-uat");
     assert.equal(snapshot.soulSlug, "soul-latest");
     assert.equal(snapshot.currentDomain, "ep-core");
     const liveModel = (service as any).sessions.get(snapshot.sessionId).session
@@ -176,21 +174,17 @@ test("SessionService creates managed sessions with v0.4 foundation records", asy
       {
         schemaVersion: sessionRecord.schemaVersion,
         recordType: sessionRecord.recordType,
-        projectId: sessionRecord.projectId,
         recordModel: sessionRecord.recordModel,
       },
       {
         schemaVersion: 1,
         recordType: "session",
-        projectId: "manual-role-uat",
         recordModel: "v0.4",
       },
     );
 
     const detail = readSessionDetail(fixture.dataDir, snapshot.sessionId);
     assert.equal(detail?.session.recordModel, "v0.4");
-    assert.equal(detail?.session.projectId, "manual-role-uat");
-    assert.equal(detail?.effectiveConfig?.projectId, "manual-role-uat");
     assert.deepEqual(
       readConfigEvents(manifest.recordsDir).map((event) => event.reason),
       ["creation"],
@@ -1800,35 +1794,6 @@ test("SessionService switches custom instruction inside the same materialized se
     assert.deepEqual(detail?.configEvents.at(-1)?.changedFields, [
       "customInstructionRef",
     ]);
-  } finally {
-    await service.disposeAll();
-  }
-});
-
-test("SessionService reassigns project without changing runtime identity or config", async () => {
-  const fixture = setupFixture();
-  const service = createTestService(fixture);
-  const created = await service.createSession({
-    projectId: null,
-    rolePresetSlug: "role-conceptual-theory-companion",
-    kbDomain: "ep-core",
-    soulSlug: "soul-latest",
-  });
-
-  try {
-    const before = service.getManifest(created.sessionId);
-    const changed = service.setProjectId(created.sessionId, "manual-role-uat");
-    const after = service.getManifest(created.sessionId);
-    const detail = readSessionDetail(fixture.dataDir, created.sessionId);
-
-    assert.equal(changed.sessionId, created.sessionId);
-    assert.equal(changed.projectId, "manual-role-uat");
-    assert.equal(after.piSessionFile, before.piSessionFile);
-    assert.equal(after.rolePreset.slug, before.rolePreset.slug);
-    assert.equal(after.soul.slug, before.soul.slug);
-    assert.equal(detail?.session.projectId, "manual-role-uat");
-    assert.equal(detail?.effectiveConfig?.projectId, "manual-role-uat");
-    assert.deepEqual(detail?.configEvents.at(-1)?.changedFields, ["projectId"]);
   } finally {
     await service.disposeAll();
   }

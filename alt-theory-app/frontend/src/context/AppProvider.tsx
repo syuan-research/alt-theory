@@ -85,7 +85,6 @@ const anonymousAuth: AuthContext = {
 };
 
 const defaultSelectors: SessionSelectors = {
-  projectId: null,
   currentDomain: DEFAULT_KB_DOMAIN,
   rolePresetSlug: null,
   soulSlug: null,
@@ -191,7 +190,6 @@ export interface AppContextValue {
   wsConnected: boolean;
 
   selectors: SessionSelectors;
-  switchProject: (projectId: string | null) => void;
   switchKb: (domain: string) => void;
   switchSoul: (soulSlug: string | null) => void;
   switchRolePreset: (rolePresetSlug: string | null) => void;
@@ -294,7 +292,6 @@ function applySnapshotSelectors(
   payload: SessionSnapshot | SessionDraftSnapshot,
 ): SessionSelectors {
   return {
-    projectId: payload.projectId ?? null,
     currentDomain: payload.currentDomain || DEFAULT_KB_DOMAIN,
     rolePresetSlug: payload.rolePresetSlug ?? null,
     soulSlug: payload.soulSlug ?? null,
@@ -782,10 +779,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
             soulSlug: message.payload.soulSlug ?? prev.soulSlug,
             customInstructionRef:
               message.payload.customInstructionRef ?? prev.customInstructionRef,
-            projectId:
-              message.payload.projectId === undefined
-                ? prev.projectId
-                : message.payload.projectId,
             visibility: message.payload.visibility ?? prev.visibility,
             branchId: message.payload.branchId || prev.branchId,
           }));
@@ -1718,16 +1711,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       });
   }, [appMode]);
 
-  const switchProject = useCallback(
-    (projectId: string | null) => {
-      if (sendMessage({ type: "switch_project", payload: { projectId } })) {
-        setSelectors((prev) => ({ ...prev, projectId }));
-        if (sessionId) void refreshSessions();
-      }
-    },
-    [refreshSessions, sendMessage, sessionId],
-  );
-
   const switchKb = useCallback(
     (domain: string) => {
       if (!domain) return;
@@ -1906,7 +1889,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       wsError,
       wsConnected,
       selectors,
-      switchProject,
       switchKb,
       switchSoul,
       switchRolePreset,
@@ -2015,7 +1997,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       wsError,
       wsConnected,
       selectors,
-      switchProject,
       switchKb,
       switchSoul,
       switchRolePreset,
