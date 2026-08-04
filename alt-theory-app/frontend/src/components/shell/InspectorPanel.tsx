@@ -197,29 +197,32 @@ function RelatedConversations() {
     if (!app.sessionId) return [];
     const related: typeof app.sessions = [];
     const seen = new Set<string>();
-    const addChildrenOf = (parentId: string, beforeFork: string | null) => {
+    const addChildrenOf = (parentId: string, inherited: boolean) => {
       for (const s of app.sessions) {
         if (s.forkedFrom?.sessionId !== parentId) continue;
         if (s.forkedFrom.purpose === "ab-arm" || s.deletedAt) continue;
         if (seen.has(s.sessionId)) continue;
-        // Inherited pass: subagents and side (btw) conversations that
-        // already existed at the fork belong to the shared history (owner
-        // ruling 2026-08-04; helper is recreatable and stays put).
-        if (beforeFork) {
-          if (!["subagent", "side"].includes(s.forkedFrom.purpose)) continue;
-          if (!s.createdAt || s.createdAt >= beforeFork) continue;
+        // Inherited pass: ALL attached conversations of every ancestor
+        // (owner ruling 2026-08-04: no fork-time bound — never lose reach
+        // to preserved content; the rows are labeled, mild noise accepted).
+        // Sibling branches of ancestors stay out.
+        if (
+          inherited &&
+          !["subagent", "side", "helper"].includes(s.forkedFrom.purpose)
+        ) {
+          continue;
         }
         seen.add(s.sessionId);
         related.push(s);
       }
     };
-    addChildrenOf(app.sessionId, null);
-    // Walk the fork ancestry: pre-fork subagents are part of this branch's
-    // shared history, even when an ancestor is deleted or already purged.
+    addChildrenOf(app.sessionId, false);
+    // Walk the fork ancestry: an ancestor's attached conversations are part
+    // of this branch's history, even when the ancestor is deleted or purged.
     const byId = new Map(app.sessions.map((s) => [s.sessionId, s]));
     let node = byId.get(app.sessionId);
-    while (node?.forkedFrom && node.createdAt) {
-      addChildrenOf(node.forkedFrom.sessionId, node.createdAt);
+    while (node?.forkedFrom) {
+      addChildrenOf(node.forkedFrom.sessionId, true);
       node = byId.get(node.forkedFrom.sessionId);
     }
     return related;

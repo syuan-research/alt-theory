@@ -91,33 +91,34 @@ test("Delete follows attached conversations but stops at Branches and promoted c
   });
   createSession(dataDir, "branch-side", { sessionId: "branch", purpose: "side" });
 
+  // root has a living branch, so ALL its attached conversations survive the
+  // delete (owner ruling 2026-08-04: no fork-time bound).
   softDeleteSession(dataDir, "root");
-  assert.deepEqual(ids(dataDir), ["branch", "branch-side", "promoted-helper"]);
-  assert.deepEqual(
-    listDeletedSessionSummaries(dataDir).sessions.map((session) => session.sessionId),
-    ["root"],
-  );
-  assert.throws(
-    () => restoreDeletedSession(dataDir, "side"),
-    /not a direct Trash entry/,
-  );
-
-  assert.deepEqual(restoreDeletedSession(dataDir, "root").sort(), [
-    "root",
-    "side",
-    "subagent",
-  ]);
   assert.deepEqual(ids(dataDir), [
     "branch",
     "branch-side",
     "promoted-helper",
-    "root",
     "side",
     "subagent",
   ]);
+  assert.deepEqual(
+    listDeletedSessionSummaries(dataDir).sessions.map((session) => session.sessionId),
+    ["root"],
+  );
+  assert.deepEqual(restoreDeletedSession(dataDir, "root").sort(), ["root"]);
 
+  // branch has no branch of its own: the cascade still buries its attached
+  // side conversation, and that child is not a direct Trash entry.
   softDeleteSession(dataDir, "branch");
   assert.deepEqual(ids(dataDir), ["promoted-helper", "root", "side", "subagent"]);
+  assert.throws(
+    () => restoreDeletedSession(dataDir, "branch-side"),
+    /not a direct Trash entry/,
+  );
+  assert.deepEqual(restoreDeletedSession(dataDir, "branch").sort(), [
+    "branch",
+    "branch-side",
+  ]);
 });
 
 test("Deleting a parent keeps subagents and btw a surviving branch shares", () => {
@@ -149,11 +150,15 @@ test("Deleting a parent keeps subagents and btw a surviving branch shares", () =
   );
 
   softDeleteSession(dataDir, "root");
-  // sa-before and btw-before predate the branch fork: shared history the
-  // branch still holds (edit flows delete old mainlines constantly, and
-  // losing the btw with them is a real loss — owner ruling 2026-08-04);
-  // sa-after exists only in the deleted mainline.
-  assert.deepEqual(ids(dataDir), ["branch", "btw-before", "sa-before"]);
+  // While any branch lives, ALL of the parent's attached conversations
+  // survive — no fork-time comparison (owner ruling 2026-08-04: edit flows
+  // delete old mainlines constantly; never silently lose content).
+  assert.deepEqual(ids(dataDir), [
+    "branch",
+    "btw-before",
+    "sa-after",
+    "sa-before",
+  ]);
 
   restoreDeletedSession(dataDir, "root");
   assert.deepEqual(ids(dataDir), [
@@ -177,10 +182,13 @@ test("Delete reports every conversation it will bury, so a live run can be stopp
     listed: true,
   });
 
-  // A subagent two levels down is as live as its root; a Branch and a promoted
-  // child stay, so stopping them would abort work the user still has.
+  // root's living branch protects its attached conversations, so deleting
+  // root buries only root. A branchless parent still reports the whole
+  // attached family (a subagent two levels down is as live as its root).
   assert.deepEqual(sessionsAttachedToDeletion(dataDir, "root").sort(), [
     "root",
+  ]);
+  assert.deepEqual(sessionsAttachedToDeletion(dataDir, "side").sort(), [
     "side",
     "subagent",
   ]);

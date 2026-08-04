@@ -361,13 +361,13 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                         ? { opacity: 0.5 + 0.5 * (active.turnsLeft / 5) }
                         : undefined
                     }
-                    disabled={app.isRunning || !interactive}
+                    disabled={!interactive}
                     title={
                       active
                         ? active.locked
                           ? t("Locked — click to release on your next message")
                           : t("Active for {count} more turns — click to lock", { count: active.turnsLeft })
-                        : t("Ask Alt to work this way for the next few turns")
+                        : t("Rides your next message: ask Alt to work this way for the next few turns")
                     }
                     onClick={() => app.pressPreset(name)}
                   >
@@ -522,11 +522,11 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
           {variant === "live" ? (
             <button
               className={`ctx-item preset-toggle${presetOpen ? " on" : ""}`}
-              title={t("Preset commands — ask Alt to work a certain way for the next few turns")}
+              title={t("Steer — ask Alt to work a certain way for the next few turns")}
               onClick={togglePresetOpen}
             >
               <i className="ph ph-lightning" aria-hidden="true" />
-              {presetOpen ? null : t("Presets")}
+              {presetOpen ? null : t("Steer")}
             </button>
           ) : null}
         </div>

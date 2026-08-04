@@ -555,16 +555,21 @@ function attachedDeletionTargets(
   const visit = (id: string) => {
     targets.push(id);
     const kids = children.get(id) ?? [];
-    // Owner rule (v1.4 round 1): an attached conversation survives while a
-    // branch forked AFTER it existed survives. For subagents the branch
-    // transcript literally references their work; for side (btw) the owner
-    // ruled the content loss is just as real (edit-heavy flows delete old
-    // mainlines constantly). helper stays cascaded — setup Q&A is
-    // recreatable, no loss to protect.
-    const branchForkTimes = kids
-      .filter((k) => k.forkedFrom?.purpose === "fork" && !k.deletedAt)
-      .map((k) => k.createdAt)
-      .filter((at): at is string => !!at);
+    // Owner rule (v1.4 round 1, simplified 2026-08-04): while any branch of
+    // this node lives — including a branch of a branch — its attached
+    // conversations (btw/helper/subagent) ALL survive; the living branch's
+    // rail reaches them through the ancestry walk. No fork-time comparison:
+    // never silently lose content, at the cost of a branch's rail sometimes
+    // showing an attached conversation opened after its fork.
+    // A deleted branch with a living branch of its own still counts: the
+    // living descendant's rail walks up through the deleted link.
+    const hasLivingBranch = (parentId: string): boolean =>
+      (children.get(parentId) ?? []).some(
+        (k) =>
+          k.forkedFrom?.purpose === "fork" &&
+          (!k.deletedAt || hasLivingBranch(k.sessionId)),
+      );
+    const protectedHere = hasLivingBranch(id);
     for (const child of kids) {
       const fork = child.forkedFrom;
       if (
@@ -574,13 +579,7 @@ function attachedDeletionTargets(
       ) {
         continue;
       }
-      if (
-        ["subagent", "side"].includes(fork.purpose) &&
-        child.createdAt &&
-        branchForkTimes.some((at) => at > (child.createdAt as string))
-      ) {
-        continue;
-      }
+      if (protectedHere) continue;
       visit(child.sessionId);
     }
   };

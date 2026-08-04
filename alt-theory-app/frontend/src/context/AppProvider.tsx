@@ -1401,10 +1401,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [presetState, setPresetState] = useState<
     AppContextValue["presetState"]
   >(null);
-  const pendingPresetReleaseRef = useRef<{
-    ordinal: number;
-    name: string;
-  } | null>(null);
+  // Stage semantics (owner 2026-08-04): press/lock/release NEVER spend a
+  // turn of their own — announcements ride the user's next message, and the
+  // press rides it as the actual /skill: invoke.
+  const pendingPresetRef = useRef<{ invoke: string | null; texts: string[] }>({
+    invoke: null,
+    texts: [],
+  });
   const notePresetTurn = useCallback(() => {
     setPresetState((current) => {
       if (!current || current.locked) return current;
@@ -1415,17 +1418,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const sendPrompt = useCallback(
     (text: string) => {
+      const pending = pendingPresetRef.current;
       let trimmed = text.trim();
-      const release = pendingPresetReleaseRef.current;
-      if (release && trimmed) {
-        // flomo design: unlock is announced on the user's next turn, not as
-        // a turn of its own.
-        trimmed = `Preset command #${release.ordinal} (${release.name}) is released; stop applying it.\n\n${trimmed}`;
-        pendingPresetReleaseRef.current = null;
+      if (pending.texts.length && trimmed) {
+        trimmed = `${pending.texts.join("\n\n")}\n\n${trimmed}`;
       }
       const attachments = [...stagedWorkspacePaths];
       if (!trimmed && attachments.length === 0) return false;
+      const consumePending = () => {
+        pending.invoke = null;
+        pending.texts = [];
+      };
       if (isRunning) {
+        // ponytail: a queued message can't ride the /skill: invoke path, so
+        // an armed press degrades to the wrapper text (which names the
+        // skill); the skill body loads on a later idle press if it matters.
         replaceQueuedPrompts((current) => [
           ...current,
           {
@@ -1434,11 +1441,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
             attachments,
           },
         ]);
+        consumePending();
+        clearStagedWorkspace();
+        notePresetTurn();
+        return true;
+      }
+      if (pending.invoke && attachments.length === 0) {
+        if (!invokeSkillRef.current?.(pending.invoke, trimmed)) return false;
+        consumePending();
         clearStagedWorkspace();
         notePresetTurn();
         return true;
       }
       if (!startPrompt(trimmed, attachments)) return false;
+      consumePending();
       clearStagedWorkspace();
       notePresetTurn();
       return true;
@@ -1478,7 +1494,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   >(null);
   const pressPreset = useCallback(
     (name: string) => {
-      if (!sessionId || isRunning) return;
+      if (!sessionId) return;
       const ordinal = presetButtons.indexOf(name) + 1;
       if (ordinal === 0) return;
       const active =
@@ -1487,34 +1503,53 @@ export function AppProvider({ children }: { children: ReactNode }) {
         presetState.name === name
           ? presetState
           : null;
+      const pending = pendingPresetRef.current;
       if (!active) {
-        const wrapper = `[IMPORTANT] The user pressed preset command #${ordinal} (${name}) — a manual trigger that signals what they expect right now. It normally applies for the next 3-5 turns. Fit its requirements into the current situation rather than restarting from scratch; only set it aside where it truly contradicts the immediate need, and say so if you do.`;
-        if (invokeSkillRef.current?.(name, wrapper)) {
-          pendingPresetReleaseRef.current = null;
-          setPresetState({
-            sessionId,
-            name,
-            ordinal,
-            turnsLeft: PRESET_TURNS,
-            locked: false,
-          });
-        }
+        // Switching from a different, already-announced preset: release it
+        // in the same ride-along.
+        const prior =
+          presetState && presetState.sessionId === sessionId
+            ? presetState
+            : null;
+        const priorAnnounced = prior && pending.invoke !== prior.name;
+        pending.invoke = name;
+        pending.texts = priorAnnounced
+          ? [
+              `Preset command #${prior.ordinal} (${prior.name}) is released; stop applying it.`,
+            ]
+          : [];
+        pending.texts.push(
+          `[IMPORTANT] The user pressed preset command #${ordinal} (${name}) — a manual trigger that signals what they expect right now. It normally applies for the next 3-5 turns. Fit its requirements into the current situation rather than restarting from scratch; only set it aside where it truly contradicts the immediate need, and say so if you do.`,
+        );
+        setPresetState({
+          sessionId,
+          name,
+          ordinal,
+          turnsLeft: PRESET_TURNS,
+          locked: false,
+        });
         return;
       }
       if (!active.locked) {
-        if (
-          sendPrompt(
-            `[IMPORTANT] The user locked preset command #${ordinal} (${name}): it now applies to every turn until you are told it is released.`,
-          )
-        ) {
-          setPresetState({ ...active, locked: true });
-        }
+        pending.texts.push(
+          `[IMPORTANT] The user locked preset command #${ordinal} (${name}): it now applies to every turn until you are told it is released.`,
+        );
+        setPresetState({ ...active, locked: true });
         return;
       }
-      pendingPresetReleaseRef.current = { ordinal, name };
+      // Unlock. Nothing announced yet (armed + locked without a message in
+      // between) → just clear; otherwise the release rides the next message.
+      if (pending.invoke === name) {
+        pending.invoke = null;
+        pending.texts = [];
+      } else {
+        pending.texts.push(
+          `Preset command #${ordinal} (${name}) is released; stop applying it.`,
+        );
+      }
       setPresetState(null);
     },
-    [sessionId, isRunning, presetButtons, presetState, sendPrompt],
+    [sessionId, presetButtons, presetState],
   );
 
   const invokeSkill = useCallback(
