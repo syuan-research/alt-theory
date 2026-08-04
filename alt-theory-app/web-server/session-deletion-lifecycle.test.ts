@@ -323,6 +323,31 @@ test("A conversation emptied by private retention is not offered as recoverable"
   );
 });
 
+test("Trash retention sweep fails per entry, not per pass", () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "alt-theory-trash-sweep-"));
+  const expire = (id: string) => {
+    const dirs = createSession(dataDir, id);
+    softDeleteSession(dataDir, id);
+    removeDeletedSessionRecord(dirs.recordsDir);
+    writeDeletedSessionRecord(dirs.recordsDir, id, {
+      deletedAt: "2026-06-01T00:00:00.000Z",
+      reason: "user_deleted",
+      cascadeRootSessionId: id,
+    });
+  };
+  expire("a-kept");
+  expire("z-damaged"); // created last + sorts first on ties: swept first
+  const purged = purgeExpiredDeletedSessions(
+    dataDir,
+    new Date("2026-07-02T00:00:00.000Z"),
+    (sessionId) => {
+      if (sessionId === "z-damaged") throw new Error("simulated damage");
+      return false;
+    },
+  );
+  assert.deepEqual(purged, ["a-kept"]);
+});
+
 test("Trash retention permanently deletes after 30 days", () => {
   const dataDir = mkdtempSync(join(tmpdir(), "alt-theory-trash-expiry-"));
   const dirs = createSession(dataDir, "expired");

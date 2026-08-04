@@ -584,9 +584,13 @@ export function purgeExpiredDeletedSessions(
         ),
       );
     } catch (error) {
-      if (!(error instanceof Error) || !error.message.startsWith("Close the conversation")) {
-        throw error;
-      }
+      // Fail per entry: one damaged or still-open conversation must not
+      // silently stop the 30-day sweep for every other conversation (and
+      // control flow no longer hangs on matching an English error string).
+      console.error(
+        `Trash retention sweep skipped ${summary.sessionId}:`,
+        error instanceof Error ? error.message : error,
+      );
     }
   }
   return deleted;
