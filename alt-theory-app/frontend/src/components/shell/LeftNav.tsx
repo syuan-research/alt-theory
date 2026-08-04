@@ -727,6 +727,12 @@ function SessionNode({
                 aria-hidden
                 title={originTitle(session)}
               />
+            ) : session.delisted ? (
+              <i
+                className="ph ph-git-branch s-fork"
+                aria-hidden
+                title={t("Former main conversation — demoted when a branch was promoted")}
+              />
             ) : null}
             <span className="s-title">{title}</span>
             {state ? (

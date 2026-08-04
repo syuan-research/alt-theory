@@ -573,7 +573,7 @@
   /* Own row above the ctx-line (opus B1: it must never displace the role/
      KB/visibility controls). One row, no band, no wrap (owner 2026-08-04):
      buttons shrink with label ellipsis instead of wrapping or clipping. */
-  .preset-bar { display: flex; align-items: center; flex-wrap: nowrap; gap: 6px; min-width: 0; padding: 0 6px 6px; }
+  .preset-bar { display: flex; align-items: center; flex-wrap: nowrap; gap: 6px; min-width: 0; flex: 1; }
   /* Quiet ghost chip at rest; the app's ink CTA look when active. */
   .preset-btn { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--hairline); border-radius: var(--r-sm); background: none; color: var(--ink-soft); font: inherit; font-size: 0.76rem; padding: 4px 10px; cursor: pointer; white-space: nowrap; min-width: 0; flex: 0 1 auto; }
   .preset-btn:hover { background: var(--hover); }

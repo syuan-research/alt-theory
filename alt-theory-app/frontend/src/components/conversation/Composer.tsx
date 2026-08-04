@@ -342,7 +342,12 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
           </div>
         ) : null}
 
-        {presetOpen && variant === "live" ? (
+        <div className="ctx-line">
+          {/* Owner design: the Steer bar REPLACES the role/KB controls while
+              open — they rarely change mid-conversation, and stacking rows
+              is the thing to avoid. The toggle stays visible to bring them
+              back. */}
+          {presetOpen && variant === "live" ? (
             <div className="preset-bar">
               {app.presetButtons.map((name, index) => {
                 const active =
@@ -412,8 +417,8 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                   })}
               </CtxPicker>
             </div>
-        ) : null}
-        <div className="ctx-line">
+          ) : (
+          <>
           <CtxPicker
             icon="ph-user-circle"
             label={roleLabel}
@@ -518,6 +523,8 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                   : t("Exportable")}
             </button>
           ) : null}
+          </>
+          )}
           {variant === "live" ? (
             <button
               className={`ctx-item preset-toggle${presetOpen ? " on" : ""}`}

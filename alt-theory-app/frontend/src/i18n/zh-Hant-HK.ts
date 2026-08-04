@@ -268,6 +268,7 @@ const catalog: Record<string, string> = {
   "For clarifying questions, comparing explanations, and developing ideas with your materials.": "用於澄清問題、比較解釋，以及根據您的材料發展想法。",
   "For the same careful thinking plus research, data analysis, and direct work across files.": "用於相同的細緻思考，外加研究、數據分析和跨檔案直接工作。",
   "Forking...": "分支中…",
+  "Former main conversation — demoted when a branch was promoted": "原主對話——在分支被提升時降級",
   "Full path of the file to attach:": "要附加的檔案的完整路徑：",
   "Full path of the replacement working folder:": "替換工作資料夾的完整路徑：",
   "Full path of the working folder for this conversation:": "此對話工作資料夾的完整路徑：",

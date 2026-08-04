@@ -126,9 +126,10 @@ export function compareByRecency(a: SessionSummary, b: SessionSummary): number {
  */
 export function isListMember(session: SessionSummary): boolean {
   const fork = session.forkedFrom;
-  // M4b role swap: a delisted root ceded its list spot to a promoted
-  // branch; it stays reachable from the branch's Related rail.
-  if (!fork) return session.delisted !== true;
+  // A delisted root STAYS a list member — demoted, not hidden: the tree
+  // nests it under its successor (owner 2026-08-04: the old mainline must
+  // degrade to an ordinary branch row, never vanish).
+  if (!fork) return true;
   return fork.purpose === "fork" || fork.listed === true;
 }
 
@@ -144,7 +145,14 @@ export function canTakeMainline(
   all: SessionSummary[],
 ): boolean {
   if (!session.forkedFrom) return session.delisted === true;
-  if (session.forkedFrom.purpose !== "fork") return false;
+  // Branches qualify by nature; other children once the user LISTED them
+  // (owner 2026-08-04: a btw already shown in the list can take the spot).
+  if (
+    session.forkedFrom.purpose !== "fork" &&
+    session.forkedFrom.listed !== true
+  ) {
+    return false;
+  }
   const byId = new Map(all.map((s) => [s.sessionId, s]));
   const walked = new Set<string>();
   let cur = byId.get(session.forkedFrom.sessionId);
@@ -197,17 +205,42 @@ export interface SessionTree {
   childrenByParent: Map<string, SessionSummary[]>;
 }
 
-export function buildSessionTree(
-  sessions: SessionSummary[],
-  projectNames: Map<string, string>
-): SessionTree {
-  const members = sessions.filter(isListMember).sort(compareByRecency);
+/**
+ * Parent/child edges for the list tree, with the M4b role swap applied as a
+ * display inversion: a delisted root nests under its most recently active
+ * member child (the promotion successor), and that successor rises to the
+ * top instead of nesting under the delisted root. No stored successor id —
+ * recency picks it, and if the successor is later deleted the delisted root
+ * simply becomes a root again.
+ */
+function buildEdges(members: SessionSummary[]): {
+  roots: SessionSummary[];
+  childrenByParent: Map<string, SessionSummary[]>;
+} {
   const ids = new Set(members.map((s) => s.sessionId));
+  const byId = new Map(members.map((s) => [s.sessionId, s]));
+  const successorOf = (root: SessionSummary) =>
+    members.find((m) => m.forkedFrom?.sessionId === root.sessionId) ?? null;
 
   const childrenByParent = new Map<string, SessionSummary[]>();
   const roots: SessionSummary[] = [];
   for (const session of members) {
-    const parentId = session.forkedFrom?.sessionId;
+    let parentId = session.forkedFrom?.sessionId ?? null;
+    if (!parentId && session.delisted) {
+      parentId = successorOf(session)?.sessionId ?? null;
+    } else if (parentId) {
+      const parent = byId.get(parentId);
+      // The successor must not nest under the delisted root it replaced —
+      // that edge is inverted, and both nesting would orphan the family.
+      if (
+        parent &&
+        !parent.forkedFrom &&
+        parent.delisted &&
+        successorOf(parent)?.sessionId === session.sessionId
+      ) {
+        parentId = null;
+      }
+    }
     if (parentId && ids.has(parentId)) {
       if (!childrenByParent.has(parentId)) childrenByParent.set(parentId, []);
       childrenByParent.get(parentId)?.push(session);
@@ -215,6 +248,15 @@ export function buildSessionTree(
       roots.push(session);
     }
   }
+  return { roots, childrenByParent };
+}
+
+export function buildSessionTree(
+  sessions: SessionSummary[],
+  projectNames: Map<string, string>
+): SessionTree {
+  const members = sessions.filter(isListMember).sort(compareByRecency);
+  const { roots, childrenByParent } = buildEdges(members);
 
   const byProject = new Map<string, SessionSummary[]>();
   for (const root of roots) {
@@ -259,19 +301,7 @@ export function buildWorkspaceTree(
   knownWorkspaces: string[]
 ): WorkspaceTree {
   const members = sessions.filter(isListMember).sort(compareByRecency);
-  const ids = new Set(members.map((s) => s.sessionId));
-
-  const childrenByParent = new Map<string, SessionSummary[]>();
-  const roots: SessionSummary[] = [];
-  for (const session of members) {
-    const parentId = session.forkedFrom?.sessionId;
-    if (parentId && ids.has(parentId)) {
-      if (!childrenByParent.has(parentId)) childrenByParent.set(parentId, []);
-      childrenByParent.get(parentId)?.push(session);
-    } else {
-      roots.push(session);
-    }
-  }
+  const { roots, childrenByParent } = buildEdges(members);
 
   const byDir = new Map<string, SessionSummary[]>();
   for (const dir of knownWorkspaces) {
