@@ -210,6 +210,50 @@ export interface AltTheoryConfig extends SessionDirectories {
   extraTools?: ToolDefinition[];
   /** Extra semantic system-prompt sections (alpha.5 M2: delegation contract). */
   extraPromptSections?: string[];
+  /**
+   * Experiment arm (v1.4 round 1): in Alt Theory Work mode, strip the
+   * "expert coding assistant" identity line and the "Be concise" style
+   * directive from Pi's base prompt, leaving its tool facts intact.
+   */
+  trimmedPiBasePrompt?: boolean;
+}
+
+/**
+ * Per-model reminders (v1.4 round 1). Leading words only: they cite the
+ * concepts ALTTHEORY.md defines (whole-problem continuity, half-step
+ * advance) rather than restating them — single source of truth.
+ */
+export function modelHookSection(modelId: string | undefined): string | null {
+  if (!modelId) return null;
+  if (/^gpt-5/i.test(modelId)) {
+    return [
+      "## Model Reminder",
+      "WHOLE-PROBLEM CONTINUITY REMINDER — Apply whole-problem continuity and half-step advance, as defined in the Alt Theory Application Context, to this turn: locate the current node within the user's wider purpose and open branches; distinguish an explicit instruction from a correction, observation, or analysis; then move by the smallest grounded step, offering two or three real directions instead of choosing a route for the user.",
+    ].join("\n");
+  }
+  if (/deepseek-v4-flash/i.test(modelId)) {
+    return [
+      "## Model Reminder",
+      "NON-COMMAND DISCIPLINE REMINDER — Apply whole-problem continuity and half-step advance, as defined in the Alt Theory Application Context, with one emphasis: never treat a non-command as a command. A correction, observation, judgement, or agreement is not an instruction. When uncertain whether the user instructed an action, treat it as not instructed: acknowledge briefly and reply with concrete next-step options rather than proactively proceeding.",
+    ].join("\n");
+  }
+  return null;
+}
+
+/** Bridges Pi's harness prompt to the Alt Theory sections in Work mode. */
+const WORK_MODE_PREFACE = [
+  "## Alt Theory governs from here",
+  "Everything above this line is technical environment background: the harness, its tools, and how to operate them. Everything below defines who you are in this product — your behavior, priorities, and persona. Where the two pull in different directions about how to act with the user, the sections below govern.",
+].join("\n");
+
+/** Experiment arm (b): neutralize Pi's identity/style lines, keep tool facts. */
+function trimPiBasePrompt(base: string): string {
+  return base
+    .replace(
+      "You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.",
+      "You are operating inside pi, an agent harness that provides your tools for reading files, executing commands, and editing or writing files. Who you are and how you work with the user are defined by the Alt Theory sections below.",
+    )
+    .replace("- Be concise in your responses\n", "");
 }
 
 /** Prompt text for the app-settings skill-precedence choice (default bundled). */
@@ -384,6 +428,13 @@ async function createAltTheorySessionWithManager(
   altSections.push(
     ["## Skill Precedence", skillPrecedenceGuidance(config.skillPrecedence)].join("\n")
   );
+  // ponytail: hook chosen at assembly; a mid-session model switch keeps the
+  // old hook until the session reopens. Re-derive per turn if that bites.
+  const modelHook =
+    runtimeState.runtimeMode === "alt-theory"
+      ? modelHookSection(config.modelId)
+      : null;
+  if (modelHook) altSections.push(modelHook);
   const sharedSections: string[] = [];
   if (customInstructionContent) {
     sharedSections.push(`## Custom Instruction\n${customInstructionContent}`);
@@ -557,10 +608,13 @@ async function createAltTheorySessionWithManager(
     ],
     noContextFiles: resourceDiscovery !== "dev-debug",
     systemPromptOverride: (base) =>
-      runtimeState.runtimeMode === "alt-theory" &&
-      runtimeState.altMode === "understand"
-        ? altTheorySystemPrompt
-        : base,
+      runtimeState.runtimeMode !== "alt-theory"
+        ? base
+        : runtimeState.altMode === "understand"
+          ? altTheorySystemPrompt
+          : config.trimmedPiBasePrompt
+            ? trimPiBasePrompt(base)
+            : base,
     skillsOverride: (current) => {
       if (resourceDiscovery === "clean") {
         return { skills: [], diagnostics: [] };
@@ -610,7 +664,7 @@ async function createAltTheorySessionWithManager(
         ? [...base, ...sharedSections]
         : runtimeState.altMode === "understand"
           ? []
-          : [...base, ...altSections, ...sharedSections],
+          : [...base, WORK_MODE_PREFACE, ...altSections, ...sharedSections],
   });
   await loader.reload();
 

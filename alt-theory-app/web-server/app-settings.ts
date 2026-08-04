@@ -69,6 +69,12 @@ export interface AppSettings {
   /** Native Pi may add Alt Theory's bundled skills to Pi's own discovery. */
   nativePiScanAltSkills?: boolean;
   /**
+   * Experiment arm (v1.4 round 1): trim Pi's identity/style lines from the
+   * Work-mode base prompt. Compared against the preface-only default via
+   * sim-user probes; absent = off.
+   */
+  experimentTrimmedPiPrompt?: boolean;
+  /**
    * App UI (and backend user-visible text) language (alpha.6). Absent =
    * "auto": the frontend follows the system language; the backend treats
    * auto as English. Conversation language is unaffected — the assistant
