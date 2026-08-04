@@ -33,19 +33,10 @@ export function researcherDoorOpen(
   );
 }
 
-export function isSimpleViewMode(viewMode: ViewMode): boolean {
-  return viewMode === "user";
-}
-
 export function defaultTranscriptView(viewMode: ViewMode): TranscriptView {
   return viewMode === "user" ? "user" : "developer";
 }
 
 export function showAdvancedConfig(viewMode: ViewMode): boolean {
-  return viewMode === "researcher";
-}
-
-/** Records / Provenance / Paths / Runtime inspector tabs — researcher only. */
-export function showAdvancedInspectorTabs(viewMode: ViewMode): boolean {
   return viewMode === "researcher";
 }

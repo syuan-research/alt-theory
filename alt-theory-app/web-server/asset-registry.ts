@@ -98,9 +98,6 @@ export function listRolePresets(rolePresetsDir: string): DiscoveredAsset[] {
   return merged;
 }
 
-/** Deprecated compatibility alias. Use listRolePresets. */
-export const listProfiles = listRolePresets;
-
 export function listSouls(
   soulDir: string,
   _legacySoulPath?: string | null
@@ -211,9 +208,6 @@ export function resolveRolePresetSlug(
   }
   return null;
 }
-
-/** Deprecated compatibility alias. Use resolveRolePresetSlug. */
-export const resolveProfileSlug = resolveRolePresetSlug;
 
 export function resolveSoulSlug(
   soulDir: string,

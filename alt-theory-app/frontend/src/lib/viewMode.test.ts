@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  isSimpleViewMode,
   researcherDoorOpen,
   showAdvancedConfig,
   viewModeForRole,
@@ -10,7 +9,6 @@ import {
 test("hosted participant uses simple user view", () => {
   const mode = viewModeForRole("participant", "hosted");
   assert.equal(mode, "user");
-  assert.equal(isSimpleViewMode(mode), true);
   assert.equal(showAdvancedConfig(mode), false);
   assert.equal(researcherDoorOpen("participant", "hosted"), false);
 });

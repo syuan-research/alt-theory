@@ -134,7 +134,6 @@ export interface AppContextValue {
   toggleViewMode: () => void;
   participant: ParticipantInfo | null;
   transcriptView: TranscriptView;
-  setTranscriptView: (view: TranscriptView) => void;
 
   discovery: DiscoveryLists | null;
   /** Re-fetch role/KB/skill lists after the user adds assets in Settings. */
@@ -243,7 +242,6 @@ export interface AppContextValue {
   toggleWorkspaceStage: (path: string, staged: boolean) => void;
   stageWorkspacePath: (path: string) => void;
   unstageWorkspacePaths: (paths: string[]) => void;
-  clearStagedWorkspace: () => void;
 
   runCompletedCount: number;
   requestConfirm: (request: ConfirmRequest) => void;
@@ -1854,7 +1852,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       toggleViewMode,
       participant,
       transcriptView,
-      setTranscriptView,
       discovery,
       refreshDiscovery,
       localConfig,
@@ -1923,7 +1920,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       toggleWorkspaceStage,
       stageWorkspacePath,
       unstageWorkspacePaths,
-      clearStagedWorkspace,
       runCompletedCount,
       requestConfirm,
       approvals,
@@ -2031,7 +2027,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       toggleWorkspaceStage,
       stageWorkspacePath,
       unstageWorkspacePaths,
-      clearStagedWorkspace,
       runCompletedCount,
       requestConfirm,
       approvals,
