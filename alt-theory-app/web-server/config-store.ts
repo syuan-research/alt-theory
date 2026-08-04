@@ -39,7 +39,12 @@ import {
 import { dirname, join, resolve } from "path";
 import { randomUUID } from "crypto";
 import { ensureLocalModeDefaults } from "./local-mode-paths.js";
-import { catalogThinkingLevels } from "./models-dev-metadata.js";
+import {
+  catalogModelMetadata,
+  catalogSdkFamily,
+  catalogThinkingLevels,
+  refreshModelsDevMetadata,
+} from "./models-dev-metadata.js";
 
 // ---------------------------------------------------------------------------
 // Paths (Pi-native; local bundle points this at %USERPROFILE%\.alt-theory\pi-agent)
@@ -378,10 +383,9 @@ export function initialThinkingLevelForModel(
   const model = listProviders(agentDir)
     .find((provider) => provider.name === providerName)
     ?.models.find((candidate) => candidate.id === modelId);
-  if (!model?.reasoning) return "off";
   const levels =
     model.availableThinkingLevels?.filter((level) => level !== "off") ?? [];
-  return levels[Math.floor((levels.length - 1) / 2)] ?? "off";
+  return levels[Math.floor((levels.length - 1) / 2)] ?? "medium";
 }
 
 function isBuiltInProvider(name: string): boolean {
@@ -512,6 +516,18 @@ function modelListUrls(api: ApiType | undefined, baseUrl: string): string[] {
   return [...new Set(urls)];
 }
 
+function isOpenCodeGoBaseUrl(baseUrl: string): boolean {
+  try {
+    const url = new URL(baseUrl);
+    return (
+      url.hostname === "opencode.ai" &&
+      url.pathname.replace(/\/+$/, "").replace(/\/v1$/i, "") === "/zen/go"
+    );
+  } catch {
+    return false;
+  }
+}
+
 function sanitizeCustomProviderAuth(
   agentDir: string,
   models: ModelsFile,
@@ -629,6 +645,8 @@ async function fetchModelsFromEndpoint(
       "Model refresh needs a Base URL. Use manual model entry for built-in providers.",
     );
   }
+  const splitOpenCodeGo = isOpenCodeGoBaseUrl(input.baseUrl);
+  if (splitOpenCodeGo) await refreshModelsDevMetadata(agentDir);
 
   const apiKey =
     input.apiKey ?? (await resolvedProviderApiKey(agentDir, input.provider));
@@ -646,22 +664,74 @@ async function fetchModelsFromEndpoint(
 
   const errors: string[] = [];
   for (const endpoint of modelListUrls(input.api, input.baseUrl)) {
-    const response = await fetch(endpoint, {
-      method: "GET",
-      headers,
-      signal: AbortSignal.timeout(10000),
-    });
+    // One retry: a dropped connection or a 5xx is usually the network having a
+    // bad second, and making the user click Fetch again teaches them the
+    // feature is unreliable.
+    let response: Response | null = null;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        const attempted = await fetch(endpoint, {
+          method: "GET",
+          headers,
+          signal: AbortSignal.timeout(10000),
+        });
+        if (attempted.ok || attempted.status < 500 || attempt === 1) {
+          response = attempted;
+          break;
+        }
+        errors.push(`${endpoint}: HTTP ${attempted.status}`);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "request failed";
+        if (attempt === 1) {
+          errors.push(`${endpoint}: ${message}`);
+          break;
+        }
+      }
+    }
+    if (!response) continue;
     if (!response.ok) {
       errors.push(`${endpoint}: HTTP ${response.status}`);
       continue;
     }
-    const payload = (await response.json()) as unknown;
+    let payload: unknown;
+    try {
+      payload = await response.json();
+    } catch {
+      errors.push(`${endpoint}: invalid JSON`);
+      continue;
+    }
     const candidates = normalizeModelListPayload(payload);
     if (candidates.length === 0) {
       errors.push(`${endpoint}: no recognizable model ids`);
       continue;
     }
-    return candidates;
+    if (!splitOpenCodeGo) return candidates;
+    const expectedFamily =
+      input.api === "anthropic-messages" ? "anthropic" : "openai";
+    const classified = candidates.map((model) => ({
+      model,
+      family: catalogSdkFamily(
+        agentDir,
+        input.provider,
+        input.baseUrl,
+        model.id,
+      ),
+    }));
+    const selected = classified.some(({ family }) => family)
+      ? classified
+          .filter(({ family }) => !family || family === expectedFamily)
+          .map(({ model }) => model)
+      : candidates;
+    return selected.map((model) => ({
+      ...model,
+      ...catalogModelMetadata(
+        agentDir,
+        input.provider,
+        input.baseUrl,
+        model.id,
+      ),
+    }));
   }
   if (
     anthropicBearerAuthRequired(input.api, input.baseUrl) &&
@@ -671,7 +741,9 @@ async function fetchModelsFromEndpoint(
       "MiMo Token Plan CN Anthropic-compatible endpoint does not expose a model list API. Enter the model id manually (for example mimo-v2.5-pro).",
     );
   }
-  throw new ConfigValidationError(`Model refresh failed: ${errors.join("; ")}`);
+  throw new ConfigValidationError(
+    `Model refresh failed: ${errors[0] ?? "no model-list endpoint responded"}`,
+  );
 }
 
 export function getRuntimeModelConfig(agentDir: string): RuntimeModelConfig {

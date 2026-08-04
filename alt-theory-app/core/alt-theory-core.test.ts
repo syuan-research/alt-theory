@@ -6,7 +6,7 @@ import { join } from "path";
 import { createSessionDirs } from "./data-dir.js";
 import { createAltTheorySession } from "./alt-theory-core.js";
 
-test("capability mode switches prompt layers and active tools on the live session", async () => {
+test("Alt mode switches prompt layers and active tools on the live session", async () => {
   const root = mkdtempSync(join(tmpdir(), "alt-theory-core-mode-"));
   const appContextPath = join(root, "ALTTHEORY.md");
   const kbDir = join(root, "kb");
@@ -18,42 +18,60 @@ test("capability mode switches prompt layers and active tools on the live sessio
     appContextPath,
     kbDir,
     kbDomain: "none",
-    readOnly: true,
-    promptMode: "alt-only",
+    understandReadOnly: true,
+    altMode: "understand",
     resourceDiscovery: "clean",
   });
   const { session } = result;
 
-  // Pure: Alt assembly replaces Pi's prompt; session-bounded read-only tools.
-  assert.equal(result.getMode(), "pure");
-  const purePrompt = session.systemPrompt;
-  assert.ok(purePrompt.includes("Alt Theory Application Context"));
-  assert.ok(purePrompt.includes("Alt Theory Tool Harness"));
+  // Understand: Alt assembly replaces Pi's prompt; session-bounded read-only tools.
+  assert.equal(result.getAltMode(), "understand");
+  const understandPrompt = session.systemPrompt;
+  assert.ok(understandPrompt.includes("Alt Theory Application Context"));
+  assert.ok(understandPrompt.includes("Alt Theory Tool Harness"));
+  assert.ok(understandPrompt.includes("Current mode: Understand"));
   assert.deepEqual(
     [...session.getActiveToolNames()].sort(),
     ["find", "grep", "ls", "read"]
   );
+  assert.deepEqual(result.manifest.writableRoots, []);
 
-  // Full: Pi default prompt preserved, semantic sections appended,
+  // Work: Pi default prompt preserved, semantic sections appended,
   // Pi default tool set active. Applies without any session rebuild.
-  await result.setMode("full");
-  assert.equal(result.getMode(), "full");
-  const fullPrompt = session.systemPrompt;
-  assert.ok(fullPrompt.includes("Alt Theory Application Context"));
-  assert.ok(!fullPrompt.includes("Alt Theory Tool Harness"));
-  assert.notEqual(fullPrompt, purePrompt);
+  await result.setAltMode("work");
+  assert.equal(result.getAltMode(), "work");
+  const workPrompt = session.systemPrompt;
+  assert.ok(workPrompt.includes("Alt Theory Application Context"));
+  assert.ok(!workPrompt.includes("Alt Theory Tool Harness"));
+  assert.notEqual(workPrompt, understandPrompt);
   assert.deepEqual(
     [...session.getActiveToolNames()].sort(),
     ["bash", "edit", "read", "write"]
   );
+  assert.ok(result.manifest.writableRoots.includes(result.manifest.sessionCwd));
 
   // And back: the switch is symmetric.
-  await result.setMode("pure");
-  assert.equal(session.systemPrompt, purePrompt);
+  await result.setAltMode("understand");
+  assert.equal(session.systemPrompt, understandPrompt);
   assert.deepEqual(
     [...session.getActiveToolNames()].sort(),
     ["find", "grep", "ls", "read"]
   );
+  assert.deepEqual(result.manifest.writableRoots, []);
+
+  // Native Pi subtracts Alt behavior but keeps normal coding capability. The
+  // session's preserved Alt mode returns when the application switches back.
+  await result.setRuntimeMode("native-pi");
+  assert.doesNotMatch(session.systemPrompt, /Alt Theory Application Context/);
+  assert.deepEqual(
+    [...session.getActiveToolNames()].sort(),
+    ["bash", "edit", "read", "write"]
+  );
+  assert.ok(result.manifest.writableRoots.includes(result.manifest.sessionCwd));
+  await result.setRuntimeMode("alt-theory");
+  assert.equal(result.getAltMode(), "understand");
+  assert.equal(session.systemPrompt, understandPrompt);
+  assert.deepEqual(result.manifest.writableRoots, []);
 
   await session.dispose();
 });
@@ -75,7 +93,7 @@ test("external skills are enabled per mode and re-apply on mode switch", async (
   );
   writeFileSync(
     join(externalDir, "helper.md"),
-    "---\nname: full-only-helper\ndescription: Full-only external skill\n---\nHelp.",
+    "---\nname: work-helper\ndescription: Work external skill\n---\nHelp.",
     "utf-8"
   );
 
@@ -84,34 +102,81 @@ test("external skills are enabled per mode and re-apply on mode switch", async (
     appContextPath,
     kbDir,
     kbDomain: "none",
-    readOnly: true,
-    promptMode: "alt-only",
+    understandReadOnly: true,
+    altMode: "understand",
     resourceDiscovery: "internal",
     skillsDir,
-    externalSkillPaths: { full: [externalDir] },
+    externalSkillPaths: { work: [externalDir] },
   });
   const { session } = result;
 
-  // Pure: bundled skill only; the external skill is not silently enabled.
+  // Understand: bundled skill only; the external skill is not silently enabled.
   assert.match(session.systemPrompt, /alt-summary/);
-  assert.doesNotMatch(session.systemPrompt, /full-only-helper/);
+  assert.doesNotMatch(session.systemPrompt, /work-helper/);
   assert.deepEqual(
     result.manifest.skills.map((skill) => `${skill.source}:${skill.name}`),
     ["alt-theory:alt-summary"]
   );
 
-  // Full: the user-enabled external skill joins the assembly.
-  await result.setMode("full");
+  // Work: the user-enabled external skill joins the assembly.
+  await result.setAltMode("work");
   assert.match(session.systemPrompt, /alt-summary/);
-  assert.match(session.systemPrompt, /full-only-helper/);
+  assert.match(session.systemPrompt, /work-helper/);
 
-  await result.setMode("pure");
-  assert.doesNotMatch(session.systemPrompt, /full-only-helper/);
+  await result.setAltMode("understand");
+  assert.doesNotMatch(session.systemPrompt, /work-helper/);
 
   await session.dispose();
 });
 
-test("workspace directories apply in full mode only and extend guarded write", async () => {
+test("skills nested under agent-assets/skills load into the session", async () => {
+  // Optional skills are ordinary skills in a subdirectory of the one root.
+  const root = mkdtempSync(join(tmpdir(), "alt-theory-core-exp-skills-"));
+  const agentAssets = join(root, "agent-assets");
+  const skillsDir = join(agentAssets, "skills");
+  const experimental = join(
+    skillsDir,
+    "experimental",
+    "theory-innovation-loop",
+  );
+  const appContextPath = join(root, "ALTTHEORY.md");
+  const kbDir = join(root, "kb");
+  mkdirSync(skillsDir, { recursive: true });
+  mkdirSync(experimental, { recursive: true });
+  mkdirSync(kbDir, { recursive: true });
+  writeFileSync(appContextPath, "Experimental skills context", "utf-8");
+  writeFileSync(
+    join(skillsDir, "summary.md"),
+    "---\nname: alt-summary\ndescription: Bundled\n---\nSummarize.",
+    "utf-8",
+  );
+  writeFileSync(
+    join(experimental, "SKILL.md"),
+    "---\nname: theory-innovation-loop\ndescription: Experimental loop\n---\nLoop body EXP-MARKER.",
+    "utf-8",
+  );
+
+  const result = await createAltTheorySession({
+    ...createSessionDirs(join(root, "data"), "exp-skills-test"),
+    appContextPath,
+    kbDir,
+    kbDomain: "none",
+    understandReadOnly: true,
+    altMode: "understand",
+    resourceDiscovery: "internal",
+    skillsDir,
+  });
+  const names = result.manifest.skills.map((s) => s.name).sort();
+  assert.deepEqual(names, ["alt-summary", "theory-innovation-loop"]);
+  assert.ok(
+    result.manifest.skills.some(
+      (s) => s.name === "theory-innovation-loop" && s.source === "alt-theory",
+    ),
+  );
+  await result.session.dispose();
+});
+
+test("workspace directories apply in Work only and extend guarded write", async () => {
   const root = mkdtempSync(join(tmpdir(), "alt-theory-core-workspace-"));
   const appContextPath = join(root, "ALTTHEORY.md");
   const kbDir = join(root, "kb");
@@ -134,14 +199,14 @@ test("workspace directories apply in full mode only and extend guarded write", a
     appContextPath,
     kbDir,
     kbDomain: "none",
-    readOnly: false,
-    promptMode: "alt-only",
+    understandReadOnly: false,
+    altMode: "understand",
     resourceDiscovery: "internal",
     workspaceDirs: [dirA],
   });
   const { session } = result;
 
-  // Pure stays bounded to the session workspace: no workspace context,
+  // Understand stays bounded to the session workspace: no workspace context,
   // no workspace skills, no workspace write access.
   assert.doesNotMatch(session.systemPrompt, /WORKSPACE-DIR-CONTEXT-A/);
   assert.doesNotMatch(session.systemPrompt, /ws-helper/);
@@ -151,23 +216,23 @@ test("workspace directories apply in full mode only and extend guarded write", a
   assert.ok(writeTool);
   await assert.rejects(
     () =>
-      writeTool.execute("ws-pure", {
-        path: join(dirA, "pure.md"),
+      writeTool.execute("ws-understand", {
+        path: join(dirA, "understand.md"),
         content: "blocked",
       }),
     /outside Alt Theory writable roots/
   );
 
-  // Full receives the added directory's context file and project skills,
+  // Work receives the added directory's context file and project skills,
   // and the guarded write roots grow to the workspace.
-  await result.setMode("full");
+  await result.setAltMode("work");
   assert.match(session.systemPrompt, /WORKSPACE-DIR-CONTEXT-A/);
   assert.match(session.systemPrompt, /ws-helper/);
-  await writeTool.execute("ws-full", {
-    path: join(dirA, "full.md"),
+  await writeTool.execute("ws-work", {
+    path: join(dirA, "work.md"),
     content: "allowed",
   });
-  assert.equal(readFileSync(join(dirA, "full.md"), "utf-8"), "allowed");
+  assert.equal(readFileSync(join(dirA, "work.md"), "utf-8"), "allowed");
 
   // Adding a directory is a live action: context applies after reload.
   await result.addWorkspaceDir(dirB);
@@ -175,13 +240,13 @@ test("workspace directories apply in full mode only and extend guarded write", a
   assert.deepEqual(result.getWorkspace().additionalDirs, [dirA, dirB]);
   assert.deepEqual(result.manifest.workspace.additionalDirs, [dirA, dirB]);
 
-  // Switching back to pure withdraws workspace access again.
-  await result.setMode("pure");
+  // Switching back to Understand withdraws workspace access again.
+  await result.setAltMode("understand");
   assert.doesNotMatch(session.systemPrompt, /WORKSPACE-DIR-CONTEXT-A/);
   await assert.rejects(
     () =>
-      writeTool.execute("ws-pure-again", {
-        path: join(dirA, "pure-again.md"),
+      writeTool.execute("ws-understand-again", {
+        path: join(dirA, "understand-again.md"),
         content: "blocked",
       }),
     /outside Alt Theory writable roots/
@@ -204,8 +269,8 @@ test("security extension mediates tool calls at the policy boundary", async () =
     appContextPath,
     kbDir,
     kbDomain: "none",
-    readOnly: false,
-    promptMode: "pi-default",
+    understandReadOnly: false,
+    altMode: "work",
     resourceDiscovery: "clean",
   });
   const { session } = result;
@@ -255,10 +320,10 @@ test("security extension mediates tool calls at the policy boundary", async () =
     /requires user approval/
   );
 
-  // Edit is bounded to the mode's writable roots (Full includes the cwd).
+  // Edit is bounded to the current writable roots (Work includes the cwd).
   assert.match(
     (await call("edit", { path: join(root, "outside.txt") }))?.reason ?? "",
-    /outside Alt Theory writable roots/
+    /approval is unavailable/
   );
   assert.equal(await call("edit", { path: join(dirs.writeDir, "ok.md") }), undefined);
 

@@ -6,6 +6,7 @@ import {
   listWorkingFiles,
   uploadWorkspaceFile,
 } from "@/api/session-files";
+import { t } from "@/i18n";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
 import { hasNativeBridge, revealPath } from "@/lib/native";
@@ -63,7 +64,11 @@ export function WorkspaceTree() {
 
   const sessionId = app.sessionId;
   const runCount = app.runCompletedCount;
-  const pureMode = sessionId ? app.sessionMode === "pure" : shell.newMode === "pure";
+  const understandMode =
+    app.runtimeMode === "alt-theory" &&
+    (sessionId
+      ? app.sessionMode === "understand"
+      : shell.newMode === "understand");
 
   useEffect(() => {
     setUploadStatus("");
@@ -206,13 +211,13 @@ export function WorkspaceTree() {
               className={`flat${previewView === "rendered" ? " on" : ""}`}
               onClick={() => setPreviewView("rendered")}
             >
-              Rendered
+              {t("Rendered")}
             </button>
             <button
               className={`flat${previewView === "source" ? " on" : ""}`}
               onClick={() => setPreviewView("source")}
             >
-              Source
+              {t("Source")}
             </button>
           </div>
         ) : null}
@@ -228,7 +233,7 @@ export function WorkspaceTree() {
             className="flat change-preview-more"
             onClick={() => setPreviewExpanded((open) => !open)}
           >
-            {previewExpanded ? "Show less" : "Show full file"}
+            {previewExpanded ? t("Show less") : t("Show full file")}
           </button>
         ) : null}
         {preview.source === "managed" ? (
@@ -240,7 +245,7 @@ export function WorkspaceTree() {
                 : app.stageWorkspacePath(preview.path)
             }
           >
-            {staged ? "Remove from message" : "Attach to message"}
+            {staged ? t("Remove from message") : t("Attach to message")}
           </button>
         ) : null}
       </div>
@@ -251,15 +256,15 @@ export function WorkspaceTree() {
     <>
       {workingFolders.length > 0 ? (
         <div className="working-folders">
-          <div className="files-section-title">Working folders</div>
+          <div className="files-section-title">{t("Working folders")}</div>
           {workingFolders.map((folder) => (
-            <div key={folder.id}>
+            <div className="working-folder-group" key={folder.id}>
               <div className="working-folder">
                 <i className="ph ph-folder-open" />
                 <div>
                   <div className="working-folder-role">
-                    {folder.role === "primary" ? "Main folder" : "Additional folder"}
-                    {folder.managed ? " · conversation folder" : ""}
+                    {folder.role === "primary" ? t("Main folder") : t("Additional folder")}
+                    {folder.managed ? ` · ${t("conversation folder")}` : ""}
                   </div>
                   <div className="working-folder-path" title={folder.path}>{folder.path}</div>
                   {folder.available && hasNativeBridge() ? (
@@ -268,11 +273,11 @@ export function WorkspaceTree() {
                       onClick={() => void revealPath(folder.path)}
                     >
                       <i className="ph ph-arrow-square-out" />
-                      Open folder
+                      {t("Open folder")}
                     </button>
                   ) : null}
                   {!folder.available ? (
-                    <div className="working-folder-missing">Folder is not available on this device.</div>
+                    <div className="working-folder-missing">{t("Folder is not available on this device.")}</div>
                   ) : null}
                 </div>
               </div>
@@ -285,21 +290,21 @@ export function WorkspaceTree() {
             </div>
           ))}
           {workingTruncated ? (
-            <div className="wb-note">Showing the first 1,000 files; large dependency and hidden folders are omitted.</div>
+            <div className="wb-note">{t("Showing the first 1,000 files; large dependency and hidden folders are omitted.")}</div>
           ) : null}
           <div className="wb-note">
-            Understand/Work changes what Alt may do, not where these files are stored.
+            {t("Understand/Work changes what Alt may do, not where these files are stored.")}
           </div>
         </div>
       ) : null}
-      {pureMode ? (
+      {understandMode ? (
         <div className="pv-card">
           <button
             className="wb-apply"
             disabled={!sessionId}
             onClick={() => uploadInput.current?.click()}
           >
-            {sessionId ? "Add reference" : "Add a reference after the first message"}
+            {sessionId ? t("Add reference") : t("Add a reference after the first message")}
           </button>
           <input
             ref={uploadInput}
@@ -317,14 +322,14 @@ export function WorkspaceTree() {
       {error ? (
         <div className="rp-empty">{error}</div>
       ) : !entries ? (
-        <div className="rp-empty">Loading…</div>
+        <div className="rp-empty">{t("Loading…")}</div>
       ) : entries.length === 0 ? (
-        <div className="rp-empty">No references or conversation-folder files.</div>
+        <div className="rp-empty">{t("No references or conversation-folder files.")}</div>
       ) : (
         <>
           {referenceEntries.length > 0 ? (
             <>
-              <div className="files-section-title">References</div>
+              <div className="files-section-title">{t("References")}</div>
               <div className="tree">
                 <TreeLevel node={referenceTree} depth={0} onOpenFile={openFile} />
               </div>
@@ -332,7 +337,7 @@ export function WorkspaceTree() {
           ) : null}
           {conversationFolderEntries.length > 0 ? (
             <>
-              <div className="files-section-title">Conversation folder</div>
+              <div className="files-section-title">{t("Conversation folder")}</div>
               <div className="tree">
                 <TreeLevel node={conversationFolderTree} depth={0} onOpenFile={openFile} />
               </div>

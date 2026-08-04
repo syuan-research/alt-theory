@@ -1,4 +1,5 @@
 import type { ToolDetail } from "@/api/types";
+import { t } from "@/i18n";
 
 export function isKbPath(path: string | null | undefined): boolean {
   if (!path) return false;
@@ -27,35 +28,35 @@ export function toolLabel(
   detail?: ToolDetail | null
 ): string {
   if (detail?.kind === "skill" && detail.skillName) {
-    return `Using the ${detail.skillName} skill`;
+    return t("Using the {skillName} skill", { skillName: detail.skillName });
   }
   if (name === "bash" || name === "shell") {
     const command = detail?.kind === "command" ? detail.body.split("\n")[0] : null;
-    return command ? `Ran ${command}` : "Running a command…";
+    return command ? t("Ran {command}", { command }) : t("Running a command…");
   }
 
   const kbPath = isKbPath(path);
   const named = fileName(path);
-  const on = named ? ` ${named}` : "";
 
   if (name === "read") {
-    if (kbPath) return "Reading knowledge base…";
-    return named ? `Reading ${named}` : "Reading file…";
+    if (kbPath) return t("Reading knowledge base…");
+    return named ? t("Reading {name}", { name: named }) : t("Reading file…");
   }
   if (name === "grep") {
-    return kbPath ? "Searching for relevant theories…" : "Searching files…";
+    return kbPath ? t("Searching for relevant theories…") : t("Searching files…");
   }
   if (name === "find") {
-    return kbPath ? "Locating knowledge base files…" : "Locating files…";
+    return kbPath ? t("Locating knowledge base files…") : t("Locating files…");
   }
   if (name === "ls") {
-    return kbPath ? "Listing knowledge base…" : `Listing${on || " resources…"}`;
+    if (kbPath) return t("Listing knowledge base…");
+    return named ? t("Listing {name}", { name: named }) : t("Listing resources…");
   }
-  if (name === "write") return named ? `Writing ${named}` : "Writing notes…";
+  if (name === "write") return named ? t("Writing {name}", { name: named }) : t("Writing notes…");
   if (name === "edit" || name === "multi_edit" || name === "str_replace") {
-    return named ? `Editing ${named}` : "Editing a file…";
+    return named ? t("Editing {name}", { name: named }) : t("Editing a file…");
   }
-  if (name === "web_search" || name === "websearch") return "Searching online…";
-  if (name === "fetch" || name === "page_fetch") return "Reading a web page…";
-  return `${name}…`;
+  if (name === "web_search" || name === "websearch") return t("Searching online…");
+  if (name === "fetch" || name === "page_fetch") return t("Reading a web page…");
+  return t("{name}…", { name });
 }

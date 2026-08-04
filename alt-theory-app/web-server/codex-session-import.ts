@@ -1010,14 +1010,6 @@ function projectToPi(records: Row[], meta: Row): string {
     parentId = id;
     return id;
   };
-  for (const record of records) {
-    append({
-      type: "custom",
-      customType: "source-codex-record",
-      data: record,
-      timestamp: record.timestamp,
-    });
-  }
   const baseInstructionsId = append({
     type: "custom_message",
     customType: "source-codex-base-instructions",
@@ -1215,7 +1207,7 @@ function describeTransformations(records: Row[]): string[] {
     records.filter((record) => record.type === "response_item").map((record) => String(record.payload?.type))
   );
   const result = [
-    "Full Codex rollout records are retained as raw Pi custom entries.",
+    "The full Codex rollout is retained as a verified managed source snapshot instead of being duplicated into active Pi history.",
     "Codex system/developer text stays labelled and model-visible, but Pi presents it at user-role priority.",
     "Codex runtime records remain raw-only; the selected Alt Theory mode owns active permissions, model, and tools.",
   ];

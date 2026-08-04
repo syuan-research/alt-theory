@@ -11,12 +11,22 @@ export const V4_SCHEMA_VERSION = 1;
  * from it: only roots and "fork" appear in the list; a chosen A/B arm is
  * rewritten to "fork" when it becomes the continuation.
  */
-export type ForkPurpose = "fork" | "side" | "helper" | "ab-arm" | "worker";
+export type ForkPurpose = "fork" | "side" | "helper" | "ab-arm" | "subagent";
 
 /** Pre-M7 records used the original two purposes; normalize on read. */
 const LEGACY_FORK_PURPOSE: Record<string, ForkPurpose> = {
   collaboration: "side",
   comparison: "ab-arm",
+};
+
+/**
+ * v1-alpha records named the capability mode pure/full. The runtime indexes
+ * per-mode maps by this value, so an un-normalized "pure" reopened as
+ * `undefined` and took the whole session open down with it.
+ */
+const LEGACY_MODE: Record<string, "understand" | "work"> = {
+  pure: "understand",
+  full: "work",
 };
 
 /** Study designation, session level (M7 decision doc §3); absent = daily use. */
@@ -37,6 +47,53 @@ export interface RecordEnvelope {
   recordType: string;
 }
 
+/**
+ * What happens to a conversation beyond this machine. TWO DISJOINT
+ * VOCABULARIES, one per deployment — never mix them:
+ *
+ * - **hosted** (`ALT_THEORY_MODE=hosted`, the VPS study): `"research"` |
+ *   `"private"`. `"private"` is the participant saying "don't keep this":
+ *   researchers cannot read it, it is not exported, and it is hard-deleted
+ *   after 7 inactive days. Deletion is HOW that promise is kept, not a side
+ *   effect — a study account is not long-lived, so a private conversation
+ *   that outlives the study would break the promise.
+ * - **local** (the downloadable app): `"exportable"` | `"no-export"`. A
+ *   marker for a future export filter, nothing more. Nothing is hidden,
+ *   uploaded, or deleted, ever.
+ *
+ * A local install can never write `"private"`, so the retention sweeper
+ * (`session-retention.ts`, hosted-only) can never match locally created
+ * data. That is the fix for the defect where "local conversations default to
+ * private" also meant "local conversations default to queued for deletion":
+ * the safest-sounding default was the destructive one.
+ */
+export type SessionVisibility =
+  | "research"
+  | "private"
+  | "exportable"
+  | "no-export";
+
+/** Vocabulary check — the guard that keeps the two deployments apart. */
+export function isVisibilityForMode(
+  visibility: string,
+  localMode: boolean,
+): visibility is SessionVisibility {
+  return localMode
+    ? visibility === "exportable" || visibility === "no-export"
+    : visibility === "research" || visibility === "private";
+}
+
+/**
+ * Whether this conversation is withheld from the research team. True for the
+ * hosted `"private"` and the local `"no-export"`. Distinct from retention:
+ * only `"private"` is ever deleted.
+ */
+export function withholdsFromResearch(
+  visibility: SessionVisibility | undefined,
+): boolean {
+  return visibility === "private" || visibility === "no-export";
+}
+
 export interface V4SessionHeader extends RecordEnvelope {
   recordType: "session";
   sessionId: string;
@@ -45,7 +102,7 @@ export interface V4SessionHeader extends RecordEnvelope {
   recordModel: "v0.4";
   ownerAccountId?: string | null;
   roleCondition?: string | null;
-  visibility?: "research" | "private";
+  visibility?: SessionVisibility;
   consentSnapshot?: {
     researcherReadable: boolean;
     quoteAfterAnonymization: boolean;
@@ -53,9 +110,9 @@ export interface V4SessionHeader extends RecordEnvelope {
   };
   lastActivityAt?: string;
   retentionDueAt?: string | null;
-  /** Capability mode (spec §4); absent = pure (all pre-v1-alpha sessions). */
-  mode?: "pure" | "full";
-  /** Full workspace (spec §5.1); absent = default session workspace only. */
+  /** Per-session Alt Theory behavior mode. */
+  mode?: "understand" | "work";
+  /** Work/Native workspace (spec §5.1); absent = default session workspace only. */
   workspace?: {
     primaryDir: string;
     additionalDirs: string[];
@@ -64,9 +121,23 @@ export interface V4SessionHeader extends RecordEnvelope {
   forkedFrom?: {
     sessionId: string;
     purpose: ForkPurpose;
+    /**
+     * The user asked for this child to appear in the conversation list
+     * (alpha.6). The purpose is KEPT so the list can still say where it came
+     * from — a subagent that earned a place in the list is not a branch.
+     */
+    listed?: boolean;
   };
   studyTag?: StudyTag;
   modelOverride?: SessionModelOverride;
+  /**
+   * A root that gave its list spot to a promoted child (v1.4 M4b role
+   * swap). Stays a list member, displayed DEMOTED — nested under its
+   * successor. Fork children delist via forkedFrom.listed=false instead.
+   */
+  delisted?: boolean;
+  /** The session that took the spot — makes the display inversion deterministic. */
+  delistedFor?: string;
 }
 
 export function writeFoundationRecords(args: {
@@ -76,7 +147,7 @@ export function writeFoundationRecords(args: {
   projectId?: string | null;
   ownerAccountId?: string | null;
   roleCondition?: string | null;
-  visibility?: "research" | "private";
+  visibility?: SessionVisibility;
   consentSnapshot?: {
     researcherReadable: boolean;
     quoteAfterAnonymization: boolean;
@@ -84,7 +155,7 @@ export function writeFoundationRecords(args: {
   } | null;
   lastActivityAt?: string;
   retentionDueAt?: string | null;
-  mode?: "pure" | "full";
+  mode?: "understand" | "work";
   workspace?: {
     primaryDir: string;
     additionalDirs: string[];
@@ -138,6 +209,9 @@ export function readV4SessionHeader(recordsDir: string): V4SessionHeader | null 
       header.forkedFrom.purpose =
         LEGACY_FORK_PURPOSE[header.forkedFrom.purpose] ??
         header.forkedFrom.purpose;
+    }
+    if (header.mode) {
+      header.mode = LEGACY_MODE[header.mode] ?? header.mode;
     }
     return header;
   }

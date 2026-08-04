@@ -3,6 +3,16 @@
 Current pilot/product-visible changelog. The public page mirrors these short
 entries at `alt-theory-app/web-server/public/changelog.html`.
 
+## v1.3.0-beta.1 - 2026-08-04
+
+First public Beta release for Windows x64.
+
+- Imports long Codex, Claude Code, OpenCode, Grok Build, and supported Pi conversations into the same continuing session engine without duplicating raw runtime events into the active transcript.
+- Adds first-class Branch comparisons, BTW and Helper conversations, inspectable communicative subagents, same-session Retry, and Edit-and-compare.
+- Replaces hide-only deletion with Settings → Trash, 30-day recovery, Restore, and Permanent delete while preserving independent Branches and promoted side conversations.
+- Adds Role, knowledge-base, Skill, provider/model, multilingual interface, local file, analysis, document, and permission surfaces for serious research work.
+- Introduces the public Beta README, privacy-safe screenshots, correct Windows version/company metadata, and the Alt Theory application icon.
+
 ## v0.5.6 - 2026-06-26
 
 Made knowledge-base selection more stable and moved it next to message entry for a more intuitive local-session flow.

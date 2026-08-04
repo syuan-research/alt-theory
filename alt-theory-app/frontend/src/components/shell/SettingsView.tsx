@@ -1,9 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { fetchJson } from "@/api/http";
 import {
   cancelProviderAuth,
   getAutoTitleSettings,
-  getDefaultMode,
-  saveDefaultMode,
+  getDefaultAltMode,
+  saveDefaultAltMode,
+  getRuntimeSettings,
+  saveRuntimeSettings,
+  getLangSetting,
+  saveLangSetting,
+  type LangSettingValue,
   getDataFolder,
   getProviderAuthFlow,
   getSkillPrecedence,
@@ -24,11 +30,21 @@ import {
 import type {
   ProviderAuthFlow,
   ProviderAuthId,
+  SessionSummary,
 } from "@/api/types";
 import { ModelConfigPage } from "@/pages/ModelConfigPage";
 import { hasNativeBridge, pickDirectory, pickFiles, revealPath } from "@/lib/native";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
+import { t } from "@/i18n";
+import {
+  fetchTrashSessions,
+  hydrateSessionDisplayName,
+  permanentlyDeleteSession,
+  restoreSession,
+  type SessionDisplayName,
+} from "@/api/sessions";
+import { sessionTitle } from "@/lib/sessionList";
 
 interface NavItem {
   key: string;
@@ -42,20 +58,22 @@ export function SettingsView() {
   const shell = useShell();
 
   const items: NavItem[] = [
-    { key: "models", label: "Models", icon: "ph-cpu" },
-    { key: "general", label: "General", icon: "ph-gear" },
-    { key: "rolekb", label: "Role & Knowledge", icon: "ph-books" },
+    { key: "models", label: t("Models"), icon: "ph-cpu" },
+    { key: "general", label: t("General"), icon: "ph-gear" },
+    { key: "rolekb", label: t("Role & Knowledge"), icon: "ph-books" },
+    { key: "skills", label: t("Skills"), icon: "ph-toolbox" },
     ...(shell.participantTabEnabled
       ? [
           {
             key: "participant",
-            label: "Participant mode",
+            label: t("Participant mode"),
             icon: "ph-identification-badge",
           },
         ]
       : []),
-    { key: "features", label: "What Alt can do", icon: "ph-sparkle" },
-    { key: "about", label: "About", icon: "ph-info" },
+    { key: "features", label: t("What Alt can do"), icon: "ph-sparkle" },
+    { key: "trash", label: t("Trash"), icon: "ph-trash" },
+    { key: "about", label: t("About"), icon: "ph-info" },
   ];
 
   // If the participant tab is disabled while selected, fall back to general.
@@ -71,7 +89,7 @@ export function SettingsView() {
       <nav className="set-nav">
         <button className="back-app" onClick={shell.openApp}>
           <i className="ph ph-arrow-left" />
-          Back to app
+          {t("Back to app")}
         </button>
         {items.map((item) => (
           <button
@@ -81,7 +99,7 @@ export function SettingsView() {
           >
             <i className={`ph ${item.icon}`} />
             {item.label}
-            {item.soon ? <span className="soon">soon</span> : null}
+            {item.soon ? <span className="soon">{t("soon")}</span> : null}
           </button>
         ))}
       </nav>
@@ -89,12 +107,116 @@ export function SettingsView() {
         {shell.settingsPanel === "models" ? <ModelsPanel /> : null}
         {shell.settingsPanel === "general" ? <GeneralPanel /> : null}
         {shell.settingsPanel === "rolekb" ? <RoleKbPanel /> : null}
+        {shell.settingsPanel === "skills" ? <SkillsPanel /> : null}
         {shell.settingsPanel === "participant" ? (
           <ParticipantPanel designated={app.participant?.designated ?? false} label={app.participant?.label ?? null} local={app.appMode === "local"} />
         ) : null}
         {shell.settingsPanel === "features" ? <FeaturesPanel /> : null}
+        {shell.settingsPanel === "trash" ? <TrashPanel /> : null}
         {shell.settingsPanel === "about" ? <AboutPanel /> : null}
       </div>
+    </div>
+  );
+}
+
+function TrashPanel() {
+  const app = useApp();
+  const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  const [names, setNames] = useState<Record<string, SessionDisplayName>>({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const next = await fetchTrashSessions();
+      setSessions(next);
+      const entries = await Promise.all(
+        next.map(async (session) => [
+          session.sessionId,
+          await hydrateSessionDisplayName(session.sessionId),
+        ] as const),
+      );
+      setNames(Object.fromEntries(entries));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const restore = async (sessionId: string) => {
+    try {
+      await restoreSession(sessionId);
+      await Promise.all([load(), app.refreshSessions()]);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    }
+  };
+
+  const remove = (sessionId: string) => {
+    app.requestConfirm({
+      message: t("Permanently delete this conversation?"),
+      details: [
+        t("This cannot be undone."),
+        t("Attachments and working files will be kept."),
+      ],
+      confirmLabel: t("Delete permanently"),
+      cancelLabel: t("Cancel"),
+      onConfirm: () => {
+        void permanentlyDeleteSession(sessionId)
+          .then(load)
+          .catch((reason) =>
+            setError(reason instanceof Error ? reason.message : String(reason)),
+          );
+      },
+    });
+  };
+
+  return (
+    <div className="set-panel">
+      <h2>{t("Trash")}</h2>
+      <p className="sub">{t("Deleted conversations are kept for 30 days.")}</p>
+      {error ? <p className="fine">{error}</p> : null}
+      {loading ? (
+        <div className="set-card"><p>{t("Loading conversations…")}</p></div>
+      ) : sessions.length === 0 ? (
+        <div className="set-card"><p>{t("Trash is empty.")}</p></div>
+      ) : (
+        sessions.map((session) => {
+          const due = session.trashDueAt ? Date.parse(session.trashDueAt) : NaN;
+          const days = Number.isNaN(due)
+            ? null
+            : Math.max(0, Math.ceil((due - Date.now()) / (24 * 60 * 60 * 1000)));
+          return (
+            <div className="set-card" key={session.sessionId}>
+              <div className="row2">
+                <div>
+                  <h4>{sessionTitle(session, names, sessions)}</h4>
+                  <p>
+                    {days == null
+                      ? t("Scheduled for deletion")
+                      : t("Deletes in {count} days", { count: days })}
+                  </p>
+                </div>
+                <div className="trash-actions">
+                  <button onClick={() => void restore(session.sessionId)}>
+                    {t("Restore")}
+                  </button>
+                  <button className="danger" onClick={() => remove(session.sessionId)}>
+                    {t("Delete permanently")}
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })
+      )}
     </div>
   );
 }
@@ -118,7 +240,7 @@ function ModelsPanel() {
         />
       ) : (
         <div className="set-card">
-          <p>Model configuration is managed by this deployment.</p>
+          <p>{t("Model configuration is managed by this deployment.")}</p>
         </div>
       )}
     </div>
@@ -129,13 +251,13 @@ export function AuthConnectCard({ onChanged }: { onChanged: () => void }) {
   const PROVIDERS = [
     {
       id: "openrouter",
-      name: "OpenRouter",
+      name: t("OpenRouter"),
       icon: "ph-compass",
     },
-    { id: "xai", name: "Grok", icon: "ph-lightning" },
+    { id: "xai", name: t("Grok"), icon: "ph-lightning" },
     {
       id: "openai-codex",
-      name: "Codex",
+      name: t("Codex"),
       icon: "ph-code",
     },
   ] as const;
@@ -308,7 +430,7 @@ export function AuthConnectCard({ onChanged }: { onChanged: () => void }) {
             >
               <i className={`ph ${p.icon}`} />
               <span className="apn">{p.name}</span>
-              {connected.has(p.id) ? <span className="aps">Connected</span> : null}
+              {connected.has(p.id) ? <span className="aps">{t("Connected")}</span> : null}
             </button>
           ))}
         </div>
@@ -316,18 +438,18 @@ export function AuthConnectCard({ onChanged }: { onChanged: () => void }) {
         <div className="auth-flow">
           <div className="auth-flow-head">
             <span>
-              Sign in to <strong>{flow.provider.name}</strong>
+              {t("Sign in to ")} <strong>{flow.provider.name}</strong>
             </span>
             <button className="link-btn" onClick={cancel}>
-              Cancel
+              {t("Cancel")}
             </button>
           </div>
           {flow.step === "link" ? (
             <>
               <p className="auth-step">
                 {connected.has(flow.provider.id)
-                  ? "This account is connected. Reconnect or disconnect it."
-                  : "Open the provider sign-in flow and approve access."}
+                  ? t("This account is connected. Reconnect or disconnect it.")
+                  : t("Open the provider sign-in flow and approve access.")}
               </p>
               <div className="auth-linkrow">
                 <button
@@ -336,12 +458,12 @@ export function AuthConnectCard({ onChanged }: { onChanged: () => void }) {
                 >
                   <i className="ph ph-arrow-square-out" />
                   {connected.has(flow.provider.id)
-                    ? "Reconnect"
-                    : "Open in browser"}
+                    ? t("Reconnect")
+                    : t("Open in browser")}
                 </button>
                 {connected.has(flow.provider.id) ? (
                   <button className="link-btn" onClick={disconnect}>
-                    Disconnect
+                    {t("Disconnect")}
                   </button>
                 ) : null}
               </div>
@@ -353,10 +475,10 @@ export function AuthConnectCard({ onChanged }: { onChanged: () => void }) {
                   ? latestEvent.message
                   : latestEvent?.type === "auth_url"
                     ? latestEvent.instructions ||
-                      "Finish signing in in your browser."
+                      t("Finish signing in in your browser.")
                     : latestEvent?.type === "device_code"
-                      ? "Enter this code in the provider page:"
-                      : "Preparing the secure sign-in flow…"}
+                      ? t("Enter this code in the provider page:")
+                      : t("Preparing the secure sign-in flow…")}
               </p>
               {deviceEvent?.type === "device_code" ? (
                 <div className="auth-linkrow">
@@ -391,7 +513,7 @@ export function AuthConnectCard({ onChanged }: { onChanged: () => void }) {
                     disabled={!input}
                     onClick={() => void respond(input)}
                   >
-                    Continue
+                    {t("Continue")}
                   </button>
                 </div>
               ) : null}
@@ -403,11 +525,11 @@ export function AuthConnectCard({ onChanged }: { onChanged: () => void }) {
           ) : (
             <>
               <p className="auth-step auth-done">
-                <i className="ph ph-check-circle" /> Connected to{" "}
+                <i className="ph ph-check-circle" /> {t("Connected to ")}
                 {flow.provider.name}
               </p>
               <p className="fine">
-                Connected. Choose one of this provider&apos;s models below.
+                {t("Connected. Choose one of this provider's models below.")}
               </p>
             </>
           )}
@@ -421,21 +543,14 @@ function GeneralPanel() {
   const shell = useShell();
   return (
     <div className="set-panel">
-      <h2>General</h2>
-      <p className="sub">App behavior and appearance.</p>
+      <h2>{t("General")}</h2>
+      <p className="sub">{t("App behavior and appearance.")}</p>
+      <LanguageCard />
       <div className="set-card">
         <div className="row2">
           <div>
-            <h4>Language</h4>
-            <p>English. More languages later.</p>
-          </div>
-        </div>
-      </div>
-      <div className="set-card">
-        <div className="row2">
-          <div>
-            <h4>Dark appearance</h4>
-            <p>Use a dark color theme for the app.</p>
+            <h4>{t("Dark appearance")}</h4>
+            <p>{t("Use a dark color theme for the app.")}</p>
           </div>
           <button
             className={`toggle${shell.darkMode ? " on" : ""}`}
@@ -447,11 +562,8 @@ function GeneralPanel() {
       <div className="set-card">
         <div className="row2">
           <div>
-            <h4>Show thinking</h4>
-            <p>
-              Show Alt&apos;s thinking as a collapsible block above each reply.
-              Off by default — some models think at great length.
-            </p>
+            <h4>{t("Show thinking")}</h4>
+            <p>{t("Show Alt's thinking above each reply. Some models think at great length.")}</p>
           </div>
           <button
             className={`toggle${shell.showThinking ? " on" : ""}`}
@@ -463,11 +575,8 @@ function GeneralPanel() {
       <div className="set-card">
         <div className="row2">
           <div>
-            <h4>Expand thinking</h4>
-            <p>
-              Show the assistant&apos;s thinking blocks expanded by default.
-              When off, thinking stays collapsed and can be opened per block.
-            </p>
+            <h4>{t("Expand thinking")}</h4>
+            <p>{t("Open thinking blocks by default instead of collapsed.")}</p>
           </div>
           <button
             className={`toggle${shell.thinkingExpanded ? " on" : ""}`}
@@ -476,16 +585,17 @@ function GeneralPanel() {
           />
         </div>
       </div>
+      <RuntimeCard />
       <DefaultModeCard />
       <AutoTitleCard />
-      <SkillPrecedenceCard />
+      <ModelHooksCard />
+      <NativePiSkillsCard />
       <div className="set-card">
         <div className="row2">
           <div>
-            <h4>Study participant options</h4>
+            <h4>{t("Study participant options")}</h4>
             <p>
-              Show the Participant mode settings. Only turn this on if you take
-              part in a study; it stays hidden otherwise.
+              {t("Show the Participant mode settings. Only turn this on if you take part in a study; it stays hidden otherwise.")}
             </p>
           </div>
           <button
@@ -499,14 +609,69 @@ function GeneralPanel() {
   );
 }
 
-function DefaultModeCard() {
-  const shell = useShell();
-  const [mode, setMode] = useState<"pure" | "full" | null>(null);
+function LanguageCard() {
+  const [lang, setLang] = useState<LangSettingValue>("auto");
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     let alive = true;
-    getDefaultMode()
+    getLangSetting()
+      .then(({ lang: value }) => {
+        if (alive) setLang(value ?? "auto");
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (alive) setLoaded(true);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const persist = (next: LangSettingValue) => {
+    setLang(next);
+    // t() is initialized once before render, so a language change takes
+    // effect via a full reload — cheap for a local app, and it keeps the
+    // rest of the code free of re-render plumbing.
+    void saveLangSetting(next)
+      .then(() => window.location.reload())
+      .catch(() => {});
+  };
+
+  return (
+    <div className="set-card">
+      <div className="row2">
+        <div>
+          <h4>{t("Language")}</h4>
+          <p>
+            {t(
+              "App language. Auto follows your system language. Conversations always follow the language you write in.",
+            )}
+          </p>
+        </div>
+        <select
+          value={lang}
+          disabled={!loaded}
+          onChange={(e) => persist(e.target.value as LangSettingValue)}
+        >
+          <option value="auto">{t("Auto (system)")}</option>
+          <option value="en">English</option>
+          <option value="zh-Hans">简体中文</option>
+          <option value="zh-Hant-HK">繁體中文（香港）</option>
+        </select>
+      </div>
+    </div>
+  );
+}
+
+function DefaultModeCard() {
+  const shell = useShell();
+  const [mode, setMode] = useState<"understand" | "work" | null>(null);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    getDefaultAltMode()
       .then(({ mode: value }) => {
         if (alive) setMode(value);
       })
@@ -519,31 +684,202 @@ function DefaultModeCard() {
     };
   }, []);
 
-  const persist = (next: "pure" | "full") => {
+  const persist = (next: "understand" | "work") => {
     setMode(next);
     shell.setNewMode(next);
-    void saveDefaultMode(next).catch(() => {});
+    void saveDefaultAltMode(next).catch(() => {});
   };
 
   return (
     <div className="set-card">
       <div className="row2">
         <div>
-          <h4>New conversations start in</h4>
+          <h4>{t("New conversations start in")}</h4>
           <p>
-            Understand talks things through without changing files; Work can
-            act in your working folders. Each conversation can still switch
-            its own mode.
+            {t("Understand talks things through without changing files; Work can act in your working folders. Each conversation can still switch its own mode.")}
           </p>
         </div>
         <select
           value={mode ?? shell.newMode}
           disabled={!loaded}
-          onChange={(e) => persist(e.target.value as "pure" | "full")}
+          onChange={(e) => persist(e.target.value as "understand" | "work")}
         >
-          <option value="pure">Understand</option>
-          <option value="full">Work</option>
+          <option value="understand">{t("Understand")}</option>
+          <option value="work">{t("Work")}</option>
         </select>
+      </div>
+    </div>
+  );
+}
+
+function RuntimeCard() {
+  const [mode, setMode] = useState<"alt-theory" | "native-pi">("alt-theory");
+  const [scanAltSkills, setScanAltSkills] = useState(true);
+  const [loaded, setLoaded] = useState(false);
+  const [available, setAvailable] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    getRuntimeSettings()
+      .then((settings) => {
+        if (!alive) return;
+        setMode(settings.mode);
+        setScanAltSkills(settings.nativePiScanAltSkills);
+        setAvailable(true);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (alive) setLoaded(true);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const persist = (
+    nextMode: "alt-theory" | "native-pi",
+    nextScanAltSkills: boolean,
+  ) => {
+    setMode(nextMode);
+    setScanAltSkills(nextScanAltSkills);
+    void saveRuntimeSettings({
+      mode: nextMode,
+      nativePiScanAltSkills: nextScanAltSkills,
+    })
+      .then(() => window.location.reload())
+      .catch(() => {});
+  };
+
+  // Hosted mode 404s the local-config route (opus F1, same as ModelHooksCard).
+  if (loaded && !available) return null;
+
+  return (
+    <div className="set-card">
+      <div className="row2">
+        <div>
+          <h4>{t("Agent behavior")}</h4>
+          <p>
+            {t(
+              "Native Pi drops Alt's roles, soul, and knowledge context and works like an ordinary coding agent. Safety and approvals are unchanged.",
+            )}
+          </p>
+        </div>
+        <select
+          value={mode}
+          disabled={!loaded}
+          onChange={(event) =>
+            persist(
+              event.target.value as "alt-theory" | "native-pi",
+              scanAltSkills,
+            )
+          }
+        >
+          <option value="alt-theory">Alt Theory</option>
+          <option value="native-pi">Native Pi</option>
+        </select>
+      </div>
+    </div>
+  );
+}
+
+/** Only meaningful while Native Pi is the runtime, so it only appears then. */
+function NativePiSkillsCard() {
+  const [mode, setMode] = useState<"alt-theory" | "native-pi">("alt-theory");
+  const [scanAltSkills, setScanAltSkills] = useState(true);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    getRuntimeSettings()
+      .then((settings) => {
+        if (!alive) return;
+        setMode(settings.mode);
+        setScanAltSkills(settings.nativePiScanAltSkills);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (alive) setLoaded(true);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  if (!loaded || mode !== "native-pi") return null;
+
+  return (
+    <div className="set-card">
+      <div className="row2">
+        <div>
+          <h4>{t("Native Pi: scan Alt Theory bundled skills")}</h4>
+          <p>
+            {t(
+              "Keep Alt Theory's bundled skills discoverable in Native Pi. This does not add Alt Theory behavior.",
+            )}
+          </p>
+        </div>
+        <button
+          className={`toggle${scanAltSkills ? " on" : ""}`}
+          aria-pressed={scanAltSkills}
+          onClick={() => {
+            const next = !scanAltSkills;
+            setScanAltSkills(next);
+            void saveRuntimeSettings({ mode, nativePiScanAltSkills: next })
+              .then(() => window.location.reload())
+              .catch(() => {});
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function ModelHooksCard() {
+  const [enabled, setEnabled] = useState(true);
+  const [loaded, setLoaded] = useState(false);
+  const [available, setAvailable] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    fetchJson<{ enabled: boolean }>("/api/settings/model-hooks")
+      .then((r) => {
+        if (!alive) return;
+        setEnabled(r.enabled);
+        setAvailable(true);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (alive) setLoaded(true);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const persist = (next: boolean) => {
+    setEnabled(next);
+    void fetchJson("/api/settings/model-hooks", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: next }),
+    }).catch(() => {});
+  };
+  // Hosted mode 404s the local-config route; showing a toggle that cannot
+  // save would lie (opus F1).
+  if (loaded && !available) return null;
+  return (
+    <div className="set-card">
+      <div className="row2">
+        <div>
+          <h4>{t("Model-specific reminders")}</h4>
+          <p>
+            {t("Some models get a short reminder tuned to their habits (currently GPT-5 and DeepSeek v4 Flash). Applies to conversations opened after the change.")}
+          </p>
+        </div>
+        <button
+          className={`toggle${enabled ? " on" : ""}`}
+          aria-pressed={enabled}
+          disabled={!loaded}
+          onClick={() => persist(!enabled)}
+        />
       </div>
     </div>
   );
@@ -602,10 +938,9 @@ function AutoTitleCard() {
     <div className="set-card">
       <div className="row2">
         <div>
-          <h4>Auto-name conversations</h4>
+          <h4>{t("Auto-name conversations")}</h4>
           <p>
-            Name a conversation automatically after the first message, using its
-            own model. Falls back to the first few words if naming fails.
+            {t("Name a conversation automatically after the first message, using its own model. Falls back to the first few words if naming fails.")}
           </p>
         </div>
         <button
@@ -618,8 +953,8 @@ function AutoTitleCard() {
       {enabled ? (
         <div className="row2" style={{ marginTop: 10 }}>
           <div>
-            <h4>Naming model</h4>
-            <p>A small model is recommended — cheaper and faster.</p>
+            <h4>{t("Naming model")}</h4>
+            <p>{t("A small model is recommended — cheaper and faster.")}</p>
           </div>
           <select
             value={modelKey}
@@ -634,7 +969,7 @@ function AutoTitleCard() {
               });
             }}
           >
-            <option value="">Same as conversation</option>
+            <option value="">{t("Same as conversation")}</option>
             {models.map((m) => (
               <option
                 key={`${m.provider}::${m.modelId}`}
@@ -646,6 +981,18 @@ function AutoTitleCard() {
           </select>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function SkillsPanel() {
+  return (
+    <div className="set-panel">
+      <h2>{t("Skills")}</h2>
+      <p className="sub">
+        {t("Skills are instruction files that carry a way of working. Alt Theory ships its own; you can add your own from the toolbox.")}
+      </p>
+      <SkillPrecedenceCard />
     </div>
   );
 }
@@ -673,11 +1020,9 @@ function SkillPrecedenceCard() {
     <div className="set-card">
       <div className="row2">
         <div>
-          <h4>When two skills overlap</h4>
+          <h4>{t("When two skills overlap")}</h4>
           <p>
-            Alt Theory ships its own skills, and you can install your own. This
-            decides which one is used when both fit the same job. Applies to new
-            and reopened conversations.
+            {t("Which one wins when a bundled skill and one of yours fit the same job.")}
           </p>
         </div>
         <select
@@ -689,9 +1034,9 @@ function SkillPrecedenceCard() {
             void saveSkillPrecedence(next).catch(() => {});
           }}
         >
-          <option value="prefer-bundled">Prefer Alt Theory&apos;s</option>
-          <option value="prefer-user">Prefer the ones I installed</option>
-          <option value="ask">Ask me each time</option>
+          <option value="prefer-bundled">{t("Prefer Alt Theory's")}</option>
+          <option value="prefer-user">{t("Prefer the ones I installed")}</option>
+          <option value="ask">{t("Ask me each time")}</option>
         </select>
       </div>
     </div>
@@ -715,7 +1060,7 @@ function RoleKbPanel() {
     };
   }, []);
 
-  const roles = (app.discovery?.rolePresets ?? []).filter((r) => !r.snapshot);
+  const roles = app.discovery?.rolePresets ?? [];
   const kbDomains = (app.discovery?.kbDomains ?? []).filter(
     (d) => d.slug !== "off" && d.slug !== "all",
   );
@@ -726,9 +1071,9 @@ function RoleKbPanel() {
         for (const path of paths) {
           try {
             const result = await uploadRolePreset(path);
-            setNotice(`Added role "${result.slug}".`);
+            setNotice(t("Added role \"{name}\".", { name: result.slug }));
           } catch (err) {
-            setNotice(err instanceof Error ? err.message : "Could not add role");
+            setNotice(err instanceof Error ? err.message : t("Could not add role"));
           }
         }
         if (paths.length) void app.refreshDiscovery();
@@ -748,12 +1093,12 @@ function RoleKbPanel() {
           setNotice(
             saved.extraKbDirs.includes(path) ||
               saved.extraKbDirs.some((d) => path.startsWith(d))
-              ? "Knowledge folder added."
-              : "That folder could not be added (does it exist?).",
+              ? t("Knowledge folder added.")
+              : t("That folder could not be added (does it exist?).")
           );
           void app.refreshDiscovery();
         } catch (err) {
-          setNotice(err instanceof Error ? err.message : "Could not add folder");
+          setNotice(err instanceof Error ? err.message : t("Could not add folder"));
         }
       },
     );
@@ -771,51 +1116,45 @@ function RoleKbPanel() {
 
   return (
     <div className="set-panel">
-      <h2>Role &amp; Knowledge</h2>
+      <h2>{t("Role & Knowledge")}</h2>
       <p className="sub">
-        What Alt speaks as, and what it draws on. New conversations start with
-        no role and the bundled knowledge set until you pick otherwise above
-        the composer. Adding here never changes the bundled files.
+        {t("What Alt speaks as, and what it draws on. New conversations start with no role and the bundled knowledge set until you pick otherwise above the composer. Adding here never changes the bundled files.")}
       </p>
       {notice ? <p className="sub">{notice}</p> : null}
       <div className="set-card">
         <div className="row2">
           <div>
-            <h4>Roles</h4>
+            <h4>{t("Roles")}</h4>
             <p>
-              A role is a Markdown file describing who Alt should be for a
-              conversation. Files you add are stored in your own folder and
-              appear in the role picker.
+              {t("A role is a Markdown file describing who Alt should be for a conversation. Files you add are stored in your own folder and appear in the role picker.")}
             </p>
             <ul className="asset-list">
               {roles.map((role) => (
                 <li key={role.slug}>
                   {role.displayName}
-                  {role.source === "added" ? <em> · added by you</em> : null}
+                  {role.source === "added" ? <em> {t("· added by you")}</em> : null}
                 </li>
               ))}
-              {roles.length === 0 ? <li>No roles found.</li> : null}
+              {roles.length === 0 ? <li>{t("No roles found.")}</li> : null}
             </ul>
           </div>
           <button className="flat" onClick={addRoleFile}>
-            <i className="ph ph-plus" aria-hidden="true" /> Add role file
+            <i className="ph ph-plus" aria-hidden="true" /> {t("Add role file")}
           </button>
         </div>
       </div>
       <div className="set-card">
         <div className="row2">
           <div>
-            <h4>Knowledge sets</h4>
+            <h4>{t("Knowledge sets")}</h4>
             <p>
-              Each knowledge set is a folder of material Alt can ground its
-              answers in. Add a folder of your own to make it selectable; the
-              bundled sets stay untouched.
+              {t("Each knowledge set is a folder of material Alt can ground its answers in. Add a folder of your own to make it selectable; the bundled sets stay untouched.")}
             </p>
             <ul className="asset-list">
               {kbDomains.map((domain) => (
                 <li key={domain.slug}>
                   {domain.displayName}
-                  {domain.source === "added" ? <em> · added by you</em> : null}
+                  {domain.source === "added" ? <em> {t("· added by you")}</em> : null}
                 </li>
               ))}
             </ul>
@@ -826,10 +1165,10 @@ function RoleKbPanel() {
                     <code>{dir}</code>{" "}
                     <button
                       className="flat"
-                      title="Stop scanning this folder (the folder itself is not deleted)"
+                      title={t("Stop scanning this folder (the folder itself is not deleted)")}
                       onClick={() => removeKbDir(dir)}
                     >
-                      Remove
+                      {t("Remove")}
                     </button>
                   </li>
                 ))}
@@ -837,7 +1176,7 @@ function RoleKbPanel() {
             ) : null}
           </div>
           <button className="flat" onClick={addKbDir}>
-            <i className="ph ph-plus" aria-hidden="true" /> Add knowledge folder
+            <i className="ph ph-plus" aria-hidden="true" /> {t("Add knowledge folder")}
           </button>
         </div>
       </div>
@@ -856,10 +1195,9 @@ function ParticipantPanel({
 }) {
   return (
     <div className="set-panel">
-      <h2>Participant mode</h2>
+      <h2>{t("Participant mode")}</h2>
       <p className="sub">
-        Only relevant if you take part in a study. If you are not in a study, you
-        can leave this hidden.
+        {t("Only relevant if you take part in a study. If you are not in a study, you can leave this hidden.")}
       </p>
 
       {designated ? (
@@ -867,41 +1205,37 @@ function ParticipantPanel({
           <div className="set-card">
             <div className="row2">
               <div>
-                <h4>Display label</h4>
+                <h4>{t("Display label")}</h4>
                 <p>
-                  The name or code that identifies your data in the study. Set by
-                  your study when the app was installed.
+                  {t("The name or code that identifies your data in the study. Set by your study when the app was installed.")}
                 </p>
               </div>
-              <span className="participant-label">{label || "Not set"}</span>
+              <span className="participant-label">{label || t("Not set")}</span>
             </div>
           </div>
           <div className="set-card">
-            <h4>Sharing conversations with the research team</h4>
+            <h4>{t("Sharing conversations with the research team")}</h4>
             <p>
-              This install is designated as a study participant, so new
-              conversations are shared with the research team by default. You can
-              make any single conversation private with the Shared/Private control
-              next to the composer.
+              {local
+                ? t("This install is designated as a study participant, so new conversations are marked as exportable by default. You can mark any single conversation with the control next to the composer.")
+                : t("This install is designated as a study participant, so new conversations are shared with the research team by default. You can make any single conversation private with the Shared/Private control next to the composer.")}
             </p>
             <div className="fine">
               {local
-                ? "On this local install, sharing only MARKS a conversation; nothing is uploaded automatically. You send an export to the research team yourself later."
-                : "On the hosted (account) version, shared conversations reach the research team automatically."}{" "}
-              Installs obtained outside a study never share anything.
+                ? t("On this local install the label only MARKS a conversation: nothing is hidden, uploaded, or deleted. You send an export to the research team yourself later.")
+                : t("On the hosted (account) version, shared conversations reach the research team automatically, and a private conversation is deleted 7 days after you last use it.")}{" "}
+              {t("Installs obtained outside a study never share anything.")}
             </div>
           </div>
         </>
       ) : (
         <div className="set-card">
-          <h4>This install is not part of a study</h4>
+          <h4>{t("This install is not part of a study")}</h4>
           <p>
-            You got Alt outside a study, so there is nothing to share and no label
-            to set. Conversations stay on this machine.
+            {t("You got Alt outside a study, so there is nothing to share and no label to set. Conversations stay on this machine.")}
           </p>
           <div className="fine">
-            If you later join a study, they will provide an install that turns
-            these options on.
+            {t("If you later join a study, they will provide an install that turns these options on.")}
           </div>
         </div>
       )}
@@ -922,14 +1256,14 @@ function AboutPanel() {
   }, []);
   return (
     <div className="set-panel">
-      <h2>About</h2>
-      <p className="sub">Alt Theory, v1 alpha.</p>
+      <h2>{t("About")}</h2>
+      <p className="sub">Alt Theory v{__ALT_THEORY_VERSION__}.</p>
       {dataDir ? (
         <div className="set-card">
           <div className="row2">
             <div>
-              <h4>Your data folder</h4>
-              <p>Conversations and settings are stored on this machine at {dataDir}.</p>
+              <h4>{t("Your data folder")}</h4>
+              <p>{t("Conversations and settings are stored on this machine at {dataDir}.", { dataDir })}</p>
             </div>
             <button
               className="add-btn"
@@ -939,7 +1273,7 @@ function AboutPanel() {
               }}
             >
               <i className={`ph ${hasNativeBridge() ? "ph-folder-open" : "ph-copy"}`} />
-              {hasNativeBridge() ? "Show in file manager" : "Copy path"}
+              {hasNativeBridge() ? t("Show in file manager") : t("Copy path")}
             </button>
           </div>
         </div>
@@ -951,66 +1285,38 @@ function AboutPanel() {
 function FeaturesPanel() {
   return (
     <div className="set-panel">
-      <h2>What Alt can do</h2>
+      <h2>{t("What Alt can do")}</h2>
       <p className="sub">
-        A short guide. For anything here, you can also just ask — open a
-        Helper conversation from the right panel and Alt will answer from the
-        current documentation.
+        {t("A short guide. For anything here, you can also just ask — open a Helper conversation from the right panel and Alt will answer from the current documentation.")}
       </p>
       <div className="set-card">
-        <h4>Think through research questions with you</h4>
+        <h4>{t("Think through research questions with you")}</h4>
         <p>
-          In <strong>Understand</strong>, Alt works only with what you bring
-          into the conversation. It separates what it found from what it
-          inferred, marks uncertainty instead of papering over it, and moves
-          in steps you can steer — built for research design, framing, and
-          interpretation, where being agreeably wrong is worse than being
-          slower.
+          {t("In ")} <strong>{t("Understand")}</strong>, {t("Alt works only with what you bring into the conversation. It separates what it found from what it inferred, marks uncertainty instead of papering over it, and moves in steps you can steer — built for research design, framing, and interpretation, where being agreeably wrong is worse than being slower.")}
         </p>
       </div>
       <div className="set-card">
-        <h4>Do concrete work on your materials</h4>
+        <h4>{t("Do concrete work on your materials")}</h4>
         <p>
-          In <strong>Work</strong>, the same conversation can read and produce
-          documents, work through the files in your working folders, and
-          search the web and literature. Actions that cross a boundary ask
-          for your approval first. Switching modes never moves or changes
-          your folders.
+          {t("In ")} <strong>{t("Work")}</strong>, {t("the same conversation can read and produce documents, work through the files in your working folders, and search the web and literature. Actions that cross a boundary ask for your approval first. Switching modes never moves or changes your folders.")}
         </p>
       </div>
       <div className="set-card">
-        <h4>Keep every direction you explore</h4>
+        <h4>{t("Compare different lines of inquiry")}</h4>
         <p>
-          Conversations are durable: close the app and pick any of them up
-          later. From any reply you can edit your message, try the same
-          prompt again, or branch into a related conversation — the original
-          always stays intact. Related conversations live in the right panel.
+          {t("AI answers can change—or conflict—when a question is framed differently. At important moments, edit your question or retry it to open a comparison, then continue from the answer that offers the stronger direction.")}
         </p>
       </div>
       <div className="set-card">
-        <h4>Delegate parts of a task</h4>
+        <h4>{t("Delegate parts of a task")}</h4>
         <p>
-          On larger Work tasks, Alt can hand a bounded piece to a worker
-          agent and keep going. Workers appear in the right panel like any
-          related conversation — you can watch them, message them directly,
-          or stop them at any point.
+          {t("On larger Work tasks, Alt can hand a bounded piece to a subagent and keep going. Subagents appear in the right panel like any related conversation — you can watch them, message them directly, or stop them at any point.")}
         </p>
       </div>
       <div className="set-card">
-        <h4>Draw on roles, knowledge sets, and skills</h4>
+        <h4>{t("Use roles, knowledge sets, and skills")}</h4>
         <p>
-          A role shapes who Alt speaks as; a knowledge set gives it material
-          to ground answers in; skills are readable instruction files that
-          carry its working methods. You can read every bundled skill and add
-          your own — see the Role &amp; Knowledge panel here in Settings.
-        </p>
-      </div>
-      <div className="set-card">
-        <h4>What Alt will not do</h4>
-        <p>
-          It will not invent citations, silently act outside its approved
-          folders, or paper over what it could not verify. When something is
-          genuinely open, it says so and offers realistic options.
+          {t("Roles shape how Alt interprets a situation, identifies what matters, and organizes its response; knowledge sets provide material it can draw on; skills provide reusable ways of working.")}
         </p>
       </div>
     </div>

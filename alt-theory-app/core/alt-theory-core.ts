@@ -26,13 +26,14 @@ import {
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { appendFileSync, existsSync, readFileSync, statSync } from "fs";
 import { mkdir, writeFile } from "fs/promises";
-import { join, resolve } from "path";
+import { dirname, join, resolve } from "path";
 import {
   assertWritablePath,
   createSecurityExtension,
   isPathInside,
 } from "./security-extension.js";
 import { createTurnContinuityExtension } from "./turn-continuity.js";
+import { createPromptCacheContinuityExtension } from "./prompt-cache-continuity.js";
 import { createWebAccessToolDefinitions } from "./web-access-tools.js";
 import {
   writeJsonAtomic,
@@ -86,7 +87,7 @@ export interface AssemblyManifest {
     sha256: string | null;
     /**
      * alt-theory = bundled; external = user-enabled via settings; workspace =
-     * project skills from a Full-mode working directory (spec §5.1). Ambient
+     * project skills from a work-capable session (spec §5.1). Ambient
      * dev-debug merges are deliberately not recorded: they are a
      * machine-dependent debug posture, not session provenance.
      */
@@ -106,9 +107,9 @@ export interface AssemblyManifest {
   };
   sessionCwd: string;
   /**
-   * Full-mode workspace (spec §5.1): the primary working directory is the
+   * Work/Native workspace (spec §5.1): the primary working directory is the
    * session cwd; additional directories are intentional user additions whose
-   * context files and project skills join the assembly in Full.
+   * context files and project skills join the work-capable assembly.
    */
   workspace: {
     primaryDir: string;
@@ -121,7 +122,7 @@ export interface AssemblyManifest {
   writableRoots: string[];
   model: string | null;
   provider: string | null;
-  promptMode: PromptMode;
+  altMode: AltMode;
   resourceDiscovery: {
     mode: ResourceDiscoveryMode;
     skillsDir: string | null;
@@ -131,21 +132,9 @@ export interface AssemblyManifest {
 }
 
 export type ResourceDiscoveryMode = "clean" | "internal" | "dev-debug";
-export type PromptMode = "pi-default" | "alt-only";
-/**
- * Session capability mode (spec §4). Persisted via the existing manifest
- * `promptMode` field: pure ⟺ alt-only, full ⟺ pi-default.
- */
-export type CapabilityMode = "pure" | "full";
+export type RuntimeMode = "alt-theory" | "native-pi";
+export type AltMode = "understand" | "work";
 export const KB_DISABLED_DOMAIN = "none";
-
-export function capabilityModeFromPromptMode(promptMode: PromptMode): CapabilityMode {
-  return promptMode === "alt-only" ? "pure" : "full";
-}
-
-export function promptModeFromCapabilityMode(mode: CapabilityMode): PromptMode {
-  return mode === "pure" ? "alt-only" : "pi-default";
-}
 
 export interface AltTheoryConfig extends SessionDirectories {
   /** Application/session context loaded into the system prompt */
@@ -168,8 +157,8 @@ export interface AltTheoryConfig extends SessionDirectories {
   kbDomain?: string;
   /** Pi adapter prompt templates */
   piPromptTemplatesDir?: string;
-  /** Read-only mode: only read/search tools; coding mode: full read/write/edit/bash */
-  readOnly: boolean;
+  /** Understand-only policy: omit even its bounded note-writing tool. */
+  understandReadOnly: boolean;
   /** Optional custom Pi models.json path */
   modelsPath?: string;
   /** Optional Pi auth.json path; paired with modelsPath in local mode. */
@@ -183,20 +172,25 @@ export interface AltTheoryConfig extends SessionDirectories {
   writableAssetDir?: string;
   runLabel?: string | null;
   testBatch?: string | null;
-  promptMode?: PromptMode;
+  /** App-wide behavior runtime. Never persisted as a per-session override. */
+  runtimeMode?: RuntimeMode;
+  /** Per-session Alt Theory mode, preserved while Native Pi is active. */
+  altMode?: AltMode;
+  /** Native Pi keeps Pi discovery; this only adds Alt Theory's bundled skills. */
+  nativePiScanAltSkills?: boolean;
   resourceDiscovery?: ResourceDiscoveryMode;
   skillsDir?: string;
   /**
-   * User-enabled external skill paths (files or directories) per capability
+   * User-enabled external skill paths (files or directories) per Alt mode
    * mode, resolved by the app settings layer (spec §6.1). Snapshot at session
    * open; settings changes apply on session reload. External skills are never
    * silently enabled: absent lists mean Alt bundled skills only.
    */
-  externalSkillPaths?: { pure?: string[]; full?: string[] };
+  externalSkillPaths?: { understand?: string[]; work?: string[] };
   /** App setting (§6.1) deciding bundled-vs-user skill precedence in the prompt. */
   skillPrecedence?: "prefer-bundled" | "prefer-user" | "ask";
   /**
-   * Additional workspace directories (spec §5.1), applied in Full mode only.
+   * Additional workspace directories (spec §5.1), applied in Work/Native only.
    * The primary working directory is sessionCwd. Each added directory
    * contributes its AGENTS.md/CLAUDE.md and project skills to the assembly
    * and joins the guarded-write roots.
@@ -209,13 +203,74 @@ export interface AltTheoryConfig extends SessionDirectories {
    */
   extensionFactories?: ExtensionFactory[];
   /**
-   * Per-session custom tools active in EVERY capability mode (alpha.5 M2:
+   * Per-session custom tools active in both application runtimes (alpha.5 M2:
    * the agent-team tool surface). Unlike the web-access tools, these join
    * the active set — they carry their own policy in their implementations.
    */
   extraTools?: ToolDefinition[];
   /** Extra semantic system-prompt sections (alpha.5 M2: delegation contract). */
   extraPromptSections?: string[];
+  /**
+   * Experiment arm (v1.4 round 1): in Alt Theory Work mode, strip the
+   * "expert coding assistant" identity line and the "Be concise" style
+   * directive from Pi's base prompt, leaving its tool facts intact.
+   */
+  trimmedPiBasePrompt?: boolean;
+  /** Per-model reminder sections; absent = enabled. */
+  modelHooks?: boolean;
+}
+
+/**
+ * Per-model reminders (v1.4 round 1). Leading words only: they cite the
+ * concepts ALTTHEORY.md defines (whole-problem continuity, half-step
+ * advance) rather than restating them — single source of truth. Extending
+ * to a new model = one row here; the app-settings toggle (modelHooks)
+ * gates them all.
+ */
+const MODEL_HOOKS: Array<{ match: RegExp; section: string }> = [
+  {
+    match: /^gpt-5/i,
+    section: [
+      "## Model Reminder",
+      "WHOLE-PROBLEM CONTINUITY REMINDER — Apply whole-problem continuity and half-step advance, as defined in the Alt Theory Application Context, with one emphasis: do not stop at acknowledgement, apology, or analysis. Connect every reply to the user's nearer sub-goal and wider purpose, and unless the user asked a closed question, end with two or three concrete next-direction options, marking your recommendation. Passivity is the failure mode to avoid here — a grounded half-step forward is always available.",
+    ].join("\n"),
+  },
+  {
+    match: /deepseek-v4-flash/i,
+    section: [
+      "## Model Reminder",
+      "NON-COMMAND DISCIPLINE REMINDER — Apply whole-problem continuity and half-step advance, as defined in the Alt Theory Application Context, with one emphasis: never treat a non-command as a command. A correction, observation, judgement, or agreement is not an instruction. When uncertain whether the user instructed an action, treat it as not instructed: acknowledge briefly and reply with concrete next-step options rather than proactively proceeding.",
+    ].join("\n"),
+  },
+];
+
+export function modelHookSection(modelId: string | undefined): string | null {
+  if (!modelId) return null;
+  for (const hook of MODEL_HOOKS) {
+    if (hook.match.test(modelId)) return hook.section;
+  }
+  return null;
+}
+
+/**
+ * Bridges Pi's harness prompt to the Alt Theory sections in Work mode.
+ * Verified assembly order (pi system-prompt.js): pi base → these appended
+ * sections → project context files → skills list → cwd; the wording scopes
+ * its claims to exactly that order.
+ */
+const WORK_MODE_PREFACE = [
+  "## Alt Theory governs from here",
+  "The harness description above is technical environment background: the tools and how to operate them. The Alt Theory sections that follow define who you are in this product — your behavior, priorities, and persona; material after them (project instructions, skills, working directory) is task context, not identity. Where the technical background pulls against these sections about how to act with the user, the Alt Theory sections govern.",
+].join("\n");
+
+/** Experiment arm (b): neutralize Pi's identity/style lines, keep tool facts. */
+function trimPiBasePrompt(base: string): string {
+  return base
+    .replace(
+      "You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.",
+      "You are operating inside pi, an agent harness that provides your tools for reading files, executing commands, and editing or writing files. Who you are and how you work with the user are defined by the Alt Theory sections below.",
+    )
+    .replace("- Be concise in your responses\n", "");
 }
 
 /** Prompt text for the app-settings skill-precedence choice (default bundled). */
@@ -244,12 +299,12 @@ export interface AltTheoryOpenExistingConfig extends AltTheoryConfig {
 const READONLY_TOOLS = ["read", "ls", "grep", "find"];
 /** Conference-stage note mode: read/search plus write, without edit or bash. */
 const WRITE_ENABLED_TOOLS = [...READONLY_TOOLS, "write"];
-/** Pi's own default active toolset — Full mode preserves Pi behavior. */
+/** Pi's own default active toolset for Work and Native Pi. */
 const PI_DEFAULT_TOOLS = ["read", "bash", "edit", "write"];
 
-function activeToolsForMode(mode: CapabilityMode, readOnly: boolean): string[] {
-  if (mode === "full") return PI_DEFAULT_TOOLS;
-  return readOnly ? READONLY_TOOLS : WRITE_ENABLED_TOOLS;
+function activeToolsForMode(workCapable: boolean, understandReadOnly: boolean): string[] {
+  if (workCapable) return PI_DEFAULT_TOOLS;
+  return understandReadOnly ? READONLY_TOOLS : WRITE_ENABLED_TOOLS;
 }
 
 // ---------------------------------------------------------------------------
@@ -303,7 +358,7 @@ async function createAltTheorySessionWithManager(
     recordsDir,
     writeDir,
     kbDir,
-    readOnly,
+    understandReadOnly,
   } = config;
 
   // Resolve paths
@@ -327,7 +382,18 @@ async function createAltTheorySessionWithManager(
     ? resolve(config.piPromptTemplatesDir)
     : null;
   const agentDir = getAgentDir();
-  const promptMode = config.promptMode ?? "alt-only";
+  const sessionHeader = sessionManager.getHeader() as
+    | { id: string; promptCacheFamilyId?: unknown }
+    | null;
+  const promptCacheFamilyId =
+    typeof sessionHeader?.promptCacheFamilyId === "string"
+      ? sessionHeader.promptCacheFamilyId
+      : (sessionHeader?.id ?? sessionId);
+  const runtimeState = {
+    runtimeMode: config.runtimeMode ?? ("alt-theory" as RuntimeMode),
+    altMode: config.altMode ?? ("understand" as AltMode),
+    nativePiScanAltSkills: config.nativePiScanAltSkills !== false,
+  };
   const resourceDiscovery = config.resourceDiscovery ?? "dev-debug";
   const resolvedSkillsDir = config.skillsDir ? resolve(config.skillsDir) : null;
 
@@ -346,21 +412,16 @@ async function createAltTheorySessionWithManager(
     ? readRequiredTextAsset(resolvedCustomInstructionPath, "custom instruction")
     : null;
 
-  // --- 2. Assemble the Alt Theory prompt layers ---
-  //    Semantic sections (both modes): app context -> optional soul -> optional
-  //    role -> optional instruction -> KB path declaration.
-  //    Pure-only sections: tool harness + write policy (in Full, Pi's own
-  //    default prompt documents the tool environment).
-  const semanticSections: string[] = [];
-  semanticSections.push(`## Alt Theory Application Context\n${appContextContent}`);
+  // --- 2. Assemble prompt layers ---
+  // Alt Theory owns its behavior assets. Native Pi is subtractive: Pi's base
+  // prompt plus only app infrastructure instructions and Custom Instruction.
+  const altSections: string[] = [];
+  altSections.push(`## Alt Theory Application Context\n${appContextContent}`);
   if (soulContent) {
-    semanticSections.push(`## Soul\n${soulContent}`);
+    altSections.push(`## Soul\n${soulContent}`);
   }
   if (rolePresetContent) {
-    semanticSections.push(`## Role\n${rolePresetContent}`);
-  }
-  if (customInstructionContent) {
-    semanticSections.push(`## Custom Instruction\n${customInstructionContent}`);
+    altSections.push(`## Role\n${rolePresetContent}`);
   }
   const kbDomain = config.kbDomain ?? "all";
   const kbEnabled = kbDomain !== KB_DISABLED_DOMAIN;
@@ -370,65 +431,39 @@ async function createAltTheorySessionWithManager(
       : null;
   const kbMetadataPrompt = formatKbMetadataPrompt(kbMetadata);
   if (kbEnabled) {
-    semanticSections.push(
+    altSections.push(
       `## Knowledge Base\nYour knowledge base is at: ${resolvedKbDir}`
     );
     if (kbMetadataPrompt) {
-      semanticSections.push(`## Knowledge Base Metadata\n${kbMetadataPrompt}`);
+      altSections.push(`## Knowledge Base Metadata\n${kbMetadataPrompt}`);
     }
   } else {
-    semanticSections.push(
+    altSections.push(
       "## Knowledge Base\nKnowledge-base folder retrieval is disabled for this session. You may still read user workspace files when requested."
     );
   }
-  semanticSections.push(
-    [
-      "## Skill Install Locations",
-      "When the user asks where to install or save a skill:",
-      "- for Pi-family harnesses including Alt Theory: ~/.pi/skills",
-      "- for all agent harnesses on this machine: ~/.agents/skills",
-      "Alt Theory's bundled skills ship inside the app's read-only assets; never install or edit skills there.",
-    ].join("\n")
-  );
-  semanticSections.push(
+  altSections.push(
     ["## Skill Precedence", skillPrecedenceGuidance(config.skillPrecedence)].join("\n")
   );
-  semanticSections.push(
-    [
-      "## Synthesis Honesty",
-      "When you synthesize across multiple workspace files, say which files you actually read. Never imply coverage you did not do; if you read only a subset, say so plainly.",
-    ].join("\n")
-  );
-  semanticSections.push(
-    [
-      "## Foundations",
-      "Two bundled skills are foundational — consult them at the relevant moment rather than improvising:",
-      "- before any live lookup or when citing anything not in the workspace: the search-policy skill;",
-      "- before creating files or folders in the workspace: the workspace-conventions skill.",
-    ].join("\n")
-  );
-  semanticSections.push(
-    [
-      "## Diagrams",
-      "The conversation renders ```mermaid code blocks as real diagrams. When the point is a relationship, a flow, or a structure — a causal path, a study design, a decision tree, a set of competing accounts — draw it as a small mermaid diagram alongside the prose rather than describing the shape in words. Keep diagrams small and labelled in the user's language; prose still carries the argument.",
-    ].join("\n")
-  );
-  for (const section of config.extraPromptSections ?? []) {
-    semanticSections.push(section);
+  // ponytail: hook chosen at assembly; a mid-session model switch keeps the
+  // old hook until the session reopens. Re-derive per turn if that bites.
+  const modelHook =
+    runtimeState.runtimeMode === "alt-theory" && config.modelHooks !== false
+      ? modelHookSection(config.modelId)
+      : null;
+  if (modelHook) altSections.push(modelHook);
+  const sharedSections: string[] = [];
+  if (customInstructionContent) {
+    sharedSections.push(`## Custom Instruction\n${customInstructionContent}`);
   }
-  semanticSections.push(
-    [
-      "## Interaction Moments",
-      "Some moments in a conversation have a bundled skill written for them. Recognize the moment, then load the skill — do not improvise the behaviour it already encodes:",
-      "- the user wants to agree on direction before you build, or asks to align, re-align, 對齊, or be interviewed first: the adaptive-aligning skill;",
-      "- the user wants the agreed plan or decision written down: the adaptive-plan-record skill.",
-      "This is about recognizing the moment, not a rule to interview before every task. A small, clear request is just done.",
-    ].join("\n")
-  );
-  const pureOnlySections: string[] = [];
-  pureOnlySections.push(
+  for (const section of config.extraPromptSections ?? []) {
+    sharedSections.push(section);
+  }
+  const understandOnlySections: string[] = [];
+  understandOnlySections.push(
     [
       "## Alt Theory Tool Harness",
+      "Current mode: Understand. Live lookup, attached working folders, edit, and shell need Work mode; the user switches mode in the UI. Session-workspace notes may still be writable here.",
       "You are operating inside the Pi harness as the tool runtime for Alt Theory.",
       "This describes your tool environment, not your identity; do not describe yourself as Pi.",
       "Available tools:",
@@ -436,16 +471,16 @@ async function createAltTheorySessionWithManager(
       "- ls: list directory contents",
       "- grep: search file contents for patterns",
       "- find: find files by glob pattern",
-      ...(readOnly
+      ...(understandReadOnly
         ? []
         : [
             "- write: create or overwrite files only inside Alt Theory writable roots",
           ]),
     ].join("\n")
   );
-  if (!readOnly) {
+  if (!understandReadOnly) {
     const writableRoots = [resolvedWriteDir, resolvedWritableAssetDir];
-    pureOnlySections.push(
+    understandOnlySections.push(
       [
         "## Write Policy",
         "The write tool is hard-limited to these writable roots:",
@@ -454,14 +489,14 @@ async function createAltTheorySessionWithManager(
       ].join("\n")
     );
   }
-  const altTheorySystemPrompt = [...semanticSections, ...pureOnlySections].join(
+  const altTheorySystemPrompt = [...altSections, ...sharedSections, ...understandOnlySections].join(
     "\n\n"
   );
 
-  // Mutable capability-mode state, read by the loader overrides at each
-  // reload. Switching mode = update state + loader.reload() +
-  // setActiveToolsByName(); Pi applies both from the next turn (spec §3.2).
-  const modeState = { mode: capabilityModeFromPromptMode(promptMode) };
+  const isWorkCapable = () =>
+    runtimeState.runtimeMode === "native-pi" || runtimeState.altMode === "work";
+  const hasWriteCapability = () =>
+    isWorkCapable() || !understandReadOnly;
   // Mutable workspace state (spec §5.1). The primary working directory is the
   // session cwd; additional directories are intentional user additions.
   // Adding one mutates this state and reloads the loader — the overrides
@@ -470,15 +505,21 @@ async function createAltTheorySessionWithManager(
   const workspaceState = {
     additionalDirs: (config.workspaceDirs ?? []).map((dir) => resolve(dir)),
   };
-  // Writable roots per mode, evaluated per call (spec §5.1): Pure stays
-  // bounded to the Alt writable roots; Full additionally writes within its
+  // Writable roots are evaluated per call: Understand stays bounded to the
+  // Alt writable roots; Work and Native Pi additionally write within the
   // workspace (primary + added directories). Shared by the guarded write
   // tool and the security extension.
   const altWritableRoots = [resolvedWriteDir, resolvedWritableAssetDir];
+  const approvedWritableRoots = new Set<string>();
   const writableRootsForMode = () =>
-    modeState.mode === "full"
-      ? [...altWritableRoots, cwd, ...workspaceState.additionalDirs]
-      : altWritableRoots;
+    isWorkCapable()
+      ? [
+          ...altWritableRoots,
+          cwd,
+          ...workspaceState.additionalDirs,
+          ...approvedWritableRoots,
+        ]
+      : [...altWritableRoots, ...approvedWritableRoots];
   // Readable roots: everything writable, plus the workspace primary and the
   // knowledge base (which legitimately lives outside cwd). Reads outside these
   // escalate to approval; reading is not the security boundary (spec §5.3),
@@ -492,6 +533,9 @@ async function createAltTheorySessionWithManager(
     // (found by the v1.3.0-alpha.1 walkthrough acceptance).
     ...(resolvedSkillsDir ? [resolvedSkillsDir] : []),
   ];
+  // One scan of the skills root. Pi's loader already descends into
+  // subdirectories, so optional skills are just skills that a packaged build
+  // does not carry.
   const altTheorySkills =
     resourceDiscovery !== "clean" && resolvedSkillsDir
       ? loadSkillsFromDir({
@@ -499,21 +543,17 @@ async function createAltTheorySessionWithManager(
           source: "alt-theory",
         })
       : { skills: [], diagnostics: [] };
-  // Bundled-skill mode exposure is app policy, held here as the skill
-  // counterpart of activeToolsForMode: these skills drive bash CLIs that
-  // Pure cannot run, so Pure must not advertise them.
-  const FULL_ONLY_BUNDLED_SKILLS = new Set([
+  const WORK_ONLY_BUNDLED_SKILLS = new Set([
     "web-search",
     "page-fetch",
     "doc-convert",
-    "setup-helper",
   ]);
   const bundledSkillsForMode = () =>
-    modeState.mode === "full"
+    runtimeState.altMode === "work"
       ? altTheorySkills
       : {
           skills: altTheorySkills.skills.filter(
-            (skill) => !FULL_ONLY_BUNDLED_SKILLS.has(skill.name)
+            (skill) => !WORK_ONLY_BUNDLED_SKILLS.has(skill.name)
           ),
           diagnostics: altTheorySkills.diagnostics,
         };
@@ -525,13 +565,13 @@ async function createAltTheorySessionWithManager(
       ? loadSkills({ cwd, agentDir, skillPaths: paths, includeDefaults: false })
       : { skills: [], diagnostics: [] };
   const externalSkillsByMode: Record<
-    CapabilityMode,
+    AltMode,
     ReturnType<typeof loadExternalSkills>
   > = {
-    pure: loadExternalSkills(config.externalSkillPaths?.pure),
-    full: loadExternalSkills(config.externalSkillPaths?.full),
+    understand: loadExternalSkills(config.externalSkillPaths?.understand),
+    work: loadExternalSkills(config.externalSkillPaths?.work),
   };
-  // Project skills from the Full workspace (spec §5.1): the primary and each
+  // Project skills from the work-capable workspace (spec §5.1): the primary and each
   // added directory contribute their standard project skill locations.
   // Re-read at every loader reload so directories added mid-session apply.
   const workspaceSkillRoots = () =>
@@ -539,7 +579,7 @@ async function createAltTheorySessionWithManager(
       [".pi/skills", ".agents/skills"].map((sub) => join(dir, sub))
     );
   const loadWorkspaceSkills = () =>
-    resourceDiscovery !== "clean" && modeState.mode === "full"
+    resourceDiscovery !== "clean" && isWorkCapable()
       ? workspaceSkillRoots()
           .filter((dir) => existsSync(dir))
           .map((dir) => loadSkillsFromDir({ dir, source: "workspace" }))
@@ -552,9 +592,8 @@ async function createAltTheorySessionWithManager(
     additionalPromptTemplatePaths: resolvedPiPromptTemplatesDir
       ? [resolvedPiPromptTemplatesDir]
       : [],
-    // Ambient extension discovery stays off in every mode: loading an
-    // extension executes its code, which Pure must never do silently (spec
-    // §3.4) and Full may only do behind the policy boundary (spec §4.2).
+    // Ambient extension discovery stays off: app infrastructure extensions are
+    // explicit in both runtimes.
     // Only explicit factories load. The security extension registers last so
     // it evaluates tool input as finally mutated by earlier handlers — a
     // block from any handler short-circuits execution regardless of order.
@@ -565,10 +604,18 @@ async function createAltTheorySessionWithManager(
       // assistant messages so preserved break-point context never sends a
       // tool_use without its tool_result (alpha.5 M0 continuity repair).
       createTurnContinuityExtension(),
+      createPromptCacheContinuityExtension(
+        promptCacheFamilyId,
+        () =>
+          runtimeState.runtimeMode === "alt-theory" &&
+          runtimeState.altMode === "understand" &&
+          cwd === resolvedWriteDir,
+      ),
       createSecurityExtension({
         sessionCwd: cwd,
         getWritableRoots: writableRootsForMode,
         getReadableRoots: readableRootsForMode,
+        addWritableRoot: (root) => approvedWritableRoots.add(resolve(root)),
         recordAudit: (entry) =>
           appendFileSync(
             join(resolvedRecordsDir, "security-audit.jsonl"),
@@ -577,32 +624,40 @@ async function createAltTheorySessionWithManager(
       }),
     ],
     noContextFiles: resourceDiscovery !== "dev-debug",
-    // Pure replaces Pi's prompt with the Alt assembly; Full preserves Pi's
-    // default prompt (base) and appends the semantic Alt sections (spec §3.3).
     systemPromptOverride: (base) =>
-      modeState.mode === "pure" ? altTheorySystemPrompt : base,
-    // The enabled set — Alt bundled plus the current mode's user-enabled
-    // external skills — is the source of truth. Pi's own discovery feeds the
-    // settings page listing, not the session (one-way discovery, spec §6.1);
-    // only dev-debug merges the ambient Pi-discovered set for debugging.
+      runtimeState.runtimeMode !== "alt-theory"
+        ? base
+        : runtimeState.altMode === "understand"
+          ? altTheorySystemPrompt
+          : config.trimmedPiBasePrompt
+            ? trimPiBasePrompt(base)
+            : base,
     skillsOverride: (current) => {
       if (resourceDiscovery === "clean") {
         return { skills: [], diagnostics: [] };
       }
+      if (runtimeState.runtimeMode === "native-pi") {
+        return !runtimeState.nativePiScanAltSkills
+          ? current
+          : mergeSkills(current, altTheorySkills);
+      }
       const selected = mergeSkills(
-        mergeSkills(bundledSkillsForMode(), externalSkillsByMode[modeState.mode]),
+        mergeSkills(
+          bundledSkillsForMode(),
+          externalSkillsByMode[runtimeState.altMode]
+        ),
         loadWorkspaceSkills()
       );
       return resourceDiscovery === "internal"
         ? selected
         : mergeSkills(current, selected);
     },
-    // Workspace context (spec §5.1), Full only: the primary directory gets
+    // Workspace context: Work and Native Pi get the primary directory and
     // Pi's own discovery (global + ancestor AGENTS.md/CLAUDE.md chain); each
-    // added directory contributes its own context file. Pure stays bounded
+    // added directory contributes its own context file. Understand stays bounded
     // to the session workspace and receives none of this.
     agentsFilesOverride: (base) => {
-      if (modeState.mode !== "full") {
+      if (!isWorkCapable()) {
         return base;
       }
       const files = [...base.agentsFiles];
@@ -622,13 +677,17 @@ async function createAltTheorySessionWithManager(
       return { agentsFiles: files };
     },
     appendSystemPromptOverride: (base: string[]) =>
-      modeState.mode === "pure" ? [] : [...base, ...semanticSections],
+      runtimeState.runtimeMode === "native-pi"
+        ? [...base, ...sharedSections]
+        : runtimeState.altMode === "understand"
+          ? []
+          : [...base, WORK_MODE_PREFACE, ...altSections, ...sharedSections],
   });
   await loader.reload();
 
   // --- 3. Create session ---
-  //    readOnly: use tool name allowlist (only read/ls/grep/find)
-  //    coding: default tools (all built-in enabled)
+  // Understand may be read-only or allow bounded note writing. Work and Native
+  // Pi use the normal coding tools regardless of that Understand-only policy.
   const sessionOpts: Parameters<typeof createAgentSession>[0] = {
     cwd,
     resourceLoader: loader,
@@ -646,7 +705,8 @@ async function createAltTheorySessionWithManager(
     if (config.runtimeApiKey) {
       await modelRuntime.setRuntimeApiKey(
         config.modelProvider,
-        config.runtimeApiKey
+        config.runtimeApiKey,
+        { allowNetwork: false }
       );
     }
     const model = modelRuntime.getModel(config.modelProvider, config.modelId);
@@ -670,7 +730,7 @@ async function createAltTheorySessionWithManager(
   // in-session mode switch). The per-mode restriction is the ACTIVE tool set,
   // applied below via setActiveToolsByName. The guarded write tool is always
   // registered so it shadows Pi's builtin write in every mode.
-  if (!readOnly) {
+  if (hasWriteCapability()) {
     await Promise.all(altWritableRoots.map((root) => mkdir(root, { recursive: true })));
   }
   sessionOpts.customTools = [
@@ -684,15 +744,15 @@ async function createAltTheorySessionWithManager(
     ...(config.extraTools ?? []),
   ];
 
-  // Extra tools (agent team) are active in every capability mode.
+  // Extra tools (agent team) are shared application infrastructure.
   const extraToolNames = (config.extraTools ?? []).map((tool) => tool.name);
-  const activeTools = (mode: CapabilityMode) => [
-    ...activeToolsForMode(mode, readOnly),
+  const activeTools = () => [
+    ...activeToolsForMode(isWorkCapable(), understandReadOnly),
     ...extraToolNames,
   ];
 
   const { session } = await createAgentSession(sessionOpts);
-  session.setActiveToolsByName(activeTools(modeState.mode));
+  session.setActiveToolsByName(activeTools());
   const createdAt = new Date().toISOString();
   if (openMode.openedFrom === "new") {
     session.sessionManager.appendCustomEntry("alt-theory-session-created", {
@@ -701,7 +761,7 @@ async function createAltTheorySessionWithManager(
   }
 
   const externalPaths = new Set(
-    externalSkillsByMode[modeState.mode].skills.map((s) => resolve(s.filePath))
+    externalSkillsByMode[runtimeState.altMode].skills.map((s) => resolve(s.filePath))
   );
   const manifest: AssemblyManifest = {
     sessionId: config.sessionId,
@@ -777,11 +837,11 @@ async function createAltTheorySessionWithManager(
     piSessionDir: resolvedPiSessionDir,
     piSessionFile: session.sessionFile ?? null,
     recordsDir: resolvedRecordsDir,
-    writeDir: readOnly ? null : resolvedWriteDir,
-    writableRoots: readOnly ? [] : writableRootsForMode(),
+    writeDir: hasWriteCapability() ? resolvedWriteDir : null,
+    writableRoots: hasWriteCapability() ? writableRootsForMode() : [],
     model: session.model?.id ?? null,
     provider: session.model?.provider ?? null,
-    promptMode,
+    altMode: runtimeState.altMode,
     resourceDiscovery: {
       mode: resourceDiscovery,
       skillsDir: resolvedSkillsDir,
@@ -807,23 +867,38 @@ async function createAltTheorySessionWithManager(
     manifest.resumeWarnings = resumeWarnings;
   }
 
+  const syncManifestActionPolicy = () => {
+    manifest.writeDir = hasWriteCapability() ? resolvedWriteDir : null;
+    manifest.writableRoots = hasWriteCapability() ? writableRootsForMode() : [];
+  };
+
   writeJsonAtomic(join(resolvedRecordsDir, openMode.manifestFileName), manifest);
 
   return {
     session,
     manifest,
     resumeWarnings,
-    getMode: () => modeState.mode,
-    /**
-     * Switch capability mode on the live session (spec §3.2). Re-evaluates the
-     * prompt layers and swaps the active tool set; Pi applies both from the
-     * next turn. No session rebuild, no new session row.
-     */
-    setMode: async (next: CapabilityMode): Promise<void> => {
-      if (next === modeState.mode) return;
-      modeState.mode = next;
+    getAltMode: () => runtimeState.altMode,
+    setAltMode: async (next: AltMode): Promise<void> => {
+      if (next === runtimeState.altMode) return;
+      runtimeState.altMode = next;
+      manifest.altMode = next;
       await loader.reload();
-      session.setActiveToolsByName(activeTools(next));
+      session.setActiveToolsByName(activeTools());
+      syncManifestActionPolicy();
+    },
+    getRuntimeMode: () => runtimeState.runtimeMode,
+    setRuntimeMode: async (next: RuntimeMode): Promise<void> => {
+      if (next === runtimeState.runtimeMode) return;
+      runtimeState.runtimeMode = next;
+      await loader.reload();
+      session.setActiveToolsByName(activeTools());
+      syncManifestActionPolicy();
+    },
+    setNativePiScanAltSkills: async (enabled: boolean): Promise<void> => {
+      if (enabled === runtimeState.nativePiScanAltSkills) return;
+      runtimeState.nativePiScanAltSkills = enabled;
+      await loader.reload();
     },
     getWorkspace: () => ({
       primaryDir: cwd,
@@ -832,7 +907,7 @@ async function createAltTheorySessionWithManager(
     /**
      * Add a workspace directory to the live session (spec §5.1). Its context
      * files and project skills apply from the next turn via loader reload;
-     * it also joins the Full guarded-write roots.
+     * it also joins the Work/Native guarded-write roots.
      */
     addWorkspaceDir: async (dir: string): Promise<string[]> => {
       const resolved = resolve(dir);
@@ -848,6 +923,7 @@ async function createAltTheorySessionWithManager(
         // session.reload() (not a bare loader.reload()) so Pi rebuilds the
         // runtime and system prompt from the reloaded resources.
         await session.reload();
+        syncManifestActionPolicy();
       }
       return [...workspaceState.additionalDirs];
     },

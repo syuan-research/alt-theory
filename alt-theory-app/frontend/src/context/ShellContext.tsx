@@ -8,8 +8,8 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { CapabilityMode } from "@/api/types";
-import { getDefaultMode } from "@/api/config";
+import type { AltMode } from "@/api/types";
+import { getDefaultAltMode } from "@/api/config";
 
 /** Full-screen surface. `app` is the 3-pane shell; the others take over. */
 export type Surface = "app" | "settings" | "review";
@@ -26,8 +26,13 @@ export type RailKey =
 export interface RightSub {
   /** Which drill-in view is open, e.g. a side chat, a file diff, a preview. */
   key: string;
-  title: string;
+  /** Header label. Omitted for related conversations — the panel says what
+   *  it is in its own words instead of repeating the child's name. */
+  title?: string;
 }
+
+/** How wide the right rail should open for a related conversation. */
+export type RelatedPaneSize = "half" | "default";
 
 export interface ShellContextValue {
   surface: Surface;
@@ -48,6 +53,18 @@ export interface ShellContextValue {
   toggleRail: (key: RailKey) => void;
   openRail: (key: RailKey) => void;
   closeRight: () => void;
+
+  /** Right panel width in px (branch/edit ≈ 50%; btw/helper ≈ 480 default). */
+  rightWidth: number;
+  /** Clamp + optionally persist. Used by the resizer and related open sizing. */
+  setRightPaneWidth: (width: number, persist?: boolean) => void;
+  /**
+   * Size the right rail for a related conversation open:
+   * - half ≈ 50% of center+right work area (not the full window)
+   * - default = stored preference or 480 (btw / helper / side)
+   * Does not rewrite localStorage (user drag still does).
+   */
+  setRightPaneForRelated: (size: RelatedPaneSize) => void;
 
   rightSub: RightSub | null;
   openSub: (sub: RightSub) => void;
@@ -83,9 +100,9 @@ export interface ShellContextValue {
   openArms: (comparisonId: string) => void;
   closeArms: () => void;
 
-  /** Chosen capability mode for the next new conversation (Understand/Work). */
-  newMode: CapabilityMode;
-  setNewMode: (mode: CapabilityMode) => void;
+  /** Chosen Alt mode for the next new conversation (Understand/Work). */
+  newMode: AltMode;
+  setNewMode: (mode: AltMode) => void;
 }
 
 const ShellContext = createContext<ShellContextValue | null>(null);
@@ -96,6 +113,40 @@ const SHOW_THINKING_KEY = "alt-theory-show-thinking";
 const THINKING_EXPANDED_KEY = "alt-theory-thinking-expanded";
 const NEW_MODE_KEY = "alt-theory-new-mode";
 const DARK_MODE_KEY = "alt-theory-dark-mode";
+const RIGHT_WIDTH_KEY = "alt-theory-right-width";
+
+/** Default / btw / helper rail. Branch/edit comparison opens at ~50%. */
+export const RIGHT_PANE = {
+  initial: 480,
+  min: 320,
+  /** High enough for half of a wide center+right work area. */
+  max: 1200,
+  collapsed: 48,
+} as const;
+
+/**
+ * Half of the center + right work area (exclude left nav and the icon rail).
+ * Not half the browser window — that over-squeezes the parent conversation.
+ */
+function halfCenterRightWorkArea(): number {
+  try {
+    const cols = document.querySelector(".cols") as HTMLElement | null;
+    const left = document.querySelector(".cols > .left") as HTMLElement | null;
+    const rail = document.querySelector(".cols .right .rail") as HTMLElement | null;
+    if (cols) {
+      const colsW = cols.getBoundingClientRect().width;
+      const leftW = left?.getBoundingClientRect().width ?? 264;
+      const railW = rail?.getBoundingClientRect().width ?? RIGHT_PANE.collapsed;
+      // Resizers are ~5px each; treat as noise. Work = center + rpanel.
+      const work = Math.max(0, colsW - leftW - railW);
+      return Math.round(work / 2);
+    }
+  } catch {
+    /* ignore measurement failures */
+  }
+  // Fallback when shell not mounted yet: rough window minus typical left+rail.
+  return Math.round((window.innerWidth - 264 - RIGHT_PANE.collapsed) / 2);
+}
 
 function readFlag(key: string): boolean {
   try {
@@ -114,6 +165,27 @@ function writeFlag(key: string, on: boolean): void {
   }
 }
 
+function readStoredRightWidth(): number {
+  try {
+    const stored = localStorage.getItem(RIGHT_WIDTH_KEY);
+    if (stored === null) return RIGHT_PANE.initial;
+    const value = Number(stored);
+    return Number.isFinite(value)
+      ? Math.min(RIGHT_PANE.max, Math.max(RIGHT_PANE.min, value))
+      : RIGHT_PANE.initial;
+  } catch {
+    return RIGHT_PANE.initial;
+  }
+}
+
+function saveStoredRightWidth(width: number): void {
+  try {
+    localStorage.setItem(RIGHT_WIDTH_KEY, String(width));
+  } catch {
+    /* ignore */
+  }
+}
+
 export function ShellProvider({ children }: { children: ReactNode }) {
   const [surface, setSurface] = useState<Surface>("app");
   const [settingsPanel, setSettingsPanel] = useState("models");
@@ -123,6 +195,7 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [rightPanel, setRightPanel] = useState<RailKey | null>(null);
   const [rightSub, setRightSub] = useState<RightSub | null>(null);
+  const [rightWidth, setRightWidthState] = useState(() => readStoredRightWidth());
   const [participantTabEnabled, setParticipantTabState] = useState(() =>
     readFlag(PARTICIPANT_TAB_KEY)
   );
@@ -138,17 +211,17 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   const [compareOpen, setCompareOpen] = useState(false);
   // Persisted: a user who prefers Work should not reset to Understand on
   // every launch (settings review 2026-07-23).
-  const [newMode, setNewModeState] = useState<CapabilityMode>(() => {
+  const [newMode, setNewModeState] = useState<AltMode>(() => {
     try {
-      return localStorage.getItem(NEW_MODE_KEY) === "full" ? "full" : "pure";
+      return localStorage.getItem(NEW_MODE_KEY) === "work" ? "work" : "understand";
     } catch {
-      return "pure";
+      return "understand";
     }
   });
   // An explicit Settings > General default wins at launch over the sticky
   // last-used mode, but never over a choice the user already made this run.
   const userPickedModeRef = useRef(false);
-  const setNewMode = useCallback((mode: CapabilityMode) => {
+  const setNewMode = useCallback((mode: AltMode) => {
     userPickedModeRef.current = true;
     setNewModeState(mode);
     try {
@@ -158,7 +231,7 @@ export function ShellProvider({ children }: { children: ReactNode }) {
     }
   }, []);
   useEffect(() => {
-    getDefaultMode()
+    getDefaultAltMode()
       .then(({ mode }) => {
         if (mode && !userPickedModeRef.current) setNewModeState(mode);
       })
@@ -222,6 +295,24 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   const openSub = useCallback((sub: RightSub) => setRightSub(sub), []);
   const closeSub = useCallback(() => setRightSub(null), []);
 
+  const setRightPaneWidth = useCallback((width: number, persist = false) => {
+    const next = Math.min(RIGHT_PANE.max, Math.max(RIGHT_PANE.min, width));
+    setRightWidthState(next);
+    if (persist) saveStoredRightWidth(next);
+  }, []);
+
+  const setRightPaneForRelated = useCallback(
+    (size: RelatedPaneSize) => {
+      if (size === "half") {
+        // Branch / retry only: ~half of center+right. Subagent/btw/helper use default.
+        setRightPaneWidth(halfCenterRightWorkArea(), false);
+      } else {
+        setRightPaneWidth(readStoredRightWidth(), false);
+      }
+    },
+    [setRightPaneWidth],
+  );
+
   const openCompare = useCallback(() => setCompareOpen(true), []);
   const closeCompare = useCallback(() => setCompareOpen(false), []);
   const openArms = useCallback((comparisonId: string) => {
@@ -246,6 +337,9 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       toggleRail,
       openRail,
       closeRight,
+      rightWidth,
+      setRightPaneWidth,
+      setRightPaneForRelated,
       rightSub,
       openSub,
       closeSub,
@@ -281,6 +375,9 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       toggleRail,
       openRail,
       closeRight,
+      rightWidth,
+      setRightPaneWidth,
+      setRightPaneForRelated,
       rightSub,
       openSub,
       closeSub,

@@ -14,7 +14,7 @@ import {
   type AgentMailEnvelope,
 } from "./agent-mail.js";
 import {
-  clampWorkerMode,
+  clampSubagentMode,
   createAgentTeamTools,
   resolveModelTier,
 } from "./agent-team.js";
@@ -71,8 +71,8 @@ function createTestService(fixture: ReturnType<typeof setupFixture>) {
     rolePresetsDir: fixture.rolePresetsDir,
     soulDir: fixture.soulDir,
     legacySoulPath: join(fixture.soulDir, "soul-latest.md"),
-    readOnly: true,
-    promptMode: "alt-only",
+    understandReadOnly: true,
+    altMode: "understand",
     resourceDiscovery: "clean",
     skillsDir: fixture.skillsDir,
     instructionsDir: fixture.instructionsDir,
@@ -89,7 +89,7 @@ const SELECTORS = {
 
 type StubbableManaged = {
   busy: boolean;
-  workerParentId: string | null;
+  subagentParentId: string | null;
   session: {
     prompt(text: string): Promise<void>;
     steer(text: string): Promise<void>;
@@ -132,15 +132,15 @@ async function waitFor(predicate: () => boolean, ms = 4000): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// Pure pieces
+// Stateless helpers
 // ---------------------------------------------------------------------------
 
-test("clampWorkerMode clamps children to the parent's capability mode", () => {
-  assert.equal(clampWorkerMode("pure", "work"), "pure");
-  assert.equal(clampWorkerMode("pure", undefined), "pure");
-  assert.equal(clampWorkerMode("full", "work"), "full");
-  assert.equal(clampWorkerMode("full", undefined), "pure");
-  assert.equal(clampWorkerMode("full", "understand"), "pure");
+test("clampSubagentMode clamps children to the parent's Alt mode", () => {
+  assert.equal(clampSubagentMode("understand", "work"), "understand");
+  assert.equal(clampSubagentMode("understand", undefined), "understand");
+  assert.equal(clampSubagentMode("work", "work"), "work");
+  assert.equal(clampSubagentMode("work", undefined), "understand");
+  assert.equal(clampSubagentMode("work", "understand"), "understand");
 });
 
 test("resolveModelTier picks nearest cheaper/pricier usable model by cost", () => {
@@ -164,7 +164,7 @@ test("resolveModelTier picks nearest cheaper/pricier usable model by cost", () =
   );
 });
 
-test("createAgentTeamTools gives leads the full surface and workers message_parent only", () => {
+test("createAgentTeamTools gives leads the full surface and subagents message_parent only", () => {
   const bridge = {} as never;
   const leadNames = createAgentTeamTools(bridge, "s1", "lead").map((t) => t.name);
   assert.deepEqual(leadNames, [
@@ -175,10 +175,10 @@ test("createAgentTeamTools gives leads the full surface and workers message_pare
     "interrupt_agent",
     "list_agents",
   ]);
-  const workerNames = createAgentTeamTools(bridge, "s2", "worker").map(
+  const subagentNames = createAgentTeamTools(bridge, "s2", "subagent").map(
     (t) => t.name,
   );
-  assert.deepEqual(workerNames, ["message_parent"]);
+  assert.deepEqual(subagentNames, ["message_parent"]);
 });
 
 test("agent mail roundtrips, marks delivered, and parses fragments", () => {
@@ -198,10 +198,10 @@ test("agent mail roundtrips, marks delivered, and parses fragments", () => {
   assert.equal(undeliveredAgentMail(recordsDir).length, 0);
   assert.equal(readAgentMail(recordsDir).length, 1);
 
-  const fragment = formatEnvelopeForContext(envelope, "worker-1");
+  const fragment = formatEnvelopeForContext(envelope, "subagent-1");
   const parsed = parseAgentMailFragment(fragment);
   assert.deepEqual(parsed, {
-    fromLabel: "worker-1",
+    fromLabel: "subagent-1",
     event: "completed",
     body: "done: the answer",
   });
@@ -212,26 +212,26 @@ test("agent mail roundtrips, marks delivered, and parses fragments", () => {
 // Service integration
 // ---------------------------------------------------------------------------
 
-test("spawnWorker creates a worker child with clamped mode, alias, and spawned mail", async () => {
+test("spawnSubagent creates a subagent child with clamped mode, alias, and spawned mail", async () => {
   const fixture = setupFixture();
   const service = createTestService(fixture);
   try {
     const parent = await service.createSession(SELECTORS);
     stubEchoPrompt(managedOf(service, parent.sessionId), "parent answer");
-    const spawned = await service.spawnWorker(parent.sessionId, {
+    const spawned = await service.spawnSubagent(parent.sessionId, {
       task: "summarize the docs",
-      name: "docs-worker",
+      name: "docs-subagent",
       mode: "work",
     });
-    assert.match(spawned.report, /Spawned worker "docs-worker"/);
-    assert.match(spawned.report, /understand mode/); // pure parent clamps work->understand
+    assert.match(spawned.report, /Spawned subagent "docs-subagent"/);
+    assert.match(spawned.report, /understand mode/); // Understand clamps Work
 
     const child = managedOf(service, spawned.sessionId);
-    assert.equal(child.workerParentId, parent.sessionId);
+    assert.equal(child.subagentParentId, parent.sessionId);
     const header = readV4SessionHeader(child.manifest.recordsDir);
     assert.deepEqual(header?.forkedFrom, {
       sessionId: parent.sessionId,
-      purpose: "worker",
+      purpose: "subagent",
     });
     const parentMail = readAgentMail(
       managedOf(service, parent.sessionId).manifest.recordsDir,
@@ -242,19 +242,19 @@ test("spawnWorker creates a worker child with clamped mode, alias, and spawned m
           envelope.kind === "lifecycle" && envelope.event === "spawned",
       ),
     );
-    // The worker resolves by its alias.
+    // The subagent resolves by its alias.
     const resolved = (
       service as unknown as {
-        resolveWorkerId(parentId: string, agent: string): string;
+        resolveSubagentId(parentId: string, agent: string): string;
       }
-    ).resolveWorkerId(parent.sessionId, "docs-worker");
+    ).resolveSubagentId(parent.sessionId, "docs-subagent");
     assert.equal(resolved, spawned.sessionId);
   } finally {
     await service.disposeAll();
   }
 });
 
-test("worker completion mails the lead and wakes it with a recorded notification turn", async () => {
+test("subagent completion mails the lead and wakes it with a recorded notification turn", async () => {
   const fixture = setupFixture();
   const service = createTestService(fixture);
   try {
@@ -263,16 +263,16 @@ test("worker completion mails the lead and wakes it with a recorded notification
     const parentPrompts = stubEchoPrompt(parentManaged, "noted");
 
     const child = await service.createSession(SELECTORS, {
-      forkedFrom: { sessionId: parent.sessionId, purpose: "worker" },
+      forkedFrom: { sessionId: parent.sessionId, purpose: "subagent" },
     });
     const childManaged = managedOf(service, child.sessionId);
-    stubEchoPrompt(childManaged, "worker answer");
+    stubEchoPrompt(childManaged, "subagent answer");
 
     (
       service as unknown as {
-        startWorkerRun(id: string, prompt: string, notify: boolean): string;
+        startSubagentRun(id: string, prompt: string, notify: boolean): string;
       }
-    ).startWorkerRun(child.sessionId, "do the task", true);
+    ).startSubagentRun(child.sessionId, "do the task", true);
 
     await waitFor(() =>
       readAgentMail(parentManaged.manifest.recordsDir).some(
@@ -282,7 +282,7 @@ test("worker completion mails the lead and wakes it with a recorded notification
     const completed = readAgentMail(parentManaged.manifest.recordsDir).find(
       (envelope) => envelope.event === "completed",
     );
-    assert.equal(completed?.body, "worker answer");
+    assert.equal(completed?.body, "subagent answer");
     assert.equal(completed?.delivered, true);
 
     // The wake ran as a real recorded turn on the parent with the tagged
@@ -314,7 +314,7 @@ test("message_parent blocker steers a busy lead", async () => {
     const parent = await service.createSession(SELECTORS);
     const parentManaged = managedOf(service, parent.sessionId);
     const child = await service.createSession(SELECTORS, {
-      forkedFrom: { sessionId: parent.sessionId, purpose: "worker" },
+      forkedFrom: { sessionId: parent.sessionId, purpose: "subagent" },
     });
 
     const steered: string[] = [];
@@ -349,10 +349,10 @@ test("mail for a closed lead stays undelivered and is injected on reopen", async
     stubEchoPrompt(parentManaged, "first answer");
     await service.runPrompt(parent.sessionId, "first question").completion;
     const child = await service.createSession(SELECTORS, {
-      forkedFrom: { sessionId: parent.sessionId, purpose: "worker" },
+      forkedFrom: { sessionId: parent.sessionId, purpose: "subagent" },
     });
 
-    // Close the lead, then let the worker message it.
+    // Close the lead, then let the subagent message it.
     (
       service as unknown as { sessions: Map<string, unknown> }
     ).sessions.delete(parent.sessionId);
@@ -371,18 +371,18 @@ test("mail for a closed lead stays undelivered and is injected on reopen", async
   }
 });
 
-test("sendToWorker queues a message for an idle worker without starting a turn", async () => {
+test("sendToSubagent queues a message for an idle subagent without starting a turn", async () => {
   const fixture = setupFixture();
   const service = createTestService(fixture);
   try {
     const parent = await service.createSession(SELECTORS);
     const child = await service.createSession(SELECTORS, {
-      forkedFrom: { sessionId: parent.sessionId, purpose: "worker" },
+      forkedFrom: { sessionId: parent.sessionId, purpose: "subagent" },
     });
     const childManaged = managedOf(service, child.sessionId);
     stubEchoPrompt(childManaged, "chapter 1 done");
     await service.runPrompt(child.sessionId, "cover chapter 1").completion;
-    const reply = await service.sendToWorker(
+    const reply = await service.sendToSubagent(
       parent.sessionId,
       child.sessionId,
       "please also cover chapter 2",
@@ -395,6 +395,98 @@ test("sendToWorker queues a message for an idle worker without starting a turn",
     const line = transcript.find((message) => message.marker === "agent-team");
     assert.ok(line, "queued mail missing from child transcript");
     assert.match(line!.text, /^lead: /);
+  } finally {
+    await service.disposeAll();
+  }
+});
+
+test("formatEnvelopeForContext survives quotes in a subagent label", () => {
+  const fragment = formatEnvelopeForContext(
+    {
+      at: new Date().toISOString(),
+      from: "child-1",
+      to: "parent-1",
+      kind: "message",
+      body: "hello",
+      delivered: true,
+    },
+    'my "cool" subagent',
+  );
+  const parsed = parseAgentMailFragment(fragment);
+  assert.ok(parsed, "fragment with quoted label must still parse");
+  assert.equal(parsed!.fromLabel, "my 'cool' subagent");
+  assert.equal(parsed!.body, "hello");
+});
+
+test("a queued subagent is not double-queued by send_to_agent and can be removed by interrupt", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  try {
+    const parent = await service.createSession(SELECTORS);
+    const subagents: string[] = [];
+    for (let index = 0; index < 4; index++) {
+      const child = await service.createSession(SELECTORS, {
+        forkedFrom: { sessionId: parent.sessionId, purpose: "subagent" },
+      });
+      subagents.push(child.sessionId);
+    }
+    // Three gated runs fill every concurrency slot; the fourth queues.
+    const gates: Array<() => void> = [];
+    for (const id of subagents.slice(0, 3)) {
+      const managed = managedOf(service, id);
+      managed.session.prompt = (text: string) =>
+        new Promise<void>((resolve) => {
+          gates.push(() => {
+            managed.session.sessionManager.appendMessage({
+              role: "user",
+              content: [{ type: "text", text }],
+              timestamp: Date.now(),
+            });
+            managed.session.sessionManager.appendMessage({
+              role: "assistant",
+              content: [{ type: "text", text: "done" }],
+              timestamp: Date.now(),
+            });
+            resolve();
+          });
+        });
+    }
+    const queuedPrompts = stubEchoPrompt(managedOf(service, subagents[3]), "late");
+    const svc = service as unknown as {
+      startSubagentRun(id: string, prompt: string, notify: boolean): string;
+      subagentQueue: unknown[];
+      queuedSubagentIds: Set<string>;
+    };
+    for (const id of subagents.slice(0, 3)) {
+      assert.equal(svc.startSubagentRun(id, "hold a slot", false), "started");
+    }
+    assert.equal(svc.startSubagentRun(subagents[3], "the task", false), "queued");
+
+    // send_to_agent with start_turn on a queued subagent must not queue a
+    // second run; the message joins its context instead.
+    const reply = await service.sendToSubagent(
+      parent.sessionId,
+      subagents[3],
+      "extra context",
+      true,
+    );
+    assert.match(reply, /next turn/);
+    assert.equal(svc.subagentQueue.length, 1);
+
+    // interrupt_agent on a queued subagent removes it before it starts.
+    const interrupted = await service.interruptSubagent(
+      parent.sessionId,
+      subagents[3],
+    );
+    assert.match(interrupted, /Removed from the queue/);
+    assert.equal(svc.subagentQueue.length, 0);
+    assert.ok(!svc.queuedSubagentIds.has(subagents[3]));
+
+    for (const release of gates) release();
+    await waitFor(() =>
+      subagents.slice(0, 3).every((id) => !managedOf(service, id).busy),
+    );
+    assert.equal(queuedPrompts.length, 0, "removed subagent must never start");
   } finally {
     await service.disposeAll();
   }

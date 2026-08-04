@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
+import { t } from "@/i18n";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/cn";
 
 interface ConfirmDialogProps {
   open: boolean;
   message: string;
+  details?: string[];
   confirmLabel?: string;
   cancelLabel?: string;
   checkbox?: { label: string; defaultChecked?: boolean; danger?: boolean };
@@ -15,12 +17,15 @@ interface ConfirmDialogProps {
 export function ConfirmDialog({
   open,
   message,
-  confirmLabel = "Confirm",
-  cancelLabel = "Cancel",
+  details,
+  confirmLabel,
+  cancelLabel,
   checkbox,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  const finalConfirmLabel = confirmLabel ?? t("Confirm");
+  const finalCancelLabel = cancelLabel ?? t("Cancel");
   const [checked, setChecked] = useState(checkbox?.defaultChecked ?? false);
 
   // Reset to the request's default each time the dialog (re)opens.
@@ -48,6 +53,11 @@ export function ConfirmDialog({
         <p id="confirm-dialog-message" className="text-[0.9375rem] text-ink">
           {message}
         </p>
+        {details?.length ? (
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-[0.8125rem] text-text-muted">
+            {details.map((detail) => <li key={detail}>{detail}</li>)}
+          </ul>
+        ) : null}
         {checkbox ? (
           <label
             className={cn(
@@ -65,13 +75,13 @@ export function ConfirmDialog({
         ) : null}
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="secondary" onClick={onCancel}>
-            {cancelLabel}
+            {finalCancelLabel}
           </Button>
           <Button
             variant="primary"
             onClick={() => onConfirm({ checkboxChecked: checked })}
           >
-            {confirmLabel}
+            {finalConfirmLabel}
           </Button>
         </div>
       </div>

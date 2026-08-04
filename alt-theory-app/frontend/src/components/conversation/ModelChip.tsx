@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import type { ProviderView, ThinkingLevel } from "@/api/types";
+import type { ProviderView, SessionModelOverride, ThinkingLevel } from "@/api/types";
 import { getConfigStatus, listConfigProviders } from "@/api/config";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
+import { t } from "@/i18n";
 
 interface ModelOption {
   provider: string;
@@ -22,10 +23,10 @@ function thinkingLevelsFor(model: ProviderView["models"][number]): ThinkingLevel
 
 function initialThinkingFor(option: ModelOption): ThinkingLevel {
   const enabled = option.thinkingLevels.filter((level) => level !== "off");
-  if (enabled.length === 0) return "off";
+  if (enabled.length === 0) return "medium";
   // Pick the positional middle of this model's actual levels. With an even
   // count, floor selects the lower of the two middle levels.
-  return enabled[Math.floor((enabled.length - 1) / 2)] ?? "off";
+  return enabled[Math.floor((enabled.length - 1) / 2)] ?? "medium";
 }
 
 function groupProviders(providers: ProviderView[]): ProviderOptions[] {
@@ -52,9 +53,16 @@ function groupProviders(providers: ProviderView[]): ProviderOptions[] {
 export function ModelChip({
   open,
   onToggle,
+  session,
 }: {
   open: boolean;
   onToggle: () => void;
+  session?: {
+    ready: boolean;
+    modelOverride: SessionModelOverride | null;
+    currentModel: { provider: string; modelId: string } | null;
+    setModel: (override: SessionModelOverride | null) => void;
+  };
 }) {
   const app = useApp();
   const shell = useShell();
@@ -98,8 +106,10 @@ export function ModelChip({
     }
   }, [open]);
 
-  const effectiveModel =
-    app.modelOverride ?? app.currentSessionModel ?? defaultModel;
+  const modelOverride = session ? session.modelOverride : app.modelOverride;
+  const currentModel = session ? session.currentModel : app.currentSessionModel;
+  const setModel = session?.setModel ?? app.setSessionModel;
+  const effectiveModel = modelOverride ?? currentModel ?? defaultModel;
   const selectedOption = useMemo(
     () =>
       providers
@@ -112,15 +122,15 @@ export function ModelChip({
     [effectiveModel, providers],
   );
   const effectiveThinking =
-    app.modelOverride?.thinkingLevel ??
-    (selectedOption ? initialThinkingFor(selectedOption) : "off");
+    modelOverride?.thinkingLevel ??
+    (selectedOption ? initialThinkingFor(selectedOption) : "medium");
   const activeProvider = effectiveModel?.provider ?? defaultModel?.provider ?? null;
   const activeGroup =
     providers?.find((provider) => provider.name === activeProvider) ?? null;
   const otherGroups =
     providers?.filter((provider) => provider.name !== activeProvider) ?? [];
   const usingDefault =
-    !app.modelOverride &&
+    !modelOverride &&
     effectiveModel?.provider === defaultModel?.provider &&
     effectiveModel?.modelId === defaultModel?.modelId;
   const chipLabel = effectiveModel
@@ -130,24 +140,24 @@ export function ModelChip({
           ? ` · ${effectiveThinking}`
           : ""
       }`
-    : "Choose model";
+    : t("Choose model");
   const title = effectiveModel
     ? `${effectiveModel.provider} / ${effectiveModel.modelId}${
         selectedOption?.thinkingLevels.some((level) => level !== "off")
           ? ` · ${effectiveThinking}`
           : ""
       }`
-    : "Choose a model";
+    : t("Choose a model");
 
   const pick = (option: ModelOption, thinkingLevel?: ThinkingLevel) => {
     const selectedThinking =
       thinkingLevel ??
       (effectiveModel?.provider === option.provider &&
       effectiveModel?.modelId === option.modelId &&
-      app.modelOverride?.thinkingLevel
-        ? app.modelOverride.thinkingLevel
+      modelOverride?.thinkingLevel
+        ? modelOverride.thinkingLevel
         : initialThinkingFor(option));
-    app.setSessionModel({
+    setModel({
       provider: option.provider,
       modelId: option.modelId,
       thinkingLevel: selectedThinking,
@@ -181,7 +191,7 @@ export function ModelChip({
               className="mi model-effort-trigger"
               onClick={() => setEffortOpen((value) => !value)}
             >
-              <span>Thinking effort</span>
+              <span>{t("Thinking effort")}</span>
               <span className="model-effort-value">{effectiveThinking}</span>
               <i
                 className={`ph ph-caret-${effortOpen ? "up" : "down"} caret`}
@@ -219,7 +229,7 @@ export function ModelChip({
           event.stopPropagation();
           onToggle();
         }}
-        disabled={!app.sessionReady}
+        disabled={!(session?.ready ?? app.sessionReady)}
         title={title}
       >
         {chipLabel}
@@ -233,12 +243,12 @@ export function ModelChip({
         <div
           className="mi"
           onClick={() => {
-            app.setSessionModel(null);
+            setModel(null);
             onToggle();
           }}
         >
           <span>
-            App default
+            {t("App default")}
             {defaultModel ? ` · ${defaultModel.modelId}` : ""}
           </span>
           {usingDefault ? <i className="ph ph-check check" /> : null}
@@ -246,15 +256,15 @@ export function ModelChip({
         <div className="sep" />
         {error ? (
           <div className="rp-empty" style={{ padding: "8px 10px" }}>
-            Models unavailable here.
+            {t("Models unavailable here.")}
           </div>
         ) : !providers ? (
           <div className="rp-empty" style={{ padding: "8px 10px" }}>
-            Loading…
+            {t("Loading…")}
           </div>
         ) : providers.length === 0 ? (
           <div className="rp-empty" style={{ padding: "8px 10px" }}>
-            No models configured.
+            {t("No models configured.")}
           </div>
         ) : (
           <>
@@ -293,7 +303,7 @@ export function ModelChip({
         <div className="sep" />
         <div className="mi" onClick={() => shell.openSettings("models")}>
           <i className="ph ph-cpu" />
-          Manage models
+          {t("Manage models")}
         </div>
       </div>
     </>

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
+import { t } from "@/i18n";
 import { isListMember, matchesQuery, sessionTitle } from "@/lib/sessionList";
 
 export function SearchOverlay() {
@@ -25,7 +26,10 @@ export function SearchOverlay() {
     const q = query.trim().toLowerCase();
     return app.sessions
       .filter(isListMember)
-      .map((s) => ({ session: s, title: sessionTitle(s, app.sessionDisplayNames) }))
+      .map((s) => ({
+        session: s,
+        title: sessionTitle(s, app.sessionDisplayNames, app.sessions),
+      }))
       .filter(({ session, title }) => matchesQuery(session, q, title))
       .slice(0, 12);
   }, [app.sessions, app.sessionDisplayNames, query]);
@@ -42,14 +46,14 @@ export function SearchOverlay() {
       <div className="search-box">
         <input
           autoFocus
-          placeholder="Search conversations"
+          placeholder={t("Search conversations")}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
         {query.trim() ? (
           <div className="s-results">
             {results.length === 0 ? (
-              <div className="recent">No matches.</div>
+              <div className="recent">{t("No matches.")}</div>
             ) : (
               results.map(({ session, title }) => (
                 <button
@@ -68,7 +72,7 @@ export function SearchOverlay() {
             )}
           </div>
         ) : (
-          <div className="recent">Type to search your conversations.</div>
+          <div className="recent">{t("Type to search your conversations.")}</div>
         )}
       </div>
     </div>

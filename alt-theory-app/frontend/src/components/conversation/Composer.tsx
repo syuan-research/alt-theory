@@ -1,18 +1,29 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useApp } from "@/context/AppProvider";
+import { PRESET_TURNS, useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
 import { ApprovalDock } from "@/components/conversation/ApprovalDock";
 import { ModelChip } from "@/components/conversation/ModelChip";
 import { ContextRing } from "@/components/conversation/ContextRing";
+import { RunTips } from "@/components/conversation/RunTips";
 import { DEFAULT_KB_DOMAIN, KB_OFF_VALUE } from "@/lib/constants";
-import { pickFiles } from "@/lib/native";
+import { hasNativeBridge, pathsFromDroppedFiles, pickFiles } from "@/lib/native";
+import { isWithheld } from "@/api/types";
+import { fmtTime } from "@/lib/format";
+import { t } from "@/i18n";
+import { autosizeTextarea } from "@/lib/autosizeTextarea";
 
-type MenuKey = "plus" | "model" | "role" | "kb" | null;
+type MenuKey = "plus" | "model" | "role" | "kb" | "presetcfg" | null;
 
 interface SlashCommand {
   name: string;
   description: string;
   run: (args: string) => void;
+  /**
+   * Runs on click with nothing typed. False for skills: a skill invoked with
+   * no question makes the agent hunt for one. Those arm the composer instead —
+   * `/name ` lands in the box and the user says what they want.
+   */
+  immediate?: boolean;
 }
 
 /** Composer variant: `empty` = new-conversation (mode via cards, no switch). */
@@ -22,7 +33,20 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
   const [draft, setDraft] = useState("");
   const [slashIndex, setSlashIndex] = useState(0);
   const [menu, setMenu] = useState<MenuKey>(null);
+  // Preset toolbar (v1.4 round 1): open state survives reloads; the active
+  // press/lock state lives in AppProvider so it survives pane switches.
+  const [presetOpen, setPresetOpen] = useState<boolean>(
+    () => window.localStorage.getItem("alt-preset-open") === "1",
+  );
+  const togglePresetOpen = () => {
+    setPresetOpen((current) => {
+      window.localStorage.setItem("alt-preset-open", current ? "0" : "1");
+      return !current;
+    });
+  };
+  const [fileDragOver, setFileDragOver] = useState(false);
   const rowRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [toolboxSeen, setToolboxSeen] = useState(() => {
     try {
       return localStorage.getItem("alt-theory-toolbox-seen") === "1";
@@ -40,9 +64,10 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
     }
   };
 
+  // Grow with content up to the CSS max-height (~8 lines), then scroll.
   useEffect(() => {
-    if (app.reviseMode) setDraft(app.reviseDraft);
-  }, [app.reviseMode, app.reviseDraft]);
+    autosizeTextarea(textareaRef.current);
+  }, [draft]);
 
   // Close menus on outside click (mirrors the prototype's body-click close).
   useEffect(() => {
@@ -54,40 +79,73 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
     return () => document.removeEventListener("click", onDoc);
   }, [menu]);
 
+  // Helper is a child of a real conversation; from a blank screen the same
+  // request starts one and invokes the help skill in it.
+  const openHelper = (question: string) => {
+    if (app.sessionId) app.forkCurrentSession("helper", question);
+    else app.invokeSkill("alt-theory-help", question);
+  };
+  const slashMode = variant === "empty" ? shell.newMode : app.sessionMode;
+
   const slashCommands = useMemo<SlashCommand[]>(
     () => [
+      {
+        name: "helper",
+        description: t("Ask how Alt works, or get setup fixed — in a new conversation on the side"),
+        run: (args: string) => openHelper(args),
+      },
       ...(variant === "live"
         ? [
             {
               name: "branch",
-              description: "Branch this conversation into a new direction",
+              description: t("Branch this conversation into a new direction"),
               run: () => app.forkCurrentSession("fork"),
+              immediate: true,
             },
             {
               name: "btw",
-              description: "Start a side conversation without adding it to the list",
+              description: t("Start a side conversation without adding it to the list"),
               run: () => app.forkCurrentSession("side"),
+              immediate: true,
             },
             {
               name: "compact",
-              description: "Compact this conversation to free context space",
+              description: t("Compact this conversation to free context space"),
               run: () => app.compactCurrentSession(),
+              immediate: true,
             },
           ]
         : []),
       {
         name: "new",
-        description: "Start a new conversation",
+        description: t("Start a new conversation"),
         run: () => app.startNewSession(),
+        immediate: true,
       },
-      ...(app.discovery?.skills ?? []).map((skill) => ({
-        name: skill.name,
-        description: skill.description || "Alt Theory skill",
-        run: (args: string) => app.invokeSkill(skill.name, args),
-      })),
+      ...(app.discovery?.skills ?? [])
+        .filter((skill) => skill.enabled?.[slashMode] !== false)
+        .map((skill) => ({
+          name: skill.name,
+          description: skill.description || t("Alt Theory skill"),
+          run: (args: string) => app.invokeSkill(skill.name, args),
+        })),
     ],
     [app],
   );
+
+  /** Put `/name ` in the box, focused, waiting for the user's actual request. */
+  const armCommand = (name: string) => {
+    setDraft(`/${name} `);
+    setMenu(null);
+    window.setTimeout(() => textareaRef.current?.focus(), 0);
+  };
+
+  const restoreQueuedPrompt = (id: string) => {
+    const text = app.restoreQueuedPrompt(id);
+    if (text === null) return;
+    setDraft((current) => [text, current].filter((part) => part.trim()).join("\n"));
+    window.setTimeout(() => textareaRef.current?.focus(), 0);
+  };
 
   const slashQuery =
     draft.startsWith("/") && !draft.startsWith("//") ? draft.slice(1) : null;
@@ -100,46 +158,40 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
 
   const runSlash = (command: SlashCommand) => {
     const args = slashQuery?.split(/\s+/).slice(1).join(" ") ?? "";
+    // A skill with no question sends the agent looking for one. Arm the
+    // composer and let the user say what they want first.
+    if (!command.immediate && !args.trim()) return armCommand(command.name);
     setDraft("");
-    if (app.reviseMode) app.cancelReviseMode();
     command.run(args);
   };
 
   const interactive = app.sessionReady && app.wsConnected;
   const hasText = draft.trim().length > 0;
-  const [dragActive, setDragActive] = useState(false);
-
-  // Drag a file onto the composer to attach it (item D, text/doc): the agent
-  // reads it from disk, so we stage the path — same mechanism as "Import
-  // reference". Needs the absolute path, which the Electron bundle exposes on
-  // dropped File objects; in a plain browser `path` is empty and we no-op.
   const canAttach = app.appMode === "local" && interactive;
-  const handleDropFiles = (event: React.DragEvent) => {
-    event.preventDefault();
-    setDragActive(false);
-    if (!canAttach) return;
-    const paths = Array.from(event.dataTransfer.files)
-      .map((file) => (file as File & { path?: string }).path)
-      .filter((p): p is string => !!p);
-    for (const path of paths) app.stageWorkspacePath(path);
-  };
   const canSend =
     interactive &&
-    !app.isRunning &&
     (hasText || app.stagedWorkspacePaths.length > 0);
   const showVisibility =
     app.participant?.designated === true || app.viewMode === "researcher";
-  const pureMode =
-    variant === "empty" ? shell.newMode === "pure" : app.sessionMode === "pure";
+  // Only a hosted study deployment has a research team to withhold from — and
+  // only there does "private" mean the conversation is eventually deleted.
+  const hostedStudy = app.appMode === "hosted";
+  const withheld = isWithheld(app.selectors.visibility);
+  // The expiry is only real on hosted; say WHEN, not just "in 7 days".
+  const expiresOn =
+    hostedStudy && withheld && app.retentionDueAt
+      ? fmtTime(app.retentionDueAt)
+      : null;
+  const altControlsDisabled = app.runtimeMode === "native-pi";
+  const understandMode =
+    !altControlsDisabled &&
+    (variant === "empty"
+      ? shell.newMode === "understand"
+      : app.sessionMode === "understand");
+  // First-level paperclip: Understand only. Work keeps attach in the toolbox.
+  const attachFirstLevel = canAttach && understandMode;
 
   const handleSubmit = () => {
-    if (app.reviseMode) {
-      if (app.reviseLatest(draft)) {
-        setDraft("");
-        shell.openRail("chats");
-      }
-      return;
-    }
     if (app.sendPrompt(draft)) setDraft("");
   };
 
@@ -164,21 +216,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
     setMenu((prev) => (prev === key ? null : key));
 
   return (
-    <div
-      className={`composer-wrap${dragActive ? " drag-active" : ""}`}
-      onDragOver={
-        canAttach
-          ? (e) => {
-              if (e.dataTransfer.types.includes("Files")) {
-                e.preventDefault();
-                setDragActive(true);
-              }
-            }
-          : undefined
-      }
-      onDragLeave={canAttach ? () => setDragActive(false) : undefined}
-      onDrop={canAttach ? handleDropFiles : undefined}
-    >
+    <div className="composer-wrap">
       <div className="composer-col">
         {app.approvals.length > 0 ? (
           <ApprovalDock
@@ -189,23 +227,30 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
         ) : null}
 
         {app.toolStatus ||
-        (app.isRunning && app.runPhaseLabel) ||
+        app.isRunning ||
         app.composerNotice ||
         app.runHint ||
-        app.canRetryFailed ||
-        app.attachmentHint ? (
+        app.canRetryFailed ? (
           <div className="composer-notes">
-            {app.isRunning && app.runPhaseLabel ? (
-              <span
-                className={`run-phase${
-                  app.runPhaseLabel === "Processing…" ? " processing" : ""
-                }`}
-              >
-                <i className="ph ph-circle-notch" aria-hidden="true" />
-                {app.runPhaseLabel}
+            {/* One stable status row while a turn runs. Clearing the label on
+                each assistant_delta used to collapse this strip and reflow the
+                whole column — a fixed screen band just above the composer
+                flashed over user and assistant text alike. */}
+            {app.isRunning || app.toolStatus ? (
+              <span className="run-phase-slot">
+                {app.isRunning && app.runPhaseLabel ? (
+                  <span className="run-phase">
+                    <i className="ph ph-circle-notch" aria-hidden="true" />
+                    {app.runPhaseLabel}
+                  </span>
+                ) : app.toolStatus ? (
+                  <span>{app.toolStatus}</span>
+                ) : (
+                  <span className="run-phase-slot-fill" aria-hidden="true">
+                    &nbsp;
+                  </span>
+                )}
               </span>
-            ) : app.toolStatus ? (
-              <span>{app.toolStatus}</span>
             ) : null}
             {app.composerNotice ? (
               <span className={app.composerNotice.warn ? "warn" : ""}>
@@ -219,70 +264,189 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
             {app.canRetryFailed ? (
               <button
                 className="flat retry-run"
-                onClick={app.retryFailed}
-                title="Completed work is kept; the answer resumes from the break point"
+                onClick={app.retryLatest}
+                title={t("Run the latest message again from the start")}
               >
                 <i className="ph ph-arrow-clockwise" aria-hidden="true" />
-                Continue from break point
+                {t("Retry")}
               </button>
             ) : null}
-            {app.attachmentHint ? <span>{app.attachmentHint}</span> : null}
+            <RunTips running={app.isRunning} />
+          </div>
+        ) : null}
+
+        {app.stagedWorkspacePaths.length > 0 ? (
+          <div className="staged-attachments" aria-label={t("Attached files")}>
+            {app.stagedWorkspacePaths.map((path) => (
+              <span className="attachment-chip" key={path} title={path}>
+                <i className="ph ph-paperclip" aria-hidden="true" />
+                <span>{path.split(/[\\/]/).pop() || path}</span>
+                <button
+                  type="button"
+                  onClick={() => app.unstageWorkspacePaths([path])}
+                  title={t("Remove attached file")}
+                  aria-label={t("Remove attached file")}
+                >
+                  <i className="ph ph-x" aria-hidden="true" />
+                </button>
+              </span>
+            ))}
+          </div>
+        ) : null}
+
+        {app.queuedPrompts.length > 0 ? (
+          <div className="queued-prompts" aria-label={t("Queued messages")}>
+            {app.queuedPrompts.map((item) => (
+              <div className="queued-prompt" key={item.id}>
+                <i className="ph ph-clock" aria-hidden="true" />
+                <span className="queued-prompt-text" title={item.text}>
+                  {item.text}
+                </span>
+                {item.attachments.length > 0 ? (
+                  <span title={item.attachments.join("\n")}>
+                    <i className="ph ph-paperclip" aria-hidden="true" />
+                    {item.attachments.length}
+                  </span>
+                ) : null}
+                <button
+                  type="button"
+                  className="queued-prompt-action primary"
+                  onClick={() =>
+                    app.isRunning
+                      ? app.interruptAndSendQueuedPrompt(item.id)
+                      : app.sendQueuedPromptNow(item.id)
+                  }
+                >
+                  {app.isRunning ? t("Interrupt & send") : t("Send")}
+                </button>
+                <button
+                  type="button"
+                  className="queued-prompt-action"
+                  onClick={() => restoreQueuedPrompt(item.id)}
+                  title={t("Edit queued message")}
+                  aria-label={t("Edit queued message")}
+                >
+                  <i className="ph ph-pencil-simple" aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  className="queued-prompt-action"
+                  onClick={() => app.deleteQueuedPrompt(item.id)}
+                  title={t("Delete queued message")}
+                  aria-label={t("Delete queued message")}
+                >
+                  <i className="ph ph-trash" aria-hidden="true" />
+                </button>
+              </div>
+            ))}
           </div>
         ) : null}
 
         <div className="ctx-line">
+          {/* Owner design: the Steer bar REPLACES the role/KB controls while
+              open — they rarely change mid-conversation, and stacking rows
+              is the thing to avoid. The toggle stays visible to bring them
+              back. */}
+          {presetOpen && variant === "live" ? (
+            <div className="preset-bar">
+              {app.presetButtons.map((name, index) => {
+                const active =
+                  app.presetState &&
+                  app.presetState.sessionId === app.sessionId &&
+                  app.presetState.name === name
+                    ? app.presetState
+                    : null;
+                return (
+                  <button
+                    key={name}
+                    className={`preset-btn${active ? (active.locked ? " locked" : " on") : ""}`}
+                    style={
+                      active && !active.locked
+                        ? {
+                            opacity:
+                              0.5 + 0.5 * (active.turnsLeft / PRESET_TURNS),
+                          }
+                        : undefined
+                    }
+                    disabled={!interactive}
+                    title={
+                      active
+                        ? active.locked
+                          ? t("Locked — click to release on your next message")
+                          : t("Active for {count} more turns — click to lock", { count: active.turnsLeft })
+                        : t("Rides your next message: ask Alt to work this way for the next few turns")
+                    }
+                    onClick={() => app.pressPreset(name)}
+                  >
+                    <span className="preset-num">{index + 1}</span>
+                    <span className="preset-label">{name}</span>
+                    {active?.locked ? (
+                      <i className="ph ph-lock-simple" aria-hidden="true" />
+                    ) : null}
+                  </button>
+                );
+              })}
+              <CtxPicker
+                icon="ph-gear-six"
+                label={t("Choose buttons")}
+                open={menu === "presetcfg"}
+                onToggle={() => toggle("presetcfg")}
+              >
+                {(app.discovery?.skills ?? [])
+                  .filter((skill) => skill.enabled?.[slashMode] !== false)
+                  .map((skill) => {
+                    const picked = app.presetButtons.includes(skill.name);
+                    return (
+                      <div
+                        key={skill.name}
+                        className={`mi${!picked && app.presetButtons.length >= 5 ? " disabled" : ""}`}
+                        onClick={() =>
+                          app.setPresetButtons(
+                            picked
+                              ? app.presetButtons.filter((n) => n !== skill.name)
+                              : app.presetButtons.length >= 5
+                                ? app.presetButtons
+                                : [...app.presetButtons, skill.name],
+                          )
+                        }
+                      >
+                        <span>{skill.name}</span>
+                        {picked ? <i className="ph ph-check check" /> : null}
+                      </div>
+                    );
+                  })}
+              </CtxPicker>
+            </div>
+          ) : (
+          <>
           <CtxPicker
             icon="ph-user-circle"
             label={roleLabel}
             open={menu === "role"}
             onToggle={() => toggle("role")}
+            disabled={altControlsDisabled}
           >
             <div
               className="mi"
               onClick={() => (app.switchRolePreset(null), setMenu(null))}
             >
-              <span>No role</span>
+              <span>{t("No role")}</span>
               {!app.selectors.rolePresetSlug ? (
                 <i className="ph ph-check check" />
               ) : null}
             </div>
-            {(app.discovery?.rolePresets ?? [])
-              .filter((r) => !r.snapshot)
-              .map((r) => (
-                <div
-                  key={r.slug}
-                  className="mi"
-                  onClick={() => (app.switchRolePreset(r.slug), setMenu(null))}
-                >
-                  <span>{r.userLabel || r.displayName}</span>
-                  {app.selectors.rolePresetSlug === r.slug ? (
-                    <i className="ph ph-check check" />
-                  ) : null}
-                </div>
-              ))}
-            {app.viewMode === "researcher" &&
-            (app.discovery?.rolePresets ?? []).some((r) => r.snapshot) ? (
-              <details className="menu-history">
-                <summary>History</summary>
-                {(app.discovery?.rolePresets ?? [])
-                  .filter((r) => r.snapshot)
-                  .map((r) => (
-                    <div
-                      key={r.slug}
-                      className="mi"
-                      onClick={() => (
-                        app.switchRolePreset(r.slug),
-                        setMenu(null)
-                      )}
-                    >
-                      <span>{r.userLabel || r.displayName}</span>
-                      {app.selectors.rolePresetSlug === r.slug ? (
-                        <i className="ph ph-check check" />
-                      ) : null}
-                    </div>
-                  ))}
-              </details>
-            ) : null}
+            {(app.discovery?.rolePresets ?? []).map((r) => (
+              <div
+                key={r.slug}
+                className="mi"
+                onClick={() => (app.switchRolePreset(r.slug), setMenu(null))}
+              >
+                <span>{r.userLabel || r.displayName}</span>
+                {app.selectors.rolePresetSlug === r.slug ? (
+                  <i className="ph ph-check check" />
+                ) : null}
+              </div>
+            ))}
           </CtxPicker>
 
           <CtxPicker
@@ -290,12 +454,13 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
             label={kbLabel}
             open={menu === "kb"}
             onToggle={() => toggle("kb")}
+            disabled={altControlsDisabled}
           >
             <div
               className="mi"
               onClick={() => (app.switchKb(DEFAULT_KB_DOMAIN), setMenu(null))}
             >
-              <span>EP knowledge base</span>
+              <span>{t("EP knowledge base")}</span>
               {!kbOff ? <i className="ph ph-check check" /> : null}
             </div>
             {(app.discovery?.kbDomains ?? [])
@@ -317,7 +482,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               className="mi"
               onClick={() => (app.switchKb(KB_OFF_VALUE), setMenu(null))}
             >
-              <span>No knowledge base</span>
+              <span>{t("No knowledge base")}</span>
               {kbOff ? <i className="ph ph-check check" /> : null}
             </div>
           </CtxPicker>
@@ -327,21 +492,47 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               className="ctx-item"
               onClick={() =>
                 app.switchVisibility(
-                  app.selectors.visibility === "private"
-                    ? "research"
-                    : "private",
+                  withheld
+                    ? hostedStudy
+                      ? "research"
+                      : "exportable"
+                    : hostedStudy
+                      ? "private"
+                      : "no-export",
                 )
               }
-              title="Private conversations are marked and auto-deleted after 7 inactive days."
+              title={
+                hostedStudy
+                  ? expiresOn
+                    ? t("Kept from the research team. Unless you use it again, this conversation and its files are deleted on {date}.", { date: expiresOn })
+                    : t("Private conversations are kept from the research team and deleted 7 days after you last use them.")
+                  : t("A marker only: nothing here is hidden, sent anywhere, or deleted. It sets whether a future export includes this conversation.")
+              }
             >
               <i
-                className={
-                  app.selectors.visibility === "private"
-                    ? "ph ph-lock-simple"
-                    : "ph ph-share-network"
-                }
+                className={withheld ? "ph ph-lock-simple" : "ph ph-share-network"}
               />
-              {app.selectors.visibility === "private" ? "Private" : "Shared"}
+              {hostedStudy
+                ? withheld
+                  ? expiresOn
+                    ? t("Private · until {date}", { date: expiresOn })
+                    : t("Private")
+                  : t("Shared")
+                : withheld
+                  ? t("Not for export")
+                  : t("Exportable")}
+            </button>
+          ) : null}
+          </>
+          )}
+          {variant === "live" ? (
+            <button
+              className={`ctx-item preset-toggle${presetOpen ? " on" : ""}`}
+              title={t("Steer — ask Alt to work a certain way for the next few turns")}
+              onClick={togglePresetOpen}
+            >
+              <i className="ph ph-lightning" aria-hidden="true" />
+              {t("Steer")}
             </button>
           ) : null}
         </div>
@@ -362,18 +553,39 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
           </div>
         ) : null}
 
-        <div className="composer">
+        <div
+          className={`composer${fileDragOver ? " file-drag-over" : ""}`}
+          onDragEnter={(e) => {
+            if (!canAttach || !hasNativeBridge()) return;
+            if (![...e.dataTransfer.types].includes("Files")) return;
+            e.preventDefault();
+            setFileDragOver(true);
+          }}
+          onDragOver={(e) => {
+            if (!canAttach || !hasNativeBridge()) return;
+            if (![...e.dataTransfer.types].includes("Files")) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "copy";
+          }}
+          onDragLeave={(e) => {
+            if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+            setFileDragOver(false);
+          }}
+          onDrop={(e) => {
+            setFileDragOver(false);
+            if (!canAttach || !hasNativeBridge()) return;
+            e.preventDefault();
+            const paths = pathsFromDroppedFiles(e.dataTransfer.files);
+            paths.forEach((p) => app.stageWorkspacePath(p));
+          }}
+        >
           <textarea
+            ref={textareaRef}
+            rows={1}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            placeholder={
-              !interactive
-                ? "Connecting…"
-                : app.reviseMode
-                  ? "Editing your latest message. Send to update."
-                  : "Message Alt. Type / for commands."
-            }
-            disabled={!interactive || (app.isRunning && !app.reviseMode)}
+            placeholder={!interactive ? t("Connecting…") : t("Message Alt. Type / for commands.")}
+            disabled={!interactive}
             onKeyDown={(e) => {
               if (slashMatches.length > 0) {
                 if (e.key === "ArrowDown" || e.key === "ArrowUp") {
@@ -393,11 +605,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               }
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
-                if (!app.isRunning || app.reviseMode) handleSubmit();
-              }
-              if (e.key === "Escape" && app.reviseMode) {
-                setDraft("");
-                app.cancelReviseMode();
+                handleSubmit();
               }
             }}
           />
@@ -405,7 +613,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
             {/* toolbox: featured skills + actions */}
             <button
               className="flat toolbox-btn"
-              title="Toolbox"
+              title={t("Toolbox")}
               onClick={(e) => {
                 e.stopPropagation();
                 markToolboxSeen();
@@ -415,84 +623,78 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               <i className="ph ph-toolbox" />
               {!toolboxSeen ? <span className="badge-dot" /> : null}
             </button>
-            {canAttach ? (
-              <button
-                className="flat"
-                title="Attach a file to this message"
-                aria-label="Attach a file"
-                onClick={() => {
-                  void pickFiles("Full path of the file to attach:").then(
-                    (paths) => paths.forEach((p) => app.stageWorkspacePath(p)),
-                  );
-                }}
-              >
-                <i className="ph ph-paperclip" />
-              </button>
-            ) : null}
             <div
               className={`menu${menu === "plus" ? " on" : ""}`}
               style={{ left: 0 }}
               onClick={(e) => e.stopPropagation()}
             >
-              {variant === "live" ? (
+              {/* Always here: help that comes and goes with the screen you are
+                  on is help you cannot rely on. In a conversation it opens a
+                  Helper child; on a blank screen it starts one. */}
+              <div
+                className="mi"
+                title={t("Opens a separate conversation beside this one, with fresh context. It answers questions about Alt and can fix setup — providers, keys, models, missing tools.")}
+                onClick={() => armCommand("helper")}
+              >
+                <i className="ph ph-lifebuoy" />
+                {t("Ask how Alt works, or fix setup")}
+                <span className="mi-note">{t("new conversation on the side")}</span>
+              </div>
+              {canAttach ? (
                 <div
                   className="mi"
-                  onClick={() => (
-                    app.forkCurrentSession("helper"),
-                    setMenu(null)
-                  )}
+                  onClick={() => {
+                    setMenu(null);
+                    void pickFiles(t("Full path of the file to attach:")).then(
+                      (paths) => paths.forEach((p) => app.stageWorkspacePath(p)),
+                    );
+                  }}
                 >
-                  <i className="ph ph-lifebuoy" />
-                  Ask how Alt works
+                  <i className="ph ph-paperclip" />
+                  {t("Attach a file")}
                 </div>
               ) : null}
               <div
                 className="mi"
-                onClick={() => (
-                  app.invokeSkill("adaptive-aligning"),
-                  setMenu(null)
-                )}
+                onClick={() => armCommand("adaptive-aligning")}
               >
                 <i className="ph ph-chats-circle" />
-                Align on a plan or decision
+                {t("Align on a plan or decision")}
               </div>
               <div
                 className="mi"
-                onClick={() => (
-                  app.invokeSkill("adaptive-plan-record"),
-                  setMenu(null)
-                )}
+                onClick={() => armCommand("adaptive-plan-record")}
               >
                 <i className="ph ph-list-checks" />
-                Plan &amp; record
+                {t("Plan & record")}
               </div>
               {/* web-search is FULL_ONLY_BUNDLED_SKILLS (alt-theory-core.ts:464) —
                   in Understand mode say why rather than greying out a "soon". */}
-              {pureMode ? (
+              {understandMode ? (
                 <div
                   className="mi disabled"
-                  title="Switch to Work when you want Alt to look up current information."
+                  title={t("Switch to Work when you want Alt to look up current information.")}
                 >
                   <i className="ph ph-globe" />
-                  Looking things up online needs Work mode
+                  {t("Looking things up online needs Work mode")}
                 </div>
               ) : (
                 <div
                   className="mi"
-                  onClick={() => (app.invokeSkill("web-search"), setMenu(null))}
+                  onClick={() => armCommand("web-search")}
                 >
                   <i className="ph ph-globe" />
-                  Look something up online
+                  {t("Look something up online")}
                 </div>
               )}
               <div className="sep" />
-              {pureMode && app.sessionId ? (
+              {understandMode && app.sessionId ? (
                 <div
                   className="mi"
                   onClick={() => (shell.openRail("workspace"), setMenu(null))}
                 >
                   <i className="ph ph-folder-open" />
-                  Browse working folder
+                  {t("Browse working folder")}
                 </div>
               ) : null}
               <div
@@ -500,36 +702,55 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                 onClick={() => (setDraft("/"), setMenu(null))}
               >
                 <i className="ph ph-slash-forward" />
-                All skills…
+                {t("All skills…")}
               </div>
             </div>
+
+            {/* First-level attach: Understand only (Work uses toolbox). */}
+            {attachFirstLevel ? (
+              <button
+                className="flat"
+                title={t("Attach a file")}
+                aria-label={t("Attach a file")}
+                onClick={() => {
+                  void pickFiles(t("Full path of the file to attach:")).then(
+                    (paths) => paths.forEach((p) => app.stageWorkspacePath(p)),
+                  );
+                }}
+              >
+                <i className="ph ph-paperclip" />
+              </button>
+            ) : null}
 
             {/* morph mode switch (live only; empty state uses the cards) */}
             {variant === "live" ? (
               <button
                 className="flat mode-switch"
                 role="switch"
-                aria-checked={app.sessionMode === "full"}
+                aria-checked={app.sessionMode === "work"}
+                disabled={altControlsDisabled}
                 title={
-                  app.sessionMode === "full"
-                    ? "Work mode: research, analyze data, and create or update files while keeping the same careful thinking. Switch to Understand."
-                    : "Understand mode: clarify questions, compare explanations, and develop ideas with your materials. Switch to Work."
+                  altControlsDisabled
+                    ? t("Understand and Work are preserved but inactive while Native Pi is on.")
+                    : app.sessionMode === "work"
+                    ? t("Work mode: research, analyze data, and create or update files while keeping the same careful thinking. Switch to Understand.")
+                    : t("Understand mode: clarify questions, compare explanations, and develop ideas with your materials. Switch to Work.")
                 }
                 onClick={() =>
-                  app.switchMode(app.sessionMode === "full" ? "pure" : "full")
+                  app.switchMode(app.sessionMode === "work" ? "understand" : "work")
                 }
               >
                 <i
                   className={
-                    app.sessionMode === "full"
+                    app.sessionMode === "work"
                       ? "ph ph-hammer"
                       : "ph ph-book-open"
                   }
                 />
-                {app.sessionMode === "full" ? "Work" : "Understand"}
+                {app.sessionMode === "work" ? t("Work") : t("Understand")}
                 <span
                   className={`toggle mode-toggle${
-                    app.sessionMode === "full" ? " on" : ""
+                    app.sessionMode === "work" ? " on" : ""
                   }`}
                   aria-hidden="true"
                 />
@@ -542,38 +763,31 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
             />
             <ContextRing />
 
-            {app.reviseMode ? (
+            {app.isRunning ? (
               <>
-                <button
-                  className="flat"
-                  onClick={() => (setDraft(""), app.cancelReviseMode())}
-                >
-                  Cancel
-                </button>
                 <button
                   className="send"
                   disabled={!canSend}
                   onClick={handleSubmit}
-                  title="Save edit"
+                  title={t("Queue message")}
                 >
-                  <i className="ph ph-check" />
+                  <i className="ph ph-arrow-up" />
+                </button>
+                <button
+                  className="send"
+                  style={{ background: "var(--danger)" }}
+                  onClick={app.abortRun}
+                  title={t("Stop")}
+                >
+                  <i className="ph ph-square" />
                 </button>
               </>
-            ) : app.isRunning ? (
-              <button
-                className="send"
-                style={{ background: "var(--danger)" }}
-                onClick={app.abortRun}
-                title="Stop"
-              >
-                <i className="ph ph-square" />
-              </button>
             ) : (
               <button
                 className="send"
                 disabled={!canSend}
                 onClick={handleSubmit}
-                title="Send"
+                title={t("Send")}
               >
                 <i className="ph ph-arrow-up" />
               </button>
@@ -590,12 +804,14 @@ function CtxPicker({
   label,
   open,
   onToggle,
+  disabled = false,
   children,
 }: {
   icon: string;
   label: string;
   open: boolean;
   onToggle: () => void;
+  disabled?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -603,6 +819,7 @@ function CtxPicker({
       <button
         className="ctx-item"
         title={label}
+        disabled={disabled}
         onClick={(e) => {
           e.stopPropagation();
           onToggle();

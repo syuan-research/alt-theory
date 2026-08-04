@@ -39,7 +39,7 @@ async function main() {
       rolePresetSlug,
       kbDir: assetPaths.kbDir,
       piPromptTemplatesDir: assetPaths.piPromptTemplatesDir,
-      readOnly: true,
+      understandReadOnly: true,
     });
 
     console.log("\n✓ Session created successfully");

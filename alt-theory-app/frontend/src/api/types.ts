@@ -6,6 +6,25 @@ export type AccountRole =
 
 export type ViewMode = "user" | "researcher";
 
+/**
+ * What happens to a conversation beyond this machine. Two disjoint
+ * vocabularies, one per deployment (backend: `session-records.ts`):
+ * hosted uses `research` / `private` — where `private` really is deleted
+ * after 7 inactive days, because that is how "don't keep this" is kept —
+ * and local uses `exportable` / `no-export`, a marker for a future export
+ * filter that never hides, uploads, or deletes anything.
+ */
+export type SessionVisibility =
+  | "research"
+  | "private"
+  | "exportable"
+  | "no-export";
+
+/** True for the values that withhold a conversation from the research team. */
+export function isWithheld(visibility: SessionVisibility | undefined): boolean {
+  return visibility === "private" || visibility === "no-export";
+}
+
 export type TranscriptView = "user" | "developer";
 
 export interface AuthContext {
@@ -24,7 +43,11 @@ export interface ParticipantInfo {
 
 export interface AuthMeResponse {
   auth: AuthContext;
-  app: { mode: "local" | "hosted" };
+  app: {
+    mode: "local" | "hosted";
+    runtimeMode: RuntimeMode;
+    nativePiScanAltSkills: boolean;
+  };
   participant: ParticipantInfo | null;
   localConfig: ConfigStatus | null;
 }
@@ -35,9 +58,6 @@ export interface DiscoveredAsset {
   shortLabel?: string;
   userLabel?: string;
   description?: string;
-  /** Historical snapshot; hidden from user-facing pickers, shown collapsed
-   *  under "History" in researcher surfaces. */
-  snapshot?: boolean;
   /** Present when the asset comes from a user-added location. */
   source?: "added";
 }
@@ -64,19 +84,24 @@ export interface DiscoveryLists {
   souls: DiscoveredAsset[];
   kbDomains: DiscoveredAsset[];
   instructions: InstructionAsset[];
-  skills: Array<{ name: string; displayName?: string; description?: string }>;
+  skills: Array<{
+    name: string;
+    displayName?: string;
+    description?: string;
+    enabled?: { understand: boolean; work: boolean };
+  }>;
   projects: ResearchProject[];
 }
 
 export interface SessionDraftSnapshot {
   status: "draft";
   projectId: string | null;
-  visibility: "research" | "private";
+  visibility: SessionVisibility;
   currentDomain: string;
   rolePresetSlug: string | null;
   soulSlug: string | null;
   customInstructionRef?: string | null;
-  mode: CapabilityMode;
+  mode: AltMode;
   modelOverride?: SessionModelOverride | null;
   studyTag?: StudyTag | null;
   workspacePrimaryDir?: string | null;
@@ -105,20 +130,22 @@ export interface SessionModelOverride {
   thinkingLevel?: ThinkingLevel;
 }
 
-/** Capability mode (spec §4): Understand = pure, Work = full. */
-export type CapabilityMode = "pure" | "full";
+export type AltMode = "understand" | "work";
+export type RuntimeMode = "alt-theory" | "native-pi";
 
 export interface SessionSnapshot {
   sessionId: string;
   projectId: string | null;
   branchId?: string;
   status: "idle" | "running" | "error";
-  visibility?: "research" | "private";
+  visibility?: SessionVisibility;
+  /** Hosted-only expiry for a "private" conversation; null everywhere else. */
+  retentionDueAt?: string | null;
   currentDomain: string;
   rolePresetSlug: string | null;
   soulSlug: string | null;
   customInstructionRef?: string | null;
-  mode?: CapabilityMode;
+  mode?: AltMode;
   modelOverride?: SessionModelOverride | null;
   currentModel?: { provider: string; modelId: string };
   studyTag?: StudyTag | null;
@@ -180,10 +207,15 @@ export interface SessionSummary {
   projectId: string | null;
   ownerAccountId: string | null;
   roleCondition: string | null;
-  visibility: "research" | "private";
+  visibility: SessionVisibility;
   createdAt: string | null;
   updatedAt: string | null;
   deletedAt: string | null;
+  trashDueAt?: string | null;
+  /** Root that ceded its list spot to a promoted branch (M4b role swap). */
+  delisted?: boolean;
+  /** The session that took the spot (set with delisted). */
+  delistedFor?: string;
   status: "available" | "incomplete" | "error";
   runStatus?: "idle" | "running" | "awaiting-approval" | "failed";
   rolePresetSlug: string | null;
@@ -199,7 +231,9 @@ export interface SessionSummary {
   /** Fork lineage (M5 substrate); null = a root conversation. */
   forkedFrom: {
     sessionId: string;
-    purpose: "fork" | "side" | "helper" | "ab-arm" | "worker";
+    purpose: "fork" | "side" | "helper" | "ab-arm" | "subagent";
+    /** Added to the conversation list by the user, purpose kept (alpha.6). */
+    listed?: boolean;
   } | null;
   /** Study designation (M7 §3); null = daily use. */
   studyTag: StudyTag | null;
@@ -502,19 +536,20 @@ export type ClientMessage =
       payload: { customInstructionRef: string | null };
     }
   | { type: "switch_project"; payload: { projectId: string | null } }
-  | { type: "switch_visibility"; payload: { visibility: "research" | "private" } }
+  | { type: "switch_visibility"; payload: { visibility: SessionVisibility } }
   | {
       type: "invoke_skill";
       payload: { skillName: string; userText?: string };
     }
   | { type: "revise_latest"; payload: { text: string; entryId?: string } }
   | { type: "branch_revision"; payload: { text: string; entryId?: string } }
-  | { type: "retry_failed" }
+  | { type: "prepare_branch_revision"; payload: { entryId: string } }
+  | { type: "retry_latest" }
   | { type: "delete_latest" }
   | {
       type: "fork_session";
       payload: {
-        purpose: "fork" | "side" | "helper" | "ab-arm" | "worker";
+        purpose: "fork" | "side" | "helper" | "ab-arm" | "subagent";
         forkPointEntryId?: string;
         sourceSessionId?: string;
       };
@@ -526,7 +561,7 @@ export type ClientMessage =
         forkPointEntryId?: string;
       };
     }
-  | { type: "switch_mode"; payload: { mode: CapabilityMode } }
+  | { type: "switch_mode"; payload: { mode: AltMode } }
   | { type: "set_study_tag"; payload: { studyTag: StudyTag | null } }
   | {
       type: "set_session_model";
@@ -570,6 +605,10 @@ export type ServerMessage =
   | {
       type: "related_session_created";
       payload: { sessionId: string; purpose: "side" | "helper" };
+    }
+  | {
+      type: "branch_created";
+      payload: { sessionId: string; sourceSessionId: string };
     }
   | { type: "assistant_delta"; payload: { text: string } }
   | { type: "thinking_delta"; payload: { text: string } }
@@ -632,7 +671,7 @@ export interface SessionSelectors {
   rolePresetSlug: string | null;
   soulSlug: string | null;
   customInstructionRef: string | null;
-  visibility: "research" | "private";
+  visibility: SessionVisibility;
   branchId: string;
 }
 

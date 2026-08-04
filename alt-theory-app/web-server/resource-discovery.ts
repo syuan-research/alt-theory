@@ -5,11 +5,11 @@
  * code or mutates external directories.
  *
  * Project-level locations (.pi/skills, .agents/skills under working
- * directories) join in M3 when Full sessions gain user working directories.
+ * directories) join when Work/Native sessions use working directories.
  */
 import { existsSync } from "fs";
 import { homedir } from "os";
-import { join } from "path";
+import { dirname, join, resolve } from "path";
 import { loadSkillsFromDir } from "@earendil-works/pi-coding-agent";
 
 export type SkillSource = "alt-theory" | "pi-user" | "agents-global";

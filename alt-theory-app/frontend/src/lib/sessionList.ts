@@ -3,14 +3,114 @@ import { shortId } from "@/lib/format";
 
 export type DisplayNames = Record<string, { alias: string; snippet: string }>;
 
+type RelatedPurpose = "fork" | "side" | "helper" | "subagent";
+
+/** English marker with space + number: "Branch 1", "BTW 2", "Helper 1", "Subagent 3". */
+const PURPOSE_MARKER: Record<RelatedPurpose, string> = {
+  fork: "Branch",
+  side: "BTW",
+  helper: "Helper",
+  subagent: "Subagent",
+};
+
+/**
+ * 1-based index among living siblings of the same parent + purpose
+ * (birth order by createdAt).
+ */
+export function relatedSiblingIndex(
+  session: SessionSummary,
+  allSessions: SessionSummary[],
+): number | null {
+  const fork = session.forkedFrom;
+  if (!fork) return null;
+  if (fork.purpose === "ab-arm") return null;
+  const purpose = fork.purpose as RelatedPurpose;
+  if (!(purpose in PURPOSE_MARKER)) return null;
+
+  const siblings = allSessions
+    .filter(
+      (s) =>
+        s.forkedFrom?.sessionId === fork.sessionId &&
+        s.forkedFrom.purpose === purpose &&
+        !s.deletedAt,
+    )
+    .sort(
+      (a, b) =>
+        new Date(a.createdAt || 0).getTime() -
+        new Date(b.createdAt || 0).getTime(),
+    );
+  const idx = siblings.findIndex((s) => s.sessionId === session.sessionId);
+  return idx >= 0 ? idx + 1 : null;
+}
+
+/**
+ * Display marker only, e.g. "Branch 1". Null for roots / ab-arms.
+ */
+export function relatedDisplayMarker(
+  session: SessionSummary,
+  allSessions?: SessionSummary[],
+): string | null {
+  const fork = session.forkedFrom;
+  if (!fork || fork.purpose === "ab-arm") return null;
+  const purpose = fork.purpose as RelatedPurpose;
+  const word = PURPOSE_MARKER[purpose];
+  if (!word) return null;
+  if (!allSessions?.length) return word;
+  const n = relatedSiblingIndex(session, allSessions);
+  return n == null ? word : `${word} ${n}`;
+}
+
+/** True when base is only a bare machine token (subagent-1, branch1, Subagent 1). */
+function isBareMarkerToken(base: string, marker: string): boolean {
+  const b = base.trim();
+  const m = marker.trim();
+  if (b.localeCompare(m, undefined, { sensitivity: "accent" }) === 0) return true;
+  // legacy mashed forms: branch1, subagent-2, btw3
+  const mashed = m.replace(/\s+/g, "");
+  if (b.localeCompare(mashed, undefined, { sensitivity: "accent" }) === 0) {
+    return true;
+  }
+  const legacy = b.match(/^(branch|btw|helper|subagent)[-_]?(\d+)$/i);
+  if (legacy) {
+    const word = PURPOSE_MARKER[
+      legacy[1].toLowerCase() === "branch"
+        ? "fork"
+        : legacy[1].toLowerCase() === "btw"
+          ? "side"
+          : (legacy[1].toLowerCase() as RelatedPurpose)
+    ];
+    return Boolean(word && m.toLowerCase().startsWith(word.toLowerCase()));
+  }
+  return false;
+}
+
+/**
+ * List / switcher title.
+ * Related children get an English prefix (Branch 1 · …), not a rename that
+ * replaces the real title with "branch1".
+ */
 export function sessionTitle(
   session: SessionSummary,
-  displayNames: DisplayNames
+  displayNames: DisplayNames,
+  allSessions?: SessionSummary[],
 ): string {
   const cached = displayNames[session.sessionId];
-  if (cached?.alias) return cached.alias;
-  if (cached?.snippet) return cached.snippet;
-  return shortId(session.sessionId);
+  const base =
+    (cached?.alias && cached.alias.trim()) ||
+    (cached?.snippet && cached.snippet.trim()) ||
+    shortId(session.sessionId);
+
+  const marker = relatedDisplayMarker(session, allSessions);
+  if (!marker) return base;
+
+  if (isBareMarkerToken(base, marker)) return marker;
+
+  // Already prefixed (user typed it, or prior display form)
+  const prefix = `${marker} · `;
+  if (base.toLowerCase().startsWith(prefix.toLowerCase())) return base;
+  if (base.toLowerCase().startsWith(`${marker.toLowerCase()} `)) return base;
+
+  return `${marker} · ${base}`;
 }
 
 export function compareByRecency(a: SessionSummary, b: SessionSummary): number {
@@ -20,13 +120,63 @@ export function compareByRecency(a: SessionSummary, b: SessionSummary): number {
 }
 
 /**
- * Session-list membership (M7 §3): only roots and `forkedFrom.purpose:"fork"`
- * appear in the list. side / helper / ab-arm children are reachable from their
- * parent's side-chats panel, never listed here.
+ * Session-list membership: roots, branches, and children the user explicitly
+ * added to the list (alpha.6 — they keep their purpose so the row can say where
+ * they came from). Everything else is reachable from its parent's panel.
  */
 export function isListMember(session: SessionSummary): boolean {
-  const purpose = session.forkedFrom?.purpose;
-  return !purpose || purpose === "fork";
+  const fork = session.forkedFrom;
+  // A delisted root STAYS a list member — demoted, not hidden: the tree
+  // nests it under its successor (owner 2026-08-04: the old mainline must
+  // degrade to an ordinary branch row, never vanish).
+  if (!fork) return true;
+  return fork.purpose === "fork" || fork.listed === true;
+}
+
+/**
+ * True when "Make this the main conversation" would change anything: a
+ * delisted origin can always take its spot back; a branch qualifies only
+ * while some delistable visible ancestor (the old mainline) exists to step
+ * down — after a successful promotion the crown disappears instead of
+ * delisting ever-further ancestors on repeat clicks (opus D2).
+ */
+export function canTakeMainline(
+  session: SessionSummary,
+  all: SessionSummary[],
+): boolean {
+  if (!session.forkedFrom) return session.delisted === true;
+  // Branches qualify by nature; other children once the user LISTED them
+  // (owner 2026-08-04: a btw already shown in the list can take the spot).
+  if (
+    session.forkedFrom.purpose !== "fork" &&
+    session.forkedFrom.listed !== true
+  ) {
+    return false;
+  }
+  const byId = new Map(all.map((s) => [s.sessionId, s]));
+  const walked = new Set<string>();
+  let cur = byId.get(session.forkedFrom.sessionId);
+  while (cur && !walked.has(cur.sessionId)) {
+    walked.add(cur.sessionId);
+    // Mirrors the server: only a root can cede the spot.
+    if (!cur.deletedAt && !cur.forkedFrom && cur.delisted !== true) {
+      return true;
+    }
+    cur = cur.forkedFrom ? byId.get(cur.forkedFrom.sessionId) : undefined;
+  }
+  return false;
+}
+
+/** Row label for a listed child: where it came from, not a made-up identity. */
+export function listedOriginLabel(session: SessionSummary): string | null {
+  const fork = session.forkedFrom;
+  if (!fork) return null;
+  if (fork.purpose === "fork") return "Branch";
+  if (!fork.listed) return null;
+  if (fork.purpose === "subagent") return "From subagent";
+  if (fork.purpose === "helper") return "From Helper";
+  if (fork.purpose === "side") return "From BTW";
+  return null;
 }
 
 export function matchesQuery(
@@ -56,17 +206,54 @@ export interface SessionTree {
   childrenByParent: Map<string, SessionSummary[]>;
 }
 
-export function buildSessionTree(
-  sessions: SessionSummary[],
-  projectNames: Map<string, string>
-): SessionTree {
-  const members = sessions.filter(isListMember).sort(compareByRecency);
+/**
+ * Parent/child edges for the list tree, with the M4b role swap applied as a
+ * display inversion: a delisted root nests under its most recently active
+ * member child (the promotion successor), and that successor rises to the
+ * top instead of nesting under the delisted root. No stored successor id —
+ * recency picks it, and if the successor is later deleted the delisted root
+ * simply becomes a root again.
+ */
+function buildEdges(members: SessionSummary[]): {
+  roots: SessionSummary[];
+  childrenByParent: Map<string, SessionSummary[]>;
+} {
   const ids = new Set(members.map((s) => s.sessionId));
+  const byId = new Map(members.map((s) => [s.sessionId, s]));
+  // Deterministic: the recorded successor first; else the most recent
+  // member BRANCH (a listed btw must never become the family head just by
+  // being fresher — owner 2026-08-04).
+  const successorOf = (root: SessionSummary) => {
+    const recorded = root.delistedFor ? byId.get(root.delistedFor) : null;
+    if (recorded) return recorded;
+    return (
+      members.find(
+        (m) =>
+          m.forkedFrom?.sessionId === root.sessionId &&
+          m.forkedFrom.purpose === "fork",
+      ) ?? null
+    );
+  };
 
   const childrenByParent = new Map<string, SessionSummary[]>();
   const roots: SessionSummary[] = [];
   for (const session of members) {
-    const parentId = session.forkedFrom?.sessionId;
+    let parentId = session.forkedFrom?.sessionId ?? null;
+    if (!parentId && session.delisted) {
+      parentId = successorOf(session)?.sessionId ?? null;
+    } else if (parentId) {
+      const parent = byId.get(parentId);
+      // The successor must not nest under the delisted root it replaced —
+      // that edge is inverted, and both nesting would orphan the family.
+      if (
+        parent &&
+        !parent.forkedFrom &&
+        parent.delisted &&
+        successorOf(parent)?.sessionId === session.sessionId
+      ) {
+        parentId = null;
+      }
+    }
     if (parentId && ids.has(parentId)) {
       if (!childrenByParent.has(parentId)) childrenByParent.set(parentId, []);
       childrenByParent.get(parentId)?.push(session);
@@ -74,6 +261,15 @@ export function buildSessionTree(
       roots.push(session);
     }
   }
+  return { roots, childrenByParent };
+}
+
+export function buildSessionTree(
+  sessions: SessionSummary[],
+  projectNames: Map<string, string>
+): SessionTree {
+  const members = sessions.filter(isListMember).sort(compareByRecency);
+  const { roots, childrenByParent } = buildEdges(members);
 
   const byProject = new Map<string, SessionSummary[]>();
   for (const root of roots) {
@@ -118,19 +314,7 @@ export function buildWorkspaceTree(
   knownWorkspaces: string[]
 ): WorkspaceTree {
   const members = sessions.filter(isListMember).sort(compareByRecency);
-  const ids = new Set(members.map((s) => s.sessionId));
-
-  const childrenByParent = new Map<string, SessionSummary[]>();
-  const roots: SessionSummary[] = [];
-  for (const session of members) {
-    const parentId = session.forkedFrom?.sessionId;
-    if (parentId && ids.has(parentId)) {
-      if (!childrenByParent.has(parentId)) childrenByParent.set(parentId, []);
-      childrenByParent.get(parentId)?.push(session);
-    } else {
-      roots.push(session);
-    }
-  }
+  const { roots, childrenByParent } = buildEdges(members);
 
   const byDir = new Map<string, SessionSummary[]>();
   for (const dir of knownWorkspaces) {

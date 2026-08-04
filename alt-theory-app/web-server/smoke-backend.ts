@@ -117,7 +117,7 @@ async function main() {
     modelId: "mimo-v2.5-pro",
     runtimeApiKey: apiKey,
     thinkingLevel: "off",
-    readOnly: false,
+    understandReadOnly: false,
   });
   await new Promise<void>((resolveListen) => {
     instance.httpServer.listen(0, "127.0.0.1", resolveListen);

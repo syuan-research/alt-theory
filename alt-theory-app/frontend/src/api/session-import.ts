@@ -53,7 +53,7 @@ export async function fetchImportSessions(
 export async function submitSessionImport(args: {
   harness: ImportableHarness;
   sourceId: string;
-  mode: "pure" | "full";
+  mode: "understand" | "work";
   preflightOnly: boolean;
   workspaceOverride?: string;
 }): Promise<ImportResult> {
@@ -69,7 +69,7 @@ export async function submitSessionImport(args: {
       ...(args.workspaceOverride
         ? { workspaceOverrides: { [args.sourceId]: args.workspaceOverride } }
         : {}),
-      visibility: "private",
+      visibility: "no-export",
     }),
   });
   const body = (await response.json().catch(() => ({}))) as {

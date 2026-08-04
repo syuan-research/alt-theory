@@ -19,6 +19,16 @@ import {
   type DeletedSessionRecord,
 } from "./session-deletion.js";
 
+/**
+ * HOSTED DEPLOYMENTS ONLY (the VPS study). Retention exists to keep one
+ * promise: a participant marking a conversation `"private"` means "don't keep
+ * this", and deletion is how the server keeps it. Local installs use a
+ * different vocabulary entirely (`"exportable"` / `"no-export"`, see
+ * `SessionVisibility`) and can never produce `"private"`, so nothing here can
+ * ever match locally created data. SessionService only calls the refresh
+ * helpers when it is not in local mode; `sweepExpiredPrivateSessions` is
+ * wired from the server's hosted-only boot path.
+ */
 const PRIVATE_RETENTION_DAYS = 7;
 
 export interface PrivateRetentionCleanupResult {
@@ -73,14 +83,14 @@ export function refreshSessionRetention(
 }
 
 /**
- * HOSTED/RESEARCH DEPLOYMENTS ONLY. This is intentionally not wired anywhere
- * in the app today. If a retention job ever calls it, that job MUST be gated
- * to account-based (hosted) mode: local installs mark sessions private but
- * must never auto-delete the user's own data (owner decision 2026-07-23).
+ * HOSTED DEPLOYMENTS ONLY — see the note at the top of this file. Callers
+ * must pass `isOpen` so a conversation the participant currently has open is
+ * never deleted out from under a live session.
  */
 export function hardDeleteExpiredPrivateSessions(
   dataDir: string,
-  now: Date = new Date()
+  now: Date = new Date(),
+  isOpen: (sessionId: string) => boolean = () => false
 ): PrivateRetentionCleanupResult {
   const sessionsRoot = resolveSessionsRoot(dataDir);
   const result: PrivateRetentionCleanupResult = {
@@ -122,10 +132,38 @@ export function hardDeleteExpiredPrivateSessions(
       result.skipped.push({ sessionId, reason: "not-yet-due" });
       continue;
     }
+    if (isOpen(sessionId)) {
+      result.skipped.push({ sessionId, reason: "open" });
+      continue;
+    }
     result.deleted.push(hardDeletePrivateSession(sessionRoot, sessionId, now));
   }
 
   return result;
+}
+
+/**
+ * Wire the sweep on a hosted deployment: once at boot, then daily. Returns a
+ * stop function. Never call this in local mode — the whole point of the
+ * vocabulary split is that local data has no expiry.
+ */
+export function sweepExpiredPrivateSessions(
+  dataDir: string,
+  isOpen: (sessionId: string) => boolean,
+  onResult?: (result: PrivateRetentionCleanupResult) => void
+): () => void {
+  const run = () => {
+    try {
+      const result = hardDeleteExpiredPrivateSessions(dataDir, new Date(), isOpen);
+      if (result.deleted.length > 0) onResult?.(result);
+    } catch (error) {
+      console.error("Private retention sweep failed:", error);
+    }
+  };
+  run();
+  const timer = setInterval(run, 24 * 60 * 60 * 1000);
+  timer.unref?.();
+  return () => clearInterval(timer);
 }
 
 function hardDeletePrivateSession(

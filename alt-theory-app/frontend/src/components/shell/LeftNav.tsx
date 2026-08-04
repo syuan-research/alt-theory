@@ -2,38 +2,61 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { SessionSummary } from "@/api/types";
 import { useApp, type SessionAlert } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
+import { t } from "@/i18n";
 import {
   buildWorkspaceTree,
+  canTakeMainline,
   folderLabel,
+  listedOriginLabel,
   sessionTitle,
 } from "@/lib/sessionList";
 import { Workbench } from "@/components/shell/Workbench";
 import { SessionImportDialog } from "@/components/shell/SessionImportDialog";
+import { promoteToMainline as promoteToMainlineRequest } from "@/api/sessions";
 import { hasNativeBridge, pickDirectory, revealPath } from "@/lib/native";
+import { fetchSessionDetail } from "@/api/sessions";
+import altTheoryMark from "@/assets/alt-theory-mark.svg";
+import {
+  downloadMarkdown,
+  markdownFileName,
+  sessionTranscriptToMarkdown,
+} from "@/lib/sessionMarkdown";
 
 /**
  * What a conversation row says about itself when you are not in it (alpha.3).
  * Live state wins over a leftover mark; both clear once you open it.
  */
+/** Hover text saying where a listed child came from (alpha.6). */
+function originTitle(session: SessionSummary): string | undefined {
+  const label = listedOriginLabel(session);
+  if (!label) return undefined;
+  return {
+    Branch: t("Branch of another conversation"),
+    "From subagent": t("Came from a subagent"),
+    "From Helper": t("Came from a Helper conversation"),
+    "From BTW": t("Came from a BTW side conversation"),
+  }[label];
+}
+
 function sessionRowState(
   runStatus: SessionSummary["runStatus"],
   alert: SessionAlert | undefined,
 ): { label: string; tone: string; title: string } | null {
   if (runStatus === "awaiting-approval" || alert === "approval") {
     return {
-      label: "needs you",
+      label: t("needs you"),
       tone: "warn",
-      title: "Waiting for your approval before it can continue",
+      title: t("Waiting for your approval before it can continue"),
     };
   }
   if (runStatus === "running") {
-    return { label: "running", tone: "", title: "Working right now" };
+    return { label: t("running"), tone: "", title: t("Working right now") };
   }
   if (runStatus === "failed" || alert === "failed") {
-    return { label: "stopped", tone: "danger", title: "This conversation ran into an error" };
+    return { label: t("stopped"), tone: "danger", title: t("This conversation ran into an error") };
   }
   if (alert === "done") {
-    return { label: "done", tone: "ok", title: "Finished while you were elsewhere" };
+    return { label: t("done"), tone: "ok", title: t("Finished while you were elsewhere") };
   }
   return null;
 }
@@ -51,7 +74,7 @@ function RunningCount({ sessions }: { sessions: SessionSummary[] }) {
   return (
     <button
       className="running-count"
-      title="Conversations working right now"
+      title={t("Conversations working right now")}
       onClick={() => {
         document
           .querySelector(`[data-session-id="${running[0].sessionId}"]`)
@@ -59,7 +82,7 @@ function RunningCount({ sessions }: { sessions: SessionSummary[] }) {
       }}
     >
       <i className="ph ph-circle-notch" aria-hidden />
-      {running.length} running
+      {t("{count} running", { count: running.length })}
     </button>
   );
 }
@@ -87,13 +110,13 @@ export function LeftNav() {
       <div className="mini">
         <button
           className="mono"
-          title="Expand"
+          title={t("Expand")}
           onClick={() => shell.setLeftCollapsed(false)}
         >
-          A
+          <img className="brand-mark" src={altTheoryMark} alt="" />
         </button>
         <button
-          title="New conversation"
+          title={t("New conversation")}
           onClick={() => {
             shell.openApp();
             app.startNewSession();
@@ -101,12 +124,12 @@ export function LeftNav() {
         >
           <i className="ph ph-plus" />
         </button>
-        <button title="Search" onClick={() => shell.setSearchOpen(true)}>
+        <button title={t("Search")} onClick={() => shell.setSearchOpen(true)}>
           <i className="ph ph-magnifying-glass" />
         </button>
         <div style={{ flex: 1 }} />
         <button
-          title="Settings"
+          title={t("Settings")}
           style={{ marginBottom: 10 }}
           onClick={() => shell.openSettings()}
         >
@@ -119,18 +142,21 @@ export function LeftNav() {
         style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, }}
       >
         <div className="left-head">
-          <span className="wordmark">Alt Theory</span>
+          <span className="brand-lockup">
+            <img className="brand-mark" src={altTheoryMark} alt="" />
+            <span className="wordmark">{t("Alt Theory")}</span>
+          </span>
           <div className="icons">
             <button
               className="icon-btn"
-              title="Search"
+              title={t("Search")}
               onClick={() => shell.setSearchOpen(true)}
             >
               <i className="ph ph-magnifying-glass" />
             </button>
             <button
               className="icon-btn"
-              title="Collapse"
+              title={t("Collapse")}
               onClick={() => shell.setLeftCollapsed(true)}
             >
               <i className="ph ph-sidebar-simple" />
@@ -144,9 +170,16 @@ export function LeftNav() {
         <div className="left-foot">
           <button className="gear" onClick={() => shell.openSettings()}>
             <i className="ph ph-gear" />
-            Settings
+            {t("Settings")}
           </button>
-          <div className="avatar" title={app.auth.displayLabel ?? undefined}>
+          <div
+            className="avatar"
+            title={
+              app.appMode === "local"
+                ? t("Local mode — no account")
+                : (app.auth.displayLabel ?? t("Signed in"))
+            }
+          >
             {avatarLetter}
           </div>
         </div>
@@ -178,8 +211,24 @@ function UserNav({ onImport }: { onImport: () => void }) {
           if (!details.contains(event.target as Node)) details.open = false;
         });
     };
+    // position:fixed menus keep their layout-time spot while the list
+    // scrolls beneath them (opus C2) — a scrolled menu could sit over row B
+    // with row A's Delete bound to it. Close them on any scroll.
+    const closeAllMenus = () => {
+      navRef.current
+        ?.querySelectorAll<HTMLDetailsElement>("details.list-more[open]")
+        .forEach((details) => {
+          details.open = false;
+        });
+    };
     document.addEventListener("pointerdown", closeOpenMenus);
-    return () => document.removeEventListener("pointerdown", closeOpenMenus);
+    document.addEventListener("scroll", closeAllMenus, { capture: true });
+    return () => {
+      document.removeEventListener("pointerdown", closeOpenMenus);
+      document.removeEventListener("scroll", closeAllMenus, {
+        capture: true,
+      });
+    };
   }, []);
 
   const tree = useMemo(
@@ -216,6 +265,36 @@ function UserNav({ onImport }: { onImport: () => void }) {
     app.startNewSession();
   };
 
+  // Header folder selector. With a conversation open this must MOVE that
+  // conversation (server re-point: permissions + file tree rebuild in the new
+  // folder) — a draft-only change would leave the UI claiming a workspace the
+  // session never got. Without a session it stays the draft picker for the
+  // next conversation.
+  const chooseFolder = (dir: string | null) => {
+    if (!app.sessionId) {
+      app.setDraftWorkspace(dir);
+      return;
+    }
+    if ((dir ?? "") === (app.workspacePrimaryDir ?? "")) return;
+    const label = dir ? folderLabel(dir) : t("no working folder");
+    app.requestConfirm({
+      message: t("Move this conversation to work in \"{label}\"?", { label }),
+      details: [
+        t("Its branches move with it."),
+        t("Alt will ask for permissions again in the new folder."),
+        t("Files already on disk are not moved."),
+      ],
+      confirmLabel: t("Move"),
+      onConfirm: () => {
+        void app
+          .repointSession(app.sessionId as string, dir)
+          .catch((error) =>
+            window.alert(error instanceof Error ? error.message : String(error)),
+          );
+      },
+    });
+  };
+
   const addFolder = async () => {
     const path = await pickDirectory("Full path of the working folder to add:");
     if (!path) return;
@@ -243,9 +322,9 @@ function UserNav({ onImport }: { onImport: () => void }) {
     }
     app.requestConfirm({
       message:
-        "Move this folder's conversations to No folder, then remove the working folder from the list? Conversations and files are not deleted.",
-      confirmLabel: "Move conversations and remove",
-      cancelLabel: "Keep working folder",
+        t("Move this folder's conversations to No folder, then remove the working folder from the list? Conversations and files are not deleted."),
+      confirmLabel: t("Move conversations and remove"),
+      cancelLabel: t("Keep working folder"),
       onConfirm: () => {
         void run().catch((error) =>
           window.alert(error instanceof Error ? error.message : String(error)),
@@ -263,7 +342,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
     const dragged = app.sessions.find((s) => s.sessionId === sessionId);
     const sourceDir = dragged?.workspacePrimaryDir || "";
     if ((target ?? "") === sourceDir) return; // dropped back on its own folder
-    const label = target ? folderLabel(target) : "no working folder";
+    const label = target ? folderLabel(target) : t("no working folder");
 
     // Whole-folder migration (item 4): when the dragged conversation's current
     // folder holds other conversations too (the "renamed/merged folder" case),
@@ -285,13 +364,16 @@ function UserNav({ onImport }: { onImport: () => void }) {
     };
 
     app.requestConfirm({
-      message: `Move this conversation to work in "${label}"? Its branches move with it. Alt will ask for permissions again in the new folder. Files already on disk are not moved.`,
-      confirmLabel: "Move",
+      message: t("Move this conversation to work in \"{label}\"?", { label }),
+      details: [
+        t("Its branches move with it."),
+        t("Alt will ask for permissions again in the new folder."),
+        t("Files already on disk are not moved."),
+      ],
+      confirmLabel: t("Move"),
       checkbox: canMigrateFolder
         ? {
-            label: `Also move all ${siblings.length + 1} conversations in "${folderLabel(
-              sourceDir,
-            )}"`,
+            label: t("Also move all {count} conversations in \"{folder}\"", { count: siblings.length + 1, folder: folderLabel(sourceDir) }),
             defaultChecked: true,
             danger: true,
           }
@@ -318,25 +400,44 @@ function UserNav({ onImport }: { onImport: () => void }) {
             <div className="split-new">
               <details className="list-more ws-pick">
                 <summary
-                  title={app.workspacePrimaryDir ?? "No working folder"}
+                  title={app.workspacePrimaryDir ?? t("No working folder")}
                 >
                   <i className="ph ph-folder-simple" />
                   <span className="ws-label">
                     {app.workspacePrimaryDir
                       ? folderLabel(app.workspacePrimaryDir)
-                      : "No folder"}
+                      : t("No folder")}
                   </span>
                   <i className="ph ph-caret-down caret" />
                 </summary>
                 <div className="list-menu">
                   <button
                     onClick={(e) => {
+                      closeMenu(e);
+                      void addFolder();
+                    }}
+                  >
+                    <i className="ph ph-folder-plus" />
+                    {t("Add working folder…")}
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      closeMenu(e);
+                      onImport();
+                    }}
+                  >
+                    <i className="ph ph-download-simple" />
+                    {t("Import conversations…")}
+                  </button>
+                  <div className="sep" />
+                  <button
+                    onClick={(e) => {
                       e.currentTarget.closest("details")?.removeAttribute("open");
-                      app.setDraftWorkspace(null);
+                      chooseFolder(null);
                     }}
                   >
                     <i className="ph ph-prohibit" />
-                    No folder
+                    {t("No folder")}
                     {!app.workspacePrimaryDir ? (
                       <i className="ph ph-check check" />
                     ) : null}
@@ -349,7 +450,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                         e.currentTarget
                           .closest("details")
                           ?.removeAttribute("open");
-                        app.setDraftWorkspace(dir);
+                        chooseFolder(dir);
                       }}
                     >
                       <i className="ph ph-folder-simple" />
@@ -359,21 +460,11 @@ function UserNav({ onImport }: { onImport: () => void }) {
                       ) : null}
                     </button>
                   ))}
-                  <div className="sep" />
-                  <button
-                    onClick={(e) => {
-                      e.currentTarget.closest("details")?.removeAttribute("open");
-                      void addFolder();
-                    }}
-                  >
-                    <i className="ph ph-plus" />
-                    Add working folder…
-                  </button>
                 </div>
               </details>
               <button
                 className="btn-new split-plus"
-                title="New conversation"
+                title={t("New conversation")}
                 onClick={() => {
                   shell.openApp();
                   app.startNewSession();
@@ -391,37 +482,19 @@ function UserNav({ onImport }: { onImport: () => void }) {
               }}
             >
               <i className="ph ph-plus" />
-              New conversation
+              {t("New conversation")}
             </button>
           )}
-          {local ? (
-            <details className="list-more">
-              <summary title="More">
-                <i className="ph ph-dots-three" />
-              </summary>
-              <div className="list-menu">
-                <button
-                  onClick={(e) => {
-                    closeMenu(e);
-                    onImport();
-                  }}
-                >
-                  <i className="ph ph-download-simple" />
-                  Import conversations…
-                </button>
-              </div>
-            </details>
-          ) : null}
         </div>
         <RunningCount sessions={app.sessions} />
       </div>
       <div className="sessions">
         {app.sessionsLoading && app.sessions.length === 0 ? (
-          <div className="rp-empty">Loading conversations…</div>
+          <div className="rp-empty">{t("Loading conversations…")}</div>
         ) : app.sessionsError && app.sessions.length === 0 ? (
           <div className="rp-empty">{app.sessionsError}</div>
         ) : tree.groups.length === 0 ? (
-          <div className="rp-empty">No conversations yet.</div>
+          <div className="rp-empty">{t("No conversations yet.")}</div>
         ) : (
           tree.groups.map((group) => {
             const closed = closedGroups.has(group.dir);
@@ -459,7 +532,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                   </button>
                   {local && group.dir ? (
                     <details className="list-more group-folder-more">
-                      <summary title="Working folder actions">
+                      <summary title={t("Working folder actions")}>
                         <i className="ph ph-dots-three" />
                       </summary>
                       <div className="list-menu">
@@ -471,7 +544,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                             }}
                           >
                             <i className="ph ph-folder-open" />
-                            Show in file manager
+                            {t("Show in file manager")}
                           </button>
                         ) : null}
                         <button
@@ -481,7 +554,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                           }}
                         >
                           <i className="ph ph-copy" />
-                          Copy folder path
+                          {t("Copy folder path")}
                         </button>
                         <button
                           onClick={(event) => {
@@ -493,7 +566,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                           }}
                         >
                           <i className="ph ph-minus-circle" />
-                          Remove from working folders
+                          {t("Remove from working folders")}
                         </button>
                       </div>
                     </details>
@@ -501,7 +574,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                   {local ? (
                     <button
                       className="group-add"
-                      title={`New conversation in ${group.label}`}
+                      title={t("New conversation in {label}", { label: group.label })}
                       onClick={() => startConversationIn(group.dir || null)}
                     >
                       <i className="ph ph-plus" />
@@ -509,7 +582,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                   ) : null}
                 </div>
                 {!closed && group.roots.length === 0 ? (
-                  <div className="rp-empty ws-empty">No conversations yet.</div>
+                  <div className="rp-empty ws-empty">{t("No conversations yet.")}</div>
                 ) : null}
                 {!closed &&
                   (expandedGroups.has(group.dir)
@@ -538,8 +611,8 @@ function UserNav({ onImport }: { onImport: () => void }) {
                     }
                   >
                     {expandedGroups.has(group.dir)
-                      ? "Show less"
-                      : `Show all (${group.roots.length})`}
+                      ? t("Show less")
+                      : t("Show all ({count})", { count: group.roots.length })}
                   </button>
                 ) : null}
               </div>
@@ -565,6 +638,9 @@ function SessionNode({
   draggable?: boolean;
 }) {
   const app = useApp();
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState("");
   const active = app.selectedCatalogSessionId === session.sessionId;
   const children = childrenByParent.get(session.sessionId) ?? [];
   // The active session's own run state is live in the app, ahead of the poll.
@@ -573,54 +649,137 @@ function SessionNode({
       ? "running"
       : session.runStatus;
   const state = sessionRowState(runStatus, app.sessionAlerts[session.sessionId]);
+  const title = sessionTitle(session, app.sessionDisplayNames, app.sessions);
+
+  const exportMarkdown = async () => {
+    try {
+      const detail = await fetchSessionDetail(session.sessionId);
+      downloadMarkdown(
+        markdownFileName(title),
+        sessionTranscriptToMarkdown(title, detail.transcript ?? []),
+      );
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : String(error));
+    }
+  };
 
   return (
     <>
       <div className="session-row">
-        <button
-        className={`sess${active ? " active" : ""}`}
-        data-session-id={session.sessionId}
-        style={indent ? { paddingLeft: 10 + indent * 16 } : undefined}
-        onClick={() => onOpen(session.sessionId)}
-        title={sessionTitle(session, app.sessionDisplayNames)}
-        draggable={draggable}
-        onDragStart={
-          draggable
-            ? (e) => {
-                e.dataTransfer.setData(
-                  "text/alt-theory-session",
-                  session.sessionId,
-                );
-                e.dataTransfer.effectAllowed = "move";
-              }
-            : undefined
-        }
-      >
-        {session.forkedFrom ? (
-          <i className="ph ph-git-branch s-fork" aria-hidden />
-        ) : null}
-        <span className="s-title">
-          {sessionTitle(session, app.sessionDisplayNames)}
-        </span>
-        {state ? (
-          <span className={`badge-run ${state.tone}`} title={state.title}>
-            {state.label}
-          </span>
-        ) : null}
-      </button>
-        <details className="list-more session-more">
-          <summary title="Conversation actions">
+        {renaming ? (
+          <form
+            className="session-rename-inline"
+            style={indent ? { marginLeft: 10 + indent * 16 } : undefined}
+            onSubmit={(event) => {
+              event.preventDefault();
+              void app.renameSelectedSession(session.sessionId, renameValue).then((saved) =>
+                saved && setRenaming(false),
+              );
+            }}
+          >
+            <input
+              autoFocus
+              aria-label={t("Conversation name")}
+              value={renameValue}
+              onChange={(event) => setRenameValue(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") setRenaming(false);
+              }}
+            />
+            <button type="button" title={t("Cancel")} onClick={() => setRenaming(false)}>
+              <i className="ph ph-x" />
+            </button>
+            <button type="submit" title={t("Save")}>
+              <i className="ph ph-check" />
+            </button>
+          </form>
+        ) : (
+          <button
+            className={`sess${active ? " active" : ""}`}
+            data-session-id={session.sessionId}
+            style={indent ? { paddingLeft: 10 + indent * 16 } : undefined}
+            onClick={() => onOpen(session.sessionId)}
+            title={title}
+            draggable={draggable}
+            onDragStart={
+              draggable
+                ? (e) => {
+                    e.dataTransfer.setData(
+                      "text/alt-theory-session",
+                      session.sessionId,
+                    );
+                    e.dataTransfer.effectAllowed = "move";
+                  }
+                : undefined
+            }
+          >
+            {session.forkedFrom ? (
+              <i
+                className={`ph ${
+                  session.forkedFrom.purpose === "subagent"
+                    ? "ph-robot"
+                    : session.forkedFrom.purpose === "helper"
+                      ? "ph-lifebuoy"
+                      : session.forkedFrom.purpose === "side"
+                        ? "ph-arrows-split"
+                        : "ph-git-branch"
+                } s-fork`}
+                aria-hidden
+                title={originTitle(session)}
+              />
+            ) : session.delisted ? (
+              <i
+                className="ph ph-git-branch s-fork"
+                aria-hidden
+                title={t("Former main conversation — demoted when a branch was promoted")}
+              />
+            ) : null}
+            <span className="s-title">{title}</span>
+            {state ? (
+              <span className={`badge-run ${state.tone}`} title={state.title}>
+                {state.label}
+              </span>
+            ) : null}
+          </button>
+        )}
+        {!renaming ? (
+        <details
+          className="list-more session-more"
+          onToggle={(event) => {
+            if (!event.currentTarget.open) setConfirmDelete(false);
+          }}
+        >
+          <summary title={t("Conversation actions")}>
             <i className="ph ph-dots-three" />
           </summary>
           <div className="list-menu">
+            {canTakeMainline(session, app.sessions) ? (
+              <button
+                onClick={(e) => {
+                  closeMenu(e);
+                  void promoteToMainlineRequest(session.sessionId)
+                    .then(() => app.refreshSessions())
+                    .catch((error) =>
+                      window.alert(
+                        error instanceof Error ? error.message : String(error),
+                      ),
+                    );
+                }}
+                title={t("This conversation takes the list spot; the current one stays available from its Related rail.")}
+              >
+                <i className="ph ph-crown-simple" />
+                {t("Make this the main conversation")}
+              </button>
+            ) : null}
             <button
               onClick={(e) => {
                 closeMenu(e);
-                void app.renameSelectedSession(session.sessionId);
+                setRenameValue(app.sessionDisplayNames[session.sessionId]?.alias || title);
+                setRenaming(true);
               }}
             >
               <i className="ph ph-pencil-simple" />
-              Rename
+              {t("Rename")}
             </button>
             <button
               onClick={(e) => {
@@ -629,19 +788,39 @@ function SessionNode({
               }}
             >
               <i className="ph ph-copy" />
-              Duplicate
+              {t("Duplicate")}
             </button>
             <button
               onClick={(e) => {
                 closeMenu(e);
-                app.deleteSelectedSession(session.sessionId);
+                void exportMarkdown();
               }}
             >
-              <i className="ph ph-trash" />
-              Delete
+              <i className="ph ph-download-simple" />
+              {t("Export Markdown")}
             </button>
+            {confirmDelete ? (
+              <div className="list-menu-confirm">
+                <button onClick={() => setConfirmDelete(false)}>{t("Cancel")}</button>
+                <button
+                  className="danger"
+                  onClick={(event) => {
+                    closeMenu(event);
+                    app.deleteSelectedSession(session.sessionId);
+                  }}
+                >
+                  {t("Delete")}
+                </button>
+              </div>
+            ) : (
+              <button onClick={() => setConfirmDelete(true)}>
+                <i className="ph ph-trash" />
+                {t("Delete")}
+              </button>
+            )}
           </div>
         </details>
+        ) : null}
       </div>
       {children.map((child) => (
         <SessionNode

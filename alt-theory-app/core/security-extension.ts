@@ -43,6 +43,8 @@ export interface SecurityExtensionOptions {
   getWritableRoots: () => string[];
   /** Mode-aware readable roots (workspace ∪ KB ∪ writable); reads outside escalate. */
   getReadableRoots: () => string[];
+  /** Add an explicitly approved external folder for this session. */
+  addWritableRoot?: (root: string) => void;
   /** Session-scoped audit sink (session records, never a machine-global log). */
   recordAudit?: (entry: SecurityAuditEntry) => void;
 }
@@ -166,7 +168,13 @@ const APPROVAL_TIMEOUT_MS = 5 * 60_000;
 export function createSecurityExtension(
   options: SecurityExtensionOptions
 ): ExtensionFactory {
-  const { sessionCwd, getWritableRoots, getReadableRoots, recordAudit } =
+  const {
+    sessionCwd,
+    getWritableRoots,
+    getReadableRoots,
+    addWritableRoot,
+    recordAudit,
+  } =
     options;
   // Session-lifetime allowances (spec §5.2): "allow for this session" lasts
   // until the session ends, matching the OpenCode / Claude Code convention —
@@ -190,7 +198,7 @@ export function createSecurityExtension(
           rule,
           detail,
         });
-        // Plain, relayable prose (spec §5.3): Full's UI renders tool activity
+        // Plain, relayable prose (spec §5.3): Work/Native renders tool activity
         // like a coding agent, so this reaches the user. The machine rule slug
         // stays in the audit entry, not the message.
         return { block: true, reason: detail };
@@ -307,10 +315,29 @@ export function createSecurityExtension(
             getWritableRoots().map((root) => resolve(root))
           );
         } catch (error) {
-          return blocked(
-            "path_boundary",
-            error instanceof Error ? error.message : String(error)
+          const resolvedPath = resolve(sessionCwd, path);
+          const root = dirname(resolvedPath);
+          const title = `Allow writes in this folder for this session: ${summarize(root)}`;
+          if (!ctx.hasUI || !addWritableRoot) {
+            return blocked("path_boundary", `${title} — approval is unavailable`);
+          }
+          const choice = await ctx.ui.select(
+            title,
+            [APPROVAL_ALLOW_SESSION, APPROVAL_DENY],
+            { signal: ctx.signal, timeout: APPROVAL_TIMEOUT_MS },
           );
+          if (choice !== APPROVAL_ALLOW_SESSION) {
+            return blocked("path_boundary", `${title} — not approved by the user`);
+          }
+          addWritableRoot(root);
+          audit({
+            toolName: event.toolName,
+            toolCallId: event.toolCallId,
+            action: "approved-session",
+            rule: "path_boundary",
+            detail: title,
+          });
+          return undefined;
         }
         return undefined;
       }

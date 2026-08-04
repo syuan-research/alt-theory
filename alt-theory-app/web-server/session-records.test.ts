@@ -30,6 +30,33 @@ test("readV4SessionHeader normalizes legacy fork purposes", () => {
   }
 });
 
+test("readV4SessionHeader normalizes the v1-alpha capability mode", () => {
+  // An un-normalized "pure"/"full" indexed the per-mode skill map as undefined
+  // and every pre-alpha.6 conversation failed to reopen.
+  const cases: Array<[string, string]> = [
+    ["pure", "understand"],
+    ["full", "work"],
+    ["understand", "understand"],
+    ["work", "work"],
+  ];
+  for (const [stored, expected] of cases) {
+    const dir = mkdtempSync(join(tmpdir(), "records-"));
+    writeFileSync(
+      join(dir, "session.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        recordType: "session",
+        sessionId: "s-mode",
+        createdAt: "2026-07-16T00:00:00.000Z",
+        projectId: null,
+        recordModel: "v0.4",
+        mode: stored,
+      })
+    );
+    assert.equal(readV4SessionHeader(dir)?.mode, expected);
+  }
+});
+
 test("readV4SessionHeader passes studyTag and modelOverride through", () => {
   const dir = mkdtempSync(join(tmpdir(), "records-"));
   writeFileSync(

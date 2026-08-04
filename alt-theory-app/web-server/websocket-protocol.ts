@@ -8,6 +8,7 @@ import type { AssemblyManifest } from "../core/alt-theory-core.js";
 import type {
   ForkPurpose,
   SessionModelOverride,
+  SessionVisibility,
   StudyTag,
 } from "./session-records.js";
 
@@ -20,12 +21,14 @@ export interface SessionSnapshot {
   projectId: string | null;
   branchId?: string;
   status: "idle" | "running" | "error";
-  visibility?: "research" | "private";
+  visibility?: SessionVisibility;
+  /** Hosted-only expiry for a "private" conversation; null everywhere else. */
+  retentionDueAt?: string | null;
   currentDomain: string;
   rolePresetSlug: string | null;
   soulSlug: string | null;
   customInstructionRef?: string | null;
-  mode?: "pure" | "full";
+  mode?: "understand" | "work";
   modelOverride?: SessionModelOverride | null;
   currentModel?: { provider: string; modelId: string };
   studyTag?: StudyTag | null;
@@ -38,12 +41,12 @@ export interface SessionSnapshot {
 export interface SessionDraftSnapshot {
   status: "draft";
   projectId: string | null;
-  visibility: "research" | "private";
+  visibility: SessionVisibility;
   currentDomain: string;
   rolePresetSlug: string | null;
   soulSlug: string | null;
   customInstructionRef?: string | null;
-  mode: "pure" | "full";
+  mode: "understand" | "work";
   modelOverride?: SessionModelOverride | null;
   studyTag?: StudyTag | null;
   workspacePrimaryDir?: string | null;
@@ -109,16 +112,17 @@ export type ClientMessage =
       payload: { customInstructionRef: string | null };
     }
   | { type: "switch_project"; payload: { projectId: string | null } }
-  | { type: "switch_visibility"; payload: { visibility: "research" | "private" } }
+  | { type: "switch_visibility"; payload: { visibility: SessionVisibility } }
   | {
       type: "invoke_skill";
       payload: { skillName: string; userText?: string };
     }
   | { type: "revise_latest"; payload: { text: string; entryId?: string } }
   | { type: "branch_revision"; payload: { text: string; entryId?: string } }
-  | { type: "retry_failed" }
+  | { type: "prepare_branch_revision"; payload: { entryId: string } }
+  | { type: "retry_latest" }
   | { type: "delete_latest" }
-  | { type: "switch_mode"; payload: { mode: "pure" | "full" } }
+  | { type: "switch_mode"; payload: { mode: "understand" | "work" } }
   | { type: "add_workspace_dir"; payload: { dir: string } }
   | {
       type: "respond_approval";
@@ -170,6 +174,12 @@ export type ServerMessage =
   | {
       type: "related_session_created";
       payload: { sessionId: string; purpose: "side" | "helper" };
+    }
+  | {
+      /** An edit comparison opened a branch. The connection stays on
+       *  the source; the client opens this one beside it for comparison. */
+      type: "branch_created";
+      payload: { sessionId: string; sourceSessionId: string };
     }
   | { type: "assistant_delta"; payload: { text: string } }
   | { type: "thinking_delta"; payload: { text: string } }

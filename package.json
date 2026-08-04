@@ -1,6 +1,11 @@
 {
   "name": "llm-theo",
-  "version": "0.5.6",
+  "version": "1.3.0-beta.1",
+  "shortVersionWindows": "1.3.0.1",
+  "description": "An agentic workspace for social-science research.",
+  "author": {
+    "name": "Alt Theory"
+  },
   "private": true,
   "type": "module",
   "main": "electron/main.cjs",
@@ -15,11 +20,15 @@
     "smoke:core": "tsx alt-theory-app/core/test-core.ts",
     "smoke:resume": "tsx alt-theory-app/core/smoke-resume.ts",
     "smoke:backend": "tsx alt-theory-app/web-server/smoke-backend.ts",
-    "test:backend": "tsx --test alt-theory-app/**/*.test.ts",
+    "test": "npm run test:backend && npm run test:frontend",
+    "test:backend": "tsx --test alt-theory-app/core/**/*.test.ts alt-theory-app/web-server/**/*.test.ts && tsx --test alt-theory-app/web-server/backend-server.integration.ts",
+    "test:models-metadata": "tsx --test alt-theory-app/web-server/models-dev-metadata.slow.ts",
+    "test:frontend": "tsx --tsconfig alt-theory-app/frontend/tsconfig.app.json --test alt-theory-app/frontend/src/**/*.test.ts",
     "dev:electron": "electron electron/main.cjs",
     "compile:bundle": "node scripts/compile-bundle.cjs",
     "build:electron": "npm run build:frontend-v6 && npm run compile:bundle && electron-builder build --dir",
-    "build:electron:portable": "npm run build:frontend-v6 && npm run compile:bundle && electron-builder build --win portable"
+    "docs:zh": "node scripts/docs-zh-build.mjs --no-pdf",
+    "docs:zh-pdf": "node scripts/docs-zh-build.mjs --pdf-only"
   },
   "dependencies": {
     "@earendil-works/pi-agent-core": "^0.82.0",
@@ -46,6 +55,7 @@
     "typescript": "^5.6.0"
   },
   "build": {
+    "buildVersion": "1.3.0.1",
     "appId": "com.alttheory.app",
     "productName": "AltTheory",
     "directories": {
@@ -57,14 +67,19 @@
       "alt-theory-app/web-server/public-v6/**",
       "dist-bundle/**",
       "agent-assets/**",
-      "!agent-assets/role-presets/snapshots/**",
-      "!agent-assets/soul/snapshots/**",
+      "docs/en/**",
+      "docs/zh-Hans/**",
+      "!agent-assets/*/snapshots/**",
+      "!agent-assets/*/experimental/**",
       "package.json",
-      "node_modules/**"
+      "node_modules/**",
+      "!node_modules/@mistralai/**",
+      "!node_modules/**/node_modules/@mistralai/**"
     ],
     "asar": false,
     "mac": {
       "category": "public.app-category.education",
+      "icon": "electron/assets/icon.icns",
       "identity": null,
       "target": [
         {
@@ -76,6 +91,7 @@
       ]
     },
     "win": {
+      "icon": "electron/assets/icon.ico",
       "target": [
         {
           "target": "dir",
@@ -84,11 +100,6 @@
           ]
         }
       ]
-    },
-    "portable": {
-      "artifactName": "AltTheory-Portable-${version}.${ext}",
-      "unpackDirName": "AltTheory",
-      "splashImage": "build/splash.bmp"
     }
   }
 }

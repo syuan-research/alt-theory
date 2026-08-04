@@ -8,6 +8,7 @@ import {
   readdirSync,
   readFileSync,
   renameSync,
+  rmSync,
   statSync,
   unlinkSync,
   writeFileSync,
@@ -25,9 +26,12 @@ import {
 } from "./tool-detail.js";
 import type { SessionMetrics, TranscriptMessage } from "./websocket-protocol.js";
 import { parseAgentMailFragment } from "./agent-mail.js";
+import { t } from "./i18n.js";
 import {
   readV4SessionHeader,
+  writeSessionHeader,
   type ForkPurpose,
+  type SessionVisibility,
   type V4SessionHeader,
 } from "./session-records.js";
 import {
@@ -46,7 +50,9 @@ import {
   type AbComparisonRecord,
 } from "./ab-records.js";
 import {
+  deletedSessionDueAt,
   readDeletedSessionRecord,
+  removeDeletedSessionRecord,
   writeDeletedSessionRecord,
   type DeletedSessionRecord,
 } from "./session-deletion.js";
@@ -56,10 +62,17 @@ export interface SessionSummary {
   projectId: string | null;
   ownerAccountId: string | null;
   roleCondition: string | null;
-  visibility: "research" | "private";
+  visibility: SessionVisibility;
+  /** Hosted-only expiry for a "private" conversation; null everywhere else. */
+  retentionDueAt: string | null;
   createdAt: string | null;
   updatedAt: string | null;
   deletedAt: string | null;
+  trashDueAt: string | null;
+  /** Root that ceded its list spot to a promoted branch (v1.4 M4b). */
+  delisted?: boolean;
+  /** The session that took the spot (set with delisted). */
+  delistedFor?: string;
   status: "available" | "incomplete" | "error";
   rolePresetSlug: string | null;
   kbDomain: string | null;
@@ -75,6 +88,8 @@ export interface SessionSummary {
   forkedFrom: {
     sessionId: string;
     purpose: ForkPurpose;
+    /** Added to the conversation list by the user, purpose kept (alpha.6). */
+    listed?: boolean;
   } | null;
   /** Study designation (M7 §3); null = daily use. */
   studyTag: { studyId: string; batch?: string } | null;
@@ -140,6 +155,30 @@ interface SessionParts {
 }
 
 export function listSessionSummaries(dataDir: string): SessionListResponse {
+  return listSessionSummariesByDeletion(dataDir, false);
+}
+
+export function listDeletedSessionSummaries(dataDir: string): SessionListResponse {
+  const list = listSessionSummariesByDeletion(dataDir, true);
+  return {
+    ...list,
+    sessions: list.sessions.filter((session) => {
+      const root = resolveSessionRoot(dataDir, session.sessionId);
+      if (!root) return false;
+      const deleted = readDeletedSessionRecord(join(root, "records"));
+      if (!deleted || !isRecoverableDeletion(deleted)) return false;
+      return (
+        !deleted.cascadeRootSessionId ||
+        deleted.cascadeRootSessionId === session.sessionId
+      );
+    }),
+  };
+}
+
+function listSessionSummariesByDeletion(
+  dataDir: string,
+  deleted: boolean,
+): SessionListResponse {
   const resolvedDataDir = resolve(dataDir);
   const sessionsRoot = resolveSessionsRoot(resolvedDataDir);
   if (!existsSync(sessionsRoot)) {
@@ -148,7 +187,7 @@ export function listSessionSummaries(dataDir: string): SessionListResponse {
 
   const sessions = readdirSync(sessionsRoot, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
-    .map((entry) => readSessionSummary(resolvedDataDir, entry.name))
+    .map((entry) => readSessionSummary(resolvedDataDir, entry.name, deleted))
     .filter((summary): summary is SessionSummary => summary !== null)
     .sort(compareSummaries);
 
@@ -205,7 +244,7 @@ function inferEffectiveConfig(
   manifest: AssemblyManifest | null
 ): EffectiveSessionConfig | null {
   if (!manifest) return null;
-  if (!manifest.promptMode || !manifest.resourceDiscovery?.mode) {
+  if (!manifest.altMode || !manifest.resourceDiscovery?.mode) {
     return null;
   }
   return buildEffectiveConfig(manifest);
@@ -231,7 +270,344 @@ export function softDeleteSession(
   if (!isDurableCatalogSession(summary, parts)) {
     throw new Error(`Session is not available for deletion: ${sessionId}`);
   }
-  return writeDeletedSessionRecord(parts.recordsDir, sessionId);
+  const summaries = allSessionSummaries(dataDir);
+  const targets = attachedDeletionTargets(sessionId, summaries);
+  const deletedAt = new Date().toISOString();
+  for (const targetId of targets) {
+    const targetRoot = resolveSessionRoot(dataDir, targetId);
+    if (!targetRoot) continue;
+    writeDeletedSessionRecord(join(targetRoot, "records"), targetId, {
+      deletedAt,
+      reason: "user_deleted",
+      cascadeRootSessionId: sessionId,
+    });
+  }
+  // Living-representative invariant (M4b): while any member of the fork
+  // tree is alive, the list keeps one representative — deleting the only
+  // listed member must not make the whole tree invisible.
+  const after = allSessionSummaries(dataDir);
+  const members = forkTreeMembers(sessionId, after);
+  const living = members.filter((m) => !m.deletedAt);
+  if (living.length > 0 && !living.some(isListVisible)) {
+    const byId = new Map(after.map((s) => [s.sessionId, s]));
+    let representative: SessionSummary | null = null;
+    let cursor = byId.get(sessionId)?.forkedFrom
+      ? byId.get(byId.get(sessionId)!.forkedFrom!.sessionId)
+      : undefined;
+    while (cursor) {
+      if (!cursor.deletedAt) {
+        representative = cursor;
+        break;
+      }
+      cursor = cursor.forkedFrom
+        ? byId.get(cursor.forkedFrom.sessionId)
+        : undefined;
+    }
+    if (!representative) {
+      representative =
+        living
+          .filter((m) => !m.forkedFrom || m.forkedFrom.purpose === "fork")
+          .sort((a, b) =>
+            (b.updatedAt ?? b.createdAt ?? "").localeCompare(
+              a.updatedAt ?? a.createdAt ?? "",
+            ),
+          )[0] ?? living[0];
+    }
+    if (representative) writeListFlags(dataDir, representative.sessionId, true);
+  }
+  return readDeletedSessionRecord(parts.recordsDir)!;
+}
+
+/**
+ * In the conversation list — MUST mirror the frontend's isListMember
+ * (lib/sessionList.ts): branches are list members by nature, other children
+ * only when the user listed them, roots unless delisted (opus D1: a
+ * stricter server predicate skipped visible branches in the step-down walk
+ * and delisted the wrong ancestor).
+ */
+function isListVisible(s: SessionSummary): boolean {
+  if (s.deletedAt) return false;
+  if (!s.forkedFrom) return s.delisted !== true;
+  return s.forkedFrom.purpose === "fork" || s.forkedFrom.listed === true;
+}
+
+/** Flip a session's list visibility. Lineage is never touched (M4b). */
+function writeListFlags(
+  dataDir: string,
+  sessionId: string,
+  makeListed: boolean,
+): void {
+  const root = resolveSessionRoot(dataDir, sessionId);
+  if (!root) return;
+  const recordsDir = join(root, "records");
+  const header = readV4SessionHeader(recordsDir);
+  if (!header) return;
+  if (header.forkedFrom) {
+    writeSessionHeader(recordsDir, {
+      ...header,
+      forkedFrom: {
+        ...header.forkedFrom,
+        listed: makeListed ? true : undefined,
+      },
+    });
+  } else {
+    writeSessionHeader(recordsDir, {
+      ...header,
+      delisted: makeListed ? undefined : true,
+      delistedFor: makeListed ? undefined : header.delistedFor,
+    });
+  }
+}
+
+/** Record who took a delisted root's spot (display inversion anchor). */
+function writeDelistedFor(
+  dataDir: string,
+  rootSessionId: string,
+  successorSessionId: string,
+): void {
+  const root = resolveSessionRoot(dataDir, rootSessionId);
+  if (!root) return;
+  const recordsDir = join(root, "records");
+  const header = readV4SessionHeader(recordsDir);
+  if (!header || header.forkedFrom) return;
+  writeSessionHeader(recordsDir, {
+    ...header,
+    delistedFor: successorSessionId,
+  });
+}
+
+/** Every member of the fork tree reachable from sessionId (root + descendants). */
+function forkTreeMembers(
+  sessionId: string,
+  summaries: SessionSummary[],
+): SessionSummary[] {
+  const byId = new Map(summaries.map((s) => [s.sessionId, s]));
+  let rootId = sessionId;
+  while (byId.get(rootId)?.forkedFrom) {
+    const parentId = byId.get(rootId)!.forkedFrom!.sessionId;
+    if (!byId.has(parentId)) break; // purged ancestor: reachable root wins
+    rootId = parentId;
+  }
+  const members: SessionSummary[] = [];
+  const seen = new Set<string>();
+  const queue = [rootId];
+  while (queue.length > 0) {
+    const id = queue.shift() as string;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const summary = byId.get(id);
+    if (summary) members.push(summary);
+    for (const child of summaries) {
+      if (child.forkedFrom?.sessionId === id) queue.push(child.sessionId);
+    }
+  }
+  return members;
+}
+
+/**
+ * Role swap (v1.4 M4b): make sessionId the tree's listed representative.
+ * The current representative steps down — the nearest list-visible ancestor,
+ * or, when re-listing a delisted ancestor, the most recently updated
+ * list-visible descendant. `forkedFrom` is immutable provenance and never
+ * changes; only listed/delisted presentation flags move.
+ */
+export function promoteToMainlineRecords(
+  dataDir: string,
+  sessionId: string,
+): { delistedSessionId: string | null } {
+  const summaries = allSessionSummaries(dataDir);
+  const byId = new Map(summaries.map((s) => [s.sessionId, s]));
+  const target = byId.get(sessionId);
+  if (!target) throw new Error(`Unknown session id: ${sessionId}`);
+  if (target.deletedAt) {
+    throw new Error("A conversation in Trash cannot become the mainline");
+  }
+  if (isListVisible(target) && !target.forkedFrom) {
+    return { delistedSessionId: null }; // already the listed root
+  }
+  // ONLY ROOTS step down (owner 2026-08-04): once a child is listed —
+  // branch by nature or a promoted btw/helper/subagent — it holds that
+  // status like a branch and is never delisted by a later promotion (the
+  // old fallback stripped a listed btw's promotion when every ancestor had
+  // already ceded its spot). Provenance (purpose) is never rewritten.
+  const isDelistable = (s: SessionSummary) => !s.forkedFrom;
+  let stepDown: SessionSummary | null = null;
+  let cursor = target.forkedFrom
+    ? byId.get(target.forkedFrom.sessionId)
+    : undefined;
+  while (cursor) {
+    if (isListVisible(cursor) && isDelistable(cursor)) {
+      stepDown = cursor;
+      break;
+    }
+    cursor = cursor.forkedFrom
+      ? byId.get(cursor.forkedFrom.sessionId)
+      : undefined;
+  }
+  if (!stepDown) {
+    stepDown =
+      forkTreeMembers(sessionId, summaries)
+        .filter(
+          (m) =>
+            m.sessionId !== sessionId &&
+            isListVisible(m) &&
+            isDelistable(m),
+        )
+        .sort((a, b) =>
+          (b.updatedAt ?? b.createdAt ?? "").localeCompare(
+            a.updatedAt ?? a.createdAt ?? "",
+          ),
+        )[0] ?? null;
+  }
+  writeListFlags(dataDir, sessionId, true);
+  if (stepDown) {
+    writeListFlags(dataDir, stepDown.sessionId, false);
+    if (!stepDown.forkedFrom) {
+      writeDelistedFor(dataDir, stepDown.sessionId, sessionId);
+    }
+  }
+  return { delistedSessionId: stepDown?.sessionId ?? null };
+}
+
+export function restoreDeletedSession(dataDir: string, sessionId: string): string[] {
+  assertDirectTrashEntry(dataDir, sessionId);
+  const restored: string[] = [];
+  for (const summary of allSessionSummaries(dataDir)) {
+    const root = resolveSessionRoot(dataDir, summary.sessionId);
+    if (!root) continue;
+    const recordsDir = join(root, "records");
+    const deleted = readDeletedSessionRecord(recordsDir);
+    if (!deleted) continue;
+    if (
+      summary.sessionId === sessionId ||
+      deleted.cascadeRootSessionId === sessionId
+    ) {
+      removeDeletedSessionRecord(recordsDir);
+      restored.push(summary.sessionId);
+    }
+  }
+  if (!restored.includes(sessionId)) {
+    throw new Error(`Session is not in Trash: ${sessionId}`);
+  }
+  return restored;
+}
+
+export function permanentlyDeleteSession(
+  dataDir: string,
+  sessionId: string,
+  isOpen: (sessionId: string) => boolean = () => false,
+  reason: "user_permanently_deleted" | "trash_retention_expired" =
+    "user_permanently_deleted",
+  now: Date = new Date(),
+): string[] {
+  assertDirectTrashEntry(dataDir, sessionId);
+  const targets = allSessionSummaries(dataDir)
+    .filter((summary) => {
+      const root = resolveSessionRoot(dataDir, summary.sessionId);
+      if (!root) return false;
+      const deleted = readDeletedSessionRecord(join(root, "records"));
+      return (
+        summary.sessionId === sessionId ||
+        deleted?.cascadeRootSessionId === sessionId
+      );
+    })
+    .map((summary) => summary.sessionId);
+  if (!targets.includes(sessionId)) {
+    throw new Error(`Session is not in Trash: ${sessionId}`);
+  }
+  const open = targets.find(isOpen);
+  if (open) throw new Error(`Close the conversation before permanent deletion: ${open}`);
+  for (const targetId of targets) {
+    const root = resolveSessionRoot(dataDir, targetId);
+    if (!root) continue;
+    const recordsDir = join(root, "records");
+    rmSync(join(root, "history"), { recursive: true, force: true });
+    rmSync(join(root, "branches"), { recursive: true, force: true });
+    for (const entry of readdirSync(recordsDir, { withFileTypes: true })) {
+      if (entry.name === "deleted.json") continue;
+      rmSync(join(recordsDir, entry.name), { recursive: true, force: true });
+    }
+    removeDeletedSessionRecord(recordsDir);
+    writeDeletedSessionRecord(recordsDir, targetId, {
+      deletedAt: now.toISOString(),
+      reason,
+    });
+  }
+  return targets;
+}
+
+/**
+ * Trash holds what the user deleted, and nothing else. This is an allowlist
+ * rather than a list of the endings we happen to know about, because the
+ * subtracting form files every future deletion kind into Trash by default:
+ * a conversation emptied by private retention is already gone, so listing it
+ * as recoverable both breaks the retention promise made to its participant and
+ * offers a Restore that can only hand back a blank conversation.
+ */
+function isRecoverableDeletion(deleted: DeletedSessionRecord): boolean {
+  // v1.3-alpha.6 wrote no reason at all; those are user deletions.
+  return deleted.reason === undefined || deleted.reason === "user_deleted";
+}
+
+function assertDirectTrashEntry(dataDir: string, sessionId: string): void {
+  const root = resolveSessionRoot(dataDir, sessionId);
+  const deleted = root
+    ? readDeletedSessionRecord(join(root, "records"))
+    : null;
+  if (
+    !deleted ||
+    (deleted.cascadeRootSessionId &&
+      deleted.cascadeRootSessionId !== sessionId)
+  ) {
+    throw new Error(`Session is not a direct Trash entry: ${sessionId}`);
+  }
+  if (!isRecoverableDeletion(deleted)) {
+    throw new Error(`Session is no longer recoverable: ${sessionId}`);
+  }
+}
+
+export function purgeExpiredDeletedSessions(
+  dataDir: string,
+  now: Date = new Date(),
+  isOpen: (sessionId: string) => boolean = () => false,
+): string[] {
+  const deleted: string[] = [];
+  for (const summary of listDeletedSessionSummaries(dataDir).sessions) {
+    if (!summary.trashDueAt || Date.parse(summary.trashDueAt) > now.getTime()) continue;
+    try {
+      deleted.push(
+        ...permanentlyDeleteSession(
+          dataDir,
+          summary.sessionId,
+          isOpen,
+          "trash_retention_expired",
+          now,
+        ),
+      );
+    } catch (error) {
+      if (!(error instanceof Error) || !error.message.startsWith("Close the conversation")) {
+        throw error;
+      }
+    }
+  }
+  return deleted;
+}
+
+export function sweepExpiredDeletedSessions(
+  dataDir: string,
+  isOpen: (sessionId: string) => boolean,
+): () => void {
+  const run = () => {
+    try {
+      purgeExpiredDeletedSessions(dataDir, new Date(), isOpen);
+    } catch (error) {
+      console.error("Trash retention sweep failed:", error);
+    }
+  };
+  run();
+  const timer = setInterval(run, 24 * 60 * 60 * 1000);
+  timer.unref?.();
+  return () => clearInterval(timer);
 }
 
 export function listSessionTextFiles(
@@ -321,13 +697,83 @@ export function deleteSessionTextFile(
 
 function readSessionSummary(
   dataDir: string,
-  sessionId: string
+  sessionId: string,
+  deleted = false,
 ): SessionSummary | null {
   const parts = readSessionParts(dataDir, sessionId);
   if (!parts) return null;
   const summary = buildSummary(sessionId, parts);
-  if (parts.deleted || !isDurableCatalogSession(summary, parts)) return null;
+  if (Boolean(parts.deleted) !== deleted || !isDurableCatalogSession(summary, parts)) {
+    return null;
+  }
   return summary;
+}
+
+function allSessionSummaries(dataDir: string): SessionSummary[] {
+  const active = listSessionSummariesByDeletion(dataDir, false).sessions;
+  const deleted = listSessionSummariesByDeletion(dataDir, true).sessions;
+  return [...active, ...deleted];
+}
+
+/**
+ * Every conversation one Delete moves into Trash. Callers that must act on a
+ * live run (Delete stops what it is about to bury) need this before the
+ * records are written, and a subagent of the deleted conversation is just as
+ * live as the conversation itself.
+ */
+export function sessionsAttachedToDeletion(
+  dataDir: string,
+  sessionId: string,
+): string[] {
+  return attachedDeletionTargets(sessionId, allSessionSummaries(dataDir));
+}
+
+function attachedDeletionTargets(
+  sessionId: string,
+  summaries: SessionSummary[],
+): string[] {
+  const children = new Map<string, SessionSummary[]>();
+  for (const summary of summaries) {
+    const parentId = summary.forkedFrom?.sessionId;
+    if (!parentId) continue;
+    const list = children.get(parentId) ?? [];
+    list.push(summary);
+    children.set(parentId, list);
+  }
+  const targets: string[] = [];
+  const visit = (id: string) => {
+    targets.push(id);
+    const kids = children.get(id) ?? [];
+    // Owner rule (v1.4 round 1, simplified 2026-08-04): while any branch of
+    // this node lives — including a branch of a branch — its attached
+    // conversations (btw/helper/subagent) ALL survive; the living branch's
+    // rail reaches them through the ancestry walk. No fork-time comparison:
+    // never silently lose content, at the cost of a branch's rail sometimes
+    // showing an attached conversation opened after its fork.
+    // A deleted branch with a living branch of its own still counts: the
+    // living descendant's rail walks up through the deleted link.
+    const hasLivingBranch = (parentId: string): boolean =>
+      (children.get(parentId) ?? []).some(
+        (k) =>
+          k.forkedFrom?.purpose === "fork" &&
+          (!k.deletedAt || hasLivingBranch(k.sessionId)),
+      );
+    const protectedHere = hasLivingBranch(id);
+    for (const child of kids) {
+      const fork = child.forkedFrom;
+      if (
+        !fork ||
+        fork.listed ||
+        !["side", "helper", "subagent"].includes(fork.purpose)
+      ) {
+        continue;
+      }
+      if (protectedHere) continue;
+      visit(child.sessionId);
+    }
+  };
+  visit(sessionId);
+  return targets;
 }
 
 const TEXT_FILE_ROOTS = ["records", "workspace"] as const;
@@ -492,7 +938,12 @@ function buildSummary(sessionId: string, parts: SessionParts): SessionSummary {
     ownerAccountId: parts.v4Session?.ownerAccountId ?? null,
     roleCondition: parts.v4Session?.roleCondition ?? null,
     visibility: parts.v4Session?.visibility ?? "research",
-    createdAt: parts.manifest?.createdAt ?? null,
+    retentionDueAt: parts.v4Session?.retentionDueAt ?? null,
+    createdAt: parts.manifest?.createdAt ?? parts.v4Session?.createdAt ?? null,
+    ...(parts.v4Session?.delisted ? { delisted: true } : {}),
+    ...(parts.v4Session?.delistedFor
+      ? { delistedFor: parts.v4Session.delistedFor }
+      : {}),
     updatedAt: newestTimestamp([
       parts.sessionRoot,
       join(parts.recordsDir, "assembly-manifest.json"),
@@ -516,6 +967,9 @@ function buildSummary(sessionId: string, parts: SessionParts): SessionSummary {
     recordModel: parts.v4Session ? "v0.4" : "legacy-v0.3",
     warnings: uniqueWarnings(warnings),
     deletedAt: parts.deleted?.deletedAt ?? null,
+    trashDueAt: parts.deleted
+      ? deletedSessionDueAt(parts.deleted.deletedAt)
+      : null,
     forkedFrom: parts.v4Session?.forkedFrom ?? null,
     studyTag: parts.v4Session?.studyTag ?? null,
     workspacePrimaryDir: parts.v4Session?.workspace?.primaryDir ?? null,
@@ -754,7 +1208,7 @@ export function readCurrentChangedFile(
 }
 
 /**
- * Pure projection of write/edit tool calls into per-file changes. Split out so
+ * Deterministic projection of write/edit tool calls into per-file changes. Split out so
  * the parsing is unit-testable without a Pi session on disk.
  */
 export function projectChangesFromEntries(branchEntries: unknown[]): SessionChanges {
@@ -1223,11 +1677,42 @@ function extractThinkingText(part: { type?: string; text?: unknown; thinking?: u
 }
 
 /** "<label> · <event>: <body>" display line for an agent-team fragment. */
+/**
+ * Display prefix is translated; the BODY stays verbatim — it is the same
+ * text the model saw in context, and fixed backend templates there are
+ * deliberately English (model-facing). Walkthrough decides if more is needed.
+ */
+function agentMailEventLabel(event: string): string {
+  switch (event) {
+    case "spawned":
+      return t("spawned");
+    case "completed":
+      return t("completed");
+    case "failed":
+      return t("failed");
+    case "interrupted":
+      return t("interrupted");
+    case "input-requested":
+      return t("needs input");
+    default:
+      return event;
+  }
+}
+
 function agentMailDisplayText(raw: string): string {
   const mail = parseAgentMailFragment(raw);
   if (!mail) return raw;
-  const eventLabel = mail.event && mail.event !== "update" ? ` · ${mail.event}` : "";
-  return `${mail.fromLabel}${eventLabel}: ${mail.body}`;
+  const eventLabel =
+    mail.event && mail.event !== "update"
+      ? ` · ${agentMailEventLabel(mail.event)}`
+      : "";
+  const from =
+    mail.fromLabel === "lead"
+      ? t("lead")
+      : mail.fromLabel === "user"
+        ? t("user")
+        : mail.fromLabel;
+  return `${from}${eventLabel}: ${mail.body}`;
 }
 
 function normalizeRole(role: string | undefined): TranscriptMessage["role"] {

@@ -13,6 +13,7 @@ import { join, resolve } from "path";
 import test from "node:test";
 import { createAltTheorySession } from "../core/alt-theory-core.js";
 import { createSessionDirs } from "../core/data-dir.js";
+import { omitIncidentalCwd } from "../core/prompt-cache-continuity.js";
 import {
   APPROVAL_ALLOW_SESSION,
   APPROVAL_DENY,
@@ -20,13 +21,24 @@ import {
 import {
   imageAttachmentsFor,
   isUnknownModelError,
+  retryPromptFromStoredUserContent,
   SessionBusyError,
   SessionService,
   type SessionServiceEvent,
 } from "./session-service.js";
+
+test("retry reconstructs a persisted skill invocation", () => {
+  assert.equal(
+    retryPromptFromStoredUserContent(
+      '<skill name="conversation-summary">expanded body</skill> Focus on decisions',
+    ),
+    "/skill:conversation-summary Focus on decisions",
+  );
+});
 import { readSessionDetail } from "./session-store.js";
 import { readAbComparisonRecords } from "./ab-records.js";
 import { readV4SessionHeader } from "./session-records.js";
+import { hardDeleteExpiredPrivateSessions } from "./session-retention.js";
 import { readConfigEvents } from "./config-events.js";
 import { latestRunSnapshots, readRunRecords } from "./run-records.js";
 
@@ -86,8 +98,10 @@ function setupFixture() {
 function createTestService(
   fixture: ReturnType<typeof setupFixture>,
   resourceDiscovery: "clean" | "internal" = "clean",
+  localMode = true,
 ) {
   return new SessionService({
+    localMode,
     dataDir: fixture.dataDir,
     assetPaths: {
       rootDir: fixture.root,
@@ -105,8 +119,8 @@ function createTestService(
     rolePresetsDir: fixture.rolePresetsDir,
     soulDir: fixture.soulDir,
     legacySoulPath: join(fixture.soulDir, "soul-latest.md"),
-    readOnly: true,
-    promptMode: "alt-only",
+    understandReadOnly: true,
+    altMode: "understand",
     resourceDiscovery,
     skillsDir: fixture.skillsDir,
     instructionsDir: fixture.instructionsDir,
@@ -711,6 +725,126 @@ test("SessionService explicit forks create a new session with copied workspace",
   await runCase("ab-arm");
 });
 
+test("SessionService prepares an idle edit comparison before the target prompt", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const created = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const managed = (service as any).sessions.get(created.sessionId);
+  managed.session.sessionManager.appendMessage({
+    role: "user",
+    content: [{ type: "text", text: "first question" }],
+    timestamp: Date.now(),
+  });
+  managed.session.sessionManager.appendMessage({
+    role: "assistant",
+    content: [{ type: "text", text: "first answer" }],
+    timestamp: Date.now(),
+  });
+  const target = managed.session.sessionManager.appendMessage({
+    role: "user",
+    content: [{ type: "text", text: "edit this" }],
+    timestamp: Date.now(),
+  });
+  managed.session.sessionManager.appendMessage({
+    role: "assistant",
+    content: [{ type: "text", text: "old answer" }],
+    timestamp: Date.now(),
+  });
+
+  try {
+    const forked = await service.prepareRevisionBranch(created.sessionId, target);
+    assert.deepEqual(
+      readSessionDetail(fixture.dataDir, forked.sessionId)?.transcript.map(
+        (message) => [message.role, message.text],
+      ),
+      [
+        ["user", "first question"],
+        ["assistant", "first answer"],
+      ],
+    );
+  } finally {
+    await service.disposeAll();
+  }
+});
+
+test("SessionService edit/retry forks preserve the cacheable conversation family", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const created = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const parent = (service as any).sessions.get(created.sessionId);
+  parent.session.sessionManager.appendMessage({
+    role: "user",
+    content: [{ type: "text", text: "original prompt" }],
+    timestamp: Date.now(),
+  });
+  parent.session.sessionManager.appendMessage({
+    role: "assistant",
+    content: [{ type: "text", text: "original answer" }],
+    timestamp: Date.now(),
+  });
+  const parentPrompt = parent.session.systemPrompt;
+  let forkedSessionId = "";
+
+  try {
+    const forked = await service.forkSession(created.sessionId, "fork");
+    forkedSessionId = forked.sessionId;
+    const child = (service as any).sessions.get(forked.sessionId);
+    const forkHeader = JSON.parse(
+      readFileSync(child.manifest.piSessionFile, "utf-8").split(/\r?\n/, 1)[0],
+    );
+    assert.equal(
+      omitIncidentalCwd(child.session.systemPrompt),
+      omitIncidentalCwd(parentPrompt),
+    );
+    assert.notEqual(child.manifest.sessionCwd, parent.manifest.sessionCwd);
+    assert.equal(
+      forkHeader.promptCacheFamilyId,
+      Array.from(created.sessionId).slice(0, 64).join(""),
+    );
+    const nested = await service.forkSession(forked.sessionId, "fork");
+    forkedSessionId = nested.sessionId;
+    const nestedChild = (service as any).sessions.get(nested.sessionId);
+    const nestedHeader = JSON.parse(
+      readFileSync(
+        nestedChild.manifest.piSessionFile,
+        "utf-8",
+      ).split(/\r?\n/, 1)[0],
+    );
+    assert.equal(
+      nestedHeader.promptCacheFamilyId,
+      forkHeader.promptCacheFamilyId,
+    );
+  } finally {
+    await service.disposeAll();
+  }
+
+  const reopenedService = createTestService(fixture);
+  try {
+    const reopened = await reopenedService.openSession(forkedSessionId, {
+      rolePresetSlug: "role-conceptual-theory-companion",
+      kbDomain: "ep-core",
+      soulSlug: "soul-latest",
+    });
+    const reopenedChild = (reopenedService as any).sessions.get(
+      reopened.sessionId,
+    );
+    assert.equal(
+      omitIncidentalCwd(reopenedChild.session.systemPrompt),
+      omitIncidentalCwd(parentPrompt),
+    );
+  } finally {
+    await reopenedService.disposeAll();
+  }
+});
+
 test("SessionService keeps imported Pi history as the active leaf before the first Alt Theory run", async () => {
   const fixture = setupFixture();
   const service = createTestService(fixture);
@@ -886,11 +1020,14 @@ test("related Helper invokes its skill once before promotion", async () => {
       .completion;
     assert.equal(helperPrompt, "Where is that button?");
 
+    // "Add to conversation list": it earns a list place and KEEPS its purpose,
+    // so the list can still say where it came from (alpha.6).
     service.promoteRelatedSession(helper.sessionId);
     const promoted = readV4SessionHeader(
       service.getManifest(helper.sessionId).recordsDir,
     );
-    assert.equal(promoted?.forkedFrom?.purpose, "fork");
+    assert.equal(promoted?.forkedFrom?.purpose, "helper");
+    assert.equal(promoted?.forkedFrom?.listed, true);
   } finally {
     await service.disposeAll();
   }
@@ -1071,7 +1208,7 @@ test("forkSession applies per-arm selector overrides (A/B substrate)", async () 
   }
 });
 
-test("generateAbComparison runs Pure-pinned arms and records candidates on the parent", async () => {
+test("generateAbComparison runs Understand-pinned arms and records candidates on the parent", async () => {
   const fixture = setupFixture();
   const service = createTestService(fixture);
   const created = await service.createSession({
@@ -1128,7 +1265,7 @@ test("generateAbComparison runs Pure-pinned arms and records candidates on the p
     for (const candidate of record.candidates) {
       assert.equal(candidate.outputText, `arm:${candidate.candidateId}`);
       const armManaged = (service as any).sessions.get(candidate.candidateId);
-      assert.equal(armManaged.getMode(), "pure");
+      assert.equal(armManaged.getAltMode(), "understand");
     }
     assert.equal(record.candidates[0].role, "role-conceptual-theory-companion");
     // The record lands on the PARENT's records dir and the parent is untouched.
@@ -1231,9 +1368,9 @@ test("SessionService creates owned sessions with role condition and consent snap
   }
 });
 
-test("SessionService creates private sessions and refreshes private activity on prompt", async () => {
+test("hosted: private sessions carry a retention date and prompts refresh it", async () => {
   const fixture = setupFixture();
-  const service = createTestService(fixture);
+  const service = createTestService(fixture, "clean", false);
   const snapshot = await service.createSession(
     {
       rolePresetSlug: "role-conceptual-theory-companion",
@@ -1302,6 +1439,155 @@ test("SessionService creates private sessions and refreshes private activity on 
     assert.equal(refreshed.consentSnapshot.privateOverride, true);
     assert.notEqual(refreshed.lastActivityAt, stale.lastActivityAt);
     assert.notEqual(refreshed.retentionDueAt, stale.retentionDueAt);
+  } finally {
+    await service.disposeAll();
+  }
+});
+
+test("hosted retention protects attached or running sessions, not idle cache entries", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture, "clean", false);
+  const snapshot = await service.createSession(
+    {
+      rolePresetSlug: "role-conceptual-theory-companion",
+      kbDomain: "ep-core",
+      soulSlug: "soul-latest",
+    },
+    { visibility: "private" },
+  );
+  const manifest = service.getManifest(snapshot.sessionId);
+  const sessionPath = join(manifest.recordsDir, "session.json");
+  const stale = {
+    ...JSON.parse(readFileSync(sessionPath, "utf-8")),
+    lastActivityAt: "2026-06-01T00:00:00.000Z",
+    retentionDueAt: "2026-06-08T00:00:00.000Z",
+  };
+  writeFileSync(sessionPath, `${JSON.stringify(stale, null, 2)}\n`, "utf-8");
+  const now = new Date("2026-06-09T00:00:00.000Z");
+  const detach = service.attach(snapshot.sessionId, () => {});
+
+  try {
+    assert.deepEqual(
+      hardDeleteExpiredPrivateSessions(
+        fixture.dataDir,
+        now,
+        (id) => service.isOpen(id),
+      ).deleted.map((record) => record.sessionId),
+      [],
+    );
+    detach();
+    const managed = (service as any).sessions.get(snapshot.sessionId);
+    managed.busy = true;
+    assert.deepEqual(
+      hardDeleteExpiredPrivateSessions(
+        fixture.dataDir,
+        now,
+        (id) => service.isOpen(id),
+      ).deleted.map((record) => record.sessionId),
+      [],
+    );
+    managed.busy = false;
+    assert.deepEqual(
+      hardDeleteExpiredPrivateSessions(
+        fixture.dataDir,
+        now,
+        (id) => service.isOpen(id),
+      ).deleted.map((record) => record.sessionId),
+      [snapshot.sessionId],
+    );
+  } finally {
+    detach();
+    await service.disposeAll();
+  }
+});
+
+test("hosted private fork gets its own retention window", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture, "clean", false);
+  const parent = await service.createSession(
+    {
+      rolePresetSlug: "role-conceptual-theory-companion",
+      kbDomain: "ep-core",
+      soulSlug: "soul-latest",
+    },
+    { visibility: "private" },
+  );
+  const parentPath = join(
+    service.getManifest(parent.sessionId).recordsDir,
+    "session.json",
+  );
+  const parentHeader = JSON.parse(readFileSync(parentPath, "utf-8"));
+  writeFileSync(
+    parentPath,
+    `${JSON.stringify(
+      {
+        ...parentHeader,
+        lastActivityAt: "2026-06-01T00:00:00.000Z",
+        retentionDueAt: "2026-06-08T00:00:00.000Z",
+      },
+      null,
+      2,
+    )}\n`,
+    "utf-8",
+  );
+  const managed = (service as any).sessions.get(parent.sessionId);
+  managed.session.sessionManager.appendMessage({
+    role: "user",
+    content: [{ type: "text", text: "fork me" }],
+    timestamp: Date.now(),
+  });
+
+  try {
+    const fork = await service.forkSession(parent.sessionId, "side");
+    const child = readV4SessionHeader(
+      service.getManifest(fork.sessionId).recordsDir,
+    );
+    assert.equal(child?.visibility, "private");
+    assert.notEqual(child?.retentionDueAt, "2026-06-08T00:00:00.000Z");
+    assert.ok(
+      Date.parse(child?.retentionDueAt ?? "") >
+        Date.parse(child?.lastActivityAt ?? ""),
+    );
+  } finally {
+    await service.disposeAll();
+  }
+});
+
+/**
+ * The regression this whole split exists to prevent: locally, marking a
+ * conversation withheld must never give it an expiry. Before the fix, local
+ * conversations defaulted to "private" AND "private" meant "delete after 7
+ * inactive days" — so the safest-sounding default was the destructive one.
+ */
+test("local: a withheld conversation never gets a retention date", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const snapshot = await service.createSession(
+    {
+      rolePresetSlug: "role-conceptual-theory-companion",
+      kbDomain: "ep-core",
+      soulSlug: "soul-latest",
+    },
+    { visibility: "no-export" },
+  );
+  try {
+    const sessionPath = join(
+      service.getManifest(snapshot.sessionId).recordsDir,
+      "session.json",
+    );
+    const created = JSON.parse(readFileSync(sessionPath, "utf-8"));
+    assert.equal(created.visibility, "no-export");
+    // Withheld from a future export, but consent-wise identical to hosted
+    // private: never readable by a research team.
+    assert.equal(created.consentSnapshot.privateOverride, true);
+    assert.equal(created.retentionDueAt, null);
+
+    // Even switching the marker by hand cannot introduce one.
+    service.setVisibility(snapshot.sessionId, "exportable");
+    service.setVisibility(snapshot.sessionId, "no-export");
+    const after = JSON.parse(readFileSync(sessionPath, "utf-8"));
+    assert.equal(after.visibility, "no-export");
+    assert.equal(after.retentionDueAt, null);
   } finally {
     await service.disposeAll();
   }
@@ -1634,8 +1920,8 @@ test("SessionService records resume_fallback config event when original assets a
     kbDir: fixture.kbDir,
     kbDomain: "ep-core",
     piPromptTemplatesDir: fixture.piPromptTemplatesDir,
-    readOnly: true,
-    promptMode: "alt-only",
+    understandReadOnly: true,
+    altMode: "understand",
     resourceDiscovery: "clean",
   });
 
@@ -1863,6 +2149,32 @@ test("SessionService detach removes listeners without disposing the managed sess
   }
 });
 
+test("SessionService does not re-emit processing for every text delta", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const snapshot = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const events: SessionServiceEvent[] = [];
+  const detach = service.attach(snapshot.sessionId, (event) => events.push(event));
+
+  try {
+    const internal = service as any;
+    internal.handleAgentEvent(internal.sessions.get(snapshot.sessionId), {
+      type: "message_update",
+      assistantMessageEvent: { type: "text_delta", delta: "hello" },
+    });
+    assert.deepEqual(events, [
+      { type: "assistant_delta", payload: { text: "hello" } },
+    ]);
+  } finally {
+    detach();
+    await service.disposeAll();
+  }
+});
+
 test("SessionService keeps run completion and busy state open until fallback continuation finishes", async () => {
   const fixture = setupFixture();
   const fallbackConfigPath = join(fixture.root, "model-fallback.json");
@@ -1901,8 +2213,8 @@ test("SessionService keeps run completion and busy state open until fallback con
     rolePresetsDir: fixture.rolePresetsDir,
     soulDir: fixture.soulDir,
     legacySoulPath: join(fixture.soulDir, "soul-latest.md"),
-    readOnly: true,
-    promptMode: "alt-only",
+    understandReadOnly: true,
+    altMode: "understand",
     resourceDiscovery: "clean",
     instructionsDir: fixture.instructionsDir,
     runLabel: null,
@@ -2065,8 +2377,8 @@ test("SessionService surfaces fallback continuation failure through run completi
     rolePresetsDir: fixture.rolePresetsDir,
     soulDir: fixture.soulDir,
     legacySoulPath: join(fixture.soulDir, "soul-latest.md"),
-    readOnly: true,
-    promptMode: "alt-only",
+    understandReadOnly: true,
+    altMode: "understand",
     resourceDiscovery: "clean",
     instructionsDir: fixture.instructionsDir,
     runLabel: null,
@@ -2172,8 +2484,8 @@ test("session store marks sessions without v0.4 records as legacy projection", a
     kbDir: fixture.kbDir,
     kbDomain: "ep-core",
     piPromptTemplatesDir: fixture.piPromptTemplatesDir,
-    readOnly: true,
-    promptMode: "alt-only",
+    understandReadOnly: true,
+    altMode: "understand",
     resourceDiscovery: "clean",
   });
 
@@ -2204,7 +2516,7 @@ test("session store marks sessions without v0.4 records as legacy projection", a
   assert.equal(detail?.session.hasSessionFile, true);
 });
 
-test("SessionService switches capability mode in-session and restores it on reopen", async () => {
+test("SessionService switches Alt mode in-session and restores it on reopen", async () => {
   const fixture = setupFixture();
   const service = createTestService(fixture);
   const created = await service.createSession({
@@ -2240,23 +2552,23 @@ test("SessionService switches capability mode in-session and restores it on reop
   };
 
   try {
-    assert.equal(created.mode, "pure");
+    assert.equal(created.mode, "understand");
     const run = service.runPrompt(created.sessionId, "hello");
     await run.completion;
 
-    const switched = await service.switchMode(created.sessionId, "full");
-    assert.equal(switched.mode, "full");
+    const switched = await service.switchMode(created.sessionId, "work");
+    assert.equal(switched.mode, "work");
     assert.equal(switched.sessionId, created.sessionId);
 
     const manifest = service.getManifest(created.sessionId);
     const header = JSON.parse(
       readFileSync(join(manifest.recordsDir, "session.json"), "utf-8"),
     );
-    assert.equal(header.mode, "full");
+    assert.equal(header.mode, "work");
     const configReasons = readConfigEvents(manifest.recordsDir);
     assert.equal(configReasons.at(-1)?.reason, "user_change");
-    assert.deepEqual(configReasons.at(-1)?.changedFields, ["promptMode"]);
-    assert.equal(configReasons.at(-1)?.effective.promptMode, "pi-default");
+    assert.deepEqual(configReasons.at(-1)?.changedFields, ["altMode"]);
+    assert.equal(configReasons.at(-1)?.effective.altMode, "work");
   } finally {
     await service.disposeAll();
   }
@@ -2268,7 +2580,7 @@ test("SessionService switches capability mode in-session and restores it on reop
       kbDomain: "ep-core",
       soulSlug: "soul-latest",
     });
-    assert.equal(reopened.mode, "full");
+    assert.equal(reopened.mode, "work");
   } finally {
     await reopenedService.disposeAll();
   }
@@ -2285,11 +2597,11 @@ test("SessionService materializes draft mode and study tag in the first snapshot
         soulSlug: "soul-latest",
       },
       {
-        mode: "full",
+        mode: "work",
         studyTag: { studyId: "draft-study", batch: "a" },
       },
     );
-    assert.equal(created.mode, "full");
+    assert.equal(created.mode, "work");
     assert.deepEqual(created.studyTag, {
       studyId: "draft-study",
       batch: "a",
@@ -2300,7 +2612,7 @@ test("SessionService materializes draft mode and study tag in the first snapshot
         "utf-8",
       ),
     );
-    assert.equal(header.mode, "full");
+    assert.equal(header.mode, "work");
     assert.deepEqual(header.studyTag, {
       studyId: "draft-study",
       batch: "a",
@@ -2546,8 +2858,8 @@ test("approval bridge routes extension confirm dialogs through the service", asy
     rolePresetsDir: fixture.rolePresetsDir,
     soulDir: fixture.soulDir,
     legacySoulPath: join(fixture.soulDir, "soul-latest.md"),
-    readOnly: true,
-    promptMode: "alt-only",
+    understandReadOnly: true,
+    altMode: "understand",
     resourceDiscovery: "clean",
     instructionsDir: fixture.instructionsDir,
     runLabel: null,
@@ -2735,7 +3047,7 @@ test("security extension escalates risky commands through the approval bridge", 
 
     // The allowance survives a loader reload (mode switch): it lives in the
     // per-session closure, not the per-reload factory.
-    await service.switchMode(created.sessionId, "full");
+    await service.switchMode(created.sessionId, "work");
     assert.equal(
       await managed.session.agent.beforeToolCall!({
         toolCall: { id: "sec-reload", name: "bash", arguments: {} },
@@ -2895,6 +3207,49 @@ test("SessionService retries a failed latest turn without losing earlier turns",
     );
   } finally {
     detach();
+    await service.disposeAll();
+  }
+});
+
+test("SessionService retries the latest message from the start in the same session", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const created = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const managed = (service as any).sessions.get(created.sessionId);
+  let attempt = 0;
+  managed.session.prompt = async (text: string) => {
+    attempt += 1;
+    managed.session.state.errorMessage = null;
+    managed.session.sessionManager.appendMessage({
+      role: "user",
+      content: [{ type: "text", text }],
+      timestamp: Date.now(),
+    });
+    managed.session.sessionManager.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: `attempt ${attempt}` }],
+      timestamp: Date.now(),
+    });
+  };
+
+  try {
+    await service.runPrompt(created.sessionId, "same question").completion;
+    await service.retryLatestFromStart(created.sessionId).completion;
+    const detail = readSessionDetail(fixture.dataDir, created.sessionId);
+    assert.deepEqual(
+      detail?.transcript
+        .filter((message) => message.role === "user" || message.role === "assistant")
+        .map((message) => [message.role, message.text]),
+      [
+        ["user", "same question"],
+        ["assistant", "attempt 2"],
+      ],
+    );
+  } finally {
     await service.disposeAll();
   }
 });
@@ -3242,6 +3597,13 @@ test("SessionService reviseAt edits a turn inherited from the fork parent", asyn
       readSessionDetail(fixture.dataDir, forked.sessionId)?.session.forkedFrom,
       { sessionId: created.sessionId, purpose: "fork" },
     );
+    // Fork must not rename via ui-alias to a bare "branch1" token — list
+    // display adds "Branch N · …" in the frontend.
+    const aliasPath = join(
+      service.getManifest(forked.sessionId).recordsDir,
+      "ui-alias.json",
+    );
+    assert.equal(existsSync(aliasPath), false);
   } finally {
     await service.disposeAll();
   }

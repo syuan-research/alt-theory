@@ -15,9 +15,9 @@ import { fileURLToPath } from "url";
 import WebSocket, { WebSocketServer } from "ws";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import {
-  type CapabilityMode,
-  type PromptMode,
+  type AltMode,
   type ResourceDiscoveryMode,
+  type RuntimeMode,
   KB_DISABLED_DOMAIN,
 } from "../core/alt-theory-core.js";
 import { resolveDataDir } from "../core/data-dir.js";
@@ -34,19 +34,25 @@ import {
   resolveSoulSlug,
   setExtraAssetDirs,
 } from "./asset-registry.js";
+import { setBackendLang, t } from "./i18n.js";
 import type {
   ClientMessage,
   ServerMessage
 } from "./websocket-protocol.js";
 import {
   getSessionRootForRequest,
+  listDeletedSessionSummaries,
   listSessionTextFiles,
   listSessionSummaries,
+  permanentlyDeleteSession,
+  restoreDeletedSession,
   readSessionTextFile,
   readSessionDetail,
   readSessionChanges,
   type SessionSummary,
+  sessionsAttachedToDeletion,
   softDeleteSession,
+  sweepExpiredDeletedSessions,
   writeSessionTextFile,
 } from "./session-store.js";
 import {
@@ -101,6 +107,12 @@ import { readAccountStore } from "./auth-accounts.js";
 import type { AuthContext } from "./auth-session.js";
 import { resolveConfigGuiHtmlPath } from "./config-gui-path.js";
 import { ensureLocalModeDefaults } from "./local-mode-paths.js";
+import {
+  isVisibilityForMode,
+  withholdsFromResearch,
+  type SessionVisibility,
+} from "./session-records.js";
+import { sweepExpiredPrivateSessions } from "./session-retention.js";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import {
   cancelProviderAuth,
@@ -174,14 +186,13 @@ export interface AltTheoryServerOptions {
   rolePresetsDir?: string;
   piPromptTemplatesDir?: string;
   publicDir?: string;
-  readOnly?: boolean;
+  understandReadOnly?: boolean;
   modelProvider?: string;
   modelId?: string;
   modelsPath?: string;
   authPath?: string;
   runtimeApiKey?: string;
   thinkingLevel?: ThinkingLevel;
-  promptMode?: PromptMode;
   resourceDiscovery?: ResourceDiscoveryMode;
   runLabel?: string | null;
   testBatch?: string | null;
@@ -200,18 +211,8 @@ function parseResourceDiscoveryMode(
   }
   // internal = Alt bundled skills plus explicitly user-enabled externals.
   // dev-debug (ambient Pi merge + context files) is an explicit dev knob:
-  // external skills must never be silently enabled in Pure (spec §3.4).
+  // external skills must never be silently enabled in Understand.
   return "internal";
-}
-
-function parsePromptMode(value: string | undefined): PromptMode {
-  if (value === "pi-default" || value === "alt-only") {
-    return value;
-  }
-  if (value) {
-    console.warn(`Unknown ALT_THEORY_PROMPT_MODE '${value}', using alt-only`);
-  }
-  return "alt-only";
 }
 
 export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
@@ -241,17 +242,15 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     });
   };
   applyExtraAssetDirs();
+  setBackendLang(readAppSettings(dataDir).lang ?? null);
   const soulDir = assetPaths.soulDir;
   const legacySoulPath = assetPaths.soulPath;
   const publicDir = resolve(options.publicDir ?? PUBLIC_DIR);
-  const readOnly = options.readOnly ?? false;
+  const understandReadOnly = options.understandReadOnly ?? false;
   const modelProvider =
     options.modelProvider ?? process.env.ALT_THEORY_MODEL_PROVIDER;
   const modelId = options.modelId ?? process.env.ALT_THEORY_MODEL_ID;
   const modelsPath = assetPaths.modelsPath;
-  const promptMode = parsePromptMode(
-    options.promptMode ?? process.env.ALT_THEORY_PROMPT_MODE,
-  );
   const resourceDiscovery = parseResourceDiscoveryMode(
     options.resourceDiscovery ?? process.env.ALT_THEORY_RESOURCE_DISCOVERY,
   );
@@ -269,8 +268,45 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     options.runLabel ?? process.env.ALT_THEORY_RUN_LABEL ?? null;
   const testBatch =
     options.testBatch ?? process.env.ALT_THEORY_TEST_BATCH ?? null;
-  const appMode = process.env.ALT_THEORY_MODE === "local" ? "local" : "hosted";
+  /**
+   * DEFAULT IS LOCAL — the downloadable app must never inherit study
+   * semantics. A hosted deployment MUST set `ALT_THEORY_MODE=hosted`
+   * explicitly.
+   *
+   * !! WHEN THE VPS PILOT MOVES TO 1.x, SET `ALT_THEORY_MODE=hosted` ON THE
+   * SERVER FIRST. !! Without it a multi-user deployment silently loses
+   * participant/researcher access control, and conversations a participant
+   * marked "private" stop being deleted — both promises broken quietly.
+   * Deployment-mode notes: development/architecture/core-session-engine.md.
+   */
+  const appMode = process.env.ALT_THEORY_MODE === "hosted" ? "hosted" : "local";
   const localMode = appMode === "local";
+
+  const discoverConfiguredSkills = () => {
+    const discovered = discoverSkillResources({
+      altSkillsDir: skillsDir,
+      agentDir: getAgentDir(),
+    });
+    const externalPaths = discovered.skills
+      .filter((skill) => skill.source !== "alt-theory")
+      .map((skill) => skill.path);
+    const enabled = resolveExternalSkillPaths(readAppSettings(dataDir), externalPaths);
+    const enabledUnderstand = new Set(enabled.understand);
+    const enabledWork = new Set(enabled.work);
+    return {
+      ...discovered,
+      skills: discovered.skills.map((skill) => ({
+        ...skill,
+        enabled:
+          skill.source === "alt-theory"
+            ? { understand: true, work: true }
+            : {
+                understand: enabledUnderstand.has(skill.path),
+                work: enabledWork.has(skill.path),
+              },
+      })),
+    };
+  };
 
   const app = express();
   const httpServer = createServer(app);
@@ -324,28 +360,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   // --- Resource discovery + per-mode skill enablement (spec §6.1) ---
   app.get("/api/resources", (_req, res) => {
     if (!requireLocalConfigMode(res)) return;
-    const settings = readAppSettings(dataDir);
-    const discovered = discoverSkillResources({
-      altSkillsDir: skillsDir,
-      agentDir: getAgentDir(),
-    });
-    const externalPaths = discovered.skills
-      .filter((skill) => skill.source !== "alt-theory")
-      .map((skill) => skill.path);
-    const enabled = resolveExternalSkillPaths(settings, externalPaths);
-    const enabledPure = new Set(enabled.pure);
-    const enabledFull = new Set(enabled.full);
+    const discovered = discoverConfiguredSkills();
     res.json({
-      skills: discovered.skills.map((skill) => ({
-        ...skill,
-        enabled:
-          skill.source === "alt-theory"
-            ? { pure: true, full: true }
-            : {
-                pure: enabledPure.has(skill.path),
-                full: enabledFull.has(skill.path),
-              },
-      })),
+      skills: discovered.skills,
       diagnostics: discovered.diagnostics,
       note: "Settings apply to new and reopened sessions, not running ones.",
     });
@@ -353,8 +370,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   app.put("/api/resources/skills", (req, res) => {
     if (!requireLocalConfigMode(res)) return;
     const body = req.body as {
-      pure?: { enabledPaths?: unknown };
-      full?: { enabledPaths?: unknown };
+      understand?: { enabledPaths?: unknown };
+      work?: { enabledPaths?: unknown };
     };
     const parseList = (value: unknown): string[] | null =>
       Array.isArray(value)
@@ -364,8 +381,10 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     const next = {
       ...current,
       skills: {
-        pure: { enabledPaths: parseList(body.pure?.enabledPaths) },
-        full: { enabledPaths: parseList(body.full?.enabledPaths) },
+        understand: {
+          enabledPaths: parseList(body.understand?.enabledPaths),
+        },
+        work: { enabledPaths: parseList(body.work?.enabledPaths) },
       },
     };
     writeAppSettings(dataDir, next);
@@ -486,32 +505,120 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     }
   });
 
-  // --- Default mode for new conversations (v1.3.0-alpha.5) ---
-  app.get("/api/settings/default-mode", (_req, res) => {
+  // --- Behavior settings ---
+  app.get("/api/settings/default-alt-mode", (_req, res) => {
     if (!requireLocalConfigMode(res)) return;
-    res.json({ mode: readAppSettings(dataDir).defaultMode ?? null });
+    res.json({ mode: readAppSettings(dataDir).defaultAltMode ?? null });
   });
-  app.put("/api/settings/default-mode", (req, res) => {
+  app.put("/api/settings/default-alt-mode", (req, res) => {
     if (!requireLocalConfigMode(res)) return;
     const mode = (req.body as { mode?: unknown }).mode as
-      | "pure"
-      | "full"
+      | "understand"
+      | "work"
       | null
       | undefined;
-    if (mode !== "pure" && mode !== "full" && mode !== null) {
+    if (mode !== "understand" && mode !== "work" && mode !== null) {
       res.status(400).json({ error: "Unknown mode" });
       return;
     }
     const settings = readAppSettings(dataDir);
-    if (mode === null) delete settings.defaultMode;
-    else settings.defaultMode = mode;
+    if (mode === null) delete settings.defaultAltMode;
+    else settings.defaultAltMode = mode;
     writeAppSettings(dataDir, settings);
     res.json({ ok: true, mode });
   });
-
-  app.get("/api/config/providers", async (_req, res) => {
+  app.get("/api/settings/model-hooks", (_req, res) => {
     if (!requireLocalConfigMode(res)) return;
-    await refreshModelsDevMetadata(agentConfigDir());
+    res.json({ enabled: readAppSettings(dataDir).modelHooks !== false });
+  });
+  app.put("/api/settings/model-hooks", (req, res) => {
+    if (!requireLocalConfigMode(res)) return;
+    const enabled = (req.body as { enabled?: unknown }).enabled;
+    if (typeof enabled !== "boolean") {
+      res.status(400).json({ error: "enabled must be a boolean" });
+      return;
+    }
+    const settings = readAppSettings(dataDir);
+    if (enabled) delete settings.modelHooks;
+    else settings.modelHooks = false;
+    writeAppSettings(dataDir, settings);
+    res.json({ ok: true, enabled });
+  });
+  app.get("/api/settings/runtime", (_req, res) => {
+    if (!requireLocalConfigMode(res)) return;
+    const settings = readAppSettings(dataDir);
+    res.json({
+      mode: settings.runtimeMode ?? "alt-theory",
+      nativePiScanAltSkills: settings.nativePiScanAltSkills !== false,
+    });
+  });
+  app.put("/api/settings/runtime", async (req, res) => {
+    if (!requireLocalConfigMode(res)) return;
+    const body = req.body as {
+      mode?: unknown;
+      nativePiScanAltSkills?: unknown;
+    };
+    if (body.mode !== "alt-theory" && body.mode !== "native-pi") {
+      res.status(400).json({ error: "Unknown runtime mode" });
+      return;
+    }
+    if (typeof body.nativePiScanAltSkills !== "boolean") {
+      res.status(400).json({ error: "nativePiScanAltSkills must be boolean" });
+      return;
+    }
+    const settings = readAppSettings(dataDir);
+    settings.runtimeMode = body.mode as RuntimeMode;
+    settings.nativePiScanAltSkills = body.nativePiScanAltSkills;
+    writeAppSettings(dataDir, settings);
+    await sessionService.setRuntimeSettings(
+      settings.runtimeMode,
+      settings.nativePiScanAltSkills,
+    );
+    res.json({
+      ok: true,
+      mode: settings.runtimeMode,
+      nativePiScanAltSkills: settings.nativePiScanAltSkills,
+    });
+  });
+
+  // --- App language (v1.3.0-alpha.6) ---
+  app.get("/api/settings/lang", (_req, res) => {
+    if (!requireLocalConfigMode(res)) return;
+    res.json({ lang: readAppSettings(dataDir).lang ?? null });
+  });
+  app.put("/api/settings/lang", (req, res) => {
+    if (!requireLocalConfigMode(res)) return;
+    const lang = (req.body as { lang?: unknown }).lang as
+      | "auto"
+      | "en"
+      | "zh-Hans"
+      | "zh-Hant-HK"
+      | null
+      | undefined;
+    if (
+      lang !== "auto" &&
+      lang !== "en" &&
+      lang !== "zh-Hans" &&
+      lang !== "zh-Hant-HK" &&
+      lang !== null
+    ) {
+      res.status(400).json({ error: "Unknown language" });
+      return;
+    }
+    const settings = readAppSettings(dataDir);
+    if (lang === null) delete settings.lang;
+    else settings.lang = lang;
+    writeAppSettings(dataDir, settings);
+    setBackendLang(lang);
+    res.json({ ok: true, lang });
+  });
+
+  app.get("/api/config/providers", (_req, res) => {
+    if (!requireLocalConfigMode(res)) return;
+    // Answer from what is on disk and let models.dev catch up in the
+    // background: awaiting a third-party host here made opening the model
+    // settings page wait seconds on a stale cache or a slow network.
+    void refreshModelsDevMetadata(agentConfigDir());
     res.json({ providers: listProviders(agentConfigDir()) });
   });
   app.get("/api/config/auth/providers", (_req, res) => {
@@ -748,8 +855,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   });
   app.get("/api/skills", (_req, res) => {
     res.json({
-      skills:
-        resourceDiscovery === "clean" || !skillsDir
+      skills: localMode
+        ? discoverConfiguredSkills().skills
+        : resourceDiscovery === "clean" || !skillsDir
           ? []
           : listAltTheorySkills(skillsDir),
     });
@@ -782,9 +890,14 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         ? { designated: true, label: null }
         : null
       : (readAppSettings(dataDir).participant ?? null);
+    const settings = readAppSettings(dataDir);
     res.json({
       auth,
-      app: { mode: appMode },
+      app: {
+        mode: appMode,
+        runtimeMode: settings.runtimeMode ?? "alt-theory",
+        nativePiScanAltSkills: settings.nativePiScanAltSkills !== false,
+      },
       participant,
       localConfig: localMode
         ? await getVerifiedConfigStatus(agentConfigDir())
@@ -847,14 +960,14 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       preflightOnly?: unknown;
     };
     const selection = body.selection ?? "selected";
-    const mode = body.mode ?? "pure";
+    const mode = body.mode ?? "understand";
     const changedSourcePolicy = body.changedSourcePolicy ?? "skip";
     if (selection !== "all" && selection !== "selected") {
       res.status(400).json({ error: "selection must be 'all' or 'selected'" });
       return;
     }
-    if (mode !== "pure" && mode !== "full") {
-      res.status(400).json({ error: "mode must be 'pure' or 'full'" });
+    if (mode !== "understand" && mode !== "work") {
+      res.status(400).json({ error: "mode must be 'understand' or 'work'" });
       return;
     }
     if (changedSourcePolicy !== "skip" && changedSourcePolicy !== "copy") {
@@ -874,7 +987,10 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       body.workspaceOverrides && typeof body.workspaceOverrides === "object"
         ? (body.workspaceOverrides as Record<string, unknown>)
         : {};
-    const visibility = body.visibility === "research" ? "research" : "private";
+    // Import is local-only, so this is the local vocabulary: imported
+    // conversations are withheld from a future export unless asked otherwise.
+    const visibility =
+      body.visibility === "exportable" ? "exportable" : "no-export";
     const preflightOnly = body.preflightOnly === true;
     if (preflightOnly && harness === "pi") {
       res.status(400).json({ error: "preflightOnly is currently supported only for converted external sessions", });
@@ -978,7 +1094,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             const common = {
               dataDir,
               source,
-              mode: mode as CapabilityMode,
+              mode: mode as AltMode,
               workspacePrimaryDir,
               rolePresetSlug: importSelectors.rolePresetSlug,
               soulSlug: importSelectors.soulSlug,
@@ -1074,6 +1190,17 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       })),
     });
   });
+  app.get("/api/sessions/trash", (req, res) => {
+    const auth = resolveSessionRestAuth(req, res);
+    if (!auth) return;
+    const list = listDeletedSessionSummaries(dataDir);
+    res.json({
+      ...list,
+      sessions: list.sessions.filter((session) =>
+        canAccessSessionSummary(auth, session),
+      ),
+    });
+  });
   app.get("/api/sessions/:sessionId", (req, res) => {
     const sessionId = req.params.sessionId;
     const root = getSessionRootForRequest(dataDir, sessionId);
@@ -1132,7 +1259,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     }
     res.json(changes);
   });
-  app.delete("/api/sessions/:sessionId", (req, res) => {
+  app.delete("/api/sessions/:sessionId", async (req, res) => {
     const sessionId = req.params.sessionId;
     const root = getSessionRootForRequest(dataDir, sessionId);
     if (root.status === "invalid") {
@@ -1155,7 +1282,45 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       return;
     }
     try {
+      // Delete means stop. A deleted conversation leaves the list, and with it
+      // the only Stop button the user had, so a run left alive here would keep
+      // writing and spending with nothing left to interrupt it.
+      const activity = sessionService.sessionActivity();
+      for (const attached of sessionsAttachedToDeletion(dataDir, sessionId)) {
+        const state = activity.get(attached);
+        if (state === "running" || state === "awaiting-approval") {
+          await sessionService.abort(attached, "session_deleted");
+        }
+      }
       res.json({ deleted: softDeleteSession(dataDir, sessionId) });
+    } catch (error) {
+      res.status(409).json({
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+  app.post("/api/sessions/:sessionId/restore", (req, res) => {
+    const sessionId = req.params.sessionId;
+    if (!requireSessionRestContentAccess(req, res, sessionId)) return;
+    try {
+      res.json({ restored: restoreDeletedSession(dataDir, sessionId) });
+    } catch (error) {
+      res.status(409).json({
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+  app.delete("/api/sessions/:sessionId/permanent", (req, res) => {
+    const sessionId = req.params.sessionId;
+    if (!requireSessionRestContentAccess(req, res, sessionId)) return;
+    try {
+      res.json({
+        deleted: permanentlyDeleteSession(
+          dataDir,
+          sessionId,
+          (id) => sessionService.isOpen(id),
+        ),
+      });
     } catch (error) {
       res.status(409).json({
         error: error instanceof Error ? error.message : String(error),
@@ -1168,6 +1333,19 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     try {
       const snapshot = sessionService.promoteRelatedSession(sessionId);
       res.json({ sessionId, snapshot });
+    } catch (error) {
+      res.status(409).json({
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+  // M4b: role swap — this conversation becomes the tree's listed
+  // representative; the current one steps down.
+  app.post("/api/sessions/:sessionId/promote-mainline", (req, res) => {
+    const sessionId = req.params.sessionId;
+    if (!requireSessionRestContentAccess(req, res, sessionId)) return;
+    try {
+      res.json({ sessionId, ...sessionService.promoteToMainline(sessionId) });
     } catch (error) {
       res.status(409).json({
         error: error instanceof Error ? error.message : String(error),
@@ -1638,7 +1816,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     rolePresetsDir,
     soulDir,
     legacySoulPath,
-    readOnly,
+    understandReadOnly,
+    localMode,
     modelProvider,
     modelId,
     modelsPath: modelsPath ?? undefined,
@@ -1646,7 +1825,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     runtimeApiKey:
       options.runtimeApiKey ?? process.env.ALT_THEORY_MODEL_API_KEY,
     thinkingLevel: options.thinkingLevel,
-    promptMode,
     resourceDiscovery,
     skillsDir,
     instructionsDir,
@@ -1682,6 +1860,27 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     modelFallbackConfigPath:
       process.env.ALT_THEORY_MODEL_FALLBACK_PATH ?? null,
   });
+
+  // Hosted only. A participant marking a conversation "private" means "don't
+  // keep this"; deleting it after 7 inactive days is how that is kept. Local
+  // installs never reach this — they cannot produce a "private" conversation.
+  if (!localMode) {
+    const stopRetentionSweep = sweepExpiredPrivateSessions(
+      dataDir,
+      (sessionId) => sessionService.isOpen(sessionId),
+      (result) => {
+        console.log(
+          `Private retention: deleted ${result.deleted.length} expired conversation(s).`,
+        );
+      },
+    );
+    httpServer.on("close", stopRetentionSweep);
+  }
+  const stopTrashSweep = sweepExpiredDeletedSessions(
+    dataDir,
+    (sessionId) => sessionService.isOpen(sessionId),
+  );
+  httpServer.on("close", stopTrashSweep);
 
   function requireLocalRuntimeModelConfig(): RuntimeModelConfig {
     const runtimeConfig = getRuntimeModelConfig(agentConfigDir());
@@ -1920,19 +2119,19 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
 
   function sessionCreationMetadataForAuth(
     auth: AuthContext,
-    visibility: "research" | "private",
+    visibility: SessionVisibility,
   ) {
+    const withheld = withholdsFromResearch(visibility);
     if (auth.role !== "participant" || !auth.accountId) {
       return {
         visibility,
-        consentSnapshot:
-          visibility === "private"
-            ? {
-                researcherReadable: false,
-                quoteAfterAnonymization: false,
-                privateOverride: true,
-              }
-            : null,
+        consentSnapshot: withheld
+          ? {
+              researcherReadable: false,
+              quoteAfterAnonymization: false,
+              privateOverride: true,
+            }
+          : null,
       };
     }
     return {
@@ -1940,15 +2139,13 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       roleCondition: auth.defaultRoleCondition,
       visibility,
       consentSnapshot: {
-        researcherReadable:
-          visibility === "private"
-            ? false
-            : Boolean(auth.defaultConsent?.researcherReadable),
-        quoteAfterAnonymization:
-          visibility === "private"
-            ? false
-            : Boolean(auth.defaultConsent?.quoteAfterAnonymization),
-        privateOverride: visibility === "private",
+        researcherReadable: withheld
+          ? false
+          : Boolean(auth.defaultConsent?.researcherReadable),
+        quoteAfterAnonymization: withheld
+          ? false
+          : Boolean(auth.defaultConsent?.quoteAfterAnonymization),
+        privateOverride: withheld,
       },
     };
   }
@@ -1958,22 +2155,24 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   }
 
   /**
-   * Sharing default follows study designation (M7 §4). Hosted deployments
-   * keep the pre-existing default (participants consented); a local install
-   * defaults to private unless the install is designated at handout.
+   * Sharing default follows study designation (M7 §4), stated in the
+   * deployment's own vocabulary. Hosted keeps the pre-existing default
+   * (participants consented). A local install withholds by default unless it
+   * was designated at handout — and locally that is a marker for a future
+   * export filter, never an expiry.
    */
-  function defaultDraftVisibility(): "research" | "private" {
-    if (hasConfiguredAccounts()) return "research";
+  function defaultDraftVisibility(): SessionVisibility {
+    if (!localMode) return "research";
     return readAppSettings(dataDir).participant?.designated
-      ? "research"
-      : "private";
+      ? "exportable"
+      : "no-export";
   }
 
   function sendDraft(
     send: (msg: ServerMessage) => void,
     selectors: SessionSelectors,
-    visibility: "research" | "private",
-    mode: CapabilityMode,
+    visibility: SessionVisibility,
+    mode: AltMode,
     modelOverride: SessionModelOverride | null = null,
     studyTag: StudyTag | null = null,
     workspacePrimaryDir: string | null = null,
@@ -2010,8 +2209,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     let detach = () => {};
     let closed = false;
     let draftSelectors: SessionSelectors;
-    let draftVisibility: "research" | "private" = defaultDraftVisibility();
-    let draftMode: CapabilityMode = "pure";
+    let draftVisibility: SessionVisibility = defaultDraftVisibility();
+    let draftMode: AltMode =
+      readAppSettings(dataDir).defaultAltMode ?? "understand";
     let draftModelOverride: SessionModelOverride | null = null;
     let draftStudyTag: StudyTag | null = null;
     // Sticky across new_session: the workspace selector chooses where NEW
@@ -2044,6 +2244,20 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       );
     };
 
+    const requireSessionWsContentAccess = (sessionId: string): SessionSummary => {
+      const detail = readSessionDetail(dataDir, sessionId);
+      if (!detail || !canAccessSessionSummary(auth, detail.session)) {
+        throw new Error(`Unknown session id: ${sessionId}`);
+      }
+      if (!canAccessSessionContent(auth, detail.session)) {
+        throw new Error("Session content is private");
+      }
+      if (detail.session.deletedAt) {
+        throw new Error("Conversation is in Trash");
+      }
+      return detail.session;
+    };
+
     const attachToSession = (sessionId: string) => {
       detach();
       attachedSessionId = sessionId;
@@ -2074,6 +2288,29 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       } catch {
         send({ type: "error", payload: { error: "Invalid JSON" } });
         return;
+      }
+      if (
+        readAppSettings(dataDir).runtimeMode === "native-pi" &&
+        ["switch_kb", "switch_role_preset", "switch_soul", "switch_mode"].includes(
+          msg.type,
+        )
+      ) {
+        sendError(
+          send,
+          new Error("This Alt Theory control is inactive while Native Pi is on"),
+        );
+        return;
+      }
+      if (attachedSessionId && msg.type !== "new_session") {
+        try {
+          requireSessionWsContentAccess(attachedSessionId);
+        } catch (error) {
+          detach();
+          detach = () => {};
+          attachedSessionId = null;
+          sendError(send, error);
+          return;
+        }
       }
 
       switch (msg.type) {
@@ -2113,8 +2350,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           } catch (error) {
             if (error instanceof SessionBusyError) {
               // Pi TUI behavior: typing while a turn runs steers the turn
-              // instead of erroring — required for messaging running worker
-              // agents directly (alpha.5 M2).
+              // instead of erroring — required for messaging running
+              // subagents directly (alpha.5 M2).
               if (
                 attachedSessionId &&
                 sessionService.steerRunningSession(attachedSessionId, msg.payload)
@@ -2122,8 +2359,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
                 send({
                   type: "extension_notice",
                   payload: {
-                    message:
+                    message: t(
                       "Delivered to the running turn — Alt sees it at its next step.",
+                    ),
                     level: "info",
                   },
                 });
@@ -2302,10 +2540,10 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           break;
         }
         case "switch_visibility": {
-          if (
-            msg.payload.visibility !== "research" &&
-            msg.payload.visibility !== "private"
-          ) {
+          // The guard that keeps the deployments apart: a local install can
+          // never write "private" (the only retention-bearing value), and a
+          // hosted one can never write the local export markers.
+          if (!isVisibilityForMode(msg.payload.visibility, localMode)) {
             sendError(send, new Error("Invalid visibility"));
             break;
           }
@@ -2480,7 +2718,17 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               "fork",
             );
             if (closed) break;
-            attachToSession(forked.sessionId);
+            // The branch is a comparison, not a destination: this connection
+            // stays on the source conversation and the client opens the fork
+            // in its own pane (own socket). Re-attaching here is what used to
+            // swallow the typed text and glue the new answer under the old.
+            send({
+              type: "branch_created",
+              payload: {
+                sessionId: forked.sessionId,
+                sourceSessionId,
+              },
+            });
             const run = sessionService.reviseAt(
               forked.sessionId,
               targetEntryId,
@@ -2492,13 +2740,34 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           }
           break;
         }
-        case "retry_failed": {
+        case "prepare_branch_revision": {
           if (!attachedSessionId) {
             sendError(send, new Error("A materialized session is required"));
             break;
           }
           try {
-            const run = sessionService.retryFailed(attachedSessionId);
+            const sourceSessionId = attachedSessionId;
+            const forked = await sessionService.prepareRevisionBranch(
+              sourceSessionId,
+              msg.payload.entryId,
+            );
+            if (closed) break;
+            send({
+              type: "branch_created",
+              payload: { sessionId: forked.sessionId, sourceSessionId },
+            });
+          } catch (error) {
+            sendServiceError(send, error);
+          }
+          break;
+        }
+        case "retry_latest": {
+          if (!attachedSessionId) {
+            sendError(send, new Error("A materialized session is required"));
+            break;
+          }
+          try {
+            const run = sessionService.retryLatestFromStart(attachedSessionId);
             await run.completion;
           } catch (error) {
             sendServiceError(send, error);
@@ -2525,7 +2794,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           break;
         }
         case "switch_mode": {
-          if (msg.payload.mode !== "pure" && msg.payload.mode !== "full") {
+          if (msg.payload.mode !== "understand" && msg.payload.mode !== "work") {
             sendError(send, new Error("Unknown mode"));
             break;
           }
@@ -2550,7 +2819,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             sendError(send, new Error("A materialized session is required"));
             break;
           }
-          // Workspace directories are a Full/local-app concept (spec §5.1):
+          // Workspace directories are available in Work and Native Pi:
           // machine-local paths only make sense in the local form.
           if (!localMode) {
             sendError(
@@ -2605,19 +2874,30 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             break;
           }
           try {
+            requireSessionWsContentAccess(forkSource);
             const forked = await sessionService.forkSession(
               forkSource,
               msg.payload.purpose,
               msg.payload.forkPointEntryId,
             );
             if (!closed) {
-              attachToSession(forked.sessionId);
-              send({
-                type: "session_transcript",
-                payload: {
-                  messages: sessionService.getTranscript(forked.sessionId),
-                },
-              });
+              if (msg.payload.sourceSessionId) {
+                // Session-list Duplicate intentionally follows its copy.
+                attachToSession(forked.sessionId);
+                send({
+                  type: "session_transcript",
+                  payload: {
+                    messages: sessionService.getTranscript(forked.sessionId),
+                  },
+                });
+              } else {
+                // `/branch` is an idle Related conversation; keep this socket
+                // attached to its source just like edit comparison.
+                send({
+                  type: "branch_created",
+                  payload: { sessionId: forked.sessionId, sourceSessionId: forkSource },
+                });
+              }
             }
           } catch (error) {
             sendServiceError(send, error);
@@ -2659,7 +2939,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           draftVisibility = defaultDraftVisibility();
           // Model override is a per-conversation choice; workspace stays
           // sticky for the next conversation.
-          draftMode = "pure";
+          draftMode =
+            readAppSettings(dataDir).defaultAltMode ?? "understand";
           draftModelOverride = null;
           draftStudyTag = null;
           sendCurrentDraft(true);
@@ -2670,6 +2951,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             ? sessionService.getSelectors(attachedSessionId)
             : draftSelectors;
           try {
+            requireSessionWsContentAccess(msg.payload.sessionId);
             const opened = await sessionService.openSession(
               msg.payload.sessionId,
               selectors,
@@ -2719,11 +3001,10 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       rolePresetsDir,
       soulDir,
       publicDir,
-      readOnly,
+      understandReadOnly,
       modelProvider,
       modelId,
       modelsPath,
-      promptMode,
       resourceDiscovery,
       skillsDir,
       instructionsDir,
@@ -2792,7 +3073,9 @@ if (isMain) {
     console.log(
       `  Model selection:   ${explicitModelSelection ? "explicit" : "Pi default or incomplete"}`,
     );
-    console.log(`  Prompt mode:       ${instance.config.promptMode}`);
+    console.log(
+      `  Behavior runtime:  ${readAppSettings(instance.config.dataDir).runtimeMode ?? "alt-theory"}`,
+    );
     console.log(
       `  Resources:         ${instance.config.resourceDiscovery}${instance.config.skillsDir ? ` (${instance.config.skillsDir})` : ""}`,
     );

@@ -1,24 +1,38 @@
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { ActiveToolState, ToolDetail, TranscriptMessage } from "@/api/types";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type {
+  ActiveToolState,
+  StreamPart,
+  ToolDetail,
+  TranscriptMessage,
+} from "@/api/types";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
 import { MarkdownBody } from "@/components/conversation/MarkdownBody";
 import { fileName, toolLabel } from "@/lib/tools";
 import { cn } from "@/lib/cn";
 import { pickDirectory } from "@/lib/native";
+import { t } from "@/i18n";
+import { autosizeTextarea } from "@/lib/autosizeTextarea";
 
 export function MessageList() {
   const app = useApp();
-  const shell = useShell();
   const containerRef = useRef<HTMLDivElement>(null);
   const railRef = useRef<HTMLDivElement>(null);
   const stickToBottomRef = useRef(true);
+  /** Last scrollHeight we pinned to — ignore transient shrink so the bottom clip edge does not chew the last line. */
+  const pinnedScrollHeightRef = useRef(0);
   const [scrubbing, setScrubbing] = useState(false);
   const developer = app.transcriptView === "developer";
 
   const latestUserIndex = useMemo(() => {
     for (let i = app.messages.length - 1; i >= 0; i -= 1) {
       if (app.messages[i]?.role === "user") return i;
+    }
+    return -1;
+  }, [app.messages]);
+  const latestAssistantIndex = useMemo(() => {
+    for (let i = app.messages.length - 1; i >= 0; i -= 1) {
+      if (app.messages[i]?.role === "assistant") return i;
     }
     return -1;
   }, [app.messages]);
@@ -51,27 +65,46 @@ export function MessageList() {
     }
   };
 
+  // Stick-to-bottom only when the user is already near the bottom. Only move
+  // scroll when content *grows*. Stream markdown can make scrollHeight jitter
+  // by a few px; pinning every frame made the last line sit on the overflow
+  // clip edge just above the composer and flash (background covering text).
   useLayoutEffect(() => {
     const el = containerRef.current;
-    if (!el) return;
-    if (stickToBottomRef.current) el.scrollTop = el.scrollHeight;
+    if (!el || !stickToBottomRef.current) return;
+    const next = el.scrollHeight;
+    if (next >= pinnedScrollHeightRef.current) {
+      pinnedScrollHeightRef.current = next;
+      el.scrollTop = next;
+    }
   }, [app.messages, app.streamParts]);
 
   const renderedToolCallIds = new Set<string>();
   let userOrdinal = -1;
+
+  const actions: TranscriptActions = {
+    onEdit: (text, entryId) => app.branchRevision(text, entryId ?? undefined),
+    onPrepareCompare: (text, entryId) =>
+      entryId ? app.prepareBranchRevision(text, entryId) : false,
+    onRetry: app.retryLatest,
+  };
 
   return (
     <div className="msgs-wrap">
     <div className="msgs" ref={containerRef}
         onScroll={(event) => {
           const el = event.currentTarget;
-          stickToBottomRef.current =
+          const nearBottom =
             el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+          stickToBottomRef.current = nearBottom;
+          if (nearBottom) {
+            pinnedScrollHeightRef.current = el.scrollHeight;
+          }
         }}>
       {app.sessionId && !app.selectors.soulSlug ? (
         <SysLine>
           <i className="ph ph-warning" />
-          Soul not loaded — this conversation runs without Alt&apos;s persona.
+          {t("Soul not loaded — this conversation runs without Alt's persona.")}
         </SysLine>
       ) : null}
       {app.sessionWarnings.map((warning) =>
@@ -94,37 +127,16 @@ export function MessageList() {
             message={message}
             developer={developer}
             isLatestUser={index === latestUserIndex}
+            isLatestAssistant={index === latestAssistantIndex}
             renderedToolCallIds={renderedToolCallIds}
             userIndex={message.role === "user" ? userOrdinal : undefined}
+            isRunning={app.isRunning}
+            actions={actions}
           />
         );
       })}
 
-      {app.streamParts.map((part, index) => {
-        if (part.kind === "text") {
-          return ( <AssistantBubble key={`sp-${index}`} text={part.text} streaming />
-            );
-        }
-        if (part.kind === "thinking") {
-          if (!developer && !shell.showThinking) return null;
-          return (
-            <ThinkingBlock
-              key={`sp-${index}`}
-              text={part.text}
-              defaultOpen={shell.thinkingExpanded}
-            />
-          );
-        }
-        if (part.kind === "notice") {
-          return (
-            <SysLine key={`sp-${index}`}>
-              <i className="ph ph-arrows-clockwise" />
-              {part.text}
-            </SysLine>
-          );
-        }
-        return <ToolLine key={part.tool.callId} tool={part.tool} />;
-      })}
+      <StreamPartsView parts={app.streamParts} developer={developer} />
 
       <TurnChangesCard />
     </div>
@@ -151,6 +163,40 @@ export function MessageList() {
     ) : null}
     </div>
   );
+}
+
+export function StreamPartsView({
+  parts,
+  developer,
+}: {
+  parts: StreamPart[];
+  developer: boolean;
+}) {
+  const shell = useShell();
+  return parts.map((part, index) => {
+    if (part.kind === "text") {
+      return <AssistantBubble key={`sp-${index}`} text={part.text} streaming />;
+    }
+    if (part.kind === "thinking") {
+      if (!developer && !shell.showThinking) return null;
+      return (
+        <ThinkingBlock
+          key={`sp-${index}`}
+          text={part.text}
+          defaultOpen={shell.thinkingExpanded}
+        />
+      );
+    }
+    if (part.kind === "notice") {
+      return (
+        <SysLine key={`sp-${index}`}>
+          <i className="ph ph-arrows-clockwise" />
+          {part.text}
+        </SysLine>
+      );
+    }
+    return <ToolLine key={part.tool.callId} tool={part.tool} />;
+  });
 }
 
 /**
@@ -198,7 +244,7 @@ function TurnChangesCard() {
     <div className="turn-changes">
       <span className="tc-head">
         <i className="ph ph-pencil-simple-line" aria-hidden="true" />
-        {files.length === 1 ? "1 file changed" : `${files.length} files changed`}
+        {files.length === 1 ? t("1 file changed") : t("{count} files changed", { count: files.length })}
       </span>
       {files.map((file) => (
         <button
@@ -264,7 +310,7 @@ function ThinkingBlock({
       onToggle={(event) => setOpen(event.currentTarget.open)}
     >
       <summary>
-        <i className="ph ph-brain" aria-hidden="true" /> Thinking
+        <i className="ph ph-brain" aria-hidden="true" /> {t("Thinking")}
       </summary>
       <MarkdownBody className="think-body" text={text} renderMermaid={false} />
     </details>
@@ -272,89 +318,36 @@ function ThinkingBlock({
 }
 
 /**
- * One-time explanation before a history-rewriting action. Shown once per
- * action kind (localStorage flag), then the action runs directly.
+ * Per-message actions. Absent in a side / comparison pane, where the bubbles
+ * render identically but branching stays with the conversation in the center.
  */
-function confirmOnce(
-  app: ReturnType<typeof useApp>,
-  key: string,
-  message: string,
-  action: () => void,
-) {
-  let seen = false;
-  try {
-    seen = Boolean(localStorage.getItem(key));
-  } catch {
-    seen = true;
-  }
-  if (seen) return action();
-  app.requestConfirm({
-    message,
-    confirmLabel: "Continue",
-    onConfirm: () => {
-      try {
-        localStorage.setItem(key, "1");
-      } catch {
-        /* ignore */
-      }
-      action();
-    },
-  });
+export interface TranscriptActions {
+  onEdit: (text: string, entryId: string | null) => boolean;
+  onPrepareCompare: (text: string, entryId: string | null) => boolean;
+  onRetry: () => boolean;
 }
 
-function TranscriptEntry({
+export function TranscriptEntry({
   message,
   developer,
   isLatestUser,
+  isLatestAssistant = false,
   renderedToolCallIds,
   userIndex,
+  isRunning,
+  actions,
 }: {
   message: TranscriptMessage;
   developer: boolean;
   isLatestUser: boolean;
+  isLatestAssistant?: boolean;
   renderedToolCallIds: Set<string>;
   userIndex?: number;
+  isRunning: boolean;
+  actions?: TranscriptActions;
 }) {
-  const app = useApp();
   const shell = useShell();
   const { thinkingExpanded, showThinking } = shell;
-
-  const editMessage = (text: string, entryId: string | null) => {
-    const start = () => app.startReviseMode(text, entryId ?? undefined);
-    if (isLatestUser) return start();
-    confirmOnce(
-      app,
-      "alt-theory-hint-edit",
-      `Rewording a question often changes the answer more than you'd expect. Your edit opens a new branch from this point and Alt answers there — this conversation stays whole, so you can compare the two.${
-        app.sessionMode === "full"
-          ? " Files already changed on disk are not reverted."
-          : ""
-      }`,
-      start,
-    );
-  };
-
-  const branchMessage = (entryId: string) => {
-    confirmOnce(
-      app,
-      "alt-theory-hint-branch",
-      "This starts a new conversation branching from this point. The current conversation stays unchanged.",
-      () => app.branchFromEntry(entryId),
-    );
-  };
-
-  const trySamePrompt = (text: string, entryId: string | null) => {
-    confirmOnce(
-      app,
-      "alt-theory-hint-try-same",
-      "The same question can get a genuinely different answer — comparing a second take shows what holds steady and what was one framing among several. This opens a new branch; the answer here stays.",
-      () => {
-        if (app.branchRevision(text, entryId ?? undefined)) {
-          shell.openRail("chats");
-        }
-      },
-    );
-  };
 
   if (message.role === "user") {
     return (
@@ -362,9 +355,9 @@ function TranscriptEntry({
         text={message.text}
         entryId={message.entryId ?? null}
         isLatest={isLatestUser}
-        isRunning={app.isRunning}
-        onEdit={editMessage}
-        onTrySame={trySamePrompt}
+        isRunning={isRunning}
+        onEdit={actions?.onEdit}
+        onPrepareCompare={actions?.onPrepareCompare}
         userIndex={userIndex}
       />
     );
@@ -378,9 +371,8 @@ function TranscriptEntry({
         ) : null}
         <AssistantBubble
           text={message.text}
-          entryId={message.entryId ?? null}
-          isRunning={app.isRunning}
-          onBranch={branchMessage}
+          isRunning={isRunning}
+          onRetry={isLatestAssistant ? actions?.onRetry : undefined}
         />
       </>
     );
@@ -408,8 +400,7 @@ function TranscriptEntry({
       return (
         <details className="think-block">
           <summary>
-            <i className="ph ph-file-text" aria-hidden="true" /> Imported{" "}
-            {message.sourceRole || "instruction"} context
+            <i className="ph ph-file-text" aria-hidden="true" /> {t("Imported {role} context", { role: message.sourceRole || "instruction" })}
           </summary>
           <div className="think-body">{message.text}</div>
         </details>
@@ -419,7 +410,7 @@ function TranscriptEntry({
       return (
         <details className="compact-summary">
           <summary>
-            <span>Conversation compressed here</span>
+            <span>{t("Conversation compressed here")}</span>
           </summary>
           <div className="compact-summary-body">{message.text}</div>
         </details>
@@ -458,97 +449,155 @@ function UserBubble({
   isLatest,
   isRunning,
   onEdit,
-  onTrySame,
+  onPrepareCompare,
   userIndex,
 }: {
   text: string;
   entryId: string | null;
   isLatest: boolean;
   isRunning: boolean;
-  onEdit: (text: string, entryId: string | null) => void;
-  onTrySame: (text: string, entryId: string | null) => void;
+  onEdit?: (text: string, entryId: string | null) => boolean;
+  onPrepareCompare?: (text: string, entryId: string | null) => boolean;
   userIndex?: number;
 }) {
   const trimmed = (text || "").trim();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(trimmed);
+  const [editWidth, setEditWidth] = useState<number | null>(null);
+  const bubbleRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    if (editing) {
+      autosizeTextarea(textareaRef.current);
+      textareaRef.current?.focus();
+    }
+  }, [draft, editing]);
   if (!trimmed) return null;
-  // Latest turn can always be edited (reviseLatest path); earlier turns need
-  // their Pi entry id, which old transcripts may not carry.
   const canEdit = isLatest || Boolean(entryId);
   return (
     <div className="msg user" data-uidx={userIndex}>
-      <div className="who">You</div>
-      <div className="bubble">
-        <MarkdownBody text={trimmed} />
+      <div className="who">{t("You")}</div>
+      <div
+        ref={bubbleRef}
+        className="bubble"
+        style={editing && editWidth ? { width: editWidth, boxSizing: "border-box" } : undefined}
+      >
+        {editing ? (
+          <textarea
+            ref={textareaRef}
+            className="inline-edit-textarea"
+            rows={1}
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+          />
+        ) : <MarkdownBody text={trimmed} />}
       </div>
+      {editing ? (
+        <div className="inline-edit-actions">
+          <button className="flat" onClick={() => (setDraft(trimmed), setEditing(false))}>
+            {t("Cancel")}
+          </button>
+          {entryId && onPrepareCompare ? (
+            <button
+              className="flat"
+              onClick={() => onPrepareCompare(draft, entryId) && setEditing(false)}
+            >
+              {t("Adjust model or role…")}
+            </button>
+          ) : null}
+          <button
+            className="send"
+            disabled={!draft.trim() || isRunning}
+            onClick={() => onEdit?.(draft, entryId) && setEditing(false)}
+          >
+            {t("Send")}
+          </button>
+        </div>
+      ) : null}
       <div className="msg-actions">
         <button
-          title="Copy"
-          aria-label="Copy message"
+          title={t("Copy")}
+          aria-label={t("Copy message")}
           onClick={() => void navigator.clipboard?.writeText(trimmed)}
         >
           <i className="ph ph-copy" aria-hidden="true" />
         </button>
-        {canEdit ? (
-          <button
-            title="Edit and ask again (opens a new branch; this conversation stays)"
-            aria-label="Edit message and ask again in a new branch"
-            disabled={isRunning}
-            onClick={() => onEdit(trimmed, entryId)}
-          >
-            <i className="ph ph-pencil-simple" aria-hidden="true" />
-          </button>
+        {canEdit && onEdit ? (
+          <span className="edit-action-cluster">
+            <button
+              title={t("Edit and compare")}
+              aria-label={t("Edit and compare")}
+              disabled={isRunning}
+              onClick={() => {
+                setEditWidth(bubbleRef.current?.getBoundingClientRect().width ?? null);
+                setEditing(true);
+              }}
+            >
+              <i className="ph ph-pencil-simple" aria-hidden="true" />
+            </button>
+            {entryId && onPrepareCompare ? (
+              <button
+                className="edit-setup-action"
+                title={t("Adjust model or role before comparing")}
+                aria-label={t("Adjust model or role before comparing")}
+                disabled={isRunning}
+                onClick={() => onPrepareCompare(trimmed, entryId)}
+              >
+                {t("Adjust model or role…")}
+              </button>
+            ) : null}
+          </span>
         ) : null}
-        <button
-          title="Ask the same question again (opens a new branch; this answer stays)"
-          aria-label="Ask the same question again in a new branch"
-          disabled={isRunning}
-          onClick={() => onTrySame(trimmed, entryId)}
-        >
-          <i className="ph ph-arrow-counter-clockwise" aria-hidden="true" />
-        </button>
       </div>
     </div>
   );
 }
 
-function AssistantBubble({
+export function AssistantBubble({
   text,
   streaming,
-  entryId,
   isRunning,
-  onBranch,
+  onRetry,
 }: {
   text: string;
   streaming?: boolean;
-  entryId?: string | null;
   isRunning?: boolean;
-  onBranch?: (entryId: string) => void;
+  onRetry?: () => boolean;
 }) {
-  const trimmed = (text || "").trim();
-  if (!trimmed) return null;
+  // v0.5 streams raw text (no trim) so trailing newlines do not thrash layout.
+  const raw = text || "";
+  const trimmed = raw.trim();
+  if (streaming ? !raw : !trimmed) return null;
+  const body = streaming ? raw : trimmed;
   return (
     <div className="msg assistant">
-      <div className="who">Alt{streaming ? " · typing…" : ""}</div>
+      <div className="who">{streaming ? t("Alt · typing…") : t("Alt")}</div>
       <div className="bubble">
-        <MarkdownBody text={trimmed} renderMermaid={!streaming} />
+        <MarkdownBody
+          text={body}
+          renderMermaid={!streaming}
+          streaming={Boolean(streaming)}
+        />
       </div>
-      {onBranch && entryId ? (
+      {!streaming ? (
         <div className="msg-actions">
           <button
-            title="Copy"
-            aria-label="Copy message"
+            title={t("Copy")}
+            aria-label={t("Copy message")}
             onClick={() => void navigator.clipboard?.writeText(trimmed)}
           >
             <i className="ph ph-copy" aria-hidden="true" />
           </button>
-          <button
-            title="Branch from here"
-            aria-label="Branch a new conversation from here"
-            disabled={isRunning}
-            onClick={() => onBranch(entryId)}
-          >
-            <i className="ph ph-git-branch" aria-hidden="true" />
-          </button>
+          {onRetry ? (
+            <button
+              title={t("Run the latest message again from the start")}
+              aria-label={t("Retry latest message")}
+              disabled={isRunning}
+              onClick={onRetry}
+            >
+              <i className="ph ph-arrow-clockwise" aria-hidden="true" />
+            </button>
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -567,7 +616,7 @@ function StaleWorkspaceNotice({ warning }: { warning: string }) {
   const choose = () => {
     if (!app.sessionId) return;
     void pickDirectory(
-      "Full path of the working folder for this conversation:",
+      t("Full path of the working folder for this conversation:"),
     ).then((path) => {
       if (!path || !app.sessionId) return;
       void app.repointSession(app.sessionId, path).catch((error) => {
@@ -581,10 +630,10 @@ function StaleWorkspaceNotice({ warning }: { warning: string }) {
       <i className="ph ph-warning" />
       <span style={{ flex: 1 }}>{warning}</span>
       <button className="link-btn" onClick={choose}>
-        Choose folder…
+        {t("Choose folder…")}
       </button>
       <button className="link-btn" onClick={() => setDismissed(true)}>
-        Continue without
+        {t("Continue without")}
       </button>
     </SysLine>
   );

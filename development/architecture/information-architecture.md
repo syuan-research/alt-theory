@@ -1,7 +1,7 @@
 ---
 title: Alt Theory information architecture
 status: v2
-last_updated: 2026-07-28
+last_updated: 2026-08-03
 scope: where user-facing things live, how the major surfaces relate, and which information belongs in each
 ---
 
@@ -47,6 +47,13 @@ surfaces remain designation-gated and absent for everyone else.
    than teaching protocol details in the settings UI.
 7. **Promises are statements, not features.** Stable assurances such as local
    storage belong in first-run/About copy, not as permanent controls.
+8. **Keep follow-up choices near their trigger and preserve spatial stability.**
+   Lightweight confirmation, a single-value setting, or a secondary action
+   should complete at the object the user just clicked. Prefer an anchored menu,
+   same-row replacement, or stable inline selector over a distant modal or an
+   expanding panel. Revealing a choice must not move its trigger under the
+   pointer. Use a modal or expanding form only when the user must read substantial
+   consequences or provide additional information.
 
 ## Surface map
 
@@ -69,16 +76,18 @@ surfaces remain designation-gated and absent for everyone else.
   - Skills do not receive permanent navigation entries merely because they are
     installed.
 - **Messages**
-  - User messages keep a familiar pencil for editing; its tooltip may say
-    `Edit and branch`. Editing after an answer preserves the original in a
-    sibling conversation and reveals the related-conversation rail.
-  - The user-message overflow may offer `Try same prompt again`; it has the
-    same sibling-branch behavior without forcing novice users to understand
-    Git terminology.
-  - `Retry` is only for failed/no-answer attempts. It stays above the composer
-    and reruns in place without creating a visible branch.
-  - History-changing actions explain their consequence at the moment of first
-    use.
+  - The pencil means **Edit and compare**. Editing stays in the user bubble;
+    Send preserves the original and runs the edit in a sibling conversation.
+  - The edit state also offers `Adjust model or role…`. It opens an idle Related
+    branch, prefilled with the edit but forked before that user message, so the
+    user may change configuration before Send. Hover/focus may reveal the same
+    secondary action; it is not a separate mode.
+  - `Retry` reruns the latest user message from the start in the same visible
+    conversation, whether the previous answer completed or was stopped. It does
+    not create a Related child or list branch. Automatic provider retry remains
+    runtime recovery, not this user action.
+  - Traditional Branch is the second-level `/branch` command, not a message
+    button. It opens an idle Related branch without sending.
   - Resolved conversation permissions do not become transcript events. When
     retained for inspection, they live collapsed in advanced Runtime.
   - Thinking, tool activity, compaction boundaries, and connection/run states
@@ -86,10 +95,38 @@ surfaces remain designation-gated and absent for everyone else.
 - **Conversation list**
   - Conversations are grouped by workspace.
   - List-level actions live in the list overflow.
-  - Side chats, Helper conversations, and provisional comparison arms do not
-    become ordinary list rows.
+  - Root conversations and Branches (purpose `fork`) have the same functional
+    status: both are first-class conversations that users may compare, keep, or
+    delete independently. Deleting either never deletes its parent, sibling
+    Branches, or child Branches. This independence exists because facilitating
+    comparison is a core product purpose.
+  - Side chats, Helper conversations, subagents, and provisional comparison arms
+    do not become ordinary list rows unless the user promotes them (or they are
+    forks with purpose `fork`, which are list members by default).
+  - BTW, Helper, and subagent conversations are attached to their owning
+    conversation by default and are deleted with it. **Show in conversation
+    list** is an identity and lifecycle transition, not merely a display toggle:
+    a promoted child becomes independently retainable and is no longer deleted
+    with its parent, while keeping its original purpose and provenance label.
+    Its own unpromoted BTW, Helper, and subagent children remain attached to it.
+  - Related children in the list or Related switcher show an **English prefix
+    plus the real title**, not a rename: e.g. `Branch 1 · …`, `BTW 1 · …`,
+    `Helper 1 · …`, `Subagent 1 · …`. Numbering is per parent + purpose. Do not
+    overwrite `ui-alias` to a bare token like `branch1`.
 - **Right rail**
-  - Holds files/changes and one selected side conversation or Helper thread.
+  - Holds files/changes and one selected related conversation (Branch, BTW,
+    Helper, or subagent).
+  - **Branch / edited comparisons (purpose `fork`)** open the child in this rail at roughly
+    **half of the center+right work area** (not half the browser window).
+  - **BTW, Helper, and subagents** open at the ordinary default rail width
+    (~480 or the user’s last dragged width).
+  - Leaving a related child (Back, collapse rail, switch rail tab) clears the
+    active related session so re-selecting the same child opens it again.
+  - A Related conversation uses the same history, live thinking/tool rendering,
+    approvals, skills, and slash commands as the center. It exposes model and
+    role; mode chrome is omitted only because the rail is narrow.
+  - Center multi-arm A/B comparison stays on Workbench compare surfaces only;
+    branches must not open a second center-column “compare pane.”
   - File preview occupies the rail as a real reading surface; rendered Markdown
     is the default for non-technical users, with source available on demand.
 - **Settings**
@@ -97,6 +134,11 @@ surfaces remain designation-gated and absent for everyone else.
   - Models: provider connection, model choice, and model capability correction.
   - Role & Knowledge: role, knowledge sets, and related paths when implemented.
   - What Alt can do: a curated capability guide sharing its source with Helper.
+  - Trash: deleted conversations remain recoverable for 30 days. Restore and
+    permanent-delete actions live here rather than in persistent conversation
+    navigation. Permanent conversation deletion removes conversation/session
+    records, including a managed import-source copy, but not attachments or
+    working files.
   - About: version, changes, and stable storage statements.
 - **Researcher-only surfaces**
   - Inspector, comparison, provenance, and study controls are
@@ -126,18 +168,44 @@ The Models surface uses a master-detail structure:
 - The left side is a compact list of existing providers.
 - Selecting any provider opens its editor in the right detail area; do not
   require the user to find a small Edit button.
-- The active provider/model is legible without expanding every model's
-  metadata.
+- **Default model** for new conversations is controlled only from an explicit
+  control at the top of Models (overflow/summary of the active default).
+  Choosing a model inside a provider editor does **not** silently set default.
+- Under the **Models** heading inside a provider editor, **Add model**,
+  **Fetch model list**, and **Test connection** sit **above** the per-model
+  rows so Fetch is findable.
 - OAuth-connected providers sort before ordinary API-key providers.
 - OAuth-connected providers may carry the single low-key word `OAuth`.
   Ordinary API-key providers need no corresponding badge.
 - A visually clear `+ Add provider` action opens the add flow in the right
   detail area.
+- Directly under Add provider: a low-key entry to the chatbot/agent model
+  configuration guide (docs: configure-models-with-chatbot).
 - With no providers configured, the add flow is open by default.
 
 Provider rows do not enumerate context windows, output limits, reasoning
 flags, costs, modalities, or metadata provenance. Those facts do not help the
-user scan or choose a provider.
+user scan or choose a provider; they live in the provider editor and after
+Fetch.
+
+### Composer and related conversations (alpha.6 follow-up)
+
+- Run tips while a turn runs rotate every **10s** (after a short first delay).
+- Related/branch switcher in the right rail is horizontally scrollable (CSS
+  overflow + **mouse wheel maps to horizontal** when the strip overflows);
+  clicking a child opens it explicitly.
+- When a related child is open, the outer inspector body does not double-scroll
+  the conversation area.
+- Main and related composers stay **visually the same card height** when
+  side-by-side. Related is a compact variant of the same conversation surface:
+  it keeps slash commands, skills, model, and role; only mode chrome is hidden
+  for space.
+- First-level attach control is **Understand-only**; Work keeps attach in the
+  toolbox.
+- Mode toggle is compact (~20% shorter than earlier chrome).
+- Local mode: left-foot avatar tooltip states local / no account.
+- v6 serve uses static `web-server/public-v6` — frontend source changes require
+  `npm run build:frontend-v6` before they appear in `dev:web:*:v6`.
 
 ### Add provider
 

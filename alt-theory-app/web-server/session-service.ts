@@ -9,15 +9,13 @@ import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { ImageContent, Model } from "@earendil-works/pi-ai";
 import { completeSimple } from "@earendil-works/pi-ai/compat";
 import {
-  capabilityModeFromPromptMode,
   createAltTheorySession,
   KB_DISABLED_DOMAIN,
   openAltTheorySession,
-  promptModeFromCapabilityMode,
   type AssemblyManifest,
-  type CapabilityMode,
-  type PromptMode,
+  type AltMode,
   type ResourceDiscoveryMode,
+  type RuntimeMode,
 } from "../core/alt-theory-core.js";
 import {
   allocateReadableSessionId,
@@ -35,6 +33,7 @@ import {
   resolveSoulSlug,
 } from "./asset-registry.js";
 import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
+import { clampPromptCacheKey } from "../core/prompt-cache-continuity.js";
 import {
   ApprovalBridge,
   type ApprovalRequest,
@@ -55,6 +54,7 @@ import {
   latestActiveLeafEntryId,
   listSessionSummaries,
   buildTranscriptFromEntries,
+  promoteToMainlineRecords,
   readSessionDetail,
   getSessionRootForRequest,
   stripSkillWrapper,
@@ -63,10 +63,12 @@ import { readAppSettings } from "./app-settings.js";
 import { extractToolDetail, extractToolPath } from "./tool-detail.js";
 import {
   readV4SessionHeader,
+  withholdsFromResearch,
   writeFoundationRecords,
   writeSessionHeader,
   type ForkPurpose,
   type SessionModelOverride,
+  type SessionVisibility,
   type StudyTag,
 } from "./session-records.js";
 import {
@@ -104,13 +106,13 @@ import {
   type AgentMailEnvelope,
 } from "./agent-mail.js";
 import {
-  clampWorkerMode,
+  clampSubagentMode,
   createAgentTeamTools,
   LEAD_DELEGATION_PROMPT_SECTION,
   resolveModelTier,
-  WORKER_PROMPT_SECTION,
+  SUBAGENT_PROMPT_SECTION,
   type AgentTeamBridge,
-  type SpawnWorkerOptions,
+  type SpawnSubagentOptions,
 } from "./agent-team.js";
 
 export class SessionBusyError extends Error {
@@ -128,14 +130,20 @@ export interface SessionServiceConfig {
   rolePresetsDir: string;
   soulDir: string;
   legacySoulPath: string | null;
-  readOnly: boolean;
+  understandReadOnly: boolean;
+  /**
+   * Absent = local (the safe default). Retention — the only thing that ever
+   * deletes a conversation — exists ONLY on hosted deployments; see
+   * `SessionVisibility` in session-records.ts for why the two deployments use
+   * disjoint visibility vocabularies.
+   */
+  localMode?: boolean;
   modelProvider?: string;
   modelId?: string;
   modelsPath?: string;
   authPath?: string;
   runtimeApiKey?: string;
   thinkingLevel?: ThinkingLevel;
-  promptMode: PromptMode;
   resourceDiscovery: ResourceDiscoveryMode;
   skillsDir?: string;
   instructionsDir?: string;
@@ -151,7 +159,7 @@ export interface SessionServiceConfig {
    * session open so settings changes apply on reload without touching
    * running sessions.
    */
-  resolveExternalSkillPaths?: () => { pure: string[]; full: string[] };
+  resolveExternalSkillPaths?: () => { understand: string[]; work: string[] };
   /**
    * Inline Pi extension factories loaded into every session (M4 policy
    * layer, tests). The only extension entry point — ambient discovery
@@ -180,14 +188,14 @@ export interface SessionSelectors {
 export interface SessionCreationMetadata {
   ownerAccountId?: string | null;
   roleCondition?: string | null;
-  visibility?: "research" | "private";
+  visibility?: SessionVisibility;
   consentSnapshot?: {
     researcherReadable: boolean;
     quoteAfterAnonymization: boolean;
     privateOverride: boolean;
   } | null;
   /**
-   * Full workspace (spec §5.1). primaryDir replaces the default session
+   * Work/Native workspace (spec §5.1). primaryDir replaces the default session
    * workspace as Pi's cwd; additionalDirs are intentional user additions.
    * Local app form only — the server layer gates this.
    */
@@ -200,7 +208,7 @@ export interface SessionCreationMetadata {
   /** Internal child relationship used by fresh-context children. */
   forkedFrom?: { sessionId: string; purpose: ForkPurpose } | null;
   /** Internal mode override used when a fresh child inherits its parent mode. */
-  mode?: CapabilityMode;
+  mode?: AltMode;
 }
 
 export type { ForkPurpose, StudyTag, SessionModelOverride };
@@ -260,8 +268,11 @@ export type SessionServiceEvent =
 interface ManagedSession {
   session: AgentSession;
   manifest: AssemblyManifest;
-  getMode: () => CapabilityMode;
-  setMode: (mode: CapabilityMode) => Promise<void>;
+  getAltMode: () => AltMode;
+  setAltMode: (mode: AltMode) => Promise<void>;
+  getRuntimeMode: () => RuntimeMode;
+  setRuntimeMode: (mode: RuntimeMode) => Promise<void>;
+  setNativePiScanAltSkills: (enabled: boolean) => Promise<void>;
   getWorkspace: () => { primaryDir: string; additionalDirs: string[] };
   addWorkspaceDir: (dir: string) => Promise<string[]>;
   approvalBridge: ApprovalBridge;
@@ -279,21 +290,45 @@ interface ManagedSession {
   branchId: string;
   fallbackAttempts: number;
   pendingRunWork: Promise<void> | null;
-  /** Set when this session is a worker child: its lead conversation's id. */
-  workerParentId: string | null;
+  pendingRuntimeMode: RuntimeMode | null;
+  pendingNativePiScanAltSkills: boolean | null;
+  /** Set when this session is a subagent child: its lead conversation's id. */
+  subagentParentId: string | null;
 }
 
-/** Background worker runs allowed at once; further first-runs queue FIFO. */
-const WORKER_CONCURRENCY = 3;
+/** Background subagent runs allowed at once; further first-runs queue FIFO. */
+const SUBAGENT_CONCURRENCY = 3;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export class SessionService implements AgentTeamBridge {
   private readonly sessions = new Map<string, ManagedSession>();
   private readonly modelFallback: ModelFallbackCoordinator | null;
-  private runningWorkerRuns = 0;
-  private readonly workerQueue: Array<() => void> = [];
-  private readonly queuedWorkerIds = new Set<string>();
+  private runningSubagentRuns = 0;
+  private readonly subagentQueue: Array<{ childId: string; start: () => void }> =
+    [];
+  private readonly queuedSubagentIds = new Set<string>();
+
+  /** Retention is hosted-only; absent config means local, the safe default. */
+  private get retentionEnabled(): boolean {
+    return this.config.localMode === false;
+  }
+
+  /** Deployment's withheld-by-default value, in that deployment's vocabulary. */
+  private get fallbackVisibility(): SessionVisibility {
+    return this.retentionEnabled ? "research" : "no-export";
+  }
+
+  /** Retention sweep guard — never delete a conversation that is open. */
+  isOpen(sessionId: string): boolean {
+    const managed = this.sessions.get(sessionId);
+    return Boolean(
+      managed &&
+        (managed.listeners.size > 0 ||
+          managed.busy ||
+          managed.session.isStreaming),
+    );
+  }
 
   constructor(private readonly config: SessionServiceConfig) {
     const fallbackConfigPath = this.config.modelFallbackConfigPath;
@@ -499,12 +534,14 @@ export class SessionService implements AgentTeamBridge {
       sessionId,
       fallbackSelectors,
     );
-    // Reading a private session counts as activity: reopening refreshes the
-    // retention timer so a conversation the user still returns to never
-    // expires out from under them (owner decision 2026-07-23).
-    const header = readV4SessionHeader(managed.manifest.recordsDir);
-    if (header?.visibility === "private") {
-      refreshSessionRetention(managed.manifest.recordsDir);
+    // Hosted only: reopening a private conversation counts as activity, so a
+    // conversation the participant still returns to never expires out from
+    // under them. Local conversations have no expiry at all.
+    if (this.retentionEnabled) {
+      const header = readV4SessionHeader(managed.manifest.recordsDir);
+      if (header?.visibility === "private") {
+        refreshSessionRetention(managed.manifest.recordsDir);
+      }
     }
     this.sessions.set(managed.manifest.sessionId, managed);
     // Agent mail that arrived while this session was closed: inject it into
@@ -583,23 +620,23 @@ export class SessionService implements AgentTeamBridge {
   }
 
   /**
-   * Switch capability mode on the live session (spec §3.2). Applies from the
+   * Switch Alt Theory mode on the live session. Applies from the
    * next turn via Pi's own loader reload + active-tool swap; the session, its
    * conversation, and its Pi JSONL are untouched.
    */
   async switchMode(
     sessionId: string,
-    mode: CapabilityMode,
+    mode: AltMode,
   ): Promise<SessionSnapshot> {
     const managed = this.requireSession(sessionId);
     if (managed.busy || managed.session.isStreaming) {
       throw new SessionBusyError(sessionId);
     }
-    if (managed.getMode() === mode) {
+    if (managed.getAltMode() === mode) {
       return this.snapshot(managed);
     }
-    await managed.setMode(mode);
-    managed.manifest.promptMode = promptModeFromCapabilityMode(mode);
+    await managed.setAltMode(mode);
+    managed.manifest.altMode = mode;
     const header = readV4SessionHeader(managed.manifest.recordsDir);
     if (header) {
       writeSessionHeader(managed.manifest.recordsDir, { ...header, mode });
@@ -617,10 +654,40 @@ export class SessionService implements AgentTeamBridge {
         managed.manifest,
         managed.selectors.projectId,
       ),
-      changedFields: ["promptMode"],
+      changedFields: ["altMode"],
       warnings: [],
     });
     return this.snapshot(managed);
+  }
+
+  /** Apply app-wide behavior settings to every open session. */
+  async setRuntimeSettings(
+    mode: RuntimeMode,
+    nativePiScanAltSkills: boolean,
+  ): Promise<void> {
+    await Promise.all(
+      [...this.sessions.values()].map(async (managed) => {
+        if (managed.busy || managed.session.isStreaming) {
+          managed.pendingRuntimeMode = mode;
+          managed.pendingNativePiScanAltSkills = nativePiScanAltSkills;
+          return;
+        }
+        await managed.setRuntimeMode(mode);
+        await managed.setNativePiScanAltSkills(nativePiScanAltSkills);
+      }),
+    );
+  }
+
+  private async applyPendingRuntime(managed: ManagedSession): Promise<void> {
+    const mode = managed.pendingRuntimeMode;
+    const scanAltSkills = managed.pendingNativePiScanAltSkills;
+    if (!mode && scanAltSkills === null) return;
+    managed.pendingRuntimeMode = null;
+    managed.pendingNativePiScanAltSkills = null;
+    if (mode) await managed.setRuntimeMode(mode);
+    if (scanAltSkills !== null) {
+      await managed.setNativePiScanAltSkills(scanAltSkills);
+    }
   }
 
   /**
@@ -873,6 +940,60 @@ export class SessionService implements AgentTeamBridge {
     return this.reviseFromRun(managed, latest, text);
   }
 
+  /** Run the latest user message again from its start, without a visible child. */
+  retryLatestFromStart(sessionId: string): RunHandle {
+    const managed = this.requireSession(sessionId);
+    if (managed.busy || managed.session.isStreaming) {
+      throw new SessionBusyError(sessionId);
+    }
+    const runs = latestRunSnapshots(managed.manifest.recordsDir).filter(
+      (run) =>
+        run.branchId === managed.branchId &&
+        run.userEntryId &&
+        run.status !== "deleted" &&
+        run.status !== "superseded",
+    );
+    const latest = runs.at(-1) as (RunRecord & { userEntryId: string }) | undefined;
+    if (!latest) throw new Error("No latest user turn is available to retry");
+    const latestUserEntry = managed.session.sessionManager
+      .getBranch()
+      .filter(
+        (entry) =>
+          entry.type === "message" &&
+          (entry.message as { role?: string }).role === "user",
+      )
+      .at(-1);
+    if (latestUserEntry?.id !== latest.userEntryId) {
+      throw new Error("Only the current latest user turn can be retried");
+    }
+    const entry = managed.session.sessionManager.getEntry(latest.userEntryId) as
+      | { type?: string; message?: { role?: string; content?: unknown } }
+      | undefined;
+    if (entry?.type !== "message" || entry.message?.role !== "user") {
+      throw new Error("Latest user message is missing from Pi history");
+    }
+    const text = retryPromptFromStoredUserContent(
+      contentToText(entry.message.content),
+    );
+    if (!text) throw new Error("Latest user message is empty");
+    const skillName = text.match(/^\/skill:([^\s]+)/)?.[1];
+    if (skillName) {
+      const skill = managed.manifest.skills?.find(
+        (candidate) => candidate.name === skillName,
+      );
+      if (!skill) throw new Error(`Unknown Alt Theory skill: ${skillName}`);
+      appendSessionEvent(managed.manifest.recordsDir, {
+        sessionId,
+        type: "skill_invoked",
+        details: { skillName, skillPath: skill.path },
+      });
+    }
+    // `invokeSkill` also enters Pi through runPromptWithLineage(`/skill:…`).
+    // Passing the reconstructed command here therefore re-runs the same skill
+    // extension after reviseFromRun rewinds the old attempt.
+    return this.reviseFromRun(managed, latest, text);
+  }
+
   private latestRetryableRun(
     managed: ManagedSession,
   ): (RunRecord & { userEntryId: string }) | null {
@@ -954,7 +1075,9 @@ export class SessionService implements AgentTeamBridge {
     const revisionId = formatCounter("rev", managed.nextRevisionIndex++);
     const runId = formatCounter("run", managed.nextRunIndex++);
     const acceptedAt = new Date().toISOString();
-    refreshSessionRetention(managed.manifest.recordsDir, new Date(acceptedAt));
+    if (this.retentionEnabled) {
+      refreshSessionRetention(managed.manifest.recordsDir, new Date(acceptedAt));
+    }
     const beforeEntryIds = new Set(
       managed.session.sessionManager.getEntries().map((entry) => entry.id),
     );
@@ -1037,7 +1160,8 @@ export class SessionService implements AgentTeamBridge {
           new Error(finalError ?? "Retry failed")
         );
       }
-    })().finally(() => {
+    })().finally(async () => {
+      await this.applyPendingRuntime(managed);
       managed.busy = false;
     });
 
@@ -1205,8 +1329,9 @@ export class SessionService implements AgentTeamBridge {
   async forkSession(
     sessionId: string,
     purpose: ForkPurpose,
-    forkPointEntryId?: string,
+    forkPointEntryId?: string | null,
     selectorOverrides?: Partial<SessionSelectors>,
+    options?: { exactForkPoint?: boolean; allowEmpty?: boolean },
   ): Promise<SessionSnapshot> {
     const previous = this.requireSession(sessionId);
     if (previous.busy || previous.session.isStreaming) {
@@ -1220,17 +1345,25 @@ export class SessionService implements AgentTeamBridge {
     const childSelectors: SessionSelectors = selectorOverrides
       ? { ...previous.selectors, ...selectorOverrides }
       : previous.selectors;
-    let leafId =
-      forkPointEntryId ?? previous.session.sessionManager.getLeafId();
-    if (!leafId) {
+    let leafId = options?.exactForkPoint
+      ? (forkPointEntryId ?? null)
+      : (forkPointEntryId ?? previous.session.sessionManager.getLeafId());
+    if (!leafId && !options?.allowEmpty) {
       throw new Error("Fork requires an existing conversation entry");
     }
     // "Branch from here" on a user message forks the COMPLETE turn: advance
     // the fork point to that run's last assistant entry so the child doesn't
     // end on a dangling user message.
-    const leafEntry = previous.session.sessionManager.getEntry(leafId) as { type?: string; message?: { role?: string } }
-      | undefined;
-    if (leafEntry?.type === "message" && leafEntry.message?.role === "user") {
+    const leafEntry = leafId
+      ? (previous.session.sessionManager.getEntry(leafId) as
+          | { type?: string; message?: { role?: string } }
+          | undefined)
+      : undefined;
+    if (
+      !options?.exactForkPoint &&
+      leafEntry?.type === "message" &&
+      leafEntry.message?.role === "user"
+    ) {
       // Advance to the last entry before the next user message on the active
       // path. Scanning the Pi branch (not run records) also covers inherited
       // fork/import history that has no local run records.
@@ -1252,6 +1385,7 @@ export class SessionService implements AgentTeamBridge {
       }
     }
     if (
+      leafId &&
       !previous.session.sessionManager
         .getBranch()
         .some((entry) => entry.id === leafId)
@@ -1278,17 +1412,26 @@ export class SessionService implements AgentTeamBridge {
     }
     const forkTimestamp = new Date().toISOString();
     const forkPiId = randomUUID();
+    const inheritedPromptCacheFamilyId =
+      typeof (parentHeader as { promptCacheFamilyId?: unknown })
+        .promptCacheFamilyId === "string"
+        ? (parentHeader as { promptCacheFamilyId: string })
+            .promptCacheFamilyId
+        : parentHeader.id;
     const forkHeader = {
       ...parentHeader,
       id: forkPiId,
       timestamp: forkTimestamp,
       parentSession: parentManager.getSessionFile(),
+      promptCacheFamilyId: clampPromptCacheKey(
+        inheritedPromptCacheFamilyId,
+      ),
     };
     // Same label handling as Pi's createBranchedSession: drop label entries
     // and re-chain parentIds so the retained path stays a valid chain.
     const forkPath: Array<Record<string, unknown>> = [];
     let forkParentId: string | null = null;
-    for (const entry of parentManager.getBranch(leafId)) {
+    for (const entry of leafId ? parentManager.getBranch(leafId) : []) {
       if (entry.type === "label") continue;
       forkPath.push({ ...entry, parentId: forkParentId });
       forkParentId = entry.id;
@@ -1330,7 +1473,7 @@ export class SessionService implements AgentTeamBridge {
         transcript: previous.transcript,
         overrideSessionCwd: !externalPrimary,
         activeLeafEntryId: leafId,
-        mode: previous.getMode(),
+        mode: previous.getAltMode(),
         ...(readV4SessionHeader(previous.manifest.recordsDir)?.workspace
           ? { workspace: previous.getWorkspace() }
           : {}),
@@ -1343,6 +1486,7 @@ export class SessionService implements AgentTeamBridge {
         result.manifest,
       );
       const sourceHeader = readV4SessionHeader(previous.manifest.recordsDir);
+      const visibility = sourceHeader?.visibility ?? this.fallbackVisibility;
       writeFoundationRecords({
         sessionRoot: forkDirs.sessionRoot,
         recordsDir: forkDirs.recordsDir,
@@ -1350,11 +1494,14 @@ export class SessionService implements AgentTeamBridge {
         projectId: childSelectors.projectId ?? null,
         ownerAccountId: sourceHeader?.ownerAccountId ?? null,
         roleCondition: sourceHeader?.roleCondition ?? null,
-        visibility: sourceHeader?.visibility ?? "research",
+        visibility,
         consentSnapshot: sourceHeader?.consentSnapshot ?? null,
         lastActivityAt: result.manifest.createdAt,
-        retentionDueAt: sourceHeader?.retentionDueAt ?? null,
-        mode: previous.getMode(),
+        retentionDueAt:
+          this.retentionEnabled && visibility === "private"
+            ? calculateRetentionDueAt(result.manifest.createdAt)
+            : null,
+        mode: previous.getAltMode(),
         workspace: sourceHeader?.workspace
           ? result.manifest.workspace
           : null,
@@ -1397,6 +1544,8 @@ export class SessionService implements AgentTeamBridge {
           purpose,
         },
       });
+      // List labels: display-layer prefix only (e.g. "Branch 1 · …") — do not
+      // rewrite ui-alias to a bare number token; that is a rename, not a prefix.
       return this.snapshot(result);
     } catch (error) {
       if (!activated && existsSync(forkDirs.sessionRoot)) {
@@ -1406,9 +1555,34 @@ export class SessionService implements AgentTeamBridge {
     }
   }
 
+  /** Create an idle comparison branch whose context ends before a user message. */
+  async prepareRevisionBranch(
+    sessionId: string,
+    userEntryId: string,
+  ): Promise<SessionSnapshot> {
+    const managed = this.requireSession(sessionId);
+    const entry = managed.session.sessionManager.getEntry(userEntryId) as
+      | { id?: string; parentId?: string | null; type?: string; message?: { role?: string } }
+      | undefined;
+    if (
+      entry?.type !== "message" ||
+      entry.message?.role !== "user" ||
+      !managed.session.sessionManager.getBranch().some((item) => item.id === userEntryId)
+    ) {
+      throw new Error("Edit comparison requires a user message in this conversation");
+    }
+    return this.forkSession(
+      sessionId,
+      "fork",
+      entry.parentId ?? null,
+      undefined,
+      { exactForkPoint: true, allowEmpty: true },
+    );
+  }
+
   /**
-   * M6 Pure response comparison (spec §14.6), thin over the M5 substrate:
-   * fork one Pure-pinned arm per config off the same live parent, run the
+   * M6 Understand response comparison (spec §14.6), thin over the M5 substrate:
+   * fork one Understand-pinned arm per config off the same live parent, run the
    * same prompt in every arm, and record the outputs as an ab-comparison on
    * the parent. The participant's choice/scores arrive later via the existing
    * POST endpoint; continue-from-choice is a separate, undecided step.
@@ -1468,7 +1642,7 @@ export class SessionService implements AgentTeamBridge {
         undefined,
         arm.selectorOverrides,
       );
-      await this.switchMode(forked.sessionId, "pure");
+      await this.switchMode(forked.sessionId, "understand");
       armSnapshots.push(forked);
     }
     await Promise.all(
@@ -1512,7 +1686,7 @@ export class SessionService implements AgentTeamBridge {
       turnId?: string;
       supersedesRunId?: string | null;
       attachments?: string[];
-      /** Worker runs started by the agent team: mail the outcome to the lead. */
+      /** Subagent runs started by the agent team: mail the outcome to the lead. */
       notifyParent?: boolean;
     } = {},
   ): RunHandle {
@@ -1529,7 +1703,9 @@ export class SessionService implements AgentTeamBridge {
     const revisionId = formatCounter("rev", managed.nextRevisionIndex++);
     const runId = formatCounter("run", managed.nextRunIndex++);
     const acceptedAt = new Date().toISOString();
-    refreshSessionRetention(managed.manifest.recordsDir, new Date(acceptedAt));
+    if (this.retentionEnabled) {
+      refreshSessionRetention(managed.manifest.recordsDir, new Date(acceptedAt));
+    }
     const beforeEntryIds = new Set(
       managed.session.sessionManager.getEntries().map((entry) => entry.id),
     );
@@ -1610,13 +1786,13 @@ export class SessionService implements AgentTeamBridge {
           acceptedAt,
           completedAt: new Date().toISOString(),
         });
-        if (options.notifyParent && managed.workerParentId) {
-          this.deliverWorkerOutcome(
+        if (options.notifyParent && managed.subagentParentId) {
+          this.deliverSubagentOutcome(
             managed,
             aborted ? "interrupted" : "failed",
             aborted
-              ? "The worker's turn was stopped. Its completed work is kept; it can continue from the break point."
-              : `The worker's turn failed: ${finalError ?? String(promptError ?? "unknown error")}`,
+              ? "The subagent's turn was stopped. Its completed work is kept; it can continue from the break point."
+              : `The subagent's turn failed: ${finalError ?? String(promptError ?? "unknown error")}`,
           );
         }
         throw ( promptError ?? pendingError ?? new Error(finalError ?? "Run failed")
@@ -1638,7 +1814,7 @@ export class SessionService implements AgentTeamBridge {
         completedAt: new Date().toISOString(),
       });
 
-      if (options.notifyParent && managed.workerParentId) {
+      if (options.notifyParent && managed.subagentParentId) {
         const lastAssistant = entries
           .filter(
             (entry) =>
@@ -1647,17 +1823,18 @@ export class SessionService implements AgentTeamBridge {
           )
           .at(-1) as { message?: { content?: unknown } } | undefined;
         const answer = contentToText(lastAssistant?.message?.content).trim();
-        this.deliverWorkerOutcome(
+        this.deliverSubagentOutcome(
           managed,
           "completed",
-          answer || "(the worker finished without a text answer)",
+          answer || "(the subagent finished without a text answer)",
         );
       }
 
       // Auto-name the conversation once, after its first real turn (v1.2.1).
       // Fire-and-forget: title generation must never affect the run.
       void this.maybeAutoTitle(managed);
-    })().finally(() => {
+    })().finally(async () => {
+      await this.applyPendingRuntime(managed);
       managed.busy = false;
     });
 
@@ -1703,6 +1880,7 @@ export class SessionService implements AgentTeamBridge {
     const managed = this.requireSession(sessionId);
     managed.session.abortCompaction();
     await managed.session.abort();
+    await this.applyPendingRuntime(managed);
     managed.busy = false;
     this.emitRunPhase(managed, "idle");
     appendSessionEvent(managed.manifest.recordsDir, {
@@ -1746,6 +1924,7 @@ export class SessionService implements AgentTeamBridge {
       }
       throw error;
     } finally {
+      await this.applyPendingRuntime(managed);
       managed.busy = false;
       this.emitRunPhase(managed, "idle");
       this.emit(managed, {
@@ -1855,7 +2034,7 @@ export class SessionService implements AgentTeamBridge {
 
   setVisibility(
     sessionId: string,
-    visibility: "research" | "private",
+    visibility: SessionVisibility,
     consentSnapshot?: SessionCreationMetadata["consentSnapshot"],
   ): SessionSnapshot {
     const managed = this.requireSession(sessionId);
@@ -1871,7 +2050,7 @@ export class SessionService implements AgentTeamBridge {
       ...header,
       visibility,
       consentSnapshot:
-        visibility === "private"
+        withholdsFromResearch(visibility)
           ? {
               researcherReadable: false,
               quoteAfterAnonymization: false,
@@ -1884,7 +2063,7 @@ export class SessionService implements AgentTeamBridge {
               : undefined,
     };
     const next =
-      visibility === "private"
+      this.retentionEnabled && visibility === "private"
         ? refreshRetention(nextBase, new Date())
         : {
             ...nextBase,
@@ -2000,17 +2179,17 @@ export class SessionService implements AgentTeamBridge {
 
   /**
    * Agent-team surface per session kind (alpha.5 M2): leads get the
-   * spawn/steer/wait tool set, worker children get message_parent (depth 1),
+   * spawn/steer/wait tool set, subagent children get message_parent (depth 1),
    * A/B arms get none — they are comparison instruments, not delegators.
    */
   private agentTeamArgsFor(
     sessionId: string,
     purpose: ForkPurpose | null | undefined,
   ): { extraTools: ToolDefinition[]; extraPromptSections: string[] } {
-    if (purpose === "worker") {
+    if (purpose === "subagent") {
       return {
-        extraTools: createAgentTeamTools(this, sessionId, "worker"),
-        extraPromptSections: [WORKER_PROMPT_SECTION],
+        extraTools: createAgentTeamTools(this, sessionId, "subagent"),
+        extraPromptSections: [SUBAGENT_PROMPT_SECTION],
       };
     }
     if (purpose === "ab-arm") {
@@ -2044,6 +2223,7 @@ export class SessionService implements AgentTeamBridge {
     if (primaryDir && !statSync(primaryDir, { throwIfNoEntry: false })?.isDirectory()) {
       throw new Error(`Workspace primary directory does not exist: ${primaryDir}`,);
     }
+    const appSettings = readAppSettings(this.config.dataDir);
     const result = await createAltTheorySession({
       ...sessionDirs,
       ...(primaryDir ? { sessionCwd: primaryDir } : {}),
@@ -2071,25 +2251,27 @@ export class SessionService implements AgentTeamBridge {
           metadata.modelOverride?.provider ?? runtimeModelConfig.modelProvider,
           metadata.modelOverride?.modelId ?? runtimeModelConfig.modelId,
         ),
-      promptMode: metadata.mode
-        ? promptModeFromCapabilityMode(metadata.mode)
-        : this.config.promptMode,
+      altMode: metadata.mode ?? appSettings.defaultAltMode ?? "understand",
+      runtimeMode: appSettings.runtimeMode ?? "alt-theory",
+      trimmedPiBasePrompt: appSettings.experimentTrimmedPiPrompt === true,
+      modelHooks: appSettings.modelHooks !== false,
+      nativePiScanAltSkills: appSettings.nativePiScanAltSkills !== false,
       resourceDiscovery: this.config.resourceDiscovery,
       skillsDir: this.config.skillsDir,
       runLabel: this.config.runLabel,
       testBatch: this.config.testBatch,
-      readOnly: this.config.readOnly,
+      understandReadOnly: this.config.understandReadOnly,
       externalSkillPaths: this.config.resolveExternalSkillPaths?.(),
-      skillPrecedence: readAppSettings(this.config.dataDir).skillPrecedence,
+      skillPrecedence: appSettings.skillPrecedence,
       extensionFactories: this.config.extensionFactories,
       ...this.agentTeamArgsFor(
         sessionDirs.sessionId,
         metadata.forkedFrom?.purpose ?? null,
       ),
     });
-    const visibility = metadata.visibility ?? "research";
+    const visibility = metadata.visibility ?? this.fallbackVisibility;
     const consentSnapshot =
-      visibility === "private"
+      withholdsFromResearch(visibility)
         ? {
             researcherReadable: metadata.consentSnapshot?.researcherReadable ?? false,
             quoteAfterAnonymization:
@@ -2108,10 +2290,10 @@ export class SessionService implements AgentTeamBridge {
       consentSnapshot,
       lastActivityAt: result.manifest.createdAt,
       retentionDueAt:
-        visibility === "private"
+        this.retentionEnabled && visibility === "private"
           ? calculateRetentionDueAt(result.manifest.createdAt)
           : null,
-      mode: result.getMode(),
+      mode: result.getAltMode(),
       workspace: metadata.workspace ? result.manifest.workspace : null,
       forkedFrom: metadata.forkedFrom ?? null,
       studyTag: metadata.studyTag ?? null,
@@ -2158,13 +2340,13 @@ export class SessionService implements AgentTeamBridge {
     const child = await this.createSession(parent.selectors, {
       ownerAccountId: header?.ownerAccountId ?? null,
       roleCondition: header?.roleCondition ?? null,
-      visibility: header?.visibility ?? "research",
+      visibility: header?.visibility ?? this.fallbackVisibility,
       consentSnapshot: header?.consentSnapshot ?? null,
       workspace: header?.workspace ?? null,
       studyTag: header?.studyTag ?? null,
       modelOverride: header?.modelOverride ?? null,
       forkedFrom: { sessionId, purpose },
-      mode: parent.getMode(),
+      mode: parent.getAltMode(),
     });
     appendSessionEvent(parent.manifest.recordsDir, {
       sessionId,
@@ -2179,54 +2361,79 @@ export class SessionService implements AgentTeamBridge {
     return child;
   }
 
+  /**
+   * "Add to conversation list" (alpha.6): the child earns a place in the
+   * session list while KEEPING its purpose, so the list can say where it came
+   * from ("From subagent", "From BTW"). Renaming a subagent into a branch was the
+   * old behavior and it read as a lie.
+   */
   promoteRelatedSession(sessionId: string): SessionSnapshot | null {
     const dirs = getSessionDirs(this.config.dataDir, sessionId);
     if (!dirs) throw new Error(`Unknown session id: ${sessionId}`);
     const header = readV4SessionHeader(dirs.recordsDir);
     if (!header?.forkedFrom) {
-      throw new Error("Only a related child can be promoted");
+      throw new Error("Only a related child can be added to the list");
     }
     if (
-      !(["side", "helper", "worker"] as ForkPurpose[]).includes(
+      !(["side", "helper", "subagent"] as ForkPurpose[]).includes(
         header.forkedFrom.purpose,
       )
     ) {
-      throw new Error("This related conversation is already a normal branch");
+      throw new Error("This related conversation is already in the list");
     }
     const previousPurpose = header.forkedFrom.purpose;
     writeSessionHeader(dirs.recordsDir, {
       ...header,
-      forkedFrom: { ...header.forkedFrom, purpose: "fork" },
+      forkedFrom: { ...header.forkedFrom, listed: true },
     });
     appendSessionEvent(dirs.recordsDir, {
       sessionId,
       type: "related_session_promoted",
-      details: { previousPurpose, purpose: "fork" },
+      details: { previousPurpose, purpose: previousPurpose, listed: true },
     });
     const live = this.sessions.get(sessionId);
     return live ? this.snapshot(live) : null;
   }
 
+  /**
+   * Role swap (v1.4 M4b): make this conversation the fork tree's listed
+   * representative; the current representative steps down. Lineage never
+   * changes. Works in both directions (promote a branch / re-list a
+   * delisted ancestor).
+   */
+  promoteToMainline(sessionId: string): { delistedSessionId: string | null } {
+    const result = promoteToMainlineRecords(this.config.dataDir, sessionId);
+    const dirs = getSessionDirs(this.config.dataDir, sessionId);
+    if (dirs) {
+      appendSessionEvent(dirs.recordsDir, {
+        sessionId,
+        type: "mainline_promoted",
+        details: { delistedSessionId: result.delistedSessionId },
+      });
+    }
+    return result;
+  }
+
   // -------------------------------------------------------------------------
   // Agent team (alpha.5 M2) — AgentTeamBridge implementation.
   //
-  // Children are real sessions (forkedFrom purpose "worker") on the same
+  // Children are real sessions (forkedFrom purpose "subagent") on the same
   // substrate as helper/side children: durable records, run lineage, M0
   // break-point continuity, the right-rail shell, promotion, and direct user
   // messaging all come for free. This block adds only: spawn, addressed
   // envelopes (agent-mail.jsonl), and wake delivery.
   // -------------------------------------------------------------------------
 
-  async spawnWorker(
+  async spawnSubagent(
     parentSessionId: string,
-    options: SpawnWorkerOptions,
+    options: SpawnSubagentOptions,
   ): Promise<{ report: string; sessionId: string }> {
     const parent = this.requireSession(parentSessionId);
-    if (parent.workerParentId) {
-      throw new Error("Worker agents cannot spawn workers of their own");
+    if (parent.subagentParentId) {
+      throw new Error("Subagents cannot spawn subagents of their own");
     }
     const header = readV4SessionHeader(parent.manifest.recordsDir);
-    const mode = clampWorkerMode(parent.getMode(), options.mode);
+    const mode = clampSubagentMode(parent.getAltMode(), options.mode);
 
     // Relative model tier, resolved against models configured AND usable now.
     let modelOverride = header?.modelOverride ?? null;
@@ -2254,17 +2461,22 @@ export class SessionService implements AgentTeamBridge {
     const child = await this.createSession(parent.selectors, {
       ownerAccountId: header?.ownerAccountId ?? null,
       roleCondition: header?.roleCondition ?? null,
-      visibility: header?.visibility ?? "research",
+      visibility: header?.visibility ?? this.fallbackVisibility,
       consentSnapshot: header?.consentSnapshot ?? null,
       workspace: header?.workspace ?? null,
       studyTag: header?.studyTag ?? null,
       modelOverride,
-      forkedFrom: { sessionId: parentSessionId, purpose: "worker" },
+      forkedFrom: { sessionId: parentSessionId, purpose: "subagent" },
       mode,
     });
     const childManaged = this.requireSession(child.sessionId);
+    // Prefer a human name when given. Default is English "Subagent N" (space),
+    // not "subagent-N". List UI still prefixes siblings as "Subagent N · …".
+    const priorSubagents = this.subagentChildren(parentSessionId).filter(
+      (w) => w.sessionId !== child.sessionId,
+    );
     const label =
-      options.name?.trim() || `worker-${this.workerChildren(parentSessionId).length}`;
+      options.name?.trim() || `Subagent ${priorSubagents.length + 1}`;
     writeJsonAtomic(join(childManaged.manifest.recordsDir, "ui-alias.json"), {
       schemaVersion: 1,
       alias: label,
@@ -2272,7 +2484,7 @@ export class SessionService implements AgentTeamBridge {
     });
     appendSessionEvent(parent.manifest.recordsDir, {
       sessionId: parentSessionId,
-      type: "worker_spawned",
+      type: "subagent_spawned",
       details: { childSessionId: child.sessionId, label, mode },
     });
     appendAgentMail(parent.manifest.recordsDir, {
@@ -2281,22 +2493,22 @@ export class SessionService implements AgentTeamBridge {
       to: parentSessionId,
       kind: "lifecycle",
       event: "spawned",
-      body: `Worker "${label}" spawned.`,
+      body: `Subagent "${label}" spawned.`,
       delivered: true,
     });
 
     const prompt = options.context?.trim()
       ? `${options.task.trim()}\n\nContext from the lead conversation:\n${options.context.trim()}`
       : options.task.trim();
-    const started = this.startWorkerRun(
+    const started = this.startSubagentRun(
       child.sessionId,
       prompt,
       !options.wait,
     );
     const report = [
-      `Spawned worker "${label}" (session ${child.sessionId}, ${mode === "pure" ? "understand" : "work"} mode${tierNote}).`,
+      `Spawned subagent "${label}" (session ${child.sessionId}, ${mode === "understand" ? "understand" : "work"} mode${tierNote}).`,
       started === "queued"
-        ? `It is queued behind ${WORKER_CONCURRENCY} running workers and starts automatically.`
+        ? `It is queued behind ${SUBAGENT_CONCURRENCY} running subagents and starts automatically.`
         : "It is working in the background.",
       options.wait
         ? ""
@@ -2307,11 +2519,11 @@ export class SessionService implements AgentTeamBridge {
     return { report, sessionId: child.sessionId };
   }
 
-  async waitForWorkerResult(
+  async waitForSubagentResult(
     parentSessionId: string,
     agent: string,
   ): Promise<string> {
-    const childId = this.resolveWorkerId(parentSessionId, agent);
+    const childId = this.resolveSubagentId(parentSessionId, agent);
     const deadline = Date.now() + 600_000;
     while (Date.now() < deadline) {
       const child = this.sessions.get(childId);
@@ -2319,22 +2531,22 @@ export class SessionService implements AgentTeamBridge {
         child &&
         !child.busy &&
         !child.session.isStreaming &&
-        !this.queuedWorkerIds.has(childId)
+        !this.queuedSubagentIds.has(childId)
       ) {
-        return this.workerResultText(childId);
+        return this.subagentResultText(childId);
       }
       await sleep(250);
     }
-    return `Timed out after 600s waiting for worker ${agent}; it keeps running in the background — its completion will arrive automatically.`;
+    return `Timed out after 600s waiting for subagent ${agent}; it keeps running in the background — its completion will arrive automatically.`;
   }
 
-  async sendToWorker(
+  async sendToSubagent(
     parentSessionId: string,
     agent: string,
     message: string,
     startTurn: boolean,
   ): Promise<string> {
-    const childId = this.resolveWorkerId(parentSessionId, agent);
+    const childId = this.resolveSubagentId(parentSessionId, agent);
     if (!this.sessions.get(childId)) {
       const parent = this.requireSession(parentSessionId);
       await this.openSession(childId, parent.selectors);
@@ -2352,14 +2564,16 @@ export class SessionService implements AgentTeamBridge {
     const fragment = formatEnvelopeForContext(envelope, "lead");
     if (child.busy || child.session.isStreaming) {
       await child.session.steer(fragment);
-      return "Delivered: the worker sees your message at its next step.";
+      return "Delivered: the subagent sees your message at its next step.";
     }
-    if (startTurn) {
-      const queued = this.startWorkerRun(childId, fragment, true);
+    if (startTurn && !this.queuedSubagentIds.has(childId)) {
+      const queued = this.startSubagentRun(childId, fragment, true);
       return queued === "queued"
-        ? "The worker is queued; it acts on your message when a slot frees up."
-        : "The worker is acting on your message now.";
+        ? "The subagent is queued; it acts on your message when a slot frees up."
+        : "The subagent is acting on your message now.";
     }
+    // A queued subagent already has a pending run; starting another would
+    // double-queue it, so the message joins its context instead.
     await child.session.sendCustomMessage(
       {
         customType: "agent-team",
@@ -2369,16 +2583,16 @@ export class SessionService implements AgentTeamBridge {
       },
       { triggerTurn: false },
     );
-    return "Queued: the worker sees your message with its next turn.";
+    return "Queued: the subagent sees your message with its next turn.";
   }
 
-  async checkWorker(
+  async checkSubagent(
     parentSessionId: string,
     agent: string,
     verbose: boolean,
   ): Promise<string> {
-    const childId = this.resolveWorkerId(parentSessionId, agent);
-    const lines = [this.workerStatusLine(parentSessionId, childId)];
+    const childId = this.resolveSubagentId(parentSessionId, agent);
+    const lines = [this.subagentStatusLine(parentSessionId, childId)];
     if (verbose) {
       const transcript =
         readSessionDetail(this.config.dataDir, childId)?.transcript ?? [];
@@ -2386,59 +2600,67 @@ export class SessionService implements AgentTeamBridge {
         lines.push(`${message.role}: ${clip(message.text, 300)}`);
       }
     } else {
-      const result = this.workerResultText(childId, 800);
+      const result = this.subagentResultText(childId, 800);
       if (result) lines.push(`last output: ${result}`);
     }
     return lines.join("\n");
   }
 
-  async waitForWorkers(
+  async waitForSubagents(
     parentSessionId: string,
     agents: string[] | null,
     timeoutS: number,
   ): Promise<string> {
     const watched = agents?.length
-      ? agents.map((agent) => this.resolveWorkerId(parentSessionId, agent))
-      : this.workerChildren(parentSessionId)
+      ? agents.map((agent) => this.resolveSubagentId(parentSessionId, agent))
+      : this.subagentChildren(parentSessionId)
           .map((child) => child.sessionId)
-          .filter((id) => this.workerIsActive(id));
+          .filter((id) => this.subagentIsActive(id));
     if (watched.length === 0) {
-      return "No running workers to wait for.";
+      return "No running subagents to wait for.";
     }
-    const initiallyActive = watched.filter((id) => this.workerIsActive(id));
+    const initiallyActive = watched.filter((id) => this.subagentIsActive(id));
     const deadline = Date.now() + timeoutS * 1000;
     while (
       Date.now() < deadline &&
       initiallyActive.length > 0 &&
-      !initiallyActive.some((id) => !this.workerIsActive(id))
+      !initiallyActive.some((id) => !this.subagentIsActive(id))
     ) {
       await sleep(300);
     }
     return watched
-      .map((id) => this.workerStatusLine(parentSessionId, id))
+      .map((id) => this.subagentStatusLine(parentSessionId, id))
       .join("\n");
   }
 
-  async interruptWorker(
+  async interruptSubagent(
     parentSessionId: string,
     agent: string,
   ): Promise<string> {
-    const childId = this.resolveWorkerId(parentSessionId, agent);
+    const childId = this.resolveSubagentId(parentSessionId, agent);
+    if (this.queuedSubagentIds.has(childId)) {
+      this.queuedSubagentIds.delete(childId);
+      const queued = this.subagentQueue.findIndex(
+        (entry) => entry.childId === childId,
+      );
+      if (queued >= 0) this.subagentQueue.splice(queued, 1);
+      return "Removed from the queue before it started. Use send_to_agent with start_turn to give it a task later.";
+    }
     const child = this.sessions.get(childId);
     if (!child || (!child.busy && !child.session.isStreaming)) {
-      return "The worker is not running; nothing to interrupt.";
+      return "The subagent is not running; nothing to interrupt.";
     }
     await this.abort(childId, "interrupt_agent");
-    return "Interrupted. The worker's completed work is kept; message it with send_to_agent to continue.";
+    return "Interrupted. The subagent's completed work is kept; message it with send_to_agent to continue.";
   }
 
-  async listWorkers(parentSessionId: string): Promise<string> {
-    const children = this.workerChildren(parentSessionId);
+  async listSubagents(parentSessionId: string): Promise<string> {
+    const children = this.subagentChildren(parentSessionId);
     if (children.length === 0) {
-      return "No worker agents in this conversation. Use spawn_agent to delegate a task.";
+      return "No subagents in this conversation. Use spawn_agent to delegate a task.";
     }
     return children
-      .map((child) => this.workerStatusLine(parentSessionId, child.sessionId))
+      .map((child) => this.subagentStatusLine(parentSessionId, child.sessionId))
       .join("\n");
   }
 
@@ -2448,7 +2670,7 @@ export class SessionService implements AgentTeamBridge {
     kind: "update" | "blocker",
   ): Promise<string> {
     const child = this.requireSession(childSessionId);
-    const parentId = child.workerParentId;
+    const parentId = child.subagentParentId;
     if (!parentId) {
       throw new Error("This conversation has no lead conversation to message");
     }
@@ -2466,21 +2688,21 @@ export class SessionService implements AgentTeamBridge {
   }
 
   /**
-   * Direct worker children of a session, with their display aliases. Live
-   * sessions first: a just-spawned worker has no persisted turn yet, so the
+   * Direct subagent children of a session, with their display aliases. Live
+   * sessions first: a just-spawned subagent has no persisted turn yet, so the
    * durable catalog (which filters empty sessions) cannot be the only source.
    */
-  private workerChildren(
+  private subagentChildren(
     parentSessionId: string,
   ): Array<{ sessionId: string; alias: string | null }> {
     const ids = new Set<string>();
     for (const [sessionId, managed] of this.sessions) {
-      if (managed.workerParentId === parentSessionId) ids.add(sessionId);
+      if (managed.subagentParentId === parentSessionId) ids.add(sessionId);
     }
     for (const summary of listSessionSummaries(this.config.dataDir).sessions) {
       if (
         summary.forkedFrom?.sessionId === parentSessionId &&
-        summary.forkedFrom.purpose === "worker" &&
+        summary.forkedFrom.purpose === "subagent" &&
         !summary.deletedAt
       ) {
         ids.add(summary.sessionId);
@@ -2492,9 +2714,9 @@ export class SessionService implements AgentTeamBridge {
     }));
   }
 
-  private resolveWorkerId(parentSessionId: string, agent: string): string {
+  private resolveSubagentId(parentSessionId: string, agent: string): string {
     const needle = agent.trim();
-    const children = this.workerChildren(parentSessionId);
+    const children = this.subagentChildren(parentSessionId);
     const match =
       children.find((child) => child.sessionId === needle) ??
       children.find(
@@ -2502,7 +2724,7 @@ export class SessionService implements AgentTeamBridge {
       );
     if (!match) {
       throw new Error(
-        `Unknown worker agent "${agent}". Use list_agents to see this conversation's workers.`,
+        `Unknown subagent "${agent}". Use list_agents to see this conversation's subagents.`,
       );
     }
     return match.sessionId;
@@ -2521,18 +2743,18 @@ export class SessionService implements AgentTeamBridge {
     }
   }
 
-  private workerIsActive(sessionId: string): boolean {
-    if (this.queuedWorkerIds.has(sessionId)) return true;
+  private subagentIsActive(sessionId: string): boolean {
+    if (this.queuedSubagentIds.has(sessionId)) return true;
     const managed = this.sessions.get(sessionId);
     return Boolean(managed && (managed.busy || managed.session.isStreaming));
   }
 
-  private workerStatusLine(parentSessionId: string, sessionId: string): string {
+  private subagentStatusLine(parentSessionId: string, sessionId: string): string {
     const alias = this.sessionAlias(sessionId) ?? sessionId;
     let status = "idle";
-    if (this.queuedWorkerIds.has(sessionId)) {
+    if (this.queuedSubagentIds.has(sessionId)) {
       status = "queued";
-    } else if (this.workerIsActive(sessionId)) {
+    } else if (this.subagentIsActive(sessionId)) {
       status = "running";
     } else {
       const dirs = getSessionDirs(this.config.dataDir, sessionId);
@@ -2546,8 +2768,8 @@ export class SessionService implements AgentTeamBridge {
     return `${alias} (${sessionId}): ${status}`;
   }
 
-  /** Final answer text of a worker's latest completed turn. */
-  private workerResultText(sessionId: string, maxChars = 4000): string {
+  /** Final answer text of a subagent's latest completed turn. */
+  private subagentResultText(sessionId: string, maxChars = 4000): string {
     const transcript =
       readSessionDetail(this.config.dataDir, sessionId)?.transcript ?? [];
     const lastAssistant = [...transcript]
@@ -2555,22 +2777,22 @@ export class SessionService implements AgentTeamBridge {
       .find((message) => message.role === "assistant" && message.text.trim());
     return clip(
       lastAssistant?.text.trim() ??
-        "(the worker has produced no text answer yet)",
+        "(the subagent has produced no text answer yet)",
       maxChars,
     );
   }
 
   /**
-   * Start (or queue) a worker turn. Background worker turns are capped at
-   * WORKER_CONCURRENCY; excess first-runs start FIFO as slots free up.
+   * Start (or queue) a subagent turn. Background subagent turns are capped at
+   * SUBAGENT_CONCURRENCY; excess first-runs start FIFO as slots free up.
    */
-  private startWorkerRun(
+  private startSubagentRun(
     childId: string,
     prompt: string,
     notifyParent: boolean,
   ): "started" | "queued" {
     const start = () => {
-      this.queuedWorkerIds.delete(childId);
+      this.queuedSubagentIds.delete(childId);
       let handle: RunHandle;
       try {
         handle = this.runPromptWithLineage(this.requireSession(childId), prompt, {
@@ -2579,52 +2801,52 @@ export class SessionService implements AgentTeamBridge {
       } catch (error) {
         const child = this.sessions.get(childId);
         if (notifyParent && child) {
-          this.deliverWorkerOutcome(
+          this.deliverSubagentOutcome(
             child,
             "failed",
-            `The worker's turn could not start: ${
+            `The subagent's turn could not start: ${
               error instanceof Error ? error.message : String(error)
             }`,
           );
         }
         return;
       }
-      this.runningWorkerRuns += 1;
+      this.runningSubagentRuns += 1;
       void handle.completion
         .catch(() => {})
         .finally(() => {
-          this.runningWorkerRuns -= 1;
-          this.drainWorkerQueue();
+          this.runningSubagentRuns -= 1;
+          this.drainSubagentQueue();
         });
     };
-    if (this.runningWorkerRuns >= WORKER_CONCURRENCY) {
-      this.queuedWorkerIds.add(childId);
-      this.workerQueue.push(start);
+    if (this.runningSubagentRuns >= SUBAGENT_CONCURRENCY) {
+      this.queuedSubagentIds.add(childId);
+      this.subagentQueue.push({ childId, start });
       return "queued";
     }
     start();
     return "started";
   }
 
-  private drainWorkerQueue(): void {
+  private drainSubagentQueue(): void {
     while (
-      this.runningWorkerRuns < WORKER_CONCURRENCY &&
-      this.workerQueue.length > 0
+      this.runningSubagentRuns < SUBAGENT_CONCURRENCY &&
+      this.subagentQueue.length > 0
     ) {
-      this.workerQueue.shift()?.();
+      this.subagentQueue.shift()?.start();
     }
   }
 
-  private deliverWorkerOutcome(
+  private deliverSubagentOutcome(
     child: ManagedSession,
     event: "completed" | "failed" | "interrupted",
     body: string,
   ): void {
-    if (!child.workerParentId) return;
-    this.deliverEnvelope(child.workerParentId, {
+    if (!child.subagentParentId) return;
+    this.deliverEnvelope(child.subagentParentId, {
       at: new Date().toISOString(),
       from: child.manifest.sessionId,
-      to: child.workerParentId,
+      to: child.subagentParentId,
       kind: "lifecycle",
       event,
       body,
@@ -2674,7 +2896,7 @@ export class SessionService implements AgentTeamBridge {
 
   private agentMailLabel(from: string, target: ManagedSession): string {
     if (from === "user") return "user";
-    if (target.workerParentId === from) return "lead";
+    if (target.subagentParentId === from) return "lead";
     return this.sessionAlias(from) ?? from;
   }
 
@@ -2768,9 +2990,8 @@ export class SessionService implements AgentTeamBridge {
     );
     const instruction = this.resolveOptionalInstruction(activeInstructionRef);
     const persistedHeader = readV4SessionHeader(sessionDirs.recordsDir);
-    const persistedMode =
-      persistedHeader?.mode ??
-      capabilityModeFromPromptMode(this.config.promptMode);
+    const persistedMode = persistedHeader?.mode ?? "understand";
+    const appSettings = readAppSettings(this.config.dataDir);
 
     // Stale-workspace recovery (v1.2.1): the recorded working folder can vanish
     // between sessions (rename / merge / delete). Don't point Pi's cwd at a dead
@@ -2810,14 +3031,18 @@ export class SessionService implements AgentTeamBridge {
       kbDomain: activeDomain,
       piPromptTemplatesDir: this.config.assetPaths.piPromptTemplatesDir,
       ...this.modelArgsFor(persistedHeader?.modelOverride),
-      promptMode: promptModeFromCapabilityMode(persistedMode),
+      altMode: persistedMode,
+      runtimeMode: appSettings.runtimeMode ?? "alt-theory",
+      trimmedPiBasePrompt: appSettings.experimentTrimmedPiPrompt === true,
+      modelHooks: appSettings.modelHooks !== false,
+      nativePiScanAltSkills: appSettings.nativePiScanAltSkills !== false,
       resourceDiscovery: this.config.resourceDiscovery,
       skillsDir: this.config.skillsDir,
       runLabel: this.config.runLabel,
       testBatch: this.config.testBatch,
-      readOnly: this.config.readOnly,
+      understandReadOnly: this.config.understandReadOnly,
       externalSkillPaths: this.config.resolveExternalSkillPaths?.(),
-      skillPrecedence: readAppSettings(this.config.dataDir).skillPrecedence,
+      skillPrecedence: appSettings.skillPrecedence,
       extensionFactories: this.config.extensionFactories,
       ...this.agentTeamArgsFor(
         sessionId,
@@ -2951,7 +3176,8 @@ export class SessionService implements AgentTeamBridge {
       ...sessionDirs,
       sessionCwd: previous.manifest.sessionCwd ?? sessionDirs.sessionCwd,
     };
-    const persistedMode = previous.getMode();
+    const persistedMode = previous.getAltMode();
+    const appSettings = readAppSettings(this.config.dataDir);
     const result = await openAltTheorySession({
       ...activeSessionDirs,
       workspaceDirs: previous.getWorkspace().additionalDirs,
@@ -2972,14 +3198,18 @@ export class SessionService implements AgentTeamBridge {
       ...this.modelArgsFor(
         readV4SessionHeader(sessionDirs.recordsDir)?.modelOverride,
       ),
-      promptMode: promptModeFromCapabilityMode(persistedMode),
+      altMode: persistedMode,
+      runtimeMode: appSettings.runtimeMode ?? "alt-theory",
+      trimmedPiBasePrompt: appSettings.experimentTrimmedPiPrompt === true,
+      modelHooks: appSettings.modelHooks !== false,
+      nativePiScanAltSkills: appSettings.nativePiScanAltSkills !== false,
       resourceDiscovery: this.config.resourceDiscovery,
       skillsDir: this.config.skillsDir,
       runLabel: this.config.runLabel,
       testBatch: this.config.testBatch,
-      readOnly: this.config.readOnly,
+      understandReadOnly: this.config.understandReadOnly,
       externalSkillPaths: this.config.resolveExternalSkillPaths?.(),
-      skillPrecedence: readAppSettings(this.config.dataDir).skillPrecedence,
+      skillPrecedence: appSettings.skillPrecedence,
       extensionFactories: this.config.extensionFactories,
       ...this.agentTeamArgsFor(
         previous.manifest.sessionId,
@@ -3020,7 +3250,7 @@ export class SessionService implements AgentTeamBridge {
     transcript: TranscriptMessage[];
     overrideSessionCwd: boolean;
     activeLeafEntryId?: string | null;
-    mode?: CapabilityMode;
+    mode?: AltMode;
     workspace?: { primaryDir: string; additionalDirs: string[] };
     modelOverride?: SessionModelOverride | null;
     /** Fork flows call this before the child's header exists on disk. */
@@ -3030,10 +3260,8 @@ export class SessionService implements AgentTeamBridge {
       args.selectors.customInstructionRef,
     );
     const persistedHeader = readV4SessionHeader(args.sessionDirs.recordsDir);
-    const persistedMode =
-      args.mode ??
-      persistedHeader?.mode ??
-      capabilityModeFromPromptMode(this.config.promptMode);
+    const persistedMode = args.mode ?? persistedHeader?.mode ?? "understand";
+    const appSettings = readAppSettings(this.config.dataDir);
     const persistedWorkspace = args.workspace ?? persistedHeader?.workspace;
     const result = await openAltTheorySession({
       ...args.sessionDirs,
@@ -3060,14 +3288,18 @@ export class SessionService implements AgentTeamBridge {
       kbDomain: args.selectors.kbDomain,
       piPromptTemplatesDir: this.config.assetPaths.piPromptTemplatesDir,
       ...this.modelArgsFor(args.modelOverride ?? persistedHeader?.modelOverride,),
-      promptMode: promptModeFromCapabilityMode(persistedMode),
+      altMode: persistedMode,
+      runtimeMode: appSettings.runtimeMode ?? "alt-theory",
+      trimmedPiBasePrompt: appSettings.experimentTrimmedPiPrompt === true,
+      modelHooks: appSettings.modelHooks !== false,
+      nativePiScanAltSkills: appSettings.nativePiScanAltSkills !== false,
       resourceDiscovery: this.config.resourceDiscovery,
       skillsDir: this.config.skillsDir,
       runLabel: this.config.runLabel,
       testBatch: this.config.testBatch,
-      readOnly: this.config.readOnly,
+      understandReadOnly: this.config.understandReadOnly,
       externalSkillPaths: this.config.resolveExternalSkillPaths?.(),
-      skillPrecedence: readAppSettings(this.config.dataDir).skillPrecedence,
+      skillPrecedence: appSettings.skillPrecedence,
       extensionFactories: this.config.extensionFactories,
       ...this.agentTeamArgsFor(
         args.sessionId,
@@ -3096,8 +3328,11 @@ export class SessionService implements AgentTeamBridge {
   private async createManaged(args: {
     session: AgentSession;
     manifest: AssemblyManifest;
-    getMode: () => CapabilityMode;
-    setMode: (mode: CapabilityMode) => Promise<void>;
+    getAltMode: () => AltMode;
+    setAltMode: (mode: AltMode) => Promise<void>;
+    getRuntimeMode: () => RuntimeMode;
+    setRuntimeMode: (mode: RuntimeMode) => Promise<void>;
+    setNativePiScanAltSkills: (enabled: boolean) => Promise<void>;
     getWorkspace: () => { primaryDir: string; additionalDirs: string[] };
     addWorkspaceDir: (dir: string) => Promise<string[]>;
     selectors: SessionSelectors;
@@ -3135,8 +3370,8 @@ export class SessionService implements AgentTeamBridge {
       listeners: new Set(),
       internalUnsubscribe: () => {},
       busy: false,
-      workerParentId:
-        headerForkedFrom?.purpose === "worker"
+      subagentParentId:
+        headerForkedFrom?.purpose === "subagent"
           ? headerForkedFrom.sessionId
           : null,
       nextTurnIndex: Math.max(
@@ -3151,6 +3386,8 @@ export class SessionService implements AgentTeamBridge {
       branchId: args.branchId ?? "main",
       fallbackAttempts: 0,
       pendingRunWork: null,
+      pendingRuntimeMode: null,
+      pendingNativePiScanAltSkills: null,
     };
     managed.internalUnsubscribe = managed.session.subscribe((event) =>
       this.handleAgentEvent(managed, event),
@@ -3342,7 +3579,6 @@ export class SessionService implements AgentTeamBridge {
             payload: { text: assistantEvent.delta ?? "" },
           });
         } else if (assistantEvent?.type === "text_delta") {
-          this.emitRunPhase(managed, "processing");
           this.emit(managed, {
             type: "assistant_delta",
             payload: { text: assistantEvent.delta ?? "" },
@@ -3404,7 +3640,9 @@ export class SessionService implements AgentTeamBridge {
           managed.pendingRunWork = pending;
           void pending.catch(() => {});
         } else {
-          managed.busy = false;
+          managed.busy =
+            managed.pendingRuntimeMode !== null ||
+            managed.pendingNativePiScanAltSkills !== null;
           managed.fallbackAttempts = 0;
           this.syncManifestModelFromSession(managed);
           managed.counters.turnCount++;
@@ -3463,13 +3701,14 @@ export class SessionService implements AgentTeamBridge {
     return {
       sessionId: managed.manifest.sessionId,
       projectId: managed.selectors.projectId ?? null,
-      visibility: header?.visibility ?? "research",
+      visibility: header?.visibility ?? this.fallbackVisibility,
+      retentionDueAt: header?.retentionDueAt ?? null,
       status: managed.busy || managed.session.isStreaming ? "running" : "idle",
       currentDomain: managed.selectors.kbDomain,
       rolePresetSlug: managed.selectors.rolePresetSlug,
       soulSlug: managed.selectors.soulSlug,
       customInstructionRef: managed.selectors.customInstructionRef ?? null,
-      mode: managed.getMode(),
+      mode: managed.getAltMode(),
       modelOverride: header?.modelOverride ?? null,
       currentModel: {
         provider: managed.session.model.provider,
@@ -3587,6 +3826,17 @@ export class SessionService implements AgentTeamBridge {
     }
     return fallback;
   }
+}
+
+/** Turn Pi's persisted expanded skill body back into the invocation it came from. */
+export function retryPromptFromStoredUserContent(content: string): string {
+  const trimmed = content.trim();
+  const skill = trimmed.match(
+    /^<skill\b[^>]*\bname="([^"]+)"[^>]*>[\s\S]*?<\/skill>\s*([\s\S]*)$/,
+  );
+  if (!skill) return trimmed;
+  const args = skill[2].trim();
+  return `/skill:${skill[1]}${args ? ` ${args}` : ""}`;
 }
 
 function clip(text: string, maxChars: number): string {

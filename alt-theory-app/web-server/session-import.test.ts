@@ -74,7 +74,7 @@ test("Pi discovery and managed registration preserve history and workspace", asy
   const registered = registerPiImport({
     dataDir,
     source,
-    mode: "pure",
+    mode: "understand",
     rolePresetSlug: "role-conceptual-theory-companion",
     soulSlug: "soul-latest",
     visibility: "private",
@@ -150,7 +150,7 @@ test("Pi discovery and managed registration preserve history and workspace", asy
   const reimported = registerPiImport({
     dataDir,
     source: changed!,
-    mode: "pure",
+    mode: "understand",
     rolePresetSlug: "role-conceptual-theory-companion",
     soulSlug: "soul-latest",
     visibility: "private",
@@ -278,7 +278,7 @@ test("Grok preflight preserves current history and raw source, and refuses unmat
     dataDir,
     source,
     preflight,
-    mode: "full",
+    mode: "work",
     visibility: "private",
   });
   const snapshot = join(
@@ -429,19 +429,23 @@ test("Codex preflight maps supported rollout history and refuses unmatched tool 
   assert.ok(preflight.transformations.some((item) => item.includes("user-role priority")));
   assert.ok(preflight.transformations.some((item) => item.includes("not registered as active")));
   const entries = preflight.piSessionJsonl.trim().split(/\r?\n/).map((value) => JSON.parse(value));
-  assert.equal(
-    entries.filter((entry) => entry.customType === "source-codex-record").length,
-    supported.length
-  );
+  assert.equal(entries.some((entry) => entry.customType === "source-codex-record"), false);
   const registered = registerCodexImport({
     dataDir,
     source,
     preflight,
-    mode: "full",
+    mode: "work",
     visibility: "private",
   });
   const detail = readSessionDetail(dataDir, registered.sessionId);
   assert.ok(detail);
+  assert.equal(
+    readFileSync(
+      join(dataDir, "sessions", registered.sessionId, "records", "source-rollout.jsonl"),
+      "utf-8"
+    ),
+    readFileSync(supportedPath, "utf-8")
+  );
   assert.ok(
     detail.transcript.some(
       (message) =>
@@ -703,7 +707,7 @@ test("OpenCode preflight registers complete supported history and refuses unsupp
     dataDir,
     source,
     preflight,
-    mode: "full",
+    mode: "work",
     visibility: "private",
   });
   const detail = readSessionDetail(dataDir, registered.sessionId);
@@ -1008,15 +1012,12 @@ test("Codex preflight separates visible history from active context after compac
   assert.ok(preflight.transformations.some((item) => item.includes("user-fork lineage")));
   assert.ok(preflight.transformations.some((item) => item.includes("inter-agent messages")));
   assert.ok(preflight.transformations.some((item) => item.includes("were not rolled back")));
-  assert.equal(
-    entries.filter((entry) => entry.customType === "source-codex-record").length,
-    compacted.length
-  );
+  assert.equal(entries.some((entry) => entry.customType === "source-codex-record"), false);
   const registered = registerCodexImport({
     dataDir,
     source,
     preflight,
-    mode: "full",
+    mode: "work",
     visibility: "private",
   });
   const detail = readSessionDetail(dataDir, registered.sessionId);
@@ -1441,7 +1442,7 @@ test("OpenCode lists roots and archives child sessions beside the imported root"
     dataDir,
     source,
     preflight,
-    mode: "full",
+    mode: "work",
     rolePresetSlug: "role-conceptual-theory-companion",
     soulSlug: "soul-latest",
     visibility: "private",
@@ -1775,7 +1776,7 @@ test("Claude Code discovery falls back from a stale index and imports one integr
     dataDir,
     source,
     preflight,
-    mode: "full",
+    mode: "work",
     visibility: "private",
   });
   assert.match(
@@ -1880,7 +1881,7 @@ test("Claude Code plaintext compaction preserves visible history and resumes fro
     dataDir,
     source,
     preflight,
-    mode: "pure",
+    mode: "understand",
     visibility: "private",
   });
   const detail = readSessionDetail(dataDir, registered.sessionId);

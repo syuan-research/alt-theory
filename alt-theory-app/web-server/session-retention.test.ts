@@ -31,7 +31,7 @@ function manifest(sessionId: string, recordsDir: string, sessionCwd: string) {
     kb: { dir: "", domain: "ep-core" },
     kbDir: "",
     kbDomain: "ep-core",
-    promptMode: "alt-only",
+    altMode: "understand",
     resourceDiscovery: { mode: "clean" },
     readonly: true,
     writableRoots: [],

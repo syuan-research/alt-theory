@@ -1,6 +1,7 @@
 import { createHash } from "crypto";
 import {
   existsSync,
+  copyFileSync,
   cpSync,
   mkdirSync,
   readFileSync,
@@ -16,7 +17,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import type {
   AssemblyManifest,
-  CapabilityMode,
+  AltMode,
 } from "../core/alt-theory-core.js";
 import { emptyFileRef } from "../core/agent-assets.js";
 import {
@@ -25,7 +26,10 @@ import {
   resolveSessionsRoot,
   writeJsonAtomic,
 } from "../core/data-dir.js";
-import { writeFoundationRecords } from "./session-records.js";
+import {
+  writeFoundationRecords,
+  type SessionVisibility,
+} from "./session-records.js";
 import {
   discoverOpenCodeSessions,
   preflightOpenCodeSession,
@@ -184,13 +188,13 @@ export async function discoverImportSessions(args: {
 export function registerPiImport(args: {
   dataDir: string;
   source: ImportSourceSession;
-  mode: CapabilityMode;
+  mode: AltMode;
   workspacePrimaryDir?: string;
   ownerAccountId?: string | null;
   roleCondition?: string | null;
   rolePresetSlug?: string | null;
   soulSlug?: string | null;
-  visibility?: "research" | "private";
+  visibility?: SessionVisibility;
   consentSnapshot?: {
     researcherReadable: boolean;
     quoteAfterAnonymization: boolean;
@@ -248,13 +252,13 @@ export function registerOpenCodeImport(args: {
   dataDir: string;
   source: ImportSourceSession;
   preflight: OpenCodePreflight;
-  mode: CapabilityMode;
+  mode: AltMode;
   workspacePrimaryDir?: string;
   ownerAccountId?: string | null;
   roleCondition?: string | null;
   rolePresetSlug?: string | null;
   soulSlug?: string | null;
-  visibility?: "research" | "private";
+  visibility?: SessionVisibility;
   consentSnapshot?: {
     researcherReadable: boolean;
     quoteAfterAnonymization: boolean;
@@ -278,13 +282,13 @@ export function registerCodexImport(args: {
   dataDir: string;
   source: ImportSourceSession;
   preflight: CodexPreflight;
-  mode: CapabilityMode;
+  mode: AltMode;
   workspacePrimaryDir?: string;
   ownerAccountId?: string | null;
   roleCondition?: string | null;
   rolePresetSlug?: string | null;
   soulSlug?: string | null;
-  visibility?: "research" | "private";
+  visibility?: SessionVisibility;
   consentSnapshot?: {
     researcherReadable: boolean;
     quoteAfterAnonymization: boolean;
@@ -301,6 +305,7 @@ export function registerCodexImport(args: {
     sourceVersion: args.preflight.sourceVersion,
     transformations: args.preflight.transformations,
     sourceContextFiles: args.preflight.sourceContextFiles,
+    rawSourceFile: args.source.sourceStore,
   });
 }
 
@@ -308,13 +313,13 @@ export function registerGrokImport(args: {
   dataDir: string;
   source: ImportSourceSession;
   preflight: GrokPreflight;
-  mode: CapabilityMode;
+  mode: AltMode;
   workspacePrimaryDir?: string;
   ownerAccountId?: string | null;
   roleCondition?: string | null;
   rolePresetSlug?: string | null;
   soulSlug?: string | null;
-  visibility?: "research" | "private";
+  visibility?: SessionVisibility;
   consentSnapshot?: {
     researcherReadable: boolean;
     quoteAfterAnonymization: boolean;
@@ -338,13 +343,13 @@ export function registerClaudeCodeImport(args: {
   dataDir: string;
   source: ImportSourceSession;
   preflight: ClaudeCodePreflight;
-  mode: CapabilityMode;
+  mode: AltMode;
   workspacePrimaryDir?: string;
   ownerAccountId?: string | null;
   roleCondition?: string | null;
   rolePresetSlug?: string | null;
   soulSlug?: string | null;
-  visibility?: "research" | "private";
+  visibility?: SessionVisibility;
   consentSnapshot?: {
     researcherReadable: boolean;
     quoteAfterAnonymization: boolean;
@@ -376,13 +381,14 @@ function registerPreparedImport(args: {
   transformations: string[];
   sourceContextFiles?: Array<{ filename: string; content: string }>;
   rawSourceDir?: string;
-  mode: CapabilityMode;
+  rawSourceFile?: string;
+  mode: AltMode;
   workspacePrimaryDir?: string;
   ownerAccountId?: string | null;
   roleCondition?: string | null;
   rolePresetSlug?: string | null;
   soulSlug?: string | null;
-  visibility?: "research" | "private";
+  visibility?: SessionVisibility;
   consentSnapshot?: {
     researcherReadable: boolean;
     quoteAfterAnonymization: boolean;
@@ -407,7 +413,14 @@ function registerPreparedImport(args: {
     writeFileSync(importedPath, args.piSessionJsonl);
     SessionManager.open(importedPath);
     let sourceSnapshot: string | undefined;
-    if (args.rawSourceDir) {
+    if (args.rawSourceFile) {
+      sourceSnapshot = "source-rollout.jsonl";
+      const snapshotPath = join(dirs.recordsDir, sourceSnapshot);
+      copyFileSync(resolve(args.rawSourceFile), snapshotPath);
+      if (fingerprintFile(snapshotPath) !== args.sourceFingerprint) {
+        throw new Error("Codex source changed while its managed snapshot was copied");
+      }
+    } else if (args.rawSourceDir) {
       sourceSnapshot = "source-snapshot";
       const snapshotPath = join(dirs.recordsDir, sourceSnapshot);
       cpSync(resolve(args.rawSourceDir), snapshotPath, {
@@ -465,15 +478,15 @@ function registerPreparedImport(args: {
       piSessionFile: importedPath,
       recordsDir: dirs.recordsDir,
       writeDir: dirs.writeDir,
-      // Pure can write only inside the managed session workspace. Full-mode
+      // Understand can write only inside the managed session workspace. Work
       // roots are rebuilt by the normal reopen path from workspace metadata.
       writableRoots:
-        args.mode === "pure"
+        args.mode === "understand"
           ? [dirs.writeDir]
           : [dirs.writeDir, workspacePrimaryDir],
       model: null,
       provider: null,
-      promptMode: args.mode === "pure" ? "alt-only" : "pi-default",
+      altMode: args.mode,
       resourceDiscovery: { mode: "clean", skillsDir: null },
       runLabel: null,
       testBatch: null,

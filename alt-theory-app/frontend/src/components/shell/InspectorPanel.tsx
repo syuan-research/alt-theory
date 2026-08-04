@@ -1,25 +1,23 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ApprovalRequestPayload, ServerMessage, TranscriptMessage } from "@/api/types";
-import { fetchSessionDetail } from "@/api/sessions";
+import { useEffect, useMemo, useRef } from "react";
 import { useApp } from "@/context/AppProvider";
 import { useShell, type RailKey } from "@/context/ShellContext";
-import { useWebSocket } from "@/hooks/useWebSocket";
+import { t } from "@/i18n";
+import { shouldClearRelatedOnSubChange } from "@/lib/relatedOpen";
 import { sessionTitle } from "@/lib/sessionList";
-import { ApprovalDock } from "@/components/conversation/ApprovalDock";
+import { ChildConversation } from "@/components/conversation/ChildConversation";
 import { RecordsPanel } from "@/components/inspector/RecordsPanel";
 import { ProvenancePanel } from "@/components/inspector/ProvenancePanel";
 import { RuntimePanel } from "@/components/inspector/RuntimePanel";
 import { WorkspaceTree } from "@/components/inspector/WorkspaceTree";
 import { ChangesPanel } from "@/components/inspector/ChangesPanel";
-import { MarkdownBody } from "@/components/conversation/MarkdownBody";
 
 const RAIL_META: Record<RailKey, { title: string; icon: string; adv?: boolean }> = {
-  chats: { title: "Related conversations", icon: "ph-arrows-split" },
-  changes: { title: "Changes", icon: "ph-pencil-simple-line" },
-  workspace: { title: "Files", icon: "ph-folder" },
-  records: { title: "Records", icon: "ph-scroll", adv: true },
-  provenance: { title: "Provenance", icon: "ph-tree-structure", adv: true },
-  runtime: { title: "Runtime", icon: "ph-pulse", adv: true },
+  chats: { title: t("Related conversations"), icon: "ph-arrows-split" },
+  changes: { title: t("Changes"), icon: "ph-pencil-simple-line" },
+  workspace: { title: t("Files"), icon: "ph-folder" },
+  records: { title: t("Records"), icon: "ph-scroll", adv: true },
+  provenance: { title: t("Provenance"), icon: "ph-tree-structure", adv: true },
+  runtime: { title: t("Runtime"), icon: "ph-pulse", adv: true },
 };
 
 const PRIMARY: RailKey[] = ["chats", "changes", "workspace"];
@@ -46,35 +44,80 @@ export function InspectorPanel() {
 
   const title = shell.rightSub?.title ?? (active ? RAIL_META[active].title : "");
 
+  // Opening a child panel is a one-shot per child id. It used to depend on
+  // `app.sessions`, so every refreshSessions() (one per subagent output) re-ran
+  // it and slammed the panel back open on whatever child was last active.
+  const openedChildRef = useRef<string | null>(null);
   useEffect(() => {
     const childId = app.activeRelatedSessionId;
-    if (!childId) return;
-    const child = app.sessions.find((item) => item.sessionId === childId);
+    if (!childId) {
+      openedChildRef.current = null;
+      return;
+    }
+    if (openedChildRef.current === childId) return;
+    openedChildRef.current = childId;
+
+    // Width depends on conversation kind (branch/edit ≈ 50%; btw/helper default).
+    // Prefer the explicit hint from branch_created / related_session_created;
+    // when the user picks from the switcher, fall back to purpose on the summary.
+    let size = app.relatedPaneSize;
+    if (!size) {
+      const child = app.sessions.find((s) => s.sessionId === childId);
+      const purpose = child?.forkedFrom?.purpose;
+      // Branch/edit only: half work area. Subagent / btw / helper: default ~480.
+      size = purpose === "fork" ? "half" : "default";
+    }
+    shell.setRightPaneForRelated(size);
     shell.openRail("chats");
-    shell.openSub({
-      key: `related:${childId}`,
-      title: child ? sessionTitle(child, app.sessionDisplayNames) : "Related conversation",
-    });
+    shell.openSub({ key: `related:${childId}` });
   }, [
     app.activeRelatedSessionId,
-    app.sessionDisplayNames,
+    app.relatedPaneSize,
     app.sessions,
     shell.openRail,
     shell.openSub,
+    shell.setRightPaneForRelated,
   ]);
+
+  // Back / closeRight / openRail only clear rightSub. When we *leave* a related
+  // sub (transition related:* → not), clear app.activeRelatedSessionId too so
+  // re-clicking the same child re-runs open (setState same id is a no-op and
+  // openedChildRef would early-return). Transition-only: do not clear on open.
+  const prevRightSubRef = useRef(shell.rightSub);
+  useEffect(() => {
+    const prev = prevRightSubRef.current;
+    prevRightSubRef.current = shell.rightSub;
+    if (!shouldClearRelatedOnSubChange(prev?.key, shell.rightSub?.key)) return;
+    openedChildRef.current = null;
+    if (app.activeRelatedSessionId) app.setActiveRelatedSessionId(null);
+  }, [shell.rightSub, app.activeRelatedSessionId, app.setActiveRelatedSessionId]);
+
+  const leaveRelated = () => {
+    app.setActiveRelatedSessionId(null);
+    shell.closeSub();
+  };
 
   return (
     <aside className={`right${open ? " open" : ""}`}>
       <div className="rpanel">
         {active ? (
           <div className={`head${shell.rightSub ? " sub" : ""}`}>
-            <button className="back" onClick={shell.closeSub} title="Back">
+            {/* Collapse sits on the inner edge: on a narrow window the outer
+                edge is the first thing to go off-screen. */}
+            <button
+              className="rp-close"
+              onClick={() => {
+                app.setActiveRelatedSessionId(null);
+                shell.closeRight();
+              }}
+              title={t("Collapse")}
+            >
+              <i className="ph ph-sidebar-simple" style={{ transform: "scaleX(-1)" }} />
+            </button>
+            <button className="back" onClick={leaveRelated} title={t("Back")}>
               <i className="ph ph-arrow-left" />
             </button>
             <span>{title}</span>
-            <button className="rp-close" onClick={shell.closeRight} title="Collapse">
-              <i className="ph ph-sidebar-simple" style={{ transform: "scaleX(-1)" }} />
-            </button>
           </div>
         ) : null}
         <div className="body">
@@ -150,295 +193,189 @@ function RelatedConversations() {
   const activeChildId = shell.rightSub?.key.startsWith("related:")
     ? shell.rightSub.key.slice("related:".length)
     : null;
-  const children = useMemo(
-    () =>
-      app.sessions.filter(
-        (s) =>
-          s.forkedFrom?.sessionId === app.sessionId &&
-          s.forkedFrom.purpose !== "ab-arm" &&
-          !s.deletedAt
-      ),
-    [app.sessions, app.sessionId]
-  );
+  const children = useMemo(() => {
+    if (!app.sessionId) return [];
+    const related: typeof app.sessions = [];
+    const seen = new Set<string>();
+    const addChildrenOf = (parentId: string, inherited: boolean) => {
+      for (const s of app.sessions) {
+        if (s.sessionId === app.sessionId) continue; // never list self (opus E1)
+        if (s.forkedFrom?.sessionId !== parentId) continue;
+        if (s.forkedFrom.purpose === "ab-arm" || s.deletedAt) continue;
+        if (seen.has(s.sessionId)) continue;
+        // Inherited pass: ALL attached conversations of every ancestor
+        // (owner ruling 2026-08-04: no fork-time bound — never lose reach
+        // to preserved content; the rows are labeled, mild noise accepted).
+        // Sibling branches of ancestors stay out.
+        if (
+          inherited &&
+          !["subagent", "side", "helper"].includes(s.forkedFrom.purpose)
+        ) {
+          continue;
+        }
+        seen.add(s.sessionId);
+        related.push(s);
+      }
+    };
+    addChildrenOf(app.sessionId, false);
+    // Walk the fork ancestry: an ancestor's attached conversations are part
+    // of this branch's history, even when the ancestor is deleted or purged.
+    const byId = new Map(app.sessions.map((s) => [s.sessionId, s]));
+    // Malformed lineage (self-reference or cycle, e.g. from an import) must
+    // not hang the tab (opus E2).
+    const walked = new Set<string>();
+    let node = byId.get(app.sessionId);
+    while (node?.forkedFrom && !walked.has(node.sessionId)) {
+      walked.add(node.sessionId);
+      addChildrenOf(node.forkedFrom.sessionId, true);
+      const parent = byId.get(node.forkedFrom.sessionId);
+      // A delisted origin (M4b role swap) stays reachable from here — it is
+      // in no list, so this rail row is its only door.
+      if (
+        parent &&
+        !parent.deletedAt &&
+        parent.delisted &&
+        !seen.has(parent.sessionId)
+      ) {
+        seen.add(parent.sessionId);
+        related.push(parent);
+      }
+      node = parent;
+    }
+    return related;
+  }, [app.sessions, app.sessionId]);
 
   const PURPOSE_ICON: Record<string, string> = {
     side: "ph-arrows-split",
     helper: "ph-lifebuoy",
     "ab-arm": "ph-git-fork",
     fork: "ph-git-branch",
-    worker: "ph-robot",
+    subagent: "ph-robot",
   };
 
-  // Orientation when the open conversation is itself a branch/side/helper:
-  // a way back to where it started, so a fresh fork never shows a dead end.
-  const current = app.sessions.find((s) => s.sessionId === app.sessionId);
-  const parent = current?.forkedFrom
-    ? app.sessions.find(
-        (s) => s.sessionId === current.forkedFrom?.sessionId && !s.deletedAt,
-      )
-    : undefined;
+  // Switcher click: setActiveRelatedSessionId only; openSub + width are owned
+  // by the one-shot effect on activeRelatedSessionId. Do NOT dual-write openSub.
+  //
+  // parentRow ("Where this branch started — go back anytime") is intentionally
+  // gone. Branch/edit comparisons open the child in this Related rail via
+  // branch_created → activeRelatedSessionId (not center compare). Center
+  // session is chosen only from the left list.
+
+  const sizeForChild = (purpose: string | undefined): "half" | "default" =>
+    purpose === "fork" ? "half" : "default";
+
+  // Wheel → horizontal: trackpads/mice emit vertical delta; without this the
+  // strip only moves via the scrollbar thumb.
+  const switchRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = switchRef.current;
+    if (!el) return;
+    const onWheel = (event: WheelEvent) => {
+      if (el.scrollWidth <= el.clientWidth + 1) return;
+      const dominantY = Math.abs(event.deltaY) >= Math.abs(event.deltaX);
+      if (!dominantY && event.deltaX === 0) return;
+      const dx = dominantY ? event.deltaY : event.deltaX;
+      if (dx === 0) return;
+      const next = el.scrollLeft + dx;
+      const max = el.scrollWidth - el.clientWidth;
+      if (next <= 0 && el.scrollLeft <= 0) return;
+      if (next >= max && el.scrollLeft >= max) return;
+      event.preventDefault();
+      el.scrollLeft = Math.max(0, Math.min(max, next));
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [children.length, activeChildId]);
+
+  // One row of small buttons, then the conversation itself: switching between
+  // related conversations should not cost a round trip through a list.
+  const switcher =
+    children.length > 0 ? (
+      <div className="child-switch" ref={switchRef}>
+        {children.map((child) => (
+          <button
+            key={child.sessionId}
+            className={child.sessionId === activeChildId ? "on" : ""}
+            title={sessionTitle(child, app.sessionDisplayNames, app.sessions)}
+            onClick={() => {
+              shell.openApp();
+              if (child.sessionId === activeChildId) {
+                app.setActiveRelatedSessionId(null);
+                shell.closeSub();
+              } else {
+                app.setActiveRelatedSessionId(child.sessionId, {
+                  size: sizeForChild(child.forkedFrom?.purpose),
+                });
+              }
+            }}
+          >
+            <i className={`ph ${child.delisted && !child.forkedFrom ? "ph-crown-simple" : PURPOSE_ICON[child.forkedFrom?.purpose ?? "side"]}`} />
+            <span>{sessionTitle(child, app.sessionDisplayNames, app.sessions)}</span>
+            {child.status === "incomplete" ? <span className="dot" /> : null}
+          </button>
+        ))}
+      </div>
+    ) : null;
 
   if (activeChildId) {
-    return <RelatedConversation sessionId={activeChildId} />;
+    return (
+      <>
+        {switcher}
+        <ChildConversation
+          key={activeChildId}
+          sessionId={activeChildId}
+          variant="panel"
+          onClose={() => {
+            app.setActiveRelatedSessionId(null);
+            shell.closeSub();
+          }}
+        />
+      </>
+    );
   }
-
-  const parentRow = parent ? (
-    <button
-      key="parent"
-      className="sc-item"
-      onClick={() => {
-        shell.openApp();
-        app.setActiveRelatedSessionId(null);
-        app.openCatalogSession(parent.sessionId);
-      }}
-    >
-      <div className="t">
-        <i className="ph ph-arrow-u-up-left" />
-        {sessionTitle(parent, app.sessionDisplayNames)}
-      </div>
-      <div className="d">Where this branch started — go back anytime</div>
-    </button>
-  ) : null;
 
   if (children.length === 0) {
     return (
-      <>
-        {parentRow}
-        <div className="rp-empty">
-          No related conversations. Use <b>/branch</b> or <b>/btw</b>, or open Helper.
-        </div>
-      </>
+      <div className="rp-empty">
+        {t("No related conversations. Use ")} <b>/branch</b> {t(" or ")} <b>/btw</b>, {t(" or open Helper.")}
+      </div>
     );
   }
 
   return (
     <>
-      {parentRow}
+      {switcher}
       {children.map((child) => (
         <button
           key={child.sessionId}
           className="sc-item"
           onClick={() => {
             shell.openApp();
-            if (child.forkedFrom?.purpose === "fork") {
-              app.setActiveRelatedSessionId(null);
-              app.openCatalogSession(child.sessionId);
-            } else {
-              app.setActiveRelatedSessionId(child.sessionId);
-            }
+            app.setActiveRelatedSessionId(child.sessionId, {
+              size: sizeForChild(child.forkedFrom?.purpose),
+            });
           }}
         >
           <div className="t">
-            <i className={`ph ${PURPOSE_ICON[child.forkedFrom?.purpose ?? "side"]}`} />
-            {sessionTitle(child, app.sessionDisplayNames)}
+            <i className={`ph ${child.delisted && !child.forkedFrom ? "ph-crown-simple" : PURPOSE_ICON[child.forkedFrom?.purpose ?? "side"]}`} />
+            {sessionTitle(child, app.sessionDisplayNames, app.sessions)}
             {child.status === "incomplete" ? (
-              <span className="badge-run">running</span>
+              <span className="badge-run">{t("running")}</span>
             ) : null}
           </div>
           <div className="d">
-            {child.forkedFrom?.purpose === "helper"
-              ? "Ask how Alt works · fresh context"
-              : child.forkedFrom?.purpose === "worker"
-                ? `Worker agent · ${child.messageCount ?? 0} messages — you can join in`
-                : child.forkedFrom?.purpose === "fork"
-                  ? `Branch · ${child.messageCount ?? 0} messages`
-                  : `Side conversation · ${child.messageCount ?? 0} messages`}
+            {child.delisted && !child.forkedFrom
+              ? t("Origin conversation · {count} messages", { count: child.messageCount ?? 0 })
+              : child.forkedFrom?.purpose === "helper"
+                ? t("How Alt works, and fixing setup · fresh context")
+                : child.forkedFrom?.purpose === "subagent"
+                  ? t("Subagent · {count} messages", { count: child.messageCount ?? 0 })
+                  : child.forkedFrom?.purpose === "fork"
+                    ? t("Branch · {count} messages", { count: child.messageCount ?? 0 })
+                    : t("Side conversation · {count} messages", { count: child.messageCount ?? 0 })}
           </div>
         </button>
       ))}
     </>
-  );
-}
-
-function RelatedConversation({ sessionId }: { sessionId: string }) {
-  const app = useApp();
-  const shell = useShell();
-  const [messages, setMessages] = useState<TranscriptMessage[]>([]);
-  const [streaming, setStreaming] = useState("");
-  const [draft, setDraft] = useState("");
-  const [running, setRunning] = useState(false);
-  const [status, setStatus] = useState("Connecting…");
-  const [error, setError] = useState("");
-  const [approvals, setApprovals] = useState<ApprovalRequestPayload[]>([]);
-  const messagesRef = useRef<HTMLDivElement>(null);
-
-  const refreshTranscript = useCallback(async () => {
-    const detail = await fetchSessionDetail(sessionId);
-    setMessages(detail.transcript ?? []);
-  }, [sessionId]);
-
-  const onMessage = useCallback(
-    (message: ServerMessage) => {
-      switch (message.type) {
-        case "session_transcript":
-          setMessages(message.payload.messages);
-          setStreaming("");
-          setRunning(false);
-          setStatus("Ready");
-          break;
-        case "assistant_delta":
-          setStreaming((current) => current + message.payload.text);
-          break;
-        case "run_phase":
-          setStatus({
-            connecting: "Connecting…",
-            processing: "Processing…",
-            thinking: "Thinking…",
-            tool: "Using a tool…",
-            compacting: "Compacting…",
-            retrying: "Retrying…",
-            "awaiting-user": "Waiting for approval…",
-            idle: "Ready",
-            error: "Error",
-          }[message.payload.phase]);
-          break;
-        case "run_completed":
-          setRunning(false);
-          setStreaming("");
-          setStatus("Ready");
-          void refreshTranscript();
-          void app.refreshSessions();
-          break;
-        case "run_failed":
-          setRunning(false);
-          setStreaming("");
-          setError(message.payload.error);
-          setStatus("Error");
-          void refreshTranscript();
-          break;
-        case "approval_requested":
-          setApprovals((current) => [...current, message.payload]);
-          break;
-        case "approval_resolved":
-          setApprovals((current) =>
-            current.filter((item) => item.approvalId !== message.payload.approvalId)
-          );
-          break;
-        case "extension_notice":
-          if (message.payload.level === "info") {
-            setStatus(message.payload.message);
-            setError("");
-          } else {
-            setError(message.payload.message);
-          }
-          break;
-        case "error":
-          setRunning(false);
-          setError(message.payload.error);
-          setStatus("Error");
-          break;
-        default:
-          break;
-      }
-    },
-    [app, refreshTranscript]
-  );
-
-  const socket = useWebSocket({
-    enabled: true,
-    reconnectSessionId: sessionId,
-    onMessage,
-    onStatus: (next) => {
-      if (next === "open") setStatus("Opening…");
-      else if (next === "connecting") setStatus("Connecting…");
-      else if (next === "closed") setStatus("Reconnecting…");
-      else setStatus("Connection error");
-    },
-  });
-
-  useEffect(() => {
-    const el = messagesRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [messages, streaming]);
-
-  const send = () => {
-    const text = draft.trim();
-    if (!text) return;
-    // Sending while the worker runs steers the running turn (Pi behavior);
-    // the server confirms with an extension notice.
-    if (socket.send({ type: "prompt", payload: text })) {
-      setDraft("");
-      setError("");
-      if (!running) {
-        setRunning(true);
-        setStatus("Working…");
-      }
-    }
-  };
-
-  const respondApproval = (
-    approvalId: string,
-    response: { accept?: boolean; choice?: string | null; text?: string | null }
-  ) => {
-    socket.send({ type: "respond_approval", payload: { approvalId, ...response } });
-    setApprovals((current) => current.filter((item) => item.approvalId !== approvalId));
-  };
-
-  return (
-    <div className="related-live">
-      <div className="related-actions">
-        <span>{status}</span>
-        <button
-          title="Turn this side chat into a listed conversation of its own — everything said here is kept."
-          onClick={() => {
-            void app.promoteRelatedSession(sessionId).catch((reason) =>
-              setError(reason instanceof Error ? reason.message : String(reason))
-            );
-          }}
-        >
-          <i className="ph ph-arrow-square-out" /> Promote to branch
-        </button>
-      </div>
-      <div className="child-msgs" ref={messagesRef}>
-        {messages.map((message, index) => (
-          <div className="cm" key={`${index}-${message.timestamp ?? "message"}`}>
-            <div className="w">{message.role === "user" ? "You" : message.role}</div>
-            <MarkdownBody text={message.text} />
-          </div>
-        ))}
-        {streaming ? (
-          <div className="cm"><div className="w">Alt · typing…</div>{streaming}</div>
-        ) : null}
-      </div>
-      {approvals[0] ? (
-        <ApprovalDock
-          request={approvals[0]}
-          onRespond={respondApproval}
-          onSessionAllow={() => undefined}
-        />
-      ) : null}
-      {error ? <div className="related-error">{error}</div> : null}
-      <div className="mini-composer">
-        <input
-          value={draft}
-          placeholder={
-            running
-              ? "Message the running agent — it sees it at its next step"
-              : "Reply in this related conversation"
-          }
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) send();
-          }}
-        />
-        <button disabled={!draft.trim()} onClick={send} title="Send">
-          <i className="ph ph-arrow-up" />
-        </button>
-        {running ? (
-          <button onClick={() => socket.send({ type: "abort" })} title="Stop">
-            <i className="ph ph-stop" />
-          </button>
-        ) : null}
-      </div>
-      <button
-        className="related-back"
-        onClick={() => {
-          app.setActiveRelatedSessionId(null);
-          shell.closeSub();
-        }}
-      >
-        Back to related conversations
-      </button>
-    </div>
   );
 }

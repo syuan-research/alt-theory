@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
 import { sessionTitle } from "@/lib/sessionList";
+import { t } from "@/i18n";
 
 /**
  * Researcher left pane (M7 §5). Setup = the auto-applied config + study tag +
@@ -18,13 +19,13 @@ export function Workbench() {
           className={tab === "setup" ? "on" : ""}
           onClick={() => setTab("setup")}
         >
-          Setup
+          {t("Setup")}
         </button>
         <button
           className={tab === "sessions" ? "on" : ""}
           onClick={() => setTab("sessions")}
         >
-          Sessions
+          {t("Sessions")}
         </button>
       </div>
       {tab === "setup" ? <SetupView /> : <SessionsView />}
@@ -58,34 +59,34 @@ function SetupView() {
   const model = app.modelOverride
     ? app.modelOverride.modelId
     : app.localConfig?.activeModel
-      ? `Default · ${app.localConfig.activeModel}`
-      : "Default";
+      ? t("Default · {model}", { model: app.localConfig.activeModel })
+      : t("Default");
   const study = app.studyTag
     ? `${app.studyTag.studyId}${app.studyTag.batch ? ` · ${app.studyTag.batch}` : ""}`
-    : "Daily use";
+    : t("Daily use");
 
   return (
     <div className="wb-view on">
       <div className="wb-card">
-        <h4>Current setup</h4>
+        <h4>{t("Current setup")}</h4>
         <div className="wb-row">
-          <span className="k">Role</span>
+          <span className="k">{t("Role")}</span>
           <span className="v">{role}</span>
         </div>
         <div className="wb-row">
-          <span className="k">Knowledge</span>
+          <span className="k">{t("Knowledge")}</span>
           <span className="v">{knowledge}</span>
         </div>
         <div className="wb-row">
-          <span className="k">Model</span>
+          <span className="k">{t("Model")}</span>
           <span className="v">{model}</span>
         </div>
         <div className="wb-row">
-          <span className="k">Study</span>
+          <span className="k">{t("Study")}</span>
           <span className="v">{study}</span>
         </div>
         <div className="wb-note">
-          Applies to this conversation. Set the pickers above the composer.
+          {t("Applies to this conversation. Set the pickers above the composer.")}
         </div>
       </div>
 
@@ -95,18 +96,18 @@ function SetupView() {
         <button
           disabled={!app.sessionId}
           onClick={() => shell.openCompare()}
-          title="Branch the conversation into arms and compare their responses"
+          title={t("Branch the conversation into arms and compare their responses")}
         >
           <i className="ph ph-git-fork" />
-          Compare responses
+          {t("Compare responses")}
         </button>
         <button onClick={() => app.toggleViewMode()}>
           <i className="ph ph-eye" />
-          View as participant
+          {t("View as participant")}
         </button>
         <button onClick={() => shell.openReview()}>
           <i className="ph ph-table" />
-          Open review
+          {t("Open review")}
         </button>
       </div>
     </div>
@@ -138,11 +139,11 @@ function StudyTagCard() {
 
   return (
     <div className="wb-card">
-      <h4>Study tag</h4>
+      <h4>{t("Study tag")}</h4>
       <input
         type="text"
         className="wb-input"
-        placeholder="Study id (blank = daily use)"
+        placeholder={t("Study id (blank = daily use)")}
         value={studyId}
         onChange={(e) => setStudyId(e.target.value)}
         disabled={!app.sessionReady}
@@ -150,7 +151,7 @@ function StudyTagCard() {
       <input
         type="text"
         className="wb-input"
-        placeholder="Batch (optional)"
+        placeholder={t("Batch (optional)")}
         value={batch}
         onChange={(e) => setBatch(e.target.value)}
         disabled={!app.sessionReady}
@@ -160,7 +161,7 @@ function StudyTagCard() {
         disabled={!app.sessionReady || !dirty}
         onClick={apply}
       >
-        Apply tag
+        {t("Apply tag")}
       </button>
     </div>
   );
@@ -177,9 +178,9 @@ function SessionsView() {
   return (
     <div className="wb-view on">
       <div className="wb-sessions">
-        <div className="group-label">This experiment</div>
+        <div className="group-label">{t("This experiment")}</div>
         {tagged.length === 0 ? (
-          <div className="rp-empty">No study-tagged conversations yet.</div>
+          <div className="rp-empty">{t("No study-tagged conversations yet.")}</div>
         ) : (
           tagged.map((s) => (
             <button
@@ -193,7 +194,7 @@ function SessionsView() {
               }}
             >
               <span className="s-title">
-                {sessionTitle(s, app.sessionDisplayNames)}
+                {sessionTitle(s, app.sessionDisplayNames, app.sessions)}
               </span>
               <span className="tag">{s.studyTag?.batch ?? s.studyTag?.studyId}</span>
             </button>

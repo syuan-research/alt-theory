@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
+import { t } from "@/i18n";
 import { Composer } from "@/components/conversation/Composer";
 import { MessageList } from "@/components/conversation/MessageList";
 import { ArmSplit } from "@/components/shell/ArmSplit";
@@ -52,39 +53,48 @@ function EmptyState() {
   return (
     <div className="empty-state">
       <div className="empty-intro">
-        <div className="greet">Where shall we begin?</div>
+        <div className="greet">{t("Where shall we begin?")}</div>
         <div className="mode-pick">
           <button
-            className={`mode-card understand${shell.newMode === "pure" ? " on" : ""}`}
-            onClick={() => shell.setNewMode("pure")}
-            aria-pressed={shell.newMode === "pure"}
-            title="For clarifying questions, comparing explanations, and developing ideas with your materials."
+            className={`mode-card understand${shell.newMode === "understand" ? " on" : ""}`}
+            onClick={() => shell.setNewMode("understand")}
+            aria-pressed={shell.newMode === "understand"}
+            disabled={app.runtimeMode === "native-pi"}
+            title={
+              app.runtimeMode === "native-pi"
+                ? t("Understand and Work are preserved but inactive while Native Pi is on.")
+                : t("For clarifying questions, comparing explanations, and developing ideas with your materials.")
+            }
           >
             <div className="t">
               <i className="ph ph-book-open" />
-              Understand
-              <span className="def">default</span>
+              {t("Understand")}
             </div>
             <ul>
-              <li>Clarify questions, compare explanations, and develop ideas.</li>
-              <li>Read and discuss your materials and selected knowledge.</li>
-              <li>Create notes or drafts while keeping understanding at the center.</li>
+              <li>{t("Clarify questions, compare explanations, and develop ideas.")}</li>
+              <li>{t("Read and discuss your materials and selected knowledge.")}</li>
+              <li>{t("Create notes or drafts while keeping understanding at the center.")}</li>
             </ul>
           </button>
           <button
-            className={`mode-card work${shell.newMode === "full" ? " on" : ""}`}
-            onClick={() => shell.setNewMode("full")}
-            aria-pressed={shell.newMode === "full"}
-            title="For the same careful thinking plus research, data analysis, and direct work across files."
+            className={`mode-card work${shell.newMode === "work" ? " on" : ""}`}
+            onClick={() => shell.setNewMode("work")}
+            aria-pressed={shell.newMode === "work"}
+            disabled={app.runtimeMode === "native-pi"}
+            title={
+              app.runtimeMode === "native-pi"
+                ? t("Understand and Work are preserved but inactive while Native Pi is on.")
+                : t("For the same careful thinking plus research, data analysis, and direct work across files.")
+            }
           >
             <div className="t">
               <i className="ph ph-hammer" />
-              Work
+              {t("Work")}
             </div>
             <ul>
-              <li>Keep the same careful thinking while advancing a concrete task.</li>
-              <li>Research and verify information, analyze data, and work across documents.</li>
-              <li>Create or update documents, spreadsheets, presentations, and other files in your working folders.</li>
+              <li>{t("Keep the same careful thinking while advancing a concrete task.")}</li>
+              <li>{t("Research and verify information, analyze data, and work across documents.")}</li>
+              <li>{t("Create or update documents, spreadsheets, presentations, and other files in your working folders.")}</li>
             </ul>
           </button>
         </div>
@@ -93,7 +103,7 @@ function EmptyState() {
             className="import-link"
             onClick={() => shell.setImportOpen(true)}
           >
-            Or continue a conversation from another app…
+            {t("Or continue a conversation from another app…")}
           </button>
         ) : null}
       </div>

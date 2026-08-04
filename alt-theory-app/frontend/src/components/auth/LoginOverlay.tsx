@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { t } from "@/i18n";
 import { Button } from "@/components/ui/Button";
 import { FieldFrame, TextInput } from "@/components/ui/Field";
 import { SectionTitle } from "@/components/ui/Typography";
@@ -32,20 +33,20 @@ export function LoginOverlay({ onLogin, error }: LoginOverlayProps) {
         onSubmit={handleSubmit}
         className="w-full max-w-sm space-y-4 rounded-lg border border-hairline bg-surface p-5 shadow-sm"
       >
-        <SectionTitle>Sign in</SectionTitle>
-        <FieldFrame label="Account ID" hint="Use the account id provided for this pilot.">
+        <SectionTitle>{t("Sign in")}</SectionTitle>
+        <FieldFrame label={t("Account ID")} hint={t("Use the account id provided for this pilot.")}>
           <TextInput
             value={accountId}
             onChange={(event) => setAccountId(event.target.value)}
-            placeholder="account id"
+            placeholder={t("account id")}
             autoComplete="username"
           />
         </FieldFrame>
-        <FieldFrame label="Login code" hint="Codes are case-sensitive.">
+        <FieldFrame label={t("Login code")} hint={t("Codes are case-sensitive.")}>
           <TextInput
             value={loginCode}
             onChange={(event) => setLoginCode(event.target.value)}
-            placeholder="login code"
+            placeholder={t("login code")}
             type="password"
             autoComplete="current-password"
           />
@@ -59,7 +60,7 @@ export function LoginOverlay({ onLogin, error }: LoginOverlayProps) {
           className="w-full"
           disabled={submitting || !accountId.trim() || !loginCode}
         >
-          {submitting ? "Signing in..." : "Sign in"}
+          {submitting ? t("Signing in...") : t("Sign in")}
         </Button>
       </form>
     </div>

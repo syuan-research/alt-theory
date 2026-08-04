@@ -2,6 +2,7 @@ import { useState } from "react";
 import { generateAbComparison, type AbArmConfig } from "@/api/sessions";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
+import { t } from "@/i18n";
 
 const INHERIT = "__inherit__";
 const NONE = "__none__";
@@ -93,7 +94,7 @@ export function Comparison() {
     <div className="float-cmp cmp-setup">
       <div className="t">
         <i className="ph ph-git-fork" />
-        Compare responses
+        {t("Compare responses")}
         <button className="close" onClick={shell.closeCompare}>
           <i className="ph ph-x" />
         </button>
@@ -102,7 +103,7 @@ export function Comparison() {
         className="cmp-prompt"
         value={prompt}
         onChange={(e) => setPrompt(e.target.value)}
-        placeholder="Prompt every arm will answer (arms branch from this conversation)"
+        placeholder={t("Prompt every arm will answer (arms branch from this conversation)")}
         disabled={busy}
       />
       <div className="cmp-arms">
@@ -112,14 +113,14 @@ export function Comparison() {
               className="cmp-label"
               value={arm.label}
               onChange={(e) => updateArm(i, { label: e.target.value })}
-              placeholder={`Arm ${i + 1}`}
+              placeholder={t("Arm {num}", { num: i + 1 })}
               disabled={busy}
             />
             <select
               value={arm.rolePresetSlug}
               onChange={(e) => updateArm(i, { rolePresetSlug: e.target.value })}
               disabled={busy}
-              title="Role"
+              title={t("Role")}
             >
               {armOption(app.discovery?.rolePresets ?? [], true)}
             </select>
@@ -127,7 +128,7 @@ export function Comparison() {
               value={arm.kbDomain}
               onChange={(e) => updateArm(i, { kbDomain: e.target.value })}
               disabled={busy}
-              title="Knowledge base"
+              title={t("Knowledge base")}
             >
               {armOption(app.discovery?.kbDomains ?? [], false)}
             </select>
@@ -136,7 +137,7 @@ export function Comparison() {
                 className="cmp-rm"
                 onClick={() => setArms((prev) => prev.filter((_, idx) => idx !== i))}
                 disabled={busy}
-                title="Remove arm"
+                title={t("Remove arm")}
               >
                 <i className="ph ph-x" />
               </button>
@@ -153,10 +154,10 @@ export function Comparison() {
             setArms((prev) => [...prev, emptyArm(String.fromCharCode(65 + prev.length))])
           }
         >
-          + Arm
+          {t("+ Arm")}
         </button>
         <button className="go" disabled={!canGenerate} onClick={generate}>
-          {generating ? "Generating…" : "Generate & read side by side"}
+          {generating ? t("Generating…") : t("Generate & read side by side")}
         </button>
       </div>
     </div>
