@@ -552,6 +552,14 @@
   .ctx-picker { display: inline-block; position: relative; min-width: 0; max-width: 45%; }
   .ctx-item { display: inline-flex; align-items: center; gap: 5px; min-width: 0; max-width: 100%; cursor: pointer; background: none; border: none; color: inherit; font: inherit; padding: 0; }
   .ctx-item > i { flex-shrink: 0; }
+  /* Preset toolbar (v1.4 round 1): CTA-toned situational buttons. */
+  .preset-bar { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1; overflow-x: auto; }
+  .preset-btn { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--accent); border-radius: 6px; background: none; color: var(--accent); font: inherit; font-size: 0.74rem; padding: 3px 8px; cursor: pointer; white-space: nowrap; max-width: 170px; overflow: hidden; text-overflow: ellipsis; }
+  .preset-btn:disabled { opacity: 0.45; cursor: default; }
+  .preset-btn.on, .preset-btn.locked { background: var(--accent); color: var(--card); }
+  .preset-btn .preset-num { font-size: 0.66rem; opacity: 0.75; }
+  .preset-toggle { margin-left: auto; color: var(--accent); }
+  .preset-toggle.on { color: var(--accent); }
   .ctx-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ctx-item:hover { color: var(--ink); }
   .ctx-item i.caret { font-size: 0.7rem; color: var(--text-3); }

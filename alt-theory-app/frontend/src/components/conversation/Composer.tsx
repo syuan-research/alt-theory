@@ -12,7 +12,7 @@ import { fmtTime } from "@/lib/format";
 import { t } from "@/i18n";
 import { autosizeTextarea } from "@/lib/autosizeTextarea";
 
-type MenuKey = "plus" | "model" | "role" | "kb" | null;
+type MenuKey = "plus" | "model" | "role" | "kb" | "presetcfg" | null;
 
 interface SlashCommand {
   name: string;
@@ -33,6 +33,17 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
   const [draft, setDraft] = useState("");
   const [slashIndex, setSlashIndex] = useState(0);
   const [menu, setMenu] = useState<MenuKey>(null);
+  // Preset toolbar (v1.4 round 1): open state survives reloads; the active
+  // press/lock state lives in AppProvider so it survives pane switches.
+  const [presetOpen, setPresetOpen] = useState<boolean>(
+    () => window.localStorage.getItem("alt-preset-open") === "1",
+  );
+  const togglePresetOpen = () => {
+    setPresetOpen((current) => {
+      window.localStorage.setItem("alt-preset-open", current ? "0" : "1");
+      return !current;
+    });
+  };
   const [fileDragOver, setFileDragOver] = useState(false);
   const rowRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -332,6 +343,76 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
         ) : null}
 
         <div className="ctx-line">
+          {presetOpen && variant === "live" ? (
+            <div className="preset-bar">
+              {app.presetButtons.map((name, index) => {
+                const active =
+                  app.presetState &&
+                  app.presetState.sessionId === app.sessionId &&
+                  app.presetState.name === name
+                    ? app.presetState
+                    : null;
+                return (
+                  <button
+                    key={name}
+                    className={`preset-btn${active ? (active.locked ? " locked" : " on") : ""}`}
+                    style={
+                      active && !active.locked
+                        ? { opacity: 0.5 + 0.5 * (active.turnsLeft / 5) }
+                        : undefined
+                    }
+                    disabled={app.isRunning || !interactive}
+                    title={
+                      active
+                        ? active.locked
+                          ? t("Locked — click to release on your next message")
+                          : t("Active for {count} more turns — click to lock", { count: active.turnsLeft })
+                        : t("Ask Alt to work this way for the next few turns")
+                    }
+                    onClick={() => app.pressPreset(name)}
+                  >
+                    <span className="preset-num">{index + 1}</span>
+                    {name}
+                    {active?.locked ? (
+                      <i className="ph ph-lock-simple" aria-hidden="true" />
+                    ) : null}
+                  </button>
+                );
+              })}
+              <CtxPicker
+                icon="ph-gear-six"
+                label=""
+                open={menu === "presetcfg"}
+                onToggle={() => toggle("presetcfg")}
+              >
+                {(app.discovery?.skills ?? [])
+                  .filter((skill) => skill.enabled?.[slashMode] !== false)
+                  .map((skill) => {
+                    const picked = app.presetButtons.includes(skill.name);
+                    return (
+                      <div
+                        key={skill.name}
+                        className={`mi${!picked && app.presetButtons.length >= 5 ? " disabled" : ""}`}
+                        onClick={() =>
+                          app.setPresetButtons(
+                            picked
+                              ? app.presetButtons.filter((n) => n !== skill.name)
+                              : app.presetButtons.length >= 5
+                                ? app.presetButtons
+                                : [...app.presetButtons, skill.name],
+                          )
+                        }
+                      >
+                        <span>{skill.name}</span>
+                        {picked ? <i className="ph ph-check check" /> : null}
+                      </div>
+                    );
+                  })}
+              </CtxPicker>
+            </div>
+          ) : null}
+          {presetOpen && variant === "live" ? null : (
+          <>
           <CtxPicker
             icon="ph-user-circle"
             label={roleLabel}
@@ -434,6 +515,18 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                 : withheld
                   ? t("Not for export")
                   : t("Exportable")}
+            </button>
+          ) : null}
+          </>
+          )}
+          {variant === "live" ? (
+            <button
+              className={`ctx-item preset-toggle${presetOpen ? " on" : ""}`}
+              title={t("Preset commands — ask Alt to work a certain way for the next few turns")}
+              onClick={togglePresetOpen}
+            >
+              <i className="ph ph-lightning" aria-hidden="true" />
+              {presetOpen ? null : t("Presets")}
             </button>
           ) : null}
         </div>

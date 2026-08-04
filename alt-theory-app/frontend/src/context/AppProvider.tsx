@@ -209,6 +209,19 @@ export interface AppContextValue {
   /** Re-point any existing session's working folder (drag & drop, M4). */
   repointSession: (sessionId: string, primaryDir: string | null,) => Promise<void>;
 
+  /** Situational preset buttons (v1.4 round 1 experiment). */
+  presetButtons: string[];
+  setPresetButtons: (names: string[]) => void;
+  presetState: {
+    sessionId: string;
+    name: string;
+    ordinal: number;
+    turnsLeft: number;
+    locked: boolean;
+  } | null;
+  /** Click state machine: inactive → press, active → lock, locked → unlock. */
+  pressPreset: (name: string) => void;
+
   sessionMode: AltMode;
   switchMode: (mode: AltMode) => void;
   modelOverride: SessionModelOverride | null;
@@ -267,6 +280,15 @@ export interface AppContextValue {
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
+
+/** Situational preset buttons (v1.4 round 1): turns a press stays active. */
+const PRESET_TURNS = 5;
+const DEFAULT_PRESET_BUTTONS = [
+  "adaptive-aligning",
+  "confirm-why",
+  "guided-next-steps",
+  "clear-misunderstanding",
+];
 
 function applySnapshotSelectors(
   payload: SessionSnapshot | SessionDraftSnapshot,
@@ -1352,9 +1374,55 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [replaceQueuedPrompts],
   );
 
+  // --- Situational preset buttons (v1.4 round 1 experiment) ---
+  // ponytail: config in localStorage, active state in memory only — promote
+  // both to app settings / session records if the experiment graduates.
+  const [presetButtons, setPresetButtonsState] = useState<string[]>(() => {
+    try {
+      const stored = JSON.parse(
+        window.localStorage.getItem("alt-preset-buttons") ?? "null",
+      );
+      return Array.isArray(stored) && stored.length
+        ? stored.slice(0, 5)
+        : DEFAULT_PRESET_BUTTONS;
+    } catch {
+      return DEFAULT_PRESET_BUTTONS;
+    }
+  });
+  const setPresetButtons = useCallback((names: string[]) => {
+    const next = names.slice(0, 5);
+    setPresetButtonsState(next);
+    try {
+      window.localStorage.setItem("alt-preset-buttons", JSON.stringify(next));
+    } catch {
+      /* private mode */
+    }
+  }, []);
+  const [presetState, setPresetState] = useState<
+    AppContextValue["presetState"]
+  >(null);
+  const pendingPresetReleaseRef = useRef<{
+    ordinal: number;
+    name: string;
+  } | null>(null);
+  const notePresetTurn = useCallback(() => {
+    setPresetState((current) => {
+      if (!current || current.locked) return current;
+      const turnsLeft = current.turnsLeft - 1;
+      return turnsLeft <= 0 ? null : { ...current, turnsLeft };
+    });
+  }, []);
+
   const sendPrompt = useCallback(
     (text: string) => {
-      const trimmed = text.trim();
+      let trimmed = text.trim();
+      const release = pendingPresetReleaseRef.current;
+      if (release && trimmed) {
+        // flomo design: unlock is announced on the user's next turn, not as
+        // a turn of its own.
+        trimmed = `Preset command #${release.ordinal} (${release.name}) is released; stop applying it.\n\n${trimmed}`;
+        pendingPresetReleaseRef.current = null;
+      }
       const attachments = [...stagedWorkspacePaths];
       if (!trimmed && attachments.length === 0) return false;
       if (isRunning) {
@@ -1367,15 +1435,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
           },
         ]);
         clearStagedWorkspace();
+        notePresetTurn();
         return true;
       }
       if (!startPrompt(trimmed, attachments)) return false;
       clearStagedWorkspace();
+      notePresetTurn();
       return true;
     },
     [
       clearStagedWorkspace,
       isRunning,
+      notePresetTurn,
       replaceQueuedPrompts,
       stagedWorkspacePaths,
       startPrompt,
@@ -1402,6 +1473,50 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [sendMessage]);
 
+  const invokeSkillRef = useRef<
+    ((skillName: string, userText?: string) => boolean) | null
+  >(null);
+  const pressPreset = useCallback(
+    (name: string) => {
+      if (!sessionId || isRunning) return;
+      const ordinal = presetButtons.indexOf(name) + 1;
+      if (ordinal === 0) return;
+      const active =
+        presetState &&
+        presetState.sessionId === sessionId &&
+        presetState.name === name
+          ? presetState
+          : null;
+      if (!active) {
+        const wrapper = `[IMPORTANT] The user pressed preset command #${ordinal} (${name}) — a manual trigger that signals what they expect right now. It normally applies for the next 3-5 turns. Fit its requirements into the current situation rather than restarting from scratch; only set it aside where it truly contradicts the immediate need, and say so if you do.`;
+        if (invokeSkillRef.current?.(name, wrapper)) {
+          pendingPresetReleaseRef.current = null;
+          setPresetState({
+            sessionId,
+            name,
+            ordinal,
+            turnsLeft: PRESET_TURNS,
+            locked: false,
+          });
+        }
+        return;
+      }
+      if (!active.locked) {
+        if (
+          sendPrompt(
+            `[IMPORTANT] The user locked preset command #${ordinal} (${name}): it now applies to every turn until you are told it is released.`,
+          )
+        ) {
+          setPresetState({ ...active, locked: true });
+        }
+        return;
+      }
+      pendingPresetReleaseRef.current = { ordinal, name };
+      setPresetState(null);
+    },
+    [sessionId, isRunning, presetButtons, presetState, sendPrompt],
+  );
+
   const invokeSkill = useCallback(
     (skillName: string, userText?: string) => {
       if (!skillName || isRunning) return false;
@@ -1427,6 +1542,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     },
     [isRunning, sendMessage],
   );
+  invokeSkillRef.current = invokeSkill;
 
   const branchRevision = useCallback(
     (text: string, entryId?: string) => {
@@ -1730,6 +1846,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       switchRolePreset,
       switchInstruction,
       switchVisibility,
+      presetButtons,
+      setPresetButtons,
+      presetState,
+      pressPreset,
       sessionMode,
       workspacePrimaryDir,
       knownWorkspaces,
@@ -1835,6 +1955,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       switchRolePreset,
       switchInstruction,
       switchVisibility,
+      presetButtons,
+      setPresetButtons,
+      presetState,
+      pressPreset,
       sessionMode,
       workspacePrimaryDir,
       knownWorkspaces,
