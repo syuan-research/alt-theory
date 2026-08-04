@@ -471,18 +471,18 @@ export function promoteToMainlineRecords(
 export function restoreDeletedSession(dataDir: string, sessionId: string): string[] {
   assertDirectTrashEntry(dataDir, sessionId);
   const restored: string[] = [];
-  for (const summary of allSessionSummaries(dataDir)) {
-    const root = resolveSessionRoot(dataDir, summary.sessionId);
+  // Membership in the Trash item is recorded in each deleted.json; reading
+  // those directly avoids building every conversation's summary (perf
+  // backlog item 6).
+  for (const dirId of listSessionDirIds(dataDir)) {
+    const root = resolveSessionRoot(dataDir, dirId);
     if (!root) continue;
     const recordsDir = join(root, "records");
     const deleted = readDeletedSessionRecord(recordsDir);
-    if (!deleted) continue;
-    if (
-      summary.sessionId === sessionId ||
-      deleted.cascadeRootSessionId === sessionId
-    ) {
+    if (!deleted || !isRecoverableDeletion(deleted)) continue;
+    if (dirId === sessionId || deleted.cascadeRootSessionId === sessionId) {
       removeDeletedSessionRecord(recordsDir);
-      restored.push(summary.sessionId);
+      restored.push(dirId);
     }
   }
   if (!restored.includes(sessionId)) {
@@ -500,17 +500,17 @@ export function permanentlyDeleteSession(
   now: Date = new Date(),
 ): string[] {
   assertDirectTrashEntry(dataDir, sessionId);
-  const targets = allSessionSummaries(dataDir)
-    .filter((summary) => {
-      const root = resolveSessionRoot(dataDir, summary.sessionId);
-      if (!root) return false;
-      const deleted = readDeletedSessionRecord(join(root, "records"));
-      return (
-        summary.sessionId === sessionId ||
-        deleted?.cascadeRootSessionId === sessionId
-      );
-    })
-    .map((summary) => summary.sessionId);
+  const targets = listSessionDirIds(dataDir).filter((dirId) => {
+    if (dirId === sessionId) return true;
+    const root = resolveSessionRoot(dataDir, dirId);
+    if (!root) return false;
+    const deleted = readDeletedSessionRecord(join(root, "records"));
+    return Boolean(
+      deleted &&
+        deleted.cascadeRootSessionId === sessionId &&
+        isRecoverableDeletion(deleted),
+    );
+  });
   if (!targets.includes(sessionId)) {
     throw new Error(`Session is not in Trash: ${sessionId}`);
   }
@@ -694,11 +694,35 @@ export function deleteSessionTextFile(
   return deleted;
 }
 
+/**
+ * Cheap single-session summary for access guards: header, manifest, and
+ * deletion records only — never the Pi transcript. The WS message guard runs
+ * this on every client message, where readSessionDetail's full parse grew
+ * linearly with conversation-file size (perf backlog item 1).
+ */
+export function readSessionAccessSummary(
+  dataDir: string,
+  sessionId: string,
+): SessionSummary | null {
+  // No durable-catalog filter here: the guard must accept a session that was
+  // created moments ago and has not finished its first turn yet.
+  const parts = readSessionParts(dataDir, sessionId);
+  return parts ? buildSummary(sessionId, parts) : null;
+}
+
 function readSessionSummary(
   dataDir: string,
   sessionId: string,
   deleted = false,
 ): SessionSummary | null {
+  // A purged tombstone (permanent delete / retention expiry) is neither an
+  // active conversation nor a Trash entry; recognize it from deleted.json
+  // alone so every directory scan stops paying readSessionParts for
+  // conversations that are permanently gone (perf backlog item 5).
+  const sessionRoot = resolveSessionRoot(dataDir, sessionId);
+  if (!sessionRoot) return null;
+  const tombstone = readDeletedSessionRecord(join(sessionRoot, "records"));
+  if (tombstone && !isRecoverableDeletion(tombstone)) return null;
   const parts = readSessionParts(dataDir, sessionId);
   if (!parts) return null;
   const summary = buildSummary(sessionId, parts);
@@ -706,6 +730,16 @@ function readSessionSummary(
     return null;
   }
   return summary;
+}
+
+/** Session directory names under sessions/, no summary build — for deletion
+ *  bookkeeping that only consults each directory's own records. */
+function listSessionDirIds(dataDir: string): string[] {
+  const sessionsRoot = resolveSessionsRoot(resolve(dataDir));
+  if (!existsSync(sessionsRoot)) return [];
+  return readdirSync(sessionsRoot, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name);
 }
 
 function allSessionSummaries(dataDir: string): SessionSummary[] {

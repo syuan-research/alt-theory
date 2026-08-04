@@ -280,6 +280,8 @@ interface ManagedSession {
   resumeWarnings: string[];
   counters: SessionCounters;
   transcript: TranscriptMessage[];
+  /** mtime fingerprint of the files the transcript projection reads; null = re-read. */
+  transcriptStamp: string | null;
   listeners: Set<(event: SessionServiceEvent) => void>;
   internalUnsubscribe: () => void;
   busy: boolean;
@@ -1971,10 +1973,31 @@ export class SessionService implements AgentTeamBridge {
 
   getTranscript(sessionId: string): TranscriptMessage[] {
     const managed = this.requireSession(sessionId);
-    managed.transcript =
-      readSessionDetail(this.config.dataDir, sessionId)?.transcript ??
-      managed.transcript;
+    const stamp = this.transcriptStamp(managed);
+    if (stamp === null || stamp !== managed.transcriptStamp) {
+      managed.transcript =
+        readSessionDetail(this.config.dataDir, sessionId)?.transcript ??
+        managed.transcript;
+      managed.transcriptStamp = stamp;
+    }
     return [...managed.transcript];
+  }
+
+  /**
+   * Fingerprint of the two files the transcript projection is derived from
+   * (perf backlog item 2): the full re-read now happens only when one of
+   * them actually changed underneath the open session.
+   */
+  private transcriptStamp(managed: ManagedSession): string | null {
+    try {
+      const sessionFile = managed.session.sessionFile;
+      if (!sessionFile) return null;
+      const runs = join(managed.manifest.recordsDir, "runs.jsonl");
+      const runsMtime = existsSync(runs) ? statSync(runs).mtimeMs : 0;
+      return `${statSync(sessionFile).mtimeMs}/${runsMtime}`;
+    } catch {
+      return null;
+    }
   }
 
   private publishCurrentBranchTranscript(managed: ManagedSession): void {
@@ -2484,17 +2507,36 @@ export class SessionService implements AgentTeamBridge {
   ): Promise<string> {
     const childId = this.resolveSubagentId(parentSessionId, agent);
     const deadline = Date.now() + 600_000;
-    while (Date.now() < deadline) {
+    const ready = () => {
       const child = this.sessions.get(childId);
-      if (
+      return Boolean(
         child &&
-        !child.busy &&
-        !child.session.isStreaming &&
-        !this.queuedSubagentIds.has(childId)
-      ) {
-        return this.subagentResultText(childId);
+          !child.busy &&
+          !child.session.isStreaming &&
+          !this.queuedSubagentIds.has(childId),
+      );
+    };
+    while (Date.now() < deadline) {
+      if (ready()) return this.subagentResultText(childId);
+      const child = this.sessions.get(childId);
+      if (!child) {
+        await sleep(250);
+        continue;
       }
-      await sleep(250);
+      // Wake on the child's next service event (run completion, failure,
+      // phase change) instead of polling; the deadline caps the wait
+      // (perf backlog item 7).
+      await new Promise<void>((wake) => {
+        const finish = () => {
+          clearTimeout(timer);
+          child.listeners.delete(listener);
+          wake();
+        };
+        const listener = () => finish();
+        const timer = setTimeout(finish, Math.max(0, deadline - Date.now()));
+        timer.unref?.();
+        child.listeners.add(listener);
+      });
     }
     return `Timed out after 600s waiting for subagent ${agent}; it keeps running in the background — its completion will arrive automatically.`;
   }
@@ -3322,6 +3364,7 @@ export class SessionService implements AgentTeamBridge {
     const managed: ManagedSession = {
       ...args,
       approvalBridge,
+      transcriptStamp: null,
       listeners: new Set(),
       internalUnsubscribe: () => {},
       busy: false,

@@ -47,6 +47,7 @@ import {
   permanentlyDeleteSession,
   restoreDeletedSession,
   readSessionTextFile,
+  readSessionAccessSummary,
   readSessionDetail,
   readSessionChanges,
   type SessionSummary,
@@ -2217,17 +2218,17 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     };
 
     const requireSessionWsContentAccess = (sessionId: string): SessionSummary => {
-      const detail = readSessionDetail(dataDir, sessionId);
-      if (!detail || !canAccessSessionSummary(auth, detail.session)) {
+      const summary = readSessionAccessSummary(dataDir, sessionId);
+      if (!summary || !canAccessSessionSummary(auth, summary)) {
         throw new Error(`Unknown session id: ${sessionId}`);
       }
-      if (!canAccessSessionContent(auth, detail.session)) {
+      if (!canAccessSessionContent(auth, summary)) {
         throw new Error("Session content is private");
       }
-      if (detail.session.deletedAt) {
+      if (summary.deletedAt) {
         throw new Error("Conversation is in Trash");
       }
-      return detail.session;
+      return summary;
     };
 
     const attachToSession = (sessionId: string) => {
