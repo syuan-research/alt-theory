@@ -71,6 +71,8 @@ export interface SessionSummary {
   trashDueAt: string | null;
   /** Root that ceded its list spot to a promoted branch (v1.4 M4b). */
   delisted?: boolean;
+  /** The session that took the spot (set with delisted). */
+  delistedFor?: string;
   status: "available" | "incomplete" | "error";
   rolePresetSlug: string | null;
   kbDomain: string | null;
@@ -352,8 +354,26 @@ function writeListFlags(
     writeSessionHeader(recordsDir, {
       ...header,
       delisted: makeListed ? undefined : true,
+      delistedFor: makeListed ? undefined : header.delistedFor,
     });
   }
+}
+
+/** Record who took a delisted root's spot (display inversion anchor). */
+function writeDelistedFor(
+  dataDir: string,
+  rootSessionId: string,
+  successorSessionId: string,
+): void {
+  const root = resolveSessionRoot(dataDir, rootSessionId);
+  if (!root) return;
+  const recordsDir = join(root, "records");
+  const header = readV4SessionHeader(recordsDir);
+  if (!header || header.forkedFrom) return;
+  writeSessionHeader(recordsDir, {
+    ...header,
+    delistedFor: successorSessionId,
+  });
 }
 
 /** Every member of the fork tree reachable from sessionId (root + descendants). */
@@ -441,7 +461,12 @@ export function promoteToMainlineRecords(
         )[0] ?? null;
   }
   writeListFlags(dataDir, sessionId, true);
-  if (stepDown) writeListFlags(dataDir, stepDown.sessionId, false);
+  if (stepDown) {
+    writeListFlags(dataDir, stepDown.sessionId, false);
+    if (!stepDown.forkedFrom) {
+      writeDelistedFor(dataDir, stepDown.sessionId, sessionId);
+    }
+  }
   return { delistedSessionId: stepDown?.sessionId ?? null };
 }
 
@@ -917,6 +942,9 @@ function buildSummary(sessionId: string, parts: SessionParts): SessionSummary {
     retentionDueAt: parts.v4Session?.retentionDueAt ?? null,
     createdAt: parts.manifest?.createdAt ?? parts.v4Session?.createdAt ?? null,
     ...(parts.v4Session?.delisted ? { delisted: true } : {}),
+    ...(parts.v4Session?.delistedFor
+      ? { delistedFor: parts.v4Session.delistedFor }
+      : {}),
     updatedAt: newestTimestamp([
       parts.sessionRoot,
       join(parts.recordsDir, "assembly-manifest.json"),

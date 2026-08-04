@@ -219,8 +219,20 @@ function buildEdges(members: SessionSummary[]): {
 } {
   const ids = new Set(members.map((s) => s.sessionId));
   const byId = new Map(members.map((s) => [s.sessionId, s]));
-  const successorOf = (root: SessionSummary) =>
-    members.find((m) => m.forkedFrom?.sessionId === root.sessionId) ?? null;
+  // Deterministic: the recorded successor first; else the most recent
+  // member BRANCH (a listed btw must never become the family head just by
+  // being fresher — owner 2026-08-04).
+  const successorOf = (root: SessionSummary) => {
+    const recorded = root.delistedFor ? byId.get(root.delistedFor) : null;
+    if (recorded) return recorded;
+    return (
+      members.find(
+        (m) =>
+          m.forkedFrom?.sessionId === root.sessionId &&
+          m.forkedFrom.purpose === "fork",
+      ) ?? null
+    );
+  };
 
   const childrenByParent = new Map<string, SessionSummary[]>();
   const roots: SessionSummary[] = [];

@@ -131,12 +131,13 @@ export interface V4SessionHeader extends RecordEnvelope {
   studyTag?: StudyTag;
   modelOverride?: SessionModelOverride;
   /**
-   * A root that gave its list spot to a promoted branch (v1.4 M4b role
-   * swap). Fully alive and reachable from descendants' Related rails; only
-   * the conversation list hides it. Fork children delist via
-   * forkedFrom.listed=false instead.
+   * A root that gave its list spot to a promoted child (v1.4 M4b role
+   * swap). Stays a list member, displayed DEMOTED — nested under its
+   * successor. Fork children delist via forkedFrom.listed=false instead.
    */
   delisted?: boolean;
+  /** The session that took the spot — makes the display inversion deterministic. */
+  delistedFor?: string;
 }
 
 export function writeFoundationRecords(args: {

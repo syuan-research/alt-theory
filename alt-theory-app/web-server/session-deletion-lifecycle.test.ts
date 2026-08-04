@@ -184,10 +184,12 @@ test("Mainline promotion is a reversible role swap with a living representative"
     listSessionSummaries(dataDir).sessions.find((s) => s.sessionId === id)!;
 
   // Promote: branch takes the list spot, root cedes it, both stay alive,
-  // lineage untouched.
+  // lineage untouched; the successor is recorded so the list can nest the
+  // demoted root under the RIGHT child deterministically.
   promoteToMainlineRecords(dataDir, "branch");
   assert.equal(summary("branch").forkedFrom?.listed, true);
   assert.equal(summary("root").delisted, true);
+  assert.equal(summary("root").delistedFor, "branch");
   assert.equal(summary("branch").forkedFrom?.sessionId, "root");
 
   // Reverse from the delisted root: it returns to the list; the branch
