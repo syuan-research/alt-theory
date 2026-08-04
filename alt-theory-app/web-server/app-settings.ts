@@ -75,6 +75,11 @@ export interface AppSettings {
    */
   experimentTrimmedPiPrompt?: boolean;
   /**
+   * Per-model reminder sections (v1.4 round 1: gpt-5*, deepseek-v4-flash;
+   * the table in alt-theory-core extends per model). Absent = enabled.
+   */
+  modelHooks?: boolean;
+  /**
    * App UI (and backend user-visible text) language (alpha.6). Absent =
    * "auto": the frontend follows the system language; the backend treats
    * auto as English. Conversation language is unaffected — the assistant

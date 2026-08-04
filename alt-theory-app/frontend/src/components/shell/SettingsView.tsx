@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { fetchJson } from "@/api/http";
 import {
   cancelProviderAuth,
   getAutoTitleSettings,
@@ -587,6 +588,7 @@ function GeneralPanel() {
       <RuntimeCard />
       <DefaultModeCard />
       <AutoTitleCard />
+      <ModelHooksCard />
       <NativePiSkillsCard />
       <div className="set-card">
         <div className="row2">
@@ -821,6 +823,51 @@ function NativePiSkillsCard() {
               .then(() => window.location.reload())
               .catch(() => {});
           }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function ModelHooksCard() {
+  const [enabled, setEnabled] = useState(true);
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    fetchJson<{ enabled: boolean }>("/api/settings/model-hooks")
+      .then((r) => {
+        if (alive) setEnabled(r.enabled);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (alive) setLoaded(true);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const persist = (next: boolean) => {
+    setEnabled(next);
+    void fetchJson("/api/settings/model-hooks", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: next }),
+    }).catch(() => {});
+  };
+  return (
+    <div className="set-card">
+      <div className="row2">
+        <div>
+          <h4>{t("Model-specific reminders")}</h4>
+          <p>
+            {t("Some models get a short reminder tuned to their habits (currently GPT-5 and DeepSeek v4 Flash). Applies to conversations opened after the change.")}
+          </p>
+        </div>
+        <button
+          className={`toggle${enabled ? " on" : ""}`}
+          aria-pressed={enabled}
+          disabled={!loaded}
+          onClick={() => persist(!enabled)}
         />
       </div>
     </div>

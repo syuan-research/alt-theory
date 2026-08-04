@@ -527,6 +527,23 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     writeAppSettings(dataDir, settings);
     res.json({ ok: true, mode });
   });
+  app.get("/api/settings/model-hooks", (_req, res) => {
+    if (!requireLocalConfigMode(res)) return;
+    res.json({ enabled: readAppSettings(dataDir).modelHooks !== false });
+  });
+  app.put("/api/settings/model-hooks", (req, res) => {
+    if (!requireLocalConfigMode(res)) return;
+    const enabled = (req.body as { enabled?: unknown }).enabled;
+    if (typeof enabled !== "boolean") {
+      res.status(400).json({ error: "enabled must be a boolean" });
+      return;
+    }
+    const settings = readAppSettings(dataDir);
+    if (enabled) delete settings.modelHooks;
+    else settings.modelHooks = false;
+    writeAppSettings(dataDir, settings);
+    res.json({ ok: true, enabled });
+  });
   app.get("/api/settings/runtime", (_req, res) => {
     if (!requireLocalConfigMode(res)) return;
     const settings = readAppSettings(dataDir);
