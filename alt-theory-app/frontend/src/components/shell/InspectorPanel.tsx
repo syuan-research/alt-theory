@@ -202,10 +202,11 @@ function RelatedConversations() {
         if (s.forkedFrom?.sessionId !== parentId) continue;
         if (s.forkedFrom.purpose === "ab-arm" || s.deletedAt) continue;
         if (seen.has(s.sessionId)) continue;
-        // Inherited pass: a branch's transcript only references subagents
-        // that already existed when it was forked.
+        // Inherited pass: subagents and side (btw) conversations that
+        // already existed at the fork belong to the shared history (owner
+        // ruling 2026-08-04; helper is recreatable and stays put).
         if (beforeFork) {
-          if (s.forkedFrom.purpose !== "subagent") continue;
+          if (!["subagent", "side"].includes(s.forkedFrom.purpose)) continue;
           if (!s.createdAt || s.createdAt >= beforeFork) continue;
         }
         seen.add(s.sessionId);

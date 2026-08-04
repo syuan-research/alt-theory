@@ -120,7 +120,7 @@ test("Delete follows attached conversations but stops at Branches and promoted c
   assert.deepEqual(ids(dataDir), ["promoted-helper", "root", "side", "subagent"]);
 });
 
-test("Deleting a parent keeps subagents a surviving branch still references", () => {
+test("Deleting a parent keeps subagents and btw a surviving branch shares", () => {
   const dataDir = mkdtempSync(join(tmpdir(), "alt-theory-trash-shared-"));
   createSession(dataDir, "root");
   createSession(
@@ -128,6 +128,12 @@ test("Deleting a parent keeps subagents a surviving branch still references", ()
     "sa-before",
     { sessionId: "root", purpose: "subagent" },
     "2026-08-01T01:00:00.000Z",
+  );
+  createSession(
+    dataDir,
+    "btw-before",
+    { sessionId: "root", purpose: "side" },
+    "2026-08-01T01:30:00.000Z",
   );
   createSession(
     dataDir,
@@ -143,12 +149,20 @@ test("Deleting a parent keeps subagents a surviving branch still references", ()
   );
 
   softDeleteSession(dataDir, "root");
-  // sa-before predates the branch fork, so the branch transcript references
-  // its work; sa-after exists only in the deleted mainline.
-  assert.deepEqual(ids(dataDir), ["branch", "sa-before"]);
+  // sa-before and btw-before predate the branch fork: shared history the
+  // branch still holds (edit flows delete old mainlines constantly, and
+  // losing the btw with them is a real loss — owner ruling 2026-08-04);
+  // sa-after exists only in the deleted mainline.
+  assert.deepEqual(ids(dataDir), ["branch", "btw-before", "sa-before"]);
 
   restoreDeletedSession(dataDir, "root");
-  assert.deepEqual(ids(dataDir), ["branch", "root", "sa-after", "sa-before"]);
+  assert.deepEqual(ids(dataDir), [
+    "branch",
+    "btw-before",
+    "root",
+    "sa-after",
+    "sa-before",
+  ]);
 });
 
 test("Delete reports every conversation it will bury, so a live run can be stopped first", () => {

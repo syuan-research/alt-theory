@@ -555,11 +555,12 @@ function attachedDeletionTargets(
   const visit = (id: string) => {
     targets.push(id);
     const kids = children.get(id) ?? [];
-    // Branches are transcript copies: one forked AFTER a subagent existed
-    // still references that subagent's work. Owner rule (v1.4 round 1): a
-    // subagent survives while any history-sharing branch survives. side and
-    // helper never appear in the copied transcript, so branches don't
-    // protect them.
+    // Owner rule (v1.4 round 1): an attached conversation survives while a
+    // branch forked AFTER it existed survives. For subagents the branch
+    // transcript literally references their work; for side (btw) the owner
+    // ruled the content loss is just as real (edit-heavy flows delete old
+    // mainlines constantly). helper stays cascaded — setup Q&A is
+    // recreatable, no loss to protect.
     const branchForkTimes = kids
       .filter((k) => k.forkedFrom?.purpose === "fork" && !k.deletedAt)
       .map((k) => k.createdAt)
@@ -574,7 +575,7 @@ function attachedDeletionTargets(
         continue;
       }
       if (
-        fork.purpose === "subagent" &&
+        ["subagent", "side"].includes(fork.purpose) &&
         child.createdAt &&
         branchForkTimes.some((at) => at > (child.createdAt as string))
       ) {
