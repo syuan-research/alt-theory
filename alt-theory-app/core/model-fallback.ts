@@ -55,22 +55,6 @@ const DEFAULT_RULES: ModelFallbackRule[] = [
       ],
     },
   },
-  {
-    id: "dashscope-allocation-quota",
-    action: "exclude_and_fallback",
-    match: {
-      anyPattern: [
-        "allocationquota",
-        "free quota",
-        "free tier",
-        "free tier of the model",
-        "quota has been exhausted",
-        "quota exhausted",
-        "tier exhausted",
-        "insufficient quota",
-      ],
-    },
-  },
 ];
 
 function modelKey(provider: string, modelId: string): string {
