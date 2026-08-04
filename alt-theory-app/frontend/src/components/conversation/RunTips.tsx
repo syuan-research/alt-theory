@@ -10,6 +10,7 @@ import { t } from "@/i18n";
 const GENERAL_TIPS = (): string[] => [
   t("Ask the same question again to see what stays put and what was just one framing."),
   t("Edit an earlier question of yours — the answer often moves more than you'd expect, and this conversation stays whole."),
+  t("When you edit a question, “Adjust model or role…” asks it again under a different model or role and compares."),
   t("Branch from any answer to follow a second reading without losing the first."),
   t("Say “align with me first” before a big piece of work and Alt interviews you instead of guessing."),
   t("Ask for a plan record when the work spans days — decisions written there survive compaction."),

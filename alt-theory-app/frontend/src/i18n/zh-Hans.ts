@@ -625,6 +625,7 @@ const catalog: Record<string, string> = {
   "What Alt can do": "Alt 能做什么",
   "What Alt speaks as, and what it draws on. New conversations start with no role and the bundled knowledge set until you pick otherwise above the composer. Adding here never changes the bundled files.": "Alt 的角色定位及其参考来源。新对话默认无角色并使用捆绑的知识库，除非你在编辑器上方另行选择。在此处添加不会更改捆绑文件。",
   "When two skills overlap": "当两个技能重叠时",
+  "When you edit a question, “Adjust model or role…” asks it again under a different model or role and compares.": "当你编辑问题时，“调整模型或角色…”会在不同的模型或角色下再次询问并进行比较。",
   "Where do I get a key?": "如何获取密钥？",
   "Where shall we begin?": "我们从哪里开始？",
   "Which one wins when a bundled skill and one of yours fit the same job.": "当内置技能和你自己的技能都适合同一件事时，用哪一个。",

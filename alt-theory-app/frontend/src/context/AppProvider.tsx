@@ -646,7 +646,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
       switch (message.type) {
         case "session_draft":
           setCanRetryFailed(false);
-          if (reconnectSessionIdRef.current) break;
+          if (reconnectSessionIdRef.current) {
+            // Even when the draft message is ignored (reconnect race), a
+            // pending asset switch was answered by THIS message — leaving its
+            // "Switching role preset…" status would strand the composer in a
+            // fake busy state with nothing left to clear it.
+            if (pendingAssetSwitchRef.current) {
+              pendingAssetSwitchRef.current = false;
+              setToolStatus("");
+              setIsRunning(false);
+              setConnStatus("idle");
+              setConnLabel(t("Ready"));
+              setSelectors(applySnapshotSelectors(message.payload));
+            }
+            break;
+          }
           setSessionId(null);
           setSessionReady(true);
           setSessionCreatedHere(false);
