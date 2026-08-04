@@ -505,7 +505,6 @@ export interface AssemblyManifest {
   rolePreset?: { slug?: string | null; path?: string | null };
   appContext?: { path?: string | null };
   piAdapter?: { promptTemplatesDir?: string | null };
-  [key: string]: unknown;
 }
 
 export type ClientMessage =
@@ -545,6 +544,7 @@ export type ClientMessage =
       };
     }
   | { type: "switch_mode"; payload: { mode: AltMode } }
+  | { type: "add_workspace_dir"; payload: { dir: string } }
   | { type: "set_study_tag"; payload: { studyTag: StudyTag | null } }
   | {
       type: "set_session_model";
