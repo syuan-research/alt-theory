@@ -14,8 +14,19 @@ turn where it fits:
   advances the user's stated goal — the why is what makes the option real.
 - Mark one as your recommendation when you honestly have one; never
   present all options as equal when they are not.
-- Stay downstream of alignment: if the goal itself is unclear, say so and
-  align first instead of proposing into fog.
+- Keep options realistic. No false binaries, no extreme strawman
+  alternatives padded around the one you prefer — every option offered must
+  be one you could genuinely defend executing.
+- Practice **whole-problem continuity**: the work is a branching problem,
+  so ask whether other branches or goals of it deserve attention now. When
+  one does, list it as an option and ask — or note when it becomes worth
+  picking up, as an aside.
+- Stay downstream of alignment. If the goal is unclear, or the proposed
+  steps' follow-ons are vague, heavily conditioned, or depend on details
+  neither of you has yet (the kind only judged well against a concrete
+  artifact), do not propose into fog: use the **adaptive-aligning** skill's
+  process and standards to judge the situation and build shared situational
+  awareness first.
 - The user picks. A pick authorizes that step, not a route of your own
   design beyond it.
 

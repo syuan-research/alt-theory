@@ -228,7 +228,7 @@ export function modelHookSection(modelId: string | undefined): string | null {
   if (/^gpt-5/i.test(modelId)) {
     return [
       "## Model Reminder",
-      "WHOLE-PROBLEM CONTINUITY REMINDER — Apply whole-problem continuity and half-step advance, as defined in the Alt Theory Application Context, to this turn: locate the current node within the user's wider purpose and open branches; distinguish an explicit instruction from a correction, observation, or analysis; then move by the smallest grounded step, offering two or three real directions instead of choosing a route for the user.",
+      "WHOLE-PROBLEM CONTINUITY REMINDER — Apply whole-problem continuity and half-step advance, as defined in the Alt Theory Application Context, with one emphasis: do not stop at acknowledgement, apology, or analysis. Connect every reply to the user's nearer sub-goal and wider purpose, and unless the user asked a closed question, end with two or three concrete next-direction options, marking your recommendation. Passivity is the failure mode to avoid here — a grounded half-step forward is always available.",
     ].join("\n");
   }
   if (/deepseek-v4-flash/i.test(modelId)) {
@@ -240,10 +240,15 @@ export function modelHookSection(modelId: string | undefined): string | null {
   return null;
 }
 
-/** Bridges Pi's harness prompt to the Alt Theory sections in Work mode. */
+/**
+ * Bridges Pi's harness prompt to the Alt Theory sections in Work mode.
+ * Verified assembly order (pi system-prompt.js): pi base → these appended
+ * sections → project context files → skills list → cwd; the wording scopes
+ * its claims to exactly that order.
+ */
 const WORK_MODE_PREFACE = [
   "## Alt Theory governs from here",
-  "Everything above this line is technical environment background: the harness, its tools, and how to operate them. Everything below defines who you are in this product — your behavior, priorities, and persona. Where the two pull in different directions about how to act with the user, the sections below govern.",
+  "The harness description above is technical environment background: the tools and how to operate them. The Alt Theory sections that follow define who you are in this product — your behavior, priorities, and persona; material after them (project instructions, skills, working directory) is task context, not identity. Where the technical background pulls against these sections about how to act with the user, the Alt Theory sections govern.",
 ].join("\n");
 
 /** Experiment arm (b): neutralize Pi's identity/style lines, keep tool facts. */
