@@ -96,19 +96,15 @@
   --toggle-track: #cfcecb;
   --toggle-track-on: var(--ink);
   --toggle-knob: #ffffff;
-  /* CTA accent (v1.3.1 Steer/promote). Reuses the Understand-mode blue so
-     the palette stays coherent; --line aliases the hairline. These were
-     referenced in several places but never defined — an undefined var()
-     invalidates the whole declaration, which made every accent element
-     borderless/transparent (opus review A1). */
-  --accent: var(--color-mode-understand);
+  /* CTA accent (v1.3.1). The app's CTA convention is the ink family — the
+     send button is ink-filled — so accent aliases ink and stays monochrome
+     (owner 2026-08-04: colored CTAs broke the design language). --line
+     aliases the hairline. These were referenced in several places but never
+     defined — an undefined var() invalidates the whole declaration, which
+     made every accent element borderless/transparent (opus review A1). */
+  --accent: var(--ink);
   --line: var(--hairline);
-  /* text on an accent-filled surface, per theme (not --card, whose contrast
-     against the accent is accidental) */
-  --on-accent: #f5f4f1;
-}
-:root[data-theme="dark"] {
-  --on-accent: #17161a;
+  --on-accent: var(--on-ink);
 }
 
 @layer base {
@@ -575,17 +571,23 @@
   /* wrap, never clip: with 4-5 buttons the bar overflows the ctx-line and
      an overflow-x scroll hid the tail buttons with no affordance. */
   /* Own row above the ctx-line (opus B1: it must never displace the role/
-     KB/visibility controls, which have no other home). */
-  .preset-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; min-width: 0; margin: 0 6px 6px; background: color-mix(in srgb, var(--accent) 7%, var(--canvas)); border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent); border-radius: var(--r-md); padding: 6px 8px; }
-  .preset-btn { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--accent); border-radius: var(--r-sm); background: var(--accent); color: var(--on-accent); font: inherit; font-size: 0.76rem; padding: 5px 10px; cursor: pointer; white-space: nowrap; max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
-  .preset-btn:hover { opacity: 0.9; }
+     KB/visibility controls). One row, no band, no wrap (owner 2026-08-04):
+     buttons shrink with label ellipsis instead of wrapping or clipping. */
+  .preset-bar { display: flex; align-items: center; flex-wrap: nowrap; gap: 6px; min-width: 0; padding: 0 6px 6px; }
+  /* Quiet ghost chip at rest; the app's ink CTA look when active. */
+  .preset-btn { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--hairline); border-radius: var(--r-sm); background: none; color: var(--ink-soft); font: inherit; font-size: 0.76rem; padding: 4px 10px; cursor: pointer; white-space: nowrap; min-width: 0; flex: 0 1 auto; }
+  .preset-btn:hover { background: var(--hover); }
   .preset-btn:disabled { opacity: 0.45; cursor: default; }
-  .preset-btn.on, .preset-btn.locked { background: color-mix(in srgb, var(--accent) 78%, black); border-color: color-mix(in srgb, var(--accent) 78%, black); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent); }
-  .preset-btn .preset-num { font-size: 0.66rem; opacity: 0.8; }
+  .preset-btn.on, .preset-btn.locked { background: var(--ink); border-color: var(--ink); color: var(--on-ink); }
+  .preset-btn .preset-num { font-size: 0.66rem; opacity: 0.7; }
   /* text-overflow needs a block child, not the flex button itself (opus B10) */
   .preset-btn .preset-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-  .preset-toggle { margin-left: auto; color: var(--accent); font-weight: 500; }
-  .preset-toggle.on { color: var(--accent); }
+  /* Inline icon-only picker at the row end — not a settings-style control,
+     never its own row. */
+  .preset-bar .ctx-picker { flex: 0 0 auto; margin-left: auto; }
+  .preset-bar .ctx-picker .ctx-label, .preset-bar .ctx-picker .caret { display: none; }
+  .preset-toggle { margin-left: auto; color: var(--ink-soft); }
+  .preset-toggle.on, .preset-toggle:hover { color: var(--ink); }
   .ctx-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ctx-item:hover { color: var(--ink); }
   .ctx-item i.caret { font-size: 0.7rem; color: var(--text-3); }
