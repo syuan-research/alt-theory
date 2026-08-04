@@ -5,6 +5,8 @@ import { join, resolve } from "path";
 import { DatabaseSync } from "node:sqlite";
 import { CURRENT_SESSION_VERSION, parseSessionEntries } from "@earendil-works/pi-coding-agent";
 
+import { ImportRefusalError, emptyUsage } from "./session-import-shared.js";
+
 type Row = Record<string, unknown>;
 type StoredRow = Row & { id: string; data: Record<string, any> };
 
@@ -29,13 +31,9 @@ export interface OpenCodePreflight {
   sourceContextFiles: Array<{ filename: string; content: string }>;
 }
 
-export class OpenCodeImportRefusalError extends Error {
-  constructor(
-    readonly recordType: string,
-    readonly count: number,
-    readonly reason: string
-  ) {
-    super(`OpenCode import refused: ${count} ${recordType} record(s): ${reason}`);
+export class OpenCodeImportRefusalError extends ImportRefusalError {
+  constructor(recordType: string, count: number, reason: string) {
+    super("OpenCode", recordType, count, reason);
   }
 }
 
@@ -723,16 +721,6 @@ function parseDataImage(mime: unknown, url: unknown): Row | null {
   };
 }
 
-function emptyUsage() {
-  return {
-    input: 0,
-    output: 0,
-    cacheRead: 0,
-    cacheWrite: 0,
-    totalTokens: 0,
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-  };
-}
 
 function text(value: unknown): string {
   return typeof value === "string" ? value : JSON.stringify(value) ?? String(value);

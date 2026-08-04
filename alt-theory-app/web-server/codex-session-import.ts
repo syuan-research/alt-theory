@@ -16,6 +16,14 @@ import {
   parseSessionEntries,
 } from "@earendil-works/pi-coding-agent";
 
+import {
+  ImportRefusalError,
+  assistantMessage as sharedAssistantMessage,
+  emptyUsage,
+  parseDataImage,
+  parseJsonl as sharedParseJsonl,
+} from "./session-import-shared.js";
+
 type Row = Record<string, any>;
 
 export interface CodexDiscoveredSession {
@@ -39,13 +47,9 @@ export interface CodexPreflight {
   sourceContextFiles: Array<{ filename: string; content: string }>;
 }
 
-export class CodexImportRefusalError extends Error {
-  constructor(
-    readonly recordType: string,
-    readonly count: number,
-    readonly reason: string
-  ) {
-    super(`Codex import refused: ${count} ${recordType} record(s): ${reason}`);
+export class CodexImportRefusalError extends ImportRefusalError {
+  constructor(recordType: string, count: number, reason: string) {
+    super("Codex", recordType, count, reason);
   }
 }
 
@@ -459,19 +463,12 @@ function readHead(path: string): string {
 }
 
 function parseJsonl(source: string, strict = false): Row[] {
-  const lines = source.split(/\r?\n/).filter((line) => line.trim());
-  const records: Row[] = [];
-  for (const line of lines) {
-    try {
-      records.push(JSON.parse(line));
-    } catch {
-      if (strict) {
-        throw new CodexImportRefusalError("jsonl", 1, "rollout contains invalid JSON");
-      }
-      break;
+  return sharedParseJsonl(source, () => {
+    if (strict) {
+      throw new CodexImportRefusalError("jsonl", 1, "rollout contains invalid JSON");
     }
-  }
-  return records;
+    return "stop";
+  });
 }
 
 function validateCompleteRollout(records: Row[], meta: Row): void {
@@ -928,13 +925,6 @@ function localImage(path: string): Row | null {
   }
 }
 
-function parseDataImage(url: unknown): Row | null {
-  if (typeof url !== "string" || !url.startsWith("data:")) return null;
-  const comma = url.indexOf(",");
-  if (comma < 0) return null;
-  const mimeType = url.slice("data:".length, comma).split(";")[0] || "application/octet-stream";
-  return { type: "image", data: url.slice(comma + 1), mimeType };
-}
 
 function validateReasoning(item: Row): void {
   if (item.summary == null) return;
@@ -1352,25 +1342,13 @@ function parseArguments(value: unknown, recordType: string): Row {
 }
 
 function assistantMessage(content: Row[], model: string, stopReason: string, timestamp: string): Row {
-  return {
-    role: "assistant",
+  return sharedAssistantMessage({
     content,
-    api: "openai-completions",
-    provider: "imported-codex",
     model,
-    usage: emptyUsage(),
     stopReason,
     timestamp: Date.parse(timestamp),
-  };
+    api: "openai-completions",
+    provider: "imported-codex",
+  });
 }
 
-function emptyUsage() {
-  return {
-    input: 0,
-    output: 0,
-    cacheRead: 0,
-    cacheWrite: 0,
-    totalTokens: 0,
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-  };
-}

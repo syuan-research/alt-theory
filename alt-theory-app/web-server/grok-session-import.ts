@@ -13,6 +13,14 @@ import {
   parseSessionEntries,
 } from "@earendil-works/pi-coding-agent";
 
+import {
+  ImportRefusalError,
+  assistantMessage as sharedAssistantMessage,
+  emptyUsage,
+  parseDataImage,
+  parseJsonl as sharedParseJsonl,
+} from "./session-import-shared.js";
+
 type Row = Record<string, any>;
 
 export interface GrokDiscoveredSession {
@@ -35,13 +43,9 @@ export interface GrokPreflight {
   transformations: string[];
 }
 
-export class GrokImportRefusalError extends Error {
-  constructor(
-    readonly recordType: string,
-    readonly count: number,
-    readonly reason: string
-  ) {
-    super(`Grok Build import refused: ${count} ${recordType} record(s): ${reason}`);
+export class GrokImportRefusalError extends ImportRefusalError {
+  constructor(recordType: string, count: number, reason: string) {
+    super("Grok Build", recordType, count, reason);
   }
 }
 
@@ -206,18 +210,12 @@ function readJson(path: string, recordType: string): Row {
 }
 
 function parseJsonl(source: string, strict: boolean): Row[] {
-  const result: Row[] = [];
-  for (const line of source.split(/\r?\n/).filter((value) => value.trim())) {
-    try {
-      result.push(JSON.parse(line));
-    } catch {
-      if (strict) {
-        throw new GrokImportRefusalError("chat_history", 1, "chat history contains invalid JSON");
-      }
-      break;
+  return sharedParseJsonl(source, () => {
+    if (strict) {
+      throw new GrokImportRefusalError("chat_history", 1, "chat history contains invalid JSON");
     }
-  }
-  return result;
+    return "stop";
+  });
 }
 
 function validateHistory(history: Row[]): void {
@@ -350,13 +348,6 @@ function userContentParts(content: Row[]): Row[] {
   });
 }
 
-function parseDataImage(url: unknown): Row | null {
-  if (typeof url !== "string" || !url.startsWith("data:")) return null;
-  const comma = url.indexOf(",");
-  if (comma < 0) return null;
-  const mimeType = url.slice("data:".length, comma).split(";")[0] || "application/octet-stream";
-  return { type: "image", data: url.slice(comma + 1), mimeType };
-}
 
 // Clearly-labelled imported-provenance placeholder for provider-side backend
 // tool calls. Only fields the source record actually carries are used; search
@@ -637,25 +628,13 @@ function validIso(value: unknown, field: string): string {
 }
 
 function assistantMessage(content: Row[], model: string, stopReason: string, timestamp: number): Row {
-  return {
-    role: "assistant",
+  return sharedAssistantMessage({
     content,
-    api: "openai-completions",
-    provider: "imported-grok-build",
     model,
-    usage: emptyUsage(),
     stopReason,
     timestamp,
-  };
+    api: "openai-completions",
+    provider: "imported-grok-build",
+  });
 }
 
-function emptyUsage() {
-  return {
-    input: 0,
-    output: 0,
-    cacheRead: 0,
-    cacheWrite: 0,
-    totalTokens: 0,
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-  };
-}

@@ -136,10 +136,7 @@ import {
   registerOpenCodeImport,
   registerPiImport,
 } from "./session-import.js";
-import { OpenCodeImportRefusalError } from "./opencode-session-import.js";
-import { CodexImportRefusalError } from "./codex-session-import.js";
-import { GrokImportRefusalError } from "./grok-session-import.js";
-import { ClaudeCodeImportRefusalError } from "./claude-code-session-import.js";
+import { ImportRefusalError } from "./session-import-shared.js";
 import {
   readAppSettings,
   resolveExternalSkillPaths,
@@ -1124,12 +1121,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             sessionId: registered.sessionId,
           };
         } catch (error) {
-          if (
-            error instanceof OpenCodeImportRefusalError ||
-            error instanceof CodexImportRefusalError ||
-            error instanceof GrokImportRefusalError ||
-            error instanceof ClaudeCodeImportRefusalError
-          ) {
+          if (error instanceof ImportRefusalError) {
             return {
               sourceId: source.sourceId,
               status: "refused" as const,

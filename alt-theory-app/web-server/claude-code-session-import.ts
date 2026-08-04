@@ -12,6 +12,12 @@ import {
   parseSessionEntries,
 } from "@earendil-works/pi-coding-agent";
 
+import {
+  ImportRefusalError,
+  assistantMessage as sharedAssistantMessage,
+  parseJsonl as sharedParseJsonl,
+} from "./session-import-shared.js";
+
 type Row = Record<string, any>;
 type IndexedRow = Row & { sourceIndex: number };
 
@@ -36,13 +42,9 @@ export interface ClaudeCodePreflight {
   sourceContextFiles: Array<{ filename: string; content: string }>;
 }
 
-export class ClaudeCodeImportRefusalError extends Error {
-  constructor(
-    readonly recordType: string,
-    readonly count: number,
-    readonly reason: string
-  ) {
-    super(`Claude Code import refused: ${count} ${recordType} record(s): ${reason}`);
+export class ClaudeCodeImportRefusalError extends ImportRefusalError {
+  constructor(recordType: string, count: number, reason: string) {
+    super("Claude Code", recordType, count, reason);
   }
 }
 
@@ -281,27 +283,20 @@ function selectedSessionId(rows: Row[], fallback: string): string {
 }
 
 function parseJsonl(source: string, strict = false): Row[] {
-  const rows: Row[] = [];
-  const lines = source.split(/\r?\n/);
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index]!.trim();
-    if (!line) continue;
-    try {
-      const row = JSON.parse(line);
-      if (!row || typeof row !== "object" || Array.isArray(row)) throw new Error();
-      rows.push(row);
-    } catch {
+  return sharedParseJsonl(
+    source,
+    (lineNumber) => {
       if (strict) {
         throw new ClaudeCodeImportRefusalError(
           "jsonl",
           1,
-          `line ${index + 1} is not a JSON object`
+          `line ${lineNumber} is not a JSON object`
         );
       }
-      throw new Error(`Invalid Claude Code JSONL line ${index + 1}`);
-    }
-  }
-  return rows;
+      throw new Error(`Invalid Claude Code JSONL line ${lineNumber}`);
+    },
+    true
+  );
 }
 
 function validateKnownRows(rows: Row[]): void {
@@ -817,28 +812,16 @@ function assistantMessage(
   stopReason: string,
   timestamp: string
 ): Row {
-  return {
-    role: "assistant",
+  return sharedAssistantMessage({
     content,
-    api: "anthropic-messages",
-    provider: "imported-claude-code",
     model,
-    usage: emptyUsage(),
     stopReason,
     timestamp: Date.parse(timestamp),
-  };
+    api: "anthropic-messages",
+    provider: "imported-claude-code",
+  });
 }
 
-function emptyUsage() {
-  return {
-    input: 0,
-    output: 0,
-    cacheRead: 0,
-    cacheWrite: 0,
-    totalTokens: 0,
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-  };
-}
 
 function describeTransformations(rows: Row[], visibleRows: IndexedRow[]): string[] {
   const result = [
