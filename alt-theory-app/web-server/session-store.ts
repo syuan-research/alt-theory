@@ -517,6 +517,19 @@ function allSessionSummaries(dataDir: string): SessionSummary[] {
   return [...active, ...deleted];
 }
 
+/**
+ * Every conversation one Delete moves into Trash. Callers that must act on a
+ * live run (Delete stops what it is about to bury) need this before the
+ * records are written, and a subagent of the deleted conversation is just as
+ * live as the conversation itself.
+ */
+export function sessionsAttachedToDeletion(
+  dataDir: string,
+  sessionId: string,
+): string[] {
+  return attachedDeletionTargets(sessionId, allSessionSummaries(dataDir));
+}
+
 function attachedDeletionTargets(
   sessionId: string,
   summaries: SessionSummary[],

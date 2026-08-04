@@ -50,6 +50,7 @@ import {
   readSessionDetail,
   readSessionChanges,
   type SessionSummary,
+  sessionsAttachedToDeletion,
   softDeleteSession,
   sweepExpiredDeletedSessions,
   writeSessionTextFile,
@@ -1241,7 +1242,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     }
     res.json(changes);
   });
-  app.delete("/api/sessions/:sessionId", (req, res) => {
+  app.delete("/api/sessions/:sessionId", async (req, res) => {
     const sessionId = req.params.sessionId;
     const root = getSessionRootForRequest(dataDir, sessionId);
     if (root.status === "invalid") {
@@ -1264,6 +1265,16 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       return;
     }
     try {
+      // Delete means stop. A deleted conversation leaves the list, and with it
+      // the only Stop button the user had, so a run left alive here would keep
+      // writing and spending with nothing left to interrupt it.
+      const activity = sessionService.sessionActivity();
+      for (const attached of sessionsAttachedToDeletion(dataDir, sessionId)) {
+        const state = activity.get(attached);
+        if (state === "running" || state === "awaiting-approval") {
+          await sessionService.abort(attached, "session_deleted");
+        }
+      }
       res.json({ deleted: softDeleteSession(dataDir, sessionId) });
     } catch (error) {
       res.status(409).json({

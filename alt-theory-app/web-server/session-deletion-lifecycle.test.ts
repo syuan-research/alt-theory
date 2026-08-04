@@ -17,6 +17,7 @@ import {
   permanentlyDeleteSession,
   purgeExpiredDeletedSessions,
   restoreDeletedSession,
+  sessionsAttachedToDeletion,
   softDeleteSession,
 } from "./session-store.js";
 import {
@@ -116,6 +117,27 @@ test("Delete follows attached conversations but stops at Branches and promoted c
 
   softDeleteSession(dataDir, "branch");
   assert.deepEqual(ids(dataDir), ["promoted-helper", "root", "side", "subagent"]);
+});
+
+test("Delete reports every conversation it will bury, so a live run can be stopped first", () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "alt-theory-trash-attached-"));
+  createSession(dataDir, "root");
+  createSession(dataDir, "side", { sessionId: "root", purpose: "side" });
+  createSession(dataDir, "subagent", { sessionId: "side", purpose: "subagent" });
+  createSession(dataDir, "branch", { sessionId: "root", purpose: "fork" });
+  createSession(dataDir, "promoted-helper", {
+    sessionId: "root",
+    purpose: "helper",
+    listed: true,
+  });
+
+  // A subagent two levels down is as live as its root; a Branch and a promoted
+  // child stay, so stopping them would abort work the user still has.
+  assert.deepEqual(sessionsAttachedToDeletion(dataDir, "root").sort(), [
+    "root",
+    "side",
+    "subagent",
+  ]);
 });
 
 test("Permanent deletion removes conversation records but keeps workspace files", () => {
