@@ -1,11 +1,11 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type {
   ActiveToolState,
   StreamPart,
   ToolDetail,
   TranscriptMessage,
 } from "@/api/types";
-import { useApp } from "@/context/AppProvider";
+import { useApp, useStreamParts } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
 import { MarkdownBody } from "@/components/conversation/MarkdownBody";
 import { fileName, toolLabel } from "@/lib/tools";
@@ -16,6 +16,7 @@ import { autosizeTextarea } from "@/lib/autosizeTextarea";
 
 export function MessageList() {
   const app = useApp();
+  const streamParts = useStreamParts();
   const containerRef = useRef<HTMLDivElement>(null);
   const railRef = useRef<HTMLDivElement>(null);
   const stickToBottomRef = useRef(true);
@@ -77,17 +78,17 @@ export function MessageList() {
       pinnedScrollHeightRef.current = next;
       el.scrollTop = next;
     }
-  }, [app.messages, app.streamParts]);
+  }, [app.messages, streamParts]);
 
-  const renderedToolCallIds = new Set<string>();
-  let userOrdinal = -1;
-
-  const actions: TranscriptActions = {
-    onEdit: (text, entryId) => app.branchRevision(text, entryId ?? undefined),
-    onPrepareCompare: (text, entryId) =>
-      entryId ? app.prepareBranchRevision(text, entryId) : false,
-    onRetry: app.retryLatest,
-  };
+  const actions: TranscriptActions = useMemo(
+    () => ({
+      onEdit: (text, entryId) => app.branchRevision(text, entryId ?? undefined),
+      onPrepareCompare: (text, entryId) =>
+        entryId ? app.prepareBranchRevision(text, entryId) : false,
+      onRetry: app.retryLatest,
+    }),
+    [app.branchRevision, app.prepareBranchRevision, app.retryLatest],
+  );
 
   return (
     <div className="msgs-wrap">
@@ -119,24 +120,16 @@ export function MessageList() {
           </SysLine>
         ),
       )}
-      {app.messages.map((message, index) => {
-        if (message.role === "user") userOrdinal += 1;
-        return (
-          <TranscriptEntry
-            key={`${index}-${message.timestamp ?? message.text.slice(0, 12)}`}
-            message={message}
-            developer={developer}
-            isLatestUser={index === latestUserIndex}
-            isLatestAssistant={index === latestAssistantIndex}
-            renderedToolCallIds={renderedToolCallIds}
-            userIndex={message.role === "user" ? userOrdinal : undefined}
-            isRunning={app.isRunning}
-            actions={actions}
-          />
-        );
-      })}
+      <SettledMessages
+        messages={app.messages}
+        developer={developer}
+        latestUserIndex={latestUserIndex}
+        latestAssistantIndex={latestAssistantIndex}
+        isRunning={app.isRunning}
+        actions={actions}
+      />
 
-      <StreamPartsView parts={app.streamParts} developer={developer} />
+      <StreamPartsView parts={streamParts} developer={developer} />
 
       <TurnChangesCard />
     </div>
@@ -164,6 +157,47 @@ export function MessageList() {
     </div>
   );
 }
+
+/**
+ * The settled transcript, memoized as a whole: `messages` keeps its array
+ * reference while an answer streams (deltas live in StreamContext), so the
+ * token tick re-renders only the streaming tail below, never these rows
+ * (perf backlog item 3 — the pattern cherry studio/openwebui use).
+ */
+const SettledMessages = memo(function SettledMessages({
+  messages,
+  developer,
+  latestUserIndex,
+  latestAssistantIndex,
+  isRunning,
+  actions,
+}: {
+  messages: TranscriptMessage[];
+  developer: boolean;
+  latestUserIndex: number;
+  latestAssistantIndex: number;
+  isRunning: boolean;
+  actions: TranscriptActions;
+}) {
+  const renderedToolCallIds = new Set<string>();
+  let userOrdinal = -1;
+  return messages.map((message, index) => {
+    if (message.role === "user") userOrdinal += 1;
+    return (
+      <TranscriptEntry
+        key={`${index}-${message.timestamp ?? message.text.slice(0, 12)}`}
+        message={message}
+        developer={developer}
+        isLatestUser={index === latestUserIndex}
+        isLatestAssistant={index === latestAssistantIndex}
+        renderedToolCallIds={renderedToolCallIds}
+        userIndex={message.role === "user" ? userOrdinal : undefined}
+        isRunning={isRunning}
+        actions={actions}
+      />
+    );
+  });
+});
 
 export function StreamPartsView({
   parts,

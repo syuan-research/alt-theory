@@ -230,7 +230,6 @@ export interface AppContextValue {
   setStudyTag: (tag: StudyTag | null) => void;
 
   messages: TranscriptMessage[];
-  streamParts: StreamPart[];
   toolStatus: string;
   /** Live run-phase label (e.g. "Thinking…") shown while no tool is active. */
   runPhaseLabel: string;
@@ -276,6 +275,14 @@ export interface AppContextValue {
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
+
+/**
+ * The in-flight assistant turn, alone in its own context: a streaming delta
+ * replaces this value on every token, and nothing else. Keeping it out of
+ * AppContext means the token tick invalidates only the component drawing the
+ * stream, not every useApp() consumer (perf backlog item 3).
+ */
+const StreamContext = createContext<StreamPart[]>([]);
 
 /** Situational preset buttons (v1.4 round 1): turns a press stays active. */
 export const PRESET_TURNS = 5;
@@ -1910,7 +1917,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       retentionDueAt,
       setStudyTag,
       messages,
-      streamParts,
       toolStatus,
       runPhaseLabel,
       composerNotice,
@@ -2017,7 +2023,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       retentionDueAt,
       setStudyTag,
       messages,
-      streamParts,
       toolStatus,
       runPhaseLabel,
       composerNotice,
@@ -2056,6 +2061,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   return (
     <AppContext.Provider value={value}>
+      <StreamContext.Provider value={streamParts}>
       {children}
       <ConfirmDialog
         open={Boolean(confirmRequest)}
@@ -2070,8 +2076,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }}
         onCancel={() => setConfirmRequest(null)}
       />
+      </StreamContext.Provider>
     </AppContext.Provider>
   );
+}
+
+export function useStreamParts(): StreamPart[] {
+  return useContext(StreamContext);
 }
 
 export function useApp(): AppContextValue {
