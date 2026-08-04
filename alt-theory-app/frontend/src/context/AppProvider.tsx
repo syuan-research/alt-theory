@@ -282,7 +282,7 @@ export interface AppContextValue {
 const AppContext = createContext<AppContextValue | null>(null);
 
 /** Situational preset buttons (v1.4 round 1): turns a press stays active. */
-const PRESET_TURNS = 5;
+export const PRESET_TURNS = 5;
 const DEFAULT_PRESET_BUTTONS = [
   "adaptive-aligning",
   "confirm-why",
@@ -672,8 +672,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
             // Even when the draft message is ignored (reconnect race), a
             // pending asset switch was answered by THIS message — leaving its
             // "Switching role preset…" status would strand the composer in a
-            // fake busy state with nothing left to clear it.
-            if (pendingAssetSwitchRef.current) {
+            // fake busy state with nothing left to clear it. Only while NOT
+            // attached: draft selectors must never overwrite a live
+            // session's chips (opus H1).
+            if (pendingAssetSwitchRef.current && !sessionId) {
               pendingAssetSwitchRef.current = false;
               setToolStatus("");
               setIsRunning(false);
@@ -1403,33 +1405,51 @@ export function AppProvider({ children }: { children: ReactNode }) {
   >(null);
   // Stage semantics (owner 2026-08-04): press/lock/release NEVER spend a
   // turn of their own — announcements ride the user's next message, and the
-  // press rides it as the actual /skill: invoke.
-  const pendingPresetRef = useRef<{ invoke: string | null; texts: string[] }>({
-    invoke: null,
-    texts: [],
-  });
-  const notePresetTurn = useCallback(() => {
-    setPresetState((current) => {
-      if (!current || current.locked) return current;
-      const turnsLeft = current.turnsLeft - 1;
-      return turnsLeft <= 0 ? null : { ...current, turnsLeft };
-    });
-  }, []);
+  // press rides it as the actual /skill: invoke. Keyed by session so an
+  // armed preset never leaks into another conversation (opus B2).
+  const pendingPresetRef = useRef<{
+    sessionId: string | null;
+    invoke: string | null;
+    texts: string[];
+  }>({ sessionId: null, invoke: null, texts: [] });
+  const notePresetTurn = useCallback(
+    (forSessionId: string | null) => {
+      setPresetState((current) => {
+        if (!current || current.locked) return current;
+        if (!forSessionId || current.sessionId !== forSessionId) return current;
+        const turnsLeft = current.turnsLeft - 1;
+        return turnsLeft <= 0 ? null : { ...current, turnsLeft };
+      });
+    },
+    [],
+  );
 
   const sendPrompt = useCallback(
     (text: string) => {
-      const pending = pendingPresetRef.current;
+      // A pending preset applies only to the conversation it was armed in
+      // (opus B2); a leftover from another conversation is dropped.
+      const pending =
+        pendingPresetRef.current.sessionId === sessionId
+          ? pendingPresetRef.current
+          : null;
       let trimmed = text.trim();
-      if (pending.texts.length && trimmed) {
-        trimmed = `${pending.texts.join("\n\n")}\n\n${trimmed}`;
-      }
       const attachments = [...stagedWorkspacePaths];
       if (!trimmed && attachments.length === 0) return false;
+      // Merge AFTER the empty-guard, and also for attachment-only sends
+      // (opus B4: the announcement must never be silently discarded while
+      // the button still claims to be active).
+      if (pending?.texts.length) {
+        trimmed = [...pending.texts, trimmed].filter(Boolean).join("\n\n");
+      }
       const consumePending = () => {
+        if (!pending) return;
+        pending.sessionId = null;
         pending.invoke = null;
         pending.texts = [];
       };
-      if (isRunning) {
+      // Queue while running OR while a queue exists (opus G1: the delayed
+      // post-run flush would otherwise race a fresh send and invert order).
+      if (isRunning || queuedPromptsRef.current.length > 0) {
         // ponytail: a queued message can't ride the /skill: invoke path, so
         // an armed press degrades to the wrapper text (which names the
         // skill); the skill body loads on a later idle press if it matters.
@@ -1443,20 +1463,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
         ]);
         consumePending();
         clearStagedWorkspace();
-        notePresetTurn();
+        notePresetTurn(sessionId);
         return true;
       }
-      if (pending.invoke && attachments.length === 0) {
+      if (pending?.invoke && attachments.length === 0) {
         if (!invokeSkillRef.current?.(pending.invoke, trimmed)) return false;
         consumePending();
         clearStagedWorkspace();
-        notePresetTurn();
+        notePresetTurn(sessionId);
         return true;
       }
+      // ponytail: with attachments the wrapper text rides along but the
+      // /skill: invoke is skipped (invoke_skill carries no attachments) —
+      // the wrapper names the skill, same degrade as the queue path.
       if (!startPrompt(trimmed, attachments)) return false;
       consumePending();
       clearStagedWorkspace();
-      notePresetTurn();
+      notePresetTurn(sessionId);
       return true;
     },
     [
@@ -1464,6 +1487,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       isRunning,
       notePresetTurn,
       replaceQueuedPrompts,
+      sessionId,
       stagedWorkspacePaths,
       startPrompt,
     ],
@@ -1504,6 +1528,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
           ? presetState
           : null;
       const pending = pendingPresetRef.current;
+      // Leftover pending state from another conversation is dead weight.
+      if (pending.sessionId !== sessionId) {
+        pending.sessionId = sessionId;
+        pending.invoke = null;
+        pending.texts = [];
+      }
       if (!active) {
         // Switching from a different, already-announced preset: release it
         // in the same ride-along.
@@ -1540,6 +1570,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // Unlock. Nothing announced yet (armed + locked without a message in
       // between) → just clear; otherwise the release rides the next message.
       if (pending.invoke === name) {
+        pending.sessionId = null;
         pending.invoke = null;
         pending.texts = [];
       } else {

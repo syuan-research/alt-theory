@@ -132,6 +132,32 @@ export function isListMember(session: SessionSummary): boolean {
   return fork.purpose === "fork" || fork.listed === true;
 }
 
+/**
+ * True when "Make this the main conversation" would change anything: a
+ * delisted origin can always take its spot back; a branch qualifies only
+ * while some delistable visible ancestor (the old mainline) exists to step
+ * down — after a successful promotion the crown disappears instead of
+ * delisting ever-further ancestors on repeat clicks (opus D2).
+ */
+export function canTakeMainline(
+  session: SessionSummary,
+  all: SessionSummary[],
+): boolean {
+  if (!session.forkedFrom) return session.delisted === true;
+  if (session.forkedFrom.purpose !== "fork") return false;
+  const byId = new Map(all.map((s) => [s.sessionId, s]));
+  const walked = new Set<string>();
+  let cur = byId.get(session.forkedFrom.sessionId);
+  while (cur && !walked.has(cur.sessionId)) {
+    walked.add(cur.sessionId);
+    const visible = !cur.deletedAt && isListMember(cur);
+    const delistable = !cur.forkedFrom || cur.forkedFrom.purpose !== "fork";
+    if (visible && delistable) return true;
+    cur = cur.forkedFrom ? byId.get(cur.forkedFrom.sessionId) : undefined;
+  }
+  return false;
+}
+
 /** Row label for a listed child: where it came from, not a made-up identity. */
 export function listedOriginLabel(session: SessionSummary): string | null {
   const fork = session.forkedFrom;

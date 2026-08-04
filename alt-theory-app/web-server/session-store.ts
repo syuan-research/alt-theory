@@ -316,10 +316,17 @@ export function softDeleteSession(
   return readDeletedSessionRecord(parts.recordsDir)!;
 }
 
-/** In the conversation list: an undeleted root without delisted, or a child the user listed. */
+/**
+ * In the conversation list — MUST mirror the frontend's isListMember
+ * (lib/sessionList.ts): branches are list members by nature, other children
+ * only when the user listed them, roots unless delisted (opus D1: a
+ * stricter server predicate skipped visible branches in the step-down walk
+ * and delisted the wrong ancestor).
+ */
 function isListVisible(s: SessionSummary): boolean {
   if (s.deletedAt) return false;
-  return s.forkedFrom ? s.forkedFrom.listed === true : s.delisted !== true;
+  if (!s.forkedFrom) return s.delisted !== true;
+  return s.forkedFrom.purpose === "fork" || s.forkedFrom.listed === true;
 }
 
 /** Flip a session's list visibility. Lineage is never touched (M4b). */
@@ -398,12 +405,19 @@ export function promoteToMainlineRecords(
   if (isListVisible(target) && !target.forkedFrom) {
     return { delistedSessionId: null }; // already the listed root
   }
+  // Only a root (delisted flag) or a listed non-fork child can actually
+  // step down — a fork child is list-visible by nature, so "delisting" it
+  // is a no-op. The one that cedes the spot is the OLD MAINLINE: the
+  // nearest delistable visible ancestor (fork ancestors pass through and
+  // simply remain ordinary branches — owner's role-swap model).
+  const isDelistable = (s: SessionSummary) =>
+    !s.forkedFrom || s.forkedFrom.purpose !== "fork";
   let stepDown: SessionSummary | null = null;
   let cursor = target.forkedFrom
     ? byId.get(target.forkedFrom.sessionId)
     : undefined;
   while (cursor) {
-    if (isListVisible(cursor)) {
+    if (isListVisible(cursor) && isDelistable(cursor)) {
       stepDown = cursor;
       break;
     }
@@ -414,7 +428,12 @@ export function promoteToMainlineRecords(
   if (!stepDown) {
     stepDown =
       forkTreeMembers(sessionId, summaries)
-        .filter((m) => m.sessionId !== sessionId && isListVisible(m))
+        .filter(
+          (m) =>
+            m.sessionId !== sessionId &&
+            isListVisible(m) &&
+            isDelistable(m),
+        )
         .sort((a, b) =>
           (b.updatedAt ?? b.createdAt ?? "").localeCompare(
             a.updatedAt ?? a.createdAt ?? "",

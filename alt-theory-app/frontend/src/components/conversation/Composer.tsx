@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useApp } from "@/context/AppProvider";
+import { PRESET_TURNS, useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
 import { ApprovalDock } from "@/components/conversation/ApprovalDock";
 import { ModelChip } from "@/components/conversation/ModelChip";
@@ -342,8 +342,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
           </div>
         ) : null}
 
-        <div className="ctx-line">
-          {presetOpen && variant === "live" ? (
+        {presetOpen && variant === "live" ? (
             <div className="preset-bar">
               {app.presetButtons.map((name, index) => {
                 const active =
@@ -358,7 +357,10 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                     className={`preset-btn${active ? (active.locked ? " locked" : " on") : ""}`}
                     style={
                       active && !active.locked
-                        ? { opacity: 0.5 + 0.5 * (active.turnsLeft / 5) }
+                        ? {
+                            opacity:
+                              0.5 + 0.5 * (active.turnsLeft / PRESET_TURNS),
+                          }
                         : undefined
                     }
                     disabled={!interactive}
@@ -372,7 +374,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                     onClick={() => app.pressPreset(name)}
                   >
                     <span className="preset-num">{index + 1}</span>
-                    {name}
+                    <span className="preset-label">{name}</span>
                     {active?.locked ? (
                       <i className="ph ph-lock-simple" aria-hidden="true" />
                     ) : null}
@@ -381,7 +383,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               })}
               <CtxPicker
                 icon="ph-gear-six"
-                label=""
+                label={t("Choose buttons")}
                 open={menu === "presetcfg"}
                 onToggle={() => toggle("presetcfg")}
               >
@@ -410,9 +412,8 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                   })}
               </CtxPicker>
             </div>
-          ) : null}
-          {presetOpen && variant === "live" ? null : (
-          <>
+        ) : null}
+        <div className="ctx-line">
           <CtxPicker
             icon="ph-user-circle"
             label={roleLabel}
@@ -517,8 +518,6 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                   : t("Exportable")}
             </button>
           ) : null}
-          </>
-          )}
           {variant === "live" ? (
             <button
               className={`ctx-item preset-toggle${presetOpen ? " on" : ""}`}
@@ -526,7 +525,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               onClick={togglePresetOpen}
             >
               <i className="ph ph-lightning" aria-hidden="true" />
-              {presetOpen ? null : t("Steer")}
+              {t("Steer")}
             </button>
           ) : null}
         </div>

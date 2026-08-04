@@ -190,16 +190,46 @@ test("Mainline promotion is a reversible role swap with a living representative"
   assert.equal(summary("root").delisted, true);
   assert.equal(summary("branch").forkedFrom?.sessionId, "root");
 
-  // Reverse from the delisted root: the listed branch steps down.
+  // Reverse from the delisted root: it returns to the list; the branch
+  // simply stays an ordinary branch (fork children are list-visible by
+  // nature, so there is nothing to step down).
   promoteToMainlineRecords(dataDir, "root");
   assert.notEqual(summary("root").delisted, true);
-  assert.notEqual(summary("branch").forkedFrom?.listed, true);
+  assert.equal(summary("branch").forkedFrom?.purpose, "fork");
 
   // Deleting the only listed member auto-relists the living ancestor, so
   // the tree never vanishes from the list.
   promoteToMainlineRecords(dataDir, "branch");
   softDeleteSession(dataDir, "branch");
   assert.notEqual(summary("root").delisted, true);
+});
+
+test("Promoting a branch-of-branch steps down the nearest visible member, not the root's root", () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "alt-theory-mainline-deep-"));
+  createSession(dataDir, "root");
+  createSession(
+    dataDir,
+    "b1",
+    { sessionId: "root", purpose: "fork" },
+    "2026-08-01T02:00:00.000Z",
+  );
+  createSession(
+    dataDir,
+    "c1",
+    { sessionId: "b1", purpose: "fork" },
+    "2026-08-01T03:00:00.000Z",
+  );
+  const summary = (id: string) =>
+    listSessionSummaries(dataDir).sessions.find((s) => s.sessionId === id)!;
+
+  // The old MAINLINE cedes the spot: fork ancestors are list-visible by
+  // nature and pass through untouched; the root is the delistable one
+  // (owner's role-swap model — b1 remains an ordinary branch).
+  promoteToMainlineRecords(dataDir, "c1");
+  assert.equal(summary("c1").forkedFrom?.listed, true);
+  assert.equal(summary("root").delisted, true);
+  assert.equal(summary("b1").forkedFrom?.listed, undefined);
+  assert.equal(summary("b1").forkedFrom?.purpose, "fork");
 });
 
 test("Delete reports every conversation it will bury, so a live run can be stopped first", () => {

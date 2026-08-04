@@ -716,6 +716,7 @@ function RuntimeCard() {
   const [mode, setMode] = useState<"alt-theory" | "native-pi">("alt-theory");
   const [scanAltSkills, setScanAltSkills] = useState(true);
   const [loaded, setLoaded] = useState(false);
+  const [available, setAvailable] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -724,6 +725,7 @@ function RuntimeCard() {
         if (!alive) return;
         setMode(settings.mode);
         setScanAltSkills(settings.nativePiScanAltSkills);
+        setAvailable(true);
       })
       .catch(() => {})
       .finally(() => {
@@ -747,6 +749,9 @@ function RuntimeCard() {
       .then(() => window.location.reload())
       .catch(() => {});
   };
+
+  // Hosted mode 404s the local-config route (opus F1, same as ModelHooksCard).
+  if (loaded && !available) return null;
 
   return (
     <div className="set-card">
@@ -832,11 +837,14 @@ function NativePiSkillsCard() {
 function ModelHooksCard() {
   const [enabled, setEnabled] = useState(true);
   const [loaded, setLoaded] = useState(false);
+  const [available, setAvailable] = useState(false);
   useEffect(() => {
     let alive = true;
     fetchJson<{ enabled: boolean }>("/api/settings/model-hooks")
       .then((r) => {
-        if (alive) setEnabled(r.enabled);
+        if (!alive) return;
+        setEnabled(r.enabled);
+        setAvailable(true);
       })
       .catch(() => {})
       .finally(() => {
@@ -854,6 +862,9 @@ function ModelHooksCard() {
       body: JSON.stringify({ enabled: next }),
     }).catch(() => {});
   };
+  // Hosted mode 404s the local-config route; showing a toggle that cannot
+  // save would lie (opus F1).
+  if (loaded && !available) return null;
   return (
     <div className="set-card">
       <div className="row2">

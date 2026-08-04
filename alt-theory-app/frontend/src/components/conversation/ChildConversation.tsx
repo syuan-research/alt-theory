@@ -6,7 +6,7 @@ import {
 } from "@/api/sessions";
 import { useApp } from "@/context/AppProvider";
 import { useWebSocket } from "@/hooks/useWebSocket";
-import { isListMember } from "@/lib/sessionList";
+import { canTakeMainline, isListMember } from "@/lib/sessionList";
 import { t } from "@/i18n";
 import { ApprovalDock } from "@/components/conversation/ApprovalDock";
 import { StreamPartsView, TranscriptEntry } from "@/components/conversation/MessageList";
@@ -50,14 +50,13 @@ export function ChildConversation({
   const purpose = summary?.forkedFrom?.purpose ?? "side";
   const inList = summary ? isListMember(summary) : true;
   // M4b role swap entry points: a branch can take the list spot; a delisted
-  // origin can take it back.
-  const mainlineAction = summary
-    ? summary.forkedFrom?.purpose === "fork"
-      ? t("Make this the main conversation")
-      : !summary.forkedFrom && summary.delisted
-        ? t("Make this the main conversation again")
-        : null
-    : null;
+  // origin can take it back. Hidden when promotion would change nothing.
+  const mainlineAction =
+    summary && canTakeMainline(summary, app.sessions)
+      ? summary.forkedFrom
+        ? t("Make this the main conversation")
+        : t("Make this the main conversation again")
+      : null;
 
   const refreshTranscript = useCallback(async () => {
     const detail = await fetchSessionDetail(sessionId);

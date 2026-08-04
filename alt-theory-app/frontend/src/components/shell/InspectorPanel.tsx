@@ -199,6 +199,7 @@ function RelatedConversations() {
     const seen = new Set<string>();
     const addChildrenOf = (parentId: string, inherited: boolean) => {
       for (const s of app.sessions) {
+        if (s.sessionId === app.sessionId) continue; // never list self (opus E1)
         if (s.forkedFrom?.sessionId !== parentId) continue;
         if (s.forkedFrom.purpose === "ab-arm" || s.deletedAt) continue;
         if (seen.has(s.sessionId)) continue;
@@ -220,8 +221,12 @@ function RelatedConversations() {
     // Walk the fork ancestry: an ancestor's attached conversations are part
     // of this branch's history, even when the ancestor is deleted or purged.
     const byId = new Map(app.sessions.map((s) => [s.sessionId, s]));
+    // Malformed lineage (self-reference or cycle, e.g. from an import) must
+    // not hang the tab (opus E2).
+    const walked = new Set<string>();
     let node = byId.get(app.sessionId);
-    while (node?.forkedFrom) {
+    while (node?.forkedFrom && !walked.has(node.sessionId)) {
+      walked.add(node.sessionId);
       addChildrenOf(node.forkedFrom.sessionId, true);
       const parent = byId.get(node.forkedFrom.sessionId);
       // A delisted origin (M4b role swap) stays reachable from here — it is
@@ -304,7 +309,7 @@ function RelatedConversations() {
               }
             }}
           >
-            <i className={`ph ${PURPOSE_ICON[child.forkedFrom?.purpose ?? "side"]}`} />
+            <i className={`ph ${child.delisted && !child.forkedFrom ? "ph-crown-simple" : PURPOSE_ICON[child.forkedFrom?.purpose ?? "side"]}`} />
             <span>{sessionTitle(child, app.sessionDisplayNames, app.sessions)}</span>
             {child.status === "incomplete" ? <span className="dot" /> : null}
           </button>
@@ -352,7 +357,7 @@ function RelatedConversations() {
           }}
         >
           <div className="t">
-            <i className={`ph ${PURPOSE_ICON[child.forkedFrom?.purpose ?? "side"]}`} />
+            <i className={`ph ${child.delisted && !child.forkedFrom ? "ph-crown-simple" : PURPOSE_ICON[child.forkedFrom?.purpose ?? "side"]}`} />
             {sessionTitle(child, app.sessionDisplayNames, app.sessions)}
             {child.status === "incomplete" ? (
               <span className="badge-run">{t("running")}</span>

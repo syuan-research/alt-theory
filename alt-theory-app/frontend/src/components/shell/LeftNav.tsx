@@ -5,6 +5,7 @@ import { useShell } from "@/context/ShellContext";
 import { t } from "@/i18n";
 import {
   buildWorkspaceTree,
+  canTakeMainline,
   folderLabel,
   listedOriginLabel,
   sessionTitle,
@@ -210,8 +211,24 @@ function UserNav({ onImport }: { onImport: () => void }) {
           if (!details.contains(event.target as Node)) details.open = false;
         });
     };
+    // position:fixed menus keep their layout-time spot while the list
+    // scrolls beneath them (opus C2) — a scrolled menu could sit over row B
+    // with row A's Delete bound to it. Close them on any scroll.
+    const closeAllMenus = () => {
+      navRef.current
+        ?.querySelectorAll<HTMLDetailsElement>("details.list-more[open]")
+        .forEach((details) => {
+          details.open = false;
+        });
+    };
     document.addEventListener("pointerdown", closeOpenMenus);
-    return () => document.removeEventListener("pointerdown", closeOpenMenus);
+    document.addEventListener("scroll", closeAllMenus, { capture: true });
+    return () => {
+      document.removeEventListener("pointerdown", closeOpenMenus);
+      document.removeEventListener("scroll", closeAllMenus, {
+        capture: true,
+      });
+    };
   }, []);
 
   const tree = useMemo(
@@ -259,7 +276,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
       return;
     }
     if ((dir ?? "") === (app.workspacePrimaryDir ?? "")) return;
-    const label = dir ? folderLabel(dir) : "no working folder";
+    const label = dir ? folderLabel(dir) : t("no working folder");
     app.requestConfirm({
       message: t("Move this conversation to work in \"{label}\"?", { label }),
       details: [
@@ -325,7 +342,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
     const dragged = app.sessions.find((s) => s.sessionId === sessionId);
     const sourceDir = dragged?.workspacePrimaryDir || "";
     if ((target ?? "") === sourceDir) return; // dropped back on its own folder
-    const label = target ? folderLabel(target) : "no working folder";
+    const label = target ? folderLabel(target) : t("no working folder");
 
     // Whole-folder migration (item 4): when the dragged conversation's current
     // folder holds other conversations too (the "renamed/merged folder" case),
@@ -447,7 +464,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
               </details>
               <button
                 className="btn-new split-plus"
-                title="New conversation"
+                title={t("New conversation")}
                 onClick={() => {
                   shell.openApp();
                   app.startNewSession();
@@ -515,7 +532,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                   </button>
                   {local && group.dir ? (
                     <details className="list-more group-folder-more">
-                      <summary title="Working folder actions">
+                      <summary title={t("Working folder actions")}>
                         <i className="ph ph-dots-three" />
                       </summary>
                       <div className="list-menu">
@@ -726,11 +743,11 @@ function SessionNode({
             if (!event.currentTarget.open) setConfirmDelete(false);
           }}
         >
-          <summary title="Conversation actions">
+          <summary title={t("Conversation actions")}>
             <i className="ph ph-dots-three" />
           </summary>
           <div className="list-menu">
-            {session.forkedFrom?.purpose === "fork" ? (
+            {canTakeMainline(session, app.sessions) ? (
               <button
                 onClick={(e) => {
                   closeMenu(e);
