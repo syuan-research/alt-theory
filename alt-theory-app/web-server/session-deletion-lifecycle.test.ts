@@ -156,6 +156,21 @@ test("Permanent deletion removes conversation records but keeps workspace files"
   assert.equal(listDeletedSessionSummaries(dataDir).sessions.length, 0);
 });
 
+test("A conversation emptied by private retention is not offered as recoverable", () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "alt-theory-trash-private-"));
+  const dirs = createSession(dataDir, "private");
+  writeDeletedSessionRecord(dirs.recordsDir, "private", {
+    deletedAt: "2026-08-01T00:00:00.000Z",
+    reason: "private_retention_expired",
+  });
+
+  assert.deepEqual(listDeletedSessionSummaries(dataDir).sessions, []);
+  assert.throws(
+    () => restoreDeletedSession(dataDir, "private"),
+    /no longer recoverable/,
+  );
+});
+
 test("Trash retention permanently deletes after 30 days", () => {
   const dataDir = mkdtempSync(join(tmpdir(), "alt-theory-trash-expiry-"));
   const dirs = createSession(dataDir, "expired");

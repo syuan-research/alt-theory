@@ -9,7 +9,7 @@ changes.
 | Platform | Status |
 |---|---|
 | Windows x64 | Public Beta folder ZIP and tested source build |
-| macOS (Apple Silicon) | Planned before v1.4; internal hard-bug validation remains |
+| macOS (Apple Silicon) | Public Beta app ZIP and tested source build |
 | Other combinations (Intel Mac, Windows ARM, Linux) | Not tested, not claimed; source builds may work but are unverified |
 
 ## Interface languages

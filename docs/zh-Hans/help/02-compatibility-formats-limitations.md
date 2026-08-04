@@ -7,7 +7,7 @@
 | 平台 | 状态 |
 |---|---|
 | Windows x64 | 提供公开 Beta 文件夹 ZIP，源码构建已测试 |
-| macOS（Apple Silicon） | 计划在 v1.4 前上线，仍在进行内部硬性 bug 检查 |
+| macOS（Apple Silicon） | 提供公开 Beta 应用 ZIP，源码构建已测试 |
 | 其他组合（Intel Mac、Windows ARM、Linux） | 未测试，不作保证，源码构建可能可用但未验证 |
 
 ## 界面语言

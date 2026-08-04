@@ -4,16 +4,16 @@ Alt Theory runs on the local machine. There are two ways to get it.
 
 ## The packaged app
 
-The Windows x64 Beta is available from the [GitHub Release](https://github.com/syuan-research/alt-theory/releases/tag/v1.3.0-beta.1). Download `AltTheory-b1-win.zip`, extract the complete `AltTheory` folder, and run `AltTheory.exe`. Node.js and npm are not required for the packaged app.
+The Beta is available from the [GitHub Release](https://github.com/syuan-research/alt-theory/releases/tag/v1.3.0-beta.1). On Windows, download `AltTheory-b1-win.zip`, extract the complete `AltTheory` folder, and run `AltTheory.exe`. On macOS, download `AltTheory-b1-mac.zip`, unpack `AltTheory.app`, and move it to Applications. Node.js and npm are not required for the packaged app.
 
 Supported platforms:
 
 - Windows x64: available as the Beta folder ZIP
-- macOS on Apple Silicon: planned before v1.4; internal hard-bug validation remains
+- macOS on Apple Silicon: available as the Beta app ZIP
 
-Other combinations are untested and not claimed.
+Other combinations, including Intel Macs, are untested and not claimed.
 
-On first launch Windows may warn that the app is from an unidentified developer because the Beta is not code-signed. Choose **More info → Run anyway** only when the ZIP came from this repository's GitHub Release.
+The Beta is not signed, so both systems question it the first time. Windows may warn that the app is from an unidentified developer: choose **More info → Run anyway**. macOS refuses a plain double-click with "Apple could not verify…": right-click (or Control-click) the app, choose **Open**, then **Open** again in the dialog. Later launches are ordinary. Take either route only when the ZIP came from this repository's GitHub Release.
 
 ## Building from the repository (some programming experience)
 

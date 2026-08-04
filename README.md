@@ -3,6 +3,7 @@
 [![Release](https://img.shields.io/github/v/release/syuan-research/alt-theory?include_prereleases&label=Release)](https://github.com/syuan-research/alt-theory/releases)
 [![License](https://img.shields.io/badge/License-MIT%20%2B%20CC%20BY%204.0-59636e)](LICENSE.md)
 [![Windows x64](https://img.shields.io/badge/Windows-x64-59636e?logo=windows11&logoColor=white)](https://github.com/syuan-research/alt-theory/releases/download/v1.3.0-beta.1/AltTheory-b1-win.zip)
+[![macOS Apple Silicon](https://img.shields.io/badge/macOS-Apple%20Silicon-59636e?logo=apple&logoColor=white)](https://github.com/syuan-research/alt-theory/releases/download/v1.3.0-beta.1/AltTheory-b1-mac.zip)
 
 [English](README.md) · [简体中文](README.zh-Hans.md) · [繁體中文（香港）](README.zh-Hant-HK.md)
 
@@ -106,8 +107,8 @@ See [Known limitations](docs/en/help/compatibility-formats-limitations.md) for c
 | Platform | Status |
 |---|---|
 | Windows x64 | **[Download Beta 1](https://github.com/syuan-research/alt-theory/releases/download/v1.3.0-beta.1/AltTheory-b1-win.zip)** |
-| macOS Apple Silicon | Planned before v1.4; internal hard-bug validation remains |
-| Linux and other architectures | Not currently claimed |
+| macOS Apple Silicon | **[Download Beta 1](https://github.com/syuan-research/alt-theory/releases/download/v1.3.0-beta.1/AltTheory-b1-mac.zip)** |
+| Linux, Intel Macs, and other architectures | Not currently claimed |
 
 ### Windows: download and launch
 
@@ -116,6 +117,14 @@ See [Known limitations](docs/en/help/compatibility-formats-limitations.md) for c
 3. Open the folder and run `AltTheory.exe`.
 
 The Beta is not code-signed. Windows SmartScreen may show an unidentified-app warning; choose **More info → Run anyway** only when the ZIP came from this repository's GitHub Release. The release includes a SHA-256 checksum for verification.
+
+### macOS: download and launch
+
+1. Download `AltTheory-b1-mac.zip` from the GitHub Release.
+2. Double-click the ZIP to unpack `AltTheory.app`, then move it to Applications.
+3. The first open needs a right-click (or Control-click) on the app and **Open**, then **Open** again in the dialog. Later launches are ordinary double-clicks.
+
+That first-open step exists because the Beta is not notarized by Apple, so a plain double-click is refused with "Apple could not verify…". Use the right-click route only for the ZIP downloaded from this repository's GitHub Release, and check its SHA-256 against `BUILD-INFO-mac.txt`. Apple Silicon only.
 
 Node.js and npm are **not** required when using the downloaded app.
 

@@ -161,11 +161,10 @@ export function listDeletedSessionSummaries(dataDir: string): SessionListRespons
       const root = resolveSessionRoot(dataDir, session.sessionId);
       if (!root) return false;
       const deleted = readDeletedSessionRecord(join(root, "records"));
+      if (!deleted || !isRecoverableDeletion(deleted)) return false;
       return (
-        deleted?.reason !== "user_permanently_deleted" &&
-        deleted?.reason !== "trash_retention_expired" &&
-        (!deleted?.cascadeRootSessionId ||
-          deleted.cascadeRootSessionId === session.sessionId)
+        !deleted.cascadeRootSessionId ||
+        deleted.cascadeRootSessionId === session.sessionId
       );
     }),
   };
@@ -348,6 +347,19 @@ export function permanentlyDeleteSession(
   return targets;
 }
 
+/**
+ * Trash holds what the user deleted, and nothing else. This is an allowlist
+ * rather than a list of the endings we happen to know about, because the
+ * subtracting form files every future deletion kind into Trash by default:
+ * a conversation emptied by private retention is already gone, so listing it
+ * as recoverable both breaks the retention promise made to its participant and
+ * offers a Restore that can only hand back a blank conversation.
+ */
+function isRecoverableDeletion(deleted: DeletedSessionRecord): boolean {
+  // v1.3-alpha.6 wrote no reason at all; those are user deletions.
+  return deleted.reason === undefined || deleted.reason === "user_deleted";
+}
+
 function assertDirectTrashEntry(dataDir: string, sessionId: string): void {
   const root = resolveSessionRoot(dataDir, sessionId);
   const deleted = root
@@ -360,10 +372,7 @@ function assertDirectTrashEntry(dataDir: string, sessionId: string): void {
   ) {
     throw new Error(`Session is not a direct Trash entry: ${sessionId}`);
   }
-  if (
-    deleted.reason === "user_permanently_deleted" ||
-    deleted.reason === "trash_retention_expired"
-  ) {
+  if (!isRecoverableDeletion(deleted)) {
     throw new Error(`Session is no longer recoverable: ${sessionId}`);
   }
 }

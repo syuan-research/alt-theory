@@ -4,16 +4,16 @@ Alt Theory 在本机运行，获取方式有两种。
 
 ## 打包应用
 
-Windows x64 Beta 可从 [GitHub Release](https://github.com/syuan-research/alt-theory/releases/tag/v1.3.0-beta.1) 下载。下载 `AltTheory-b1-win.zip`，完整解压 `AltTheory` 文件夹，然后运行 `AltTheory.exe`。使用打包应用不需要安装 Node.js 或 npm。
+Beta 可从 [GitHub Release](https://github.com/syuan-research/alt-theory/releases/tag/v1.3.0-beta.1) 下载。Windows 下载 `AltTheory-b1-win.zip`，完整解压 `AltTheory` 文件夹，然后运行 `AltTheory.exe`；macOS 下载 `AltTheory-b1-mac.zip`，解压出 `AltTheory.app` 并移到「应用程序」。使用打包应用不需要安装 Node.js 或 npm。
 
 支持以下平台：
 
 - Windows x64：提供 Beta 文件夹 ZIP
-- Apple Silicon macOS：计划在 v1.4 前上线，仍在进行内部硬性 bug 检查
+- Apple Silicon macOS：提供 Beta 应用 ZIP
 
-其他组合未经测试，不作保证。
+其他组合（含 Intel Mac）未经测试，不作保证。
 
-首次启动时，Windows 可能警告该应用来自未识别的开发者，因为 Beta 尚未代码签名。仅在 ZIP 来自本仓库 GitHub Release 时选择「更多信息 → 仍要运行」。
+Beta 尚未签名，两个系统首次打开时都会拦一下。Windows 可能警告该应用来自未识别的开发者：选择「更多信息 → 仍要运行」。macOS 直接双击会被拒绝并提示「无法验证开发者」：请右键（或按住 Control 点按）应用，选择「打开」，再在对话框中选一次「打开」；之后就是普通双击。仅在 ZIP 来自本仓库 GitHub Release 时才这样操作。
 
 
 ## 从仓库构建 （需一定编程经验）

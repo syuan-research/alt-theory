@@ -3,6 +3,7 @@
 [![Release（發佈版本）](https://img.shields.io/github/v/release/syuan-research/alt-theory?include_prereleases&label=Release)](https://github.com/syuan-research/alt-theory/releases)
 [![License（授權條款）](https://img.shields.io/badge/License-MIT%20%2B%20CC%20BY%204.0-59636e)](LICENSE.md)
 [![Windows x64（Windows 64 位元）](https://img.shields.io/badge/Windows-x64-59636e?logo=windows11&logoColor=white)](https://github.com/syuan-research/alt-theory/releases/download/v1.3.0-beta.1/AltTheory-b1-win.zip)
+[![macOS Apple Silicon](https://img.shields.io/badge/macOS-Apple%20Silicon-59636e?logo=apple&logoColor=white)](https://github.com/syuan-research/alt-theory/releases/download/v1.3.0-beta.1/AltTheory-b1-mac.zip)
 
 [English](README.md) · [简体中文](README.zh-Hans.md) · **繁體中文（香港）**
 
@@ -101,7 +102,7 @@ Alt Theory 首先面向社會科學領域的學生與研究者：從正在形成
 | Platform（平台） | Status（狀態） |
 |---|---|
 | Windows x64（Windows 64 位元） | **[下載 Beta 1](https://github.com/syuan-research/alt-theory/releases/download/v1.3.0-beta.1/AltTheory-b1-win.zip)** |
-| macOS Apple Silicon | 計劃在 v1.4 前提供；仍待內部嚴重錯誤驗證 |
+| macOS Apple Silicon | **[下載 Beta 1](https://github.com/syuan-research/alt-theory/releases/download/v1.3.0-beta.1/AltTheory-b1-mac.zip)** |
 | Linux 與其他架構 | 目前未聲稱支援 |
 
 ### Windows：下載與啟動
@@ -111,6 +112,14 @@ Alt Theory 首先面向社會科學領域的學生與研究者：從正在形成
 3. 開啟資料夾並運行 `AltTheory.exe`。
 
 Beta（測試版）尚未進行 code signing（程式碼簽署）。Windows SmartScreen 可能顯示不明應用程式警告；只有當 ZIP 來自本 repository（儲存庫）的 GitHub Release 時，才選擇 **More info → Run anyway（更多資訊 → 仍要執行）**。Release 同時提供 SHA-256 checksum（SHA-256 校驗值）。下載版毋須 Node.js 或 npm。
+
+### macOS：下載與啟動
+
+1. 從 GitHub Release（GitHub 發佈頁面）下載 `AltTheory-b1-mac.zip`。
+2. 雙擊 ZIP 解壓出 `AltTheory.app`，移到「應用程式」。
+3. 首次開啟需要右鍵（或按住 Control 點按）應用程式並選擇 **Open（開啟）**，再在對話框中選一次 **Open（開啟）**；之後就是普通雙擊。
+
+首次這一步是因為 Beta 尚未經過 Apple notarization（公證），直接雙擊會被拒絕並提示「無法驗證開發者」。只有當 ZIP 來自本 repository 的 GitHub Release 時才這樣操作，並對照 `BUILD-INFO-mac.txt` 核對 SHA-256。僅支援 Apple Silicon。
 
 ## 首次啟動
 
