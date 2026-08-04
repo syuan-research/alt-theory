@@ -105,7 +105,6 @@ import {
 } from "./auth-session.js";
 import { readAccountStore } from "./auth-accounts.js";
 import type { AuthContext } from "./auth-session.js";
-import { resolveConfigGuiHtmlPath } from "./config-gui-path.js";
 import { ensureLocalModeDefaults } from "./local-mode-paths.js";
 import {
   isVisibilityForMode,
@@ -160,7 +159,7 @@ ensureLocalModeDefaults();
 const PROJECT_ROOT = process.cwd();
 const PUBLIC_DIR = resolve(
   PROJECT_ROOT,
-  process.env.ALT_THEORY_PUBLIC_DIR ?? "alt-theory-app/web-server/public",
+  process.env.ALT_THEORY_PUBLIC_DIR ?? "alt-theory-app/web-server/public-v6",
 );
 
 const DEFAULT_ROLE_CONDITION_PRESETS: Record<string, string> = {
@@ -343,15 +342,12 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       },
     }),
   );
-  app.get("/vendor/marked.js", (_req, res) => {
-    res.sendFile(resolve(PROJECT_ROOT, "node_modules", "marked", "lib", "marked.umd.js"),);
-  });
   // --- Config GUI (Pi-native model/key management) ---
   // Local-mode only. Hosted/online deployments must not expose server-side
   // model/key management through this UI or REST surface.
   app.get("/config", (_req, res) => {
     if (!requireLocalConfigMode(res)) return;
-    res.sendFile(resolveConfigGuiHtmlPath(publicDir));
+    res.sendFile(resolve(publicDir, "index.html"));
   });
   app.get("/api/config/status", async (_req, res) => {
     if (!requireLocalConfigMode(res)) return;

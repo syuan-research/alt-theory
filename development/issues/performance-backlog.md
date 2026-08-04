@@ -3,7 +3,7 @@ doc_type: backlog
 slug: performance-backlog
 status: open
 created: 2026-08-04
-target: v1.5–v1.6
+target: v1.4
 tags: [performance, scale, backend, frontend]
 ---
 

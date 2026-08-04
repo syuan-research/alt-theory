@@ -205,7 +205,7 @@ Fetch.
 - Mode toggle is compact (~20% shorter than earlier chrome).
 - Local mode: left-foot avatar tooltip states local / no account.
 - v6 serve uses static `web-server/public-v6` — frontend source changes require
-  `npm run build:frontend-v6` before they appear in `dev:web:*:v6`.
+  `npm run build:frontend-v6` before they appear in `dev:web` / `dev:web:local`.
 
 ### Add provider
 

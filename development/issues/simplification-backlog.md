@@ -3,7 +3,7 @@ doc_type: backlog
 slug: simplification-backlog
 status: open
 created: 2026-08-04
-target: v1.5–v1.6
+target: v1.4
 tags: [over-engineering, dead-code, cleanup, backend, frontend]
 ---
 
