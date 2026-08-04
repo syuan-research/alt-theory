@@ -425,13 +425,12 @@ export function promoteToMainlineRecords(
   if (isListVisible(target) && !target.forkedFrom) {
     return { delistedSessionId: null }; // already the listed root
   }
-  // Only a root (delisted flag) or a listed non-fork child can actually
-  // step down — a fork child is list-visible by nature, so "delisting" it
-  // is a no-op. The one that cedes the spot is the OLD MAINLINE: the
-  // nearest delistable visible ancestor (fork ancestors pass through and
-  // simply remain ordinary branches — owner's role-swap model).
-  const isDelistable = (s: SessionSummary) =>
-    !s.forkedFrom || s.forkedFrom.purpose !== "fork";
+  // ONLY ROOTS step down (owner 2026-08-04): once a child is listed —
+  // branch by nature or a promoted btw/helper/subagent — it holds that
+  // status like a branch and is never delisted by a later promotion (the
+  // old fallback stripped a listed btw's promotion when every ancestor had
+  // already ceded its spot). Provenance (purpose) is never rewritten.
+  const isDelistable = (s: SessionSummary) => !s.forkedFrom;
   let stepDown: SessionSummary | null = null;
   let cursor = target.forkedFrom
     ? byId.get(target.forkedFrom.sessionId)

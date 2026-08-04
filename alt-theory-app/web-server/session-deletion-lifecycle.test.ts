@@ -234,6 +234,40 @@ test("Promoting a branch-of-branch steps down the nearest visible member, not th
   assert.equal(summary("b1").forkedFrom?.purpose, "fork");
 });
 
+test("A listed btw holds its promotion through later mainline switches", () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "alt-theory-mainline-btw-"));
+  createSession(dataDir, "root");
+  createSession(
+    dataDir,
+    "btw",
+    { sessionId: "root", purpose: "side", listed: true },
+    "2026-08-01T01:00:00.000Z",
+  );
+  createSession(
+    dataDir,
+    "b1",
+    { sessionId: "root", purpose: "fork" },
+    "2026-08-01T02:00:00.000Z",
+  );
+  createSession(
+    dataDir,
+    "b2",
+    { sessionId: "root", purpose: "fork" },
+    "2026-08-01T03:00:00.000Z",
+  );
+  const summary = (id: string) =>
+    listSessionSummaries(dataDir).sessions.find((s) => s.sessionId === id)!;
+
+  // First promotion delists the root; the second finds no delistable
+  // ancestor — and must NOT strip the listed btw's promotion (only roots
+  // step down).
+  promoteToMainlineRecords(dataDir, "b1");
+  assert.equal(summary("root").delisted, true);
+  promoteToMainlineRecords(dataDir, "b2");
+  assert.equal(summary("btw").forkedFrom?.listed, true);
+  assert.equal(summary("btw").forkedFrom?.purpose, "side");
+});
+
 test("Delete reports every conversation it will bury, so a live run can be stopped first", () => {
   const dataDir = mkdtempSync(join(tmpdir(), "alt-theory-trash-attached-"));
   createSession(dataDir, "root");

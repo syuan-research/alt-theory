@@ -867,10 +867,10 @@
   .child-head { display: flex; align-items: center; gap: 8px; padding: 0 2px 8px; color: var(--text-3); font-size: 0.72rem; }
   .child-head .child-what { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .child-head .child-status { flex: 0 0 auto; }
-  /* Promotion is a real decision, not chrome: a full-size filled button
-     (owner 2026-08-04: the row was too subtle and too short). */
-  .child-head .promote-action { flex: 0 0 auto; border: 1px solid var(--accent); border-radius: var(--r-sm); background: var(--accent); color: var(--on-accent); padding: 7px 12px; font-size: 0.8rem; white-space: nowrap; display: inline-flex; align-items: center; gap: 5px; }
-  .child-head .promote-action:hover { opacity: 0.88; }
+  /* Promotion is a real decision, not chrome: full-size, plain OUTLINE
+     (owner 2026-08-04: keep the size, drop the ink fill). */
+  .child-head .promote-action { flex: 0 0 auto; border: 1px solid var(--hairline); border-radius: var(--r-sm); background: none; color: var(--ink-soft); padding: 7px 12px; font-size: 0.8rem; white-space: nowrap; display: inline-flex; align-items: center; gap: 5px; }
+  .child-head .promote-action:hover { background: var(--hover); color: var(--ink); }
   .child-head:has(.promote-action) { align-items: center; padding-bottom: 10px; flex-wrap: wrap; }
   .child-head button { display: inline-flex; align-items: center; gap: 4px; border: none; background: transparent; color: var(--text-2); cursor: pointer; font: inherit; font-size: 0.72rem; padding: 2px 4px; border-radius: var(--r-sm); }
   .child-head button:hover { background: var(--hover); }

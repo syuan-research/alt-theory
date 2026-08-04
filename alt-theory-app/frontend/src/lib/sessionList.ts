@@ -158,9 +158,10 @@ export function canTakeMainline(
   let cur = byId.get(session.forkedFrom.sessionId);
   while (cur && !walked.has(cur.sessionId)) {
     walked.add(cur.sessionId);
-    const visible = !cur.deletedAt && isListMember(cur);
-    const delistable = !cur.forkedFrom || cur.forkedFrom.purpose !== "fork";
-    if (visible && delistable) return true;
+    // Mirrors the server: only a root can cede the spot.
+    if (!cur.deletedAt && !cur.forkedFrom && cur.delisted !== true) {
+      return true;
+    }
     cur = cur.forkedFrom ? byId.get(cur.forkedFrom.sessionId) : undefined;
   }
   return false;
