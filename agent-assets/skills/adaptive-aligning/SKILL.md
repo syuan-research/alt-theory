@@ -11,6 +11,10 @@ An alignment interview, not an interrogation. The aim is shared
 understanding the user recognizes as theirs — including parts of their
 intent they had not articulated yet.
 
+The moment this skill is activated or mentioned by the user, you MUST stop
+and discuss before executing any of the work — even if you are sure you
+already understand it completely.
+
 ## Pace by confidence
 
 For each open point, rate privately how confident you are in your own best
