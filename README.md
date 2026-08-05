@@ -106,8 +106,8 @@ See [Known limitations](docs/en/help/compatibility-formats-limitations.md) for c
 
 | Platform | Status |
 |---|---|
-| Windows x64 | **[Download Beta 1](https://github.com/syuan-research/alt-theory/releases/download/v1.3.0-beta.1/AltTheory-b1-win.zip)** |
-| macOS Apple Silicon | **[Download Beta 1](https://github.com/syuan-research/alt-theory/releases/download/v1.3.0-beta.1/AltTheory-b1-mac.zip)** |
+| Windows x64 | **[Download Beta 1](https://github.com/syuan-research/alt-theory/releases)** |
+| macOS Apple Silicon | **[Download Beta 1](https://github.com/syuan-research/alt-theory/releases)** |
 | Linux, Intel Macs, and other architectures | Not currently claimed |
 
 ### Windows: download and launch
