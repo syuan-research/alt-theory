@@ -61,6 +61,15 @@ surfaces remain designation-gated and absent for everyone else.
   - Empty state presents the Understand/Work choice without forcing a modal.
   - Live composer chrome carries mode, model and effective thinking effort,
     role, knowledge, workspace context where applicable, and run controls.
+  - The strip above the composer is a **switchable card slot**, one card at a
+    time. Role/knowledge is the session-initial card: a traditional control
+    (functional view) tied to how the conversation was set up (session-
+    lifecycle view). Steer is the in-process, situational card: it acts on the
+    next few messages, not on the session's identity. The slot is not limited
+    to these two cards. Switching directions each show a one-line hint in the
+    tips slot.
+  - Steer offers bundled Alt Theory skills only; each chip's tooltip states
+    that skill's own job, while what "steer" means lives on the Steer toggle.
   - Import may appear as a quiet conversation-creation action.
 - **Model menu**
   - Shows the effective model and, where supported, the effective thinking

@@ -6,6 +6,61 @@ detail lives in commit history and `development/`.
 
 ---
 
+## v1.4.1-beta — draft (pending owner approval)
+
+Bug fixes from 1.4.0 field testing. A conversation family now behaves like a
+family: one working folder, and a survivor takes over when the mainline goes.
+
+**Conversation families stay together / 会话家族不再散架**
+
+- Moving a conversation to another working folder now moves its WHOLE
+  family — every branch, branch-of-branch, and attached conversation —
+  no matter which member you drag. Previously, dragging a promoted branch
+  could leave part of the tree behind in the old folder (or with no folder
+  at all).
+  把会话拖进另一个工作文件夹时，现在整个家族一起移动——所有分支、
+  分支的分支、附属会话，无论你拖的是哪一个成员。此前拖动"转正"后的
+  分支可能把树的一部分留在旧文件夹（甚至变成无文件夹）。
+- On every start the app now repairs families that older versions left
+  inconsistent: members re-align to the family root's working folder, and
+  a family that lost all its visible members gets one back.
+  应用每次启动会自动修复旧版本留下的不一致家族：成员对齐到家族根的
+  工作文件夹；整个家族在列表中"消失"的，会自动恢复一位代表。
+- Deleting a mainline no longer scatters its branches into separate
+  top-level rows: the oldest branch becomes the family's head in the list
+  and the others stay nested under it.
+  删除主对话后，分支不再散落成一堆独立会话：最老的分支成为家族在列表
+  中的头，其余成员仍然收在它下面。
+
+**Desktop app remembers your settings / 桌面版记住你的设置**
+
+- Interface settings (thinking display, dark mode, panel sizes …) survive
+  a restart of the desktop app. The app now keeps a stable local address
+  across launches; previously each launch got a fresh address, which
+  silently reset browser-stored settings every time.
+  界面设置（thinking 显示、深色模式、面板宽度等）现在重启桌面版后仍然
+  保留。桌面版启动地址此前每次随机变化，导致这些设置每次被静默清空。
+
+**Steer / 引导区**
+
+- Steer now offers Alt Theory's bundled skills only (they are written for
+  steering; this may open up later).
+  Steer 目前只提供 Alt Theory 自带的技能（它们为"引导"语义而写；
+  未来可能放开）。
+- Each steer button's tooltip now tells you what THAT skill does; the
+  Steer toggle explains what steering is. A squeezed button shows its full
+  name on hover.
+  每个 steer 按钮的悬停提示现在说明该技能自己的作用；Steer 开关本身
+  解释"引导"是什么。名字被压缩的按钮悬停时会展开显示全名。
+- Switching between the role/knowledge card and Steer shows a one-line
+  hint about what each card is for.
+  在角色/知识卡片与 Steer 之间切换时，会显示一行提示说明各自的用途。
+- The align-first skill now insists harder: the moment it is activated,
+  the AI must stop and discuss before doing any work — some faster models
+  used to skip straight to executing.
+  "先对齐"技能的措辞更强硬：激活的当下 AI 必须先停下讨论，不得直接
+  动手——此前部分较快的模型会跳过讨论直接执行。
+
 ## v1.4.0-beta.1 — 2026-08-04
 
 This release makes long conversations fast and cleans out a season of
