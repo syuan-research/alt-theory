@@ -577,6 +577,10 @@
   /* Quiet ghost chip at rest; the app's ink CTA look when active. */
   .preset-btn { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--hairline); border-radius: var(--r-sm); background: none; color: var(--ink-soft); font: inherit; font-size: 0.76rem; padding: 4px 10px; cursor: pointer; white-space: nowrap; min-width: 0; flex: 0 1 auto; }
   .preset-btn:hover { background: var(--hover); }
+  /* A squeezed chip un-ellipsizes while hovered: it refuses to shrink and its
+     siblings absorb the squeeze — no extra height, no smaller font, still 4
+     buttons (owner 2026-08-05). */
+  .preset-bar .preset-btn:hover { flex-shrink: 0; }
   .preset-btn:disabled { opacity: 0.45; cursor: default; }
   .preset-btn.on, .preset-btn.locked { background: var(--ink); border-color: var(--ink); color: var(--on-ink); }
   .preset-btn .preset-num { font-size: 0.66rem; opacity: 0.7; }

@@ -77,6 +77,8 @@ export interface DiscoveryLists {
     name: string;
     displayName?: string;
     description?: string;
+    /** "alt-theory" = bundled skill; anything else is user/external. */
+    source?: string;
     enabled?: { understand: boolean; work: boolean };
   }>;
 }
