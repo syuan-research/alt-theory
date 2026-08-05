@@ -78,11 +78,26 @@ only for the ZIP downloaded from this release. Apple Silicon only.
 Node.js and npm are not required for either app. The release's
 `BUILD-INFO-mac.txt` carries the SHA-256.
 
-The same download-and-launch content (minus the specific filename, which
-the user docs replace with a pointer to the release page) is the install
-template used in `README.md` and
-`docs/en/start-here/install-and-launch.md`. Keep the three in step; when
-the install block changes, update all three.
+The same download-and-launch content is the install template used in four
+places that must stay in step; when the install block changes, update all
+of them:
+
+1. this file's blocks above (tag-page source);
+2. `README.md` / `README.zh-Hans.md` / `README.zh-Hant-HK.md` (minus the
+   specific ZIP filename — they point at the generic release page);
+3. `docs/en/start-here/install-and-launch.md` and the zh-Hans counterpart
+   (same generic-release-page rule);
+4. `scripts/release/README-how-to-use-win.md` and
+   `scripts/release/README-how-to-use-mac.md` — **user-facing** trilingual
+   copies (English / 简体中文 / 繁體中文香港) that ship **inside** the
+   matching platform ZIP, next to the app. Each file carries only that
+   platform’s download-and-launch block from the tag page. `{X.Y.Z}` stays
+   as the version placeholder in the repo copy, or is filled for a given
+   release if you prefer.
+
+`v1.4.1-beta.1` did not include the in-ZIP how-to files; ship them from
+the next release onward (Windows ZIP gets the `-win` file; macOS ZIP gets
+the `-mac` file plus `Fix-Open.command`).
 
 ## Tag and version flow
 
@@ -202,8 +217,9 @@ Earlier releases used mixed forms — short channel labels
 (`AltTheory-1.4.0-beta.1-mac-arm64.zip`). Both are retired. The form
 above is the standard for every release from 1.4.1 on.
 
-The Windows ZIP must contain one top-level `AltTheory/` folder. A
-reproducible PowerShell archive step:
+The Windows ZIP must contain one top-level `AltTheory/` folder, with
+`README-how-to-use-win.md` beside the app files (not buried under
+`resources/`). A reproducible PowerShell archive step:
 
 ```powershell
 $ver = "1.4.0"
@@ -212,17 +228,20 @@ if (Test-Path -LiteralPath $stage) { throw "Remove the existing $stage first" }
 $stageApp = Join-Path $stage "AltTheory"
 New-Item -ItemType Directory -Path $stageApp | Out-Null
 Copy-Item "dist\win-unpacked\*" $stageApp -Recurse
+Copy-Item "scripts\release\README-how-to-use-win.md" $stageApp
 Compress-Archive -LiteralPath $stageApp `
   -DestinationPath "dist\AltTheory-$ver-win.zip" -CompressionLevel Optimal
 Remove-Item -LiteralPath $stage -Recurse
 ```
 
 Set `$ver` to the X.Y.Z form per release. The macOS ZIP mirrors the
-Windows layout — one top-level `AltTheory/` folder holding `AltTheory.app`
-plus `scripts/release/Fix-Open.command` (the Gatekeeper fix-open script the
-launch instructions rely on) — and must preserve the `.app` bundle
-metadata, so stage and archive with `ditto` (never `zip -r`: it follows
-the Electron.framework symlinks and produces a genuinely damaged app):
+Windows layout — one top-level `AltTheory/` folder holding `AltTheory.app`,
+`scripts/release/Fix-Open.command` (the Gatekeeper fix-open script the
+launch instructions rely on), and `scripts/release/README-how-to-use-mac.md`
+(trilingual how-to for mac only, same text as the tag-page mac block) —
+and must preserve the `.app` bundle metadata, so stage and archive with
+`ditto` (never `zip -r`: it follows the Electron.framework symlinks and
+produces a genuinely damaged app):
 
 ```bash
 ver="1.4.0"
@@ -231,6 +250,7 @@ rm -rf dist/_release-stage
 mkdir -p "$stage"
 ditto dist/mac-arm64/AltTheory.app "$stage/AltTheory.app"
 cp "scripts/release/Fix-Open.command" "$stage/"
+cp "scripts/release/README-how-to-use-mac.md" "$stage/"
 chmod +x "$stage/Fix-Open.command"
 ditto -c -k --sequesterRsrc --keepParent "$stage" "dist/AltTheory-$ver-mac.zip"
 rm -rf dist/_release-stage
