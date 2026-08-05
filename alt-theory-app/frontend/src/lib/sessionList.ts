@@ -136,27 +136,81 @@ export function isListMember(session: SessionSummary): boolean {
   return fork.purpose === "fork" || fork.listed === true;
 }
 
+const byAge = (a: SessionSummary, b: SessionSummary) =>
+  (a.createdAt ?? "").localeCompare(b.createdAt ?? "");
+
 /**
- * Head of a group of siblings whose parent is gone from the list data (the
- * deleted-mainline family): the member the user promoted (fork.listed
- * anchor), else the oldest branch, else the oldest member. Shared by the
- * list tree and the crown predicate so they never disagree.
+ * When session's family lost its mainline (an ancestor points at a session
+ * absent from the list data — deleted or purged), returns that missing
+ * parent id; null when a living root is reachable (delisted or not).
  */
-export function orphanGroupHead(
-  parentId: string,
+function rootlessAncestorGap(
+  session: SessionSummary,
+  byId: Map<string, SessionSummary>,
+): string | null {
+  if (!session.forkedFrom) return null;
+  const walked = new Set([session.sessionId]);
+  let top = session;
+  while (top.forkedFrom) {
+    const parent = byId.get(top.forkedFrom.sessionId);
+    if (!parent) return top.forkedFrom.sessionId;
+    if (walked.has(parent.sessionId)) return null; // defensive: cycle
+    walked.add(parent.sessionId);
+    top = parent;
+  }
+  return null;
+}
+
+/**
+ * Head of a family whose mainline is gone (missingParentId absent from the
+ * list data): the member the user crowned (fork.listed anchor, ANYWHERE in
+ * the family — a branch-of-branch counts), else the oldest first-level
+ * branch, else the oldest orphan. Shared by the list tree, the crown
+ * predicate, and the head marker so they never disagree.
+ */
+export function rootlessFamilyHead(
+  missingParentId: string,
   all: SessionSummary[],
 ): SessionSummary | null {
-  const group = all
-    .filter((s) => s.forkedFrom?.sessionId === parentId && isListMember(s))
-    .sort((a, b) => (a.createdAt ?? "").localeCompare(b.createdAt ?? ""));
+  const members = all.filter(isListMember);
+  const group = members
+    .filter((s) => s.forkedFrom?.sessionId === missingParentId)
+    .sort(byAge);
+  if (group.length === 0) return null;
+  const family: SessionSummary[] = [];
+  const queue = [...group];
+  const seen = new Set<string>();
+  while (queue.length > 0) {
+    const s = queue.shift() as SessionSummary;
+    if (seen.has(s.sessionId)) continue;
+    seen.add(s.sessionId);
+    family.push(s);
+    queue.push(
+      ...members.filter((m) => m.forkedFrom?.sessionId === s.sessionId),
+    );
+  }
   return (
-    group.find(
-      (s) => s.forkedFrom?.purpose === "fork" && s.forkedFrom.listed === true,
-    ) ??
+    family
+      .filter(
+        (s) =>
+          s.forkedFrom?.purpose === "fork" && s.forkedFrom.listed === true,
+      )
+      .sort(byAge)[0] ??
     group.find((s) => s.forkedFrom?.purpose === "fork") ??
-    group[0] ??
-    null
+    group[0]
   );
+}
+
+/** True when session is the current head of a family without a mainline. */
+export function isFamilyHead(
+  session: SessionSummary,
+  all: SessionSummary[],
+): boolean {
+  if (!session.forkedFrom) return false;
+  const byId = new Map(all.map((s) => [s.sessionId, s]));
+  const gap = rootlessAncestorGap(session, byId);
+  if (!gap) return false;
+  return rootlessFamilyHead(gap, all)?.sessionId === session.sessionId;
 }
 
 /**
@@ -165,9 +219,9 @@ export function orphanGroupHead(
  * some delistable visible ancestor (the old mainline) exists to step down —
  * after a successful promotion the crown disappears instead of delisting
  * ever-further ancestors on repeat clicks (opus D2). In a family whose
- * mainline is GONE (deleted/purged parent), the crown re-heads the orphan
- * group instead (owner 2026-08-05): any direct orphan that is not already
- * the head can take the spot.
+ * mainline is GONE (deleted/purged), the crown re-heads the family instead
+ * (owner 2026-08-05): any member at any depth qualifies unless it already
+ * holds the head spot.
  */
 export function canTakeMainline(
   session: SessionSummary,
@@ -193,9 +247,9 @@ export function canTakeMainline(
     }
     cur = cur.forkedFrom ? byId.get(cur.forkedFrom.sessionId) : undefined;
   }
-  const parentId = session.forkedFrom.sessionId;
-  if (byId.has(parentId)) return false; // nested under a living member
-  return orphanGroupHead(parentId, all)?.sessionId !== session.sessionId;
+  const gap = rootlessAncestorGap(session, byId);
+  if (!gap) return false;
+  return rootlessFamilyHead(gap, all)?.sessionId !== session.sessionId;
 }
 
 /** Row label for a listed child: where it came from, not a made-up identity. */
@@ -266,16 +320,24 @@ function buildEdges(members: SessionSummary[]): {
     if (!parentId && session.delisted) {
       parentId = successorOf(session)?.sessionId ?? null;
     } else if (parentId) {
-      const parent = byId.get(parentId);
-      // The successor must not nest under the delisted root it replaced —
-      // that edge is inverted, and both nesting would orphan the family.
-      if (
-        parent &&
-        !parent.forkedFrom &&
-        parent.delisted &&
-        successorOf(parent)?.sessionId === session.sessionId
-      ) {
-        parentId = null;
+      // The successor must not nest below the delisted root it replaced —
+      // that edge is inverted. Walk the WHOLE ancestor chain: a promoted
+      // branch-of-branch nesting anywhere under the demoted root would
+      // close a display cycle and the family would vanish from the list.
+      let cur = byId.get(parentId);
+      const walked = new Set<string>();
+      while (cur && !walked.has(cur.sessionId)) {
+        walked.add(cur.sessionId);
+        if (!cur.forkedFrom) {
+          if (
+            cur.delisted &&
+            successorOf(cur)?.sessionId === session.sessionId
+          ) {
+            parentId = null;
+          }
+          break;
+        }
+        cur = byId.get(cur.forkedFrom.sessionId);
       }
     }
     if (parentId && ids.has(parentId)) {
@@ -285,9 +347,10 @@ function buildEdges(members: SessionSummary[]): {
       roots.push(session);
     }
   }
-  // A deleted/purged parent must not splinter the family (owner 2026-08-05:
-  // deleting the mainline leaves the OLDEST branch as the family head; the
-  // other members nest under it instead of scattering into top-level rows).
+  // A deleted/purged mainline must not splinter the family (owner
+  // 2026-08-05): the family head takes the top row and the other orphans
+  // nest under it. The head may sit at any depth (a crowned
+  // branch-of-branch) — it is hoisted out of its parent's children first.
   const orphanGroups = new Map<string, SessionSummary[]>();
   for (const root of roots) {
     const parentId = root.forkedFrom?.sessionId;
@@ -296,8 +359,20 @@ function buildEdges(members: SessionSummary[]): {
     orphanGroups.get(parentId)?.push(root);
   }
   for (const [parentId, group] of orphanGroups) {
-    if (group.length < 2) continue;
-    const head = orphanGroupHead(parentId, members) ?? group[0];
+    const head = rootlessFamilyHead(parentId, members) ?? group[0];
+    if (!group.includes(head)) {
+      const headParentId = head.forkedFrom?.sessionId;
+      const siblings = headParentId
+        ? childrenByParent.get(headParentId)
+        : undefined;
+      if (siblings) {
+        childrenByParent.set(
+          headParentId as string,
+          siblings.filter((s) => s !== head),
+        );
+      }
+      roots.push(head);
+    }
     for (const member of group) {
       if (member === head) continue;
       roots.splice(roots.indexOf(member), 1);

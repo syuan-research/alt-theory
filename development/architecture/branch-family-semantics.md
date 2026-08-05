@@ -56,12 +56,20 @@ Code hotspots this document governs:
 - **Orphan grouping** (v1.4.1): when a parent is gone from the list data
   (deleted/purged mainline), its orphaned members do NOT scatter into
   top-level rows — the family head takes the top row and the others nest
-  under it. Head = `orphanGroupHead`: the anchored branch
-  (`fork.listed === true`), else the OLDEST branch, else the oldest
-  member. Rationale: deleting a mainline is routine in the edit-heavy
-  flow; the family must stay one visual unit, headed automatically
-  (owner ruling 2026-08-05: oldest first-level branch succeeds — no
-  manual step required).
+  under it. Head = `rootlessFamilyHead`: the anchored branch
+  (`fork.listed === true`) at ANY depth — a crowned branch-of-branch is
+  hoisted out of its parent to the top — else the OLDEST first-level
+  branch, else the oldest orphan. The head row carries a crown marker
+  (`isFamilyHead`) so the user can see who currently holds the spot.
+  Rationale: deleting a mainline is routine in the edit-heavy flow; the
+  family must stay one visual unit, headed automatically (owner ruling
+  2026-08-05: oldest first-level branch succeeds — no manual step
+  required), with the crown available to re-head at any depth.
+- **Display cycle guard**: the successor of a delisted root must be cut
+  from its own parent edge by walking the WHOLE ancestor chain — a
+  promoted branch-of-branch nesting anywhere below the demoted root
+  would close a cycle and the family would vanish from the list
+  (shipped bug found 2026-08-05, pinned by test).
 
 ## 3. Promotion ("Make this the main conversation" — role swap + coexist)
 
@@ -73,9 +81,10 @@ Code hotspots this document governs:
   3-dots and the ChildConversation header. True when:
   - a delisted root could take its spot back; or
   - a branch/listed child has a delistable visible root ancestor; or
-  - **rootless family** (v1.4.1): the member is a direct orphan and not
-    the current head — the crown RE-HEADS the orphan group. Server side
-    clears competing branch anchors so the head stays unique.
+  - **rootless family** (v1.4.1): any member at ANY depth that is not
+    the current head — the crown RE-HEADS the family. Server side clears
+    competing branch anchors across the whole family (only when no
+    living root exists) so the head stays unique.
 - After promotion the crown disappears from the new head (nothing left
   to change) and appears on members whose promotion would change the
   head again. Reversal is just promotion in the other direction.

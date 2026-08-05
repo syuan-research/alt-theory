@@ -544,19 +544,24 @@ export function promoteToMainlineRecords(
     }
   } else if (target.forkedFrom) {
     // Rootless family (owner 2026-08-05): nobody can step down, so the
-    // listed flag doubles as the family-head anchor — clear it on competing
-    // anchored BRANCH siblings so the head choice stays unique. Listed
+    // listed flag doubles as the family-head anchor — clear it on every
+    // other anchored BRANCH in the family (any depth) so the head choice
+    // stays unique. Only when no living root exists: a delisted living
+    // root's family keeps M4b multi-listed semantics. Listed
     // btw/helper/subagent are never cleared: for them the flag is list
     // membership itself.
-    for (const sibling of summaries) {
-      if (
-        sibling.sessionId !== sessionId &&
-        sibling.forkedFrom?.sessionId === target.forkedFrom.sessionId &&
-        sibling.forkedFrom.purpose === "fork" &&
-        sibling.forkedFrom.listed === true &&
-        !sibling.deletedAt
-      ) {
-        writeListFlags(dataDir, sibling.sessionId, false);
+    const family = forkTreeMembers(sessionId, summaries);
+    const hasLivingRoot = family.some((m) => !m.forkedFrom && !m.deletedAt);
+    if (!hasLivingRoot) {
+      for (const member of family) {
+        if (
+          member.sessionId !== sessionId &&
+          member.forkedFrom?.purpose === "fork" &&
+          member.forkedFrom.listed === true &&
+          !member.deletedAt
+        ) {
+          writeListFlags(dataDir, member.sessionId, false);
+        }
       }
     }
   }

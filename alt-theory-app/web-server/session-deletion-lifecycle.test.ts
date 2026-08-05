@@ -527,3 +527,29 @@ test("promote in a rootless family moves the head anchor between branches", () =
   promoteToMainlineRecords(dataDir, "b1");
   assert.deepEqual(flags(), { b1: true, b2: false });
 });
+
+test("promoting a branch-of-branch in a rootless family clears anchors family-wide", () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "alt-theory-nested-head-"));
+  createSession(dataDir, "root");
+  createSession(
+    dataDir,
+    "b1",
+    { sessionId: "root", purpose: "fork" },
+    "2026-08-01T00:00:00.000Z",
+  );
+  createSession(
+    dataDir,
+    "c",
+    { sessionId: "b1", purpose: "fork" },
+    "2026-08-02T00:00:00.000Z",
+  );
+  softDeleteSession(dataDir, "root");
+  promoteToMainlineRecords(dataDir, "b1");
+  promoteToMainlineRecords(dataDir, "c");
+
+  const byId = new Map(
+    listSessionSummaries(dataDir).sessions.map((s) => [s.sessionId, s]),
+  );
+  assert.equal(byId.get("c")?.forkedFrom?.listed, true);
+  assert.notEqual(byId.get("b1")?.forkedFrom?.listed, true);
+});

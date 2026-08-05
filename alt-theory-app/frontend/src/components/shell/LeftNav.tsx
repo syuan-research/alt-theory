@@ -7,6 +7,7 @@ import {
   buildWorkspaceTree,
   canTakeMainline,
   folderLabel,
+  isFamilyHead,
   listedOriginLabel,
   sessionTitle,
 } from "@/lib/sessionList";
@@ -714,6 +715,13 @@ function SessionNode({
             }
           >
             {session.forkedFrom ? (
+              isFamilyHead(session, app.sessions) ? (
+                <i
+                  className="ph ph-crown-simple s-fork"
+                  aria-hidden
+                  title={t("Heads this family — its original main conversation was deleted")}
+                />
+              ) : (
               <i
                 className={`ph ${
                   session.forkedFrom.purpose === "subagent"
@@ -727,6 +735,7 @@ function SessionNode({
                 aria-hidden
                 title={originTitle(session)}
               />
+              )
             ) : session.delisted ? (
               <i
                 className="ph ph-git-branch s-fork"

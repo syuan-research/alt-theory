@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { SessionSummary } from "../api/types.ts";
-import { buildWorkspaceTree, canTakeMainline, sessionTitle } from "./sessionList.ts";
+import { buildWorkspaceTree, canTakeMainline, isFamilyHead, sessionTitle } from "./sessionList.ts";
 
 function child(
   sessionId: string,
@@ -129,4 +129,57 @@ test("rootless family: the crown re-heads the orphan group", () => {
     (tree.childrenByParent.get("b2") ?? []).map((s) => s.sessionId),
     ["b1"],
   );
+});
+
+test("promoting a branch-of-branch keeps the family visible (rooted nested promote)", () => {
+  const main = {
+    ...child("main", "unused", "fork", "2026-06-30T00:00:00.000Z"),
+    forkedFrom: null,
+    delisted: true,
+    delistedFor: "c",
+  } as SessionSummary;
+  const b1 = child("b1", "main", "fork", "2026-07-01T00:00:00.000Z");
+  const b2 = child("b2", "main", "fork", "2026-07-02T00:00:00.000Z");
+  const c = child("c", "b1", "fork", "2026-07-03T00:00:00.000Z");
+  c.forkedFrom = { ...c.forkedFrom!, listed: true };
+
+  const tree = buildWorkspaceTree([main, b1, b2, c], []);
+  const roots = tree.groups.flatMap((g) => g.roots.map((r) => r.sessionId));
+  // The successor heads the family; the demoted root nests under it and the
+  // rest hang off the root as before. The family must never vanish.
+  assert.deepEqual(roots, ["c"]);
+  assert.deepEqual(
+    (tree.childrenByParent.get("c") ?? []).map((s) => s.sessionId),
+    ["main"],
+  );
+});
+
+test("a third-level branch can head a rootless family", () => {
+  const b1 = child("b1", "gone", "fork", "2026-07-01T00:00:00.000Z");
+  const b2 = child("b2", "gone", "fork", "2026-07-02T00:00:00.000Z");
+  const c = child("c", "b1", "fork", "2026-07-03T00:00:00.000Z");
+
+  // b1 heads by default (oldest first-level branch, marked as such); the
+  // crown shows on every other member, nested ones included.
+  assert.equal(isFamilyHead(b1, [b1, b2, c]), true);
+  assert.equal(canTakeMainline(c, [b1, b2, c]), true);
+  assert.equal(canTakeMainline(b2, [b1, b2, c]), true);
+  assert.equal(canTakeMainline(b1, [b1, b2, c]), false);
+
+  // Crown c: it is hoisted to the top, its parent b1 and aunt b2 nest
+  // under it, and the crown moves to the displaced members.
+  c.forkedFrom = { ...c.forkedFrom!, listed: true };
+  assert.equal(isFamilyHead(c, [b1, b2, c]), true);
+  assert.equal(canTakeMainline(c, [b1, b2, c]), false);
+  assert.equal(canTakeMainline(b1, [b1, b2, c]), true);
+  const tree = buildWorkspaceTree([b1, b2, c], []);
+  assert.deepEqual(
+    tree.groups.flatMap((g) => g.roots.map((r) => r.sessionId)),
+    ["c"],
+  );
+  assert.deepEqual(
+    (tree.childrenByParent.get("c") ?? []).map((s) => s.sessionId).sort(),
+    ["b1", "b2"],
+  );
+  assert.deepEqual(tree.childrenByParent.get("b1") ?? [], []);
 });

@@ -279,6 +279,7 @@ const catalog: Record<string, string> = {
   "google-generative-ai": "google-generative-ai",
   "Grok": "Grok",
   "Grok Build": "Grok Build",
+  "Heads this family — its original main conversation was deleted": "此对话现为该系列主对话——原始主对话已被删除",
   "How Alt works, and fixing setup · fresh context": "Alt 的工作原理和修复设置 · 全新上下文",
   "If a conversation gets long, /compact summarizes the early turns and shows you the summary.": "如果对话变长，/compact会总结早期轮次并展示摘要。",
   "If you later join a study, they will provide an install that turns these options on.": "如果后续加入研究，他们会提供启用这些选项的安装。",
