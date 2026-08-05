@@ -26,7 +26,8 @@ after.
 
 **Applied 2026-08-04 (v1.4 round 2, commits 9faa448..f237b64):** items 1–12
 executed (importers all kept per owner — item 9's helper merge only; item 12
-deleted whole per owner). Owner rulings: VPS apparatus stays (13), fallback
+deleted whole per owner — docs translation moves to AI-agent workflow, both
+directions possible, so the one-way mirror pipeline retired). Owner rulings: VPS apparatus stays (13), fallback
 chain stays minus DashScope defaults (14). Item 15 (A/B stack, incl. the
 parseAb cut and the ab-arm orphan) and item 16 remain open — banked for the
 round-2 walkthrough.

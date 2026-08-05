@@ -91,12 +91,14 @@ test("Delete follows attached conversations but stops at Branches and promoted c
     listed: true,
   });
   createSession(dataDir, "branch-side", { sessionId: "branch", purpose: "side" });
+  createSession(dataDir, "branch-arm", { sessionId: "branch", purpose: "ab-arm" });
 
   // root has a living branch, so ALL its attached conversations survive the
   // delete (owner ruling 2026-08-04: no fork-time bound).
   softDeleteSession(dataDir, "root");
   assert.deepEqual(ids(dataDir), [
     "branch",
+    "branch-arm",
     "branch-side",
     "promoted-helper",
     "side",
@@ -116,8 +118,16 @@ test("Delete follows attached conversations but stops at Branches and promoted c
     () => restoreDeletedSession(dataDir, "branch-side"),
     /not a direct Trash entry/,
   );
+  // A/B arms are disposable (owner 2026-08-04: real-time compare, the
+  // alternative is not retained) — they follow their parent into Trash
+  // instead of surviving as invisible orphans.
+  assert.throws(
+    () => restoreDeletedSession(dataDir, "branch-arm"),
+    /not a direct Trash entry/,
+  );
   assert.deepEqual(restoreDeletedSession(dataDir, "branch").sort(), [
     "branch",
+    "branch-arm",
     "branch-side",
   ]);
 });

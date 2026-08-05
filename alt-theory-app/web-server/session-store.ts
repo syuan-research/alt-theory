@@ -801,7 +801,7 @@ function attachedDeletionTargets(
       if (
         !fork ||
         fork.listed ||
-        !["side", "helper", "subagent"].includes(fork.purpose)
+        !["side", "helper", "subagent", "ab-arm"].includes(fork.purpose)
       ) {
         continue;
       }
