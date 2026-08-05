@@ -131,27 +131,37 @@ the bundle successful merely because that script continued.
 Bundle filenames are uniform across platforms and releases:
 
 ```
-AltTheory-{version}-{platform}.zip
+AltTheory-{X.Y.Z}-{platform}.zip
 ```
 
-- `{version}` is the release's `X.Y.Z-beta.N` exactly as in `package.json`
-  and the tag — for example `1.4.0-beta.1`.
+- `{X.Y.Z}` is the release's major.minor.patch only. The beta channel
+  suffix (`-beta.N`) stays in the tag and `package.json` but is dropped
+  from the filename. So release `v1.4.0-beta.1` ships as
+  `AltTheory-1.4.0-win.zip` and `AltTheory-1.4.0-mac.zip`.
 - `{platform}` is `win` or `mac`.
-- So: `AltTheory-1.4.0-beta.1-win.zip`, `AltTheory-1.4.0-beta.1-mac.zip`.
+- Both platforms use the same form. Do not vary the name by channel label
+  (`b1`, `a6`), architecture (`arm64`, `x64`), date, or adjective. Those
+  details are metadata and go in the adjacent `BUILD-INFO.txt` with the
+  SHA-256.
 
-Both platforms use the same form. Do not vary the name by channel label
-(`b1`, `a6`), architecture (`arm64`, `x64`), date, or adjective. Those
-details are metadata, not part of the filename, and go in the adjacent
-`BUILD-INFO.txt` with the SHA-256. Earlier releases mixed short channel
-labels (`AltTheory-b1-win.zip`) and long architecture-stamped names
-(`AltTheory-1.4.0-beta.1-mac-arm64.zip`); that inconsistency is retired.
-The form above is the standard for every release from 1.4.1 on.
+Keep the filename short. Windows enforces a maximum path length (260 chars
+by default), and Windows Explorer derives an extra extraction directory
+from the ZIP filename, so a long filename eats into the budget that the
+deep paths inside `resources/app/` already consume. The Alpha 6 Windows
+path-length failure came from exactly this. Keep the ZIP filename near or
+below 24 characters where the version allows; `AltTheory-1.4.0-win.zip`
+is 22.
+
+Earlier releases used mixed forms — short channel labels
+(`AltTheory-b1-win.zip`) and long architecture-stamped names
+(`AltTheory-1.4.0-beta.1-mac-arm64.zip`). Both are retired. The form
+above is the standard for every release from 1.4.1 on.
 
 The Windows ZIP must contain one top-level `AltTheory/` folder. A
 reproducible PowerShell archive step:
 
 ```powershell
-$ver = "1.4.0-beta.1"
+$ver = "1.4.0"
 $stage = Join-Path (Resolve-Path "dist") "_release-stage"
 if (Test-Path -LiteralPath $stage) { throw "Remove the existing $stage first" }
 $stageApp = Join-Path $stage "AltTheory"
@@ -162,10 +172,11 @@ Compress-Archive -LiteralPath $stageApp `
 Remove-Item -LiteralPath $stage -Recurse
 ```
 
-Set `$ver` per release. On macOS, preserve the `.app` bundle metadata:
+Set `$ver` to the X.Y.Z form per release. On macOS, preserve the `.app`
+bundle metadata:
 
 ```bash
-ver="1.4.0-beta.1"
+ver="1.4.0"
 ditto -c -k --sequesterRsrc --keepParent \
   dist/mac-arm64/AltTheory.app "dist/AltTheory-$ver-mac.zip"
 ```
