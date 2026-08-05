@@ -1,3 +1,6 @@
+// Family semantics (membership, crown, orphan grouping) are DESIGNED, not
+// incidental — read development/architecture/branch-family-semantics.md
+// before changing them.
 import type { SessionSummary } from "@/api/types";
 import { shortId } from "@/lib/format";
 

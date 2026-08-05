@@ -1,3 +1,6 @@
+// Family semantics (cascade delete, promotion, living representative,
+// heal) are DESIGNED, not incidental — read
+// development/architecture/branch-family-semantics.md before changing them.
 import {
   SessionManager,
   generateDiffString,
