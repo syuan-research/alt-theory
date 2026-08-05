@@ -32,6 +32,11 @@ family: one working folder, and a survivor takes over when the mainline goes.
   删除主对话后，分支不再散落成一堆独立会话：最老的分支成为家族在列表
   中的头，其余成员仍然收在它下面。
 
+- Folders in the conversation list now sort by name and stay put;
+  previously any click made the active folder jump to the top of the list.
+  会话列表中的文件夹现在按名称排序、位置固定；此前任何点击都会让当前
+  文件夹跳到列表最上面。
+
 **Desktop app remembers your settings / 桌面版记住你的设置**
 
 - Interface settings (thinking display, dark mode, panel sizes …) survive

@@ -35,7 +35,7 @@ test("retry reconstructs a persisted skill invocation", () => {
     "/skill:conversation-summary Focus on decisions",
   );
 });
-import { readSessionDetail } from "./session-store.js";
+import { listSessionSummaries, readSessionDetail } from "./session-store.js";
 import { readAbComparisonRecords } from "./ab-records.js";
 import { readV4SessionHeader } from "./session-records.js";
 import { hardDeleteExpiredPrivateSessions } from "./session-retention.js";
@@ -3569,6 +3569,68 @@ test("SessionService reviseAt edits a turn inherited from the fork parent", asyn
       "ui-alias.json",
     );
     assert.equal(existsSync(aliasPath), false);
+  } finally {
+    await service.disposeAll();
+  }
+});
+
+test("fresh fork family satisfies the frontend promote-button preconditions while live", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const created = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const parent = (service as any).sessions.get(created.sessionId);
+  parent.session.sessionManager.appendMessage({
+    role: "user",
+    content: [{ type: "text", text: "q" }],
+    timestamp: Date.now(),
+  });
+  parent.session.sessionManager.appendMessage({
+    role: "assistant",
+    content: [{ type: "text", text: "a" }],
+    timestamp: Date.now(),
+  });
+
+  try {
+    const branch = await service.forkSession(created.sessionId, "fork");
+    const nested = await service.forkSession(branch.sessionId, "fork");
+
+    // The exact data the frontend's canTakeMainline (lib/sessionList.ts)
+    // needs, read the same way /api/sessions reads it — with every session
+    // still LIVE (a brand-new family is exactly this state).
+    const summaries = listSessionSummaries(fixture.dataDir).sessions;
+    const byId = new Map(summaries.map((s) => [s.sessionId, s]));
+    const root = byId.get(created.sessionId);
+    assert.ok(root, "root summary missing from /api/sessions data");
+    assert.equal(root.forkedFrom, null);
+    assert.equal(root.deletedAt, null);
+    assert.notEqual(root.delisted, true);
+    for (const child of [branch, nested]) {
+      const summary = byId.get(child.sessionId);
+      assert.ok(summary, `fork summary missing: ${child.sessionId}`);
+      assert.equal(summary.forkedFrom?.purpose, "fork");
+      assert.ok(
+        byId.has(summary.forkedFrom!.sessionId),
+        "fork parent id must resolve within the same list payload",
+      );
+    }
+    // Walk exactly like canTakeMainline: from each branch up to a visible,
+    // delistable root.
+    for (const child of [branch, nested]) {
+      let cur = byId.get(byId.get(child.sessionId)!.forkedFrom!.sessionId);
+      let promotable = false;
+      while (cur) {
+        if (!cur.deletedAt && !cur.forkedFrom && cur.delisted !== true) {
+          promotable = true;
+          break;
+        }
+        cur = cur.forkedFrom ? byId.get(cur.forkedFrom.sessionId) : undefined;
+      }
+      assert.equal(promotable, true, `no promote path for ${child.sessionId}`);
+    }
   } finally {
     await service.disposeAll();
   }

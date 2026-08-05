@@ -316,18 +316,13 @@ export function buildWorkspaceTree(
     byDir.get(dir)?.push(root);
   }
 
-  // Groups with recent activity first (their roots are already
-  // recency-sorted); empty just-added folders next; "No folder" last.
-  const newestTime = (roots: SessionSummary[]): number =>
-    roots.length
-      ? new Date(roots[0].updatedAt || roots[0].createdAt || 0).getTime()
-      : 0;
+  // Folders sort by NAME, stable across clicks (owner 2026-08-05: recency
+  // sort made the active folder jump to the top on every interaction);
+  // "No folder" last. Roots inside a group stay recency-sorted.
   const groups = [...byDir.entries()]
-    .sort(([aDir, aRoots], [bDir, bRoots]) => {
+    .sort(([aDir], [bDir]) => {
       if (!aDir) return 1;
       if (!bDir) return -1;
-      const byRecency = newestTime(bRoots) - newestTime(aRoots);
-      if (byRecency !== 0) return byRecency;
       return folderLabel(aDir).localeCompare(folderLabel(bDir));
     })
     .map(([dir, groupRoots]) => ({
