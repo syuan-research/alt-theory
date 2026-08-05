@@ -19,8 +19,8 @@ agent-session output.
 
 Start with `architecture/core-session-engine.md` for runtime behavior,
 `architecture/researcher-console.md` for the application UI, and
-`releases/desktop-friend-bundle.md` for current Windows and macOS friend
-packaging.
+`releases/release-standard.md` for releases: CHANGELOG format, tag-page
+flow, bundle naming, and Windows/macOS packaging.
 
 New user/pro-user documentation should wait for the dedicated docs information
 architecture work rather than being placed here by default.

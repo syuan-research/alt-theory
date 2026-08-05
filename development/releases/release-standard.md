@@ -1,10 +1,60 @@
-# Desktop Friend Bundle
+# Release Standard
 
-Status: canonical Windows and macOS friend-bundle procedure.
+Status: canonical release procedure — CHANGELOG and tag-page format, bundle
+naming, and the Windows/macOS build.
 
-This is the single starting point for building an Alt Theory desktop artifact.
-It describes the current folder-app distribution, not historical portable,
-installer, or ASAR experiments.
+This is the single starting point for cutting an Alt Theory release. It
+covers the release notes (CHANGELOG + GitHub Release page), the bundle
+filenames, and the build. Historical portable, installer, or ASAR
+experiments are out of scope.
+
+## Release notes (CHANGELOG and GitHub Release page)
+
+The release notes live in two places that must agree: `CHANGELOG.md` in the
+repo root, and the body of the GitHub Release (tag) page. `CHANGELOG.md` is
+the source; the tag-page body is the same text pasted at release time.
+
+### Format
+
+- One `## vX.Y.Z-beta.N — YYYY-MM-DD` section per release, newest first.
+- One or two plain sentences under the heading stating what the release is
+  for. No marketing register, no atmospheric openers.
+- Group changes under `### Topic` headings that name the area in plain
+  nouns (Performance, Trash, Conversation families, Settings, Steer, Removed
+  code). One area per heading; do not split a topic across two headings.
+- One bullet per change. Each bullet states the user-visible change first,
+  then the mechanism or the prior behavior if it helps. No restatement
+  sentence after a complete bullet list.
+- Single language per file. `CHANGELOG.md` is English. Translated copies
+  (when they exist) are separate files matched to the README languages, not
+  inline bilingual blocks.
+- Engineering detail, commit hashes, and internal names stay out. Link to
+  the relevant architecture doc or commit history instead.
+
+### Tag-page (GitHub Release) body
+
+The tag-page body is the `CHANGELOG.md` section for that version, pasted
+verbatim. The page additionally carries the Windows and macOS download
+steps and the SHA-256 checksums; those live only on the tag page, not in
+`CHANGELOG.md`. Download steps name the bundle files (see Archive and
+naming); `CHANGELOG.md` never names bundle files.
+
+## Tag and version flow
+
+1. Decide the version (`X.Y.Z-beta.N`) and the release date.
+2. Write the `CHANGELOG.md` section for it in the format above.
+3. Build and verify the bundles (Build, Archive and naming, Required
+   verification).
+4. Tag `vX.Y.Z-beta.N` at the commit that matches the built source.
+5. Create the GitHub Release on that tag, mark it a prerelease while in
+   Beta, paste the `CHANGELOG.md` section as the body, and attach the
+   bundles and their `BUILD-INFO*.txt`.
+6. The GitHub Release is the public release notes. `CHANGELOG.md` mirrors
+   it so repo readers see the same text.
+
+The root `package.json` version, the in-app About version, the executable
+ProductVersion, and the tag must all carry the same `X.Y.Z-beta.N`. A Beta
+build also maps to a numeric `shortVersionWindows` (for example, 1.4.0.1).
 
 ## Release boundary
 
@@ -78,41 +128,46 @@ the bundle successful merely because that script continued.
 
 ## Archive and naming
 
-Keep friend-facing names short because Windows Explorer normally derives an
-extra extraction directory from the ZIP filename.
+Bundle filenames are uniform across platforms and releases:
 
-Use:
+```
+AltTheory-{version}-{platform}.zip
+```
 
-- Alpha 6: `AltTheory-a6-win.zip`, `AltTheory-a6-mac.zip`
-- Beta 1: `AltTheory-b1-win.zip`, `AltTheory-b1-mac.zip`
-- stable without a numbered channel: `AltTheory-win.zip`,
-  `AltTheory-mac.zip`
+- `{version}` is the release's `X.Y.Z-beta.N` exactly as in `package.json`
+  and the tag — for example `1.4.0-beta.1`.
+- `{platform}` is `win` or `mac`.
+- So: `AltTheory-1.4.0-beta.1-win.zip`, `AltTheory-1.4.0-beta.1-mac.zip`.
 
-Keep the ZIP filename near or below 24 characters. Do not put full SemVer,
-commit, architecture, date, or adjectives such as `portable` in it. Record
-those details and the SHA-256 in an adjacent `BUILD-INFO.txt`.
+Both platforms use the same form. Do not vary the name by channel label
+(`b1`, `a6`), architecture (`arm64`, `x64`), date, or adjective. Those
+details are metadata, not part of the filename, and go in the adjacent
+`BUILD-INFO.txt` with the SHA-256. Earlier releases mixed short channel
+labels (`AltTheory-b1-win.zip`) and long architecture-stamped names
+(`AltTheory-1.4.0-beta.1-mac-arm64.zip`); that inconsistency is retired.
+The form above is the standard for every release from 1.4.1 on.
 
-The Windows ZIP must contain one top-level `AltTheory/` folder. A reproducible
-PowerShell archive step is:
+The Windows ZIP must contain one top-level `AltTheory/` folder. A
+reproducible PowerShell archive step:
 
 ```powershell
-$stage = Join-Path (Resolve-Path "dist") "_friend-stage"
+$ver = "1.4.0-beta.1"
+$stage = Join-Path (Resolve-Path "dist") "_release-stage"
 if (Test-Path -LiteralPath $stage) { throw "Remove the existing $stage first" }
 $stageApp = Join-Path $stage "AltTheory"
 New-Item -ItemType Directory -Path $stageApp | Out-Null
 Copy-Item "dist\win-unpacked\*" $stageApp -Recurse
 Compress-Archive -LiteralPath $stageApp `
-  -DestinationPath "dist\AltTheory-b1-win.zip" -CompressionLevel Optimal
+  -DestinationPath "dist\AltTheory-$ver-win.zip" -CompressionLevel Optimal
 Remove-Item -LiteralPath $stage -Recurse
 ```
 
-Change only the short channel label for later releases.
-
-On macOS, preserve the `.app` bundle metadata:
+Set `$ver` per release. On macOS, preserve the `.app` bundle metadata:
 
 ```bash
+ver="1.4.0-beta.1"
 ditto -c -k --sequesterRsrc --keepParent \
-  dist/mac-arm64/AltTheory.app dist/AltTheory-b1-mac.zip
+  dist/mac-arm64/AltTheory.app "dist/AltTheory-$ver-mac.zip"
 ```
 
 ## Required verification
@@ -146,10 +201,13 @@ launch fails, diagnose startup; do not change archive format to hide it.
 
 ## Current decisions and later maintenance
 
-- Folder ZIP is the friend-test format.
+- Folder ZIP is the distribution format.
 - Portable self-extracting EXE is removed: it runs from a temporary directory.
 - ASAR is rejected for the current runtime-file boundary.
 - An installer is not the current path.
+- Bundle filenames are uniform (`AltTheory-{version}-{platform}.zip`); the
+  mixed short-label and architecture-stamped names used by 1.3.0–1.4.0 are
+  retired.
 - Alpha 6 removes Mistral first. Whole-tree npm deduplication is a Beta
   dependency-hygiene direction, performed only with the intended Pi version
   pinned and followed by runtime checks.
