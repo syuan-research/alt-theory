@@ -8,7 +8,9 @@ where the agent reads your project files and creates new ones.
 Choose a working folder when creating a Work conversation, or attach one
 later. Picking uses your system's normal folder dialog. The conversation
 list groups conversations by working folder, so over time the list mirrors
-your projects.
+your projects. Moving a conversation to another folder moves its whole
+family
+([see Conversations and History](conversations-and-history.md)).
 
 You can add further folders to the same conversation, for work that spans
 a project and a source collection. When you attach a folder, the agent

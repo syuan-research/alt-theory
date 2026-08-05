@@ -2,8 +2,8 @@
 
 [![Release](https://img.shields.io/github/v/release/syuan-research/alt-theory?include_prereleases&label=Release)](https://github.com/syuan-research/alt-theory/releases)
 [![License](https://img.shields.io/badge/License-MIT%20%2B%20CC%20BY%204.0-59636e)](LICENSE.md)
-[![Windows x64](https://img.shields.io/badge/Windows-x64-59636e?logo=windows11&logoColor=white)](https://github.com/syuan-research/alt-theory/releases/download/v1.3.0-beta.1/AltTheory-b1-win.zip)
-[![macOS Apple Silicon](https://img.shields.io/badge/macOS-Apple%20Silicon-59636e?logo=apple&logoColor=white)](https://github.com/syuan-research/alt-theory/releases/download/v1.3.0-beta.1/AltTheory-b1-mac.zip)
+[![Windows x64](https://img.shields.io/badge/Windows-x64-59636e?logo=windows11&logoColor=white)](https://github.com/syuan-research/alt-theory/releases)
+[![macOS Apple Silicon](https://img.shields.io/badge/macOS-Apple%20Silicon-59636e?logo=apple&logoColor=white)](https://github.com/syuan-research/alt-theory/releases)
 
 [English](README.md) · [简体中文](README.zh-Hans.md) · [繁體中文（香港）](README.zh-Hant-HK.md)
 
@@ -57,7 +57,11 @@ A selected knowledge base can preserve the scope, provenance, and internal tradi
 | `imported-session-context` | An imported conversation needs contextual recovery | Automatic |
 | `alt-theory-help` | Setup or product use needs assistance | Through Helper |
 
-Explicit Skill invocation is currently available through commands. A direct toolbar for common situational Skills is planned for the v1.3.1 Beta cycle.
+Explicit Skill invocation is available through commands and the [Steer bar](docs/en/system-guide/steer-bar.md), which holds common situational Skills beside the composer.
+
+## Get Alt Theory
+
+Alt Theory is a free desktop app for Windows x64 and macOS Apple Silicon. Download the current Beta from the [GitHub Release page](https://github.com/syuan-research/alt-theory/releases/latest). Detailed download and launch steps are below in [Download and launch](#download-and-launch).
 
 ## Explore more than one line of inquiry
 
@@ -96,31 +100,31 @@ Professional agent users can bring an existing workspace and continue conversati
 - Choose among supported models and providers rather than tying the product to one model vendor.
 - Use the interface in English, 简体中文, or 繁體中文（香港）.
 
-A stronger continuation hook for models that tend to stop or wait passively is planned for the v1.3.1 Beta cycle. A knowledge-base-making Skill remains a future direction.
+For models that tend to stop or wait passively, Alt Theory's behavior keeps them moving by the smallest grounded step rather than stopping at acknowledgement. A knowledge-base-making Skill remains a future direction.
 
 ![Import and continue an existing agent conversation](docs/assets/readme/alt-theory-import.png)
 
 See [Known limitations](docs/en/help/compatibility-formats-limitations.md) for current format and integration boundaries.
 
-## Get Alt Theory
+## Download and launch
 
 | Platform | Status |
 |---|---|
-| Windows x64 | **[Download Beta 1](https://github.com/syuan-research/alt-theory/releases)** |
-| macOS Apple Silicon | **[Download Beta 1](https://github.com/syuan-research/alt-theory/releases)** |
+| Windows x64 | **[Download Beta](https://github.com/syuan-research/alt-theory/releases)** |
+| macOS Apple Silicon | **[Download Beta](https://github.com/syuan-research/alt-theory/releases)** |
 | Linux, Intel Macs, and other architectures | Not currently claimed |
 
 ### Windows: download and launch
 
-1. Download `AltTheory-b1-win.zip` from the GitHub Release.
-2. Extract the complete `AltTheory` folder. This is a folder app, not an installer.
+1. Download the Windows Beta from the [GitHub Release page](https://github.com/syuan-research/alt-theory/releases).
+2. Extract the complete `AltTheory` folder. This is a folder app, not an installer. If extraction fails, extract into a folder with a shorter path (Windows enforces a maximum path length).
 3. Open the folder and run `AltTheory.exe`.
 
-The Beta is not code-signed. Windows SmartScreen may show an unidentified-app warning; choose **More info → Run anyway** only when the ZIP came from this repository's GitHub Release. The release includes a SHA-256 checksum for verification.
+The Beta is not code-signed. Windows SmartScreen may show an unidentified-app warning; choose **More info → Run anyway** only when the download came from this repository's GitHub Release. The release includes a SHA-256 checksum for verification.
 
 ### macOS: download and launch
 
-1. Download `AltTheory-b1-mac.zip` from the GitHub Release.
+1. Download the macOS Beta from the [GitHub Release page](https://github.com/syuan-research/alt-theory/releases).
 2. Double-click the ZIP to unpack `AltTheory.app`, then move it to Applications.
 3. The first open needs a right-click (or Control-click) on the app and **Open**, then **Open** again in the dialog. Later launches are ordinary double-clicks.
 
@@ -144,7 +148,7 @@ Conversations and configuration are stored locally outside the app folder. The c
 
 File and command actions remain visible and use approval boundaries. Start with a non-sensitive working folder until those boundaries are familiar.
 
-To update the folder app: close Alt Theory, extract the new release into a new folder, and run the new `AltTheory.exe`. Replacing the app folder does not delete the separate conversation/configuration data directory.
+To update the folder app: close Alt Theory, extract the new release into a new folder, and run the new `AltTheory.exe`. If extraction fails, extract into a folder with a shorter path (Windows enforces a maximum path length). Replacing the app folder does not delete the separate conversation/configuration data directory.
 
 - [Working folders, files, and paths](docs/en/system-guide/working-folders-files-paths.md)
 - [Permissions and agent activity](docs/en/system-guide/permissions-approvals-agent-activity.md)

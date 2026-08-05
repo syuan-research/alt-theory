@@ -27,7 +27,7 @@ The identity layer and the default role bind the agent to these principles in ev
 
 ## Triggered behavior
 
-Alt Theory skills can trigger automatically. Convenient on-demand manual triggering is also available `(planned)`. Different roles emphasize different skills; the set keeps expanding.
+Alt Theory skills can trigger automatically. Convenient on-demand manual triggering is also available through the [Steer bar](../system-guide/steer-bar.md) and the command palette. Different roles emphasize different skills; the set keeps expanding.
 
 Planning, alignment, and problem-understanding skills (the English id is the invocable name, e.g. `/adaptive-aligning`):
 
@@ -61,7 +61,7 @@ For example, the agent can use programs and tools already on the machine: discus
 
 Students and researchers in the social sciences, from a master's student framing a first question to a senior researcher judging whether a tool belongs in a research plan. Theory and design discussion, and concrete task completion, are both supported across modes. See [Understand and Work](understand-and-work.md).
 
-It also applies to broader research-like knowledge work, with settings that can move closer to general knowledge-work and coding-tool modes `(planned)`.
+It also applies to broader research-like knowledge work, and a [Native Pi runtime mode](../advanced/native-pi.md) lets you drop Alt Theory's behavior layer to work as an ordinary coding agent.
 
 No agent-tool experience is required. Users who already use such tools can import existing conversations with the built-in import path. Supported harnesses:
 

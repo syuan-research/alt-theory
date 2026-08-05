@@ -37,7 +37,9 @@ The executable source of truth is `build.files` in `package.json`. The current
 bundle contains:
 
 - `electron/`: desktop entry, preload bridge, and bundled-server loader;
-- `alt-theory-app/web-server/public/` and `public-v6/`: static frontends;
+- `alt-theory-app/web-server/public-v6/`: the static frontend (built from
+  `alt-theory-app/frontend` via `npm run build:frontend-v6`; the legacy
+  `public/` directory was removed when the pre-v6 vanilla UI was deleted);
 - `dist-bundle/`: backend JavaScript produced by `npm run compile:bundle`;
 - `agent-assets/`: runtime roles, souls, skills, KBs, and Alt Theory guidance;
 - `docs/en/` and `docs/zh-Hans/`: packaged Help sources;
@@ -100,7 +102,7 @@ $stageApp = Join-Path $stage "AltTheory"
 New-Item -ItemType Directory -Path $stageApp | Out-Null
 Copy-Item "dist\win-unpacked\*" $stageApp -Recurse
 Compress-Archive -LiteralPath $stageApp `
-  -DestinationPath "dist\AltTheory-a6-win.zip" -CompressionLevel Optimal
+  -DestinationPath "dist\AltTheory-b1-win.zip" -CompressionLevel Optimal
 Remove-Item -LiteralPath $stage -Recurse
 ```
 
@@ -110,7 +112,7 @@ On macOS, preserve the `.app` bundle metadata:
 
 ```bash
 ditto -c -k --sequesterRsrc --keepParent \
-  dist/mac-arm64/AltTheory.app dist/AltTheory-a6-mac.zip
+  dist/mac-arm64/AltTheory.app dist/AltTheory-b1-mac.zip
 ```
 
 ## Required verification
