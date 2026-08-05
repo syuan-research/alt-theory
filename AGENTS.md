@@ -77,3 +77,26 @@ package-content, extraction, launch, and short-filename checks.
   execution trackers, or agent-session output to this repository.
 - An alpha checkpoint tag records a version that users actually encountered;
   it does not assert that acceptance work is complete.
+
+## Branch archive
+
+A branch that has been merged into `main` (or otherwise finished its work)
+is no longer active. Do not leave finished branches under active names where
+agents mistake them for in-progress work.
+
+- When a branch is finished, archive it: rename it to the `archive/` prefix
+  (for example `work/foo` becomes `archive/foo`) and record its status in
+  the list below. The history stays; the prefix marks the state.
+- If a branch must keep its active name, add a one-line status note in the
+  list below instead (active / merged / superseded) so an agent reading this
+  file knows its state without guessing.
+- An agent that finds a branch not listed here and cannot determine its
+  status should say so and ask, not assume.
+
+### Current branch status
+
+- `main` — active product line.
+- `docs/v1.4-english-update` — merged into main (v1.4 English docs + Chinese
+  README download links).
+- `archive/v1.2-adapter-importer` — merged into main; the Claude Code /
+  adapter import work shipped in v1.3. Kept for history.
