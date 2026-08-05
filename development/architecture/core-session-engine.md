@@ -55,8 +55,6 @@ and Pi adapter prompt templates from `agent-assets/prompts/pi/`.
   soul, role preset, provider/model, Alt mode, and resource discovery mode.
 - **Config event**: append-only record in `records/config-events.jsonl` for
   creation, user config changes, and resume fallback.
-- **Research project**: optional local JSON record under `{dataDir}/projects`
-  for grouping and defaults. Project setup is not mandatory.
 - **Deletion marker**: optional `records/deleted.json` tombstone that hides a
   session from the normal catalog without removing recoverable data.
 - **Session alias**: optional UI display name persisted as
@@ -70,8 +68,8 @@ and Pi adapter prompt templates from `agent-assets/prompts/pi/`.
 - **Session owner**: optional `ownerAccountId` persisted in
   `records/session.json`. Participant-created sessions are owner-filtered by
   REST APIs.
-- **Role condition**: participant/study condition stored separately from
-  `projectId` and mapped to a role preset slug at WebSocket draft creation.
+- **Role condition**: participant/study condition mapped to a role preset
+  slug at WebSocket draft creation.
 - **Private session** (hosted only): session with `visibility: private` in
   `records/session.json`. It is owner-readable but blocked from normal
   researcher/admin detail and file routes, and it expires (see below). The
@@ -100,7 +98,6 @@ flowchart LR
   AuthCookie --> WS
   AuthCookie --> REST
   REST[Static REST] --> Registry[asset-registry.ts]
-  REST --> Projects[projects.ts]
   REST --> Store[session-store.ts]
   REST --> SessionFiles[session records/workspace text files]
   Store --> Retention[session-retention.ts]
@@ -130,7 +127,6 @@ Code anchors:
   event persistence.
 - `alt-theory-app/web-server/config-events.ts`: effective config snapshots and
   append-only config event persistence.
-- `alt-theory-app/web-server/projects.ts`: optional local project records.
 - `alt-theory-app/web-server/session-service.ts`: application-owned session
   runtime lifecycle, WebSocket subscriptions, prompt/abort operations, and
   single-process mutation guard.
@@ -600,7 +596,6 @@ Role presets differ from soul: there is no slug alias chain (no
 | --- | --- | --- |
 | Draft default | Researcher/admin/anonymous WebSocket connect | `null` (`None`), unless a `role-presets/default.md` file exists (legacy code check only; **not** the intended product default) |
 | Participant draft | Participant connect with `defaultRoleCondition` | Mapped slug (see below) |
-| Project draft override | `switch_project` before first send | `project.defaults.rolePresetSlug` when set |
 | Materialized session | First prompt / `createSession` | Snapshot into `records/assembly-manifest.json` |
 | Resume / `open_session` | Existing Pi JSONL open | Manifest slug if file still exists; else fallback to current connection selectors; manifest `null` stays `null` |
 
@@ -712,10 +707,7 @@ REST:
 - `GET /api/auth/me`
 - `GET /api/role-presets`
 - `GET /api/souls`
-- `GET /api/profiles` legacy compatibility alias
 - `GET /api/kb-domains`
-- `GET /api/projects`
-- `PUT /api/projects/{projectId}`
 - `GET /api/sessions`
 - `GET /api/sessions/{sessionId}`
 - `GET /api/sessions/{sessionId}/files`
@@ -737,10 +729,6 @@ Asset discovery routes return sorted `{ slug, displayName }` arrays without
 filesystem paths. Session list returns path-free summaries; session detail may
 include local paths because the current researcher console is a local runtime
 inspection tool.
-
-Project routes read/write local JSON files under `{dataDir}/projects`. They
-are optional grouping/default records, not mandatory launch setup and not a
-project-management UI.
 
 Session deletion uses `DELETE /api/sessions/{sessionId}` and writes
 `records/deleted.json`. Deleted sessions are excluded from the normal catalog
@@ -804,8 +792,8 @@ the frontend opens a second socket for the right-panel child. Promotion is an
 explicit catalog mutation, not an alias for opening the child.
 The branch workspace is copied at creation time, so later file/tool side
 effects do not share a mutable workspace. Collaboration-oriented shared space
-should be modeled through projects or another explicit shared-space layer, not
-through `/branch`. There is no standalone message-level Branch button; Edit and
+should be modeled through an explicit shared-space layer (the post-1.4
+"project re-semantics" direction), not through `/branch`. There is no standalone message-level Branch button; Edit and
 compare owns the common prompt-comparison journey.
 
 `session_draft` contains only selector state and no session ID. The browser may

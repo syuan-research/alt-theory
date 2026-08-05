@@ -38,8 +38,9 @@ Runtime-facing agent material remains under `agent-assets/`.
   the application data-directory layer.
 - The React frontend lives under `alt-theory-app/frontend/`; its production
   output is served from `alt-theory-app/web-server/public-v6/`.
-- The older `alt-theory-app/web-server/public/` surface remains until its hosted
-  and local consumers are deliberately retired.
+- The older `alt-theory-app/web-server/public/` surface was deleted in v1.4
+  round 2 (no shipped build could load it); `public-v6/` build output is now
+  gitignored and rebuilt via `npm run build:frontend-v6`.
 
 ## Public Repository Rule
 

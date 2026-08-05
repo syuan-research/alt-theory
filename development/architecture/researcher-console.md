@@ -29,8 +29,8 @@ The private card-sort, prototype, completion definition, and iteration records
 informed the implementation but are not part of the public repository.
 
 The pre-M7 vanilla console (`web-server/public/`) described by earlier
-revisions of this document is legacy; its behavior notes were accurate as of
-2026-06-23 and are preserved in git history.
+revisions of this document was deleted in v1.4 round 2; its behavior notes
+were accurate as of 2026-06-23 and are preserved in git history.
 
 ## 1. View Modes: Exactly Two
 
