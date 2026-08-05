@@ -33,11 +33,50 @@ the source; the tag-page body is the same text pasted at release time.
 
 ### Tag-page (GitHub Release) body
 
-The tag-page body is the `CHANGELOG.md` section for that version, pasted
-verbatim. The page additionally carries the Windows and macOS download
-steps and the SHA-256 checksums; those live only on the tag page, not in
-`CHANGELOG.md`. Download steps name the bundle files (see Archive and
-naming); `CHANGELOG.md` never names bundle files.
+The tag-page body has two parts: the release notes (the `CHANGELOG.md`
+section for that version, pasted verbatim) and the download-and-launch
+instructions. The download instructions live only on the tag page, not in
+`CHANGELOG.md`.
+
+Download-and-launch instructions use one standard block per platform. They
+name this release's bundle file and point at this release's assets (the tag
+page is the download source, so naming the file here is correct; the rule
+against naming files applies to `README.md` and the user docs, which point
+at the generic release page instead).
+
+Windows: download and launch
+
+1. Download `AltTheory-{X.Y.Z}-win.zip`.
+2. Extract the complete `AltTheory` folder. This is a folder app, not an
+   installer. If extraction fails, extract into a folder with a shorter
+   path (Windows enforces a maximum path length).
+3. Run `AltTheory.exe`.
+
+The Beta is not code-signed. Windows SmartScreen may show an
+unidentified-app warning; choose **More info → Run anyway** only for the
+ZIP downloaded from this release. The release's `BUILD-INFO-win.txt`
+carries the SHA-256.
+
+macOS: download and launch
+
+1. Download `AltTheory-{X.Y.Z}-mac.zip`.
+2. Double-click the ZIP to unpack `AltTheory.app`, then move it to
+   Applications.
+3. The first open needs a right-click (or Control-click) on the app and
+   **Open**, then **Open** again in the dialog. Later launches are ordinary
+   double-clicks.
+
+That first-open step exists because the Beta is not notarized by Apple, so
+a plain double-click is refused with "Apple could not verify…". Use it only
+for the ZIP downloaded from this release. Apple Silicon only. Node.js and
+npm are not required for either app. The release's `BUILD-INFO-mac.txt`
+carries the SHA-256.
+
+The same download-and-launch content (minus the specific filename, which
+the user docs replace with a pointer to the release page) is the install
+template used in `README.md` and
+`docs/en/start-here/install-and-launch.md`. Keep the three in step; when
+the install block changes, update all three.
 
 ## Tag and version flow
 
