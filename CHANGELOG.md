@@ -6,7 +6,7 @@ detail lives in commit history and `development/`.
 
 ---
 
-## v1.4.1-beta — draft (pending owner approval)
+## v1.4.1-beta — 2026-08-05
 
 Bug fixes from 1.4.0 field testing. A conversation family now behaves like a
 family: one working folder, and a survivor takes over when the mainline goes.

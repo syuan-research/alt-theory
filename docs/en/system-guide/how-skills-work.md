@@ -23,7 +23,7 @@ Three sources, all visible in settings:
 
 ## How a skill activates
 
-Two paths:
+Three paths:
 
 - By match. Every skill declares what it is for. When your request
   matches, the agent loads the skill and follows it. Descriptions are
@@ -31,6 +31,8 @@ Two paths:
 - Explicitly. Invoke any skill by name from the
   [command palette](commands.md) or through its
   [Toolbox](toolbox.md) entry.
+- Through the [Steer bar](steer-bar.md), which holds a short set of
+  bundled skills for situational ways of working beside the composer.
 
 Loading a skill is visible: the response shows a line naming the skill in
 use.

@@ -25,7 +25,7 @@ In rough order of how far you are reaching:
    tool.
 4. The application itself: backend, frontend, packaging. Yours to change
    under MIT, with consequences: you own the merge with upstream
-   movement, which in alpha is fast.
+   movement, which in Beta is still frequent.
 
 ## The extension posture
 
@@ -57,6 +57,6 @@ Two decisions shape the boundaries above:
 The asset layer is designed to travel; skills especially work across
 harnesses. A skill, role, or knowledge base with value beyond your own
 setup is shared by copying a folder. For changes to the product itself,
-the repository's contribution guidance is the entry point. An
-alpha-stage product benefits most from issues that describe real
+the repository's contribution guidance is the entry point. A
+Beta-stage product benefits most from issues that describe real
 research use.

@@ -4,7 +4,7 @@ Alt Theory runs on the local machine. There are two ways to get it.
 
 ## The packaged app
 
-The Beta is available from the [GitHub Release](https://github.com/syuan-research/alt-theory/releases/tag/v1.3.0-beta.1). On Windows, download `AltTheory-b1-win.zip`, extract the complete `AltTheory` folder, and run `AltTheory.exe`. On macOS, download `AltTheory-b1-mac.zip`, unpack `AltTheory.app`, and move it to Applications. Node.js and npm are not required for the packaged app.
+The Beta is available from the [GitHub Release page](https://github.com/syuan-research/alt-theory/releases). On Windows, download the Windows Beta, extract the complete `AltTheory` folder, and run `AltTheory.exe`. If extraction fails, extract into a folder with a shorter path (Windows enforces a maximum path length). On macOS, download the macOS Beta, unpack `AltTheory.app`, and move it to Applications. Node.js and npm are not required for the packaged app.
 
 Supported platforms:
 

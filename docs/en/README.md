@@ -60,6 +60,7 @@ Organized by the kind of work.
 - [Add and Manage Skills](system-guide/add-and-manage-skills.md)
 - [Commands](system-guide/commands.md)
 - [Toolbox](system-guide/toolbox.md)
+- [The Steer Bar](system-guide/steer-bar.md)
 - [Permissions, Approvals, and Agent Activity](system-guide/permissions-approvals-agent-activity.md)
 - [Agent Team and Subagent Sessions](system-guide/agent-team-and-subagents.md)
 - [Imports, Handoffs, and Cross-Harness Continuity](system-guide/imports-and-continuity.md)
@@ -74,6 +75,7 @@ Organized by the kind of work.
 - [Customization without Changing Alt Theory](advanced/customization-without-changing.md)
 - [Modifying Alt Theory and Its Extension Boundaries](advanced/modifying-alt-theory.md)
 - [Compatibility, Updates, and Integration Debugging](advanced/compatibility-updates-debugging.md)
+- [Native Pi Runtime Mode](advanced/native-pi.md)
 
 ## Help and Reference
 
@@ -117,4 +119,4 @@ the project through the repository.
 
 ## Documentation version baseline
 
-These docs ship with Alt Theory v1.3.0-beta.1. The running app and repository code remain authoritative when a page has not yet caught up; features marked `(planned)` are directions rather than current Beta claims.
+These docs ship with Alt Theory v1.4.0-beta.1. The running app and repository code remain authoritative when a page has not yet caught up; features marked `(planned)` are directions rather than current Beta claims.

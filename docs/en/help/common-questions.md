@@ -87,8 +87,7 @@ closer fit.
 
 Conversations: yes, the agent answers in the language you use. The
 interface ships in English, simplified Chinese (zh-Hans), and
-traditional Chinese Hong Kong (zh-Hant-HK) as of alpha.6. Docs are
-English first.
+traditional Chinese Hong Kong (zh-Hant-HK). Docs are English first.
 
 ## Configuration problem, provider limitation, or bug?
 
