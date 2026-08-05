@@ -116,10 +116,11 @@ Beta（测试版）尚未进行 code signing（代码签名）。Windows SmartSc
 ### macOS：下载与启动
 
 1. 从 [GitHub Release 页面](https://github.com/syuan-research/alt-theory/releases)下载 macOS Beta。
-2. 双击 ZIP 解压出 `AltTheory.app`，移到「应用程序」。
-3. 首次打开需要右键（或按住 Control 点按）应用并选择 **Open（打开）**，再在对话框中选一次 **Open（打开）**；之后就是普通双击。
+2. 双击 ZIP 解压出 `AltTheory` 文件夹——里面有 `AltTheory.app` 和一个小脚本 `Fix-Open.command`（修复打开）。
+3. 右键 `Fix-Open.command`，选择 **Open（打开）**，再在对话框中选一次 **Open（打开）**。终端窗口会提示修复完成。
+4. 把 `AltTheory.app` 移到「应用程序」，之后正常双击打开即可。
 
-首次这一步是因为 Beta 尚未经过 Apple notarization（公证），直接双击会被拒绝并提示「无法验证开发者」。只有在 ZIP 来自本仓库 GitHub Release 时才这样操作，并对照 `BUILD-INFO-mac.txt` 校验 SHA-256。仅支持 Apple Silicon。
+需要这一步是因为 Beta 尚未经过 Apple notarization（公证）：新版 macOS 会把未签名的下载应用直接判为「已损坏」，且不再为应用提供右键 **Open（打开）** 的绕过入口（仍显示「无法验证开发者」的旧系统可改为右键应用后选 **Open**）。脚本只做一件事：移除旁边 `AltTheory.app` 上的下载隔离标记。只有在 ZIP 来自本仓库 GitHub Release 时才这样操作，并对照 `BUILD-INFO-mac.txt` 校验 SHA-256。仅支持 Apple Silicon。
 
 ## 首次启动
 

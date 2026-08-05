@@ -116,10 +116,11 @@ Beta（測試版）尚未進行 code signing（程式碼簽署）。Windows Smar
 ### macOS：下載與啟動
 
 1. 從 [GitHub Release 頁面](https://github.com/syuan-research/alt-theory/releases)下載 macOS Beta。
-2. 雙擊 ZIP 解壓出 `AltTheory.app`，移到「應用程式」。
-3. 首次開啟需要右鍵（或按住 Control 點按）應用程式並選擇 **Open（開啟）**，再在對話框中選一次 **Open（開啟）**；之後就是普通雙擊。
+2. 雙擊 ZIP 解壓出 `AltTheory` 資料夾——裡面有 `AltTheory.app` 和一個小腳本 `Fix-Open.command`（修復開啟）。
+3. 右鍵 `Fix-Open.command`，選擇 **Open（開啟）**，再在對話框中選一次 **Open（開啟）**。終端視窗會提示修復完成。
+4. 把 `AltTheory.app` 移到「應用程式」，之後正常雙擊開啟即可。
 
-首次這一步是因為 Beta 尚未經過 Apple notarization（公證），直接雙擊會被拒絕並提示「無法驗證開發者」。只有當 ZIP 來自本 repository 的 GitHub Release 時才這樣操作，並對照 `BUILD-INFO-mac.txt` 核對 SHA-256。僅支援 Apple Silicon。
+需要這一步是因為 Beta 尚未經過 Apple notarization（公證）：新版 macOS 會把未簽名的下載應用直接判為「已損毀」，且不再為應用提供右鍵 **Open（開啟）** 的繞過入口（仍顯示「無法驗證開發者」的舊系統可改為右鍵應用後選 **Open**）。腳本只做一件事：移除旁邊 `AltTheory.app` 上的下載隔離標記。只有當 ZIP 來自本 repository 的 GitHub Release 時才這樣操作，並對照 `BUILD-INFO-mac.txt` 核對 SHA-256。僅支援 Apple Silicon。
 
 ## 首次啟動
 

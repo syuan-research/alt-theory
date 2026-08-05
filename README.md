@@ -125,10 +125,11 @@ The Beta is not code-signed. Windows SmartScreen may show an unidentified-app wa
 ### macOS: download and launch
 
 1. Download the macOS Beta from the [GitHub Release page](https://github.com/syuan-research/alt-theory/releases).
-2. Double-click the ZIP to unpack `AltTheory.app`, then move it to Applications.
-3. The first open needs a right-click (or Control-click) on the app and **Open**, then **Open** again in the dialog. Later launches are ordinary double-clicks.
+2. Double-click the ZIP to unpack the `AltTheory` folder — it contains `AltTheory.app` and a small `Fix-Open.command` script.
+3. Right-click `Fix-Open.command`, choose **Open**, then **Open** in the dialog. A Terminal window confirms the fix.
+4. Move `AltTheory.app` to Applications and open it with a normal double-click.
 
-That first-open step exists because the Beta is not notarized by Apple, so a plain double-click is refused with "Apple could not verify…". Use the right-click route only for the ZIP downloaded from this repository's GitHub Release, and check its SHA-256 against `BUILD-INFO-mac.txt`. Apple Silicon only.
+The fix step exists because the Beta is not notarized by Apple: current macOS refuses an unsigned downloaded app as "damaged" and no longer offers an **Open** bypass for apps (older systems that still show "Apple could not verify…" can right-click the app and **Open** instead). The script only removes macOS's download-quarantine flag from the `AltTheory.app` next to it. Run it only for a ZIP downloaded from this repository's GitHub Release, and check the SHA-256 against `BUILD-INFO-mac.txt`. Apple Silicon only.
 
 Node.js and npm are **not** required when using the downloaded app.
 

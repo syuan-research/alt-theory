@@ -60,17 +60,23 @@ carries the SHA-256.
 macOS: download and launch
 
 1. Download `AltTheory-{X.Y.Z}-mac.zip`.
-2. Double-click the ZIP to unpack `AltTheory.app`, then move it to
-   Applications.
-3. The first open needs a right-click (or Control-click) on the app and
-   **Open**, then **Open** again in the dialog. Later launches are ordinary
-   double-clicks.
+2. Double-click the ZIP to unpack the `AltTheory` folder. It contains
+   `AltTheory.app` and a small `Fix-Open.command` script.
+3. Right-click `Fix-Open.command`, choose **Open**, then **Open** in the
+   dialog. A Terminal window reports the fix and waits for a key.
+4. Move `AltTheory.app` to Applications and open it with an ordinary
+   double-click.
 
-That first-open step exists because the Beta is not notarized by Apple, so
-a plain double-click is refused with "Apple could not verify…". Use it only
-for the ZIP downloaded from this release. Apple Silicon only. Node.js and
-npm are not required for either app. The release's `BUILD-INFO-mac.txt`
-carries the SHA-256.
+The fix step exists because the Beta is not notarized by Apple. Current
+macOS refuses an unsigned downloaded app as «"AltTheory" is damaged and
+can't be opened» — and no longer offers the old right-click **Open**
+bypass for app bundles (verified 2026-08-05 on macOS 26; older systems
+that still show "Apple could not verify…" can use either route). The
+script only removes macOS's download-quarantine flag from the
+`AltTheory.app` beside it (or one already moved to Applications). Run it
+only for the ZIP downloaded from this release. Apple Silicon only.
+Node.js and npm are not required for either app. The release's
+`BUILD-INFO-mac.txt` carries the SHA-256.
 
 The same download-and-launch content (minus the specific filename, which
 the user docs replace with a pointer to the release page) is the install
@@ -211,13 +217,23 @@ Compress-Archive -LiteralPath $stageApp `
 Remove-Item -LiteralPath $stage -Recurse
 ```
 
-Set `$ver` to the X.Y.Z form per release. On macOS, preserve the `.app`
-bundle metadata:
+Set `$ver` to the X.Y.Z form per release. The macOS ZIP mirrors the
+Windows layout — one top-level `AltTheory/` folder holding `AltTheory.app`
+plus `scripts/release/Fix-Open.command` (the Gatekeeper fix-open script the
+launch instructions rely on) — and must preserve the `.app` bundle
+metadata, so stage and archive with `ditto` (never `zip -r`: it follows
+the Electron.framework symlinks and produces a genuinely damaged app):
 
 ```bash
 ver="1.4.0"
-ditto -c -k --sequesterRsrc --keepParent \
-  dist/mac-arm64/AltTheory.app "dist/AltTheory-$ver-mac.zip"
+stage="dist/_release-stage/AltTheory"
+rm -rf dist/_release-stage
+mkdir -p "$stage"
+ditto dist/mac-arm64/AltTheory.app "$stage/AltTheory.app"
+cp "scripts/release/Fix-Open.command" "$stage/"
+chmod +x "$stage/Fix-Open.command"
+ditto -c -k --sequesterRsrc --keepParent "$stage" "dist/AltTheory-$ver-mac.zip"
+rm -rf dist/_release-stage
 ```
 
 ## Required verification
