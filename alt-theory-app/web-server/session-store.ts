@@ -539,6 +539,23 @@ export function promoteToMainlineRecords(
     if (!stepDown.forkedFrom) {
       writeDelistedFor(dataDir, stepDown.sessionId, sessionId);
     }
+  } else if (target.forkedFrom) {
+    // Rootless family (owner 2026-08-05): nobody can step down, so the
+    // listed flag doubles as the family-head anchor — clear it on competing
+    // anchored BRANCH siblings so the head choice stays unique. Listed
+    // btw/helper/subagent are never cleared: for them the flag is list
+    // membership itself.
+    for (const sibling of summaries) {
+      if (
+        sibling.sessionId !== sessionId &&
+        sibling.forkedFrom?.sessionId === target.forkedFrom.sessionId &&
+        sibling.forkedFrom.purpose === "fork" &&
+        sibling.forkedFrom.listed === true &&
+        !sibling.deletedAt
+      ) {
+        writeListFlags(dataDir, sibling.sessionId, false);
+      }
+    }
   }
   return { delistedSessionId: stepDown?.sessionId ?? null };
 }

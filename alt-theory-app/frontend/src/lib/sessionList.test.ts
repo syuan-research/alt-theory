@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { SessionSummary } from "../api/types.ts";
-import { buildWorkspaceTree, sessionTitle } from "./sessionList.ts";
+import { buildWorkspaceTree, canTakeMainline, sessionTitle } from "./sessionList.ts";
 
 function child(
   sessionId: string,
@@ -107,5 +107,26 @@ test("deleted mainline: oldest branch heads the family, others nest under it", (
   assert.deepEqual(
     (tree.childrenByParent.get("b1") ?? []).map((s) => s.sessionId).sort(),
     ["b2", "btw"],
+  );
+});
+
+test("rootless family: the crown re-heads the orphan group", () => {
+  const b1 = child("b1", "gone", "fork", "2026-07-01T00:00:00.000Z");
+  const b2 = child("b2", "gone", "fork", "2026-07-02T00:00:00.000Z");
+  // Default head = oldest branch, so only the other one gets the crown.
+  assert.equal(canTakeMainline(b1, [b1, b2]), false);
+  assert.equal(canTakeMainline(b2, [b1, b2]), true);
+  // Promoting b2 anchors it as head: crown swaps sides, list head follows.
+  b2.forkedFrom = { ...b2.forkedFrom!, listed: true };
+  assert.equal(canTakeMainline(b2, [b1, b2]), false);
+  assert.equal(canTakeMainline(b1, [b1, b2]), true);
+  const tree = buildWorkspaceTree([b1, b2], []);
+  assert.deepEqual(
+    tree.groups.flatMap((g) => g.roots.map((r) => r.sessionId)),
+    ["b2"],
+  );
+  assert.deepEqual(
+    (tree.childrenByParent.get("b2") ?? []).map((s) => s.sessionId),
+    ["b1"],
   );
 });

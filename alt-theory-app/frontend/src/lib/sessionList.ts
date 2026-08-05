@@ -134,11 +134,37 @@ export function isListMember(session: SessionSummary): boolean {
 }
 
 /**
+ * Head of a group of siblings whose parent is gone from the list data (the
+ * deleted-mainline family): the member the user promoted (fork.listed
+ * anchor), else the oldest branch, else the oldest member. Shared by the
+ * list tree and the crown predicate so they never disagree.
+ */
+export function orphanGroupHead(
+  parentId: string,
+  all: SessionSummary[],
+): SessionSummary | null {
+  const group = all
+    .filter((s) => s.forkedFrom?.sessionId === parentId && isListMember(s))
+    .sort((a, b) => (a.createdAt ?? "").localeCompare(b.createdAt ?? ""));
+  return (
+    group.find(
+      (s) => s.forkedFrom?.purpose === "fork" && s.forkedFrom.listed === true,
+    ) ??
+    group.find((s) => s.forkedFrom?.purpose === "fork") ??
+    group[0] ??
+    null
+  );
+}
+
+/**
  * True when "Make this the main conversation" would change anything: a
- * delisted origin can always take its spot back; a branch qualifies only
- * while some delistable visible ancestor (the old mainline) exists to step
- * down — after a successful promotion the crown disappears instead of
- * delisting ever-further ancestors on repeat clicks (opus D2).
+ * delisted origin can always take its spot back; a branch qualifies while
+ * some delistable visible ancestor (the old mainline) exists to step down —
+ * after a successful promotion the crown disappears instead of delisting
+ * ever-further ancestors on repeat clicks (opus D2). In a family whose
+ * mainline is GONE (deleted/purged parent), the crown re-heads the orphan
+ * group instead (owner 2026-08-05): any direct orphan that is not already
+ * the head can take the spot.
  */
 export function canTakeMainline(
   session: SessionSummary,
@@ -164,7 +190,9 @@ export function canTakeMainline(
     }
     cur = cur.forkedFrom ? byId.get(cur.forkedFrom.sessionId) : undefined;
   }
-  return false;
+  const parentId = session.forkedFrom.sessionId;
+  if (byId.has(parentId)) return false; // nested under a living member
+  return orphanGroupHead(parentId, all)?.sessionId !== session.sessionId;
 }
 
 /** Row label for a listed child: where it came from, not a made-up identity. */
@@ -264,13 +292,9 @@ function buildEdges(members: SessionSummary[]): {
     if (!orphanGroups.has(parentId)) orphanGroups.set(parentId, []);
     orphanGroups.get(parentId)?.push(root);
   }
-  for (const group of orphanGroups.values()) {
+  for (const [parentId, group] of orphanGroups) {
     if (group.length < 2) continue;
-    const byAge = [...group].sort((a, b) =>
-      (a.createdAt ?? "").localeCompare(b.createdAt ?? ""),
-    );
-    const head =
-      byAge.find((s) => s.forkedFrom?.purpose === "fork") ?? byAge[0];
+    const head = orphanGroupHead(parentId, members) ?? group[0];
     for (const member of group) {
       if (member === head) continue;
       roots.splice(roots.indexOf(member), 1);

@@ -493,3 +493,37 @@ test("deleting the last listed member promotes the OLDEST first-level branch", (
     ["b-old", "b-new"].sort(),
   );
 });
+
+test("promote in a rootless family moves the head anchor between branches", () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "alt-theory-rootless-head-"));
+  createSession(dataDir, "root");
+  createSession(
+    dataDir,
+    "b1",
+    { sessionId: "root", purpose: "fork" },
+    "2026-08-01T00:00:00.000Z",
+  );
+  createSession(
+    dataDir,
+    "b2",
+    { sessionId: "root", purpose: "fork" },
+    "2026-08-02T00:00:00.000Z",
+  );
+  softDeleteSession(dataDir, "root");
+
+  const flags = () => {
+    const byId = new Map(
+      listSessionSummaries(dataDir).sessions.map((s) => [s.sessionId, s]),
+    );
+    return {
+      b1: byId.get("b1")?.forkedFrom?.listed === true,
+      b2: byId.get("b2")?.forkedFrom?.listed === true,
+    };
+  };
+
+  promoteToMainlineRecords(dataDir, "b2");
+  assert.deepEqual(flags(), { b1: false, b2: true });
+  // Re-heading clears the competing anchor so the head stays unique.
+  promoteToMainlineRecords(dataDir, "b1");
+  assert.deepEqual(flags(), { b1: true, b2: false });
+});

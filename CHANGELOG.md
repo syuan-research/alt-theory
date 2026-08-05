@@ -31,6 +31,13 @@ family: one working folder, and a survivor takes over when the mainline goes.
   and the others stay nested under it.
   删除主对话后，分支不再散落成一堆独立会话：最老的分支成为家族在列表
   中的头，其余成员仍然收在它下面。
+- "Make this the main conversation" works again in families whose mainline
+  is gone: crown any other branch to make it the family's head. Previously
+  these families lost the option entirely — there was no mainline left to
+  step down, so the crown never appeared.
+  主对话已删除的家族重新拥有"变成主对话"：给任一其他分支戴上皇冠，它
+  就成为这个家族的头。此前这类家族会整体失去该选项——没有可退位的主
+  对话，皇冠就永远不出现。
 
 - Folders in the conversation list now sort by name and stay put;
   previously any click made the active folder jump to the top of the list.
