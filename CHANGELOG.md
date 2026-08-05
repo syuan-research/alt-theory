@@ -25,9 +25,12 @@ family: one working folder, and a survivor takes over when the mainline goes.
   top-level rows: the oldest branch becomes the family's head in the list
   and the others stay nested under it.
 - "Make this the main conversation" works again in families whose mainline
-  is gone: crown any other branch to make it the family's head. Previously
-  these families lost the option entirely — there was no mainline left to
-  step down, so the crown never appeared.
+  is gone: crown any other member — a branch-of-branch included — to make
+  it the family's head, and the current head now carries a crown marker in
+  the list. Previously these families lost the option entirely — there was
+  no mainline left to step down, so the crown never appeared.
+- Promoting a branch-of-branch in a normal family no longer makes the
+  whole family disappear from the conversation list (a display-cycle bug).
 
 ### Conversation list
 
