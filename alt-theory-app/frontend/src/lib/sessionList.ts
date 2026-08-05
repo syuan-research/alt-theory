@@ -254,6 +254,32 @@ function buildEdges(members: SessionSummary[]): {
       roots.push(session);
     }
   }
+  // A deleted/purged parent must not splinter the family (owner 2026-08-05:
+  // deleting the mainline leaves the OLDEST branch as the family head; the
+  // other members nest under it instead of scattering into top-level rows).
+  const orphanGroups = new Map<string, SessionSummary[]>();
+  for (const root of roots) {
+    const parentId = root.forkedFrom?.sessionId;
+    if (!parentId || ids.has(parentId)) continue;
+    if (!orphanGroups.has(parentId)) orphanGroups.set(parentId, []);
+    orphanGroups.get(parentId)?.push(root);
+  }
+  for (const group of orphanGroups.values()) {
+    if (group.length < 2) continue;
+    const byAge = [...group].sort((a, b) =>
+      (a.createdAt ?? "").localeCompare(b.createdAt ?? ""),
+    );
+    const head =
+      byAge.find((s) => s.forkedFrom?.purpose === "fork") ?? byAge[0];
+    for (const member of group) {
+      if (member === head) continue;
+      roots.splice(roots.indexOf(member), 1);
+      if (!childrenByParent.has(head.sessionId)) {
+        childrenByParent.set(head.sessionId, []);
+      }
+      childrenByParent.get(head.sessionId)?.push(member);
+    }
+  }
   return { roots, childrenByParent };
 }
 

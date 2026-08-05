@@ -280,7 +280,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
     app.requestConfirm({
       message: t("Move this conversation to work in \"{label}\"?", { label }),
       details: [
-        t("Its branches move with it."),
+        t("Its whole family moves with it — branches and attached conversations always share one working folder."),
         t("Alt will ask for permissions again in the new folder."),
         t("Files already on disk are not moved."),
       ],
@@ -366,7 +366,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
     app.requestConfirm({
       message: t("Move this conversation to work in \"{label}\"?", { label }),
       details: [
-        t("Its branches move with it."),
+        t("Its whole family moves with it — branches and attached conversations always share one working folder."),
         t("Alt will ask for permissions again in the new folder."),
         t("Files already on disk are not moved."),
       ],

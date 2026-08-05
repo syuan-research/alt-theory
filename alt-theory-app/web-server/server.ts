@@ -47,6 +47,7 @@ import {
   permanentlyDeleteSession,
   restoreDeletedSession,
   readSessionTextFile,
+  healFamilyInvariants,
   readSessionAccessSummary,
   readSessionDetail,
   readSessionChanges,
@@ -239,6 +240,13 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   };
   applyExtraAssetDirs();
   setBackendLang(readAppSettings(dataDir).lang ?? null);
+  // One pass before any session opens: older builds could leave a fork tree
+  // split across working folders or with no listed representative (v1.4.1).
+  try {
+    healFamilyInvariants(dataDir);
+  } catch (error) {
+    console.warn("[alt-theory] family-invariant heal failed:", error);
+  }
   const soulDir = assetPaths.soulDir;
   const legacySoulPath = assetPaths.soulPath;
   const publicDir = resolve(options.publicDir ?? PUBLIC_DIR);

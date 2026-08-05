@@ -303,14 +303,7 @@ export function softDeleteSession(
         : undefined;
     }
     if (!representative) {
-      representative =
-        living
-          .filter((m) => !m.forkedFrom || m.forkedFrom.purpose === "fork")
-          .sort((a, b) =>
-            (b.updatedAt ?? b.createdAt ?? "").localeCompare(
-              a.updatedAt ?? a.createdAt ?? "",
-            ),
-          )[0] ?? living[0];
+      representative = pickRepresentative(living, sessionId);
     }
     if (representative) writeListFlags(dataDir, representative.sessionId, true);
   }
@@ -373,6 +366,88 @@ function writeDelistedFor(
     ...header,
     delistedFor: successorSessionId,
   });
+}
+
+/**
+ * Successor rule (owner 2026-08-05): the OLDEST first-level branch of the
+ * departed parent takes the spot; else the oldest living branch anywhere in
+ * the tree; else the oldest living member.
+ */
+function pickRepresentative(
+  living: SessionSummary[],
+  parentId: string,
+): SessionSummary | null {
+  const byAge = (a: SessionSummary, b: SessionSummary) =>
+    (a.createdAt ?? "").localeCompare(b.createdAt ?? "");
+  const branches = living
+    .filter((m) => m.forkedFrom?.purpose === "fork")
+    .sort(byAge);
+  return (
+    branches.find((m) => m.forkedFrom?.sessionId === parentId) ??
+    branches[0] ??
+    [...living].sort(byAge)[0] ??
+    null
+  );
+}
+
+/**
+ * Startup heal (v1.4.1): one pass restoring two family invariants that older
+ * builds could break — (a) every member of a fork tree shares the tree
+ * root's working folder ("root wins", owner 2026-08-05); (b) a living tree
+ * keeps a listed representative. Runs before any session opens, so raw
+ * header writes are safe here.
+ */
+export function healFamilyInvariants(dataDir: string): void {
+  const summaries = allSessionSummaries(dataDir);
+  const byId = new Map(summaries.map((s) => [s.sessionId, s]));
+  const rootIdOf = (s: SessionSummary): string => {
+    let cur = s;
+    while (cur.forkedFrom) {
+      const parent = byId.get(cur.forkedFrom.sessionId);
+      if (!parent) break; // purged ancestor: reachable root wins
+      cur = parent;
+    }
+    return cur.sessionId;
+  };
+  const seenRoots = new Set<string>();
+  for (const summary of summaries) {
+    const rootId = rootIdOf(summary);
+    if (seenRoots.has(rootId)) continue;
+    seenRoots.add(rootId);
+    const members = forkTreeMembers(rootId, summaries);
+    if (members.length < 2) continue;
+    const root = byId.get(rootId);
+    const rootDir = root?.workspacePrimaryDir ?? null;
+    for (const member of members) {
+      if (member.sessionId === rootId) continue;
+      if ((member.workspacePrimaryDir ?? null) === rootDir) continue;
+      const sessionRoot = resolveSessionRoot(dataDir, member.sessionId);
+      if (!sessionRoot) continue;
+      const recordsDir = join(sessionRoot, "records");
+      const header = readV4SessionHeader(recordsDir);
+      if (!header) continue;
+      writeSessionHeader(recordsDir, {
+        ...header,
+        workspace: rootDir
+          ? { primaryDir: rootDir, additionalDirs: [] }
+          : undefined,
+      });
+    }
+    const living = members.filter((m) => !m.deletedAt);
+    if (living.length > 0 && !living.some(isListVisible)) {
+      const representative = pickRepresentative(living, rootId);
+      if (representative) {
+        writeListFlags(dataDir, representative.sessionId, true);
+      }
+    }
+  }
+}
+
+/** Ids of every fork-tree member (root + all descendants), trashed included. */
+export function forkFamilyIds(dataDir: string, sessionId: string): string[] {
+  return forkTreeMembers(sessionId, allSessionSummaries(dataDir)).map(
+    (s) => s.sessionId,
+  );
 }
 
 /** Every member of the fork tree reachable from sessionId (root + descendants). */

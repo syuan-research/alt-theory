@@ -51,6 +51,7 @@ import {
   type SessionCounters,
 } from "./session-metrics.js";
 import {
+  forkFamilyIds,
   latestActiveLeafEntryId,
   listSessionSummaries,
   buildTranscriptFromEntries,
@@ -736,7 +737,10 @@ export class SessionService implements AgentTeamBridge {
     // Branches move with their conversation (owner decision 2026-07-24): one
     // re-point carries the whole fork family so a moved parent never strands
     // its branches in the old folder — and the list grouping stays truthful.
-    const family = [sessionId, ...this.forkDescendants(sessionId)];
+    // Family = the WHOLE tree from its structural root (owner 2026-08-05):
+    // dragging a promoted branch used to miss its ancestors' subtrees and
+    // leave part of the family behind in the old folder.
+    const family = forkFamilyIds(this.config.dataDir, sessionId);
     for (const id of family) {
       const member = this.sessions.get(id);
       if (member && (member.busy || member.session.isStreaming)) {
@@ -749,25 +753,6 @@ export class SessionService implements AgentTeamBridge {
       if (id === sessionId) target = snapshot;
     }
     return target;
-  }
-
-  /** All fork/side/helper/arm descendants of a session, breadth-first. */
-  private forkDescendants(sessionId: string): string[] {
-    const childrenByParent = new Map<string, string[]>();
-    for (const summary of listSessionSummaries(this.config.dataDir).sessions) {
-      const parentId = summary.forkedFrom?.sessionId;
-      if (!parentId) continue;
-      if (!childrenByParent.has(parentId)) childrenByParent.set(parentId, []);
-      childrenByParent.get(parentId)?.push(summary.sessionId);
-    }
-    const out: string[] = [];
-    const queue = [...(childrenByParent.get(sessionId) ?? [])];
-    while (queue.length > 0) {
-      const id = queue.shift() as string;
-      out.push(id);
-      queue.push(...(childrenByParent.get(id) ?? []));
-    }
-    return out;
   }
 
   private async repointOne(

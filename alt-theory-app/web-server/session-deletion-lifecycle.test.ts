@@ -12,6 +12,8 @@ import {
   type ForkPurpose,
 } from "./session-records.js";
 import {
+  forkFamilyIds,
+  healFamilyInvariants,
   listDeletedSessionSummaries,
   listSessionSummaries,
   permanentlyDeleteSession,
@@ -378,4 +380,116 @@ test("Trash retention permanently deletes after 30 days", () => {
   );
   assert.equal(existsSync(join(dirs.writeDir, "attachment.txt")), true);
   assert.equal(existsSync(dirs.piSessionDir), false);
+});
+
+test("forkFamilyIds returns the whole tree from any member", () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "alt-theory-family-ids-"));
+  createSession(dataDir, "root");
+  createSession(dataDir, "b1", { sessionId: "root", purpose: "fork" });
+  createSession(dataDir, "b1-child", { sessionId: "b1", purpose: "fork" });
+  createSession(dataDir, "side", { sessionId: "root", purpose: "side" });
+  createSession(dataDir, "other-root");
+
+  // From a mid-tree member the family still covers root + every subtree.
+  assert.deepEqual(forkFamilyIds(dataDir, "b1").sort(), [
+    "b1",
+    "b1-child",
+    "root",
+    "side",
+  ]);
+  assert.deepEqual(forkFamilyIds(dataDir, "other-root"), ["other-root"]);
+});
+
+function setWorkspace(recordsDir: string, primaryDir: string | null) {
+  const header = readV4SessionHeader(recordsDir)!;
+  writeSessionHeader(recordsDir, {
+    ...header,
+    workspace: primaryDir
+      ? { primaryDir, additionalDirs: [] }
+      : undefined,
+  });
+}
+
+test("healFamilyInvariants aligns every member to the root's working folder", () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "alt-theory-heal-ws-"));
+  const rootDirs = createSession(dataDir, "root");
+  const b1Dirs = createSession(dataDir, "b1", {
+    sessionId: "root",
+    purpose: "fork",
+  });
+  const b2Dirs = createSession(dataDir, "b1-child", {
+    sessionId: "b1",
+    purpose: "fork",
+  });
+  const folder = mkdtempSync(join(tmpdir(), "alt-theory-heal-folder-"));
+  setWorkspace(rootDirs.recordsDir, folder);
+  setWorkspace(b2Dirs.recordsDir, mkdtempSync(join(tmpdir(), "alt-theory-stray-")));
+
+  healFamilyInvariants(dataDir);
+
+  for (const dirs of [rootDirs, b1Dirs, b2Dirs]) {
+    assert.equal(
+      readV4SessionHeader(dirs.recordsDir)?.workspace?.primaryDir,
+      folder,
+    );
+  }
+
+  // Root wins in the other direction too: a folderless root clears strays.
+  setWorkspace(rootDirs.recordsDir, null);
+  healFamilyInvariants(dataDir);
+  for (const dirs of [b1Dirs, b2Dirs]) {
+    assert.equal(readV4SessionHeader(dirs.recordsDir)?.workspace, undefined);
+  }
+});
+
+test("healFamilyInvariants relists a representative for an invisible family", () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "alt-theory-heal-rep-"));
+  const rootDirs = createSession(dataDir, "root");
+  createSession(dataDir, "side", { sessionId: "root", purpose: "side" });
+  // Broken state from an older build: root in Trash, unlisted side survives.
+  writeDeletedSessionRecord(rootDirs.recordsDir, "root", {
+    deletedAt: "2026-08-01T00:00:00.000Z",
+    reason: "user_deleted",
+    cascadeRootSessionId: "root",
+  });
+
+  healFamilyInvariants(dataDir);
+
+  const side = listSessionSummaries(dataDir).sessions.find(
+    (s) => s.sessionId === "side",
+  );
+  assert.equal(side?.forkedFrom?.listed, true);
+});
+
+test("deleting the last listed member promotes the OLDEST first-level branch", () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "alt-theory-oldest-branch-"));
+  createSession(dataDir, "root");
+  // Root already gone from an older build; the listed helper is the last
+  // visible member, and two unlisted-but-living branches remain.
+  const rootDirs = createSession(dataDir, "gone-root");
+  createSession(
+    dataDir,
+    "b-old",
+    { sessionId: "gone-root", purpose: "fork" },
+    "2026-08-01T00:00:00.000Z",
+  );
+  createSession(
+    dataDir,
+    "b-new",
+    { sessionId: "gone-root", purpose: "fork" },
+    "2026-08-02T00:00:00.000Z",
+  );
+  void rootDirs;
+  softDeleteSession(dataDir, "gone-root");
+  // Branches are list members by nature, so the tree stays visible and no
+  // representative promotion is needed — the oldest branch heads the family
+  // in the list (frontend orphan grouping).
+  const summaries = listSessionSummaries(dataDir).sessions;
+  assert.deepEqual(
+    summaries
+      .filter((s) => s.forkedFrom?.purpose === "fork" && !s.deletedAt)
+      .map((s) => s.sessionId)
+      .sort(),
+    ["b-old", "b-new"].sort(),
+  );
 });
