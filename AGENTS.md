@@ -37,6 +37,8 @@ workspace layout from this public file.
 
 ## Checks
 
+The frontend is served from the gitignored build output `public-v6/`; rebuild it after any pull or checkout before running: `npm run build:frontend-v6`.
+
 For backend or shared runtime changes:
 
 ```bash
