@@ -171,9 +171,6 @@ export function resolveRolePresetsDir(
   return resolve(fallbackDir);
 }
 
-/** Deprecated compatibility alias. Use resolveRolePresetsDir. */
-export const resolveProfilesDir = resolveRolePresetsDir;
-
 export function writeJsonAtomic(path: string, value: unknown): void {
   const resolvedPath = resolve(path);
   const tempPath = `${resolvedPath}.${randomUUID()}.tmp`;

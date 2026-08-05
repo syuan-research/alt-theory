@@ -2325,53 +2325,6 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
         skill.name === "conversation-summary" && skill.source === "alt-theory",
     );
     assert.deepEqual(bundledSkill?.enabled, { understand: true, work: true });
-    const emptyProjectsResponse = await fetch(`${baseUrl}/api/projects`);
-    assert.deepEqual(await emptyProjectsResponse.json(), { projects: [] });
-    const projectResponse = await fetch(
-      `${baseUrl}/api/projects/manual-role-uat`,
-      {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          displayName: "Manual Role UAT",
-          defaults: {
-            rolePresetSlug: "alternate",
-            soulSlug: "soul-test",
-            kbDomain: "ep-core",
-            modelId: "mimo-v2.5-pro",
-            customInstructionRef: "study.rules",
-          },
-          notes: "local test project",
-        }),
-      },
-    );
-    assert.equal(projectResponse.status, 200);
-    const savedProject = await projectResponse.json();
-    assert.equal(savedProject.projectId, "manual-role-uat");
-    assert.equal(savedProject.defaults.rolePresetSlug, "alternate");
-    const projectsResponse = await fetch(`${baseUrl}/api/projects`);
-    const projectsJson = await projectsResponse.json();
-    assert.deepEqual(
-      projectsJson.projects.map((project: any) => ({
-        projectId: project.projectId,
-        displayName: project.displayName,
-        defaults: project.defaults,
-      })),
-      [
-        {
-          projectId: "manual-role-uat",
-          displayName: "Manual Role UAT",
-          defaults: {
-            rolePresetSlug: "alternate",
-            soulSlug: "soul-test",
-            kbDomain: "ep-core",
-            modelId: "mimo-v2.5-pro",
-            customInstructionRef: "study.rules",
-          },
-        },
-      ],
-    );
-
     const [draft1, draft2] = await Promise.all([
       draft1Promise,
       draft2Promise
@@ -2383,19 +2336,30 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
     assert.equal(draft1.payload.customInstructionRef, "default.md");
     assert.equal(existsSync(join(root, "data", "sessions")), false);
 
-    const projectDraftPromise = waitForType(ws1, "session_draft");
+    const roleDraft0Promise = waitForType(ws1, "session_draft");
     ws1.send(
       JSON.stringify({
-        type: "switch_project",
-        payload: { projectId: "manual-role-uat" },
+        type: "switch_role_preset",
+        payload: { rolePresetSlug: "alternate" },
       }),
     );
-    const projectDraft = await projectDraftPromise;
-    assert.equal(projectDraft.payload.projectId, "manual-role-uat");
-    assert.equal(projectDraft.payload.rolePresetSlug, "alternate");
-    assert.equal(projectDraft.payload.soulSlug, "soul-test");
-    assert.equal(projectDraft.payload.currentDomain, "ep-core");
-    assert.equal(projectDraft.payload.customInstructionRef, "study.rules");
+    assert.equal((await roleDraft0Promise).payload.rolePresetSlug, "alternate");
+    const soulDraft0Promise = waitForType(ws1, "session_draft");
+    ws1.send(
+      JSON.stringify({ type: "switch_soul", payload: { soulSlug: "soul-test" } }),
+    );
+    assert.equal((await soulDraft0Promise).payload.soulSlug, "soul-test");
+    const instructionDraft0Promise = waitForType(ws1, "session_draft");
+    ws1.send(
+      JSON.stringify({
+        type: "switch_instruction",
+        payload: { customInstructionRef: "study.rules" },
+      }),
+    );
+    assert.equal(
+      (await instructionDraft0Promise).payload.customInstructionRef,
+      "study.rules",
+    );
     assert.equal(existsSync(join(root, "data", "sessions")), false);
 
     const kbDraftPromise = waitForType(ws1, "session_draft");

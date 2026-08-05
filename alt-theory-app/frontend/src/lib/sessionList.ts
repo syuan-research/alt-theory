@@ -199,13 +199,6 @@ export function matchesQuery(
   return haystack.includes(query);
 }
 
-export interface SessionTree {
-  /** Roots, most-recent first, grouped by project id ("" = unassigned). */
-  groups: Array<{ projectId: string; label: string; roots: SessionSummary[] }>;
-  /** Fork children of a listed root, keyed by parent session id. */
-  childrenByParent: Map<string, SessionSummary[]>;
-}
-
 /**
  * Parent/child edges for the list tree, with the M4b role swap applied as a
  * display inversion: a delisted root nests under its most recently active
@@ -262,35 +255,6 @@ function buildEdges(members: SessionSummary[]): {
     }
   }
   return { roots, childrenByParent };
-}
-
-export function buildSessionTree(
-  sessions: SessionSummary[],
-  projectNames: Map<string, string>
-): SessionTree {
-  const members = sessions.filter(isListMember).sort(compareByRecency);
-  const { roots, childrenByParent } = buildEdges(members);
-
-  const byProject = new Map<string, SessionSummary[]>();
-  for (const root of roots) {
-    const projectId = root.projectId || "";
-    if (!byProject.has(projectId)) byProject.set(projectId, []);
-    byProject.get(projectId)?.push(root);
-  }
-
-  const groups = [...byProject.entries()]
-    .sort(([a], [b]) => {
-      if (!a) return 1;
-      if (!b) return -1;
-      return (projectNames.get(a) || a).localeCompare(projectNames.get(b) || b);
-    })
-    .map(([projectId, roots]) => ({
-      projectId,
-      label: projectId ? projectNames.get(projectId) || projectId : "No project",
-      roots,
-    }));
-
-  return { groups, childrenByParent };
 }
 
 /** Basename of a working-folder path, for path-free list display (M4). */

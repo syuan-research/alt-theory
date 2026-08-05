@@ -178,7 +178,6 @@ interface RuntimeModelConfig {
 }
 
 export interface SessionSelectors {
-  projectId?: string | null;
   rolePresetSlug: string | null;
   kbDomain: string;
   soulSlug: string | null;
@@ -281,6 +280,8 @@ interface ManagedSession {
   resumeWarnings: string[];
   counters: SessionCounters;
   transcript: TranscriptMessage[];
+  /** mtime fingerprint of the files the transcript projection reads; null = re-read. */
+  transcriptStamp: string | null;
   listeners: Set<(event: SessionServiceEvent) => void>;
   internalUnsubscribe: () => void;
   busy: boolean;
@@ -508,10 +509,7 @@ export class SessionService implements AgentTeamBridge {
       sessionId: managed.manifest.sessionId,
       branchId: managed.branchId,
       reason: "creation",
-      effective: buildEffectiveConfig(
-        managed.manifest,
-        managed.selectors.projectId,
-      ),
+      effective: buildEffectiveConfig(managed.manifest),
       changedFields: [],
       warnings: [],
     });
@@ -608,10 +606,7 @@ export class SessionService implements AgentTeamBridge {
     appendConfigEvent(replacement.manifest.recordsDir, {
       sessionId: replacement.manifest.sessionId,
       reason: "user_change",
-      effective: buildEffectiveConfig(
-        replacement.manifest,
-        replacement.selectors.projectId,
-      ),
+      effective: buildEffectiveConfig(replacement.manifest),
       changedFields: configChangedFields(previous.selectors, selectors),
       warnings: [],
       branchId: replacement.branchId,
@@ -650,10 +645,7 @@ export class SessionService implements AgentTeamBridge {
       sessionId,
       branchId: managed.branchId,
       reason: "user_change",
-      effective: buildEffectiveConfig(
-        managed.manifest,
-        managed.selectors.projectId,
-      ),
+      effective: buildEffectiveConfig(managed.manifest),
       changedFields: ["altMode"],
       warnings: [],
     });
@@ -898,7 +890,7 @@ export class SessionService implements AgentTeamBridge {
           ...managed.manifest.kb,
           domain,
         },
-      }, managed.selectors.projectId,),
+      }),
       changedFields: ["kbDomain"],
       warnings: [],
       branchId: managed.branchId,
@@ -1491,7 +1483,6 @@ export class SessionService implements AgentTeamBridge {
         sessionRoot: forkDirs.sessionRoot,
         recordsDir: forkDirs.recordsDir,
         manifest: result.manifest,
-        projectId: childSelectors.projectId ?? null,
         ownerAccountId: sourceHeader?.ownerAccountId ?? null,
         roleCondition: sourceHeader?.roleCondition ?? null,
         visibility,
@@ -1513,10 +1504,7 @@ export class SessionService implements AgentTeamBridge {
         sessionId: result.manifest.sessionId,
         branchId: result.branchId,
         reason: "creation",
-        effective: buildEffectiveConfig(
-          result.manifest,
-          result.selectors.projectId,
-        ),
+        effective: buildEffectiveConfig(result.manifest),
         changedFields: [],
         warnings: result.resumeWarnings,
       });
@@ -1608,7 +1596,7 @@ export class SessionService implements AgentTeamBridge {
       if (!overrides) continue;
       for (const key of Object.keys(overrides)) {
         if (
-          !["projectId", "rolePresetSlug", "kbDomain", "soulSlug", "customInstructionRef",].includes(key)
+          !["rolePresetSlug", "kbDomain", "soulSlug", "customInstructionRef",].includes(key)
         ) {
           throw new Error(`Unknown selector override: ${key}`);
         }
@@ -1985,10 +1973,31 @@ export class SessionService implements AgentTeamBridge {
 
   getTranscript(sessionId: string): TranscriptMessage[] {
     const managed = this.requireSession(sessionId);
-    managed.transcript =
-      readSessionDetail(this.config.dataDir, sessionId)?.transcript ??
-      managed.transcript;
+    const stamp = this.transcriptStamp(managed);
+    if (stamp === null || stamp !== managed.transcriptStamp) {
+      managed.transcript =
+        readSessionDetail(this.config.dataDir, sessionId)?.transcript ??
+        managed.transcript;
+      managed.transcriptStamp = stamp;
+    }
     return [...managed.transcript];
+  }
+
+  /**
+   * Fingerprint of the two files the transcript projection is derived from
+   * (perf backlog item 2): the full re-read now happens only when one of
+   * them actually changed underneath the open session.
+   */
+  private transcriptStamp(managed: ManagedSession): string | null {
+    try {
+      const sessionFile = managed.session.sessionFile;
+      if (!sessionFile) return null;
+      const runs = join(managed.manifest.recordsDir, "runs.jsonl");
+      const runsMtime = existsSync(runs) ? statSync(runs).mtimeMs : 0;
+      return `${statSync(sessionFile).mtimeMs}/${runsMtime}`;
+    } catch {
+      return null;
+    }
   }
 
   private publishCurrentBranchTranscript(managed: ManagedSession): void {
@@ -2004,32 +2013,6 @@ export class SessionService implements AgentTeamBridge {
 
   getSelectors(sessionId: string): SessionSelectors {
     return { ...this.requireSession(sessionId).selectors };
-  }
-
-  setProjectId(sessionId: string, projectId: string | null): SessionSnapshot {
-    const managed = this.requireSession(sessionId);
-    if (managed.busy || managed.session.isStreaming) {
-      throw new SessionBusyError(sessionId);
-    }
-    if (managed.selectors.projectId === projectId) {
-      return this.snapshot(managed);
-    }
-    const header = readV4SessionHeader(managed.manifest.recordsDir);
-    if (!header) throw new Error("v0.4 session header is required");
-    writeSessionHeader(managed.manifest.recordsDir, {
-      ...header,
-      projectId,
-    });
-    managed.selectors.projectId = projectId;
-    appendConfigEvent(managed.manifest.recordsDir, {
-      sessionId,
-      branchId: managed.branchId,
-      reason: "user_change",
-      effective: buildEffectiveConfig(managed.manifest, projectId),
-      changedFields: ["projectId"],
-      warnings: [],
-    });
-    return this.snapshot(managed);
   }
 
   setVisibility(
@@ -2283,7 +2266,6 @@ export class SessionService implements AgentTeamBridge {
       sessionRoot: sessionDirs.sessionRoot,
       recordsDir: sessionDirs.recordsDir,
       manifest: result.manifest,
-      projectId: selectors.projectId ?? null,
       ownerAccountId: metadata.ownerAccountId ?? null,
       roleCondition: metadata.roleCondition ?? null,
       visibility,
@@ -2525,17 +2507,36 @@ export class SessionService implements AgentTeamBridge {
   ): Promise<string> {
     const childId = this.resolveSubagentId(parentSessionId, agent);
     const deadline = Date.now() + 600_000;
-    while (Date.now() < deadline) {
+    const ready = () => {
       const child = this.sessions.get(childId);
-      if (
+      return Boolean(
         child &&
-        !child.busy &&
-        !child.session.isStreaming &&
-        !this.queuedSubagentIds.has(childId)
-      ) {
-        return this.subagentResultText(childId);
+          !child.busy &&
+          !child.session.isStreaming &&
+          !this.queuedSubagentIds.has(childId),
+      );
+    };
+    while (Date.now() < deadline) {
+      if (ready()) return this.subagentResultText(childId);
+      const child = this.sessions.get(childId);
+      if (!child) {
+        await sleep(250);
+        continue;
       }
-      await sleep(250);
+      // Wake on the child's next service event (run completion, failure,
+      // phase change) instead of polling; the deadline caps the wait
+      // (perf backlog item 7).
+      await new Promise<void>((wake) => {
+        const finish = () => {
+          clearTimeout(timer);
+          child.listeners.delete(listener);
+          wake();
+        };
+        const listener = () => finish();
+        const timer = setTimeout(finish, Math.max(0, deadline - Date.now()));
+        timer.unref?.();
+        child.listeners.add(listener);
+      });
     }
     return `Timed out after 600s waiting for subagent ${agent}; it keeps running in the background — its completion will arrive automatically.`;
   }
@@ -3078,7 +3079,6 @@ export class SessionService implements AgentTeamBridge {
     const managed = await this.createManaged({
       ...result,
       selectors: {
-        projectId: detail.session.projectId ?? fallbackSelectors.projectId ?? null,
         rolePresetSlug: activeRolePresetSlug,
         kbDomain: activeDomain,
         soulSlug: activeSoulSlug,
@@ -3143,10 +3143,7 @@ export class SessionService implements AgentTeamBridge {
       appendConfigEvent(managed.manifest.recordsDir, {
         sessionId: managed.manifest.sessionId,
         reason: "resume_fallback",
-        effective: buildEffectiveConfig(
-          managed.manifest,
-          managed.selectors.projectId,
-        ),
+        effective: buildEffectiveConfig(managed.manifest),
         changedFields: fallbackChangedFields,
         warnings: managed.resumeWarnings,
         branchId: managed.branchId,
@@ -3367,6 +3364,7 @@ export class SessionService implements AgentTeamBridge {
     const managed: ManagedSession = {
       ...args,
       approvalBridge,
+      transcriptStamp: null,
       listeners: new Set(),
       internalUnsubscribe: () => {},
       busy: false,
@@ -3700,7 +3698,6 @@ export class SessionService implements AgentTeamBridge {
     const header = readV4SessionHeader(managed.manifest.recordsDir);
     return {
       sessionId: managed.manifest.sessionId,
-      projectId: managed.selectors.projectId ?? null,
       visibility: header?.visibility ?? this.fallbackVisibility,
       retentionDueAt: header?.retentionDueAt ?? null,
       status: managed.busy || managed.session.isStreaming ? "running" : "idle",
@@ -3957,9 +3954,6 @@ function configChangedFields(
   after: SessionSelectors,
 ): string[] {
   const fields: string[] = [];
-  if ((before.projectId ?? null) !== (after.projectId ?? null)) {
-    fields.push("projectId");
-  }
   if (before.kbDomain !== after.kbDomain) fields.push("kbDomain");
   if (before.rolePresetSlug !== after.rolePresetSlug) {
     fields.push("rolePresetSlug");

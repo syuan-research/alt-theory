@@ -47,6 +47,7 @@ import {
   permanentlyDeleteSession,
   restoreDeletedSession,
   readSessionTextFile,
+  readSessionAccessSummary,
   readSessionDetail,
   readSessionChanges,
   type SessionSummary,
@@ -77,7 +78,6 @@ import {
   type SessionServiceEvent,
   type StudyTag,
 } from "./session-service.js";
-import { getProject, listProjects, upsertProject } from "./projects.js";
 import { listInstructionAssets } from "./instruction-assets.js";
 import { listAltTheorySkills } from "./skill-assets.js";
 import {
@@ -105,7 +105,6 @@ import {
 } from "./auth-session.js";
 import { readAccountStore } from "./auth-accounts.js";
 import type { AuthContext } from "./auth-session.js";
-import { resolveConfigGuiHtmlPath } from "./config-gui-path.js";
 import { ensureLocalModeDefaults } from "./local-mode-paths.js";
 import {
   isVisibilityForMode,
@@ -138,10 +137,7 @@ import {
   registerOpenCodeImport,
   registerPiImport,
 } from "./session-import.js";
-import { OpenCodeImportRefusalError } from "./opencode-session-import.js";
-import { CodexImportRefusalError } from "./codex-session-import.js";
-import { GrokImportRefusalError } from "./grok-session-import.js";
-import { ClaudeCodeImportRefusalError } from "./claude-code-session-import.js";
+import { ImportRefusalError } from "./session-import-shared.js";
 import {
   readAppSettings,
   resolveExternalSkillPaths,
@@ -160,7 +156,7 @@ ensureLocalModeDefaults();
 const PROJECT_ROOT = process.cwd();
 const PUBLIC_DIR = resolve(
   PROJECT_ROOT,
-  process.env.ALT_THEORY_PUBLIC_DIR ?? "alt-theory-app/web-server/public",
+  process.env.ALT_THEORY_PUBLIC_DIR ?? "alt-theory-app/web-server/public-v6",
 );
 
 const DEFAULT_ROLE_CONDITION_PRESETS: Record<string, string> = {
@@ -343,15 +339,12 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       },
     }),
   );
-  app.get("/vendor/marked.js", (_req, res) => {
-    res.sendFile(resolve(PROJECT_ROOT, "node_modules", "marked", "lib", "marked.umd.js"),);
-  });
   // --- Config GUI (Pi-native model/key management) ---
   // Local-mode only. Hosted/online deployments must not expose server-side
   // model/key management through this UI or REST surface.
   app.get("/config", (_req, res) => {
     if (!requireLocalConfigMode(res)) return;
-    res.sendFile(resolveConfigGuiHtmlPath(publicDir));
+    res.sendFile(resolve(publicDir, "index.html"));
   });
   app.get("/api/config/status", async (_req, res) => {
     if (!requireLocalConfigMode(res)) return;
@@ -1129,12 +1122,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             sessionId: registered.sessionId,
           };
         } catch (error) {
-          if (
-            error instanceof OpenCodeImportRefusalError ||
-            error instanceof CodexImportRefusalError ||
-            error instanceof GrokImportRefusalError ||
-            error instanceof ClaudeCodeImportRefusalError
-          ) {
+          if (error instanceof ImportRefusalError) {
             return {
               sourceId: source.sourceId,
               status: "refused" as const,
@@ -1160,19 +1148,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       }
       const message = error instanceof Error ? error.message : String(error);
       res.status(500).json({ error: message });
-    }
-  });
-  app.get("/api/projects", (_req, res) => {
-    res.json(listProjects(dataDir));
-  });
-  app.put("/api/projects/:projectId", (req, res) => {
-    try {
-      res.json(upsertProject(dataDir, req.params.projectId, req.body ?? {}));
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      res.status(/Invalid|required/.test(message) ? 400 : 500).json({
-        error: message,
-      });
     }
   });
   app.get("/api/sessions", (req, res) => {
@@ -2087,7 +2062,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
 
   function createDraftSelectors(): SessionSelectors {
     return {
-      projectId: null,
       rolePresetSlug: defaultRolePresetSlug(),
       kbDomain: "ep-core",
       soulSlug: defaultSoulSlug(),
@@ -2182,7 +2156,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       type: "session_draft",
       payload: {
         status: "draft",
-        projectId: selectors.projectId ?? null,
         visibility,
         currentDomain: selectors.kbDomain,
         rolePresetSlug: selectors.rolePresetSlug,
@@ -2245,17 +2218,17 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     };
 
     const requireSessionWsContentAccess = (sessionId: string): SessionSummary => {
-      const detail = readSessionDetail(dataDir, sessionId);
-      if (!detail || !canAccessSessionSummary(auth, detail.session)) {
+      const summary = readSessionAccessSummary(dataDir, sessionId);
+      if (!summary || !canAccessSessionSummary(auth, summary)) {
         throw new Error(`Unknown session id: ${sessionId}`);
       }
-      if (!canAccessSessionContent(auth, detail.session)) {
+      if (!canAccessSessionContent(auth, summary)) {
         throw new Error("Session content is private");
       }
-      if (detail.session.deletedAt) {
+      if (summary.deletedAt) {
         throw new Error("Conversation is in Trash");
       }
-      return detail.session;
+      return summary;
     };
 
     const attachToSession = (sessionId: string) => {
@@ -2497,43 +2470,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               "instruction_switch",
             );
             if (!closed) attachToSession(replacement.sessionId);
-          } catch (error) {
-            sendServiceError(send, error);
-          }
-          break;
-        }
-        case "switch_project": {
-          const projectId = optionalSlug(msg.payload.projectId);
-          const project = projectId ? getProject(dataDir, projectId) : null;
-          if (projectId && !project) {
-            sendError(send, new Error(`Unknown project: ${projectId}`));
-            break;
-          }
-          if (!attachedSessionId) {
-            draftSelectors = {
-              ...draftSelectors,
-              projectId,
-              ...(project?.defaults.rolePresetSlug !== undefined
-                ? { rolePresetSlug: project.defaults.rolePresetSlug }
-                : {}),
-              ...(project?.defaults.soulSlug !== undefined
-                ? { soulSlug: project.defaults.soulSlug }
-                : {}),
-              ...(project?.defaults.kbDomain
-                ? { kbDomain: project.defaults.kbDomain }
-                : {}),
-              ...(project?.defaults.customInstructionRef !== undefined
-                ? {
-                    customInstructionRef:
-                      project.defaults.customInstructionRef,
-                  }
-                : {}),
-            };
-            sendCurrentDraft();
-            break;
-          }
-          try {
-            sessionService.setProjectId(attachedSessionId, projectId);
           } catch (error) {
             sendServiceError(send, error);
           }

@@ -179,7 +179,7 @@ On Windows, the unpacked app is written to `dist/win-unpacked/`. For packaging, 
 Useful development commands:
 
 ```bash
-npm run dev:web:local:v6
+npm run dev:web:local
 npm run test:backend
 npm run test:frontend
 ```

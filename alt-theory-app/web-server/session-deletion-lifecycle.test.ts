@@ -91,12 +91,14 @@ test("Delete follows attached conversations but stops at Branches and promoted c
     listed: true,
   });
   createSession(dataDir, "branch-side", { sessionId: "branch", purpose: "side" });
+  createSession(dataDir, "branch-arm", { sessionId: "branch", purpose: "ab-arm" });
 
   // root has a living branch, so ALL its attached conversations survive the
   // delete (owner ruling 2026-08-04: no fork-time bound).
   softDeleteSession(dataDir, "root");
   assert.deepEqual(ids(dataDir), [
     "branch",
+    "branch-arm",
     "branch-side",
     "promoted-helper",
     "side",
@@ -116,8 +118,16 @@ test("Delete follows attached conversations but stops at Branches and promoted c
     () => restoreDeletedSession(dataDir, "branch-side"),
     /not a direct Trash entry/,
   );
+  // A/B arms are disposable (owner 2026-08-04: real-time compare, the
+  // alternative is not retained) — they follow their parent into Trash
+  // instead of surviving as invisible orphans.
+  assert.throws(
+    () => restoreDeletedSession(dataDir, "branch-arm"),
+    /not a direct Trash entry/,
+  );
   assert.deepEqual(restoreDeletedSession(dataDir, "branch").sort(), [
     "branch",
+    "branch-arm",
     "branch-side",
   ]);
 });
@@ -321,6 +331,31 @@ test("A conversation emptied by private retention is not offered as recoverable"
     () => restoreDeletedSession(dataDir, "private"),
     /no longer recoverable/,
   );
+});
+
+test("Trash retention sweep fails per entry, not per pass", () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "alt-theory-trash-sweep-"));
+  const expire = (id: string) => {
+    const dirs = createSession(dataDir, id);
+    softDeleteSession(dataDir, id);
+    removeDeletedSessionRecord(dirs.recordsDir);
+    writeDeletedSessionRecord(dirs.recordsDir, id, {
+      deletedAt: "2026-06-01T00:00:00.000Z",
+      reason: "user_deleted",
+      cascadeRootSessionId: id,
+    });
+  };
+  expire("a-kept");
+  expire("z-damaged"); // created last + sorts first on ties: swept first
+  const purged = purgeExpiredDeletedSessions(
+    dataDir,
+    new Date("2026-07-02T00:00:00.000Z"),
+    (sessionId) => {
+      if (sessionId === "z-damaged") throw new Error("simulated damage");
+      return false;
+    },
+  );
+  assert.deepEqual(purged, ["a-kept"]);
 });
 
 test("Trash retention permanently deletes after 30 days", () => {

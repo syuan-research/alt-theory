@@ -13,6 +13,7 @@ node_modules/
 # Build, cache, and test output
 dist/
 dist-bundle/
+alt-theory-app/web-server/public-v6/
 build/
 out/
 .cache/

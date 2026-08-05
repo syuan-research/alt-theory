@@ -7,7 +7,7 @@ Full SWE-plan frontend rebuild. Reference behavior: `web-server/public/client.js
 ```powershell
 # worktree root
 npm run build:frontend-v6
-npm run dev:web:local:v6
+npm run dev:web:local
 ```
 
 Open `http://127.0.0.1:3000` — local mode, no pilot login, model config at `/config`.
@@ -16,7 +16,7 @@ Hosted pilot test (uses accounts in `%APPDATA%\alt-theory`):
 
 ```powershell
 npm run build:frontend-v6
-npm run dev:web:v6
+npm run dev:web
 ```
 
 Login: `test-researcher` / `test` (local UAT accounts).

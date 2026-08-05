@@ -87,7 +87,6 @@ function writeOwnerStub(dataDir: string, sessionId: string, ownerAccountId: stri
       recordType: "session",
       sessionId,
       createdAt: new Date().toISOString(),
-      projectId: null,
       recordModel: "v0.4",
       ownerAccountId,
     })
@@ -156,7 +155,6 @@ test("working-folder browsing follows the persisted external workspace", () => {
       recordType: "session",
       sessionId,
       createdAt: new Date().toISOString(),
-      projectId: null,
       recordModel: "v0.4",
       workspace: { primaryDir: external, additionalDirs: [] },
     })

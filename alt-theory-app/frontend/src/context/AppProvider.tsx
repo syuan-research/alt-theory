@@ -85,7 +85,6 @@ const anonymousAuth: AuthContext = {
 };
 
 const defaultSelectors: SessionSelectors = {
-  projectId: null,
   currentDomain: DEFAULT_KB_DOMAIN,
   rolePresetSlug: null,
   soulSlug: null,
@@ -135,7 +134,6 @@ export interface AppContextValue {
   toggleViewMode: () => void;
   participant: ParticipantInfo | null;
   transcriptView: TranscriptView;
-  setTranscriptView: (view: TranscriptView) => void;
 
   discovery: DiscoveryLists | null;
   /** Re-fetch role/KB/skill lists after the user adds assets in Settings. */
@@ -191,7 +189,6 @@ export interface AppContextValue {
   wsConnected: boolean;
 
   selectors: SessionSelectors;
-  switchProject: (projectId: string | null) => void;
   switchKb: (domain: string) => void;
   switchSoul: (soulSlug: string | null) => void;
   switchRolePreset: (rolePresetSlug: string | null) => void;
@@ -233,7 +230,6 @@ export interface AppContextValue {
   setStudyTag: (tag: StudyTag | null) => void;
 
   messages: TranscriptMessage[];
-  streamParts: StreamPart[];
   toolStatus: string;
   /** Live run-phase label (e.g. "Thinking…") shown while no tool is active. */
   runPhaseLabel: string;
@@ -245,7 +241,6 @@ export interface AppContextValue {
   toggleWorkspaceStage: (path: string, staged: boolean) => void;
   stageWorkspacePath: (path: string) => void;
   unstageWorkspacePaths: (paths: string[]) => void;
-  clearStagedWorkspace: () => void;
 
   runCompletedCount: number;
   requestConfirm: (request: ConfirmRequest) => void;
@@ -281,6 +276,14 @@ export interface AppContextValue {
 
 const AppContext = createContext<AppContextValue | null>(null);
 
+/**
+ * The in-flight assistant turn, alone in its own context: a streaming delta
+ * replaces this value on every token, and nothing else. Keeping it out of
+ * AppContext means the token tick invalidates only the component drawing the
+ * stream, not every useApp() consumer (perf backlog item 3).
+ */
+const StreamContext = createContext<StreamPart[]>([]);
+
 /** Situational preset buttons (v1.4 round 1): turns a press stays active. */
 export const PRESET_TURNS = 5;
 const DEFAULT_PRESET_BUTTONS = [
@@ -294,7 +297,6 @@ function applySnapshotSelectors(
   payload: SessionSnapshot | SessionDraftSnapshot,
 ): SessionSelectors {
   return {
-    projectId: payload.projectId ?? null,
     currentDomain: payload.currentDomain || DEFAULT_KB_DOMAIN,
     rolePresetSlug: payload.rolePresetSlug ?? null,
     soulSlug: payload.soulSlug ?? null,
@@ -782,10 +784,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
             soulSlug: message.payload.soulSlug ?? prev.soulSlug,
             customInstructionRef:
               message.payload.customInstructionRef ?? prev.customInstructionRef,
-            projectId:
-              message.payload.projectId === undefined
-                ? prev.projectId
-                : message.payload.projectId,
             visibility: message.payload.visibility ?? prev.visibility,
             branchId: message.payload.branchId || prev.branchId,
           }));
@@ -1718,16 +1716,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       });
   }, [appMode]);
 
-  const switchProject = useCallback(
-    (projectId: string | null) => {
-      if (sendMessage({ type: "switch_project", payload: { projectId } })) {
-        setSelectors((prev) => ({ ...prev, projectId }));
-        if (sessionId) void refreshSessions();
-      }
-    },
-    [refreshSessions, sendMessage, sessionId],
-  );
-
   const switchKb = useCallback(
     (domain: string) => {
       if (!domain) return;
@@ -1871,7 +1859,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       toggleViewMode,
       participant,
       transcriptView,
-      setTranscriptView,
       discovery,
       refreshDiscovery,
       localConfig,
@@ -1906,7 +1893,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       wsError,
       wsConnected,
       selectors,
-      switchProject,
       switchKb,
       switchSoul,
       switchRolePreset,
@@ -1931,7 +1917,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       retentionDueAt,
       setStudyTag,
       messages,
-      streamParts,
       toolStatus,
       runPhaseLabel,
       composerNotice,
@@ -1941,7 +1926,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       toggleWorkspaceStage,
       stageWorkspacePath,
       unstageWorkspacePaths,
-      clearStagedWorkspace,
       runCompletedCount,
       requestConfirm,
       approvals,
@@ -2015,7 +1999,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       wsError,
       wsConnected,
       selectors,
-      switchProject,
       switchKb,
       switchSoul,
       switchRolePreset,
@@ -2040,7 +2023,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       retentionDueAt,
       setStudyTag,
       messages,
-      streamParts,
       toolStatus,
       runPhaseLabel,
       composerNotice,
@@ -2050,7 +2032,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       toggleWorkspaceStage,
       stageWorkspacePath,
       unstageWorkspacePaths,
-      clearStagedWorkspace,
       runCompletedCount,
       requestConfirm,
       approvals,
@@ -2080,6 +2061,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   return (
     <AppContext.Provider value={value}>
+      <StreamContext.Provider value={streamParts}>
       {children}
       <ConfirmDialog
         open={Boolean(confirmRequest)}
@@ -2094,8 +2076,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }}
         onCancel={() => setConfirmRequest(null)}
       />
+      </StreamContext.Provider>
     </AppContext.Provider>
   );
+}
+
+export function useStreamParts(): StreamPart[] {
+  return useContext(StreamContext);
 }
 
 export function useApp(): AppContextValue {

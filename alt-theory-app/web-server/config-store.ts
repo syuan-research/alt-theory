@@ -33,12 +33,11 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
-  renameSync,
   writeFileSync,
 } from "fs";
 import { dirname, join, resolve } from "path";
-import { randomUUID } from "crypto";
 import { ensureLocalModeDefaults } from "./local-mode-paths.js";
+import { writeJsonAtomic } from "../core/data-dir.js";
 import {
   catalogModelMetadata,
   catalogSdkFamily,
@@ -204,11 +203,7 @@ function readModelsFile(agentDir: string): ModelsFile {
 }
 
 function writeModelsFileAtomic(agentDir: string, data: ModelsFile): void {
-  const path = modelsJsonPath(agentDir);
-  mkdirSync(dirname(path), { recursive: true });
-  const tmp = `${path}.${randomUUID()}.tmp`;
-  writeFileSync(tmp, `${JSON.stringify(data, null, 2)}\n`, "utf-8");
-  renameSync(tmp, path);
+  writeJsonAtomic(modelsJsonPath(agentDir), data);
 }
 
 // ---------------------------------------------------------------------------
@@ -1220,9 +1215,7 @@ export function clearActive(agentDir: string): void {
   }
   delete existing.defaultProvider;
   delete existing.defaultModel;
-  const tmp = `${path}.${randomUUID()}.tmp`;
-  writeFileSync(tmp, `${JSON.stringify(existing, null, 2)}\n`, "utf-8");
-  renameSync(tmp, path);
+  writeJsonAtomic(path, existing);
 }
 
 /** Resolve the agent config dir once at request time (used by server.ts). */
