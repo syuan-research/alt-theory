@@ -109,6 +109,8 @@ const catalog: Record<string, string> = {
   "Block": "阻止",
   "Both takes are kept — the branch is in Related conversations on the right.": "两个版本都会保留——分支位于右侧的相关对话中。",
   "Branch · {count} messages": "分支 · {count}条消息",
+  "br = Branch · btw = side chat · h = Helper · sa = Subagent":
+    "br = 分支 · btw = 旁侧对话 · h = 帮手 · sa = 子代理",
   "Branch from any answer to follow a second reading without losing the first.": "从任何答案分支，进行第二次解读而不丢失第一次。",
   "Branch of another conversation": "另一对话的分支",
   "Branch the conversation into arms and compare their responses": "将对话分支成不同分支并比较它们的回复。",

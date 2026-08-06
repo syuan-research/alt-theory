@@ -366,6 +366,9 @@ function RelatedConversations() {
           </div>
         </button>
       ))}
+      <div className="related-legend" aria-hidden="true">
+        {t("br = Branch · btw = side chat · h = Helper · sa = Subagent")}
+      </div>
     </>
   );
 }

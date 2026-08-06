@@ -99,6 +99,9 @@ walks that stopped at deleted middles; do not reintroduce them.
   others (purging can). Renames don't participate: family logic keys off
   lineage only; a bare machine-token alias (old "Branch 1" or new "br1")
   collapses to the marker, a real name is kept under the prefix.
+- Tokens are all-lowercase by ruling (owner 2026-08-06: consistency over
+  word-vs-acronym casing like `Br`/`BTW`). The Related rail carries a
+  small sticky legend (`.related-legend`) explaining the tokens.
 
 ## 4. Promotion ("Make this the main conversation" — role swap + coexist)
 
@@ -178,6 +181,18 @@ walks that stopped at deleted middles; do not reintroduce them.
    (`promoteToMainlineRecords`) must agree; `familyHead` is shared by
    tree building and the crown so they cannot disagree.
 7. Never clear `listed` on side/helper/subagent as a side effect.
+
+## 9. Known trade-offs (accepted, owner 2026-08-06)
+
+- First-level display names are machine tokens now (`br1`, not
+  "Branch 1") — uniform with deeper levels.
+- Trash-inclusive numbering can show gaps (`br2` without a visible
+  `br1`); purging still shifts numbers.
+- The rail's family-wide attached pass can get noisy in large families;
+  narrowing to "members that know it" would need fork-time comparison,
+  which is deliberately ruled out.
+- Deleting a branch keeps even its OWN subagents while the family has an
+  anchor; a spare ab-arm record likewise persists until family death.
 
 Tests that pin these rules: `web-server/session-deletion-lifecycle.test.ts`,
 `web-server/session-service.test.ts` (fork family / repoint / promote

@@ -108,6 +108,8 @@ const catalog: Record<string, string> = {
   "Block": "阻止",
   "Both takes are kept — the branch is in Related conversations on the right.": "兩個版本都會保留——分支位於右側的相關對話中。",
   "Branch · {count} messages": "分支 · {count}條訊息",
+  "br = Branch · btw = side chat · h = Helper · sa = Subagent":
+    "br = 分支 · btw = 旁側對話 · h = 幫手 · sa = 子代理",
   "Branch from any answer to follow a second reading without losing the first.": "從任何答案分支，進行第二次解讀而不丟失第一次。",
   "Branch of another conversation": "另一對話的分支",
   "Branch the conversation into arms and compare their responses": "將對話分支成不同分支並比較它們的回覆。",
