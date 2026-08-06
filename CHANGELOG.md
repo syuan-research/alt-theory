@@ -6,43 +6,34 @@ detail lives in commit history and `development/`.
 
 ---
 
-## Unreleased
+## v1.4.2-beta.1 — 2026-08-06
 
-Family relations are now derived from lineage by one rule instead of
-patched per feature — the class of "random" family bugs (broken middle
-levels, vanishing subagents) goes away at the root.
+Family relations are now derived by one rule from lineage; the "random"
+family bugs go away at the root.
 
 ### Conversation families
 
 - A deleted middle branch no longer splinters the family: grandchildren
-  attach to their nearest living ancestor in the list, and the family
-  stays one visual unit.
-- Attached conversations (BTW / Helper / subagent) now belong to the
-  family, not to one parent: they survive every deletion as long as ANY
-  branch, root, or listed member of the family lives, and only leave when
-  the last one goes (taking them along, so nothing lingers invisibly).
-- The Related rail now shows the family's attached conversations from
-  every member — an identical branch sees its sibling's subagents too,
-  each labeled with where it came from.
-- Branch names are now short mechanical paths that extend at every level:
-  `br1` (first branch), `br1-btw2` (its second BTW), `sa1` (a subagent) —
-  so any depth of nesting stays unambiguous. Numbering counts Trash, so
-  deleting a sibling no longer renumbers the rest. Your own renames are
-  kept under the prefix, exactly as before.
+  attach to the nearest living ancestor.
+- BTW / Helper / subagent conversations belong to the family, not one
+  parent: they survive until the family's last branch or listed member
+  goes.
+- The Related rail shows the family's attached conversations from every
+  member, each labeled with its origin. A small legend explains the
+  name tokens.
+- Branch names are short mechanical paths — `br1`, `br1-btw2`, `sa1` —
+  unambiguous at any depth. Numbering stays stable when siblings are
+  deleted; your own renames are kept.
 
 ### Conversation list & composer
 
-- Moving a conversation to another folder no longer pre-selects "also
-  move all other conversations" — the family still always moves together;
-  unrelated folder-mates are now opt-in.
-- The 3-dots menu of a conversation row now opens at the row you clicked
-  (and flips upward near the bottom edge) instead of drifting down the
-  page or off-screen on long lists.
-- The role and model menus of a side conversation now close when you
-  click anywhere else.
-- Files and folders can be dragged from the right-hand file tree straight
-  into the composer to attach them — same as dragging from Finder or
-  Explorer.
+- Moving a conversation no longer pre-selects "also move all other
+  conversations"; the family itself still moves together.
+- A row's 3-dots menu opens at the row you clicked and flips upward near
+  the bottom edge.
+- A side conversation's role and model menus close on any outside click.
+- Files and folders drag from the right-hand file tree straight into the
+  composer.
 
 ## v1.4.1-beta.1 — 2026-08-05
 
