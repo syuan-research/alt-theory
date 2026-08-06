@@ -98,6 +98,15 @@ export interface SessionSummary {
   /** Working folder (M4); null = default managed workspace. The UI groups by
    *  this and shows only the basename, keeping full paths out of the list. */
   workspacePrimaryDir: string | null;
+  /** Ancestor session ids, root first, self excluded — walked through Trash.
+   *  When the top of the chain is purged, its id still anchors the family
+   *  key. Empty for roots. Derived, never stored. */
+  lineagePath: string[];
+  /** Mechanical family name: one token segment per fork-child ancestor plus
+   *  self, e.g. "br1-btw2" (br/btw/h/sa/ab). Index = birth order among
+   *  same-parent same-purpose siblings, Trash included, so a sibling's
+   *  deletion never renumbers the rest. Null for roots. */
+  lineageMarker: string | null;
 }
 
 export interface SessionListResponse {
@@ -182,18 +191,75 @@ function listSessionSummariesByDeletion(
   deleted: boolean,
 ): SessionListResponse {
   const resolvedDataDir = resolve(dataDir);
-  const sessionsRoot = resolveSessionsRoot(resolvedDataDir);
-  if (!existsSync(sessionsRoot)) {
-    return { dataDir: resolvedDataDir, sessions: [] };
+  return {
+    dataDir: resolvedDataDir,
+    sessions: allSessionSummaries(resolvedDataDir).filter(
+      (summary) => Boolean(summary.deletedAt) === deleted,
+    ),
+  };
+}
+
+const LINEAGE_TOKEN: Record<ForkPurpose, string> = {
+  fork: "br",
+  side: "btw",
+  helper: "h",
+  subagent: "sa",
+  "ab-arm": "ab",
+};
+
+/**
+ * Derive lineagePath + lineageMarker for every summary. Runs on the FULL set
+ * (Trash included) so chains keep walking through deleted middles — the one
+ * place family relations are computed; everything else reads the result.
+ */
+function withLineage(summaries: SessionSummary[]): SessionSummary[] {
+  const byId = new Map(summaries.map((s) => [s.sessionId, s]));
+  const siblingsByParentPurpose = new Map<string, SessionSummary[]>();
+  for (const s of summaries) {
+    if (!s.forkedFrom) continue;
+    const key = `${s.forkedFrom.sessionId}|${s.forkedFrom.purpose}`;
+    const list = siblingsByParentPurpose.get(key) ?? [];
+    list.push(s);
+    siblingsByParentPurpose.set(key, list);
   }
-
-  const sessions = readdirSync(sessionsRoot, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => readSessionSummary(resolvedDataDir, entry.name, deleted))
-    .filter((summary): summary is SessionSummary => summary !== null)
-    .sort(compareSummaries);
-
-  return { dataDir: resolvedDataDir, sessions };
+  const markerOf = new Map<string, string>();
+  for (const [key, list] of siblingsByParentPurpose) {
+    list.sort((a, b) => (a.createdAt ?? "").localeCompare(b.createdAt ?? ""));
+    const purpose = key.split("|")[1] as ForkPurpose;
+    list.forEach((s, index) => {
+      markerOf.set(s.sessionId, `${LINEAGE_TOKEN[purpose]}${index + 1}`);
+    });
+  }
+  return summaries.map((s) => {
+    const chain: SessionSummary[] = [];
+    let purgedTopId: string | null = null;
+    const walked = new Set([s.sessionId]);
+    let cursorId = s.forkedFrom?.sessionId;
+    while (cursorId) {
+      const parent = byId.get(cursorId);
+      if (!parent) {
+        purgedTopId = cursorId; // purged ancestor still anchors the family
+        break;
+      }
+      if (walked.has(parent.sessionId)) break; // defensive: cycle
+      walked.add(parent.sessionId);
+      chain.unshift(parent);
+      cursorId = parent.forkedFrom?.sessionId;
+    }
+    const lineagePath = [
+      ...(purgedTopId ? [purgedTopId] : []),
+      ...chain.map((c) => c.sessionId),
+    ];
+    const own = s.forkedFrom ? markerOf.get(s.sessionId) : undefined;
+    const segments = chain
+      .map((c) => markerOf.get(c.sessionId))
+      .filter((m): m is string => Boolean(m));
+    return {
+      ...s,
+      lineagePath,
+      lineageMarker: own ? [...segments, own].join("-") : null,
+    };
+  });
 }
 
 export function readSessionDetail(
@@ -817,7 +883,6 @@ export function readSessionAccessSummary(
 function readSessionSummary(
   dataDir: string,
   sessionId: string,
-  deleted = false,
 ): SessionSummary | null {
   // A purged tombstone (permanent delete / retention expiry) is neither an
   // active conversation nor a Trash entry; recognize it from deleted.json
@@ -830,9 +895,7 @@ function readSessionSummary(
   const parts = readSessionParts(dataDir, sessionId);
   if (!parts) return null;
   const summary = buildSummary(sessionId, parts);
-  if (Boolean(parts.deleted) !== deleted || !isDurableCatalogSession(summary, parts)) {
-    return null;
-  }
+  if (!isDurableCatalogSession(summary, parts)) return null;
   return summary;
 }
 
@@ -847,9 +910,15 @@ function listSessionDirIds(dataDir: string): string[] {
 }
 
 function allSessionSummaries(dataDir: string): SessionSummary[] {
-  const active = listSessionSummariesByDeletion(dataDir, false).sessions;
-  const deleted = listSessionSummariesByDeletion(dataDir, true).sessions;
-  return [...active, ...deleted];
+  const resolvedDataDir = resolve(dataDir);
+  const sessionsRoot = resolveSessionsRoot(resolvedDataDir);
+  if (!existsSync(sessionsRoot)) return [];
+  const sessions = readdirSync(sessionsRoot, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => readSessionSummary(resolvedDataDir, entry.name))
+    .filter((summary): summary is SessionSummary => summary !== null)
+    .sort(compareSummaries);
+  return withLineage(sessions);
 }
 
 /**
@@ -865,52 +934,39 @@ export function sessionsAttachedToDeletion(
   return attachedDeletionTargets(sessionId, allSessionSummaries(dataDir));
 }
 
+/** A structural family anchor: a root (delisted or not), a branch, or a
+ *  child the user listed. Unlisted attached conversations are not anchors. */
+function keepsFamilyAlive(s: SessionSummary): boolean {
+  if (!s.forkedFrom) return true;
+  return s.forkedFrom.purpose === "fork" || s.forkedFrom.listed === true;
+}
+
+/**
+ * Owner rule (v1.4.1, 2026-08-06 — replaces the per-node living-branch walk):
+ * Delete removes exactly the chosen conversation. Attached conversations
+ * (btw/helper/subagent/ab-arm) belong to the FAMILY, not to one parent: they
+ * survive any deletion that leaves a living anchor (root, branch, or listed
+ * child — at any depth), and follow the last anchor out so no invisible
+ * orphans remain. One rule, no fork-time comparison, no chain special cases.
+ */
 function attachedDeletionTargets(
   sessionId: string,
   summaries: SessionSummary[],
 ): string[] {
-  const children = new Map<string, SessionSummary[]>();
-  for (const summary of summaries) {
-    const parentId = summary.forkedFrom?.sessionId;
-    if (!parentId) continue;
-    const list = children.get(parentId) ?? [];
-    list.push(summary);
-    children.set(parentId, list);
-  }
-  const targets: string[] = [];
-  const visit = (id: string) => {
-    targets.push(id);
-    const kids = children.get(id) ?? [];
-    // Owner rule (v1.4 round 1, simplified 2026-08-04): while any branch of
-    // this node lives — including a branch of a branch — its attached
-    // conversations (btw/helper/subagent) ALL survive; the living branch's
-    // rail reaches them through the ancestry walk. No fork-time comparison:
-    // never silently lose content, at the cost of a branch's rail sometimes
-    // showing an attached conversation opened after its fork.
-    // A deleted branch with a living branch of its own still counts: the
-    // living descendant's rail walks up through the deleted link.
-    const hasLivingBranch = (parentId: string): boolean =>
-      (children.get(parentId) ?? []).some(
-        (k) =>
-          k.forkedFrom?.purpose === "fork" &&
-          (!k.deletedAt || hasLivingBranch(k.sessionId)),
-      );
-    const protectedHere = hasLivingBranch(id);
-    for (const child of kids) {
-      const fork = child.forkedFrom;
-      if (
-        !fork ||
-        fork.listed ||
-        !["side", "helper", "subagent", "ab-arm"].includes(fork.purpose)
-      ) {
-        continue;
-      }
-      if (protectedHere) continue;
-      visit(child.sessionId);
-    }
-  };
-  visit(sessionId);
-  return targets;
+  const family = forkTreeMembers(sessionId, summaries);
+  const anchorRemains = family.some(
+    (m) => m.sessionId !== sessionId && !m.deletedAt && keepsFamilyAlive(m),
+  );
+  if (anchorRemains) return [sessionId];
+  return [
+    sessionId,
+    ...family
+      .filter(
+        (m) =>
+          m.sessionId !== sessionId && !m.deletedAt && !keepsFamilyAlive(m),
+      )
+      .map((m) => m.sessionId),
+  ];
 }
 
 const TEXT_FILE_ROOTS = ["records", "workspace"] as const;
@@ -1106,6 +1162,10 @@ function buildSummary(sessionId: string, parts: SessionParts): SessionSummary {
     forkedFrom: parts.v4Session?.forkedFrom ?? null,
     studyTag: parts.v4Session?.studyTag ?? null,
     workspacePrimaryDir: parts.v4Session?.workspace?.primaryDir ?? null,
+    // Filled by withLineage on list builds; single-summary reads have no
+    // family context.
+    lineagePath: [],
+    lineageMarker: null,
   };
 }
 

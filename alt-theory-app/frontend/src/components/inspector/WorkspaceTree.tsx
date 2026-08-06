@@ -10,7 +10,7 @@ import { t } from "@/i18n";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
 import { hasNativeBridge, revealPath } from "@/lib/native";
-import { stagePathAfterUpload } from "@/lib/workspace";
+import { stagePathAfterUpload, WORKSPACE_PATH_MIME } from "@/lib/workspace";
 import { MarkdownBody } from "@/components/conversation/MarkdownBody";
 
 interface TreeNode<T> {
@@ -285,6 +285,7 @@ export function WorkspaceTree() {
                 <WorkingTree
                   entries={workingFiles.filter((entry) => entry.folderId === folder.id)}
                   onOpenFile={openWorkingFile}
+                  basePath={folder.path}
                 />
               ) : null}
             </div>
@@ -331,7 +332,7 @@ export function WorkspaceTree() {
             <>
               <div className="files-section-title">{t("References")}</div>
               <div className="tree">
-                <TreeLevel node={referenceTree} depth={0} onOpenFile={openFile} />
+                <TreeLevel node={referenceTree} depth={0} onOpenFile={openFile} dragPath={(p) => p} />
               </div>
             </>
           ) : null}
@@ -339,7 +340,7 @@ export function WorkspaceTree() {
             <>
               <div className="files-section-title">{t("Conversation folder")}</div>
               <div className="tree">
-                <TreeLevel node={conversationFolderTree} depth={0} onOpenFile={openFile} />
+                <TreeLevel node={conversationFolderTree} depth={0} onOpenFile={openFile} dragPath={(p) => p} />
               </div>
             </>
           ) : null}
@@ -352,9 +353,11 @@ export function WorkspaceTree() {
 function WorkingTree({
   entries,
   onOpenFile,
+  basePath,
 }: {
   entries: WorkingFileEntry[];
   onOpenFile: (entry: WorkingFileEntry) => void;
+  basePath: string;
 }) {
   if (entries.length === 0) return null;
   const tree = buildTree(entries);
@@ -365,6 +368,7 @@ function WorkingTree({
         depth={0}
         onOpenFile={onOpenFile}
         canOpen={(entry) => entry.previewable}
+        dragPath={(p) => `${basePath.replace(/[\\/]+$/, "")}/${p}`}
       />
     </div>
   );
@@ -375,11 +379,15 @@ function TreeLevel<T extends { path: string }>({
   depth,
   onOpenFile,
   canOpen = () => true,
+  dragPath,
 }: {
   node: TreeNode<T>;
   depth: number;
   onOpenFile: (entry: T) => void;
   canOpen?: (entry: T) => boolean;
+  /** Maps a node's tree path (file or folder) to the path staged on drop
+   *  into the composer; undefined = this tree is not draggable. */
+  dragPath?: (treePath: string) => string;
 }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const children = [...node.children.values()].sort((a, b) => {
@@ -406,6 +414,18 @@ function TreeLevel<T extends { path: string }>({
                   : child.path
               }
               aria-expanded={isFolder ? !isCollapsed : undefined}
+              draggable={Boolean(dragPath)}
+              onDragStart={
+                dragPath
+                  ? (event) => {
+                      event.dataTransfer.setData(
+                        WORKSPACE_PATH_MIME,
+                        dragPath(child.path),
+                      );
+                      event.dataTransfer.effectAllowed = "copy";
+                    }
+                  : undefined
+              }
               onClick={() => {
                 if (isFolder) {
                   setCollapsed((current) => {
@@ -441,6 +461,7 @@ function TreeLevel<T extends { path: string }>({
                 depth={depth + 1}
                 onOpenFile={onOpenFile}
                 canOpen={canOpen}
+                dragPath={dragPath}
               />
             ) : null}
           </div>

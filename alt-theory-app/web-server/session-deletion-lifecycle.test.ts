@@ -95,8 +95,9 @@ test("Delete follows attached conversations but stops at Branches and promoted c
   createSession(dataDir, "branch-side", { sessionId: "branch", purpose: "side" });
   createSession(dataDir, "branch-arm", { sessionId: "branch", purpose: "ab-arm" });
 
-  // root has a living branch, so ALL its attached conversations survive the
-  // delete (owner ruling 2026-08-04: no fork-time bound).
+  // A living anchor (the branch) remains, so EVERY attached conversation in
+  // the family survives the delete (owner ruling 2026-08-06: attached
+  // conversations belong to the family, not to one parent).
   softDeleteSession(dataDir, "root");
   assert.deepEqual(ids(dataDir), [
     "branch",
@@ -112,26 +113,36 @@ test("Delete follows attached conversations but stops at Branches and promoted c
   );
   assert.deepEqual(restoreDeletedSession(dataDir, "root").sort(), ["root"]);
 
-  // branch has no branch of its own: the cascade still buries its attached
-  // side conversation, and that child is not a direct Trash entry.
+  // Deleting the branch leaves root and the promoted helper as anchors:
+  // nothing cascades — not even the branch's own attached conversations.
   softDeleteSession(dataDir, "branch");
-  assert.deepEqual(ids(dataDir), ["promoted-helper", "root", "side", "subagent"]);
+  assert.deepEqual(ids(dataDir), [
+    "branch-arm",
+    "branch-side",
+    "promoted-helper",
+    "root",
+    "side",
+    "subagent",
+  ]);
+  assert.deepEqual(restoreDeletedSession(dataDir, "branch").sort(), ["branch"]);
+
+  // The LAST anchor takes every remaining unlisted attached conversation
+  // with it (no invisible orphans), wherever it was attached in the family.
+  softDeleteSession(dataDir, "root");
+  softDeleteSession(dataDir, "branch");
+  softDeleteSession(dataDir, "promoted-helper");
+  assert.deepEqual(ids(dataDir), []);
+  assert.deepEqual(restoreDeletedSession(dataDir, "promoted-helper").sort(), [
+    "branch-arm",
+    "branch-side",
+    "promoted-helper",
+    "side",
+    "subagent",
+  ]);
   assert.throws(
     () => restoreDeletedSession(dataDir, "branch-side"),
     /not a direct Trash entry/,
   );
-  // A/B arms are disposable (owner 2026-08-04: real-time compare, the
-  // alternative is not retained) — they follow their parent into Trash
-  // instead of surviving as invisible orphans.
-  assert.throws(
-    () => restoreDeletedSession(dataDir, "branch-arm"),
-    /not a direct Trash entry/,
-  );
-  assert.deepEqual(restoreDeletedSession(dataDir, "branch").sort(), [
-    "branch",
-    "branch-arm",
-    "branch-side",
-  ]);
 });
 
 test("Deleting a parent keeps subagents and btw a surviving branch shares", () => {
@@ -292,16 +303,24 @@ test("Delete reports every conversation it will bury, so a live run can be stopp
     listed: true,
   });
 
-  // root's living branch protects its attached conversations, so deleting
-  // root buries only root. A branchless parent still reports the whole
-  // attached family (a subagent two levels down is as live as its root).
+  // Living anchors (branch, promoted helper) keep every attached
+  // conversation alive, so deleting root — or an attached parent — buries
+  // only the chosen conversation itself.
   assert.deepEqual(sessionsAttachedToDeletion(dataDir, "root").sort(), [
     "root",
   ]);
   assert.deepEqual(sessionsAttachedToDeletion(dataDir, "side").sort(), [
     "side",
-    "subagent",
   ]);
+
+  // With every anchor gone, the last delete reports the whole remaining
+  // attached family — a subagent two levels down is as live as its root.
+  softDeleteSession(dataDir, "root");
+  softDeleteSession(dataDir, "branch");
+  assert.deepEqual(
+    sessionsAttachedToDeletion(dataDir, "promoted-helper").sort(),
+    ["promoted-helper", "side", "subagent"],
+  );
 });
 
 test("Permanent deletion removes conversation records but keeps workspace files", () => {

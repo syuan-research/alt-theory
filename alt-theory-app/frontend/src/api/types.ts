@@ -226,6 +226,11 @@ export interface SessionSummary {
   studyTag: StudyTag | null;
   /** Working folder (M4); null = default managed workspace. */
   workspacePrimaryDir: string | null;
+  /** Ancestor ids, root first (server-derived, walks through Trash; a purged
+   *  top still anchors the family key). Empty for roots. */
+  lineagePath?: string[];
+  /** Mechanical family name, e.g. "br1-btw2" (br/btw/h/sa/ab); null for roots. */
+  lineageMarker?: string | null;
 }
 
 export interface EffectiveSessionConfig {

@@ -4,7 +4,7 @@ slug: branch-family-semantics
 scope: Conversation families — branches, attached conversations, promotion, deletion, workspace unity
 summary: The shipped rules for fork trees; one of the most intricate areas of the app — read this BEFORE touching any of it
 status: current
-last_reviewed: 2026-08-05
+last_reviewed: 2026-08-06
 tags: [core, backend, frontend, sessions, branching]
 depends_on: [core-session-engine]
 implements: []
@@ -22,14 +22,27 @@ and why.
 
 Code hotspots this document governs:
 
-- `alt-theory-app/web-server/session-store.ts` — cascade delete,
-  living-representative, promotion records, heal, family walks
+- `alt-theory-app/web-server/session-store.ts` — lineage derivation
+  (`withLineage`), cascade delete, living-representative, promotion
+  records, heal, family walks
 - `alt-theory-app/web-server/session-service.ts` — fork creation,
   workspace re-point
 - `alt-theory-app/frontend/src/lib/sessionList.ts` — list membership,
-  crown predicate, tree building, orphan grouping
+  crown predicate, tree building, stray-family grouping, marker names
 - `alt-theory-app/frontend/src/components/shell/LeftNav.tsx`,
   `.../conversation/ChildConversation.tsx` — the two crown entry points
+- `alt-theory-app/frontend/src/components/shell/InspectorPanel.tsx` —
+  the Related rail (family-wide attached visibility)
+
+## 0. The one design rule (v1.4.1 refactor, owner 2026-08-06)
+
+Relations are **derived from immutable lineage, in one place** — never
+maintained per-feature. The server computes, for every summary (Trash
+included), `lineagePath` (ancestor ids, root first; a purged top id still
+anchors the family) and `lineageMarker` (mechanical name, §3). Everything
+downstream — display tree, cascade, crown, rail, workspace unity — reads
+those. Bugs in this area historically came from per-feature relation
+walks that stopped at deleted middles; do not reintroduce them.
 
 ## 1. Data model (immutable lineage, flags move)
 
@@ -37,6 +50,10 @@ Code hotspots this document governs:
   **Lineage is immutable provenance** — promotion, deletion, restore, and
   moves never rewrite who forked from whom.
 - Purposes: `fork` (Branch), `side` (BTW), `helper`, `subagent`, `ab-arm`.
+- Derived on every list build (never stored): `lineagePath: string[]`,
+  `lineageMarker: string | null` (`withLineage` in session-store.ts).
+  The walk goes THROUGH Trash; only a purged (permanently deleted)
+  ancestor ends it, and that purged id still anchors the family key.
 - `delisted?: boolean` + `delistedFor?: string` exist on ROOTS only:
   a demoted old mainline and who took its spot.
 - `fork.listed === true` has TWO meanings by context:
@@ -50,28 +67,40 @@ Code hotspots this document governs:
 
 - Members: all roots (delisted ones included — demoted, never hidden),
   all branches, plus explicitly listed children (`isListMember`).
-- Nesting: children under their parent. Display inversion: a delisted
-  root nests UNDER its successor (`delistedFor`, fallback most recent
-  member branch) — role swap, not data migration.
-- **Orphan grouping** (v1.4.1): when a parent is gone from the list data
-  (deleted/purged mainline), its orphaned members do NOT scatter into
-  top-level rows — the family head takes the top row and the others nest
-  under it. Head = `rootlessFamilyHead`: the anchored branch
-  (`fork.listed === true`) at ANY depth — a crowned branch-of-branch is
-  hoisted out of its parent to the top — else the OLDEST first-level
-  branch, else the oldest orphan. The head row carries a crown marker
-  (`isFamilyHead`) so the user can see who currently holds the spot.
-  Rationale: deleting a mainline is routine in the edit-heavy flow; the
-  family must stay one visual unit, headed automatically (owner ruling
-  2026-08-05: oldest first-level branch succeeds — no manual step
-  required), with the crown available to re-head at any depth.
-- **Display cycle guard**: the successor of a delisted root must be cut
-  from its own parent edge by walking the WHOLE ancestor chain — a
-  promoted branch-of-branch nesting anywhere below the demoted root
-  would close a cycle and the family would vanish from the list
-  (shipped bug found 2026-08-05, pinned by test).
+- **Display parent = nearest list ancestor** (walk `lineagePath` from the
+  nearest end): a deleted middle branch never splinters the root from its
+  grandchildren — they attach to the closest living ancestor.
+- Display inversion: a delisted root nests UNDER its successor
+  (`delistedFor`, fallback most recent member branch) — role swap, not
+  data migration. The successor is cut from its own parent edge (checked
+  against the family ROOT via `lineagePath[0]`) or the family would close
+  a display cycle and vanish (shipped bug 2026-08-05, pinned by test).
+- **Stray-family grouping**: members whose ENTIRE ancestor chain is gone
+  from the list data regroup by family key (`lineagePath[0]`) instead of
+  scattering: the family head takes the top row, the rest nest under it,
+  and the head row carries a crown marker (`isFamilyHead`).
+  Head = `familyHead`: the anchored branch (`fork.listed === true`) at
+  ANY depth, else the oldest first-level branch, else the oldest branch
+  anywhere, else the oldest member — the uniform mechanical fallback
+  (owner 2026-08-06: prefer the crowned/most-natural head, but always
+  fall through to OLDEST so a living family can never fail to resolve).
 
-## 3. Promotion ("Make this the main conversation" — role swap + coexist)
+## 3. Marker names (owner 2026-08-06)
+
+- Display-layer only (`ui-alias.json` is never rewritten): the list title
+  is `marker · base title`.
+- `lineageMarker` = one token segment per fork-child level, joined by
+  `-`: tokens `br` (branch), `btw`, `h` (helper), `sa` (subagent), `ab`
+  (ab-arm; not shown in UI). Example: `br1-btw2` = second BTW of the
+  first branch. Every depth extends the path, so branch-of-btw vs
+  btw-of-btw can never collide.
+- Index = birth order (`createdAt`) among same-parent same-purpose
+  siblings **including Trash**, so deleting a sibling never renumbers the
+  others (purging can). Renames don't participate: family logic keys off
+  lineage only; a bare machine-token alias (old "Branch 1" or new "br1")
+  collapses to the marker, a real name is kept under the prefix.
+
+## 4. Promotion ("Make this the main conversation" — role swap + coexist)
 
 - Promotion changes only presentation flags: target gets listed, the
   nearest delistable visible ROOT steps down (`delisted: true` +
@@ -80,22 +109,28 @@ Code hotspots this document governs:
 - Crown visibility = `canTakeMainline`, shared by the session-list
   3-dots and the ChildConversation header. True when:
   - a delisted root could take its spot back; or
-  - a branch/listed child has a delistable visible root ancestor; or
-  - **rootless family** (v1.4.1): any member at ANY depth that is not
-    the current head — the crown RE-HEADS the family. Server side clears
-    competing branch anchors across the whole family (only when no
-    living root exists) so the head stays unique.
-- After promotion the crown disappears from the new head (nothing left
-  to change) and appears on members whose promotion would change the
-  head again. Reversal is just promotion in the other direction.
+  - a branch/listed child has a delistable visible root ancestor
+    (checked over `lineagePath`, so a deleted middle never hides a
+    living root); or
+  - **rootless family**: any member that is not the current head — the
+    crown RE-HEADS the family. Server side clears competing branch
+    anchors across the whole family (only when no living root exists) so
+    the head stays unique.
+- After promotion the crown disappears from the new head and appears on
+  members whose promotion would change the head again. Reversal is just
+  promotion in the other direction.
 
-## 4. Deletion, succession, restore
+## 5. Deletion, succession, restore
 
-- Cascade (`attachedDeletionTargets`): branches NEVER cascade with a
-  deleted parent. Attached conversations (side/helper/subagent) survive
-  while ANY branch in the chain lives (no fork-time bound — owner
-  2026-08-04: never silently lose content); `ab-arm` always follows its
-  parent (arms are disposable, `2c088f1`).
+- Cascade (`attachedDeletionTargets`, owner 2026-08-06 — replaces the
+  per-node living-branch walk): **Delete removes exactly the chosen
+  conversation.** Attached conversations (side/helper/subagent/ab-arm)
+  belong to the FAMILY, not to one parent: they survive any deletion
+  that leaves a living anchor (`keepsFamilyAlive`: root — delisted
+  counts —, branch, or listed child, at any depth), and the LAST anchor
+  takes every remaining unlisted attached conversation with it, so no
+  invisible orphans remain. ab-arm is no longer special-cased (a spare
+  arm record surviving alongside its family is harmless).
 - Living-representative invariant: while any member of a fork tree is
   alive, at least one member is listed. Successor rule (owner
   2026-08-05): nearest living ancestor first (auto-relist), else the
@@ -106,7 +141,18 @@ Code hotspots this document governs:
   deleted and restored comes back delisted; purged links are not
   synthesized.
 
-## 5. Workspace unity (one family, one folder)
+## 6. The Related rail (family-wide attached visibility)
+
+- Direct children of the open conversation (branches + attached) show
+  first. Then ALL attached conversations of the whole family (same
+  family key), labeled — no matter which parent they hang off or whether
+  that parent still lives (owner 2026-08-06: "family alive ⇒ subagent
+  reachable", from every member's rail, identical branches included; no
+  fork-time or who-knows-it heuristics). Sibling BRANCHES stay out.
+- A delisted origin on the ancestor chain is appended — it is in no
+  list, so these rail rows are its only door.
+
+## 7. Workspace unity (one family, one folder)
 
 - Invariant: every member of a fork tree shares the tree root's working
   folder. Enforced at: fork creation (inherit from parent), workspace
@@ -114,19 +160,24 @@ Code hotspots this document governs:
   structural root via `forkFamilyIds`, whichever member was dragged),
   and startup (`healFamilyInvariants`: root wins; also repairs
   no-listed-member families).
-- The folder-move dialogs state that the whole family moves. Folder
+- The folder-move dialogs state that the whole family moves. Moving the
+  OTHER (unrelated) conversations of the folder too is opt-in — the
+  dialog checkbox defaults to unchecked (owner 2026-08-06). Folder
   groups in the list sort by NAME (stable), roots inside by recency.
 
-## 6. Invariants to preserve when changing this area
+## 8. Invariants to preserve when changing this area
 
-1. Lineage (`forkedFrom`) is never rewritten.
+1. Lineage (`forkedFrom`) is never rewritten; `lineagePath` /
+   `lineageMarker` are derived in ONE place (`withLineage`).
 2. Only presentation flags move on promote/delete/restore.
 3. A living tree always has a listed representative.
-4. A family shares one working folder; root wins on conflict.
-5. Frontend predicate (`canTakeMainline`) and server behavior
-   (`promoteToMainlineRecords`) must agree; `orphanGroupHead` is shared
-   by tree building and the crown so they cannot disagree.
-6. Never clear `listed` on side/helper/subagent as a side effect.
+4. Attached conversations live exactly as long as their family has an
+   anchor (§5) — never tied to a single parent.
+5. A family shares one working folder; root wins on conflict.
+6. Frontend predicate (`canTakeMainline`) and server behavior
+   (`promoteToMainlineRecords`) must agree; `familyHead` is shared by
+   tree building and the crown so they cannot disagree.
+7. Never clear `listed` on side/helper/subagent as a side effect.
 
 Tests that pin these rules: `web-server/session-deletion-lifecycle.test.ts`,
 `web-server/session-service.test.ts` (fork family / repoint / promote

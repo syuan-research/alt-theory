@@ -3,7 +3,7 @@ import { useApp } from "@/context/AppProvider";
 import { useShell, type RailKey } from "@/context/ShellContext";
 import { t } from "@/i18n";
 import { shouldClearRelatedOnSubChange } from "@/lib/relatedOpen";
-import { sessionTitle } from "@/lib/sessionList";
+import { familyKeyOf, lineagePathOf, sessionTitle } from "@/lib/sessionList";
 import { ChildConversation } from "@/components/conversation/ChildConversation";
 import { RecordsPanel } from "@/components/inspector/RecordsPanel";
 import { ProvenancePanel } from "@/components/inspector/ProvenancePanel";
@@ -195,52 +195,42 @@ function RelatedConversations() {
     : null;
   const children = useMemo(() => {
     if (!app.sessionId) return [];
+    const byId = new Map(app.sessions.map((s) => [s.sessionId, s]));
+    const self = byId.get(app.sessionId);
     const related: typeof app.sessions = [];
-    const seen = new Set<string>();
-    const addChildrenOf = (parentId: string, inherited: boolean) => {
+    const seen = new Set<string>([app.sessionId]); // never list self (opus E1)
+    const add = (s: (typeof app.sessions)[number]) => {
+      if (seen.has(s.sessionId)) return;
+      seen.add(s.sessionId);
+      related.push(s);
+    };
+    // Direct children of this conversation first: its branches AND attached.
+    for (const s of app.sessions) {
+      if (s.deletedAt || s.forkedFrom?.purpose === "ab-arm") continue;
+      if (s.forkedFrom?.sessionId === app.sessionId) add(s);
+    }
+    if (self) {
+      // Family-wide attached pass (owner 2026-08-06): a subagent/btw/helper
+      // belongs to the FAMILY — reachable from every member's rail, labeled,
+      // no matter which parent it hangs off or whether that parent still
+      // lives. Sibling BRANCHES stay out; only attached conversations roam.
+      const key = familyKeyOf(self, byId);
       for (const s of app.sessions) {
-        if (s.sessionId === app.sessionId) continue; // never list self (opus E1)
-        if (s.forkedFrom?.sessionId !== parentId) continue;
-        if (s.forkedFrom.purpose === "ab-arm" || s.deletedAt) continue;
-        if (seen.has(s.sessionId)) continue;
-        // Inherited pass: ALL attached conversations of every ancestor
-        // (owner ruling 2026-08-04: no fork-time bound — never lose reach
-        // to preserved content; the rows are labeled, mild noise accepted).
-        // Sibling branches of ancestors stay out.
-        if (
-          inherited &&
-          !["subagent", "side", "helper"].includes(s.forkedFrom.purpose)
-        ) {
+        if (s.sessionId === app.sessionId || s.deletedAt) continue;
+        const purpose = s.forkedFrom?.purpose;
+        if (!purpose || !["subagent", "side", "helper"].includes(purpose)) {
           continue;
         }
-        seen.add(s.sessionId);
-        related.push(s);
+        if (familyKeyOf(s, byId) === key) add(s);
       }
-    };
-    addChildrenOf(app.sessionId, false);
-    // Walk the fork ancestry: an ancestor's attached conversations are part
-    // of this branch's history, even when the ancestor is deleted or purged.
-    const byId = new Map(app.sessions.map((s) => [s.sessionId, s]));
-    // Malformed lineage (self-reference or cycle, e.g. from an import) must
-    // not hang the tab (opus E2).
-    const walked = new Set<string>();
-    let node = byId.get(app.sessionId);
-    while (node?.forkedFrom && !walked.has(node.sessionId)) {
-      walked.add(node.sessionId);
-      addChildrenOf(node.forkedFrom.sessionId, true);
-      const parent = byId.get(node.forkedFrom.sessionId);
       // A delisted origin (M4b role swap) stays reachable from here — it is
       // in no list, so this rail row is its only door.
-      if (
-        parent &&
-        !parent.deletedAt &&
-        parent.delisted &&
-        !seen.has(parent.sessionId)
-      ) {
-        seen.add(parent.sessionId);
-        related.push(parent);
+      for (const id of lineagePathOf(self, byId)) {
+        const ancestor = byId.get(id);
+        if (ancestor && !ancestor.deletedAt && ancestor.delisted) {
+          add(ancestor);
+        }
       }
-      node = parent;
     }
     return related;
   }, [app.sessions, app.sessionId]);

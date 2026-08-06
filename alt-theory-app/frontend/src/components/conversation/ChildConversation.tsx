@@ -44,7 +44,19 @@ export function ChildConversation({
   const [slashIndex, setSlashIndex] = useState(0);
   const activeToolsRef = useRef<Record<string, ActiveToolState>>({});
   const messagesRef = useRef<HTMLDivElement>(null);
+  const ctxLineRef = useRef<HTMLDivElement>(null);
   const developer = app.transcriptView === "developer";
+
+  // Role/model menus close on any click outside the context line (same
+  // pattern as the main Composer).
+  useEffect(() => {
+    if (!menu) return;
+    const onDoc = (event: MouseEvent) => {
+      if (!ctxLineRef.current?.contains(event.target as Node)) setMenu(null);
+    };
+    document.addEventListener("click", onDoc);
+    return () => document.removeEventListener("click", onDoc);
+  }, [menu]);
 
   const summary = app.sessions.find((item) => item.sessionId === sessionId);
   const purpose = summary?.forkedFrom?.purpose ?? "side";
@@ -310,7 +322,7 @@ export function ChildConversation({
       ) : null}
       {error ? <div className="related-error">{error}</div> : null}
 
-      <div className="ctx-line child-ctx-line">
+      <div className="ctx-line child-ctx-line" ref={ctxLineRef}>
         <div className="ctx-picker">
           <button className="ctx-item" onClick={() => setMenu(menu === "role" ? null : "role")}>
             <i className="ph ph-user-circle" />

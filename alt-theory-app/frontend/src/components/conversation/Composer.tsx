@@ -7,6 +7,7 @@ import { ContextRing } from "@/components/conversation/ContextRing";
 import { RunTips } from "@/components/conversation/RunTips";
 import { DEFAULT_KB_DOMAIN, KB_OFF_VALUE } from "@/lib/constants";
 import { hasNativeBridge, pathsFromDroppedFiles, pickFiles } from "@/lib/native";
+import { WORKSPACE_PATH_MIME } from "@/lib/workspace";
 import { isWithheld } from "@/api/types";
 import { fmtTime } from "@/lib/format";
 import { t } from "@/i18n";
@@ -581,14 +582,26 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
         <div
           className={`composer${fileDragOver ? " file-drag-over" : ""}`}
           onDragEnter={(e) => {
-            if (!canAttach || !hasNativeBridge()) return;
-            if (![...e.dataTransfer.types].includes("Files")) return;
+            if (!canAttach) return;
+            const types = [...e.dataTransfer.types];
+            if (types.includes(WORKSPACE_PATH_MIME)) {
+              e.preventDefault();
+              setFileDragOver(true);
+              return;
+            }
+            if (!hasNativeBridge() || !types.includes("Files")) return;
             e.preventDefault();
             setFileDragOver(true);
           }}
           onDragOver={(e) => {
-            if (!canAttach || !hasNativeBridge()) return;
-            if (![...e.dataTransfer.types].includes("Files")) return;
+            if (!canAttach) return;
+            const types = [...e.dataTransfer.types];
+            if (
+              !types.includes(WORKSPACE_PATH_MIME) &&
+              (!hasNativeBridge() || !types.includes("Files"))
+            ) {
+              return;
+            }
             e.preventDefault();
             e.dataTransfer.dropEffect = "copy";
           }}
@@ -598,7 +611,15 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
           }}
           onDrop={(e) => {
             setFileDragOver(false);
-            if (!canAttach || !hasNativeBridge()) return;
+            if (!canAttach) return;
+            // Internal drag from the right-hand file tree.
+            const internal = e.dataTransfer.getData(WORKSPACE_PATH_MIME);
+            if (internal) {
+              e.preventDefault();
+              app.stageWorkspacePath(internal);
+              return;
+            }
+            if (!hasNativeBridge()) return;
             e.preventDefault();
             const paths = pathsFromDroppedFiles(e.dataTransfer.files);
             paths.forEach((p) => app.stageWorkspacePath(p));

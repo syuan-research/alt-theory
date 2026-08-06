@@ -375,7 +375,9 @@ function UserNav({ onImport }: { onImport: () => void }) {
       checkbox: canMigrateFolder
         ? {
             label: t("Also move all {count} conversations in \"{folder}\"", { count: siblings.length + 1, folder: folderLabel(sourceDir) }),
-            defaultChecked: true,
+            // Moving unrelated folder-mates is opt-in (owner 2026-08-06);
+            // the fork FAMILY still always moves together.
+            defaultChecked: false,
             danger: true,
           }
         : undefined,
@@ -755,7 +757,25 @@ function SessionNode({
         <details
           className="list-more session-more"
           onToggle={(event) => {
-            if (!event.currentTarget.open) setConfirmDelete(false);
+            const details = event.currentTarget;
+            if (!details.open) {
+              setConfirmDelete(false);
+              return;
+            }
+            // position:fixed menus get explicit viewport coords from the
+            // clicked row — with top:auto the browser used the menu's static
+            // spot, which for rows deep in a scrolled list landed far below
+            // the row or off-screen. Flip above when the bottom overflows.
+            const menu = details.querySelector<HTMLElement>(".list-menu");
+            const summary = details.querySelector<HTMLElement>("summary");
+            if (!menu || !summary) return;
+            const rect = summary.getBoundingClientRect();
+            menu.style.left = `${Math.max(8, rect.right - menu.offsetWidth)}px`;
+            const below = rect.bottom + 4;
+            menu.style.top =
+              below + menu.offsetHeight > window.innerHeight - 8
+                ? `${Math.max(8, rect.top - 4 - menu.offsetHeight)}px`
+                : `${below}px`;
           }}
         >
           <summary title={t("Conversation actions")}>

@@ -34,7 +34,7 @@ function child(
   };
 }
 
-test("branch prefix is English 'Branch N · title', not a rename to branch1", () => {
+test("branch prefix is a token path 'brN · title', not a rename to branch1", () => {
   const a = child("a", "parent", "fork", "2026-07-01T00:00:00.000Z");
   const b = child("b", "parent", "fork", "2026-07-02T00:00:00.000Z");
   const all = [b, a];
@@ -42,22 +42,16 @@ test("branch prefix is English 'Branch N · title', not a rename to branch1", ()
     a: { alias: "", snippet: "Map-level notes on theory" },
     b: { alias: "", snippet: "Map-level notes on theory" },
   };
-  assert.equal(
-    sessionTitle(a, names, all),
-    "Branch 1 · Map-level notes on theory",
-  );
-  assert.equal(
-    sessionTitle(b, names, all),
-    "Branch 2 · Map-level notes on theory",
-  );
+  assert.equal(sessionTitle(a, names, all), "br1 · Map-level notes on theory");
+  assert.equal(sessionTitle(b, names, all), "br2 · Map-level notes on theory");
 });
 
-test("btw and helper get BTW N / Helper N prefixes", () => {
+test("btw and helper get btwN / hN prefixes", () => {
   const btw = child("s", "parent", "side", "2026-07-01T00:00:00.000Z");
   const help = child("h", "parent", "helper", "2026-07-01T00:00:00.000Z");
   assert.equal(
     sessionTitle(btw, { s: { alias: "", snippet: "What is a skill?" } }, [btw]),
-    "BTW 1 · What is a skill?",
+    "btw1 · What is a skill?",
   );
   assert.equal(
     sessionTitle(
@@ -65,15 +59,30 @@ test("btw and helper get BTW N / Helper N prefixes", () => {
       { h: { alias: "", snippet: "How do I add a provider?" } },
       [help],
     ),
-    "Helper 1 · How do I add a provider?",
+    "h1 · How do I add a provider?",
   );
 });
 
-test("subagent keeps custom name under Subagent N prefix", () => {
+test("subagent keeps custom name under saN prefix", () => {
   const w = child("w", "parent", "subagent", "2026-07-01T00:00:00.000Z");
   assert.equal(
     sessionTitle(w, { w: { alias: "Cite check", snippet: "" } }, [w]),
-    "Subagent 1 · Cite check",
+    "sa1 · Cite check",
+  );
+});
+
+test("server lineageMarker wins: multi-level path names every depth", () => {
+  const nested = child("n", "b1", "side", "2026-07-05T00:00:00.000Z");
+  nested.lineagePath = ["root", "b1"];
+  nested.lineageMarker = "br1-btw2";
+  assert.equal(
+    sessionTitle(nested, { n: { alias: "", snippet: "Side quest" } }, [nested]),
+    "br1-btw2 · Side quest",
+  );
+  // A stale machine-token alias (old or new form) collapses to the marker.
+  assert.equal(
+    sessionTitle(nested, { n: { alias: "BTW 2", snippet: "" } }, [nested]),
+    "br1-btw2",
   );
 });
 
@@ -81,7 +90,7 @@ test("does not double-prefix when base is already only the marker", () => {
   const w = child("w", "parent", "subagent", "2026-07-01T00:00:00.000Z");
   assert.equal(
     sessionTitle(w, { w: { alias: "Subagent 1", snippet: "" } }, [w]),
-    "Subagent 1",
+    "sa1",
   );
 });
 
@@ -89,7 +98,26 @@ test("user alias is kept under the prefix (prefix ≠ rename)", () => {
   const a = child("a", "parent", "fork", "2026-07-01T00:00:00.000Z");
   assert.equal(
     sessionTitle(a, { a: { alias: "My rename", snippet: "" } }, [a]),
-    "Branch 1 · My rename",
+    "br1 · My rename",
+  );
+});
+
+test("a deleted middle branch never splinters root from grandchildren", () => {
+  const root = {
+    ...child("root", "unused", "fork", "2026-06-30T00:00:00.000Z"),
+    forkedFrom: null,
+  } as SessionSummary;
+  // "mid" was deleted: absent from the list data, but the server lineage
+  // still records the chain through it.
+  const grand = child("grand", "mid", "fork", "2026-07-02T00:00:00.000Z");
+  grand.lineagePath = ["root", "mid"];
+
+  const tree = buildWorkspaceTree([root, grand], []);
+  const roots = tree.groups.flatMap((g) => g.roots.map((r) => r.sessionId));
+  assert.deepEqual(roots, ["root"]);
+  assert.deepEqual(
+    (tree.childrenByParent.get("root") ?? []).map((s) => s.sessionId),
+    ["grand"],
   );
 });
 
