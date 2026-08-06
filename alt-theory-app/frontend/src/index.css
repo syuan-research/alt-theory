@@ -478,6 +478,11 @@
      auto insets keeps the static position but escapes the clip. No shell
      ancestor creates a transform containing block (verified). */
   .sessions .list-menu { position: fixed; right: auto; top: auto; }
+  /* The menu's left/top are set by JS on toggle; until then auto insets leave
+     it at the static (wrong) spot. Hide it until .anchored is added so that
+     first painted frame — the toggle event fires one task after open — never
+     shows the wrong position (no flash). */
+  .sessions .list-menu:not(.anchored) { opacity: 0; pointer-events: none; }
 
   /* workspace group rows (M4) */
   .group-row { display: flex; align-items: center; }

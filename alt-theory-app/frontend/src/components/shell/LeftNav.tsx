@@ -93,6 +93,36 @@ function closeMenu(e: { currentTarget: HTMLElement }) {
   e.currentTarget.closest("details")?.removeAttribute("open");
 }
 
+/**
+ * Position a `position: fixed` `.list-menu` from the summary it belongs to.
+ * With top:auto the browser uses the menu's static spot, which for rows deep
+ * in a scrolled list lands far below the row or off-screen. Anchor to the
+ * clicked row and flip above when the bottom overflows the viewport. Then add
+ * `.anchored` so CSS reveals it (kept opacity:0 until now, so the first paint
+ * after `open` never shows the wrong spot). Shared by the session-row and
+ * folder-group kebab menus (same `.list-menu`).
+ */
+function anchorMenuToSummary(details: HTMLDetailsElement) {
+  const menu = details.querySelector<HTMLElement>(".list-menu");
+  const summary = details.querySelector<HTMLElement>("summary");
+  if (!menu || !summary) return;
+  const rect = summary.getBoundingClientRect();
+  menu.style.left = `${Math.max(8, rect.right - menu.offsetWidth)}px`;
+  const below = rect.bottom + 4;
+  menu.style.top =
+    below + menu.offsetHeight > window.innerHeight - 8
+      ? `${Math.max(8, rect.top - 4 - menu.offsetHeight)}px`
+      : `${below}px`;
+  menu.classList.add("anchored");
+}
+
+/** Clear JS positioning + reveal so the next open starts from a clean state. */
+function unanchorMenu(details: HTMLDetailsElement) {
+  details
+    .querySelector(".list-menu")
+    ?.classList.remove("anchored");
+}
+
 export function LeftNav() {
   const app = useApp();
   const shell = useShell();
@@ -534,7 +564,14 @@ function UserNav({ onImport }: { onImport: () => void }) {
                     <i className="ph ph-caret-down tw" />
                   </button>
                   {local && group.dir ? (
-                    <details className="list-more group-folder-more">
+                    <details
+                      className="list-more group-folder-more"
+                      onToggle={(event) => {
+                        const details = event.currentTarget;
+                        if (details.open) anchorMenuToSummary(details);
+                        else unanchorMenu(details);
+                      }}
+                    >
                       <summary title={t("Working folder actions")}>
                         <i className="ph ph-dots-three" />
                       </summary>
@@ -760,22 +797,10 @@ function SessionNode({
             const details = event.currentTarget;
             if (!details.open) {
               setConfirmDelete(false);
+              unanchorMenu(details);
               return;
             }
-            // position:fixed menus get explicit viewport coords from the
-            // clicked row — with top:auto the browser used the menu's static
-            // spot, which for rows deep in a scrolled list landed far below
-            // the row or off-screen. Flip above when the bottom overflows.
-            const menu = details.querySelector<HTMLElement>(".list-menu");
-            const summary = details.querySelector<HTMLElement>("summary");
-            if (!menu || !summary) return;
-            const rect = summary.getBoundingClientRect();
-            menu.style.left = `${Math.max(8, rect.right - menu.offsetWidth)}px`;
-            const below = rect.bottom + 4;
-            menu.style.top =
-              below + menu.offsetHeight > window.innerHeight - 8
-                ? `${Math.max(8, rect.top - 4 - menu.offsetHeight)}px`
-                : `${below}px`;
+            anchorMenuToSummary(details);
           }}
         >
           <summary title={t("Conversation actions")}>
