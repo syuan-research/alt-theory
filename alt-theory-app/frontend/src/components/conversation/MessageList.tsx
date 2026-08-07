@@ -159,7 +159,20 @@ export const SettledMessages = memo(function SettledMessages({
   /** Absent in the right pane — bubbles render identically, no branching. */
   actions?: TranscriptActions;
 }) {
-  const renderedToolCallIds = new Set<string>();
+  // Tool call/result dedupe, precomputed from the data: a render-time
+  // mutable Set broke under memoization — a panel resize re-rendered the
+  // entries (ShellContext consumers) without re-running this component,
+  // so every tool row matched the stale Set and vanished.
+  const duplicateToolCall = useMemo(() => {
+    const seen = new Set<string>();
+    return messages.map((message) => {
+      const callId = message.role === "tool" ? message.toolCallId : undefined;
+      if (!callId) return false;
+      if (seen.has(callId)) return true;
+      seen.add(callId);
+      return false;
+    });
+  }, [messages]);
   let userOrdinal = -1;
   return messages.map((message, index) => {
     if (message.role === "user") userOrdinal += 1;
@@ -170,7 +183,7 @@ export const SettledMessages = memo(function SettledMessages({
         developer={developer}
         isLatestUser={index === latestUserIndex}
         isLatestAssistant={index === latestAssistantIndex}
-        renderedToolCallIds={renderedToolCallIds}
+        isDuplicateToolCall={duplicateToolCall[index]}
         userIndex={message.role === "user" ? userOrdinal : undefined}
         isRunning={isRunning}
         actions={actions}
@@ -346,7 +359,7 @@ export function TranscriptEntry({
   developer,
   isLatestUser,
   isLatestAssistant = false,
-  renderedToolCallIds,
+  isDuplicateToolCall = false,
   userIndex,
   isRunning,
   actions,
@@ -355,7 +368,8 @@ export function TranscriptEntry({
   developer: boolean;
   isLatestUser: boolean;
   isLatestAssistant?: boolean;
-  renderedToolCallIds: Set<string>;
+  /** Precomputed by SettledMessages: a later row for an already-shown call. */
+  isDuplicateToolCall?: boolean;
   userIndex?: number;
   isRunning: boolean;
   actions?: TranscriptActions;
@@ -393,9 +407,7 @@ export function TranscriptEntry({
   }
 
   if (message.role === "tool") {
-    const callId = message.toolCallId;
-    if (callId && renderedToolCallIds.has(callId)) return null;
-    if (callId) renderedToolCallIds.add(callId);
+    if (isDuplicateToolCall) return null;
     const success = message.success !== false;
     return (
       <SysLine tone={success ? "ok" : "danger"} detail={message.toolDetail}>
