@@ -229,6 +229,52 @@ export function canTakeMainline(
 }
 
 /** Row label for a listed child: where it came from, not a made-up identity. */
+/**
+ * What the Related rail lists for an open conversation (owner 2026-08-07):
+ * the FULL ancestor chain first (root → direct parent, living members only —
+ * a child must always see its parent), then direct children (branches and
+ * attached), then the family-wide attached pass (a subagent/btw/helper is
+ * reachable from every member's rail). The chain covers the delisted-origin
+ * door: a delisted root is an ancestor like any other.
+ */
+export function relatedConversationsFor(
+  sessionId: string,
+  sessions: SessionSummary[],
+): { ancestors: SessionSummary[]; others: SessionSummary[] } {
+  const byId = new Map(sessions.map((s) => [s.sessionId, s]));
+  const self = byId.get(sessionId);
+  const seen = new Set<string>([sessionId]); // never list self (opus E1)
+  const ancestors: SessionSummary[] = [];
+  const others: SessionSummary[] = [];
+  const add = (list: SessionSummary[], s: SessionSummary) => {
+    if (seen.has(s.sessionId)) return;
+    seen.add(s.sessionId);
+    list.push(s);
+  };
+  if (self) {
+    for (const id of lineagePathOf(self, byId)) {
+      const ancestor = byId.get(id);
+      if (ancestor && !ancestor.deletedAt) add(ancestors, ancestor);
+    }
+  }
+  for (const s of sessions) {
+    if (s.deletedAt || s.forkedFrom?.purpose === "ab-arm") continue;
+    if (s.forkedFrom?.sessionId === sessionId) add(others, s);
+  }
+  if (self) {
+    const key = familyKeyOf(self, byId);
+    for (const s of sessions) {
+      if (s.deletedAt) continue;
+      const purpose = s.forkedFrom?.purpose;
+      if (!purpose || !["subagent", "side", "helper"].includes(purpose)) {
+        continue;
+      }
+      if (familyKeyOf(s, byId) === key) add(others, s);
+    }
+  }
+  return { ancestors, others };
+}
+
 export function listedOriginLabel(session: SessionSummary): string | null {
   const fork = session.forkedFrom;
   if (!fork) return null;

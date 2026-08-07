@@ -6,6 +6,27 @@ detail lives in commit history and `development/`.
 
 ---
 
+## Unreleased
+
+The right-pane conversation now runs on the same engine as the center
+one — its blank-screen and scrolling bugs go away at the root.
+
+### Related conversations (right pane)
+
+- A conversation opened mid-run shows the running turn immediately — the
+  prompt, the stream so far, and live progress. Previously the pane
+  stayed blank until the whole task finished, and replies could appear
+  and vanish on reopen.
+- You can scroll up and select text while the answer streams; the pane
+  no longer forces itself to the bottom.
+- The rail now shows the conversation's parents too — the whole chain up
+  to the root, so a child always sees where it came from.
+
+### Under the hood
+
+- Center and right pane share one conversation engine and renderer;
+  right-pane display bugs can no longer drift apart from the center.
+
 ## v1.4.2-beta.1 — 2026-08-06
 
 Family relations are now derived by one rule from lineage; the "random"

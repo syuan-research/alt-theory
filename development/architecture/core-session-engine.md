@@ -468,7 +468,12 @@ session and receives forwarded runtime events.
 - a single internal Pi subscription per managed session;
 - attached WebSocket listeners;
 - prompt and abort operations;
-- one process-local mutation guard per managed session.
+- one process-local mutation guard per managed session;
+- the in-flight turn's live-run buffer (v1.4.3, `live-run.ts`): every run
+  starts it in `runPromptWithLineage` and every `emit()` appends stream
+  events (deltas coalesced), cleared on run end. `open_session` sends the
+  persisted transcript plus the running prompt's bubble and this replay,
+  so a pane attached mid-run is never blank until the records land.
 
 Current behavior:
 

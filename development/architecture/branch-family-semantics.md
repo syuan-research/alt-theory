@@ -146,14 +146,19 @@ walks that stopped at deleted middles; do not reintroduce them.
 
 ## 6. The Related rail (family-wide attached visibility)
 
-- Direct children of the open conversation (branches + attached) show
-  first. Then ALL attached conversations of the whole family (same
-  family key), labeled — no matter which parent they hang off or whether
-  that parent still lives (owner 2026-08-06: "family alive ⇒ subagent
-  reachable", from every member's rail, identical branches included; no
-  fork-time or who-knows-it heuristics). Sibling BRANCHES stay out.
-- A delisted origin on the ancestor chain is appended — it is in no
-  list, so these rail rows are its only door.
+- Rule lives in ONE place: `relatedConversationsFor` in sessionList.ts.
+- The FULL ancestor chain shows first, root → direct parent (owner
+  2026-08-07: a child must always see its parent), living members only —
+  deleted middles are skipped without a placeholder (the marker still
+  shows the path). Cards read "Parent"/"Ancestor" with an up-elbow icon;
+  a delisted origin appears as one of these ancestors (crown icon) — it
+  is in no list, so its rail row is its only door.
+- Then direct children (branches + attached), then ALL attached
+  conversations of the whole family (same family key), labeled — no
+  matter which parent they hang off or whether that parent still lives
+  (owner 2026-08-06: "family alive ⇒ subagent reachable", from every
+  member's rail, identical branches included; no fork-time or
+  who-knows-it heuristics). Sibling BRANCHES stay out.
 
 ## 7. Workspace unity (one family, one folder)
 

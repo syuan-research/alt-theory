@@ -425,6 +425,8 @@ const catalog: Record<string, string> = {
   "Opens a separate conversation beside this one, with fresh context. It answers questions about Alt and can fix setup — providers, keys, models, missing tools.": "在此對話旁邊打開一個獨立對話，使用全新上下文。它會回答關於 Alt 的問題，並可以修復設定——服務商、密鑰、模型、缺失工具。",
   "option key": "選項鍵",
   "Or continue a conversation from another app…": "或匯入其他應用的對話…",
+  "Ancestor · {count} messages": "更上級 · {count} 條消息",
+  "Parent · {count} messages": "上一級 · {count} 條消息",
   "Origin conversation · {count} messages": "來源對話·{count}條消息",
   "Output": "輸出",
   "Participant mode": "參與者模式",

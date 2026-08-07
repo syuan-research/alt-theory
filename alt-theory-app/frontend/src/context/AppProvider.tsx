@@ -31,7 +31,6 @@ import {
   saveSessionAlias,
 } from "@/api/sessions";
 import type {
-  ActiveToolState,
   ApprovalRequestPayload,
   AssemblyManifest,
   AuthContext,
@@ -63,11 +62,11 @@ import {
   setSessionWorkspace as setSessionWorkspaceRequest,
 } from "@/api/workspaces";
 import { useWebSocket } from "@/hooks/useWebSocket";
+import { useConversationEngine } from "@/hooks/useConversationEngine";
 import type { ConnStatus } from "@/components/ui/StatusBadge";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { DEFAULT_KB_DOMAIN } from "@/lib/constants";
 import { isInterruptedError } from "@/lib/format";
-import { handleConversationStreamMessage } from "@/lib/conversationStream";
 import { notifyBackground } from "@/lib/notify";
 import { buildOutgoingPrompt } from "@/lib/workspace";
 import {
@@ -360,7 +359,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [sessionReady, setSessionReady] = useState(false);
   const [sessionCreatedHere, setSessionCreatedHere] = useState(false);
   const [sessionWarnings, setSessionWarnings] = useState<string[]>([]);
-  const [isRunning, setIsRunning] = useState(false);
   const [queuedPrompts, setQueuedPrompts] = useState<QueuedPrompt[]>([]);
   const queuedPromptsRef = useRef<QueuedPrompt[]>([]);
   const sendQueueAfterInterruptRef = useRef<string | null>(null);
@@ -389,10 +387,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // local conversations have no expiry at all.
   const [retentionDueAt, setRetentionDueAt] = useState<string | null>(null);
 
-  const [messages, setMessages] = useState<TranscriptMessage[]>([]);
-  const [streamParts, setStreamParts] = useState<StreamPart[]>([]);
   const [toolStatus, setToolStatus] = useState("");
-  const [runPhaseLabel, setRunPhaseLabel] = useState("");
   const [composerNotice, setComposerNotice] = useState<ComposerNotice | null>(
     null,
   );
@@ -403,7 +398,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(
     null,
   );
-  const [approvals, setApprovals] = useState<ApprovalRequestPayload[]>([]);
   // Conversation-scoped approval markers, recorded
   // client-side the moment the user grants a conversation allowance (M7 §3).
   const [approvalMarkers, setApprovalMarkers] = useState<string[]>([]);
@@ -417,11 +411,95 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const pendingOpenSessionIdRef = useRef("");
   const pendingAssetSwitchRef = useRef(false);
   const pendingCompactRef = useRef(false);
-  const activeToolsMapRef = useRef<Record<string, ActiveToolState>>({});
   const composerNoticeTimerRef = useRef<number | null>(null);
   const hydratedNamesRef = useRef<Set<string>>(new Set());
   const sessionListRequestRef = useRef(0);
   const sessionDetailRequestRef = useRef(0);
+
+  // The ONE conversation engine (v1.4.3): messages / stream / running /
+  // approvals and their server-message transitions live in the shared hook
+  // (also used by the right-pane ChildConversation). Only center-specific
+  // behavior stays here, via the callbacks below.
+  const engine = useConversationEngine({
+    onTranscript: (transcript) => {
+      if (
+        pendingCompactRef.current &&
+        transcript.some((item) => item.marker === "compaction")
+      ) {
+        pendingCompactRef.current = false;
+        setComposerNoticeTimed({ text: t("Conversation compacted.") });
+      }
+    },
+    onRunCompleted: (payload) => {
+      sendQueueAfterInterruptRef.current = null;
+      setCanRetryFailed(false);
+      setCurrentSessionModel(payload.currentModel ?? null);
+      setConnStatus("idle");
+      setConnLabel("Ready");
+      setToolStatus("");
+      setRunHint("");
+      setRunCompletedCount((count) => count + 1);
+      // Keep the composer's context ring honest without polling.
+      sendMessage({ type: "get_session_metrics" });
+      if (payload.sessionId) {
+        reconnectSessionIdRef.current = payload.sessionId;
+        void refreshSessions();
+        // Flush only after the transcript refresh lands: the refresh
+        // replaces the whole message list with what the server persisted
+        // BEFORE the queued prompt, so flushing first would wipe the
+        // queued message's bubble until the next run finishes.
+        void refreshCurrentTranscript(payload.sessionId).finally(() =>
+          flushQueuedPromptRef.current(),
+        );
+      } else {
+        queueMicrotask(() => flushQueuedPromptRef.current());
+      }
+    },
+    onRunFailed: (payload) => {
+      const interrupted = isInterruptedError(payload.error);
+      const queuedPromptId = interrupted
+        ? sendQueueAfterInterruptRef.current
+        : null;
+      sendQueueAfterInterruptRef.current = null;
+      setCanRetryFailed(payload.canRetry !== false);
+      setToolStatus("");
+      setConnStatus(interrupted ? "idle" : "error");
+      setConnLabel(interrupted ? t("Ready") : t("Error"));
+      setComposerNoticeTimed({
+        prefix: interrupted ? undefined : "⚠",
+        text: `${interrupted ? t("Run interrupted: ") : t("Run failed: ")}${payload.error}`,
+        warn: !interrupted,
+      });
+      if (!interrupted) setRunHint("");
+      // Same ordering as run_completed: the refresh full-replaces the
+      // message list, so it must land before the queued prompt's
+      // optimistic bubble is appended or the bubble disappears.
+      const refreshed = sessionId
+        ? refreshCurrentTranscript(sessionId)
+        : Promise.resolve();
+      if (
+        interrupted &&
+        shouldFlushQueuedPrompts("interrupted", Boolean(queuedPromptId))
+      ) {
+        void refreshed.finally(() =>
+          flushQueuedPromptRef.current(queuedPromptId ?? undefined),
+        );
+      }
+    },
+  });
+  const {
+    messages,
+    setMessages,
+    streamParts,
+    setStreamParts,
+    running: isRunning,
+    setRunning: setIsRunning,
+    phaseLabel: runPhaseLabel,
+    setPhaseLabel: setRunPhaseLabel,
+    approvals,
+    setApprovals,
+    activeToolsRef: activeToolsMapRef,
+  } = engine;
 
   const clearStagedWorkspace = useCallback(() => {
     setStagedWorkspacePaths([]);
@@ -667,6 +745,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const handleServerMessage = useCallback(
     (message: ServerMessage) => {
+      // Conversation-scoped messages (stream, transcript, run end, approvals)
+      // are the shared engine's; center extras run via its callbacks.
+      if (engine.handleMessage(message)) return;
       switch (message.type) {
         case "session_draft":
           setCanRetryFailed(false);
@@ -825,21 +906,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setMetrics(message.payload);
           break;
 
-        case "session_transcript":
-          setMessages(message.payload.messages);
-          setStreamParts([]);
-          activeToolsMapRef.current = {};
-          if (
-            pendingCompactRef.current &&
-            message.payload.messages.some(
-              (item) => item.marker === "compaction",
-            )
-          ) {
-            pendingCompactRef.current = false;
-            setComposerNoticeTimed({ text: t("Conversation compacted.") });
-          }
-          break;
-
         case "related_session_created":
           // btw / helper: keep the original compact default (~480), not 50%.
           setActiveRelatedSessionId(message.payload.sessionId, {
@@ -881,103 +947,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
           void refreshSessions();
           break;
 
-        case "assistant_delta":
-        case "thinking_delta":
-        case "tool_started":
-        case "tool_updated":
-        case "tool_finished":
-        case "run_phase":
-          handleConversationStreamMessage(message, {
-            activeTools: activeToolsMapRef,
-            setParts: setStreamParts,
-            setPhaseLabel: setRunPhaseLabel,
-          });
-          break;
-
-        case "run_completed":
-          sendQueueAfterInterruptRef.current = null;
-          setCanRetryFailed(false);
-          setStreamParts([]);
-          activeToolsMapRef.current = {};
-          setCurrentSessionModel(message.payload.currentModel ?? null);
-          setIsRunning(false);
-          setConnStatus("idle");
-          setConnLabel("Ready");
-          setToolStatus("");
-          setRunPhaseLabel("");
-          setRunHint("");
-          setRunCompletedCount((count) => count + 1);
-          // Keep the composer's context ring honest without polling.
-          sendMessage({ type: "get_session_metrics" });
-          if (message.payload.sessionId) {
-            reconnectSessionIdRef.current = message.payload.sessionId;
-            void refreshSessions();
-            // Flush only after the transcript refresh lands: the refresh
-            // replaces the whole message list with what the server persisted
-            // BEFORE the queued prompt, so flushing first would wipe the
-            // queued message's bubble until the next run finishes.
-            void refreshCurrentTranscript(message.payload.sessionId).finally(
-              () => flushQueuedPromptRef.current(),
-            );
-          } else {
-            queueMicrotask(() => flushQueuedPromptRef.current());
-          }
-          break;
-
-        case "run_failed": {
-          const interrupted = isInterruptedError(message.payload.error);
-          const queuedPromptId = interrupted
-            ? sendQueueAfterInterruptRef.current
-            : null;
-          sendQueueAfterInterruptRef.current = null;
-          // The transcript refresh below re-renders everything from the
-          // authoritative persisted entries; leftover stream parts would
-          // render the same tool calls twice.
-          setStreamParts([]);
-          activeToolsMapRef.current = {};
-          setIsRunning(false);
-          setCanRetryFailed(message.payload.canRetry !== false);
-          setToolStatus("");
-          setRunPhaseLabel("");
-          setConnStatus(interrupted ? "idle" : "error");
-          setConnLabel(interrupted ? t("Ready") : t("Error"));
-          setComposerNoticeTimed({
-            prefix: interrupted ? undefined : "⚠",
-            text: `${interrupted ? t("Run interrupted: ") : t("Run failed: ")}${message.payload.error}`,
-            warn: !interrupted,
-          });
-          if (!interrupted) setRunHint("");
-          {
-            // Same ordering as run_completed: the refresh full-replaces the
-            // message list, so it must land before the queued prompt's
-            // optimistic bubble is appended or the bubble disappears.
-            const refreshed = sessionId
-              ? refreshCurrentTranscript(sessionId)
-              : Promise.resolve();
-            if (
-              interrupted &&
-              shouldFlushQueuedPrompts("interrupted", Boolean(queuedPromptId))
-            ) {
-              void refreshed.finally(() =>
-                flushQueuedPromptRef.current(queuedPromptId ?? undefined),
-              );
-            }
-          }
-          break;
-        }
-
-        case "approval_requested":
-          setApprovals((prev) => [...prev, message.payload]);
-          break;
-
-        case "approval_resolved":
-          setApprovals((prev) =>
-            prev.filter(
-              (entry) => entry.approvalId !== message.payload.approvalId,
-            ),
-          );
-          break;
-
         case "extension_notice":
           setComposerNoticeTimed({
             prefix: message.payload.level === "info" ? undefined : "⚠",
@@ -1017,7 +986,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     },
     [
       clearStagedWorkspace,
-      refreshCurrentTranscript,
+      engine.handleMessage,
       refreshSessionDetail,
       refreshSessions,
       selectedCatalogSessionId,

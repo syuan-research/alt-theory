@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ActiveToolState, ApprovalRequestPayload, ServerMessage, SessionSnapshot, StreamPart, TranscriptMessage } from "@/api/types";
+import type { ServerMessage, SessionSnapshot } from "@/api/types";
 import {
   fetchSessionDetail,
   promoteToMainline as promoteToMainlineRequest,
 } from "@/api/sessions";
 import { useApp } from "@/context/AppProvider";
 import { useWebSocket } from "@/hooks/useWebSocket";
+import { useConversationEngine } from "@/hooks/useConversationEngine";
+import { useStickToBottom } from "@/hooks/useStickToBottom";
 import { canTakeMainline, isListMember } from "@/lib/sessionList";
 import { t } from "@/i18n";
 import { ApprovalDock } from "@/components/conversation/ApprovalDock";
-import { StreamPartsView, TranscriptEntry } from "@/components/conversation/MessageList";
-import { handleConversationStreamMessage } from "@/lib/conversationStream";
+import { SettledMessages, StreamPartsView } from "@/components/conversation/MessageList";
 import { ModelChip } from "@/components/conversation/ModelChip";
 
 /**
@@ -31,21 +32,50 @@ export function ChildConversation({
   onClose: () => void;
 }) {
   const app = useApp();
-  const [messages, setMessages] = useState<TranscriptMessage[]>([]);
-  const [streamParts, setStreamParts] = useState<StreamPart[]>([]);
   const [draft, setDraft] = useState("");
-  const [running, setRunning] = useState(false);
   const [status, setStatus] = useState(t("Connecting…"));
   const [error, setError] = useState("");
-  const [approvals, setApprovals] = useState<ApprovalRequestPayload[]>([]);
   const [connected, setConnected] = useState(false);
   const [snapshot, setSnapshot] = useState<SessionSnapshot | null>(null);
   const [menu, setMenu] = useState<"role" | "model" | null>(null);
   const [slashIndex, setSlashIndex] = useState(0);
-  const activeToolsRef = useRef<Record<string, ActiveToolState>>({});
-  const messagesRef = useRef<HTMLDivElement>(null);
   const ctxLineRef = useRef<HTMLDivElement>(null);
   const developer = app.transcriptView === "developer";
+
+  const refreshTranscript = useCallback(async () => {
+    const detail = await fetchSessionDetail(sessionId);
+    engine.setMessages(detail.transcript ?? []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]);
+
+  // The ONE conversation engine, shared with the center pane; only this
+  // pane's snapshot/status handling stays local.
+  const engine = useConversationEngine({
+    onRunCompleted: (payload) => {
+      setSnapshot((current) =>
+        current
+          ? {
+              ...current,
+              status: "idle",
+              currentModel: payload.currentModel ?? current.currentModel,
+            }
+          : current,
+      );
+      setStatus(t("Ready"));
+      void refreshTranscript();
+      void app.refreshSessions();
+    },
+    onRunFailed: ({ error: failure }) => {
+      setError(failure);
+      setStatus(t("Error"));
+      void refreshTranscript();
+    },
+  });
+  const { messages, streamParts, running, approvals } = engine;
+  const { containerRef: messagesRef, onScroll } = useStickToBottom([
+    messages,
+    streamParts,
+  ]);
 
   // Role/model menus close on any click outside the context line (same
   // pattern as the main Composer).
@@ -70,62 +100,15 @@ export function ChildConversation({
         : t("Make this the main conversation again")
       : null;
 
-  const refreshTranscript = useCallback(async () => {
-    const detail = await fetchSessionDetail(sessionId);
-    setMessages(detail.transcript ?? []);
-  }, [sessionId]);
-
   const onMessage = useCallback(
     (message: ServerMessage) => {
-      if (handleConversationStreamMessage(message, {
-        activeTools: activeToolsRef,
-        setParts: setStreamParts,
-        setPhaseLabel: setStatus,
-      })) {
-        if (message.type !== "run_phase" || message.payload.phase !== "idle") setRunning(true);
-        return;
-      }
+      if (engine.handleMessage(message)) return;
       switch (message.type) {
         case "session_opened":
         case "session_updated":
           setSnapshot(message.payload);
-          setRunning(message.payload.status === "running");
-          break;
-        case "session_transcript":
-          setMessages(message.payload.messages);
-          setStreamParts([]);
-          activeToolsRef.current = {};
-          setRunning(false);
-          setStatus(t("Ready"));
-          break;
-        case "run_completed":
-          setSnapshot((current) => current ? {
-            ...current,
-            status: "idle",
-            currentModel: message.payload.currentModel ?? current.currentModel,
-          } : current);
-          setRunning(false);
-          setStreamParts([]);
-          activeToolsRef.current = {};
-          setStatus(t("Ready"));
-          void refreshTranscript();
-          void app.refreshSessions();
-          break;
-        case "run_failed":
-          setRunning(false);
-          setStreamParts([]);
-          activeToolsRef.current = {};
-          setError(message.payload.error);
-          setStatus(t("Error"));
-          void refreshTranscript();
-          break;
-        case "approval_requested":
-          setApprovals((current) => [...current, message.payload]);
-          break;
-        case "approval_resolved":
-          setApprovals((current) =>
-            current.filter((item) => item.approvalId !== message.payload.approvalId),
-          );
+          engine.setRunning(message.payload.status === "running");
+          if (message.payload.status !== "running") setStatus(t("Ready"));
           break;
         case "branch_created":
           app.setActiveRelatedSessionId(message.payload.sessionId, { size: "half" });
@@ -144,7 +127,7 @@ export function ChildConversation({
           }
           break;
         case "error":
-          setRunning(false);
+          engine.setRunning(false);
           setError(message.payload.error);
           setStatus(t("Error"));
           break;
@@ -152,7 +135,8 @@ export function ChildConversation({
           break;
       }
     },
-    [app, refreshTranscript],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [app, engine.handleMessage, engine.setRunning],
   );
 
   const socket = useWebSocket({
@@ -167,11 +151,6 @@ export function ChildConversation({
       else setStatus(t("Connection error"));
     },
   });
-
-  useEffect(() => {
-    const el = messagesRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [messages, streamParts]);
 
   // A Helper/BTW opened with a question already typed asks it straight away
   // instead of greeting the user with "what can I help with?".
@@ -188,11 +167,12 @@ export function ChildConversation({
     }
     if (socket.send({ type: "prompt", payload: seed.text })) {
       seedSentRef.current = true;
-      setMessages((current) => [...current, { role: "user", text: seed.text, timestamp: null }]);
-      setRunning(true);
+      engine.setMessages((current) => [...current, { role: "user", text: seed.text, timestamp: null }]);
+      engine.setRunning(true);
       setStatus(t("Working…"));
       app.clearChildSeed();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [app, connected, seed, sessionId, socket]);
 
   const send = () => {
@@ -201,11 +181,11 @@ export function ChildConversation({
     // Sending while it runs steers the running turn (Pi behavior); the server
     // confirms with an extension notice.
     if (socket.send({ type: "prompt", payload: text })) {
-      setMessages((current) => [...current, { role: "user", text, timestamp: null }]);
+      engine.setMessages((current) => [...current, { role: "user", text, timestamp: null }]);
       setDraft("");
       setError("");
       if (!running) {
-        setRunning(true);
+        engine.setRunning(true);
         setStatus(t("Working…"));
       }
     }
@@ -246,7 +226,7 @@ export function ChildConversation({
     response: { accept?: boolean; choice?: string | null; text?: string | null },
   ) => {
     socket.send({ type: "respond_approval", payload: { approvalId, ...response } });
-    setApprovals((current) => current.filter((item) => item.approvalId !== approvalId));
+    engine.setApprovals((current) => current.filter((item) => item.approvalId !== approvalId));
   };
 
   const latestUserIndex = useMemo(() => {
@@ -255,8 +235,12 @@ export function ChildConversation({
     }
     return -1;
   }, [messages]);
-
-  const renderedToolCallIds = new Set<string>();
+  const latestAssistantIndex = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      if (messages[i]?.role === "assistant") return i;
+    }
+    return -1;
+  }, [messages]);
 
   return (
     <div className={`child-conv ${variant}`}>
@@ -265,7 +249,7 @@ export function ChildConversation({
           <i className="ph ph-arrow-left" aria-hidden="true" />
         </button>
         <span className="child-what">{childBlurb(purpose, variant)}</span>
-        <span className="child-status">{status}</span>
+        <span className="child-status">{engine.phaseLabel || status}</span>
         {mainlineAction ? (
           <button
             className="flat promote-action"
@@ -299,17 +283,14 @@ export function ChildConversation({
         )}
       </div>
 
-      <div className="msgs child-msgs" ref={messagesRef}>
-        {messages.map((message, index) => (
-          <TranscriptEntry
-            key={`${index}-${message.timestamp ?? message.text.slice(0, 12)}`}
-            message={message}
-            developer={developer}
-            isLatestUser={index === latestUserIndex}
-            renderedToolCallIds={renderedToolCallIds}
-            isRunning={running}
-          />
-        ))}
+      <div className="msgs child-msgs" ref={messagesRef} onScroll={onScroll}>
+        <SettledMessages
+          messages={messages}
+          developer={developer}
+          latestUserIndex={latestUserIndex}
+          latestAssistantIndex={latestAssistantIndex}
+          isRunning={running}
+        />
         <StreamPartsView parts={streamParts} developer={developer} />
       </div>
 

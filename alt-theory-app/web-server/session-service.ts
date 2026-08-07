@@ -41,6 +41,7 @@ import {
   type ApprovalResponse,
 } from "./approval-bridge.js";
 import { appendSessionEvent } from "./session-events.js";
+import { appendLiveRunEvent, type LiveRun } from "./live-run.js";
 import {
   appendAbComparisonRecord,
   type AbComparisonRecord,
@@ -296,6 +297,8 @@ interface ManagedSession {
   pendingNativePiScanAltSkills: boolean | null;
   /** Set when this session is a subagent child: its lead conversation's id. */
   subagentParentId: string | null;
+  /** In-flight turn buffered for late joiners (v1.4.3); null when idle. */
+  liveRun: LiveRun | null;
 }
 
 /** Background subagent runs allowed at once; further first-runs queue FIFO. */
@@ -1670,6 +1673,7 @@ export class SessionService implements AgentTeamBridge {
 
     managed.busy = true;
     managed.fallbackAttempts = 0;
+    managed.liveRun = { userText: text, events: [] };
     managed.counters.messageCount++;
     const turnId =
       options.turnId ?? formatCounter("turn", managed.nextTurnIndex++);
@@ -3350,6 +3354,7 @@ export class SessionService implements AgentTeamBridge {
       ...args,
       approvalBridge,
       transcriptStamp: null,
+      liveRun: null,
       listeners: new Set(),
       internalUnsubscribe: () => {},
       busy: false,
@@ -3671,9 +3676,24 @@ export class SessionService implements AgentTeamBridge {
   }
 
   private emit(managed: ManagedSession, event: SessionServiceEvent): void {
+    // Late-joiner replay: every event of the in-flight turn passes through
+    // here, so this one intercept keeps the buffer complete by construction.
+    if (event.type === "run_completed" || event.type === "run_failed") {
+      managed.liveRun = null;
+    } else if (managed.liveRun) {
+      appendLiveRunEvent(managed.liveRun, event);
+    }
     for (const listener of managed.listeners) {
       listener(event);
     }
+  }
+
+  /** The in-flight turn's prompt + buffered stream, for attach replay. */
+  getLiveRun(sessionId: string): LiveRun | null {
+    const managed = this.sessions.get(sessionId);
+    if (!managed || !managed.liveRun) return null;
+    if (!managed.busy && !managed.session.isStreaming) return null;
+    return managed.liveRun;
   }
 
   private snapshot(

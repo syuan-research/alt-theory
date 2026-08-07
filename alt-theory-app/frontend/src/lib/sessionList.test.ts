@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { SessionSummary } from "../api/types.ts";
-import { buildWorkspaceTree, canTakeMainline, isFamilyHead, sessionTitle } from "./sessionList.ts";
+import { buildWorkspaceTree, canTakeMainline, isFamilyHead, relatedConversationsFor, sessionTitle } from "./sessionList.ts";
 
 function child(
   sessionId: string,
@@ -210,4 +210,46 @@ test("a third-level branch can head a rootless family", () => {
     ["b1", "b2"],
   );
   assert.deepEqual(tree.childrenByParent.get("b1") ?? [], []);
+});
+
+test("rail: a child sees its full living ancestor chain, root first", () => {
+  const root = {
+    ...child("root", "unused", "fork", "2026-06-30T00:00:00.000Z"),
+    forkedFrom: null,
+  } as SessionSummary;
+  const mid = child("mid", "root", "fork", "2026-07-01T00:00:00.000Z");
+  const leaf = child("leaf", "mid", "fork", "2026-07-02T00:00:00.000Z");
+  leaf.lineagePath = ["root", "mid"];
+
+  const { ancestors, others } = relatedConversationsFor("leaf", [root, mid, leaf]);
+  assert.deepEqual(ancestors.map((s) => s.sessionId), ["root", "mid"]);
+  assert.deepEqual(others, []);
+});
+
+test("rail: deleted middles are skipped; family attached still listed once", () => {
+  const root = {
+    ...child("root", "unused", "fork", "2026-06-30T00:00:00.000Z"),
+    forkedFrom: null,
+  } as SessionSummary;
+  const grand = child("grand", "mid", "fork", "2026-07-02T00:00:00.000Z");
+  grand.lineagePath = ["root", "mid"];
+  const sub = child("sub", "mid", "subagent", "2026-07-03T00:00:00.000Z");
+  sub.lineagePath = ["root", "mid"];
+
+  const { ancestors, others } = relatedConversationsFor("grand", [root, grand, sub]);
+  assert.deepEqual(ancestors.map((s) => s.sessionId), ["root"]);
+  assert.deepEqual(others.map((s) => s.sessionId), ["sub"]);
+});
+
+test("rail: a delisted origin appears as an ancestor (its only door)", () => {
+  const origin = {
+    ...child("origin", "unused", "fork", "2026-06-30T00:00:00.000Z"),
+    forkedFrom: null,
+    delisted: true,
+    delistedFor: "b",
+  } as SessionSummary;
+  const b = child("b", "origin", "fork", "2026-07-01T00:00:00.000Z");
+
+  const { ancestors } = relatedConversationsFor("b", [origin, b]);
+  assert.deepEqual(ancestors.map((s) => s.sessionId), ["origin"]);
 });

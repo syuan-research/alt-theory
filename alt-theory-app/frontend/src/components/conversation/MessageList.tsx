@@ -1,4 +1,4 @@
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import type {
   ActiveToolState,
   StreamPart,
@@ -13,15 +13,17 @@ import { cn } from "@/lib/cn";
 import { pickDirectory } from "@/lib/native";
 import { t } from "@/i18n";
 import { autosizeTextarea } from "@/lib/autosizeTextarea";
+import { useStickToBottom } from "@/hooks/useStickToBottom";
 
 export function MessageList() {
   const app = useApp();
   const streamParts = useStreamParts();
-  const containerRef = useRef<HTMLDivElement>(null);
+  const {
+    containerRef,
+    stickRef: stickToBottomRef,
+    onScroll,
+  } = useStickToBottom([app.messages, streamParts]);
   const railRef = useRef<HTMLDivElement>(null);
-  const stickToBottomRef = useRef(true);
-  /** Last scrollHeight we pinned to — ignore transient shrink so the bottom clip edge does not chew the last line. */
-  const pinnedScrollHeightRef = useRef(0);
   const [scrubbing, setScrubbing] = useState(false);
   const developer = app.transcriptView === "developer";
 
@@ -66,20 +68,6 @@ export function MessageList() {
     }
   };
 
-  // Stick-to-bottom only when the user is already near the bottom. Only move
-  // scroll when content *grows*. Stream markdown can make scrollHeight jitter
-  // by a few px; pinning every frame made the last line sit on the overflow
-  // clip edge just above the composer and flash (background covering text).
-  useLayoutEffect(() => {
-    const el = containerRef.current;
-    if (!el || !stickToBottomRef.current) return;
-    const next = el.scrollHeight;
-    if (next >= pinnedScrollHeightRef.current) {
-      pinnedScrollHeightRef.current = next;
-      el.scrollTop = next;
-    }
-  }, [app.messages, streamParts]);
-
   const actions: TranscriptActions = useMemo(
     () => ({
       onEdit: (text, entryId) => app.branchRevision(text, entryId ?? undefined),
@@ -92,16 +80,7 @@ export function MessageList() {
 
   return (
     <div className="msgs-wrap">
-    <div className="msgs" ref={containerRef}
-        onScroll={(event) => {
-          const el = event.currentTarget;
-          const nearBottom =
-            el.scrollHeight - el.scrollTop - el.clientHeight < 120;
-          stickToBottomRef.current = nearBottom;
-          if (nearBottom) {
-            pinnedScrollHeightRef.current = el.scrollHeight;
-          }
-        }}>
+    <div className="msgs" ref={containerRef} onScroll={onScroll}>
       {app.sessionId && !app.selectors.soulSlug ? (
         <SysLine>
           <i className="ph ph-warning" />
@@ -164,7 +143,7 @@ export function MessageList() {
  * token tick re-renders only the streaming tail below, never these rows
  * (perf backlog item 3 — the pattern cherry studio/openwebui use).
  */
-const SettledMessages = memo(function SettledMessages({
+export const SettledMessages = memo(function SettledMessages({
   messages,
   developer,
   latestUserIndex,
@@ -177,7 +156,8 @@ const SettledMessages = memo(function SettledMessages({
   latestUserIndex: number;
   latestAssistantIndex: number;
   isRunning: boolean;
-  actions: TranscriptActions;
+  /** Absent in the right pane — bubbles render identically, no branching. */
+  actions?: TranscriptActions;
 }) {
   const renderedToolCallIds = new Set<string>();
   let userOrdinal = -1;
