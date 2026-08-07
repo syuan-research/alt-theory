@@ -57,6 +57,11 @@ export function ChildConversation({
   // The ONE conversation engine, shared with the center pane; only this
   // pane's snapshot/status handling stays local.
   const engine = useConversationEngine({
+    onStepBoundary: () => {
+      promptQueue.flushIntoRun((text) =>
+        socket.send({ type: "prompt", payload: text }),
+      );
+    },
     onRunCompleted: (payload) => {
       setSnapshot((current) =>
         current
@@ -204,15 +209,6 @@ export function ChildConversation({
     }
   };
 
-  const steer = () => {
-    const text = draft.trim();
-    if (!text) return;
-    // No optimistic bubble: the server broadcasts user_steered exactly once.
-    if (socket.send({ type: "prompt", payload: text })) {
-      setDraft("");
-      setError("");
-    }
-  };
 
   const slashCommands = useMemo(() => [
     { name: "helper", description: t("Ask how Alt works, or get setup fixed — in a new conversation on the side"), run: () => socket.send({ type: "create_related_session", payload: { purpose: "helper" } }), immediate: true },
@@ -447,32 +443,22 @@ export function ChildConversation({
             className="send"
             disabled={!draft.trim()}
             onClick={send}
-            title={running ? t("Queue message — sent when this run finishes") : t("Send")}
+            title={running ? t("Queued — the agent sees it at its next step") : t("Send")}
           >
             <i className="ph ph-arrow-up" aria-hidden="true" />
           </button>
           {running ? (
-            <>
-              <button
-                className="send steer-now"
-                disabled={!draft.trim()}
-                onClick={steer}
-                title={t("Send now — the running agent sees it at its next step")}
-              >
-                <i className="ph ph-lightning" aria-hidden="true" />
-              </button>
-              <button
-                className="send"
-                style={{ background: "var(--danger)" }}
-                onClick={() => {
-                  promptQueue.cancelPendingInterrupt();
-                  socket.send({ type: "abort" });
-                }}
-                title={t("Stop")}
-              >
-                <i className="ph ph-square" aria-hidden="true" />
-              </button>
-            </>
+            <button
+              className="send"
+              style={{ background: "var(--danger)" }}
+              onClick={() => {
+                promptQueue.cancelPendingInterrupt();
+                socket.send({ type: "abort" });
+              }}
+              title={t("Stop")}
+            >
+              <i className="ph ph-square" aria-hidden="true" />
+            </button>
           ) : null}
         </div>
       </div>

@@ -673,8 +673,6 @@
   .mode-switch .mode-toggle.on::after { left: 14px; }
   .send { width: 34px; height: 30px; border-radius: var(--r-md); border: none; background: var(--ink); color: var(--on-ink); cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
   .send:disabled { opacity: 0.4; cursor: default; }
-  /* The bolt: steer the running turn (outlined so the queue arrow stays primary). */
-  .send.steer-now { background: transparent; color: var(--ink); border: 1px solid var(--hairline); }
 
   /* menus */
   .menu { display: none; position: absolute; bottom: 36px; background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--r-md); box-shadow: 0 6px 22px rgba(31,30,26,0.12); padding: 6px; z-index: 50; min-width: 230px; max-height: 340px; overflow-y: auto; }

@@ -24,14 +24,14 @@ one — its blank-screen and scrolling bugs go away at the root.
 
 ### Composer
 
-- Sending while the AI runs now works the same in both panes: Enter
-  queues the message (sent when the run finishes), and a new bolt button
-  delivers it into the running turn immediately. Previously the center
-  always queued and the right pane always delivered — silently different.
-- The right pane gets the same queued-message cards as the center: edit,
-  delete, send now, or interrupt-and-send.
-- A message delivered into a running turn now appears in every open view
-  of that conversation, including ones opened later.
+- Sending while the AI runs now means one thing, in both panes: your
+  message waits as a card and slips into the running task at the AI's
+  next step — during a long tool call it waits for exactly that call, not
+  for the whole task. Until it slips in you can still edit or delete it.
+  Previously the center held messages until the entire run finished and
+  the right pane injected immediately — two silently different behaviors.
+- A message that entered a running task appears in every open view of
+  that conversation, including views opened later.
 
 ### Subagents
 
@@ -39,6 +39,9 @@ one — its blank-screen and scrolling bugs go away at the root.
   spawns Work subagents by default (previously they silently defaulted to
   Understand unless the lead asked). An Understand lead still never
   spawns Work subagents.
+- Messaging an idle subagent now always makes it act. Previously the
+  message could just sit in its inbox unless the lead remembered an
+  obscure flag — subagents that "got the message but never ran".
 
 ### Under the hood
 

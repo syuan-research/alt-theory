@@ -2538,7 +2538,6 @@ export class SessionService implements AgentTeamBridge {
     parentSessionId: string,
     agent: string,
     message: string,
-    startTurn: boolean,
   ): Promise<string> {
     const childId = this.resolveSubagentId(parentSessionId, agent);
     if (!this.sessions.get(childId)) {
@@ -2560,7 +2559,9 @@ export class SessionService implements AgentTeamBridge {
       await child.session.steer(fragment);
       return "Delivered: the subagent sees your message at its next step.";
     }
-    if (startTurn && !this.queuedSubagentIds.has(childId)) {
+    // A message to an idle subagent always acts (owner 2026-08-07: the old
+    // opt-in start_turn left messages lying unread — removed).
+    if (!this.queuedSubagentIds.has(childId)) {
       const queued = this.startSubagentRun(childId, fragment, true);
       return queued === "queued"
         ? "The subagent is queued; it acts on your message when a slot frees up."
@@ -2638,7 +2639,7 @@ export class SessionService implements AgentTeamBridge {
         (entry) => entry.childId === childId,
       );
       if (queued >= 0) this.subagentQueue.splice(queued, 1);
-      return "Removed from the queue before it started. Use send_to_agent with start_turn to give it a task later.";
+      return "Removed from the queue before it started. Use send_to_agent to give it a task later.";
     }
     const child = this.sessions.get(childId);
     if (!child || (!child.busy && !child.session.isStreaming)) {

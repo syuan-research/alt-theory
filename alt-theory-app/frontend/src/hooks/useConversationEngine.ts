@@ -14,6 +14,9 @@ export interface ConversationEngineOptions {
   onRunCompleted?: (payload: SessionSnapshot) => void;
   onRunFailed?: (payload: { error: string; canRetry?: boolean }) => void;
   onTranscript?: (messages: TranscriptMessage[]) => void;
+  /** A step of the running turn ended (tool finished) — the queue's moment
+   *  to drain into the turn (owner 2026-08-07: queued = next api call). */
+  onStepBoundary?: () => void;
 }
 
 /**
@@ -50,6 +53,9 @@ export function useConversationEngine(options?: ConversationEngineOptions) {
       ) {
         if (message.type !== "run_phase" || message.payload.phase !== "idle") {
           setRunning(true);
+        }
+        if (message.type === "tool_finished") {
+          optionsRef.current?.onStepBoundary?.();
         }
         return true;
       }

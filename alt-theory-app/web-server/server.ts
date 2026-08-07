@@ -2355,20 +2355,12 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               // Pi TUI behavior: typing while a turn runs steers the turn
               // instead of erroring — required for messaging running
               // subagents directly (alpha.5 M2).
+              // The user_steered broadcast renders the bubble in every pane —
+              // no notice needed (queue drains here on every step boundary).
               if (
-                attachedSessionId &&
-                sessionService.steerRunningSession(attachedSessionId, msg.payload)
+                !attachedSessionId ||
+                !sessionService.steerRunningSession(attachedSessionId, msg.payload)
               ) {
-                send({
-                  type: "extension_notice",
-                  payload: {
-                    message: t(
-                      "Delivered to the running turn — Alt sees it at its next step.",
-                    ),
-                    level: "info",
-                  },
-                });
-              } else {
                 sendError(send, error, error.code);
               }
             } else {

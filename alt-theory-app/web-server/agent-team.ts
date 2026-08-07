@@ -41,7 +41,6 @@ export interface AgentTeamBridge {
     parentSessionId: string,
     agent: string,
     message: string,
-    startTurn: boolean,
   ): Promise<string>;
   checkSubagent(
     parentSessionId: string,
@@ -256,27 +255,16 @@ export function createAgentTeamTools(
   const sendSchema = Type.Object({
     agent: agentRef,
     message: Type.String({ description: "The message for the subagent" }),
-    start_turn: Type.Optional(
-      Type.Boolean({
-        description:
-          "true = make an idle subagent act on this message now. Default false: a running subagent sees it at its next step; an idle subagent sees it with its next turn.",
-      }),
-    ),
   });
   const sendToAgent: ToolDefinition<typeof sendSchema, undefined> = {
     name: "send_to_agent",
     label: "Message subagent",
     description:
-      "Send a message to a subagent — steer a running subagent, or (with start_turn) wake an idle one.",
+      "Send a message to a subagent. A running subagent sees it at its next step; an idle subagent starts acting on it immediately.",
     parameters: sendSchema,
     async execute(_id, params) {
       return text(
-        await bridge.sendToSubagent(
-          sessionId,
-          params.agent,
-          params.message,
-          params.start_turn ?? false,
-        ),
+        await bridge.sendToSubagent(sessionId, params.agent, params.message),
       );
     },
   };

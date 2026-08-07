@@ -250,8 +250,6 @@ export interface AppContextValue {
   startNewSession: () => void;
   compactCurrentSession: () => void;
   sendPrompt: (text: string) => boolean;
-  /** Steer the RUNNING turn (the bolt button); no-op text returns false. */
-  steerPrompt: (text: string) => boolean;
   queuedPrompts: QueuedPrompt[];
   restoreQueuedPrompt: (id: string) => string | null;
   deleteQueuedPrompt: (id: string) => void;
@@ -424,6 +422,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         pendingCompactRef.current = false;
         setComposerNoticeTimed({ text: t("Conversation compacted.") });
       }
+    },
+    onStepBoundary: () => {
+      promptQueue.flushIntoRun((text, attachments) => {
+        const outgoing = buildOutgoingPrompt(text, attachments);
+        return outgoing ? sendMessage({ type: "prompt", payload: outgoing }) : false;
+      });
     },
     onRunCompleted: (payload) => {
       setCanRetryFailed(false);
@@ -1404,17 +1408,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   }, [promptQueue, sendMessage]);
 
-  /** Send straight into the RUNNING turn (the bolt button): the server
-   *  steers, broadcasts the bubble, and the live-run buffer replays it. */
-  const steerPrompt = useCallback(
-    (text: string): boolean => {
-      const trimmed = text.trim();
-      if (!trimmed) return false;
-      return sendMessage({ type: "prompt", payload: trimmed });
-    },
-    [sendMessage],
-  );
-
   const invokeSkillRef = useRef<
     ((skillName: string, userText?: string) => boolean) | null
   >(null);
@@ -1841,7 +1834,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       startNewSession,
       compactCurrentSession,
       sendPrompt,
-      steerPrompt,
       queuedPrompts,
       restoreQueuedPrompt,
       deleteQueuedPrompt: promptQueue.remove,
@@ -1948,7 +1940,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       startNewSession,
       compactCurrentSession,
       sendPrompt,
-      steerPrompt,
       queuedPrompts,
       restoreQueuedPrompt,
       promptQueue,

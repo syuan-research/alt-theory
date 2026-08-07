@@ -477,10 +477,15 @@ session and receives forwarded runtime events.
 - steering (`steerRunningSession`) emits a `user_steered` event, broadcast
   to every attached pane and buffered for replay; panes render the bubble
   from this event only (no optimistic append), so sender, other panes,
-  and late joiners all see the steered message exactly once. Send-while-
-  running is uniform across panes (owner 2026-08-07): the client queues by
-  default (`usePromptQueue`, shared) and steers only via the explicit bolt
-  button.
+  and late joiners all see the steered message exactly once.
+- send-while-running (owner 2026-08-07, both panes identical): Enter
+  enqueues into the client-held queue (`usePromptQueue` — cards stay
+  editable/deletable), and the queue drains INTO the running turn at each
+  step boundary (engine `onStepBoundary`, fired on tool_finished) via the
+  busy-prompt→steer path. "Queued" means the agent's NEXT api call, never
+  the end of the run; whatever is still queued at run end flushes as the
+  next turn's prompt. There is no run-end-only queue and no separate
+  steer button.
 
 Current behavior:
 

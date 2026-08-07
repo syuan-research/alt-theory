@@ -13,11 +13,12 @@ export interface QueuedPrompt {
 }
 
 /**
- * The ONE prompt queue (v1.4.3, owner ruling: center and right pane behave
- * identically while a run is active — Enter queues, the bolt steers).
- * Queued messages merge into a single prompt when the run ends; the flush
- * waits for the pane's transcript refresh so the merged bubble is not
- * wiped by the just-persisted transcript.
+ * The ONE prompt queue (v1.4.3, owner rulings 2026-08-07): while a run is
+ * active, Enter enqueues; the cards stay OURS (editable/deletable) until a
+ * step boundary, when `flushIntoRun` steers them into the running turn —
+ * "queued" means the agent's next api call, never the end of the run. What
+ * is still queued when the run ends flushes as the next turn's prompt
+ * (after the transcript refresh, so the merged bubble is not wiped).
  */
 export function usePromptQueue(
   startPrompt: RefObject<(text: string, attachments: string[]) => boolean>,
@@ -88,6 +89,25 @@ export function usePromptQueue(
     setQueuedPrompts([]);
   }, []);
 
+  /**
+   * Drain the queue INTO the running turn at a step boundary (owner
+   * 2026-08-07: queued = delivered at the next api call, never waits for
+   * the whole run). The caller's sender steers via the busy-prompt path.
+   */
+  const flushIntoRun = useCallback(
+    (send: (text: string, attachments: string[]) => boolean) => {
+      const queued = queuedPromptsRef.current;
+      if (queued.length === 0) return;
+      const merged = mergeQueuedPrompts(queued);
+      replace(() => []);
+      if (!merged) return;
+      if (!send(merged.text, merged.attachments)) {
+        replace((current) => [...queued, ...current]);
+      }
+    },
+    [replace],
+  );
+
   /** Abort the run to send this queued message straight away. */
   const interruptAndSend = useCallback((id: string, abort: () => boolean) => {
     if (!queuedPromptsRef.current.some((item) => item.id === id)) return;
@@ -131,6 +151,7 @@ export function usePromptQueue(
     queuedPromptsRef,
     enqueue,
     flush,
+    flushIntoRun,
     restore,
     remove,
     clear,
