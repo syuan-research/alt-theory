@@ -135,11 +135,11 @@ async function waitFor(predicate: () => boolean, ms = 4000): Promise<void> {
 // Stateless helpers
 // ---------------------------------------------------------------------------
 
-test("clampSubagentMode clamps children to the parent's Alt mode", () => {
+test("clampSubagentMode: children inherit the parent's Alt mode, clamped to it", () => {
   assert.equal(clampSubagentMode("understand", "work"), "understand");
   assert.equal(clampSubagentMode("understand", undefined), "understand");
   assert.equal(clampSubagentMode("work", "work"), "work");
-  assert.equal(clampSubagentMode("work", undefined), "understand");
+  assert.equal(clampSubagentMode("work", undefined), "work");
   assert.equal(clampSubagentMode("work", "understand"), "understand");
 });
 

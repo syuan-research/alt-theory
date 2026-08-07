@@ -67,16 +67,17 @@ export interface AgentTeamBridge {
 // ---------------------------------------------------------------------------
 
 /**
- * A child's Alt mode is clamped to the parent's (spec: an Understand
- * parent spawns only Understand children; a Work parent defaults to
- * Understand unless the task needs file work).
+ * A child's Alt mode INHERITS the parent's and is clamped to it (owner
+ * 2026-08-07: an Understand parent spawns only Understand children; a
+ * Work parent's children are Work unless the spawn asks for less —
+ * predictable inheritance over per-spawn model discretion).
  */
 export function clampSubagentMode(
   parentMode: AltMode,
   requested: "understand" | "work" | undefined,
 ): AltMode {
   if (parentMode === "understand") return "understand";
-  return requested === "work" ? "work" : "understand";
+  return requested === "understand" ? "understand" : "work";
 }
 
 export interface TierCandidate {
@@ -174,7 +175,7 @@ const spawnSchema = Type.Object({
   mode: Type.Optional(
     Type.Union([Type.Literal("understand"), Type.Literal("work")], {
       description:
-        "Subagent Alt mode. Clamped to this conversation's mode; default Understand.",
+        "Subagent Alt mode. Defaults to this conversation's mode (inherited); pass 'understand' to spawn a read-only child from a Work conversation. Never exceeds this conversation's mode.",
     }),
   ),
   model_tier: Type.Optional(

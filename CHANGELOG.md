@@ -33,6 +33,13 @@ one — its blank-screen and scrolling bugs go away at the root.
 - A message delivered into a running turn now appears in every open view
   of that conversation, including ones opened later.
 
+### Subagents
+
+- A subagent now inherits its lead conversation's mode: a Work lead
+  spawns Work subagents by default (previously they silently defaulted to
+  Understand unless the lead asked). An Understand lead still never
+  spawns Work subagents.
+
 ### Under the hood
 
 - Center and right pane share one conversation engine, renderer, and

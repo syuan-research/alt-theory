@@ -685,9 +685,10 @@ record: `development/compound/2026-07-28-decision-v1.3-agent-team.md`.
   `SessionService` behind the `AgentTeamBridge` interface. Tools join the
   active set in both application runtimes and both Alt modes
   (`alt-theory-core.ts` `extraTools`/`extraPromptSections`).
-- **Capability and model**: child mode is clamped to the parent's
-  (`clampSubagentMode`: Understand parents spawn only Understand children;
-  Work parents default to Understand). `model_tier: lower|same|higher`
+- **Capability and model**: child mode INHERITS the parent's, clamped to
+  it (`clampSubagentMode`, owner 2026-08-07: Understand parents spawn only
+  Understand children; Work parents spawn Work children unless the spawn
+  asks for 'understand'). `model_tier: lower|same|higher`
   resolves against configured-and-usable models by cost metadata
   (`resolveModelTier`); an unresolvable tier falls back to `same` and says
   so in the spawn report.
