@@ -11,10 +11,6 @@ import {
 import { useNavigate } from "react-router-dom";
 import { t } from "@/i18n";
 import {
-  mergeQueuedPrompts,
-  shouldFlushQueuedPrompts,
-} from "@/lib/promptQueue";
-import {
   detectAccountsConfigured,
   fetchAuthMe,
   login as loginRequest,
@@ -63,10 +59,10 @@ import {
 } from "@/api/workspaces";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { useConversationEngine } from "@/hooks/useConversationEngine";
+import { usePromptQueue, type QueuedPrompt } from "@/hooks/usePromptQueue";
 import type { ConnStatus } from "@/components/ui/StatusBadge";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { DEFAULT_KB_DOMAIN } from "@/lib/constants";
-import { isInterruptedError } from "@/lib/format";
 import { notifyBackground } from "@/lib/notify";
 import { buildOutgoingPrompt } from "@/lib/workspace";
 import {
@@ -101,11 +97,7 @@ export interface ComposerNotice {
   warn?: boolean;
 }
 
-export interface QueuedPrompt {
-  id: string;
-  text: string;
-  attachments: string[];
-}
+export type { QueuedPrompt } from "@/hooks/usePromptQueue";
 
 export interface ConfirmRequest {
   message: string;
@@ -258,6 +250,8 @@ export interface AppContextValue {
   startNewSession: () => void;
   compactCurrentSession: () => void;
   sendPrompt: (text: string) => boolean;
+  /** Steer the RUNNING turn (the bolt button); no-op text returns false. */
+  steerPrompt: (text: string) => boolean;
   queuedPrompts: QueuedPrompt[];
   restoreQueuedPrompt: (id: string) => string | null;
   deleteQueuedPrompt: (id: string) => void;
@@ -359,13 +353,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [sessionReady, setSessionReady] = useState(false);
   const [sessionCreatedHere, setSessionCreatedHere] = useState(false);
   const [sessionWarnings, setSessionWarnings] = useState<string[]>([]);
-  const [queuedPrompts, setQueuedPrompts] = useState<QueuedPrompt[]>([]);
-  const queuedPromptsRef = useRef<QueuedPrompt[]>([]);
-  const sendQueueAfterInterruptRef = useRef<string | null>(null);
   const startPromptRef = useRef<
     (text: string, attachments: string[]) => boolean
   >(() => false);
-  const flushQueuedPromptRef = useRef<(id?: string) => void>(() => {});
   const [connStatus, setConnStatus] = useState<ConnStatus>("connecting");
   const [connLabel, setConnLabel] = useState(t("Connecting"));
   const [wsError, setWsError] = useState<string | null>(null);
@@ -416,6 +406,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const sessionListRequestRef = useRef(0);
   const sessionDetailRequestRef = useRef(0);
 
+  // The ONE prompt queue (shared with the right pane): Enter-while-running
+  // queues; run end merges and flushes after the transcript refresh.
+  const promptQueue = usePromptQueue(startPromptRef);
+  const { queuedPrompts, queuedPromptsRef } = promptQueue;
+
   // The ONE conversation engine (v1.4.3): messages / stream / running /
   // approvals and their server-message transitions live in the shared hook
   // (also used by the right-pane ChildConversation). Only center-specific
@@ -431,7 +426,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     },
     onRunCompleted: (payload) => {
-      sendQueueAfterInterruptRef.current = null;
       setCanRetryFailed(false);
       setCurrentSessionModel(payload.currentModel ?? null);
       setConnStatus("idle");
@@ -444,23 +438,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (payload.sessionId) {
         reconnectSessionIdRef.current = payload.sessionId;
         void refreshSessions();
-        // Flush only after the transcript refresh lands: the refresh
-        // replaces the whole message list with what the server persisted
-        // BEFORE the queued prompt, so flushing first would wipe the
-        // queued message's bubble until the next run finishes.
-        void refreshCurrentTranscript(payload.sessionId).finally(() =>
-          flushQueuedPromptRef.current(),
-        );
+        promptQueue.handleRunCompleted(refreshCurrentTranscript(payload.sessionId));
       } else {
-        queueMicrotask(() => flushQueuedPromptRef.current());
+        promptQueue.handleRunCompleted(Promise.resolve());
       }
     },
     onRunFailed: (payload) => {
-      const interrupted = isInterruptedError(payload.error);
-      const queuedPromptId = interrupted
-        ? sendQueueAfterInterruptRef.current
-        : null;
-      sendQueueAfterInterruptRef.current = null;
+      // Same ordering as run_completed: the refresh must land before the
+      // queued prompt's optimistic bubble is appended, or it disappears.
+      const interrupted = promptQueue.handleRunFailed(
+        payload.error,
+        sessionId ? refreshCurrentTranscript(sessionId) : Promise.resolve(),
+      );
       setCanRetryFailed(payload.canRetry !== false);
       setToolStatus("");
       setConnStatus(interrupted ? "idle" : "error");
@@ -471,20 +460,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         warn: !interrupted,
       });
       if (!interrupted) setRunHint("");
-      // Same ordering as run_completed: the refresh full-replaces the
-      // message list, so it must land before the queued prompt's
-      // optimistic bubble is appended or the bubble disappears.
-      const refreshed = sessionId
-        ? refreshCurrentTranscript(sessionId)
-        : Promise.resolve();
-      if (
-        interrupted &&
-        shouldFlushQueuedPrompts("interrupted", Boolean(queuedPromptId))
-      ) {
-        void refreshed.finally(() =>
-          flushQueuedPromptRef.current(queuedPromptId ?? undefined),
-        );
-      }
     },
   });
   const {
@@ -1040,8 +1015,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const beginNewSession = useCallback(() => {
     reconnectSessionIdRef.current = null;
     setSelectedCatalogSessionId(null);
-    queuedPromptsRef.current = [];
-    setQueuedPrompts([]);
+    promptQueue.clear();
     setMessages([]);
     setStreamParts([]);
     setWsError(null);
@@ -1080,8 +1054,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setToolStatus(t("Conversation cannot be opened."));
         return;
       }
-      queuedPromptsRef.current = [];
-      setQueuedPrompts([]);
+      promptQueue.clear();
       setSelectedCatalogSessionId(targetSessionId);
       pendingOpenSessionIdRef.current = targetSessionId;
       if (
@@ -1238,8 +1211,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       await deleteSessionRequest(targetId);
       if (sessionId === targetId) {
         reconnectSessionIdRef.current = null;
-        queuedPromptsRef.current = [];
-        setQueuedPrompts([]);
+        promptQueue.clear();
         setMessages([]);
         clearStagedWorkspace();
         sendMessage({ type: "new_session" });
@@ -1268,17 +1240,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     void performDeleteSelectedSession(targetId);
   }, [performDeleteSelectedSession, selectedSessionDetail],);
 
-  const replaceQueuedPrompts = useCallback(
-    (update: (current: QueuedPrompt[]) => QueuedPrompt[]) => {
-      setQueuedPrompts((current) => {
-        const next = update(current);
-        queuedPromptsRef.current = next;
-        return next;
-      });
-    },
-    [],
-  );
-
   const startPrompt = useCallback(
     (text: string, attachmentPaths: string[]) => {
       const outgoing = buildOutgoingPrompt(text.trim(), attachmentPaths);
@@ -1306,42 +1267,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
   startPromptRef.current = startPrompt;
 
-  const flushQueuedPrompt = useCallback((onlyId?: string) => {
-    const allQueued = queuedPromptsRef.current;
-    const queued = onlyId
-      ? allQueued.filter((item) => item.id === onlyId)
-      : allQueued;
-    const merged = mergeQueuedPrompts(queued);
-    replaceQueuedPrompts((current) =>
-      onlyId ? current.filter((item) => item.id !== onlyId) : [],
-    );
-    if (!merged) return;
-    if (!startPromptRef.current(merged.text, merged.attachments)) {
-      replaceQueuedPrompts((current) => [...queued, ...current]);
-    }
-  }, [replaceQueuedPrompts]);
-  flushQueuedPromptRef.current = flushQueuedPrompt;
-
   const restoreQueuedPrompt = useCallback((id: string) => {
-    const queued = queuedPromptsRef.current.find((item) => item.id === id);
+    const queued = promptQueue.restore(id);
     if (!queued) return null;
-    replaceQueuedPrompts((current) =>
-      current.filter((item) => item.id !== id),
-    );
     setStagedWorkspacePaths((current) => [
       ...new Set([...current, ...queued.attachments]),
     ]);
     return queued.text;
-  }, [replaceQueuedPrompts]);
-
-  const deleteQueuedPrompt = useCallback(
-    (id: string) => {
-      replaceQueuedPrompts((current) =>
-        current.filter((item) => item.id !== id),
-      );
-    },
-    [replaceQueuedPrompts],
-  );
+  }, [promptQueue]);
 
   // --- Situational preset buttons (v1.4 round 1 experiment) ---
   // ponytail: config in localStorage, active state in memory only — promote
@@ -1420,14 +1353,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         // ponytail: a queued message can't ride the /skill: invoke path, so
         // an armed press degrades to the wrapper text (which names the
         // skill); the skill body loads on a later idle press if it matters.
-        replaceQueuedPrompts((current) => [
-          ...current,
-          {
-            id: crypto.randomUUID(),
-            text: trimmed,
-            attachments,
-          },
-        ]);
+        promptQueue.enqueue(trimmed, attachments);
         consumePending();
         clearStagedWorkspace();
         notePresetTurn(sessionId);
@@ -1453,7 +1379,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       clearStagedWorkspace,
       isRunning,
       notePresetTurn,
-      replaceQueuedPrompts,
+      promptQueue,
       sessionId,
       stagedWorkspacePaths,
       startPrompt,
@@ -1461,24 +1387,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   const abortRun = useCallback(() => {
-    sendQueueAfterInterruptRef.current = null;
+    promptQueue.cancelPendingInterrupt();
     if (sendMessage({ type: "abort" })) {
       setToolStatus("");
       setRunPhaseLabel(t("Stopping…"));
       setRunHint(t("You can edit or delete your latest message."));
     }
-  }, [sendMessage]);
+  }, [promptQueue, sendMessage]);
 
   const interruptAndSendQueuedPrompt = useCallback((id: string) => {
-    if (!queuedPromptsRef.current.some((item) => item.id === id)) return;
-    sendQueueAfterInterruptRef.current = id;
-    if (sendMessage({ type: "abort" })) {
+    promptQueue.interruptAndSend(id, () => {
+      if (!sendMessage({ type: "abort" })) return false;
       setToolStatus("");
       setRunPhaseLabel(t("Stopping…"));
-    } else {
-      sendQueueAfterInterruptRef.current = null;
-    }
-  }, [sendMessage]);
+      return true;
+    });
+  }, [promptQueue, sendMessage]);
+
+  /** Send straight into the RUNNING turn (the bolt button): the server
+   *  steers, broadcasts the bubble, and the live-run buffer replays it. */
+  const steerPrompt = useCallback(
+    (text: string): boolean => {
+      const trimmed = text.trim();
+      if (!trimmed) return false;
+      return sendMessage({ type: "prompt", payload: trimmed });
+    },
+    [sendMessage],
+  );
 
   const invokeSkillRef = useRef<
     ((skillName: string, userText?: string) => boolean) | null
@@ -1906,10 +1841,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       startNewSession,
       compactCurrentSession,
       sendPrompt,
+      steerPrompt,
       queuedPrompts,
       restoreQueuedPrompt,
-      deleteQueuedPrompt,
-      sendQueuedPromptNow: flushQueuedPrompt,
+      deleteQueuedPrompt: promptQueue.remove,
+      sendQueuedPromptNow: promptQueue.flush,
       interruptAndSendQueuedPrompt,
       abortRun,
       invokeSkill,
@@ -2012,10 +1948,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       startNewSession,
       compactCurrentSession,
       sendPrompt,
+      steerPrompt,
       queuedPrompts,
       restoreQueuedPrompt,
-      deleteQueuedPrompt,
-      flushQueuedPrompt,
+      promptQueue,
       interruptAndSendQueuedPrompt,
       abortRun,
       invokeSkill,

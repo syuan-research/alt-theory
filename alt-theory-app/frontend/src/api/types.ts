@@ -623,6 +623,9 @@ export type ServerMessage =
   | { type: "tool_finished"; payload: { callId: string; success: boolean; output?: unknown } }
   | { type: "run_completed"; payload: SessionSnapshot }
   | { type: "run_failed"; payload: { error: string; canRetry?: boolean } }
+  /** A message steered into the running turn — broadcast so every pane
+   *  (sender and late joiners) renders the bubble exactly once. */
+  | { type: "user_steered"; payload: { text: string } }
   | { type: "approval_requested"; payload: ApprovalRequestPayload }
   | {
       type: "approval_resolved";

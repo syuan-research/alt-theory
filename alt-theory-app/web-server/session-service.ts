@@ -254,6 +254,7 @@ export type SessionServiceEvent =
   | { type: "tool_finished"; payload: { callId: string; success: boolean } }
   | { type: "run_completed"; payload: SessionSnapshot }
   | { type: "run_failed"; payload: { error: string; canRetry?: boolean } }
+  | { type: "user_steered"; payload: { text: string } }
   | { type: "session_transcript"; payload: { messages: TranscriptMessage[] } }
   | { type: "session_metrics"; payload: SessionMetrics }
   | { type: "approval_requested"; payload: ApprovalRequest }
@@ -1850,6 +1851,9 @@ export class SessionService implements AgentTeamBridge {
     const managed = this.requireSession(sessionId);
     if (!managed.busy && !managed.session.isStreaming) return false;
     void managed.session.steer(text).catch(() => {});
+    // The steered bubble is server-broadcast (and live-run buffered), so
+    // every attached pane — sender and late joiners alike — sees it once.
+    this.emit(managed, { type: "user_steered", payload: { text } });
     return true;
   }
 

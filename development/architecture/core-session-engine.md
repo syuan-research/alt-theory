@@ -474,6 +474,13 @@ session and receives forwarded runtime events.
   events (deltas coalesced), cleared on run end. `open_session` sends the
   persisted transcript plus the running prompt's bubble and this replay,
   so a pane attached mid-run is never blank until the records land.
+- steering (`steerRunningSession`) emits a `user_steered` event, broadcast
+  to every attached pane and buffered for replay; panes render the bubble
+  from this event only (no optimistic append), so sender, other panes,
+  and late joiners all see the steered message exactly once. Send-while-
+  running is uniform across panes (owner 2026-08-07): the client queues by
+  default (`usePromptQueue`, shared) and steers only via the explicit bolt
+  button.
 
 Current behavior:
 

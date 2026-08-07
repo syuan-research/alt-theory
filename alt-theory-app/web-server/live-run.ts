@@ -18,6 +18,7 @@ const REPLAYED = new Set<SessionServiceEvent["type"]>([
   "tool_updated",
   "tool_finished",
   "run_phase",
+  "user_steered",
 ]);
 
 /**

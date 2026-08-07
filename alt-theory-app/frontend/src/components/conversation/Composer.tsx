@@ -205,6 +205,11 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
   const handleSubmit = () => {
     if (app.sendPrompt(draft)) setDraft("");
   };
+  // The bolt: past the queue, straight into the running turn (owner
+  // 2026-08-07 — Enter queues, the bolt steers; both panes identical).
+  const handleSteer = () => {
+    if (app.steerPrompt(draft)) setDraft("");
+  };
 
   // ctx-line labels
   const roleLabel = app.selectors.rolePresetSlug
@@ -815,9 +820,17 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                   className="send"
                   disabled={!canSend}
                   onClick={handleSubmit}
-                  title={t("Queue message")}
+                  title={t("Queue message — sent when this run finishes")}
                 >
                   <i className="ph ph-arrow-up" />
+                </button>
+                <button
+                  className="send steer-now"
+                  disabled={!draft.trim()}
+                  onClick={handleSteer}
+                  title={t("Send now — the running agent sees it at its next step")}
+                >
+                  <i className="ph ph-lightning" />
                 </button>
                 <button
                   className="send"

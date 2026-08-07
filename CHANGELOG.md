@@ -22,10 +22,21 @@ one — its blank-screen and scrolling bugs go away at the root.
 - The rail now shows the conversation's parents too — the whole chain up
   to the root, so a child always sees where it came from.
 
+### Composer
+
+- Sending while the AI runs now works the same in both panes: Enter
+  queues the message (sent when the run finishes), and a new bolt button
+  delivers it into the running turn immediately. Previously the center
+  always queued and the right pane always delivered — silently different.
+- The right pane gets the same queued-message cards as the center: edit,
+  delete, send now, or interrupt-and-send.
+- A message delivered into a running turn now appears in every open view
+  of that conversation, including ones opened later.
+
 ### Under the hood
 
-- Center and right pane share one conversation engine and renderer;
-  right-pane display bugs can no longer drift apart from the center.
+- Center and right pane share one conversation engine, renderer, and
+  prompt queue; the two panes can no longer drift apart.
 
 ## v1.4.2-beta.1 — 2026-08-06
 

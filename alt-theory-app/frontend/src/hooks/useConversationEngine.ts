@@ -71,6 +71,13 @@ export function useConversationEngine(options?: ConversationEngineOptions) {
           setPhaseLabel("");
           optionsRef.current?.onRunFailed?.(message.payload);
           return true;
+        case "user_steered":
+          // Server-broadcast bubble (senders do NOT append optimistically).
+          setMessages((current) => [
+            ...current,
+            { role: "user", text: message.payload.text, timestamp: null },
+          ]);
+          return true;
         case "approval_requested":
           setApprovals((prev) => [...prev, message.payload]);
           return true;

@@ -44,3 +44,14 @@ test("only the latest of consecutive run phases is kept; other event types are n
     { type: "run_phase", payload: { phase: "thinking" } },
   ]);
 });
+
+test("a steered message is buffered in order for late joiners", () => {
+  const live = run();
+  appendLiveRunEvent(live, delta("working"));
+  appendLiveRunEvent(live, { type: "user_steered", payload: { text: "also check X" } });
+  appendLiveRunEvent(live, delta("…on it"));
+  assert.deepEqual(
+    live.events.map((event) => event.type),
+    ["assistant_delta", "user_steered", "assistant_delta"],
+  );
+});

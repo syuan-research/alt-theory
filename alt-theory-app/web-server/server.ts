@@ -2028,6 +2028,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       case "run_failed":
         send({ type: "run_failed", payload: event.payload });
         break;
+      case "user_steered":
+        send({ type: "user_steered", payload: event.payload });
+        break;
       case "session_transcript":
         send({ type: "session_transcript", payload: event.payload });
         break;
