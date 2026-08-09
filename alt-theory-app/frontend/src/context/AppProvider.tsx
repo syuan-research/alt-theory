@@ -466,7 +466,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const userStopped = payload.recovery?.interruptionCause === "user_abort";
       if (userStopped) {
         setComposerNotice(null);
-        setRunHint(t("Stopped. Continue, retry, or edit without branching."));
+        setRunHint(t("Editing after Stop won't branch. Use /branch if needed."));
       } else {
         setComposerNoticeTimed({
           prefix: interrupted ? undefined : "⚠",
@@ -840,7 +840,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           );
           setRunHint(
             message.payload.recovery?.interruptionCause === "user_abort"
-              ? t("Stopped. Continue, retry, or edit without branching.")
+              ? t("Editing after Stop won't branch. Use /branch if needed.")
               : "",
           );
           clearStagedWorkspace();

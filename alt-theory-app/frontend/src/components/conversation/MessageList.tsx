@@ -564,7 +564,7 @@ function UserBubble({
         </button>
         {onRetry ? (
           <button
-            title={t("Run the latest message again from the start")}
+            title={t("Retry latest message")}
             aria-label={t("Retry latest message")}
             disabled={isRunning}
             onClick={onRetry}
@@ -577,7 +577,7 @@ function UserBubble({
             <button
               title={
                 replacementEdit
-                  ? t("Edit and retry here. Use /branch to branch.")
+                  ? t("Edit and retry")
                   : t("Edit and compare")
               }
               aria-label={replacementEdit ? t("Edit and retry") : t("Edit and compare")}
