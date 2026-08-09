@@ -13,7 +13,7 @@ Supported platforms:
 
 Other combinations, including Intel Macs, are untested and not claimed.
 
-The Beta is not signed, so both systems question it the first time. Windows may warn that the app is from an unidentified developer: choose **More info → Run anyway**. Current macOS refuses the unsigned app as "damaged": right-click the bundled `Fix-Open.command`, choose **Open**, then **Open** again — it removes the download-quarantine flag from `AltTheory.app` next to it, after which the app opens with a normal double-click (move it to Applications first if you like; older macOS that shows "Apple could not verify…" instead can right-click the app and **Open**). Take either route only when the ZIP came from this repository's GitHub Release.
+The Beta is not signed, so both systems question it the first time. Windows may warn that the app is from an unidentified developer: choose **More info → Run anyway**. On macOS, unpack the complete folder in Downloads, then either right-click the bundled `Fix-Open.command` and choose **Open**, or run `xattr -dr com.apple.quarantine "$HOME/Downloads/AltTheory/AltTheory.app"` in Terminal. Replace the command path if the extracted location differs. If macOS still blocks the app, use **System Settings → Privacy & Security → Open Anyway**, authenticate, and confirm **Open**. Take these steps only when the ZIP came from this repository's GitHub Release.
 
 ## Building from the repository (some programming experience)
 
@@ -34,7 +34,7 @@ The Windows unpacked app is written to `dist/win-unpacked/`. See the repository 
 The first screen is the app itself: a conversation waiting to start. At least one model provider must be configured before a conversation can run. Alt Theory supplies the working folder and the methods; the model comes from the provider the user configures.
 
 - If the app came from the Alt Theory team, a provider may already be set up.
-- Otherwise the first-run setup screen walks through adding a provider, for example an API key, or signing in with a supported subscription. See [Models, Providers, and Access](../system-guide/models-providers-access.md). The in-app [Helper](../system-guide/helper-and-guidance.md) can guide step by step.
+- Otherwise the normal app remains open and the composer explains that a model is needed. Its action opens **Settings → Models**, where the user can add an API key or sign in with a supported subscription. See [Models, Providers, and Access](../system-guide/models-providers-access.md). The in-app [Helper](../system-guide/helper-and-guidance.md) can guide step by step.
 
 ## Cost
 

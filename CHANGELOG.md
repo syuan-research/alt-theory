@@ -6,6 +6,34 @@ detail lives in commit history and `development/`.
 
 ---
 
+## v1.4.4-beta.1 — 2026-08-10
+
+This release makes model setup non-blocking, makes provider saves finish
+truthfully, and adopts ASAR packaging while keeping runtime resources readable.
+
+### Models and providers
+
+- Saving a provider now visibly completes as soon as its model and credential
+  data are durable. A slow, unrelated catalog refresh no longer leaves Save
+  silently stuck.
+- A model selected for a conversation runs without requiring a global default.
+  The default is now only the fallback when a conversation has no selection.
+- Provider setup no longer silently makes the first saved model the default.
+
+### First launch
+
+- Alt Theory opens the normal app even when no model is configured. The composer
+  explains what is missing and links directly to **Settings → Models**.
+- The blocking first-run provider page was removed. **Settings → Models** is now
+  the single model-configuration surface.
+
+### Desktop package
+
+- Application code and dependencies now use ASAR. Agent assets and Help docs
+  remain ordinary readable files under the app's resources directory.
+
+---
+
 ## v1.4.3-beta.1 — 2026-08-09
 
 This release keeps active work visible and recoverable across panes, retries,

@@ -185,6 +185,10 @@ The Models surface uses a master-detail structure:
 - **Default model** for new conversations is controlled only from an explicit
   control at the top of Models (overflow/summary of the active default).
   Choosing a model inside a provider editor does **not** silently set default.
+- The default is only a fallback when a conversation has no explicit model.
+  Runtime resolution is conversation selection, then configured default, then
+  the ordinary no-model condition; a valid manual choice never requires a
+  default to exist.
 - Under the **Models** heading inside a provider editor, **Add model**,
   **Fetch model list**, and **Test connection** sit **above** the per-model
   rows so Fetch is findable.
@@ -242,6 +246,11 @@ teaching path.
 
 Before Alt can run, the add flow may instead link to the public setup guide and
 its copyable prompt for getting help from another AI.
+
+Model setup never replaces or detains the main application. With no usable
+model, the normal shell remains open and the composer notice area explains the
+condition with one action to this same Settings > Models surface. Any optional
+onboarding entry routes here; there is no second full-page provider editor.
 
 ### Edit provider and model
 

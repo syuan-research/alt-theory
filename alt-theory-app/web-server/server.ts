@@ -155,10 +155,12 @@ import {
 
 ensureLocalModeDefaults();
 
-const PROJECT_ROOT = process.cwd();
+const RESOURCE_ROOT = resolve(
+  process.env.ALT_THEORY_RESOURCE_ROOT ?? process.cwd(),
+);
 const PUBLIC_DIR = resolve(
-  PROJECT_ROOT,
-  process.env.ALT_THEORY_PUBLIC_DIR ?? "alt-theory-app/web-server/public-v6",
+  process.env.ALT_THEORY_PUBLIC_DIR ??
+    resolve(RESOURCE_ROOT, "alt-theory-app/web-server/public-v6"),
 );
 
 const DEFAULT_ROLE_CONDITION_PRESETS: Record<string, string> = {
@@ -215,7 +217,7 @@ function parseResourceDiscoveryMode(
 
 export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   const dataDir = resolve(options.dataDir ?? resolveDataDir());
-  const assetPaths: AgentAssetPaths = resolveAgentAssetPaths(PROJECT_ROOT, {
+  const assetPaths: AgentAssetPaths = resolveAgentAssetPaths(RESOURCE_ROOT, {
     agentAssetsDir: options.agentAssetsDir,
     appContextPath: options.appContextPath,
     instructionsDir: options.instructionsDir,
@@ -1824,7 +1826,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     runLabel,
     testBatch,
     resolveRuntimeModelConfig: localMode
-      ? () => requireLocalRuntimeModelConfig()
+      ? () => resolveLocalRuntimeModelConfig()
       : undefined,
     resolveInitialThinkingLevel: localMode
       ? (provider, selectedModelId) =>
@@ -1875,14 +1877,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   );
   httpServer.on("close", stopTrashSweep);
 
-  function requireLocalRuntimeModelConfig(): RuntimeModelConfig {
-    const runtimeConfig = getRuntimeModelConfig(agentConfigDir());
-    if (!runtimeConfig.modelProvider || !runtimeConfig.modelId) {
-      throw new ConfigValidationError(
-        "No usable local model is active. Open Model setup, save a provider key, choose a model, and set it active.",
-      );
-    }
-    return runtimeConfig;
+  function resolveLocalRuntimeModelConfig(): RuntimeModelConfig {
+    return getRuntimeModelConfig(agentConfigDir());
   }
 
   function parseAbComparisonBody(

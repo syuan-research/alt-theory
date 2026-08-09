@@ -125,11 +125,11 @@ The Beta is not code-signed. Windows SmartScreen may show an unidentified-app wa
 ### macOS: download and launch
 
 1. Download the macOS Beta from the [GitHub Release page](https://github.com/syuan-research/alt-theory/releases).
-2. Double-click the ZIP to unpack the `AltTheory` folder — it contains `AltTheory.app` and a small `Fix-Open.command` script.
-3. Right-click `Fix-Open.command`, choose **Open**, then **Open** in the dialog. A Terminal window confirms the fix.
-4. Move `AltTheory.app` to Applications and open it with a normal double-click.
+2. Unpack the complete `AltTheory` folder in Downloads. It contains `AltTheory.app` and `Fix-Open.command`.
+3. Remove quarantine either by right-clicking `Fix-Open.command` and choosing **Open**, or by running `xattr -dr com.apple.quarantine "$HOME/Downloads/AltTheory/AltTheory.app"` in Terminal. If the extracted path differs, replace the path in the command.
+4. Move `AltTheory.app` to Applications and open it. If macOS still blocks it, use **System Settings → Privacy & Security → Open Anyway**, authenticate, and confirm **Open**.
 
-The fix step exists because the Beta is not notarized by Apple: current macOS refuses an unsigned downloaded app as "damaged" and no longer offers an **Open** bypass for apps (older systems that still show "Apple could not verify…" can right-click the app and **Open** instead). The script only removes macOS's download-quarantine flag from the `AltTheory.app` next to it. Run it only for a ZIP downloaded from this repository's GitHub Release, and check the SHA-256 against `BUILD-INFO-mac.txt`. Apple Silicon only.
+These steps are needed because the Beta is not notarized by Apple. The script and Terminal command only remove macOS's download-quarantine flag. Use them only for a ZIP downloaded from this repository's GitHub Release, and check the SHA-256 against `BUILD-INFO-mac.txt`. Apple Silicon only.
 
 Node.js and npm are **not** required when using the downloaded app.
 

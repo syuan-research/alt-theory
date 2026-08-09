@@ -187,7 +187,21 @@ function saveStoredRightWidth(width: number): void {
 }
 
 export function ShellProvider({ children }: { children: ReactNode }) {
-  const [surface, setSurface] = useState<Surface>("app");
+  const openModelsFromUrl =
+    new URLSearchParams(window.location.search).get("settings") === "models";
+  const [surface, setSurface] = useState<Surface>(
+    openModelsFromUrl ? "settings" : "app",
+  );
+  useEffect(() => {
+    if (!openModelsFromUrl) return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete("settings");
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${url.pathname}${url.search}${url.hash}`,
+    );
+  }, [openModelsFromUrl]);
   const [settingsPanel, setSettingsPanel] = useState("models");
   const [leftCollapsed, setLeftCollapsedState] = useState(() =>
     readFlag(LEFT_COLLAPSED_KEY)

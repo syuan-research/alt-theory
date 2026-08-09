@@ -46,7 +46,12 @@ test("alt-theory-help routes to the canonical docs set its map promises", () => 
 
 test("canonical docs are packaged and README links resolve", () => {
   const packageJson = JSON.parse(readFileSync(resolve("package.json"), "utf-8"));
-  assert.ok(packageJson.build.files.includes("docs/en/**"));
+  assert.ok(
+    packageJson.build.extraResources.some(
+      (entry: { from?: string; to?: string }) =>
+        entry.from === "docs/en" && entry.to === "docs/en",
+    ),
+  );
   const readmePath = join(englishDocsRoot, "README.md");
   assert.ok(existsSync(readmePath));
   const readme = readFileSync(readmePath, "utf-8");

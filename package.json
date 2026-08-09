@@ -1,7 +1,7 @@
 {
   "name": "llm-theo",
-  "version": "1.4.3-beta.1",
-  "shortVersionWindows": "1.4.3.1",
+  "version": "1.4.4-beta.1",
+  "shortVersionWindows": "1.4.4.1",
   "description": "An agentic workspace for social-science research.",
   "author": {
     "name": "Shuai Yuan"
@@ -50,7 +50,7 @@
     "typescript": "^5.6.0"
   },
   "build": {
-    "buildVersion": "1.4.3.1",
+    "buildVersion": "1.4.4.1",
     "appId": "com.alttheory.app",
     "productName": "AltTheory",
     "copyright": "Copyright © 2026 Shuai Yuan",
@@ -61,17 +61,31 @@
       "electron/**",
       "alt-theory-app/web-server/public-v6/**",
       "dist-bundle/**",
-      "agent-assets/**",
-      "docs/en/**",
-      "docs/zh-Hans/**",
-      "!agent-assets/*/snapshots/**",
-      "!agent-assets/*/experimental/**",
       "package.json",
       "node_modules/**",
       "!node_modules/@mistralai/**",
       "!node_modules/**/node_modules/@mistralai/**"
     ],
-    "asar": false,
+    "asar": true,
+    "extraResources": [
+      {
+        "from": "agent-assets",
+        "to": "agent-assets",
+        "filter": [
+          "**/*",
+          "!**/snapshots/**",
+          "!**/experimental/**"
+        ]
+      },
+      {
+        "from": "docs/en",
+        "to": "docs/en"
+      },
+      {
+        "from": "docs/zh-Hans",
+        "to": "docs/zh-Hans"
+      }
+    ],
     "mac": {
       "category": "public.app-category.education",
       "icon": "electron/assets/icon.icns",

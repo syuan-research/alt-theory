@@ -13,7 +13,7 @@ Beta 可从 [GitHub Release](https://github.com/syuan-research/alt-theory/releas
 
 其他组合（含 Intel Mac）未经测试，不作保证。
 
-Beta 尚未签名，两个系统首次打开时都会拦一下。Windows 可能警告该应用来自未识别的开发者：选择「更多信息 → 仍要运行」。新版 macOS 会把未签名的下载应用直接判为「已损坏」：请右键 ZIP 里附带的 `Fix-Open.command`（修复打开）小脚本，选择「打开」，再在对话框中选一次「打开」——它会移除旁边 `AltTheory.app` 上的下载隔离标记，之后应用就能正常双击打开（仍显示「无法验证开发者」的旧系统，可改为右键应用后选「打开」）。仅在 ZIP 来自本仓库 GitHub Release 时才这样操作。
+Beta 尚未签名，两个系统首次打开时都会拦一下。Windows 可能警告该应用来自未识别的开发者：选择「更多信息 → 仍要运行」。macOS 请先在「下载」中完整解压文件夹，再任选一种方法解除下载隔离：右键 ZIP 附带的 `Fix-Open.command` 并选择「打开」；或在终端运行 `xattr -dr com.apple.quarantine "$HOME/Downloads/AltTheory/AltTheory.app"`。若实际路径不同，请替换命令中的路径。若仍被拦截，请前往「系统设置 → 隐私与安全性 → 仍要打开」，验证身份后确认「打开」。仅在 ZIP 来自本仓库 GitHub Release 时才这样操作。
 
 
 ## 从仓库构建 （需一定编程经验）
@@ -34,7 +34,7 @@ Windows 未打包目录输出到 `dist/win-unpacked/`。打包与验证步骤见
 第一屏就是应用本身，一段等待开始的对话。应用至少需要配置一个模型提供方，之后才能开始对话。Alt Theory 提供工作目录与方法，模型由用户配置的提供方提供。
 
 - 若应用来自 Alt Theory 团队，提供方可能已配置好。
-- 否则首次启动的设置界面会引导用户添加提供方，例如一个 API 密钥，或用受支持的订阅登录。详见[模型、提供方与访问](../system-guide/02-models-providers-access.md)。应用内的[助手](../system-guide/16-helper-and-guidance.md)可逐步引导。
+- 否则应用仍停留在正常主界面，输入区会说明需要模型；点击提示即可进入「设置 → 模型」，添加 API 密钥或使用受支持的订阅登录。详见[模型、提供方与访问](../system-guide/02-models-providers-access.md)。应用内的[助手](../system-guide/16-helper-and-guidance.md)可逐步引导。
 
 ## 费用
 

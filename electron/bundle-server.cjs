@@ -8,8 +8,7 @@
  * ELECTRON_RUN_AS_NODE, no tsx at runtime.
  *
  * This CJS module is loaded by main.cjs via dynamic import. It:
- *   1. chdir()s to the packaged project root so the server's process.cwd()
- *      resolves PUBLIC_DIR, agent-assets/, and node_modules/marked correctly;
+ *   1. chdir()s to the physical resource root (never app.asar);
  *   2. dynamically imports the compiled server (ESM);
  *   3. calls createAltTheoryServer() and listens on PORT.
  *
@@ -19,12 +18,11 @@
 
 const path = require("path");
 
-async function startBackend(projectRoot) {
-  // Server.ts computes PROJECT_ROOT = process.cwd() and resolves PUBLIC_DIR +
-  // node_modules/marked relative to it. chdir to the packaged root so those
-  // resolve inside app.asar (Electron transparently routes to app.asar.unpacked
-  // for unpacked files).
-  process.chdir(projectRoot);
+async function startBackend(codeRoot, resourceRoot) {
+  // Keep cwd usable by libraries and tools that require a real filesystem
+  // directory. Application code is imported separately from codeRoot, which is
+  // app.asar in a packaged build and the checkout root in repository mode.
+  process.chdir(resourceRoot);
 
   // Port selection: a non-technical user must never have to pick a port. If an
   // explicit override is set (ALT_THEORY_PORT / PORT) we try it first; otherwise
@@ -36,7 +34,7 @@ async function startBackend(projectRoot) {
   // Dynamically import the compiled ESM server entry. Use a file:// URL so the
   // asar path is importable under Node ESM.
   const serverJsPath = path.join(
-    projectRoot,
+    codeRoot,
     "dist-bundle",
     "alt-theory-app",
     "web-server",

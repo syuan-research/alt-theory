@@ -104,6 +104,12 @@ function createTestService(
   fixture: ReturnType<typeof setupFixture>,
   resourceDiscovery: "clean" | "internal" = "clean",
   localMode = true,
+  runtimeModelConfig?: {
+    modelProvider?: string;
+    modelId?: string;
+    modelsPath?: string;
+    authPath?: string;
+  },
 ) {
   return new SessionService({
     localMode,
@@ -131,6 +137,9 @@ function createTestService(
     instructionsDir: fixture.instructionsDir,
     runLabel: null,
     testBatch: null,
+    resolveRuntimeModelConfig: runtimeModelConfig
+      ? () => runtimeModelConfig
+      : undefined,
   });
 }
 
@@ -143,6 +152,77 @@ function createDeferred<T>() {
   });
   return { promise, resolve, reject };
 }
+
+test("an explicit conversation model runs without a configured default", async () => {
+  const fixture = setupFixture();
+  const agentDir = join(fixture.root, "agent");
+  const modelsPath = join(agentDir, "models.json");
+  const authPath = join(agentDir, "auth.json");
+  mkdirSync(agentDir, { recursive: true });
+  writeFileSync(
+    modelsPath,
+    JSON.stringify({
+      providers: {
+        "manual-choice": {
+          baseUrl: "https://example.test/v1",
+          api: "openai-completions",
+          apiKey: "manual-choice",
+          models: [
+            {
+              id: "selected-model",
+              name: "Selected model",
+              contextWindow: 16_000,
+              maxTokens: 4_000,
+            },
+          ],
+        },
+      },
+    }),
+    "utf-8",
+  );
+  writeFileSync(
+    authPath,
+    JSON.stringify({
+      "manual-choice": { type: "api_key", key: "test-key" },
+    }),
+    "utf-8",
+  );
+  const service = createTestService(fixture, "clean", true, {
+    modelsPath,
+    authPath,
+  });
+
+  try {
+    const snapshot = await service.createSession(
+      {
+        rolePresetSlug: "role-conceptual-theory-companion",
+        kbDomain: "ep-core",
+        soulSlug: "soul-latest",
+      },
+      {
+        modelOverride: {
+          provider: "manual-choice",
+          modelId: "selected-model",
+        },
+      },
+    );
+    assert.deepEqual(snapshot.currentModel, {
+      provider: "manual-choice",
+      modelId: "selected-model",
+    });
+    await assert.rejects(
+      service.setSessionModel(snapshot.sessionId, null),
+      /No usable local model is active for this conversation/,
+    );
+    assert.equal(
+      readV4SessionHeader(service.getManifest(snapshot.sessionId).recordsDir)
+        ?.modelOverride?.modelId,
+      "selected-model",
+    );
+  } finally {
+    await service.disposeAll();
+  }
+});
 
 test("SessionService creates managed sessions with v0.4 foundation records", async () => {
   const fixture = setupFixture();

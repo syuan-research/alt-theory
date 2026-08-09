@@ -116,11 +116,11 @@ Beta（測試版）尚未進行 code signing（程式碼簽署）。Windows Smar
 ### macOS：下載與啟動
 
 1. 從 [GitHub Release 頁面](https://github.com/syuan-research/alt-theory/releases)下載 macOS Beta。
-2. 雙擊 ZIP 解壓出 `AltTheory` 資料夾——裡面有 `AltTheory.app` 和一個小腳本 `Fix-Open.command`（修復開啟）。
-3. 右鍵 `Fix-Open.command`，選擇 **Open（開啟）**，再在對話框中選一次 **Open（開啟）**。終端視窗會提示修復完成。
-4. 把 `AltTheory.app` 移到「應用程式」，之後正常雙擊開啟即可。
+2. 在「下載」中完整解壓縮 `AltTheory` 資料夾；裡面有 `AltTheory.app` 和 `Fix-Open.command`。
+3. 用任一方法解除 quarantine（下載隔離）：右鍵 `Fix-Open.command` 並選擇 **Open（開啟）**；或在終端運行 `xattr -dr com.apple.quarantine "$HOME/Downloads/AltTheory/AltTheory.app"`。若實際資料夾或 App 路徑不同，請替換指令中的路徑。
+4. 把 `AltTheory.app` 移到「應用程式」並開啟。若仍被攔截，請前往 **系統設定 → 私隱與保安 → 仍要開啟（Open Anyway）**，驗證身份後確認 **開啟（Open）**。
 
-需要這一步是因為 Beta 尚未經過 Apple notarization（公證）：新版 macOS 會把未簽名的下載應用直接判為「已損毀」，且不再為應用提供右鍵 **Open（開啟）** 的繞過入口（仍顯示「無法驗證開發者」的舊系統可改為右鍵應用後選 **Open**）。腳本只做一件事：移除旁邊 `AltTheory.app` 上的下載隔離標記。只有當 ZIP 來自本 repository 的 GitHub Release 時才這樣操作，並對照 `BUILD-INFO-mac.txt` 核對 SHA-256。僅支援 Apple Silicon。
+需要這些步驟是因為 Beta 尚未經過 Apple notarization（公證）。腳本和終端指令只會移除 macOS 的下載隔離標記。只有當 ZIP 來自本 repository 的 GitHub Release 時才這樣操作，並對照 `BUILD-INFO-mac.txt` 核對 SHA-256。僅支援 Apple Silicon。
 
 ## 首次啟動
 

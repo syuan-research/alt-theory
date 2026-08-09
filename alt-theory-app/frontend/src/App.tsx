@@ -1,8 +1,7 @@
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Shell } from "@/components/shell/Shell";
 import { AppProvider } from "@/context/AppProvider";
 import { ShellProvider } from "@/context/ShellContext";
-import { ConfigRoute } from "@/pages/ConfigRoute";
 
 export default function App() {
   return (
@@ -18,7 +17,7 @@ export default function App() {
             </AppProvider>
           }
         />
-        <Route path="/config" element={<ConfigRoute />} />
+        <Route path="/config" element={<Navigate to="/?settings=models" replace />} />
       </Routes>
     </BrowserRouter>
   );

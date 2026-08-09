@@ -225,10 +225,10 @@ function ModelsPanel() {
   const app = useApp();
   const local = app.appMode === "local";
   const [configVersion, setConfigVersion] = useState(0);
-  const refreshConfig = useCallback(
-    () => setConfigVersion((version) => version + 1),
-    []
-  );
+  const refreshConfig = useCallback(() => {
+    setConfigVersion((version) => version + 1);
+    void app.refreshLocalConfig();
+  }, [app.refreshLocalConfig]);
 
   return (
     <div className="set-panel models-panel">
@@ -236,6 +236,7 @@ function ModelsPanel() {
         <ModelConfigPage
           embedded
           key={configVersion}
+          onConfigChanged={app.refreshLocalConfig}
           addProviderTop={<AuthConnectCard onChanged={refreshConfig} />}
         />
       ) : (

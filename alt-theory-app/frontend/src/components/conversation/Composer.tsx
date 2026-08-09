@@ -225,6 +225,12 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
 
   const toggle = (key: MenuKey) =>
     setMenu((prev) => (prev === key ? null : key));
+  const needsModel =
+    app.appMode === "local" &&
+    app.localConfig !== null &&
+    !app.localConfig.activeUsable &&
+    !app.modelOverride &&
+    !app.currentSessionModel;
 
   return (
     <div className="composer-wrap">
@@ -242,7 +248,8 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
         app.composerNotice ||
         app.runHint ||
         app.recovery ||
-        cardHint ? (
+        cardHint ||
+        needsModel ? (
           <div className="composer-notes">
             {/* One stable status row while a turn runs. Clearing the label on
                 each assistant_delta used to collapse this strip and reflow the
@@ -278,6 +285,20 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                 <i className="ph ph-play" aria-hidden="true" />
                 {t("Continue")}
               </button>
+            ) : null}
+            {needsModel ? (
+              <span className="warn">
+                {app.localConfig?.anyUsable
+                  ? t("Choose a model for this conversation, or set a default in Settings.")
+                  : t("No usable model is configured.")}{" "}
+                <button
+                  type="button"
+                  className="flat"
+                  onClick={() => shell.openSettings("models")}
+                >
+                  {t("Open Settings → Models")}
+                </button>
+              </span>
             ) : null}
             <RunTips running={app.isRunning} seedTip={cardHint} />
           </div>

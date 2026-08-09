@@ -506,7 +506,15 @@ export class SessionService implements AgentTeamBridge {
     selectors: SessionSelectors,
     metadata: SessionCreationMetadata = {},
   ): Promise<SessionSnapshot> {
-    const runtimeModelConfig = this.resolveEffectiveRuntimeModelConfig();
+    const runtimeModelConfig = this.modelArgsFor(metadata.modelOverride);
+    if (
+      this.config.resolveRuntimeModelConfig &&
+      (!runtimeModelConfig.modelProvider || !runtimeModelConfig.modelId)
+    ) {
+      throw new Error(
+        "No usable local model is active for this conversation. Choose a conversation model or configure a default in Settings → Models.",
+      );
+    }
     const sessionId = allocateReadableSessionId(this.config.dataDir, {
       rolePresetSlug: selectors.rolePresetSlug,
       soulSlug: selectors.soulSlug,
@@ -2156,6 +2164,12 @@ export class SessionService implements AgentTeamBridge {
     }
     const header = readV4SessionHeader(managed.manifest.recordsDir);
     if (!header) throw new Error("v0.4 session header is required");
+    const fallback = override ? null : this.resolveEffectiveRuntimeModelConfig();
+    if (fallback && (!fallback.modelProvider || !fallback.modelId)) {
+      throw new Error(
+        "No usable local model is active for this conversation. Choose another conversation model or configure a default in Settings → Models.",
+      );
+    }
     const { modelOverride: _dropped, ...rest } = header;
     writeSessionHeader(
       managed.manifest.recordsDir,
@@ -2179,7 +2193,7 @@ export class SessionService implements AgentTeamBridge {
           this.initialThinkingLevel(override.provider, override.modelId),
       );
     } else {
-      const base = this.resolveEffectiveRuntimeModelConfig();
+      const base = fallback!;
       const resolved =
         base.modelProvider && base.modelId
           ? managed.session.modelRuntime.getModel(base.modelProvider, base.modelId,)

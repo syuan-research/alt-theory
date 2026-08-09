@@ -74,48 +74,24 @@ function log(msg) {
   }
 }
 
-/**
- * Resolve the packaged app root in an asar-safe way and chdir into it so the
- * in-process server resolves PUBLIC_DIR / agent-assets / node_modules relative
- * to the project root.
- */
-function resolveProjectRoot() {
-  const appPath = app.getAppPath();
-  let dir = appPath;
-  for (let i = 0; i < 6; i++) {
-    try {
-      const pkgPath = path.join(dir, "package.json");
-      if (fs.existsSync(pkgPath)) {
-        const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
-        if (pkg.name === "llm-theo") return dir;
-      }
-    } catch {
-      // continue walking
-    }
-    const parent = path.dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  return appPath;
-}
-
-async function startBackend(projectRoot) {
+async function startBackend(codeRoot, resourceRoot) {
   log("Starting Alt Theory backend (in-process, compiled JS)...");
   const serverJs = path.join(
-    projectRoot,
+    codeRoot,
     "dist-bundle",
     "alt-theory-app",
     "web-server",
     "server.js"
   );
-  log(`Project root: ${projectRoot}`);
+  log(`Code root: ${codeRoot}`);
+  log(`Resource root: ${resourceRoot}`);
   log(`Server entry: ${serverJs} (exists: ${fs.existsSync(serverJs)})`);
   try {
     const { startBackend: doStart } = require(path.join(
       __dirname,
       "bundle-server.cjs"
     ));
-    const started = await doStart(projectRoot);
+    const started = await doStart(codeRoot, resourceRoot);
     backendInstance = started.instance;
     activePort = started.port;
     log(`Backend started on port ${activePort}.`);
@@ -199,10 +175,18 @@ app.whenReady().then(async () => {
   log(`Local Pi config dir: ${process.env.PI_CODING_AGENT_DIR}`);
   log(`Local log: ${LOCAL_LOG_PATH}`);
 
-  const projectRoot = resolveProjectRoot();
+  const codeRoot = app.getAppPath();
+  const resourceRoot = app.isPackaged ? process.resourcesPath : codeRoot;
+  process.env.ALT_THEORY_RESOURCE_ROOT = resourceRoot;
+  if (!process.env.ALT_THEORY_AGENT_ASSETS_DIR) {
+    process.env.ALT_THEORY_AGENT_ASSETS_DIR = path.join(
+      resourceRoot,
+      "agent-assets"
+    );
+  }
   if (!process.env.ALT_THEORY_PUBLIC_DIR) {
     process.env.ALT_THEORY_PUBLIC_DIR = path.join(
-      projectRoot,
+      codeRoot,
       "alt-theory-app",
       "web-server",
       "public-v6"
@@ -210,7 +194,7 @@ app.whenReady().then(async () => {
   }
   log(`Public dir: ${process.env.ALT_THEORY_PUBLIC_DIR}`);
   try {
-    await startBackend(projectRoot);
+    await startBackend(codeRoot, resourceRoot);
     loadedUrl = true;
     loadShell();
   } catch (err) {

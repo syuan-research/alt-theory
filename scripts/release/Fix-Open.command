@@ -14,9 +14,9 @@ for app in "./AltTheory.app" "/Applications/AltTheory.app"; do
 done
 echo
 if [ -n "$fixed" ]; then
-  echo "修复完成：现在可以双击打开 AltTheory 了。"
+  echo "已移除下载隔离。若仍被拦截，请在系统设置 → 隐私与安全性中选择“仍要打开”。"
   echo "Fixed:$fixed"
-  echo "You can now open AltTheory with a normal double-click."
+  echo "If macOS still blocks it, use System Settings → Privacy & Security → Open Anyway."
 else
   echo "没有找到 AltTheory.app——请把本文件和 AltTheory.app 放在同一个文件夹后再运行一次。"
   echo "AltTheory.app not found — keep this file next to AltTheory.app and run it again."

@@ -8,7 +8,6 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useNavigate } from "react-router-dom";
 import { t } from "@/i18n";
 import {
   detectAccountsConfigured,
@@ -132,6 +131,8 @@ export interface AppContextValue {
   refreshDiscovery: () => Promise<void>;
   /** Local-mode model config status; carries the active default model. */
   localConfig: ConfigStatus | null;
+  /** Re-fetch local provider/default status after Settings changes. */
+  refreshLocalConfig: () => Promise<void>;
 
   sessions: SessionSummary[];
   sessionSearch: string;
@@ -304,7 +305,6 @@ function applySnapshotSelectors(
 }
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const navigate = useNavigate();
   const [auth, setAuth] = useState<AuthContext>(anonymousAuth);
   const [appMode, setAppMode] = useState<"local" | "hosted">("hosted");
   const [runtimeMode, setRuntimeMode] = useState<RuntimeMode>("alt-theory");
@@ -547,17 +547,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const nextViewMode = viewModeForRole(role, mode);
       const nextCanSwitchMode = researcherDoorOpen(role, mode);
 
-      if (
-        mode === "local" &&
-        me.localConfig &&
-        !me.localConfig.activeUsable &&
-        !me.localConfig.anyUsable &&
-        window.location.pathname !== "/config"
-      ) {
-        navigate("/config?firstRun=1", { replace: true });
-        return;
-      }
-
       setAuth(me.auth ?? anonymousAuth);
       setAppMode(mode);
       setRuntimeMode(me.app?.runtimeMode ?? "alt-theory");
@@ -586,7 +575,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, [navigate]);
+  }, []);
+
+  const refreshLocalConfig = useCallback(async () => {
+    const me = await fetchAuthMe();
+    setLocalConfig(me.localConfig ?? null);
+  }, []);
 
   useEffect(() => {
     void refreshAuth();
@@ -1815,6 +1809,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       discovery,
       refreshDiscovery,
       localConfig,
+      refreshLocalConfig,
       sessions,
       sessionSearch,
       setSessionSearch,
@@ -1924,6 +1919,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       discovery,
       refreshDiscovery,
       localConfig,
+      refreshLocalConfig,
       sessions,
       sessionSearch,
       selectedCatalogSessionId,

@@ -241,12 +241,59 @@ async function persistApiKey(
   agentDir: string,
   provider: string,
   apiKey: string,
-): Promise<void> {
+): Promise<string | undefined> {
   const runtime = await runtimeFor(agentDir);
-  await runtime.login(provider, "api_key", {
+  let loginSettled = false;
+  let loginError: unknown;
+  const login = runtime.login(provider, "api_key", {
     prompt: async () => apiKey,
     notify: () => {},
   });
+  void login.then(
+    () => {
+      loginSettled = true;
+    },
+    (error: unknown) => {
+      loginError = error;
+      loginSettled = true;
+    },
+  );
+
+  // ModelRuntime.login() persists the credential first, then refreshes every
+  // network-backed provider catalog. Provider Save owns the durable credential
+  // mutation, not that unrelated global refresh. Wait until the requested key
+  // is actually on disk (or persistence fails), then let refresh finish without
+  // holding the HTTP response open indefinitely.
+  for (;;) {
+    const credential = storedCredential(agentDir, provider);
+    if (credential?.type === "api_key" && credential.key === apiKey) break;
+    if (loginSettled) {
+      if (loginError) throw loginError;
+      throw new Error(`Credential for '${provider}' was not persisted`);
+    }
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 20));
+  }
+
+  if (loginSettled) {
+    return loginError
+      ? "Provider saved, but the model catalog could not be refreshed."
+      : undefined;
+  }
+
+  const refreshResult = await Promise.race([
+    login.then(
+      () => "ok" as const,
+      () => "failed" as const,
+    ),
+    new Promise<"pending">((resolvePending) =>
+      setTimeout(() => resolvePending("pending"), 250),
+    ),
+  ]);
+  return refreshResult === "ok"
+    ? undefined
+    : refreshResult === "failed"
+      ? "Provider saved, but the model catalog could not be refreshed."
+      : "Provider saved. Model catalog refresh is continuing in the background.";
 }
 
 async function removeCredential(
@@ -1121,10 +1168,18 @@ export async function upsertProvider(
   writeModelsFileAtomic(agentDir, models);
 
   // Key handling for auth.json.
+  let warning: string | undefined;
   if (options.clearKey) {
     await removeCredential(agentDir, input.name);
   } else if (options.keyStorage === "literal" && input.apiKey) {
-    await persistApiKey(agentDir, input.name, input.apiKey);
+    try {
+      warning = await persistApiKey(agentDir, input.name, input.apiKey);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      throw new ConfigValidationError(
+        `Provider models were saved, but credential storage failed: ${detail}`,
+      );
+    }
   }
 
   const keyState = keyStateForProvider(agentDir, input.name, {
@@ -1139,6 +1194,7 @@ export async function upsertProvider(
     hasKey: options.clearKey ? false : keyState === "stored",
     models: persistedModels,
     active: false,
+    warning,
   };
 }
 

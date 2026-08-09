@@ -329,9 +329,11 @@ function editorFingerprint(input: {
 export function ModelConfigPage({
   embedded = false,
   addProviderTop,
+  onConfigChanged,
 }: {
   embedded?: boolean;
   addProviderTop?: ReactNode;
+  onConfigChanged?: () => void | Promise<void>;
 } = {}) {
   const [status, setStatus] = useState<ConfigStatus | null>(null);
   const [providers, setProviders] = useState<ProviderView[]>([]);
@@ -359,6 +361,11 @@ export function ModelConfigPage({
   );
   const [keyUrl, setKeyUrl] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveResult, setSaveResult] = useState<{
+    text: string;
+    kind: "success" | "warning" | "error";
+  } | null>(null);
   const [testResult, setTestResult] = useState<{
     ok: boolean;
     message: string;
@@ -422,8 +429,12 @@ export function ModelConfigPage({
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
   }, [editorDirty]);
+  useEffect(() => {
+    if (editorDirty) setSaveResult(null);
+  }, [editorDirty]);
 
   const openEditor = (existingName?: string) => {
+    setSaveResult(null);
     const provider = existingName
       ? providers.find((item) => item.name === existingName)
       : undefined;
@@ -545,6 +556,7 @@ export function ModelConfigPage({
 
   // Pick a preset card → prefill a NEW provider and open the editor inline.
   const pickPreset = (preset: ProviderPreset) => {
+    setSaveResult(null);
     setAddingProvider(false);
     setEditingName(null);
     setApiKey("");
@@ -553,6 +565,7 @@ export function ModelConfigPage({
   };
 
   const saveProvider = async () => {
+    if (saving) return;
     const trimmedName = name.trim();
     const models: ConfigModel[] = modelRows
       .map((row) => rowToConfigModel(row))
@@ -575,29 +588,24 @@ export function ModelConfigPage({
       return;
     }
 
+    setSaving(true);
+    setSaveResult(null);
     try {
-      await upsertConfigProvider(trimmedName, {
+      const saved = await upsertConfigProvider(trimmedName, {
         baseUrl: baseUrl.trim() || undefined,
         api: apiType,
         models,
         ...(Object.keys(options).length ? { options } : {}),
         ...(apiKey ? { apiKey, keyStorage } : {}),
       });
-      const firstModelId = models[0]?.id;
-      const shouldSetActive =
-        !status?.activeProvider && !status?.activeModel && Boolean(firstModelId);
-      if (shouldSetActive && firstModelId) {
-        await setActiveModel(trimmedName, firstModelId);
-      }
-      showToast(
-        shouldSetActive
-          ? editingName
-            ? t("Saved {name} and set active", { name: trimmedName })
-            : t("Added {name} and set active", { name: trimmedName })
-          : editingName
-            ? t("Saved {name}", { name: trimmedName })
-            : t("Added {name}", { name: trimmedName })
-      );
+      const successText = editingName
+        ? t("Saved {name}", { name: trimmedName })
+        : t("Added {name}", { name: trimmedName });
+      showToast(successText);
+      setSaveResult({
+        text: saved.warning ? `${successText}. ${saved.warning}` : successText,
+        kind: saved.warning ? "warning" : "success",
+      });
       const savedName = trimmedName;
       const savedBaseUrl = baseUrl.trim();
       setName(savedName);
@@ -616,9 +624,22 @@ export function ModelConfigPage({
       setEditorOpen(true);
       setAddingProvider(false);
       setPendingProviderTarget(null);
-      await refresh();
+      const refreshResults = await Promise.allSettled([
+        refresh(),
+        Promise.resolve(onConfigChanged?.()),
+      ]);
+      if (refreshResults.some((result) => result.status === "rejected")) {
+        setSaveResult({
+          text: `${successText}. ${t("Saved, but the current status could not be refreshed. Reload Settings to retry.")}`,
+          kind: "warning",
+        });
+      }
     } catch (err) {
-      showToast(err instanceof Error ? err.message : t("Save failed"), true);
+      const message = err instanceof Error ? err.message : t("Save failed");
+      showToast(message, true);
+      setSaveResult({ text: message, kind: "error" });
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -715,7 +736,7 @@ export function ModelConfigPage({
               <span className="text-success">{t("Ready.")}</span>
             ) : status.anyUsable ? (
               <span className="text-warning">
-                {t("Choose a default model to use the app.")}
+                {t("No default is set. Choose one for new conversations, or select a model in the composer.")}
               </span>
             ) : (
               <span className="text-warning">{t("No provider has a key yet.")}</span>
@@ -739,7 +760,7 @@ export function ModelConfigPage({
                 try {
                   await setActiveModel(provider, modelId);
                   showToast(t("Default model: {model}", { model: modelId }));
-                  await refresh();
+                  await Promise.all([refresh(), onConfigChanged?.()]);
                 } catch (err) {
                   showToast(
                     err instanceof Error ? err.message : t("Could not change model"),
@@ -782,14 +803,12 @@ export function ModelConfigPage({
             <i className={`ph ${dark ? "ph-sun" : "ph-moon"} mr-1`} />
             {dark ? t("Light") : t("Dark")}
           </button>
-          {status && status.activeUsable ? (
-            <Link
-              to="/"
-              className="text-[0.85rem] text-text-secondary hover:text-ink"
-            >
-              {t("← Back to app")}
-            </Link>
-          ) : null}
+          <Link
+            to="/"
+            className="text-[0.85rem] text-text-secondary hover:text-ink"
+          >
+            {t("← Back to app")}
+          </Link>
         </div>
         ) : null}
 
@@ -968,7 +987,7 @@ export function ModelConfigPage({
                       initialized.current = false;
                       setEditorOpen(false);
                       setEditingName(null);
-                      await refresh();
+                      await Promise.all([refresh(), onConfigChanged?.()]);
                     } catch (err) {
                       showToast(
                         err instanceof Error ? err.message : t("Delete failed"),
@@ -1346,12 +1365,31 @@ export function ModelConfigPage({
               </details>
 
               {discardPrompt("close")}
+              {saveResult ? (
+                <p
+                  role={saveResult.kind === "error" ? "alert" : "status"}
+                  className={cn(
+                    "text-[0.8125rem]",
+                    saveResult.kind === "error"
+                      ? "text-danger"
+                      : saveResult.kind === "warning"
+                        ? "text-warning"
+                        : "text-text-secondary",
+                  )}
+                >
+                  {saveResult.text}
+                </p>
+              ) : null}
               <div className="flex justify-end gap-2 pt-2">
-                <Button variant="secondary" onClick={closeEditor}>
+                <Button variant="secondary" onClick={closeEditor} disabled={saving}>
                   {t("Cancel")}
                 </Button>
-                <Button variant="primary" onClick={() => void saveProvider()}>
-                  {t("Save provider")}
+                <Button
+                  variant="primary"
+                  disabled={saving}
+                  onClick={() => void saveProvider()}
+                >
+                  {saving ? t("Saving...") : t("Save provider")}
                 </Button>
               </div>
             </div>
