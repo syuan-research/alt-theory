@@ -370,7 +370,6 @@ export function TranscriptEntry({
   message,
   developer,
   isLatestUser,
-  isLatestAssistant = false,
   isDuplicateToolCall = false,
   userIndex,
   isRunning,
@@ -399,6 +398,7 @@ export function TranscriptEntry({
         isRunning={isRunning}
         onEdit={actions?.onEdit}
         onPrepareCompare={replacementEdit ? undefined : actions?.onPrepareCompare}
+        onRetry={isLatestUser ? actions?.onRetry : undefined}
         replacementEdit={replacementEdit}
         userIndex={userIndex}
       />
@@ -411,11 +411,7 @@ export function TranscriptEntry({
         {(developer || showThinking) && message.thinking ? (
           <ThinkingBlock text={message.thinking} defaultOpen={thinkingExpanded} />
         ) : null}
-        <AssistantBubble
-          text={message.text}
-          isRunning={isRunning}
-          onRetry={isLatestAssistant ? actions?.onRetry : undefined}
-        />
+        <AssistantBubble text={message.text} />
       </>
     );
   }
@@ -490,6 +486,7 @@ function UserBubble({
   isRunning,
   onEdit,
   onPrepareCompare,
+  onRetry,
   replacementEdit,
   userIndex,
 }: {
@@ -499,6 +496,7 @@ function UserBubble({
   isRunning: boolean;
   onEdit?: (text: string, entryId: string | null) => boolean;
   onPrepareCompare?: (text: string, entryId: string | null) => boolean;
+  onRetry?: () => boolean;
   replacementEdit: boolean;
   userIndex?: number;
 }) {
@@ -564,6 +562,16 @@ function UserBubble({
         >
           <i className="ph ph-copy" aria-hidden="true" />
         </button>
+        {onRetry ? (
+          <button
+            title={t("Run the latest message again from the start")}
+            aria-label={t("Retry latest message")}
+            disabled={isRunning}
+            onClick={onRetry}
+          >
+            <i className="ph ph-arrow-clockwise" aria-hidden="true" />
+          </button>
+        ) : null}
         {canEdit && onEdit ? (
           <span className="edit-action-cluster">
             <button
@@ -602,13 +610,9 @@ function UserBubble({
 export function AssistantBubble({
   text,
   streaming,
-  isRunning,
-  onRetry,
 }: {
   text: string;
   streaming?: boolean;
-  isRunning?: boolean;
-  onRetry?: () => boolean;
 }) {
   // v0.5 streams raw text (no trim) so trailing newlines do not thrash layout.
   const raw = text || "";
@@ -634,16 +638,6 @@ export function AssistantBubble({
           >
             <i className="ph ph-copy" aria-hidden="true" />
           </button>
-          {onRetry ? (
-            <button
-              title={t("Run the latest message again from the start")}
-              aria-label={t("Retry latest message")}
-              disabled={isRunning}
-              onClick={onRetry}
-            >
-              <i className="ph ph-arrow-clockwise" aria-hidden="true" />
-            </button>
-          ) : null}
         </div>
       ) : null}
     </div>

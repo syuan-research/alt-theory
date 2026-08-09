@@ -279,16 +279,6 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                 {t("Continue")}
               </button>
             ) : null}
-            {app.recovery?.canRetryFromStart ? (
-              <button
-                className="flat retry-run"
-                onClick={app.retryLatest}
-                title={t("Run the latest message again from the start")}
-              >
-                <i className="ph ph-arrow-clockwise" aria-hidden="true" />
-                {t("Retry")}
-              </button>
-            ) : null}
             <RunTips running={app.isRunning} seedTip={cardHint} />
           </div>
         ) : null}
