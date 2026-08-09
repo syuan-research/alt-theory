@@ -3090,9 +3090,14 @@ export class SessionService implements AgentTeamBridge {
       );
       result = await openAltTheorySession({ ...openArgs, ...fallback });
     }
+    const reconciledRuns = reconcileInterruptedRunOnOpen(
+      result.session.sessionManager,
+      result.manifest.recordsDir,
+      "main",
+    );
     alignSessionManagerToLatestRun(
       result.session.sessionManager,
-      latestRunSnapshots(result.manifest.recordsDir),
+      reconciledRuns,
       "latest active run",
     );
     resyncAgentContext(result.session);
@@ -3112,7 +3117,9 @@ export class SessionService implements AgentTeamBridge {
         toolCallCount: detail.metrics?.toolCallCount ?? 0,
         turnCount: detail.metrics?.turnCount ?? 0,
       },
-      transcript: detail.transcript,
+      transcript: buildTranscriptFromEntries(
+        result.session.sessionManager.getBranch(),
+      ),
       branchId: "main",
     });
     appendSessionEvent(managed.manifest.recordsDir, {
@@ -3905,6 +3912,85 @@ function runRecordBody(
     ...body
   } = record;
   return body;
+}
+
+type ReopenSessionEntry = {
+  id: string;
+  type?: string;
+  timestamp?: string | number;
+  message?: { role?: string; timestamp?: string | number };
+};
+
+/**
+ * A process crash can leave a run at `accepted` after Pi has already flushed
+ * part of that turn to its append-only JSONL. Reconcile that durable tail
+ * before run-based leaf alignment; otherwise reopen deliberately rewinds to
+ * the previous terminal run and hides completed work from the transcript and
+ * the next model call.
+ */
+function reconcileInterruptedRunOnOpen(
+  sessionManager: { getBranch(): ReadonlyArray<ReopenSessionEntry> },
+  recordsDir: string,
+  branchId: string,
+  completedAt = new Date().toISOString(),
+): RunRecord[] {
+  const latestRuns = latestRunSnapshots(recordsDir);
+  const stale = latestRuns
+    .filter((run) => run.branchId === branchId)
+    .at(-1);
+  if (stale?.status !== "accepted") return latestRuns;
+
+  const branch = sessionManager.getBranch();
+  const previousRuns = latestRuns.filter((run) => run.runId !== stale.runId);
+  const anchorIds = [
+    ...[...stale.assistantEntryIds].reverse(),
+    stale.userEntryId,
+    latestActiveLeafEntryId(previousRuns),
+  ].filter((value): value is string => Boolean(value));
+  const anchorIndex = Math.max(
+    -1,
+    ...anchorIds.map((id) => branch.findIndex((entry) => entry.id === id)),
+  );
+  const acceptedAtMs = Date.parse(stale.acceptedAt);
+  const appended =
+    anchorIndex >= 0
+      ? branch.slice(anchorIndex + 1)
+      : branch.filter((entry) => {
+          const timestamp = entry.timestamp ?? entry.message?.timestamp;
+          const value =
+            typeof timestamp === "number"
+              ? timestamp
+              : typeof timestamp === "string"
+                ? Date.parse(timestamp)
+                : Number.NaN;
+          return Number.isFinite(value) && value >= acceptedAtMs - 1_000;
+        });
+  const userEntryId =
+    stale.userEntryId ??
+    appended.find(
+      (entry) => entry.type === "message" && entry.message?.role === "user",
+    )?.id ??
+    null;
+  const assistantEntryIds = [
+    ...new Set([
+      ...stale.assistantEntryIds,
+      ...appended
+        .filter(
+          (entry) =>
+            entry.type === "message" && entry.message?.role === "assistant",
+        )
+        .map((entry) => entry.id),
+    ]),
+  ];
+
+  appendRunRecord(recordsDir, {
+    ...runRecordBody(stale),
+    status: "interrupted",
+    userEntryId,
+    assistantEntryIds,
+    completedAt,
+  });
+  return latestRunSnapshots(recordsDir);
 }
 
 /**

@@ -41,7 +41,11 @@ import { readAbComparisonRecords } from "./ab-records.js";
 import { readV4SessionHeader } from "./session-records.js";
 import { hardDeleteExpiredPrivateSessions } from "./session-retention.js";
 import { readConfigEvents } from "./config-events.js";
-import { latestRunSnapshots, readRunRecords } from "./run-records.js";
+import {
+  appendRunRecord,
+  latestRunSnapshots,
+  readRunRecords,
+} from "./run-records.js";
 
 function setupFixture() {
   const root = mkdtempSync(join(tmpdir(), "alt-theory-session-service-"));
@@ -951,6 +955,108 @@ test("SessionService preserves imported history after an aborted first run", asy
     );
   } finally {
     await reopened.disposeAll();
+  }
+});
+
+test("SessionService reconciles a crash-interrupted accepted run and continues from its durable tail", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const created = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const managed = (service as any).sessions.get(created.sessionId);
+  managed.session.prompt = async (text: string) => {
+    managed.session.sessionManager.appendMessage({
+      role: "user",
+      content: [{ type: "text", text }],
+      timestamp: Date.now(),
+    });
+    managed.session.sessionManager.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: `answer:${text}` }],
+      timestamp: Date.now(),
+    });
+  };
+  await service.runPrompt(created.sessionId, "completed turn").completion;
+
+  const recordsDir = service.getManifest(created.sessionId).recordsDir;
+  const acceptedAt = new Date().toISOString();
+  appendRunRecord(recordsDir, {
+    sessionId: created.sessionId,
+    branchId: "main",
+    turnId: "turn-000002",
+    revisionId: "rev-000002",
+    runId: "run-000002",
+    status: "accepted",
+    piSessionFile: managed.session.sessionFile ?? null,
+    userEntryId: null,
+    assistantEntryIds: [],
+    supersedesRunId: null,
+    acceptedAt,
+    completedAt: null,
+  });
+  const interruptedUserId = managed.session.sessionManager.appendMessage({
+    role: "user",
+    content: [{ type: "text", text: "long interrupted task" }],
+    timestamp: Date.now(),
+  });
+  const interruptedAssistantId = managed.session.sessionManager.appendMessage({
+    role: "assistant",
+    content: [{ type: "text", text: "durable partial work" }],
+    timestamp: Date.now(),
+  });
+  await service.disposeAll();
+
+  const reopenedService = createTestService(fixture);
+  try {
+    await reopenedService.openSession(created.sessionId, {
+      rolePresetSlug: "role-conceptual-theory-companion",
+      kbDomain: "ep-core",
+      soulSlug: "soul-latest",
+    });
+    const interrupted = latestRunSnapshots(recordsDir).at(-1)!;
+    assert.equal(interrupted.status, "interrupted");
+    assert.equal(interrupted.userEntryId, interruptedUserId);
+    assert.deepEqual(interrupted.assistantEntryIds, [interruptedAssistantId]);
+
+    const reopenedManaged = (reopenedService as any).sessions.get(
+      created.sessionId,
+    );
+    assert.equal(
+      reopenedManaged.session.sessionManager.getLeafId(),
+      interruptedAssistantId,
+    );
+    assert.match(
+      reopenedService
+        .getTranscript(created.sessionId)
+        .map((message) => message.text)
+        .join("\n"),
+      /durable partial work/,
+    );
+
+    let contextBeforeContinue = "";
+    reopenedManaged.session.prompt = async (text: string) => {
+      contextBeforeContinue = JSON.stringify(
+        reopenedManaged.session.sessionManager.buildSessionContext().messages,
+      );
+      reopenedManaged.session.sessionManager.appendMessage({
+        role: "user",
+        content: [{ type: "text", text }],
+        timestamp: Date.now(),
+      });
+      reopenedManaged.session.sessionManager.appendMessage({
+        role: "assistant",
+        content: [{ type: "text", text: "continued answer" }],
+        timestamp: Date.now(),
+      });
+    };
+    await reopenedService.runPrompt(created.sessionId, "continue").completion;
+    assert.match(contextBeforeContinue, /long interrupted task/);
+    assert.match(contextBeforeContinue, /durable partial work/);
+  } finally {
+    await reopenedService.disposeAll();
   }
 });
 
