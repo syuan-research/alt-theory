@@ -1,5 +1,8 @@
 import type { WorkspaceFileEntry } from "@/api/types";
 
+/** dataTransfer type for drags from the right-hand file tree to the composer. */
+export const WORKSPACE_PATH_MIME = "application/x-alt-workspace-path";
+
 export function stageablePathForEntry(entry: WorkspaceFileEntry): string | null {
   if (!entry?.stageable) return null;
   if (entry.kind === "converted" || entry.kind === "text") return entry.path;

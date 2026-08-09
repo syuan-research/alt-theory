@@ -41,6 +41,7 @@ import {
   type ApprovalResponse,
 } from "./approval-bridge.js";
 import { appendSessionEvent } from "./session-events.js";
+import { appendLiveRunEvent, type LiveRun } from "./live-run.js";
 import {
   appendAbComparisonRecord,
   type AbComparisonRecord,
@@ -51,6 +52,7 @@ import {
   type SessionCounters,
 } from "./session-metrics.js";
 import {
+  forkFamilyIds,
   latestActiveLeafEntryId,
   listSessionSummaries,
   buildTranscriptFromEntries,
@@ -84,11 +86,15 @@ import { loadInstructionAsset } from "./instruction-assets.js";
 import {
   appendRunRecord,
   latestRunSnapshots,
+  runInterruptionCause,
+  runOutcome,
+  type InterruptionCause,
   type RunRecord,
 } from "./run-records.js";
 import type {
   SessionMetrics,
   SessionSnapshot,
+  TurnRecovery,
   TranscriptMessage,
 } from "./websocket-protocol.js";
 import {
@@ -251,7 +257,11 @@ export type SessionServiceEvent =
   | { type: "tool_updated"; payload: { callId: string } }
   | { type: "tool_finished"; payload: { callId: string; success: boolean } }
   | { type: "run_completed"; payload: SessionSnapshot }
-  | { type: "run_failed"; payload: { error: string; canRetry?: boolean } }
+  | {
+      type: "run_failed";
+      payload: { error: string; canRetry?: boolean; recovery?: TurnRecovery | null };
+    }
+  | { type: "user_steered"; payload: { text: string } }
   | { type: "session_transcript"; payload: { messages: TranscriptMessage[] } }
   | { type: "session_metrics"; payload: SessionMetrics }
   | { type: "approval_requested"; payload: ApprovalRequest }
@@ -295,6 +305,10 @@ interface ManagedSession {
   pendingNativePiScanAltSkills: boolean | null;
   /** Set when this session is a subagent child: its lead conversation's id. */
   subagentParentId: string | null;
+  /** In-flight turn buffered for late joiners (v1.4.3); null when idle. */
+  liveRun: LiveRun | null;
+  /** Structured cause for the in-flight turn when Alt asks Pi to stop it. */
+  pendingInterruptionCause: InterruptionCause | null;
 }
 
 /** Background subagent runs allowed at once; further first-runs queue FIFO. */
@@ -736,7 +750,10 @@ export class SessionService implements AgentTeamBridge {
     // Branches move with their conversation (owner decision 2026-07-24): one
     // re-point carries the whole fork family so a moved parent never strands
     // its branches in the old folder — and the list grouping stays truthful.
-    const family = [sessionId, ...this.forkDescendants(sessionId)];
+    // Family = the WHOLE tree from its structural root (owner 2026-08-05):
+    // dragging a promoted branch used to miss its ancestors' subtrees and
+    // leave part of the family behind in the old folder.
+    const family = forkFamilyIds(this.config.dataDir, sessionId);
     for (const id of family) {
       const member = this.sessions.get(id);
       if (member && (member.busy || member.session.isStreaming)) {
@@ -749,25 +766,6 @@ export class SessionService implements AgentTeamBridge {
       if (id === sessionId) target = snapshot;
     }
     return target;
-  }
-
-  /** All fork/side/helper/arm descendants of a session, breadth-first. */
-  private forkDescendants(sessionId: string): string[] {
-    const childrenByParent = new Map<string, string[]>();
-    for (const summary of listSessionSummaries(this.config.dataDir).sessions) {
-      const parentId = summary.forkedFrom?.sessionId;
-      if (!parentId) continue;
-      if (!childrenByParent.has(parentId)) childrenByParent.set(parentId, []);
-      childrenByParent.get(parentId)?.push(summary.sessionId);
-    }
-    const out: string[] = [];
-    const queue = [...(childrenByParent.get(sessionId) ?? [])];
-    while (queue.length > 0) {
-      const id = queue.shift() as string;
-      out.push(id);
-      queue.push(...(childrenByParent.get(id) ?? []));
-    }
-    return out;
   }
 
   private async repointOne(
@@ -986,7 +984,7 @@ export class SessionService implements AgentTeamBridge {
     return this.reviseFromRun(managed, latest, text);
   }
 
-  private latestRetryableRun(
+  private latestContinuableRun(
     managed: ManagedSession,
   ): (RunRecord & { userEntryId: string }) | null {
     const latest = latestRunSnapshots(managed.manifest.recordsDir)
@@ -998,29 +996,26 @@ export class SessionService implements AgentTeamBridge {
           run.status !== "superseded",
       )
       .at(-1);
-    if (
-      !latest?.userEntryId ||
-      (latest.status !== "failed" && latest.status !== "aborted")
-    ) {
+    if (!latest?.userEntryId || !["failed", "interrupted"].includes(runOutcome(latest) ?? "")) {
       return null;
     }
     return latest as RunRecord & { userEntryId: string };
   }
 
-  /** Whether the Retry / continue-from-break-point action can succeed now. */
-  canRetryFailed(sessionId: string): boolean {
+  /** Whether Continue can resume the latest incomplete turn from its breakpoint. */
+  canContinueLatest(sessionId: string): boolean {
     const managed = this.sessions.get(sessionId);
-    return Boolean(managed && this.latestRetryableRun(managed));
+    return Boolean(managed && this.latestContinuableRun(managed));
   }
 
-  retryFailed(sessionId: string): RunHandle {
+  continueLatestFromBreakpoint(sessionId: string): RunHandle {
     const managed = this.requireSession(sessionId);
     if (managed.busy || managed.session.isStreaming) {
       throw new SessionBusyError(sessionId);
     }
-    const latest = this.latestRetryableRun(managed);
+    const latest = this.latestContinuableRun(managed);
     if (!latest) {
-      throw new Error("No failed latest turn is available to retry");
+      throw new Error("No incomplete latest turn is available to continue");
     }
     const userEntry = managed.session.sessionManager.getEntry(
       latest.userEntryId,
@@ -1028,22 +1023,22 @@ export class SessionService implements AgentTeamBridge {
       | { type?: string; message?: { role?: string; content?: unknown } }
       | undefined;
     if (userEntry?.type !== "message" || userEntry.message?.role !== "user") {
-      throw new Error("Failed turn user message is missing from Pi history");
+      throw new Error("Interrupted turn user message is missing from Pi history");
     }
     const text = stripSkillWrapper(
       contentToText(userEntry.message.content),
     ).trim();
     if (!text) {
-      throw new Error("Failed turn has no retryable user text");
+      throw new Error("Interrupted turn has no user text");
     }
-    return this.retryRunInPlace(
+    return this.continueRunFromBreakpoint(
       managed,
       latest as RunRecord & { userEntryId: string },
     );
   }
 
   /**
-   * Retry a failed/no-answer attempt without creating a second user message.
+   * Continue an incomplete attempt without creating a second user message.
    * The existing user entry stays on the active branch, and every completed
    * step of the failed attempt (tool calls, tool results, partial output)
    * is preserved: the replacement run adopts those entries and the agent
@@ -1051,7 +1046,7 @@ export class SessionService implements AgentTeamBridge {
    * Only the trailing errored/aborted assistant message is regenerated
    * (stripped in continueAgentTurnAfterModelSwitch, kept in Pi history).
    */
-  private retryRunInPlace(
+  private continueRunFromBreakpoint(
     managed: ManagedSession,
     run: RunRecord & { userEntryId: string },
   ): RunHandle {
@@ -1128,16 +1123,18 @@ export class SessionService implements AgentTeamBridge {
           : pendingError
             ? String(pendingError)
             : null);
-      const failed = Boolean(
-        finalError || retryError || pendingError,
-      );
+      const interrupted = /abort|interrupt/i.test(String(retryError));
+      const failed = Boolean(finalError || retryError || pendingError);
       appendRunRecord(managed.manifest.recordsDir, {
         sessionId,
         branchId: managed.branchId,
         turnId: run.turnId,
         revisionId,
         runId,
-        status: failed ? "failed" : "completed",
+        status: interrupted ? "interrupted" : failed ? "failed" : "completed",
+        interruptionCause: interrupted
+          ? (managed.pendingInterruptionCause ?? "unknown")
+          : null,
         piSessionFile: managed.session.sessionFile ?? null,
         userEntryId: run.userEntryId,
         assistantEntryIds,
@@ -1146,6 +1143,19 @@ export class SessionService implements AgentTeamBridge {
         completedAt: new Date().toISOString(),
       });
       if (failed) {
+        const error =
+          retryError instanceof Error
+            ? retryError.message
+            : finalError ?? String(pendingError ?? retryError ?? "Continue failed");
+        const recovery = this.latestRecoveryState(managed);
+        this.emit(managed, {
+          type: "run_failed",
+          payload: {
+            error,
+            canRetry: recovery?.canRetryFromStart ?? false,
+            recovery,
+          },
+        });
         throw (
           retryError ??
           pendingError ??
@@ -1155,6 +1165,7 @@ export class SessionService implements AgentTeamBridge {
     })().finally(async () => {
       await this.applyPendingRuntime(managed);
       managed.busy = false;
+      managed.pendingInterruptionCause = null;
     });
 
     return {
@@ -1249,7 +1260,7 @@ export class SessionService implements AgentTeamBridge {
       managed.session.sessionManager.resetLeaf();
     }
     resyncAgentContext(managed.session);
-    this.publishCurrentBranchTranscript(managed);
+    this.publishCurrentBranchTranscript(managed, displayUserTextFromPrompt(text));
     return this.runPromptWithLineage(managed, text);
   }
 
@@ -1273,7 +1284,7 @@ export class SessionService implements AgentTeamBridge {
       status: "superseded",
       completedAt: new Date().toISOString(),
     });
-    this.publishCurrentBranchTranscript(managed);
+    this.publishCurrentBranchTranscript(managed, displayUserTextFromPrompt(text));
     return this.runPromptWithLineage(managed, text, {
       turnId: run.turnId,
       supersedesRunId: run.runId,
@@ -1685,6 +1696,8 @@ export class SessionService implements AgentTeamBridge {
 
     managed.busy = true;
     managed.fallbackAttempts = 0;
+    managed.pendingInterruptionCause = null;
+    managed.liveRun = { userText: displayUserTextFromPrompt(text), events: [] };
     managed.counters.messageCount++;
     const turnId =
       options.turnId ?? formatCounter("turn", managed.nextTurnIndex++);
@@ -1759,14 +1772,17 @@ export class SessionService implements AgentTeamBridge {
             ? String(pendingError)
             : null);
       if (finalError || /abort|interrupt/i.test(String(promptError))) {
-        const aborted = /abort|interrupt/i.test(String(promptError));
+        const interrupted = /abort|interrupt/i.test(String(promptError));
         appendRunRecord(managed.manifest.recordsDir, {
           sessionId,
           branchId: managed.branchId,
           turnId,
           revisionId,
           runId,
-          status: aborted ? "aborted" : "failed",
+          status: interrupted ? "interrupted" : "failed",
+          interruptionCause: interrupted
+            ? (managed.pendingInterruptionCause ?? "unknown")
+            : null,
           piSessionFile: managed.session.sessionFile ?? null,
           userEntryId,
           assistantEntryIds,
@@ -1774,11 +1790,21 @@ export class SessionService implements AgentTeamBridge {
           acceptedAt,
           completedAt: new Date().toISOString(),
         });
+        const error = finalError ?? String(promptError ?? pendingError ?? "Run failed");
+        const recovery = this.latestRecoveryState(managed);
+        this.emit(managed, {
+          type: "run_failed",
+          payload: {
+            error,
+            canRetry: recovery?.canRetryFromStart ?? false,
+            recovery,
+          },
+        });
         if (options.notifyParent && managed.subagentParentId) {
           this.deliverSubagentOutcome(
             managed,
-            aborted ? "interrupted" : "failed",
-            aborted
+            interrupted ? "interrupted" : "failed",
+            interrupted
               ? "The subagent's turn was stopped. Its completed work is kept; it can continue from the break point."
               : `The subagent's turn failed: ${finalError ?? String(promptError ?? "unknown error")}`,
           );
@@ -1824,6 +1850,7 @@ export class SessionService implements AgentTeamBridge {
     })().finally(async () => {
       await this.applyPendingRuntime(managed);
       managed.busy = false;
+      managed.pendingInterruptionCause = null;
     });
 
     return {
@@ -1861,11 +1888,19 @@ export class SessionService implements AgentTeamBridge {
     const managed = this.requireSession(sessionId);
     if (!managed.busy && !managed.session.isStreaming) return false;
     void managed.session.steer(text).catch(() => {});
+    // The steered bubble is server-broadcast (and live-run buffered), so
+    // every attached pane — sender and late joiners alike — sees it once.
+    this.emit(managed, { type: "user_steered", payload: { text } });
     return true;
   }
 
-  async abort(sessionId: string, reason?: string): Promise<void> {
+  async abort(
+    sessionId: string,
+    reason?: string,
+    interruptionCause: InterruptionCause = "unknown",
+  ): Promise<void> {
     const managed = this.requireSession(sessionId);
+    managed.pendingInterruptionCause = interruptionCause;
     managed.session.abortCompaction();
     await managed.session.abort();
     await this.applyPendingRuntime(managed);
@@ -1889,9 +1924,12 @@ export class SessionService implements AgentTeamBridge {
     try {
       await managed.session.compact();
       managed.busy = false;
-      managed.transcript =
-        readSessionDetail(this.config.dataDir, sessionId)?.transcript ??
-        managed.transcript;
+      // Pi has already appended the compaction entry to this live branch. Use
+      // that authoritative in-memory state for the immediate UI refresh; a
+      // disk re-read can briefly lag behind and omit the new boundary.
+      managed.transcript = buildTranscriptFromEntries(
+        managed.session.sessionManager.getBranch(),
+      );
       const snapshot = this.snapshot(managed);
       this.emit(managed, {
         type: "session_transcript",
@@ -1980,7 +2018,7 @@ export class SessionService implements AgentTeamBridge {
         managed.transcript;
       managed.transcriptStamp = stamp;
     }
-    return [...managed.transcript];
+    return this.visibleTranscript(managed);
   }
 
   /**
@@ -2000,14 +2038,38 @@ export class SessionService implements AgentTeamBridge {
     }
   }
 
-  private publishCurrentBranchTranscript(managed: ManagedSession): void {
+  /**
+   * The transcript clients may display right now. Durable run projection can
+   * briefly omit a replacement prompt while its prior run is superseded and
+   * the new Pi user entry has not landed yet; the live/pending display text
+   * closes that window for every pane without changing durable history.
+   */
+  private visibleTranscript(
+    managed: ManagedSession,
+    pendingUserText: string | null = managed.liveRun?.userText ?? null,
+  ): TranscriptMessage[] {
+    const messages = [...managed.transcript];
+    const last = messages.at(-1);
+    if (
+      pendingUserText &&
+      !(last?.role === "user" && last.text === pendingUserText)
+    ) {
+      messages.push({ role: "user", text: pendingUserText, timestamp: null });
+    }
+    return messages;
+  }
+
+  private publishCurrentBranchTranscript(
+    managed: ManagedSession,
+    pendingUserText: string | null = null,
+  ): void {
     managed.transcript =
       readSessionDetail(this.config.dataDir, managed.manifest.sessionId)
         ?.transcript ??
       buildTranscriptFromEntries(managed.session.sessionManager.getBranch());
     this.emit(managed, {
       type: "session_transcript",
-      payload: { messages: [...managed.transcript] },
+      payload: { messages: this.visibleTranscript(managed, pendingUserText) },
     });
   }
 
@@ -2545,7 +2607,6 @@ export class SessionService implements AgentTeamBridge {
     parentSessionId: string,
     agent: string,
     message: string,
-    startTurn: boolean,
   ): Promise<string> {
     const childId = this.resolveSubagentId(parentSessionId, agent);
     if (!this.sessions.get(childId)) {
@@ -2567,7 +2628,9 @@ export class SessionService implements AgentTeamBridge {
       await child.session.steer(fragment);
       return "Delivered: the subagent sees your message at its next step.";
     }
-    if (startTurn && !this.queuedSubagentIds.has(childId)) {
+    // A message to an idle subagent always acts (owner 2026-08-07: the old
+    // opt-in start_turn left messages lying unread — removed).
+    if (!this.queuedSubagentIds.has(childId)) {
       const queued = this.startSubagentRun(childId, fragment, true);
       return queued === "queued"
         ? "The subagent is queued; it acts on your message when a slot frees up."
@@ -2645,7 +2708,7 @@ export class SessionService implements AgentTeamBridge {
         (entry) => entry.childId === childId,
       );
       if (queued >= 0) this.subagentQueue.splice(queued, 1);
-      return "Removed from the queue before it started. Use send_to_agent with start_turn to give it a task later.";
+      return "Removed from the queue before it started. Use send_to_agent to give it a task later.";
     }
     const child = this.sessions.get(childId);
     if (!child || (!child.busy && !child.session.isStreaming)) {
@@ -3069,9 +3132,14 @@ export class SessionService implements AgentTeamBridge {
       );
       result = await openAltTheorySession({ ...openArgs, ...fallback });
     }
+    const reconciledRuns = reconcileInterruptedRunOnOpen(
+      result.session.sessionManager,
+      result.manifest.recordsDir,
+      "main",
+    );
     alignSessionManagerToLatestRun(
       result.session.sessionManager,
-      latestRunSnapshots(result.manifest.recordsDir),
+      reconciledRuns,
       "latest active run",
     );
     resyncAgentContext(result.session);
@@ -3091,7 +3159,9 @@ export class SessionService implements AgentTeamBridge {
         toolCallCount: detail.metrics?.toolCallCount ?? 0,
         turnCount: detail.metrics?.turnCount ?? 0,
       },
-      transcript: detail.transcript,
+      transcript: buildTranscriptFromEntries(
+        result.session.sessionManager.getBranch(),
+      ),
       branchId: "main",
     });
     appendSessionEvent(managed.manifest.recordsDir, {
@@ -3365,6 +3435,8 @@ export class SessionService implements AgentTeamBridge {
       ...args,
       approvalBridge,
       transcriptStamp: null,
+      liveRun: null,
+      pendingInterruptionCause: null,
       listeners: new Set(),
       internalUnsubscribe: () => {},
       busy: false,
@@ -3472,7 +3544,8 @@ export class SessionService implements AgentTeamBridge {
       details: { error },
     });
     this.emitRunPhase(managed, "error");
-    this.emit(managed, { type: "run_failed", payload: { error } });
+    // The run owner emits run_failed after its terminal run mapping is durable,
+    // so transcript refresh and recovery actions cannot race an accepted record.
   }
 
   private async tryModelFallback(
@@ -3686,9 +3759,24 @@ export class SessionService implements AgentTeamBridge {
   }
 
   private emit(managed: ManagedSession, event: SessionServiceEvent): void {
+    // Late-joiner replay: every event of the in-flight turn passes through
+    // here, so this one intercept keeps the buffer complete by construction.
+    if (event.type === "run_completed" || event.type === "run_failed") {
+      managed.liveRun = null;
+    } else if (managed.liveRun) {
+      appendLiveRunEvent(managed.liveRun, event);
+    }
     for (const listener of managed.listeners) {
       listener(event);
     }
+  }
+
+  /** The in-flight turn's prompt + buffered stream, for attach replay. */
+  getLiveRun(sessionId: string): LiveRun | null {
+    const managed = this.sessions.get(sessionId);
+    if (!managed || !managed.liveRun) return null;
+    if (!managed.busy && !managed.session.isStreaming) return null;
+    return managed.liveRun;
   }
 
   private snapshot(
@@ -3716,7 +3804,30 @@ export class SessionService implements AgentTeamBridge {
       openedFrom: managed.openedFrom,
       resumeWarnings: managed.resumeWarnings,
       messageCount: managed.counters.messageCount,
+      recovery: this.latestRecoveryState(managed),
       ...overrides,
+    };
+  }
+
+  private latestRecoveryState(managed: ManagedSession): TurnRecovery | null {
+    const latest = latestRunSnapshots(managed.manifest.recordsDir)
+      .filter(
+        (run) =>
+          run.branchId === managed.branchId &&
+          run.userEntryId &&
+          run.status !== "deleted" &&
+          run.status !== "superseded",
+      )
+      .at(-1);
+    if (!latest?.userEntryId) return null;
+    const outcome = runOutcome(latest);
+    if (outcome !== "interrupted" && outcome !== "failed") return null;
+    return {
+      outcome,
+      interruptionCause: runInterruptionCause(latest),
+      userEntryId: latest.userEntryId,
+      canContinue: true,
+      canRetryFromStart: true,
     };
   }
 
@@ -3836,6 +3947,13 @@ export function retryPromptFromStoredUserContent(content: string): string {
   return `/skill:${skill[1]}${args ? ` ${args}` : ""}`;
 }
 
+/** User-facing text for an in-flight prompt; internal skill commands stay hidden. */
+export function displayUserTextFromPrompt(prompt: string): string | null {
+  const skill = prompt.trim().match(/^\/skill:[^\s]+(?:\s+([\s\S]*))?$/);
+  const text = skill ? (skill[1] ?? "") : stripSkillWrapper(prompt);
+  return text.trim() || null;
+}
+
 function clip(text: string, maxChars: number): string {
   return text.length > maxChars ? `${text.slice(0, maxChars)}…` : text;
 }
@@ -3861,6 +3979,86 @@ function runRecordBody(
     ...body
   } = record;
   return body;
+}
+
+type ReopenSessionEntry = {
+  id: string;
+  type?: string;
+  timestamp?: string | number;
+  message?: { role?: string; timestamp?: string | number };
+};
+
+/**
+ * A process crash can leave a run at `accepted` after Pi has already flushed
+ * part of that turn to its append-only JSONL. Reconcile that durable tail
+ * before run-based leaf alignment; otherwise reopen deliberately rewinds to
+ * the previous terminal run and hides completed work from the transcript and
+ * the next model call.
+ */
+function reconcileInterruptedRunOnOpen(
+  sessionManager: { getBranch(): ReadonlyArray<ReopenSessionEntry> },
+  recordsDir: string,
+  branchId: string,
+  completedAt = new Date().toISOString(),
+): RunRecord[] {
+  const latestRuns = latestRunSnapshots(recordsDir);
+  const stale = latestRuns
+    .filter((run) => run.branchId === branchId)
+    .at(-1);
+  if (stale?.status !== "accepted") return latestRuns;
+
+  const branch = sessionManager.getBranch();
+  const previousRuns = latestRuns.filter((run) => run.runId !== stale.runId);
+  const anchorIds = [
+    ...[...stale.assistantEntryIds].reverse(),
+    stale.userEntryId,
+    latestActiveLeafEntryId(previousRuns),
+  ].filter((value): value is string => Boolean(value));
+  const anchorIndex = Math.max(
+    -1,
+    ...anchorIds.map((id) => branch.findIndex((entry) => entry.id === id)),
+  );
+  const acceptedAtMs = Date.parse(stale.acceptedAt);
+  const appended =
+    anchorIndex >= 0
+      ? branch.slice(anchorIndex + 1)
+      : branch.filter((entry) => {
+          const timestamp = entry.timestamp ?? entry.message?.timestamp;
+          const value =
+            typeof timestamp === "number"
+              ? timestamp
+              : typeof timestamp === "string"
+                ? Date.parse(timestamp)
+                : Number.NaN;
+          return Number.isFinite(value) && value >= acceptedAtMs - 1_000;
+        });
+  const userEntryId =
+    stale.userEntryId ??
+    appended.find(
+      (entry) => entry.type === "message" && entry.message?.role === "user",
+    )?.id ??
+    null;
+  const assistantEntryIds = [
+    ...new Set([
+      ...stale.assistantEntryIds,
+      ...appended
+        .filter(
+          (entry) =>
+            entry.type === "message" && entry.message?.role === "assistant",
+        )
+        .map((entry) => entry.id),
+    ]),
+  ];
+
+  appendRunRecord(recordsDir, {
+    ...runRecordBody(stale),
+    status: "interrupted",
+    interruptionCause: "process_exit",
+    userEntryId,
+    assistantEntryIds,
+    completedAt,
+  });
+  return latestRunSnapshots(recordsDir);
 }
 
 /**

@@ -468,7 +468,24 @@ session and receives forwarded runtime events.
 - a single internal Pi subscription per managed session;
 - attached WebSocket listeners;
 - prompt and abort operations;
-- one process-local mutation guard per managed session.
+- one process-local mutation guard per managed session;
+- the in-flight turn's live-run buffer (v1.4.3, `live-run.ts`): every run
+  starts it in `runPromptWithLineage` and every `emit()` appends stream
+  events (deltas coalesced), cleared on run end. `open_session` sends the
+  persisted transcript plus the running prompt's bubble and this replay,
+  so a pane attached mid-run is never blank until the records land.
+- steering (`steerRunningSession`) emits a `user_steered` event, broadcast
+  to every attached pane and buffered for replay; panes render the bubble
+  from this event only (no optimistic append), so sender, other panes,
+  and late joiners all see the steered message exactly once.
+- send-while-running (owner 2026-08-07, both panes identical): Enter
+  enqueues into the client-held queue (`usePromptQueue` — cards stay
+  editable/deletable), and the queue drains INTO the running turn at each
+  step boundary (engine `onStepBoundary`, fired on tool_finished) via the
+  busy-prompt→steer path. "Queued" means the agent's NEXT api call, never
+  the end of the run; whatever is still queued at run end flushes as the
+  next turn's prompt. There is no run-end-only queue and no separate
+  steer button.
 
 Current behavior:
 
@@ -534,6 +551,18 @@ the Pi leaf to the latest user entry's parent, appends a new path with the same
 turn ID, and marks the prior run `superseded`; it does not create a logical
 branch or delete old Pi evidence. Latest-turn delete moves the Pi leaf to that
 user entry's parent, marks the run `deleted`, and does not remove disk evidence.
+
+Terminal outcomes are `completed`, `interrupted`, or `failed`. An interrupted
+run may carry `interruptionCause` (`user_abort`, `process_exit`,
+`transport_loss`, or `unknown`). The older top-level `aborted` value is accepted
+only when reading legacy records; new writes use `interrupted` plus a cause.
+
+On reopen, a latest run still at `accepted` is treated as a process-interrupted
+write boundary. If Pi JSONL already contains durable entries after the prior
+active leaf, the service appends an `interrupted` run snapshot claiming those
+user/assistant entries before normal leaf alignment. The partial work therefore
+stays visible and model-active for an ordinary follow-up such as `continue`;
+Pi JSONL is never rewritten.
 
 REST session detail and transcript preview are projected in `session-store.ts`
 from the active Pi leaf and run evidence, not from all Pi JSONL entries:
@@ -625,10 +654,10 @@ Code anchors:
   `resolveOptionalRolePresetPath()`
 - `agent-assets/README.md`: role-presets asset layout and archive naming
 
-### 5.2 Mid-Turn Continuity And Break-Point Retry (v1.3.0-alpha.5 M0)
+### 5.2 Mid-Turn Continuity And Break-Point Recovery (v1.3.0-alpha.5 M0)
 
-A failed or aborted turn keeps its completed work; retry resumes from the
-break point instead of rerunning the whole turn.
+A failed or interrupted turn keeps its completed work. Continue resumes from
+the breakpoint; Retry reruns the latest prompt from the start.
 
 - **Context sanitation** (`core/turn-continuity.ts`): an always-loaded Pi
   extension hooks the `context` event and, before every LLM call, drops
@@ -638,7 +667,7 @@ break point instead of rerunning the whole turn.
   provider role-alternation rules hold. Pi keeps errored partials in session
   history by design; this extension is why preserved break-point context is
   still provider-legal.
-- **Retry in place** (`SessionService.retryRunInPlace`): the replacement run
+- **Continue from breakpoint** (`SessionService.continueRunFromBreakpoint`): the replacement run
   adopts the failed attempt's `assistantEntryIds` (completed tool calls,
   results, partial output stay active and visible), marks the old run record
   `superseded`, and resumes via `continueAgentTurnAfterModelSwitch` →
@@ -648,9 +677,9 @@ break point instead of rerunning the whole turn.
 - **Visible auto-retry**: Pi's own `auto_retry_start` events (exponential
   backoff on transient provider errors) map to a `retrying` run phase with
   `{attempt, maxAttempts, delayMs}`; Alt implements no second retry loop.
-- **Retry offerability**: `run_failed` carries `canRetry` (from
-  `canRetryFailed`) so the UI offers Retry only when a retryable run record
-  exists — preflight failures (no key, unknown model) record none.
+- **Recovery offerability**: snapshots and `run_failed` carry a structured
+  recovery projection only when an incomplete run record exists. Preflight
+  failures (no key, unknown model) record none.
 - **Steering while running**: user text sent to a busy session is delivered
   as a Pi steering message (`steerRunningSession`) instead of a
   `session_busy` error, matching the Pi TUI's type-while-running behavior.
@@ -673,9 +702,10 @@ record: `development/compound/2026-07-28-decision-v1.3-agent-team.md`.
   `SessionService` behind the `AgentTeamBridge` interface. Tools join the
   active set in both application runtimes and both Alt modes
   (`alt-theory-core.ts` `extraTools`/`extraPromptSections`).
-- **Capability and model**: child mode is clamped to the parent's
-  (`clampSubagentMode`: Understand parents spawn only Understand children;
-  Work parents default to Understand). `model_tier: lower|same|higher`
+- **Capability and model**: child mode INHERITS the parent's, clamped to
+  it (`clampSubagentMode`, owner 2026-08-07: Understand parents spawn only
+  Understand children; Work parents spawn Work children unless the spawn
+  asks for 'understand'). `model_tier: lower|same|higher`
   resolves against configured-and-usable models by cost metadata
   (`resolveModelTier`); an unresolvable tier falls back to `same` and says
   so in the spawn report.
@@ -711,8 +741,8 @@ REST:
 - `GET /api/sessions`
 - `GET /api/sessions/{sessionId}`
 - `GET /api/sessions/{sessionId}/files`
-- `GET /api/sessions/{sessionId}/files?root=working` (local only; bounded
-  actual working-folder tree)
+- `GET /api/sessions/{sessionId}/files?root=working` (local only; working-folder
+  descriptors, or one directory's children with `folderId` + `path`)
 - `GET /api/sessions/{sessionId}/files/content`
 - `PUT /api/sessions/{sessionId}/files/content`
 - `GET /api/sessions/{sessionId}/files/download?root=workspace&path=...`
@@ -745,11 +775,13 @@ workspace-only.
 
 The local-only `root=working` view is separate from the managed session
 workspace. It resolves only the persisted primary/additional workspace roots,
-omits hidden and common dependency/cache trees, caps the listing at 1,000
-files, and rechecks containment before a bounded text preview. This lets Files
-show the directory the agent actually works in without mislabeling imported
-references as the entire workspace. Switching Understand/Work changes mediation
-capability, not these persisted folder identities.
+omits hidden and common dependency/cache trees, and lists one directory's
+immediate children at a time as the user expands the tree. There is no global
+file-count ceiling or depth-first traversal bias. Each directory request and
+bounded text preview rechecks containment. This lets Files show the directory
+the agent actually works in without mislabeling imported references as the
+entire workspace. Switching Understand/Work changes mediation capability, not
+these persisted folder identities.
 
 The daily Files UI labels persisted primary/additional locations as working
 folders. It does not repeat the managed primary tree there: managed `uploads/`
@@ -770,7 +802,7 @@ WebSocket:
 - client: `get_session_metadata`, `get_session_metrics`, `open_session`
 - client: `switch_visibility`, `switch_mode`
 - client: `add_workspace_dir` (local form only), `respond_approval`
-- client: `branch_revision`, `prepare_branch_revision`, `retry_latest`,
+- client: `branch_revision`, `prepare_branch_revision`, `continue_latest`, `retry_latest`,
   `delete_latest`, `fork_session`, `create_related_session`
 - client: `set_study_tag`, `set_session_model` (M7, 2026-07-16)
 
@@ -778,7 +810,8 @@ WebSocket:
 `prepare_branch_revision` creates the child before the edited user message and
 leaves the edit as an unsent draft. `retry_latest` supersedes the latest attempt
 and reruns its exact model-facing user message from the start in the same
-session. Runs complete with the normal lifecycle events.
+session. `continue_latest` preserves completed work and resumes through Pi
+`agent.continue()`. Runs complete with the normal lifecycle events.
 
 `delete_latest` is synchronous: the server replies with `session_updated` and
 `session_transcript` for the same attached session.
@@ -1035,7 +1068,7 @@ Limits (current):
   in Settings → Models (always-visible picker + inline editor) with a
   UI-only auth-connect card that has no backend (§7). Frontend-only in this pass: dark theme
   (`data-theme` over `--color-*` tokens), Electron native bridge for file/folder
-  pickers + reveal (see `../releases/desktop-friend-bundle.md`).
+  pickers + reveal (see `../releases/release-standard.md`).
 - 2026-07-23: Aligned Codex/OpenCode discovery with logical root conversations,
   added portable searchable child-agent sidecars, collapsed imported
   instruction context, normal default soul/role resolution, and numbered

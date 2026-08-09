@@ -55,6 +55,37 @@ from the data directory before cleanup removes it. (On a hosted study
 deployment, conversations marked private are the exception: they are
 hard-deleted after seven inactive days.)
 
+## Conversation families
+
+A main conversation and its branches, branches-of-branches, and attached
+side conversations form a family. A family behaves as one unit.
+
+- Moving a conversation to another working folder moves its whole family.
+  Drag any member and the rest follow, so a branch never gets stranded in
+  the old folder or left with no folder. See
+  [Working Folders, Files, and Paths](working-folders-files-paths.md).
+- Deleting the mainline of a family does not scatter its branches into
+  separate top-level rows. The oldest first-level branch becomes the
+  family's head in the list; the others stay nested under it. Only the
+  deleted mainline itself goes to Trash. Temporary A/B comparison arms
+  still follow their parent into Trash.
+- Promoting a branch to be the main conversation is a role swap, not a
+  replacement. The branch takes the list spot; the previous mainline
+  stays alive and reachable from its family's Related rail, demoted but
+  not deleted. Deleting that demoted older main is a separate action.
+
+## Recovery
+
+- A turn was interrupted (stop, crash, network): the conversation stays
+  usable; completed actions are recorded in the transcript.
+- A conversation looks wrong after reopening: refresh once. If it
+  persists, see [Common Questions](../help/common-questions.md), and note
+  the conversation's age and whether it was imported or compacted.
+- On startup, the app repairs families that older versions left
+  inconsistent: members whose working folder drifted from the family root
+  are re-aligned to the root, and a family that had lost all its visible
+  members gets one back.
+
 ## Exporting
 
 - For reading and sharing with people: a

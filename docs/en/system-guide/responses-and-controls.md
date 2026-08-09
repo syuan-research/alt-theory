@@ -53,5 +53,7 @@ edited comparisons use the wider comparison rail.
 
 A branch, BTW, helper, or subagent can be added to the conversation list as
 its own first-class conversation. Its origin is kept as a label (Branch,
-From BTW, From subagent, and so on) rather than renamed. This replaces an
-older "promote" action.
+From BTW, From subagent, and so on) rather than renamed. Promoting a
+branch to be the main conversation is a role swap that keeps the previous
+mainline alive in the family; the full family and promotion semantics are
+in [Conversations and History](conversations-and-history.md).

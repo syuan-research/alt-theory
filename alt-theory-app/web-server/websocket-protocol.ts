@@ -14,6 +14,7 @@ export type {
   SessionSnapshot,
   SessionDraftSnapshot,
   SessionMetrics,
+  TurnRecovery,
   TranscriptMessage,
 } from "../frontend/src/api/types.js";
 

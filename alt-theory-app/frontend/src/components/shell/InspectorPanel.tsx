@@ -3,7 +3,7 @@ import { useApp } from "@/context/AppProvider";
 import { useShell, type RailKey } from "@/context/ShellContext";
 import { t } from "@/i18n";
 import { shouldClearRelatedOnSubChange } from "@/lib/relatedOpen";
-import { sessionTitle } from "@/lib/sessionList";
+import { relatedConversationsFor, sessionTitle } from "@/lib/sessionList";
 import { ChildConversation } from "@/components/conversation/ChildConversation";
 import { RecordsPanel } from "@/components/inspector/RecordsPanel";
 import { ProvenancePanel } from "@/components/inspector/ProvenancePanel";
@@ -193,57 +193,24 @@ function RelatedConversations() {
   const activeChildId = shell.rightSub?.key.startsWith("related:")
     ? shell.rightSub.key.slice("related:".length)
     : null;
-  const children = useMemo(() => {
-    if (!app.sessionId) return [];
-    const related: typeof app.sessions = [];
-    const seen = new Set<string>();
-    const addChildrenOf = (parentId: string, inherited: boolean) => {
-      for (const s of app.sessions) {
-        if (s.sessionId === app.sessionId) continue; // never list self (opus E1)
-        if (s.forkedFrom?.sessionId !== parentId) continue;
-        if (s.forkedFrom.purpose === "ab-arm" || s.deletedAt) continue;
-        if (seen.has(s.sessionId)) continue;
-        // Inherited pass: ALL attached conversations of every ancestor
-        // (owner ruling 2026-08-04: no fork-time bound — never lose reach
-        // to preserved content; the rows are labeled, mild noise accepted).
-        // Sibling branches of ancestors stay out.
-        if (
-          inherited &&
-          !["subagent", "side", "helper"].includes(s.forkedFrom.purpose)
-        ) {
-          continue;
-        }
-        seen.add(s.sessionId);
-        related.push(s);
-      }
-    };
-    addChildrenOf(app.sessionId, false);
-    // Walk the fork ancestry: an ancestor's attached conversations are part
-    // of this branch's history, even when the ancestor is deleted or purged.
-    const byId = new Map(app.sessions.map((s) => [s.sessionId, s]));
-    // Malformed lineage (self-reference or cycle, e.g. from an import) must
-    // not hang the tab (opus E2).
-    const walked = new Set<string>();
-    let node = byId.get(app.sessionId);
-    while (node?.forkedFrom && !walked.has(node.sessionId)) {
-      walked.add(node.sessionId);
-      addChildrenOf(node.forkedFrom.sessionId, true);
-      const parent = byId.get(node.forkedFrom.sessionId);
-      // A delisted origin (M4b role swap) stays reachable from here — it is
-      // in no list, so this rail row is its only door.
-      if (
-        parent &&
-        !parent.deletedAt &&
-        parent.delisted &&
-        !seen.has(parent.sessionId)
-      ) {
-        seen.add(parent.sessionId);
-        related.push(parent);
-      }
-      node = parent;
-    }
-    return related;
-  }, [app.sessions, app.sessionId]);
+  // Ancestors first (root → parent — a child always sees its parent), then
+  // children and the family-wide attached pass; rules in sessionList.ts.
+  const { ancestors, others } = useMemo(
+    () =>
+      app.sessionId
+        ? relatedConversationsFor(app.sessionId, app.sessions)
+        : { ancestors: [], others: [] },
+    [app.sessions, app.sessionId],
+  );
+  const children = useMemo(
+    () => [...ancestors, ...others],
+    [ancestors, others],
+  );
+  const parentId = ancestors.at(-1)?.sessionId;
+  const ancestorIds = useMemo(
+    () => new Set(ancestors.map((s) => s.sessionId)),
+    [ancestors],
+  );
 
   const PURPOSE_ICON: Record<string, string> = {
     side: "ph-arrows-split",
@@ -252,6 +219,13 @@ function RelatedConversations() {
     fork: "ph-git-branch",
     subagent: "ph-robot",
   };
+  // Delisted roots keep the crown; other ancestors read as "up the chain".
+  const iconFor = (child: (typeof children)[number], upChain: Set<string>) =>
+    child.delisted && !child.forkedFrom
+      ? "ph-crown-simple"
+      : upChain.has(child.sessionId)
+        ? "ph-arrow-elbow-left-up"
+        : PURPOSE_ICON[child.forkedFrom?.purpose ?? "side"];
 
   // Switcher click: setActiveRelatedSessionId only; openSub + width are owned
   // by the one-shot effect on activeRelatedSessionId. Do NOT dual-write openSub.
@@ -309,7 +283,7 @@ function RelatedConversations() {
               }
             }}
           >
-            <i className={`ph ${child.delisted && !child.forkedFrom ? "ph-crown-simple" : PURPOSE_ICON[child.forkedFrom?.purpose ?? "side"]}`} />
+            <i className={`ph ${iconFor(child, ancestorIds)}`} />
             <span>{sessionTitle(child, app.sessionDisplayNames, app.sessions)}</span>
             {child.status === "incomplete" ? <span className="dot" /> : null}
           </button>
@@ -357,7 +331,7 @@ function RelatedConversations() {
           }}
         >
           <div className="t">
-            <i className={`ph ${child.delisted && !child.forkedFrom ? "ph-crown-simple" : PURPOSE_ICON[child.forkedFrom?.purpose ?? "side"]}`} />
+            <i className={`ph ${iconFor(child, ancestorIds)}`} />
             {sessionTitle(child, app.sessionDisplayNames, app.sessions)}
             {child.status === "incomplete" ? (
               <span className="badge-run">{t("running")}</span>
@@ -366,16 +340,23 @@ function RelatedConversations() {
           <div className="d">
             {child.delisted && !child.forkedFrom
               ? t("Origin conversation · {count} messages", { count: child.messageCount ?? 0 })
-              : child.forkedFrom?.purpose === "helper"
-                ? t("How Alt works, and fixing setup · fresh context")
-                : child.forkedFrom?.purpose === "subagent"
-                  ? t("Subagent · {count} messages", { count: child.messageCount ?? 0 })
-                  : child.forkedFrom?.purpose === "fork"
-                    ? t("Branch · {count} messages", { count: child.messageCount ?? 0 })
-                    : t("Side conversation · {count} messages", { count: child.messageCount ?? 0 })}
+              : child.sessionId === parentId
+                ? t("Parent · {count} messages", { count: child.messageCount ?? 0 })
+                : ancestorIds.has(child.sessionId)
+                  ? t("Ancestor · {count} messages", { count: child.messageCount ?? 0 })
+                  : child.forkedFrom?.purpose === "helper"
+                    ? t("How Alt works, and fixing setup · fresh context")
+                    : child.forkedFrom?.purpose === "subagent"
+                      ? t("Subagent · {count} messages", { count: child.messageCount ?? 0 })
+                      : child.forkedFrom?.purpose === "fork"
+                        ? t("Branch · {count} messages", { count: child.messageCount ?? 0 })
+                        : t("Side conversation · {count} messages", { count: child.messageCount ?? 0 })}
           </div>
         </button>
       ))}
+      <div className="related-legend" aria-hidden="true">
+        {t("br = Branch · btw = side chat · h = Helper · sa = Subagent")}
+      </div>
     </>
   );
 }

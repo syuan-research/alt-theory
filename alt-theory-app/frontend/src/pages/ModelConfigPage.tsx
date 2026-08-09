@@ -785,7 +785,7 @@ export function ModelConfigPage({
           {status && status.activeUsable ? (
             <Link
               to="/"
-              className="text-[0.8125rem] text-text-secondary hover:text-ink"
+              className="text-[0.85rem] text-text-secondary hover:text-ink"
             >
               {t("← Back to app")}
             </Link>

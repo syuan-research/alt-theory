@@ -11,10 +11,6 @@ import {
 import { useNavigate } from "react-router-dom";
 import { t } from "@/i18n";
 import {
-  mergeQueuedPrompts,
-  shouldFlushQueuedPrompts,
-} from "@/lib/promptQueue";
-import {
   detectAccountsConfigured,
   fetchAuthMe,
   login as loginRequest,
@@ -31,7 +27,6 @@ import {
   saveSessionAlias,
 } from "@/api/sessions";
 import type {
-  ActiveToolState,
   ApprovalRequestPayload,
   AssemblyManifest,
   AuthContext,
@@ -51,6 +46,7 @@ import type {
   StudyTag,
   TranscriptMessage,
   TranscriptView,
+  TurnRecovery,
   ViewMode,
   ParticipantInfo,
   ConfigStatus,
@@ -63,11 +59,11 @@ import {
   setSessionWorkspace as setSessionWorkspaceRequest,
 } from "@/api/workspaces";
 import { useWebSocket } from "@/hooks/useWebSocket";
+import { useConversationEngine } from "@/hooks/useConversationEngine";
+import { usePromptQueue, type QueuedPrompt } from "@/hooks/usePromptQueue";
 import type { ConnStatus } from "@/components/ui/StatusBadge";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { DEFAULT_KB_DOMAIN } from "@/lib/constants";
-import { isInterruptedError } from "@/lib/format";
-import { handleConversationStreamMessage } from "@/lib/conversationStream";
 import { notifyBackground } from "@/lib/notify";
 import { buildOutgoingPrompt } from "@/lib/workspace";
 import {
@@ -102,11 +98,7 @@ export interface ComposerNotice {
   warn?: boolean;
 }
 
-export interface QueuedPrompt {
-  id: string;
-  text: string;
-  attachments: string[];
-}
+export type { QueuedPrompt } from "@/hooks/usePromptQueue";
 
 export interface ConfirmRequest {
   message: string;
@@ -235,7 +227,7 @@ export interface AppContextValue {
   runPhaseLabel: string;
   composerNotice: ComposerNotice | null;
   runHint: string | null;
-  canRetryFailed: boolean;
+  recovery: TurnRecovery | null;
 
   stagedWorkspacePaths: string[];
   toggleWorkspaceStage: (path: string, staged: boolean) => void;
@@ -265,8 +257,10 @@ export interface AppContextValue {
   sendQueuedPromptNow: (id: string) => void;
   interruptAndSendQueuedPrompt: (id: string) => void;
   abortRun: () => void;
+  continueLatest: () => boolean;
   invokeSkill: (skillName: string, userText?: string) => boolean;
   branchRevision: (text: string, entryId?: string) => boolean;
+  reviseLatestInPlace: (text: string, entryId: string) => boolean;
   prepareBranchRevision: (text: string, entryId: string) => boolean;
   retryLatest: () => boolean;
   deleteLatest: () => void;
@@ -360,14 +354,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [sessionReady, setSessionReady] = useState(false);
   const [sessionCreatedHere, setSessionCreatedHere] = useState(false);
   const [sessionWarnings, setSessionWarnings] = useState<string[]>([]);
-  const [isRunning, setIsRunning] = useState(false);
-  const [queuedPrompts, setQueuedPrompts] = useState<QueuedPrompt[]>([]);
-  const queuedPromptsRef = useRef<QueuedPrompt[]>([]);
-  const sendQueueAfterInterruptRef = useRef<string | null>(null);
   const startPromptRef = useRef<
     (text: string, attachments: string[]) => boolean
   >(() => false);
-  const flushQueuedPromptRef = useRef<(id?: string) => void>(() => {});
   const [connStatus, setConnStatus] = useState<ConnStatus>("connecting");
   const [connLabel, setConnLabel] = useState(t("Connecting"));
   const [wsError, setWsError] = useState<string | null>(null);
@@ -389,21 +378,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // local conversations have no expiry at all.
   const [retentionDueAt, setRetentionDueAt] = useState<string | null>(null);
 
-  const [messages, setMessages] = useState<TranscriptMessage[]>([]);
-  const [streamParts, setStreamParts] = useState<StreamPart[]>([]);
   const [toolStatus, setToolStatus] = useState("");
-  const [runPhaseLabel, setRunPhaseLabel] = useState("");
   const [composerNotice, setComposerNotice] = useState<ComposerNotice | null>(
     null,
   );
   const [runHint, setRunHint] = useState<string | null>(null);
-  const [canRetryFailed, setCanRetryFailed] = useState(false);
+  const [recovery, setRecovery] = useState<TurnRecovery | null>(null);
   const [stagedWorkspacePaths, setStagedWorkspacePaths] = useState<string[]>([],);
   const [runCompletedCount, setRunCompletedCount] = useState(0);
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(
     null,
   );
-  const [approvals, setApprovals] = useState<ApprovalRequestPayload[]>([]);
   // Conversation-scoped approval markers, recorded
   // client-side the moment the user grants a conversation allowance (M7 §3).
   const [approvalMarkers, setApprovalMarkers] = useState<string[]>([]);
@@ -417,11 +402,94 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const pendingOpenSessionIdRef = useRef("");
   const pendingAssetSwitchRef = useRef(false);
   const pendingCompactRef = useRef(false);
-  const activeToolsMapRef = useRef<Record<string, ActiveToolState>>({});
   const composerNoticeTimerRef = useRef<number | null>(null);
   const hydratedNamesRef = useRef<Set<string>>(new Set());
   const sessionListRequestRef = useRef(0);
   const sessionDetailRequestRef = useRef(0);
+
+  // The ONE prompt queue (shared with the right pane): Enter-while-running
+  // queues; run end merges and flushes after the transcript refresh.
+  const promptQueue = usePromptQueue(startPromptRef);
+  const { queuedPrompts, queuedPromptsRef } = promptQueue;
+
+  // The ONE conversation engine (v1.4.3): messages / stream / running /
+  // approvals and their server-message transitions live in the shared hook
+  // (also used by the right-pane ChildConversation). Only center-specific
+  // behavior stays here, via the callbacks below.
+  const engine = useConversationEngine({
+    onTranscript: (transcript) => {
+      if (
+        pendingCompactRef.current &&
+        transcript.some((item) => item.marker === "compaction")
+      ) {
+        pendingCompactRef.current = false;
+        setComposerNoticeTimed({ text: t("Conversation compacted.") });
+      }
+    },
+    onStepBoundary: () => {
+      promptQueue.flushIntoRun((text, attachments) => {
+        const outgoing = buildOutgoingPrompt(text, attachments);
+        return outgoing ? sendMessage({ type: "prompt", payload: outgoing }) : false;
+      });
+    },
+    onRunCompleted: (payload) => {
+      setRecovery(null);
+      setCurrentSessionModel(payload.currentModel ?? null);
+      setConnStatus("idle");
+      setConnLabel("Ready");
+      setToolStatus("");
+      setRunHint("");
+      setRunCompletedCount((count) => count + 1);
+      // Keep the composer's context ring honest without polling.
+      sendMessage({ type: "get_session_metrics" });
+      if (payload.sessionId) {
+        reconnectSessionIdRef.current = payload.sessionId;
+        void refreshSessions();
+        promptQueue.handleRunCompleted(refreshCurrentTranscript(payload.sessionId));
+      } else {
+        promptQueue.handleRunCompleted(Promise.resolve());
+      }
+    },
+    onRunFailed: (payload) => {
+      // Same ordering as run_completed: the refresh must land before the
+      // queued prompt's optimistic bubble is appended, or it disappears.
+      const queueInterrupted = promptQueue.handleRunFailed(
+        payload.error,
+        sessionId ? refreshCurrentTranscript(sessionId) : Promise.resolve(),
+      );
+      const interrupted =
+        payload.recovery?.outcome === "interrupted" || queueInterrupted;
+      setRecovery(payload.recovery ?? null);
+      setToolStatus("");
+      setConnStatus(interrupted ? "idle" : "error");
+      setConnLabel(interrupted ? t("Ready") : t("Error"));
+      const userStopped = payload.recovery?.interruptionCause === "user_abort";
+      if (userStopped) {
+        setComposerNotice(null);
+        setRunHint(t("Editing after Stop won't branch. Use /branch if needed."));
+      } else {
+        setComposerNoticeTimed({
+          prefix: interrupted ? undefined : "⚠",
+          text: `${interrupted ? t("Run interrupted: ") : t("Run failed: ")}${payload.error}`,
+          warn: !interrupted,
+        });
+        if (!interrupted) setRunHint("");
+      }
+    },
+  });
+  const {
+    messages,
+    setMessages,
+    streamParts,
+    setStreamParts,
+    running: isRunning,
+    setRunning: setIsRunning,
+    phaseLabel: runPhaseLabel,
+    setPhaseLabel: setRunPhaseLabel,
+    approvals,
+    setApprovals,
+    activeToolsRef: activeToolsMapRef,
+  } = engine;
 
   const clearStagedWorkspace = useCallback(() => {
     setStagedWorkspacePaths([]);
@@ -667,9 +735,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const handleServerMessage = useCallback(
     (message: ServerMessage) => {
+      // Conversation-scoped messages (stream, transcript, run end, approvals)
+      // are the shared engine's; center extras run via its callbacks.
+      if (engine.handleMessage(message)) return;
       switch (message.type) {
         case "session_draft":
-          setCanRetryFailed(false);
+          setRecovery(null);
           if (reconnectSessionIdRef.current) {
             // Even when the draft message is ignored (reconnect race), a
             // pending asset switch was answered by THIS message — leaving its
@@ -723,7 +794,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           break;
 
         case "session_opened": {
-          setCanRetryFailed(false);
+          setRecovery(message.payload.recovery ?? null);
           // Decide "created here" before the pending refs are consumed below:
           // an explicit open, an asset-switch rebuild, or a reconnect to the
           // same id is NOT a new conversation (persisted Work mode must not
@@ -766,6 +837,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setToolStatus("");
           setRunPhaseLabel(
             message.payload.status === "running" ? "Processing…" : "",
+          );
+          setRunHint(
+            message.payload.recovery?.interruptionCause === "user_abort"
+              ? t("Editing after Stop won't branch. Use /branch if needed.")
+              : "",
           );
           clearStagedWorkspace();
           void refreshSessions();
@@ -825,21 +901,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setMetrics(message.payload);
           break;
 
-        case "session_transcript":
-          setMessages(message.payload.messages);
-          setStreamParts([]);
-          activeToolsMapRef.current = {};
-          if (
-            pendingCompactRef.current &&
-            message.payload.messages.some(
-              (item) => item.marker === "compaction",
-            )
-          ) {
-            pendingCompactRef.current = false;
-            setComposerNoticeTimed({ text: t("Conversation compacted.") });
-          }
-          break;
-
         case "related_session_created":
           // btw / helper: keep the original compact default (~480), not 50%.
           setActiveRelatedSessionId(message.payload.sessionId, {
@@ -881,103 +942,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
           void refreshSessions();
           break;
 
-        case "assistant_delta":
-        case "thinking_delta":
-        case "tool_started":
-        case "tool_updated":
-        case "tool_finished":
-        case "run_phase":
-          handleConversationStreamMessage(message, {
-            activeTools: activeToolsMapRef,
-            setParts: setStreamParts,
-            setPhaseLabel: setRunPhaseLabel,
-          });
-          break;
-
-        case "run_completed":
-          sendQueueAfterInterruptRef.current = null;
-          setCanRetryFailed(false);
-          setStreamParts([]);
-          activeToolsMapRef.current = {};
-          setCurrentSessionModel(message.payload.currentModel ?? null);
-          setIsRunning(false);
-          setConnStatus("idle");
-          setConnLabel("Ready");
-          setToolStatus("");
-          setRunPhaseLabel("");
-          setRunHint("");
-          setRunCompletedCount((count) => count + 1);
-          // Keep the composer's context ring honest without polling.
-          sendMessage({ type: "get_session_metrics" });
-          if (message.payload.sessionId) {
-            reconnectSessionIdRef.current = message.payload.sessionId;
-            void refreshSessions();
-            // Flush only after the transcript refresh lands: the refresh
-            // replaces the whole message list with what the server persisted
-            // BEFORE the queued prompt, so flushing first would wipe the
-            // queued message's bubble until the next run finishes.
-            void refreshCurrentTranscript(message.payload.sessionId).finally(
-              () => flushQueuedPromptRef.current(),
-            );
-          } else {
-            queueMicrotask(() => flushQueuedPromptRef.current());
-          }
-          break;
-
-        case "run_failed": {
-          const interrupted = isInterruptedError(message.payload.error);
-          const queuedPromptId = interrupted
-            ? sendQueueAfterInterruptRef.current
-            : null;
-          sendQueueAfterInterruptRef.current = null;
-          // The transcript refresh below re-renders everything from the
-          // authoritative persisted entries; leftover stream parts would
-          // render the same tool calls twice.
-          setStreamParts([]);
-          activeToolsMapRef.current = {};
-          setIsRunning(false);
-          setCanRetryFailed(message.payload.canRetry !== false);
-          setToolStatus("");
-          setRunPhaseLabel("");
-          setConnStatus(interrupted ? "idle" : "error");
-          setConnLabel(interrupted ? t("Ready") : t("Error"));
-          setComposerNoticeTimed({
-            prefix: interrupted ? undefined : "⚠",
-            text: `${interrupted ? t("Run interrupted: ") : t("Run failed: ")}${message.payload.error}`,
-            warn: !interrupted,
-          });
-          if (!interrupted) setRunHint("");
-          {
-            // Same ordering as run_completed: the refresh full-replaces the
-            // message list, so it must land before the queued prompt's
-            // optimistic bubble is appended or the bubble disappears.
-            const refreshed = sessionId
-              ? refreshCurrentTranscript(sessionId)
-              : Promise.resolve();
-            if (
-              interrupted &&
-              shouldFlushQueuedPrompts("interrupted", Boolean(queuedPromptId))
-            ) {
-              void refreshed.finally(() =>
-                flushQueuedPromptRef.current(queuedPromptId ?? undefined),
-              );
-            }
-          }
-          break;
-        }
-
-        case "approval_requested":
-          setApprovals((prev) => [...prev, message.payload]);
-          break;
-
-        case "approval_resolved":
-          setApprovals((prev) =>
-            prev.filter(
-              (entry) => entry.approvalId !== message.payload.approvalId,
-            ),
-          );
-          break;
-
         case "extension_notice":
           setComposerNoticeTimed({
             prefix: message.payload.level === "info" ? undefined : "⚠",
@@ -1017,7 +981,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     },
     [
       clearStagedWorkspace,
-      refreshCurrentTranscript,
+      engine.handleMessage,
       refreshSessionDetail,
       refreshSessions,
       selectedCatalogSessionId,
@@ -1071,8 +1035,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const beginNewSession = useCallback(() => {
     reconnectSessionIdRef.current = null;
     setSelectedCatalogSessionId(null);
-    queuedPromptsRef.current = [];
-    setQueuedPrompts([]);
+    promptQueue.clear();
     setMessages([]);
     setStreamParts([]);
     setWsError(null);
@@ -1111,8 +1074,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setToolStatus(t("Conversation cannot be opened."));
         return;
       }
-      queuedPromptsRef.current = [];
-      setQueuedPrompts([]);
+      promptQueue.clear();
       setSelectedCatalogSessionId(targetSessionId);
       pendingOpenSessionIdRef.current = targetSessionId;
       if (
@@ -1269,8 +1231,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       await deleteSessionRequest(targetId);
       if (sessionId === targetId) {
         reconnectSessionIdRef.current = null;
-        queuedPromptsRef.current = [];
-        setQueuedPrompts([]);
+        promptQueue.clear();
         setMessages([]);
         clearStagedWorkspace();
         sendMessage({ type: "new_session" });
@@ -1299,17 +1260,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     void performDeleteSelectedSession(targetId);
   }, [performDeleteSelectedSession, selectedSessionDetail],);
 
-  const replaceQueuedPrompts = useCallback(
-    (update: (current: QueuedPrompt[]) => QueuedPrompt[]) => {
-      setQueuedPrompts((current) => {
-        const next = update(current);
-        queuedPromptsRef.current = next;
-        return next;
-      });
-    },
-    [],
-  );
-
   const startPrompt = useCallback(
     (text: string, attachmentPaths: string[]) => {
       const outgoing = buildOutgoingPrompt(text.trim(), attachmentPaths);
@@ -1325,7 +1275,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setStreamParts([]);
       setWsError(null);
       setRunHint("");
-      setCanRetryFailed(false);
+      setRecovery(null);
       setToolStatus("");
       setRunPhaseLabel(t("Connecting…"));
       setIsRunning(true);
@@ -1337,42 +1287,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
   startPromptRef.current = startPrompt;
 
-  const flushQueuedPrompt = useCallback((onlyId?: string) => {
-    const allQueued = queuedPromptsRef.current;
-    const queued = onlyId
-      ? allQueued.filter((item) => item.id === onlyId)
-      : allQueued;
-    const merged = mergeQueuedPrompts(queued);
-    replaceQueuedPrompts((current) =>
-      onlyId ? current.filter((item) => item.id !== onlyId) : [],
-    );
-    if (!merged) return;
-    if (!startPromptRef.current(merged.text, merged.attachments)) {
-      replaceQueuedPrompts((current) => [...queued, ...current]);
-    }
-  }, [replaceQueuedPrompts]);
-  flushQueuedPromptRef.current = flushQueuedPrompt;
-
   const restoreQueuedPrompt = useCallback((id: string) => {
-    const queued = queuedPromptsRef.current.find((item) => item.id === id);
+    const queued = promptQueue.restore(id);
     if (!queued) return null;
-    replaceQueuedPrompts((current) =>
-      current.filter((item) => item.id !== id),
-    );
     setStagedWorkspacePaths((current) => [
       ...new Set([...current, ...queued.attachments]),
     ]);
     return queued.text;
-  }, [replaceQueuedPrompts]);
-
-  const deleteQueuedPrompt = useCallback(
-    (id: string) => {
-      replaceQueuedPrompts((current) =>
-        current.filter((item) => item.id !== id),
-      );
-    },
-    [replaceQueuedPrompts],
-  );
+  }, [promptQueue]);
 
   // --- Situational preset buttons (v1.4 round 1 experiment) ---
   // ponytail: config in localStorage, active state in memory only — promote
@@ -1451,14 +1373,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         // ponytail: a queued message can't ride the /skill: invoke path, so
         // an armed press degrades to the wrapper text (which names the
         // skill); the skill body loads on a later idle press if it matters.
-        replaceQueuedPrompts((current) => [
-          ...current,
-          {
-            id: crypto.randomUUID(),
-            text: trimmed,
-            attachments,
-          },
-        ]);
+        promptQueue.enqueue(trimmed, attachments);
         consumePending();
         clearStagedWorkspace();
         notePresetTurn(sessionId);
@@ -1484,7 +1399,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       clearStagedWorkspace,
       isRunning,
       notePresetTurn,
-      replaceQueuedPrompts,
+      promptQueue,
       sessionId,
       stagedWorkspacePaths,
       startPrompt,
@@ -1492,24 +1407,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   const abortRun = useCallback(() => {
-    sendQueueAfterInterruptRef.current = null;
+    promptQueue.cancelPendingInterrupt();
     if (sendMessage({ type: "abort" })) {
       setToolStatus("");
       setRunPhaseLabel(t("Stopping…"));
-      setRunHint(t("You can edit or delete your latest message."));
+      setRunHint("");
     }
-  }, [sendMessage]);
+  }, [promptQueue, sendMessage]);
 
   const interruptAndSendQueuedPrompt = useCallback((id: string) => {
-    if (!queuedPromptsRef.current.some((item) => item.id === id)) return;
-    sendQueueAfterInterruptRef.current = id;
-    if (sendMessage({ type: "abort" })) {
+    promptQueue.interruptAndSend(id, () => {
+      if (!sendMessage({ type: "abort" })) return false;
       setToolStatus("");
       setRunPhaseLabel(t("Stopping…"));
-    } else {
-      sendQueueAfterInterruptRef.current = null;
-    }
-  }, [sendMessage]);
+      return true;
+    });
+  }, [promptQueue, sendMessage]);
 
   const invokeSkillRef = useRef<
     ((skillName: string, userText?: string) => boolean) | null
@@ -1623,7 +1536,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return false;
       // This conversation keeps running its own life — the branch opens in
       // the right Related panel on `branch_created`.
-      setCanRetryFailed(false);
+      setRecovery(null);
       setComposerNoticeTimed({
         text: entryId
           ? t("Same question, fresh answer. What repeats is probably solid; what changes was a choice.")
@@ -1656,7 +1569,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (isRunning || !sessionId || !sendMessage({ type: "retry_latest" })) {
       return false;
     }
-    setCanRetryFailed(false);
+    setRecovery(null);
     setIsRunning(true);
     setConnStatus("running");
     setConnLabel(t("Retrying…"));
@@ -1664,6 +1577,46 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setRunPhaseLabel(t("Connecting…"));
     return true;
   }, [isRunning, sendMessage, sessionId]);
+
+  const continueLatest = useCallback(() => {
+    if (isRunning || !sessionId || !sendMessage({ type: "continue_latest" })) {
+      return false;
+    }
+    setRecovery(null);
+    setRunHint("");
+    setIsRunning(true);
+    setConnStatus("running");
+    setConnLabel(t("Continuing…"));
+    setToolStatus("");
+    setRunPhaseLabel(t("Connecting…"));
+    return true;
+  }, [isRunning, sendMessage, sessionId]);
+
+  const reviseLatestInPlace = useCallback(
+    (text: string, entryId: string) => {
+      const trimmed = text.trim();
+      if (
+        !trimmed ||
+        isRunning ||
+        !sessionId ||
+        !sendMessage({
+          type: "revise_latest",
+          payload: { text: trimmed, entryId },
+        })
+      ) {
+        return false;
+      }
+      setRecovery(null);
+      setRunHint("");
+      setIsRunning(true);
+      setConnStatus("running");
+      setConnLabel(t("Retrying…"));
+      setToolStatus("");
+      setRunPhaseLabel(t("Connecting…"));
+      return true;
+    },
+    [isRunning, sendMessage, sessionId],
+  );
 
   const deleteLatest = useCallback(() => {
     if (!sendMessage({ type: "delete_latest" })) return;
@@ -1921,7 +1874,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       runPhaseLabel,
       composerNotice,
       runHint,
-      canRetryFailed,
+      recovery,
       stagedWorkspacePaths,
       toggleWorkspaceStage,
       stageWorkspacePath,
@@ -1939,12 +1892,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       sendPrompt,
       queuedPrompts,
       restoreQueuedPrompt,
-      deleteQueuedPrompt,
-      sendQueuedPromptNow: flushQueuedPrompt,
+      deleteQueuedPrompt: promptQueue.remove,
+      sendQueuedPromptNow: promptQueue.flush,
       interruptAndSendQueuedPrompt,
       abortRun,
+      continueLatest,
       invokeSkill,
       branchRevision,
+      reviseLatestInPlace,
       prepareBranchRevision,
       retryLatest,
       deleteLatest,
@@ -2027,7 +1982,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       runPhaseLabel,
       composerNotice,
       runHint,
-      canRetryFailed,
+      recovery,
       stagedWorkspacePaths,
       toggleWorkspaceStage,
       stageWorkspacePath,
@@ -2045,12 +2000,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       sendPrompt,
       queuedPrompts,
       restoreQueuedPrompt,
-      deleteQueuedPrompt,
-      flushQueuedPrompt,
+      promptQueue,
       interruptAndSendQueuedPrompt,
       abortRun,
+      continueLatest,
       invokeSkill,
       branchRevision,
+      reviseLatestInPlace,
       prepareBranchRevision,
       retryLatest,
       deleteLatest,

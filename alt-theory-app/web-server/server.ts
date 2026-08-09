@@ -47,6 +47,7 @@ import {
   permanentlyDeleteSession,
   restoreDeletedSession,
   readSessionTextFile,
+  healFamilyInvariants,
   readSessionAccessSummary,
   readSessionDetail,
   readSessionChanges,
@@ -147,7 +148,8 @@ import {
 } from "./app-settings.js";
 import { discoverSkillResources } from "./resource-discovery.js";
 import {
-  listWorkingFolderFiles,
+  describeWorkingFolders,
+  listWorkingFolderChildren,
   readWorkingFolderTextFile,
 } from "./workspace-files.js";
 
@@ -239,6 +241,13 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   };
   applyExtraAssetDirs();
   setBackendLang(readAppSettings(dataDir).lang ?? null);
+  // One pass before any session opens: older builds could leave a fork tree
+  // split across working folders or with no listed representative (v1.4.1).
+  try {
+    healFamilyInvariants(dataDir);
+  } catch (error) {
+    console.warn("[alt-theory] family-invariant heal failed:", error);
+  }
   const soulDir = assetPaths.soulDir;
   const legacySoulPath = assetPaths.soulPath;
   const publicDir = resolve(options.publicDir ?? PUBLIC_DIR);
@@ -1520,7 +1529,16 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           res.status(403).json({ error: "Working-folder browsing is local-only" });
           return;
         }
-        res.json(listWorkingFolderFiles(dataDir, sessionId));
+        const folderId =
+          typeof req.query.folderId === "string" ? req.query.folderId : null;
+        if (!folderId) {
+          res.json({ folders: describeWorkingFolders(dataDir, sessionId) });
+          return;
+        }
+        const path = typeof req.query.path === "string" ? req.query.path : "";
+        res.json(
+          listWorkingFolderChildren(dataDir, sessionId, folderId, path),
+        );
         return;
       }
       res.json(listSessionTextFiles(dataDir, sessionId, rootName));
@@ -2020,6 +2038,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       case "run_failed":
         send({ type: "run_failed", payload: event.payload });
         break;
+      case "user_steered":
+        send({ type: "user_steered", payload: event.payload });
+        break;
       case "session_transcript":
         send({ type: "session_transcript", payload: event.payload });
         break;
@@ -2242,6 +2263,17 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       send({ type: "session_metrics", payload: sessionService.getMetrics(sessionId), });
     };
 
+    // SessionService owns the one displayable transcript projection, including
+    // the in-flight user bubble. This layer only replays buffered stream events.
+    const sendTranscriptWithLiveReplay = (sessionId: string) => {
+      const messages = sessionService.getTranscript(sessionId);
+      const live = sessionService.getLiveRun(sessionId);
+      send({ type: "session_transcript", payload: { messages } });
+      for (const event of live?.events ?? []) {
+        forwardServiceEvent(send, event);
+      }
+    };
+
     ws.on("close", () => {
       closed = true;
       detach();
@@ -2325,34 +2357,30 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               // Pi TUI behavior: typing while a turn runs steers the turn
               // instead of erroring — required for messaging running
               // subagents directly (alpha.5 M2).
+              // The user_steered broadcast renders the bubble in every pane —
+              // no notice needed (queue drains here on every step boundary).
               if (
-                attachedSessionId &&
-                sessionService.steerRunningSession(attachedSessionId, msg.payload)
+                !attachedSessionId ||
+                !sessionService.steerRunningSession(attachedSessionId, msg.payload)
               ) {
-                send({
-                  type: "extension_notice",
-                  payload: {
-                    message: t(
-                      "Delivered to the running turn — Alt sees it at its next step.",
-                    ),
-                    level: "info",
-                  },
-                });
-              } else {
                 sendError(send, error, error.code);
               }
             } else {
-              send({
-                type: "run_failed",
-                payload: {
-                  error: error instanceof Error ? error.message : String(error),
-                  // A preflight failure (no API key, unknown model) records no
-                  // user entry; offering Retry there errors on click.
-                  canRetry: attachedSessionId
-                    ? sessionService.canRetryFailed(attachedSessionId)
-                    : false,
-                },
-              });
+              const recovery = attachedSessionId
+                ? sessionService.getSnapshot(attachedSessionId).recovery
+                : null;
+              // Recoverable run failures were already broadcast after their
+              // terminal mapping. Preflight/recordless failures still need one.
+              if (!recovery) {
+                send({
+                  type: "run_failed",
+                  payload: {
+                    error: error instanceof Error ? error.message : String(error),
+                    canRetry: false,
+                    recovery: null,
+                  },
+                });
+              }
             }
           }
           break;
@@ -2363,7 +2391,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             break;
           }
           try {
-            await sessionService.abort(attachedSessionId);
+            await sessionService.abort(attachedSessionId, "user_stop", "user_abort");
           } catch (error) {
             sendError(send, error);
           }
@@ -2710,6 +2738,21 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           }
           break;
         }
+        case "continue_latest": {
+          if (!attachedSessionId) {
+            sendError(send, new Error("A materialized session is required"));
+            break;
+          }
+          try {
+            const run = sessionService.continueLatestFromBreakpoint(
+              attachedSessionId,
+            );
+            await run.completion;
+          } catch (error) {
+            sendServiceError(send, error);
+          }
+          break;
+        }
         case "delete_latest": {
           if (!attachedSessionId) {
             sendError(send, new Error("A materialized session is required"));
@@ -2894,10 +2937,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             );
             if (closed) return;
             attachToSession(opened.sessionId);
-            send({
-              type: "session_transcript",
-              payload: { messages: sessionService.getTranscript(opened.sessionId), },
-            });
+            sendTranscriptWithLiveReplay(opened.sessionId);
           } catch (error) {
             sendError(send, error);
           }

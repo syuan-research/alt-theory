@@ -40,8 +40,8 @@ answers from current documentation.
 **Subagent**: a child conversation a lead delegates a bounded task to. It
 runs as its own session at a clamped mode and a model tier that can be
 lower, the same, or higher than the lead's; up to three concurrent.
-`(planned)` skills (skill-button, role intensity) extend this layer but
-are not yet coded.
+`(planned)` skills (role intensity) extend this layer but are not yet
+coded.
 [→ Agent Team and Subagent Sessions](../system-guide/agent-team-and-subagents.md)
 
 **Working folder**: a folder on the computer attached to a Work
@@ -67,10 +67,10 @@ handles a kind of task. Bundled skills carry the product's methods; the
 user's own participate as equals.
 [→ How Skills Work](../system-guide/how-skills-work.md)
 
-**Skill-button** `(planned)`: a skill held on across several turns
-rather than invoked once. The button darkens while active, then fades;
-double-click locks it. Not yet in the interface or code.
-[→ When Understanding Is the Goal](../using-the-app/when-understanding-is-the-goal.md)
+**Steer button**: a skill held on across several turns rather than
+invoked once. The button darkens while active, then fades; double-click
+locks it. Lives on the Steer bar beside the composer.
+[→ The Steer Bar](../system-guide/steer-bar.md)
 
 **Command**: anything invocable by name from the `/` palette: skills,
 plus conversation operations like /branch and /compact.

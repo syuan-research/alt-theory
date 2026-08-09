@@ -38,19 +38,20 @@ app.disableHardwareAcceleration();
 app.commandLine.appendSwitch("no-sandbox");
 
 // Port: honor an explicit override (ALT_THEORY_PORT / PORT) when present;
-// otherwise leave PORT unset so the backend auto-selects a free port at listen
-// time. A non-technical user never has to choose or type a port, and a busy
-// default port no longer blocks startup. The actual bound port is captured from
-// the backend after it listens (see activePort).
+// otherwise prefer a STABLE default port. The renderer's localStorage (UI
+// settings: thinking display, dark mode, panel sizes…) is keyed on the
+// http://127.0.0.1:PORT origin, so a fresh random port every launch silently
+// wiped those settings (v1.4.0 bug). If the default port is busy the backend
+// still falls back to a free port (bundle-server.cjs) — launch never blocks,
+// that one session just runs on a fresh origin.
+const DEFAULT_LOCAL_PORT = 43117;
 const PORT_OVERRIDE = parseInt(
   process.env.ALT_THEORY_PORT || process.env.PORT || "",
   10
 );
-if (Number.isInteger(PORT_OVERRIDE)) {
-  process.env.PORT = String(PORT_OVERRIDE);
-} else {
-  delete process.env.PORT;
-}
+process.env.PORT = String(
+  Number.isInteger(PORT_OVERRIDE) ? PORT_OVERRIDE : DEFAULT_LOCAL_PORT
+);
 let activePort = null;
 const LOCAL_STATE_ROOT = path.join(os.homedir(), ".alt-theory");
 const LOCAL_DATA_DIR = path.join(LOCAL_STATE_ROOT, "data");

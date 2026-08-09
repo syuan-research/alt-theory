@@ -1,6 +1,7 @@
 import {
   existsSync,
   mkdirSync,
+  realpathSync,
   readdirSync,
   readFileSync,
   renameSync,
@@ -52,7 +53,6 @@ const CONVERTED_SUFFIX = "_converted_from_binary";
 const WORKING_TREE_SKIP_DIRS = new Set([
   ".git", "node_modules", ".next", ".cache", ".venv", "__pycache__",
 ]);
-const MAX_WORKING_FILES = 1000;
 const MAX_WORKING_TEXT_BYTES = 1024 * 1024;
 
 export interface WorkspaceUsage {
@@ -88,10 +88,11 @@ export interface WorkingFolderDescriptor {
   available: boolean;
 }
 
-export interface WorkingFileEntry {
+export interface WorkingTreeEntry {
   folderId: string;
   path: string;
-  size: number;
+  isDirectory: boolean;
+  size: number | null;
   updatedAt: string | null;
   previewable: boolean;
 }
@@ -409,42 +410,75 @@ export function describeWorkingFolders(
   });
 }
 
-export function listWorkingFolderFiles(
+export function listWorkingFolderChildren(
   dataDir: string,
-  sessionId: string
-): { folders: WorkingFolderDescriptor[]; files: WorkingFileEntry[]; truncated: boolean } {
-  const folders = describeWorkingFolders(dataDir, sessionId);
-  const files: WorkingFileEntry[] = [];
-  let truncated = false;
-  for (const folder of folders) {
-    if (!folder.available || truncated) continue;
-    const visit = (dir: string, prefix: string) => {
-      if (truncated) return;
-      for (const entry of readdirSync(dir, { withFileTypes: true })) {
-        if (entry.name.startsWith(".") || WORKING_TREE_SKIP_DIRS.has(entry.name)) continue;
-        const full = join(dir, entry.name);
-        const rel = (prefix ? `${prefix}/${entry.name}` : entry.name).replace(/\\/g, "/");
-        if (entry.isDirectory()) {
-          visit(full, rel);
-        } else if (entry.isFile()) {
-          const stats = statSync(full);
-          files.push({
-            folderId: folder.id,
-            path: rel,
-            size: stats.size,
-            updatedAt: stats.mtime.toISOString(),
-            previewable: stats.size <= MAX_WORKING_TEXT_BYTES,
-          });
-          if (files.length >= MAX_WORKING_FILES) {
-            truncated = true;
-            return;
-          }
-        }
-      }
-    };
-    visit(folder.path, "");
+  sessionId: string,
+  folderId: string,
+  requestedPath = "",
+): { folderId: string; path: string; entries: WorkingTreeEntry[] } {
+  const folder = describeWorkingFolders(dataDir, sessionId).find(
+    (item) => item.id === folderId,
+  );
+  if (!folder?.available) throw new Error("Working folder is not available");
+  const normalized = requestedPath.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+  if (isAbsolute(normalized)) throw new Error("Invalid working-folder path");
+  if (
+    normalized
+      .split("/")
+      .filter(Boolean)
+      .some((part) => part.startsWith(".") || WORKING_TREE_SKIP_DIRS.has(part))
+  ) {
+    throw new Error("Working-folder directory is omitted from the tree");
   }
-  return { folders, files, truncated };
+  const target = resolve(folder.path, normalized);
+  const stats = statSync(target, { throwIfNoEntry: false });
+  if (!stats?.isDirectory()) throw new Error("Working-folder directory not found");
+  const realFolder = realpathSync(folder.path);
+  const realTarget = realpathSync(target);
+  const rel = relative(realFolder, realTarget);
+  if (
+    rel === ".." ||
+    rel.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`) ||
+    isAbsolute(rel)
+  ) {
+    throw new Error("Folder path must stay inside the selected working folder");
+  }
+
+  const entries = readdirSync(realTarget, { withFileTypes: true })
+    .filter(
+      (entry) =>
+        !entry.name.startsWith(".") &&
+        !WORKING_TREE_SKIP_DIRS.has(entry.name) &&
+        (entry.isDirectory() || entry.isFile()),
+    )
+    .map((entry): WorkingTreeEntry => {
+      const path = (normalized ? `${normalized}/${entry.name}` : entry.name).replace(/\\/g, "/");
+      if (entry.isDirectory()) {
+        return {
+          folderId,
+          path,
+          isDirectory: true,
+          size: null,
+          updatedAt: null,
+          previewable: false,
+        };
+      }
+      const entryStats = statSync(join(realTarget, entry.name));
+      return {
+        folderId,
+        path,
+        isDirectory: false,
+        size: entryStats.size,
+        updatedAt: entryStats.mtime.toISOString(),
+        previewable: entryStats.size <= MAX_WORKING_TEXT_BYTES,
+      };
+    })
+    .sort(
+      (left, right) =>
+        Number(right.isDirectory) - Number(left.isDirectory) ||
+        left.path.localeCompare(right.path),
+    );
+  return { folderId, path: normalized, entries };
 }
 
 export function readWorkingFolderTextFile(

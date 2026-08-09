@@ -45,6 +45,4 @@ Each is one line here and a canonical page in the system guide.
   retries run out, a retry-from-break-point action resumes from where it
   broke.
 
-- **Holding a feature on for several turns.** Skills you can hold on
-  rather than invoke once: a button darkens when active, fades over turns,
-  drops off after about five; double-click locks it on. (planned)
+- **Holding a feature on for several turns.** The [Steer bar](../system-guide/steer-bar.md) holds skills you can press on rather than invoke once: a button darkens when active, fades over turns, drops off after about five; double-click locks it on.

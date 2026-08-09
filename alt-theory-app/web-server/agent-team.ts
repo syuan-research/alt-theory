@@ -41,7 +41,6 @@ export interface AgentTeamBridge {
     parentSessionId: string,
     agent: string,
     message: string,
-    startTurn: boolean,
   ): Promise<string>;
   checkSubagent(
     parentSessionId: string,
@@ -67,16 +66,17 @@ export interface AgentTeamBridge {
 // ---------------------------------------------------------------------------
 
 /**
- * A child's Alt mode is clamped to the parent's (spec: an Understand
- * parent spawns only Understand children; a Work parent defaults to
- * Understand unless the task needs file work).
+ * A child's Alt mode INHERITS the parent's and is clamped to it (owner
+ * 2026-08-07: an Understand parent spawns only Understand children; a
+ * Work parent's children are Work unless the spawn asks for less —
+ * predictable inheritance over per-spawn model discretion).
  */
 export function clampSubagentMode(
   parentMode: AltMode,
   requested: "understand" | "work" | undefined,
 ): AltMode {
   if (parentMode === "understand") return "understand";
-  return requested === "work" ? "work" : "understand";
+  return requested === "understand" ? "understand" : "work";
 }
 
 export interface TierCandidate {
@@ -174,7 +174,7 @@ const spawnSchema = Type.Object({
   mode: Type.Optional(
     Type.Union([Type.Literal("understand"), Type.Literal("work")], {
       description:
-        "Subagent Alt mode. Clamped to this conversation's mode; default Understand.",
+        "Subagent Alt mode. Defaults to this conversation's mode (inherited); pass 'understand' to spawn a read-only child from a Work conversation. Never exceeds this conversation's mode.",
     }),
   ),
   model_tier: Type.Optional(
@@ -255,27 +255,16 @@ export function createAgentTeamTools(
   const sendSchema = Type.Object({
     agent: agentRef,
     message: Type.String({ description: "The message for the subagent" }),
-    start_turn: Type.Optional(
-      Type.Boolean({
-        description:
-          "true = make an idle subagent act on this message now. Default false: a running subagent sees it at its next step; an idle subagent sees it with its next turn.",
-      }),
-    ),
   });
   const sendToAgent: ToolDefinition<typeof sendSchema, undefined> = {
     name: "send_to_agent",
     label: "Message subagent",
     description:
-      "Send a message to a subagent — steer a running subagent, or (with start_turn) wake an idle one.",
+      "Send a message to a subagent. A running subagent sees it at its next step; an idle subagent starts acting on it immediately.",
     parameters: sendSchema,
     async execute(_id, params) {
       return text(
-        await bridge.sendToSubagent(
-          sessionId,
-          params.agent,
-          params.message,
-          params.start_turn ?? false,
-        ),
+        await bridge.sendToSubagent(sessionId, params.agent, params.message),
       );
     },
   };

@@ -6,9 +6,16 @@ export type RunStatus =
   | "completed"
   | "failed"
   | "interrupted"
+  /** Legacy persisted value. New writes use interrupted + interruptionCause. */
   | "aborted"
   | "deleted"
   | "superseded";
+
+export type InterruptionCause =
+  | "user_abort"
+  | "process_exit"
+  | "transport_loss"
+  | "unknown";
 
 export interface RunRecord {
   schemaVersion: 1;
@@ -19,12 +26,32 @@ export interface RunRecord {
   revisionId: string;
   runId: string;
   status: RunStatus;
+  interruptionCause?: InterruptionCause | null;
   piSessionFile: string | null;
   userEntryId: string | null;
   assistantEntryIds: string[];
   supersedesRunId: string | null;
   acceptedAt: string;
   completedAt: string | null;
+}
+
+export function runOutcome(
+  run: RunRecord,
+): "completed" | "interrupted" | "failed" | null {
+  if (run.status === "completed") return "completed";
+  if (run.status === "failed") return "failed";
+  if (run.status === "interrupted" || run.status === "aborted") {
+    return "interrupted";
+  }
+  return null;
+}
+
+export function runInterruptionCause(
+  run: RunRecord,
+): InterruptionCause | null {
+  return runOutcome(run) === "interrupted"
+    ? (run.interruptionCause ?? "unknown")
+    : null;
 }
 
 export function appendRunRecord(

@@ -7,6 +7,7 @@ import { ContextRing } from "@/components/conversation/ContextRing";
 import { RunTips } from "@/components/conversation/RunTips";
 import { DEFAULT_KB_DOMAIN, KB_OFF_VALUE } from "@/lib/constants";
 import { hasNativeBridge, pathsFromDroppedFiles, pickFiles } from "@/lib/native";
+import { WORKSPACE_PATH_MIME } from "@/lib/workspace";
 import { isWithheld } from "@/api/types";
 import { fmtTime } from "@/lib/format";
 import { t } from "@/i18n";
@@ -38,11 +39,21 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
   const [presetOpen, setPresetOpen] = useState<boolean>(
     () => window.localStorage.getItem("alt-preset-open") === "1",
   );
+  // One-line hint in the tips slot when the card area switches (owner
+  // 2026-08-05): each direction gets its own line, cleared after a beat.
+  const [cardHint, setCardHint] = useState<string | null>(null);
+  const cardHintTimer = useRef<number | null>(null);
   const togglePresetOpen = () => {
-    setPresetOpen((current) => {
-      window.localStorage.setItem("alt-preset-open", current ? "0" : "1");
-      return !current;
-    });
+    const next = !presetOpen;
+    setPresetOpen(next);
+    window.localStorage.setItem("alt-preset-open", next ? "1" : "0");
+    setCardHint(
+      next
+        ? t("Steer is for this moment: press a way of working and it rides your next few messages.")
+        : t("Role and knowledge shape the whole conversation — they stay with it from the start."),
+    );
+    if (cardHintTimer.current) window.clearTimeout(cardHintTimer.current);
+    cardHintTimer.current = window.setTimeout(() => setCardHint(null), 10000);
   };
   const [fileDragOver, setFileDragOver] = useState(false);
   const rowRef = useRef<HTMLDivElement>(null);
@@ -230,7 +241,8 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
         app.isRunning ||
         app.composerNotice ||
         app.runHint ||
-        app.canRetryFailed ? (
+        app.recovery ||
+        cardHint ? (
           <div className="composer-notes">
             {/* One stable status row while a turn runs. Clearing the label on
                 each assistant_delta used to collapse this strip and reflow the
@@ -261,17 +273,13 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               </span>
             ) : null}
             {app.runHint ? <span>{app.runHint}</span> : null}
-            {app.canRetryFailed ? (
-              <button
-                className="flat retry-run"
-                onClick={app.retryLatest}
-                title={t("Run the latest message again from the start")}
-              >
-                <i className="ph ph-arrow-clockwise" aria-hidden="true" />
-                {t("Retry")}
+            {app.recovery?.canContinue ? (
+              <button className="flat retry-run" onClick={app.continueLatest}>
+                <i className="ph ph-play" aria-hidden="true" />
+                {t("Continue")}
               </button>
             ) : null}
-            <RunTips running={app.isRunning} />
+            <RunTips running={app.isRunning} seedTip={cardHint} />
           </div>
         ) : null}
 
@@ -356,6 +364,14 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                   app.presetState.name === name
                     ? app.presetState
                     : null;
+                // Tooltip = this skill's own job (owner 2026-08-05); what
+                // "steer" means lives on the Steer toggle, not on every chip.
+                const description = (app.discovery?.skills ?? []).find(
+                  (skill) => skill.name === name,
+                )?.description;
+                const skillLine = description
+                  ? `${name} — ${description}`
+                  : name;
                 return (
                   <button
                     key={name}
@@ -371,10 +387,12 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                     disabled={!interactive}
                     title={
                       active
-                        ? active.locked
-                          ? t("Locked — click to release on your next message")
-                          : t("Active for {count} more turns — click to lock", { count: active.turnsLeft })
-                        : t("Rides your next message: ask Alt to work this way for the next few turns")
+                        ? `${skillLine}\n${
+                            active.locked
+                              ? t("Locked — click to release on your next message")
+                              : t("Active for {count} more turns — click to lock", { count: active.turnsLeft })
+                          }`
+                        : skillLine
                     }
                     onClick={() => app.pressPreset(name)}
                   >
@@ -393,6 +411,10 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                 onToggle={() => toggle("presetcfg")}
               >
                 {(app.discovery?.skills ?? [])
+                  // Steer offers bundled skills only for now (owner 2026-08-05,
+                  // tentative): steer semantics are written for them; most
+                  // users don't author their own skills yet.
+                  .filter((skill) => skill.source === "alt-theory")
                   .filter((skill) => skill.enabled?.[slashMode] !== false)
                   .map((skill) => {
                     const picked = app.presetButtons.includes(skill.name);
@@ -556,14 +578,26 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
         <div
           className={`composer${fileDragOver ? " file-drag-over" : ""}`}
           onDragEnter={(e) => {
-            if (!canAttach || !hasNativeBridge()) return;
-            if (![...e.dataTransfer.types].includes("Files")) return;
+            if (!canAttach) return;
+            const types = [...e.dataTransfer.types];
+            if (types.includes(WORKSPACE_PATH_MIME)) {
+              e.preventDefault();
+              setFileDragOver(true);
+              return;
+            }
+            if (!hasNativeBridge() || !types.includes("Files")) return;
             e.preventDefault();
             setFileDragOver(true);
           }}
           onDragOver={(e) => {
-            if (!canAttach || !hasNativeBridge()) return;
-            if (![...e.dataTransfer.types].includes("Files")) return;
+            if (!canAttach) return;
+            const types = [...e.dataTransfer.types];
+            if (
+              !types.includes(WORKSPACE_PATH_MIME) &&
+              (!hasNativeBridge() || !types.includes("Files"))
+            ) {
+              return;
+            }
             e.preventDefault();
             e.dataTransfer.dropEffect = "copy";
           }}
@@ -573,7 +607,15 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
           }}
           onDrop={(e) => {
             setFileDragOver(false);
-            if (!canAttach || !hasNativeBridge()) return;
+            if (!canAttach) return;
+            // Internal drag from the right-hand file tree.
+            const internal = e.dataTransfer.getData(WORKSPACE_PATH_MIME);
+            if (internal) {
+              e.preventDefault();
+              app.stageWorkspacePath(internal);
+              return;
+            }
+            if (!hasNativeBridge()) return;
             e.preventDefault();
             const paths = pathsFromDroppedFiles(e.dataTransfer.files);
             paths.forEach((p) => app.stageWorkspacePath(p));
@@ -769,7 +811,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                   className="send"
                   disabled={!canSend}
                   onClick={handleSubmit}
-                  title={t("Queue message")}
+                  title={t("Queued — the agent sees it at its next step")}
                 >
                   <i className="ph ph-arrow-up" />
                 </button>

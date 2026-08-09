@@ -1,16 +1,16 @@
 # Compatibility, Updates, and Integration Debugging
 
 The maintenance page: what updates may change while the product is in
-alpha, and how to diagnose an integration that stopped behaving.
+Beta, and how to diagnose an integration that stopped behaving.
 
-## The alpha compatibility policy
+## The Beta compatibility policy
 
-Until the first non-alpha release, these are the rules the product holds
+Until the first stable release, these are the rules the product holds
 itself to:
 
 - User data is never at risk from an update. Conversations, records, and
-  their provenance are always preserved. This has no alpha exception.
-- Assets may still change. Alpha builds may rename or drop bundled
+  their provenance are always preserved.
+- Assets may still change. Beta builds may rename or drop bundled
   assets (roles, souls, skills). A conversation whose recorded asset no
   longer exists in the current build falls back to the current default,
   visibly: reopening shows a notice naming what was recorded and what is
@@ -67,7 +67,7 @@ A workable diagnostic order:
   git repo of `~/.agents/skills` costs nothing); rollback is checkout.
 - The app: packaged builds can be reinstalled at a previous version;
   source builds check out the previous tag. The data directory is
-  forward-compatible within the alpha line; rolling the app back does
+  forward-compatible within the Beta line; rolling the app back does
   not roll conversations back.
 - A migrated configuration: migration copies are ordinary config files.
   The guided flow can re-run, and the previous state is whatever the

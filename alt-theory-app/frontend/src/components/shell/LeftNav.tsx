@@ -7,6 +7,7 @@ import {
   buildWorkspaceTree,
   canTakeMainline,
   folderLabel,
+  isFamilyHead,
   listedOriginLabel,
   sessionTitle,
 } from "@/lib/sessionList";
@@ -90,6 +91,36 @@ function RunningCount({ sessions }: { sessions: SessionSummary[] }) {
 /** A <details> menu never closes itself when an item is clicked — close it here. */
 function closeMenu(e: { currentTarget: HTMLElement }) {
   e.currentTarget.closest("details")?.removeAttribute("open");
+}
+
+/**
+ * Position a `position: fixed` `.list-menu` from the summary it belongs to.
+ * With top:auto the browser uses the menu's static spot, which for rows deep
+ * in a scrolled list lands far below the row or off-screen. Anchor to the
+ * clicked row and flip above when the bottom overflows the viewport. Then add
+ * `.anchored` so CSS reveals it (kept opacity:0 until now, so the first paint
+ * after `open` never shows the wrong spot). Shared by the session-row and
+ * folder-group kebab menus (same `.list-menu`).
+ */
+function anchorMenuToSummary(details: HTMLDetailsElement) {
+  const menu = details.querySelector<HTMLElement>(".list-menu");
+  const summary = details.querySelector<HTMLElement>("summary");
+  if (!menu || !summary) return;
+  const rect = summary.getBoundingClientRect();
+  menu.style.left = `${Math.max(8, rect.right - menu.offsetWidth)}px`;
+  const below = rect.bottom + 4;
+  menu.style.top =
+    below + menu.offsetHeight > window.innerHeight - 8
+      ? `${Math.max(8, rect.top - 4 - menu.offsetHeight)}px`
+      : `${below}px`;
+  menu.classList.add("anchored");
+}
+
+/** Clear JS positioning + reveal so the next open starts from a clean state. */
+function unanchorMenu(details: HTMLDetailsElement) {
+  details
+    .querySelector(".list-menu")
+    ?.classList.remove("anchored");
 }
 
 export function LeftNav() {
@@ -280,7 +311,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
     app.requestConfirm({
       message: t("Move this conversation to work in \"{label}\"?", { label }),
       details: [
-        t("Its branches move with it."),
+        t("Its whole family moves with it — branches and attached conversations always share one working folder."),
         t("Alt will ask for permissions again in the new folder."),
         t("Files already on disk are not moved."),
       ],
@@ -366,7 +397,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
     app.requestConfirm({
       message: t("Move this conversation to work in \"{label}\"?", { label }),
       details: [
-        t("Its branches move with it."),
+        t("Its whole family moves with it — branches and attached conversations always share one working folder."),
         t("Alt will ask for permissions again in the new folder."),
         t("Files already on disk are not moved."),
       ],
@@ -374,7 +405,9 @@ function UserNav({ onImport }: { onImport: () => void }) {
       checkbox: canMigrateFolder
         ? {
             label: t("Also move all {count} conversations in \"{folder}\"", { count: siblings.length + 1, folder: folderLabel(sourceDir) }),
-            defaultChecked: true,
+            // Moving unrelated folder-mates is opt-in (owner 2026-08-06);
+            // the fork FAMILY still always moves together.
+            defaultChecked: false,
             danger: true,
           }
         : undefined,
@@ -531,7 +564,14 @@ function UserNav({ onImport }: { onImport: () => void }) {
                     <i className="ph ph-caret-down tw" />
                   </button>
                   {local && group.dir ? (
-                    <details className="list-more group-folder-more">
+                    <details
+                      className="list-more group-folder-more"
+                      onToggle={(event) => {
+                        const details = event.currentTarget;
+                        if (details.open) anchorMenuToSummary(details);
+                        else unanchorMenu(details);
+                      }}
+                    >
                       <summary title={t("Working folder actions")}>
                         <i className="ph ph-dots-three" />
                       </summary>
@@ -714,6 +754,13 @@ function SessionNode({
             }
           >
             {session.forkedFrom ? (
+              isFamilyHead(session, app.sessions) ? (
+                <i
+                  className="ph ph-crown-simple s-fork"
+                  aria-hidden
+                  title={t("Heads this family — its original main conversation was deleted")}
+                />
+              ) : (
               <i
                 className={`ph ${
                   session.forkedFrom.purpose === "subagent"
@@ -727,6 +774,7 @@ function SessionNode({
                 aria-hidden
                 title={originTitle(session)}
               />
+              )
             ) : session.delisted ? (
               <i
                 className="ph ph-git-branch s-fork"
@@ -746,7 +794,13 @@ function SessionNode({
         <details
           className="list-more session-more"
           onToggle={(event) => {
-            if (!event.currentTarget.open) setConfirmDelete(false);
+            const details = event.currentTarget;
+            if (!details.open) {
+              setConfirmDelete(false);
+              unanchorMenu(details);
+              return;
+            }
+            anchorMenuToSummary(details);
           }}
         >
           <summary title={t("Conversation actions")}>

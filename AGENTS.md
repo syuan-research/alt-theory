@@ -13,9 +13,10 @@ workspace layout from this public file.
 2. For any UI surface, navigation, settings, or entry-point work, read
    `development/architecture/information-architecture.md`.
 3. Read the relevant map under `development/architecture/`.
-4. Before building a desktop friend bundle, read
-   `development/releases/desktop-friend-bundle.md`. It is the canonical bundle
-   procedure for Windows and macOS.
+4. Before cutting a release (CHANGELOG, tag page, bundle build, or bundle
+   naming), read `development/releases/release-standard.md`. It is the
+   canonical release procedure: CHANGELOG format, tag-page flow, bundle
+   naming, and the Windows/macOS build.
 5. Read the matching private development `swe-plan` when one is provided.
    GPT-5.6, Kimi K3, Claude Opus, Fable, and comparable models normally do not
    need feature or issue scaffolding; stronger models made those default gates
@@ -37,6 +38,8 @@ workspace layout from this public file.
 
 ## Checks
 
+The frontend is served from the gitignored build output `public-v6/`; rebuild it after any pull or checkout before running: `npm run build:frontend-v6`.
+
 For backend or shared runtime changes:
 
 ```bash
@@ -51,9 +54,10 @@ npm run build:frontend-v6
 
 Run both for cross-layer or release-facing changes.
 
-For a friend bundle, the checks above are not the release procedure. Follow
-`development/releases/desktop-friend-bundle.md`, including its clean-commit,
-package-content, extraction, launch, and short-filename checks.
+For a release, the checks above are not the release procedure. Follow
+`development/releases/release-standard.md`, including its CHANGELOG format,
+tag-page flow, bundle naming, clean-commit, package-content, extraction,
+and launch checks.
 
 ## Safety
 
@@ -75,3 +79,26 @@ package-content, extraction, launch, and short-filename checks.
   execution trackers, or agent-session output to this repository.
 - An alpha checkpoint tag records a version that users actually encountered;
   it does not assert that acceptance work is complete.
+
+## Branch archive
+
+A branch that has been merged into `main` (or otherwise finished its work)
+is no longer active. Do not leave finished branches under active names where
+agents mistake them for in-progress work.
+
+- When a branch is finished, archive it: rename it to the `archive/` prefix
+  (for example `work/foo` becomes `archive/foo`) and record its status in
+  the list below. The history stays; the prefix marks the state.
+- If a branch must keep its active name, add a one-line status note in the
+  list below instead (active / merged / superseded) so an agent reading this
+  file knows its state without guessing.
+- An agent that finds a branch not listed here and cannot determine its
+  status should say so and ask, not assume.
+
+### Current branch status
+
+- `main` — active product line.
+- `docs/v1.4-english-update` — merged into main (v1.4 English docs + Chinese
+  README download links).
+- `archive/v1.2-adapter-importer` — merged into main; the Claude Code /
+  adapter import work shipped in v1.3. Kept for history.

@@ -135,11 +135,11 @@ async function waitFor(predicate: () => boolean, ms = 4000): Promise<void> {
 // Stateless helpers
 // ---------------------------------------------------------------------------
 
-test("clampSubagentMode clamps children to the parent's Alt mode", () => {
+test("clampSubagentMode: children inherit the parent's Alt mode, clamped to it", () => {
   assert.equal(clampSubagentMode("understand", "work"), "understand");
   assert.equal(clampSubagentMode("understand", undefined), "understand");
   assert.equal(clampSubagentMode("work", "work"), "work");
-  assert.equal(clampSubagentMode("work", undefined), "understand");
+  assert.equal(clampSubagentMode("work", undefined), "work");
   assert.equal(clampSubagentMode("work", "understand"), "understand");
 });
 
@@ -371,7 +371,7 @@ test("mail for a closed lead stays undelivered and is injected on reopen", async
   }
 });
 
-test("sendToSubagent queues a message for an idle subagent without starting a turn", async () => {
+test("sendToSubagent makes an idle subagent act immediately (owner 2026-08-07: no unread mail)", async () => {
   const fixture = setupFixture();
   const service = createTestService(fixture);
   try {
@@ -380,21 +380,16 @@ test("sendToSubagent queues a message for an idle subagent without starting a tu
       forkedFrom: { sessionId: parent.sessionId, purpose: "subagent" },
     });
     const childManaged = managedOf(service, child.sessionId);
-    stubEchoPrompt(childManaged, "chapter 1 done");
+    const prompts = stubEchoPrompt(childManaged, "chapter 1 done");
     await service.runPrompt(child.sessionId, "cover chapter 1").completion;
     const reply = await service.sendToSubagent(
       parent.sessionId,
       child.sessionId,
       "please also cover chapter 2",
-      false,
     );
-    assert.match(reply, /next turn/);
-    assert.ok(!childManaged.busy);
-    const transcript =
-      readSessionDetail(fixture.dataDir, child.sessionId)?.transcript ?? [];
-    const line = transcript.find((message) => message.marker === "agent-team");
-    assert.ok(line, "queued mail missing from child transcript");
-    assert.match(line!.text, /^lead: /);
+    assert.match(reply, /acting on your message now/);
+    await waitFor(() => prompts.length === 2);
+    assert.match(prompts[1], /chapter 2/);
   } finally {
     await service.disposeAll();
   }
@@ -462,13 +457,12 @@ test("a queued subagent is not double-queued by send_to_agent and can be removed
     }
     assert.equal(svc.startSubagentRun(subagents[3], "the task", false), "queued");
 
-    // send_to_agent with start_turn on a queued subagent must not queue a
-    // second run; the message joins its context instead.
+    // send_to_agent on a queued subagent must not queue a second run; the
+    // message joins its context instead.
     const reply = await service.sendToSubagent(
       parent.sessionId,
       subagents[3],
       "extra context",
-      true,
     );
     assert.match(reply, /next turn/);
     assert.equal(svc.subagentQueue.length, 1);

@@ -1,4 +1,4 @@
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import type {
   ActiveToolState,
   StreamPart,
@@ -13,15 +13,17 @@ import { cn } from "@/lib/cn";
 import { pickDirectory } from "@/lib/native";
 import { t } from "@/i18n";
 import { autosizeTextarea } from "@/lib/autosizeTextarea";
+import { useStickToBottom } from "@/hooks/useStickToBottom";
 
 export function MessageList() {
   const app = useApp();
   const streamParts = useStreamParts();
-  const containerRef = useRef<HTMLDivElement>(null);
+  const {
+    containerRef,
+    stickRef: stickToBottomRef,
+    onScroll,
+  } = useStickToBottom([app.messages, streamParts]);
   const railRef = useRef<HTMLDivElement>(null);
-  const stickToBottomRef = useRef(true);
-  /** Last scrollHeight we pinned to — ignore transient shrink so the bottom clip edge does not chew the last line. */
-  const pinnedScrollHeightRef = useRef(0);
   const [scrubbing, setScrubbing] = useState(false);
   const developer = app.transcriptView === "developer";
 
@@ -66,42 +68,30 @@ export function MessageList() {
     }
   };
 
-  // Stick-to-bottom only when the user is already near the bottom. Only move
-  // scroll when content *grows*. Stream markdown can make scrollHeight jitter
-  // by a few px; pinning every frame made the last line sit on the overflow
-  // clip edge just above the composer and flash (background covering text).
-  useLayoutEffect(() => {
-    const el = containerRef.current;
-    if (!el || !stickToBottomRef.current) return;
-    const next = el.scrollHeight;
-    if (next >= pinnedScrollHeightRef.current) {
-      pinnedScrollHeightRef.current = next;
-      el.scrollTop = next;
-    }
-  }, [app.messages, streamParts]);
-
   const actions: TranscriptActions = useMemo(
     () => ({
-      onEdit: (text, entryId) => app.branchRevision(text, entryId ?? undefined),
+      onEdit: (text, entryId) =>
+        entryId && app.recovery?.userEntryId === entryId
+          ? app.reviseLatestInPlace(text, entryId)
+          : app.branchRevision(text, entryId ?? undefined),
       onPrepareCompare: (text, entryId) =>
         entryId ? app.prepareBranchRevision(text, entryId) : false,
       onRetry: app.retryLatest,
+      isReplacementEdit: (entryId) =>
+        Boolean(entryId && app.recovery?.userEntryId === entryId),
     }),
-    [app.branchRevision, app.prepareBranchRevision, app.retryLatest],
+    [
+      app.branchRevision,
+      app.prepareBranchRevision,
+      app.recovery,
+      app.retryLatest,
+      app.reviseLatestInPlace,
+    ],
   );
 
   return (
     <div className="msgs-wrap">
-    <div className="msgs" ref={containerRef}
-        onScroll={(event) => {
-          const el = event.currentTarget;
-          const nearBottom =
-            el.scrollHeight - el.scrollTop - el.clientHeight < 120;
-          stickToBottomRef.current = nearBottom;
-          if (nearBottom) {
-            pinnedScrollHeightRef.current = el.scrollHeight;
-          }
-        }}>
+    <div className="msgs" ref={containerRef} onScroll={onScroll}>
       {app.sessionId && !app.selectors.soulSlug ? (
         <SysLine>
           <i className="ph ph-warning" />
@@ -164,7 +154,7 @@ export function MessageList() {
  * token tick re-renders only the streaming tail below, never these rows
  * (perf backlog item 3 — the pattern cherry studio/openwebui use).
  */
-const SettledMessages = memo(function SettledMessages({
+export const SettledMessages = memo(function SettledMessages({
   messages,
   developer,
   latestUserIndex,
@@ -177,9 +167,23 @@ const SettledMessages = memo(function SettledMessages({
   latestUserIndex: number;
   latestAssistantIndex: number;
   isRunning: boolean;
-  actions: TranscriptActions;
+  /** Absent in the right pane — bubbles render identically, no branching. */
+  actions?: TranscriptActions;
 }) {
-  const renderedToolCallIds = new Set<string>();
+  // Tool call/result dedupe, precomputed from the data: a render-time
+  // mutable Set broke under memoization — a panel resize re-rendered the
+  // entries (ShellContext consumers) without re-running this component,
+  // so every tool row matched the stale Set and vanished.
+  const duplicateToolCall = useMemo(() => {
+    const seen = new Set<string>();
+    return messages.map((message) => {
+      const callId = message.role === "tool" ? message.toolCallId : undefined;
+      if (!callId) return false;
+      if (seen.has(callId)) return true;
+      seen.add(callId);
+      return false;
+    });
+  }, [messages]);
   let userOrdinal = -1;
   return messages.map((message, index) => {
     if (message.role === "user") userOrdinal += 1;
@@ -190,7 +194,7 @@ const SettledMessages = memo(function SettledMessages({
         developer={developer}
         isLatestUser={index === latestUserIndex}
         isLatestAssistant={index === latestAssistantIndex}
-        renderedToolCallIds={renderedToolCallIds}
+        isDuplicateToolCall={duplicateToolCall[index]}
         userIndex={message.role === "user" ? userOrdinal : undefined}
         isRunning={isRunning}
         actions={actions}
@@ -359,14 +363,14 @@ export interface TranscriptActions {
   onEdit: (text: string, entryId: string | null) => boolean;
   onPrepareCompare: (text: string, entryId: string | null) => boolean;
   onRetry: () => boolean;
+  isReplacementEdit: (entryId: string | null) => boolean;
 }
 
 export function TranscriptEntry({
   message,
   developer,
   isLatestUser,
-  isLatestAssistant = false,
-  renderedToolCallIds,
+  isDuplicateToolCall = false,
   userIndex,
   isRunning,
   actions,
@@ -375,7 +379,8 @@ export function TranscriptEntry({
   developer: boolean;
   isLatestUser: boolean;
   isLatestAssistant?: boolean;
-  renderedToolCallIds: Set<string>;
+  /** Precomputed by SettledMessages: a later row for an already-shown call. */
+  isDuplicateToolCall?: boolean;
   userIndex?: number;
   isRunning: boolean;
   actions?: TranscriptActions;
@@ -384,6 +389,7 @@ export function TranscriptEntry({
   const { thinkingExpanded, showThinking } = shell;
 
   if (message.role === "user") {
+    const replacementEdit = actions?.isReplacementEdit(message.entryId ?? null) ?? false;
     return (
       <UserBubble
         text={message.text}
@@ -391,7 +397,9 @@ export function TranscriptEntry({
         isLatest={isLatestUser}
         isRunning={isRunning}
         onEdit={actions?.onEdit}
-        onPrepareCompare={actions?.onPrepareCompare}
+        onPrepareCompare={replacementEdit ? undefined : actions?.onPrepareCompare}
+        onRetry={isLatestUser ? actions?.onRetry : undefined}
+        replacementEdit={replacementEdit}
         userIndex={userIndex}
       />
     );
@@ -403,19 +411,13 @@ export function TranscriptEntry({
         {(developer || showThinking) && message.thinking ? (
           <ThinkingBlock text={message.thinking} defaultOpen={thinkingExpanded} />
         ) : null}
-        <AssistantBubble
-          text={message.text}
-          isRunning={isRunning}
-          onRetry={isLatestAssistant ? actions?.onRetry : undefined}
-        />
+        <AssistantBubble text={message.text} />
       </>
     );
   }
 
   if (message.role === "tool") {
-    const callId = message.toolCallId;
-    if (callId && renderedToolCallIds.has(callId)) return null;
-    if (callId) renderedToolCallIds.add(callId);
+    if (isDuplicateToolCall) return null;
     const success = message.success !== false;
     return (
       <SysLine tone={success ? "ok" : "danger"} detail={message.toolDetail}>
@@ -484,6 +486,8 @@ function UserBubble({
   isRunning,
   onEdit,
   onPrepareCompare,
+  onRetry,
+  replacementEdit,
   userIndex,
 }: {
   text: string;
@@ -492,6 +496,8 @@ function UserBubble({
   isRunning: boolean;
   onEdit?: (text: string, entryId: string | null) => boolean;
   onPrepareCompare?: (text: string, entryId: string | null) => boolean;
+  onRetry?: () => boolean;
+  replacementEdit: boolean;
   userIndex?: number;
 }) {
   const trimmed = (text || "").trim();
@@ -556,11 +562,25 @@ function UserBubble({
         >
           <i className="ph ph-copy" aria-hidden="true" />
         </button>
+        {onRetry ? (
+          <button
+            title={t("Retry latest message")}
+            aria-label={t("Retry latest message")}
+            disabled={isRunning}
+            onClick={onRetry}
+          >
+            <i className="ph ph-arrow-clockwise" aria-hidden="true" />
+          </button>
+        ) : null}
         {canEdit && onEdit ? (
           <span className="edit-action-cluster">
             <button
-              title={t("Edit and compare")}
-              aria-label={t("Edit and compare")}
+              title={
+                replacementEdit
+                  ? t("Edit and retry")
+                  : t("Edit and compare")
+              }
+              aria-label={replacementEdit ? t("Edit and retry") : t("Edit and compare")}
               disabled={isRunning}
               onClick={() => {
                 setEditWidth(bubbleRef.current?.getBoundingClientRect().width ?? null);
@@ -590,13 +610,9 @@ function UserBubble({
 export function AssistantBubble({
   text,
   streaming,
-  isRunning,
-  onRetry,
 }: {
   text: string;
   streaming?: boolean;
-  isRunning?: boolean;
-  onRetry?: () => boolean;
 }) {
   // v0.5 streams raw text (no trim) so trailing newlines do not thrash layout.
   const raw = text || "";
@@ -622,16 +638,6 @@ export function AssistantBubble({
           >
             <i className="ph ph-copy" aria-hidden="true" />
           </button>
-          {onRetry ? (
-            <button
-              title={t("Run the latest message again from the start")}
-              aria-label={t("Retry latest message")}
-              disabled={isRunning}
-              onClick={onRetry}
-            >
-              <i className="ph ph-arrow-clockwise" aria-hidden="true" />
-            </button>
-          ) : null}
         </div>
       ) : null}
     </div>

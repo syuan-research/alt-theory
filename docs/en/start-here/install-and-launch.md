@@ -4,7 +4,7 @@ Alt Theory runs on the local machine. There are two ways to get it.
 
 ## The packaged app
 
-The Beta is available from the [GitHub Release](https://github.com/syuan-research/alt-theory/releases/tag/v1.3.0-beta.1). On Windows, download `AltTheory-b1-win.zip`, extract the complete `AltTheory` folder, and run `AltTheory.exe`. On macOS, download `AltTheory-b1-mac.zip`, unpack `AltTheory.app`, and move it to Applications. Node.js and npm are not required for the packaged app.
+The Beta is available from the [GitHub Release page](https://github.com/syuan-research/alt-theory/releases). On Windows, download the Windows Beta, extract the complete `AltTheory` folder, and run `AltTheory.exe`. If extraction fails, extract into a folder with a shorter path (Windows enforces a maximum path length). On macOS, download the macOS Beta and unpack the `AltTheory` folder; it contains `AltTheory.app` and a small `Fix-Open.command` script. Node.js and npm are not required for the packaged app.
 
 Supported platforms:
 
@@ -13,7 +13,7 @@ Supported platforms:
 
 Other combinations, including Intel Macs, are untested and not claimed.
 
-The Beta is not signed, so both systems question it the first time. Windows may warn that the app is from an unidentified developer: choose **More info → Run anyway**. macOS refuses a plain double-click with "Apple could not verify…": right-click (or Control-click) the app, choose **Open**, then **Open** again in the dialog. Later launches are ordinary. Take either route only when the ZIP came from this repository's GitHub Release.
+The Beta is not signed, so both systems question it the first time. Windows may warn that the app is from an unidentified developer: choose **More info → Run anyway**. Current macOS refuses the unsigned app as "damaged": right-click the bundled `Fix-Open.command`, choose **Open**, then **Open** again — it removes the download-quarantine flag from `AltTheory.app` next to it, after which the app opens with a normal double-click (move it to Applications first if you like; older macOS that shows "Apple could not verify…" instead can right-click the app and **Open**). Take either route only when the ZIP came from this repository's GitHub Release.
 
 ## Building from the repository (some programming experience)
 

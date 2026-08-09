@@ -13,7 +13,7 @@ Beta 可从 [GitHub Release](https://github.com/syuan-research/alt-theory/releas
 
 其他组合（含 Intel Mac）未经测试，不作保证。
 
-Beta 尚未签名，两个系统首次打开时都会拦一下。Windows 可能警告该应用来自未识别的开发者：选择「更多信息 → 仍要运行」。macOS 直接双击会被拒绝并提示「无法验证开发者」：请右键（或按住 Control 点按）应用，选择「打开」，再在对话框中选一次「打开」；之后就是普通双击。仅在 ZIP 来自本仓库 GitHub Release 时才这样操作。
+Beta 尚未签名，两个系统首次打开时都会拦一下。Windows 可能警告该应用来自未识别的开发者：选择「更多信息 → 仍要运行」。新版 macOS 会把未签名的下载应用直接判为「已损坏」：请右键 ZIP 里附带的 `Fix-Open.command`（修复打开）小脚本，选择「打开」，再在对话框中选一次「打开」——它会移除旁边 `AltTheory.app` 上的下载隔离标记，之后应用就能正常双击打开（仍显示「无法验证开发者」的旧系统，可改为右键应用后选「打开」）。仅在 ZIP 来自本仓库 GitHub Release 时才这样操作。
 
 
 ## 从仓库构建 （需一定编程经验）

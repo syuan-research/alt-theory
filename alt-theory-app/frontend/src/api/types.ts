@@ -77,6 +77,8 @@ export interface DiscoveryLists {
     name: string;
     displayName?: string;
     description?: string;
+    /** "alt-theory" = bundled skill; anything else is user/external. */
+    source?: string;
     enabled?: { understand: boolean; work: boolean };
   }>;
 }
@@ -120,6 +122,20 @@ export interface SessionModelOverride {
 export type AltMode = "understand" | "work";
 export type RuntimeMode = "alt-theory" | "native-pi";
 
+export type InterruptionCause =
+  | "user_abort"
+  | "process_exit"
+  | "transport_loss"
+  | "unknown";
+
+export interface TurnRecovery {
+  outcome: "interrupted" | "failed";
+  interruptionCause?: InterruptionCause | null;
+  userEntryId: string | null;
+  canContinue: boolean;
+  canRetryFromStart: boolean;
+}
+
 export interface SessionSnapshot {
   sessionId: string;
   branchId?: string;
@@ -139,6 +155,7 @@ export interface SessionSnapshot {
   openedFrom?: "new" | "existing";
   resumeWarnings?: string[];
   messageCount: number;
+  recovery?: TurnRecovery | null;
 }
 
 export interface SessionMetrics {
@@ -224,6 +241,11 @@ export interface SessionSummary {
   studyTag: StudyTag | null;
   /** Working folder (M4); null = default managed workspace. */
   workspacePrimaryDir: string | null;
+  /** Ancestor ids, root first (server-derived, walks through Trash; a purged
+   *  top still anchors the family key). Empty for roots. */
+  lineagePath?: string[];
+  /** Mechanical family name, e.g. "br1-btw2" (br/btw/h/sa/ab); null for roots. */
+  lineageMarker?: string | null;
 }
 
 export interface EffectiveSessionConfig {
@@ -453,18 +475,23 @@ export interface WorkingFolderDescriptor {
   available: boolean;
 }
 
-export interface WorkingFileEntry {
+export interface WorkingTreeEntry {
   folderId: string;
   path: string;
-  size: number;
+  isDirectory: boolean;
+  size: number | null;
   updatedAt: string | null;
   previewable: boolean;
 }
 
-export interface WorkingFilesResponse {
+export interface WorkingFoldersResponse {
   folders: WorkingFolderDescriptor[];
-  files: WorkingFileEntry[];
-  truncated: boolean;
+}
+
+export interface WorkingDirectoryResponse {
+  folderId: string;
+  path: string;
+  entries: WorkingTreeEntry[];
 }
 
 export interface WriteSessionFileInput {
@@ -510,6 +537,7 @@ export interface AssemblyManifest {
 export type ClientMessage =
   | { type: "prompt"; payload: string; attachments?: string[] }
   | { type: "abort" }
+  | { type: "continue_latest" }
   | { type: "compact" }
   | { type: "switch_kb"; payload: { domain: string } }
   | { type: "switch_role_preset"; payload: { rolePresetSlug: string | null } }
@@ -615,7 +643,13 @@ export type ServerMessage =
   | { type: "tool_updated"; payload: { callId: string; text?: string; progress?: number } }
   | { type: "tool_finished"; payload: { callId: string; success: boolean; output?: unknown } }
   | { type: "run_completed"; payload: SessionSnapshot }
-  | { type: "run_failed"; payload: { error: string; canRetry?: boolean } }
+  | {
+      type: "run_failed";
+      payload: { error: string; canRetry?: boolean; recovery?: TurnRecovery | null };
+    }
+  /** A message steered into the running turn — broadcast so every pane
+   *  (sender and late joiners) renders the bubble exactly once. */
+  | { type: "user_steered"; payload: { text: string } }
   | { type: "approval_requested"; payload: ApprovalRequestPayload }
   | {
       type: "approval_resolved";

@@ -19,6 +19,7 @@ import {
   APPROVAL_DENY,
 } from "../core/security-extension.js";
 import {
+  displayUserTextFromPrompt,
   imageAttachmentsFor,
   isUnknownModelError,
   retryPromptFromStoredUserContent,
@@ -35,12 +36,16 @@ test("retry reconstructs a persisted skill invocation", () => {
     "/skill:conversation-summary Focus on decisions",
   );
 });
-import { readSessionDetail } from "./session-store.js";
+import { listSessionSummaries, readSessionDetail } from "./session-store.js";
 import { readAbComparisonRecords } from "./ab-records.js";
 import { readV4SessionHeader } from "./session-records.js";
 import { hardDeleteExpiredPrivateSessions } from "./session-retention.js";
 import { readConfigEvents } from "./config-events.js";
-import { latestRunSnapshots, readRunRecords } from "./run-records.js";
+import {
+  appendRunRecord,
+  latestRunSnapshots,
+  readRunRecords,
+} from "./run-records.js";
 
 function setupFixture() {
   const root = mkdtempSync(join(tmpdir(), "alt-theory-session-service-"));
@@ -893,7 +898,7 @@ test("SessionService keeps imported Pi history as the active leaf before the fir
   }
 });
 
-test("SessionService preserves imported history after an aborted first run", async () => {
+test("SessionService preserves imported history after an interrupted first run", async () => {
   const fixture = setupFixture();
   const service = createTestService(fixture);
   const created = await service.createSession({
@@ -927,7 +932,8 @@ test("SessionService preserves imported history after an aborted first run", asy
   const abortedRun = latestRunSnapshots(
     service.getManifest(created.sessionId).recordsDir,
   ).at(-1)!;
-  assert.equal(abortedRun.status, "aborted");
+  assert.equal(abortedRun.status, "interrupted");
+  assert.equal(abortedRun.interruptionCause, "unknown");
   assert.ok(abortedRun.userEntryId);
   assert.equal(abortedRun.assistantEntryIds.length, 1);
   const failedLeaf = managed.session.sessionManager.getLeafId();
@@ -950,6 +956,156 @@ test("SessionService preserves imported history after an aborted first run", asy
     );
   } finally {
     await reopened.disposeAll();
+  }
+});
+
+test("SessionService records user Stop as interrupted with a user_abort cause", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const created = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const managed = (service as any).sessions.get(created.sessionId);
+  let rejectPrompt!: (error: Error) => void;
+  managed.session.prompt = async (text: string) => {
+    managed.session.sessionManager.appendMessage({
+      role: "user",
+      content: [{ type: "text", text }],
+      timestamp: Date.now(),
+    });
+    await new Promise<void>((_resolve, reject) => {
+      rejectPrompt = reject;
+    });
+  };
+  managed.session.abort = async () => rejectPrompt(new Error("Operation aborted"));
+
+  try {
+    const run = service.runPrompt(created.sessionId, "stop me");
+    await service.abort(created.sessionId, "user_stop", "user_abort");
+    await assert.rejects(run.completion, /aborted/);
+    const stopped = latestRunSnapshots(
+      service.getManifest(created.sessionId).recordsDir,
+    ).at(-1)!;
+    assert.equal(stopped.status, "interrupted");
+    assert.equal(stopped.interruptionCause, "user_abort");
+    assert.equal(
+      service.getSnapshot(created.sessionId).recovery?.canContinue,
+      true,
+    );
+  } finally {
+    await service.disposeAll();
+  }
+});
+
+test("SessionService reconciles a crash-interrupted accepted run and continues from its durable tail", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const created = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const managed = (service as any).sessions.get(created.sessionId);
+  managed.session.prompt = async (text: string) => {
+    managed.session.sessionManager.appendMessage({
+      role: "user",
+      content: [{ type: "text", text }],
+      timestamp: Date.now(),
+    });
+    managed.session.sessionManager.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: `answer:${text}` }],
+      timestamp: Date.now(),
+    });
+  };
+  await service.runPrompt(created.sessionId, "completed turn").completion;
+
+  const recordsDir = service.getManifest(created.sessionId).recordsDir;
+  const acceptedAt = new Date().toISOString();
+  appendRunRecord(recordsDir, {
+    sessionId: created.sessionId,
+    branchId: "main",
+    turnId: "turn-000002",
+    revisionId: "rev-000002",
+    runId: "run-000002",
+    status: "accepted",
+    piSessionFile: managed.session.sessionFile ?? null,
+    userEntryId: null,
+    assistantEntryIds: [],
+    supersedesRunId: null,
+    acceptedAt,
+    completedAt: null,
+  });
+  const interruptedUserId = managed.session.sessionManager.appendMessage({
+    role: "user",
+    content: [{ type: "text", text: "long interrupted task" }],
+    timestamp: Date.now(),
+  });
+  const interruptedAssistantId = managed.session.sessionManager.appendMessage({
+    role: "assistant",
+    content: [{ type: "text", text: "durable partial work" }],
+    timestamp: Date.now(),
+  });
+  await service.disposeAll();
+
+  const reopenedService = createTestService(fixture);
+  try {
+    await reopenedService.openSession(created.sessionId, {
+      rolePresetSlug: "role-conceptual-theory-companion",
+      kbDomain: "ep-core",
+      soulSlug: "soul-latest",
+    });
+    const interrupted = latestRunSnapshots(recordsDir).at(-1)!;
+    assert.equal(interrupted.status, "interrupted");
+    assert.equal(interrupted.interruptionCause, "process_exit");
+    assert.equal(interrupted.userEntryId, interruptedUserId);
+    assert.deepEqual(interrupted.assistantEntryIds, [interruptedAssistantId]);
+    assert.deepEqual(reopenedService.getSnapshot(created.sessionId).recovery, {
+      outcome: "interrupted",
+      interruptionCause: "process_exit",
+      userEntryId: interruptedUserId,
+      canContinue: true,
+      canRetryFromStart: true,
+    });
+
+    const reopenedManaged = (reopenedService as any).sessions.get(
+      created.sessionId,
+    );
+    assert.equal(
+      reopenedManaged.session.sessionManager.getLeafId(),
+      interruptedAssistantId,
+    );
+    assert.match(
+      reopenedService
+        .getTranscript(created.sessionId)
+        .map((message) => message.text)
+        .join("\n"),
+      /durable partial work/,
+    );
+
+    let contextBeforeContinue = "";
+    reopenedManaged.session.prompt = async (text: string) => {
+      contextBeforeContinue = JSON.stringify(
+        reopenedManaged.session.sessionManager.buildSessionContext().messages,
+      );
+      reopenedManaged.session.sessionManager.appendMessage({
+        role: "user",
+        content: [{ type: "text", text }],
+        timestamp: Date.now(),
+      });
+      reopenedManaged.session.sessionManager.appendMessage({
+        role: "assistant",
+        content: [{ type: "text", text: "continued answer" }],
+        timestamp: Date.now(),
+      });
+    };
+    await reopenedService.runPrompt(created.sessionId, "continue").completion;
+    assert.match(contextBeforeContinue, /long interrupted task/);
+    assert.match(contextBeforeContinue, /durable partial work/);
+  } finally {
+    await reopenedService.disposeAll();
   }
 });
 
@@ -2083,6 +2239,66 @@ test("SessionService returns to idle when compaction fails", async () => {
   }
 });
 
+test("live transcript projection hides internal skill commands", () => {
+  assert.equal(
+    displayUserTextFromPrompt("/skill:conversation-summary Focus on decisions"),
+    "Focus on decisions",
+  );
+  assert.equal(
+    displayUserTextFromPrompt("/skill:conversation-summary"),
+    null,
+  );
+  assert.equal(
+    displayUserTextFromPrompt(
+      '<skill name="conversation-summary">expanded body</skill> Focus on decisions',
+    ),
+    "Focus on decisions",
+  );
+  assert.equal(displayUserTextFromPrompt("ordinary question"), "ordinary question");
+});
+
+test("SessionService publishes the compaction boundary from the live branch immediately", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const snapshot = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const managed = (service as any).sessions.get(snapshot.sessionId);
+  const userEntryId = managed.session.sessionManager.appendMessage({
+    role: "user",
+    content: [{ type: "text", text: "earlier context" }],
+    timestamp: Date.now(),
+  });
+  managed.session.compact = async () => {
+    managed.session.sessionManager.appendCompaction(
+      "fresh compact summary",
+      userEntryId,
+      1200,
+    );
+  };
+  const events: SessionServiceEvent[] = [];
+  service.attach(snapshot.sessionId, (event) => events.push(event));
+
+  try {
+    await service.compact(snapshot.sessionId);
+    const transcriptEvent = events.find(
+      (event) => event.type === "session_transcript",
+    );
+    assert.ok(transcriptEvent?.type === "session_transcript");
+    assert.ok(
+      transcriptEvent.payload.messages.some(
+        (message) =>
+          message.marker === "compaction" &&
+          message.text === "fresh compact summary",
+      ),
+    );
+  } finally {
+    await service.disposeAll();
+  }
+});
+
 test("SessionService detach removes listeners without disposing the managed session", async () => {
   const fixture = setupFixture();
   const service = createTestService(fixture);
@@ -3069,7 +3285,7 @@ test("security extension escalates risky commands through the approval bridge", 
   }
 });
 
-test("SessionService retries a failed latest turn without losing earlier turns", async () => {
+test("SessionService continues a failed latest turn without losing earlier turns", async () => {
   const fixture = setupFixture();
   const service = createTestService(fixture);
   const created = await service.createSession({
@@ -3126,7 +3342,7 @@ test("SessionService retries a failed latest turn without losing earlier turns",
     assert.equal(failed.assistantEntryIds.length, 1);
 
     shouldFail = false;
-    const retried = service.retryFailed(created.sessionId);
+    const retried = service.continueLatestFromBreakpoint(created.sessionId);
     assert.deepEqual(
       retryTranscripts
         .at(-1)
@@ -3186,9 +3402,21 @@ test("SessionService retries the latest message from the start in the same sessi
   });
   const managed = (service as any).sessions.get(created.sessionId);
   let attempt = 0;
+  let releaseRetry!: () => void;
+  let markRetryStarted!: () => void;
+  const retryGate = new Promise<void>((resolve) => {
+    releaseRetry = resolve;
+  });
+  const retryStarted = new Promise<void>((resolve) => {
+    markRetryStarted = resolve;
+  });
   managed.session.prompt = async (text: string) => {
     attempt += 1;
     managed.session.state.errorMessage = null;
+    if (attempt === 2) {
+      markRetryStarted();
+      await retryGate;
+    }
     managed.session.sessionManager.appendMessage({
       role: "user",
       content: [{ type: "text", text }],
@@ -3200,10 +3428,31 @@ test("SessionService retries the latest message from the start in the same sessi
       timestamp: Date.now(),
     });
   };
+  const retryTranscripts: any[] = [];
+  const detach = service.attach(created.sessionId, (event) => {
+    if (event.type === "session_transcript") {
+      retryTranscripts.push(event.payload.messages);
+    }
+  });
 
   try {
     await service.runPrompt(created.sessionId, "same question").completion;
-    await service.retryLatestFromStart(created.sessionId).completion;
+    const retried = service.retryLatestFromStart(created.sessionId);
+    await retryStarted;
+    const visibleUsers = retryTranscripts
+      .at(-1)
+      ?.filter((message: any) => message.role === "user")
+      .map((message: any) => message.text);
+    assert.deepEqual(visibleUsers, ["same question"]);
+    assert.deepEqual(
+      service
+        .getTranscript(created.sessionId)
+        .filter((message) => message.role === "user")
+        .map((message) => message.text),
+      ["same question"],
+    );
+    releaseRetry();
+    await retried.completion;
     const detail = readSessionDetail(fixture.dataDir, created.sessionId);
     assert.deepEqual(
       detail?.transcript
@@ -3215,6 +3464,8 @@ test("SessionService retries the latest message from the start in the same sessi
       ],
     );
   } finally {
+    releaseRetry();
+    detach();
     await service.disposeAll();
   }
 });
@@ -3282,11 +3533,18 @@ test("SessionService reviseAt rewrites from an earlier turn and supersedes later
     const projected = transcriptEvents.at(-1);
     assert.equal(projected?.type, "session_transcript");
     if (projected?.type === "session_transcript") {
-      const projectedText = projected.payload.messages
-        .map((message) => message.text)
-        .join("\n");
-      assert.match(projectedText, /first/);
-      assert.doesNotMatch(projectedText, /second|third/);
+      assert.deepEqual(
+        projected.payload.messages
+          .filter((message) => message.role === "user")
+          .map((message) => message.text),
+        ["first", "revised-second"],
+      );
+      assert.deepEqual(
+        projected.payload.messages
+          .filter((message) => message.role === "assistant")
+          .map((message) => message.text),
+        ["answer:first"],
+      );
     }
     await revised.completion;
     detach();
@@ -3569,6 +3827,68 @@ test("SessionService reviseAt edits a turn inherited from the fork parent", asyn
       "ui-alias.json",
     );
     assert.equal(existsSync(aliasPath), false);
+  } finally {
+    await service.disposeAll();
+  }
+});
+
+test("fresh fork family satisfies the frontend promote-button preconditions while live", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const created = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const parent = (service as any).sessions.get(created.sessionId);
+  parent.session.sessionManager.appendMessage({
+    role: "user",
+    content: [{ type: "text", text: "q" }],
+    timestamp: Date.now(),
+  });
+  parent.session.sessionManager.appendMessage({
+    role: "assistant",
+    content: [{ type: "text", text: "a" }],
+    timestamp: Date.now(),
+  });
+
+  try {
+    const branch = await service.forkSession(created.sessionId, "fork");
+    const nested = await service.forkSession(branch.sessionId, "fork");
+
+    // The exact data the frontend's canTakeMainline (lib/sessionList.ts)
+    // needs, read the same way /api/sessions reads it — with every session
+    // still LIVE (a brand-new family is exactly this state).
+    const summaries = listSessionSummaries(fixture.dataDir).sessions;
+    const byId = new Map(summaries.map((s) => [s.sessionId, s]));
+    const root = byId.get(created.sessionId);
+    assert.ok(root, "root summary missing from /api/sessions data");
+    assert.equal(root.forkedFrom, null);
+    assert.equal(root.deletedAt, null);
+    assert.notEqual(root.delisted, true);
+    for (const child of [branch, nested]) {
+      const summary = byId.get(child.sessionId);
+      assert.ok(summary, `fork summary missing: ${child.sessionId}`);
+      assert.equal(summary.forkedFrom?.purpose, "fork");
+      assert.ok(
+        byId.has(summary.forkedFrom!.sessionId),
+        "fork parent id must resolve within the same list payload",
+      );
+    }
+    // Walk exactly like canTakeMainline: from each branch up to a visible,
+    // delistable root.
+    for (const child of [branch, nested]) {
+      let cur = byId.get(byId.get(child.sessionId)!.forkedFrom!.sessionId);
+      let promotable = false;
+      while (cur) {
+        if (!cur.deletedAt && !cur.forkedFrom && cur.delisted !== true) {
+          promotable = true;
+          break;
+        }
+        cur = cur.forkedFrom ? byId.get(cur.forkedFrom.sessionId) : undefined;
+      }
+      assert.equal(promotable, true, `no promote path for ${child.sessionId}`);
+    }
   } finally {
     await service.disposeAll();
   }

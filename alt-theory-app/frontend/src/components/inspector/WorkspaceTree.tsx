@@ -1,54 +1,31 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { WorkingFileEntry, WorkingFolderDescriptor, WorkspaceFileEntry } from "@/api/types";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  expandAllFeature,
+  hotkeysCoreFeature,
+  syncDataLoaderFeature,
+} from "@headless-tree/core";
+import { useTree } from "@headless-tree/react";
+import type { WorkingFolderDescriptor, WorkingTreeEntry, WorkspaceFileEntry } from "@/api/types";
 import {
   getSessionFileContent,
+  listWorkingDirectory,
+  listWorkingFolders,
   listWorkspaceFiles,
-  listWorkingFiles,
   uploadWorkspaceFile,
 } from "@/api/session-files";
 import { t } from "@/i18n";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
 import { hasNativeBridge, revealPath } from "@/lib/native";
-import { stagePathAfterUpload } from "@/lib/workspace";
+import { stagePathAfterUpload, WORKSPACE_PATH_MIME } from "@/lib/workspace";
 import { MarkdownBody } from "@/components/conversation/MarkdownBody";
-
-interface TreeNode<T> {
-  name: string;
-  path: string;
-  children: Map<string, TreeNode<T>>;
-  entry?: T;
-}
-
-function buildTree<T extends { path: string }>(entries: T[]): TreeNode<T> {
-  const root: TreeNode<T> = { name: "", path: "", children: new Map() };
-  for (const entry of entries) {
-    const parts = entry.path.split("/").filter(Boolean);
-    let node = root;
-    parts.forEach((part, i) => {
-      let child = node.children.get(part);
-      if (!child) {
-        child = {
-          name: part,
-          path: parts.slice(0, i + 1).join("/"),
-          children: new Map(),
-        };
-        node.children.set(part, child);
-      }
-      if (i === parts.length - 1) child.entry = entry;
-      node = child;
-    });
-  }
-  return root;
-}
+import { buildFileTreeModel, type FileTreeNode } from "@/lib/fileTree";
 
 export function WorkspaceTree() {
   const app = useApp();
   const shell = useShell();
   const [entries, setEntries] = useState<WorkspaceFileEntry[] | null>(null);
   const [workingFolders, setWorkingFolders] = useState<WorkingFolderDescriptor[]>([]);
-  const [workingFiles, setWorkingFiles] = useState<WorkingFileEntry[]>([]);
-  const [workingTruncated, setWorkingTruncated] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<{
     path: string;
@@ -59,7 +36,8 @@ export function WorkspaceTree() {
   const [previewView, setPreviewView] = useState<"rendered" | "source">(
     "rendered",
   );
-  const [previewExpanded, setPreviewExpanded] = useState(false);
+  const [expandSignal, setExpandSignal] = useState(0);
+  const [collapseSignal, setCollapseSignal] = useState(0);
   const uploadInput = useRef<HTMLInputElement>(null);
 
   const sessionId = app.sessionId;
@@ -84,11 +62,9 @@ export function WorkspaceTree() {
         setWorkingFolders(res.workingFolders ?? []);
         setError(null);
         if (app.appMode === "local") {
-          void listWorkingFiles(sessionId).then((working) => {
+          void listWorkingFolders(sessionId).then((working) => {
             if (cancelled) return;
             setWorkingFolders(working.folders);
-            setWorkingFiles(working.files);
-            setWorkingTruncated(working.truncated);
           }).catch(() => undefined);
         }
       })
@@ -134,18 +110,13 @@ export function WorkspaceTree() {
     () => (entries ?? []).filter((entry) => !/^(uploads|extracted)\//.test(entry.path)),
     [entries]
   );
-  const referenceTree = useMemo(() => buildTree(referenceEntries), [referenceEntries]);
-  const conversationFolderTree = useMemo(
-    () => buildTree(conversationFolderEntries),
-    [conversationFolderEntries]
-  );
+  const managedFolderPath = workingFolders.find((folder) => folder.managed)?.path ?? "";
 
   const openFile = async (entry: WorkspaceFileEntry) => {
     if (!sessionId || entry.kind === "binary-original") return;
     try {
       const res = await getSessionFileContent(sessionId, "workspace", entry.path);
       setPreviewView("rendered");
-      setPreviewExpanded(false);
       setPreview({ path: entry.path, content: res.content, source: "managed" });
       shell.openSub({ key: `ws:${entry.path}`, title: entry.path });
     } catch (e) {
@@ -158,13 +129,12 @@ export function WorkspaceTree() {
     }
   };
 
-  const openWorkingFile = async (entry: WorkingFileEntry) => {
+  const openWorkingFile = async (entry: WorkingTreeEntry) => {
     if (!sessionId || !entry.previewable) return;
     const path = `${entry.folderId}/${entry.path}`;
     try {
       const res = await getSessionFileContent(sessionId, "working", path);
       setPreviewView("rendered");
-      setPreviewExpanded(false);
       setPreview({ path, content: res.content, source: "working" });
       shell.openSub({ key: `working:${path}`, title: entry.path });
     } catch (e) {
@@ -221,21 +191,13 @@ export function WorkspaceTree() {
             </button>
           </div>
         ) : null}
-        <div className={`pv-card change-preview-body${previewExpanded ? " expanded" : ""}`}>
+        <div className="pv-card change-preview-body expanded">
           {renderedAvailable && previewView === "rendered" ? (
             <MarkdownBody text={preview.content} />
           ) : (
             <pre>{preview.content}</pre>
           )}
         </div>
-        {preview.content.split("\n").length > 10 || preview.content.length > 1200 ? (
-          <button
-            className="flat change-preview-more"
-            onClick={() => setPreviewExpanded((open) => !open)}
-          >
-            {previewExpanded ? t("Show less") : t("Show full file")}
-          </button>
-        ) : null}
         {preview.source === "managed" ? (
           <button
             className="wb-apply"
@@ -254,6 +216,18 @@ export function WorkspaceTree() {
 
   return (
     <>
+      {(workingFolders.some((folder) => folder.available && !folder.managed) || (entries?.length ?? 0) > 0) ? (
+        <div className="files-tree-toolbar">
+          <button className="flat" onClick={() => setExpandSignal((value) => value + 1)}>
+            <i className="ph ph-arrows-out-line-vertical" aria-hidden="true" />
+            {t("Expand all")}
+          </button>
+          <button className="flat" onClick={() => setCollapseSignal((value) => value + 1)}>
+            <i className="ph ph-arrows-in-line-vertical" aria-hidden="true" />
+            {t("Collapse all")}
+          </button>
+        </div>
+      ) : null}
       {workingFolders.length > 0 ? (
         <div className="working-folders">
           <div className="files-section-title">{t("Working folders")}</div>
@@ -283,15 +257,18 @@ export function WorkspaceTree() {
               </div>
               {folder.available && !folder.managed ? (
                 <WorkingTree
-                  entries={workingFiles.filter((entry) => entry.folderId === folder.id)}
+                  key={`${sessionId}:${folder.id}`}
+                  sessionId={sessionId!}
+                  folderId={folder.id}
                   onOpenFile={openWorkingFile}
+                  basePath={folder.path}
+                  refreshSignal={runCount}
+                  expandSignal={expandSignal}
+                  collapseSignal={collapseSignal}
                 />
               ) : null}
             </div>
           ))}
-          {workingTruncated ? (
-            <div className="wb-note">{t("Showing the first 1,000 files; large dependency and hidden folders are omitted.")}</div>
-          ) : null}
           <div className="wb-note">
             {t("Understand/Work changes what Alt may do, not where these files are stored.")}
           </div>
@@ -331,7 +308,15 @@ export function WorkspaceTree() {
             <>
               <div className="files-section-title">{t("References")}</div>
               <div className="tree">
-                <TreeLevel node={referenceTree} depth={0} onOpenFile={openFile} />
+                <FileTree
+                  entries={referenceEntries}
+                  onOpenFile={openFile}
+                  basePath={managedFolderPath}
+                  dragPath={(path) => path}
+                  expandSignal={expandSignal}
+                  collapseSignal={collapseSignal}
+                  label={t("References")}
+                />
               </div>
             </>
           ) : null}
@@ -339,7 +324,15 @@ export function WorkspaceTree() {
             <>
               <div className="files-section-title">{t("Conversation folder")}</div>
               <div className="tree">
-                <TreeLevel node={conversationFolderTree} depth={0} onOpenFile={openFile} />
+                <FileTree
+                  entries={conversationFolderEntries}
+                  onOpenFile={openFile}
+                  basePath={managedFolderPath}
+                  dragPath={(path) => path}
+                  expandSignal={expandSignal}
+                  collapseSignal={collapseSignal}
+                  label={t("Conversation folder")}
+                />
               </div>
             </>
           ) : null}
@@ -350,102 +343,298 @@ export function WorkspaceTree() {
 }
 
 function WorkingTree({
-  entries,
+  sessionId,
+  folderId,
   onOpenFile,
+  basePath,
+  refreshSignal,
+  expandSignal,
+  collapseSignal,
 }: {
-  entries: WorkingFileEntry[];
-  onOpenFile: (entry: WorkingFileEntry) => void;
+  sessionId: string;
+  folderId: string;
+  onOpenFile: (entry: WorkingTreeEntry) => void;
+  basePath: string;
+  refreshSignal: number;
+  expandSignal: number;
+  collapseSignal: number;
 }) {
+  const [childrenByPath, setChildrenByPath] = useState(
+    () => new Map<string, WorkingTreeEntry[]>(),
+  );
+  const [resolvedExpandSignal, setResolvedExpandSignal] = useState(0);
+  const childrenRef = useRef(childrenByPath);
+  const loadingPaths = useRef(new Set<string>());
+  const previousRefreshSignal = useRef(refreshSignal);
+  const previousExpandSignal = useRef(expandSignal);
+  childrenRef.current = childrenByPath;
+
+  const loadDirectory = useCallback(async (path: string, force = false) => {
+    const existing = childrenRef.current.get(path);
+    if (!force && existing) return existing;
+    if (loadingPaths.current.has(path)) return existing ?? [];
+    loadingPaths.current.add(path);
+    try {
+      const response = await listWorkingDirectory(sessionId, folderId, path);
+      setChildrenByPath((current) => {
+        const next = new Map(current);
+        const survivingDirectories = new Set(
+          response.entries
+            .filter((entry) => entry.isDirectory)
+            .map((entry) => entry.path),
+        );
+        for (const oldEntry of current.get(path) ?? []) {
+          if (!oldEntry.isDirectory || survivingDirectories.has(oldEntry.path)) continue;
+          for (const cachedPath of next.keys()) {
+            if (
+              cachedPath === oldEntry.path ||
+              cachedPath.startsWith(`${oldEntry.path}/`)
+            ) {
+              next.delete(cachedPath);
+            }
+          }
+        }
+        next.set(path, response.entries);
+        return next;
+      });
+      return response.entries;
+    } finally {
+      loadingPaths.current.delete(path);
+    }
+  }, [folderId, sessionId]);
+
+  useEffect(() => {
+    setChildrenByPath(new Map());
+    loadingPaths.current.clear();
+    void loadDirectory("", true);
+  }, [loadDirectory]);
+
+  useEffect(() => {
+    if (refreshSignal === previousRefreshSignal.current) return;
+    previousRefreshSignal.current = refreshSignal;
+    const loadedPaths = [...childrenRef.current.keys()];
+    void Promise.all(
+      (loadedPaths.length ? loadedPaths : [""]).map((path) =>
+        loadDirectory(path, true),
+      ),
+    );
+  }, [loadDirectory, refreshSignal]);
+
+  useEffect(() => {
+    if (expandSignal === previousExpandSignal.current) return;
+    previousExpandSignal.current = expandSignal;
+    let cancelled = false;
+    const loadAll = async (path: string): Promise<void> => {
+      const children = await loadDirectory(path);
+      for (const child of children) {
+        if (cancelled) return;
+        if (child.isDirectory) await loadAll(child.path);
+      }
+    };
+    void loadAll("").then(() => {
+      if (!cancelled) setResolvedExpandSignal((value) => value + 1);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [expandSignal, loadDirectory]);
+
+  const entries = useMemo(
+    () => [...childrenByPath.values()].flat(),
+    [childrenByPath],
+  );
   if (entries.length === 0) return null;
-  const tree = buildTree(entries);
   return (
     <div className="working-tree">
-      <TreeLevel
-        node={tree}
-        depth={0}
+      <FileTree
+        entries={entries}
         onOpenFile={onOpenFile}
-        canOpen={(entry) => entry.previewable}
+        canOpen={(entry) => !entry.isDirectory && entry.previewable}
+        onExpandFolder={(entry) => void loadDirectory(entry.path)}
+        initiallyExpanded={false}
+        expandNewFolders={false}
+        basePath={basePath}
+        dragPath={(path) => `${basePath.replace(/[\\/]+$/, "")}/${path}`}
+        expandSignal={resolvedExpandSignal}
+        collapseSignal={collapseSignal}
+        label={basePath}
       />
     </div>
   );
 }
 
-function TreeLevel<T extends { path: string }>({
-  node,
-  depth,
+function FileTree<T extends { path: string; isDirectory?: boolean }>({
+  entries,
   onOpenFile,
+  basePath,
   canOpen = () => true,
+  onExpandFolder,
+  initiallyExpanded = true,
+  expandNewFolders = true,
+  dragPath,
+  expandSignal,
+  collapseSignal,
+  label,
 }: {
-  node: TreeNode<T>;
-  depth: number;
+  entries: T[];
   onOpenFile: (entry: T) => void;
+  basePath: string;
   canOpen?: (entry: T) => boolean;
+  onExpandFolder?: (entry: T) => void;
+  initiallyExpanded?: boolean;
+  expandNewFolders?: boolean;
+  dragPath?: (treePath: string) => string;
+  expandSignal: number;
+  collapseSignal: number;
+  label: string;
 }) {
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const children = [...node.children.values()].sort((a, b) => {
-    const aDir = a.children.size > 0 ? 0 : 1;
-    const bDir = b.children.size > 0 ? 0 : 1;
-    if (aDir !== bDir) return aDir - bDir;
-    return a.name.localeCompare(b.name);
+  const model = useMemo(() => buildFileTreeModel(entries, basePath), [basePath, entries]);
+  const [expandedItems, setExpandedItems] = useState(
+    initiallyExpanded ? model.folderIds : [],
+  );
+  const [copiedPath, setCopiedPath] = useState<string | null>(null);
+  const seenFolderIds = useRef(new Set(model.folderIds));
+  const previousExpandSignal = useRef(expandSignal);
+  const previousCollapseSignal = useRef(collapseSignal);
+  const requestedFolderIds = useRef(new Set<string>());
+  const copyResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tree = useTree<FileTreeNode<T>>({
+    rootItemId: model.rootId,
+    state: { expandedItems },
+    setExpandedItems,
+    getItemName: (item) => item.getItemData().name,
+    isItemFolder: (item) => item.getItemData().isFolder,
+    dataLoader: {
+      getItem: (itemId) => model.nodes.get(itemId)!,
+      getChildren: (itemId) => model.nodes.get(itemId)?.children ?? [],
+    },
+    onPrimaryAction: (item) => {
+      const entry = item.getItemData().entry;
+      if (entry && canOpen(entry)) onOpenFile(entry);
+    },
+    features: [syncDataLoaderFeature, hotkeysCoreFeature, expandAllFeature],
   });
 
+  useEffect(() => {
+    const nextFolderIds = new Set(model.folderIds);
+    setExpandedItems((current) => [
+      ...current.filter((id) => nextFolderIds.has(id)),
+      ...(expandNewFolders
+        ? model.folderIds.filter((id) => !seenFolderIds.current.has(id))
+        : []),
+    ]);
+    seenFolderIds.current = nextFolderIds;
+    tree.rebuildTree();
+  }, [expandNewFolders, model, tree]);
+
+  useEffect(() => {
+    if (!onExpandFolder) return;
+    for (const id of expandedItems) {
+      if (requestedFolderIds.current.has(id)) continue;
+      const entry = model.nodes.get(id)?.entry;
+      if (entry?.isDirectory) {
+        requestedFolderIds.current.add(id);
+        onExpandFolder(entry);
+      }
+    }
+  }, [expandedItems, model, onExpandFolder]);
+
+  useEffect(() => {
+    if (expandSignal === previousExpandSignal.current) return;
+    previousExpandSignal.current = expandSignal;
+    void tree.expandAll();
+  }, [expandSignal, tree]);
+
+  useEffect(() => {
+    if (collapseSignal === previousCollapseSignal.current) return;
+    previousCollapseSignal.current = collapseSignal;
+    tree.collapseAll();
+  }, [collapseSignal, tree]);
+
+  useEffect(() => () => {
+    if (copyResetTimer.current) clearTimeout(copyResetTimer.current);
+  }, []);
+
   return (
-    <>
-      {children.map((child) => {
-        const isFolder = child.children.size > 0;
-        const isCollapsed = isFolder && collapsed.has(child.path);
+    <div {...tree.getContainerProps(label)}>
+      {tree.getItems().map((item) => {
+        const node = item.getItemData();
+        const isFolder = item.isFolder();
+        const canOpenItem = node.isFolder || !node.entry || canOpen(node.entry);
+        const pathWasCopied = copiedPath === node.fullPath;
+        const copyLabel = t(pathWasCopied ? "Path copied" : "Copy path");
         return (
-          <div key={child.path}>
+          <div
+            {...item.getProps()}
+            key={item.getKey()}
+            className="ti"
+            style={{ paddingLeft: 8 + item.getItemMeta().level * 20 }}
+            aria-disabled={!canOpenItem || undefined}
+            title={!canOpenItem ? "Too large to preview" : node.fullPath}
+            draggable={Boolean(dragPath)}
+            onDragStart={dragPath ? (event) => {
+              event.dataTransfer.setData(WORKSPACE_PATH_MIME, dragPath(node.path));
+              event.dataTransfer.effectAllowed = "copy";
+            } : undefined}
+          >
+            {isFolder ? (
+              <i className={`ph ph-caret-down tree-caret${item.isExpanded() ? "" : " closed"}`} />
+            ) : (
+              <i className="tree-caret-placeholder" />
+            )}
+            <i className={isFolder
+              ? `ph ${item.isExpanded() ? "ph-folder-open" : "ph-folder"}`
+              : "ph ph-file-text"}
+            />
+            <span>{node.name}</span>
             <button
-              className={`ti${depth ? " indent" : ""}`}
-              style={depth > 1 ? { paddingLeft: 8 + depth * 20 } : undefined}
-              disabled={!isFolder && !!child.entry && !canOpen(child.entry)}
-              title={
-                !isFolder && child.entry && !canOpen(child.entry)
-                  ? "Too large to preview"
-                  : child.path
-              }
-              aria-expanded={isFolder ? !isCollapsed : undefined}
-              onClick={() => {
-                if (isFolder) {
-                  setCollapsed((current) => {
-                    const next = new Set(current);
-                    if (next.has(child.path)) next.delete(child.path);
-                    else next.add(child.path);
-                    return next;
-                  });
-                } else if (child.entry) {
-                  onOpenFile(child.entry);
-                }
+              className={`tree-copy${pathWasCopied ? " copied" : ""}`}
+              title={copyLabel}
+              data-tooltip={copyLabel}
+              aria-label={`${copyLabel}: ${node.fullPath}`}
+              onClick={(event) => {
+                event.stopPropagation();
+                void copyPath(node.fullPath).then((copied) => {
+                  if (!copied) return;
+                  setCopiedPath(node.fullPath);
+                  if (copyResetTimer.current) clearTimeout(copyResetTimer.current);
+                  copyResetTimer.current = setTimeout(() => setCopiedPath(null), 1800);
+                });
               }}
             >
-              {isFolder ? (
-                <i
-                  className={`ph ph-caret-down tree-caret${isCollapsed ? " closed" : ""}`}
-                />
-              ) : (
-                <i className="tree-caret-placeholder" />
-              )}
-              <i
-                className={
-                  isFolder
-                    ? `ph ${isCollapsed ? "ph-folder" : "ph-folder-open"}`
-                    : "ph ph-file-text"
-                }
-              />
-              <span>{child.name}</span>
+              <i className="ph ph-copy" aria-hidden="true" />
             </button>
-            {isFolder && !isCollapsed ? (
-              <TreeLevel
-                node={child}
-                depth={depth + 1}
-                onOpenFile={onOpenFile}
-                canOpen={canOpen}
-              />
-            ) : null}
           </div>
         );
       })}
-    </>
+    </div>
   );
+}
+
+async function copyPath(path: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard) {
+      await navigator.clipboard.writeText(path);
+      return true;
+    }
+  } catch {
+    // Fall through to the selection-based copy used by older webviews.
+  }
+
+  const activeElement = document.activeElement instanceof HTMLElement
+    ? document.activeElement
+    : null;
+  const input = document.createElement("textarea");
+  input.value = path;
+  input.setAttribute("readonly", "");
+  input.style.position = "fixed";
+  input.style.opacity = "0";
+  document.body.appendChild(input);
+  input.select();
+  try {
+    return document.execCommand("copy");
+  } finally {
+    input.remove();
+    activeElement?.focus();
+  }
 }

@@ -3,7 +3,7 @@
 Status: historical v0.5 reference.
 
 The current Windows and macOS procedure is
-[`development/releases/desktop-friend-bundle.md`](../releases/desktop-friend-bundle.md).
+[`development/releases/release-standard.md`](../releases/release-standard.md).
 Follow that file for new artifacts, package contents, verification, and
 friend-facing filenames.
 
