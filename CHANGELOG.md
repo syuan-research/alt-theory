@@ -6,10 +6,10 @@ detail lives in commit history and `development/`.
 
 ---
 
-## Unreleased
+## v1.4.3-beta.1 — 2026-08-09
 
-The right-pane conversation now runs on the same engine as the center
-one — its blank-screen and scrolling bugs go away at the root.
+This release keeps active work visible and recoverable across panes, retries,
+restarts, and compaction. The Files pane now scales to large working folders.
 
 ### Related conversations (right pane)
 
@@ -32,6 +32,27 @@ one — its blank-screen and scrolling bugs go away at the root.
   the right pane injected immediately — two silently different behaviors.
 - A message that entered a running task appears in every open view of
   that conversation, including views opened later.
+
+### Conversation recovery
+
+- Retry now lives with the latest user message and keeps that message visible
+  while the replacement answer starts. It reruns the same prompt in the same
+  conversation without creating a comparison branch.
+- After Stop, Continue resumes completed work from the breakpoint; Retry starts
+  the prompt again; editing replaces the stopped attempt without branching.
+- If the app closes during a long task, reopening keeps durable partial work
+  visible and available to continue instead of rolling back to the prior turn.
+- A successful compaction boundary appears immediately, and its summary is
+  identified to the model as compacted earlier context.
+
+### Files
+
+- Working folders load on demand instead of silently stopping after 1,000
+  files, so large folders remain complete without an expensive full scan.
+- The tree now supports Expand all, Collapse all, keyboard navigation, and
+  accessible selection. File rows can copy the full path with quiet feedback.
+- Long text files open directly in the preview without a separate "Show full
+  file" gate.
 
 ### Subagents
 
