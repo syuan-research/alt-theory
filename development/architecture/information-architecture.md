@@ -85,8 +85,13 @@ surfaces remain designation-gated and absent for everyone else.
   - Skills do not receive permanent navigation entries merely because they are
     installed.
 - **Messages**
-  - The pencil means **Edit and compare**. Editing stays in the user bubble;
-    Send preserves the original and runs the edit in a sibling conversation.
+  - After a completed answer, the pencil means **Edit and compare**. Editing
+    stays in the user bubble; Send preserves the original and runs the edit in
+    a sibling conversation.
+  - After an interrupted turn, the composer quietly offers Continue and Retry.
+    Continue resumes from the breakpoint; Retry starts the same prompt again.
+    Editing replaces the interrupted attempt in the current conversation. None
+    of these recovery actions branches; `/branch` remains explicit.
   - The edit state also offers `Adjust model or role…`. It opens an idle Related
     branch, prefilled with the edit but forked before that user message, so the
     user may change configuration before Send. Hover/focus may reveal the same

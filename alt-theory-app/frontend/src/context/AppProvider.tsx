@@ -46,6 +46,7 @@ import type {
   StudyTag,
   TranscriptMessage,
   TranscriptView,
+  TurnRecovery,
   ViewMode,
   ParticipantInfo,
   ConfigStatus,
@@ -226,7 +227,7 @@ export interface AppContextValue {
   runPhaseLabel: string;
   composerNotice: ComposerNotice | null;
   runHint: string | null;
-  canRetryFailed: boolean;
+  recovery: TurnRecovery | null;
 
   stagedWorkspacePaths: string[];
   toggleWorkspaceStage: (path: string, staged: boolean) => void;
@@ -256,8 +257,10 @@ export interface AppContextValue {
   sendQueuedPromptNow: (id: string) => void;
   interruptAndSendQueuedPrompt: (id: string) => void;
   abortRun: () => void;
+  continueLatest: () => boolean;
   invokeSkill: (skillName: string, userText?: string) => boolean;
   branchRevision: (text: string, entryId?: string) => boolean;
+  reviseLatestInPlace: (text: string, entryId: string) => boolean;
   prepareBranchRevision: (text: string, entryId: string) => boolean;
   retryLatest: () => boolean;
   deleteLatest: () => void;
@@ -380,7 +383,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     null,
   );
   const [runHint, setRunHint] = useState<string | null>(null);
-  const [canRetryFailed, setCanRetryFailed] = useState(false);
+  const [recovery, setRecovery] = useState<TurnRecovery | null>(null);
   const [stagedWorkspacePaths, setStagedWorkspacePaths] = useState<string[]>([],);
   const [runCompletedCount, setRunCompletedCount] = useState(0);
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(
@@ -430,7 +433,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       });
     },
     onRunCompleted: (payload) => {
-      setCanRetryFailed(false);
+      setRecovery(null);
       setCurrentSessionModel(payload.currentModel ?? null);
       setConnStatus("idle");
       setConnLabel("Ready");
@@ -450,20 +453,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
     onRunFailed: (payload) => {
       // Same ordering as run_completed: the refresh must land before the
       // queued prompt's optimistic bubble is appended, or it disappears.
-      const interrupted = promptQueue.handleRunFailed(
+      const queueInterrupted = promptQueue.handleRunFailed(
         payload.error,
         sessionId ? refreshCurrentTranscript(sessionId) : Promise.resolve(),
       );
-      setCanRetryFailed(payload.canRetry !== false);
+      const interrupted =
+        payload.recovery?.outcome === "interrupted" || queueInterrupted;
+      setRecovery(payload.recovery ?? null);
       setToolStatus("");
       setConnStatus(interrupted ? "idle" : "error");
       setConnLabel(interrupted ? t("Ready") : t("Error"));
-      setComposerNoticeTimed({
-        prefix: interrupted ? undefined : "⚠",
-        text: `${interrupted ? t("Run interrupted: ") : t("Run failed: ")}${payload.error}`,
-        warn: !interrupted,
-      });
-      if (!interrupted) setRunHint("");
+      const userStopped = payload.recovery?.interruptionCause === "user_abort";
+      if (userStopped) {
+        setComposerNotice(null);
+        setRunHint(t("Stopped. Continue, retry, or edit without branching."));
+      } else {
+        setComposerNoticeTimed({
+          prefix: interrupted ? undefined : "⚠",
+          text: `${interrupted ? t("Run interrupted: ") : t("Run failed: ")}${payload.error}`,
+          warn: !interrupted,
+        });
+        if (!interrupted) setRunHint("");
+      }
     },
   });
   const {
@@ -729,7 +740,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (engine.handleMessage(message)) return;
       switch (message.type) {
         case "session_draft":
-          setCanRetryFailed(false);
+          setRecovery(null);
           if (reconnectSessionIdRef.current) {
             // Even when the draft message is ignored (reconnect race), a
             // pending asset switch was answered by THIS message — leaving its
@@ -783,7 +794,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           break;
 
         case "session_opened": {
-          setCanRetryFailed(false);
+          setRecovery(message.payload.recovery ?? null);
           // Decide "created here" before the pending refs are consumed below:
           // an explicit open, an asset-switch rebuild, or a reconnect to the
           // same id is NOT a new conversation (persisted Work mode must not
@@ -826,6 +837,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setToolStatus("");
           setRunPhaseLabel(
             message.payload.status === "running" ? "Processing…" : "",
+          );
+          setRunHint(
+            message.payload.recovery?.interruptionCause === "user_abort"
+              ? t("Stopped. Continue, retry, or edit without branching.")
+              : "",
           );
           clearStagedWorkspace();
           void refreshSessions();
@@ -1259,7 +1275,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setStreamParts([]);
       setWsError(null);
       setRunHint("");
-      setCanRetryFailed(false);
+      setRecovery(null);
       setToolStatus("");
       setRunPhaseLabel(t("Connecting…"));
       setIsRunning(true);
@@ -1395,7 +1411,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (sendMessage({ type: "abort" })) {
       setToolStatus("");
       setRunPhaseLabel(t("Stopping…"));
-      setRunHint(t("You can edit or delete your latest message."));
+      setRunHint("");
     }
   }, [promptQueue, sendMessage]);
 
@@ -1520,7 +1536,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return false;
       // This conversation keeps running its own life — the branch opens in
       // the right Related panel on `branch_created`.
-      setCanRetryFailed(false);
+      setRecovery(null);
       setComposerNoticeTimed({
         text: entryId
           ? t("Same question, fresh answer. What repeats is probably solid; what changes was a choice.")
@@ -1553,7 +1569,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (isRunning || !sessionId || !sendMessage({ type: "retry_latest" })) {
       return false;
     }
-    setCanRetryFailed(false);
+    setRecovery(null);
     setIsRunning(true);
     setConnStatus("running");
     setConnLabel(t("Retrying…"));
@@ -1561,6 +1577,46 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setRunPhaseLabel(t("Connecting…"));
     return true;
   }, [isRunning, sendMessage, sessionId]);
+
+  const continueLatest = useCallback(() => {
+    if (isRunning || !sessionId || !sendMessage({ type: "continue_latest" })) {
+      return false;
+    }
+    setRecovery(null);
+    setRunHint("");
+    setIsRunning(true);
+    setConnStatus("running");
+    setConnLabel(t("Continuing…"));
+    setToolStatus("");
+    setRunPhaseLabel(t("Connecting…"));
+    return true;
+  }, [isRunning, sendMessage, sessionId]);
+
+  const reviseLatestInPlace = useCallback(
+    (text: string, entryId: string) => {
+      const trimmed = text.trim();
+      if (
+        !trimmed ||
+        isRunning ||
+        !sessionId ||
+        !sendMessage({
+          type: "revise_latest",
+          payload: { text: trimmed, entryId },
+        })
+      ) {
+        return false;
+      }
+      setRecovery(null);
+      setRunHint("");
+      setIsRunning(true);
+      setConnStatus("running");
+      setConnLabel(t("Retrying…"));
+      setToolStatus("");
+      setRunPhaseLabel(t("Connecting…"));
+      return true;
+    },
+    [isRunning, sendMessage, sessionId],
+  );
 
   const deleteLatest = useCallback(() => {
     if (!sendMessage({ type: "delete_latest" })) return;
@@ -1818,7 +1874,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       runPhaseLabel,
       composerNotice,
       runHint,
-      canRetryFailed,
+      recovery,
       stagedWorkspacePaths,
       toggleWorkspaceStage,
       stageWorkspacePath,
@@ -1840,8 +1896,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       sendQueuedPromptNow: promptQueue.flush,
       interruptAndSendQueuedPrompt,
       abortRun,
+      continueLatest,
       invokeSkill,
       branchRevision,
+      reviseLatestInPlace,
       prepareBranchRevision,
       retryLatest,
       deleteLatest,
@@ -1924,7 +1982,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       runPhaseLabel,
       composerNotice,
       runHint,
-      canRetryFailed,
+      recovery,
       stagedWorkspacePaths,
       toggleWorkspaceStage,
       stageWorkspacePath,
@@ -1945,8 +2003,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       promptQueue,
       interruptAndSendQueuedPrompt,
       abortRun,
+      continueLatest,
       invokeSkill,
       branchRevision,
+      reviseLatestInPlace,
       prepareBranchRevision,
       retryLatest,
       deleteLatest,

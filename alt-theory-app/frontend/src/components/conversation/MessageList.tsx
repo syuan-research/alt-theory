@@ -70,12 +70,23 @@ export function MessageList() {
 
   const actions: TranscriptActions = useMemo(
     () => ({
-      onEdit: (text, entryId) => app.branchRevision(text, entryId ?? undefined),
+      onEdit: (text, entryId) =>
+        entryId && app.recovery?.userEntryId === entryId
+          ? app.reviseLatestInPlace(text, entryId)
+          : app.branchRevision(text, entryId ?? undefined),
       onPrepareCompare: (text, entryId) =>
         entryId ? app.prepareBranchRevision(text, entryId) : false,
       onRetry: app.retryLatest,
+      isReplacementEdit: (entryId) =>
+        Boolean(entryId && app.recovery?.userEntryId === entryId),
     }),
-    [app.branchRevision, app.prepareBranchRevision, app.retryLatest],
+    [
+      app.branchRevision,
+      app.prepareBranchRevision,
+      app.recovery,
+      app.retryLatest,
+      app.reviseLatestInPlace,
+    ],
   );
 
   return (
@@ -352,6 +363,7 @@ export interface TranscriptActions {
   onEdit: (text: string, entryId: string | null) => boolean;
   onPrepareCompare: (text: string, entryId: string | null) => boolean;
   onRetry: () => boolean;
+  isReplacementEdit: (entryId: string | null) => boolean;
 }
 
 export function TranscriptEntry({
@@ -378,6 +390,7 @@ export function TranscriptEntry({
   const { thinkingExpanded, showThinking } = shell;
 
   if (message.role === "user") {
+    const replacementEdit = actions?.isReplacementEdit(message.entryId ?? null) ?? false;
     return (
       <UserBubble
         text={message.text}
@@ -385,7 +398,8 @@ export function TranscriptEntry({
         isLatest={isLatestUser}
         isRunning={isRunning}
         onEdit={actions?.onEdit}
-        onPrepareCompare={actions?.onPrepareCompare}
+        onPrepareCompare={replacementEdit ? undefined : actions?.onPrepareCompare}
+        replacementEdit={replacementEdit}
         userIndex={userIndex}
       />
     );
@@ -476,6 +490,7 @@ function UserBubble({
   isRunning,
   onEdit,
   onPrepareCompare,
+  replacementEdit,
   userIndex,
 }: {
   text: string;
@@ -484,6 +499,7 @@ function UserBubble({
   isRunning: boolean;
   onEdit?: (text: string, entryId: string | null) => boolean;
   onPrepareCompare?: (text: string, entryId: string | null) => boolean;
+  replacementEdit: boolean;
   userIndex?: number;
 }) {
   const trimmed = (text || "").trim();
@@ -551,8 +567,12 @@ function UserBubble({
         {canEdit && onEdit ? (
           <span className="edit-action-cluster">
             <button
-              title={t("Edit and compare")}
-              aria-label={t("Edit and compare")}
+              title={
+                replacementEdit
+                  ? t("Edit and retry here. Use /branch to branch.")
+                  : t("Edit and compare")
+              }
+              aria-label={replacementEdit ? t("Edit and retry") : t("Edit and compare")}
               disabled={isRunning}
               onClick={() => {
                 setEditWidth(bubbleRef.current?.getBoundingClientRect().width ?? null);

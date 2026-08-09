@@ -241,7 +241,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
         app.isRunning ||
         app.composerNotice ||
         app.runHint ||
-        app.canRetryFailed ||
+        app.recovery ||
         cardHint ? (
           <div className="composer-notes">
             {/* One stable status row while a turn runs. Clearing the label on
@@ -273,7 +273,13 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               </span>
             ) : null}
             {app.runHint ? <span>{app.runHint}</span> : null}
-            {app.canRetryFailed ? (
+            {app.recovery?.canContinue ? (
+              <button className="flat retry-run" onClick={app.continueLatest}>
+                <i className="ph ph-play" aria-hidden="true" />
+                {t("Continue")}
+              </button>
+            ) : null}
+            {app.recovery?.canRetryFromStart ? (
               <button
                 className="flat retry-run"
                 onClick={app.retryLatest}

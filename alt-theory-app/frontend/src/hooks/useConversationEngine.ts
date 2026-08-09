@@ -6,13 +6,18 @@ import type {
   SessionSnapshot,
   StreamPart,
   TranscriptMessage,
+  TurnRecovery,
 } from "@/api/types";
 import { handleConversationStreamMessage } from "@/lib/conversationStream";
 
 export interface ConversationEngineOptions {
   /** Center/child extras after the shared core handling (queue flush, refreshes …). */
   onRunCompleted?: (payload: SessionSnapshot) => void;
-  onRunFailed?: (payload: { error: string; canRetry?: boolean }) => void;
+  onRunFailed?: (payload: {
+    error: string;
+    canRetry?: boolean;
+    recovery?: TurnRecovery | null;
+  }) => void;
   onTranscript?: (messages: TranscriptMessage[]) => void;
   /** A step of the running turn ended (tool finished) — the queue's moment
    *  to drain into the turn (owner 2026-08-07: queued = next api call). */
