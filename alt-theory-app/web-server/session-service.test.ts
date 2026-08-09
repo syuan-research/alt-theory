@@ -2083,6 +2083,48 @@ test("SessionService returns to idle when compaction fails", async () => {
   }
 });
 
+test("SessionService publishes the compaction boundary from the live branch immediately", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const snapshot = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const managed = (service as any).sessions.get(snapshot.sessionId);
+  const userEntryId = managed.session.sessionManager.appendMessage({
+    role: "user",
+    content: [{ type: "text", text: "earlier context" }],
+    timestamp: Date.now(),
+  });
+  managed.session.compact = async () => {
+    managed.session.sessionManager.appendCompaction(
+      "fresh compact summary",
+      userEntryId,
+      1200,
+    );
+  };
+  const events: SessionServiceEvent[] = [];
+  service.attach(snapshot.sessionId, (event) => events.push(event));
+
+  try {
+    await service.compact(snapshot.sessionId);
+    const transcriptEvent = events.find(
+      (event) => event.type === "session_transcript",
+    );
+    assert.ok(transcriptEvent?.type === "session_transcript");
+    assert.ok(
+      transcriptEvent.payload.messages.some(
+        (message) =>
+          message.marker === "compaction" &&
+          message.text === "fresh compact summary",
+      ),
+    );
+  } finally {
+    await service.disposeAll();
+  }
+});
+
 test("SessionService detach removes listeners without disposing the managed session", async () => {
   const fixture = setupFixture();
   const service = createTestService(fixture);

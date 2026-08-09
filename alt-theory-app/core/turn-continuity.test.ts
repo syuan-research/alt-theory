@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { sanitizeOrphanedToolCalls } from "./turn-continuity.js";
+import {
+  COMPACTION_AWARENESS_PREFIX,
+  labelCompactionSummaries,
+  sanitizeOrphanedToolCalls,
+} from "./turn-continuity.js";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 
 const asst = (content: any[], stopReason = "stop"): AgentMessage =>
@@ -31,6 +35,25 @@ test("keeps tool calls that have matching results", () => {
     toolResult("a"),
   ];
   assert.equal(sanitizeOrphanedToolCalls(messages), messages);
+});
+
+test("labels compacted context for model awareness without duplicating the label", () => {
+  const summary = {
+    role: "compactionSummary",
+    summary: "## Goal\nContinue the work.",
+    tokensBefore: 1200,
+    timestamp: 1,
+  } as AgentMessage;
+  const labelled = labelCompactionSummaries([summary]);
+  assert.equal(
+    (labelled[0] as any).summary,
+    `${COMPACTION_AWARENESS_PREFIX}\n\n## Goal\nContinue the work.`,
+  );
+  assert.equal(labelCompactionSummaries(labelled), labelled);
+  const ordinary = [
+    { role: "user", content: [{ type: "text", text: "normal turn" }], timestamp: 1 },
+  ] as AgentMessage[];
+  assert.equal(labelCompactionSummaries(ordinary), ordinary);
 });
 
 test("drops orphaned tool calls from an errored partial message", () => {

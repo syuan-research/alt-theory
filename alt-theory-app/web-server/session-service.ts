@@ -1882,9 +1882,12 @@ export class SessionService implements AgentTeamBridge {
     try {
       await managed.session.compact();
       managed.busy = false;
-      managed.transcript =
-        readSessionDetail(this.config.dataDir, sessionId)?.transcript ??
-        managed.transcript;
+      // Pi has already appended the compaction entry to this live branch. Use
+      // that authoritative in-memory state for the immediate UI refresh; a
+      // disk re-read can briefly lag behind and omit the new boundary.
+      managed.transcript = buildTranscriptFromEntries(
+        managed.session.sessionManager.getBranch(),
+      );
       const snapshot = this.snapshot(managed);
       this.emit(managed, {
         type: "session_transcript",
