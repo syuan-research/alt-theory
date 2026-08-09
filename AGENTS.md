@@ -100,5 +100,9 @@ agents mistake them for in-progress work.
 - `main` — active product line.
 - `docs/v1.4-english-update` — merged into main (v1.4 English docs + Chinese
   README download links).
+- `archive/bundle-mac` — archived 2026-08-09 after the v1.4.3-beta.1 mac build.
+  Formerly carried the mac electron config; main has carried it since
+  2026-08-04, so the branch had no unique content. mac bundles are now built
+  from a clean checkout of the release tag.
 - `archive/v1.2-adapter-importer` — merged into main; the Claude Code /
   adapter import work shipped in v1.3. Kept for history.
