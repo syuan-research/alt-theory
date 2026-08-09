@@ -19,6 +19,7 @@ import {
   APPROVAL_DENY,
 } from "../core/security-extension.js";
 import {
+  displayUserTextFromPrompt,
   imageAttachmentsFor,
   isUnknownModelError,
   retryPromptFromStoredUserContent,
@@ -2083,6 +2084,24 @@ test("SessionService returns to idle when compaction fails", async () => {
   }
 });
 
+test("live transcript projection hides internal skill commands", () => {
+  assert.equal(
+    displayUserTextFromPrompt("/skill:conversation-summary Focus on decisions"),
+    "Focus on decisions",
+  );
+  assert.equal(
+    displayUserTextFromPrompt("/skill:conversation-summary"),
+    null,
+  );
+  assert.equal(
+    displayUserTextFromPrompt(
+      '<skill name="conversation-summary">expanded body</skill> Focus on decisions',
+    ),
+    "Focus on decisions",
+  );
+  assert.equal(displayUserTextFromPrompt("ordinary question"), "ordinary question");
+});
+
 test("SessionService publishes the compaction boundary from the live branch immediately", async () => {
   const fixture = setupFixture();
   const service = createTestService(fixture);
@@ -3228,9 +3247,21 @@ test("SessionService retries the latest message from the start in the same sessi
   });
   const managed = (service as any).sessions.get(created.sessionId);
   let attempt = 0;
+  let releaseRetry!: () => void;
+  let markRetryStarted!: () => void;
+  const retryGate = new Promise<void>((resolve) => {
+    releaseRetry = resolve;
+  });
+  const retryStarted = new Promise<void>((resolve) => {
+    markRetryStarted = resolve;
+  });
   managed.session.prompt = async (text: string) => {
     attempt += 1;
     managed.session.state.errorMessage = null;
+    if (attempt === 2) {
+      markRetryStarted();
+      await retryGate;
+    }
     managed.session.sessionManager.appendMessage({
       role: "user",
       content: [{ type: "text", text }],
@@ -3242,10 +3273,31 @@ test("SessionService retries the latest message from the start in the same sessi
       timestamp: Date.now(),
     });
   };
+  const retryTranscripts: any[] = [];
+  const detach = service.attach(created.sessionId, (event) => {
+    if (event.type === "session_transcript") {
+      retryTranscripts.push(event.payload.messages);
+    }
+  });
 
   try {
     await service.runPrompt(created.sessionId, "same question").completion;
-    await service.retryLatestFromStart(created.sessionId).completion;
+    const retried = service.retryLatestFromStart(created.sessionId);
+    await retryStarted;
+    const visibleUsers = retryTranscripts
+      .at(-1)
+      ?.filter((message: any) => message.role === "user")
+      .map((message: any) => message.text);
+    assert.deepEqual(visibleUsers, ["same question"]);
+    assert.deepEqual(
+      service
+        .getTranscript(created.sessionId)
+        .filter((message) => message.role === "user")
+        .map((message) => message.text),
+      ["same question"],
+    );
+    releaseRetry();
+    await retried.completion;
     const detail = readSessionDetail(fixture.dataDir, created.sessionId);
     assert.deepEqual(
       detail?.transcript
@@ -3257,6 +3309,8 @@ test("SessionService retries the latest message from the start in the same sessi
       ],
     );
   } finally {
+    releaseRetry();
+    detach();
     await service.disposeAll();
   }
 });
@@ -3324,11 +3378,18 @@ test("SessionService reviseAt rewrites from an earlier turn and supersedes later
     const projected = transcriptEvents.at(-1);
     assert.equal(projected?.type, "session_transcript");
     if (projected?.type === "session_transcript") {
-      const projectedText = projected.payload.messages
-        .map((message) => message.text)
-        .join("\n");
-      assert.match(projectedText, /first/);
-      assert.doesNotMatch(projectedText, /second|third/);
+      assert.deepEqual(
+        projected.payload.messages
+          .filter((message) => message.role === "user")
+          .map((message) => message.text),
+        ["first", "revised-second"],
+      );
+      assert.deepEqual(
+        projected.payload.messages
+          .filter((message) => message.role === "assistant")
+          .map((message) => message.text),
+        ["answer:first"],
+      );
     }
     await revised.completion;
     detach();

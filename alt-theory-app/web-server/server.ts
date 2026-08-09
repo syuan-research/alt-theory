@@ -2253,19 +2253,11 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       send({ type: "session_metrics", payload: sessionService.getMetrics(sessionId), });
     };
 
-    // Transcript + in-flight turn (v1.4.3): records land at turn end, so a
-    // pane opened mid-run would otherwise be blank until the run finishes.
-    // Append the running prompt's bubble and replay the buffered stream.
+    // SessionService owns the one displayable transcript projection, including
+    // the in-flight user bubble. This layer only replays buffered stream events.
     const sendTranscriptWithLiveReplay = (sessionId: string) => {
       const messages = sessionService.getTranscript(sessionId);
       const live = sessionService.getLiveRun(sessionId);
-      const last = messages.at(-1);
-      if (
-        live?.userText &&
-        !(last?.role === "user" && last.text === live.userText)
-      ) {
-        messages.push({ role: "user", text: live.userText, timestamp: null });
-      }
       send({ type: "session_transcript", payload: { messages } });
       for (const event of live?.events ?? []) {
         forwardServiceEvent(send, event);

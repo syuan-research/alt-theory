@@ -1238,7 +1238,7 @@ export class SessionService implements AgentTeamBridge {
       managed.session.sessionManager.resetLeaf();
     }
     resyncAgentContext(managed.session);
-    this.publishCurrentBranchTranscript(managed);
+    this.publishCurrentBranchTranscript(managed, displayUserTextFromPrompt(text));
     return this.runPromptWithLineage(managed, text);
   }
 
@@ -1262,7 +1262,7 @@ export class SessionService implements AgentTeamBridge {
       status: "superseded",
       completedAt: new Date().toISOString(),
     });
-    this.publishCurrentBranchTranscript(managed);
+    this.publishCurrentBranchTranscript(managed, displayUserTextFromPrompt(text));
     return this.runPromptWithLineage(managed, text, {
       turnId: run.turnId,
       supersedesRunId: run.runId,
@@ -1674,7 +1674,7 @@ export class SessionService implements AgentTeamBridge {
 
     managed.busy = true;
     managed.fallbackAttempts = 0;
-    managed.liveRun = { userText: text, events: [] };
+    managed.liveRun = { userText: displayUserTextFromPrompt(text), events: [] };
     managed.counters.messageCount++;
     const turnId =
       options.turnId ?? formatCounter("turn", managed.nextTurnIndex++);
@@ -1976,7 +1976,7 @@ export class SessionService implements AgentTeamBridge {
         managed.transcript;
       managed.transcriptStamp = stamp;
     }
-    return [...managed.transcript];
+    return this.visibleTranscript(managed);
   }
 
   /**
@@ -1996,14 +1996,38 @@ export class SessionService implements AgentTeamBridge {
     }
   }
 
-  private publishCurrentBranchTranscript(managed: ManagedSession): void {
+  /**
+   * The transcript clients may display right now. Durable run projection can
+   * briefly omit a replacement prompt while its prior run is superseded and
+   * the new Pi user entry has not landed yet; the live/pending display text
+   * closes that window for every pane without changing durable history.
+   */
+  private visibleTranscript(
+    managed: ManagedSession,
+    pendingUserText: string | null = managed.liveRun?.userText ?? null,
+  ): TranscriptMessage[] {
+    const messages = [...managed.transcript];
+    const last = messages.at(-1);
+    if (
+      pendingUserText &&
+      !(last?.role === "user" && last.text === pendingUserText)
+    ) {
+      messages.push({ role: "user", text: pendingUserText, timestamp: null });
+    }
+    return messages;
+  }
+
+  private publishCurrentBranchTranscript(
+    managed: ManagedSession,
+    pendingUserText: string | null = null,
+  ): void {
     managed.transcript =
       readSessionDetail(this.config.dataDir, managed.manifest.sessionId)
         ?.transcript ??
       buildTranscriptFromEntries(managed.session.sessionManager.getBranch());
     this.emit(managed, {
       type: "session_transcript",
-      payload: { messages: [...managed.transcript] },
+      payload: { messages: this.visibleTranscript(managed, pendingUserText) },
     });
   }
 
@@ -3847,6 +3871,13 @@ export function retryPromptFromStoredUserContent(content: string): string {
   if (!skill) return trimmed;
   const args = skill[2].trim();
   return `/skill:${skill[1]}${args ? ` ${args}` : ""}`;
+}
+
+/** User-facing text for an in-flight prompt; internal skill commands stay hidden. */
+export function displayUserTextFromPrompt(prompt: string): string | null {
+  const skill = prompt.trim().match(/^\/skill:[^\s]+(?:\s+([\s\S]*))?$/);
+  const text = skill ? (skill[1] ?? "") : stripSkillWrapper(prompt);
+  return text.trim() || null;
 }
 
 function clip(text: string, maxChars: number): string {

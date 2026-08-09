@@ -6,7 +6,7 @@ import type { SessionServiceEvent } from "./session-service.js";
  * of a blank pane until the run lands on disk.
  */
 export interface LiveRun {
-  /** The prompt that started the run — replayed as the user's bubble. */
+  /** User-facing prompt text — internal skill wrappers/commands are omitted. */
   userText: string | null;
   events: SessionServiceEvent[];
 }
