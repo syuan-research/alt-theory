@@ -460,18 +460,23 @@ export interface WorkingFolderDescriptor {
   available: boolean;
 }
 
-export interface WorkingFileEntry {
+export interface WorkingTreeEntry {
   folderId: string;
   path: string;
-  size: number;
+  isDirectory: boolean;
+  size: number | null;
   updatedAt: string | null;
   previewable: boolean;
 }
 
-export interface WorkingFilesResponse {
+export interface WorkingFoldersResponse {
   folders: WorkingFolderDescriptor[];
-  files: WorkingFileEntry[];
-  truncated: boolean;
+}
+
+export interface WorkingDirectoryResponse {
+  folderId: string;
+  path: string;
+  entries: WorkingTreeEntry[];
 }
 
 export interface WriteSessionFileInput {

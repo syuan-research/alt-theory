@@ -4,6 +4,7 @@ export interface FileTreeNode<T> {
   path: string;
   fullPath: string;
   children: string[];
+  isFolder: boolean;
   entry?: T;
 }
 
@@ -20,13 +21,13 @@ function fullPath(basePath: string, relativePath: string): string {
   return `${base}${separator}${relativePath.replace(/[\\/]/g, separator)}`;
 }
 
-export function buildFileTreeModel<T extends { path: string }>(
+export function buildFileTreeModel<T extends { path: string; isDirectory?: boolean }>(
   entries: T[],
   basePath: string,
 ): FileTreeModel<T> {
   const rootId = "root";
   const nodes = new Map<string, FileTreeNode<T>>([
-    [rootId, { id: rootId, name: "", path: "", fullPath: basePath, children: [] }],
+    [rootId, { id: rootId, name: "", path: "", fullPath: basePath, children: [], isFolder: true }],
   ]);
 
   for (const entry of entries) {
@@ -43,11 +44,17 @@ export function buildFileTreeModel<T extends { path: string }>(
           path,
           fullPath: fullPath(basePath, path),
           children: [],
+          isFolder: index < parts.length - 1 || entry.isDirectory === true,
         };
         nodes.set(id, node);
         parent.children.push(id);
       }
-      if (index === parts.length - 1) node.entry = entry;
+      if (index === parts.length - 1) {
+        node.entry = entry;
+        node.isFolder = entry.isDirectory === true || node.children.length > 0;
+      } else {
+        node.isFolder = true;
+      }
       parent = node;
     });
   }
@@ -56,7 +63,7 @@ export function buildFileTreeModel<T extends { path: string }>(
     node.children.sort((leftId, rightId) => {
       const left = nodes.get(leftId)!;
       const right = nodes.get(rightId)!;
-      const folderOrder = Number(right.children.length > 0) - Number(left.children.length > 0);
+      const folderOrder = Number(right.isFolder) - Number(left.isFolder);
       return folderOrder || left.name.localeCompare(right.name);
     });
   }
@@ -65,7 +72,7 @@ export function buildFileTreeModel<T extends { path: string }>(
     rootId,
     nodes,
     folderIds: [...nodes.values()]
-      .filter((node) => node.id !== rootId && node.children.length > 0)
+      .filter((node) => node.id !== rootId && node.isFolder)
       .map((node) => node.id),
   };
 }

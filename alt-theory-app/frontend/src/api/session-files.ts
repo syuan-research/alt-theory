@@ -6,7 +6,8 @@ import type {
   SessionTextFileContent,
   UploadWorkspaceFileResult,
   WorkspaceFilesResponse,
-  WorkingFilesResponse,
+  WorkingDirectoryResponse,
+  WorkingFoldersResponse,
   WriteSessionFileInput,
 } from "./types";
 
@@ -121,10 +122,19 @@ export async function downloadWorkspaceFile(
   return res.blob();
 }
 
-export async function listWorkingFiles(
+export async function listWorkingFolders(
   sessionId: string
-): Promise<WorkingFilesResponse> {
-  return fetchJson<WorkingFilesResponse>(
+): Promise<WorkingFoldersResponse> {
+  return fetchJson<WorkingFoldersResponse>(
     `${sessionFilesBase(sessionId)}?root=working`
   );
+}
+
+export async function listWorkingDirectory(
+  sessionId: string,
+  folderId: string,
+  path: string,
+): Promise<WorkingDirectoryResponse> {
+  const qs = new URLSearchParams({ root: "working", folderId, path });
+  return fetchJson<WorkingDirectoryResponse>(`${sessionFilesBase(sessionId)}?${qs}`);
 }

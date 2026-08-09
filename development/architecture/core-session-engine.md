@@ -552,6 +552,13 @@ turn ID, and marks the prior run `superseded`; it does not create a logical
 branch or delete old Pi evidence. Latest-turn delete moves the Pi leaf to that
 user entry's parent, marks the run `deleted`, and does not remove disk evidence.
 
+On reopen, a latest run still at `accepted` is treated as a process-interrupted
+write boundary. If Pi JSONL already contains durable entries after the prior
+active leaf, the service appends an `interrupted` run snapshot claiming those
+user/assistant entries before normal leaf alignment. The partial work therefore
+stays visible and model-active for an ordinary follow-up such as `continue`;
+Pi JSONL is never rewritten.
+
 REST session detail and transcript preview are projected in `session-store.ts`
 from the active Pi leaf and run evidence, not from all Pi JSONL entries:
 
@@ -729,8 +736,8 @@ REST:
 - `GET /api/sessions`
 - `GET /api/sessions/{sessionId}`
 - `GET /api/sessions/{sessionId}/files`
-- `GET /api/sessions/{sessionId}/files?root=working` (local only; bounded
-  actual working-folder tree)
+- `GET /api/sessions/{sessionId}/files?root=working` (local only; working-folder
+  descriptors, or one directory's children with `folderId` + `path`)
 - `GET /api/sessions/{sessionId}/files/content`
 - `PUT /api/sessions/{sessionId}/files/content`
 - `GET /api/sessions/{sessionId}/files/download?root=workspace&path=...`
@@ -763,11 +770,13 @@ workspace-only.
 
 The local-only `root=working` view is separate from the managed session
 workspace. It resolves only the persisted primary/additional workspace roots,
-omits hidden and common dependency/cache trees, caps the listing at 1,000
-files, and rechecks containment before a bounded text preview. This lets Files
-show the directory the agent actually works in without mislabeling imported
-references as the entire workspace. Switching Understand/Work changes mediation
-capability, not these persisted folder identities.
+omits hidden and common dependency/cache trees, and lists one directory's
+immediate children at a time as the user expands the tree. There is no global
+file-count ceiling or depth-first traversal bias. Each directory request and
+bounded text preview rechecks containment. This lets Files show the directory
+the agent actually works in without mislabeling imported references as the
+entire workspace. Switching Understand/Work changes mediation capability, not
+these persisted folder identities.
 
 The daily Files UI labels persisted primary/additional locations as working
 folders. It does not repeat the managed primary tree there: managed `uploads/`

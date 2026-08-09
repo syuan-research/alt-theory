@@ -27,3 +27,12 @@ test("file tree keeps relative paths when no absolute base is available", () => 
     "uploads/reference.pdf",
   );
 });
+
+test("file tree keeps an unloaded directory expandable before it has children", () => {
+  const model = buildFileTreeModel(
+    [{ path: "large-folder", isDirectory: true }],
+    "D:\\research",
+  );
+  assert.equal(model.nodes.get("node:large-folder")?.isFolder, true);
+  assert.deepEqual(model.folderIds, ["node:large-folder"]);
+});

@@ -1,15 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   expandAllFeature,
   hotkeysCoreFeature,
   syncDataLoaderFeature,
 } from "@headless-tree/core";
 import { useTree } from "@headless-tree/react";
-import type { WorkingFileEntry, WorkingFolderDescriptor, WorkspaceFileEntry } from "@/api/types";
+import type { WorkingFolderDescriptor, WorkingTreeEntry, WorkspaceFileEntry } from "@/api/types";
 import {
   getSessionFileContent,
+  listWorkingDirectory,
+  listWorkingFolders,
   listWorkspaceFiles,
-  listWorkingFiles,
   uploadWorkspaceFile,
 } from "@/api/session-files";
 import { t } from "@/i18n";
@@ -25,8 +26,6 @@ export function WorkspaceTree() {
   const shell = useShell();
   const [entries, setEntries] = useState<WorkspaceFileEntry[] | null>(null);
   const [workingFolders, setWorkingFolders] = useState<WorkingFolderDescriptor[]>([]);
-  const [workingFiles, setWorkingFiles] = useState<WorkingFileEntry[]>([]);
-  const [workingTruncated, setWorkingTruncated] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<{
     path: string;
@@ -63,11 +62,9 @@ export function WorkspaceTree() {
         setWorkingFolders(res.workingFolders ?? []);
         setError(null);
         if (app.appMode === "local") {
-          void listWorkingFiles(sessionId).then((working) => {
+          void listWorkingFolders(sessionId).then((working) => {
             if (cancelled) return;
             setWorkingFolders(working.folders);
-            setWorkingFiles(working.files);
-            setWorkingTruncated(working.truncated);
           }).catch(() => undefined);
         }
       })
@@ -132,7 +129,7 @@ export function WorkspaceTree() {
     }
   };
 
-  const openWorkingFile = async (entry: WorkingFileEntry) => {
+  const openWorkingFile = async (entry: WorkingTreeEntry) => {
     if (!sessionId || !entry.previewable) return;
     const path = `${entry.folderId}/${entry.path}`;
     try {
@@ -219,7 +216,7 @@ export function WorkspaceTree() {
 
   return (
     <>
-      {(workingFiles.length > 0 || (entries?.length ?? 0) > 0) ? (
+      {(workingFolders.some((folder) => folder.available && !folder.managed) || (entries?.length ?? 0) > 0) ? (
         <div className="files-tree-toolbar">
           <button className="flat" onClick={() => setExpandSignal((value) => value + 1)}>
             <i className="ph ph-arrows-out-line-vertical" aria-hidden="true" />
@@ -260,18 +257,18 @@ export function WorkspaceTree() {
               </div>
               {folder.available && !folder.managed ? (
                 <WorkingTree
-                  entries={workingFiles.filter((entry) => entry.folderId === folder.id)}
+                  key={`${sessionId}:${folder.id}`}
+                  sessionId={sessionId!}
+                  folderId={folder.id}
                   onOpenFile={openWorkingFile}
                   basePath={folder.path}
+                  refreshSignal={runCount}
                   expandSignal={expandSignal}
                   collapseSignal={collapseSignal}
                 />
               ) : null}
             </div>
           ))}
-          {workingTruncated ? (
-            <div className="wb-note">{t("Showing the first 1,000 files; large dependency and hidden folders are omitted.")}</div>
-          ) : null}
           <div className="wb-note">
             {t("Understand/Work changes what Alt may do, not where these files are stored.")}
           </div>
@@ -346,28 +343,119 @@ export function WorkspaceTree() {
 }
 
 function WorkingTree({
-  entries,
+  sessionId,
+  folderId,
   onOpenFile,
   basePath,
+  refreshSignal,
   expandSignal,
   collapseSignal,
 }: {
-  entries: WorkingFileEntry[];
-  onOpenFile: (entry: WorkingFileEntry) => void;
+  sessionId: string;
+  folderId: string;
+  onOpenFile: (entry: WorkingTreeEntry) => void;
   basePath: string;
+  refreshSignal: number;
   expandSignal: number;
   collapseSignal: number;
 }) {
+  const [childrenByPath, setChildrenByPath] = useState(
+    () => new Map<string, WorkingTreeEntry[]>(),
+  );
+  const [resolvedExpandSignal, setResolvedExpandSignal] = useState(0);
+  const childrenRef = useRef(childrenByPath);
+  const loadingPaths = useRef(new Set<string>());
+  const previousRefreshSignal = useRef(refreshSignal);
+  const previousExpandSignal = useRef(expandSignal);
+  childrenRef.current = childrenByPath;
+
+  const loadDirectory = useCallback(async (path: string, force = false) => {
+    const existing = childrenRef.current.get(path);
+    if (!force && existing) return existing;
+    if (loadingPaths.current.has(path)) return existing ?? [];
+    loadingPaths.current.add(path);
+    try {
+      const response = await listWorkingDirectory(sessionId, folderId, path);
+      setChildrenByPath((current) => {
+        const next = new Map(current);
+        const survivingDirectories = new Set(
+          response.entries
+            .filter((entry) => entry.isDirectory)
+            .map((entry) => entry.path),
+        );
+        for (const oldEntry of current.get(path) ?? []) {
+          if (!oldEntry.isDirectory || survivingDirectories.has(oldEntry.path)) continue;
+          for (const cachedPath of next.keys()) {
+            if (
+              cachedPath === oldEntry.path ||
+              cachedPath.startsWith(`${oldEntry.path}/`)
+            ) {
+              next.delete(cachedPath);
+            }
+          }
+        }
+        next.set(path, response.entries);
+        return next;
+      });
+      return response.entries;
+    } finally {
+      loadingPaths.current.delete(path);
+    }
+  }, [folderId, sessionId]);
+
+  useEffect(() => {
+    setChildrenByPath(new Map());
+    loadingPaths.current.clear();
+    void loadDirectory("", true);
+  }, [loadDirectory]);
+
+  useEffect(() => {
+    if (refreshSignal === previousRefreshSignal.current) return;
+    previousRefreshSignal.current = refreshSignal;
+    const loadedPaths = [...childrenRef.current.keys()];
+    void Promise.all(
+      (loadedPaths.length ? loadedPaths : [""]).map((path) =>
+        loadDirectory(path, true),
+      ),
+    );
+  }, [loadDirectory, refreshSignal]);
+
+  useEffect(() => {
+    if (expandSignal === previousExpandSignal.current) return;
+    previousExpandSignal.current = expandSignal;
+    let cancelled = false;
+    const loadAll = async (path: string): Promise<void> => {
+      const children = await loadDirectory(path);
+      for (const child of children) {
+        if (cancelled) return;
+        if (child.isDirectory) await loadAll(child.path);
+      }
+    };
+    void loadAll("").then(() => {
+      if (!cancelled) setResolvedExpandSignal((value) => value + 1);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [expandSignal, loadDirectory]);
+
+  const entries = useMemo(
+    () => [...childrenByPath.values()].flat(),
+    [childrenByPath],
+  );
   if (entries.length === 0) return null;
   return (
     <div className="working-tree">
       <FileTree
         entries={entries}
         onOpenFile={onOpenFile}
-        canOpen={(entry) => entry.previewable}
+        canOpen={(entry) => !entry.isDirectory && entry.previewable}
+        onExpandFolder={(entry) => void loadDirectory(entry.path)}
+        initiallyExpanded={false}
+        expandNewFolders={false}
         basePath={basePath}
         dragPath={(path) => `${basePath.replace(/[\\/]+$/, "")}/${path}`}
-        expandSignal={expandSignal}
+        expandSignal={resolvedExpandSignal}
         collapseSignal={collapseSignal}
         label={basePath}
       />
@@ -375,11 +463,14 @@ function WorkingTree({
   );
 }
 
-function FileTree<T extends { path: string }>({
+function FileTree<T extends { path: string; isDirectory?: boolean }>({
   entries,
   onOpenFile,
   basePath,
   canOpen = () => true,
+  onExpandFolder,
+  initiallyExpanded = true,
+  expandNewFolders = true,
   dragPath,
   expandSignal,
   collapseSignal,
@@ -389,24 +480,30 @@ function FileTree<T extends { path: string }>({
   onOpenFile: (entry: T) => void;
   basePath: string;
   canOpen?: (entry: T) => boolean;
+  onExpandFolder?: (entry: T) => void;
+  initiallyExpanded?: boolean;
+  expandNewFolders?: boolean;
   dragPath?: (treePath: string) => string;
   expandSignal: number;
   collapseSignal: number;
   label: string;
 }) {
   const model = useMemo(() => buildFileTreeModel(entries, basePath), [basePath, entries]);
-  const [expandedItems, setExpandedItems] = useState(model.folderIds);
+  const [expandedItems, setExpandedItems] = useState(
+    initiallyExpanded ? model.folderIds : [],
+  );
   const [copiedPath, setCopiedPath] = useState<string | null>(null);
   const seenFolderIds = useRef(new Set(model.folderIds));
   const previousExpandSignal = useRef(expandSignal);
   const previousCollapseSignal = useRef(collapseSignal);
+  const requestedFolderIds = useRef(new Set<string>());
   const copyResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tree = useTree<FileTreeNode<T>>({
     rootItemId: model.rootId,
     state: { expandedItems },
     setExpandedItems,
     getItemName: (item) => item.getItemData().name,
-    isItemFolder: (item) => item.getItemData().children.length > 0,
+    isItemFolder: (item) => item.getItemData().isFolder,
     dataLoader: {
       getItem: (itemId) => model.nodes.get(itemId)!,
       getChildren: (itemId) => model.nodes.get(itemId)?.children ?? [],
@@ -422,11 +519,25 @@ function FileTree<T extends { path: string }>({
     const nextFolderIds = new Set(model.folderIds);
     setExpandedItems((current) => [
       ...current.filter((id) => nextFolderIds.has(id)),
-      ...model.folderIds.filter((id) => !seenFolderIds.current.has(id)),
+      ...(expandNewFolders
+        ? model.folderIds.filter((id) => !seenFolderIds.current.has(id))
+        : []),
     ]);
     seenFolderIds.current = nextFolderIds;
     tree.rebuildTree();
-  }, [model, tree]);
+  }, [expandNewFolders, model, tree]);
+
+  useEffect(() => {
+    if (!onExpandFolder) return;
+    for (const id of expandedItems) {
+      if (requestedFolderIds.current.has(id)) continue;
+      const entry = model.nodes.get(id)?.entry;
+      if (entry?.isDirectory) {
+        requestedFolderIds.current.add(id);
+        onExpandFolder(entry);
+      }
+    }
+  }, [expandedItems, model, onExpandFolder]);
 
   useEffect(() => {
     if (expandSignal === previousExpandSignal.current) return;
@@ -449,7 +560,7 @@ function FileTree<T extends { path: string }>({
       {tree.getItems().map((item) => {
         const node = item.getItemData();
         const isFolder = item.isFolder();
-        const canOpenItem = !node.entry || canOpen(node.entry);
+        const canOpenItem = node.isFolder || !node.entry || canOpen(node.entry);
         const pathWasCopied = copiedPath === node.fullPath;
         const copyLabel = t(pathWasCopied ? "Path copied" : "Copy path");
         return (

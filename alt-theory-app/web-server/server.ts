@@ -148,7 +148,8 @@ import {
 } from "./app-settings.js";
 import { discoverSkillResources } from "./resource-discovery.js";
 import {
-  listWorkingFolderFiles,
+  describeWorkingFolders,
+  listWorkingFolderChildren,
   readWorkingFolderTextFile,
 } from "./workspace-files.js";
 
@@ -1528,7 +1529,16 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           res.status(403).json({ error: "Working-folder browsing is local-only" });
           return;
         }
-        res.json(listWorkingFolderFiles(dataDir, sessionId));
+        const folderId =
+          typeof req.query.folderId === "string" ? req.query.folderId : null;
+        if (!folderId) {
+          res.json({ folders: describeWorkingFolders(dataDir, sessionId) });
+          return;
+        }
+        const path = typeof req.query.path === "string" ? req.query.path : "";
+        res.json(
+          listWorkingFolderChildren(dataDir, sessionId, folderId, path),
+        );
         return;
       }
       res.json(listSessionTextFiles(dataDir, sessionId, rootName));

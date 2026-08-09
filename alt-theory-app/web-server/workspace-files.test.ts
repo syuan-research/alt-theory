@@ -10,7 +10,8 @@ import {
   getAccountStorageUsage,
   getSessionWorkspaceUsage,
   listWorkspaceFiles,
-  listWorkingFolderFiles,
+  describeWorkingFolders,
+  listWorkingFolderChildren,
   readWorkingFolderTextFile,
   SESSION_WORKSPACE_QUOTA_BYTES,
   uploadWorkspaceFile,
@@ -146,6 +147,10 @@ test("working-folder browsing follows the persisted external workspace", () => {
   writeFileSync(join(external, "notes", "idea.md"), "# Actual work\n", "utf-8");
   mkdirSync(join(external, "node_modules", "ignored"), { recursive: true });
   writeFileSync(join(external, "node_modules", "ignored", "x.js"), "x", "utf-8");
+  mkdirSync(join(external, "flat"), { recursive: true });
+  for (let index = 0; index < 1005; index += 1) {
+    writeFileSync(join(external, "flat", `${index}.txt`), "x", "utf-8");
+  }
   const { sessionId } = createSessionDirs(dataDir);
   const recordsDir = join(dataDir, "sessions", sessionId, "records");
   writeFileSync(
@@ -160,9 +165,38 @@ test("working-folder browsing follows the persisted external workspace", () => {
     })
   );
 
-  const listed = listWorkingFolderFiles(dataDir, sessionId);
-  assert.equal(listed.folders[0]?.path, external);
-  assert.deepEqual(listed.files.map((entry) => entry.path), ["notes/idea.md"]);
+  const folders = describeWorkingFolders(dataDir, sessionId);
+  assert.equal(folders[0]?.path, external);
+  const rootEntries = listWorkingFolderChildren(
+    dataDir,
+    sessionId,
+    "primary",
+  ).entries;
+  assert.deepEqual(rootEntries.map((entry) => entry.path), ["flat", "notes"]);
+  assert.equal(rootEntries[0]?.isDirectory, true);
+  assert.equal(
+    listWorkingFolderChildren(dataDir, sessionId, "primary", "flat").entries
+      .length,
+    1005,
+  );
+  const noteEntries = listWorkingFolderChildren(
+    dataDir,
+    sessionId,
+    "primary",
+    "notes",
+  ).entries;
+  assert.deepEqual(noteEntries.map((entry) => entry.path), ["notes/idea.md"]);
+  assert.equal(noteEntries[0]?.isDirectory, false);
+  assert.throws(
+    () =>
+      listWorkingFolderChildren(
+        dataDir,
+        sessionId,
+        "primary",
+        "node_modules",
+      ),
+    /omitted/,
+  );
   const file = readWorkingFolderTextFile(
     dataDir,
     sessionId,
