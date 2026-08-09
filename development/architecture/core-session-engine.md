@@ -552,6 +552,11 @@ turn ID, and marks the prior run `superseded`; it does not create a logical
 branch or delete old Pi evidence. Latest-turn delete moves the Pi leaf to that
 user entry's parent, marks the run `deleted`, and does not remove disk evidence.
 
+Terminal outcomes are `completed`, `interrupted`, or `failed`. An interrupted
+run may carry `interruptionCause` (`user_abort`, `process_exit`,
+`transport_loss`, or `unknown`). The older top-level `aborted` value is accepted
+only when reading legacy records; new writes use `interrupted` plus a cause.
+
 On reopen, a latest run still at `accepted` is treated as a process-interrupted
 write boundary. If Pi JSONL already contains durable entries after the prior
 active leaf, the service appends an `interrupted` run snapshot claiming those
@@ -649,10 +654,10 @@ Code anchors:
   `resolveOptionalRolePresetPath()`
 - `agent-assets/README.md`: role-presets asset layout and archive naming
 
-### 5.2 Mid-Turn Continuity And Break-Point Retry (v1.3.0-alpha.5 M0)
+### 5.2 Mid-Turn Continuity And Break-Point Recovery (v1.3.0-alpha.5 M0)
 
-A failed or aborted turn keeps its completed work; retry resumes from the
-break point instead of rerunning the whole turn.
+A failed or interrupted turn keeps its completed work. Continue resumes from
+the breakpoint; Retry reruns the latest prompt from the start.
 
 - **Context sanitation** (`core/turn-continuity.ts`): an always-loaded Pi
   extension hooks the `context` event and, before every LLM call, drops
@@ -662,7 +667,7 @@ break point instead of rerunning the whole turn.
   provider role-alternation rules hold. Pi keeps errored partials in session
   history by design; this extension is why preserved break-point context is
   still provider-legal.
-- **Retry in place** (`SessionService.retryRunInPlace`): the replacement run
+- **Continue from breakpoint** (`SessionService.continueRunFromBreakpoint`): the replacement run
   adopts the failed attempt's `assistantEntryIds` (completed tool calls,
   results, partial output stay active and visible), marks the old run record
   `superseded`, and resumes via `continueAgentTurnAfterModelSwitch` →
@@ -672,9 +677,9 @@ break point instead of rerunning the whole turn.
 - **Visible auto-retry**: Pi's own `auto_retry_start` events (exponential
   backoff on transient provider errors) map to a `retrying` run phase with
   `{attempt, maxAttempts, delayMs}`; Alt implements no second retry loop.
-- **Retry offerability**: `run_failed` carries `canRetry` (from
-  `canRetryFailed`) so the UI offers Retry only when a retryable run record
-  exists — preflight failures (no key, unknown model) record none.
+- **Recovery offerability**: snapshots and `run_failed` carry a structured
+  recovery projection only when an incomplete run record exists. Preflight
+  failures (no key, unknown model) record none.
 - **Steering while running**: user text sent to a busy session is delivered
   as a Pi steering message (`steerRunningSession`) instead of a
   `session_busy` error, matching the Pi TUI's type-while-running behavior.
@@ -797,7 +802,7 @@ WebSocket:
 - client: `get_session_metadata`, `get_session_metrics`, `open_session`
 - client: `switch_visibility`, `switch_mode`
 - client: `add_workspace_dir` (local form only), `respond_approval`
-- client: `branch_revision`, `prepare_branch_revision`, `retry_latest`,
+- client: `branch_revision`, `prepare_branch_revision`, `continue_latest`, `retry_latest`,
   `delete_latest`, `fork_session`, `create_related_session`
 - client: `set_study_tag`, `set_session_model` (M7, 2026-07-16)
 
@@ -805,7 +810,8 @@ WebSocket:
 `prepare_branch_revision` creates the child before the edited user message and
 leaves the edit as an unsent draft. `retry_latest` supersedes the latest attempt
 and reruns its exact model-facing user message from the start in the same
-session. Runs complete with the normal lifecycle events.
+session. `continue_latest` preserves completed work and resumes through Pi
+`agent.continue()`. Runs complete with the normal lifecycle events.
 
 `delete_latest` is synchronous: the server replies with `session_updated` and
 `session_transcript` for the same attached session.

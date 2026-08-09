@@ -122,6 +122,20 @@ export interface SessionModelOverride {
 export type AltMode = "understand" | "work";
 export type RuntimeMode = "alt-theory" | "native-pi";
 
+export type InterruptionCause =
+  | "user_abort"
+  | "process_exit"
+  | "transport_loss"
+  | "unknown";
+
+export interface TurnRecovery {
+  outcome: "interrupted" | "failed";
+  interruptionCause?: InterruptionCause | null;
+  userEntryId: string | null;
+  canContinue: boolean;
+  canRetryFromStart: boolean;
+}
+
 export interface SessionSnapshot {
   sessionId: string;
   branchId?: string;
@@ -141,6 +155,7 @@ export interface SessionSnapshot {
   openedFrom?: "new" | "existing";
   resumeWarnings?: string[];
   messageCount: number;
+  recovery?: TurnRecovery | null;
 }
 
 export interface SessionMetrics {
@@ -522,6 +537,7 @@ export interface AssemblyManifest {
 export type ClientMessage =
   | { type: "prompt"; payload: string; attachments?: string[] }
   | { type: "abort" }
+  | { type: "continue_latest" }
   | { type: "compact" }
   | { type: "switch_kb"; payload: { domain: string } }
   | { type: "switch_role_preset"; payload: { rolePresetSlug: string | null } }
@@ -627,7 +643,10 @@ export type ServerMessage =
   | { type: "tool_updated"; payload: { callId: string; text?: string; progress?: number } }
   | { type: "tool_finished"; payload: { callId: string; success: boolean; output?: unknown } }
   | { type: "run_completed"; payload: SessionSnapshot }
-  | { type: "run_failed"; payload: { error: string; canRetry?: boolean } }
+  | {
+      type: "run_failed";
+      payload: { error: string; canRetry?: boolean; recovery?: TurnRecovery | null };
+    }
   /** A message steered into the running turn — broadcast so every pane
    *  (sender and late joiners) renders the bubble exactly once. */
   | { type: "user_steered"; payload: { text: string } }

@@ -86,11 +86,15 @@ import { loadInstructionAsset } from "./instruction-assets.js";
 import {
   appendRunRecord,
   latestRunSnapshots,
+  runInterruptionCause,
+  runOutcome,
+  type InterruptionCause,
   type RunRecord,
 } from "./run-records.js";
 import type {
   SessionMetrics,
   SessionSnapshot,
+  TurnRecovery,
   TranscriptMessage,
 } from "./websocket-protocol.js";
 import {
@@ -253,7 +257,10 @@ export type SessionServiceEvent =
   | { type: "tool_updated"; payload: { callId: string } }
   | { type: "tool_finished"; payload: { callId: string; success: boolean } }
   | { type: "run_completed"; payload: SessionSnapshot }
-  | { type: "run_failed"; payload: { error: string; canRetry?: boolean } }
+  | {
+      type: "run_failed";
+      payload: { error: string; canRetry?: boolean; recovery?: TurnRecovery | null };
+    }
   | { type: "user_steered"; payload: { text: string } }
   | { type: "session_transcript"; payload: { messages: TranscriptMessage[] } }
   | { type: "session_metrics"; payload: SessionMetrics }
@@ -300,6 +307,8 @@ interface ManagedSession {
   subagentParentId: string | null;
   /** In-flight turn buffered for late joiners (v1.4.3); null when idle. */
   liveRun: LiveRun | null;
+  /** Structured cause for the in-flight turn when Alt asks Pi to stop it. */
+  pendingInterruptionCause: InterruptionCause | null;
 }
 
 /** Background subagent runs allowed at once; further first-runs queue FIFO. */
@@ -975,7 +984,7 @@ export class SessionService implements AgentTeamBridge {
     return this.reviseFromRun(managed, latest, text);
   }
 
-  private latestRetryableRun(
+  private latestContinuableRun(
     managed: ManagedSession,
   ): (RunRecord & { userEntryId: string }) | null {
     const latest = latestRunSnapshots(managed.manifest.recordsDir)
@@ -987,29 +996,26 @@ export class SessionService implements AgentTeamBridge {
           run.status !== "superseded",
       )
       .at(-1);
-    if (
-      !latest?.userEntryId ||
-      (latest.status !== "failed" && latest.status !== "aborted")
-    ) {
+    if (!latest?.userEntryId || !["failed", "interrupted"].includes(runOutcome(latest) ?? "")) {
       return null;
     }
     return latest as RunRecord & { userEntryId: string };
   }
 
-  /** Whether the Retry / continue-from-break-point action can succeed now. */
-  canRetryFailed(sessionId: string): boolean {
+  /** Whether Continue can resume the latest incomplete turn from its breakpoint. */
+  canContinueLatest(sessionId: string): boolean {
     const managed = this.sessions.get(sessionId);
-    return Boolean(managed && this.latestRetryableRun(managed));
+    return Boolean(managed && this.latestContinuableRun(managed));
   }
 
-  retryFailed(sessionId: string): RunHandle {
+  continueLatestFromBreakpoint(sessionId: string): RunHandle {
     const managed = this.requireSession(sessionId);
     if (managed.busy || managed.session.isStreaming) {
       throw new SessionBusyError(sessionId);
     }
-    const latest = this.latestRetryableRun(managed);
+    const latest = this.latestContinuableRun(managed);
     if (!latest) {
-      throw new Error("No failed latest turn is available to retry");
+      throw new Error("No incomplete latest turn is available to continue");
     }
     const userEntry = managed.session.sessionManager.getEntry(
       latest.userEntryId,
@@ -1017,22 +1023,22 @@ export class SessionService implements AgentTeamBridge {
       | { type?: string; message?: { role?: string; content?: unknown } }
       | undefined;
     if (userEntry?.type !== "message" || userEntry.message?.role !== "user") {
-      throw new Error("Failed turn user message is missing from Pi history");
+      throw new Error("Interrupted turn user message is missing from Pi history");
     }
     const text = stripSkillWrapper(
       contentToText(userEntry.message.content),
     ).trim();
     if (!text) {
-      throw new Error("Failed turn has no retryable user text");
+      throw new Error("Interrupted turn has no user text");
     }
-    return this.retryRunInPlace(
+    return this.continueRunFromBreakpoint(
       managed,
       latest as RunRecord & { userEntryId: string },
     );
   }
 
   /**
-   * Retry a failed/no-answer attempt without creating a second user message.
+   * Continue an incomplete attempt without creating a second user message.
    * The existing user entry stays on the active branch, and every completed
    * step of the failed attempt (tool calls, tool results, partial output)
    * is preserved: the replacement run adopts those entries and the agent
@@ -1040,7 +1046,7 @@ export class SessionService implements AgentTeamBridge {
    * Only the trailing errored/aborted assistant message is regenerated
    * (stripped in continueAgentTurnAfterModelSwitch, kept in Pi history).
    */
-  private retryRunInPlace(
+  private continueRunFromBreakpoint(
     managed: ManagedSession,
     run: RunRecord & { userEntryId: string },
   ): RunHandle {
@@ -1117,16 +1123,18 @@ export class SessionService implements AgentTeamBridge {
           : pendingError
             ? String(pendingError)
             : null);
-      const failed = Boolean(
-        finalError || retryError || pendingError,
-      );
+      const interrupted = /abort|interrupt/i.test(String(retryError));
+      const failed = Boolean(finalError || retryError || pendingError);
       appendRunRecord(managed.manifest.recordsDir, {
         sessionId,
         branchId: managed.branchId,
         turnId: run.turnId,
         revisionId,
         runId,
-        status: failed ? "failed" : "completed",
+        status: interrupted ? "interrupted" : failed ? "failed" : "completed",
+        interruptionCause: interrupted
+          ? (managed.pendingInterruptionCause ?? "unknown")
+          : null,
         piSessionFile: managed.session.sessionFile ?? null,
         userEntryId: run.userEntryId,
         assistantEntryIds,
@@ -1135,6 +1143,19 @@ export class SessionService implements AgentTeamBridge {
         completedAt: new Date().toISOString(),
       });
       if (failed) {
+        const error =
+          retryError instanceof Error
+            ? retryError.message
+            : finalError ?? String(pendingError ?? retryError ?? "Continue failed");
+        const recovery = this.latestRecoveryState(managed);
+        this.emit(managed, {
+          type: "run_failed",
+          payload: {
+            error,
+            canRetry: recovery?.canRetryFromStart ?? false,
+            recovery,
+          },
+        });
         throw (
           retryError ??
           pendingError ??
@@ -1144,6 +1165,7 @@ export class SessionService implements AgentTeamBridge {
     })().finally(async () => {
       await this.applyPendingRuntime(managed);
       managed.busy = false;
+      managed.pendingInterruptionCause = null;
     });
 
     return {
@@ -1674,6 +1696,7 @@ export class SessionService implements AgentTeamBridge {
 
     managed.busy = true;
     managed.fallbackAttempts = 0;
+    managed.pendingInterruptionCause = null;
     managed.liveRun = { userText: displayUserTextFromPrompt(text), events: [] };
     managed.counters.messageCount++;
     const turnId =
@@ -1749,14 +1772,17 @@ export class SessionService implements AgentTeamBridge {
             ? String(pendingError)
             : null);
       if (finalError || /abort|interrupt/i.test(String(promptError))) {
-        const aborted = /abort|interrupt/i.test(String(promptError));
+        const interrupted = /abort|interrupt/i.test(String(promptError));
         appendRunRecord(managed.manifest.recordsDir, {
           sessionId,
           branchId: managed.branchId,
           turnId,
           revisionId,
           runId,
-          status: aborted ? "aborted" : "failed",
+          status: interrupted ? "interrupted" : "failed",
+          interruptionCause: interrupted
+            ? (managed.pendingInterruptionCause ?? "unknown")
+            : null,
           piSessionFile: managed.session.sessionFile ?? null,
           userEntryId,
           assistantEntryIds,
@@ -1764,11 +1790,21 @@ export class SessionService implements AgentTeamBridge {
           acceptedAt,
           completedAt: new Date().toISOString(),
         });
+        const error = finalError ?? String(promptError ?? pendingError ?? "Run failed");
+        const recovery = this.latestRecoveryState(managed);
+        this.emit(managed, {
+          type: "run_failed",
+          payload: {
+            error,
+            canRetry: recovery?.canRetryFromStart ?? false,
+            recovery,
+          },
+        });
         if (options.notifyParent && managed.subagentParentId) {
           this.deliverSubagentOutcome(
             managed,
-            aborted ? "interrupted" : "failed",
-            aborted
+            interrupted ? "interrupted" : "failed",
+            interrupted
               ? "The subagent's turn was stopped. Its completed work is kept; it can continue from the break point."
               : `The subagent's turn failed: ${finalError ?? String(promptError ?? "unknown error")}`,
           );
@@ -1814,6 +1850,7 @@ export class SessionService implements AgentTeamBridge {
     })().finally(async () => {
       await this.applyPendingRuntime(managed);
       managed.busy = false;
+      managed.pendingInterruptionCause = null;
     });
 
     return {
@@ -1857,8 +1894,13 @@ export class SessionService implements AgentTeamBridge {
     return true;
   }
 
-  async abort(sessionId: string, reason?: string): Promise<void> {
+  async abort(
+    sessionId: string,
+    reason?: string,
+    interruptionCause: InterruptionCause = "unknown",
+  ): Promise<void> {
     const managed = this.requireSession(sessionId);
+    managed.pendingInterruptionCause = interruptionCause;
     managed.session.abortCompaction();
     await managed.session.abort();
     await this.applyPendingRuntime(managed);
@@ -3394,6 +3436,7 @@ export class SessionService implements AgentTeamBridge {
       approvalBridge,
       transcriptStamp: null,
       liveRun: null,
+      pendingInterruptionCause: null,
       listeners: new Set(),
       internalUnsubscribe: () => {},
       busy: false,
@@ -3501,7 +3544,8 @@ export class SessionService implements AgentTeamBridge {
       details: { error },
     });
     this.emitRunPhase(managed, "error");
-    this.emit(managed, { type: "run_failed", payload: { error } });
+    // The run owner emits run_failed after its terminal run mapping is durable,
+    // so transcript refresh and recovery actions cannot race an accepted record.
   }
 
   private async tryModelFallback(
@@ -3760,7 +3804,30 @@ export class SessionService implements AgentTeamBridge {
       openedFrom: managed.openedFrom,
       resumeWarnings: managed.resumeWarnings,
       messageCount: managed.counters.messageCount,
+      recovery: this.latestRecoveryState(managed),
       ...overrides,
+    };
+  }
+
+  private latestRecoveryState(managed: ManagedSession): TurnRecovery | null {
+    const latest = latestRunSnapshots(managed.manifest.recordsDir)
+      .filter(
+        (run) =>
+          run.branchId === managed.branchId &&
+          run.userEntryId &&
+          run.status !== "deleted" &&
+          run.status !== "superseded",
+      )
+      .at(-1);
+    if (!latest?.userEntryId) return null;
+    const outcome = runOutcome(latest);
+    if (outcome !== "interrupted" && outcome !== "failed") return null;
+    return {
+      outcome,
+      interruptionCause: runInterruptionCause(latest),
+      userEntryId: latest.userEntryId,
+      canContinue: true,
+      canRetryFromStart: true,
     };
   }
 
@@ -3986,6 +4053,7 @@ function reconcileInterruptedRunOnOpen(
   appendRunRecord(recordsDir, {
     ...runRecordBody(stale),
     status: "interrupted",
+    interruptionCause: "process_exit",
     userEntryId,
     assistantEntryIds,
     completedAt,

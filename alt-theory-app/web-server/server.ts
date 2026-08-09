@@ -2366,17 +2366,21 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
                 sendError(send, error, error.code);
               }
             } else {
-              send({
-                type: "run_failed",
-                payload: {
-                  error: error instanceof Error ? error.message : String(error),
-                  // A preflight failure (no API key, unknown model) records no
-                  // user entry; offering Retry there errors on click.
-                  canRetry: attachedSessionId
-                    ? sessionService.canRetryFailed(attachedSessionId)
-                    : false,
-                },
-              });
+              const recovery = attachedSessionId
+                ? sessionService.getSnapshot(attachedSessionId).recovery
+                : null;
+              // Recoverable run failures were already broadcast after their
+              // terminal mapping. Preflight/recordless failures still need one.
+              if (!recovery) {
+                send({
+                  type: "run_failed",
+                  payload: {
+                    error: error instanceof Error ? error.message : String(error),
+                    canRetry: false,
+                    recovery: null,
+                  },
+                });
+              }
             }
           }
           break;
@@ -2387,7 +2391,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             break;
           }
           try {
-            await sessionService.abort(attachedSessionId);
+            await sessionService.abort(attachedSessionId, "user_stop", "user_abort");
           } catch (error) {
             sendError(send, error);
           }
@@ -2728,6 +2732,21 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           }
           try {
             const run = sessionService.retryLatestFromStart(attachedSessionId);
+            await run.completion;
+          } catch (error) {
+            sendServiceError(send, error);
+          }
+          break;
+        }
+        case "continue_latest": {
+          if (!attachedSessionId) {
+            sendError(send, new Error("A materialized session is required"));
+            break;
+          }
+          try {
+            const run = sessionService.continueLatestFromBreakpoint(
+              attachedSessionId,
+            );
             await run.completion;
           } catch (error) {
             sendServiceError(send, error);

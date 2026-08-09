@@ -898,7 +898,7 @@ test("SessionService keeps imported Pi history as the active leaf before the fir
   }
 });
 
-test("SessionService preserves imported history after an aborted first run", async () => {
+test("SessionService preserves imported history after an interrupted first run", async () => {
   const fixture = setupFixture();
   const service = createTestService(fixture);
   const created = await service.createSession({
@@ -932,7 +932,8 @@ test("SessionService preserves imported history after an aborted first run", asy
   const abortedRun = latestRunSnapshots(
     service.getManifest(created.sessionId).recordsDir,
   ).at(-1)!;
-  assert.equal(abortedRun.status, "aborted");
+  assert.equal(abortedRun.status, "interrupted");
+  assert.equal(abortedRun.interruptionCause, "unknown");
   assert.ok(abortedRun.userEntryId);
   assert.equal(abortedRun.assistantEntryIds.length, 1);
   const failedLeaf = managed.session.sessionManager.getLeafId();
@@ -955,6 +956,46 @@ test("SessionService preserves imported history after an aborted first run", asy
     );
   } finally {
     await reopened.disposeAll();
+  }
+});
+
+test("SessionService records user Stop as interrupted with a user_abort cause", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const created = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const managed = (service as any).sessions.get(created.sessionId);
+  let rejectPrompt!: (error: Error) => void;
+  managed.session.prompt = async (text: string) => {
+    managed.session.sessionManager.appendMessage({
+      role: "user",
+      content: [{ type: "text", text }],
+      timestamp: Date.now(),
+    });
+    await new Promise<void>((_resolve, reject) => {
+      rejectPrompt = reject;
+    });
+  };
+  managed.session.abort = async () => rejectPrompt(new Error("Operation aborted"));
+
+  try {
+    const run = service.runPrompt(created.sessionId, "stop me");
+    await service.abort(created.sessionId, "user_stop", "user_abort");
+    await assert.rejects(run.completion, /aborted/);
+    const stopped = latestRunSnapshots(
+      service.getManifest(created.sessionId).recordsDir,
+    ).at(-1)!;
+    assert.equal(stopped.status, "interrupted");
+    assert.equal(stopped.interruptionCause, "user_abort");
+    assert.equal(
+      service.getSnapshot(created.sessionId).recovery?.canContinue,
+      true,
+    );
+  } finally {
+    await service.disposeAll();
   }
 });
 
@@ -1018,8 +1059,16 @@ test("SessionService reconciles a crash-interrupted accepted run and continues f
     });
     const interrupted = latestRunSnapshots(recordsDir).at(-1)!;
     assert.equal(interrupted.status, "interrupted");
+    assert.equal(interrupted.interruptionCause, "process_exit");
     assert.equal(interrupted.userEntryId, interruptedUserId);
     assert.deepEqual(interrupted.assistantEntryIds, [interruptedAssistantId]);
+    assert.deepEqual(reopenedService.getSnapshot(created.sessionId).recovery, {
+      outcome: "interrupted",
+      interruptionCause: "process_exit",
+      userEntryId: interruptedUserId,
+      canContinue: true,
+      canRetryFromStart: true,
+    });
 
     const reopenedManaged = (reopenedService as any).sessions.get(
       created.sessionId,
@@ -3236,7 +3285,7 @@ test("security extension escalates risky commands through the approval bridge", 
   }
 });
 
-test("SessionService retries a failed latest turn without losing earlier turns", async () => {
+test("SessionService continues a failed latest turn without losing earlier turns", async () => {
   const fixture = setupFixture();
   const service = createTestService(fixture);
   const created = await service.createSession({
@@ -3293,7 +3342,7 @@ test("SessionService retries a failed latest turn without losing earlier turns",
     assert.equal(failed.assistantEntryIds.length, 1);
 
     shouldFail = false;
-    const retried = service.retryFailed(created.sessionId);
+    const retried = service.continueLatestFromBreakpoint(created.sessionId);
     assert.deepEqual(
       retryTranscripts
         .at(-1)
