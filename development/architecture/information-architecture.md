@@ -114,19 +114,18 @@ surfaces remain designation-gated and absent for everyone else.
     delete independently. Deleting either never deletes its parent, sibling
     Branches, or child Branches. This independence exists because facilitating
     comparison is a core product purpose.
-  - Side chats, Helper conversations, subagents, and provisional comparison arms
-    do not become ordinary list rows unless the user promotes them (or they are
-    forks with purpose `fork`, which are list members by default).
-  - BTW, Helper, and subagent conversations are attached to their owning
-    conversation by default and are deleted with it. **Show in conversation
-    list** is an identity and lifecycle transition, not merely a display toggle:
-    a promoted child becomes independently retainable and is no longer deleted
-    with its parent, while keeping its original purpose and provenance label.
-    Its own unpromoted BTW, Helper, and subagent children remain attached to it.
+  - Side chats, subagents, and provisional comparison arms do not become
+    ordinary list rows unless the user promotes them. Branches and Helpers are
+    list members by nature.
+  - BTW and subagent conversations are attached to their family. **Show in
+    conversation list** is an identity and lifecycle transition for those
+    children, not merely a display toggle. Helper needs no promotion: it is an
+    ordinary, independently retainable conversation carrying a help marker and
+    the bundled help Skill.
   - Related children in the list or Related switcher show an **English prefix
     plus the real title**, not a rename: e.g. `Branch 1 · …`, `BTW 1 · …`,
-    `Helper 1 · …`, `Subagent 1 · …`. Numbering is per parent + purpose. Do not
-    overwrite `ui-alias` to a bare token like `branch1`.
+    `Helper · …`, `Subagent 1 · …`. Numbering is per parent + purpose; Helper is
+    not numbered. Do not overwrite `ui-alias` to a bare token like `branch1`.
 - **Right rail**
   - Holds files/changes and one selected related conversation (Branch, BTW,
     Helper, or subagent).
@@ -147,13 +146,16 @@ surfaces remain designation-gated and absent for everyone else.
   - General: app behavior and ordinary preferences.
   - Models: provider connection, model choice, and model capability correction.
   - Role & Knowledge: role, knowledge sets, and related paths when implemented.
-  - What Alt can do: a curated capability guide sharing its source with Helper.
+  - Help center: a curated capability guide and the shipped localized tips.
+    The global Help menu opens either this surface or a new Helper conversation.
   - Trash: deleted conversations remain recoverable for 30 days. Restore and
     permanent-delete actions live here rather than in persistent conversation
     navigation. Permanent conversation deletion removes conversation/session
     records, including a managed import-source copy, but not attachments or
     working files.
-  - About: version, changes, and stable storage statements.
+  - About: version, changes, and stable storage statements. Bundle version
+    display already follows the normal build path; this iteration adds no
+    alternate version mechanism.
 - **Researcher-only surfaces**
   - Inspector, comparison, provenance, and study controls are
     designation-gated and have zero presence otherwise.
@@ -249,8 +251,10 @@ its copyable prompt for getting help from another AI.
 
 Model setup never replaces or detains the main application. With no usable
 model, the normal shell remains open and the composer notice area explains the
-condition with one action to this same Settings > Models surface. Any optional
-onboarding entry routes here; there is no second full-page provider editor.
+condition. Settings > Models is primary; a secondary action opens an in-app
+copy of the same external-AI setup prompt shipped in the docs, without sending
+the user away to find it. Models uses that shared frontend content too. Any
+optional onboarding entry routes here; there is no second provider editor.
 
 ### Edit provider and model
 
@@ -302,10 +306,16 @@ workspace, study tag, and attachments are one coherent draft. A selector echo
 must preserve the other draft fields. The first send materializes that exact
 state; it must not create a default session and repair it afterward.
 
-Actions that require an existing parent conversation, such as branching,
-side conversations, and Helper forking, are not shown as active draft actions
-until a parentless form has an explicit product meaning. Draft-only affordances
-must not clear input or close a menu while doing nothing.
+Actions that require an existing parent conversation, such as branching and
+side conversations, are not shown as active draft actions. Helper does have a
+parentless meaning: it creates a root Helper in the center. Draft-only
+affordances must not clear input or close a menu while doing nothing.
+
+The current **General knowledge work** starter is deliberately a temporary
+parameter combination: Alt Theory runtime, Work mode, no role, and knowledge
+off. Users may edit those selectors before sending. If broader knowledge work
+later gains its own role or stronger semantics, replace this local preset with
+a focused refactor rather than growing conditionals around the temporary label.
 
 ## Agent-assisted setup boundary
 

@@ -750,7 +750,8 @@ REST:
 - `GET /api/session-import/{harness}/sessions` (local only)
 - `POST /api/session-import/{harness}` (local only)
 - `DELETE /api/sessions/{sessionId}/files/content`
-- `POST /api/sessions/{sessionId}/promote` (side/helper child to normal fork)
+- `POST /api/sessions/{sessionId}/promote` (side/subagent child to list member;
+  Helper is already list-visible)
 - `POST /api/sessions/{sessionId}/ab-comparisons` (+ `/generate`,
   `/{comparisonId}/choice`) — M6 A/B comparison flow over the append-only
   `records/ab-comparisons.jsonl` side-car
@@ -803,7 +804,7 @@ WebSocket:
 - client: `switch_visibility`, `switch_mode`
 - client: `add_workspace_dir` (local form only), `respond_approval`
 - client: `branch_revision`, `prepare_branch_revision`, `continue_latest`, `retry_latest`,
-  `delete_latest`, `fork_session`, `create_related_session`
+  `delete_latest`, `fork_session`, `create_related_session`, `create_helper_session`
 - client: `set_study_tag`, `set_session_model` (M7, 2026-07-16)
 
 `branch_revision` creates a comparison child and starts the edited run there;
@@ -819,10 +820,13 @@ session. `continue_latest` preserves completed work and resumes through Pi
 `fork_session` creates an idle logical Branch from the active Pi path. The
 ordinary `/branch` path keeps the requesting socket on its parent and opens the
 child in Related; list-level Duplicate passes `sourceSessionId` and intentionally
-attaches to the copy. `create_related_session`
-creates BTW (cloned) or Helper (fresh) without attaching the parent socket;
-the frontend opens a second socket for the right-panel child. Promotion is an
-explicit catalog mutation, not an alias for opening the child.
+attaches to the copy. `create_related_session` creates BTW (cloned) without
+attaching the parent socket. `create_helper_session` always creates a fresh
+Helper. With a valid non-Helper center it creates a Helper child and the
+frontend opens it in the right rail; otherwise it creates and attaches a root
+Helper in the center. A failed parent attach falls back to the root form.
+Helper metadata causes the help Skill to run on its first prompt and makes it
+list-visible without a promotion mutation.
 The branch workspace is copied at creation time, so later file/tool side
 effects do not share a mutable workspace. Collaboration-oriented shared space
 should be modeled through an explicit shared-space layer (the post-1.4

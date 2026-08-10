@@ -138,7 +138,7 @@ Alt Theory 会直接进入对话。在第一次运行对话前，请在 **Settin
 
 ## 帮助与故障排除
 
-从 Composer（输入区）的工具中打开 **Helper（助手）**，或调用 `/helper`。在空白界面中，它会启动 Help conversation（帮助对话）；在既有工作旁，它会以独立的新上下文打开。Helper 可以依据当前文档回答 Alt Theory 的使用问题，并协助排查 Provider、API key、Model 与缺失工具的设置。
+从全局 Help 菜单、Related 中的低调入口或 `/helper` 打开 **Helper（小助手）**。每次打开都会创建新的、在对话列表可见的 Helper。中间已有对话时，它挂在该 family 下并在右栏打开；否则作为 root conversation 在中间打开。Helper 依据当前文档回答，并协助排查 Provider、API key、Model 与缺失工具。相同的 Help 菜单也能打开不创建对话的 Help center。
 
 - [Common questions（常见问题）](docs/en/help/common-questions.md)
 - [Imports and cross-harness continuity（导入与跨工具连续性）](docs/en/system-guide/imports-and-continuity.md)

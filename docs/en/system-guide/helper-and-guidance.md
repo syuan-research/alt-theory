@@ -2,20 +2,25 @@
 
 ## The Helper
 
-A side conversation for questions about Alt Theory itself: how something
+A fresh conversation for questions about Alt Theory itself: how something
 works, where a setting lives, guided setup of providers, keys, and tools.
 
-- It starts fresh. It does not read your current conversation. That is
-  what makes it reusable anywhere: the same assistant on the empty screen
-  and mid-project. For a tangent that should carry your context, use
+- Every opening creates a new Helper; Alt does not silently reuse an earlier
+  one. With a center conversation open, the new Helper belongs to that family
+  and opens in the right rail. Without one, it opens as a root conversation in
+  the center. It remains visible in the conversation list in either case and
+  carries the full `Helper` marker.
+- It starts with fresh transcript context. For a tangent that should copy the
+  current conversation, use
   [BTW](responses-and-controls.md) instead.
 - It answers from current documentation. It consults the product's docs
   for anything concrete or changeable, and says what it could not verify
   rather than inventing steps.
 
-Open it from the Toolbox (Ask how Alt works) or with `/helper`. If a
-Helper exchange turns out to matter to your project, add it to the
-conversation list and it becomes a normal conversation.
+Open it from the global Help menu, the quiet Helper action in Related, the
+Help center, or with `/helper`. The Help menu also opens the non-conversational
+Help center. Helper is an ordinary conversation plus the bundled help Skill;
+it is not a separate agent type.
 
 ## Guided setup
 
@@ -34,9 +39,10 @@ the switch.
 
 - One-time explanations appear the first time you use a history-rewriting
   action (revise, first branch), once.
-- Rotating tips surface one-line capabilities while you are already
-  waiting (during thinking or long tool runs), starting after about two
-  seconds. They draw only on shipped, user-controlled capabilities.
+- Rotating tips surface one-line capabilities while you are already waiting
+  (during thinking or long tool runs), starting after about two seconds. The
+  same shipped, localized tip catalog is shown in the Help center; it follows
+  product updates and is not a user-maintained data file.
 - The command palette teaches itself: `/` is the app's index.
 
 ## When the Helper is not enough
