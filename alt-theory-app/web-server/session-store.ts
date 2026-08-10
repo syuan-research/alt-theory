@@ -68,6 +68,7 @@ export interface SessionSummary {
   visibility: SessionVisibility;
   /** Hosted-only expiry for a "private" conversation; null everywhere else. */
   retentionDueAt: string | null;
+  helper?: true;
   createdAt: string | null;
   /** Product recency: newest prompt accepted for execution, never read/open mtime. */
   lastPromptAcceptedAt: string | null;
@@ -384,15 +385,19 @@ export function softDeleteSession(
 
 /**
  * In the conversation list — MUST mirror the frontend's isListMember
- * (lib/sessionList.ts): branches are list members by nature, other children
- * only when the user listed them, roots unless delisted (opus D1: a
+ * (lib/sessionList.ts): branches and Helpers are list members by nature,
+ * other children only when the user listed them, roots unless delisted (opus D1: a
  * stricter server predicate skipped visible branches in the step-down walk
  * and delisted the wrong ancestor).
  */
 function isListVisible(s: SessionSummary): boolean {
   if (s.deletedAt) return false;
   if (!s.forkedFrom) return s.delisted !== true;
-  return s.forkedFrom.purpose === "fork" || s.forkedFrom.listed === true;
+  return (
+    s.forkedFrom.purpose === "fork" ||
+    s.forkedFrom.purpose === "helper" ||
+    s.forkedFrom.listed === true
+  );
 }
 
 /** Flip a session's list visibility. Lineage is never touched (M4b). */
@@ -937,20 +942,25 @@ export function sessionsAttachedToDeletion(
   return attachedDeletionTargets(sessionId, allSessionSummaries(dataDir));
 }
 
-/** A structural family anchor: a root (delisted or not), a branch, or a
- *  child the user listed. Unlisted attached conversations are not anchors. */
+/** A structural family anchor: a root (delisted or not), a branch, a Helper,
+ *  or a child the user listed. Other unlisted attachments are not anchors. */
 function keepsFamilyAlive(s: SessionSummary): boolean {
   if (!s.forkedFrom) return true;
-  return s.forkedFrom.purpose === "fork" || s.forkedFrom.listed === true;
+  return (
+    s.forkedFrom.purpose === "fork" ||
+    s.forkedFrom.purpose === "helper" ||
+    s.forkedFrom.listed === true
+  );
 }
 
 /**
  * Owner rule (v1.4.1, 2026-08-06 — replaces the per-node living-branch walk):
  * Delete removes exactly the chosen conversation. Attached conversations
- * (btw/helper/subagent/ab-arm) belong to the FAMILY, not to one parent: they
- * survive any deletion that leaves a living anchor (root, branch, or listed
+ * (btw/subagent/ab-arm) belong to the FAMILY, not to one parent: they survive
+ * any deletion that leaves a living anchor (root, branch, Helper, or listed
  * child — at any depth), and follow the last anchor out so no invisible
- * orphans remain. One rule, no fork-time comparison, no chain special cases.
+ * orphans remain. Helpers are ordinary visible anchors. One rule, no
+ * fork-time comparison, no chain special cases.
  */
 function attachedDeletionTargets(
   sessionId: string,
@@ -1131,6 +1141,7 @@ function buildSummary(sessionId: string, parts: SessionParts): SessionSummary {
     roleCondition: parts.v4Session?.roleCondition ?? null,
     visibility: parts.v4Session?.visibility ?? "research",
     retentionDueAt: parts.v4Session?.retentionDueAt ?? null,
+    ...(parts.v4Session?.helper ? { helper: true } : {}),
     createdAt: parts.manifest?.createdAt ?? parts.v4Session?.createdAt ?? null,
     lastPromptAcceptedAt:
       latestPromptAcceptedAt(parts.recordsDir) ??

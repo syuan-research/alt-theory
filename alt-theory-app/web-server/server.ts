@@ -2329,7 +2329,11 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         );
         return;
       }
-      if (attachedSessionId && msg.type !== "new_session") {
+      if (
+        attachedSessionId &&
+        msg.type !== "new_session" &&
+        msg.type !== "create_helper_session"
+      ) {
         try {
           requireSessionWsContentAccess(attachedSessionId);
         } catch (error) {
@@ -2926,6 +2930,59 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
                 },
               });
             }
+          } catch (error) {
+            sendServiceError(send, error);
+          }
+          break;
+        }
+        case "create_helper_session": {
+          if (!canMaterializeSession(auth)) {
+            sendError(send, new Error("Authentication required"), "auth_required");
+            break;
+          }
+          const parentSessionId = msg.payload.parentSessionId;
+          let rootSelectors = draftSelectors;
+          let rootMode = draftMode;
+          let rootModelOverride = draftModelOverride;
+          let rootWorkspace = draftWorkspace;
+          try {
+            if (parentSessionId) {
+              try {
+                const parent = requireSessionWsContentAccess(parentSessionId);
+                rootSelectors = sessionService.getSelectors(parentSessionId);
+                const parentSnapshot = sessionService.getSnapshot(parentSessionId);
+                rootMode = parentSnapshot.mode;
+                rootModelOverride = parentSnapshot.modelOverride ?? null;
+                rootWorkspace = parent.workspacePrimaryDir ?? null;
+                const parentIsHelper =
+                  parent.helper || parent.forkedFrom?.purpose === "helper";
+                if (!parentIsHelper) {
+                  const related = await sessionService.createRelatedSession(
+                    parentSessionId,
+                    "helper",
+                  );
+                  if (!closed) {
+                    send({
+                      type: "related_session_created",
+                      payload: { sessionId: related.sessionId, purpose: "helper" },
+                    });
+                  }
+                  break;
+                }
+              } catch {
+                // A stale, busy, trashed, or otherwise unusable parent must not
+                // make Help disappear. The root Helper below is the fallback.
+              }
+            }
+            const root = await sessionService.createSession(rootSelectors, {
+              ...sessionCreationMetadataForAuth(auth, draftVisibility),
+              helper: true,
+              mode: rootMode,
+              modelOverride: rootModelOverride,
+              studyTag: draftStudyTag,
+              workspace: rootWorkspace ? { primaryDir: rootWorkspace } : null,
+            });
+            if (!closed) attachToSession(root.sessionId);
           } catch (error) {
             sendServiceError(send, error);
           }

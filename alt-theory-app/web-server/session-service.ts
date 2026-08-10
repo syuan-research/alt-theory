@@ -191,6 +191,7 @@ export interface SessionSelectors {
 }
 
 export interface SessionCreationMetadata {
+  helper?: boolean;
   ownerAccountId?: string | null;
   roleCondition?: string | null;
   visibility?: SessionVisibility;
@@ -908,7 +909,7 @@ export class SessionService implements AgentTeamBridge {
     const managed = this.requireSession(sessionId);
     const header = readV4SessionHeader(managed.manifest.recordsDir);
     if (
-      header?.forkedFrom?.purpose === "helper" &&
+      (header?.helper || header?.forkedFrom?.purpose === "helper") &&
       latestRunSnapshots(managed.manifest.recordsDir).length === 0 &&
       managed.manifest.skills?.some((skill) => skill.name === "alt-theory-help")
     ) {
@@ -2354,6 +2355,7 @@ export class SessionService implements AgentTeamBridge {
       mode: result.getAltMode(),
       workspace: metadata.workspace ? result.manifest.workspace : null,
       forkedFrom: metadata.forkedFrom ?? null,
+      helper: metadata.helper,
       studyTag: metadata.studyTag ?? null,
       modelOverride: metadata.modelOverride ?? null,
     });
@@ -2391,9 +2393,8 @@ export class SessionService implements AgentTeamBridge {
     }
 
     const parent = this.requireSession(sessionId);
-    if (parent.busy || parent.session.isStreaming) {
-      throw new SessionBusyError(sessionId);
-    }
+    // Helper is fresh: it reads only stable parent configuration and does not
+    // clone or mutate the live Pi path, so it remains available during a run.
     const header = readV4SessionHeader(parent.manifest.recordsDir);
     const child = await this.createSession(parent.selectors, {
       ownerAccountId: header?.ownerAccountId ?? null,

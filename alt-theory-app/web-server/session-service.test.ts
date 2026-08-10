@@ -1189,7 +1189,7 @@ test("SessionService reconciles a crash-interrupted accepted run and continues f
   }
 });
 
-test("related Helper invokes its skill once before promotion", async () => {
+test("related and root Helper sessions stay visible and invoke their skill once", async () => {
   const fixture = setupFixture();
   writeFileSync(
     join(fixture.skillsDir, "alt-theory-help.md"),
@@ -1209,10 +1209,12 @@ test("related Helper invokes its skill once before promotion", async () => {
     timestamp: Date.now(),
   });
   try {
+    managed.busy = true;
     const helper = await service.createRelatedSession(
       parent.sessionId,
       "helper",
     );
+    managed.busy = false;
     const helperDetail = readSessionDetail(fixture.dataDir, helper.sessionId);
     const helperHeader = readV4SessionHeader(
       service.getManifest(helper.sessionId).recordsDir,
@@ -1250,14 +1252,32 @@ test("related Helper invokes its skill once before promotion", async () => {
       .completion;
     assert.equal(helperPrompt, "Where is that button?");
 
-    // "Add to conversation list": it earns a list place and KEEPS its purpose,
-    // so the list can still say where it came from (alpha.6).
-    service.promoteRelatedSession(helper.sessionId);
-    const promoted = readV4SessionHeader(
-      service.getManifest(helper.sessionId).recordsDir,
+    assert.equal(helperHeader?.forkedFrom?.purpose, "helper");
+
+    const rootHelper = await service.createSession(
+      {
+        rolePresetSlug: "role-conceptual-theory-companion",
+        kbDomain: "ep-core",
+        soulSlug: "soul-latest",
+      },
+      { helper: true },
     );
-    assert.equal(promoted?.forkedFrom?.purpose, "helper");
-    assert.equal(promoted?.forkedFrom?.listed, true);
+    let rootPrompt = "";
+    const rootManaged = (service as any).sessions.get(rootHelper.sessionId);
+    rootManaged.session.prompt = async (text: string) => {
+      rootPrompt = text;
+    };
+    await service.runPrompt(rootHelper.sessionId, "Help me configure a model.")
+      .completion;
+    assert.equal(
+      rootPrompt,
+      "/skill:alt-theory-help Help me configure a model.",
+    );
+    const rootHeader = readV4SessionHeader(
+      service.getManifest(rootHelper.sessionId).recordsDir,
+    );
+    assert.equal(rootHeader?.helper, true);
+    assert.equal(rootHeader?.forkedFrom, undefined);
   } finally {
     await service.disposeAll();
   }

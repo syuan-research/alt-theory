@@ -45,6 +45,8 @@ import {
   type SessionDisplayName,
 } from "@/api/sessions";
 import { sessionTitle } from "@/lib/sessionList";
+import { HelpMenu } from "@/components/shell/HelpMenu";
+import { GENERAL_TIPS, productTipText } from "@/config/productTips";
 
 interface NavItem {
   key: string;
@@ -71,7 +73,7 @@ export function SettingsView() {
           },
         ]
       : []),
-    { key: "features", label: t("What Alt can do"), icon: "ph-sparkle" },
+    { key: "features", label: t("Help center"), icon: "ph-lifebuoy" },
     { key: "trash", label: t("Trash"), icon: "ph-trash" },
     { key: "about", label: t("About"), icon: "ph-info" },
   ];
@@ -102,6 +104,8 @@ export function SettingsView() {
             {item.soon ? <span className="soon">{t("soon")}</span> : null}
           </button>
         ))}
+        <div className="set-nav-spacer" />
+        <HelpMenu attachToCenter={false} />
       </nav>
       <div className="set-body">
         {shell.settingsPanel === "models" ? <ModelsPanel /> : null}
@@ -123,22 +127,36 @@ function TrashPanel() {
   const app = useApp();
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [names, setNames] = useState<Record<string, SessionDisplayName>>({});
+  const namesRef = useRef<Record<string, SessionDisplayName>>({});
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [mutating, setMutating] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (background = false) => {
+    if (!background) setLoading(true);
     setError("");
     try {
       const next = await fetchTrashSessions();
       setSessions(next);
+      setSelected((current) => {
+        const present = new Set(next.map((session) => session.sessionId));
+        return new Set([...current].filter((id) => present.has(id)));
+      });
+      const missing = next.filter(
+        (session) => !namesRef.current[session.sessionId],
+      );
       const entries = await Promise.all(
-        next.map(async (session) => [
+        missing.map(async (session) => [
           session.sessionId,
           await hydrateSessionDisplayName(session.sessionId),
         ] as const),
       );
-      setNames(Object.fromEntries(entries));
+      if (entries.length) {
+        const merged = { ...namesRef.current, ...Object.fromEntries(entries) };
+        namesRef.current = merged;
+        setNames(merged);
+      }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
@@ -153,7 +171,16 @@ function TrashPanel() {
   const restore = async (sessionId: string) => {
     try {
       await restoreSession(sessionId);
-      await Promise.all([load(), app.refreshSessions()]);
+      setSessions((current) =>
+        current.filter((session) => session.sessionId !== sessionId),
+      );
+      setSelected((current) => {
+        const next = new Set(current);
+        next.delete(sessionId);
+        return next;
+      });
+      await app.refreshSessions();
+      void load(true);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     }
@@ -170,11 +197,76 @@ function TrashPanel() {
       cancelLabel: t("Cancel"),
       onConfirm: () => {
         void permanentlyDeleteSession(sessionId)
-          .then(load)
+          .then(() => {
+            setSessions((current) =>
+              current.filter((session) => session.sessionId !== sessionId),
+            );
+            setSelected((current) => {
+              const next = new Set(current);
+              next.delete(sessionId);
+              return next;
+            });
+            void load(true);
+          })
           .catch((reason) =>
             setError(reason instanceof Error ? reason.message : String(reason)),
           );
       },
+    });
+  };
+
+  const actOnSelected = async (action: "restore" | "delete") => {
+    const ids = [...selected];
+    if (!ids.length || mutating) return;
+    setMutating(true);
+    setError("");
+    try {
+      const results = await Promise.allSettled(
+        ids.map((id) =>
+          action === "restore" ? restoreSession(id) : permanentlyDeleteSession(id),
+        ),
+      );
+      const succeeded = ids.filter(
+        (_, index) => results[index].status === "fulfilled",
+      );
+      const failed = ids.length - succeeded.length;
+      const successSet = new Set(succeeded);
+      setSessions((current) =>
+        current.filter((session) => !successSet.has(session.sessionId)),
+      );
+      setSelected((current) =>
+        new Set([...current].filter((id) => !successSet.has(id))),
+      );
+      if (action === "restore" && succeeded.length) await app.refreshSessions();
+      if (failed) {
+        setError(
+          t("{done} succeeded; {failed} failed. Failed conversations remain selected.", {
+            done: succeeded.length,
+            failed,
+          }),
+        );
+      }
+      void load(true);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setMutating(false);
+    }
+  };
+
+  const confirmDeleteSelected = () => {
+    if (!selected.size) return;
+    app.requestConfirm({
+      message: t("Permanently delete {count} selected conversations?", {
+        count: selected.size,
+      }),
+      details: [
+        t("This cannot be undone."),
+        t("Attachments and working files will be kept."),
+      ],
+      confirmLabel: t("Delete selected permanently"),
+      cancelLabel: t("Cancel"),
+      onConfirm: () => void actOnSelected("delete"),
     });
   };
 
@@ -183,6 +275,40 @@ function TrashPanel() {
       <h2>{t("Trash")}</h2>
       <p className="sub">{t("Deleted conversations are kept for 30 days.")}</p>
       {error ? <p className="fine">{error}</p> : null}
+      {sessions.length > 0 ? (
+        <div className="trash-batch-bar">
+          <button onClick={() => setSelected(new Set(sessions.map((item) => item.sessionId)))}>
+            {t("Select all")}
+          </button>
+          <button
+            onClick={() =>
+              setSelected(
+                new Set(
+                  sessions
+                    .filter((item) => !selected.has(item.sessionId))
+                    .map((item) => item.sessionId),
+                ),
+              )
+            }
+          >
+            {t("Invert selection")}
+          </button>
+          <span>{t("{count} selected", { count: selected.size })}</span>
+          <button
+            disabled={!selected.size || mutating}
+            onClick={() => void actOnSelected("restore")}
+          >
+            {t("Restore selected")}
+          </button>
+          <button
+            className="danger"
+            disabled={!selected.size || mutating}
+            onClick={confirmDeleteSelected}
+          >
+            {t("Delete selected permanently")}
+          </button>
+        </div>
+      ) : null}
       {loading ? (
         <div className="set-card"><p>{t("Loading conversations…")}</p></div>
       ) : sessions.length === 0 ? (
@@ -196,7 +322,22 @@ function TrashPanel() {
           return (
             <div className="set-card" key={session.sessionId}>
               <div className="row2">
-                <div>
+                <label className="trash-select">
+                  <input
+                    type="checkbox"
+                    checked={selected.has(session.sessionId)}
+                    onChange={(event) =>
+                      setSelected((current) => {
+                        const next = new Set(current);
+                        if (event.target.checked) next.add(session.sessionId);
+                        else next.delete(session.sessionId);
+                        return next;
+                      })
+                    }
+                    aria-label={t("Select conversation")}
+                  />
+                </label>
+                <div className="trash-row-copy">
                   <h4>{sessionTitle(session, names, sessions)}</h4>
                   <p>
                     {days == null
@@ -1284,12 +1425,24 @@ function AboutPanel() {
 }
 
 function FeaturesPanel() {
+  const app = useApp();
+  const shell = useShell();
   return (
     <div className="set-panel">
-      <h2>{t("What Alt can do")}</h2>
+      <h2>{t("Help center")}</h2>
       <p className="sub">
-        {t("A short guide. For anything here, you can also just ask — open a Helper conversation from the right panel and Alt will answer from the current documentation.")}
+        {t("A practical guide to conversations, modes, context, and getting unstuck.")}
       </p>
+      <button
+        className="add-btn help-ask"
+        onClick={() => {
+          shell.openApp();
+          app.openHelper(undefined, false);
+        }}
+      >
+        <i className="ph ph-chats-circle" />
+        {t("Ask Helper")}
+      </button>
       <div className="set-card">
         <h4>{t("Think through research questions with you")}</h4>
         <p>
@@ -1319,6 +1472,26 @@ function FeaturesPanel() {
         <p>
           {t("Roles shape how Alt interprets a situation, identifies what matters, and organizes its response; knowledge sets provide material it can draw on; skills provide reusable ways of working.")}
         </p>
+      </div>
+      <div className="set-card">
+        <h4>{t("Keep side paths without losing the main conversation")}</h4>
+        <p>
+          {t("Branch starts another direction from the current conversation. BTW opens a smaller related conversation. Helper is always a fresh conversation for questions about Alt or setup; it appears in your conversation list like any other conversation.")}
+        </p>
+      </div>
+      <div className="set-card">
+        <h4>{t("Choose what each conversation can use")}</h4>
+        <p>
+          {t("The controls above the composer choose role, knowledge, mode, model, and working folder for that conversation. The toolbox keeps file attachment, planning, folder browsing, and the full skill list close without putting every option on screen.")}
+        </p>
+      </div>
+      <div className="set-card help-tip-catalog">
+        <h4>{t("Tips shown while Alt works")}</h4>
+        <ul>
+          {GENERAL_TIPS.map((tip) => (
+            <li key={tip.id}>{productTipText(tip)}</li>
+          ))}
+        </ul>
       </div>
     </div>
   );

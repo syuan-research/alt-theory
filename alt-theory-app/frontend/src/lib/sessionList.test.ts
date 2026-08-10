@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { SessionSummary } from "../api/types.ts";
-import { buildWorkspaceTree, canTakeMainline, isFamilyHead, relatedConversationsFor, sessionTitle } from "./sessionList.ts";
+import { buildWorkspaceTree, canTakeMainline, isFamilyHead, isListMember, relatedConversationsFor, sessionTitle } from "./sessionList.ts";
 
 function child(
   sessionId: string,
@@ -46,7 +46,7 @@ test("branch prefix is a token path 'brN · title', not a rename to branch1", ()
   assert.equal(sessionTitle(b, names, all), "br2 · Map-level notes on theory");
 });
 
-test("btw and helper get btwN / hN prefixes", () => {
+test("btw gets a numbered prefix and Helper keeps its full marker", () => {
   const btw = child("s", "parent", "side", "2026-07-01T00:00:00.000Z");
   const help = child("h", "parent", "helper", "2026-07-01T00:00:00.000Z");
   assert.equal(
@@ -59,8 +59,24 @@ test("btw and helper get btwN / hN prefixes", () => {
       { h: { alias: "", snippet: "How do I add a provider?" } },
       [help],
     ),
-    "h1 · How do I add a provider?",
+    "Helper · How do I add a provider?",
   );
+  assert.equal(isListMember(help), true);
+
+  const rootHelper = {
+    ...child("root-help", "unused", "helper", "2026-07-02T00:00:00.000Z"),
+    forkedFrom: null,
+    helper: true,
+  } as SessionSummary;
+  assert.equal(
+    sessionTitle(
+      rootHelper,
+      { "root-help": { alias: "", snippet: "How do I begin?" } },
+      [rootHelper],
+    ),
+    "Helper · How do I begin?",
+  );
+  assert.equal(isListMember(rootHelper), true);
 });
 
 test("subagent keeps custom name under saN prefix", () => {

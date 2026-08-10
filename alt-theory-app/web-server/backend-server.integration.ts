@@ -1806,7 +1806,7 @@ test("session routes preserve hosted isolation and local access", async () => {
   }
 });
 
-test("WebSocket open_session replaces current state with an existing session", async () => {
+test("WebSocket open_session and Helper placement preserve the intended center state", async () => {
   const root = mkdtempSync(join(tmpdir(), "alt-theory-ws-open-session-"));
   const dataDir = join(root, "data");
   const rolePresets = join(root, "role-presets");
@@ -2013,6 +2013,66 @@ test("WebSocket open_session replaces current state with an existing session", a
       .map((line) => JSON.parse(line).type);
     assert.ok(eventTypes.includes("session_opened_existing"));
     assert.ok(eventTypes.includes("session_resumed"));
+
+    const childCreatedPromise = waitForType(ws, "related_session_created");
+    ws.send(
+      JSON.stringify({
+        type: "create_helper_session",
+        payload: { parentSessionId: "session-ws-open" },
+      }),
+    );
+    const childCreated = await childCreatedPromise;
+    assert.equal(childCreated.payload.purpose, "helper");
+    const childHeader = JSON.parse(
+      readFileSync(
+        join(
+          dataDir,
+          "sessions",
+          childCreated.payload.sessionId,
+          "records",
+          "session.json",
+        ),
+        "utf-8",
+      ),
+    );
+    assert.deepEqual(childHeader.forkedFrom, {
+      sessionId: "session-ws-open",
+      purpose: "helper",
+    });
+
+    const rootOpenedPromise = waitForType(ws, "session_opened");
+    ws.send(
+      JSON.stringify({
+        type: "create_helper_session",
+        payload: { parentSessionId: childCreated.payload.sessionId },
+      }),
+    );
+    const rootOpened = await rootOpenedPromise;
+    assert.notEqual(rootOpened.payload.sessionId, childCreated.payload.sessionId);
+    const rootHeader = JSON.parse(
+      readFileSync(
+        join(
+          dataDir,
+          "sessions",
+          rootOpened.payload.sessionId,
+          "records",
+          "session.json",
+        ),
+        "utf-8",
+      ),
+    );
+    assert.equal(rootHeader.helper, true);
+    assert.equal(rootHeader.forkedFrom, undefined);
+
+    const fallbackOpenedPromise = waitForType(ws, "session_opened");
+    ws.send(
+      JSON.stringify({
+        type: "create_helper_session",
+        payload: { parentSessionId: "stale-helper-parent" },
+      }),
+    );
+    const fallbackOpened = await fallbackOpenedPromise;
+    assert.notEqual(fallbackOpened.payload.sessionId, rootOpened.payload.sessionId);
   } finally {
     ws.close();
     await new Promise<void>((resolveClose) => {

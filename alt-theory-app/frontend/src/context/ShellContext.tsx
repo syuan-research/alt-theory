@@ -42,6 +42,9 @@ export interface ShellContextValue {
 
   settingsPanel: string;
   setSettingsPanel: (panel: string) => void;
+  externalAiSetupOpen: boolean;
+  openExternalAiSetup: () => void;
+  closeExternalAiSetup: () => void;
 
   leftCollapsed: boolean;
   setLeftCollapsed: (collapsed: boolean) => void;
@@ -203,6 +206,7 @@ export function ShellProvider({ children }: { children: ReactNode }) {
     );
   }, [openModelsFromUrl]);
   const [settingsPanel, setSettingsPanel] = useState("models");
+  const [externalAiSetupOpen, setExternalAiSetupOpen] = useState(false);
   const [leftCollapsed, setLeftCollapsedState] = useState(() =>
     readFlag(LEFT_COLLAPSED_KEY)
   );
@@ -260,6 +264,8 @@ export function ShellProvider({ children }: { children: ReactNode }) {
     setSurface("settings");
   }, []);
   const openReview = useCallback(() => setSurface("review"), []);
+  const openExternalAiSetup = useCallback(() => setExternalAiSetupOpen(true), []);
+  const closeExternalAiSetup = useCallback(() => setExternalAiSetupOpen(false), []);
 
   const setLeftCollapsed = useCallback((collapsed: boolean) => {
     setLeftCollapsedState(collapsed);
@@ -343,6 +349,9 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       openReview,
       settingsPanel,
       setSettingsPanel,
+      externalAiSetupOpen,
+      openExternalAiSetup,
+      closeExternalAiSetup,
       leftCollapsed,
       setLeftCollapsed,
       searchOpen,
@@ -382,6 +391,9 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       openSettings,
       openReview,
       settingsPanel,
+      externalAiSetupOpen,
+      openExternalAiSetup,
+      closeExternalAiSetup,
       leftCollapsed,
       setLeftCollapsed,
       searchOpen,

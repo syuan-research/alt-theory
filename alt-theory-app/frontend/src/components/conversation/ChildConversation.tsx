@@ -211,7 +211,7 @@ export function ChildConversation({
 
 
   const slashCommands = useMemo(() => [
-    { name: "helper", description: t("Ask how Alt works, or get setup fixed — in a new conversation on the side"), run: () => socket.send({ type: "create_related_session", payload: { purpose: "helper" } }), immediate: true },
+    { name: "helper", description: t("Ask how Alt works, or get setup fixed — in a fresh Helper conversation"), run: () => app.openHelper(undefined, true), immediate: true },
     { name: "branch", description: t("Branch this conversation into a new direction"), run: () => socket.send({ type: "fork_session", payload: { purpose: "fork" } }), immediate: true },
     { name: "btw", description: t("Start a side conversation without adding it to the list"), run: () => socket.send({ type: "create_related_session", payload: { purpose: "side" } }), immediate: true },
     { name: "compact", description: t("Compact this conversation to free context space"), run: () => socket.send({ type: "compact" }), immediate: true },
@@ -286,7 +286,7 @@ export function ChildConversation({
             <i className="ph ph-crown-simple" aria-hidden="true" />{" "}
             {mainlineAction}
           </button>
-        ) : inList ? null : (
+        ) : inList || purpose === "helper" ? null : (
           <button
             className="flat promote-action"
             title={t("Keep this conversation in your list, with where it came from.")}

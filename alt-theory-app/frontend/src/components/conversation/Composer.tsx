@@ -39,6 +39,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
   const [presetOpen, setPresetOpen] = useState<boolean>(
     () => window.localStorage.getItem("alt-preset-open") === "1",
   );
+  const [moreHelpStarters, setMoreHelpStarters] = useState(false);
   // One-line hint in the tips slot when the card area switches (owner
   // 2026-08-05): each direction gets its own line, cleared after a beat.
   const [cardHint, setCardHint] = useState<string | null>(null);
@@ -90,11 +91,8 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
     return () => document.removeEventListener("click", onDoc);
   }, [menu]);
 
-  // Helper is a child of a real conversation; from a blank screen the same
-  // request starts one and invokes the help skill in it.
   const openHelper = (question: string) => {
-    if (app.sessionId) app.forkCurrentSession("helper", question);
-    else app.invokeSkill("alt-theory-help", question);
+    app.openHelper(question, variant === "live");
   };
   const slashMode = variant === "empty" ? shell.newMode : app.sessionMode;
 
@@ -206,6 +204,24 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
     if (app.sendPrompt(draft)) setDraft("");
   };
 
+  const stageHelpQuestion = (question: string) => {
+    shell.setNewMode("understand");
+    app.switchMode("understand");
+    setDraft((current) =>
+      current.trim() ? current.trimEnd() + "\n\n" + question : question,
+    );
+    window.setTimeout(() => textareaRef.current?.focus(), 0);
+  };
+
+  const applyGeneralKnowledgeWork = () => {
+    if (app.runtimeMode !== "alt-theory") return;
+    shell.setNewMode("work");
+    app.switchMode("work");
+    app.switchRolePreset(null);
+    app.switchKb(KB_OFF_VALUE);
+    window.setTimeout(() => textareaRef.current?.focus(), 0);
+  };
+
   // ctx-line labels
   const roleLabel = app.selectors.rolePresetSlug
     ? (app.discovery?.rolePresets.find(
@@ -297,6 +313,14 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                   onClick={() => shell.openSettings("models")}
                 >
                   {t("Open Settings → Models")}
+                </button>
+                {" · "}
+                <button
+                  type="button"
+                  className="flat"
+                  onClick={shell.openExternalAiSetup}
+                >
+                  {t("Ask another AI to help configure it")}
                 </button>
               </span>
             ) : null}
@@ -596,6 +620,46 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
           </div>
         ) : null}
 
+        {variant === "empty" ? (
+          <div className="empty-help-starters">
+            <div className="starter-grid">
+              {[
+                t("Help me connect a model or API provider."),
+                t("What can Alt Theory do, and when should I use Understand or Work?"),
+                t("How do bundles, skills, and trigger words work?"),
+                t("What are subagents, and when will Alt use one?"),
+                ...(moreHelpStarters
+                  ? [
+                      t("How do Branch and BTW differ?"),
+                      t("How do roles and knowledge sets change a conversation?"),
+                    ]
+                  : []),
+              ].map((question) => (
+                <button key={question} onClick={() => stageHelpQuestion(question)}>
+                  {question}
+                </button>
+              ))}
+            </div>
+            <div className="starter-foot">
+              <button
+                className="starter-more"
+                onClick={() => setMoreHelpStarters((open) => !open)}
+              >
+                {moreHelpStarters ? t("Fewer questions") : t("More questions")}
+              </button>
+              <button
+                className="general-work-preset"
+                disabled={app.runtimeMode !== "alt-theory"}
+                title={t("Temporary preset: Work mode, no role, and no knowledge base. You can edit every choice before Send.")}
+                onClick={applyGeneralKnowledgeWork}
+              >
+                <i className="ph ph-briefcase" />
+                {t("General knowledge work")}
+              </button>
+            </div>
+          </div>
+        ) : null}
+
         <div
           className={`composer${fileDragOver ? " file-drag-over" : ""}`}
           onDragEnter={(e) => {
@@ -691,18 +755,6 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               style={{ left: 0 }}
               onClick={(e) => e.stopPropagation()}
             >
-              {/* Always here: help that comes and goes with the screen you are
-                  on is help you cannot rely on. In a conversation it opens a
-                  Helper child; on a blank screen it starts one. */}
-              <div
-                className="mi"
-                title={t("Opens a separate conversation beside this one, with fresh context. It answers questions about Alt and can fix setup — providers, keys, models, missing tools.")}
-                onClick={() => armCommand("helper")}
-              >
-                <i className="ph ph-lifebuoy" />
-                {t("Ask how Alt works, or fix setup")}
-                <span className="mi-note">{t("new conversation on the side")}</span>
-              </div>
               {canAttach ? (
                 <div
                   className="mi"
@@ -719,37 +771,11 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               ) : null}
               <div
                 className="mi"
-                onClick={() => armCommand("adaptive-aligning")}
-              >
-                <i className="ph ph-chats-circle" />
-                {t("Align on a plan or decision")}
-              </div>
-              <div
-                className="mi"
                 onClick={() => armCommand("adaptive-plan-record")}
               >
                 <i className="ph ph-list-checks" />
                 {t("Plan & record")}
               </div>
-              {/* web-search is FULL_ONLY_BUNDLED_SKILLS (alt-theory-core.ts:464) —
-                  in Understand mode say why rather than greying out a "soon". */}
-              {understandMode ? (
-                <div
-                  className="mi disabled"
-                  title={t("Switch to Work when you want Alt to look up current information.")}
-                >
-                  <i className="ph ph-globe" />
-                  {t("Looking things up online needs Work mode")}
-                </div>
-              ) : (
-                <div
-                  className="mi"
-                  onClick={() => armCommand("web-search")}
-                >
-                  <i className="ph ph-globe" />
-                  {t("Look something up online")}
-                </div>
-              )}
               <div className="sep" />
               {understandMode && app.sessionId ? (
                 <div

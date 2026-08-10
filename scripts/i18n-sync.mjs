@@ -47,7 +47,9 @@ function extractKeys() {
   // Sweep convention: t("double-quoted english"). The captured raw text is
   // valid JSON string content (may contain \" escapes), so JSON.parse
   // unescapes it exactly.
-  const pattern = /\bt\(\s*"((?:[^"\\\n]|\\.)+)"/g;
+  // Product tip config stores all locales together through localized(), so
+  // those English source keys belong to the catalogs just like t() keys.
+  const pattern = /(?:\bt|\blocalized)\(\s*"((?:[^"\\\n]|\\.)+)"/g;
   for (const dir of [FRONTEND_SRC, BACKEND_SRC]) {
     for (const file of walk(dir)) {
       if (file.includes(`${sep}i18n${sep}`)) continue;

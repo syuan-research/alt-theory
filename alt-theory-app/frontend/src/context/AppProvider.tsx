@@ -148,6 +148,7 @@ export interface AppContextValue {
     purpose: "fork" | "side" | "helper" | "ab-arm",
     seedPrompt?: string,
   ) => void;
+  openHelper: (question?: string, attachToCenter?: boolean) => void;
   duplicateSession: (sessionId: string) => void;
   /** Conversations that changed state while you were looking elsewhere. */
   sessionAlerts: Record<string, SessionAlert>;
@@ -335,6 +336,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [],
   );
   const pendingChildSeedRef = useRef<{ text: string; autoSend: boolean } | null>(null);
+  const pendingHelperSeedRef = useRef<string | null>(null);
   const [childSeed, setChildSeed] = useState<
     { sessionId: string; text: string; autoSend: boolean } | null
   >(null);
@@ -842,6 +844,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
           if (selectedCatalogSessionId === message.payload.sessionId) {
             void refreshSessionDetail(message.payload.sessionId);
           }
+          if (pendingHelperSeedRef.current) {
+            const seed = pendingHelperSeedRef.current;
+            pendingHelperSeedRef.current = null;
+            window.setTimeout(() => startPromptRef.current(seed, []), 0);
+          }
           break;
         }
 
@@ -908,6 +915,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
             });
             pendingChildSeedRef.current = null;
           }
+          if (pendingHelperSeedRef.current) {
+            setChildSeed({
+              sessionId: message.payload.sessionId,
+              text: pendingHelperSeedRef.current,
+              autoSend: true,
+            });
+            pendingHelperSeedRef.current = null;
+          }
           setIsRunning(false);
           setConnStatus("idle");
           setConnLabel("Ready");
@@ -946,6 +961,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           break;
 
         case "error": {
+          pendingHelperSeedRef.current = null;
           pendingCompactRef.current = false;
           if (message.payload.code === "auth_required") {
             setToolStatus(t("Please sign in to continue."));
@@ -1172,6 +1188,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     },
     [isRunning, sendMessage, sessionId],
+  );
+
+  const openHelper = useCallback(
+    (question?: string, attachToCenter = true) => {
+      const seed = question?.trim() || null;
+      pendingHelperSeedRef.current = seed;
+      const current = sessions.find((item) => item.sessionId === sessionId);
+      const currentIsHelper =
+        current?.helper || current?.forkedFrom?.purpose === "helper";
+      const parentSessionId =
+        attachToCenter && sessionId && !currentIsHelper ? sessionId : undefined;
+      if (
+        !sendMessage({
+          type: "create_helper_session",
+          payload: parentSessionId ? { parentSessionId } : {},
+        })
+      ) {
+        pendingHelperSeedRef.current = null;
+      }
+    },
+    [sendMessage, sessionId, sessions],
   );
 
   // Duplicate straight from the session list — no need to open the source first.
@@ -1822,6 +1859,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       refreshSessions,
       openCatalogSession,
       forkCurrentSession,
+      openHelper,
       duplicateSession,
       sessionAlerts,
       activeRelatedSessionId,
@@ -1931,6 +1969,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       refreshSessions,
       openCatalogSession,
       forkCurrentSession,
+      openHelper,
       duplicateSession,
       sessionAlerts,
       activeRelatedSessionId,

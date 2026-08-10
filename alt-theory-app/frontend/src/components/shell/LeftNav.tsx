@@ -13,6 +13,7 @@ import {
 } from "@/lib/sessionList";
 import { Workbench } from "@/components/shell/Workbench";
 import { SessionImportDialog } from "@/components/shell/SessionImportDialog";
+import { HelpMenu } from "@/components/shell/HelpMenu";
 import { promoteToMainline as promoteToMainlineRequest } from "@/api/sessions";
 import { hasNativeBridge, pickDirectory, revealPath } from "@/lib/native";
 import { fetchSessionDetail } from "@/api/sessions";
@@ -164,6 +165,7 @@ export function LeftNav() {
           <i className="ph ph-magnifying-glass" />
         </button>
         <div style={{ flex: 1 }} />
+        <HelpMenu compact />
         <button
           title={t("Settings")}
           style={{ marginBottom: 10 }}
@@ -204,6 +206,7 @@ export function LeftNav() {
         <Workbench />
 
         <div className="left-foot">
+          <HelpMenu />
           <button className="gear" onClick={() => shell.openSettings()}>
             <i className="ph ph-gear" />
             {t("Settings")}

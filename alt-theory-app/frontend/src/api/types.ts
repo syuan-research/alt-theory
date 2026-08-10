@@ -215,6 +215,7 @@ export interface SessionSummary {
   updatedAt: string | null;
   deletedAt: string | null;
   trashDueAt?: string | null;
+  helper?: true;
   /** Root that ceded its list spot to a promoted branch (M4b role swap). */
   delisted?: boolean;
   /** The session that took the spot (set with delisted). */
@@ -584,6 +585,10 @@ export type ClientMessage =
       payload: { primaryDir: string | null };
     }
   | { type: "new_session" }
+  | {
+      type: "create_helper_session";
+      payload: { parentSessionId?: string; question?: string };
+    }
   | { type: "open_session"; payload: { sessionId: string } }
   | { type: "get_session_metadata" }
   | { type: "get_session_metrics" }

@@ -9,6 +9,7 @@ import { SettingsView } from "@/components/shell/SettingsView";
 import { ReviewPage } from "@/components/shell/ReviewPage";
 import { SearchOverlay } from "@/components/shell/SearchOverlay";
 import { LoginOverlay } from "@/components/auth/LoginOverlay";
+import { ExternalAiSetupDialog } from "@/components/shell/ExternalAiSetupDialog";
 
 type PaneSide = "left" | "right";
 
@@ -137,6 +138,7 @@ export function Shell() {
   return (
     <div className={rootClass}>
       <SearchOverlay />
+      <ExternalAiSetupDialog />
       {shell.surface === "settings" ? (
         <SettingsView />
       ) : shell.surface === "review" ? (

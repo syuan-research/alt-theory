@@ -60,6 +60,7 @@ export function relatedDisplayMarker(
   allSessions?: SessionSummary[],
 ): string | null {
   const fork = session.forkedFrom;
+  if (session.helper || fork?.purpose === "helper") return "Helper";
   if (!fork || fork.purpose === "ab-arm") return null;
   if (session.lineageMarker) return session.lineageMarker;
   const token = LINEAGE_TOKEN[fork.purpose as RelatedPurpose];
@@ -138,7 +139,11 @@ export function isListMember(session: SessionSummary): boolean {
   // nests it under its successor (owner 2026-08-04: the old mainline must
   // degrade to an ordinary branch row, never vanish).
   if (!fork) return true;
-  return fork.purpose === "fork" || fork.listed === true;
+  return (
+    fork.purpose === "fork" ||
+    fork.purpose === "helper" ||
+    fork.listed === true
+  );
 }
 
 const byAge = (a: SessionSummary, b: SessionSummary) =>

@@ -311,7 +311,22 @@ function RelatedConversations() {
   if (children.length === 0) {
     return (
       <div className="rp-empty">
-        {t("No related conversations. Use ")} <b>/branch</b> {t(" or ")} <b>/btw</b>, {t(" or open Helper.")}
+        <div>{t("No related conversations.")}</div>
+        <div className="related-empty-actions">
+          {app.sessionId ? (
+            <>
+              <button onClick={() => app.forkCurrentSession("fork")}>
+                {t("Create branch")}
+              </button>
+              <button onClick={() => app.forkCurrentSession("side")}>
+                {t("Start BTW")}
+              </button>
+            </>
+          ) : null}
+          <button onClick={() => app.openHelper(undefined, Boolean(app.sessionId))}>
+            {t("Ask Helper")}
+          </button>
+        </div>
       </div>
     );
   }
@@ -355,7 +370,7 @@ function RelatedConversations() {
         </button>
       ))}
       <div className="related-legend" aria-hidden="true">
-        {t("br = Branch · btw = side chat · h = Helper · sa = Subagent")}
+        {t("br = Branch · btw = side chat · Helper · sa = Subagent")}
       </div>
     </>
   );

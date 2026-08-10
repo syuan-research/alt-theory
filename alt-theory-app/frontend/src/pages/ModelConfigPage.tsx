@@ -22,6 +22,7 @@ import { BodyText, HintText, PageTitle } from "@/components/ui/Typography";
 import { cn } from "@/lib/cn";
 import { applyTheme, isDarkStored, setDarkStored } from "@/lib/theme";
 import { t } from "@/i18n";
+import { useShell } from "@/context/ShellContext";
 
 const PROVIDER_PRESETS = [
   {
@@ -335,6 +336,7 @@ export function ModelConfigPage({
   addProviderTop?: ReactNode;
   onConfigChanged?: () => void | Promise<void>;
 } = {}) {
+  const shell = useShell();
   const [status, setStatus] = useState<ConfigStatus | null>(null);
   const [providers, setProviders] = useState<ProviderView[]>([]);
   const [loading, setLoading] = useState(true);
@@ -875,15 +877,14 @@ export function ModelConfigPage({
               {t("Add provider")}
             </button>
             {discardPrompt("add")}
-            <details className="chatbot-config-hint">
-              <summary>
+            <button
+              type="button"
+              className="chatbot-config-hint"
+              onClick={shell.openExternalAiSetup}
+            >
                 <i className="ph ph-chats-circle" aria-hidden />
                 {t("Let a chatbot write the config")}
-              </summary>
-              <p>
-                {t("The user guide has a prompt you can paste into ChatGPT, Kimi, DeepSeek, Gemini, or a local agent — see Models, Providers, and Access. Helper can also do it here.")}
-              </p>
-            </details>
+            </button>
             <div className="provider-master-list">
               {[...providers]
                 .sort((a, b) => {
