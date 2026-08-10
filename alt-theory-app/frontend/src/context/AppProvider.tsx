@@ -874,6 +874,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             setConnStatus("running");
             setConnLabel(t("Running"));
             setIsRunning(true);
+            void refreshSessions();
           } else {
             setConnStatus("idle");
             setConnLabel(message.payload.status || t("Ready"));

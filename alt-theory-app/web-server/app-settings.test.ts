@@ -33,6 +33,17 @@ test("app settings persist immediately and round-trip explicit selections", () =
   assert.deepEqual(resolved.work, []);
 });
 
+test("app settings keep session-list sort preferences", () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "alt-theory-settings-"));
+  const settings = readAppSettings(dataDir);
+  settings.sessionListSort = {
+    folders: "modified",
+    conversations: "name",
+  };
+  writeAppSettings(dataDir, settings);
+  assert.deepEqual(readAppSettings(dataDir).sessionListSort, settings.sessionListSort);
+});
+
 test("skill discovery lists alt bundled and pi-user locations with sources", () => {
   const root = mkdtempSync(join(tmpdir(), "alt-theory-discovery-"));
   const altSkillsDir = join(root, "alt-skills");

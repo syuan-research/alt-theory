@@ -253,3 +253,52 @@ test("rail: a delisted origin appears as an ancestor (its only door)", () => {
   const { ancestors } = relatedConversationsFor("b", [origin, b]);
   assert.deepEqual(ancestors.map((s) => s.sessionId), ["origin"]);
 });
+
+test("family and folder modified sorting follow descendant prompt acceptance", () => {
+  const oldRoot = {
+    ...child("old-root", "unused", "fork", "2026-06-01T00:00:00.000Z"),
+    forkedFrom: null,
+    workspacePrimaryDir: "C:/alpha",
+  } as SessionSummary;
+  const freshRoot = {
+    ...child("fresh-root", "unused", "fork", "2026-07-01T00:00:00.000Z"),
+    forkedFrom: null,
+    workspacePrimaryDir: "C:/beta",
+  } as SessionSummary;
+  const descendant = child(
+    "descendant",
+    "old-root",
+    "side",
+    "2026-06-02T00:00:00.000Z",
+  );
+  descendant.workspacePrimaryDir = "C:/alpha";
+  descendant.lastPromptAcceptedAt = "2026-08-01T00:00:00.000Z";
+
+  const tree = buildWorkspaceTree(
+    [freshRoot, oldRoot, descendant],
+    [],
+    { folders: "modified", conversations: "modified" },
+  );
+  assert.deepEqual(tree.groups.map((group) => group.dir), ["C:/alpha", "C:/beta"]);
+});
+
+test("name sorting uses displayed conversation names", () => {
+  const z = {
+    ...child("z", "unused", "fork", "2026-07-02T00:00:00.000Z"),
+    forkedFrom: null,
+  } as SessionSummary;
+  const a = {
+    ...child("a", "unused", "fork", "2026-07-01T00:00:00.000Z"),
+    forkedFrom: null,
+  } as SessionSummary;
+  const tree = buildWorkspaceTree(
+    [z, a],
+    [],
+    { folders: "name", conversations: "name" },
+    {
+      z: { alias: "Alpha", snippet: "" },
+      a: { alias: "Zulu", snippet: "" },
+    },
+  );
+  assert.deepEqual(tree.groups[0].roots.map((root) => root.sessionId), ["z", "a"]);
+});

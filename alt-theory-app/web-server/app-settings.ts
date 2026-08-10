@@ -49,6 +49,10 @@ export interface AppSettings {
    * that already host sessions are derived from session summaries instead.
    */
   knownWorkspaces?: string[];
+  sessionListSort?: {
+    folders: "name" | "modified";
+    conversations: "name" | "modified";
+  };
   /**
    * Auto-naming of conversations (v1.2.1). Absent = enabled, using the session's
    * own model. A pinned `model` (recommended: a small one) overrides which model
@@ -139,6 +143,13 @@ export function readAppSettings(dataDir: string): AppSettings {
               (entry): entry is string => typeof entry === "string"
             ),
           }
+        : {}),
+      ...(parsed.sessionListSort &&
+      (parsed.sessionListSort.folders === "name" ||
+        parsed.sessionListSort.folders === "modified") &&
+      (parsed.sessionListSort.conversations === "name" ||
+        parsed.sessionListSort.conversations === "modified")
+        ? { sessionListSort: parsed.sessionListSort }
         : {}),
       // This normalizer whitelists fields, so anything not listed here is
       // silently dropped on read — autoTitle was, which made the auto-naming

@@ -16,6 +16,11 @@ import { SessionImportDialog } from "@/components/shell/SessionImportDialog";
 import { promoteToMainline as promoteToMainlineRequest } from "@/api/sessions";
 import { hasNativeBridge, pickDirectory, revealPath } from "@/lib/native";
 import { fetchSessionDetail } from "@/api/sessions";
+import {
+  getSessionListSort,
+  saveSessionListSort,
+  type SessionListSort,
+} from "@/api/config";
 import altTheoryMark from "@/assets/alt-theory-mark.svg";
 import {
   downloadMarkdown,
@@ -230,9 +235,17 @@ function UserNav({ onImport }: { onImport: () => void }) {
   const [closedGroups, setClosedGroups] = useState<Set<string>>(new Set());
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [listSort, setListSort] = useState<SessionListSort>({
+    folders: "name",
+    conversations: "modified",
+  });
   const local = app.appMode === "local";
-  // Newest N per folder so one busy folder can't bury the others (item 4b).
-  const GROUP_CAP = 8;
+  const GROUP_CAP = 4;
+
+  useEffect(() => {
+    if (!local) return;
+    void getSessionListSort().then(setListSort);
+  }, [local]);
 
   useEffect(() => {
     const closeOpenMenus = (event: PointerEvent) => {
@@ -263,9 +276,24 @@ function UserNav({ onImport }: { onImport: () => void }) {
   }, []);
 
   const tree = useMemo(
-    () => buildWorkspaceTree(app.sessions, local ? app.knownWorkspaces : []),
-    [app.sessions, app.knownWorkspaces, local],
+    () =>
+      buildWorkspaceTree(
+        app.sessions,
+        local ? app.knownWorkspaces : [],
+        listSort,
+        app.sessionDisplayNames,
+      ),
+    [app.sessions, app.knownWorkspaces, app.sessionDisplayNames, listSort, local],
   );
+
+  const chooseSort = (next: SessionListSort) => {
+    setListSort(next);
+    if (local) {
+      void saveSessionListSort(next).catch((error) =>
+        window.alert(error instanceof Error ? error.message : String(error)),
+      );
+    }
+  };
 
   const workspaceDirs = useMemo(() => {
     const dirs = new Set(app.knownWorkspaces);
@@ -519,6 +547,44 @@ function UserNav({ onImport }: { onImport: () => void }) {
             </button>
           )}
         </div>
+        <details className="list-more list-sort">
+          <summary title={t("Sort conversations")}>
+            <i className="ph ph-dots-three" />
+          </summary>
+          <div className="list-menu">
+            <div className="list-menu-label">{t("Folders")}</div>
+            {(["name", "modified"] as const).map((value) => (
+              <button
+                key={`folder-${value}`}
+                onClick={(event) => {
+                  closeMenu(event);
+                  chooseSort({ ...listSort, folders: value });
+                }}
+              >
+                {t(value === "name" ? "Name" : "Modified")}
+                {listSort.folders === value ? (
+                  <i className="ph ph-check check" />
+                ) : null}
+              </button>
+            ))}
+            <div className="sep" />
+            <div className="list-menu-label">{t("Conversations")}</div>
+            {(["name", "modified"] as const).map((value) => (
+              <button
+                key={`conversation-${value}`}
+                onClick={(event) => {
+                  closeMenu(event);
+                  chooseSort({ ...listSort, conversations: value });
+                }}
+              >
+                {t(value === "name" ? "Name" : "Modified")}
+                {listSort.conversations === value ? (
+                  <i className="ph ph-check check" />
+                ) : null}
+              </button>
+            ))}
+          </div>
+        </details>
         <RunningCount sessions={app.sessions} />
       </div>
       <div className="sessions">

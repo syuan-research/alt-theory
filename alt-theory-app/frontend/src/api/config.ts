@@ -148,6 +148,25 @@ export async function saveDefaultAltMode(
   });
 }
 
+export interface SessionListSort {
+  folders: "name" | "modified";
+  conversations: "name" | "modified";
+}
+
+export function getSessionListSort(): Promise<SessionListSort> {
+  return fetchJson("/api/settings/session-list");
+}
+
+export function saveSessionListSort(
+  value: SessionListSort,
+): Promise<{ ok: true } & SessionListSort> {
+  return fetchJson("/api/settings/session-list", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(value),
+  });
+}
+
 export interface RuntimeSettings {
   mode: "alt-theory" | "native-pi";
   nativePiScanAltSkills: boolean;

@@ -461,6 +461,9 @@
   /* new-conversation row + overflow menu in the session list */
   .new-row { display: flex; align-items: center; gap: 6px; }
   .new-row .btn-new { flex: 1; }
+  .list-sort { width: 26px; margin: 2px 0 -2px auto; }
+  .list-sort > .list-menu { top: 26px; }
+  .list-menu-label { padding: 5px 10px 2px; color: var(--text-3); font-size: 0.68rem; }
 
   /* split new-conversation control: [folder picker | +] (M4) */
   .split-new { flex: 1; display: flex; align-items: stretch; min-width: 0; border: 1px solid var(--hairline); border-radius: var(--r-md); background: var(--canvas); overflow: visible; }

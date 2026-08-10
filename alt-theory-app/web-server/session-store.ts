@@ -45,6 +45,7 @@ import {
 } from "./config-events.js";
 import {
   latestRunSnapshots,
+  latestPromptAcceptedAt,
   readRunRecords,
   type RunRecord,
 } from "./run-records.js";
@@ -68,6 +69,8 @@ export interface SessionSummary {
   /** Hosted-only expiry for a "private" conversation; null everywhere else. */
   retentionDueAt: string | null;
   createdAt: string | null;
+  /** Product recency: newest prompt accepted for execution, never read/open mtime. */
+  lastPromptAcceptedAt: string | null;
   updatedAt: string | null;
   deletedAt: string | null;
   trashDueAt: string | null;
@@ -1129,6 +1132,12 @@ function buildSummary(sessionId: string, parts: SessionParts): SessionSummary {
     visibility: parts.v4Session?.visibility ?? "research",
     retentionDueAt: parts.v4Session?.retentionDueAt ?? null,
     createdAt: parts.manifest?.createdAt ?? parts.v4Session?.createdAt ?? null,
+    lastPromptAcceptedAt:
+      latestPromptAcceptedAt(parts.recordsDir) ??
+      parts.v4Session?.lastActivityAt ??
+      parts.manifest?.createdAt ??
+      parts.v4Session?.createdAt ??
+      null,
     ...(parts.v4Session?.delisted ? { delisted: true } : {}),
     ...(parts.v4Session?.delistedFor
       ? { delistedFor: parts.v4Session.delistedFor }
@@ -1996,8 +2005,8 @@ function newestTimestamp(paths: Array<string | null>): string | null {
 }
 
 function compareSummaries(a: SessionSummary, b: SessionSummary): number {
-  const aTime = Date.parse(a.updatedAt ?? a.createdAt ?? "");
-  const bTime = Date.parse(b.updatedAt ?? b.createdAt ?? "");
+  const aTime = Date.parse(a.lastPromptAcceptedAt ?? a.createdAt ?? "");
+  const bTime = Date.parse(b.lastPromptAcceptedAt ?? b.createdAt ?? "");
   const timeDiff = (Number.isNaN(bTime) ? 0 : bTime) - (Number.isNaN(aTime) ? 0 : aTime);
   if (timeDiff !== 0) return timeDiff;
   // Timestamps are second-granular; same-second sessions tie. IDs carry the

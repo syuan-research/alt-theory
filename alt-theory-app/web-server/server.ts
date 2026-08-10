@@ -510,6 +510,33 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   });
 
   // --- Behavior settings ---
+  app.get("/api/settings/session-list", (_req, res) => {
+    if (!requireLocalConfigMode(res)) return;
+    res.json(
+      readAppSettings(dataDir).sessionListSort ?? {
+        folders: "name",
+        conversations: "modified",
+      },
+    );
+  });
+  app.put("/api/settings/session-list", (req, res) => {
+    if (!requireLocalConfigMode(res)) return;
+    const body = req.body as { folders?: unknown; conversations?: unknown };
+    if (
+      (body.folders !== "name" && body.folders !== "modified") ||
+      (body.conversations !== "name" && body.conversations !== "modified")
+    ) {
+      res.status(400).json({ error: "Unknown session-list sort" });
+      return;
+    }
+    const settings = readAppSettings(dataDir);
+    settings.sessionListSort = {
+      folders: body.folders,
+      conversations: body.conversations,
+    };
+    writeAppSettings(dataDir, settings);
+    res.json({ ok: true, ...settings.sessionListSort });
+  });
   app.get("/api/settings/default-alt-mode", (_req, res) => {
     if (!requireLocalConfigMode(res)) return;
     res.json({ mode: readAppSettings(dataDir).defaultAltMode ?? null });

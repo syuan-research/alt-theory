@@ -122,9 +122,9 @@ export function sessionTitle(
 }
 
 export function compareByRecency(a: SessionSummary, b: SessionSummary): number {
-  const aTime = new Date(a.updatedAt || a.createdAt || 0).getTime();
-  const bTime = new Date(b.updatedAt || b.createdAt || 0).getTime();
-  return bTime - aTime;
+  const aTime = new Date(a.lastPromptAcceptedAt || a.createdAt || 0).getTime();
+  const bTime = new Date(b.lastPromptAcceptedAt || b.createdAt || 0).getTime();
+  return bTime - aTime || b.sessionId.localeCompare(a.sessionId, undefined, { numeric: true });
 }
 
 /**
@@ -423,16 +423,45 @@ export interface WorkspaceTree {
   childrenByParent: Map<string, SessionSummary[]>;
 }
 
+export interface SessionListSort {
+  folders: "name" | "modified";
+  conversations: "name" | "modified";
+}
+
 /**
  * Session list grouped by working folder (M4). knownWorkspaces adds empty
  * groups so a just-added folder appears before any conversation exists in it.
  */
 export function buildWorkspaceTree(
   sessions: SessionSummary[],
-  knownWorkspaces: string[]
+  knownWorkspaces: string[],
+  sort: SessionListSort = { folders: "name", conversations: "modified" },
+  displayNames: DisplayNames = {},
 ): WorkspaceTree {
   const members = sessions.filter(isListMember).sort(compareByRecency);
   const { roots, childrenByParent } = buildEdges(members);
+  const byId = new Map(sessions.map((session) => [session.sessionId, session]));
+  const familyActivity = new Map<string, number>();
+  for (const session of sessions) {
+    const key = familyKeyOf(session, byId);
+    const time = new Date(
+      session.lastPromptAcceptedAt || session.createdAt || 0,
+    ).getTime();
+    familyActivity.set(key, Math.max(familyActivity.get(key) ?? 0, time));
+  }
+  const ownComparator = (a: SessionSummary, b: SessionSummary) =>
+    sort.conversations === "name"
+      ? sessionTitle(a, displayNames, sessions).localeCompare(
+          sessionTitle(b, displayNames, sessions),
+        ) || a.sessionId.localeCompare(b.sessionId)
+      : compareByRecency(a, b);
+  for (const children of childrenByParent.values()) children.sort(ownComparator);
+  const familyComparator = (a: SessionSummary, b: SessionSummary) =>
+    sort.conversations === "name"
+      ? ownComparator(a, b)
+      : (familyActivity.get(familyKeyOf(b, byId)) ?? 0) -
+          (familyActivity.get(familyKeyOf(a, byId)) ?? 0) ||
+        b.sessionId.localeCompare(a.sessionId, undefined, { numeric: true });
 
   const byDir = new Map<string, SessionSummary[]>();
   for (const dir of knownWorkspaces) {
@@ -444,20 +473,28 @@ export function buildWorkspaceTree(
     byDir.get(dir)?.push(root);
   }
 
-  // Folders sort by NAME, stable across clicks (owner 2026-08-05: recency
-  // sort made the active folder jump to the top on every interaction);
-  // "No folder" last. Roots inside a group stay recency-sorted.
   const groups = [...byDir.entries()]
-    .sort(([aDir], [bDir]) => {
-      if (!aDir) return 1;
-      if (!bDir) return -1;
-      return folderLabel(aDir).localeCompare(folderLabel(bDir));
-    })
     .map(([dir, groupRoots]) => ({
       dir,
       label: dir ? folderLabel(dir) : "No folder",
-      roots: groupRoots,
-    }));
+      roots: groupRoots.sort(familyComparator),
+      modified: Math.max(
+        0,
+        ...groupRoots.map(
+          (root) => familyActivity.get(familyKeyOf(root, byId)) ?? 0,
+        ),
+      ),
+    }))
+    .sort((a, b) => {
+      const aDir = a.dir;
+      const bDir = b.dir;
+      if (!aDir) return 1;
+      if (!bDir) return -1;
+      return sort.folders === "name"
+        ? a.label.localeCompare(b.label)
+        : b.modified - a.modified || a.label.localeCompare(b.label);
+    })
+    .map(({ modified: _modified, ...group }) => group);
 
   return { groups, childrenByParent };
 }

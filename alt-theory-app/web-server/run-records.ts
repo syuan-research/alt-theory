@@ -88,6 +88,14 @@ export function latestRunSnapshots(recordsDir: string): RunRecord[] {
   return [...latest.values()];
 }
 
+export function latestPromptAcceptedAt(recordsDir: string): string | null {
+  let latest: string | null = null;
+  for (const record of readRunRecords(recordsDir)) {
+    if (!latest || record.acceptedAt > latest) latest = record.acceptedAt;
+  }
+  return latest;
+}
+
 function runsPath(recordsDir: string): string {
   return join(recordsDir, "runs.jsonl");
 }
