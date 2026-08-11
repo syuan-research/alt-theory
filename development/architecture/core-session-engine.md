@@ -755,7 +755,8 @@ REST:
 - `GET /api/sessions/{sessionId}`
 - `GET /api/sessions/{sessionId}/files`
 - `GET /api/sessions/{sessionId}/files?root=working` (local only; working-folder
-  descriptors, or one directory's children with `folderId` + `path`)
+  descriptors, one directory's children with `folderId` + `path`, or bounded
+  recursive filtering with `folderId` + `search`)
 - `GET /api/sessions/{sessionId}/files/content`
 - `PUT /api/sessions/{sessionId}/files/content`
 - `GET /api/sessions/{sessionId}/files/download?root=workspace&path=...`
@@ -790,9 +791,11 @@ workspace-only.
 The local-only `root=working` view is separate from the managed session
 workspace. It resolves only the persisted primary/additional workspace roots,
 omits hidden and common dependency/cache trees, and lists one directory's
-immediate children at a time as the user expands the tree. There is no global
-file-count ceiling or depth-first traversal bias. Each directory request and
-bounded text preview rechecks containment. This lets Files show the directory
+immediate children at a time as the user expands the tree. Inline filtering is
+the bounded exception: the server scans the allowed tree and returns at most
+200 matches plus their ancestors rather than making the client preload every
+directory. Each directory request and bounded text preview rechecks containment.
+This lets Files show the directory
 the agent actually works in without mislabeling imported references as the
 entire workspace. Switching Understand/Work changes mediation capability, not
 these persisted folder identities.

@@ -109,6 +109,9 @@ surfaces remain designation-gated and absent for everyone else.
 - **Conversation list**
   - Conversations are grouped by workspace.
   - List-level actions live in the list overflow.
+  - A family head may collapse or expand its descendants without changing their
+    list membership. Session identifiers and local session-folder paths remain
+    available on demand through the row actions rather than default labels.
   - Root conversations and Branches (purpose `fork`) have the same functional
     status: both are first-class conversations that users may compare, keep, or
     delete independently. Deleting either never deletes its parent, sibling
@@ -142,11 +145,17 @@ surfaces remain designation-gated and absent for everyone else.
     every surface, including Settings. The notice does not approve in place: it
     returns to the owner. Roots and Branches open in the center; BTW, Helper, and
     subagents open beside their parent in the right rail. The approval panel then
-    appears in that owning pane.
+    appears in that owning pane. In the application shell the notice sits in the
+    lower action area above the composer instead of covering transcript content.
   - Center multi-arm A/B comparison stays on Workbench compare surfaces only;
     branches must not open a second center-column “compare pane.”
   - File preview occupies the rail as a real reading surface; rendered Markdown
     is the default for non-technical users, with source available on demand.
+  - Files has one inline filter above the existing tree. It keeps matches and
+    their ancestors in that tree, expands those ancestors while filtering, and
+    restores the prior expansion when cleared. File-change rows may reveal the
+    same path here; path copying and file-manager reveal live in contextual
+    actions rather than permanent labels.
 - **Settings**
   - General: app behavior and ordinary preferences.
   - Models: provider connection, model choice, and model capability correction.
