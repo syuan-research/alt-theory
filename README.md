@@ -44,7 +44,7 @@ In 2025, it began as an environmental psychology knowledge base and a thinking p
 - Choose the working boundaries, permissions, and research tools available to the conversation.
 - Create, compare, retain, or discard different lines of inquiry.
 
-A selected knowledge base can preserve the scope, provenance, and internal traditions of a field while Alt also considers wider or more mainstream knowledge. Easier knowledge-base creation and community knowledge bases are future directions rather than current Beta claims.
+A selected knowledge base can preserve the scope, provenance, and internal traditions of a field while Alt also considers wider or more mainstream knowledge. Easier knowledge-base creation and community knowledge bases are future directions.
 
 ### Selected skills
 
@@ -57,7 +57,7 @@ A selected knowledge base can preserve the scope, provenance, and internal tradi
 | `imported-session-context` | An imported conversation needs contextual recovery | Automatic |
 | `alt-theory-help` | Setup or product use needs assistance | Through Helper |
 
-Explicit Skill invocation is available through commands and the [Steer bar](docs/en/system-guide/steer-bar.md), which holds common situational Skills beside the composer.
+Explicit Skill invocation is available through commands and the switchable [Steer card](docs/en/system-guide/steer-bar.md) above the composer.
 
 ## Get Alt Theory
 
@@ -126,10 +126,10 @@ The Beta is not code-signed. Windows SmartScreen may show an unidentified-app wa
 
 1. Download the macOS Beta from the [GitHub Release page](https://github.com/syuan-research/alt-theory/releases).
 2. Unpack the complete `AltTheory` folder in Downloads. It contains `AltTheory.app` and `Fix-Open.command`.
-3. Remove quarantine either by right-clicking `Fix-Open.command` and choosing **Open**, or by running `xattr -dr com.apple.quarantine "$HOME/Downloads/AltTheory/AltTheory.app"` in Terminal. If the extracted path differs, replace the path in the command.
-4. Move `AltTheory.app` to Applications and open it. If macOS still blocks it, use **System Settings → Privacy & Security → Open Anyway**, authenticate, and confirm **Open**.
+3. Right-click `Fix-Open.command`, choose **Open**, then confirm **Open**.
+4. Open `AltTheory.app`. Go to **System Settings → Privacy & Security → Open Anyway**, authenticate, and confirm **Open**. Move the app to Applications if desired.
 
-These steps are needed because the Beta is not notarized by Apple. The script and Terminal command only remove macOS's download-quarantine flag. Use them only for a ZIP downloaded from this repository's GitHub Release, and check the SHA-256 against `BUILD-INFO-mac.txt`. Apple Silicon only.
+Alternatively, run `xattr -dr com.apple.quarantine "$HOME/Downloads/AltTheory/AltTheory.app"` in Terminal; replace the path if needed. Use either fix only for a ZIP from this repository's GitHub Release. Apple Silicon only; `BUILD-INFO-mac.txt` carries the SHA-256.
 
 Node.js and npm are **not** required when using the downloaded app.
 

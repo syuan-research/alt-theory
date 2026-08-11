@@ -44,7 +44,7 @@ Alt Theory 从社会科学研究者的视角出发，并随 AI 能力变化而�
 - 选择对话可用的工作边界、permissions（权限）和研究工具。
 - 创建、比较、保留或舍弃不同的探究路线。
 
-Knowledge base（知识库）可以保留一个领域的范围、provenance（来源脉络）与内部传统，同时让 Alt 考虑更广泛或更主流的知识。更容易的知识库制作和 community knowledge bases（社区知识库）是未来方向，不是当前 Beta（测试版）的既有承诺。
+Knowledge base（知识库）可以保留一个领域的范围、provenance（来源脉络）与内部传统，同时让 Alt 考虑更广泛或更主流的知识。更容易的知识库制作和 community knowledge bases（社区知识库）是未来方向。
 
 ### 部分 Skills（技能）
 
@@ -57,7 +57,7 @@ Knowledge base（知识库）可以保留一个领域的范围、provenance（�
 | `imported-session-context` | 导入的对话需要恢复上下文 | 自动 |
 | `alt-theory-help` | 设置或产品使用需要帮助 | 通过 Helper（助手） |
 
-当前可以通过 commands（命令）明确调用 Skill（技能）。常用情境 Skill 的直接 toolbar（工具栏）计划在 v1.3.1 Beta 周期提供。
+当前可以通过 commands（命令）或输入区上方可切换的 [Steer card](docs/en/system-guide/steer-bar.md) 明确调用 Skill（技能）。
 
 ## 探索不止一条路线
 
@@ -117,10 +117,10 @@ Beta（测试版）尚未进行 code signing（代码签名）。Windows SmartSc
 
 1. 从 [GitHub Release 页面](https://github.com/syuan-research/alt-theory/releases)下载 macOS Beta。
 2. 在「下载」中完整解压 `AltTheory` 文件夹；里面有 `AltTheory.app` 和 `Fix-Open.command`。
-3. 用任一方法解除 quarantine（下载隔离）：右键 `Fix-Open.command` 并选择 **Open（打开）**；或在终端运行 `xattr -dr com.apple.quarantine "$HOME/Downloads/AltTheory/AltTheory.app"`。若实际文件夹或 App 路径不同，请替换命令中的路径。
-4. 把 `AltTheory.app` 移到「应用程序」并打开。若仍被拦截，请前往 **系统设置 → 隐私与安全性 → 仍要打开（Open Anyway）**，验证身份后确认 **打开（Open）**。
+3. 右键 `Fix-Open.command`，选择 **打开（Open）**，再确认一次。
+4. 打开 `AltTheory.app`。前往 **系统设置 → 隐私与安全性 → 仍要打开（Open Anyway）**，验证身份后确认 **打开（Open）**。需要时再移到「应用程序」。
 
-需要这些步骤是因为 Beta 尚未经过 Apple notarization（公证）。脚本和终端命令只会移除 macOS 的下载隔离标记。只有在 ZIP 来自本仓库 GitHub Release 时才这样操作，并对照 `BUILD-INFO-mac.txt` 校验 SHA-256。仅支持 Apple Silicon。
+也可在终端运行 `xattr -dr com.apple.quarantine "$HOME/Downloads/AltTheory/AltTheory.app"`；路径不同时请替换。仅对本仓库 GitHub Release 的 ZIP 使用这些方法。仅支持 Apple Silicon；SHA-256 见 `BUILD-INFO-mac.txt`。
 
 ## 首次启动
 

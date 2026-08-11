@@ -40,24 +40,20 @@ installation material defined below.
 
 ### Tag-page (GitHub Release) body
 
-The tag-page body starts with the download-and-launch instructions. The
-`CHANGELOG.md` section for that version is pasted verbatim only after those
-instructions. Installation must be visible before a reader reaches the change
-list; the download instructions live only on the tag page, not in
-`CHANGELOG.md`.
+The tag-page body starts with this short installation note, retained in English
+and Simplified Chinese:
 
-Immediately between the platform instructions and the detailed release notes,
-include this conspicuous three-language guide pointer:
-
-> For detailed installation steps, read `README-How-to-Install-安装指南-Windows.md` or `README-How-to-Install-安装指南-macOS.md` inside the downloaded ZIP.
+> ## Important note
 >
-> 详细安装步骤请阅读下载 ZIP 内的 `README-How-to-Install-安装指南-Windows.md` 或 `README-How-to-Install-安装指南-macOS.md`。
+> This app is under beta preview and we are still working on simplifying the installation process.
 >
-> 詳細安裝步驟請閱讀下載 ZIP 內的 `README-How-to-Install-安装指南-Windows.md` 或 `README-How-to-Install-安装指南-macOS.md`。
+> We highly recommend reading `README-How-to-Install-安装指南` in the downloaded ZIP.
+>
+> macOS 应用安装目前流程较长，我们会在后续提供更简单的安装途径，请您谅解。压缩包内 `README-How-to-Install-安装指南` 有完整安装使用流程。
 
-Then add the version heading and paste that version's `CHANGELOG.md` section.
-Do not put a long preamble, screenshots, or internal verification detail ahead
-of installation.
+Follow it with the platform instructions, then paste that version's
+`CHANGELOG.md` section verbatim. Do not add screenshots, internal verification,
+or another installation preamble.
 
 Download-and-launch instructions use one standard block per platform. They
 name this release's bundle file and point at this release's assets (the tag
@@ -80,37 +76,17 @@ carries the SHA-256.
 
 macOS: download and launch
 
-1. Download `AltTheory-{X.Y.Z}-mac.zip`.
-2. Double-click the ZIP to unpack the `AltTheory` folder under **Downloads**.
-   It contains `AltTheory.app` and `Fix-Open.command`.
-3. Use either method below to remove the download quarantine.
+1. Download `AltTheory-{X.Y.Z}-mac.zip` and unpack the complete `AltTheory`
+   folder in Downloads.
+2. Right-click `Fix-Open.command`, choose **Open**, then confirm **Open**.
+3. Open `AltTheory.app`. Go to **System Settings → Privacy & Security → Open
+   Anyway**, authenticate, and confirm **Open**.
+4. Use the app there or move it to Applications.
 
-Method A — bundled helper:
-
-1. Right-click `Fix-Open.command`, choose **Open**, then **Open** in the dialog.
-2. Open `AltTheory.app`. If macOS still blocks it, open **System Settings →
-   Privacy & Security**, choose **Open Anyway** for AltTheory, authenticate if
-   requested, and confirm **Open**.
-
-Method B — Terminal command:
-
-```bash
-xattr -dr com.apple.quarantine "$HOME/Downloads/AltTheory/AltTheory.app"
-```
-
-Then open `AltTheory.app`. If the extracted folder name, app name, or final
-location differs, replace the path in the command so it points to the actual
-`AltTheory.app`.
-
-These steps exist because the Beta is not notarized by Apple. Current
-macOS refuses an unsigned downloaded app as «"AltTheory" is damaged and
-can't be opened» — and no longer offers the old right-click **Open**
-bypass for app bundles (verified 2026-08-05 on macOS 26; older systems
-that still show "Apple could not verify…" can use either route). The
-two methods only remove macOS's download-quarantine flag. Run either one only
-for the ZIP downloaded from this release. Apple Silicon only.
-Node.js and npm are not required for either app. The release's
-`BUILD-INFO-mac.txt` carries the SHA-256.
+Alternatively, run
+`xattr -dr com.apple.quarantine "$HOME/Downloads/AltTheory/AltTheory.app"` in
+Terminal; replace the path if needed. Use either fix only for this release's
+ZIP. Apple Silicon only; `BUILD-INFO-mac.txt` carries the SHA-256.
 
 The same download-and-launch content is the install template used in four
 places that must stay in step; when the install block changes, update all

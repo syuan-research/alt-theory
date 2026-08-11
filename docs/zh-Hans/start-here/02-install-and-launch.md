@@ -4,7 +4,7 @@ Alt Theory 在本机运行，获取方式有两种。
 
 ## 打包应用
 
-Beta 可从 [GitHub Release](https://github.com/syuan-research/alt-theory/releases/tag/v1.3.0-beta.1) 下载。Windows 下载 `AltTheory-b1-win.zip`，完整解压 `AltTheory` 文件夹，然后运行 `AltTheory.exe`；macOS 下载 `AltTheory-b1-mac.zip`，解压出 `AltTheory.app` 并移到「应用程序」。使用打包应用不需要安装 Node.js 或 npm。
+Beta 可从 [GitHub Release](https://github.com/syuan-research/alt-theory/releases) 下载。Windows 完整解压 `AltTheory` 文件夹并运行 `AltTheory.exe`；macOS 完整解压文件夹，其中包含 `AltTheory.app` 和 `Fix-Open.command`。使用打包应用不需要 Node.js 或 npm。
 
 支持以下平台：
 
@@ -13,7 +13,7 @@ Beta 可从 [GitHub Release](https://github.com/syuan-research/alt-theory/releas
 
 其他组合（含 Intel Mac）未经测试，不作保证。
 
-Beta 尚未签名，两个系统首次打开时都会拦一下。Windows 可能警告该应用来自未识别的开发者：选择「更多信息 → 仍要运行」。macOS 请先在「下载」中完整解压文件夹，再任选一种方法解除下载隔离：右键 ZIP 附带的 `Fix-Open.command` 并选择「打开」；或在终端运行 `xattr -dr com.apple.quarantine "$HOME/Downloads/AltTheory/AltTheory.app"`。若实际路径不同，请替换命令中的路径。若仍被拦截，请前往「系统设置 → 隐私与安全性 → 仍要打开」，验证身份后确认「打开」。仅在 ZIP 来自本仓库 GitHub Release 时才这样操作。
+Beta 尚未签名。Windows 选择「更多信息 → 仍要运行」。macOS 在「下载」中解压后，右键 `Fix-Open.command` 并选择「打开」，再打开 `AltTheory.app`，前往「系统设置 → 隐私与安全性 → 仍要打开」。也可在终端运行 `xattr -dr com.apple.quarantine "$HOME/Downloads/AltTheory/AltTheory.app"`。仅对本仓库 GitHub Release 的 ZIP 使用这些方法。
 
 
 ## 从仓库构建 （需一定编程经验）

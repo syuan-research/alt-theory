@@ -18,7 +18,7 @@ Release 頁面上的 **Windows：下載與啟動** 說明一致。請選下面�
 
 ### Windows: download and launch
 
-1. Download `AltTheory-1.4.4-win.zip`.
+1. Download `AltTheory-1.4.5-win.zip`.
 2. Extract the complete `AltTheory` folder. This is a folder app, not an
    installer. If extraction fails, extract into a folder with a shorter
    path (Windows enforces a maximum path length).
@@ -37,7 +37,7 @@ Node.js and npm are not required.
 
 ### Windows：下载与启动
 
-1. 下载 `AltTheory-1.4.4-win.zip`。
+1. 下载 `AltTheory-1.4.5-win.zip`。
 2. 完整解压出 `AltTheory` 文件夹。这是 folder app（文件夹应用），不是
    installer（安装程序）。若解压失败，请解压到路径更短的文件夹（Windows
    有最大路径长度上限）。
@@ -55,7 +55,7 @@ anyway）**。本 Release 的 `BUILD-INFO-win.txt` 含 SHA-256。
 
 ### Windows：下載與啟動
 
-1. 下載 `AltTheory-1.4.4-win.zip`。
+1. 下載 `AltTheory-1.4.5-win.zip`。
 2. 完整解壓縮 `AltTheory` 資料夾。這是 folder app（資料夾應用程式），並
    非 installer（安裝程式）。若解壓失敗，請解壓至路徑較短的資料夾
    （Windows 有最大路徑長度上限）。

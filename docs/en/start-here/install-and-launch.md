@@ -13,7 +13,7 @@ Supported platforms:
 
 Other combinations, including Intel Macs, are untested and not claimed.
 
-The Beta is not signed, so both systems question it the first time. Windows may warn that the app is from an unidentified developer: choose **More info → Run anyway**. On macOS, unpack the complete folder in Downloads, then either right-click the bundled `Fix-Open.command` and choose **Open**, or run `xattr -dr com.apple.quarantine "$HOME/Downloads/AltTheory/AltTheory.app"` in Terminal. Replace the command path if the extracted location differs. If macOS still blocks the app, use **System Settings → Privacy & Security → Open Anyway**, authenticate, and confirm **Open**. Take these steps only when the ZIP came from this repository's GitHub Release.
+The Beta is not signed. On Windows, choose **More info → Run anyway**. On macOS, unpack the folder in Downloads, right-click `Fix-Open.command`, choose **Open**, then open `AltTheory.app` and use **System Settings → Privacy & Security → Open Anyway**. Alternatively, run `xattr -dr com.apple.quarantine "$HOME/Downloads/AltTheory/AltTheory.app"`. Use these steps only for this repository's GitHub Release.
 
 ## Building from the repository (some programming experience)
 
