@@ -6,6 +6,45 @@ detail lives in commit history and `development/`.
 
 ---
 
+## v1.4.5-beta.1 — 2026-08-11
+
+This release makes Alt Theory easier to navigate and ask for help, while making
+approval-dependent work substantially harder to lose or interrupt.
+
+### Find and organize work
+
+- Conversation order can follow names or the most recently accepted prompt.
+  Working folders have compact Search, collapse, expand, and sort controls;
+  conversation families remain independently foldable.
+- The Files pane now filters results inside the existing tree. Contextual actions
+  copy paths, reveal files in the tree or file manager, and provide session
+  identifiers and folders only when requested.
+
+### Help without leaving the app
+
+- The global Help menu opens either a focused Help center or a new Helper
+  conversation. Help content, setup guidance, Skills, and localized tips now
+  share one user-oriented entry point.
+- Model setup includes the complete external-AI configuration prompt inside Alt
+  Theory, with no required detour through the documentation.
+
+### Approvals and continuity
+
+- Pending approvals survive reopen and reconnect. A global notice returns you to
+  the correct center or Related conversation, including approvals belonging to
+  right-pane work.
+- Routine reads from agent-resource directories require fewer interruptions.
+  Approval actions and their owning conversation stay connected across panes.
+
+### Other new and fixed
+
+- Trash now supports selecting, restoring, or permanently deleting multiple
+  conversations without replacing the remaining list with a loading screen.
+- Context menus stay open during unrelated output, and repeatedly revealing
+  different files no longer causes a white screen.
+
+---
+
 ## v1.4.4-beta.1 — 2026-08-10
 
 This release makes model setup non-blocking, makes provider saves finish

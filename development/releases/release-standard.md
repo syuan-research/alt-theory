@@ -18,14 +18,20 @@ installation material defined below.
 ### Format
 
 - One `## vX.Y.Z-beta.N — YYYY-MM-DD` section per release, newest first.
-- One or two plain sentences under the heading stating what the release is
-  for. No marketing register, no atmospheric openers.
-- Group changes under `### Topic` headings that name the area in plain
-  nouns (Performance, Trash, Conversation families, Settings, Steer, Removed
-  code). One area per heading; do not split a topic across two headings.
-- One bullet per change. Each bullet states the user-visible change first,
-  then the mechanism or the prior behavior if it helps. No restatement
-  sentence after a complete bullet list.
+- One or two plain sentences under the heading stating what the release is for.
+  No marketing register, no atmospheric openers.
+- Organize the main changes under two to four `### Topic` headings named for the
+  user's purpose or work area (for example, Find and organize work, Help without
+  leaving the app, Approvals and continuity). Prefer a small number of coherent
+  themes over separate headings for every feature or implementation area.
+- Each topic normally has one or two bullets. Combine changes when they support
+  the same user outcome; do not turn commit history, individual fixes, or every
+  UI adjustment into separate release-note entries.
+- If a release contains a few worthwhile changes that do not form a theme, end
+  with `### Other new and fixed`. Keep it shorter than the main themes—normally
+  no more than two bullets—and omit details that do not matter to users.
+- Each bullet states the user-visible change first, then the mechanism or prior
+  behavior only when it helps. No restatement sentence after a complete list.
 - Single language per file. `CHANGELOG.md` is English. Translated copies
   (when they exist) are separate files matched to the README languages, not
   inline bilingual blocks.
