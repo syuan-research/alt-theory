@@ -40,6 +40,14 @@ installation material defined below.
 
 ### Tag-page (GitHub Release) body
 
+The body is complete for both Windows and macOS before the Release is first
+published, even when one platform asset will be uploaded later by another
+agent. Never write placeholders or status language such as `will be added`,
+`coming later`, `pending`, or `after it is built`. The second platform agent
+uploads its files; it is not expected to repair the Release body.
+
+不完整语言是一种耻辱，是codex的bs。
+
 The tag-page body starts with this short installation note, retained in English
 and Simplified Chinese:
 
