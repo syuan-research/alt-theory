@@ -1334,6 +1334,8 @@ function readPiInfo(
 /** One agent-modified file in a conversation (M7 §2 Changes projection). */
 export interface FileChange {
   path: string;
+  /** Absolute path of the current file when it resolves under a working root. */
+  resolvedPath?: string;
   added: number;
   removed: number;
   /** Display-oriented diff, capped for transport. */
@@ -1399,7 +1401,7 @@ const MAX_CHANGE_PREVIEW_BYTES = 1024 * 1024;
 export function readCurrentChangedFile(
   roots: string[],
   requestedPath: string,
-): Pick<FileChange, "currentContent" | "currentUpdatedAt"> {
+): Pick<FileChange, "resolvedPath" | "currentContent" | "currentUpdatedAt"> {
   for (const rootPath of roots) {
     const root = resolve(rootPath);
     const target = isAbsolute(requestedPath)
@@ -1413,6 +1415,7 @@ export function readCurrentChangedFile(
     const buffer = readFileSync(target);
     if (buffer.includes(0)) continue;
     return {
+      resolvedPath: target,
       currentContent: buffer.toString("utf-8"),
       currentUpdatedAt: stats.mtime.toISOString(),
     };

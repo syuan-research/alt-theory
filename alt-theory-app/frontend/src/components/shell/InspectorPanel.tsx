@@ -1,15 +1,19 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useApp } from "@/context/AppProvider";
 import { useShell, type RailKey } from "@/context/ShellContext";
 import { t } from "@/i18n";
 import { shouldClearRelatedOnSubChange } from "@/lib/relatedOpen";
-import { relatedConversationsFor, sessionTitle } from "@/lib/sessionList";
+import { canTakeMainline, isListMember, relatedConversationsFor, sessionTitle } from "@/lib/sessionList";
 import { ChildConversation } from "@/components/conversation/ChildConversation";
 import { RecordsPanel } from "@/components/inspector/RecordsPanel";
 import { ProvenancePanel } from "@/components/inspector/ProvenancePanel";
 import { RuntimePanel } from "@/components/inspector/RuntimePanel";
 import { WorkspaceTree } from "@/components/inspector/WorkspaceTree";
 import { ChangesPanel } from "@/components/inspector/ChangesPanel";
+import { useContextMenu, type ContextMenuItem } from "@/components/shell/ContextMenu";
+import { fetchSessionDetail, promoteToMainline } from "@/api/sessions";
+import { copyText } from "@/lib/clipboard";
+import { hasNativeBridge, revealPath } from "@/lib/native";
 
 const RAIL_META: Record<RailKey, { title: string; icon: string; adv?: boolean }> = {
   chats: { title: t("Related conversations"), icon: "ph-arrows-split" },
@@ -190,6 +194,7 @@ export function InspectorPanel() {
 function RelatedConversations() {
   const app = useApp();
   const shell = useShell();
+  const menu = useContextMenu();
   const activeChildId = shell.rightSub?.key.startsWith("related:")
     ? shell.rightSub.key.slice("related:".length)
     : null;
@@ -238,6 +243,51 @@ function RelatedConversations() {
   const sizeForChild = (purpose: string | undefined): "half" | "default" =>
     purpose === "fork" ? "half" : "default";
 
+  const sessionMenuItems = (child: (typeof children)[number]): ContextMenuItem[] => {
+    const title = sessionTitle(child, app.sessionDisplayNames, app.sessions);
+    const sessionRoot = async () => {
+      const detail = await fetchSessionDetail(child.sessionId);
+      if (!detail.sessionRoot) throw new Error(t("Session folder is available in the desktop app."));
+      return detail.sessionRoot;
+    };
+    const copyFolder = () => void sessionRoot().then(copyText).catch((error) =>
+      window.alert(error instanceof Error ? error.message : String(error)));
+    const openFolder = () => void sessionRoot().then(revealPath).catch((error) =>
+      window.alert(error instanceof Error ? error.message : String(error)));
+    return [
+      ...(!isListMember(child) ? [{
+        label: t("Show in conversation list"), icon: "ph-list-plus", onSelect: () => void app.promoteRelatedSession(child.sessionId),
+      }] : []),
+      ...(canTakeMainline(child, app.sessions) ? [{
+        label: t("Make this the main conversation"), icon: "ph-crown-simple", onSelect: () => void promoteToMainline(child.sessionId)
+          .then(() => app.refreshSessions())
+          .catch((error) => window.alert(error instanceof Error ? error.message : String(error))),
+      }] : []),
+      { label: t("Rename"), icon: "ph-pencil-simple", onSelect: () => {
+        const next = window.prompt(t("Conversation name"), app.sessionDisplayNames[child.sessionId]?.alias || title);
+        if (next !== null) void app.renameSelectedSession(child.sessionId, next);
+      } },
+      { label: t("Copy Session ID"), icon: "ph-identification-card", separator: true, onSelect: () => void copyText(child.sessionId) },
+      ...(app.appMode === "local" ? [
+        { label: t("Copy session folder path"), icon: "ph-copy", onSelect: copyFolder },
+        ...(hasNativeBridge() ? [{ label: t("Open session folder"), icon: "ph-folder-open", onSelect: openFolder }] : []),
+      ] : []),
+      { label: t("Delete"), icon: "ph-trash", danger: true, separator: true, onSelect: () => app.requestConfirm({
+        message: t("Delete this conversation?"), confirmLabel: t("Delete"), onConfirm: () => app.deleteSelectedSession(child.sessionId),
+      }) },
+    ];
+  };
+
+  const openMenuFromKey = (
+    event: ReactKeyboardEvent<HTMLButtonElement>,
+    child: (typeof children)[number],
+  ) => {
+    if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
+    event.preventDefault();
+    const rect = event.currentTarget.getBoundingClientRect();
+    menu.openAt(rect.left + 18, rect.bottom, sessionMenuItems(child));
+  };
+
   // Wheel → horizontal: trackpads/mice emit vertical delta; without this the
   // strip only moves via the scrollbar thumb.
   const switchRef = useRef<HTMLDivElement>(null);
@@ -271,6 +321,8 @@ function RelatedConversations() {
             key={child.sessionId}
             className={child.sessionId === activeChildId ? "on" : ""}
             title={sessionTitle(child, app.sessionDisplayNames, app.sessions)}
+            onContextMenu={(event) => menu.open(event, sessionMenuItems(child))}
+            onKeyDown={(event) => openMenuFromKey(event, child)}
             onClick={() => {
               shell.openApp();
               if (child.sessionId === activeChildId) {
@@ -304,6 +356,7 @@ function RelatedConversations() {
             shell.closeSub();
           }}
         />
+        {menu.element}
       </>
     );
   }
@@ -338,6 +391,8 @@ function RelatedConversations() {
         <button
           key={child.sessionId}
           className="sc-item"
+          onContextMenu={(event) => menu.open(event, sessionMenuItems(child))}
+          onKeyDown={(event) => openMenuFromKey(event, child)}
           onClick={() => {
             shell.openApp();
             app.setActiveRelatedSessionId(child.sessionId, {
@@ -372,6 +427,7 @@ function RelatedConversations() {
       <div className="related-legend" aria-hidden="true">
         {t("br = Branch · btw = side chat · Helper · sa = Subagent")}
       </div>
+      {menu.element}
     </>
   );
 }

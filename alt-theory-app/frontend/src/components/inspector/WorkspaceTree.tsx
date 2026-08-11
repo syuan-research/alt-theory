@@ -11,6 +11,7 @@ import {
   listWorkingDirectory,
   listWorkingFolders,
   listWorkspaceFiles,
+  searchWorkingDirectory,
   uploadWorkspaceFile,
 } from "@/api/session-files";
 import { t } from "@/i18n";
@@ -20,6 +21,8 @@ import { hasNativeBridge, revealPath } from "@/lib/native";
 import { stagePathAfterUpload, WORKSPACE_PATH_MIME } from "@/lib/workspace";
 import { MarkdownBody } from "@/components/conversation/MarkdownBody";
 import { buildFileTreeModel, type FileTreeNode } from "@/lib/fileTree";
+import { copyText } from "@/lib/clipboard";
+import { useContextMenu, type ContextMenuItem } from "@/components/shell/ContextMenu";
 
 export function WorkspaceTree() {
   const app = useApp();
@@ -38,6 +41,7 @@ export function WorkspaceTree() {
   );
   const [expandSignal, setExpandSignal] = useState(0);
   const [collapseSignal, setCollapseSignal] = useState(0);
+  const [query, setQuery] = useState("");
   const uploadInput = useRef<HTMLInputElement>(null);
 
   const sessionId = app.sessionId;
@@ -80,7 +84,22 @@ export function WorkspaceTree() {
 
   useEffect(() => {
     setPreview(null);
+    setQuery("");
   }, [sessionId]);
+
+  useEffect(() => {
+    const target = shell.workspaceRevealPath;
+    if (!target) return;
+    setPreview(null);
+    setQuery(target.split(/[\\/]/).filter(Boolean).at(-1) ?? target);
+    shell.clearWorkspaceRevealPath();
+  }, [shell.workspaceRevealPath, shell.clearWorkspaceRevealPath]);
+
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const filterEntries = <T extends { path: string }>(items: T[]) =>
+    normalizedQuery
+      ? items.filter((entry) => entry.path.toLocaleLowerCase().includes(normalizedQuery))
+      : items;
 
   useEffect(() => {
     if (!sessionId || !preview) return;
@@ -103,12 +122,12 @@ export function WorkspaceTree() {
   }, [sessionId, runCount]);
 
   const referenceEntries = useMemo(
-    () => (entries ?? []).filter((entry) => /^(uploads|extracted)\//.test(entry.path)),
-    [entries]
+    () => filterEntries((entries ?? []).filter((entry) => /^(uploads|extracted)\//.test(entry.path))),
+    [entries, normalizedQuery]
   );
   const conversationFolderEntries = useMemo(
-    () => (entries ?? []).filter((entry) => !/^(uploads|extracted)\//.test(entry.path)),
-    [entries]
+    () => filterEntries((entries ?? []).filter((entry) => !/^(uploads|extracted)\//.test(entry.path))),
+    [entries, normalizedQuery]
   );
   const managedFolderPath = workingFolders.find((folder) => folder.managed)?.path ?? "";
 
@@ -216,6 +235,16 @@ export function WorkspaceTree() {
 
   return (
     <>
+      <label className="files-search">
+        <i className="ph ph-magnifying-glass" aria-hidden="true" />
+        <input
+          type="search"
+          value={query}
+          placeholder={t("Filter files")}
+          aria-label={t("Filter files")}
+          onChange={(event) => setQuery(event.target.value)}
+        />
+      </label>
       {(workingFolders.some((folder) => folder.available && !folder.managed) || (entries?.length ?? 0) > 0) ? (
         <div className="files-tree-toolbar">
           <button className="flat" onClick={() => setExpandSignal((value) => value + 1)}>
@@ -265,6 +294,7 @@ export function WorkspaceTree() {
                   refreshSignal={runCount}
                   expandSignal={expandSignal}
                   collapseSignal={collapseSignal}
+                  query={query}
                 />
               ) : null}
             </div>
@@ -316,6 +346,7 @@ export function WorkspaceTree() {
                   expandSignal={expandSignal}
                   collapseSignal={collapseSignal}
                   label={t("References")}
+                  filterActive={Boolean(normalizedQuery)}
                 />
               </div>
             </>
@@ -332,6 +363,7 @@ export function WorkspaceTree() {
                   expandSignal={expandSignal}
                   collapseSignal={collapseSignal}
                   label={t("Conversation folder")}
+                  filterActive={Boolean(normalizedQuery)}
                 />
               </div>
             </>
@@ -350,6 +382,7 @@ function WorkingTree({
   refreshSignal,
   expandSignal,
   collapseSignal,
+  query,
 }: {
   sessionId: string;
   folderId: string;
@@ -358,11 +391,14 @@ function WorkingTree({
   refreshSignal: number;
   expandSignal: number;
   collapseSignal: number;
+  query: string;
 }) {
   const [childrenByPath, setChildrenByPath] = useState(
     () => new Map<string, WorkingTreeEntry[]>(),
   );
   const [resolvedExpandSignal, setResolvedExpandSignal] = useState(0);
+  const [searchResult, setSearchResult] = useState<WorkingTreeEntry[] | null>(null);
+  const [searchTruncated, setSearchTruncated] = useState(false);
   const childrenRef = useRef(childrenByPath);
   const loadingPaths = useRef(new Set<string>());
   const previousRefreshSignal = useRef(refreshSignal);
@@ -410,6 +446,29 @@ function WorkingTree({
   }, [loadDirectory]);
 
   useEffect(() => {
+    const search = query.trim();
+    if (!search) {
+      setSearchResult(null);
+      setSearchTruncated(false);
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void searchWorkingDirectory(sessionId, folderId, search).then((response) => {
+        if (cancelled) return;
+        setSearchResult(response.entries);
+        setSearchTruncated(Boolean(response.truncated));
+      }).catch(() => {
+        if (!cancelled) setSearchResult([]);
+      });
+    }, 180);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [folderId, query, sessionId]);
+
+  useEffect(() => {
     if (refreshSignal === previousRefreshSignal.current) return;
     previousRefreshSignal.current = refreshSignal;
     const loadedPaths = [...childrenRef.current.keys()];
@@ -440,10 +499,15 @@ function WorkingTree({
   }, [expandSignal, loadDirectory]);
 
   const entries = useMemo(
-    () => [...childrenByPath.values()].flat(),
-    [childrenByPath],
+    () => query.trim() ? (searchResult ?? []) : [...childrenByPath.values()].flat(),
+    [childrenByPath, query, searchResult],
   );
-  if (entries.length === 0) return null;
+  if (query.trim() && searchResult === null) {
+    return <div className="wb-note">{t("Searching files…")}</div>;
+  }
+  if (entries.length === 0) return query.trim()
+    ? <div className="wb-note">{t("No matching files.")}</div>
+    : null;
   return (
     <div className="working-tree">
       <FileTree
@@ -458,7 +522,9 @@ function WorkingTree({
         expandSignal={resolvedExpandSignal}
         collapseSignal={collapseSignal}
         label={basePath}
+        filterActive={Boolean(query.trim())}
       />
+      {searchTruncated ? <div className="wb-note">{t("Showing the first 200 matches.")}</div> : null}
     </div>
   );
 }
@@ -475,6 +541,7 @@ function FileTree<T extends { path: string; isDirectory?: boolean }>({
   expandSignal,
   collapseSignal,
   label,
+  filterActive = false,
 }: {
   entries: T[];
   onOpenFile: (entry: T) => void;
@@ -487,7 +554,9 @@ function FileTree<T extends { path: string; isDirectory?: boolean }>({
   expandSignal: number;
   collapseSignal: number;
   label: string;
+  filterActive?: boolean;
 }) {
+  const menu = useContextMenu();
   const model = useMemo(() => buildFileTreeModel(entries, basePath), [basePath, entries]);
   const [expandedItems, setExpandedItems] = useState(
     initiallyExpanded ? model.folderIds : [],
@@ -497,6 +566,7 @@ function FileTree<T extends { path: string; isDirectory?: boolean }>({
   const previousExpandSignal = useRef(expandSignal);
   const previousCollapseSignal = useRef(collapseSignal);
   const requestedFolderIds = useRef(new Set<string>());
+  const expansionBeforeFilter = useRef<string[] | null>(null);
   const copyResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tree = useTree<FileTreeNode<T>>({
     rootItemId: model.rootId,
@@ -526,6 +596,16 @@ function FileTree<T extends { path: string; isDirectory?: boolean }>({
     seenFolderIds.current = nextFolderIds;
     tree.rebuildTree();
   }, [expandNewFolders, model, tree]);
+
+  useEffect(() => {
+    if (filterActive) {
+      if (!expansionBeforeFilter.current) expansionBeforeFilter.current = expandedItems;
+      setExpandedItems(model.folderIds);
+    } else if (expansionBeforeFilter.current) {
+      setExpandedItems(expansionBeforeFilter.current);
+      expansionBeforeFilter.current = null;
+    }
+  }, [filterActive, model]);
 
   useEffect(() => {
     if (!onExpandFolder) return;
@@ -563,6 +643,10 @@ function FileTree<T extends { path: string; isDirectory?: boolean }>({
         const canOpenItem = node.isFolder || !node.entry || canOpen(node.entry);
         const pathWasCopied = copiedPath === node.fullPath;
         const copyLabel = t(pathWasCopied ? "Path copied" : "Copy path");
+        const contextItems: ContextMenuItem[] = [
+          { label: t("Copy path"), icon: "ph-copy", onSelect: () => void copyText(node.fullPath) },
+          ...(hasNativeBridge() ? [{ label: t("Show in file manager"), icon: "ph-folder-open", onSelect: () => void revealPath(node.fullPath) }] : []),
+        ];
         return (
           <div
             {...item.getProps()}
@@ -576,6 +660,7 @@ function FileTree<T extends { path: string; isDirectory?: boolean }>({
               event.dataTransfer.setData(WORKSPACE_PATH_MIME, dragPath(node.path));
               event.dataTransfer.effectAllowed = "copy";
             } : undefined}
+            onContextMenu={(event) => menu.open(event, contextItems)}
           >
             {isFolder ? (
               <i className={`ph ph-caret-down tree-caret${item.isExpanded() ? "" : " closed"}`} />
@@ -594,7 +679,7 @@ function FileTree<T extends { path: string; isDirectory?: boolean }>({
               aria-label={`${copyLabel}: ${node.fullPath}`}
               onClick={(event) => {
                 event.stopPropagation();
-                void copyPath(node.fullPath).then((copied) => {
+                void copyText(node.fullPath).then((copied) => {
                   if (!copied) return;
                   setCopiedPath(node.fullPath);
                   if (copyResetTimer.current) clearTimeout(copyResetTimer.current);
@@ -607,34 +692,7 @@ function FileTree<T extends { path: string; isDirectory?: boolean }>({
           </div>
         );
       })}
+      {menu.element}
     </div>
   );
-}
-
-async function copyPath(path: string): Promise<boolean> {
-  try {
-    if (navigator.clipboard) {
-      await navigator.clipboard.writeText(path);
-      return true;
-    }
-  } catch {
-    // Fall through to the selection-based copy used by older webviews.
-  }
-
-  const activeElement = document.activeElement instanceof HTMLElement
-    ? document.activeElement
-    : null;
-  const input = document.createElement("textarea");
-  input.value = path;
-  input.setAttribute("readonly", "");
-  input.style.position = "fixed";
-  input.style.opacity = "0";
-  document.body.appendChild(input);
-  input.select();
-  try {
-    return document.execCommand("copy");
-  } finally {
-    input.remove();
-    activeElement?.focus();
-  }
 }

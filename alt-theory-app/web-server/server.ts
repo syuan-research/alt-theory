@@ -151,6 +151,7 @@ import { discoverSkillResources } from "./resource-discovery.js";
 import {
   describeWorkingFolders,
   listWorkingFolderChildren,
+  searchWorkingFolder,
   readWorkingFolderTextFile,
 } from "./workspace-files.js";
 
@@ -1242,7 +1243,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       res.status(403).json({ error: "Session content is private" });
       return;
     }
-    res.json(detail);
+    res.json(localMode ? { ...detail, sessionRoot: root.sessionRoot } : detail);
   });
   app.get("/api/sessions/:sessionId/changes", (req, res) => {
     const sessionId = req.params.sessionId;
@@ -1566,8 +1567,11 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           return;
         }
         const path = typeof req.query.path === "string" ? req.query.path : "";
+        const search = typeof req.query.search === "string" ? req.query.search : "";
         res.json(
-          listWorkingFolderChildren(dataDir, sessionId, folderId, path),
+          search
+            ? searchWorkingFolder(dataDir, sessionId, folderId, search)
+            : listWorkingFolderChildren(dataDir, sessionId, folderId, path),
         );
         return;
       }

@@ -73,6 +73,10 @@ export interface ShellContextValue {
   openSub: (sub: RightSub) => void;
   closeSub: () => void;
 
+  workspaceRevealPath: string | null;
+  revealWorkspacePath: (path: string) => void;
+  clearWorkspaceRevealPath: () => void;
+
   /** Whether the participant-mode settings tab is revealed (opt-in, General). */
   participantTabEnabled: boolean;
   setParticipantTabEnabled: (on: boolean) => void;
@@ -213,6 +217,7 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [rightPanel, setRightPanel] = useState<RailKey | null>(null);
   const [rightSub, setRightSub] = useState<RightSub | null>(null);
+  const [workspaceRevealPath, setWorkspaceRevealPath] = useState<string | null>(null);
   const [rightWidth, setRightWidthState] = useState(() => readStoredRightWidth());
   const [participantTabEnabled, setParticipantTabState] = useState(() =>
     readFlag(PARTICIPANT_TAB_KEY)
@@ -314,6 +319,13 @@ export function ShellProvider({ children }: { children: ReactNode }) {
 
   const openSub = useCallback((sub: RightSub) => setRightSub(sub), []);
   const closeSub = useCallback(() => setRightSub(null), []);
+  const revealWorkspacePath = useCallback((path: string) => {
+    setSurface("app");
+    setRightSub(null);
+    setRightPanel("workspace");
+    setWorkspaceRevealPath(path);
+  }, []);
+  const clearWorkspaceRevealPath = useCallback(() => setWorkspaceRevealPath(null), []);
 
   const setRightPaneWidth = useCallback((width: number, persist = false) => {
     const next = Math.min(RIGHT_PANE.max, Math.max(RIGHT_PANE.min, width));
@@ -366,6 +378,9 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       rightSub,
       openSub,
       closeSub,
+      workspaceRevealPath,
+      revealWorkspacePath,
+      clearWorkspaceRevealPath,
       participantTabEnabled,
       setParticipantTabEnabled,
       showThinking,
@@ -407,6 +422,9 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       rightSub,
       openSub,
       closeSub,
+      workspaceRevealPath,
+      revealWorkspacePath,
+      clearWorkspaceRevealPath,
       participantTabEnabled,
       setParticipantTabEnabled,
       showThinking,

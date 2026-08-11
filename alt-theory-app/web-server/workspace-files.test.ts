@@ -13,6 +13,7 @@ import {
   describeWorkingFolders,
   listWorkingFolderChildren,
   readWorkingFolderTextFile,
+  searchWorkingFolder,
   SESSION_WORKSPACE_QUOTA_BYTES,
   uploadWorkspaceFile,
 } from "./workspace-files.js";
@@ -203,4 +204,15 @@ test("working-folder browsing follows the persisted external workspace", () => {
     "primary/notes/idea.md"
   );
   assert.equal(file.content, "# Actual work\n");
+  const search = searchWorkingFolder(dataDir, sessionId, "primary", "IDEA");
+  assert.deepEqual(search.entries.map((entry) => entry.path), ["notes", "notes/idea.md"]);
+  assert.equal(search.truncated, false);
+  assert.equal(
+    searchWorkingFolder(dataDir, sessionId, "primary", ".txt", 1).truncated,
+    true,
+  );
+  assert.deepEqual(
+    searchWorkingFolder(dataDir, sessionId, "primary", "x.js").entries,
+    [],
+  );
 });

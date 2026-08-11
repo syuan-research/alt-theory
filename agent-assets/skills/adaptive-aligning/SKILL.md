@@ -38,6 +38,11 @@ guess:
 Keep rounds small and use multiple rounds. A wall of questions is its own kind
 of pressure.
 
+Order open points by leverage: resolve questions that determine direction or
+architecture first, because their answers reshape everything downstream. Keep a
+loose area focus — work through a few connected points before switching areas,
+rather than scattering questions across unrelated topics.
+
 
 ## Why every question carries your guesses
 
@@ -83,10 +88,15 @@ requires their judgment.
 ## Know when to stop
 
 Alignment has diminishing returns. When every remaining question is "yes,
-probably" in your head, stop interviewing: fold them into stated
-assumptions the user can veto, and proceed. An interview that outlives its
-uncertainty becomes a burden — and unresolved points that are cheap to
-revisit later are fine to leave open, said out loud. When the user corrects
-you or disagrees, consider whether you differ in your understanding of
-premises, the nature of the question, scope, or something else, and continue
-the interview.
+probably" in your head, fold them into stated assumptions the user can veto.
+An interview that outlives its uncertainty becomes a burden — and unresolved
+points that are cheap to revisit later are fine to leave open, said out loud.
+
+When the user corrects you or disagrees, including after a misunderstanding,
+sharp disagreement, scope shift, or a sign that you have lost the high-level
+purpose, consider whether you differ in your understanding of premises, the
+nature of the question, scope, or something else, and continue the interview.
+
+Do not execute the work until the user confirms that the shared understanding
+is sufficient to proceed, including any assumptions or low-cost open points
+stated above.

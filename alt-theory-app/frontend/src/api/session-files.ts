@@ -138,3 +138,12 @@ export async function listWorkingDirectory(
   const qs = new URLSearchParams({ root: "working", folderId, path });
   return fetchJson<WorkingDirectoryResponse>(`${sessionFilesBase(sessionId)}?${qs}`);
 }
+
+export async function searchWorkingDirectory(
+  sessionId: string,
+  folderId: string,
+  search: string,
+): Promise<WorkingDirectoryResponse> {
+  const qs = new URLSearchParams({ root: "working", folderId, search });
+  return fetchJson<WorkingDirectoryResponse>(`${sessionFilesBase(sessionId)}?${qs}`);
+}

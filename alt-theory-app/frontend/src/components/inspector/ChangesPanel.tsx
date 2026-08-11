@@ -5,6 +5,9 @@ import { t } from "@/i18n";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
 import { MarkdownBody } from "@/components/conversation/MarkdownBody";
+import { useContextMenu, type ContextMenuItem } from "@/components/shell/ContextMenu";
+import { copyText } from "@/lib/clipboard";
+import { hasNativeBridge, revealPath } from "@/lib/native";
 
 /**
  * Agent-modified files for the current conversation (M7 §2), from the read-only
@@ -16,6 +19,7 @@ export function ChangesPanel() {
   const [files, setFiles] = useState<FileChange[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<FileChange | null>(null);
+  const menu = useContextMenu();
 
   const sessionId = app.sessionId;
   const runCount = app.runCompletedCount;
@@ -59,12 +63,28 @@ export function ChangesPanel() {
     return <div className="rp-empty">{t("No file changes in this conversation yet.")}</div>;
   }
 
+  const fileItems = (file: FileChange): ContextMenuItem[] => {
+    const path = file.resolvedPath ?? file.path;
+    return [
+      { label: t("Copy path"), icon: "ph-copy", onSelect: () => void copyText(path) },
+      { label: t("Show in file tree"), icon: "ph-tree-structure", onSelect: () => shell.revealWorkspacePath(path) },
+      ...(hasNativeBridge() ? [{ label: t("Show in file manager"), icon: "ph-folder-open", onSelect: () => void revealPath(path) }] : []),
+    ];
+  };
+
   return (
     <>
       {files.map((file) => (
         <button
           key={file.path}
           className="file-item"
+          onContextMenu={(event) => menu.open(event, fileItems(file))}
+          onKeyDown={(event) => {
+            if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
+            event.preventDefault();
+            const rect = event.currentTarget.getBoundingClientRect();
+            menu.openAt(rect.left + 18, rect.bottom, fileItems(file));
+          }}
           onClick={() => {
             setSelected(file);
             shell.openSub({ key: `changes:${file.path}`, title: `${file.path}` });
@@ -79,6 +99,7 @@ export function ChangesPanel() {
           </span>
         </button>
       ))}
+      {menu.element}
     </>
   );
 }

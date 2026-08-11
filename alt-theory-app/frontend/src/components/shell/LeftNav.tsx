@@ -14,6 +14,7 @@ import {
 import { Workbench } from "@/components/shell/Workbench";
 import { SessionImportDialog } from "@/components/shell/SessionImportDialog";
 import { HelpMenu } from "@/components/shell/HelpMenu";
+import { useContextMenu, type ContextMenuItem } from "@/components/shell/ContextMenu";
 import { promoteToMainline as promoteToMainlineRequest } from "@/api/sessions";
 import { hasNativeBridge, pickDirectory, revealPath } from "@/lib/native";
 import { fetchSessionDetail } from "@/api/sessions";
@@ -28,6 +29,7 @@ import {
   markdownFileName,
   sessionTranscriptToMarkdown,
 } from "@/lib/sessionMarkdown";
+import { copyText } from "@/lib/clipboard";
 
 /**
  * What a conversation row says about itself when you are not in it (alpha.3).
@@ -236,6 +238,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
   const navRef = useRef<HTMLDivElement>(null);
   const [closedGroups, setClosedGroups] = useState<Set<string>>(new Set());
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [foldedFamilies, setFoldedFamilies] = useState<Set<string>>(new Set());
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [listSort, setListSort] = useState<SessionListSort>({
     folders: "name",
@@ -309,6 +312,14 @@ function UserNav({ onImport }: { onImport: () => void }) {
 
   const toggleGroup = (id: string) =>
     setClosedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const toggleFamily = (id: string) =>
+    setFoldedFamilies((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -704,6 +715,8 @@ function UserNav({ onImport }: { onImport: () => void }) {
                       indent={0}
                       onOpen={openSession}
                       draggable={local}
+                      foldedFamilies={foldedFamilies}
+                      onToggleFamily={toggleFamily}
                     />
                   ))}
                 {!closed && group.roots.length > GROUP_CAP ? (
@@ -738,14 +751,19 @@ function SessionNode({
   indent,
   onOpen,
   draggable,
+  foldedFamilies,
+  onToggleFamily,
 }: {
   session: SessionSummary;
   childrenByParent: Map<string, SessionSummary[]>;
   indent: number;
   onOpen: (id: string) => void;
   draggable?: boolean;
+  foldedFamilies: Set<string>;
+  onToggleFamily: (id: string) => void;
 }) {
   const app = useApp();
+  const menu = useContextMenu();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState("");
@@ -758,6 +776,7 @@ function SessionNode({
       : session.runStatus;
   const state = sessionRowState(runStatus, app.sessionAlerts[session.sessionId]);
   const title = sessionTitle(session, app.sessionDisplayNames, app.sessions);
+  const folded = foldedFamilies.has(session.sessionId);
 
   const exportMarkdown = async () => {
     try {
@@ -771,9 +790,64 @@ function SessionNode({
     }
   };
 
+  const getSessionRoot = async () => {
+    const detail = await fetchSessionDetail(session.sessionId);
+    if (!detail.sessionRoot) throw new Error(t("Session folder is available in the desktop app."));
+    return detail.sessionRoot;
+  };
+  const rename = () => {
+    setRenameValue(app.sessionDisplayNames[session.sessionId]?.alias || title);
+    setRenaming(true);
+  };
+  const promote = () => {
+    void promoteToMainlineRequest(session.sessionId)
+      .then(() => app.refreshSessions())
+      .catch((error) => window.alert(error instanceof Error ? error.message : String(error)));
+  };
+  const copySessionFolder = () => {
+    void getSessionRoot()
+      .then(copyText)
+      .catch((error) => window.alert(error instanceof Error ? error.message : String(error)));
+  };
+  const openSessionFolder = () => {
+    void getSessionRoot()
+      .then(revealPath)
+      .catch((error) => window.alert(error instanceof Error ? error.message : String(error)));
+  };
+  const remove = () => app.requestConfirm({
+    message: t("Delete this conversation?"),
+    confirmLabel: t("Delete"),
+    onConfirm: () => app.deleteSelectedSession(session.sessionId),
+  });
+  const contextItems = (): ContextMenuItem[] => [
+    ...(canTakeMainline(session, app.sessions) ? [{
+      label: t("Make this the main conversation"), icon: "ph-crown-simple", onSelect: promote,
+    }] : []),
+    { label: t("Rename"), icon: "ph-pencil-simple", onSelect: rename },
+    { label: t("Duplicate"), icon: "ph-copy", onSelect: () => app.duplicateSession(session.sessionId) },
+    { label: t("Export Markdown"), icon: "ph-download-simple", onSelect: () => void exportMarkdown() },
+    { label: t("Copy Session ID"), icon: "ph-identification-card", separator: true, onSelect: () => void copyText(session.sessionId) },
+    ...(app.appMode === "local" ? [
+      { label: t("Copy session folder path"), icon: "ph-copy", onSelect: copySessionFolder },
+      ...(hasNativeBridge() ? [{ label: t("Open session folder"), icon: "ph-folder-open", onSelect: openSessionFolder }] : []),
+    ] : []),
+    { label: t("Delete"), icon: "ph-trash", danger: true, separator: true, onSelect: remove },
+  ];
+
   return (
     <>
       <div className="session-row">
+        {!renaming && children.length ? (
+          <button
+            type="button"
+            className={`family-fold${folded ? " folded" : ""}`}
+            style={{ left: 8 + indent * 16 }}
+            aria-label={folded ? t("Expand conversation family") : t("Collapse conversation family")}
+            onClick={() => onToggleFamily(session.sessionId)}
+          >
+            <i className="ph ph-caret-down" aria-hidden="true" />
+          </button>
+        ) : null}
         {renaming ? (
           <form
             className="session-rename-inline"
@@ -805,8 +879,15 @@ function SessionNode({
           <button
             className={`sess${active ? " active" : ""}`}
             data-session-id={session.sessionId}
-            style={indent ? { paddingLeft: 10 + indent * 16 } : undefined}
+            style={{ paddingLeft: 28 + indent * 16 }}
             onClick={() => onOpen(session.sessionId)}
+            onContextMenu={(event) => menu.open(event, contextItems())}
+            onKeyDown={(event) => {
+              if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
+              event.preventDefault();
+              const rect = event.currentTarget.getBoundingClientRect();
+              menu.openAt(rect.left + 18, rect.bottom, contextItems());
+            }}
             title={title}
             draggable={draggable}
             onDragStart={
@@ -879,13 +960,7 @@ function SessionNode({
               <button
                 onClick={(e) => {
                   closeMenu(e);
-                  void promoteToMainlineRequest(session.sessionId)
-                    .then(() => app.refreshSessions())
-                    .catch((error) =>
-                      window.alert(
-                        error instanceof Error ? error.message : String(error),
-                      ),
-                    );
+                  promote();
                 }}
                 title={t("This conversation takes the list spot; the current one stays available from its Related rail.")}
               >
@@ -896,8 +971,7 @@ function SessionNode({
             <button
               onClick={(e) => {
                 closeMenu(e);
-                setRenameValue(app.sessionDisplayNames[session.sessionId]?.alias || title);
-                setRenaming(true);
+                rename();
               }}
             >
               <i className="ph ph-pencil-simple" />
@@ -921,6 +995,25 @@ function SessionNode({
               <i className="ph ph-download-simple" />
               {t("Export Markdown")}
             </button>
+            <div className="sep" />
+            <button onClick={(event) => { closeMenu(event); void copyText(session.sessionId); }}>
+              <i className="ph ph-identification-card" />
+              {t("Copy Session ID")}
+            </button>
+            {app.appMode === "local" ? (
+              <>
+                <button onClick={(event) => { closeMenu(event); copySessionFolder(); }}>
+                  <i className="ph ph-copy" />
+                  {t("Copy session folder path")}
+                </button>
+                {hasNativeBridge() ? (
+                  <button onClick={(event) => { closeMenu(event); openSessionFolder(); }}>
+                    <i className="ph ph-folder-open" />
+                    {t("Open session folder")}
+                  </button>
+                ) : null}
+              </>
+            ) : null}
             {confirmDelete ? (
               <div className="list-menu-confirm">
                 <button onClick={() => setConfirmDelete(false)}>{t("Cancel")}</button>
@@ -944,7 +1037,8 @@ function SessionNode({
         </details>
         ) : null}
       </div>
-      {children.map((child) => (
+      {menu.element}
+      {!folded && children.map((child) => (
         <SessionNode
           key={child.sessionId}
           session={child}
@@ -952,6 +1046,8 @@ function SessionNode({
           indent={indent + 1}
           onOpen={onOpen}
           draggable={draggable}
+          foldedFamilies={foldedFamilies}
+          onToggleFamily={onToggleFamily}
         />
       ))}
     </>

@@ -296,6 +296,7 @@ export interface AbComparisonRecord {
 
 export interface SessionDetailResponse {
   session: SessionSummary;
+  sessionRoot?: string;
   transcript: TranscriptMessage[];
   transcriptPreview: TranscriptMessage[];
   warnings: string[];
@@ -306,6 +307,7 @@ export interface SessionDetailResponse {
 
 export interface FileChange {
   path: string;
+  resolvedPath?: string;
   added: number;
   removed: number;
   diff: string;
@@ -494,6 +496,7 @@ export interface WorkingDirectoryResponse {
   folderId: string;
   path: string;
   entries: WorkingTreeEntry[];
+  truncated?: boolean;
 }
 
 export interface WriteSessionFileInput {

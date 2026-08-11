@@ -10,10 +10,12 @@ import { useShell } from "@/context/ShellContext";
 import { MarkdownBody } from "@/components/conversation/MarkdownBody";
 import { fileName, toolLabel } from "@/lib/tools";
 import { cn } from "@/lib/cn";
-import { pickDirectory } from "@/lib/native";
+import { hasNativeBridge, pickDirectory, revealPath } from "@/lib/native";
 import { t } from "@/i18n";
 import { autosizeTextarea } from "@/lib/autosizeTextarea";
 import { useStickToBottom } from "@/hooks/useStickToBottom";
+import { useContextMenu, type ContextMenuItem } from "@/components/shell/ContextMenu";
+import { copyText } from "@/lib/clipboard";
 
 export function MessageList() {
   const app = useApp();
@@ -248,6 +250,7 @@ export function StreamPartsView({
 function TurnChangesCard() {
   const app = useApp();
   const shell = useShell();
+  const menu = useContextMenu();
 
   const files = useMemo(() => {
     const totals = new Map<string, { added: number; removed: number }>();
@@ -288,6 +291,17 @@ function TurnChangesCard() {
         <button
           key={file.path}
           className="tc-file"
+          onContextMenu={(event) => {
+            const path = absoluteOrWorkspacePath(file.path, app.workspacePrimaryDir);
+            menu.open(event, fileContextItems(path, shell));
+          }}
+          onKeyDown={(event) => {
+            if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
+            event.preventDefault();
+            const path = absoluteOrWorkspacePath(file.path, app.workspacePrimaryDir);
+            const rect = event.currentTarget.getBoundingClientRect();
+            menu.openAt(rect.left + 18, rect.bottom, fileContextItems(path, shell));
+          }}
           onClick={() => {
             shell.openRail("changes");
             shell.openSub({ key: `changes:${file.path}`, title: file.path });
@@ -298,8 +312,23 @@ function TurnChangesCard() {
           {file.removed ? <span className="tc-del">−{file.removed}</span> : null}
         </button>
       ))}
+      {menu.element}
     </div>
   );
+}
+
+function absoluteOrWorkspacePath(path: string, workspace: string | null): string {
+  if (/^(?:[A-Za-z]:[\\/]|\/)/.test(path) || !workspace) return path;
+  const separator = workspace.includes("\\") ? "\\" : "/";
+  return `${workspace.replace(/[\\/]+$/, "")}${separator}${path.replace(/[\\/]/g, separator)}`;
+}
+
+function fileContextItems(path: string, shell: ReturnType<typeof useShell>): ContextMenuItem[] {
+  return [
+    { label: t("Copy path"), icon: "ph-copy", onSelect: () => void copyText(path) },
+    { label: t("Show in file tree"), icon: "ph-tree-structure", onSelect: () => shell.revealWorkspacePath(path) },
+    ...(hasNativeBridge() ? [{ label: t("Show in file manager"), icon: "ph-folder-open", onSelect: () => void revealPath(path) }] : []),
+  ];
 }
 
 function countLines(text: string): number {
