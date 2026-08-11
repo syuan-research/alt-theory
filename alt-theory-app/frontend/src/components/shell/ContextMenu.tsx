@@ -13,16 +13,22 @@ interface MenuState {
   x: number;
   y: number;
   items: ContextMenuItem[];
+  anchor: Node | null;
+}
+
+export function scrollAffectsAnchor(anchor: Node | null, target: EventTarget | null): boolean {
+  if (!anchor || !target || typeof (target as Node).contains !== "function") return true;
+  return (target as Node).contains(anchor);
 }
 
 export function useContextMenu() {
   const [menu, setMenu] = useState<MenuState | null>(null);
-  const openAt = (x: number, y: number, items: ContextMenuItem[]) =>
-    setMenu({ x, y, items });
+  const openAt = (x: number, y: number, items: ContextMenuItem[], anchor: Node | null = null) =>
+    setMenu({ x, y, items, anchor });
   const open = (event: ReactMouseEvent, items: ContextMenuItem[]) => {
     event.preventDefault();
     event.stopPropagation();
-    openAt(event.clientX, event.clientY, items);
+    openAt(event.clientX, event.clientY, items, event.currentTarget);
   };
   return {
     open,
@@ -32,19 +38,22 @@ export function useContextMenu() {
   };
 }
 
-function ContextMenu({ x, y, items, onClose }: MenuState & { onClose: () => void }) {
+function ContextMenu({ x, y, items, anchor, onClose }: MenuState & { onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const close = () => onClose();
     const escape = (event: KeyboardEvent) => event.key === "Escape" && close();
     document.addEventListener("pointerdown", close);
-    document.addEventListener("scroll", close, true);
+    const closeForScroll = (event: Event) => {
+      if (scrollAffectsAnchor(anchor, event.target)) close();
+    };
+    document.addEventListener("scroll", closeForScroll, true);
     window.addEventListener("resize", close);
     document.addEventListener("keydown", escape);
     ref.current?.querySelector<HTMLButtonElement>("button")?.focus();
     return () => {
       document.removeEventListener("pointerdown", close);
-      document.removeEventListener("scroll", close, true);
+      document.removeEventListener("scroll", closeForScroll, true);
       window.removeEventListener("resize", close);
       document.removeEventListener("keydown", escape);
     };

@@ -6,6 +6,7 @@ import { Composer } from "@/components/conversation/Composer";
 import { MessageList } from "@/components/conversation/MessageList";
 import { ArmSplit } from "@/components/shell/ArmSplit";
 import { Comparison } from "@/components/shell/Comparison";
+import { ApprovalNotice } from "@/components/shell/ApprovalNotice";
 
 export function ConversationPanel() {
   const app = useApp();
@@ -32,6 +33,7 @@ export function ConversationPanel() {
 
   return (
     <main className="center">
+      <ApprovalNotice />
       {shell.compareOpen ? <Comparison /> : null}
       {shell.armsComparisonId ? (
         <ArmSplit />

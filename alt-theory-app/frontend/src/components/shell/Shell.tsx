@@ -140,7 +140,7 @@ export function Shell() {
     <div className={rootClass}>
       <SearchOverlay />
       <ExternalAiSetupDialog />
-      <ApprovalNotice />
+      {shell.surface === "app" ? null : <ApprovalNotice />}
       {shell.surface === "settings" ? (
         <SettingsView />
       ) : shell.surface === "review" ? (

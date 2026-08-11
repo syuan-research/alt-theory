@@ -20,7 +20,7 @@ import { useShell } from "@/context/ShellContext";
 import { hasNativeBridge, revealPath } from "@/lib/native";
 import { stagePathAfterUpload, WORKSPACE_PATH_MIME } from "@/lib/workspace";
 import { MarkdownBody } from "@/components/conversation/MarkdownBody";
-import { buildFileTreeModel, type FileTreeNode } from "@/lib/fileTree";
+import { buildFileTreeModel, getFileTreeNode, type FileTreeNode } from "@/lib/fileTree";
 import { copyText } from "@/lib/clipboard";
 import { useContextMenu, type ContextMenuItem } from "@/components/shell/ContextMenu";
 
@@ -638,7 +638,8 @@ function FileTree<T extends { path: string; isDirectory?: boolean }>({
   return (
     <div {...tree.getContainerProps(label)}>
       {tree.getItems().map((item) => {
-        const node = item.getItemData();
+        const node = getFileTreeNode(model, item.getId());
+        if (!node) return null;
         const isFolder = item.isFolder();
         const canOpenItem = node.isFolder || !node.entry || canOpen(node.entry);
         const pathWasCopied = copiedPath === node.fullPath;

@@ -285,7 +285,7 @@ function RelatedConversations() {
     if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
     event.preventDefault();
     const rect = event.currentTarget.getBoundingClientRect();
-    menu.openAt(rect.left + 18, rect.bottom, sessionMenuItems(child));
+    menu.openAt(rect.left + 18, rect.bottom, sessionMenuItems(child), event.currentTarget);
   };
 
   // Wheel → horizontal: trackpads/mice emit vertical delta; without this the

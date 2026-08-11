@@ -14,6 +14,10 @@ export interface FileTreeModel<T> {
   folderIds: string[];
 }
 
+export function getFileTreeNode<T>(model: FileTreeModel<T>, itemId: string) {
+  return model.nodes.get(itemId) ?? null;
+}
+
 function fullPath(basePath: string, relativePath: string): string {
   if (!basePath) return relativePath;
   const separator = basePath.includes("\\") ? "\\" : "/";

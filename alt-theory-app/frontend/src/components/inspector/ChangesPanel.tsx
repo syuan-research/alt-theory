@@ -83,7 +83,7 @@ export function ChangesPanel() {
             if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
             event.preventDefault();
             const rect = event.currentTarget.getBoundingClientRect();
-            menu.openAt(rect.left + 18, rect.bottom, fileItems(file));
+            menu.openAt(rect.left + 18, rect.bottom, fileItems(file), event.currentTarget);
           }}
           onClick={() => {
             setSelected(file);

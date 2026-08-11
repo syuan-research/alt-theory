@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildFileTreeModel } from "./fileTree.ts";
+import { buildFileTreeModel, getFileTreeNode } from "./fileTree.ts";
 
 test("file tree groups folders first and resolves Windows full paths", () => {
   const model = buildFileTreeModel(
@@ -35,4 +35,12 @@ test("file tree keeps an unloaded directory expandable before it has children", 
   );
   assert.equal(model.nodes.get("node:large-folder")?.isFolder, true);
   assert.deepEqual(model.folderIds, ["node:large-folder"]);
+});
+
+test("file tree ignores stale items while replacing filtered results", () => {
+  const first = buildFileTreeModel([{ path: "first.md" }], "");
+  const second = buildFileTreeModel([{ path: "second.md" }], "");
+
+  assert.equal(getFileTreeNode(first, "node:first.md")?.name, "first.md");
+  assert.equal(getFileTreeNode(second, "node:first.md"), null);
 });

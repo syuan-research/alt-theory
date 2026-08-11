@@ -300,7 +300,7 @@ function TurnChangesCard() {
             event.preventDefault();
             const path = absoluteOrWorkspacePath(file.path, app.workspacePrimaryDir);
             const rect = event.currentTarget.getBoundingClientRect();
-            menu.openAt(rect.left + 18, rect.bottom, fileContextItems(path, shell));
+            menu.openAt(rect.left + 18, rect.bottom, fileContextItems(path, shell), event.currentTarget);
           }}
           onClick={() => {
             shell.openRail("changes");

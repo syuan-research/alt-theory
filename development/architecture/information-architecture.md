@@ -108,7 +108,8 @@ surfaces remain designation-gated and absent for everyone else.
     render as conversation events, not settings.
 - **Conversation list**
   - Conversations are grouped by workspace.
-  - List-level actions live in the list overflow.
+  - The Working folders header owns folder-only collapse all, expand all, and
+    sorting. These controls do not change conversation-family folding.
   - A family head may collapse or expand its descendants without changing their
     list membership. Session identifiers and local session-folder paths remain
     available on demand through the row actions rather than default labels.
@@ -156,6 +157,8 @@ surfaces remain designation-gated and absent for everyone else.
     restores the prior expansion when cleared. File-change rows may reveal the
     same path here; path copying and file-manager reveal live in contextual
     actions rather than permanent labels.
+  - Contextual menus stay open while unrelated panes receive output or scroll;
+    scrolling the menu's own anchor pane still dismisses them.
 - **Settings**
   - General: app behavior and ordinary preferences.
   - Models: provider connection, model choice, and model capability correction.

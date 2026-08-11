@@ -14,7 +14,7 @@ import {
 import { Workbench } from "@/components/shell/Workbench";
 import { SessionImportDialog } from "@/components/shell/SessionImportDialog";
 import { HelpMenu } from "@/components/shell/HelpMenu";
-import { useContextMenu, type ContextMenuItem } from "@/components/shell/ContextMenu";
+import { scrollAffectsAnchor, useContextMenu, type ContextMenuItem } from "@/components/shell/ContextMenu";
 import { promoteToMainline as promoteToMainlineRequest } from "@/api/sessions";
 import { hasNativeBridge, pickDirectory, revealPath } from "@/lib/native";
 import { fetchSessionDetail } from "@/api/sessions";
@@ -188,13 +188,6 @@ export function LeftNav() {
           <div className="icons">
             <button
               className="icon-btn"
-              title={t("Search")}
-              onClick={() => shell.setSearchOpen(true)}
-            >
-              <i className="ph ph-magnifying-glass" />
-            </button>
-            <button
-              className="icon-btn"
               title={t("Collapse")}
               onClick={() => shell.setLeftCollapsed(true)}
             >
@@ -262,12 +255,12 @@ function UserNav({ onImport }: { onImport: () => void }) {
     };
     // position:fixed menus keep their layout-time spot while the list
     // scrolls beneath them (opus C2) — a scrolled menu could sit over row B
-    // with row A's Delete bound to it. Close them on any scroll.
-    const closeAllMenus = () => {
+    // with row A's Delete bound to it. Close them when their own pane scrolls.
+    const closeAllMenus = (event: Event) => {
       navRef.current
         ?.querySelectorAll<HTMLDetailsElement>("details.list-more[open]")
         .forEach((details) => {
-          details.open = false;
+          if (scrollAffectsAnchor(details, event.target)) details.open = false;
         });
     };
     document.addEventListener("pointerdown", closeOpenMenus);
@@ -560,45 +553,70 @@ function UserNav({ onImport }: { onImport: () => void }) {
             </button>
           )}
         </div>
-        <details className="list-more list-sort">
-          <summary title={t("Sort conversations")}>
-            <i className="ph ph-dots-three" />
-          </summary>
-          <div className="list-menu">
-            <div className="list-menu-label">{t("Folders")}</div>
-            {(["name", "modified"] as const).map((value) => (
-              <button
-                key={`folder-${value}`}
-                onClick={(event) => {
-                  closeMenu(event);
-                  chooseSort({ ...listSort, folders: value });
-                }}
-              >
-                {t(value === "name" ? "Name" : "Modified")}
-                {listSort.folders === value ? (
-                  <i className="ph ph-check check" />
-                ) : null}
-              </button>
-            ))}
-            <div className="sep" />
-            <div className="list-menu-label">{t("Conversations")}</div>
-            {(["name", "modified"] as const).map((value) => (
-              <button
-                key={`conversation-${value}`}
-                onClick={(event) => {
-                  closeMenu(event);
-                  chooseSort({ ...listSort, conversations: value });
-                }}
-              >
-                {t(value === "name" ? "Name" : "Modified")}
-                {listSort.conversations === value ? (
-                  <i className="ph ph-check check" />
-                ) : null}
-              </button>
-            ))}
-          </div>
-        </details>
         <RunningCount sessions={app.sessions} />
+      </div>
+      <div className="workspace-list-head">
+        <span>{t("Working folders")}</span>
+        <div className="workspace-list-actions">
+          <button
+            type="button"
+            title={t("Search")}
+            aria-label={t("Search")}
+            onClick={() => shell.setSearchOpen(true)}
+          >
+            <i className="ph ph-magnifying-glass" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            title={t("Collapse all working folders")}
+            aria-label={t("Collapse all working folders")}
+            onClick={() => setClosedGroups(new Set(tree.groups.map((group) => group.dir)))}
+          >
+            <i className="ph ph-arrows-in-line-vertical" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            title={t("Expand all working folders")}
+            aria-label={t("Expand all working folders")}
+            onClick={() => setClosedGroups(new Set())}
+          >
+            <i className="ph ph-arrows-out-line-vertical" aria-hidden="true" />
+          </button>
+          <details className="list-more list-sort">
+            <summary title={t("Sort conversations")}>
+              <i className="ph ph-sort-ascending" />
+            </summary>
+            <div className="list-menu">
+              <div className="list-menu-label">{t("Folders")}</div>
+              {(["name", "modified"] as const).map((value) => (
+                <button
+                  key={`folder-${value}`}
+                  onClick={(event) => {
+                    closeMenu(event);
+                    chooseSort({ ...listSort, folders: value });
+                  }}
+                >
+                  {t(value === "name" ? "Name" : "Modified")}
+                  {listSort.folders === value ? <i className="ph ph-check check" /> : null}
+                </button>
+              ))}
+              <div className="sep" />
+              <div className="list-menu-label">{t("Conversations")}</div>
+              {(["name", "modified"] as const).map((value) => (
+                <button
+                  key={`conversation-${value}`}
+                  onClick={(event) => {
+                    closeMenu(event);
+                    chooseSort({ ...listSort, conversations: value });
+                  }}
+                >
+                  {t(value === "name" ? "Name" : "Modified")}
+                  {listSort.conversations === value ? <i className="ph ph-check check" /> : null}
+                </button>
+              ))}
+            </div>
+          </details>
+        </div>
       </div>
       <div className="sessions">
         {app.sessionsLoading && app.sessions.length === 0 ? (
@@ -886,7 +904,7 @@ function SessionNode({
               if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
               event.preventDefault();
               const rect = event.currentTarget.getBoundingClientRect();
-              menu.openAt(rect.left + 18, rect.bottom, contextItems());
+              menu.openAt(rect.left + 18, rect.bottom, contextItems(), event.currentTarget);
             }}
             title={title}
             draggable={draggable}
