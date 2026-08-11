@@ -82,7 +82,10 @@ export function ChildConversation({
       setStatus(interrupted ? t("Ready") : t("Error"));
     },
   });
-  const { messages, streamParts, running, approvals } = engine;
+  const { messages, streamParts, running } = engine;
+  const approvals = app.approvals.filter(
+    (request) => request.sessionId === sessionId,
+  );
   const { containerRef: messagesRef, onScroll } = useStickToBottom([
     messages,
     streamParts,
@@ -245,7 +248,6 @@ export function ChildConversation({
     response: { accept?: boolean; choice?: string | null; text?: string | null },
   ) => {
     socket.send({ type: "respond_approval", payload: { approvalId, ...response } });
-    engine.setApprovals((current) => current.filter((item) => item.approvalId !== approvalId));
   };
 
   const latestUserIndex = useMemo(() => {

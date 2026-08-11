@@ -14,6 +14,7 @@ import { t } from "@/i18n";
 import { autosizeTextarea } from "@/lib/autosizeTextarea";
 
 type MenuKey = "plus" | "model" | "role" | "kb" | "presetcfg" | null;
+const SHOW_HELP_STARTERS = false;
 
 interface SlashCommand {
   name: string;
@@ -40,6 +41,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
     () => window.localStorage.getItem("alt-preset-open") === "1",
   );
   const [moreHelpStarters, setMoreHelpStarters] = useState(false);
+  const [helpQuestionArmed, setHelpQuestionArmed] = useState(false);
   // One-line hint in the tips slot when the card area switches (owner
   // 2026-08-05): each direction gets its own line, cleared after a beat.
   const [cardHint, setCardHint] = useState<string | null>(null);
@@ -201,12 +203,22 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
   const attachFirstLevel = canAttach && understandMode;
 
   const handleSubmit = () => {
-    if (app.sendPrompt(draft)) setDraft("");
+    const sent = helpQuestionArmed
+      ? app.invokeSkill("alt-theory-help", draft)
+      : app.sendPrompt(draft);
+    if (sent) {
+      setDraft("");
+      setHelpQuestionArmed(false);
+    }
   };
+  const approval = app.approvals.find(
+    (request) => request.sessionId === app.sessionId,
+  );
 
   const stageHelpQuestion = (question: string) => {
     shell.setNewMode("understand");
     app.switchMode("understand");
+    setHelpQuestionArmed(true);
     setDraft((current) =>
       current.trim() ? current.trimEnd() + "\n\n" + question : question,
     );
@@ -251,9 +263,9 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
   return (
     <div className="composer-wrap">
       <div className="composer-col">
-        {app.approvals.length > 0 ? (
+        {approval ? (
           <ApprovalDock
-            request={app.approvals[0]}
+            request={approval}
             onRespond={app.respondApproval}
             onSessionAllow={app.addApprovalMarker}
           />
@@ -620,13 +632,13 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
           </div>
         ) : null}
 
-        {variant === "empty" ? (
+        {variant === "empty" && SHOW_HELP_STARTERS ? (
           <div className="empty-help-starters">
             <div className="starter-grid">
               {[
                 t("Help me connect a model or API provider."),
                 t("What can Alt Theory do, and when should I use Understand or Work?"),
-                t("How do bundles, skills, and trigger words work?"),
+                t("What Skills are available, and what words trigger them?"),
                 t("What are subagents, and when will Alt use one?"),
                 ...(moreHelpStarters
                   ? [

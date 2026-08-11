@@ -138,6 +138,11 @@ surfaces remain designation-gated and absent for everyone else.
   - A Related conversation uses the same history, live thinking/tool rendering,
     approvals, skills, and slash commands as the center. It exposes model and
     role; mode chrome is omitted only because the rail is narrow.
+  - A pending approval in another conversation produces one global notice on
+    every surface, including Settings. The notice does not approve in place: it
+    returns to the owner. Roots and Branches open in the center; BTW, Helper, and
+    subagents open beside their parent in the right rail. The approval panel then
+    appears in that owning pane.
   - Center multi-arm A/B comparison stays on Workbench compare surfaces only;
     branches must not open a second center-column “compare pane.”
   - File preview occupies the rail as a real reading surface; rendered Markdown

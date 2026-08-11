@@ -991,7 +991,11 @@
   .external-ai-warnings p { margin: 0; padding: 10px 12px; border-radius: var(--r-sm); background: var(--panel); color: var(--ink-soft); font-size: 0.8rem; line-height: 1.45; }
   .external-ai-panel pre { flex: 1; min-height: 220px; overflow: auto; margin: 0; padding: 16px; border: 1px solid var(--hairline); border-radius: var(--r-md); background: var(--panel); color: var(--ink); font: 0.8rem/1.55 var(--mono); white-space: pre-wrap; user-select: text; }
   .external-ai-panel footer { align-items: center; }
-  .empty-help-starters { width: 100%; margin: 0 0 12px; }
+  .empty-help-starters { position: absolute; left: 50%; bottom: 150px; width: min(660px, calc(100% - 48px)); transform: translateX(-50%); }
+  .global-approval-notice { position: fixed; z-index: 120; top: 14px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; max-width: min(620px, calc(100vw - 32px)); padding: 8px 12px; border: 1px solid var(--hairline); border-radius: 999px; background: var(--panel); color: var(--ink); box-shadow: var(--shadow-sm); cursor: pointer; }
+  .global-approval-notice span:first-of-type { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .global-approval-notice span:last-of-type { color: var(--accent); white-space: nowrap; }
+  .global-approval-notice b { min-width: 18px; padding: 1px 5px; border-radius: 999px; background: var(--accent); color: white; font-size: 0.72rem; }
   .starter-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 18px; }
   .starter-grid button { padding: 5px 2px; border: 0; background: none; color: var(--text-2); text-align: left; font-size: 0.8rem; line-height: 1.35; cursor: pointer; }
   .starter-grid button:hover { color: var(--ink); }

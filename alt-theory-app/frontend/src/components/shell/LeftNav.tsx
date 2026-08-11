@@ -165,14 +165,13 @@ export function LeftNav() {
           <i className="ph ph-magnifying-glass" />
         </button>
         <div style={{ flex: 1 }} />
-        <HelpMenu compact />
         <button
           title={t("Settings")}
-          style={{ marginBottom: 10 }}
           onClick={() => shell.openSettings()}
         >
           <i className="ph ph-gear" />
         </button>
+        <HelpMenu compact />
       </div>
 
       <div
@@ -206,11 +205,11 @@ export function LeftNav() {
         <Workbench />
 
         <div className="left-foot">
-          <HelpMenu />
           <button className="gear" onClick={() => shell.openSettings()}>
             <i className="ph ph-gear" />
             {t("Settings")}
           </button>
+          <HelpMenu />
           <div
             className="avatar"
             title={

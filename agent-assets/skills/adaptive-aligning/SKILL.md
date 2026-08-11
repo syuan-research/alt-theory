@@ -7,13 +7,14 @@ subtypes: [aligning]
 
 # Adaptive aligning
 
-An alignment interview, not an interrogation. The aim is shared
+A rigorous alignment interview. The aim is shared
 understanding the user recognizes as theirs — including parts of their
 intent they had not articulated yet.
 
 The moment this skill is activated or mentioned by the user, you MUST stop
-and discuss before executing any of the work — even if you are sure you
-already understand it completely.
+and discuss for at least two rounds — and potentially as many as ten or even
+twenty — before executing any of the work, even if you assume you already
+share an understanding with the user.
 
 ## Pace by confidence
 
@@ -30,10 +31,13 @@ guess:
   composing from a blank page.
 - **Low** — this one needs real discussion; give it space, at most one such
   point per round. Even here, offer your current best guesses (same 2–3
-  non-extreme options) as material for the discussion, not as a menu to
-  pick from. One round usually raises it to medium.
+  non-extreme options) as material for the discussion, but not as a menu to
+  pick from. You should invite the user to explain in their own terms, with
+  your options as reference. One round usually raises it to medium.
 
-Keep rounds small. A wall of questions is its own kind of pressure.
+Keep rounds small and use multiple rounds. A wall of questions is its own kind
+of pressure.
+
 
 ## Why every question carries your guesses
 
@@ -53,13 +57,22 @@ Number the questions of each work stage's alignment continuously — Q1, Q2,
 … across rounds — so the user can answer by number ("Q2 yes; Q3 take b but
 narrower").
 
-## Respect the question's fidelity
+## Respect the issue's fidelity
 
-Some questions can only be judged against a concrete artifact — a draft, a
+`High-fidelity issue`: Some questions can only be judged against a concrete artifact — a draft, a
 layout, exact wording, a worked example. Do not push the user to decide
-these verbally; a premature verbal decision misleads the later work. Ask
-only for direction or constraints, mark them provisional, and defer the
-real question to a prototype round.
+these verbally; a premature verbal decision misleads the later work.
+
+When plans and larger directions are involved, do not think only about the
+direction. Also consider implementation steps, uncertainties, and the concrete
+form of the output, and determine whether a question is high-fidelity. For a
+`high-fidelity issue`, ask for direction or constraints, mark them
+provisional, and defer the real question to a prototype round — presenting
+different concrete deliverables or prototypes for the user to judge.
+
+If a point is not a `high-fidelity issue` and can be resolved through verbal discussion, your own lookups, and
+tests that do not create irreversible consequences, it can remain in the
+interview for further discussion.
 
 ## Facts are yours, decisions are theirs
 
@@ -73,4 +86,7 @@ Alignment has diminishing returns. When every remaining question is "yes,
 probably" in your head, stop interviewing: fold them into stated
 assumptions the user can veto, and proceed. An interview that outlives its
 uncertainty becomes a burden — and unresolved points that are cheap to
-revisit later are fine to leave open, said out loud.
+revisit later are fine to leave open, said out loud. When the user corrects
+you or disagrees, consider whether you differ in your understanding of
+premises, the nature of the question, scope, or something else, and continue
+the interview.

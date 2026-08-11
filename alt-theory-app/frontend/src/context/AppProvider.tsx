@@ -414,8 +414,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const promptQueue = usePromptQueue(startPromptRef);
   const { queuedPrompts, queuedPromptsRef } = promptQueue;
 
-  // The ONE conversation engine (v1.4.3): messages / stream / running /
-  // approvals and their server-message transitions live in the shared hook
+  // The ONE center engine (v1.4.3): messages / stream / running plus the
+  // connection-wide approval registry and server-message transitions live in the shared hook
   // (also used by the right-pane ChildConversation). Only center-specific
   // behavior stays here, via the callbacks below.
   const engine = useConversationEngine({
@@ -731,7 +731,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const handleServerMessage = useCallback(
     (message: ServerMessage) => {
-      // Conversation-scoped messages (stream, transcript, run end, approvals)
+      // Stream/transcript/run messages and the connection-wide approval registry
       // are the shared engine's; center extras run via its callbacks.
       if (engine.handleMessage(message)) return;
       switch (message.type) {
@@ -1811,7 +1811,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       response: { accept?: boolean; choice?: string | null; text?: string | null; },
     ) => {
       sendMessage({ type: "respond_approval", payload: { approvalId, ...response }, });
-      setApprovals((prev) => prev.filter((entry) => entry.approvalId !== approvalId),);
     },
     [sendMessage],
   );

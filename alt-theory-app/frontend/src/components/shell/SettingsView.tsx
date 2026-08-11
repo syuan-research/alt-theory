@@ -45,7 +45,6 @@ import {
   type SessionDisplayName,
 } from "@/api/sessions";
 import { sessionTitle } from "@/lib/sessionList";
-import { HelpMenu } from "@/components/shell/HelpMenu";
 import { GENERAL_TIPS, productTipText } from "@/config/productTips";
 
 interface NavItem {
@@ -105,7 +104,6 @@ export function SettingsView() {
           </button>
         ))}
         <div className="set-nav-spacer" />
-        <HelpMenu attachToCenter={false} />
       </nav>
       <div className="set-body">
         {shell.settingsPanel === "models" ? <ModelsPanel /> : null}
