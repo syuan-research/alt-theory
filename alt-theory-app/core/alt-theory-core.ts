@@ -180,6 +180,8 @@ export interface AltTheoryConfig extends SessionDirectories {
   nativePiScanAltSkills?: boolean;
   resourceDiscovery?: ResourceDiscoveryMode;
   skillsDir?: string;
+  /** Read-only product/agent resource roots that should not prompt. */
+  trustedReadRoots?: string[];
   /**
    * User-enabled external skill paths (files or directories) per Alt mode
    * mode, resolved by the app settings layer (spec §6.1). Snapshot at session
@@ -528,6 +530,7 @@ async function createAltTheorySessionWithManager(
     ...writableRootsForMode(),
     cwd,
     resolvedKbDir,
+    ...((config.trustedReadRoots ?? []).map((root) => resolve(root))),
     // Bundled skills are runtime-read assets like the KB; without this,
     // every skill invocation prompts "read outside your workspace"
     // (found by the v1.3.0-alpha.1 walkthrough acceptance).

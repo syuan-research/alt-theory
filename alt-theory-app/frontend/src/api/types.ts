@@ -603,6 +603,7 @@ export type ClientMessage =
     };
 
 export interface ApprovalRequestPayload {
+  sessionId: string;
   approvalId: string;
   kind: "confirm" | "select" | "input";
   title: string;
@@ -656,10 +657,12 @@ export type ServerMessage =
   /** A message steered into the running turn — broadcast so every pane
    *  (sender and late joiners) renders the bubble exactly once. */
   | { type: "user_steered"; payload: { text: string } }
+  | { type: "approval_snapshot"; payload: ApprovalRequestPayload[] }
   | { type: "approval_requested"; payload: ApprovalRequestPayload }
   | {
       type: "approval_resolved";
       payload: {
+        sessionId: string;
         approvalId: string;
         resolution: "responded" | "cancelled" | "timeout";
       };

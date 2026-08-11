@@ -330,6 +330,12 @@ mode: "rpc" })` before any prompt can run, dialog requests become
 resolves the pending promise. The bridge fails closed — dispose, abort,
 timeout, or no reply reads as rejection (spec §5.2/§5.3).
 
+Pending requests remain queryable while their promise is alive. Every authorized
+WebSocket receives an `approval_snapshot` on connect plus global request/resolve
+events, so closing a pane or reopening a conversation cannot lose the approval
+panel. A reply is still accepted only through a socket attached to the owning
+conversation.
+
 The manifest also records selected soul/role slugs, including `null` for
 `None`, plus KB root/domain, the workspace (§3.1), Pi prompt-template
   directory, provider/model, session directories, and Pi JSONL path. Full
@@ -448,11 +454,18 @@ output roots unless the user explicitly approves another folder.
 
 The shared security extension (`core/security-extension.ts`) mediates both
 application runtimes through Pi's native `tool_call` interception. It hard
-blocks destructive/system and credential access, visibly asks for risky
+blocks destructive/system and selected system credential access, visibly asks for risky
 commands and external read/write boundaries, keeps conversation-lifetime
 allowances, checks URL-shaped inputs against cloud-metadata/internal-host
 patterns, and appends decisions to `records/security-audit.jsonl`. These are
 trusted policy checks and approvals, not an OS sandbox.
+
+As an interim approval-fatigue patch, ordinary reads do not prompt inside the
+product resource tree, the active Alt Theory/Pi agent config directories,
+`~/.agents`, or `~/.pi/agent`. This is a root-level read allowance independent
+of which Skills are enabled; writes and dangerous operations keep their existing
+checks. A future permission-settings redesign may replace these fixed roots with
+user-selected ranges and a guarded Full access mode.
 
 ## 5. Application-Owned Session Service
 

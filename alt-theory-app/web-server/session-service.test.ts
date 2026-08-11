@@ -3169,8 +3169,12 @@ test("approval bridge routes extension confirm dialogs through the service", asy
   });
 
   const events: SessionServiceEvent[] = [];
+  const globalApprovals: SessionServiceEvent[] = [];
   const detachListener = service.attach(created.sessionId, (event) =>
     events.push(event),
+  );
+  const detachGlobal = service.attachApprovals((event) =>
+    globalApprovals.push(event),
   );
   const managed = (
     service as unknown as {
@@ -3208,6 +3212,8 @@ test("approval bridge routes extension confirm dialogs through the service", asy
     assert.ok(request && request.type === "approval_requested");
     assert.equal(request.payload.kind, "confirm");
     assert.equal(request.payload.title, "Approve tool");
+    assert.deepEqual(service.listPendingApprovals(), [request.payload]);
+    assert.equal(globalApprovals.at(-1)?.type, "approval_requested");
     assert.equal(
       service.respondApproval(created.sessionId, request.payload.approvalId, {
         accept: true,
@@ -3215,6 +3221,7 @@ test("approval bridge routes extension confirm dialogs through the service", asy
       true,
     );
     assert.equal(await approvedCall, undefined);
+    assert.deepEqual(service.listPendingApprovals(), []);
     assert.ok(
       events.some(
         (e) =>
@@ -3252,6 +3259,7 @@ test("approval bridge routes extension confirm dialogs through the service", asy
       false,
     );
   } finally {
+    detachGlobal();
     detachListener();
     await service.disposeAll();
   }

@@ -65,6 +65,9 @@ export function useConversationEngine(options?: ConversationEngineOptions) {
         return true;
       }
       switch (message.type) {
+        case "approval_snapshot":
+          setApprovals(message.payload);
+          return true;
         case "session_transcript":
           setMessages(message.payload.messages);
           clearStream();
@@ -90,7 +93,11 @@ export function useConversationEngine(options?: ConversationEngineOptions) {
           ]);
           return true;
         case "approval_requested":
-          setApprovals((prev) => [...prev, message.payload]);
+          setApprovals((prev) =>
+            prev.some((entry) => entry.approvalId === message.payload.approvalId)
+              ? prev
+              : [...prev, message.payload],
+          );
           return true;
         case "approval_resolved":
           setApprovals((prev) =>

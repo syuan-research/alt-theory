@@ -152,6 +152,7 @@ export interface SessionServiceConfig {
   thinkingLevel?: ThinkingLevel;
   resourceDiscovery: ResourceDiscoveryMode;
   skillsDir?: string;
+  trustedReadRoots?: string[];
   instructionsDir?: string;
   runLabel: string | null;
   testBatch: string | null;
@@ -265,10 +266,17 @@ export type SessionServiceEvent =
   | { type: "user_steered"; payload: { text: string } }
   | { type: "session_transcript"; payload: { messages: TranscriptMessage[] } }
   | { type: "session_metrics"; payload: SessionMetrics }
-  | { type: "approval_requested"; payload: ApprovalRequest }
+  | {
+      type: "approval_requested";
+      payload: ApprovalRequest & { sessionId: string };
+    }
   | {
       type: "approval_resolved";
-      payload: { approvalId: string; resolution: ApprovalResolution };
+      payload: {
+        sessionId: string;
+        approvalId: string;
+        resolution: ApprovalResolution;
+      };
     }
   | {
       type: "extension_notice";
@@ -319,6 +327,9 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export class SessionService implements AgentTeamBridge {
   private readonly sessions = new Map<string, ManagedSession>();
+  private readonly approvalListeners = new Set<
+    (event: Extract<SessionServiceEvent, { type: "approval_requested" | "approval_resolved" }>) => void
+  >();
   private readonly modelFallback: ModelFallbackCoordinator | null;
   private runningSubagentRuns = 0;
   private readonly subagentQueue: Array<{ childId: string; start: () => void }> =
@@ -845,6 +856,26 @@ export class SessionService implements AgentTeamBridge {
   ): boolean {
     const managed = this.requireSession(sessionId);
     return managed.approvalBridge.respond(approvalId, response);
+  }
+
+  listPendingApprovals(): Array<ApprovalRequest & { sessionId: string }> {
+    return [...this.sessions.entries()].flatMap(([sessionId, managed]) =>
+      managed.approvalBridge
+        .listPending()
+        .map((request) => ({ ...request, sessionId })),
+    );
+  }
+
+  attachApprovals(
+    listener: (
+      event: Extract<
+        SessionServiceEvent,
+        { type: "approval_requested" | "approval_resolved" }
+      >,
+    ) => void,
+  ): () => void {
+    this.approvalListeners.add(listener);
+    return () => this.approvalListeners.delete(listener);
   }
 
   invokeSkill(
@@ -2318,6 +2349,7 @@ export class SessionService implements AgentTeamBridge {
       nativePiScanAltSkills: appSettings.nativePiScanAltSkills !== false,
       resourceDiscovery: this.config.resourceDiscovery,
       skillsDir: this.config.skillsDir,
+      trustedReadRoots: this.config.trustedReadRoots,
       runLabel: this.config.runLabel,
       testBatch: this.config.testBatch,
       understandReadOnly: this.config.understandReadOnly,
@@ -3117,6 +3149,7 @@ export class SessionService implements AgentTeamBridge {
       nativePiScanAltSkills: appSettings.nativePiScanAltSkills !== false,
       resourceDiscovery: this.config.resourceDiscovery,
       skillsDir: this.config.skillsDir,
+      trustedReadRoots: this.config.trustedReadRoots,
       runLabel: this.config.runLabel,
       testBatch: this.config.testBatch,
       understandReadOnly: this.config.understandReadOnly,
@@ -3287,6 +3320,7 @@ export class SessionService implements AgentTeamBridge {
       nativePiScanAltSkills: appSettings.nativePiScanAltSkills !== false,
       resourceDiscovery: this.config.resourceDiscovery,
       skillsDir: this.config.skillsDir,
+      trustedReadRoots: this.config.trustedReadRoots,
       runLabel: this.config.runLabel,
       testBatch: this.config.testBatch,
       understandReadOnly: this.config.understandReadOnly,
@@ -3377,6 +3411,7 @@ export class SessionService implements AgentTeamBridge {
       nativePiScanAltSkills: appSettings.nativePiScanAltSkills !== false,
       resourceDiscovery: this.config.resourceDiscovery,
       skillsDir: this.config.skillsDir,
+      trustedReadRoots: this.config.trustedReadRoots,
       runLabel: this.config.runLabel,
       testBatch: this.config.testBatch,
       understandReadOnly: this.config.understandReadOnly,
@@ -3428,13 +3463,24 @@ export class SessionService implements AgentTeamBridge {
     const approvalBridge = new ApprovalBridge({
       onRequest: (request) => {
         this.emitRunPhase(managed, "awaiting-user");
-        this.emit(managed, { type: "approval_requested", payload: request });
+        const event = {
+          type: "approval_requested" as const,
+          payload: { ...request, sessionId: managed.manifest.sessionId },
+        };
+        this.emit(managed, event);
+        for (const listener of this.approvalListeners) listener(event);
       },
       onResolve: (approvalId, resolution) => {
-        this.emit(managed, {
+        const event = {
           type: "approval_resolved",
-          payload: { approvalId, resolution },
-        });
+          payload: {
+            sessionId: managed.manifest.sessionId,
+            approvalId,
+            resolution,
+          },
+        } as const;
+        this.emit(managed, event);
+        for (const listener of this.approvalListeners) listener(event);
         this.emitRunPhase(managed, managed.busy ? "processing" : "idle");
       },
       onNotify: (message, level) =>

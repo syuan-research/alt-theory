@@ -10,7 +10,8 @@ import express, { type Response } from "express";
 import multer from "multer";
 import { copyFileSync, existsSync, mkdirSync, statSync } from "fs";
 import { createServer } from "http";
-import { basename, resolve } from "path";
+import { homedir } from "os";
+import { basename, join, resolve } from "path";
 import { fileURLToPath } from "url";
 import WebSocket, { WebSocketServer } from "ws";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
@@ -1849,6 +1850,16 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     thinkingLevel: options.thinkingLevel,
     resourceDiscovery,
     skillsDir,
+    trustedReadRoots: localMode
+      ? [
+          RESOURCE_ROOT,
+          assetPaths.rootDir,
+          agentConfigDir(),
+          getAgentDir(),
+          join(homedir(), ".agents"),
+          join(homedir(), ".pi", "agent"),
+        ]
+      : [RESOURCE_ROOT, assetPaths.rootDir],
     instructionsDir,
     runLabel,
     testBatch,
@@ -2224,6 +2235,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     let auth = authSessions.resolveRequest(req);
     let attachedSessionId: string | null = null;
     let detach = () => {};
+    let detachApprovals = () => {};
     let closed = false;
     let draftSelectors: SessionSelectors;
     let draftVisibility: SessionVisibility = defaultDraftVisibility();
@@ -2275,10 +2287,23 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       return summary;
     };
 
+    const canReceiveApproval = (sessionId: string): boolean => {
+      const summary = readSessionAccessSummary(dataDir, sessionId);
+      return Boolean(
+        summary &&
+          !summary.deletedAt &&
+          canAccessSessionSummary(auth, summary) &&
+          canAccessSessionContent(auth, summary),
+      );
+    };
+
     const attachToSession = (sessionId: string) => {
       detach();
       attachedSessionId = sessionId;
       detach = sessionService.attach(sessionId, (event) => {
+        if (event.type === "approval_requested" || event.type === "approval_resolved") {
+          return;
+        }
         forwardServiceEvent(send, event);
       });
       send({ type: "session_opened", payload: sessionService.getSnapshot(sessionId), });
@@ -2300,7 +2325,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     ws.on("close", () => {
       closed = true;
       detach();
+      detachApprovals();
       detach = () => {};
+      detachApprovals = () => {};
       attachedSessionId = null;
     });
 
@@ -2308,6 +2335,17 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       sendServiceError(send, initialError);
     }
     sendCurrentDraft(true);
+    detachApprovals = sessionService.attachApprovals((event) => {
+      if (canReceiveApproval(event.payload.sessionId)) {
+        forwardServiceEvent(send, event);
+      }
+    });
+    send({
+      type: "approval_snapshot",
+      payload: sessionService
+        .listPendingApprovals()
+        .filter((request) => canReceiveApproval(request.sessionId)),
+    });
 
     ws.on("message", async (data) => {
       let msg: ClientMessage;
@@ -2863,11 +2901,12 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           }
           try {
             const { approvalId, accept, choice, text } = msg.payload;
-            sessionService.respondApproval(attachedSessionId, approvalId, {
+            const responded = sessionService.respondApproval(attachedSessionId, approvalId, {
               accept,
               choice,
               text,
             });
+            if (!responded) throw new Error("Approval is no longer pending");
           } catch (error) {
             sendServiceError(send, error);
           }

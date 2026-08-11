@@ -259,9 +259,12 @@ test("security extension mediates tool calls at the policy boundary", async () =
   const root = mkdtempSync(join(tmpdir(), "alt-theory-core-security-"));
   const appContextPath = join(root, "ALTTHEORY.md");
   const kbDir = join(root, "kb");
+  const trustedReadRoot = join(root, "agent-config");
   mkdirSync(kbDir, { recursive: true });
+  mkdirSync(trustedReadRoot, { recursive: true });
   writeFileSync(appContextPath, "Security app context", "utf-8");
   writeFileSync(join(kbDir, "note.md"), "kb note", "utf-8");
+  writeFileSync(join(trustedReadRoot, "unlisted-skill.md"), "skill", "utf-8");
 
   const dirs = createSessionDirs(join(root, "data"), "security-test");
   const result = await createAltTheorySession({
@@ -272,6 +275,7 @@ test("security extension mediates tool calls at the policy boundary", async () =
     understandReadOnly: false,
     altMode: "work",
     resourceDiscovery: "clean",
+    trustedReadRoots: [trustedReadRoot],
   });
   const { session } = result;
   const agent = session.agent as unknown as {
@@ -312,6 +316,10 @@ test("security extension mediates tool calls at the policy boundary", async () =
     /credential path/
   );
   assert.equal(await call("read", { path: join(kbDir, "note.md") }), undefined);
+  assert.equal(
+    await call("read", { path: join(trustedReadRoot, "unlisted-skill.md") }),
+    undefined,
+  );
 
   // Reads reaching outside the workspace/KB escalate; with no approval UI they
   // fail closed (OpenCode external_directory convention).

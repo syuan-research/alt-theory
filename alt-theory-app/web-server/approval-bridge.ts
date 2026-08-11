@@ -47,6 +47,7 @@ export interface ApprovalBridgeEvents {
 }
 
 interface PendingApproval {
+  request: ApprovalRequest;
   resolve: (response: ApprovalResponse | null) => void;
 }
 
@@ -71,8 +72,8 @@ export class ApprovalBridge {
   }
 
   /** Currently pending dialog requests (for late-joining clients). */
-  listPending(): string[] {
-    return [...this.pending.keys()];
+  listPending(): ApprovalRequest[] {
+    return [...this.pending.values()].map((entry) => entry.request);
   }
 
   /** Cancel all pending dialogs (session dispose/replacement). */
@@ -111,15 +112,17 @@ export class ApprovalBridge {
       if (opts?.timeout) {
         timeoutId = setTimeout(() => settle(null, "timeout"), opts.timeout);
       }
-      this.pending.set(approvalId, {
-        resolve: (response) => settle(response, null),
-      });
-      this.events.onRequest({
+      const request: ApprovalRequest = {
         approvalId,
         kind,
         ...fields,
         ...(opts?.timeout ? { timeoutMs: opts.timeout } : {}),
+      };
+      this.pending.set(approvalId, {
+        request,
+        resolve: (response) => settle(response, null),
       });
+      this.events.onRequest(request);
     });
   }
 

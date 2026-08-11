@@ -125,7 +125,6 @@ const SENSITIVE_PATHS = [
   join(homedir(), ".aws"),
   join(homedir(), ".netrc"),
   join(homedir(), ".config", "gh"),
-  join(homedir(), ".pi", "agent", "auth.json"),
   "/etc/shadow",
   "/etc/sudoers",
 ];
