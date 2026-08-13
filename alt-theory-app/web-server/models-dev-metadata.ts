@@ -39,7 +39,7 @@ interface ModelsDevProvider {
 type ModelsDevCatalog = Record<string, ModelsDevProvider>;
 
 const SOURCE = "https://models.dev/api.json";
-const TTL_MS = 5 * 60 * 1000;
+const TTL_MS = 15 * 60 * 1000;
 const caches = new Map<string, ModelsDevCatalog>();
 const refreshes = new Map<string, Promise<void>>();
 
@@ -138,6 +138,19 @@ export function catalogSdkFamily(
     if (npm?.includes("anthropic")) return "anthropic";
     if (npm?.includes("openai")) return "openai";
   }
+
+  // A provider may expose a model before its own models.dev entry catches up.
+  // The same model id under another provider is still useful when every known
+  // occurrence agrees on the SDK family.
+  const families = new Set<CatalogSdkFamily>();
+  for (const provider of Object.values(catalog)) {
+    const model = provider.models?.[modelId];
+    if (!model) continue;
+    const npm = model.provider?.npm ?? provider.npm;
+    if (npm?.includes("anthropic")) families.add("anthropic");
+    if (npm?.includes("openai")) families.add("openai");
+  }
+  if (families.size === 1) return [...families][0];
   return undefined;
 }
 

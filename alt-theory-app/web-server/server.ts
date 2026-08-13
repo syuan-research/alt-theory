@@ -88,7 +88,7 @@ import {
   testProviderConnectionFromDraft,
   deleteProvider,
   fetchProviderModels,
-  fetchProviderModelsFromDraft,
+  fetchProviderModelsFromDraftResult,
   getRuntimeModelConfig,
   getVerifiedConfigStatus,
   initialThinkingLevelForModel,
@@ -729,12 +729,12 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     };
     try {
       res.json({
-        models: await fetchProviderModelsFromDraft(agentConfigDir(), {
+        ...(await fetchProviderModelsFromDraftResult(agentConfigDir(), {
           provider: typeof body.provider === "string" ? body.provider : "",
           baseUrl: typeof body.baseUrl === "string" ? body.baseUrl : undefined,
           api: typeof body.api === "string" ? (body.api as ApiType) : undefined,
           apiKey: typeof body.apiKey === "string" ? body.apiKey : undefined,
-        }),
+        })),
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

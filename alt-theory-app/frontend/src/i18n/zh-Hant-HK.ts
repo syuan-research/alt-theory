@@ -45,6 +45,10 @@ const catalog: Record<string, string> = {
   "Add to conversation list": "加入對話列表",
   "Add working folder…": "新增工作資料夾…",
   "Added {count} new models": "已添加 {count} 個新模型",
+  "Added {count} new models; {skipped} unclassified models were not added":
+    "已添加 {count} 個新模型；另有 {skipped} 個模型因協定未分類而未加入",
+  "{count} unclassified models were not added":
+    "有 {count} 個模型因協定未分類而未加入",
   "Added {name}": "已添加 {name}",
   "Added role \"{name}\".": "已添加角色 \"{name}\"。",
   "Additional folder": "附加資料夾",

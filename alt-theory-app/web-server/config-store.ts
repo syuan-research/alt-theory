@@ -42,7 +42,6 @@ import {
   catalogModelMetadata,
   catalogSdkFamily,
   catalogThinkingLevels,
-  refreshModelsDevMetadata,
 } from "./models-dev-metadata.js";
 
 // ---------------------------------------------------------------------------
@@ -146,6 +145,11 @@ export interface ConfigStatus {
 }
 
 export interface FetchedModel extends ConfigModel {}
+
+export interface FetchModelsResult {
+  models: FetchedModel[];
+  unclassifiedModelIds: string[];
+}
 
 export interface RuntimeModelConfig {
   modelProvider?: string;
@@ -577,14 +581,6 @@ function sanitizeCustomProviderAuth(
   let changed = false;
   const providers = models.providers ?? {};
   for (const [name, block] of Object.entries(providers)) {
-    if (
-      ["openrouter", "xai", "openai-codex"].includes(name) &&
-      storedCredential(agentDir, name)?.type === "oauth"
-    ) {
-      delete providers[name];
-      changed = true;
-      continue;
-    }
     const normalizedBaseUrl = normalizeRuntimeBaseUrl(block.api, block.baseUrl);
     if (normalizedBaseUrl && normalizedBaseUrl !== block.baseUrl) {
       block.baseUrl = normalizedBaseUrl;
@@ -598,18 +594,12 @@ function sanitizeCustomProviderAuth(
       changed = true;
     }
     if (!customProviderNeedsApiKey(name, block)) continue;
-    if (!block.baseUrl) {
-      delete providers[name];
-      changed = true;
-      continue;
-    }
+    if (!block.baseUrl) continue;
     if (block.apiKey) continue;
     if (providerHasCredential(agentDir, name)) {
       block.apiKey = name;
-    } else {
-      delete providers[name];
+      changed = true;
     }
-    changed = true;
   }
   return changed;
 }
@@ -632,10 +622,10 @@ export async function fetchProviderModels(
       baseUrl: first?.baseUrl,
       api: first?.api as ApiType | undefined,
     });
-    const accessible = new Set(fetched.map((model) => model.id));
-    return builtins
-      .filter((model) => accessible.has(model.id))
-      .map((model) => ({ ...model }));
+    return fetched.map((model) => ({
+      ...builtins.find((builtin) => builtin.id === model.id),
+      ...model,
+    }));
   }
   if (!block) {
     if (builtins.length > 0) {
@@ -661,16 +651,64 @@ export async function fetchProviderModelsFromDraft(
     keyStorage?: "literal" | "env";
   },
 ): Promise<FetchedModel[]> {
+  return (
+    await fetchProviderModelsFromDraftResult(agentDir, input)
+  ).models;
+}
+
+export async function fetchProviderModelsFromDraftResult(
+  agentDir: string,
+  input: {
+    provider: string;
+    baseUrl?: string;
+    api?: ApiType;
+    apiKey?: string;
+    keyStorage?: "literal" | "env";
+  },
+): Promise<FetchModelsResult> {
   assertValidProviderName(input.provider);
   assertValidApiType(input.api);
   assertNotCommandKey(input.apiKey);
-  return fetchModelsFromEndpoint(agentDir, {
+  let unclassifiedModelIds: string[] = [];
+  const models = await fetchModelsFromEndpoint(agentDir, {
     ...input,
+    onUnclassified: (ids) => {
+      unclassifiedModelIds = ids;
+    },
     apiKey:
       input.keyStorage === "env" && input.apiKey
         ? resolveEnvApiKey(input.apiKey)
         : input.apiKey,
   });
+  return { models, unclassifiedModelIds };
+}
+
+function savedOpenCodeGoFamily(
+  providers: NonNullable<ModelsFile["providers"]>,
+  modelId: string,
+): "openai" | "anthropic" | undefined {
+  const inOpenAi = providers["opencode-go-openai"]?.models?.some(
+    (model) => model.id === modelId,
+  );
+  const inAnthropic = providers["opencode-go-anthropic"]?.models?.some(
+    (model) => model.id === modelId,
+  );
+  if (inOpenAi && !inAnthropic) return "openai";
+  if (inAnthropic && !inOpenAi) return "anthropic";
+  return undefined;
+}
+
+function bundledOpenCodeGoFamily(
+  modelId: string,
+): "openai" | "anthropic" | undefined {
+  const model = builtinModelList("opencode-go").find(
+    (candidate) => candidate.id === modelId,
+  );
+  if (model?.api === "anthropic-messages") return "anthropic";
+  if (model?.api === "openai-completions" || model?.api === "openai-responses") {
+    return "openai";
+  }
+  return undefined;
 }
 
 async function fetchModelsFromEndpoint(
@@ -680,6 +718,7 @@ async function fetchModelsFromEndpoint(
     baseUrl?: string;
     api?: ApiType;
     apiKey?: string;
+    onUnclassified?: (ids: string[]) => void;
   },
 ): Promise<FetchedModel[]> {
   if (!input.baseUrl) {
@@ -688,7 +727,6 @@ async function fetchModelsFromEndpoint(
     );
   }
   const splitOpenCodeGo = isOpenCodeGoBaseUrl(input.baseUrl);
-  if (splitOpenCodeGo) await refreshModelsDevMetadata(agentDir);
 
   const apiKey =
     input.apiKey ?? (await resolvedProviderApiKey(agentDir, input.provider));
@@ -751,20 +789,20 @@ async function fetchModelsFromEndpoint(
     if (!splitOpenCodeGo) return candidates;
     const expectedFamily =
       input.api === "anthropic-messages" ? "anthropic" : "openai";
+    const savedProviders = readModelsFile(agentDir).providers ?? {};
     const classified = candidates.map((model) => ({
       model,
-      family: catalogSdkFamily(
-        agentDir,
-        input.provider,
-        input.baseUrl,
-        model.id,
-      ),
+      family:
+        savedOpenCodeGoFamily(savedProviders, model.id) ??
+        catalogSdkFamily(agentDir, input.provider, input.baseUrl, model.id) ??
+        bundledOpenCodeGoFamily(model.id),
     }));
-    const selected = classified.some(({ family }) => family)
-      ? classified
-          .filter(({ family }) => !family || family === expectedFamily)
-          .map(({ model }) => model)
-      : candidates;
+    input.onUnclassified?.(
+      classified.filter(({ family }) => !family).map(({ model }) => model.id),
+    );
+    const selected = classified
+      .filter(({ family }) => family === expectedFamily)
+      .map(({ model }) => model);
     return selected.map((model) => ({
       ...model,
       ...catalogModelMetadata(
@@ -1182,18 +1220,22 @@ export async function upsertProvider(
     }
   }
 
-  const keyState = keyStateForProvider(agentDir, input.name, {
-    apiKey: apiKeyConfig,
-  });
+  const reread = listProviders(agentDir).find(
+    (provider) => provider.name === input.name,
+  );
+  if (
+    !reread ||
+    reread.models.length !== persistedModels.length ||
+    reread.models.some((model, index) => model.id !== persistedModels[index]?.id)
+  ) {
+    throw new ConfigValidationError(
+      "Provider models were written but did not survive the normal configuration read path.",
+    );
+  }
   return {
-    name: input.name,
-    baseUrl: runtimeBaseUrl,
-    api: input.api,
-    options: input.options,
-    keyState: options.clearKey ? "missing" : keyState,
-    hasKey: options.clearKey ? false : keyState === "stored",
-    models: persistedModels,
-    active: false,
+    ...reread,
+    keyState: options.clearKey ? "missing" : reread.keyState,
+    hasKey: options.clearKey ? false : reread.hasKey,
     warning,
   };
 }

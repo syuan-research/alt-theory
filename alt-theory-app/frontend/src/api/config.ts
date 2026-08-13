@@ -216,8 +216,8 @@ export async function saveAutoTitleSettings(
 
 export async function fetchModelsFromDraft(
   input: FetchModelsDraftInput
-): Promise<{ models: FetchedModel[] }> {
-  return fetchJson<{ models: FetchedModel[] }>("/api/config/fetch-models", {
+): Promise<{ models: FetchedModel[]; unclassifiedModelIds: string[] }> {
+  return fetchJson<{ models: FetchedModel[]; unclassifiedModelIds: string[] }>("/api/config/fetch-models", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),

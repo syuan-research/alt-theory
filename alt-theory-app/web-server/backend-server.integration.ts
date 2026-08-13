@@ -140,6 +140,7 @@ import {
   getConfigStatus,
   getVerifiedConfigStatus,
   getRuntimeModelConfig,
+  fetchProviderModels,
   fetchProviderModelsFromDraft,
   initialThinkingLevelForModel,
   listProviders,
@@ -304,6 +305,10 @@ test("OpenCode Go Fetch keeps only models for the selected SDK family", async ()
           "anthropic-model": { provider: { npm: "@ai-sdk/anthropic" } },
         },
       },
+      "another-openai-provider": {
+        npm: "@ai-sdk/openai-compatible",
+        models: { "new-openai-model": {} },
+      },
     }),
     "utf-8",
   );
@@ -311,7 +316,11 @@ test("OpenCode Go Fetch keeps only models for the selected SDK family", async ()
   globalThis.fetch = async () =>
     new Response(
       JSON.stringify({
-        data: [{ id: "openai-model" }, { id: "anthropic-model" }],
+        data: [
+          { id: "openai-model" },
+          { id: "anthropic-model" },
+          { id: "new-openai-model" },
+        ],
       }),
       { status: 200 },
     );
@@ -338,8 +347,39 @@ test("OpenCode Go Fetch keeps only models for the selected SDK family", async ()
         contextWindow: 1000000,
         maxTokens: 65536,
       },
+      { id: "new-openai-model", name: "new-openai-model" },
     ]);
     assert.deepEqual(anthropic.map((model) => model.id), ["anthropic-model"]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("OpenCode Go Fetch uses bundled families without waiting for models.dev", async () => {
+  const agentDir = mkdtempSync(join(tmpdir(), "alt-theory-sdk-family-"));
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () =>
+    new Response(
+      JSON.stringify({
+        data: [{ id: "minimax-m3" }, { id: "kimi-k3" }, { id: "future-model" }],
+      }),
+      { status: 200 },
+    );
+  try {
+    const anthropic = await fetchProviderModelsFromDraft(agentDir, {
+      provider: "opencode-go-anthropic",
+      baseUrl: "https://opencode.ai/zen/go",
+      api: "anthropic-messages",
+      apiKey: "test-key",
+    });
+    const openai = await fetchProviderModelsFromDraft(agentDir, {
+      provider: "opencode-go-openai",
+      baseUrl: "https://opencode.ai/zen/go/v1",
+      api: "openai-completions",
+      apiKey: "test-key",
+    });
+    assert.deepEqual(anthropic.map((model) => model.id), ["minimax-m3"]);
+    assert.deepEqual(openai.map((model) => model.id), ["kimi-k3"]);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -480,6 +520,77 @@ test("local config resolves a built-in model with OAuth and no custom provider b
   assert.equal(successfulRefresh.activeUsable, true);
 });
 
+test("OAuth provider keeps the exact user-saved model list across normal reads", async () => {
+  const agentDir = mkdtempSync(join(tmpdir(), "alt-theory-pi-config-"));
+  writeFileSync(
+    join(agentDir, "auth.json"),
+    JSON.stringify({
+      xai: {
+        type: "oauth",
+        access: "test",
+        refresh: "test",
+        expires: Date.now() + 60_000,
+      },
+    }),
+    "utf-8",
+  );
+
+  await upsertProvider(agentDir, {
+    name: "xai",
+    baseUrl: "https://api.x.ai/v1",
+    api: "openai-responses",
+    models: [{ id: "grok-4.6" }],
+  });
+  assert.deepEqual(
+    listProviders(agentDir).find((provider) => provider.name === "xai")?.models.map(
+      (model) => model.id,
+    ),
+    ["grok-4.6"],
+  );
+
+  await setActive(agentDir, "xai", "grok-4.6");
+  const runtimeConfig = getRuntimeModelConfig(agentDir);
+  assert.equal(runtimeConfig.modelId, "grok-4.6");
+  const runtime = await ModelRuntime.create({
+    authPath: runtimeConfig.authPath,
+    modelsPath: runtimeConfig.modelsPath,
+  });
+  assert.ok(runtime.getModel("xai", "grok-4.6"));
+  assert.deepEqual(
+    JSON.parse(readFileSync(join(agentDir, "models.json"), "utf-8")).providers.xai.models.map(
+      (model: { id: string }) => model.id,
+    ),
+    ["grok-4.6"],
+  );
+});
+
+test("xAI OAuth Fetch keeps remote models absent from the bundled catalog", async () => {
+  const agentDir = mkdtempSync(join(tmpdir(), "alt-theory-pi-config-"));
+  writeFileSync(
+    join(agentDir, "auth.json"),
+    JSON.stringify({
+      xai: {
+        type: "oauth",
+        access: "test",
+        refresh: "test",
+        expires: Date.now() + 60_000,
+      },
+    }),
+    "utf-8",
+  );
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () =>
+    new Response(JSON.stringify({ data: [{ id: "grok-4.6" }] }), { status: 200 });
+  try {
+    assert.deepEqual(
+      (await fetchProviderModels(agentDir, "xai")).map((model) => model.id),
+      ["grok-4.6"],
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("local config refuses to activate a keyless provider", async () => {
   const agentDir = mkdtempSync(join(tmpdir(), "alt-theory-pi-config-"));
   await
@@ -497,7 +608,7 @@ test("local config refuses to activate a keyless provider", async () => {
   assert.equal(status.activeUsable, false);
 });
 
-test("local config removes stale invalid custom providers before runtime", async () => {
+test("local config preserves uncredentialed custom model lists", async () => {
   const agentDir = mkdtempSync(join(tmpdir(), "alt-theory-pi-config-"));
   await
   upsertProvider(
@@ -533,7 +644,7 @@ test("local config removes stale invalid custom providers before runtime", async
   const repaired = JSON.parse(readFileSync(modelsPath, "utf-8")) as {
     providers: Record<string, unknown>;
   };
-  assert.equal("mmx" in repaired.providers, false);
+  assert.equal("mmx" in repaired.providers, true);
 
   const runtime = await ModelRuntime.create({
     authPath: runtimeConfig.authPath,

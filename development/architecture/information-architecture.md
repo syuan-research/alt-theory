@@ -191,6 +191,10 @@ surfaces remain designation-gated and absent for everyone else.
   upstream supplies it; it is not an app-wide user preference.
 - The **selected thinking effort** is conversation state. It is chosen in the
   composer/model menu from the levels supported by that model.
+- A provider's saved model list is the user's configuration and is authoritative.
+  Live provider results may propose additions through an explicit Fetch; bundled
+  Pi model lists are offline bootstrap metadata only. Neither may silently add,
+  remove, reorder, or replace models after the user saves.
 
 Do not collapse these concepts into one settings form.
 
@@ -219,6 +223,11 @@ The Models surface uses a master-detail structure:
 - Directly under Add provider: a low-key entry to the chatbot/agent model
   configuration guide (docs: configure-models-with-chatbot).
 - With no providers configured, the add flow is open by default.
+- Fetch never waits for models.dev. OpenCode Go uses the local metadata cache,
+  matching model metadata from other cached providers, and finally bundled Pi
+  protocol metadata to split its shared endpoint into OpenAI- and
+  Anthropic-compatible lists. Truly unclassified items are reported and left
+  for manual addition; they do not block Fetch or cause an all-model fallback.
 
 Provider rows do not enumerate context windows, output limits, reasoning
 flags, costs, modalities, or metadata provenance. Those facts do not help the

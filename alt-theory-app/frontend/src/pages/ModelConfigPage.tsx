@@ -713,9 +713,18 @@ export function ModelConfigPage({
       // Report what changed, not what came back: fetching twice adds nothing
       // the second time, and "fetched 40 models" would read like it did.
       showToast(
-        added
-          ? t("Added {count} new models", { count: String(added) })
-          : t("No new models — the list is already up to date"),
+        data.unclassifiedModelIds.length
+          ? added
+            ? t("Added {count} new models; {skipped} unclassified models were not added", {
+                count: String(added),
+                skipped: String(data.unclassifiedModelIds.length),
+              })
+            : t("{count} unclassified models were not added", {
+                count: String(data.unclassifiedModelIds.length),
+              })
+          : added
+            ? t("Added {count} new models", { count: String(added) })
+            : t("No new models — the list is already up to date"),
       );
     } catch (err) {
       showToast(err instanceof Error ? err.message : t("Fetch failed"), true);
