@@ -3116,7 +3116,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
 
 function sendFileApiError(res: Response, error: unknown): void {
   const message = error instanceof Error ? error.message : String(error);
-  const status = /Unknown session/.test(message)
+  const status = /Unknown session|ENOENT|no such file or directory/.test(message)
     ? 404
     : /Invalid|inside|allowed|required|large/.test(message)
       ? 400

@@ -1209,6 +1209,11 @@ test("session catalog and detail expose complete and incomplete sessions", async
     const contentJson = await contentResponse.json();
     assert.equal(contentJson.content, "# Updated\n");
 
+    const missingContentResponse = await fetch(
+      `${baseUrl}/api/sessions/session-complete/files/content?root=records&path=ui-alias.json`,
+    );
+    assert.equal(missingContentResponse.status, 404);
+
     const saveResponse = await fetch(
       `${baseUrl}/api/sessions/session-complete/files/content`,
       {

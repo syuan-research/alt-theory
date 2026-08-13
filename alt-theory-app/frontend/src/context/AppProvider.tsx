@@ -677,7 +677,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (loginRequired) return;
     const toHydrate = sessions
-      .slice(0, 20)
       .map((session) => session.sessionId)
       .filter((id) => id && !hydratedNamesRef.current.has(id));
 
