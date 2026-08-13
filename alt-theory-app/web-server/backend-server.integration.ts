@@ -1167,6 +1167,10 @@ test("session catalog and detail expose complete and incomplete sessions", async
         (session: any) => session.sessionId === "session-complete",
       ),
     );
+    assert.equal(
+      listJson.sessions.find((session: any) => session.sessionId === "session-complete")?.snippet,
+      "catalog preview text",
+    );
 
     const detailResponse = await fetch(
       `${baseUrl}/api/sessions/session-complete`,

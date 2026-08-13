@@ -124,21 +124,6 @@ export async function permanentlyDeleteSession(sessionId: string): Promise<void>
   }
 }
 
-export async function fetchSessionAlias(sessionId: string): Promise<string> {
-  const qs = new URLSearchParams({ root: "records", path: "ui-alias.json" });
-  const res = await fetch(
-    `/api/sessions/${encodeURIComponent(sessionId)}/files/content?${qs}`
-  );
-  if (!res.ok) return "";
-  const file = (await res.json()) as { content?: string };
-  try {
-    const parsed = JSON.parse(file.content || "{}") as { alias?: string };
-    return normalizeSessionAlias(parsed.alias ?? "");
-  } catch {
-    return "";
-  }
-}
-
 export async function saveSessionAlias(
   sessionId: string,
   alias: string
@@ -171,31 +156,6 @@ export function normalizeSessionAlias(value: string): string {
     .trim()
     .replace(/\s+/g, " ")
     .slice(0, 80);
-}
-
-export function firstUserSnippet(detail: SessionDetailResponse): string {
-  const message = detail.transcript?.find((item) => item.role === "user");
-  const text = String(message?.text || "")
-    .trim()
-    .replace(/\s+/g, " ");
-  if (!text) return "";
-  return text.length > 32 ? `${text.slice(0, 32)}...` : text;
-}
-
-export async function hydrateSessionDisplayName(
-  sessionId: string
-): Promise<SessionDisplayName> {
-  let alias = await fetchSessionAlias(sessionId);
-  let snippet = "";
-  if (!alias) {
-    try {
-      const detail = await fetchSessionDetail(sessionId);
-      snippet = firstUserSnippet(detail);
-    } catch {
-      snippet = "";
-    }
-  }
-  return { alias, snippet };
 }
 
 export async function promoteRelatedSession(sessionId: string): Promise<void> {

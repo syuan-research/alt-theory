@@ -207,6 +207,8 @@ export interface TranscriptMessage {
 
 export interface SessionSummary {
   sessionId: string;
+  alias?: string;
+  snippet?: string;
   ownerAccountId: string | null;
   roleCondition: string | null;
   visibility: SessionVisibility;

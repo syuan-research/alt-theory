@@ -63,6 +63,8 @@ import {
 
 export interface SessionSummary {
   sessionId: string;
+  alias?: string;
+  snippet?: string;
   ownerAccountId: string | null;
   roleCondition: string | null;
   visibility: SessionVisibility;
@@ -1134,9 +1136,12 @@ function buildSummary(sessionId: string, parts: SessionParts): SessionSummary {
   const warnings = [...parts.state.warnings];
   if (!parts.manifest) warnings.push("assembly manifest is missing");
   if (!parts.sessionFile) warnings.push("Pi session JSONL is missing");
+  const { alias, snippet } = readSessionDisplayName(parts);
 
   return {
     sessionId,
+    alias,
+    snippet,
     ownerAccountId: parts.v4Session?.ownerAccountId ?? null,
     roleCondition: parts.v4Session?.roleCondition ?? null,
     visibility: parts.v4Session?.visibility ?? "research",
@@ -1187,6 +1192,38 @@ function buildSummary(sessionId: string, parts: SessionParts): SessionSummary {
     lineagePath: [],
     lineageMarker: null,
   };
+}
+
+function readSessionDisplayName(parts: SessionParts): {
+  alias: string;
+  snippet: string;
+} {
+  try {
+    const value = JSON.parse(
+      readFileSync(join(parts.recordsDir, "ui-alias.json"), "utf-8"),
+    ) as { alias?: unknown };
+    const alias =
+      typeof value.alias === "string"
+        ? value.alias.trim().replace(/\s+/g, " ").slice(0, 80)
+        : "";
+    if (alias) return { alias, snippet: "" };
+  } catch {
+    // Optional metadata; fall back to the first user message.
+  }
+  if (!parts.sessionFile) return { alias: "", snippet: "" };
+  try {
+    const manager = SessionManager.open(parts.sessionFile, parts.historyDir);
+    const first = buildTranscriptFromEntries(manager.getBranch()).find(
+      (message) => message.role === "user",
+    );
+    const text = String(first?.text ?? "").trim().replace(/\s+/g, " ");
+    return {
+      alias: "",
+      snippet: text.length > 32 ? `${text.slice(0, 32)}...` : text,
+    };
+  } catch {
+    return { alias: "", snippet: "" };
+  }
 }
 
 function isDurableCatalogSession(

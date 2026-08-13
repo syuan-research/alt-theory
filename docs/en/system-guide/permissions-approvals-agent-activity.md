@@ -20,7 +20,7 @@ What the agent may do, what always asks, how you see what is happening.
 
 The conversation pauses and shows the operation (what is being attempted)
 and the scope (what saying yes grants). Options are allow-once and deny at
-minimum; broader scopes (allow for this session, with a 30-minute window)
+minimum; broader scopes (allow for this session, for the session's lifetime)
 are offered where the policy supports them.
 
 - Deny: the agent finds another path or says what it cannot do. The

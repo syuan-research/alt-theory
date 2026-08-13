@@ -6,6 +6,13 @@ detail lives in commit history and `development/`.
 
 ---
 
+## v1.4.5-beta.2 — 2026-08-13
+
+- Fixed a regression from v1.4.4-beta.1 that could replace conversation names
+  with truncated IDs when the session list contained more than 20 conversations.
+
+---
+
 ## v1.4.5-beta.1 — 2026-08-11
 
 This release makes Alt Theory easier to navigate and ask for help, while making

@@ -39,7 +39,6 @@ import { useShell } from "@/context/ShellContext";
 import { t } from "@/i18n";
 import {
   fetchTrashSessions,
-  hydrateSessionDisplayName,
   permanentlyDeleteSession,
   restoreSession,
   type SessionDisplayName,
@@ -125,7 +124,6 @@ function TrashPanel() {
   const app = useApp();
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [names, setNames] = useState<Record<string, SessionDisplayName>>({});
-  const namesRef = useRef<Record<string, SessionDisplayName>>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [mutating, setMutating] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -137,24 +135,14 @@ function TrashPanel() {
     try {
       const next = await fetchTrashSessions();
       setSessions(next);
+      setNames(Object.fromEntries(next.map((session) => [
+        session.sessionId,
+        { alias: session.alias ?? "", snippet: session.snippet ?? "" },
+      ])));
       setSelected((current) => {
         const present = new Set(next.map((session) => session.sessionId));
         return new Set([...current].filter((id) => present.has(id)));
       });
-      const missing = next.filter(
-        (session) => !namesRef.current[session.sessionId],
-      );
-      const entries = await Promise.all(
-        missing.map(async (session) => [
-          session.sessionId,
-          await hydrateSessionDisplayName(session.sessionId),
-        ] as const),
-      );
-      if (entries.length) {
-        const merged = { ...namesRef.current, ...Object.fromEntries(entries) };
-        namesRef.current = merged;
-        setNames(merged);
-      }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {

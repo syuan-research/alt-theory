@@ -20,7 +20,6 @@ import {
   deleteSession as deleteSessionRequest,
   fetchSessionDetail,
   fetchSessionList,
-  hydrateSessionDisplayName,
   normalizeSessionAlias,
   promoteRelatedSession as promoteRelatedSessionRequest,
   saveSessionAlias,
@@ -405,7 +404,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const pendingAssetSwitchRef = useRef(false);
   const pendingCompactRef = useRef(false);
   const composerNoticeTimerRef = useRef<number | null>(null);
-  const hydratedNamesRef = useRef<Set<string>>(new Set());
   const sessionListRequestRef = useRef(0);
   const sessionDetailRequestRef = useRef(0);
 
@@ -645,6 +643,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const list = await fetchSessionList();
       if (requestId !== sessionListRequestRef.current) return;
       setSessions(list);
+      setSessionDisplayNames(
+        Object.fromEntries(
+          list.map((session) => [
+            session.sessionId,
+            { alias: session.alias ?? "", snippet: session.snippet ?? "" },
+          ]),
+        ),
+      );
       setSelectedCatalogSessionId((current) =>
         current && list.some((item) => item.sessionId === current)
           ? current
@@ -673,20 +679,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void refreshSessionDetail(selectedCatalogSessionId);
   }, [refreshSessionDetail, selectedCatalogSessionId]);
-
-  useEffect(() => {
-    if (loginRequired) return;
-    const toHydrate = sessions
-      .map((session) => session.sessionId)
-      .filter((id) => id && !hydratedNamesRef.current.has(id));
-
-    for (const id of toHydrate) {
-      hydratedNamesRef.current.add(id);
-      void hydrateSessionDisplayName(id).then((display) => {
-        setSessionDisplayNames((prev) => ({ ...prev, [id]: display }));
-      });
-    }
-  }, [sessions, loginRequired]);
 
   const sendMessage = useCallback(
     (message: ClientMessage): boolean => {
