@@ -34,6 +34,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
   const shell = useShell();
   const [draft, setDraft] = useState("");
   const [slashIndex, setSlashIndex] = useState(0);
+  const [slashDismissed, setSlashDismissed] = useState(false);
   const [menu, setMenu] = useState<MenuKey>(null);
   // Preset toolbar (v1.4 round 1): open state survives reloads; the active
   // press/lock state lives in AppProvider so it survives pane switches.
@@ -91,6 +92,16 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
     };
     document.addEventListener("click", onDoc);
     return () => document.removeEventListener("click", onDoc);
+  }, [menu]);
+  useEffect(() => {
+    if (!menu) return;
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setMenu(null);
+    };
+    document.addEventListener("keydown", onEscape);
+    return () => document.removeEventListener("keydown", onEscape);
   }, [menu]);
 
   const openHelper = (question: string) => {
@@ -165,6 +176,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
     const token = slashQuery.split(/\s+/, 1)[0].toLowerCase();
     return slashCommands.filter((c) => c.name.toLowerCase().startsWith(token));
   }, [slashCommands, slashQuery]);
+  const slashOpen = !slashDismissed && slashMatches.length > 0;
   useEffect(() => setSlashIndex(0), [slashMatches.length]);
 
   const runSlash = (command: SlashCommand) => {
@@ -616,7 +628,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
           ) : null}
         </div>
 
-        {slashMatches.length > 0 ? (
+        {slashOpen ? (
           <div className="slash-palette">
             {slashMatches.map((command, index) => (
               <button
@@ -722,11 +734,21 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
             ref={textareaRef}
             rows={1}
             value={draft}
-            onChange={(e) => setDraft(e.target.value)}
+            onChange={(e) => {
+              setDraft(e.target.value);
+              setSlashDismissed(false);
+            }}
             placeholder={!interactive ? t("Connecting…") : t("Message Alt. Type / for commands.")}
             disabled={!interactive}
             onKeyDown={(e) => {
-              if (slashMatches.length > 0) {
+              if (e.key === "Escape") {
+                e.preventDefault();
+                if (menu) setMenu(null);
+                else if (slashOpen) setSlashDismissed(true);
+                else if (app.isRunning) app.abortRun();
+                return;
+              }
+              if (slashOpen) {
                 if (e.key === "ArrowDown" || e.key === "ArrowUp") {
                   e.preventDefault();
                   const step = e.key === "ArrowDown" ? 1 : -1;

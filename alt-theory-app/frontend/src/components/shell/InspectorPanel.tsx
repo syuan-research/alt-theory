@@ -3,7 +3,7 @@ import { useApp } from "@/context/AppProvider";
 import { useShell, type RailKey } from "@/context/ShellContext";
 import { t } from "@/i18n";
 import { shouldClearRelatedOnSubChange } from "@/lib/relatedOpen";
-import { canTakeMainline, isListMember, relatedConversationsFor, sessionTitle } from "@/lib/sessionList";
+import { canTakeMainline, familyMembersOf, isListMember, relatedConversationsFor, sessionTitle } from "@/lib/sessionList";
 import { ChildConversation } from "@/components/conversation/ChildConversation";
 import { RecordsPanel } from "@/components/inspector/RecordsPanel";
 import { ProvenancePanel } from "@/components/inspector/ProvenancePanel";
@@ -14,6 +14,7 @@ import { useContextMenu, type ContextMenuItem } from "@/components/shell/Context
 import { fetchSessionDetail, promoteToMainline } from "@/api/sessions";
 import { copyText } from "@/lib/clipboard";
 import { hasNativeBridge, revealPath } from "@/lib/native";
+import { downloadMarkdown, markdownFileName, sessionTranscriptToMarkdown } from "@/lib/sessionMarkdown";
 
 const RAIL_META: Record<RailKey, { title: string; icon: string; adv?: boolean }> = {
   chats: { title: t("Related conversations"), icon: "ph-arrows-split" },
@@ -254,6 +255,27 @@ function RelatedConversations() {
       window.alert(error instanceof Error ? error.message : String(error)));
     const openFolder = () => void sessionRoot().then(revealPath).catch((error) =>
       window.alert(error instanceof Error ? error.message : String(error)));
+    const familyCount = familyMembersOf(child, app.sessions).filter(
+      (member) => !member.deletedAt,
+    ).length;
+    const remove = () => app.requestConfirm({
+      message: t("Delete this conversation?"),
+      confirmLabel: t("Delete"),
+      onConfirm: () => app.deleteSelectedSession(child.sessionId),
+    });
+    const removeFamily = () => app.requestConfirm({
+      message: t("Delete all {count} conversations in this family?", {
+        count: String(familyCount),
+      }),
+      confirmLabel: t("Delete entire family"),
+      onConfirm: () => app.deleteSessionFamily(child.sessionId),
+    });
+    const exportMarkdown = () => void fetchSessionDetail(child.sessionId)
+      .then((detail) => downloadMarkdown(
+        markdownFileName(title),
+        sessionTranscriptToMarkdown(title, detail.transcript ?? []),
+      ))
+      .catch((error) => window.alert(error instanceof Error ? error.message : String(error)));
     return [
       ...(!isListMember(child) ? [{
         label: t("Show in conversation list"), icon: "ph-list-plus", onSelect: () => void app.promoteRelatedSession(child.sessionId),
@@ -267,14 +289,15 @@ function RelatedConversations() {
         const next = window.prompt(t("Conversation name"), app.sessionDisplayNames[child.sessionId]?.alias || title);
         if (next !== null) void app.renameSelectedSession(child.sessionId, next);
       } },
-      { label: t("Copy Session ID"), icon: "ph-identification-card", separator: true, onSelect: () => void copyText(child.sessionId) },
+      { label: t("Duplicate"), icon: "ph-copy", onSelect: () => app.duplicateSession(child.sessionId) },
+      { label: t("Delete"), icon: "ph-trash", danger: true, onSelect: remove },
+      { label: t("Delete entire family"), icon: "ph-tree-structure", danger: true, onSelect: removeFamily },
+      { label: t("Export Markdown"), icon: "ph-download-simple", separator: true, onSelect: exportMarkdown },
+      { label: t("Copy Session ID"), icon: "ph-identification-card", onSelect: () => void copyText(child.sessionId) },
       ...(app.appMode === "local" ? [
         { label: t("Copy session folder path"), icon: "ph-copy", onSelect: copyFolder },
         ...(hasNativeBridge() ? [{ label: t("Open session folder"), icon: "ph-folder-open", onSelect: openFolder }] : []),
       ] : []),
-      { label: t("Delete"), icon: "ph-trash", danger: true, separator: true, onSelect: () => app.requestConfirm({
-        message: t("Delete this conversation?"), confirmLabel: t("Delete"), onConfirm: () => app.deleteSelectedSession(child.sessionId),
-      }) },
     ];
   };
 

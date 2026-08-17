@@ -8,8 +8,12 @@ import {
   readCurrentChangedFile,
 } from "./session-store.js";
 
-function toolCallEntry(name: string, args: unknown) {
-  return { message: { content: [{ type: "toolCall", name, arguments: args }] } };
+function toolCallEntry(name: string, args: unknown, id?: string) {
+  return { message: { content: [{ type: "toolCall", id, name, arguments: args }] } };
+}
+
+function toolResultEntry(toolCallId: string, isError: boolean) {
+  return { message: { role: "toolResult", toolCallId, isError } };
 }
 
 test("write tool counts content lines as additions", () => {
@@ -55,6 +59,17 @@ test("most-recently-touched file comes first", () => {
     files.map((f) => f.path),
     ["second.md", "first.md"]
   );
+});
+
+test("failed or pending writes are not reported as file changes", () => {
+  const { files } = projectChangesFromEntries([
+    toolCallEntry("write", { path: "failed.md", content: "no" }, "failed"),
+    toolResultEntry("failed", true),
+    toolCallEntry("write", { path: "pending.md", content: "not yet" }, "pending"),
+    toolCallEntry("write", { path: "done.md", content: "yes" }, "done"),
+    toolResultEntry("done", false),
+  ]);
+  assert.deepEqual(files.map((file) => file.path), ["done.md"]);
 });
 
 test("current changed-file preview reads the latest safe workspace text", () => {

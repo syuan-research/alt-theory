@@ -22,6 +22,7 @@ import {
   restoreDeletedSession,
   sessionsAttachedToDeletion,
   softDeleteSession,
+  softDeleteSessionFamily,
 } from "./session-store.js";
 import {
   removeDeletedSessionRecord,
@@ -415,6 +416,30 @@ test("forkFamilyIds returns the whole tree from any member", () => {
     "b1-child",
     "root",
     "side",
+  ]);
+  assert.deepEqual(forkFamilyIds(dataDir, "other-root"), ["other-root"]);
+});
+
+test("softDeleteSessionFamily trashes the whole tree from any member", () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "alt-theory-delete-family-"));
+  createSession(dataDir, "root");
+  createSession(dataDir, "branch", { sessionId: "root", purpose: "fork" });
+  createSession(dataDir, "helper", { sessionId: "branch", purpose: "helper" });
+  createSession(dataDir, "other-root");
+
+  assert.deepEqual(softDeleteSessionFamily(dataDir, "branch").sort(), [
+    "branch",
+    "helper",
+    "root",
+  ]);
+  assert.deepEqual(
+    listDeletedSessionSummaries(dataDir).sessions.map((item) => item.sessionId),
+    ["branch"],
+  );
+  assert.deepEqual(restoreDeletedSession(dataDir, "branch").sort(), [
+    "branch",
+    "helper",
+    "root",
   ]);
   assert.deepEqual(forkFamilyIds(dataDir, "other-root"), ["other-root"]);
 });

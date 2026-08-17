@@ -40,6 +40,7 @@ export function ChildConversation({
   const [snapshot, setSnapshot] = useState<SessionSnapshot | null>(null);
   const [menu, setMenu] = useState<"role" | "model" | null>(null);
   const [slashIndex, setSlashIndex] = useState(0);
+  const [slashDismissed, setSlashDismissed] = useState(false);
   const ctxLineRef = useRef<HTMLDivElement>(null);
   const developer = app.transcriptView === "developer";
 
@@ -100,6 +101,16 @@ export function ChildConversation({
     };
     document.addEventListener("click", onDoc);
     return () => document.removeEventListener("click", onDoc);
+  }, [menu]);
+  useEffect(() => {
+    if (!menu) return;
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setMenu(null);
+    };
+    document.addEventListener("keydown", onEscape);
+    return () => document.removeEventListener("keydown", onEscape);
   }, [menu]);
 
   const summary = app.sessions.find((item) => item.sessionId === sessionId);
@@ -232,6 +243,7 @@ export function ChildConversation({
     const token = slashQuery.split(/\s+/, 1)[0].toLowerCase();
     return slashCommands.filter((command) => command.name.toLowerCase().startsWith(token));
   }, [slashCommands, slashQuery]);
+  const slashOpen = !slashDismissed && slashMatches.length > 0;
   useEffect(() => setSlashIndex(0), [slashMatches.length]);
   const runSlash = (command: (typeof slashCommands)[number]) => {
     const args = slashQuery?.split(/\s+/).slice(1).join(" ") ?? "";
@@ -404,7 +416,7 @@ export function ChildConversation({
           }}
         />
       </div>
-      {slashMatches.length > 0 ? (
+      {slashOpen ? (
         <div className="slash-palette child-slash-palette">
           {slashMatches.map((command, index) => (
             <button key={command.name} className={`slash-item${index === slashIndex ? " on" : ""}`} onMouseEnter={() => setSlashIndex(index)} onClick={() => runSlash(command)}>
@@ -419,9 +431,19 @@ export function ChildConversation({
           rows={1}
           value={draft}
           placeholder={t("Reply here")}
-          onChange={(event) => setDraft(event.target.value)}
+          onChange={(event) => {
+            setDraft(event.target.value);
+            setSlashDismissed(false);
+          }}
           onKeyDown={(event) => {
-            if (slashMatches.length > 0) {
+            if (event.key === "Escape") {
+              event.preventDefault();
+              if (menu) setMenu(null);
+              else if (slashOpen) setSlashDismissed(true);
+              else if (running) socket.send({ type: "abort" });
+              return;
+            }
+            if (slashOpen) {
               if (event.key === "ArrowDown" || event.key === "ArrowUp") {
                 event.preventDefault();
                 const step = event.key === "ArrowDown" ? 1 : -1;

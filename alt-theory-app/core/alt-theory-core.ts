@@ -24,6 +24,7 @@ import {
   type WriteOperations,
 } from "@earendil-works/pi-coding-agent";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
+import type { Model } from "@earendil-works/pi-ai/compat";
 import { appendFileSync, existsSync, readFileSync, statSync } from "fs";
 import { mkdir, writeFile } from "fs/promises";
 import { dirname, join, resolve } from "path";
@@ -303,6 +304,25 @@ const READONLY_TOOLS = ["read", "ls", "grep", "find"];
 const WRITE_ENABLED_TOOLS = [...READONLY_TOOLS, "write"];
 /** Pi's own default active toolset for Work and Native Pi. */
 const PI_DEFAULT_TOOLS = ["read", "bash", "edit", "write"];
+
+const NO_MODEL_PROVIDER = "__alt_theory_no_model__";
+const NO_MODEL_ID = "__no_model_selected__";
+const NO_MODEL_PLACEHOLDER: Model<any> = {
+  id: NO_MODEL_ID,
+  name: "No model selected",
+  api: "openai-completions",
+  provider: NO_MODEL_PROVIDER,
+  baseUrl: "http://127.0.0.1",
+  reasoning: false,
+  input: ["text"],
+  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  contextWindow: 1,
+  maxTokens: 1,
+};
+
+export function isNoModelPlaceholder(model: Model<any> | undefined): boolean {
+  return model?.provider === NO_MODEL_PROVIDER && model.id === NO_MODEL_ID;
+}
 
 function activeToolsForMode(workCapable: boolean, understandReadOnly: boolean): string[] {
   if (workCapable) return PI_DEFAULT_TOOLS;
@@ -697,6 +717,12 @@ async function createAltTheorySessionWithManager(
     sessionManager,
   };
 
+  // Pi otherwise waits while searching provider defaults. The inert model is
+  // never sent: the app blocks prompts until the user chooses a real model.
+  if (!config.modelProvider && !config.modelId) {
+    sessionOpts.model = NO_MODEL_PLACEHOLDER;
+  }
+
   if (config.modelProvider || config.modelId) {
     if (!config.modelProvider || !config.modelId) {
       throw new Error("modelProvider and modelId must be configured together");
@@ -842,8 +868,10 @@ async function createAltTheorySessionWithManager(
     recordsDir: resolvedRecordsDir,
     writeDir: hasWriteCapability() ? resolvedWriteDir : null,
     writableRoots: hasWriteCapability() ? writableRootsForMode() : [],
-    model: session.model?.id ?? null,
-    provider: session.model?.provider ?? null,
+    model: isNoModelPlaceholder(session.model) ? null : (session.model?.id ?? null),
+    provider: isNoModelPlaceholder(session.model)
+      ? null
+      : (session.model?.provider ?? null),
     altMode: runtimeState.altMode,
     resourceDiscovery: {
       mode: resourceDiscovery,

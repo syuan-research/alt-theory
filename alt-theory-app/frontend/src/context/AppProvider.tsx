@@ -18,6 +18,7 @@ import {
 import { fetchDiscovery } from "@/api/discovery";
 import {
   deleteSession as deleteSessionRequest,
+  deleteSessionFamily as deleteSessionFamilyRequest,
   fetchSessionDetail,
   fetchSessionList,
   normalizeSessionAlias,
@@ -167,6 +168,7 @@ export interface AppContextValue {
   promoteRelatedSession: (sessionId: string) => Promise<void>;
   renameSelectedSession: (sessionId: string, name: string) => Promise<boolean>;
   deleteSelectedSession: (sessionId?: string) => void;
+  deleteSessionFamily: (sessionId: string) => void;
 
   sessionId: string | null;
   sessionReady: boolean;
@@ -1249,20 +1251,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const performDeleteSelectedSession = useCallback(async (targetId: string) => {
+  const performDeleteSessions = useCallback(async (
+    targetId: string,
+    wholeFamily: boolean,
+  ) => {
     try {
-      await deleteSessionRequest(targetId);
-      if (sessionId === targetId) {
+      const deletedIds = wholeFamily
+        ? await deleteSessionFamilyRequest(targetId)
+        : (await deleteSessionRequest(targetId), [targetId]);
+      if (sessionId && deletedIds.includes(sessionId)) {
         reconnectSessionIdRef.current = null;
         promptQueue.clear();
         setMessages([]);
         clearStagedWorkspace();
         sendMessage({ type: "new_session" });
       }
-        if (selectedCatalogSessionId === targetId) {
-      setSelectedCatalogSessionId(null);
-      setSelectedSessionDetail(null);
-        }
+      if (activeRelatedSessionId && deletedIds.includes(activeRelatedSessionId)) {
+        setActiveRelatedSessionId(null);
+      }
+      if (
+        selectedCatalogSessionId &&
+        deletedIds.includes(selectedCatalogSessionId)
+      ) {
+        setSelectedCatalogSessionId(null);
+        setSelectedSessionDetail(null);
+      }
       await refreshSessions();
     } catch (err) {
       setToolStatus(
@@ -1270,18 +1283,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
       );
     }
   }, [
+    activeRelatedSessionId,
     clearStagedWorkspace,
     refreshSessions,
-      selectedCatalogSessionId,
+    selectedCatalogSessionId,
     sendMessage,
     sessionId,
-  ],);
+    setActiveRelatedSessionId,
+  ]);
 
   const deleteSelectedSession = useCallback((sessionId?: string) => {
     const targetId = sessionId ?? selectedSessionDetail?.session?.sessionId;
     if (!targetId) return;
-    void performDeleteSelectedSession(targetId);
-  }, [performDeleteSelectedSession, selectedSessionDetail],);
+    void performDeleteSessions(targetId, false);
+  }, [performDeleteSessions, selectedSessionDetail],);
+
+  const deleteSessionFamily = useCallback((targetId: string) => {
+    void performDeleteSessions(targetId, true);
+  }, [performDeleteSessions]);
 
   const startPrompt = useCallback(
     (text: string, attachmentPaths: string[]) => {
@@ -1860,6 +1879,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       promoteRelatedSession,
       renameSelectedSession,
       deleteSelectedSession,
+      deleteSessionFamily,
       sessionId,
       sessionReady,
       sessionCreatedHere,
@@ -1970,6 +1990,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       promoteRelatedSession,
       renameSelectedSession,
       deleteSelectedSession,
+      deleteSessionFamily,
       sessionId,
       sessionReady,
       sessionCreatedHere,

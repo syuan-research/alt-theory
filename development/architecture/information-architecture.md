@@ -1,7 +1,7 @@
 ---
 title: Alt Theory information architecture
 status: v2
-last_updated: 2026-08-03
+last_updated: 2026-08-17
 scope: where user-facing things live, how the major surfaces relate, and which information belongs in each
 ---
 
@@ -59,6 +59,8 @@ surfaces remain designation-gated and absent for everyone else.
 
 - **Composer and empty state**
   - Empty state presents the Understand/Work choice without forcing a modal.
+    Native Pi instead shows a short note about its normal work-capable tools;
+    it does not show mode choices that do not apply there.
   - Live composer chrome carries mode, model and effective thinking effort,
     role, knowledge, workspace context where applicable, and run controls.
   - The strip above the composer is a **switchable card slot**, one card at a
@@ -78,6 +80,8 @@ surfaces remain designation-gated and absent for everyone else.
     by provider first, then model.
   - Thinking effort is a second-level choice for the selected model, not a row
     of protocol metadata.
+  - A compact filter matches provider, model name, and model id without changing
+    the saved provider lists.
   - The menu links to Settings > Models without losing the current draft.
 - **Toolbox and slash palette**
   - The toolbox contains a small curated set of common capabilities.
@@ -118,6 +122,9 @@ surfaces remain designation-gated and absent for everyone else.
     delete independently. Deleting either never deletes its parent, sibling
     Branches, or child Branches. This independence exists because facilitating
     comparison is a core product purpose.
+  - **Delete entire family** is a separate consequential action. It moves every
+    member of the lineage tree to one recoverable Trash item; ordinary Delete
+    keeps its existing single-conversation semantics.
   - Side chats, subagents, and provisional comparison arms do not become
     ordinary list rows unless the user promotes them. Branches and Helpers are
     list members by nature.
@@ -212,9 +219,14 @@ The Models surface uses a master-detail structure:
   Runtime resolution is conversation selection, then configured default, then
   the ordinary no-model condition; a valid manual choice never requires a
   default to exist.
+- A stale default is repaired to a usable saved model when possible, or cleared.
+  Opening and browsing remain available with no model; Send is the boundary that
+  requires one.
 - Under the **Models** heading inside a provider editor, **Add model**,
   **Fetch model list**, and **Test connection** sit **above** the per-model
   rows so Fetch is findable.
+- Fetch and Test report pending, success, no-change, partial, and understandable
+  failure states in one inline row directly below those actions.
 - OAuth-connected providers sort before ordinary API-key providers.
 - OAuth-connected providers may carry the single low-key word `OAuth`.
   Ordinary API-key providers need no corresponding badge.

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { SessionSummary } from "../api/types.ts";
-import { buildWorkspaceTree, canTakeMainline, isFamilyHead, isListMember, relatedConversationsFor, sessionTitle } from "./sessionList.ts";
+import { buildWorkspaceTree, canTakeMainline, familyMembersOf, isFamilyHead, isListMember, relatedConversationsFor, sessionTitle } from "./sessionList.ts";
 
 function child(
   sessionId: string,
@@ -77,6 +77,19 @@ test("btw gets a numbered prefix and Helper keeps its full marker", () => {
     "Helper · How do I begin?",
   );
   assert.equal(isListMember(rootHelper), true);
+});
+
+test("familyMembersOf includes hidden descendants from any selected member", () => {
+  const root = { ...child("root", "unused", "fork", "2026-07-01T00:00:00.000Z"), forkedFrom: null } as SessionSummary;
+  const branch = child("branch", "root", "fork", "2026-07-02T00:00:00.000Z");
+  const helper = child("helper", "branch", "helper", "2026-07-03T00:00:00.000Z");
+  helper.lineagePath = ["root", "branch"];
+  const other = { ...child("other", "unused", "fork", "2026-07-04T00:00:00.000Z"), forkedFrom: null } as SessionSummary;
+  const all = [root, branch, helper, other];
+  assert.deepEqual(
+    familyMembersOf(helper, all).map((item) => item.sessionId),
+    ["root", "branch", "helper"],
+  );
 });
 
 test("subagent keeps custom name under saN prefix", () => {

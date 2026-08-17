@@ -59,7 +59,7 @@ export function handleConversationStreamMessage(
       };
       activeTools.current[callId] = tool;
       setParts((parts) => upsertTool(parts, tool));
-      setPhaseLabel(toolLabel(toolName, path, detail));
+      setPhaseLabel(toolLabel(toolName, path, detail, "running"));
       return true;
     }
     case "tool_updated": {
@@ -70,7 +70,7 @@ export function handleConversationStreamMessage(
       setParts((parts) => upsertTool(parts, tool));
       if (message.payload.text) {
         setPhaseLabel(
-          `${toolLabel(current.toolName, current.path)} — ${message.payload.text}`,
+          `${toolLabel(current.toolName, current.path, current.detail, "running")} — ${message.payload.text}`,
         );
       }
       return true;

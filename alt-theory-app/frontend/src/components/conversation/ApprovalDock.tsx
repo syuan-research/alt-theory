@@ -16,6 +16,33 @@ interface ApprovalDockProps {
 const ALLOW_SESSION = "Allow for this conversation";
 const DENY_LABELS = new Set(["Deny", "Block", "No", "Cancel"]);
 
+function approvalOption(option: string): string {
+  if (option === "Allow once") return t("Allow once");
+  if (option === ALLOW_SESSION) return t("Allow for this conversation");
+  if (option === "Deny") return t("Deny");
+  return option;
+}
+
+function approvalTitle(title: string): string {
+  const run = "Run command: ";
+  if (title.startsWith(run)) {
+    return t("Run command: {value}", { value: title.slice(run.length) });
+  }
+  const read = "Read outside your workspace: ";
+  if (title.startsWith(read)) {
+    return t("Read outside your workspace: {value}", {
+      value: title.slice(read.length),
+    });
+  }
+  const write = "Allow writes in this folder for this session: ";
+  if (title.startsWith(write)) {
+    return t("Allow writes in this folder for this session: {value}", {
+      value: title.slice(write.length),
+    });
+  }
+  return title;
+}
+
 /**
  * Low-key approval dock above the composer (M7 §3). Renders the real option set
  * the security extension sends (Allow once / Allow for this conversation / Deny) for
@@ -37,7 +64,7 @@ export function ApprovalDock({ request, onRespond, onSessionAllow }: ApprovalDoc
     <div className="approval-dock">
       <i className="ph ph-shield-check" style={{ color: "var(--text-2)" }} />
       <div className="what">
-        <div className="l1">{request.title}</div>
+        <div className="l1">{approvalTitle(request.title)}</div>
         {request.message ? <div className="l2">{request.message}</div> : null}
       </div>
 
@@ -54,7 +81,7 @@ export function ApprovalDock({ request, onRespond, onSessionAllow }: ApprovalDoc
             }
             onClick={() => choose(option)}
           >
-            {option}
+            {approvalOption(option)}
           </button>
         ))
       ) : null}

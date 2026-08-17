@@ -6,6 +6,7 @@ import { t } from "@/i18n";
 import {
   buildWorkspaceTree,
   canTakeMainline,
+  familyMembersOf,
   folderLabel,
   isFamilyHead,
   listedOriginLabel,
@@ -263,13 +264,26 @@ function UserNav({ onImport }: { onImport: () => void }) {
           if (scrollAffectsAnchor(details, event.target)) details.open = false;
         });
     };
+    const closeTopMenu = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      const open = navRef.current?.querySelectorAll<HTMLDetailsElement>(
+        "details.list-more[open]",
+      );
+      const details = open?.[open.length - 1];
+      if (!details) return;
+      event.preventDefault();
+      details.open = false;
+      details.querySelector<HTMLElement>("summary")?.focus();
+    };
     document.addEventListener("pointerdown", closeOpenMenus);
     document.addEventListener("scroll", closeAllMenus, { capture: true });
+    document.addEventListener("keydown", closeTopMenu);
     return () => {
       document.removeEventListener("pointerdown", closeOpenMenus);
       document.removeEventListener("scroll", closeAllMenus, {
         capture: true,
       });
+      document.removeEventListener("keydown", closeTopMenu);
     };
   }, []);
 
@@ -782,7 +796,6 @@ function SessionNode({
 }) {
   const app = useApp();
   const menu = useContextMenu();
-  const [confirmDelete, setConfirmDelete] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState("");
   const active = app.selectedCatalogSessionId === session.sessionId;
@@ -795,6 +808,9 @@ function SessionNode({
   const state = sessionRowState(runStatus, app.sessionAlerts[session.sessionId]);
   const title = sessionTitle(session, app.sessionDisplayNames, app.sessions);
   const folded = foldedFamilies.has(session.sessionId);
+  const familyCount = familyMembersOf(session, app.sessions).filter(
+    (member) => !member.deletedAt,
+  ).length;
 
   const exportMarkdown = async () => {
     try {
@@ -837,19 +853,27 @@ function SessionNode({
     confirmLabel: t("Delete"),
     onConfirm: () => app.deleteSelectedSession(session.sessionId),
   });
+  const removeFamily = () => app.requestConfirm({
+    message: t("Delete all {count} conversations in this family?", {
+      count: String(familyCount),
+    }),
+    confirmLabel: t("Delete entire family"),
+    onConfirm: () => app.deleteSessionFamily(session.sessionId),
+  });
   const contextItems = (): ContextMenuItem[] => [
     ...(canTakeMainline(session, app.sessions) ? [{
       label: t("Make this the main conversation"), icon: "ph-crown-simple", onSelect: promote,
     }] : []),
     { label: t("Rename"), icon: "ph-pencil-simple", onSelect: rename },
     { label: t("Duplicate"), icon: "ph-copy", onSelect: () => app.duplicateSession(session.sessionId) },
-    { label: t("Export Markdown"), icon: "ph-download-simple", onSelect: () => void exportMarkdown() },
-    { label: t("Copy Session ID"), icon: "ph-identification-card", separator: true, onSelect: () => void copyText(session.sessionId) },
+    { label: t("Delete"), icon: "ph-trash", danger: true, onSelect: remove },
+    { label: t("Delete entire family"), icon: "ph-tree-structure", danger: true, onSelect: removeFamily },
+    { label: t("Export Markdown"), icon: "ph-download-simple", separator: true, onSelect: () => void exportMarkdown() },
+    { label: t("Copy Session ID"), icon: "ph-identification-card", onSelect: () => void copyText(session.sessionId) },
     ...(app.appMode === "local" ? [
       { label: t("Copy session folder path"), icon: "ph-copy", onSelect: copySessionFolder },
       ...(hasNativeBridge() ? [{ label: t("Open session folder"), icon: "ph-folder-open", onSelect: openSessionFolder }] : []),
     ] : []),
-    { label: t("Delete"), icon: "ph-trash", danger: true, separator: true, onSelect: remove },
   ];
 
   return (
@@ -963,7 +987,6 @@ function SessionNode({
           onToggle={(event) => {
             const details = event.currentTarget;
             if (!details.open) {
-              setConfirmDelete(false);
               unanchorMenu(details);
               return;
             }
@@ -1004,6 +1027,15 @@ function SessionNode({
               <i className="ph ph-copy" />
               {t("Duplicate")}
             </button>
+            <button onClick={(event) => { closeMenu(event); remove(); }}>
+              <i className="ph ph-trash" />
+              {t("Delete")}
+            </button>
+            <button onClick={(event) => { closeMenu(event); removeFamily(); }}>
+              <i className="ph ph-tree-structure" />
+              {t("Delete entire family")}
+            </button>
+            <div className="sep" />
             <button
               onClick={(e) => {
                 closeMenu(e);
@@ -1013,7 +1045,6 @@ function SessionNode({
               <i className="ph ph-download-simple" />
               {t("Export Markdown")}
             </button>
-            <div className="sep" />
             <button onClick={(event) => { closeMenu(event); void copyText(session.sessionId); }}>
               <i className="ph ph-identification-card" />
               {t("Copy Session ID")}
@@ -1032,25 +1063,6 @@ function SessionNode({
                 ) : null}
               </>
             ) : null}
-            {confirmDelete ? (
-              <div className="list-menu-confirm">
-                <button onClick={() => setConfirmDelete(false)}>{t("Cancel")}</button>
-                <button
-                  className="danger"
-                  onClick={(event) => {
-                    closeMenu(event);
-                    app.deleteSelectedSession(session.sessionId);
-                  }}
-                >
-                  {t("Delete")}
-                </button>
-              </div>
-            ) : (
-              <button onClick={() => setConfirmDelete(true)}>
-                <i className="ph ph-trash" />
-                {t("Delete")}
-              </button>
-            )}
           </div>
         </details>
         ) : null}

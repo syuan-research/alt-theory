@@ -128,6 +128,16 @@ export function compareByRecency(a: SessionSummary, b: SessionSummary): number {
   return bTime - aTime || b.sessionId.localeCompare(a.sessionId, undefined, { numeric: true });
 }
 
+/** Every currently loaded member of the selected conversation family. */
+export function familyMembersOf(
+  session: SessionSummary,
+  all: SessionSummary[],
+): SessionSummary[] {
+  const byId = new Map(all.map((item) => [item.sessionId, item]));
+  const key = familyKeyOf(session, byId);
+  return all.filter((item) => familyKeyOf(item, byId) === key);
+}
+
 /**
  * Session-list membership: roots, branches, and children the user explicitly
  * added to the list (alpha.6 — they keep their purpose so the row can say where

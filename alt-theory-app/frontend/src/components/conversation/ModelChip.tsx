@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ProviderView, SessionModelOverride, ThinkingLevel } from "@/api/types";
 import { getConfigStatus, listConfigProviders } from "@/api/config";
 import { useApp } from "@/context/AppProvider";
@@ -74,6 +74,9 @@ export function ModelChip({
   const [expandedProvider, setExpandedProvider] = useState<string | null>(null);
   const [effortOpen, setEffortOpen] = useState(false);
   const [error, setError] = useState(false);
+  const [query, setQuery] = useState("");
+  const [filterIndex, setFilterIndex] = useState(0);
+  const filterRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -103,6 +106,10 @@ export function ModelChip({
     if (!open) {
       setExpandedProvider(null);
       setEffortOpen(false);
+      setQuery("");
+      setFilterIndex(0);
+    } else {
+      window.setTimeout(() => filterRef.current?.focus(), 0);
     }
   }, [open]);
 
@@ -133,6 +140,18 @@ export function ModelChip({
     !modelOverride &&
     effectiveModel?.provider === defaultModel?.provider &&
     effectiveModel?.modelId === defaultModel?.modelId;
+  const filteredModels = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return [];
+    return (providers ?? [])
+      .flatMap((provider) => provider.models)
+      .filter((option) =>
+        `${option.provider} ${option.label} ${option.modelId}`
+          .toLowerCase()
+          .includes(needle),
+      );
+  }, [providers, query]);
+  useEffect(() => setFilterIndex(0), [query]);
   const chipLabel = effectiveModel
     ? `${effectiveModel.modelId}${
         selectedOption?.thinkingLevels.length &&
@@ -268,13 +287,33 @@ export function ModelChip({
           </div>
         ) : (
           <>
-            {activeGroup ? (
+            {query.trim() ? (
+              filteredModels.length ? (
+                <div className="model-provider-section">
+                  {filteredModels.map((option, index) => (
+                    <div
+                      key={`${option.provider}:${option.modelId}`}
+                      className={`mi${index === filterIndex ? " on" : ""}`}
+                      onMouseEnter={() => setFilterIndex(index)}
+                      onClick={() => pick(option)}
+                    >
+                      <span>{option.label}</span>
+                      <span className="model-filter-provider">{option.provider}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="rp-empty" style={{ padding: "8px 10px" }}>
+                  {t("No matching models")}
+                </div>
+              )
+            ) : activeGroup ? (
               <div className="model-provider-section">
                 <div className="model-provider-label">{activeGroup.name}</div>
                 {activeGroup.models.map(renderModel)}
               </div>
             ) : null}
-            {otherGroups.map((provider) => {
+            {!query.trim() && otherGroups.map((provider) => {
               const expanded = expandedProvider === provider.name;
               return (
                 <div key={provider.name} className="model-provider-section">
@@ -300,6 +339,30 @@ export function ModelChip({
             })}
           </>
         )}
+        <div className="sep" />
+        <div className="model-filter">
+          <i className="ph ph-magnifying-glass" aria-hidden="true" />
+          <input
+            ref={filterRef}
+            value={query}
+            placeholder={t("Filter models")}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (!query.trim() || filteredModels.length === 0) return;
+              if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                event.preventDefault();
+                const step = event.key === "ArrowDown" ? 1 : -1;
+                setFilterIndex(
+                  (index) =>
+                    (index + step + filteredModels.length) % filteredModels.length,
+                );
+              } else if (event.key === "Enter") {
+                event.preventDefault();
+                pick(filteredModels[filterIndex]!);
+              }
+            }}
+          />
+        </div>
         <div className="sep" />
         <div className="mi" onClick={() => shell.openSettings("models")}>
           <i className="ph ph-cpu" />

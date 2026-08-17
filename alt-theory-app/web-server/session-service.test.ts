@@ -210,14 +210,17 @@ test("an explicit conversation model runs without a configured default", async (
       provider: "manual-choice",
       modelId: "selected-model",
     });
-    await assert.rejects(
-      service.setSessionModel(snapshot.sessionId, null),
-      /No usable local model is active for this conversation/,
-    );
+    const cleared = await service.setSessionModel(snapshot.sessionId, null);
+    // Pi keeps the already loaded model live until reopen; clearing the saved
+    // override must still succeed instead of blocking the conversation.
+    assert.deepEqual(cleared.currentModel, {
+      provider: "manual-choice",
+      modelId: "selected-model",
+    });
     assert.equal(
       readV4SessionHeader(service.getManifest(snapshot.sessionId).recordsDir)
         ?.modelOverride?.modelId,
-      "selected-model",
+      undefined,
     );
   } finally {
     await service.disposeAll();

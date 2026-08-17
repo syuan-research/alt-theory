@@ -42,6 +42,7 @@ import type {
 } from "./websocket-protocol.js";
 import {
   getSessionRootForRequest,
+  forkFamilyIds,
   listDeletedSessionSummaries,
   listSessionTextFiles,
   listSessionSummaries,
@@ -55,6 +56,7 @@ import {
   type SessionSummary,
   sessionsAttachedToDeletion,
   softDeleteSession,
+  softDeleteSessionFamily,
   sweepExpiredDeletedSessions,
   writeSessionTextFile,
 } from "./session-store.js";
@@ -1308,6 +1310,25 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         }
       }
       res.json({ deleted: softDeleteSession(dataDir, sessionId) });
+    } catch (error) {
+      res.status(409).json({
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+  app.delete("/api/sessions/:sessionId/family", async (req, res) => {
+    const sessionId = req.params.sessionId;
+    if (!requireSessionRestContentAccess(req, res, sessionId)) return;
+    try {
+      const family = forkFamilyIds(dataDir, sessionId);
+      const activity = sessionService.sessionActivity();
+      for (const memberId of family) {
+        const state = activity.get(memberId);
+        if (state === "running" || state === "awaiting-approval") {
+          await sessionService.abort(memberId, "session_deleted");
+        }
+      }
+      res.json({ deletedSessionIds: softDeleteSessionFamily(dataDir, sessionId) });
     } catch (error) {
       res.status(409).json({
         error: error instanceof Error ? error.message : String(error),

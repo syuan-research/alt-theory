@@ -192,6 +192,31 @@ function manualModelListHint(providerName: string): string | null {
   return t("This preset already includes the expected model ids; the provider may not expose a /models endpoint. Use Test connection to check your key works.");
 }
 
+function friendlyFetchError(error: unknown): string {
+  const message = error instanceof Error ? error.message.toLowerCase() : "";
+  if (/401|403|unauthor|forbidden|api key/.test(message)) {
+    return t("Could not fetch models — check the API key.");
+  }
+  if (/404|models endpoint|model refresh needs/.test(message)) {
+    return t("This provider does not offer a model list. Add the model id manually.");
+  }
+  if (/network|fetch|timeout|timed out|connect|econn/.test(message)) {
+    return t("Could not reach the provider — check the network and Base URL.");
+  }
+  return t("Could not fetch models. Check the provider settings and try again.");
+}
+
+function friendlyConnectionError(error: unknown): string {
+  const message = error instanceof Error ? error.message.toLowerCase() : "";
+  if (/401|403|unauthor|forbidden|api key/.test(message)) {
+    return t("Connection failed — check the API key.");
+  }
+  if (/network|fetch|timeout|timed out|connect|econn/.test(message)) {
+    return t("Could not reach the provider — check the network and Base URL.");
+  }
+  return t("Connection failed. Check the provider settings and model id.");
+}
+
 function parseOptionValue(raw: string): unknown {
   if (raw === "true") return true;
   if (raw === "false") return false;
@@ -363,12 +388,17 @@ export function ModelConfigPage({
   );
   const [keyUrl, setKeyUrl] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
+  const [fetching, setFetching] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveResult, setSaveResult] = useState<{
     text: string;
     kind: "success" | "warning" | "error";
   } | null>(null);
   const [testResult, setTestResult] = useState<{
+    ok: boolean;
+    message: string;
+  } | null>(null);
+  const [fetchResult, setFetchResult] = useState<{
     ok: boolean;
     message: string;
   } | null>(null);
@@ -437,6 +467,8 @@ export function ModelConfigPage({
 
   const openEditor = (existingName?: string) => {
     setSaveResult(null);
+    setFetchResult(null);
+    setTestResult(null);
     const provider = existingName
       ? providers.find((item) => item.name === existingName)
       : undefined;
@@ -660,6 +692,7 @@ export function ModelConfigPage({
     }
     setTesting(true);
     setTestResult(null);
+    setFetchResult(null);
     try {
       const result = await testConnectionFromDraft({
         provider: trimmedName,
@@ -675,7 +708,7 @@ export function ModelConfigPage({
     } catch (err) {
       setTestResult({
         ok: false,
-        message: err instanceof Error ? err.message : t("Connection test failed"),
+        message: friendlyConnectionError(err),
       });
     } finally {
       setTesting(false);
@@ -683,16 +716,26 @@ export function ModelConfigPage({
   };
 
   const fetchModels = async () => {
+    if (fetching) return;
     const trimmedName = name.trim();
     const trimmedBaseUrl = baseUrl.trim();
     if (!trimmedName) {
-      showToast(t("Provider name is required before fetching models."), true);
+      setFetchResult({
+        ok: false,
+        message: t("Provider name is required before fetching models."),
+      });
       return;
     }
     if (!trimmedBaseUrl) {
-      showToast(t("Base URL is required before fetching models."), true);
+      setFetchResult({
+        ok: false,
+        message: t("Base URL is required before fetching models."),
+      });
       return;
     }
+    setFetching(true);
+    setFetchResult(null);
+    setTestResult(null);
     try {
       const data = await fetchModelsFromDraft({
         provider: trimmedName,
@@ -701,19 +744,20 @@ export function ModelConfigPage({
         ...(apiKey ? { apiKey } : {}),
         ...(apiKey ? { keyStorage } : {}),
       });
-      let added = 0;
-      setModelRows((current) => {
-        const existing = new Set(current.map((row) => row.id.trim()));
-        const fresh = (data.models || []).filter(
-          (model) => !existing.has(model.id),
-        );
-        added = fresh.length;
-        return [...current, ...fresh.map((model) => configModelToRow(model))];
-      });
+      const existing = new Set(modelRows.map((row) => row.id.trim()));
+      const fresh = (data.models || []).filter(
+        (model) => !existing.has(model.id),
+      );
+      const added = fresh.length;
+      setModelRows((current) => [
+        ...current,
+        ...fresh.map((model) => configModelToRow(model)),
+      ]);
       // Report what changed, not what came back: fetching twice adds nothing
       // the second time, and "fetched 40 models" would read like it did.
-      showToast(
-        data.unclassifiedModelIds.length
+      setFetchResult({
+        ok: data.unclassifiedModelIds.length === 0,
+        message: data.unclassifiedModelIds.length
           ? added
             ? t("Added {count} new models; {skipped} unclassified models were not added", {
                 count: String(added),
@@ -725,11 +769,15 @@ export function ModelConfigPage({
           : added
             ? t("Added {count} new models", { count: String(added) })
             : t("No new models — the list is already up to date"),
-      );
+      });
     } catch (err) {
-      showToast(err instanceof Error ? err.message : t("Fetch failed"), true);
+      setFetchResult({ ok: false, message: friendlyFetchError(err) });
+    } finally {
+      setFetching(false);
     }
   };
+
+  const modelActionResult = fetchResult ?? testResult;
 
   const statusSummary = (
     <>
@@ -1118,8 +1166,8 @@ export function ModelConfigPage({
                     Fetch leads: asking the provider what it offers is the
                     normal way to fill this in, typing ids by hand the fallback. */}
                 <div className="flex flex-wrap gap-2">
-                  <Button variant="primary" onClick={() => void fetchModels()}>
-                    {t("Fetch model list")}
+                  <Button variant="primary" disabled={fetching} onClick={() => void fetchModels()}>
+                    {fetching ? t("Fetching…") : t("Fetch model list")}
                   </Button>
                   <Button
                     variant="secondary"
@@ -1136,19 +1184,16 @@ export function ModelConfigPage({
                   >
                     {testing ? t("Testing…") : t("Test connection")}
                   </Button>
-                  {testResult ? (
-                    <HintText
-                      className={
-                        testResult.ok ? "text-success" : "text-warning"
-                      }
-                    >
-                      {testResult.message}
-                    </HintText>
-                  ) : null}
-                  {manualModelListHint(name.trim()) ? (
-                    <HintText>{manualModelListHint(name.trim())}</HintText>
-                  ) : null}
                 </div>
+                {modelActionResult ? (
+                  <HintText
+                    className={modelActionResult.ok ? "text-success" : "text-warning"}
+                  >
+                    {modelActionResult.message}
+                  </HintText>
+                ) : manualModelListHint(name.trim()) ? (
+                  <HintText>{manualModelListHint(name.trim())}</HintText>
+                ) : null}
                 {modelRows.map((row, index) => (
                   <div
                     key={index}

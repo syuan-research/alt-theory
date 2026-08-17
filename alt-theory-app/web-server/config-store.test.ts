@@ -5,7 +5,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import test from "node:test";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import { upsertProvider } from "./config-store.js";
+import { getRuntimeModelConfig, upsertProvider } from "./config-store.js";
 
 test("provider save completes after the key is durable even when catalog refresh stalls", async (t) => {
   const agentDir = mkdtempSync(join(tmpdir(), "alt-theory-provider-save-"));
@@ -46,5 +46,41 @@ test("provider save completes after the key is durable even when catalog refresh
   assert.deepEqual(
     JSON.parse(readFileSync(join(agentDir, "auth.json"), "utf-8")),
     { "shared-provider": { type: "api_key", key: "test-key" } },
+  );
+});
+
+test("a removed active model falls back to the first saved usable model", () => {
+  const agentDir = mkdtempSync(join(tmpdir(), "alt-theory-stale-active-"));
+  writeFileSync(
+    join(agentDir, "models.json"),
+    JSON.stringify({
+      providers: {
+        xai: {
+          baseUrl: "https://api.x.ai/v1",
+          api: "openai-completions",
+          apiKey: "xai",
+          models: [{ id: "grok-4.6" }],
+        },
+      },
+    }),
+  );
+  writeFileSync(
+    join(agentDir, "auth.json"),
+    JSON.stringify({ xai: { type: "api_key", key: "test-key" } }),
+  );
+  writeFileSync(
+    join(agentDir, "settings.json"),
+    JSON.stringify({ defaultProvider: "xai", defaultModel: "glm-5.2" }),
+  );
+
+  assert.deepEqual(getRuntimeModelConfig(agentDir), {
+    modelProvider: "xai",
+    modelId: "grok-4.6",
+    modelsPath: join(agentDir, "models.json"),
+    authPath: join(agentDir, "auth.json"),
+  });
+  assert.deepEqual(
+    JSON.parse(readFileSync(join(agentDir, "settings.json"), "utf-8")),
+    { defaultProvider: "xai", defaultModel: "grok-4.6" },
   );
 });

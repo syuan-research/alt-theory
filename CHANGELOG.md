@@ -6,6 +6,34 @@ detail lives in commit history and `development/`.
 
 ---
 
+## v1.4.6-beta.1 — 2026-08-17
+
+This release removes common model and session blockers and makes agent activity
+more predictable.
+
+### Models without obstruction
+
+- Deleted or stale default models no longer prevent conversations from opening.
+  Alt uses a usable saved fallback when available, and otherwise asks for a
+  model only when a message is sent.
+- The model picker can filter large provider lists. Fetch and connection tests
+  now show clear progress and results below their controls; Native Pi gets a
+  simpler new-conversation state without inapplicable mode cards.
+
+### Conversation control
+
+- Escape closes the active menu or command palette first, then stops the running
+  conversation in the focused pane.
+- Conversation menus now offer a recoverable **Delete entire family** action;
+  ordinary Delete remains limited to the selected conversation.
+
+### Approvals and file changes
+
+- Approval actions are localized, and denied or failed tools no longer appear
+  as successful reads, commands, edits, or file changes.
+
+---
+
 ## v1.4.5-beta.2 — 2026-08-13
 
 - Fixed a regression from v1.4.4-beta.1 that could replace conversation names

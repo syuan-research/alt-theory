@@ -56,50 +56,46 @@ function EmptyState() {
     <div className="empty-state">
       <div className="empty-intro">
         <div className="greet">{t("Where shall we begin?")}</div>
-        <div className="mode-pick">
-          <button
-            className={`mode-card understand${shell.newMode === "understand" ? " on" : ""}`}
-            onClick={() => shell.setNewMode("understand")}
-            aria-pressed={shell.newMode === "understand"}
-            disabled={app.runtimeMode === "native-pi"}
-            title={
-              app.runtimeMode === "native-pi"
-                ? t("Understand and Work are preserved but inactive while Native Pi is on.")
-                : t("For clarifying questions, comparing explanations, and developing ideas with your materials.")
-            }
-          >
-            <div className="t">
-              <i className="ph ph-book-open" />
-              {t("Understand")}
-            </div>
-            <ul>
-              <li>{t("Clarify questions, compare explanations, and develop ideas.")}</li>
-              <li>{t("Read and discuss your materials and selected knowledge.")}</li>
-              <li>{t("Create notes or drafts while keeping understanding at the center.")}</li>
-            </ul>
-          </button>
-          <button
-            className={`mode-card work${shell.newMode === "work" ? " on" : ""}`}
-            onClick={() => shell.setNewMode("work")}
-            aria-pressed={shell.newMode === "work"}
-            disabled={app.runtimeMode === "native-pi"}
-            title={
-              app.runtimeMode === "native-pi"
-                ? t("Understand and Work are preserved but inactive while Native Pi is on.")
-                : t("For the same careful thinking plus research, data analysis, and direct work across files.")
-            }
-          >
-            <div className="t">
-              <i className="ph ph-hammer" />
-              {t("Work")}
-            </div>
-            <ul>
-              <li>{t("Keep the same careful thinking while advancing a concrete task.")}</li>
-              <li>{t("Research and verify information, analyze data, and work across documents.")}</li>
-              <li>{t("Create or update documents, spreadsheets, presentations, and other files in your working folders.")}</li>
-            </ul>
-          </button>
-        </div>
+        {app.runtimeMode === "native-pi" ? (
+          <div className="native-pi-empty-note">
+            {t("Native Pi uses its normal work-capable tools and working-folder access.")}
+          </div>
+        ) : (
+          <div className="mode-pick">
+            <button
+              className={`mode-card understand${shell.newMode === "understand" ? " on" : ""}`}
+              onClick={() => shell.setNewMode("understand")}
+              aria-pressed={shell.newMode === "understand"}
+              title={t("For clarifying questions, comparing explanations, and developing ideas with your materials.")}
+            >
+              <div className="t">
+                <i className="ph ph-book-open" />
+                {t("Understand")}
+              </div>
+              <ul>
+                <li>{t("Clarify questions, compare explanations, and develop ideas.")}</li>
+                <li>{t("Read and discuss your materials and selected knowledge.")}</li>
+                <li>{t("Create notes or drafts while keeping understanding at the center.")}</li>
+              </ul>
+            </button>
+            <button
+              className={`mode-card work${shell.newMode === "work" ? " on" : ""}`}
+              onClick={() => shell.setNewMode("work")}
+              aria-pressed={shell.newMode === "work"}
+              title={t("For the same careful thinking plus research, data analysis, and direct work across files.")}
+            >
+              <div className="t">
+                <i className="ph ph-hammer" />
+                {t("Work")}
+              </div>
+              <ul>
+                <li>{t("Keep the same careful thinking while advancing a concrete task.")}</li>
+                <li>{t("Research and verify information, analyze data, and work across documents.")}</li>
+                <li>{t("Create or update documents, spreadsheets, presentations, and other files in your working folders.")}</li>
+              </ul>
+            </button>
+          </div>
+        )}
         {app.appMode === "local" ? (
           <button
             className="import-link"

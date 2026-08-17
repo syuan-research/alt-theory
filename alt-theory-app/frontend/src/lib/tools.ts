@@ -25,20 +25,28 @@ export function fileName(path: string | null | undefined): string | null {
 export function toolLabel(
   name: string,
   path?: string | null,
-  detail?: ToolDetail | null
+  detail?: ToolDetail | null,
+  state: "running" | "finished" | "failed" = "finished",
 ): string {
   if (detail?.kind === "skill" && detail.skillName) {
     return t("Using the {skillName} skill", { skillName: detail.skillName });
   }
   if (name === "bash" || name === "shell") {
     const command = detail?.kind === "command" ? detail.body.split("\n")[0] : null;
-    return command ? t("Ran {command}", { command }) : t("Running a command…");
+    if (state === "failed") {
+      return command ? t("Did not run {command}", { command }) : t("Command did not run");
+    }
+    if (state === "running") return t("Running a command…");
+    return command ? t("Ran {command}", { command }) : t("Command finished");
   }
 
   const kbPath = isKbPath(path);
   const named = fileName(path);
 
   if (name === "read") {
+    if (state === "failed") {
+      return named ? t("Did not read {name}", { name: named }) : t("File was not read");
+    }
     if (kbPath) return t("Reading knowledge base…");
     return named ? t("Reading {name}", { name: named }) : t("Reading file…");
   }
@@ -52,8 +60,12 @@ export function toolLabel(
     if (kbPath) return t("Listing knowledge base…");
     return named ? t("Listing {name}", { name: named }) : t("Listing resources…");
   }
-  if (name === "write") return named ? t("Writing {name}", { name: named }) : t("Writing notes…");
+  if (name === "write") {
+    if (state === "failed") return named ? t("Did not write {name}", { name: named }) : t("File was not written");
+    return named ? t("Writing {name}", { name: named }) : t("Writing notes…");
+  }
   if (name === "edit" || name === "multi_edit" || name === "str_replace") {
+    if (state === "failed") return named ? t("Did not edit {name}", { name: named }) : t("File was not edited");
     return named ? t("Editing {name}", { name: named }) : t("Editing a file…");
   }
   if (name === "web_search" || name === "websearch") return t("Searching online…");

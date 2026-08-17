@@ -10,6 +10,7 @@ import type { ImageContent, Model } from "@earendil-works/pi-ai";
 import { completeSimple } from "@earendil-works/pi-ai/compat";
 import {
   createAltTheorySession,
+  isNoModelPlaceholder,
   KB_DISABLED_DOMAIN,
   openAltTheorySession,
   type AssemblyManifest,
@@ -415,7 +416,17 @@ export class SessionService implements AgentTeamBridge {
   private modelArgsFor(
     override: SessionModelOverride | null | undefined,
   ): RuntimeModelConfig & { thinkingLevel?: ThinkingLevel } {
-    const base = this.resolveEffectiveRuntimeModelConfig();
+    let base: RuntimeModelConfig = {};
+    if (!override) {
+      base = this.resolveEffectiveRuntimeModelConfig();
+    } else {
+      try {
+        base = this.resolveEffectiveRuntimeModelConfig();
+      } catch {
+        // A valid conversation choice must not be blocked by a stale global
+        // default. The override is resolved by the session's model runtime.
+      }
+    }
     return {
       ...base,
       ...(override
@@ -519,14 +530,6 @@ export class SessionService implements AgentTeamBridge {
     metadata: SessionCreationMetadata = {},
   ): Promise<SessionSnapshot> {
     const runtimeModelConfig = this.modelArgsFor(metadata.modelOverride);
-    if (
-      this.config.resolveRuntimeModelConfig &&
-      (!runtimeModelConfig.modelProvider || !runtimeModelConfig.modelId)
-    ) {
-      throw new Error(
-        "No usable local model is active for this conversation. Choose a conversation model or configure a default in Settings → Models.",
-      );
-    }
     const sessionId = allocateReadableSessionId(this.config.dataDir, {
       rolePresetSlug: selectors.rolePresetSlug,
       soulSlug: selectors.soulSlug,
@@ -1733,6 +1736,11 @@ export class SessionService implements AgentTeamBridge {
     if (managed.busy || managed.session.isStreaming) {
       throw new SessionBusyError(sessionId);
     }
+    if (!managed.session.model || isNoModelPlaceholder(managed.session.model)) {
+      throw new Error(
+        "No model is selected. Choose a conversation model or configure one in Settings → Models.",
+      );
+    }
 
     managed.busy = true;
     managed.fallbackAttempts = 0;
@@ -2197,11 +2205,6 @@ export class SessionService implements AgentTeamBridge {
     const header = readV4SessionHeader(managed.manifest.recordsDir);
     if (!header) throw new Error("v0.4 session header is required");
     const fallback = override ? null : this.resolveEffectiveRuntimeModelConfig();
-    if (fallback && (!fallback.modelProvider || !fallback.modelId)) {
-      throw new Error(
-        "No usable local model is active for this conversation. Choose another conversation model or configure a default in Settings → Models.",
-      );
-    }
     const { modelOverride: _dropped, ...rest } = header;
     writeSessionHeader(
       managed.manifest.recordsDir,
@@ -2225,7 +2228,7 @@ export class SessionService implements AgentTeamBridge {
           this.initialThinkingLevel(override.provider, override.modelId),
       );
     } else {
-      const base = fallback!;
+      const base = fallback ?? {};
       const resolved =
         base.modelProvider && base.modelId
           ? managed.session.modelRuntime.getModel(base.modelProvider, base.modelId,)
@@ -3178,7 +3181,15 @@ export class SessionService implements AgentTeamBridge {
           fallback.modelId ?? "the default model"
         }. Your next message will use it; you can pick another model any time.`,
       );
-      result = await openAltTheorySession({ ...openArgs, ...fallback });
+      const {
+        modelProvider: _staleProvider,
+        modelId: _staleModel,
+        ...openArgsWithoutStaleModel
+      } = openArgs;
+      result = await openAltTheorySession({
+        ...openArgsWithoutStaleModel,
+        ...fallback,
+      });
     }
     const reconciledRuns = reconcileInterruptedRunOnOpen(
       result.session.sessionManager,
@@ -3856,10 +3867,12 @@ export class SessionService implements AgentTeamBridge {
       customInstructionRef: managed.selectors.customInstructionRef ?? null,
       mode: managed.getAltMode(),
       modelOverride: header?.modelOverride ?? null,
-      currentModel: {
-        provider: managed.session.model.provider,
-        modelId: managed.session.model.id,
-      },
+      currentModel: managed.session.model && !isNoModelPlaceholder(managed.session.model)
+        ? {
+            provider: managed.session.model.provider,
+            modelId: managed.session.model.id,
+          }
+        : undefined,
       studyTag: header?.studyTag ?? null,
       workspace: managed.getWorkspace(),
       openedFrom: managed.openedFrom,

@@ -385,6 +385,33 @@ export function softDeleteSession(
   return readDeletedSessionRecord(parts.recordsDir)!;
 }
 
+/** Move every living member of a conversation family to Trash in one action. */
+export function softDeleteSessionFamily(
+  dataDir: string,
+  sessionId: string,
+): string[] {
+  const parts = readSessionParts(dataDir, sessionId);
+  if (!parts) throw new Error(`Unknown session id: ${sessionId}`);
+  const selected = buildSummary(sessionId, parts);
+  if (!isDurableCatalogSession(selected, parts)) {
+    throw new Error(`Session is not available for deletion: ${sessionId}`);
+  }
+  const members = forkTreeMembers(sessionId, allSessionSummaries(dataDir)).filter(
+    (member) => !member.deletedAt,
+  );
+  const deletedAt = new Date().toISOString();
+  for (const member of members) {
+    const root = resolveSessionRoot(dataDir, member.sessionId);
+    if (!root) continue;
+    writeDeletedSessionRecord(join(root, "records"), member.sessionId, {
+      deletedAt,
+      reason: "user_deleted",
+      cascadeRootSessionId: sessionId,
+    });
+  }
+  return members.map((member) => member.sessionId);
+}
+
 /**
  * In the conversation list — MUST mirror the frontend's isListMember
  * (lib/sessionList.ts): branches and Helpers are list members by nature,
@@ -1467,6 +1494,24 @@ export function readCurrentChangedFile(
 export function projectChangesFromEntries(branchEntries: unknown[]): SessionChanges {
   // Aggregate per path, keeping most-recently-touched first.
   const byPath = new Map<string, FileChange>();
+  const toolOutcomes = new Map<string, boolean>();
+  for (const entry of branchEntries) {
+    const message = (entry as { message?: {
+      role?: unknown;
+      toolCallId?: unknown;
+      isError?: unknown;
+      details?: { is_error?: unknown };
+    } })?.message;
+    if (
+      message?.role === "toolResult" &&
+      typeof message.toolCallId === "string"
+    ) {
+      toolOutcomes.set(
+        message.toolCallId,
+        message.isError !== true && message.details?.is_error !== true,
+      );
+    }
+  }
   const touch = (path: string, added: number, removed: number, diff: string) => {
     const existing = byPath.get(path);
     byPath.delete(path);
@@ -1484,8 +1529,19 @@ export function projectChangesFromEntries(branchEntries: unknown[]): SessionChan
     if (!Array.isArray(content)) continue;
     for (const part of content) {
       if (!part || typeof part !== "object") continue;
-      const typed = part as { type?: string; name?: unknown; arguments?: unknown };
+      const typed = part as {
+        type?: string;
+        id?: unknown;
+        name?: unknown;
+        arguments?: unknown;
+      };
       if (typed.type !== "toolCall") continue;
+      if (
+        typeof typed.id === "string" &&
+        toolOutcomes.get(typed.id) !== true
+      ) {
+        continue;
+      }
       const name = String(typed.name ?? "").toLowerCase();
       if (!CHANGE_TOOL_NAMES.has(name)) continue;
       const args = typed.arguments;

@@ -2616,7 +2616,7 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
   assert.equal(existsSync(join(root, "data", "sessions")), false);
 });
 
-test("local mode exposes installed skills and refuses prompts without a model", async () => {
+test("local mode stays usable without a model and refuses only the prompt", async () => {
   const root = mkdtempSync(join(tmpdir(), "alt-theory-local-config-"));
   const dataDir = join(root, "data");
   const agentDir = join(root, "pi-agent");
@@ -2690,8 +2690,8 @@ test("local mode exposes installed skills and refuses prompts without a model", 
     const failed = waitForType(ws, "run_failed");
     ws.send(JSON.stringify({ type: "prompt", payload: "hello" }));
     const message = await failed;
-    assert.match(message.payload.error, /No usable local model is active/);
-    assert.equal(existsSync(join(dataDir, "sessions")), false);
+    assert.match(message.payload.error, /No model is selected/);
+    assert.equal(existsSync(join(dataDir, "sessions")), true);
   } finally {
     ws.close();
     if (previousMode === undefined) {

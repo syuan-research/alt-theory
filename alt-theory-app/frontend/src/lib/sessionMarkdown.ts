@@ -12,6 +12,14 @@ export function sessionTranscriptToMarkdown(
 ): string {
   const sections = [`# ${title.trim().replace(/\s+/g, " ") || t("Conversation")}`];
   const renderedToolCalls = new Set<string>();
+  const toolStates = new Map(
+    transcript
+      .filter((message) => message.toolType === "result" && message.toolCallId)
+      .map((message) => [
+        message.toolCallId!,
+        message.success === false ? "failed" as const : "finished" as const,
+      ]),
+  );
 
   for (const message of transcript) {
     const text = message.text.trim();
@@ -32,6 +40,7 @@ export function sessionTranscriptToMarkdown(
           message.toolName || message.text || "tool",
           message.toolPath,
           message.toolDetail,
+          message.toolCallId ? toolStates.get(message.toolCallId) : undefined,
         )}`,
       );
     } else if (message.role === "system" && text) {

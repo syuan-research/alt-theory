@@ -95,6 +95,19 @@ export async function deleteSession(sessionId: string): Promise<void> {
   }
 }
 
+export async function deleteSessionFamily(sessionId: string): Promise<string[]> {
+  const res = await fetch(
+    `/api/sessions/${encodeURIComponent(sessionId)}/family`,
+    { method: "DELETE" },
+  );
+  const body = (await res.json().catch(() => ({}))) as {
+    deletedSessionIds?: string[];
+    error?: string;
+  };
+  if (!res.ok) throw new Error(body.error || `Delete failed (${res.status})`);
+  return body.deletedSessionIds ?? [];
+}
+
 export async function fetchTrashSessions(): Promise<SessionSummary[]> {
   const res = await fetch("/api/sessions/trash");
   if (!res.ok) throw new Error(`Trash list failed (${res.status})`);

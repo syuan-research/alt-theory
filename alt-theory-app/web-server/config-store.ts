@@ -827,30 +827,14 @@ async function fetchModelsFromEndpoint(
 }
 
 export function getRuntimeModelConfig(agentDir: string): RuntimeModelConfig {
-  const active = readActive(agentDir);
-  if (!active.provider || !active.model) return {};
-
   const models = readModelsFile(agentDir);
   if (sanitizeCustomProviderAuth(agentDir, models)) {
     writeModelsFileAtomic(agentDir, models);
   }
+  const active = usableActive(agentDir);
+  if (!active) return {};
   const block = models.providers?.[active.provider];
-  const knownIds = (
-    block?.models?.length ? block.models : builtinConfigModels(active.provider)
-  ).map((m) => m.id);
-  if (!block && knownIds.length === 0) {
-    throw new ConfigValidationError(
-      `Active provider '${active.provider}' is not configured`,
-    );
-  }
-  if (!knownIds.includes(active.model)) {
-    throw new ConfigValidationError(
-      `Active model '${active.model}' is not defined under provider '${active.provider}'`,
-    );
-  }
   const hasStoredKey = providerHasCredential(agentDir, active.provider);
-  if (!providerHasRuntimeAuth(agentDir, active.provider, block)) return {};
-  if (block?.apiKey === active.provider && !hasStoredKey) return {};
   if (block && hasStoredKey && !block.apiKey) {
     block.apiKey = active.provider;
     writeModelsFileAtomic(agentDir, models);
@@ -877,7 +861,7 @@ export function getConfigStatus(agentDir: string): ConfigStatus {
         p.keyState === "env-set") &&
       p.models.length > 0,
   );
-  const active = readActive(agentDir);
+  const active = usableActive(agentDir) ?? { provider: null, model: null };
   const activeProvider = providers.find((p) => p.name === active.provider);
   const activeUsable = Boolean(
     activeProvider &&
@@ -1232,12 +1216,42 @@ export async function upsertProvider(
       "Provider models were written but did not survive the normal configuration read path.",
     );
   }
+  usableActive(agentDir);
   return {
     ...reread,
     keyState: options.clearKey ? "missing" : reread.keyState,
     hasKey: options.clearKey ? false : reread.hasKey,
     warning,
   };
+}
+
+/** A saved default is a convenience, never a gate. */
+function usableActive(
+  agentDir: string,
+): { provider: string; model: string } | null {
+  const active = readActive(agentDir);
+  if (!active.provider || !active.model) return null;
+  const providers = listProviders(agentDir);
+  const usable = (provider: ProviderView) =>
+    (provider.keyState === "stored" ||
+      provider.keyState === "oauth" ||
+      provider.keyState === "env-set") &&
+    provider.models.length > 0;
+  const activeProvider = providers.find((provider) => provider.name === active.provider);
+  if (
+    activeProvider &&
+    usable(activeProvider) &&
+    activeProvider.models.some((model) => model.id === active.model)
+  ) {
+    return { provider: active.provider, model: active.model };
+  }
+  const fallback = providers.find(usable);
+  if (!fallback) {
+    clearActive(agentDir);
+    return null;
+  }
+  writeActiveDirect(agentDir, fallback.name, fallback.models[0]!.id);
+  return { provider: fallback.name, model: fallback.models[0]!.id };
 }
 
 export async function deleteProvider(
@@ -1253,13 +1267,7 @@ export async function deleteProvider(
   if (providerHasCredential(agentDir, name)) {
     await removeCredential(agentDir, name);
   }
-  // If the deleted provider was the active one, clear the active pointer.
-  const active = readActive(agentDir);
-  if (active.provider === name) {
-    // Clear by setting to empty is not supported by Pi's API; instead write
-    // settings.json with defaultProvider/defaultModel removed.
-    clearActive(agentDir);
-  }
+  usableActive(agentDir);
 }
 
 export async function setActive(
@@ -1314,6 +1322,24 @@ export function clearActive(agentDir: string): void {
   delete existing.defaultProvider;
   delete existing.defaultModel;
   writeJsonAtomic(path, existing);
+}
+
+function writeActiveDirect(agentDir: string, provider: string, model: string): void {
+  const path = join(agentDir, "settings.json");
+  mkdirSync(dirname(path), { recursive: true });
+  let existing: Record<string, unknown> = {};
+  if (existsSync(path)) {
+    try {
+      existing = JSON.parse(readFileSync(path, "utf-8")) as Record<string, unknown>;
+    } catch {
+      existing = {};
+    }
+  }
+  writeJsonAtomic(path, {
+    ...existing,
+    defaultProvider: provider,
+    defaultModel: model,
+  });
 }
 
 /** Resolve the agent config dir once at request time (used by server.ts). */

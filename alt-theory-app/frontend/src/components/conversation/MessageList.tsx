@@ -258,6 +258,7 @@ function TurnChangesCard() {
       const message = app.messages[i];
       if (message.role === "user") break;
       if (message.role !== "tool" || !message.toolPath) continue;
+      if (message.success === false) continue;
       const detail = message.toolDetail;
       if (!detail || detail.kind === "command" || detail.kind === "skill") continue;
       const entry = totals.get(message.toolPath) ?? { added: 0, removed: 0 };
@@ -356,7 +357,12 @@ function ToolLine({ tool }: { tool: ActiveToolState }) {
               : "ph ph-check"
         }
       />
-      {toolLabel(tool.toolName, tool.path, tool.detail)}
+      {toolLabel(
+        tool.toolName,
+        tool.path,
+        tool.detail,
+        tool.status === "running" ? "running" : tool.success === false ? "failed" : "finished",
+      )}
       {tool.progressText ? ` — ${tool.progressText}` : ""}
     </SysLine>
   );
@@ -455,6 +461,7 @@ export function TranscriptEntry({
           message.toolName || message.text || "tool",
           message.toolPath,
           message.toolDetail,
+          success ? "finished" : "failed",
         )}
       </SysLine>
     );

@@ -4,7 +4,7 @@ slug: branch-family-semantics
 scope: Conversation families — branches, attached conversations, promotion, deletion, workspace unity
 summary: The shipped rules for fork trees; one of the most intricate areas of the app — read this BEFORE touching any of it
 status: current
-last_reviewed: 2026-08-06
+last_reviewed: 2026-08-17
 tags: [core, backend, frontend, sessions, branching]
 depends_on: [core-session-engine]
 implements: []
@@ -143,6 +143,9 @@ walks that stopped at deleted middles; do not reintroduce them.
 - Restore resurrects RECORDS, never role decisions: a demoted mainline
   deleted and restored comes back delisted; purged links are not
   synthesized.
+- **Delete entire family** is the explicit exception to ordinary Delete. It
+  marks every living member of the immutable lineage tree in one recoverable
+  Trash entry; restoring that entry restores the same members.
 
 ## 6. The Related rail (family-wide attached visibility)
 
