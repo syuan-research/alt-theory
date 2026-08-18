@@ -396,9 +396,10 @@ export function softDeleteSessionFamily(
   if (!isDurableCatalogSession(selected, parts)) {
     throw new Error(`Session is not available for deletion: ${sessionId}`);
   }
-  const members = forkTreeMembers(sessionId, allSessionSummaries(dataDir)).filter(
-    (member) => !member.deletedAt,
-  );
+  const members = lineageFamilyMembers(
+    sessionId,
+    allSessionSummaries(dataDir),
+  ).filter((member) => !member.deletedAt);
   const deletedAt = new Date().toISOString();
   for (const member of members) {
     const root = resolveSessionRoot(dataDir, member.sessionId);
@@ -553,6 +554,25 @@ export function healFamilyInvariants(dataDir: string): void {
 export function forkFamilyIds(dataDir: string, sessionId: string): string[] {
   return forkTreeMembers(sessionId, allSessionSummaries(dataDir)).map(
     (s) => s.sessionId,
+  );
+}
+
+/** Every living member sharing the lineage key, including rootless siblings. */
+export function familyMemberIds(dataDir: string, sessionId: string): string[] {
+  return lineageFamilyMembers(sessionId, allSessionSummaries(dataDir))
+    .filter((summary) => !summary.deletedAt)
+    .map((summary) => summary.sessionId);
+}
+
+function lineageFamilyMembers(
+  sessionId: string,
+  summaries: SessionSummary[],
+): SessionSummary[] {
+  const selected = summaries.find((summary) => summary.sessionId === sessionId);
+  if (!selected) return [];
+  const familyKey = selected.lineagePath?.[0] ?? selected.sessionId;
+  return summaries.filter(
+    (summary) => (summary.lineagePath?.[0] ?? summary.sessionId) === familyKey,
   );
 }
 

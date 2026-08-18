@@ -444,6 +444,32 @@ test("softDeleteSessionFamily trashes the whole tree from any member", () => {
   assert.deepEqual(forkFamilyIds(dataDir, "other-root"), ["other-root"]);
 });
 
+test("softDeleteSessionFamily keeps rootless siblings together after a purged root", () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "alt-theory-delete-rootless-family-"));
+  createSession(dataDir, "root");
+  createSession(dataDir, "b1", { sessionId: "root", purpose: "fork" });
+  createSession(dataDir, "b1-child", { sessionId: "b1", purpose: "fork" });
+  createSession(dataDir, "b2", { sessionId: "root", purpose: "fork" });
+
+  softDeleteSession(dataDir, "root");
+  permanentlyDeleteSession(dataDir, "root");
+
+  assert.deepEqual(softDeleteSessionFamily(dataDir, "b1").sort(), [
+    "b1",
+    "b1-child",
+    "b2",
+  ]);
+  assert.deepEqual(
+    listDeletedSessionSummaries(dataDir).sessions.map((item) => item.sessionId),
+    ["b1"],
+  );
+  assert.deepEqual(restoreDeletedSession(dataDir, "b1").sort(), [
+    "b1",
+    "b1-child",
+    "b2",
+  ]);
+});
+
 function setWorkspace(recordsDir: string, primaryDir: string | null) {
   const header = readV4SessionHeader(recordsDir)!;
   writeSessionHeader(recordsDir, {

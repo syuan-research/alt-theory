@@ -30,7 +30,25 @@ test("Markdown export keeps thinking and tool descriptions but omits tool result
   assert.doesNotMatch(markdown, /raw output must stay out/);
 });
 
-test("Markdown export does not claim a denied write succeeded", () => {
+test("Markdown export reads the failed state on the production call row", () => {
+  const markdown = sessionTranscriptToMarkdown("Review", [
+    {
+      role: "tool",
+      text: "write",
+      toolType: "call",
+      toolCallId: "write-1",
+      toolName: "write",
+      toolPath: "notes/report.md",
+      success: false,
+      timestamp: null,
+    },
+  ]);
+
+  assert.match(markdown, /Did not write report\.md/);
+  assert.doesNotMatch(markdown, /Writing report\.md/);
+});
+
+test("Markdown export does not present an unfinished write as complete", () => {
   const markdown = sessionTranscriptToMarkdown("Review", [
     {
       role: "tool",
@@ -41,17 +59,8 @@ test("Markdown export does not claim a denied write succeeded", () => {
       toolPath: "notes/report.md",
       timestamp: null,
     },
-    {
-      role: "tool",
-      text: "denied",
-      toolType: "result",
-      toolCallId: "write-1",
-      toolName: "write",
-      success: false,
-      timestamp: null,
-    },
   ]);
 
-  assert.match(markdown, /Did not write report\.md/);
-  assert.doesNotMatch(markdown, /Writing report\.md/);
+  assert.match(markdown, /Writing did not complete for report\.md/);
+  assert.doesNotMatch(markdown, /Tool:\*\* Writing report\.md/);
 });

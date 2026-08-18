@@ -26,7 +26,7 @@ export function toolLabel(
   name: string,
   path?: string | null,
   detail?: ToolDetail | null,
-  state: "running" | "finished" | "failed" = "finished",
+  state: "running" | "finished" | "failed" | "pending" = "finished",
 ): string {
   if (detail?.kind === "skill" && detail.skillName) {
     return t("Using the {skillName} skill", { skillName: detail.skillName });
@@ -62,10 +62,12 @@ export function toolLabel(
   }
   if (name === "write") {
     if (state === "failed") return named ? t("Did not write {name}", { name: named }) : t("File was not written");
+    if (state === "pending") return named ? t("Writing did not complete for {name}", { name: named }) : t("Writing did not complete");
     return named ? t("Writing {name}", { name: named }) : t("Writing notes…");
   }
   if (name === "edit" || name === "multi_edit" || name === "str_replace") {
     if (state === "failed") return named ? t("Did not edit {name}", { name: named }) : t("File was not edited");
+    if (state === "pending") return named ? t("Editing did not complete for {name}", { name: named }) : t("Editing did not complete");
     return named ? t("Editing {name}", { name: named }) : t("Editing a file…");
   }
   if (name === "web_search" || name === "websearch") return t("Searching online…");

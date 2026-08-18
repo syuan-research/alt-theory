@@ -42,7 +42,7 @@ import type {
 } from "./websocket-protocol.js";
 import {
   getSessionRootForRequest,
-  forkFamilyIds,
+  familyMemberIds,
   listDeletedSessionSummaries,
   listSessionTextFiles,
   listSessionSummaries,
@@ -1320,7 +1320,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     const sessionId = req.params.sessionId;
     if (!requireSessionRestContentAccess(req, res, sessionId)) return;
     try {
-      const family = forkFamilyIds(dataDir, sessionId);
+      const family = familyMemberIds(dataDir, sessionId);
       const activity = sessionService.sessionActivity();
       for (const memberId of family) {
         const state = activity.get(memberId);

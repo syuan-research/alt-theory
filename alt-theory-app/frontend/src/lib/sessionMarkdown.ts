@@ -40,7 +40,13 @@ export function sessionTranscriptToMarkdown(
           message.toolName || message.text || "tool",
           message.toolPath,
           message.toolDetail,
-          message.toolCallId ? toolStates.get(message.toolCallId) : undefined,
+          message.success === false
+            ? "failed"
+            : message.success === true
+              ? "finished"
+              : message.toolCallId
+                ? (toolStates.get(message.toolCallId) ?? "pending")
+                : undefined,
         )}`,
       );
     } else if (message.role === "system" && text) {
