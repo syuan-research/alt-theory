@@ -52,7 +52,10 @@ For frontend changes:
 npm run build:frontend-v6
 ```
 
-Run both for cross-layer or release-facing changes.
+Run both when a code change spans backend and frontend. Starting a bundle or
+release does not itself invalidate completed checks; reuse and invalidation of
+release-time test evidence are governed only by
+`development/releases/release-standard.md`.
 
 For a release, the checks above are not the release procedure. Follow
 `development/releases/release-standard.md`, including its CHANGELOG format,

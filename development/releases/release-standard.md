@@ -143,6 +143,24 @@ checkout of the exact commit is sufficient. Electron Builder packages the
 working tree, so uncommitted source or generated files can otherwise enter an
 artifact without appearing in its commit.
 
+### Reuse completed checks
+
+A release is packaging, not a new code change. Reuse a complete passing test or
+check result whenever it can be tied to the same relevant source, tests, and
+lockfiles. The result may come from another agent or session; entering the
+bundle phase or waiting a few hours is not a reason to run it again.
+
+Do **not** rerun checks merely because release work has started. CHANGELOG or
+release-document edits, committing, tagging, pushing, restoring unchanged
+lockfiles with `npm ci`, building, staging, archiving, hashing, and launch
+verification do not invalidate existing test evidence.
+
+Rerun only when relevant source, tests, or lockfiles changed after the passing
+result; the result was incomplete, failed, or cancelled; or its correspondence
+to the current source state cannot be established. A concrete install or build
+inconsistency may also invalidate the affected result. Record and reuse valid
+evidence instead of restarting the test cycle.
+
 Before building:
 
 1. confirm the intended commit and a clean tracked worktree;
