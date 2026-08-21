@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchJson } from "@/api/http";
 import {
   cancelProviderAuth,
@@ -13,12 +13,14 @@ import {
   getDataFolder,
   getProviderAuthFlow,
   getSkillPrecedence,
+  getSubagentSettings,
   listConfigProviders,
   listProviderAuthStatus,
   logoutProviderAuth,
   respondToProviderAuth,
   saveAutoTitleSettings,
   saveSkillPrecedence,
+  saveSubagentSettings,
   startProviderAuth,
   getAssetDirs,
   saveAssetDirs,
@@ -26,6 +28,8 @@ import {
   type AssetDirs,
   type AutoTitleSettings,
   type SkillPrecedence,
+  type SubagentConfig,
+  type SubagentPreset,
 } from "@/api/config";
 import type {
   ProviderAuthFlow,
@@ -58,8 +62,9 @@ export function SettingsView() {
   const shell = useShell();
 
   const items: NavItem[] = [
-    { key: "models", label: t("Models"), icon: "ph-cpu" },
     { key: "general", label: t("General"), icon: "ph-gear" },
+    { key: "models", label: t("Models"), icon: "ph-cpu" },
+    { key: "agents", label: t("Subagents"), icon: "ph-robot" },
     { key: "rolekb", label: t("Role & Knowledge"), icon: "ph-books" },
     { key: "skills", label: t("Skills"), icon: "ph-toolbox" },
     ...(shell.participantTabEnabled
@@ -106,6 +111,7 @@ export function SettingsView() {
       </nav>
       <div className="set-body">
         {shell.settingsPanel === "models" ? <ModelsPanel /> : null}
+        {shell.settingsPanel === "agents" ? <AgentsPanel /> : null}
         {shell.settingsPanel === "general" ? <GeneralPanel /> : null}
         {shell.settingsPanel === "rolekb" ? <RoleKbPanel /> : null}
         {shell.settingsPanel === "skills" ? <SkillsPanel /> : null}
@@ -352,6 +358,10 @@ function ModelsPanel() {
   const app = useApp();
   const local = app.appMode === "local";
   const [configVersion, setConfigVersion] = useState(0);
+  const [reconnectRequest, setReconnectRequest] = useState<{
+    provider: ProviderAuthId;
+    id: number;
+  } | null>(null);
   const refreshConfig = useCallback(() => {
     setConfigVersion((version) => version + 1);
     void app.refreshLocalConfig();
@@ -364,7 +374,16 @@ function ModelsPanel() {
           embedded
           key={configVersion}
           onConfigChanged={app.refreshLocalConfig}
-          addProviderTop={<AuthConnectCard onChanged={refreshConfig} />}
+          onReconnectOAuth={(provider) =>
+            setReconnectRequest({ provider: provider as ProviderAuthId, id: Date.now() })
+          }
+          addProviderTop={
+            <AuthConnectCard
+              onChanged={refreshConfig}
+              openRequest={reconnectRequest}
+              onOpenRequestHandled={() => setReconnectRequest(null)}
+            />
+          }
         />
       ) : (
         <div className="set-card">
@@ -375,8 +394,290 @@ function ModelsPanel() {
   );
 }
 
-export function AuthConnectCard({ onChanged }: { onChanged: () => void }) {
-  const PROVIDERS = [
+const BUILTIN_AGENT_IDS = new Set([
+  "general-medium",
+  "general-low",
+  "general-high",
+]);
+const AGENT_THINKING_LEVELS = [
+  "",
+  "off",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+] as const;
+
+function splitAgentModelRef(reference: string): [string, string] {
+  const colon = reference.lastIndexOf(":");
+  const suffix = colon >= 0 ? reference.slice(colon + 1) : "";
+  return AGENT_THINKING_LEVELS.includes(suffix as (typeof AGENT_THINKING_LEVELS)[number]) && suffix
+    ? [reference.slice(0, colon), suffix]
+    : [reference, ""];
+}
+
+function joinAgentModelRef(model: string, thinking: string): string {
+  return thinking ? `${model}:${thinking}` : model;
+}
+
+function builtInAgentDescription(id: string, fallback: string): string {
+  if (id === "general-medium") return t("Default for most work and whenever the right level is uncertain");
+  if (id === "general-low") return t("High-volume, error-tolerant extraction, web search, and simple checks with clear criteria");
+  if (id === "general-high") return t("Review, strategic planning, and complex framework or architecture analysis with unknown unknowns");
+  return fallback;
+}
+
+function AgentModelFields({
+  reference,
+  models,
+  onChange,
+  onRemove,
+}: {
+  reference: string;
+  models: Array<{ value: string; label: string }>;
+  onChange: (value: string) => void;
+  onRemove?: () => void;
+}) {
+  const [model, thinking] = splitAgentModelRef(reference);
+  const options = models.some((option) => option.value === model)
+    ? models
+    : [...models, { value: model, label: model }];
+  return (
+    <div className="agent-model-fields">
+      <select
+        aria-label={t("Model")}
+        value={model}
+        onChange={(event) => onChange(joinAgentModelRef(event.target.value, thinking))}
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>{option.label}</option>
+        ))}
+      </select>
+      <select
+        aria-label={t("Thinking")}
+        value={thinking}
+        onChange={(event) => onChange(joinAgentModelRef(model, event.target.value))}
+      >
+        {AGENT_THINKING_LEVELS.map((level) => (
+          <option key={level || "default"} value={level}>
+            {level ? t(level) : t("Model default")}
+          </option>
+        ))}
+      </select>
+      {onRemove ? (
+        <button className="agent-icon-btn" aria-label={t("Remove fallback")} onClick={onRemove}>
+          <i className="ph ph-trash" />
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function AgentsPanel() {
+  const app = useApp();
+  const [config, setConfig] = useState<SubagentConfig | null>(null);
+  const [models, setModels] = useState<Array<{ value: string; label: string }>>([
+    { value: "inherit", label: t("Inherit current model") },
+  ]);
+  const [path, setPath] = useState("");
+  const [status, setStatus] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (app.appMode !== "local") return;
+    let alive = true;
+    void Promise.all([getSubagentSettings(), listConfigProviders()])
+      .then(([settings, providers]) => {
+        if (!alive) return;
+        setConfig(settings.config);
+        setPath(settings.path);
+        setStatus(settings.warning ?? "");
+        setModels([
+          { value: "inherit", label: t("Inherit current model") },
+          ...providers.providers.flatMap((provider) =>
+            provider.models.map((model) => ({
+              value: `${provider.name}/${model.id}`,
+              label: `${provider.name} / ${model.name || model.id}`,
+            })),
+          ),
+        ]);
+      })
+      .catch((error) => alive && setStatus(error instanceof Error ? error.message : String(error)));
+    return () => { alive = false; };
+  }, [app.appMode]);
+
+  if (app.appMode !== "local") {
+    return <div className="set-panel"><div className="set-card"><p>{t("Subagent configuration is managed by this deployment.")}</p></div></div>;
+  }
+  if (!config) {
+    return <div className="set-panel agents-panel"><p className="sub">{status || t("Loading…")}</p></div>;
+  }
+
+  const updateAgent = (index: number, update: (agent: SubagentPreset) => SubagentPreset) => {
+    setConfig((current) => current && ({
+      ...current,
+      agents: current.agents.map((agent, i) => i === index ? update(agent) : agent),
+    }));
+    setStatus("");
+  };
+  const save = async () => {
+    setSaving(true);
+    setStatus("");
+    try {
+      const result = await saveSubagentSettings(config);
+      setConfig(result.config);
+      setStatus(t("Saved"));
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSaving(false);
+    }
+  };
+  const addCustom = () => {
+    let number = 1;
+    while (config.agents.some((agent) => agent.id === `custom-${number}`)) number += 1;
+    setConfig({
+      ...config,
+      agents: [...config.agents, {
+        id: `custom-${number}`,
+        description: "",
+        model: "inherit:medium",
+        fallbackModels: [],
+      }],
+    });
+    setStatus("");
+  };
+  const renderAgent = (agent: SubagentPreset, index: number, builtIn: boolean) => (
+    <div className="agent-preset" key={agent.id}>
+      <div className="agent-preset-copy">
+        {builtIn ? <h4>{agent.id}</h4> : (
+          <input
+            className="agent-name-input"
+            aria-label={t("Subagent name")}
+            value={agent.id}
+            onChange={(event) => {
+              const id = event.target.value;
+              setConfig((current) => current && ({
+                ...current,
+                defaultAgent: current.defaultAgent === agent.id ? id : current.defaultAgent,
+                agents: current.agents.map((item, i) => i === index ? { ...item, id } : item),
+              }));
+              setStatus("");
+            }}
+          />
+        )}
+        {builtIn ? <p>{builtInAgentDescription(agent.id, agent.description ?? "")}</p> : (
+          <input
+            className="agent-description-input"
+            aria-label={t("Description")}
+            placeholder={t("When should this subagent be used?")}
+            value={agent.description ?? ""}
+            onChange={(event) => updateAgent(index, (item) => ({ ...item, description: event.target.value }))}
+          />
+        )}
+      </div>
+      <div className="agent-preset-controls">
+        <AgentModelFields
+          reference={agent.model}
+          models={models}
+          onChange={(model) => updateAgent(index, (item) => ({ ...item, model }))}
+        />
+        {agent.fallbackModels.map((fallback, fallbackIndex) => (
+          <div className="agent-fallback" key={`${fallbackIndex}-${fallback}`}>
+            <div className="agent-fallback-heading">
+              <span>{t("Fallback {number}", { number: fallbackIndex + 1 })}</span>
+              <span>
+                <button
+                  className="agent-icon-btn"
+                  aria-label={t("Move fallback up")}
+                  disabled={fallbackIndex === 0}
+                  onClick={() => updateAgent(index, (item) => {
+                    const next = [...item.fallbackModels];
+                    [next[fallbackIndex - 1], next[fallbackIndex]] = [next[fallbackIndex], next[fallbackIndex - 1]];
+                    return { ...item, fallbackModels: next };
+                  })}
+                ><i className="ph ph-arrow-up" /></button>
+                <button
+                  className="agent-icon-btn"
+                  aria-label={t("Move fallback down")}
+                  disabled={fallbackIndex === agent.fallbackModels.length - 1}
+                  onClick={() => updateAgent(index, (item) => {
+                    const next = [...item.fallbackModels];
+                    [next[fallbackIndex], next[fallbackIndex + 1]] = [next[fallbackIndex + 1], next[fallbackIndex]];
+                    return { ...item, fallbackModels: next };
+                  })}
+                ><i className="ph ph-arrow-down" /></button>
+              </span>
+            </div>
+            <AgentModelFields
+              reference={fallback}
+              models={models}
+              onChange={(value) => updateAgent(index, (item) => ({
+                ...item,
+                fallbackModels: item.fallbackModels.map((entry, i) => i === fallbackIndex ? value : entry),
+              }))}
+              onRemove={() => updateAgent(index, (item) => ({
+                ...item,
+                fallbackModels: item.fallbackModels.filter((_, i) => i !== fallbackIndex),
+              }))}
+            />
+          </div>
+        ))}
+        <div className="agent-row-actions">
+          <button className="link-btn" onClick={() => updateAgent(index, (item) => ({
+            ...item,
+            fallbackModels: [...item.fallbackModels, "inherit"],
+          }))}>{t("Add fallback")}</button>
+          {!builtIn ? (
+            <button className="link-btn danger" onClick={() => setConfig({
+              ...config,
+              agents: config.agents.filter((_, i) => i !== index),
+              defaultAgent: config.defaultAgent === agent.id ? "general-medium" : config.defaultAgent,
+            })}>{t("Delete")}</button>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="set-panel agents-panel">
+      <div className="agents-heading">
+        <div><h2>{t("Subagents")}</h2><p className="sub">{t("Choose model and thinking defaults for delegated work.")}</p></div>
+        <button className="add-btn" disabled={saving} onClick={() => void save()}>{saving ? t("Saving…") : t("Save")}</button>
+      </div>
+      <div className="agent-default-row">
+        <label htmlFor="default-agent">{t("Default subagent")}</label>
+        <select id="default-agent" value={config.defaultAgent} onChange={(event) => setConfig({ ...config, defaultAgent: event.target.value })}>
+          {config.agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.id}</option>)}
+        </select>
+      </div>
+      <section className="agent-section">
+        <h3>{t("Built-in subagents")}</h3>
+        <div className="agent-preset-list">{config.agents.map((agent, index) => BUILTIN_AGENT_IDS.has(agent.id) ? renderAgent(agent, index, true) : null)}</div>
+      </section>
+      <section className="agent-section">
+        <div className="agent-section-heading"><h3>{t("Custom subagents")}</h3><button className="add-btn" onClick={addCustom}><i className="ph ph-plus" />{t("New")}</button></div>
+        <div className="agent-preset-list">{config.agents.map((agent, index) => !BUILTIN_AGENT_IDS.has(agent.id) ? renderAgent(agent, index, false) : null)}</div>
+      </section>
+      {status ? <p className="agent-status">{status}</p> : null}
+      {path ? <p className="agent-config-path">{path}</p> : null}
+    </div>
+  );
+}
+
+export function AuthConnectCard({
+  onChanged,
+  openRequest,
+  onOpenRequestHandled,
+}: {
+  onChanged: () => void;
+  openRequest?: { provider: ProviderAuthId; id: number } | null;
+  onOpenRequestHandled?: () => void;
+}) {
+  const PROVIDERS = useMemo(() => [
     {
       id: "openrouter",
       name: t("OpenRouter"),
@@ -388,7 +689,7 @@ export function AuthConnectCard({ onChanged }: { onChanged: () => void }) {
       name: t("Codex"),
       icon: "ph-code",
     },
-  ] as const;
+  ] as const, []);
   const [flow, setFlow] = useState<{
     provider: (typeof PROVIDERS)[number];
     step: "link" | "waiting" | "done";
@@ -414,6 +715,13 @@ export function AuthConnectCard({ onChanged }: { onChanged: () => void }) {
   useEffect(() => {
     void refreshStatus();
   }, []);
+
+  useEffect(() => {
+    if (!openRequest) return;
+    const provider = PROVIDERS.find((item) => item.id === openRequest.provider);
+    if (provider) setFlow({ provider, step: "link", error: undefined });
+    onOpenRequestHandled?.();
+  }, [openRequest, onOpenRequestHandled, PROVIDERS]);
 
   useEffect(() => {
     const auth = flow?.auth;

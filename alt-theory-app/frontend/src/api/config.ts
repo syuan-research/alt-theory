@@ -70,6 +70,40 @@ export async function listConfigProviders(): Promise<{ providers: ProviderView[]
   return fetchJson<{ providers: ProviderView[] }>("/api/config/providers");
 }
 
+export interface SubagentPreset {
+  id: string;
+  description?: string;
+  model: string;
+  fallbackModels: string[];
+}
+
+export interface SubagentConfig {
+  schemaVersion: 1;
+  defaultAgent: string;
+  agents: SubagentPreset[];
+}
+
+export interface SubagentSettingsResponse {
+  config: SubagentConfig;
+  candidates: string[];
+  path: string;
+  warning?: string;
+}
+
+export function getSubagentSettings(): Promise<SubagentSettingsResponse> {
+  return fetchJson("/api/settings/subagents");
+}
+
+export function saveSubagentSettings(
+  config: SubagentConfig,
+): Promise<SubagentSettingsResponse & { ok: true }> {
+  return fetchJson("/api/settings/subagents", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(config),
+  });
+}
+
 export interface AutoTitleSettings {
   enabled: boolean;
   model: { provider: string; modelId: string } | null;

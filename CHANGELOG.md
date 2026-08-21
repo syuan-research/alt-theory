@@ -6,31 +6,42 @@ detail lives in commit history and `development/`.
 
 ---
 
-## v1.4.6-beta.1 — 2026-08-17
+## v1.4.6-beta.1 — 2026-08-21
 
-This release removes common model and session blockers and makes agent activity
-more predictable.
+This release makes subagents configurable, improves model-account recovery, and
+removes several ways conversations could become blocked.
 
-### Models without obstruction
+### Subagents for different kinds of work
 
-- Deleted or stale default models no longer prevent conversations from opening.
-  Alt uses a usable saved fallback when available, and otherwise asks for a
-  model only when a message is sent.
-- The model picker can filter large provider lists. Fetch and connection tests
-  now show clear progress and results below their controls; Native Pi gets a
-  simpler new-conversation state without inapplicable mode cards.
+- Settings now includes three ready-to-use subagent profiles: `general-medium`
+  for most work, `general-low` for high-volume or clearly bounded work, and
+  `general-high` for strategic review and complex architecture. Custom profiles
+  can choose a provider/model, thinking level, and ordered fallback models.
+- Alt can select a profile for each task, override its model or thinking level
+  when needed, and let an active subagent delegate further work. Up to ten
+  subagent conversations can run at once.
 
-### Conversation control
+### Model setup and account recovery
 
-- Escape closes the active menu or command palette first, then stops the running
-  conversation in the focused pane.
-- Conversation menus now offer a recoverable **Delete entire family** action;
-  ordinary Delete remains limited to the selected conversation.
+- Saved OAuth providers now keep **Reconnect** visible in their existing card.
+  Expired or failed authorization is reported with a direct route back to model
+  settings instead of a generic network-only error.
+- Provider model discovery now keeps the provider's live result as the source of
+  truth, including models newer than bundled metadata. OpenAI Codex subscription
+  accounts use their supported model-list endpoint, while manual model entry
+  remains available when a provider does not publish a list.
 
-### Approvals and file changes
+### Conversation control and reliability
 
-- Approval actions are localized, and denied or failed tools no longer appear
-  as successful reads, commands, edits, or file changes.
+- Completed subagent work no longer leaves the parent conversation indefinitely
+  processing or stopping. Escape still closes the active menu first, then stops
+  the running conversation in the focused pane.
+- Deleted or stale default models no longer prevent conversations from opening;
+  a model is required only when a message is actually sent. Conversation menus
+  also include recoverable **Delete entire family**, and transcript export now
+  reports the real outcome.
+- Approval actions are localized, and denied or failed tools no longer appear as
+  successful reads, commands, edits, or file changes.
 
 ---
 

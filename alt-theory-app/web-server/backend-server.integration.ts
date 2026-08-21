@@ -378,8 +378,8 @@ test("OpenCode Go Fetch uses bundled families without waiting for models.dev", a
       api: "openai-completions",
       apiKey: "test-key",
     });
-    assert.deepEqual(anthropic.map((model) => model.id), ["minimax-m3"]);
-    assert.deepEqual(openai.map((model) => model.id), ["kimi-k3"]);
+    assert.deepEqual(anthropic.map((model) => model.id), ["minimax-m3", "future-model"]);
+    assert.deepEqual(openai.map((model) => model.id), ["kimi-k3", "future-model"]);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -513,11 +513,25 @@ test("local config resolves a built-in model with OAuth and no custom provider b
   assert.equal(failedRefresh.activeUsable, false);
   assert.match(failedRefresh.activeIssue ?? "", /could not be refreshed/);
 
+  const unauthorizedRefresh = await getVerifiedConfigStatus(agentDir, async () => {
+    throw new Error("OAuth refresh failed: HTTP 401");
+  });
+  assert.equal(unauthorizedRefresh.activeUsable, false);
+  assert.match(unauthorizedRefresh.activeIssue ?? "", /401.*Reconnect/);
+
   const successfulRefresh = await getVerifiedConfigStatus(
     agentDir,
     async () => true,
   );
   assert.equal(successfulRefresh.activeUsable, true);
+
+  const timedOutRefresh = await getVerifiedConfigStatus(
+    agentDir,
+    () => new Promise(() => {}),
+    5,
+  );
+  assert.equal(timedOutRefresh.activeUsable, false);
+  assert.match(timedOutRefresh.activeIssue ?? "", /verified in time/);
 });
 
 test("OAuth provider keeps the exact user-saved model list across normal reads", async () => {
@@ -1101,6 +1115,11 @@ test("session catalog and detail expose complete and incomplete sessions", async
   });
   try {
     complete.session.sessionManager.appendMessage({
+      role: "user",
+      content: [{ type: "text", text: "catalog preview text" }],
+      timestamp: Date.now(),
+    });
+    complete.session.sessionManager.appendMessage({
       role: "assistant",
       content: [{ type: "text", text: "catalog preview text" }],
       api: "openai-completions",
@@ -1112,13 +1131,7 @@ test("session catalog and detail expose complete and incomplete sessions", async
         cacheRead: 0,
         cacheWrite: 0,
         totalTokens: 0,
-        cost: {
-          input: 0,
-          output: 0,
-          cacheRead: 0,
-          cacheWrite: 0,
-          total: 0,
-        },
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
       },
       stopReason: "stop",
       timestamp: Date.now(),
@@ -1211,7 +1224,7 @@ test("session catalog and detail expose complete and incomplete sessions", async
 
   const directDetail = readSessionDetail(dataDir, "session-complete");
   assert.equal((directDetail?.pi.entryCount ?? 0) > 0, true);
-  assert.equal(directDetail?.pi.contextMessageCount, 1);
+  assert.equal(directDetail?.pi.contextMessageCount, 2);
   assert.equal(
     directDetail?.transcriptPreview.at(-1)?.text,
     "catalog preview text",
@@ -1288,7 +1301,7 @@ test("session catalog and detail expose complete and incomplete sessions", async
     );
     const detailJson = await detailResponse.json();
     assert.equal(detailJson.session.sessionId, "session-complete");
-    assert.equal(detailJson.pi.contextMessageCount, 1);
+    assert.equal(detailJson.pi.contextMessageCount, 2);
     assert.equal(
       detailJson.transcriptPreview.at(-1).text,
       "catalog preview text",

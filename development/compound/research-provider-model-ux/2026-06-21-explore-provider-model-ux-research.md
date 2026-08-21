@@ -5,14 +5,19 @@ date: 2026-06-21
 slug: provider-model-ux-research
 topic: Provider/model management UX research for Alt Theory bundle — borrow from cc-switch/opencode, prefer Pi-native, avoid reinventing
 scope: External research for Stage 5 of the Windows Bundle and Config GUI plan-record. Three targets: cc-switch (UI patterns), opencode via models.dev (model catalog data source), pi-coding-agent (native model registry and /v1/models-style fetch). Q11 (specific model metadata for qwen 3.7 max / mimo v2.5 pro) was dropped per user — wrong question for a usable GUI.
-status: active
-confidence: high
+status: superseded
+confidence: historical
 related_plan_record: project/workstreams/0-frontend-and-research-console/notes-and-status/2026-06-17-windows-bundle-and-config-gui-plan-record-v1.md
 related_handoff: project/workstreams/0-frontend-and-research-console/notes-and-status/2026-06-19-handoff-stage5-provider-model-ux-research.md
 keywords: [cc-switch, opencode, models.dev, pi-coding-agent, models.json, ModelRegistry, provider-switching, GUI, v0-5-bundle]
 ---
 
 # Provider/Model UX Research
+
+> **Superseded:** this June 21 exploration predates provider Fetch and must not
+> be used as current model-source architecture. See
+> `development/architecture/information-architecture.md` § Model and provider
+> configuration and `2026-06-26-decision-v0-5-local-config-and-bundle-path.md`.
 
 ## Question and Scope
 

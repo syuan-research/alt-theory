@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { Link } from "react-router-dom";
 import {
   deleteConfigProvider,
+  fetchProviderModels as fetchSavedProviderModels,
   fetchModelsFromDraft,
   testConnectionFromDraft,
   getConfigStatus,
@@ -194,6 +195,9 @@ function manualModelListHint(providerName: string): string | null {
 
 function friendlyFetchError(error: unknown): string {
   const message = error instanceof Error ? error.message.toLowerCase() : "";
+  if (/oauth|refresh[ _-]?token/.test(message)) {
+    return t("OAuth login could not be refreshed. Use Reconnect above.");
+  }
   if (/401|403|unauthor|forbidden|api key/.test(message)) {
     return t("Could not fetch models — check the API key.");
   }
@@ -208,6 +212,9 @@ function friendlyFetchError(error: unknown): string {
 
 function friendlyConnectionError(error: unknown): string {
   const message = error instanceof Error ? error.message.toLowerCase() : "";
+  if (/oauth|refresh[ _-]?token/.test(message)) {
+    return t("OAuth login could not be refreshed. Use Reconnect above.");
+  }
   if (/401|403|unauthor|forbidden|api key/.test(message)) {
     return t("Connection failed — check the API key.");
   }
@@ -356,10 +363,12 @@ export function ModelConfigPage({
   embedded = false,
   addProviderTop,
   onConfigChanged,
+  onReconnectOAuth,
 }: {
   embedded?: boolean;
   addProviderTop?: ReactNode;
   onConfigChanged?: () => void | Promise<void>;
+  onReconnectOAuth?: (provider: string) => void;
 } = {}) {
   const shell = useShell();
   const [status, setStatus] = useState<ConfigStatus | null>(null);
@@ -402,6 +411,8 @@ export function ModelConfigPage({
     ok: boolean;
     message: string;
   } | null>(null);
+  const editingProvider = providers.find((provider) => provider.name === editingName);
+  const editingOAuth = editingProvider?.keyState === "oauth";
   const firstRun =
     new URLSearchParams(window.location.search).get("firstRun") === "1";
   // Appearance is reachable from the first screen too (this route is outside
@@ -421,12 +432,13 @@ export function ModelConfigPage({
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
+    void getConfigStatus()
+      .then(setStatus)
+      .catch((err) =>
+        setError(err instanceof Error ? err.message : "Failed to verify config"),
+      );
     try {
-      const [nextStatus, provs] = await Promise.all([
-        getConfigStatus(),
-        listConfigProviders(),
-      ]);
-      setStatus(nextStatus);
+      const provs = await listConfigProviders();
       setProviders(provs.providers || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load config");
@@ -523,7 +535,11 @@ export function ModelConfigPage({
 
   const applyProviderTarget = (target: string) => {
     setPendingProviderTarget(null);
-    if (target === "add") {
+    if (target.startsWith("oauth:")) {
+      setEditorOpen(false);
+      setAddingProvider(true);
+      onReconnectOAuth?.(target.slice("oauth:".length));
+    } else if (target === "add") {
       setEditorOpen(false);
       setEditingName(null);
       setAddingProvider(true);
@@ -626,11 +642,15 @@ export function ModelConfigPage({
     setSaveResult(null);
     try {
       const saved = await upsertConfigProvider(trimmedName, {
-        baseUrl: baseUrl.trim() || undefined,
-        api: apiType,
         models,
-        ...(Object.keys(options).length ? { options } : {}),
-        ...(apiKey ? { apiKey, keyStorage } : {}),
+        ...(editingOAuth
+          ? {}
+          : {
+              baseUrl: baseUrl.trim() || undefined,
+              api: apiType,
+              ...(Object.keys(options).length ? { options } : {}),
+              ...(apiKey ? { apiKey, keyStorage } : {}),
+            }),
       });
       const successText = editingName
         ? t("Saved {name}", { name: trimmedName })
@@ -683,7 +703,7 @@ export function ModelConfigPage({
     const firstModelId = modelRows
       .map((row) => row.id.trim())
       .find((id) => id.length > 0);
-    if (!trimmedName || !trimmedBaseUrl || !firstModelId) {
+    if (!trimmedName || (!editingOAuth && !trimmedBaseUrl) || !firstModelId) {
       setTestResult({
         ok: false,
         message: t("Provider name, Base URL, and at least one model id are needed first."),
@@ -694,13 +714,15 @@ export function ModelConfigPage({
     setTestResult(null);
     setFetchResult(null);
     try {
-      const result = await testConnectionFromDraft({
-        provider: trimmedName,
-        baseUrl: trimmedBaseUrl,
-        api: apiType,
-        ...(apiKey ? { apiKey, keyStorage } : {}),
-        modelId: firstModelId,
-      });
+      const result = editingOAuth
+        ? await fetchSavedProviderModels(trimmedName).then(() => ({ modelId: firstModelId }))
+        : await testConnectionFromDraft({
+            provider: trimmedName,
+            baseUrl: trimmedBaseUrl,
+            api: apiType,
+            ...(apiKey ? { apiKey, keyStorage } : {}),
+            modelId: firstModelId,
+          });
       setTestResult({
         ok: true,
         message: t("Connected — {modelId} answered.", { modelId: result.modelId }),
@@ -726,7 +748,7 @@ export function ModelConfigPage({
       });
       return;
     }
-    if (!trimmedBaseUrl) {
+    if (!editingOAuth && !trimmedBaseUrl) {
       setFetchResult({
         ok: false,
         message: t("Base URL is required before fetching models."),
@@ -737,13 +759,15 @@ export function ModelConfigPage({
     setFetchResult(null);
     setTestResult(null);
     try {
-      const data = await fetchModelsFromDraft({
-        provider: trimmedName,
-        baseUrl: trimmedBaseUrl,
-        api: apiType,
-        ...(apiKey ? { apiKey } : {}),
-        ...(apiKey ? { keyStorage } : {}),
-      });
+      const data = editingOAuth
+        ? { ...(await fetchSavedProviderModels(trimmedName)), unclassifiedModelIds: [] }
+        : await fetchModelsFromDraft({
+            provider: trimmedName,
+            baseUrl: trimmedBaseUrl,
+            api: apiType,
+            ...(apiKey ? { apiKey } : {}),
+            ...(apiKey ? { keyStorage } : {}),
+          });
       const existing = new Set(modelRows.map((row) => row.id.trim()));
       const fresh = (data.models || []).filter(
         (model) => !existing.has(model.id),
@@ -759,11 +783,11 @@ export function ModelConfigPage({
         ok: data.unclassifiedModelIds.length === 0,
         message: data.unclassifiedModelIds.length
           ? added
-            ? t("Added {count} new models; {skipped} unclassified models were not added", {
+            ? t("Added {count} new models; {skipped} have limited metadata", {
                 count: String(added),
                 skipped: String(data.unclassifiedModelIds.length),
               })
-            : t("{count} unclassified models were not added", {
+            : t("{count} models have limited metadata", {
                 count: String(data.unclassifiedModelIds.length),
               })
           : added
@@ -778,6 +802,11 @@ export function ModelConfigPage({
   };
 
   const modelActionResult = fetchResult ?? testResult;
+  const reconnectTarget =
+    status?.activeProvider &&
+    ["openrouter", "xai", "openai-codex"].includes(status.activeProvider)
+      ? `oauth:${status.activeProvider}`
+      : null;
 
   const statusSummary = (
     <>
@@ -841,7 +870,19 @@ export function ModelConfigPage({
         </div>
       ) : null}
       {status?.activeIssue ? (
-        <HintText className="mt-1 text-warning">{status.activeIssue}</HintText>
+        <div className="mt-1 flex items-center gap-2">
+          <HintText className="text-warning">{status.activeIssue}</HintText>
+          {reconnectTarget ? (
+            <button
+              type="button"
+              className="link-btn"
+              onClick={() => requestProviderTarget(reconnectTarget)}
+            >
+              {t("Reconnect")}
+            </button>
+          ) : null}
+          {reconnectTarget ? discardPrompt(reconnectTarget) : null}
+        </div>
       ) : null}
     </>
   );
@@ -1073,87 +1114,49 @@ export function ModelConfigPage({
             ) : null}
 
             <div className="mt-4 space-y-4">
-              <FieldFrame
-                label={t("Provider name")}
-                hint={t("A short unique name. Use letters, numbers, dash, dot, or underscore.")}
-              >
-                <TextInput
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                  disabled={Boolean(editingName)}
-                  autoComplete="off"
-                />
-              </FieldFrame>
-
-              <FieldFrame
-                label={t("Base URL")}
-                hint={t("Required for custom / local / proxy providers.")}
-              >
-                <TextInput
-                  value={baseUrl}
-                  onChange={(event) => setBaseUrl(event.target.value)}
-                  autoComplete="off"
-                />
-              </FieldFrame>
-
-              <FieldFrame label={t("API type")}>
-                <select
-                  className="w-full rounded-md border border-hairline bg-surface px-2.5 py-2 text-[0.9375rem]"
-                  value={apiType}
-                  onChange={(event) =>
-                    setApiType(event.target.value as ApiType)
-                  }
-                >
-                  <option value="openai-completions">
-                    {t("openai-completions (most compatible)")}
-                  </option>
-                  <option value="openai-responses">{t("openai-responses")}</option>
-                  <option value="anthropic-messages">{t("anthropic-messages")}</option>
-                  <option value="google-generative-ai">
-                    {t("google-generative-ai")}
-                  </option>
-                </select>
-              </FieldFrame>
-
-              <FieldFrame label={t("API key")} hint={keyHint}>
-                <TextInput
-                  type="password"
-                  value={apiKey}
-                  onChange={(event) => setApiKey(event.target.value)}
-                  autoComplete="off"
-                />
-                {keyUrl ? (
-                  <a
-                    className="mt-2 inline-flex items-center gap-1 text-[0.75rem] text-text-secondary underline underline-offset-2 hover:text-ink"
-                    href={keyUrl}
-                    target="_blank"
-                    rel="noreferrer"
+              {editingOAuth ? (
+                <div className="provider-default-note flex items-center justify-between gap-3">
+                  <span>
+                    <strong>{t("OAuth sign-in saved")}</strong>
+                    {" · "}{editingName}
+                  </span>
+                  <button
+                    type="button"
+                    className="link-btn"
+                    onClick={() => requestProviderTarget(`oauth:${editingName}`)}
                   >
-                    {t("Where do I get a key?")}
-                  </a>
-                ) : null}
-                <div className="mt-2 flex gap-4 text-[0.75rem] text-text-secondary">
-                  <label className="flex items-center gap-1">
-                    <input
-                      type="radio"
-                      checked={keyStorage === "literal"}
-                      onChange={() => setKeyStorage("literal")}
-                    />
-                    {t("Save my key on this computer")}
-                  </label>
-                  <label
-                    className="flex items-center gap-1"
-                    title={t("Advanced: store only the name of an environment variable that holds the key, not the key itself.")}
-                  >
-                    <input
-                      type="radio"
-                      checked={keyStorage === "env"}
-                      onChange={() => setKeyStorage("env")}
-                    />
-                    {t("Use an environment variable (advanced)")}
-                  </label>
+                    {t("Reconnect")}
+                  </button>
                 </div>
-              </FieldFrame>
+              ) : (
+                <>
+                  <FieldFrame
+                    label={t("Provider name")}
+                    hint={t("A short unique name. Use letters, numbers, dash, dot, or underscore.")}
+                  >
+                    <TextInput value={name} onChange={(event) => setName(event.target.value)} disabled={Boolean(editingName)} autoComplete="off" />
+                  </FieldFrame>
+                  <FieldFrame label={t("Base URL")} hint={t("Required for custom / local / proxy providers.")}>
+                    <TextInput value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} autoComplete="off" />
+                  </FieldFrame>
+                  <FieldFrame label={t("API type")}>
+                    <select className="w-full rounded-md border border-hairline bg-surface px-2.5 py-2 text-[0.9375rem]" value={apiType} onChange={(event) => setApiType(event.target.value as ApiType)}>
+                      <option value="openai-completions">{t("openai-completions (most compatible)")}</option>
+                      <option value="openai-responses">{t("openai-responses")}</option>
+                      <option value="anthropic-messages">{t("anthropic-messages")}</option>
+                      <option value="google-generative-ai">{t("google-generative-ai")}</option>
+                    </select>
+                  </FieldFrame>
+                  <FieldFrame label={t("API key")} hint={keyHint}>
+                    <TextInput type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} autoComplete="off" />
+                    {keyUrl ? <a className="mt-2 inline-flex items-center gap-1 text-[0.75rem] text-text-secondary underline underline-offset-2 hover:text-ink" href={keyUrl} target="_blank" rel="noreferrer">{t("Where do I get a key?")}</a> : null}
+                    <div className="mt-2 flex gap-4 text-[0.75rem] text-text-secondary">
+                      <label className="flex items-center gap-1"><input type="radio" checked={keyStorage === "literal"} onChange={() => setKeyStorage("literal")} />{t("Save my key on this computer")}</label>
+                      <label className="flex items-center gap-1" title={t("Advanced: store only the name of an environment variable that holds the key, not the key itself.")}><input type="radio" checked={keyStorage === "env"} onChange={() => setKeyStorage("env")} />{t("Use an environment variable (advanced)")}</label>
+                    </div>
+                  </FieldFrame>
+                </>
+              )}
 
               <div className="space-y-3">
                 <div>
@@ -1365,7 +1368,7 @@ export function ModelConfigPage({
                 ))}
               </div>
 
-              <details className="config-advanced space-y-2" open={optionRows.length > 0}>
+              {!editingOAuth ? <details className="config-advanced space-y-2" open={optionRows.length > 0}>
                 <summary className="cursor-pointer text-[0.8125rem] font-semibold text-ink">
                   {t("Advanced options")}
                 </summary>
@@ -1417,7 +1420,7 @@ export function ModelConfigPage({
                 >
                   {t("+ Add option")}
                 </Button>
-              </details>
+              </details> : null}
 
               {discardPrompt("close")}
               {saveResult ? (

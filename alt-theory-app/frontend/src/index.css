@@ -1030,8 +1030,7 @@
   .trash-row-copy { flex: 1; min-width: 0; }
   .set-item .soon { margin-left: auto; font-size: 0.68rem; color: var(--text-3); }
   .set-body { flex: 1; overflow-y: auto; padding: 36px 44px; }
-  .set-panel { max-width: 560px; }
-  .set-panel.models-panel { max-width: 1040px; }
+  .set-panel { max-width: 1040px; }
   .set-panel h2 { font-family: var(--brand); font-weight: 600; font-size: 1.4rem; margin: 0 0 4px; }
   .set-panel .sub { color: var(--text-2); font-size: 0.875rem; margin: 0 0 24px; }
   .set-card { background: var(--surface); border: none; border-radius: var(--r-md); padding: 14px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(31,30,26,0.04); }
@@ -1052,6 +1051,38 @@
   .toggle.on { background: var(--toggle-track-on); }
   .toggle.on::after { left: 18px; }
   .set-card .fine { font-size: 0.75rem; color: var(--text-3); margin-top: 7px; line-height: 1.45; }
+  .agents-heading, .agent-section-heading, .agent-default-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+  .agents-heading .sub { margin-bottom: 0; }
+  .agent-default-row { margin: 22px 0 28px; padding: 12px 14px; border: 1px solid var(--hairline); border-radius: var(--r-md); font-size: 0.875rem; }
+  .agent-default-row label { font-weight: 600; }
+  .agent-default-row select, .agent-model-fields select { border: 1px solid var(--hairline); border-radius: var(--r-sm); background: var(--surface); color: var(--ink); padding: 7px 9px; font: inherit; }
+  .agent-section { margin-top: 26px; }
+  .agent-section h3 { margin: 0 0 10px; font-size: 0.8rem; font-weight: 600; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.05em; }
+  .agent-preset-list { border: 1px solid var(--hairline); border-radius: var(--r-md); overflow: hidden; background: var(--surface); }
+  .agent-preset-list:empty { display: none; }
+  .agent-preset { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(420px, 1.3fr); gap: 24px; padding: 18px; border-top: 1px solid var(--hairline); }
+  .agent-preset:first-child { border-top: 0; }
+  .agent-preset-copy h4 { margin: 0 0 5px; font-size: 0.95rem; }
+  .agent-preset-copy p { margin: 0; max-width: 48ch; color: var(--text-2); font-size: 0.8rem; line-height: 1.45; }
+  .agent-preset-controls { min-width: 0; }
+  .agent-model-fields { display: grid; grid-template-columns: minmax(180px, 1fr) 120px auto; gap: 8px; align-items: center; }
+  .agent-model-fields select { min-width: 0; width: 100%; }
+  .agent-fallback { margin-top: 10px; }
+  .agent-fallback-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; font-size: 0.7rem; color: var(--text-3); }
+  .agent-fallback-heading .agent-icon-btn { padding: 2px 4px; }
+  .agent-fallback-heading .agent-icon-btn:disabled { opacity: 0.3; cursor: default; }
+  .agent-row-actions { display: flex; gap: 12px; margin-top: 10px; }
+  .agent-row-actions .danger { color: var(--danger); }
+  .agent-icon-btn { border: 0; background: transparent; color: var(--text-3); cursor: pointer; padding: 6px; }
+  .agent-icon-btn:hover { color: var(--danger); }
+  .agent-name-input, .agent-description-input { display: block; width: 100%; border: 0; border-bottom: 1px solid var(--hairline); background: transparent; color: var(--ink); padding: 3px 0 5px; font: inherit; outline: none; }
+  .agent-name-input { font-weight: 600; }
+  .agent-description-input { margin-top: 6px; font-size: 0.8rem; color: var(--text-2); }
+  .agent-status { margin: 12px 0 0; color: var(--text-2); font-size: 0.78rem; }
+  .agent-config-path { margin: 6px 0 0; color: var(--text-3); font: 0.68rem var(--mono); overflow-wrap: anywhere; }
+  @media (max-width: 980px) {
+    .agent-preset { grid-template-columns: 1fr; gap: 14px; }
+  }
   .participant-label { font-family: var(--mono); font-size: 0.85rem; color: var(--ink); background: var(--card); border: 1px solid var(--hairline); border-radius: var(--r-sm); padding: 4px 10px; }
   .model-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid var(--hairline); font-size: 0.875rem; }
   .model-row:first-of-type { border-top: none; }

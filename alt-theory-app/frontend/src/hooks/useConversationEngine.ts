@@ -56,9 +56,10 @@ export function useConversationEngine(options?: ConversationEngineOptions) {
           setPhaseLabel,
         })
       ) {
-        if (message.type !== "run_phase" || message.payload.phase !== "idle") {
-          setRunning(true);
-        }
+        setRunning(
+          message.type !== "run_phase" ||
+            (message.payload.phase !== "idle" && message.payload.phase !== "error"),
+        );
         if (message.type === "tool_finished") {
           optionsRef.current?.onStepBoundary?.();
         }

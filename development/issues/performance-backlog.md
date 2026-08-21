@@ -158,19 +158,6 @@ than a surprise when a data directory grows.
 scans; the 30-day sweep calls `permanentlyDeleteSession` once per expired
 entry, making that pass quadratic in the number of conversations.
 
-## 7. Waiting for a subagent polls instead of awaiting
-
-**Cost.** Up to 250 ms of dead time after a subagent has actually finished,
-every time the lead conversation waits for one. Not a CPU cost — the poll is
-cheap — but it is latency added to a feature whose whole point is delegation.
-
-**Source.** `SessionService.waitForSubagentResult` loops on `sleep(250)`
-against a 600-second deadline, checking `busy` / `isStreaming` flags, rather
-than awaiting the run's own completion promise.
-
-**Direction.** The run already resolves a promise when it ends; wait on that
-and keep the deadline as a timeout around it.
-
 ---
 
 ## Checked and found fine

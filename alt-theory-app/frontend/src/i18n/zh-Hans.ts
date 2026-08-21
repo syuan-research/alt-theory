@@ -46,10 +46,9 @@ const catalog: Record<string, string> = {
   "Add to conversation list": "加入对话列表",
   "Add working folder…": "添加工作文件夹…",
   "Added {count} new models": "已添加 {count} 个新模型",
-  "Added {count} new models; {skipped} unclassified models were not added":
-    "已添加 {count} 个新模型；另有 {skipped} 个模型因协议未分类而未添加",
-  "{count} unclassified models were not added":
-    "有 {count} 个模型因协议未分类而未添加",
+  "Added {count} new models; {skipped} have limited metadata":
+    "已添加 {count} 个新模型；其中 {skipped} 个模型的元数据有限",
+  "{count} models have limited metadata": "有 {count} 个模型的元数据有限",
   "Added {name}": "已添加 {name}",
   "Added role \"{name}\".": "已添加角色 \"{name}\"。",
   "Additional folder": "附加文件夹",
@@ -739,7 +738,32 @@ const catalog: Record<string, string> = {
   "Could not fetch models. Check the provider settings and try again.": "无法获取模型，请检查服务商设置后重试。",
   "Connection failed — check the API key.": "连接失败，请检查 API 密钥。",
   "Connection failed. Check the provider settings and model id.": "连接失败，请检查服务商设置和模型 ID。",
-  "Fetching…": "获取中…"
+  "Fetching…": "获取中…",
+  "Subagents": "子代理",
+  "Model default": "模型默认",
+  "Remove fallback": "删除回退模型",
+  "Move fallback up": "上移回退模型",
+  "Move fallback down": "下移回退模型",
+  "Inherit current model": "继承当前模型",
+  "Subagent configuration is managed by this deployment.": "子代理配置由此部署管理。",
+  "Saved": "已保存",
+  "Subagent name": "子代理名称",
+  "Description": "描述",
+  "When should this subagent be used?": "什么时候应使用这个子代理？",
+  "Fallback {number}": "回退 {number}",
+  "Add fallback": "添加回退模型",
+  "Choose model and thinking defaults for delegated work.": "为委派工作选择默认模型和思考等级。",
+  "Saving…": "保存中…",
+  "Default subagent": "默认子代理",
+  "Built-in subagents": "内置子代理",
+  "Custom subagents": "自定义子代理",
+  "OAuth sign-in saved": "OAuth 登录已保存",
+  "OAuth login could not be refreshed. Use Reconnect above.": "OAuth 登录无法刷新，请使用上方的“重新连接”。",
+  "OAuth login could not be refreshed. Open Settings → Models and reconnect this account.": "OAuth 登录无法刷新。请打开“设置 → 模型”，重新连接此账户。",
+  "New": "新建",
+  "Default for most work and whenever the right level is uncertain": "适合大多数工作；不确定时也使用此代理",
+  "High-volume, error-tolerant extraction, web search, and simple checks with clear criteria": "适合大批量、容错高的信息提取、联网搜索，以及标准明确的简单审核",
+  "Review, strategic planning, and complex framework or architecture analysis with unknown unknowns": "适合审查、战略规划，以及涉及未知问题的复杂框架或架构分析"
 };
 
 export default catalog;

@@ -133,6 +133,11 @@ export interface V4SessionHeader extends RecordEnvelope {
   };
   studyTag?: StudyTag;
   modelOverride?: SessionModelOverride;
+  /** Spawn-time preset snapshot; each fallback keeps its own thinking level. */
+  subagentExecution?: {
+    agentType: string;
+    modelChain: SessionModelOverride[];
+  };
   /**
    * A root that gave its list spot to a promoted child (v1.4 M4b role
    * swap). Stays a list member, displayed DEMOTED — nested under its
@@ -170,6 +175,10 @@ export function writeFoundationRecords(args: {
   } | null;
   studyTag?: StudyTag | null;
   modelOverride?: SessionModelOverride | null;
+  subagentExecution?: {
+    agentType: string;
+    modelChain: SessionModelOverride[];
+  } | null;
 }): { session: V4SessionHeader } {
   const createdAt = args.manifest.createdAt ?? new Date().toISOString();
   const session: V4SessionHeader = {
@@ -193,6 +202,16 @@ export function writeFoundationRecords(args: {
     ...(args.forkedFrom ? { forkedFrom: { ...args.forkedFrom } } : {}),
     ...(args.studyTag ? { studyTag: { ...args.studyTag } } : {}),
     ...(args.modelOverride ? { modelOverride: { ...args.modelOverride } } : {}),
+    ...(args.subagentExecution
+      ? {
+          subagentExecution: {
+            agentType: args.subagentExecution.agentType,
+            modelChain: args.subagentExecution.modelChain.map((entry) => ({
+              ...entry,
+            })),
+          },
+        }
+      : {}),
   };
 
   writeJsonAtomic(join(args.recordsDir, "session.json"), session);

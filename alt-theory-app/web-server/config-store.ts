@@ -553,8 +553,11 @@ function normalizeRuntimeBaseUrl(
   return trimmed;
 }
 
-function modelListUrls(api: ApiType | undefined, baseUrl: string): string[] {
+function modelListUrls(provider: string, api: ApiType | undefined, baseUrl: string): string[] {
   const trimmed = baseUrl.trim().replace(/\/+$/, "");
+  if (provider === "openai-codex") {
+    return [`${trimmed}/codex/models?client_version=1.0.0`];
+  }
   const urls = [`${trimmed}/models`];
   if (api === "anthropic-messages" && !/\/v1$/i.test(trimmed)) {
     urls.unshift(`${trimmed}/v1/models`);
@@ -581,6 +584,14 @@ function sanitizeCustomProviderAuth(
   let changed = false;
   const providers = models.providers ?? {};
   for (const [name, block] of Object.entries(providers)) {
+    if (name === "openai-codex" && storedCredential(agentDir, name)?.type === "oauth") {
+      for (const key of ["baseUrl", "api", "apiKey", "authHeader"] as const) {
+        if (key in block) {
+          delete block[key];
+          changed = true;
+        }
+      }
+    }
     const normalizedBaseUrl = normalizeRuntimeBaseUrl(block.api, block.baseUrl);
     if (normalizedBaseUrl && normalizedBaseUrl !== block.baseUrl) {
       block.baseUrl = normalizedBaseUrl;
@@ -613,7 +624,7 @@ export async function fetchProviderModels(
   const block = modelsFile.providers?.[provider];
   const builtins = builtinConfigModels(provider);
   if (
-    provider === "xai" &&
+    (provider === "xai" || provider === "openai-codex") &&
     storedCredential(agentDir, provider)?.type === "oauth"
   ) {
     const first = builtinModelList(provider)[0];
@@ -741,9 +752,25 @@ async function fetchModelsFromEndpoint(
       headers.Authorization = `Bearer ${apiKey}`;
     }
   }
+  if (input.provider === "openai-codex" && apiKey) {
+    try {
+      const payload = JSON.parse(
+        Buffer.from(apiKey.split(".")[1] ?? "", "base64url").toString("utf8"),
+      ) as Record<string, unknown>;
+      const auth = payload["https://api.openai.com/auth"] as
+        | { chatgpt_account_id?: unknown }
+        | undefined;
+      if (typeof auth?.chatgpt_account_id === "string") {
+        headers["chatgpt-account-id"] = auth.chatgpt_account_id;
+      }
+    } catch {
+      // The endpoint will return the authoritative auth error.
+    }
+    headers.originator = "pi";
+  }
 
   const errors: string[] = [];
-  for (const endpoint of modelListUrls(input.api, input.baseUrl)) {
+  for (const endpoint of modelListUrls(input.provider, input.api, input.baseUrl)) {
     // One retry: a dropped connection or a 5xx is usually the network having a
     // bad second, and making the user click Fetch again teaches them the
     // feature is unreliable.
@@ -801,7 +828,7 @@ async function fetchModelsFromEndpoint(
       classified.filter(({ family }) => !family).map(({ model }) => model.id),
     );
     const selected = classified
-      .filter(({ family }) => family === expectedFamily)
+      .filter(({ family }) => !family || family === expectedFamily)
       .map(({ model }) => model);
     return selected.map((model) => ({
       ...model,
@@ -835,7 +862,12 @@ export function getRuntimeModelConfig(agentDir: string): RuntimeModelConfig {
   if (!active) return {};
   const block = models.providers?.[active.provider];
   const hasStoredKey = providerHasCredential(agentDir, active.provider);
-  if (block && hasStoredKey && !block.apiKey) {
+  if (
+    block &&
+    hasStoredKey &&
+    !block.apiKey &&
+    customProviderNeedsApiKey(active.provider, block)
+  ) {
     block.apiKey = active.provider;
     writeModelsFileAtomic(agentDir, models);
   }
@@ -900,6 +932,7 @@ export async function getVerifiedConfigStatus(
     const runtime = await runtimeFor(agentDir);
     return Boolean(await runtime.getAuth(provider));
   },
+  timeoutMs = 8_000,
 ): Promise<ConfigStatus> {
   const status = getConfigStatus(agentDir);
   if (!status.activeUsable || !status.activeProvider) return status;
@@ -907,11 +940,41 @@ export async function getVerifiedConfigStatus(
   if (credential?.type !== "oauth" || credential.expires > Date.now()) {
     return status;
   }
+  let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
-    if (await resolveOAuth(status.activeProvider)) return getConfigStatus(agentDir);
-  } catch {
-    // The precise provider error remains in the runtime/send path. Config UI
-    // only needs a safe, actionable truth state without exposing auth details.
+    // ponytail: this bounds the response; ModelRuntime has no cancellation signal,
+    // so a late refresh may still finish in the background.
+    const verified = await Promise.race([
+      resolveOAuth(status.activeProvider),
+      new Promise<"timeout">((resolveTimeout) => {
+        timeout = setTimeout(() => resolveTimeout("timeout"), timeoutMs);
+        timeout.unref?.();
+      }),
+    ]);
+    if (verified === "timeout") {
+      return {
+        ...status,
+        activeUsable: false,
+        activeIssue: `OAuth for '${status.activeProvider}' could not be verified in time. Your providers are still available; reconnect this account if model requests keep failing.`,
+      };
+    }
+    if (verified) return getConfigStatus(agentDir);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    const reason = /\b401\b/.test(detail)
+      ? "failed with 401"
+      : /\b403\b/.test(detail)
+        ? "failed with 403"
+        : /refresh[ _-]?token/i.test(detail)
+          ? "refresh token was rejected"
+          : "refresh failed";
+    return {
+      ...status,
+      activeUsable: false,
+      activeIssue: `OAuth for '${status.activeProvider}' ${reason}. Reconnect this account.`,
+    };
+  } finally {
+    if (timeout) clearTimeout(timeout);
   }
   return {
     ...status,
@@ -929,7 +992,11 @@ export function normalizeModelListPayload(payload: unknown): FetchedModel[] {
         typeof payload === "object" &&
         Array.isArray((payload as { data?: unknown }).data)
       ? (payload as { data: unknown[] }).data
-      : [];
+      : payload &&
+          typeof payload === "object" &&
+          Array.isArray((payload as { models?: unknown }).models)
+        ? (payload as { models: unknown[] }).models
+        : [];
   const seen = new Set<string>();
   const result: FetchedModel[] = [];
   for (const item of source) {
@@ -943,6 +1010,7 @@ export function normalizeModelListPayload(payload: unknown): FetchedModel[] {
         : row
           ? String(
               row.id ??
+                row.slug ??
                 row.name ??
                 row.model ??
                 "",
@@ -952,8 +1020,9 @@ export function normalizeModelListPayload(payload: unknown): FetchedModel[] {
     if (!normalized || seen.has(normalized)) continue;
     seen.add(normalized);
     const name =
-      typeof row?.name === "string" && row.name.trim()
-        ? row.name.trim()
+      typeof (row?.display_name ?? row?.name) === "string" &&
+      String(row?.display_name ?? row?.name).trim()
+        ? String(row?.display_name ?? row?.name).trim()
         : normalized;
     const contextWindow = positiveInteger(
       row?.contextWindow ??
@@ -966,7 +1035,17 @@ export function normalizeModelListPayload(payload: unknown): FetchedModel[] {
     );
     const input = normalizeModelInput(row?.input ?? row?.input_modalities);
     const thinkingLevels =
-      normalizeThinkingLevels(row?.thinkingLevels ?? row?.thinking_levels) ??
+      normalizeThinkingLevels(
+        row?.thinkingLevels ??
+          row?.thinking_levels ??
+          (Array.isArray(row?.supported_reasoning_levels)
+            ? row.supported_reasoning_levels.map((entry) =>
+                entry && typeof entry === "object"
+                  ? (entry as { effort?: unknown }).effort
+                  : entry,
+              )
+            : undefined),
+      ) ??
       normalizeReasoningOptions(row?.reasoning_options);
     const thinkingLevelMap = normalizeThinkingLevelMap(
       row?.thinkingLevelMap ?? row?.thinking_level_map,

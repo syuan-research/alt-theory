@@ -1,7 +1,7 @@
 ---
 title: Alt Theory information architecture
 status: v2
-last_updated: 2026-08-17
+last_updated: 2026-08-21
 scope: where user-facing things live, how the major surfaces relate, and which information belongs in each
 ---
 
@@ -228,8 +228,12 @@ The Models surface uses a master-detail structure:
 - Fetch and Test report pending, success, no-change, partial, and understandable
   failure states in one inline row directly below those actions.
 - OAuth-connected providers sort before ordinary API-key providers.
-- OAuth-connected providers may carry the single low-key word `OAuth`.
-  Ordinary API-key providers need no corresponding badge.
+- A saved OAuth provider shows account status and an always-available
+  **Reconnect** action in its detail view. Its fixed Base URL, protocol/API
+  adapter, and API-key plumbing are runtime invariants, not user settings, so
+  they are not displayed (including under Advanced).
+- OAuth-connected providers may carry the single low-key word `OAuth` in the
+  provider list. Ordinary API-key providers need no corresponding badge.
 - A visually clear `+ Add provider` action opens the add flow in the right
   detail area.
 - Directly under Add provider: a low-key entry to the chatbot/agent model
@@ -238,8 +242,9 @@ The Models surface uses a master-detail structure:
 - Fetch never waits for models.dev. OpenCode Go uses the local metadata cache,
   matching model metadata from other cached providers, and finally bundled Pi
   protocol metadata to split its shared endpoint into OpenAI- and
-  Anthropic-compatible lists. Truly unclassified items are reported and left
-  for manual addition; they do not block Fetch or cause an all-model fallback.
+  Anthropic-compatible lists. A model returned by the selected provider endpoint
+  is still offered when those metadata sources do not know it; missing metadata
+  is reported, not treated as evidence that the provider model does not exist.
 
 Provider rows do not enumerate context windows, output limits, reasoning
 flags, costs, modalities, or metadata provenance. Those facts do not help the

@@ -5,6 +5,7 @@ import type {
   AgentSessionEvent,
   ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
+import { resolveCliModel } from "@earendil-works/pi-coding-agent";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { ImageContent, Model } from "@earendil-works/pi-ai";
 import { completeSimple } from "@earendil-works/pi-ai/compat";
@@ -116,11 +117,17 @@ import {
   clampSubagentMode,
   createAgentTeamTools,
   LEAD_DELEGATION_PROMPT_SECTION,
-  resolveModelTier,
   SUBAGENT_PROMPT_SECTION,
   type AgentTeamBridge,
   type SpawnSubagentOptions,
 } from "./agent-team.js";
+import {
+  formatSubagentConfigForPrompt,
+  modelReferenceIdentity,
+  readSubagentConfig,
+  subagentModelCandidates,
+  THINKING_LEVELS,
+} from "./subagent-config.js";
 
 export class SessionBusyError extends Error {
   readonly code = "session_busy";
@@ -213,6 +220,10 @@ export interface SessionCreationMetadata {
   } | null;
   studyTag?: StudyTag | null;
   modelOverride?: SessionModelOverride | null;
+  subagentExecution?: {
+    agentType: string;
+    modelChain: SessionModelOverride[];
+  } | null;
   /** Internal child relationship used by fresh-context children. */
   forkedFrom?: { sessionId: string; purpose: ForkPurpose } | null;
   /** Internal mode override used when a fresh child inherits its parent mode. */
@@ -315,6 +326,7 @@ interface ManagedSession {
   pendingNativePiScanAltSkills: boolean | null;
   /** Set when this session is a subagent child: its lead conversation's id. */
   subagentParentId: string | null;
+  subagentModelChain: SessionModelOverride[];
   /** In-flight turn buffered for late joiners (v1.4.3); null when idle. */
   liveRun: LiveRun | null;
   /** Structured cause for the in-flight turn when Alt asks Pi to stop it. */
@@ -322,7 +334,7 @@ interface ManagedSession {
 }
 
 /** Background subagent runs allowed at once; further first-runs queue FIFO. */
-const SUBAGENT_CONCURRENCY = 3;
+const SUBAGENT_CONCURRENCY = 10;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -2272,9 +2284,8 @@ export class SessionService implements AgentTeamBridge {
   }
 
   /**
-   * Agent-team surface per session kind (alpha.5 M2): leads get the
-   * spawn/steer/wait tool set, subagent children get message_parent (depth 1),
-   * A/B arms get none — they are comparison instruments, not delegators.
+   * Ordinary and spawned conversations can delegate; spawned conversations
+   * also get message_parent. A/B arms remain comparison instruments.
    */
   private agentTeamArgsFor(
     sessionId: string,
@@ -2283,7 +2294,11 @@ export class SessionService implements AgentTeamBridge {
     if (purpose === "subagent") {
       return {
         extraTools: createAgentTeamTools(this, sessionId, "subagent"),
-        extraPromptSections: [SUBAGENT_PROMPT_SECTION],
+        extraPromptSections: [
+          SUBAGENT_PROMPT_SECTION,
+          LEAD_DELEGATION_PROMPT_SECTION,
+          formatSubagentConfigForPrompt(readSubagentConfig(this.config.dataDir).config),
+        ],
       };
     }
     if (purpose === "ab-arm") {
@@ -2291,7 +2306,10 @@ export class SessionService implements AgentTeamBridge {
     }
     return {
       extraTools: createAgentTeamTools(this, sessionId, "lead"),
-      extraPromptSections: [LEAD_DELEGATION_PROMPT_SECTION],
+      extraPromptSections: [
+        LEAD_DELEGATION_PROMPT_SECTION,
+        formatSubagentConfigForPrompt(readSubagentConfig(this.config.dataDir).config),
+      ],
     };
   }
 
@@ -2393,6 +2411,7 @@ export class SessionService implements AgentTeamBridge {
       helper: metadata.helper,
       studyTag: metadata.studyTag ?? null,
       modelOverride: metadata.modelOverride ?? null,
+      subagentExecution: metadata.subagentExecution ?? null,
     });
 
     const managed = await this.createManaged({
@@ -2518,38 +2537,91 @@ export class SessionService implements AgentTeamBridge {
   // envelopes (agent-mail.jsonl), and wake delivery.
   // -------------------------------------------------------------------------
 
+  private resolveSubagentModelReference(
+    parent: ManagedSession,
+    reference: string,
+  ): SessionModelOverride | null {
+    if (modelReferenceIdentity(reference) === "inherit") {
+      const model = parent.session.model;
+      if (!model) throw new Error("The lead conversation has no model to inherit");
+      if (isNoModelPlaceholder(model)) return null;
+      const suffix = reference.startsWith("inherit:")
+        ? reference.slice("inherit:".length)
+        : null;
+      return {
+        provider: model.provider,
+        modelId: model.id,
+        thinkingLevel:
+          suffix && THINKING_LEVELS.includes(suffix as (typeof THINKING_LEVELS)[number])
+            ? (suffix as ThinkingLevel)
+            : parent.session.thinkingLevel,
+      };
+    }
+    const resolved = resolveCliModel({
+      cliModel: reference,
+      modelRuntime: parent.session.modelRuntime,
+    });
+    if (!resolved.model) {
+      throw new Error(resolved.error ?? `Could not resolve ${reference}`);
+    }
+    return {
+      provider: resolved.model.provider,
+      modelId: resolved.model.id,
+      ...(resolved.thinkingLevel
+        ? { thinkingLevel: resolved.thinkingLevel }
+        : {}),
+    };
+  }
+
   async spawnSubagent(
     parentSessionId: string,
     options: SpawnSubagentOptions,
   ): Promise<{ report: string; sessionId: string }> {
     const parent = this.requireSession(parentSessionId);
-    if (parent.subagentParentId) {
-      throw new Error("Subagents cannot spawn subagents of their own");
-    }
     const header = readV4SessionHeader(parent.manifest.recordsDir);
     const mode = clampSubagentMode(parent.getAltMode(), options.mode);
 
-    // Relative model tier, resolved against models configured AND usable now.
-    let modelOverride = header?.modelOverride ?? null;
-    let tierNote = "";
-    const tier = options.modelTier ?? "same";
-    if (tier !== "same" && parent.session.model) {
-      const available = await parent.session.modelRuntime.getAvailable();
-      const resolved = resolveModelTier(
-        available.map((model) => ({
-          provider: model.provider,
-          id: model.id,
-          cost: model.cost,
-        })),
-        { provider: parent.session.model.provider, id: parent.session.model.id },
-        tier,
+    const config = readSubagentConfig(this.config.dataDir).config;
+    const agentType = options.agentType ?? config.defaultAgent;
+    const preset = config.agents.find((agent) => agent.id === agentType);
+    if (!preset) {
+      throw new Error(
+        `Unknown agent type "${agentType}". Available: ${config.agents.map((agent) => agent.id).join(", ")}`,
       );
-      if (resolved) {
-        modelOverride = { provider: resolved.provider, modelId: resolved.id };
-        tierNote = `, model ${resolved.provider}/${resolved.id}`;
-      } else {
-        tierNote = `, no usable ${tier}-tier model — using the same model`;
+    }
+    if (
+      options.model &&
+      !subagentModelCandidates(config).includes(modelReferenceIdentity(options.model))
+    ) {
+      throw new Error(
+        `Model override "${options.model}" is not in the configured subagent candidates.`,
+      );
+    }
+    const modelChain: SessionModelOverride[] = [];
+    const warnings: string[] = [];
+    for (const reference of [
+      options.model ?? preset.model,
+      ...preset.fallbackModels,
+    ]) {
+      try {
+        const resolved = this.resolveSubagentModelReference(parent, reference);
+        if (resolved &&
+          !modelChain.some(
+            (entry) =>
+              entry.provider === resolved.provider &&
+              entry.modelId === resolved.modelId &&
+              entry.thinkingLevel === resolved.thinkingLevel,
+          )
+        ) {
+          modelChain.push(resolved);
+        }
+      } catch (error) {
+        warnings.push(error instanceof Error ? error.message : String(error));
       }
+    }
+    const modelOverride = modelChain[0];
+    if (!modelOverride && !isNoModelPlaceholder(parent.session.model)) {
+      throw new Error(`No model in subagent preset "${agentType}" could be resolved.`);
     }
 
     const child = await this.createSession(parent.selectors, {
@@ -2559,7 +2631,8 @@ export class SessionService implements AgentTeamBridge {
       consentSnapshot: header?.consentSnapshot ?? null,
       workspace: header?.workspace ?? null,
       studyTag: header?.studyTag ?? null,
-      modelOverride,
+      modelOverride: modelOverride ?? null,
+      subagentExecution: { agentType, modelChain },
       forkedFrom: { sessionId: parentSessionId, purpose: "subagent" },
       mode,
     });
@@ -2591,66 +2664,18 @@ export class SessionService implements AgentTeamBridge {
       delivered: true,
     });
 
-    const prompt = options.context?.trim()
-      ? `${options.task.trim()}\n\nContext from the lead conversation:\n${options.context.trim()}`
-      : options.task.trim();
-    const started = this.startSubagentRun(
-      child.sessionId,
-      prompt,
-      !options.wait,
-    );
+    const started = this.startSubagentRun(child.sessionId, options.message.trim(), true);
     const report = [
-      `Spawned subagent "${label}" (session ${child.sessionId}, ${mode === "understand" ? "understand" : "work"} mode${tierNote}).`,
+      `Spawned subagent "${label}" (session ${child.sessionId}, ${agentType}, ${mode === "understand" ? "understand" : "work"} mode, ${modelOverride ? `model ${modelOverride.provider}/${modelOverride.modelId}${modelOverride.thinkingLevel ? `:${modelOverride.thinkingLevel}` : ""}` : "no model selected"}).`,
       started === "queued"
         ? `It is queued behind ${SUBAGENT_CONCURRENCY} running subagents and starts automatically.`
         : "It is working in the background.",
-      options.wait
-        ? ""
-        : "Its completion will arrive in this conversation automatically; keep working meanwhile.",
+      "Its completion will arrive in this conversation automatically; keep working meanwhile.",
+      warnings.length ? `Skipped unavailable configured models: ${warnings.join("; ")}` : "",
     ]
       .filter(Boolean)
       .join(" ");
     return { report, sessionId: child.sessionId };
-  }
-
-  async waitForSubagentResult(
-    parentSessionId: string,
-    agent: string,
-  ): Promise<string> {
-    const childId = this.resolveSubagentId(parentSessionId, agent);
-    const deadline = Date.now() + 600_000;
-    const ready = () => {
-      const child = this.sessions.get(childId);
-      return Boolean(
-        child &&
-          !child.busy &&
-          !child.session.isStreaming &&
-          !this.queuedSubagentIds.has(childId),
-      );
-    };
-    while (Date.now() < deadline) {
-      if (ready()) return this.subagentResultText(childId);
-      const child = this.sessions.get(childId);
-      if (!child) {
-        await sleep(250);
-        continue;
-      }
-      // Wake on the child's next service event (run completion, failure,
-      // phase change) instead of polling; the deadline caps the wait
-      // (perf backlog item 7).
-      await new Promise<void>((wake) => {
-        const finish = () => {
-          clearTimeout(timer);
-          child.listeners.delete(listener);
-          wake();
-        };
-        const listener = () => finish();
-        const timer = setTimeout(finish, Math.max(0, deadline - Date.now()));
-        timer.unref?.();
-        child.listeners.add(listener);
-      });
-    }
-    return `Timed out after 600s waiting for subagent ${agent}; it keeps running in the background — its completion will arrive automatically.`;
   }
 
   async sendToSubagent(
@@ -3500,9 +3525,8 @@ export class SessionService implements AgentTeamBridge {
           payload: { message, level },
         }),
     });
-    const headerForkedFrom = readV4SessionHeader(
-      args.manifest.recordsDir,
-    )?.forkedFrom;
+    const header = readV4SessionHeader(args.manifest.recordsDir);
+    const headerForkedFrom = header?.forkedFrom;
     const managed: ManagedSession = {
       ...args,
       approvalBridge,
@@ -3516,6 +3540,7 @@ export class SessionService implements AgentTeamBridge {
         headerForkedFrom?.purpose === "subagent"
           ? headerForkedFrom.sessionId
           : null,
+      subagentModelChain: header?.subagentExecution?.modelChain ?? [],
       nextTurnIndex: Math.max(
         1,
         args.counters.turnCount + 1,
@@ -3624,6 +3649,9 @@ export class SessionService implements AgentTeamBridge {
     managed: ManagedSession,
     error: string,
   ): Promise<boolean> {
+    if (managed.subagentParentId && managed.subagentModelChain.length > 0) {
+      return this.trySubagentModelFallback(managed, error);
+    }
     const coordinator = this.modelFallback;
     if (!coordinator?.isEnabled()) {
       return false;
@@ -3699,6 +3727,68 @@ export class SessionService implements AgentTeamBridge {
 
     await continueAgentTurnAfterModelSwitch(managed.session);
     return true;
+  }
+
+  private async trySubagentModelFallback(
+    managed: ManagedSession,
+    error: string,
+  ): Promise<boolean> {
+    const current = managed.session.model;
+    if (!current) return false;
+    const currentIndex = managed.subagentModelChain.findIndex(
+      (entry) =>
+        entry.provider === current.provider &&
+        entry.modelId === current.id &&
+        (entry.thinkingLevel === undefined ||
+          entry.thinkingLevel === managed.session.thinkingLevel),
+    );
+    for (
+      let index = currentIndex < 0 ? 0 : currentIndex + 1;
+      index < managed.subagentModelChain.length;
+      index++
+    ) {
+      const next = managed.subagentModelChain[index];
+      const resolved = managed.session.modelRuntime.getModel(
+        next.provider,
+        next.modelId,
+      );
+      if (!resolved) continue;
+      await managed.session.setModel(resolved);
+      managed.session.setThinkingLevel(
+        next.thinkingLevel ?? this.initialThinkingLevel(next.provider, next.modelId),
+      );
+      managed.manifest.provider = next.provider;
+      managed.manifest.model = next.modelId;
+      this.persistManifestModel(managed);
+      const header = readV4SessionHeader(managed.manifest.recordsDir);
+      if (header) {
+        writeSessionHeader(managed.manifest.recordsDir, {
+          ...header,
+          modelOverride: { ...next },
+        });
+      }
+      appendSessionEvent(managed.manifest.recordsDir, {
+        sessionId: managed.manifest.sessionId,
+        type: "model_fallback",
+        details: {
+          fromModel: `${current.provider}/${current.id}`,
+          toModel: `${next.provider}/${next.modelId}`,
+          thinkingLevel: next.thinkingLevel ?? null,
+          ruleId: "subagent-preset",
+          error,
+        },
+      });
+      this.emit(managed, {
+        type: "extension_notice",
+        payload: {
+          message: `Subagent fallback: ${current.provider}/${current.id} → ${next.provider}/${next.modelId}${next.thinkingLevel ? `:${next.thinkingLevel}` : ""}.`,
+          level: "info",
+        },
+      });
+      await continueAgentTurnAfterModelSwitch(managed.session);
+      return true;
+    }
+    return false;
   }
 
   private handleAgentEvent(

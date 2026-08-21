@@ -55,6 +55,9 @@ function setupFixture() {
   const kbDir = join(root, "kb");
   const skillsDir = join(root, "skills");
   const instructionsDir = join(root, "instructions");
+  const agentDir = join(root, "agent");
+  const modelsPath = join(agentDir, "models.json");
+  const authPath = join(agentDir, "auth.json");
   const appContextPath = join(root, "ALTTHEORY.md");
   const piPromptTemplatesDir = resolve("agent-assets", "prompts", "pi");
 
@@ -63,6 +66,7 @@ function setupFixture() {
   mkdirSync(join(kbDir, "ep-core"), { recursive: true });
   mkdirSync(skillsDir, { recursive: true });
   mkdirSync(instructionsDir, { recursive: true });
+  mkdirSync(agentDir, { recursive: true });
   writeFileSync(appContextPath, "Session service app context", "utf-8");
   writeFileSync(
     join(rolePresetsDir, "role-conceptual-theory-companion.md"),
@@ -86,6 +90,15 @@ function setupFixture() {
     "---\nname: conversation-summary\ndescription: Test summary\n---\nSummarize.",
     "utf-8",
   );
+  writeFileSync(modelsPath, JSON.stringify({ providers: {
+    test: {
+      baseUrl: "https://example.test/v1",
+      api: "openai-completions",
+      apiKey: "test",
+      models: [{ id: "test-model", contextWindow: 16_000, maxTokens: 4_000 }],
+    },
+  } }), "utf-8");
+  writeFileSync(authPath, JSON.stringify({ test: { type: "api_key", key: "test-key" } }), "utf-8");
 
   return {
     root,
@@ -97,6 +110,12 @@ function setupFixture() {
     instructionsDir,
     appContextPath,
     piPromptTemplatesDir,
+    runtimeModelConfig: {
+      modelProvider: "test",
+      modelId: "test-model",
+      modelsPath,
+      authPath,
+    },
   };
 }
 
@@ -137,9 +156,7 @@ function createTestService(
     instructionsDir: fixture.instructionsDir,
     runLabel: null,
     testBatch: null,
-    resolveRuntimeModelConfig: runtimeModelConfig
-      ? () => runtimeModelConfig
-      : undefined,
+    resolveRuntimeModelConfig: () => runtimeModelConfig ?? fixture.runtimeModelConfig,
   });
 }
 
@@ -239,7 +256,7 @@ test("SessionService creates managed sessions with v0.4 foundation records", asy
   try {
     assert.match(
       snapshot.sessionId,
-      /^\d{8}-\d{6}__role-conceptual-theory-c__soul-latest__default$/,
+      /^\d{8}-\d{6}__role-conceptual-theory-c__soul-latest__test-model$/,
     );
     assert.equal(snapshot.rolePresetSlug, "role-conceptual-theory-companion");
     assert.equal(snapshot.soulSlug, "soul-latest");

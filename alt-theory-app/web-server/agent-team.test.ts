@@ -16,7 +16,6 @@ import {
 import {
   clampSubagentMode,
   createAgentTeamTools,
-  resolveModelTier,
 } from "./agent-team.js";
 import { readV4SessionHeader } from "./session-records.js";
 import { readSessionDetail } from "./session-store.js";
@@ -29,6 +28,9 @@ function setupFixture() {
   const kbDir = join(root, "kb");
   const skillsDir = join(root, "skills");
   const instructionsDir = join(root, "instructions");
+  const agentDir = join(root, "agent");
+  const modelsPath = join(agentDir, "models.json");
+  const authPath = join(agentDir, "auth.json");
   const appContextPath = join(root, "ALTTHEORY.md");
   const piPromptTemplatesDir = resolve("agent-assets", "prompts", "pi");
   mkdirSync(rolePresetsDir, { recursive: true });
@@ -36,6 +38,13 @@ function setupFixture() {
   mkdirSync(join(kbDir, "ep-core"), { recursive: true });
   mkdirSync(skillsDir, { recursive: true });
   mkdirSync(instructionsDir, { recursive: true });
+  mkdirSync(agentDir, { recursive: true });
+  writeFileSync(modelsPath, JSON.stringify({ providers: { test: {
+    baseUrl: "https://example.test/v1",
+    api: "openai-completions",
+    models: [{ id: "model", name: "Test model", contextWindow: 16_000, maxTokens: 4_000 }],
+  } } }), "utf-8");
+  writeFileSync(authPath, JSON.stringify({ test: { type: "api_key", key: "test-key" } }), "utf-8");
   writeFileSync(appContextPath, "Agent team app context", "utf-8");
   writeFileSync(join(rolePresetsDir, "role-a.md"), "Role A", "utf-8");
   writeFileSync(join(soulDir, "soul-latest.md"), "Latest soul", "utf-8");
@@ -49,6 +58,8 @@ function setupFixture() {
     instructionsDir,
     appContextPath,
     piPromptTemplatesDir,
+    modelsPath,
+    authPath,
   };
 }
 
@@ -65,7 +76,7 @@ function createTestService(fixture: ReturnType<typeof setupFixture>) {
       rolePresetsDir: fixture.rolePresetsDir,
       kbDir: fixture.kbDir,
       piPromptTemplatesDir: fixture.piPromptTemplatesDir,
-      modelsPath: null,
+      modelsPath: fixture.modelsPath,
     },
     kbDir: fixture.kbDir,
     rolePresetsDir: fixture.rolePresetsDir,
@@ -78,6 +89,12 @@ function createTestService(fixture: ReturnType<typeof setupFixture>) {
     instructionsDir: fixture.instructionsDir,
     runLabel: null,
     testBatch: null,
+    resolveRuntimeModelConfig: () => ({
+      modelProvider: "test",
+      modelId: "model",
+      modelsPath: fixture.modelsPath,
+      authPath: fixture.authPath,
+    }),
   });
 }
 
@@ -143,28 +160,7 @@ test("clampSubagentMode: children inherit the parent's Alt mode, clamped to it",
   assert.equal(clampSubagentMode("work", "understand"), "understand");
 });
 
-test("resolveModelTier picks nearest cheaper/pricier usable model by cost", () => {
-  const models = [
-    { provider: "p", id: "small", cost: { input: 1, output: 2 } },
-    { provider: "p", id: "mid", cost: { input: 3, output: 6 } },
-    { provider: "p", id: "big", cost: { input: 10, output: 30 } },
-    { provider: "p", id: "unpriced" },
-  ];
-  const current = { provider: "p", id: "mid" };
-  assert.equal(resolveModelTier(models, current, "lower")?.id, "small");
-  assert.equal(resolveModelTier(models, current, "higher")?.id, "big");
-  assert.equal(resolveModelTier(models, current, "same"), null);
-  assert.equal(
-    resolveModelTier(models, { provider: "p", id: "big" }, "higher"),
-    null,
-  );
-  assert.equal(
-    resolveModelTier(models, { provider: "p", id: "unpriced" }, "lower"),
-    null,
-  );
-});
-
-test("createAgentTeamTools gives leads the full surface and subagents message_parent only", () => {
+test("createAgentTeamTools lets spawned agents delegate and message their parent", () => {
   const bridge = {} as never;
   const leadNames = createAgentTeamTools(bridge, "s1", "lead").map((t) => t.name);
   assert.deepEqual(leadNames, [
@@ -178,7 +174,15 @@ test("createAgentTeamTools gives leads the full surface and subagents message_pa
   const subagentNames = createAgentTeamTools(bridge, "s2", "subagent").map(
     (t) => t.name,
   );
-  assert.deepEqual(subagentNames, ["message_parent"]);
+  assert.deepEqual(subagentNames, [
+    "spawn_agent",
+    "send_to_agent",
+    "check_agent",
+    "wait_for_agents",
+    "interrupt_agent",
+    "list_agents",
+    "message_parent",
+  ]);
 });
 
 test("agent mail roundtrips, marks delivered, and parses fragments", () => {
@@ -219,7 +223,7 @@ test("spawnSubagent creates a subagent child with clamped mode, alias, and spawn
     const parent = await service.createSession(SELECTORS);
     stubEchoPrompt(managedOf(service, parent.sessionId), "parent answer");
     const spawned = await service.spawnSubagent(parent.sessionId, {
-      task: "summarize the docs",
+      message: "summarize the docs",
       name: "docs-subagent",
       mode: "work",
     });
@@ -249,6 +253,24 @@ test("spawnSubagent creates a subagent child with clamped mode, alias, and spawn
       }
     ).resolveSubagentId(parent.sessionId, "docs-subagent");
     assert.equal(resolved, spawned.sessionId);
+  } finally {
+    await service.disposeAll();
+  }
+});
+
+test("a spawned agent can spawn its own direct child", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  try {
+    const root = await service.createSession(SELECTORS);
+    const child = await service.createSession(SELECTORS, {
+      forkedFrom: { sessionId: root.sessionId, purpose: "subagent" },
+    });
+    const grandchild = await service.spawnSubagent(child.sessionId, {
+      message: "explore the follow-up track",
+      name: "follow-up",
+    });
+    assert.equal(managedOf(service, grandchild.sessionId).subagentParentId, child.sessionId);
   } finally {
     await service.disposeAll();
   }
@@ -419,49 +441,25 @@ test("a queued subagent is not double-queued by send_to_agent and can be removed
   try {
     const parent = await service.createSession(SELECTORS);
     const subagents: string[] = [];
-    for (let index = 0; index < 4; index++) {
-      const child = await service.createSession(SELECTORS, {
-        forkedFrom: { sessionId: parent.sessionId, purpose: "subagent" },
-      });
-      subagents.push(child.sessionId);
-    }
-    // Three gated runs fill every concurrency slot; the fourth queues.
-    const gates: Array<() => void> = [];
-    for (const id of subagents.slice(0, 3)) {
-      const managed = managedOf(service, id);
-      managed.session.prompt = (text: string) =>
-        new Promise<void>((resolve) => {
-          gates.push(() => {
-            managed.session.sessionManager.appendMessage({
-              role: "user",
-              content: [{ type: "text", text }],
-              timestamp: Date.now(),
-            });
-            managed.session.sessionManager.appendMessage({
-              role: "assistant",
-              content: [{ type: "text", text: "done" }],
-              timestamp: Date.now(),
-            });
-            resolve();
-          });
-        });
-    }
-    const queuedPrompts = stubEchoPrompt(managedOf(service, subagents[3]), "late");
+    const child = await service.createSession(SELECTORS, {
+      forkedFrom: { sessionId: parent.sessionId, purpose: "subagent" },
+    });
+    subagents.push(child.sessionId);
+    const queuedPrompts = stubEchoPrompt(managedOf(service, child.sessionId), "late");
     const svc = service as unknown as {
       startSubagentRun(id: string, prompt: string, notify: boolean): string;
       subagentQueue: unknown[];
       queuedSubagentIds: Set<string>;
+      runningSubagentRuns: number;
     };
-    for (const id of subagents.slice(0, 3)) {
-      assert.equal(svc.startSubagentRun(id, "hold a slot", false), "started");
-    }
-    assert.equal(svc.startSubagentRun(subagents[3], "the task", false), "queued");
+    svc.runningSubagentRuns = 10;
+    assert.equal(svc.startSubagentRun(child.sessionId, "the task", false), "queued");
 
     // send_to_agent on a queued subagent must not queue a second run; the
     // message joins its context instead.
     const reply = await service.sendToSubagent(
       parent.sessionId,
-      subagents[3],
+      child.sessionId,
       "extra context",
     );
     assert.match(reply, /next turn/);
@@ -470,16 +468,11 @@ test("a queued subagent is not double-queued by send_to_agent and can be removed
     // interrupt_agent on a queued subagent removes it before it starts.
     const interrupted = await service.interruptSubagent(
       parent.sessionId,
-      subagents[3],
+      child.sessionId,
     );
     assert.match(interrupted, /Removed from the queue/);
     assert.equal(svc.subagentQueue.length, 0);
-    assert.ok(!svc.queuedSubagentIds.has(subagents[3]));
-
-    for (const release of gates) release();
-    await waitFor(() =>
-      subagents.slice(0, 3).every((id) => !managedOf(service, id).busy),
-    );
+    assert.ok(!svc.queuedSubagentIds.has(child.sessionId));
     assert.equal(queuedPrompts.length, 0, "removed subagent must never start");
   } finally {
     await service.disposeAll();

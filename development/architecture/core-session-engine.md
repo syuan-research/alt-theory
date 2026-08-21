@@ -699,34 +699,59 @@ the breakpoint; Retry reruns the latest prompt from the start.
 
 ### 5.3 Agent Team: Subagent Sessions And Addressed Mail (v1.3.0-alpha.5 M2)
 
-Lead conversations can delegate bounded tasks to subagents. Design
-record: `development/compound/2026-07-28-decision-v1.3-agent-team.md`.
+Lead conversations can delegate bounded tasks to subagents. The original alpha.5
+design record is `development/compound/2026-07-28-decision-v1.3-agent-team.md`;
+this section is the current source of truth where later behavior supersedes it.
 
 - **Subagents are real sessions**: children created with
   `forkedFrom: { sessionId, purpose: "subagent" }` on the same substrate as
   helper/side children — durable records, run lineage, break-point
   continuity, right-rail visibility, direct user messaging, and promotion
-  all apply. Depth is 1: a subagent gets no spawn tool
-  (`ManagedSession.subagentParentId` guards the service side).
-- **Tool surface** (`web-server/agent-team.ts`): leads get `spawn_agent`,
+  all apply. A spawned session is a full agent conversation and may spawn its
+  own children when work branches into independent follow-up tracks.
+- **Tool surface** (`web-server/agent-team.ts`): ordinary and spawned sessions get `spawn_agent`,
   `send_to_agent`, `check_agent`, `wait_for_agents`, `interrupt_agent`,
-  `list_agents`; subagents get `message_parent` only; A/B arms get none. The
+  `list_agents`; spawned sessions additionally get `message_parent`; A/B arms get none. The
   module owns only the model-facing contract; behavior lives in
   `SessionService` behind the `AgentTeamBridge` interface. Tools join the
   active set in both application runtimes and both Alt modes
   (`alt-theory-core.ts` `extraTools`/`extraPromptSections`).
 - **Capability and model**: child mode INHERITS the parent's, clamped to
   it (`clampSubagentMode`, owner 2026-08-07: Understand parents spawn only
-  Understand children; Work parents spawn Work children unless the spawn
-  asks for 'understand'). `model_tier: lower|same|higher`
-  resolves against configured-and-usable models by cost metadata
-  (`resolveModelTier`); an unresolvable tier falls back to `same` and says
-  so in the spawn report.
-- **Concurrency**: background subagent runs are capped at 3
+  Understand children; Work parents spawn Work children unless the spawn asks
+  for `understand`). `spawn_agent` accepts one self-contained `message`, an
+  optional `agent_type`, and an optional exact `model` override in Pi's native
+  `provider/model[:thinking]` format. It has no separate task/context slots, no
+  cost-derived strength tier, and no synchronous spawn-and-wait mode. The lead
+  may separately call bounded `wait_for_agents(timeout_s)` while children remain
+  background sessions.
+- **Subagent configuration** (`{dataDir}/subagents.json`): this file is isolated
+  from Pi's model/auth/settings files and from `app-settings.json`. Missing or
+  invalid configuration never blocks startup: the built-in `general-medium`
+  (default), `general-low`, and `general-high` presets remain available. They
+  inherit the lead's current provider/model and request medium, low, or high
+  thinking respectively through Pi's existing mapping.
+  The top-level `defaultAgent` names the preset used when `agent_type` is omitted
+  and initially points to `general-medium`; display grouping does not determine
+  the default.
+  Each ordered preset has one primary model reference plus ordered fallback
+  references; every reference may carry its own optional thinking suffix, so a
+  chain such as `provider-a/terra:high` → `provider-b/sol:low` is representable.
+  Thinking omission is valid and uses the selected model's normal initial level.
+  Writes are validated and atomic.
+- **Override boundary**: the model candidates exposed to the lead are the
+  deduplicated `provider/model` union of all primary and fallback references in
+  every preset, plus `inherit`. Thinking is not part of that union: any Pi
+  thinking level may be appended for a single spawn and Pi's existing
+  `thinkingLevelMap` translates it to provider/model-native controls. Preset
+  defaults are normal behavior; the lead is instructed to use exact overrides
+  only when the user requests one. An override replaces the first model for that
+  spawn while retaining the selected preset's ordered fallbacks and their own
+  thinking levels.
+- **Concurrency**: background subagent runs are capped at 10 across the process
   (`SUBAGENT_CONCURRENCY`); excess first-runs queue FIFO. `interrupt_agent`
   on a queued subagent removes it from the queue; `send_to_agent` with
-  `start_turn` on a queued subagent joins its context instead of
-  double-queuing.
+  a queued subagent joins its pending context instead of double-queuing.
 - **Addressed mail** (`web-server/agent-mail.ts`): one durable JSONL inbox
   per session (`recordsDir/agent-mail.jsonl`) carries parent↔child messages
   and child lifecycle events (`spawned/completed/failed/interrupted/

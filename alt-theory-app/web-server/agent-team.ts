@@ -1,15 +1,15 @@
 /**
  * Agent team: model-facing tool surface (v1.3.0-alpha.5 M2).
  *
- * The lead conversation gets spawn/send/check/wait/interrupt/list tools;
- * subagent children get message_parent. Everything the tools DO lives in
+ * Every ordinary agent conversation gets spawn/send/check/wait/interrupt/list;
+ * spawned children also get message_parent. Everything the tools DO lives in
  * SessionService behind the narrow AgentTeamBridge — this module owns only
  * the contract the model sees (design record
  * development/compound/2026-07-28-decision-v1.3-agent-team.md).
  *
  * Children are real Alt sessions (forkedFrom purpose "subagent"): durable,
- * inspectable in the right rail, user-messageable, promotable. Depth is 1:
- * subagents get no spawn tool.
+ * inspectable in the right rail, user-messageable, promotable, and able to
+ * delegate another level.
  */
 
 import { Type } from "typebox";
@@ -21,13 +21,11 @@ import type { AltMode } from "../core/alt-theory-core.js";
 // ---------------------------------------------------------------------------
 
 export interface SpawnSubagentOptions {
-  task: string;
+  message: string;
   name?: string;
-  context?: string;
+  agentType?: string;
+  model?: string;
   mode?: "understand" | "work";
-  modelTier?: "lower" | "same" | "higher";
-  /** true = caller blocks for the result, so no completion mail is sent. */
-  wait?: boolean;
 }
 
 export interface AgentTeamBridge {
@@ -35,8 +33,6 @@ export interface AgentTeamBridge {
     parentSessionId: string,
     options: SpawnSubagentOptions,
   ): Promise<{ report: string; sessionId: string }>;
-  /** Block until the subagent's current/queued first run settles; return its final answer. */
-  waitForSubagentResult(parentSessionId: string, agent: string): Promise<string>;
   sendToSubagent(
     parentSessionId: string,
     agent: string,
@@ -79,54 +75,6 @@ export function clampSubagentMode(
   return requested === "understand" ? "understand" : "work";
 }
 
-export interface TierCandidate {
-  provider: string;
-  id: string;
-  cost?: { input?: number; output?: number } | null;
-}
-
-function tierPrice(model: TierCandidate): number | null {
-  const input = model.cost?.input;
-  const output = model.cost?.output;
-  if (typeof input !== "number" && typeof output !== "number") return null;
-  return (input ?? 0) + (output ?? 0);
-}
-
-/**
- * Resolve a relative model tier against the models that are configured AND
- * usable right now. "lower"/"higher" pick the nearest cheaper/pricier model
- * by cost metadata; no priced candidate on the requested side -> null
- * (caller falls back to "same" and says so in the spawn report).
- */
-export function resolveModelTier(
-  available: readonly TierCandidate[],
-  current: { provider: string; id: string },
-  tier: "lower" | "same" | "higher",
-): TierCandidate | null {
-  if (tier === "same") return null;
-  const currentModel = available.find(
-    (model) => model.provider === current.provider && model.id === current.id,
-  );
-  const currentPrice = currentModel ? tierPrice(currentModel) : null;
-  if (currentPrice === null) return null;
-  const priced = available
-    .map((model) => ({ model, price: tierPrice(model) }))
-    .filter(
-      (entry): entry is { model: TierCandidate; price: number } =>
-        entry.price !== null &&
-        !(entry.model.provider === current.provider && entry.model.id === current.id),
-    );
-  const side =
-    tier === "lower"
-      ? priced.filter((entry) => entry.price < currentPrice)
-      : priced.filter((entry) => entry.price > currentPrice);
-  if (side.length === 0) return null;
-  side.sort((a, b) =>
-    tier === "lower" ? b.price - a.price : a.price - b.price,
-  );
-  return side[0].model;
-}
-
 // ---------------------------------------------------------------------------
 // System-prompt sections
 // ---------------------------------------------------------------------------
@@ -146,6 +94,7 @@ export const SUBAGENT_PROMPT_SECTION = [
   "## Subagent Role",
   "This conversation was spawned by a lead conversation to complete one bounded task (your first message). Work autonomously; the user can watch and join at any time.",
   "- Use message_parent to report a blocker or an important interim update; do not use it for routine narration.",
+  "- You are a full agent conversation: when the work reveals independent follow-up tracks, you may delegate them with spawn_agent.",
   "- Your final answer is reported back to the lead conversation automatically — end with a clear, self-contained result.",
 ].join("\n");
 
@@ -159,37 +108,29 @@ const text = (value: string) => ({
 });
 
 const spawnSchema = Type.Object({
-  task: Type.String({
+  message: Type.String({
     description:
-      "The bounded task for the subagent. Self-contained: the subagent does not see this conversation.",
+      "The complete bounded task packet for the subagent: instructions, facts, paths, and constraints. The subagent does not see this conversation.",
   }),
   name: Type.Optional(
     Type.String({ description: "Short display name for the subagent (shown to the user)" }),
   ),
-  context: Type.Optional(
+  agent_type: Type.Optional(
     Type.String({
-      description: "Context packet the subagent needs (facts, file paths, constraints)",
+      description:
+        "Configured subagent type from the Delegation section. Defaults to general-medium when omitted.",
+    }),
+  ),
+  model: Type.Optional(
+    Type.String({
+      description:
+        "Exact user-requested model override from the configured candidate list, in provider/model[:thinking] format. Normally omit this and use the agent type's model chain.",
     }),
   ),
   mode: Type.Optional(
     Type.Union([Type.Literal("understand"), Type.Literal("work")], {
       description:
         "Subagent Alt mode. Defaults to this conversation's mode (inherited); pass 'understand' to spawn a read-only child from a Work conversation. Never exceeds this conversation's mode.",
-    }),
-  ),
-  model_tier: Type.Optional(
-    Type.Union(
-      [Type.Literal("lower"), Type.Literal("same"), Type.Literal("higher")],
-      {
-        description:
-          "Relative model strength for the subagent, resolved against usable configured models. Default same.",
-      },
-    ),
-  ),
-  wait: Type.Optional(
-    Type.Boolean({
-      description:
-        "true = block until the subagent finishes and return its answer. Default false (background).",
     }),
   ),
 });
@@ -203,52 +144,21 @@ export function createAgentTeamTools(
   sessionId: string,
   role: "lead" | "subagent",
 ): ToolDefinition<any, any>[] {
-  if (role === "subagent") {
-    const messageParentSchema = Type.Object({
-      message: Type.String({ description: "The message for the lead conversation" }),
-      kind: Type.Optional(
-        Type.Union([Type.Literal("update"), Type.Literal("blocker")], {
-          description:
-            "update = interim progress worth relaying; blocker = you need input or a dependency to continue",
-        }),
-      ),
-    });
-    const messageParent: ToolDefinition<typeof messageParentSchema, undefined> = {
-      name: "message_parent",
-      label: "Message lead conversation",
-      description:
-        "Send a message to the lead conversation that spawned this subagent. Use kind=blocker when you cannot continue without input.",
-      parameters: messageParentSchema,
-      async execute(_id, params) {
-        return text(
-          await bridge.messageParent(
-            sessionId,
-            params.message,
-            params.kind ?? "update",
-          ),
-        );
-      },
-    };
-    return [messageParent];
-  }
-
   const spawnAgent: ToolDefinition<typeof spawnSchema, undefined> = {
     name: "spawn_agent",
     label: "Spawn subagent",
     description:
-      "Delegate a bounded task to a background subagent (a real conversation the user can watch and join). Returns the subagent's name and status; its completion arrives in this conversation automatically. Use wait:true only for quick lookups you need before continuing.",
+      "Delegate a bounded task to a background subagent (a real conversation the user can watch and join). Returns the subagent's name and status; its completion arrives in this conversation automatically.",
     parameters: spawnSchema,
     async execute(_id, params) {
       const spawned = await bridge.spawnSubagent(sessionId, {
-        task: params.task,
+        message: params.message,
         name: params.name,
-        context: params.context,
+        agentType: params.agent_type,
+        model: params.model,
         mode: params.mode,
-        modelTier: params.model_tier,
-        wait: params.wait ?? false,
       });
-      if (!params.wait) return text(spawned.report);
-      return text(await bridge.waitForSubagentResult(sessionId, spawned.sessionId));
+      return text(spawned.report);
     },
   };
 
@@ -337,6 +247,32 @@ export function createAgentTeamTools(
     },
   };
 
+  const messageParentSchema = Type.Object({
+    message: Type.String({ description: "The message for the parent conversation" }),
+    kind: Type.Optional(
+      Type.Union([Type.Literal("update"), Type.Literal("blocker")], {
+        description:
+          "update = interim progress worth relaying; blocker = you need input or a dependency to continue",
+      }),
+    ),
+  });
+  const messageParent: ToolDefinition<typeof messageParentSchema, undefined> = {
+    name: "message_parent",
+    label: "Message parent conversation",
+    description:
+      "Send a message to the conversation that spawned this agent. Use kind=blocker when you cannot continue without input.",
+    parameters: messageParentSchema,
+    async execute(_id, params) {
+      return text(
+        await bridge.messageParent(
+          sessionId,
+          params.message,
+          params.kind ?? "update",
+        ),
+      );
+    },
+  };
+
   return [
     spawnAgent,
     sendToAgent,
@@ -344,5 +280,6 @@ export function createAgentTeamTools(
     waitForAgents,
     interruptAgent,
     listAgents,
+    ...(role === "subagent" ? [messageParent] : []),
   ];
 }

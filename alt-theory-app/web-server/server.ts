@@ -151,6 +151,12 @@ import {
 } from "./app-settings.js";
 import { discoverSkillResources } from "./resource-discovery.js";
 import {
+  readSubagentConfig,
+  subagentConfigPath,
+  subagentModelCandidates,
+  writeSubagentConfig,
+} from "./subagent-config.js";
+import {
   describeWorkingFolders,
   listWorkingFolderChildren,
   searchWorkingFolder,
@@ -425,6 +431,33 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     };
     writeAppSettings(dataDir, next);
     res.json({ ok: true, autoTitle: next.autoTitle });
+  });
+  // Separate from app/Pi settings so a broken optional agent preset file can
+  // never prevent Alt Theory from opening with general/inherit.
+  app.get("/api/settings/subagents", (_req, res) => {
+    if (!requireLocalConfigMode(res)) return;
+    const loaded = readSubagentConfig(dataDir);
+    res.json({
+      ...loaded,
+      candidates: subagentModelCandidates(loaded.config),
+      path: subagentConfigPath(dataDir),
+    });
+  });
+  app.put("/api/settings/subagents", (req, res) => {
+    if (!requireLocalConfigMode(res)) return;
+    try {
+      const config = writeSubagentConfig(dataDir, req.body);
+      res.json({
+        ok: true,
+        config,
+        candidates: subagentModelCandidates(config),
+        path: subagentConfigPath(dataDir),
+      });
+    } catch (error) {
+      res.status(400).json({
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   });
   // --- Bundled-vs-user skill precedence (v1.3.0-alpha.3) ---
   app.get("/api/settings/skill-precedence", (_req, res) => {

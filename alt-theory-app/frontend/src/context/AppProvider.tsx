@@ -436,6 +436,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     },
     onRunCompleted: (payload) => {
       setRecovery(null);
+      setComposerNotice(null);
       setCurrentSessionModel(payload.currentModel ?? null);
       setConnStatus("idle");
       setConnLabel("Ready");
@@ -470,11 +471,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setComposerNotice(null);
         setRunHint(t("Editing after Stop won't branch. Use /branch if needed."));
       } else {
-        setComposerNoticeTimed({
-          prefix: interrupted ? undefined : "⚠",
-          text: `${interrupted ? t("Run interrupted: ") : t("Run failed: ")}${payload.error}`,
-          warn: !interrupted,
-        });
+        const oauthRefreshFailed = /oauth refresh failed|refresh[ _-]?token/i.test(payload.error);
+        setComposerNoticeTimed(
+          {
+            prefix: interrupted ? undefined : "⚠",
+            text: oauthRefreshFailed
+              ? t("OAuth login could not be refreshed. Open Settings → Models and reconnect this account.")
+              : `${interrupted ? t("Run interrupted: ") : t("Run failed: ")}${payload.error}`,
+            warn: !interrupted,
+          },
+          oauthRefreshFailed ? 0 : 4500,
+        );
         if (!interrupted) setRunHint("");
       }
     },
@@ -527,7 +534,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         composerNoticeTimerRef.current = null;
       }
       setComposerNotice(notice);
-      if (notice?.text) {
+      if (notice?.text && ttlMs > 0) {
         composerNoticeTimerRef.current = window.setTimeout(() => {
           setComposerNotice(null);
           composerNoticeTimerRef.current = null;
