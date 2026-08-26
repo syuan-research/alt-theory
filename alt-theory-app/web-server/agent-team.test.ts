@@ -17,6 +17,7 @@ import {
   clampSubagentMode,
   createAgentTeamTools,
 } from "./agent-team.js";
+import { DEFAULT_SUBAGENT_CONFIG } from "./subagent-config.js";
 import { readV4SessionHeader } from "./session-records.js";
 import { readSessionDetail } from "./session-store.js";
 
@@ -42,7 +43,12 @@ function setupFixture() {
   writeFileSync(modelsPath, JSON.stringify({ providers: { test: {
     baseUrl: "https://example.test/v1",
     api: "openai-completions",
-    models: [{ id: "model", name: "Test model", contextWindow: 16_000, maxTokens: 4_000 }],
+    models: [
+      { id: "model", name: "Test model", contextWindow: 16_000, maxTokens: 4_000 },
+      { id: "model-a", name: "Test model A", contextWindow: 16_000, maxTokens: 4_000 },
+      { id: "model-b", name: "Test model B", contextWindow: 16_000, maxTokens: 4_000 },
+      { id: "model-c", name: "Test model C", contextWindow: 16_000, maxTokens: 4_000 },
+    ],
   } } }), "utf-8");
   writeFileSync(authPath, JSON.stringify({ test: { type: "api_key", key: "test-key" } }), "utf-8");
   writeFileSync(appContextPath, "Agent team app context", "utf-8");
@@ -107,6 +113,7 @@ const SELECTORS = {
 type StubbableManaged = {
   busy: boolean;
   subagentParentId: string | null;
+  subagentConfig: { agents: Array<{ id: string; model: string }> };
   session: {
     prompt(text: string): Promise<void>;
     steer(text: string): Promise<void>;
@@ -474,6 +481,363 @@ test("a queued subagent is not double-queued by send_to_agent and can be removed
     assert.equal(svc.subagentQueue.length, 0);
     assert.ok(!svc.queuedSubagentIds.has(child.sessionId));
     assert.equal(queuedPrompts.length, 0, "removed subagent must never start");
+  } finally {
+    await service.disposeAll();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// v1.4.7 — managed-session configuration boundary and initial-spawn gate
+// ---------------------------------------------------------------------------
+
+function writeSubagentProbeConfig(
+  dataDir: string,
+  primary: string,
+  fallbackModels: string[],
+): void {
+  mkdirSync(dataDir, { recursive: true });
+  writeFileSync(
+    join(dataDir, "subagents.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      defaultAgent: DEFAULT_SUBAGENT_CONFIG.defaultAgent,
+      agents: [
+        ...DEFAULT_SUBAGENT_CONFIG.agents,
+        { id: "probe", model: primary, fallbackModels },
+      ],
+    }),
+    "utf-8",
+  );
+}
+
+test("an open parent validates spawns against its assembled subagent config snapshot", async () => {
+  const fixture = setupFixture();
+  writeSubagentProbeConfig(fixture.dataDir, "test/model-a", ["test/model-b"]);
+  const service = createTestService(fixture);
+  const svc = service as unknown as {
+    runningSubagentRuns: number;
+    drainSubagentQueue(): void;
+    handleAgentEvent(managed: unknown, event: unknown): void;
+  };
+  try {
+    const parent = await service.createSession(SELECTORS);
+    stubEchoPrompt(managedOf(service, parent.sessionId), "parent answer");
+
+    // The file changes to B after this parent was assembled.
+    writeSubagentProbeConfig(fixture.dataDir, "test/model-c", []);
+
+    // The open parent keeps snapshot A: B-only is rejected…
+    assert.equal(
+      managedOf(service, parent.sessionId).subagentConfig.agents.find(
+        (agent) => agent.id === "probe",
+      )?.model,
+      "test/model-a",
+    );
+    await assert.rejects(
+      service.spawnSubagent(parent.sessionId, {
+        message: "task",
+        agentType: "probe",
+        model: "test/model-c",
+      }),
+      /not in the configured subagent candidates/,
+    );
+
+    // Queue the spawn so the child's first run starts only under stubs.
+    svc.runningSubagentRuns = 10;
+    const spawned = await service.spawnSubagent(parent.sessionId, {
+      message: "task",
+      agentType: "probe",
+    });
+    const childHeader = readV4SessionHeader(
+      managedOf(service, spawned.sessionId).manifest.recordsDir,
+    );
+    assert.equal(childHeader?.modelOverride?.modelId, "model-a");
+    assert.deepEqual(
+      childHeader?.subagentExecution?.modelChain.map((entry) => entry.modelId),
+      ["model-a", "model-b"],
+    );
+
+    // The initial model cannot start the child: it advances the snapshot
+    // chain to model-b and completes — and the lead receives exactly one
+    // terminal envelope; the fallback step itself is not an outcome.
+    const childManaged = managedOf(service, spawned.sessionId);
+    childManaged.session.getSessionStats = () => ({
+      tokens: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        total: 0,
+      },
+      cost: 0,
+      contextUsage: null,
+    });
+    childManaged.session.prompt = async (text: string) => {
+      childManaged.session.sessionManager.appendMessage({
+        role: "user",
+        content: [{ type: "text", text }],
+        timestamp: Date.now(),
+      });
+      childManaged.session.state.errorMessage = "model-a unavailable";
+      svc.handleAgentEvent(childManaged, { type: "agent_end" });
+    };
+    childManaged.session.agent.continue = async () => {
+      childManaged.session.state.errorMessage = null;
+      childManaged.session.sessionManager.appendMessage({
+        role: "assistant",
+        content: [{ type: "text", text: "recovered on model-b" }],
+        timestamp: Date.now(),
+      });
+      svc.handleAgentEvent(childManaged, { type: "agent_end" });
+    };
+    svc.runningSubagentRuns = 0;
+    svc.drainSubagentQueue();
+
+    const parentMail = () =>
+      readAgentMail(managedOf(service, parent.sessionId).manifest.recordsDir)
+        .filter(
+          (envelope) =>
+            envelope.from === spawned.sessionId &&
+            envelope.kind === "lifecycle" &&
+            envelope.event !== "spawned",
+        );
+    await waitFor(() => parentMail().length === 1);
+    assert.equal(parentMail()[0]!.event, "completed");
+    assert.equal(childManaged.session.model.id, "model-b");
+
+    // A parent assembled after the change uses the current file (B).
+    const parentTwo = await service.createSession(SELECTORS);
+    stubEchoPrompt(managedOf(service, parentTwo.sessionId), "parent answer");
+    await assert.rejects(
+      service.spawnSubagent(parentTwo.sessionId, {
+        message: "task",
+        agentType: "probe",
+        model: "test/model-a",
+      }),
+      /not in the configured subagent candidates/,
+    );
+    svc.runningSubagentRuns = 10;
+    const spawnedB = await service.spawnSubagent(parentTwo.sessionId, {
+      message: "task",
+      agentType: "probe",
+    });
+    assert.equal(
+      readV4SessionHeader(
+        managedOf(service, spawnedB.sessionId).manifest.recordsDir,
+      )?.modelOverride?.modelId,
+      "model-c",
+    );
+
+    // A parent assembled under A and then reopened re-reads the current
+    // file: its snapshot is now B.
+    await service.disposeAll();
+    const reopenedService = createTestService(fixture);
+    try {
+      await reopenedService.openSession(parent.sessionId, SELECTORS);
+      assert.equal(
+        managedOf(reopenedService, parent.sessionId).subagentConfig.agents.find(
+          (agent) => agent.id === "probe",
+        )?.model,
+        "test/model-c",
+      );
+    } finally {
+      await reopenedService.disposeAll();
+    }
+  } finally {
+    await service.disposeAll();
+  }
+});
+
+test("the preset fallback chain exists only until the subagent first produces work", async () => {
+  const fixture = setupFixture();
+  writeSubagentProbeConfig(fixture.dataDir, "test/model-a", ["test/model-b"]);
+  const service = createTestService(fixture);
+  const svc = service as unknown as {
+    tryModelFallback(managed: unknown, error: string): Promise<boolean>;
+  };
+  try {
+    const parent = await service.createSession(SELECTORS);
+    const child = await service.createSession(SELECTORS, {
+      forkedFrom: { sessionId: parent.sessionId, purpose: "subagent" },
+      modelOverride: { provider: "test", modelId: "model-a" },
+      subagentExecution: {
+        agentType: "probe",
+        modelChain: [
+          { provider: "test", modelId: "model-a" },
+          { provider: "test", modelId: "model-b" },
+        ],
+      },
+    });
+    const managed = managedOf(service, child.sessionId) as unknown as {
+      session: {
+        model: { id: string };
+        agent: { continue(): Promise<void> };
+        sessionManager: {
+          appendMessage(message: unknown): string;
+          getBranch(): Array<{ type: string; message?: { role?: string } }>;
+        };
+      };
+      manifest: { model: string; recordsDir: string };
+      busy: boolean;
+    };
+    (managed.session.agent as unknown).continue = async () => {
+      managed.session.sessionManager.appendMessage({
+        role: "assistant",
+        content: [{ type: "text", text: "recovered by fallback" }],
+        timestamp: Date.now(),
+      });
+    };
+
+    // Before first work: an unavailable initial model advances the chain.
+    assert.equal(await svc.tryModelFallback(managed, "model-a unavailable"), true);
+    assert.equal(managed.session.model.id, "model-b");
+    assert.equal(managed.manifest.model, "model-b");
+
+    // The child is alive now; a follow-up failure must not re-enter the chain.
+    assert.equal(await svc.tryModelFallback(managed, "model-b also failing"), false);
+    assert.equal(managed.session.model.id, "model-b");
+
+    // Thinking-only output does not close the gate…
+    const quietChild = await service.createSession(SELECTORS, {
+      forkedFrom: { sessionId: parent.sessionId, purpose: "subagent" },
+      modelOverride: { provider: "test", modelId: "model-a" },
+      subagentExecution: {
+        agentType: "probe",
+        modelChain: [
+          { provider: "test", modelId: "model-a" },
+          { provider: "test", modelId: "model-b" },
+        ],
+      },
+    });
+    const quietManaged = managedOf(service, quietChild.sessionId);
+    quietManaged.session.sessionManager.appendMessage({
+      role: "assistant",
+      content: [{ type: "thinking", text: "internal deliberation only" }],
+      timestamp: Date.now(),
+    });
+    quietManaged.session.agent.continue = async () => {};
+    assert.equal(
+      await svc.tryModelFallback(quietManaged, "model-a unavailable"),
+      true,
+      "thinking-only output must keep the initial chain available",
+    );
+
+    // …and a model outside the chain is not "before index zero".
+    const outsiderChild = await service.createSession(SELECTORS, {
+      forkedFrom: { sessionId: parent.sessionId, purpose: "subagent" },
+      modelOverride: { provider: "test", modelId: "model" },
+      subagentExecution: {
+        agentType: "probe",
+        modelChain: [
+          { provider: "test", modelId: "model-a" },
+          { provider: "test", modelId: "model-b" },
+        ],
+      },
+    });
+    const outsiderManaged = managedOf(service, outsiderChild.sessionId);
+    outsiderManaged.session.agent.continue = async () => {};
+    assert.equal(
+      await svc.tryModelFallback(outsiderManaged, "whatever"),
+      false,
+      "a model not in the chain must not restart the chain at index zero",
+    );
+    assert.equal(outsiderManaged.session.model.id, "model");
+
+    // A reopened child that had already produced work does not regain the gate.
+    await service.disposeAll();
+    const reopenedService = createTestService(fixture);
+    try {
+      await reopenedService.openSession(child.sessionId, SELECTORS);
+      const reopenedManaged = managedOf(reopenedService, child.sessionId);
+      reopenedManaged.session.agent.continue = async () => {};
+      assert.equal(
+        await (
+          reopenedService as unknown as {
+            tryModelFallback(managed: unknown, error: string): Promise<boolean>;
+          }
+        ).tryModelFallback(reopenedManaged, "model-b failing again"),
+        false,
+        "an already-alive reopened child must not re-enter the initial chain",
+      );
+      assert.equal(reopenedManaged.session.model.id, "model-b");
+    } finally {
+      await reopenedService.disposeAll();
+    }
+  } finally {
+    await service.disposeAll();
+  }
+});
+
+test("explicit interrupt sends exactly one interrupted outcome and the child stays usable", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  try {
+    const parent = await service.createSession(SELECTORS);
+    const parentManaged = managedOf(service, parent.sessionId);
+    stubEchoPrompt(parentManaged, "noted");
+    const child = await service.createSession(SELECTORS, {
+      forkedFrom: { sessionId: parent.sessionId, purpose: "subagent" },
+    });
+    const childManaged = managedOf(service, child.sessionId);
+
+    let rejectPrompt!: (error: Error) => void;
+    childManaged.session.prompt = (text: string) =>
+      new Promise<void>((_resolve, reject) => {
+        childManaged.session.sessionManager.appendMessage({
+          role: "user",
+          content: [{ type: "text", text }],
+          timestamp: Date.now(),
+        });
+        rejectPrompt = reject;
+      });
+    childManaged.session.abort = async () => {
+      const abortError = new Error("Operation aborted");
+      abortError.name = "AbortError";
+      rejectPrompt(abortError);
+    };
+
+    (
+      service as unknown as {
+        startSubagentRun(id: string, prompt: string, notify: boolean): string;
+      }
+    ).startSubagentRun(child.sessionId, "the bounded task", true);
+    await waitFor(() => Boolean(childManaged.busy));
+    await service.interruptSubagent(parent.sessionId, child.sessionId);
+
+    const outcomes = () =>
+      readAgentMail(parentManaged.manifest.recordsDir).filter(
+        (envelope) =>
+          envelope.kind === "lifecycle" &&
+          envelope.from === child.sessionId &&
+          envelope.event !== "spawned",
+      );
+    await waitFor(() => outcomes().length === 1);
+    assert.equal(outcomes()[0]!.event, "interrupted");
+    await waitFor(() => !childManaged.busy);
+
+    // The child remains a usable conversation: a later message acts on it.
+    childManaged.session.prompt = async (text: string) => {
+      childManaged.session.sessionManager.appendMessage({
+        role: "user",
+        content: [{ type: "text", text }],
+        timestamp: Date.now(),
+      });
+      childManaged.session.sessionManager.appendMessage({
+        role: "assistant",
+        content: [{ type: "text", text: "resumed after the break" }],
+        timestamp: Date.now(),
+      });
+    };
+    await service.sendToSubagent(parent.sessionId, child.sessionId, "continue");
+    await waitFor(() =>
+      readAgentMail(parentManaged.manifest.recordsDir).some(
+        (envelope) =>
+          envelope.kind === "lifecycle" &&
+          envelope.from === child.sessionId &&
+          envelope.event === "completed",
+      ),
+    );
+    assert.equal(outcomes().length, 2, "one interrupted + one completed");
   } finally {
     await service.disposeAll();
   }

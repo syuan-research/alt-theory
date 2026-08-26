@@ -126,6 +126,7 @@ import {
   modelReferenceIdentity,
   readSubagentConfig,
   subagentModelCandidates,
+  type SubagentConfig,
   THINKING_LEVELS,
 } from "./subagent-config.js";
 
@@ -327,6 +328,13 @@ interface ManagedSession {
   /** Set when this session is a subagent child: its lead conversation's id. */
   subagentParentId: string | null;
   subagentModelChain: SessionModelOverride[];
+  /**
+   * subagents.json as normalized when this session was assembled. The lead
+   * prompt and every spawn validation inside this open session read this
+   * snapshot; a settings change applies to newly assembled or reopened
+   * sessions, never to an already-open one.
+   */
+  subagentConfig: SubagentConfig;
   /** In-flight turn buffered for late joiners (v1.4.3); null when idle. */
   liveRun: LiveRun | null;
   /** Structured cause for the in-flight turn when Alt asks Pi to stop it. */
@@ -337,6 +345,16 @@ interface ManagedSession {
 const SUBAGENT_CONCURRENCY = 10;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * An already-typed upstream abort signal (Pi aborts surface as
+ * AbortError-named rejections). Interruption is classified from this or from
+ * Alt's explicit interruption cause — never from error text, which lets a
+ * provider/transport message containing "interrupt" masquerade as a stop.
+ */
+function isTypedAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
+}
 
 export class SessionService implements AgentTeamBridge {
   private readonly sessions = new Map<string, ManagedSession>();
@@ -1114,6 +1132,7 @@ export class SessionService implements AgentTeamBridge {
 
     managed.busy = true;
     managed.fallbackAttempts = 0;
+    managed.pendingInterruptionCause = null;
     const revisionId = formatCounter("rev", managed.nextRevisionIndex++);
     const runId = formatCounter("run", managed.nextRunIndex++);
     const acceptedAt = new Date().toISOString();
@@ -1178,8 +1197,14 @@ export class SessionService implements AgentTeamBridge {
           : pendingError
             ? String(pendingError)
             : null);
-      const interrupted = /abort|interrupt/i.test(String(retryError));
-      const failed = Boolean(finalError || retryError || pendingError);
+      // Same classification rule as runPromptWithLineage: only an explicit
+      // Alt stop or a typed abort is an interruption; error text never is.
+      const interrupted =
+        managed.pendingInterruptionCause !== null ||
+        isTypedAbortError(retryError) ||
+        isTypedAbortError(pendingError);
+      const failed =
+        interrupted || Boolean(finalError || retryError || pendingError);
       appendRunRecord(managed.manifest.recordsDir, {
         sessionId,
         branchId: managed.branchId,
@@ -1831,8 +1856,14 @@ export class SessionService implements AgentTeamBridge {
           : pendingError
             ? String(pendingError)
             : null);
-      if (finalError || /abort|interrupt/i.test(String(promptError))) {
-        const interrupted = /abort|interrupt/i.test(String(promptError));
+      // Interrupted only when Alt explicitly stopped this turn (cause set
+      // before abort) or the rejection is a typed abort. An unmarked
+      // provider/transport error is failed even if its text says "interrupt".
+      const interrupted =
+        managed.pendingInterruptionCause !== null ||
+        isTypedAbortError(promptError) ||
+        isTypedAbortError(pendingError);
+      if (finalError || promptError || pendingError || interrupted) {
         appendRunRecord(managed.manifest.recordsDir, {
           sessionId,
           branchId: managed.branchId,
@@ -1973,6 +2004,28 @@ export class SessionService implements AgentTeamBridge {
     });
   }
 
+  /**
+   * One shared post-compaction projection for every trigger (manual,
+   * threshold, overflow): the boundary just landed on the live branch, so
+   * rebuild the transcript from in-memory state (a disk re-read can briefly
+   * lag and omit the marker) and republish metrics — Pi reports context
+   * usage as unknown after compaction until the next real model usage, so
+   * the stale pre-compaction percentage clears here instead of persisting.
+   */
+  private publishCompactionBoundary(managed: ManagedSession): void {
+    managed.transcript = buildTranscriptFromEntries(
+      managed.session.sessionManager.getBranch(),
+    );
+    this.emit(managed, {
+      type: "session_transcript",
+      payload: { messages: [...managed.transcript] },
+    });
+    this.emit(managed, {
+      type: "session_metrics",
+      payload: this.persistMetrics(managed),
+    });
+  }
+
   async compact(sessionId: string): Promise<SessionSnapshot> {
     const managed = this.requireSession(sessionId);
     if (managed.busy || managed.session.isStreaming) {
@@ -1984,22 +2037,11 @@ export class SessionService implements AgentTeamBridge {
     try {
       await managed.session.compact();
       managed.busy = false;
-      // Pi has already appended the compaction entry to this live branch. Use
-      // that authoritative in-memory state for the immediate UI refresh; a
-      // disk re-read can briefly lag behind and omit the new boundary.
-      managed.transcript = buildTranscriptFromEntries(
-        managed.session.sessionManager.getBranch(),
-      );
-      const snapshot = this.snapshot(managed);
-      this.emit(managed, {
-        type: "session_transcript",
-        payload: { messages: [...managed.transcript] },
-      });
-      this.emit(managed, {
-        type: "session_metrics",
-        payload: this.persistMetrics(managed),
-      });
-      return snapshot;
+      // The compaction_end agent event already published the boundary through
+      // the shared path; publish again so a stubbed compact() (tests) and any
+      // projection ordering race cannot leave the UI without the marker.
+      this.publishCompactionBoundary(managed);
+      return this.snapshot(managed);
     } catch (error) {
       if (
         leafBeforeCompact &&
@@ -2285,11 +2327,14 @@ export class SessionService implements AgentTeamBridge {
 
   /**
    * Ordinary and spawned conversations can delegate; spawned conversations
-   * also get message_parent. A/B arms remain comparison instruments.
+   * also get message_parent. A/B arms remain comparison instruments. The
+   * subagent prompt section is formatted from the caller's config snapshot
+   * (read once per assembly) so it cannot diverge from spawn validation.
    */
   private agentTeamArgsFor(
     sessionId: string,
     purpose: ForkPurpose | null | undefined,
+    subagentConfig: SubagentConfig,
   ): { extraTools: ToolDefinition[]; extraPromptSections: string[] } {
     if (purpose === "subagent") {
       return {
@@ -2297,7 +2342,7 @@ export class SessionService implements AgentTeamBridge {
         extraPromptSections: [
           SUBAGENT_PROMPT_SECTION,
           LEAD_DELEGATION_PROMPT_SECTION,
-          formatSubagentConfigForPrompt(readSubagentConfig(this.config.dataDir).config),
+          formatSubagentConfigForPrompt(subagentConfig),
         ],
       };
     }
@@ -2308,7 +2353,7 @@ export class SessionService implements AgentTeamBridge {
       extraTools: createAgentTeamTools(this, sessionId, "lead"),
       extraPromptSections: [
         LEAD_DELEGATION_PROMPT_SECTION,
-        formatSubagentConfigForPrompt(readSubagentConfig(this.config.dataDir).config),
+        formatSubagentConfigForPrompt(subagentConfig),
       ],
     };
   }
@@ -2336,6 +2381,7 @@ export class SessionService implements AgentTeamBridge {
       throw new Error(`Workspace primary directory does not exist: ${primaryDir}`,);
     }
     const appSettings = readAppSettings(this.config.dataDir);
+    const subagentConfig = readSubagentConfig(this.config.dataDir).config;
     const result = await createAltTheorySession({
       ...sessionDirs,
       ...(primaryDir ? { sessionCwd: primaryDir } : {}),
@@ -2380,6 +2426,7 @@ export class SessionService implements AgentTeamBridge {
       ...this.agentTeamArgsFor(
         sessionDirs.sessionId,
         metadata.forkedFrom?.purpose ?? null,
+        subagentConfig,
       ),
     });
     const visibility = metadata.visibility ?? this.fallbackVisibility;
@@ -2417,6 +2464,7 @@ export class SessionService implements AgentTeamBridge {
     const managed = await this.createManaged({
       ...result,
       selectors,
+      subagentConfig,
       openedFrom: "new",
       resumeWarnings: [],
       counters: { messageCount: 0, toolCallCount: 0, turnCount: 0 },
@@ -2581,7 +2629,10 @@ export class SessionService implements AgentTeamBridge {
     const header = readV4SessionHeader(parent.manifest.recordsDir);
     const mode = clampSubagentMode(parent.getAltMode(), options.mode);
 
-    const config = readSubagentConfig(this.config.dataDir).config;
+    // Validate against the parent's assembled snapshot, not the current file:
+    // within one open conversation, prompt candidates and spawn validation
+    // cannot diverge (v1.4.7 managed-session configuration boundary).
+    const config = parent.subagentConfig;
     const agentType = options.agentType ?? config.defaultAgent;
     const preset = config.agents.find((agent) => agent.id === agentType);
     if (!preset) {
@@ -3131,6 +3182,7 @@ export class SessionService implements AgentTeamBridge {
     const persistedHeader = readV4SessionHeader(sessionDirs.recordsDir);
     const persistedMode = persistedHeader?.mode ?? "understand";
     const appSettings = readAppSettings(this.config.dataDir);
+    const subagentConfig = readSubagentConfig(this.config.dataDir).config;
 
     // Stale-workspace recovery (v1.2.1): the recorded working folder can vanish
     // between sessions (rename / merge / delete). Don't point Pi's cwd at a dead
@@ -3187,6 +3239,7 @@ export class SessionService implements AgentTeamBridge {
       ...this.agentTeamArgsFor(
         sessionId,
         persistedHeader?.forkedFrom?.purpose ?? null,
+        subagentConfig,
       ),
     };
     // Model-on-resume recovery (v1.2.1 item 2): a per-session model override can
@@ -3236,6 +3289,7 @@ export class SessionService implements AgentTeamBridge {
         soulSlug: activeSoulSlug,
         customInstructionRef: activeInstructionRef,
       },
+      subagentConfig,
       openedFrom: "existing",
       resumeWarnings: [...assetWarnings, ...result.resumeWarnings],
       counters: {
@@ -3329,6 +3383,7 @@ export class SessionService implements AgentTeamBridge {
     };
     const persistedMode = previous.getAltMode();
     const appSettings = readAppSettings(this.config.dataDir);
+    const subagentConfig = readSubagentConfig(this.config.dataDir).config;
     const result = await openAltTheorySession({
       ...activeSessionDirs,
       workspaceDirs: previous.getWorkspace().additionalDirs,
@@ -3366,6 +3421,7 @@ export class SessionService implements AgentTeamBridge {
       ...this.agentTeamArgsFor(
         previous.manifest.sessionId,
         readV4SessionHeader(sessionDirs.recordsDir)?.forkedFrom?.purpose ?? null,
+        subagentConfig,
       ),
       overrideSessionCwd: true,
     });
@@ -3381,6 +3437,7 @@ export class SessionService implements AgentTeamBridge {
     return await this.createManaged({
       ...result,
       selectors,
+      subagentConfig,
       openedFrom: previous.openedFrom,
       resumeWarnings: result.resumeWarnings,
       counters: previous.counters,
@@ -3414,6 +3471,7 @@ export class SessionService implements AgentTeamBridge {
     const persistedHeader = readV4SessionHeader(args.sessionDirs.recordsDir);
     const persistedMode = args.mode ?? persistedHeader?.mode ?? "understand";
     const appSettings = readAppSettings(this.config.dataDir);
+    const subagentConfig = readSubagentConfig(this.config.dataDir).config;
     const persistedWorkspace = args.workspace ?? persistedHeader?.workspace;
     const result = await openAltTheorySession({
       ...args.sessionDirs,
@@ -3457,6 +3515,7 @@ export class SessionService implements AgentTeamBridge {
       ...this.agentTeamArgsFor(
         args.sessionId,
         args.forkPurpose ?? persistedHeader?.forkedFrom?.purpose ?? null,
+        subagentConfig,
       ),
     });
     if ("activeLeafEntryId" in args) {
@@ -3470,6 +3529,7 @@ export class SessionService implements AgentTeamBridge {
     return await this.createManaged({
       ...result,
       selectors: args.selectors,
+      subagentConfig,
       openedFrom: args.openedFrom,
       resumeWarnings: args.resumeWarnings,
       counters: args.counters,
@@ -3489,6 +3549,7 @@ export class SessionService implements AgentTeamBridge {
     getWorkspace: () => { primaryDir: string; additionalDirs: string[] };
     addWorkspaceDir: (dir: string) => Promise<string[]>;
     selectors: SessionSelectors;
+    subagentConfig: SubagentConfig;
     openedFrom: "new" | "existing";
     resumeWarnings: string[];
     counters: SessionCounters;
@@ -3729,12 +3790,47 @@ export class SessionService implements AgentTeamBridge {
     return true;
   }
 
+  /**
+   * Whether a subagent child has already become alive — produced valid
+   * assistant text or executed a tool. Thinking-only output does not count.
+   * Derived from the live branch, so a reopened child derives it from its
+   * persisted history without extra schema (v1.4.7 initial-spawn gate).
+   */
+  private subagentHasProducedWork(managed: ManagedSession): boolean {
+    for (const entry of managed.session.sessionManager.getBranch()) {
+      if (entry.type !== "message") continue;
+      const message = entry.message as {
+        role?: string;
+        content?: unknown;
+      };
+      if (message.role === "toolResult") return true;
+      if (
+        message.role === "assistant" &&
+        Array.isArray(message.content) &&
+        (message.content as Array<{ type?: string; text?: string }>).some(
+          (part) =>
+            part.type === "text" &&
+            typeof part.text === "string" &&
+            part.text.trim().length > 0,
+        )
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   private async trySubagentModelFallback(
     managed: ManagedSession,
     error: string,
   ): Promise<boolean> {
     const current = managed.session.model;
     if (!current) return false;
+    // The preset chain exists only to recover an initial spawn whose selected
+    // model cannot start the child. Once the child is alive, later turns are
+    // ordinary session turns and must not re-enter the chain; a model that is
+    // not in the chain is not "before index zero" either.
+    if (this.subagentHasProducedWork(managed)) return false;
     const currentIndex = managed.subagentModelChain.findIndex(
       (entry) =>
         entry.provider === current.provider &&
@@ -3742,8 +3838,9 @@ export class SessionService implements AgentTeamBridge {
         (entry.thinkingLevel === undefined ||
           entry.thinkingLevel === managed.session.thinkingLevel),
     );
+    if (currentIndex < 0) return false;
     for (
-      let index = currentIndex < 0 ? 0 : currentIndex + 1;
+      let index = currentIndex + 1;
       index < managed.subagentModelChain.length;
       index++
     ) {
@@ -3861,6 +3958,19 @@ export class SessionService implements AgentTeamBridge {
           delayMs: event.delayMs,
         });
         break;
+      case "compaction_start":
+        this.emitRunPhase(managed, "compacting");
+        break;
+      case "compaction_end": {
+        // Compaction events are the state authority (manual, threshold,
+        // overflow). Only a completed, non-aborted boundary (result present)
+        // is published; an aborted or failed compaction left no boundary.
+        if (!event.aborted && !event.errorMessage && event.result) {
+          this.publishCompactionBoundary(managed);
+        }
+        this.emitRunPhase(managed, event.willRetry ? "processing" : "idle");
+        break;
+      }
       case "agent_end": {
         if (event.willRetry) {
           // Pi auto-retries this error and emits another agent_end afterwards;

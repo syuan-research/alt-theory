@@ -145,45 +145,48 @@ export function Shell() {
         <SettingsView />
       ) : shell.surface === "review" ? (
         <ReviewPage />
-      ) : (
+      ) : null}
+      {/* The conversation subtree stays mounted while Settings/Review is
+          open — hidden, not unmounted — so the composer draft, DOM editing
+          state, and browser undo survive the round trip (v1.4.7). */}
+      <div
+        className="cols"
+        hidden={shell.surface !== "app"}
+        style={
+          {
+            "--left-width": `${leftWidth}px`,
+            "--right-width": `${shell.rightWidth}px`,
+          } as CSSProperties
+        }
+      >
+        <LeftNav />
         <div
-          className="cols"
-          style={
-            {
-              "--left-width": `${leftWidth}px`,
-              "--right-width": `${shell.rightWidth}px`,
-            } as CSSProperties
-          }
-        >
-          <LeftNav />
-          <div
-            className="pane-resizer"
-            role="separator"
-            aria-label={t("Resize conversation list")}
-            aria-orientation="vertical"
-            aria-valuemin={0}
-            aria-valuemax={LEFT_PANE.max}
-            aria-valuenow={shell.leftCollapsed ? 0 : leftWidth}
-            tabIndex={0}
-            onPointerDown={(event) => beginResize("left", event)}
-            onKeyDown={(event) => resizeKey("left", event.key)}
-          />
-          <ConversationPanel />
-          <div
-            className="pane-resizer"
-            role="separator"
-            aria-label={t("Resize files and details panel")}
-            aria-orientation="vertical"
-            aria-valuemin={0}
-            aria-valuemax={RIGHT_PANE.max}
-            aria-valuenow={shell.rightPanel ? shell.rightWidth : 0}
-            tabIndex={0}
-            onPointerDown={(event) => beginResize("right", event)}
-            onKeyDown={(event) => resizeKey("right", event.key)}
-          />
-          <InspectorPanel />
-        </div>
-      )}
+          className="pane-resizer"
+          role="separator"
+          aria-label={t("Resize conversation list")}
+          aria-orientation="vertical"
+          aria-valuemin={0}
+          aria-valuemax={LEFT_PANE.max}
+          aria-valuenow={shell.leftCollapsed ? 0 : leftWidth}
+          tabIndex={0}
+          onPointerDown={(event) => beginResize("left", event)}
+          onKeyDown={(event) => resizeKey("left", event.key)}
+        />
+        <ConversationPanel />
+        <div
+          className="pane-resizer"
+          role="separator"
+          aria-label={t("Resize files and details panel")}
+          aria-orientation="vertical"
+          aria-valuemin={0}
+          aria-valuemax={RIGHT_PANE.max}
+          aria-valuenow={shell.rightPanel ? shell.rightWidth : 0}
+          tabIndex={0}
+          onPointerDown={(event) => beginResize("right", event)}
+          onKeyDown={(event) => resizeKey("right", event.key)}
+        />
+        <InspectorPanel />
+      </div>
       {app.loginRequired ? (
         <LoginOverlay onLogin={app.login} error={app.authError} />
       ) : null}

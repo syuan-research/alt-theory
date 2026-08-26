@@ -748,6 +748,29 @@ this section is the current source of truth where later behavior supersedes it.
   only when the user requests one. An override replaces the first model for that
   spawn while retaining the selected preset's ordered fallbacks and their own
   thinking levels.
+- **Per-session configuration snapshot** (v1.4.7): `subagents.json` is read
+  once while a managed session is assembled (new, reopen, reconfigure, and
+  runtime-open paths) and kept in memory on the session. The lead prompt's
+  candidate list and every `spawn_agent` validation inside that open session
+  read the snapshot, never the file, so the two cannot diverge mid-session. A
+  newly assembled or reopened session reads current settings; an already-open
+  session keeps its snapshot until reopened. Settings save copy states this
+  lifecycle rule.
+- **Initial-spawn fallback gate** (v1.4.7): a preset's ordered fallback chain
+  exists only to recover an initial spawn whose selected model cannot start the
+  child. Once the child first becomes alive — its first valid assistant text or
+  tool execution; thinking-only output does not count — later turns are
+  ordinary session turns and never re-enter the chain, and a session whose
+  current model is not in the chain does not restart it. Aliveness is derived
+  from the live branch, so a reopened child derives it from persisted history
+  without extra schema.
+- **Terminal-only parent outcomes and interruption classification** (v1.4.7):
+  the parent is woken for terminal turn outcomes only — completed, failed, or
+  interrupted. Pi auto-retries and a successful preset/model fallback are not
+  outcomes and stay silent. A turn is `interrupted` only when Alt explicitly
+  stopped it (the recorded interruption cause) or the rejection is a typed
+  abort; a provider/transport error whose text contains "interrupt" is
+  `failed`.
 - **Concurrency**: background subagent runs are capped at 10 across the process
   (`SUBAGENT_CONCURRENCY`); excess first-runs queue FIFO. `interrupt_agent`
   on a queued subagent removes it from the queue; `send_to_agent` with
@@ -1032,10 +1055,15 @@ Limits (current):
   `thinking_delta` is not streamed. Transcript load preserves thinking text for
   Developer view after the turn. Run-phase labels (connecting vs thinking) are
   not exposed (v0.6 §7).
-- Manual conversation compaction is exposed as `/compact` and delegates to
-  Pi's native session compaction before refreshing the transcript and metrics.
-  Retry events remain deferred. Write-path enforcement is hard (guarded write
-  + security extension), but it remains
+- Conversation compaction is event-driven (v1.4.7): manual `/compact`,
+  threshold, and overflow compaction all publish through one shared projection
+  when Pi's `compaction_end` reports a completed, non-aborted boundary. The
+  transcript rebuilds from the live branch so the marker appears immediately,
+  and metrics republish with unknown (null) context usage until the next real
+  model usage arrives — a stale pre-compaction percentage never persists.
+  Aborted or failed compaction publishes nothing. Manual compaction delegates
+  to Pi's native session compaction. Retry events remain deferred. Write-path
+  enforcement is hard (guarded write + security extension), but it remains
   policy in trusted code; OS-level enforcement is out of scope.
 - App-level auth is file-backed and process-local in v0.5.0: account records
   persist in the data directory, but browser auth tokens are in memory and

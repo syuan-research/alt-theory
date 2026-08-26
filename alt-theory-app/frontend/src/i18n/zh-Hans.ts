@@ -746,7 +746,7 @@ const catalog: Record<string, string> = {
   "Move fallback down": "下移回退模型",
   "Inherit current model": "继承当前模型",
   "Subagent configuration is managed by this deployment.": "子代理配置由此部署管理。",
-  "Saved": "已保存",
+  "Saved. New conversations use these settings now. Open conversations keep their current agent setup until they are reopened.": "已保存。新对话现在就会使用这些设置；已打开的对话会保留当前的代理配置，直到重新打开。",
   "Subagent name": "子代理名称",
   "Description": "描述",
   "When should this subagent be used?": "什么时候应使用这个子代理？",

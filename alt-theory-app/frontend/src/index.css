@@ -135,6 +135,14 @@
   select {
     font: inherit;
   }
+
+  /* Shell-hiding (v1.4.7): the conversation subtree stays mounted under
+     Settings/Review via the native hidden attribute; explicit display rules
+     (e.g. .cols) would otherwise override the UA's hidden styling and leave
+     hidden UI focusable. */
+  [hidden] {
+    display: none !important;
+  }
 }
 
 @layer components {
@@ -436,7 +444,7 @@
   .tool-detail.cmd { font-family: var(--mono); font-size: 0.76rem; white-space: pre-wrap; word-break: break-word; margin-top: 6px; color: var(--text-2); }
   .tool-detail.markdown-body { font-size: 0.8125rem; color: var(--text-2); }
   .tool-detail .passage { margin-bottom: 10px; }
-  .tool-detail .passage-before { white-space: pre-wrap; color: var(--text-3); text-decoration: line-through; text-decoration-color: var(--color-danger); opacity: 0.75; }
+  .tool-detail .passage-before { white-space: pre-wrap; color: var(--text-3); text-decoration: line-through; text-decoration-color: var(--text-3); opacity: 0.75; }
   .tool-detail .passage-after { white-space: pre-wrap; color: var(--ink-soft); margin-top: 4px; }
 
   /* turn-end changed-files card (alpha.3): machine facts, one click to the diff */

@@ -1023,7 +1023,11 @@ test("SessionService preserves imported history after an interrupted first run",
       content: [{ type: "text", text: "partial answer" }],
       timestamp: Date.now(),
     });
-    throw new Error("Operation aborted");
+    // Interruption is only classified from a typed abort (or Alt's explicit
+    // stop) — never from message text (v1.4.7).
+    const abortError = new Error("Operation aborted");
+    abortError.name = "AbortError";
+    throw abortError;
   };
   await assert.rejects(
     service.runPrompt(created.sessionId, "first Alt turn").completion,
@@ -1094,6 +1098,39 @@ test("SessionService records user Stop as interrupted with a user_abort cause", 
       service.getSnapshot(created.sessionId).recovery?.canContinue,
       true,
     );
+  } finally {
+    await service.disposeAll();
+  }
+});
+
+test("a provider error containing 'interrupt' without an explicit stop is a failure", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const created = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const managed = (service as any).sessions.get(created.sessionId);
+  managed.session.prompt = async (text: string) => {
+    managed.session.sessionManager.appendMessage({
+      role: "user",
+      content: [{ type: "text", text }],
+      timestamp: Date.now(),
+    });
+    throw new Error("Connection interrupted by provider");
+  };
+
+  try {
+    await assert.rejects(
+      service.runPrompt(created.sessionId, "go").completion,
+      /interrupted by provider/,
+    );
+    const failedRun = latestRunSnapshots(
+      service.getManifest(created.sessionId).recordsDir,
+    ).at(-1)!;
+    assert.equal(failedRun.status, "failed");
+    assert.equal(failedRun.interruptionCause ?? null, null);
   } finally {
     await service.disposeAll();
   }
@@ -2414,6 +2451,215 @@ test("SessionService publishes the compaction boundary from the live branch imme
           message.text === "fresh compact summary",
       ),
     );
+  } finally {
+    await service.disposeAll();
+  }
+});
+
+test("a threshold compaction_end publishes the boundary and clears stale context usage", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const snapshot = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const managed = (service as any).sessions.get(snapshot.sessionId);
+  const userEntryId = managed.session.sessionManager.appendMessage({
+    role: "user",
+    content: [{ type: "text", text: "long conversation" }],
+    timestamp: Date.now(),
+  });
+  managed.session.sessionManager.appendMessage({
+    role: "assistant",
+    content: [{ type: "text", text: "old answer" }],
+    usage: {
+      input: 9000,
+      output: 500,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 9500,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    },
+    stopReason: "stop",
+    timestamp: Date.now(),
+  });
+  const events: SessionServiceEvent[] = [];
+  service.attach(snapshot.sessionId, (event) => events.push(event));
+
+  try {
+    // Pre-compaction: the context ring shows a real (stale-to-be) percentage.
+    const before = (service as any).buildMetrics(managed).contextUsage;
+    assert.ok(before && before.tokens !== null && before.percent !== null);
+
+    (service as any).handleAgentEvent(managed, {
+      type: "compaction_start",
+      reason: "threshold",
+    });
+    assert.equal(
+      events.at(-1)?.type === "run_phase" ? events.at(-1)?.payload.phase : null,
+      "compacting",
+    );
+
+    // Pi appends the boundary entry, then emits the completed compaction.
+    managed.session.sessionManager.appendCompaction(
+      "threshold summary",
+      userEntryId,
+      9500,
+    );
+    (service as any).handleAgentEvent(managed, {
+      type: "compaction_end",
+      reason: "threshold",
+      result: {
+        summary: "threshold summary",
+        firstKeptEntryId: userEntryId,
+        tokensBefore: 9500,
+      },
+      aborted: false,
+      willRetry: false,
+    });
+
+    const transcriptEvent = [...events]
+      .reverse()
+      .find((event) => event.type === "session_transcript");
+    assert.ok(transcriptEvent?.type === "session_transcript");
+    assert.ok(
+      transcriptEvent.payload.messages.some(
+        (message) =>
+          message.marker === "compaction" &&
+          message.text === "threshold summary",
+      ),
+    );
+    const metricsEvent = [...events]
+      .reverse()
+      .find((event) => event.type === "session_metrics");
+    assert.ok(metricsEvent?.type === "session_metrics");
+    assert.equal(metricsEvent.payload.contextUsage?.tokens, null);
+    assert.equal(metricsEvent.payload.contextUsage?.percent, null);
+    const persisted = JSON.parse(
+      readFileSync(
+        join(managed.manifest.recordsDir, "session-metrics.json"),
+        "utf-8",
+      ),
+    );
+    assert.equal(persisted.contextUsage.tokens, null);
+
+    // Reopening reproduces the persisted boundary.
+    await service.disposeAll();
+    const reopened = createTestService(fixture);
+    try {
+      await reopened.openSession(snapshot.sessionId, {
+        rolePresetSlug: "role-conceptual-theory-companion",
+        kbDomain: "ep-core",
+        soulSlug: "soul-latest",
+      });
+      const detail = readSessionDetail(fixture.dataDir, snapshot.sessionId);
+      assert.ok(
+        detail?.transcript.some(
+          (message) =>
+            message.marker === "compaction" &&
+            message.text === "threshold summary",
+        ),
+      );
+    } finally {
+      await reopened.disposeAll();
+    }
+  } finally {
+    await service.disposeAll();
+  }
+});
+
+test("an aborted compaction publishes nothing; an overflow retry keeps the boundary and the turn running", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const snapshot = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const managed = (service as any).sessions.get(snapshot.sessionId);
+  const userEntryId = managed.session.sessionManager.appendMessage({
+    role: "user",
+    content: [{ type: "text", text: "overflowing turn" }],
+    timestamp: Date.now(),
+  });
+  managed.session.sessionManager.appendMessage({
+    role: "assistant",
+    content: [{ type: "text", text: "big answer" }],
+    usage: {
+      input: 15900,
+      output: 100,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 16000,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    },
+    stopReason: "stop",
+    timestamp: Date.now(),
+  });
+  const events: SessionServiceEvent[] = [];
+  service.attach(snapshot.sessionId, (event) => events.push(event));
+
+  try {
+    // Aborted compaction: no completed boundary, back to idle.
+    (service as any).handleAgentEvent(managed, {
+      type: "compaction_start",
+      reason: "overflow",
+    });
+    (service as any).handleAgentEvent(managed, {
+      type: "compaction_end",
+      reason: "overflow",
+      result: undefined,
+      aborted: true,
+      willRetry: false,
+    });
+    assert.equal(
+      events.filter((event) => event.type === "session_transcript").length,
+      0,
+    );
+    assert.equal(
+      events.at(-1)?.type === "run_phase" ? events.at(-1)?.payload.phase : null,
+      "idle",
+    );
+
+    // The retried overflow compaction completes: the boundary publishes and
+    // the continuing turn keeps the run phase alive.
+    managed.session.sessionManager.appendCompaction(
+      "overflow summary",
+      userEntryId,
+      16000,
+    );
+    (service as any).handleAgentEvent(managed, {
+      type: "compaction_end",
+      reason: "overflow",
+      result: {
+        summary: "overflow summary",
+        firstKeptEntryId: userEntryId,
+        tokensBefore: 16000,
+      },
+      aborted: false,
+      willRetry: true,
+    });
+    const transcriptEvent = [...events]
+      .reverse()
+      .find((event) => event.type === "session_transcript");
+    assert.ok(transcriptEvent?.type === "session_transcript");
+    assert.ok(
+      transcriptEvent.payload.messages.some(
+        (message) =>
+          message.marker === "compaction" &&
+          message.text === "overflow summary",
+      ),
+    );
+    assert.equal(
+      events.at(-1)?.type === "run_phase" ? events.at(-1)?.payload.phase : null,
+      "processing",
+    );
+    const metricsEvent = [...events]
+      .reverse()
+      .find((event) => event.type === "session_metrics");
+    assert.ok(metricsEvent?.type === "session_metrics");
+    assert.equal(metricsEvent.payload.contextUsage?.tokens, null);
   } finally {
     await service.disposeAll();
   }

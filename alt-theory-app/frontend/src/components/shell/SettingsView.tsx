@@ -528,7 +528,7 @@ function AgentsPanel() {
     try {
       const result = await saveSubagentSettings(config);
       setConfig(result.config);
-      setStatus(t("Saved"));
+      setStatus(t("Saved. New conversations use these settings now. Open conversations keep their current agent setup until they are reopened."));
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error));
     } finally {

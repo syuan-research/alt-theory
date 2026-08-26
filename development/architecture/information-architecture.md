@@ -180,6 +180,10 @@ surfaces remain designation-gated and absent for everyone else.
   - About: version, changes, and stable storage statements. Bundle version
     display already follows the normal build path; this iteration adds no
     alternate version mechanism.
+  - Opening Settings or Review hides the mounted conversation instead of
+    unmounting it, so an in-progress composer draft, browser undo history, and
+    DOM editing state survive the round trip (v1.4.7). Draft persistence across
+    app restart or arbitrary conversation switching is not added.
 - **Researcher-only surfaces**
   - Inspector, comparison, provenance, and study controls are
     designation-gated and have zero presence otherwise.

@@ -18,7 +18,10 @@ interface ProviderOptions {
 }
 
 function thinkingLevelsFor(model: ProviderView["models"][number]): ThinkingLevel[] {
-  return model.reasoning ? (model.availableThinkingLevels ?? []) : [];
+  // A non-empty availableThinkingLevels list is authoritative for the
+  // selector; the model's reasoning boolean is not an extra gate (v1.4.7 —
+  // two models under one provider may differ in their level sets).
+  return model.availableThinkingLevels ?? [];
 }
 
 function initialThinkingFor(option: ModelOption): ThinkingLevel {
