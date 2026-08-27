@@ -75,6 +75,14 @@ export function ModelChip({
     modelId: string;
   } | null>(null);
   const [expandedProvider, setExpandedProvider] = useState<string | null>(null);
+  // Section order and expansion are frozen for the life of one open menu.
+  // Deriving "active group first" from live state re-sorts the list the
+  // moment a model is picked, yanking the just-clicked row away from the
+  // cursor; freezing keeps the effort row expanding exactly in place.
+  const [frozenGroups, setFrozenGroups] = useState<ProviderOptions[] | null>(
+    null,
+  );
+  const [hoistedName, setHoistedName] = useState<string | null>(null);
   const [effortOpen, setEffortOpen] = useState(false);
   const [error, setError] = useState(false);
   const [query, setQuery] = useState("");
@@ -111,6 +119,8 @@ export function ModelChip({
       setEffortOpen(false);
       setQuery("");
       setFilterIndex(0);
+      setFrozenGroups(null);
+      setHoistedName(null);
     } else {
       window.setTimeout(() => filterRef.current?.focus(), 0);
     }
@@ -135,10 +145,21 @@ export function ModelChip({
     modelOverride?.thinkingLevel ??
     (selectedOption ? initialThinkingFor(selectedOption) : "medium");
   const activeProvider = effectiveModel?.provider ?? defaultModel?.provider ?? null;
-  const activeGroup =
-    providers?.find((provider) => provider.name === activeProvider) ?? null;
-  const otherGroups =
-    providers?.filter((provider) => provider.name !== activeProvider) ?? [];
+  // One-shot snapshot per open menu: hoist the group holding the current
+  // model to the top, then keep that order (and the hoisted section
+  // expanded) until the menu closes.
+  useEffect(() => {
+    if (!open || !providers || frozenGroups) return;
+    const hoisted =
+      providers.find((provider) => provider.name === activeProvider) ?? null;
+    setFrozenGroups(
+      hoisted
+        ? [hoisted, ...providers.filter((p) => p.name !== hoisted.name)]
+        : providers,
+    );
+    setHoistedName(hoisted?.name ?? null);
+  }, [open, providers, frozenGroups, activeProvider]);
+  const displayGroups = frozenGroups ?? providers ?? [];
   const usingDefault =
     !modelOverride &&
     effectiveModel?.provider === defaultModel?.provider &&
@@ -211,6 +232,7 @@ export function ModelChip({
           <>
             <div
               className="mi model-effort-trigger"
+              ref={(el) => el?.scrollIntoView({ block: "nearest" })}
               onClick={() => setEffortOpen((value) => !value)}
             >
               <span>{t("Thinking effort")}</span>
@@ -310,36 +332,37 @@ export function ModelChip({
                   {t("No matching models")}
                 </div>
               )
-            ) : activeGroup ? (
-              <div className="model-provider-section">
-                <div className="model-provider-label">{activeGroup.name}</div>
-                {activeGroup.models.map(renderModel)}
-              </div>
-            ) : null}
-            {!query.trim() && otherGroups.map((provider) => {
-              const expanded = expandedProvider === provider.name;
-              return (
-                <div key={provider.name} className="model-provider-section">
-                  <div
-                    className="mi model-provider-trigger"
-                    onClick={() =>
-                      setExpandedProvider(expanded ? null : provider.name)
-                    }
-                  >
-                    <span>{provider.name}</span>
-                    <i
-                      className={`ph ph-caret-${expanded ? "up" : "down"} caret`}
-                      aria-hidden
-                    />
+            ) : displayGroups.length ? (
+              displayGroups.map((provider) => {
+                const hoisted = provider.name === hoistedName;
+                const expanded = hoisted || expandedProvider === provider.name;
+                return (
+                  <div key={provider.name} className="model-provider-section">
+                    {hoisted ? (
+                      <div className="model-provider-label">{provider.name}</div>
+                    ) : (
+                      <div
+                        className="mi model-provider-trigger"
+                        onClick={() =>
+                          setExpandedProvider(expanded ? null : provider.name)
+                        }
+                      >
+                        <span>{provider.name}</span>
+                        <i
+                          className={`ph ph-caret-${expanded ? "up" : "down"} caret`}
+                          aria-hidden
+                        />
+                      </div>
+                    )}
+                    {expanded ? (
+                      <div className="model-provider-models">
+                        {provider.models.map(renderModel)}
+                      </div>
+                    ) : null}
                   </div>
-                  {expanded ? (
-                    <div className="model-provider-models">
-                      {provider.models.map(renderModel)}
-                    </div>
-                  ) : null}
-                </div>
-              );
-            })}
+                );
+              })
+            ) : null}
           </>
         )}
         <div className="sep" />
