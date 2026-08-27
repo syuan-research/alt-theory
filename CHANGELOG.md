@@ -6,6 +6,44 @@ detail lives in commit history and `development/`.
 
 ---
 
+## v1.4.7-beta.1 — 2026-08-27
+
+This release keeps conversations intact across interruptions and settings
+changes, makes compaction visible in real time, and reworks the provider
+setup panel.
+
+### Conversation continuity and reliability
+
+- Opening Settings or Review no longer restarts the conversation you were
+  writing in; your draft, including undo history, is exactly as you left it.
+- When a subagent's turn ends — completed, failed, or interrupted — the parent
+  conversation learns about it exactly once. Stopping a conversation is now
+  reported as an interruption rather than a failure.
+- A newly spawned subagent that cannot start on its first model still falls
+  back to its preset chain, but only until it starts doing real work; later
+  turns never silently switch models underneath it.
+- Subagent spawn validation follows the configuration snapshot each
+  conversation was opened with; new conversations pick up configuration
+  changes immediately without disturbing open ones.
+
+### Compaction you can see
+
+- Long conversations announce their automatic summarization as it happens:
+  the transcript gains its compaction marker immediately, and the context ring
+  drops to unknown instead of showing a stale percentage until real usage
+  arrives. Manually compacting uses the same path.
+
+### Model setup
+
+- The add-provider panel is organized into three labeled groups: sign in with
+  an official account (OAuth), configure a custom provider with endpoint and
+  key, and quick setups for recommended providers. A note explains why the
+  quick setups are what they are, and the OpenAI API, Anthropic API, and Qwen
+  3.7 Max (Bailian) entries are gone — GPT models remain available through the
+  ChatGPT (Codex) OAuth sign-in.
+- Each model shows its own thinking-level choices where the provider offers
+  them, instead of one switch for all models under a provider.
+
 ## v1.4.6-beta.1 — 2026-08-21
 
 This release makes subagents configurable, improves model-account recovery, and
