@@ -50,7 +50,7 @@
     "typescript": "^5.6.0"
   },
   "build": {
-    "buildVersion": "1.4.6.1",
+    "buildVersion": "1.4.7.1",
     "appId": "com.alttheory.app",
     "productName": "AltTheory",
     "copyright": "Copyright © 2026 Shuai Yuan",
