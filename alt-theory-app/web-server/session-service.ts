@@ -4515,8 +4515,8 @@ async function completeTitle(
           role: "user",
           content:
             "Give a short 5-8 word title for a conversation that begins with " +
-            "the message below. Reply with only the title — no quotes, no " +
-            "trailing punctuation.\n\n" +
+            "the message below. Reply in the same language as the message. " +
+            "Reply with only the title — no quotes, no trailing punctuation.\n\n" +
             firstUser.slice(0, 2000),
           timestamp: Date.now(),
         },
