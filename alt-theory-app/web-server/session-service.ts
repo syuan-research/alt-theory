@@ -3,12 +3,12 @@ import { randomUUID } from "crypto";
 import type {
   AgentSession,
   AgentSessionEvent,
+  ModelRuntime,
   ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { resolveCliModel } from "@earendil-works/pi-coding-agent";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { ImageContent, Model } from "@earendil-works/pi-ai";
-import { completeSimple } from "@earendil-works/pi-ai/compat";
 import {
   createAltTheorySession,
   isNoModelPlaceholder,
@@ -536,10 +536,14 @@ export class SessionService implements AgentTeamBridge {
         ? managed.session.modelRuntime.getModel(pin.provider, pin.modelId)
         : null;
 
-      let title = await completeTitle(pinnedModel ?? sessionModel, firstUser);
-      if (!title && pinnedModel && sessionModel) {
+      let title = await completeTitle(
+        managed.session.modelRuntime,
+        pinnedModel ?? sessionModel,
+        firstUser,
+      );
+      if (!title && pinnedModel && sessionModel && pinnedModel !== sessionModel) {
         // Pinned model failed → fall back to the conversation model.
-        title = await completeTitle(sessionModel, firstUser);
+        title = await completeTitle(managed.session.modelRuntime, sessionModel, firstUser);
       }
       if (!title) return; // leave the first-words snippet fallback in place
 
@@ -4495,12 +4499,17 @@ export function isUnknownModelError(err: unknown): boolean {
 /** A bare completion (no app system prompt, no tools) that returns a short
  *  title, or null on any failure. */
 async function completeTitle(
+  runtime: ModelRuntime,
   model: Model<any> | undefined,
   firstUser: string,
 ): Promise<string | null> {
   if (!model) return null;
   try {
-    const result = await completeSimple(model, {
+    // Through the runtime, not the compat completeSimple: the runtime
+    // resolves auth per model (credential store, runtime key, models.json);
+    // the compat layer only knows standard provider env vars, so every title
+    // call went out unauthenticated and naming silently never happened.
+    const result = await runtime.completeSimple(model, {
       messages: [
         {
           role: "user",
@@ -4521,7 +4530,8 @@ async function completeTitle(
       .map((part) => part.text)
       .join(" ");
     return cleanTitle(text);
-  } catch {
+  } catch (error) {
+    console.warn("[alt-theory] auto-title failed:", error);
     return null;
   }
 }

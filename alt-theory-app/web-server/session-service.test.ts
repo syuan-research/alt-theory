@@ -4267,3 +4267,46 @@ test("fresh fork family satisfies the frontend promote-button preconditions whil
     await service.disposeAll();
   }
 });
+
+test("auto-title asks the session model runtime and writes the alias", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  try {
+    const created = await service.createSession({
+      rolePresetSlug: "role-conceptual-theory-companion",
+      kbDomain: "ep-core",
+      soulSlug: "soul-latest",
+    });
+    const managed = (service as any).sessions.get(created.sessionId);
+    managed.session.sessionManager.appendMessage({
+      role: "user",
+      content: [
+        { type: "text", text: "Please help me debug the login flow for the staging server." },
+      ],
+      timestamp: Date.now(),
+    });
+    // The runtime is the auth path: stubbing it (not the compat layer) both
+    // proves the call routes through the runtime and keeps the test offline.
+    let calls = 0;
+    managed.session.modelRuntime.completeSimple = async () => {
+      calls += 1;
+      return {
+        role: "assistant",
+        content: [{ type: "text", text: '"Debugging the login flow."' }],
+        timestamp: Date.now(),
+      };
+    };
+    await (service as any).maybeAutoTitle(managed);
+    assert.equal(calls, 1);
+    const aliasPath = join(
+      service.getManifest(created.sessionId).recordsDir,
+      "ui-alias.json",
+    );
+    assert.equal(
+      JSON.parse(readFileSync(aliasPath, "utf-8")).alias,
+      "Debugging the login flow",
+    );
+  } finally {
+    await service.disposeAll();
+  }
+});
