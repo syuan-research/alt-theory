@@ -6,6 +6,31 @@ detail lives in commit history and `development/`.
 
 ---
 
+## v1.4.7-beta.2 — 2026-08-28
+
+This release makes tooltips instant and readable, fixes conversation
+auto-naming, and stops the model picker from jumping while you choose.
+
+### Tooltips you can actually catch
+
+- Tooltips across the app now appear right away in a styled card instead of
+  after the browser's slow native delay. Tooltips that explain a concept (for
+  example the context ring) show a small label above the text, and the
+  context ring separates its fill line from its cost line.
+
+### Conversation auto-naming
+
+- Conversations are named by a model summary again — the naming request had
+  been going out without credentials and silently failing, leaving every
+  conversation named by its first sentence. Names now also follow the
+  language you asked in: a Chinese conversation gets a Chinese title.
+
+### Model picker
+
+- Choosing a model no longer scrolls the list out from under you. The menu
+  holds its place, and the thinking-effort choices expand directly beneath
+  the model you picked.
+
 ## v1.4.7-beta.1 — 2026-08-27
 
 This release keeps conversations intact across interruptions and settings
