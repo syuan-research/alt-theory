@@ -84,7 +84,7 @@ function RunningCount({ sessions }: { sessions: SessionSummary[] }) {
   return (
     <button
       className="running-count"
-      title={t("Conversations working right now")}
+      data-tip={t("Conversations working right now")}
       onClick={() => {
         document
           .querySelector(`[data-session-id="${running[0].sessionId}"]`)
@@ -150,13 +150,13 @@ export function LeftNav() {
       <div className="mini">
         <button
           className="mono"
-          title={t("Expand")}
+          data-tip={t("Expand")}
           onClick={() => shell.setLeftCollapsed(false)}
         >
           <img className="brand-mark" src={altTheoryMark} alt="" />
         </button>
         <button
-          title={t("New conversation")}
+          data-tip={t("New conversation")}
           onClick={() => {
             shell.openApp();
             app.startNewSession();
@@ -164,12 +164,12 @@ export function LeftNav() {
         >
           <i className="ph ph-plus" />
         </button>
-        <button title={t("Search")} onClick={() => shell.setSearchOpen(true)}>
+        <button data-tip={t("Search")} onClick={() => shell.setSearchOpen(true)}>
           <i className="ph ph-magnifying-glass" />
         </button>
         <div style={{ flex: 1 }} />
         <button
-          title={t("Settings")}
+          data-tip={t("Settings")}
           onClick={() => shell.openSettings()}
         >
           <i className="ph ph-gear" />
@@ -189,7 +189,7 @@ export function LeftNav() {
           <div className="icons">
             <button
               className="icon-btn"
-              title={t("Collapse")}
+              data-tip={t("Collapse")}
               onClick={() => shell.setLeftCollapsed(true)}
             >
               <i className="ph ph-sidebar-simple" />
@@ -208,7 +208,7 @@ export function LeftNav() {
           <HelpMenu />
           <div
             className="avatar"
-            title={
+            data-tip={
               app.appMode === "local"
                 ? t("Local mode — no account")
                 : (app.auth.displayLabel ?? t("Signed in"))
@@ -481,7 +481,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
             <div className="split-new">
               <details className="list-more ws-pick">
                 <summary
-                  title={app.workspacePrimaryDir ?? t("No working folder")}
+                  data-tip={app.workspacePrimaryDir ?? t("No working folder")}
                 >
                   <i className="ph ph-folder-simple" />
                   <span className="ws-label">
@@ -526,7 +526,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                   {workspaceDirs.map((dir) => (
                     <button
                       key={dir}
-                      title={dir}
+                      data-tip={dir}
                       onClick={(e) => {
                         e.currentTarget
                           .closest("details")
@@ -545,7 +545,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
               </details>
               <button
                 className="btn-new split-plus"
-                title={t("New conversation")}
+                data-tip={t("New conversation")}
                 onClick={() => {
                   shell.openApp();
                   app.startNewSession();
@@ -574,7 +574,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
         <div className="workspace-list-actions">
           <button
             type="button"
-            title={t("Search")}
+            data-tip={t("Search")}
             aria-label={t("Search")}
             onClick={() => shell.setSearchOpen(true)}
           >
@@ -582,7 +582,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
           </button>
           <button
             type="button"
-            title={t("Collapse all working folders")}
+            data-tip={t("Collapse all working folders")}
             aria-label={t("Collapse all working folders")}
             onClick={() => setClosedGroups(new Set(tree.groups.map((group) => group.dir)))}
           >
@@ -590,14 +590,14 @@ function UserNav({ onImport }: { onImport: () => void }) {
           </button>
           <button
             type="button"
-            title={t("Expand all working folders")}
+            data-tip={t("Expand all working folders")}
             aria-label={t("Expand all working folders")}
             onClick={() => setClosedGroups(new Set())}
           >
             <i className="ph ph-arrows-out-line-vertical" aria-hidden="true" />
           </button>
           <details className="list-more list-sort">
-            <summary title={t("Sort conversations")}>
+            <summary data-tip={t("Sort conversations")}>
               <i className="ph ph-sort-ascending" />
             </summary>
             <div className="list-menu">
@@ -667,7 +667,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                 <div className="group-row">
                   <button
                     className={`group-label ws${closed ? " closed" : ""}`}
-                    title={group.dir || undefined}
+                    data-tip={group.dir || undefined}
                     onClick={() => toggleGroup(group.dir)}
                   >
                     <i className="ph ph-folder-simple" />
@@ -683,7 +683,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                         else unanchorMenu(details);
                       }}
                     >
-                      <summary title={t("Working folder actions")}>
+                      <summary data-tip={t("Working folder actions")}>
                         <i className="ph ph-dots-three" />
                       </summary>
                       <div className="list-menu">
@@ -725,7 +725,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                   {local ? (
                     <button
                       className="group-add"
-                      title={t("New conversation in {label}", { label: group.label })}
+                      data-tip={t("New conversation in {label}", { label: group.label })}
                       onClick={() => startConversationIn(group.dir || null)}
                     >
                       <i className="ph ph-plus" />
@@ -910,10 +910,10 @@ function SessionNode({
                 if (event.key === "Escape") setRenaming(false);
               }}
             />
-            <button type="button" title={t("Cancel")} onClick={() => setRenaming(false)}>
+            <button type="button" data-tip={t("Cancel")} onClick={() => setRenaming(false)}>
               <i className="ph ph-x" />
             </button>
-            <button type="submit" title={t("Save")}>
+            <button type="submit" data-tip={t("Save")}>
               <i className="ph ph-check" />
             </button>
           </form>
@@ -930,7 +930,7 @@ function SessionNode({
               const rect = event.currentTarget.getBoundingClientRect();
               menu.openAt(rect.left + 18, rect.bottom, contextItems(), event.currentTarget);
             }}
-            title={title}
+            data-tip={title}
             draggable={draggable}
             onDragStart={
               draggable
@@ -949,7 +949,7 @@ function SessionNode({
                 <i
                   className="ph ph-crown-simple s-fork"
                   aria-hidden
-                  title={t("Heads this family — its original main conversation was deleted")}
+                  data-tip={t("Heads this family — its original main conversation was deleted")}
                 />
               ) : (
               <i
@@ -963,19 +963,19 @@ function SessionNode({
                         : "ph-git-branch"
                 } s-fork`}
                 aria-hidden
-                title={originTitle(session)}
+                data-tip={originTitle(session)}
               />
               )
             ) : session.delisted ? (
               <i
                 className="ph ph-git-branch s-fork"
                 aria-hidden
-                title={t("Former main conversation — demoted when a branch was promoted")}
+                data-tip={t("Former main conversation — demoted when a branch was promoted")}
               />
             ) : null}
             <span className="s-title">{title}</span>
             {state ? (
-              <span className={`badge-run ${state.tone}`} title={state.title}>
+              <span className={`badge-run ${state.tone}`} data-tip={state.title}>
                 {state.label}
               </span>
             ) : null}
@@ -993,7 +993,7 @@ function SessionNode({
             anchorMenuToSummary(details);
           }}
         >
-          <summary title={t("Conversation actions")}>
+          <summary data-tip={t("Conversation actions")}>
             <i className="ph ph-dots-three" />
           </summary>
           <div className="list-menu">
@@ -1003,7 +1003,7 @@ function SessionNode({
                   closeMenu(e);
                   promote();
                 }}
-                title={t("This conversation takes the list spot; the current one stays available from its Related rail.")}
+                data-tip={t("This conversation takes the list spot; the current one stays available from its Related rail.")}
               >
                 <i className="ph ph-crown-simple" />
                 {t("Make this the main conversation")}

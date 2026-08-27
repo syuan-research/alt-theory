@@ -88,7 +88,7 @@ export function ProvenancePanel({
           className="min-h-7 px-2 text-[0.75rem]"
           onClick={() => void refresh()}
           disabled={!sessionReady || !sessionId || loading}
-          title={t("Refresh provenance")}
+          data-tip={t("Refresh provenance")}
         >
           ↻
         </Button>

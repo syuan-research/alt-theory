@@ -115,11 +115,11 @@ export function InspectorPanel() {
                 app.setActiveRelatedSessionId(null);
                 shell.closeRight();
               }}
-              title={t("Collapse")}
+              data-tip={t("Collapse")}
             >
               <i className="ph ph-sidebar-simple" style={{ transform: "scaleX(-1)" }} />
             </button>
-            <button className="back" onClick={leaveRelated} title={t("Back")}>
+            <button className="back" onClick={leaveRelated} data-tip={t("Back")}>
               <i className="ph ph-arrow-left" />
             </button>
             <span>{title}</span>
@@ -168,7 +168,7 @@ export function InspectorPanel() {
           <button
             key={key}
             className={active === key ? "on" : ""}
-            title={RAIL_META[key].title}
+            data-tip={RAIL_META[key].title}
             onClick={() => shell.toggleRail(key)}
           >
             <i className={`ph ${RAIL_META[key].icon}`} />
@@ -180,7 +180,7 @@ export function InspectorPanel() {
               <button
                 key={key}
                 className={active === key ? "on" : ""}
-                title={RAIL_META[key].title}
+                data-tip={RAIL_META[key].title}
                 onClick={() => shell.toggleRail(key)}
               >
                 <i className={`ph ${RAIL_META[key].icon}`} />
@@ -343,7 +343,7 @@ function RelatedConversations() {
           <button
             key={child.sessionId}
             className={child.sessionId === activeChildId ? "on" : ""}
-            title={sessionTitle(child, app.sessionDisplayNames, app.sessions)}
+            data-tip={sessionTitle(child, app.sessionDisplayNames, app.sessions)}
             onContextMenu={(event) => menu.open(event, sessionMenuItems(child))}
             onKeyDown={(event) => openMenuFromKey(event, child)}
             onClick={() => {

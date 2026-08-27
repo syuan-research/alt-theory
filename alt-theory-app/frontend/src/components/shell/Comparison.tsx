@@ -120,7 +120,7 @@ export function Comparison() {
               value={arm.rolePresetSlug}
               onChange={(e) => updateArm(i, { rolePresetSlug: e.target.value })}
               disabled={busy}
-              title={t("Role")}
+              data-tip={t("Role")}
             >
               {armOption(app.discovery?.rolePresets ?? [], true)}
             </select>
@@ -128,7 +128,7 @@ export function Comparison() {
               value={arm.kbDomain}
               onChange={(e) => updateArm(i, { kbDomain: e.target.value })}
               disabled={busy}
-              title={t("Knowledge base")}
+              data-tip={t("Knowledge base")}
             >
               {armOption(app.discovery?.kbDomains ?? [], false)}
             </select>
@@ -137,7 +137,7 @@ export function Comparison() {
                 className="cmp-rm"
                 onClick={() => setArms((prev) => prev.filter((_, idx) => idx !== i))}
                 disabled={busy}
-                title={t("Remove arm")}
+                data-tip={t("Remove arm")}
               >
                 <i className="ph ph-x" />
               </button>

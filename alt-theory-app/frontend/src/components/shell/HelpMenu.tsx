@@ -21,7 +21,7 @@ export function HelpMenu({
         if (event.key === "Escape") event.currentTarget.removeAttribute("open");
       }}
     >
-      <summary title={t("Help")}>
+      <summary data-tip={t("Help")}>
         <i className="ph ph-lifebuoy" />
         {compact ? null : t("Help")}
       </summary>

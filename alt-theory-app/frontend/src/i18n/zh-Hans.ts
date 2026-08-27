@@ -183,6 +183,7 @@ const catalog: Record<string, string> = {
   "Connection issue — retrying…": "连接问题 — 重试中…",
   "Connection Status": "连接状态",
   "Context": "上下文",
+  "Context usage": "上下文用量",
   "Context window": "上下文窗口",
   "Continue": "继续",
   "Continue in": "继续于",

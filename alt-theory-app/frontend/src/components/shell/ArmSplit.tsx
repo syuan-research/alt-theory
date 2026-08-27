@@ -87,7 +87,7 @@ export function ArmSplit() {
               {cand.role ? ` · ${cand.role}` : ""}
               {chosen ? <span className="badge-run">{t("chosen")}</span> : null}
               {i === record.candidates.length - 1 ? (
-                <button className="close" onClick={shell.closeArms} title={t("Close")}>
+                <button className="close" onClick={shell.closeArms} data-tip={t("Close")}>
                   <i className="ph ph-x" />
                 </button>
               ) : null}
@@ -97,7 +97,7 @@ export function ArmSplit() {
               <button
                 disabled={decided || choosing}
                 onClick={() => choose(cand.candidateId)}
-                title={t("Record this choice and continue the conversation in this arm")}
+                data-tip={t("Record this choice and continue the conversation in this arm")}
               >
                 {chosen
                   ? t("Chosen")

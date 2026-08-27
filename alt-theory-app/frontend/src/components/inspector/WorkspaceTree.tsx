@@ -269,7 +269,7 @@ export function WorkspaceTree() {
                     {folder.role === "primary" ? t("Main folder") : t("Additional folder")}
                     {folder.managed ? ` · ${t("conversation folder")}` : ""}
                   </div>
-                  <div className="working-folder-path" title={folder.path}>{folder.path}</div>
+                  <div className="working-folder-path" data-tip={folder.path}>{folder.path}</div>
                   {folder.available && hasNativeBridge() ? (
                     <button
                       className="working-folder-open"
@@ -655,7 +655,7 @@ function FileTree<T extends { path: string; isDirectory?: boolean }>({
             className="ti"
             style={{ paddingLeft: 8 + item.getItemMeta().level * 20 }}
             aria-disabled={!canOpenItem || undefined}
-            title={!canOpenItem ? "Too large to preview" : node.fullPath}
+            data-tip={!canOpenItem ? "Too large to preview" : node.fullPath}
             draggable={Boolean(dragPath)}
             onDragStart={dragPath ? (event) => {
               event.dataTransfer.setData(WORKSPACE_PATH_MIME, dragPath(node.path));
@@ -675,7 +675,7 @@ function FileTree<T extends { path: string; isDirectory?: boolean }>({
             <span>{node.name}</span>
             <button
               className={`tree-copy${pathWasCopied ? " copied" : ""}`}
-              title={copyLabel}
+              data-tip={copyLabel}
               data-tooltip={copyLabel}
               aria-label={`${copyLabel}: ${node.fullPath}`}
               onClick={(event) => {

@@ -53,7 +53,7 @@ export function RuntimePanel({
           className="min-h-7 px-2 text-[0.75rem]"
           onClick={onRefresh}
           disabled={disabled}
-          title={t("Refresh metadata & metrics")}
+          data-tip={t("Refresh metadata & metrics")}
         >
           ↻
         </Button>

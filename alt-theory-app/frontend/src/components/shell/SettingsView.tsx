@@ -1601,7 +1601,7 @@ function RoleKbPanel() {
                     <code>{dir}</code>{" "}
                     <button
                       className="flat"
-                      title={t("Stop scanning this folder (the folder itself is not deleted)")}
+                      data-tip={t("Stop scanning this folder (the folder itself is not deleted)")}
                       onClick={() => removeKbDir(dir)}
                     >
                       {t("Remove")}

@@ -83,7 +83,7 @@ export function BodyText({ children, className }: TextProps) {
 export function MonoText({ children, className, title }: TextProps) {
   return (
     <span
-      title={title}
+      data-tip={title}
       className={cn(
         "font-[family-name:var(--font-mono)] text-[0.8125rem] leading-[1.45] text-text-secondary",
         className

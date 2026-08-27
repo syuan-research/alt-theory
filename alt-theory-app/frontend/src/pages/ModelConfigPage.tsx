@@ -776,7 +776,7 @@ export function ModelConfigPage({
       ) : status ? (
         <div
           className="active-model-summary"
-          title={t("New conversations start with the default model. Editing a provider's model list does not change it.")}
+          data-tip={t("New conversations start with the default model. Editing a provider's model list does not change it.")}
         >
           <span>
             {status.activeUsable ? (
@@ -971,7 +971,7 @@ export function ModelConfigPage({
                           <span className="provider-oauth-mark">{t("OAuth")}</span>
                         ) : null}
                         {provider.active ? (
-                          <i className="ph ph-check provider-active-check" title={t("Active")} />
+                          <i className="ph ph-check provider-active-check" data-tip={t("Active")} />
                         ) : null}
                       </button>
                       {discardPrompt(target)}
@@ -1013,7 +1013,7 @@ export function ModelConfigPage({
                   <i
                     className="ph ph-info quick-setup-note"
                     aria-hidden
-                    title={t(
+                    data-tip={t(
                       "Quick setups reflect our current recommendations. Most open-weight models released after August 2026 were designed for autonomous, long-horizon tasks: their thinking is verbose, they prefer polished phrasing over exploring the problem space, and they lean toward acting without authorization. We therefore keep the earlier MiMo v2.5 Pro setups, plus OpenCode Go and OpenRouter for wider model choice. GPT-family models are equally suited to discussion — connect with a ChatGPT subscription via OAuth.",
                     )}
                   />
@@ -1130,7 +1130,7 @@ export function ModelConfigPage({
                     {keyUrl ? <a className="mt-2 inline-flex items-center gap-1 text-[0.75rem] text-text-secondary underline underline-offset-2 hover:text-ink" href={keyUrl} target="_blank" rel="noreferrer">{t("Where do I get a key?")}</a> : null}
                     <div className="mt-2 flex gap-4 text-[0.75rem] text-text-secondary">
                       <label className="flex items-center gap-1"><input type="radio" checked={keyStorage === "literal"} onChange={() => setKeyStorage("literal")} />{t("Save my key on this computer")}</label>
-                      <label className="flex items-center gap-1" title={t("Advanced: store only the name of an environment variable that holds the key, not the key itself.")}><input type="radio" checked={keyStorage === "env"} onChange={() => setKeyStorage("env")} />{t("Use an environment variable (advanced)")}</label>
+                      <label className="flex items-center gap-1" data-tip={t("Advanced: store only the name of an environment variable that holds the key, not the key itself.")}><input type="radio" checked={keyStorage === "env"} onChange={() => setKeyStorage("env")} />{t("Use an environment variable (advanced)")}</label>
                     </div>
                   </FieldFrame>
                 </>

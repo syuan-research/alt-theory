@@ -1,4 +1,5 @@
 import { useApp } from "@/context/AppProvider";
+import { t } from "@/i18n";
 
 /**
  * How full the conversation's context is (v1.3.0-alpha.3).
@@ -18,6 +19,8 @@ export function ContextRing() {
   const tokens = usage.tokens ?? 0;
   // Cost rides along in the tooltip: an unattended job that flails for an hour
   // is exactly the surprise both user lenses named as a reason to stop paying.
+  // The styled tooltip (data-tip) honors \n via white-space: pre-line, so the
+  // fill line and the cost line stay separate paragraphs.
   const cost = metrics?.cost
     ? `\nThis conversation has cost about $${metrics.cost.toFixed(2)} so far.`
     : "";
@@ -25,7 +28,8 @@ export function ContextRing() {
   return (
     <span
       className={`ctx-ring ${tone}`}
-      title={`Context ${percent}% full — ${tokens.toLocaleString()} of ${usage.contextWindow.toLocaleString()} tokens. Older messages are summarized automatically when it fills up.${cost}`}
+      data-tip-title={t("Context usage")}
+      data-tip={`Context ${percent}% full — ${tokens.toLocaleString()} of ${usage.contextWindow.toLocaleString()} tokens. Older messages are summarized automatically when it fills up.${cost}`}
     >
       <span
         className="ctx-ring-dial"

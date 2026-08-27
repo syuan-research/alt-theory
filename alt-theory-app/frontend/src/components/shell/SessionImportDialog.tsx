@@ -222,7 +222,7 @@ export function SessionImportDialog({
               {t("Updated {date}", { date: new Date(selected.updatedAt).toLocaleString() })} · {" "}
               {selected.repeat}
             </p>
-            <p className="break-all" title={selected.cwd}>
+            <p className="break-all" data-tip={selected.cwd}>
               {t("Working folder: {cwd}", { cwd: selected.cwd || t("not recorded") })}
             </p>
           </div>

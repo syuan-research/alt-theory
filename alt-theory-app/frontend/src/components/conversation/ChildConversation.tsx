@@ -278,7 +278,7 @@ export function ChildConversation({
   return (
     <div className={`child-conv ${variant}`}>
       <div className="child-head">
-        <button className="flat" onClick={onClose} title={t("Close")}>
+        <button className="flat" onClick={onClose} data-tip={t("Close")}>
           <i className="ph ph-arrow-left" aria-hidden="true" />
         </button>
         <span className="child-what">{childBlurb(purpose, variant)}</span>
@@ -286,7 +286,7 @@ export function ChildConversation({
         {mainlineAction ? (
           <button
             className="flat promote-action"
-            title={t("This conversation takes the list spot; the current one stays available from its Related rail.")}
+            data-tip={t("This conversation takes the list spot; the current one stays available from its Related rail.")}
             onClick={() => {
               void promoteToMainlineRequest(sessionId)
                 .then(() => app.refreshSessions())
@@ -303,7 +303,7 @@ export function ChildConversation({
         ) : inList || purpose === "helper" ? null : (
           <button
             className="flat promote-action"
-            title={t("Keep this conversation in your list, with where it came from.")}
+            data-tip={t("Keep this conversation in your list, with where it came from.")}
             onClick={() => {
               void app.promoteRelatedSession(sessionId).catch((reason) =>
                 setError(reason instanceof Error ? reason.message : String(reason)),
@@ -341,7 +341,7 @@ export function ChildConversation({
           {promptQueue.queuedPrompts.map((item) => (
             <div className="queued-prompt" key={item.id}>
               <i className="ph ph-clock" aria-hidden="true" />
-              <span className="queued-prompt-text" title={item.text}>
+              <span className="queued-prompt-text" data-tip={item.text}>
                 {item.text}
               </span>
               <button
@@ -367,7 +367,7 @@ export function ChildConversation({
                     [queued.text, current].filter((part) => part.trim()).join("\n"),
                   );
                 }}
-                title={t("Edit queued message")}
+                data-tip={t("Edit queued message")}
                 aria-label={t("Edit queued message")}
               >
                 <i className="ph ph-pencil-simple" aria-hidden="true" />
@@ -376,7 +376,7 @@ export function ChildConversation({
                 type="button"
                 className="queued-prompt-action"
                 onClick={() => promptQueue.remove(item.id)}
-                title={t("Delete queued message")}
+                data-tip={t("Delete queued message")}
                 aria-label={t("Delete queued message")}
               >
                 <i className="ph ph-trash" aria-hidden="true" />
@@ -467,7 +467,7 @@ export function ChildConversation({
             className="send"
             disabled={!draft.trim()}
             onClick={send}
-            title={running ? t("Queued — the agent sees it at its next step") : t("Send")}
+            data-tip={running ? t("Queued — the agent sees it at its next step") : t("Send")}
           >
             <i className="ph ph-arrow-up" aria-hidden="true" />
           </button>
@@ -479,7 +479,7 @@ export function ChildConversation({
                 promptQueue.cancelPendingInterrupt();
                 socket.send({ type: "abort" });
               }}
-              title={t("Stop")}
+              data-tip={t("Stop")}
             >
               <i className="ph ph-square" aria-hidden="true" />
             </button>

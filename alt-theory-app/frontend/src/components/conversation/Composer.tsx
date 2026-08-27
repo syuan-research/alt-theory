@@ -355,13 +355,13 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
         {app.stagedWorkspacePaths.length > 0 ? (
           <div className="staged-attachments" aria-label={t("Attached files")}>
             {app.stagedWorkspacePaths.map((path) => (
-              <span className="attachment-chip" key={path} title={path}>
+              <span className="attachment-chip" key={path} data-tip={path}>
                 <i className="ph ph-paperclip" aria-hidden="true" />
                 <span>{path.split(/[\\/]/).pop() || path}</span>
                 <button
                   type="button"
                   onClick={() => app.unstageWorkspacePaths([path])}
-                  title={t("Remove attached file")}
+                  data-tip={t("Remove attached file")}
                   aria-label={t("Remove attached file")}
                 >
                   <i className="ph ph-x" aria-hidden="true" />
@@ -376,11 +376,11 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
             {app.queuedPrompts.map((item) => (
               <div className="queued-prompt" key={item.id}>
                 <i className="ph ph-clock" aria-hidden="true" />
-                <span className="queued-prompt-text" title={item.text}>
+                <span className="queued-prompt-text" data-tip={item.text}>
                   {item.text}
                 </span>
                 {item.attachments.length > 0 ? (
-                  <span title={item.attachments.join("\n")}>
+                  <span data-tip={item.attachments.join("\n")}>
                     <i className="ph ph-paperclip" aria-hidden="true" />
                     {item.attachments.length}
                   </span>
@@ -400,7 +400,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                   type="button"
                   className="queued-prompt-action"
                   onClick={() => restoreQueuedPrompt(item.id)}
-                  title={t("Edit queued message")}
+                  data-tip={t("Edit queued message")}
                   aria-label={t("Edit queued message")}
                 >
                   <i className="ph ph-pencil-simple" aria-hidden="true" />
@@ -409,7 +409,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                   type="button"
                   className="queued-prompt-action"
                   onClick={() => app.deleteQueuedPrompt(item.id)}
-                  title={t("Delete queued message")}
+                  data-tip={t("Delete queued message")}
                   aria-label={t("Delete queued message")}
                 >
                   <i className="ph ph-trash" aria-hidden="true" />
@@ -454,7 +454,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                         : undefined
                     }
                     disabled={!interactive}
-                    title={
+                    data-tip={
                       active
                         ? `${skillLine}\n${
                             active.locked
@@ -592,7 +592,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                       : "no-export",
                 )
               }
-              title={
+              data-tip={
                 hostedStudy
                   ? expiresOn
                     ? t("Kept from the research team. Unless you use it again, this conversation and its files are deleted on {date}.", { date: expiresOn })
@@ -619,7 +619,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
           {variant === "live" ? (
             <button
               className={`ctx-item preset-toggle${presetOpen ? " on" : ""}`}
-              title={t("Steer — ask Alt to work a certain way for the next few turns")}
+              data-tip={t("Steer — ask Alt to work a certain way for the next few turns")}
               onClick={togglePresetOpen}
             >
               <i className="ph ph-lightning" aria-hidden="true" />
@@ -674,7 +674,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               <button
                 className="general-work-preset"
                 disabled={app.runtimeMode !== "alt-theory"}
-                title={t("Temporary preset: Work mode, no role, and no knowledge base. You can edit every choice before Send.")}
+                data-tip={t("Temporary preset: Work mode, no role, and no knowledge base. You can edit every choice before Send.")}
                 onClick={applyGeneralKnowledgeWork}
               >
                 <i className="ph ph-briefcase" />
@@ -774,7 +774,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
             {/* toolbox: featured skills + actions */}
             <button
               className="flat toolbox-btn"
-              title={t("Toolbox")}
+              data-tip={t("Toolbox")}
               onClick={(e) => {
                 e.stopPropagation();
                 markToolboxSeen();
@@ -833,7 +833,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
             {attachFirstLevel ? (
               <button
                 className="flat"
-                title={t("Attach a file")}
+                data-tip={t("Attach a file")}
                 aria-label={t("Attach a file")}
                 onClick={() => {
                   void pickFiles(t("Full path of the file to attach:")).then(
@@ -852,7 +852,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                 role="switch"
                 aria-checked={app.sessionMode === "work"}
                 disabled={altControlsDisabled}
-                title={
+                data-tip={
                   altControlsDisabled
                     ? t("Understand and Work are preserved but inactive while Native Pi is on.")
                     : app.sessionMode === "work"
@@ -892,7 +892,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                   className="send"
                   disabled={!canSend}
                   onClick={handleSubmit}
-                  title={t("Queued — the agent sees it at its next step")}
+                  data-tip={t("Queued — the agent sees it at its next step")}
                 >
                   <i className="ph ph-arrow-up" />
                 </button>
@@ -900,7 +900,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                   className="send"
                   style={{ background: "var(--danger)" }}
                   onClick={app.abortRun}
-                  title={t("Stop")}
+                  data-tip={t("Stop")}
                 >
                   <i className="ph ph-square" />
                 </button>
@@ -910,7 +910,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                 className="send"
                 disabled={!canSend}
                 onClick={handleSubmit}
-                title={t("Send")}
+                data-tip={t("Send")}
               >
                 <i className="ph ph-arrow-up" />
               </button>
@@ -941,7 +941,7 @@ function CtxPicker({
     <span className="ctx-picker">
       <button
         className="ctx-item"
-        title={label}
+        data-tip={label}
         disabled={disabled}
         onClick={(e) => {
           e.stopPropagation();

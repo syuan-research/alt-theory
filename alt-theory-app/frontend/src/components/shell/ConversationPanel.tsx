@@ -66,7 +66,7 @@ function EmptyState() {
               className={`mode-card understand${shell.newMode === "understand" ? " on" : ""}`}
               onClick={() => shell.setNewMode("understand")}
               aria-pressed={shell.newMode === "understand"}
-              title={t("For clarifying questions, comparing explanations, and developing ideas with your materials.")}
+              data-tip={t("For clarifying questions, comparing explanations, and developing ideas with your materials.")}
             >
               <div className="t">
                 <i className="ph ph-book-open" />
@@ -82,7 +82,7 @@ function EmptyState() {
               className={`mode-card work${shell.newMode === "work" ? " on" : ""}`}
               onClick={() => shell.setNewMode("work")}
               aria-pressed={shell.newMode === "work"}
-              title={t("For the same careful thinking plus research, data analysis, and direct work across files.")}
+              data-tip={t("For the same careful thinking plus research, data analysis, and direct work across files.")}
             >
               <div className="t">
                 <i className="ph ph-hammer" />

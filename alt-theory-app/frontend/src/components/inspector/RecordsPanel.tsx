@@ -115,7 +115,7 @@ export function RecordsPanel({
           className="min-h-7 px-2 text-[0.75rem]"
           onClick={() => void refresh()}
           disabled={!sessionReady || !sessionId || loading}
-          title={t("Refresh records")}
+          data-tip={t("Refresh records")}
         >
           ↻
         </Button>

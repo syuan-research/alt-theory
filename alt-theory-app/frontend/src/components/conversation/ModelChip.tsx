@@ -252,7 +252,7 @@ export function ModelChip({
           onToggle();
         }}
         disabled={!(session?.ready ?? app.sessionReady)}
-        title={title}
+        data-tip={title}
       >
         {chipLabel}
         <i className="ph ph-caret-down caret" />

@@ -96,7 +96,7 @@ function SetupView() {
         <button
           disabled={!app.sessionId}
           onClick={() => shell.openCompare()}
-          title={t("Branch the conversation into arms and compare their responses")}
+          data-tip={t("Branch the conversation into arms and compare their responses")}
         >
           <i className="ph ph-git-fork" />
           {t("Compare responses")}

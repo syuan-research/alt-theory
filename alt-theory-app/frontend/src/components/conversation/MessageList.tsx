@@ -592,7 +592,7 @@ function UserBubble({
       ) : null}
       <div className="msg-actions">
         <button
-          title={t("Copy")}
+          data-tip={t("Copy")}
           aria-label={t("Copy message")}
           onClick={() => void navigator.clipboard?.writeText(trimmed)}
         >
@@ -600,7 +600,7 @@ function UserBubble({
         </button>
         {onRetry ? (
           <button
-            title={t("Retry latest message")}
+            data-tip={t("Retry latest message")}
             aria-label={t("Retry latest message")}
             disabled={isRunning}
             onClick={onRetry}
@@ -611,7 +611,7 @@ function UserBubble({
         {canEdit && onEdit ? (
           <span className="edit-action-cluster">
             <button
-              title={
+              data-tip={
                 replacementEdit
                   ? t("Edit and retry")
                   : t("Edit and compare")
@@ -628,7 +628,7 @@ function UserBubble({
             {entryId && onPrepareCompare ? (
               <button
                 className="edit-setup-action"
-                title={t("Adjust model or role before comparing")}
+                data-tip={t("Adjust model or role before comparing")}
                 aria-label={t("Adjust model or role before comparing")}
                 disabled={isRunning}
                 onClick={() => onPrepareCompare(trimmed, entryId)}
@@ -668,7 +668,7 @@ export function AssistantBubble({
       {!streaming ? (
         <div className="msg-actions">
           <button
-            title={t("Copy")}
+            data-tip={t("Copy")}
             aria-label={t("Copy message")}
             onClick={() => void navigator.clipboard?.writeText(trimmed)}
           >
