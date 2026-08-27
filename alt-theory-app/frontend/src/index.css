@@ -1209,15 +1209,18 @@
   .provider-detail { min-width: 0; padding: 20px; }
   .provider-add-panel h3, .provider-editor h3 { margin: 0; }
   .provider-section-label { margin: 18px 0 6px; color: var(--text-3); font-size: 0.72rem; }
+  /* The panel no longer opens with a heading; the first group label sits flush. */
+  .provider-add-panel > .provider-section-label:first-child { margin-top: 0; }
+  .provider-section-label .quick-setup-note { margin-left: 4px; font-size: 0.9rem; cursor: help; }
+  .provider-section-label .quick-setup-note:hover { color: var(--ink); }
   .provider-add-divider { height: 1px; margin: 14px 0; background: var(--hairline); }
   .provider-preset-list { display: flex; flex-direction: column; gap: 2px; }
   .provider-preset-row, .provider-custom-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 8px; border: none; border-radius: var(--r-sm); background: transparent; color: var(--ink); font: inherit; cursor: pointer; text-align: left; }
   .provider-preset-row:hover, .provider-custom-row:hover { background: var(--hover); }
-  .provider-preset-row span { min-width: 0; }
-  .provider-preset-row strong { display: block; font-size: 0.82rem; font-weight: 600; }
-  .provider-preset-row small { display: block; margin-top: 2px; color: var(--text-3); font-size: 0.7rem; line-height: 1.35; }
-  .provider-preset-row > i { margin-left: auto; color: var(--text-3); }
-  .provider-custom-row { color: var(--text-2); font-size: 0.8rem; }
+  .provider-preset-row span, .provider-custom-row span { min-width: 0; }
+  .provider-preset-row strong, .provider-custom-row strong { display: block; font-size: 0.82rem; font-weight: 600; }
+  .provider-preset-row small, .provider-custom-row small { display: block; margin-top: 2px; color: var(--text-3); font-size: 0.7rem; line-height: 1.35; }
+  .provider-preset-row > i, .provider-custom-row > i { margin-left: auto; color: var(--text-3); }
   .provider-editor-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .provider-delete { border: none; background: transparent; color: var(--danger); font: inherit; font-size: 0.74rem; cursor: pointer; }
   .provider-active-model { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; padding: 10px 12px; border-radius: var(--r-md); background: var(--card); color: var(--text-2); font-size: 0.78rem; }

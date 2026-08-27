@@ -686,7 +686,7 @@ export function AuthConnectCard({
     { id: "xai", name: t("Grok"), icon: "ph-lightning" },
     {
       id: "openai-codex",
-      name: t("Codex"),
+      name: t("ChatGPT (Codex)"),
       icon: "ph-code",
     },
   ] as const, []);

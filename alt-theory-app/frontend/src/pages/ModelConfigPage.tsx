@@ -131,24 +131,6 @@ const PROVIDER_PRESETS = [
     recommended: true,
   },
   {
-    label: t("Qwen 3.7 Max (Bailian)"),
-    name: "qwen-bailian-beijing",
-    api: "openai-responses" as ApiType,
-    baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-    models: [
-      {
-        id: "qwen3.7-max-2026-05-20",
-        reasoning: true,
-        compat: { thinkingFormat: "qwen" },
-      },
-    ],
-    description: t("Alibaba/Bailian path for the current Qwen 3.7 label."),
-    keyUrl: "https://bailian.console.aliyun.com/?apiKey=1",
-    recommended: true,
-    keyHint: t("Paste a DashScope API key, or choose env var name and enter DASHSCOPE_API_KEY."),
-    manualModels: true,
-  },
-  {
     label: t("OpenRouter"),
     name: "openrouter",
     api: "openai-completions" as ApiType,
@@ -156,26 +138,6 @@ const PROVIDER_PRESETS = [
     models: [{ id: "anthropic/claude-sonnet-4" }],
     description: t("One OpenRouter key for many upstream models."),
     keyUrl: "https://openrouter.ai/keys",
-    recommended: false,
-  },
-  {
-    label: t("OpenAI API"),
-    name: "openai",
-    api: "openai-responses" as ApiType,
-    baseUrl: "https://api.openai.com/v1",
-    models: [{ id: "gpt-4.1" }, { id: "gpt-4.1-mini" }],
-    description: t("Generic OpenAI account. Not a Xiaomi/MiMo entry."),
-    keyUrl: "https://platform.openai.com/api-keys",
-    recommended: false,
-  },
-  {
-    label: t("Anthropic API"),
-    name: "anthropic",
-    api: "anthropic-messages" as ApiType,
-    baseUrl: "https://api.anthropic.com",
-    models: [{ id: "claude-sonnet-4-20250514" }],
-    description: t("Generic Anthropic account. Not a Xiaomi/MiMo entry."),
-    keyUrl: "https://console.anthropic.com/settings/keys",
     recommended: false,
   },
 ];
@@ -597,10 +559,7 @@ export function ModelConfigPage({
     setModelRows(preset.models.map((model) => configModelToRow(model)));
     setOptionRows([]);
     setKeyStorage("literal");
-    setKeyHint(
-      preset.keyHint ||
-        t("Paste the provider API key.")
-    );
+    setKeyHint(t("Paste the provider API key."));
     setKeyUrl("keyUrl" in preset ? (preset.keyUrl as string) : null);
   };
 
@@ -1024,22 +983,41 @@ export function ModelConfigPage({
           <section className="provider-detail">
             {addingProvider ? (
               <div className="provider-add-panel">
-                <h3>{t("Add provider")}</h3>
                 {addProviderTop ? (
                   <>
-                    <p className="provider-section-label">{t("OAuth")}</p>
+                    <p className="provider-section-label">
+                      {t("Sign in with an official account (OAuth)")}
+                    </p>
                     {addProviderTop}
+                    <div className="provider-add-divider" />
                   </>
                 ) : null}
+                <p className="provider-section-label">
+                  {t("Connect with an API key (custom)")}
+                </p>
                 <button
                   type="button"
                   className="provider-custom-row"
                   onClick={() => openEditor()}
                 >
-                  <i className="ph ph-sliders-horizontal" aria-hidden />
-                  {t("Configure a custom provider")}
+                  <span>
+                    <strong>{t("Configure a custom provider")}</strong>
+                    <small>
+                      {t("For providers not covered by the quick setups below.")}
+                    </small>
+                  </span>
+                  <i className="ph ph-caret-right" aria-hidden />
                 </button>
-                <div className="provider-add-divider" />
+                <p className="provider-section-label">
+                  {t("Connect quickly with an API key (quick setup)")}
+                  <i
+                    className="ph ph-info quick-setup-note"
+                    aria-hidden
+                    title={t(
+                      "Quick setups reflect our current recommendations. Most open-weight models released after August 2026 were designed for autonomous, long-horizon tasks: their thinking is verbose, they prefer polished phrasing over exploring the problem space, and they lean toward acting without authorization. We therefore keep the earlier MiMo v2.5 Pro setups, plus OpenCode Go and OpenRouter for wider model choice. GPT-family models are equally suited to discussion — connect with a ChatGPT subscription via OAuth.",
+                    )}
+                  />
+                </p>
                 <div className="provider-preset-list">
                   {[
                     ...PROVIDER_PRESETS.filter((preset) => preset.recommended),
