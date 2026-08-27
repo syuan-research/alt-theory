@@ -82,7 +82,11 @@ export function TooltipRoot() {
       }, SHOW_DELAY_MS);
     };
 
-    const onOver = (event: MouseEvent) => {
+    // pointerover, not mouseover: Chromium never dispatches mouse events on
+    // disabled form controls, but does dispatch pointer events — and several
+    // tips (mode switch, model picker) exist precisely to explain why a
+    // control is disabled.
+    const onOver = (event: PointerEvent) => {
       const target = (event.target as Element | null)?.closest?.("[data-tip]");
       if (target === active) return;
       if (target) schedule(target);
@@ -99,7 +103,7 @@ export function TooltipRoot() {
       if ((event.target as Element | null)?.closest?.("[data-tip]")) hide();
     };
 
-    document.addEventListener("mouseover", onOver);
+    document.addEventListener("pointerover", onOver);
     document.addEventListener("focusin", onFocusIn);
     document.addEventListener("focusout", onFocusOut);
     document.addEventListener("mousedown", onDown);
@@ -108,7 +112,7 @@ export function TooltipRoot() {
     window.addEventListener("blur", hide);
 
     return () => {
-      document.removeEventListener("mouseover", onOver);
+      document.removeEventListener("pointerover", onOver);
       document.removeEventListener("focusin", onFocusIn);
       document.removeEventListener("focusout", onFocusOut);
       document.removeEventListener("mousedown", onDown);

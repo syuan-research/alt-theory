@@ -120,6 +120,7 @@ export function Comparison() {
               value={arm.rolePresetSlug}
               onChange={(e) => updateArm(i, { rolePresetSlug: e.target.value })}
               disabled={busy}
+              aria-label={t("Role")}
               data-tip={t("Role")}
             >
               {armOption(app.discovery?.rolePresets ?? [], true)}
@@ -128,6 +129,7 @@ export function Comparison() {
               value={arm.kbDomain}
               onChange={(e) => updateArm(i, { kbDomain: e.target.value })}
               disabled={busy}
+              aria-label={t("Knowledge base")}
               data-tip={t("Knowledge base")}
             >
               {armOption(app.discovery?.kbDomains ?? [], false)}

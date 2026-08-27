@@ -676,7 +676,6 @@ function FileTree<T extends { path: string; isDirectory?: boolean }>({
             <button
               className={`tree-copy${pathWasCopied ? " copied" : ""}`}
               data-tip={copyLabel}
-              data-tooltip={copyLabel}
               aria-label={`${copyLabel}: ${node.fullPath}`}
               onClick={(event) => {
                 event.stopPropagation();
