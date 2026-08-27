@@ -162,7 +162,7 @@ const catalog: Record<string, string> = {
   "Comparison not found.": "未找到比較。",
   "Comparisons and records for the open conversation. Reads records only; nothing here touches live conversations.": "開放對話的比較和記錄。僅讀取記錄；此處不涉及即時對話。",
   "completed": "已完成",
-  "Configure another provider": "配置其他服務商",
+  "Configure a custom provider": "配置自訂服務商",
   "Configured providers": "已配置的服務商",
   "Confirm": "確認",
   "Connect an AI model to begin": "連接 AI 模型以開始",

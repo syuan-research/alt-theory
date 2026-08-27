@@ -1029,9 +1029,17 @@ export function ModelConfigPage({
                   <>
                     <p className="provider-section-label">{t("OAuth")}</p>
                     {addProviderTop}
-                    <div className="provider-add-divider" />
                   </>
                 ) : null}
+                <button
+                  type="button"
+                  className="provider-custom-row"
+                  onClick={() => openEditor()}
+                >
+                  <i className="ph ph-sliders-horizontal" aria-hidden />
+                  {t("Configure a custom provider")}
+                </button>
+                <div className="provider-add-divider" />
                 <div className="provider-preset-list">
                   {[
                     ...PROVIDER_PRESETS.filter((preset) => preset.recommended),
@@ -1051,14 +1059,6 @@ export function ModelConfigPage({
                     </button>
                   ))}
                 </div>
-                <button
-                  type="button"
-                  className="provider-custom-row"
-                  onClick={() => openEditor()}
-                >
-                  <i className="ph ph-sliders-horizontal" aria-hidden />
-                  {t("Configure another provider")}
-                </button>
               </div>
             ) : null}
 
