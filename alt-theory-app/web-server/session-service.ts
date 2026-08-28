@@ -2829,7 +2829,7 @@ export class SessionService implements AgentTeamBridge {
     }
     if (signal?.aborted) {
       return [
-        "Wait cut short by the user's stop. The watched subagents keep running; their completions still arrive as notifications.",
+        "Wait cut short by the user's stop. Any still-running watched subagents keep running; their completions still arrive as notifications.",
         ...watched.map((id) => this.subagentStatusLine(parentSessionId, id)),
       ].join("\n");
     }

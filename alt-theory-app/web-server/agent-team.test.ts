@@ -274,20 +274,35 @@ test("waitForSubagents honors the run abort signal instead of blocking until tim
       forkedFrom: { sessionId: parent.sessionId, purpose: "subagent" },
     });
     managedOf(service, child.sessionId).busy = true;
-    const controller = new AbortController();
-    setTimeout(() => controller.abort(), 150);
-    const startedAt = Date.now();
-    const report = await service.waitForSubagents(
+    // Bridge layer: the wait loop must exit on the signal, not its timeout.
+    const bridgeController = new AbortController();
+    setTimeout(() => bridgeController.abort(), 150);
+    const bridgeStarted = Date.now();
+    const bridgeReport = await service.waitForSubagents(
       parent.sessionId,
       null,
       10,
-      controller.signal,
+      bridgeController.signal,
     );
     assert.ok(
-      Date.now() - startedAt < 5000,
+      Date.now() - bridgeStarted < 5000,
       "an aborted signal must release the wait before the timeout",
     );
-    assert.match(report, /user's stop/);
+    assert.match(bridgeReport, /user's stop/);
+    // Tool layer: wait_for_agents must forward pi's third execute argument
+    // (the run signal) into the bridge — dropping it is the original defect.
+    const tool = createAgentTeamTools(service, parent.sessionId, "lead").find(
+      (entry) => entry.name === "wait_for_agents",
+    )!;
+    const toolController = new AbortController();
+    setTimeout(() => toolController.abort(), 150);
+    const toolStarted = Date.now();
+    const toolReport = await tool.execute("t1", { timeout_s: 10 }, toolController.signal);
+    assert.ok(
+      Date.now() - toolStarted < 5000,
+      "the tool must forward the run's abort signal to the wait",
+    );
+    assert.match(toolReport.content[0]!.text, /user's stop/);
     // The stop releases the wait; it must not stop the watched subagent.
     assert.equal(managedOf(service, child.sessionId).busy, true);
   } finally {
