@@ -475,6 +475,17 @@ function AgentModelFields({
   );
 }
 
+/**
+ * The effective chain is [model, ...fallbackModels]; ordering operates on the
+ * whole chain even though the config persists the head as `model`. Promoting
+ * the first fallback swaps it with the current model.
+ */
+function promoteFirstFallback(item: SubagentPreset): SubagentPreset {
+  const [first, ...rest] = item.fallbackModels;
+  if (!first) return item;
+  return { ...item, model: first, fallbackModels: [item.model, ...rest] };
+}
+
 function AgentsPanel() {
   const app = useApp();
   const [config, setConfig] = useState<SubagentConfig | null>(null);
@@ -579,11 +590,29 @@ function AgentsPanel() {
         )}
       </div>
       <div className="agent-preset-controls">
-        <AgentModelFields
-          reference={agent.model}
-          models={models}
-          onChange={(model) => updateAgent(index, (item) => ({ ...item, model }))}
-        />
+        <div className="agent-fallback">
+          <div className="agent-fallback-heading">
+            <span>{t("Model")}</span>
+            <span>
+              <button className="agent-icon-btn" aria-label={t("Move model up")} disabled>
+                <i className="ph ph-arrow-up" />
+              </button>
+              <button
+                className="agent-icon-btn"
+                aria-label={t("Move model down")}
+                disabled={agent.fallbackModels.length === 0}
+                onClick={() => updateAgent(index, promoteFirstFallback)}
+              >
+                <i className="ph ph-arrow-down" />
+              </button>
+            </span>
+          </div>
+          <AgentModelFields
+            reference={agent.model}
+            models={models}
+            onChange={(model) => updateAgent(index, (item) => ({ ...item, model }))}
+          />
+        </div>
         {agent.fallbackModels.map((fallback, fallbackIndex) => (
           <div className="agent-fallback" key={`${fallbackIndex}-${fallback}`}>
             <div className="agent-fallback-heading">
@@ -592,8 +621,8 @@ function AgentsPanel() {
                 <button
                   className="agent-icon-btn"
                   aria-label={t("Move fallback up")}
-                  disabled={fallbackIndex === 0}
                   onClick={() => updateAgent(index, (item) => {
+                    if (fallbackIndex === 0) return promoteFirstFallback(item);
                     const next = [...item.fallbackModels];
                     [next[fallbackIndex - 1], next[fallbackIndex]] = [next[fallbackIndex], next[fallbackIndex - 1]];
                     return { ...item, fallbackModels: next };
