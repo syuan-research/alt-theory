@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ProviderView, SessionModelOverride, ThinkingLevel } from "@/api/types";
 import { getConfigStatus, listConfigProviders } from "@/api/config";
 import { useApp } from "@/context/AppProvider";
@@ -210,6 +210,12 @@ export function ModelChip({
       option.thinkingLevels.some((level) => level !== "off")
     ) {
       setEffortOpen(true);
+      // Leave search after a pick: the effort row lives only in the group
+      // view, so staying in the flat result list makes the pick look inert.
+      if (query.trim()) {
+        setQuery("");
+        setExpandedProvider(option.provider);
+      }
     } else {
       onToggle();
     }
@@ -218,6 +224,14 @@ export function ModelChip({
   const isActive = (option: ModelOption) =>
     effectiveModel?.provider === option.provider &&
     effectiveModel?.modelId === option.modelId;
+
+  // Reveal the effort row once, when it mounts. A stable callback fires only
+  // on mount/unmount; an inline ref would re-fire on every parent re-render
+  // (each WS status tick) and repeatedly yank the scroll position back to
+  // the hoisted section — the "list keeps jumping" defect.
+  const revealEffortRow = useCallback((el: HTMLDivElement | null) => {
+    el?.scrollIntoView({ block: "nearest" });
+  }, []);
 
   const renderModel = (option: ModelOption) => {
     const active = isActive(option);
@@ -232,7 +246,7 @@ export function ModelChip({
           <>
             <div
               className="mi model-effort-trigger"
-              ref={(el) => el?.scrollIntoView({ block: "nearest" })}
+              ref={revealEffortRow}
               onClick={() => setEffortOpen((value) => !value)}
             >
               <span>{t("Thinking effort")}</span>
