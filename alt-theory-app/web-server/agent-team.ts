@@ -47,6 +47,7 @@ export interface AgentTeamBridge {
     parentSessionId: string,
     agents: string[] | null,
     timeoutS: number,
+    signal?: AbortSignal,
   ): Promise<string>;
   interruptSubagent(parentSessionId: string, agent: string): Promise<string>;
   listSubagents(parentSessionId: string): Promise<string>;
@@ -216,10 +217,15 @@ export function createAgentTeamTools(
     description:
       "Block until a watched subagent finishes its turn or the timeout passes; returns each watched subagent's status. Use sparingly — prefer continuing your own work and letting completions arrive.",
     parameters: waitSchema,
-    async execute(_id, params) {
+    async execute(_id, params, signal) {
       const timeout = Math.min(Math.max(params.timeout_s ?? 60, 1), 600);
       return text(
-        await bridge.waitForSubagents(sessionId, params.agents ?? null, timeout),
+        await bridge.waitForSubagents(
+          sessionId,
+          params.agents ?? null,
+          timeout,
+          signal,
+        ),
       );
     },
   };

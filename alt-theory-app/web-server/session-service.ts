@@ -2804,6 +2804,7 @@ export class SessionService implements AgentTeamBridge {
     parentSessionId: string,
     agents: string[] | null,
     timeoutS: number,
+    signal?: AbortSignal,
   ): Promise<string> {
     const watched = agents?.length
       ? agents.map((agent) => this.resolveSubagentId(parentSessionId, agent))
@@ -2815,12 +2816,22 @@ export class SessionService implements AgentTeamBridge {
     }
     const initiallyActive = watched.filter((id) => this.subagentIsActive(id));
     const deadline = Date.now() + timeoutS * 1000;
+    // The agent loop awaits this tool's promise, so honoring the run's abort
+    // signal is what lets a user stop release the wait before its timeout
+    // instead of leaving the turn (and the composer's stop state) blocked.
     while (
       Date.now() < deadline &&
       initiallyActive.length > 0 &&
-      !initiallyActive.some((id) => !this.subagentIsActive(id))
+      !initiallyActive.some((id) => !this.subagentIsActive(id)) &&
+      !signal?.aborted
     ) {
       await sleep(300);
+    }
+    if (signal?.aborted) {
+      return [
+        "Wait cut short by the user's stop. The watched subagents keep running; their completions still arrive as notifications.",
+        ...watched.map((id) => this.subagentStatusLine(parentSessionId, id)),
+      ].join("\n");
     }
     return watched
       .map((id) => this.subagentStatusLine(parentSessionId, id))

@@ -265,6 +265,36 @@ test("spawnSubagent creates a subagent child with clamped mode, alias, and spawn
   }
 });
 
+test("waitForSubagents honors the run abort signal instead of blocking until timeout", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  try {
+    const parent = await service.createSession(SELECTORS);
+    const child = await service.createSession(SELECTORS, {
+      forkedFrom: { sessionId: parent.sessionId, purpose: "subagent" },
+    });
+    managedOf(service, child.sessionId).busy = true;
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 150);
+    const startedAt = Date.now();
+    const report = await service.waitForSubagents(
+      parent.sessionId,
+      null,
+      10,
+      controller.signal,
+    );
+    assert.ok(
+      Date.now() - startedAt < 5000,
+      "an aborted signal must release the wait before the timeout",
+    );
+    assert.match(report, /user's stop/);
+    // The stop releases the wait; it must not stop the watched subagent.
+    assert.equal(managedOf(service, child.sessionId).busy, true);
+  } finally {
+    await service.disposeAll();
+  }
+});
+
 test("a spawned agent can spawn its own direct child", async () => {
   const fixture = setupFixture();
   const service = createTestService(fixture);
