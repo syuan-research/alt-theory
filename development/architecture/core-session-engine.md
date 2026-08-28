@@ -1,1262 +1,238 @@
 ---
 doc_type: architecture
 slug: core-session-engine
-scope: Alt Theory core session engine and Pi Coding Agent integration
-summary: Creates persistent, asset-configured Pi sessions through an application-owned service used by WebSocket adapters
+scope: Alt Theory's high-level module map and managed-session integration overview
+summary: Compatibility entry point for the current session substrate, neighboring modules, and their interfaces
 status: current
-last_reviewed: 2026-07-30
-tags: [core, backend, pi-agent, session]
+last_reviewed: 2026-08-28
+tags: [core, backend, session, architecture-map]
 depends_on: []
-implements:
-  - backend-v2-infrastructure
 ---
 
 # Architecture: Core Session Engine
 
-## Current Asset Loading Note
+This file remains the public compatibility entry point for Alt Theory's session
+architecture. It is now an overview and navigation map, not the detailed source
+of truth for every session-related behavior. Follow the owning document before
+changing a module.
 
-This document records the current backend session-engine behavior after the
-2026-06-08 agent-asset loading repair. The backend no longer depends on the
-removed `agent-assets/runtime/pi-tui/` context or the duplicate
-`alt-theory-app/web-server/assets/kb/` copy.
+## How to use this map
 
-The current session creation path loads semantic assets from `agent-assets/`
-and Pi adapter prompt templates from `agent-assets/prompts/pi/`.
+Start with the high-level module that owns the behavior being changed. Read the
+linked document and its verification anchors, then inspect the current code. If
+the change crosses modules, read each affected owner and preserve the interface
+described here. Do not use this map to infer that the implementation is cleanly
+partitioned.
 
-## 0. Terminology
+The map is grounded in current implementation. It provides ownership and
+navigation, not a complete file partition or an immediate refactor mandate.
+Historical coupling may cross these module boundaries and is recorded below.
 
-- **Session**: one materialized Pi conversation owned by `SessionService`.
-- **Draft session**: connection-local launch state containing selected KB,
-  role preset, and soul before the first prompt. Drafts are not persisted.
-- **Session ID**: Alt Theory-owned identifier generated before Pi session
-  creation. New v0.4 sessions use
-  `YYYYMMDD-HHmmss__{role}__{soul}__{model}` with a numeric collision suffix.
-  Pi receives that id via `SessionManager.newSession({ id })`.
-- **Session workspace**: Pi tool `cwd`.
-- **Pi session directory**: storage for Pi's timestamped JSONL history.
-- **Write directory**: the session workspace; agent-authored notes and summaries
-  live directly under Pi's `cwd`.
-- **Records directory**: Alt Theory-owned manifest, metrics, and runtime events.
-- **Assembly manifest**: immutable provenance record for application context,
-  optional soul, optional role preset, KB selection, Pi adapter prompts, paths, model, and
-  provider.
-- **Prompt assembly**: the full set of backend-controlled model-visible
-  instructions assembled at session creation.
-- **KB declaration**: neutral model-visible prompt assembly text that tells the
-  agent where the knowledge-base root is, or that KB-folder retrieval is
-  disabled. It does not tell the agent to search on every turn.
-- **Session metrics**: mutable counters plus Pi token/cost/context statistics.
-- **Session events**: append-only Alt Theory control/outcome events without
-  conversation bodies.
-- **Run label / test batch**: optional launch-time metadata recorded in
-  manifests for grouping manual UAT sessions without changing provider/model
-  identity.
-- **Effective config**: analysis-facing snapshot of the active project, KB,
-  soul, role preset, provider/model, Alt mode, and resource discovery mode.
-- **Config event**: append-only record in `records/config-events.jsonl` for
-  creation, user config changes, and resume fallback.
-- **Deletion marker**: optional `records/deleted.json` tombstone that hides a
-  session from the normal catalog without removing recoverable data.
-- **Session alias**: optional UI display name persisted as
-  `records/ui-alias.json`. It is read and written through the session file
-  routes; it is not part of the core session header schema.
-- **Account**: data-dir backed app identity record under
-  `{dataDir}/accounts/accounts.json`. It is separate from outer deployment
-  Basic Auth.
-- **Auth context**: request/connection identity resolved from an HttpOnly
-  browser session cookie. It is anonymous, participant, researcher, or admin.
-- **Session owner**: optional `ownerAccountId` persisted in
-  `records/session.json`. Participant-created sessions are owner-filtered by
-  REST APIs.
-- **Role condition**: participant/study condition mapped to a role preset
-  slug at WebSocket draft creation.
-- **Private session** (hosted only): session with `visibility: private` in
-  `records/session.json`. It is owner-readable but blocked from normal
-  researcher/admin detail and file routes, and it expires (see below). The
-  local equivalent marker is `no-export`, which does none of that — §2.3.
-- **Inactive retention** (hosted only): private sessions are due for hard
-  deletion at `lastActivityAt + 7 days`. Prompts and reopening refresh it;
-  reading detail from the catalog does not. Local sessions never have one.
+## High-level modules
 
-## 1. Structure
+The following modules are current, high-level mechanisms. “Module” is used in
+the scale-agnostic `codebase-design` sense: a mechanism with an interface and
+an implementation, including one that spans frontend, backend, storage, or
+several files. Each module has implementation evidence, but its code boundary
+may be uneven.
+
+| Module | Owning document | Current boundary maturity |
+|---|---|---|
+| Session lifecycle and turn continuity | [`session-lifecycle-and-turn-continuity.md`](session-lifecycle-and-turn-continuity.md) | Coherent mechanism; historically coupled in `SessionService` and runtime code. |
+| Conversation lineage and related sessions | [`branch-family-semantics.md`](branch-family-semantics.md) | Relatively clear behavioral boundary, with shared session/workspace interfaces. |
+| Agent behavior and prompt composition | [`agent-behavior-and-assets.md`](agent-behavior-and-assets.md) | Coherent mechanism; prompt assembly and runtime asset loading remain coupled. |
+| Provider/model configuration and selection | [`provider-model-configuration-and-selection.md`](provider-model-configuration-and-selection.md) | Coherent mechanism; persistence, UI, runtime resolution, and Pi are distributed. |
+| Workspace, files, and action safety | [`workspace-files-and-action-safety.md`](workspace-files-and-action-safety.md) | Coherent policy mechanism; roots, lifecycle, routes, and Pi interception are distributed. |
+| Research identity, visibility, privacy, and retention | [`research-identity-visibility-privacy-and-retention.md`](research-identity-visibility-privacy-and-retention.md) | Stable data contract with uneven feature maturity; researcher workflow remains provisional. |
+| External-session import | [`session-import-adapters.md`](session-import-adapters.md) | Relatively clear adapter boundary in front of the ordinary session path. |
+
+The maturity descriptions are honest descriptions of the current code, not
+quality grades. They do not require every file to move under its module or every
+historical coupling to be removed.
+
+## What the session substrate connects
+
+The managed session is the shared execution substrate used by ordinary,
+reopened, replaced, imported, related, helper, and subagent conversations.
+The important current interfaces are:
 
 ```mermaid
 flowchart LR
-  WS[WebSocket connection] --> Service[SessionService]
-  Service --> Dirs[data-dir.ts]
-  Service --> Core[create/open AltTheorySession]
-  Core --> Assets[ALTTHEORY + optional soul + optional role + KB + Pi prompts]
-  Core --> Pi[Pi AgentSession]
-  Pi --> JSONL[history/*.jsonl]
-  Core --> Manifest[records/assembly-manifest.json]
-  Pi --> Metrics[records/session-metrics.json]
-  Service --> Events[records/session-events.jsonl]
-  Service --> ConfigEvents[records/config-events.jsonl]
-  Service --> V4Records[records/session.json + runs.jsonl]
-  AuthRoutes[Auth REST] --> AuthStore[accounts/accounts.json]
-  AuthRoutes --> AuthCookie[HttpOnly cookie token]
-  AuthCookie --> WS
-  AuthCookie --> REST
-  REST[Static REST] --> Registry[asset-registry.ts]
-  REST --> Store[session-store.ts]
-  REST --> SessionFiles[session records/workspace text files]
-  Store --> Retention[session-retention.ts]
+  UI[React shell] <-->|WebSocket| WS[web-server/server.ts]
+  UI -->|REST| WS
+  WS --> SS[SessionService]
+  SS --> CORE[core/alt-theory-core.ts]
+  CORE --> PI[Pi AgentSession / ModelRuntime]
+  CORE --> ASSETS[agent-assets]
+  SS --> HIST[Pi JSONL history]
+  SS --> RECORDS[Alt Theory records]
+  CONFIG[config-store.ts] --> SS
+  LINEAGE[session-store.ts / lineage] --> SS
 ```
 
-Code anchors:
+### Shared implementation anchors
 
-- `alt-theory-app/core/data-dir.ts`: data-root and session-directory ownership.
-- `alt-theory-app/core/agent-assets.ts`: centralized agent-asset path resolver
-  and loaded-file hash references.
-- `alt-theory-app/core/core-soul.ts`: module parsing, selection, validation, and
-  deterministic assembly.
-- `alt-theory-app/core/alt-theory-core.ts`: resource loader, tool policy,
-  persistent Pi session creation/opening, and manifest.
-- `prompt-cache-safety.md`: short-horizon prompt-cache continuity decisions,
-  API-shape constraints, coverage boundaries, and verification.
-- `alt-theory-app/web-server/asset-registry.ts`: safe role/KB slugs.
-- `alt-theory-app/web-server/auth-accounts.ts`: data-dir backed account store,
-  login-code hashing, verification, and safe account serialization.
-- `alt-theory-app/web-server/auth-session.ts`: process-local browser session
-  tokens, HttpOnly cookie helpers, and request auth-context resolution.
-- `alt-theory-app/web-server/server.ts`: REST routes and per-connection
-  WebSocket lifecycle.
-- `alt-theory-app/web-server/session-metrics.ts`: Pi-native metric mapping and
-  atomic snapshot persistence.
-- `alt-theory-app/web-server/session-events.ts`: bounded append-only runtime
-  event persistence.
-- `alt-theory-app/web-server/config-events.ts`: effective config snapshots and
-  append-only config event persistence.
-- `alt-theory-app/web-server/session-service.ts`: application-owned session
-  runtime lifecycle, WebSocket subscriptions, prompt/abort operations, and
-  single-process mutation guard.
-- `alt-theory-app/web-server/session-records.ts`: schema-versioned v0.4
-  foundation records and branch-aware path helpers.
-- `alt-theory-app/web-server/session-store.ts`: historical session catalog,
-  detail inspection, v0.4/legacy projection, Pi JSONL discovery, and bounded preview.
-- `alt-theory-app/web-server/session-retention.ts`: hosted-only private
-  retention due-date calculation, activity refresh, and the expired-session
-  sweep wired at hosted boot.
-- `alt-theory-app/web-server/websocket-protocol.ts`: shared transport types.
+These are integration anchors, not a claim that one file owns every behavior:
 
-## 2. Session Creation
+- `alt-theory-app/web-server/session-service.ts` — managed runtime registry,
+  materialization, open/reopen/replacement, run operations, WebSocket
+  subscription, agent-team delivery, and several cross-module mutations.
+- `alt-theory-app/core/alt-theory-core.ts` — Pi runtime/resource loading,
+  prompt/runtime assembly, tools, workspace roots, and interception binding.
+- `alt-theory-app/web-server/server.ts` — REST and WebSocket boundaries,
+  authentication context, draft creation, and surface protocol dispatch.
+- `alt-theory-app/web-server/session-store.ts` — persisted session discovery,
+  detail/transcript projection, lineage derivation, and family-facing records.
+- `alt-theory-app/web-server/session-records.ts` — foundation record schemas and
+  durable session paths.
+- `alt-theory-app/web-server/config-store.ts` — provider/model configuration
+  persistence, discovery views, and capability metadata.
+- `alt-theory-app/core/agent-assets.ts` — curated runtime asset roots and hashes.
+- `alt-theory-app/web-server/websocket-protocol.ts` — shared transport types.
 
-1. WebSocket connect resolves the auth cookie, creates only an unpersisted
-   draft selector set, and sends `session_draft`. It does not create a
-   `sessions/{id}` directory.
-2. The first `prompt` allocates a readable session ID, then creates
-   `sessions/{id}/workspace`, `history`, and `records`.
-3. The core creates `SessionManager.create(sessionCwd, piSessionDir)` and sets
-   the same session ID.
-4. `DefaultResourceLoader` loads Pi adapter prompt templates from
-   `agent-assets/prompts/pi/`.
-5. The current application runtime resolves prompt composition. Alt Theory
-   assembles application context, optional soul and role, KB declaration,
-   optional Custom Instruction, and generated facts. Native Pi keeps Pi's base,
-   Custom Instruction, and generated infrastructure facts. The conceptual
-   layers are specified in `agent-behavior-and-assets.md`.
-6. Pi returns the reserved timestamped JSONL path. Pi physically writes it once
-   an assistant message is present.
-7. Alt Theory atomically writes `records/assembly-manifest.json` and appends
-   session/runtime events to `records/session-events.jsonl`.
-8. If provided, `ALT_THEORY_RUN_LABEL` and `ALT_THEORY_TEST_BATCH` are recorded
-   in the manifest as `runLabel` and `testBatch`.
-9. For participant auth contexts, `records/session.json` also records
-   `ownerAccountId`, `roleCondition`, `visibility`, `consentSnapshot`,
-   `lastActivityAt`, and `retentionDueAt`. A withheld conversation forces
-   `consentSnapshot.privateOverride: true`; only a hosted deployment ever
-   writes a non-null `retentionDueAt` (§2.3).
+### Persistence and authority
 
-## 2.3 Deployment Mode, Visibility, And Retention
+Pi's JSONL history remains the conversation-body authority. Alt Theory's
+`records/` files are thin control and projection records: session headers,
+assembly/resume manifests, metrics, events, run lineage, security audit, and
+optional UI aliases. They must not become a second conversation-body store.
 
-`ALT_THEORY_MODE` selects the deployment. **It defaults to `local`**;
-`hosted` must be set explicitly (`server.ts`). The Electron bundle sets
-`local` itself (`electron/main.cjs`); `dev:web:local*` scripts set it too, so
-a plain `tsx server.ts` is also local.
+The owning documents explain which record is authoritative for each mechanism:
 
-> **When the VPS pilot moves to 1.x, set `ALT_THEORY_MODE=hosted` on the
-> server before deploying.** Without it a multi-user deployment silently
-> loses participant/researcher access control, and conversations a
-> participant marked private stop being deleted — both promises broken
-> quietly. The v0.5.x VPS predates this default and is unaffected.
+- lifecycle, runs, active-leaf projection, retry/continue, compaction, and
+  live-run state — [`session-lifecycle-and-turn-continuity.md`](session-lifecycle-and-turn-continuity.md);
+- immutable lineage, family membership, promotion, deletion/restore, and family
+  workspace unity — [`branch-family-semantics.md`](branch-family-semantics.md);
+- provider/model configuration, defaults, capability metadata, overrides, and
+  runtime resolution — [`provider-model-configuration-and-selection.md`](provider-model-configuration-and-selection.md);
+- workspace roots, file routes, approvals, guarded actions, and audit —
+  [`workspace-files-and-action-safety.md`](workspace-files-and-action-safety.md);
+- identity, ownership, visibility, and hosted retention —
+  [`research-identity-visibility-privacy-and-retention.md`](research-identity-visibility-privacy-and-retention.md);
+- source provenance and imported-session records —
+  [`session-import-adapters.md`](session-import-adapters.md).
 
-`visibility` carries two DISJOINT vocabularies, one per deployment
-(`SessionVisibility` in `session-records.ts`); `isVisibilityForMode()` rejects
-the other deployment's values at the WebSocket boundary.
+## Important cross-module interfaces
 
-| | hosted (VPS study) | local (downloadable app) |
-|---|---|---|
-| values | `research` / `private` | `exportable` / `no-export` |
-| default | `research` | `no-export`, or `exportable` when the install is designated |
-| withheld value's effect | researchers cannot read it (`canAccessSessionContent`), not exported, **hard-deleted 7 inactive days after last use** | a marker for a future export filter — nothing is hidden, uploaded, or deleted |
-| retention written | yes, for `private` | never (`retentionDueAt` is always null) |
-| access control | owner/consent gates apply | none — `localMode` short-circuits every gate |
+### Session lifecycle and neighboring modules
 
-On hosted, deletion is HOW "don't keep this" is kept: a study account is not
-long-lived, so a private conversation that outlives the study would break the
-promise. Retention is therefore not a separate "temporary" axis — there is no
-such flag. Locally there is no research team, no upload, and no expiry, so the
-marker is inert until an export feature consumes it.
+`SessionService` assembles and manages the live `AgentSession`, but the
+selection and policy details belong elsewhere:
 
-`SessionService` writes retention only when `localMode === false` (absent
-config = local, the safe default): creation, `setVisibility`, per-turn
-activity refresh, and reopen-counts-as-activity are all gated on it.
-`sweepExpiredPrivateSessions` (hard delete, skipping any session currently
-open) is wired at hosted boot and runs daily; local installs never start it.
+- prompt layers, roles, custom instructions, knowledge declarations, skills,
+  and generated facts are owned by
+  [`agent-behavior-and-assets.md`](agent-behavior-and-assets.md);
+- provider/model resolution and session overrides are owned by
+  [`provider-model-configuration-and-selection.md`](provider-model-configuration-and-selection.md);
+- workspace roots, tools, approvals, and action mediation are owned by
+  [`workspace-files-and-action-safety.md`](workspace-files-and-action-safety.md);
+- lineage, family membership, and related-child semantics are owned by
+  [`branch-family-semantics.md`](branch-family-semantics.md);
+- identity, visibility, access, and retention are owned by
+  [`research-identity-visibility-privacy-and-retention.md`](research-identity-visibility-privacy-and-retention.md);
+- imported sessions enter the ordinary lifecycle after adapter preflight and
+  projection, as described in [`session-import-adapters.md`](session-import-adapters.md).
 
-Prior to v1.3.0-alpha.6 both deployments shared one vocabulary, so a local
-install defaulting to `private` also defaulted to "queued for deletion" — the
-safest-sounding default was the destructive one. The vocabulary split, not a
-mode branch, is what makes that unreachable now.
+An implementation change may therefore touch `SessionService` without making
+the changed behavior part of the lifecycle module. Use the owning document and
+the interface being changed to decide where the factual documentation belongs.
 
-## 2.1 Session Catalog And Open
+### Current historical coupling
 
-The backend also exposes the current data directory as a historical session
-catalog:
+The current process is not seven isolated code packages. In particular,
+`SessionService` still contains or coordinates prompt assembly, model
+resolution, workspace changes, agent-team delivery, privacy/retention updates,
+and lineage-adjacent operations. The core runtime also combines resource
+loading, tools, workspace policy, and Pi interception. Frontend surfaces,
+backend routes, persisted records, and Pi runtime behavior form one product
+mechanism across several trees.
 
-- `GET /api/sessions` lists `sessions/{id}` roots without exposing filesystem
-  paths in each summary.
-- `GET /api/sessions/{id}` returns bounded detail: manifest, metrics, event
-  tail, Pi JSONL info, context counts, and a small transcript preview.
+This coupling is a current fact. It is not evidence that all of these concerns
+should be merged, nor evidence that the current map has already been enforced by
+code. When authorized work touches a module, improving locality or clarifying
+an interface is useful when the benefit justifies it; there is no repository-wide
+cleanup tax.
 
-When `{dataDir}/accounts/accounts.json` has configured accounts, session REST
-routes require app identity. Participant accounts see only sessions whose
-`ownerAccountId` matches their account. Researcher/admin accounts can see
-ownerless researcher workbench sessions and participant-owned sessions. When no
-account store is configured, anonymous access keeps the old local workbench
-behavior for v0.4 compatibility.
+## Supporting maps and cross-cutting references
 
-Private sessions remain visible as summaries for operations, but normal
-detail/transcript/file content access is owner-only. Researcher/admin REST
-detail and file routes return a private-content error instead of exposing the
-Pi transcript or workspace files.
+These documents remain useful but are not additional high-level modules:
 
-WebSocket `open_session` makes an existing session the current live session for
-that connection. The server reads the detail record, opens the existing Pi JSONL
-with `openAltTheorySession()`, then sends the same metadata triplet used after a
-fresh session:
+- [`information-architecture.md`](information-architecture.md) — product-surface
+  placement, user-visible state, and navigation rules. It points to owning
+  module documents for detailed behavior.
+- [`researcher-console.md`](researcher-console.md) — current researcher-facing
+  surface facts. Its study/review product meaning is provisional; unfinished
+  user stories and pause reasons remain in private issues or SWE Plans.
+- [`i18n.md`](i18n.md) — the small cross-cutting language mechanism.
+- [`repo-structure-v0.3.md`](repo-structure-v0.3.md) — public repository and
+  documentation boundaries; the filename is retained for link compatibility.
+- [`local-windows-bundle.md`](local-windows-bundle.md) — historical pointer to
+  the current release procedure.
+- [`adr/`](adr/) — durable design choices and their trade-offs. The former
+  [`prompt-cache-safety.md`](prompt-cache-safety.md) path is a compatibility
+  pointer to [`adr/0004-prompt-cache-safety.md`](adr/0004-prompt-cache-safety.md).
+
+Supporting documents may describe current facts or cross-cutting placement. They
+must not silently become a second detailed owner for one of the seven modules.
+
+## Current truth, intent, and partial features
+
+Architecture records the system that exists now. A proposed or target design
+belongs in the active private SWE Plan until it is implemented. An accepted ADR
+may precede implementation, but this map and its owning Architecture documents
+must not describe the target as current fact.
+
+Code existence does not prove design intent. Describe current behavior from code
+or runtime evidence. State a stronger invariant, rationale, or intentional
+constraint only when an ADR or traceable Owner source supports it.
+
+An implemented feature that was paused may keep a module document if its
+implemented portion has a coherent contract; that document must state the
+partial boundary and current gap. If implementation remains scattered and the
+business logic is unsettled, keep useful current facts in the most natural
+existing Architecture document, while the pause, unfinished user stories, and
+future direction stay in a private issue or SWE Plan. Do not create a new public
+document type for this case.
+
+The current researcher console follows the latter rule: its implemented surface
+facts remain documented, while its unresolved study setup, comparison protocol,
+review meaning, and export direction are not Architecture facts.
+
+## Verification and change guidance
+
+For an Architecture update or reorganization:
+
+1. Read this map and the owning module document.
+2. Verify changed claims against current code, tests, or runtime evidence.
+3. Check links and remove duplicate detailed claims from this overview.
+4. Update only the factual scope affected by the authorized work.
+
+Use the focused verification anchors in each owning document. The broad backend
+check is:
 
 ```text
-session_opened
-session_metadata
-session_metrics
+npm run test:backend
 ```
 
-The original `records/assembly-manifest.json` is not overwritten on resume.
-Resume-time active runtime facts are written to `records/resume-manifest.json`,
-and drift warnings are returned in the active manifest/snapshot.
-
-### 2.1.1 Resume-time recovery and auto-titling (v1.2.1)
-
-Reopening degrades gracefully instead of failing, and never mutates the
-persisted header (data preserved; the condition self-heals if the environment
-comes back). Both surface through the same `resumeWarnings` vehicle as other
-drift notices.
-
-- **Stale working folder.** `createManagedFromExisting` stat-checks the recorded
-  `workspace.primaryDir`; if it no longer exists (folder renamed/merged/deleted),
-  the session opens WITHOUT pointing Pi's cwd at the dead path and warns. The
-  frontend renders the notice with actions (re-pick folder / continue without).
-- **Removed per-session model.** If the persisted `modelOverride` model is no
-  longer in the registry, core throws `Unknown model`; the service catches it
-  (only when an override exists), reopens with the deployment default
-  (`modelArgsFor(null)`), and warns original→fallback. The stale override stays
-  in the header, so a later reopen restores the original model if it returns.
-  A missing DEPLOYMENT default still refuses (broader misconfig, out of scope).
-  See §7.
-- **Auto-titling.** After the first completed turn, `maybeAutoTitle` best-effort
-  generates a short alias via a bare `completeSimple()` completion (no app system
-  prompt, no tools) on the session's own model — or a Settings-pinned titler model
-  — and writes it to the existing `ui-alias.json` display-name path. Runs once
-  (skipped when any alias already exists — imports seed one, manual rename creates
-  one), fires-and-forgets, swallows all errors, and strips any `<skill>` wrapper
-  from the first user message. Fallback chain: pinned model → session model → the
-  frontend's first-words snippet. Toggle + titler-model live in
-  `app-settings.json` `autoTitle` via `/api/settings/auto-title`.
-
-## 2.2 Local Session Import
-
-Local mode exposes Pi, OpenCode, Codex, Grok Build, and Claude Code import
-through a harness-discriminated adapter boundary. External sessions are fully
-preflighted before managed storage exists. Successful projections enter the
-ordinary Pi history, manifest, foundation-record, catalog, reopen, and runtime
-paths; import does not create a second session engine or runtime type.
-
-Imported sessions use normal mode, workspace, role, soul, tool, model, and
-permission behavior. Source runtime configuration remains historical evidence.
-Changed source history creates a separately aliased import rather than merging
-into or overwriting an Alt Theory continuation. Available child/subagent
-history is searchable source context, not replayed main-conversation turns.
-
-The implemented adapter pipeline, fidelity rules, per-harness mappings,
-provenance records, repeat behavior, and current refusal boundaries are
-documented in [`session-import-adapters.md`](session-import-adapters.md).
-Upstream harness storage research is separate under
-`development/compound/research-agent-session-history/`.
-
-## 3. Prompt Assembly And Injection
-
-The conceptual behavior composition, layer authority, and Native Pi versus Alt
-Theory mode differences live in
-[`agent-behavior-and-assets.md`](agent-behavior-and-assets.md). This document
-keeps only session-engine facts.
-
-`createAltTheorySession()` builds one `DefaultResourceLoader`. The application
-runtime is app-wide (`alt-theory` or `native-pi`); each session separately
-persists its Alt mode (`understand` or `work`). A live runtime or Alt-mode
-change reloads the same loader and swaps the active tool set without replacing
-the session ID or Pi JSONL.
-
-The assembly manifest records selected asset references and hashes, loaded
-skills and their sources, KB/workspace facts, model/provider, and session
-paths. The app-wide runtime is not persisted as a per-session override.
-
-Per-Alt-mode external skill enablement lives in
-`{dataDir}/app-settings.json`. Base discovery posture remains the
-`resourceDiscovery` development knob: `clean` loads no skills, `internal`
-loads the configured product resources, and `dev-debug` also merges ambient Pi
-discovery for debugging.
-
-Pi extension posture since M3/M4 (2026-07-15): ambient extension discovery
-stays off in every mode (`noExtensions`); only explicit factories load through
-the core `extensionFactories` config. The core always registers the Alt Theory
-security extension (`core/security-extension.ts`, §4) last, so it evaluates
-tool input as finally mutated by any earlier handlers. Extension
-`confirm`/`select`/`input` dialogs reach the web UI through the approval
-bridge (`web-server/approval-bridge.ts`): `SessionService` binds an
-`ExtensionUIContext` implementation via `session.bindExtensions({ uiContext,
-mode: "rpc" })` before any prompt can run, dialog requests become
-`approval_requested` session events, and the user's `respond_approval` reply
-resolves the pending promise. The bridge fails closed — dispose, abort,
-timeout, or no reply reads as rejection (spec §5.2/§5.3).
-
-Pending requests remain queryable while their promise is alive. Every authorized
-WebSocket receives an `approval_snapshot` on connect plus global request/resolve
-events, so closing a pane or reopening a conversation cannot lose the approval
-panel. A reply is still accepted only through a socket attached to the owning
-conversation.
-
-The manifest also records selected soul/role slugs, including `null` for
-`None`, plus KB root/domain, the workspace (§3.1), Pi prompt-template
-  directory, provider/model, session directories, and Pi JSONL path. Full
-content snapshots are deferred.
-
-### User-prompt attachments (v1.2.1)
-
-A user turn can carry attachment paths. The WS `prompt` message gained an
-optional `attachments: string[]` sibling to `payload`; the frontend stages
-those paths (composer file drag-drop, the "Attach file" native picker, or the
-workspace rail) and they also stay in the prompt text as an
-`(Attachments: …)` mention so work-capable agents can read them from disk.
-`runPrompt(id, text, attachments)` threads them to `runPromptWithLineage`,
-where `imageAttachmentsFor()` reads image-type paths into Pi `ImageContent`
-blocks and passes them to `session.prompt(text, { images })` — but ONLY when the
-live `session.model.input` includes `"image"`. A text-only model gets no image
-blocks and simply sees the filename mention, so it never hard-fails; the
-the Helper's image-support procedure is how a user records a model's image capability.
-Pi's `prompt()` accepts images natively, so this is a backend + modality-gate
-change with no new message-content plumbing.
-
-### 3.1 Workspace Model (spec §5.1)
-
-A work-capable session has a workspace: the primary working directory (the
-session cwd; defaults to the data-dir `workspace/`, or a user-chosen directory
-passed at creation) plus zero or more additional directories added
-intentionally mid-session. In Alt Theory Work and Native Pi:
-
-- the primary directory receives Pi's own project-context discovery (global
-  agent-dir context plus the ancestor AGENTS.md/CLAUDE.md chain via
-  `loadProjectContextFiles`); each added directory contributes its own context
-  file without climbing its ancestors;
-- project skills load from `[primary, ...added] × {.pi/skills,
-  .agents/skills}` with manifest source `workspace`;
-- the guarded-write roots grow to the primary and added directories.
-
-Alt Theory Understand receives none of this. `addWorkspaceDir` mutates closure state and calls
-`session.reload()` (a bare `loader.reload()` would not rebuild the system
-prompt). The workspace persists in the `V4SessionHeader` and manifest; reopen
-restores the primary as the session cwd, and a fork whose primary lies outside
-the data dir does not copy the user's project into the data dir. The
-`add_workspace_dir` WebSocket message is local-form only.
-
-Code anchors:
-
-- `alt-theory-app/core/alt-theory-core.ts`: `DefaultResourceLoader`,
-  `agentsFilesOverride`, and `appendSystemPromptOverride`.
-- `alt-theory-app/core/agent-assets.ts`: asset root resolution and file hashes.
-- `agent-assets/prompts/pi/`: Pi adapter prompt-template directory.
-- `agent-assets/instructions/`: default custom-instruction catalog root.
-- `agent-assets/skills/`: runtime Alt Theory skill root (`internal` discovery).
-  Current user-facing skills are `conversation-summary/` and
-  `alt-theory-help/`.
-- `_archives/skills/`: local ignored historical `cs-swe-*` shards.
-
-Custom instruction changes rebuild the runtime against the same Pi JSONL and
-Alt Theory session ID. Explicit visual skill invocation is validated against
-the active Alt Theory skills, sent through Pi's native `/skill:name` command,
-and recorded as `skill_invoked`.
-
-A new related conversation whose persisted purpose is `helper` routes its
-first prompt through `/skill:alt-theory-help`. Later prompts remain unchanged:
-the initial skill invocation has already established the help rules in that
-conversation's context. The skill keeps only stable product semantics in its
-own body and requires current user documentation for concrete or changeable
-behavior. Promotion preserves the transcript, and the skill remains available
-for explicit use; it does not unload anything or introduce a second prompt
-system.
-
-### KB Context Policy
-
-`SessionService.runPrompt()` sends the user's prompt text to Pi without adding a
-per-turn KB instruction. Earlier v0.5 code prepended a hidden
-`[Context: Search in ...]` string when a specific KB domain was selected; that
-behavior is retired because it made KB use an every-turn backend mandate.
-
-Current behavior is:
-
-- session assembly declares the KB root, or declares KB-folder retrieval
-  disabled;
-- selected concrete KB domains can inject their own scope/coverage/use policy
-  from `agent-assets/kb/metadata/domains.json`;
-- role presets should not carry KB catalog metadata or domain-specific KB-use
-  policy; they remain role/style/behavior presets;
-- KB domain selections are recorded as config events and reflected in session
-  metadata, but are not injected as hidden per-turn user-message text;
-- transcript projection still strips old `[Context: ...]` prefixes for
-  backward compatibility with already-written Pi JSONL histories.
-
-Code anchors:
-
-- `alt-theory-app/core/alt-theory-core.ts`: neutral KB declaration in prompt
-  assembly.
-- `alt-theory-app/web-server/session-service.ts`: prompt forwarding and config
-  event recording.
-- `alt-theory-app/web-server/session-store.ts`: old hidden-prefix transcript
-  cleanup.
-
-## 4. Tool And Action Policy
-
-The session keeps Pi's tool registry so application-runtime and Alt-mode
-changes can replace the active set without rebuilding history:
-
-- Native Pi and Alt Theory Work use Pi's normal coding set: `read`, `bash`,
-  `edit`, and `write`.
-- Alt Theory Understand uses `read`, `ls`, `grep`, and `find`; a single
-  `understandReadOnly` deployment policy decides whether its bounded `write`
-  tool is also active. That policy has no effect on Work or Native Pi.
-- application-infrastructure tools such as subagent communication are shared
-  rather than used as evidence of an Alt behavior mode.
-
-The guarded write implementation shadows Pi's builtin write. Work and Native
-Pi use the primary workspace, added workspaces, Alt output roots, and any
-folder explicitly approved for the session. Understand remains within its Alt
-output roots unless the user explicitly approves another folder.
-
-The shared security extension (`core/security-extension.ts`) mediates both
-application runtimes through Pi's native `tool_call` interception. It hard
-blocks destructive/system and selected system credential access, visibly asks for risky
-commands and external read/write boundaries, keeps conversation-lifetime
-allowances, checks URL-shaped inputs against cloud-metadata/internal-host
-patterns, and appends decisions to `records/security-audit.jsonl`. These are
-trusted policy checks and approvals, not an OS sandbox.
-
-As an interim approval-fatigue patch, ordinary reads do not prompt inside the
-product resource tree, the active Alt Theory/Pi agent config directories,
-`~/.agents`, or `~/.pi/agent`. This is a root-level read allowance independent
-of which Skills are enabled; writes and dangerous operations keep their existing
-checks. A future permission-settings redesign may replace these fixed roots with
-user-selected ranges and a guarded Full access mode.
-
-## 5. Application-Owned Session Service
-
-The backend now owns live runtime state through `SessionService`, not through a
-per-WebSocket `ConnectionState`. A WebSocket connection attaches to a managed
-session and receives forwarded runtime events.
-
-`SessionService` owns:
-
-- the current Pi `AgentSession` for each managed session;
-- assembly manifest, selected KB/role/soul, Alt mode, resume warnings,
-  counters, and transcript cache;
-- a single internal Pi subscription per managed session;
-- attached WebSocket listeners;
-- prompt and abort operations;
-- one process-local mutation guard per managed session;
-- the in-flight turn's live-run buffer (v1.4.3, `live-run.ts`): every run
-  starts it in `runPromptWithLineage` and every `emit()` appends stream
-  events (deltas coalesced), cleared on run end. `open_session` sends the
-  persisted transcript plus the running prompt's bubble and this replay,
-  so a pane attached mid-run is never blank until the records land.
-- steering (`steerRunningSession`) emits a `user_steered` event, broadcast
-  to every attached pane and buffered for replay; panes render the bubble
-  from this event only (no optimistic append), so sender, other panes,
-  and late joiners all see the steered message exactly once.
-- send-while-running (owner 2026-08-07, both panes identical): Enter
-  enqueues into the client-held queue (`usePromptQueue` — cards stay
-  editable/deletable), and the queue drains INTO the running turn at each
-  step boundary (engine `onStepBoundary`, fired on tool_finished) via the
-  busy-prompt→steer path. "Queued" means the agent's NEXT api call, never
-  the end of the run; whatever is still queued at run end flushes as the
-  next turn's prompt. There is no run-end-only queue and no separate
-  steer button.
-
-Current behavior:
-
-- WebSocket connect sends `session_draft` and creates no persisted session.
-- The first WebSocket `prompt` materializes the draft through
-  `SessionService.createSession()`, attaches the socket, sends the normal
-  `session_opened` / `session_metadata` / `session_metrics` triplet, then runs
-  the prompt.
-- `new_session` detaches from any current materialized session and returns the
-  connection to draft state using the current selectors. It does not allocate a
-  zero-turn replacement session.
-- Soul and role-preset switching in draft mutates only draft selectors. After a
-  session is materialized, these switches still call service replacement until
-  the later live-configuration feature changes that behavior.
-- `open_session` validates and opens an existing Pi JSONL through the service.
-- WebSocket close detaches the listener only. It does not abort or dispose the
-  service-owned runtime. Explicit `abort` remains the cancellation operation.
-- A concurrent same-session mutation returns stable `session_busy` instead of
-  exposing Pi's raw in-flight prompt error.
-- Role and KB values are client-safe slugs resolved against server roots.
-- Session metadata and metrics still use WebSocket; static discovery and
-  historical session catalog/detail still use REST.
-
-New service-created sessions also write minimal v0.4 foundation records:
-
-```text
-records/session.json        # schemaVersion: 1, recordType: session
-records/runs.jsonl          # append-only accepted/deleted/superseded run records
-records/ui-alias.json       # optional UI display name, written by frontend
-records/security-audit.jsonl # append-only security extension block/approval log
-```
-
-The required records are thin indexes around Pi JSONL. They do not duplicate
-conversation bodies. Pi history is the conversation body authority; Alt Theory
-derives deleted/superseded transcript projection from `runs.jsonl` instead of
-maintaining a separate branch-index authority. `ui-alias.json` is optional
-frontend state stored beside other session-local records so display names
-follow the session across browsers without changing `records/session.json`.
-
-`records/session.json` also carries v0.5 pilot metadata when present:
-`ownerAccountId`, `roleCondition`, `visibility`, `consentSnapshot`,
-`lastActivityAt`, and `retentionDueAt`. Since v1-alpha M7 (2026-07-16) it is
-the single source of truth for three more optional fields (M7 decision doc
-§3/§5b): `studyTag {studyId, batch?}` (session-level study designation;
-absent = daily use; forks inherit it; `setStudyTag` + WS `set_study_tag`
-mutate it), `modelOverride {provider, modelId, thinkingLevel?}` (per-session
-model choice, §7), and a widened `forkedFrom.purpose` vocabulary
-`fork | side | helper | ab-arm` — legacy `collaboration`/`comparison` values
-are normalized on read (`collaboration→side`, `comparison→ab-arm`) inside
-`readV4SessionHeader`, so every consumer sees only the new vocabulary.
-Session-list membership derives from the purpose: only roots and `fork`
-belong in the user-facing list; a chosen A/B arm is rewritten to the
-continuation. Meaningful prompts refresh private
-`lastActivityAt` and `retentionDueAt`; session open/detail reads do not.
-`session-retention.ts` provides explicit cleanup for expired private sessions:
-it removes history, workspace, and non-tombstone records while leaving
-`records/deleted.json`.
-
-Ordinary runs append accepted and terminal snapshots to `records/runs.jsonl`.
-Each run maps `sessionId`, `branchId`, `turnId`, `revisionId`, and `runId` to
-the Pi session file and user/assistant entry IDs. Latest-turn revision moves
-the Pi leaf to the latest user entry's parent, appends a new path with the same
-turn ID, and marks the prior run `superseded`; it does not create a logical
-branch or delete old Pi evidence. Latest-turn delete moves the Pi leaf to that
-user entry's parent, marks the run `deleted`, and does not remove disk evidence.
-
-Terminal outcomes are `completed`, `interrupted`, or `failed`. An interrupted
-run may carry `interruptionCause` (`user_abort`, `process_exit`,
-`transport_loss`, or `unknown`). The older top-level `aborted` value is accepted
-only when reading legacy records; new writes use `interrupted` plus a cause.
-
-On reopen, a latest run still at `accepted` is treated as a process-interrupted
-write boundary. If Pi JSONL already contains durable entries after the prior
-active leaf, the service appends an `interrupted` run snapshot claiming those
-user/assistant entries before normal leaf alignment. The partial work therefore
-stays visible and model-active for an ordinary follow-up such as `continue`;
-Pi JSONL is never rewritten.
-
-REST session detail and transcript preview are projected in `session-store.ts`
-from the active Pi leaf and run evidence, not from all Pi JSONL entries:
-
-- derive the latest active leaf from completed run records not marked deleted
-  or superseded;
-- align the opened `SessionManager` to that leaf before building transcript;
-- build transcript from `sessionManager.getBranch()`;
-- omit entries whose latest run snapshot is `deleted` or `superseded`.
-
-When no active leaf can be derived, the reader keeps Pi's default opened leaf.
-
-Opening or reconfiguring a managed session also aligns Pi's leaf from run
-evidence before revise/delete guards run.
-
-Explicit Fork (M5 substrate, 2026-07-15) creates a complete new session, not a
-`fork-NNN` branch:
-
-- the child's Pi JSONL is built by COPYING the parent's persisted branch path
-  (never via Pi's `createBranchedSession`, which re-points the live parent
-  and survives only one fork cycle) — forking is N-repeatable and never
-  kicks the live parent (A/B arms and BTW side conversations fork the same
-  live parent); Helper instead uses the normal create-session path with a
-  `forkedFrom` relationship so its transcript starts fresh;
-- the child gets its own readable session ID, dirs, and v0.4 records with
-  `forkedFrom: { sessionId, purpose }`;
-- default-workspace sessions copy the parent workspace; a §3.1 workspace
-  session keeps pointing at the user's external primary directory instead
-  of copying it into the data dir;
-- an A/B arm (or any child that must differ) can override any assembly
-  layer via selector overrides while keeping the parent conversation;
-- tool/file side effects before revision or Fork are not rolled back.
-
-Service-created sessions also append a `creation` config event. Supported
-idle-time KB/role/soul changes append `user_change` config events. Opening an
-existing session whose original role/soul/KB cannot resolve falls back
-automatically to the current selectors and appends a `resume_fallback` config
-event with warnings. Resume never blocks on a confirmation dialog.
-
-Draft project selection may apply supported defaults before first send. After a
-session is materialized, project reassignment updates durable grouping metadata
-without changing runtime identity, Pi leaf, or effective prompt layers.
-
-Role, soul, and custom-instruction changes rebuild the internal Pi runtime
-against the current Pi JSONL and workspace. They keep the same Alt Theory
-`sessionId`. KB changes update the selector and per-turn context policy without
-rebuilding the runtime. Busy sessions reject config changes with `session_busy`.
-
-### 5.1 Role Resolution (As-Is)
-
-> **Status note:** This subsection documents **current backend behavior only**.
-> It is not a target architecture, rational design decision, or endorsement of
-> the `default.md` path. Treat it as an implementation snapshot for debugging
-> and ops.
-
-Role presets differ from soul: there is no slug alias chain (no
-`role-latest` → `role-default`). Resolution is explicit per layer below.
-
-| Layer | When | Role preset slug |
-| --- | --- | --- |
-| Draft default | Researcher/admin/anonymous WebSocket connect | `null` (`None`), unless a `role-presets/default.md` file exists (legacy code check only; **not** the intended product default) |
-| Participant draft | Participant connect with `defaultRoleCondition` | Mapped slug (see below) |
-| Materialized session | First prompt / `createSession` | Snapshot into `records/assembly-manifest.json` |
-| Resume / `open_session` | Existing Pi JSONL open | Manifest slug if file still exists; else fallback to current connection selectors; manifest `null` stays `null` |
-
-**Participant condition mapping** (`alt-theory-app/web-server/server.ts`):
-
-```text
-conceptual-theory      -> role-conceptual-theory-companion
-metatheory-oriented    -> role-metatheory-oriented
-(other condition id)   -> used directly as a role preset slug
-```
-
-If the resolved slug has no matching `role-presets/{slug}.md`, session setup
-**throws** (setup error). There is no silent fallback to `default` or another
-slug.
-
-**Resume fallback** uses `SessionService.activeOptionalSlug()`: a missing
-manifest file does not block open; the service substitutes the connection's
-current draft selector and may append a `resume_fallback` config event. This is
-resume-time recovery behavior, not a general default-role policy.
-
-Code anchors:
-
-- `alt-theory-app/web-server/server.ts`: `createDraftSelectors()`,
-  `createDraftSelectorsForAuth()`, `DEFAULT_ROLE_CONDITION_PRESETS`,
-  `defaultRolePresetSlug()`
-- `alt-theory-app/web-server/session-service.ts`: `activeOptionalSlug()`,
-  `resolveOptionalRolePresetPath()`
-- `agent-assets/README.md`: role-presets asset layout and archive naming
-
-### 5.2 Mid-Turn Continuity And Break-Point Recovery (v1.3.0-alpha.5 M0)
-
-A failed or interrupted turn keeps its completed work. Continue resumes from
-the breakpoint; Retry reruns the latest prompt from the start.
-
-- **Context sanitation** (`core/turn-continuity.ts`): an always-loaded Pi
-  extension hooks the `context` event and, before every LLM call, drops
-  `toolCall` blocks with no matching `toolResult` anywhere in the outgoing
-  context, drops assistant messages left empty by that removal, and collapses
-  consecutive assistant messages (the later one is the replacement) so
-  provider role-alternation rules hold. Pi keeps errored partials in session
-  history by design; this extension is why preserved break-point context is
-  still provider-legal.
-- **Continue from breakpoint** (`SessionService.continueRunFromBreakpoint`): the replacement run
-  adopts the failed attempt's `assistantEntryIds` (completed tool calls,
-  results, partial output stay active and visible), marks the old run record
-  `superseded`, and resumes via `continueAgentTurnAfterModelSwitch` →
-  Pi `agent.continue()`. Only the trailing errored assistant partial is
-  regenerated; its partial *text* is dropped from model context (kept in the
-  transcript).
-- **Visible auto-retry**: Pi's own `auto_retry_start` events (exponential
-  backoff on transient provider errors) map to a `retrying` run phase with
-  `{attempt, maxAttempts, delayMs}`; Alt implements no second retry loop.
-- **Recovery offerability**: snapshots and `run_failed` carry a structured
-  recovery projection only when an incomplete run record exists. Preflight
-  failures (no key, unknown model) record none.
-- **Steering while running**: user text sent to a busy session is delivered
-  as a Pi steering message (`steerRunningSession`) instead of a
-  `session_busy` error, matching the Pi TUI's type-while-running behavior.
-
-### 5.3 Agent Team: Subagent Sessions And Addressed Mail (v1.3.0-alpha.5 M2)
-
-Lead conversations can delegate bounded tasks to subagents. The original alpha.5
-design record is `development/compound/2026-07-28-decision-v1.3-agent-team.md`;
-this section is the current source of truth where later behavior supersedes it.
-
-- **Subagents are real sessions**: children created with
-  `forkedFrom: { sessionId, purpose: "subagent" }` on the same substrate as
-  helper/side children — durable records, run lineage, break-point
-  continuity, right-rail visibility, direct user messaging, and promotion
-  all apply. A spawned session is a full agent conversation and may spawn its
-  own children when work branches into independent follow-up tracks.
-- **Tool surface** (`web-server/agent-team.ts`): ordinary and spawned sessions get `spawn_agent`,
-  `send_to_agent`, `check_agent`, `wait_for_agents`, `interrupt_agent`,
-  `list_agents`; spawned sessions additionally get `message_parent`; A/B arms get none. The
-  module owns only the model-facing contract; behavior lives in
-  `SessionService` behind the `AgentTeamBridge` interface. Tools join the
-  active set in both application runtimes and both Alt modes
-  (`alt-theory-core.ts` `extraTools`/`extraPromptSections`).
-- **Capability and model**: child mode INHERITS the parent's, clamped to
-  it (`clampSubagentMode`, owner 2026-08-07: Understand parents spawn only
-  Understand children; Work parents spawn Work children unless the spawn asks
-  for `understand`). `spawn_agent` accepts one self-contained `message`, an
-  optional `agent_type`, and an optional exact `model` override in Pi's native
-  `provider/model[:thinking]` format. It has no separate task/context slots, no
-  cost-derived strength tier, and no synchronous spawn-and-wait mode. The lead
-  may separately call bounded `wait_for_agents(timeout_s)` while children remain
-  background sessions.
-- **Subagent configuration** (`{dataDir}/subagents.json`): this file is isolated
-  from Pi's model/auth/settings files and from `app-settings.json`. Missing or
-  invalid configuration never blocks startup: the built-in `general-medium`
-  (default), `general-low`, and `general-high` presets remain available. They
-  inherit the lead's current provider/model and request medium, low, or high
-  thinking respectively through Pi's existing mapping.
-  The top-level `defaultAgent` names the preset used when `agent_type` is omitted
-  and initially points to `general-medium`; display grouping does not determine
-  the default.
-  Each ordered preset has one primary model reference plus ordered fallback
-  references; every reference may carry its own optional thinking suffix, so a
-  chain such as `provider-a/terra:high` → `provider-b/sol:low` is representable.
-  Thinking omission is valid and uses the selected model's normal initial level.
-  Writes are validated and atomic.
-- **Override boundary**: the model candidates exposed to the lead are the
-  deduplicated `provider/model` union of all primary and fallback references in
-  every preset, plus `inherit`. Thinking is not part of that union: any Pi
-  thinking level may be appended for a single spawn and Pi's existing
-  `thinkingLevelMap` translates it to provider/model-native controls. Preset
-  defaults are normal behavior; the lead is instructed to use exact overrides
-  only when the user requests one. An override replaces the first model for that
-  spawn while retaining the selected preset's ordered fallbacks and their own
-  thinking levels.
-- **Per-session configuration snapshot** (v1.4.7): `subagents.json` is read
-  once while a managed session is assembled (new, reopen, reconfigure, and
-  runtime-open paths) and kept in memory on the session. The lead prompt's
-  candidate list and every `spawn_agent` validation inside that open session
-  read the snapshot, never the file, so the two cannot diverge mid-session. A
-  newly assembled or reopened session reads current settings; an already-open
-  session keeps its snapshot until reopened. Settings save copy states this
-  lifecycle rule.
-- **Initial-spawn fallback gate** (v1.4.7): a preset's ordered fallback chain
-  exists only to recover an initial spawn whose selected model cannot start the
-  child. Once the child first becomes alive — its first valid assistant text or
-  tool execution; thinking-only output does not count — later turns are
-  ordinary session turns and never re-enter the chain, and a session whose
-  current model is not in the chain does not restart it. Aliveness is derived
-  from the live branch, so a reopened child derives it from persisted history
-  without extra schema.
-- **Terminal-only parent outcomes and interruption classification** (v1.4.7):
-  the parent is woken for terminal turn outcomes only — completed, failed, or
-  interrupted. Pi auto-retries and a successful preset/model fallback are not
-  outcomes and stay silent. A turn is `interrupted` only when Alt explicitly
-  stopped it (the recorded interruption cause) or the rejection is a typed
-  abort; a provider/transport error whose text contains "interrupt" is
-  `failed`.
-- **Concurrency**: background subagent runs are capped at 10 across the process
-  (`SUBAGENT_CONCURRENCY`); excess first-runs queue FIFO. `interrupt_agent`
-  on a queued subagent removes it from the queue; `send_to_agent` with
-  a queued subagent joins its pending context instead of double-queuing.
-- **Addressed mail** (`web-server/agent-mail.ts`): one durable JSONL inbox
-  per session (`recordsDir/agent-mail.jsonl`) carries parent↔child messages
-  and child lifecycle events (`spawned/completed/failed/interrupted/
-  input-requested`). Envelopes render into context as tagged user-role
-  fragments (`<agent-team-mail from="…">`); the transcript builder detects
-  the tag and renders an addressed system line, never a user bubble
-  (`session-store.ts`).
-- **Wake and delivery**: receiver running → Pi steer (seen at the next step
-  boundary); receiver open and idle → a normal recorded notification turn,
-  so lineage stays truthful; receiver closed → the envelope stays
-  undelivered in the inbox and is injected into context on next open
-  (`openSession`), with `alignSessionManagerLeaf` extending the active leaf
-  through trailing injected `custom_message` entries.
-
-## 6. Discovery And Introspection
-
-REST:
-
-- `POST /api/auth/login`
-- `POST /api/auth/logout`
-- `GET /api/auth/me`
-- `GET /api/role-presets`
-- `GET /api/souls`
-- `GET /api/kb-domains`
-- `GET /api/sessions`
-- `GET /api/sessions/{sessionId}`
-- `GET /api/sessions/{sessionId}/files`
-- `GET /api/sessions/{sessionId}/files?root=working` (local only; working-folder
-  descriptors, one directory's children with `folderId` + `path`, or bounded
-  recursive filtering with `folderId` + `search`)
-- `GET /api/sessions/{sessionId}/files/content`
-- `PUT /api/sessions/{sessionId}/files/content`
-- `GET /api/sessions/{sessionId}/files/download?root=workspace&path=...`
-- `GET /api/session-import/harnesses` (local only)
-- `GET /api/session-import/{harness}/sessions` (local only)
-- `POST /api/session-import/{harness}` (local only)
-- `DELETE /api/sessions/{sessionId}/files/content`
-- `POST /api/sessions/{sessionId}/promote` (side/subagent child to list member;
-  Helper is already list-visible)
-- `POST /api/sessions/{sessionId}/ab-comparisons` (+ `/generate`,
-  `/{comparisonId}/choice`) — M6 A/B comparison flow over the append-only
-  `records/ab-comparisons.jsonl` side-car
-
-Asset discovery routes return sorted `{ slug, displayName }` arrays without
-filesystem paths. Session list returns path-free summaries; session detail may
-include local paths because the current researcher console is a local runtime
-inspection tool.
-
-Session deletion uses `DELETE /api/sessions/{sessionId}` and writes
-`records/deleted.json`. Deleted sessions are excluded from the normal catalog
-but remain directly readable for recovery/developer use.
-
-Session file routes expose only `.md`, `.txt`, and `.json` files under a
-session's `records/` or `workspace/` roots. Requests must resolve inside the
-selected root, and large files are rejected. The routes support lightweight
-researcher record inspection/editing, not arbitrary filesystem browsing.
-When accounts are configured, these routes use content access filtering:
-participant accounts can access only their own sessions, and private session
-content is owner-only. The download and delete routes are intentionally
-workspace-only.
-
-The local-only `root=working` view is separate from the managed session
-workspace. It resolves only the persisted primary/additional workspace roots,
-omits hidden and common dependency/cache trees, and lists one directory's
-immediate children at a time as the user expands the tree. Inline filtering is
-the bounded exception: the server scans the allowed tree and returns at most
-200 matches plus their ancestors rather than making the client preload every
-directory. Each directory request and bounded text preview rechecks containment.
-This lets Files show the directory
-the agent actually works in without mislabeling imported references as the
-entire workspace. Switching Understand/Work changes mediation capability, not
-these persisted folder identities.
-
-The daily Files UI labels persisted primary/additional locations as working
-folders. It does not repeat the managed primary tree there: managed `uploads/`
-and `extracted/` entries appear under References, while other managed entries
-appear under Conversation folder. Files in external working folders remain in
-their corresponding working-folder tree.
-
-The participant/researcher frontend also uses these file routes for
-`records/ui-alias.json`, a small optional display-name file. This keeps aliases
-server-persisted and cross-browser while avoiding a new core session schema
-field.
-
-WebSocket:
-
-- server: `session_draft`
-- server: `session_metadata`, `session_metrics`
-- server: `approval_requested`, `approval_resolved`, `extension_notice`
-- client: `get_session_metadata`, `get_session_metrics`, `open_session`
-- client: `switch_visibility`, `switch_mode`
-- client: `add_workspace_dir` (local form only), `respond_approval`
-- client: `branch_revision`, `prepare_branch_revision`, `continue_latest`, `retry_latest`,
-  `delete_latest`, `fork_session`, `create_related_session`, `create_helper_session`
-- client: `set_study_tag`, `set_session_model` (M7, 2026-07-16)
-
-`branch_revision` creates a comparison child and starts the edited run there;
-`prepare_branch_revision` creates the child before the edited user message and
-leaves the edit as an unsent draft. `retry_latest` supersedes the latest attempt
-and reruns its exact model-facing user message from the start in the same
-session. `continue_latest` preserves completed work and resumes through Pi
-`agent.continue()`. Runs complete with the normal lifecycle events.
-
-`delete_latest` is synchronous: the server replies with `session_updated` and
-`session_transcript` for the same attached session.
-
-`fork_session` creates an idle logical Branch from the active Pi path. The
-ordinary `/branch` path keeps the requesting socket on its parent and opens the
-child in Related; list-level Duplicate passes `sourceSessionId` and intentionally
-attaches to the copy. `create_related_session` creates BTW (cloned) without
-attaching the parent socket. `create_helper_session` always creates a fresh
-Helper. With a valid non-Helper center it creates a Helper child and the
-frontend opens it in the right rail; otherwise it creates and attaches a root
-Helper in the center. A failed parent attach falls back to the root form.
-Helper metadata causes the help Skill to run on its first prompt and makes it
-list-visible without a promotion mutation.
-The branch workspace is copied at creation time, so later file/tool side
-effects do not share a mutable workspace. Collaboration-oriented shared space
-should be modeled through an explicit shared-space layer (the post-1.4
-"project re-semantics" direction), not through `/branch`. There is no standalone message-level Branch button; Edit and
-compare owns the common prompt-comparison journey.
-
-`session_draft` contains only selector state and no session ID. The browser may
-enable input/config controls in draft, but records, paths, and metrics remain
-unavailable until materialization. Draft and materialized sessions both accept
-`switch_visibility` between `research` and `private`.
-
-For participant WebSocket connections, the draft role preset is derived from
-the account's `defaultRoleCondition`. See §5.1 for the full as-is resolution
-table, condition mapping, and resume fallback behavior.
-
-Metrics include message/turn/tool counts, token totals, cost, and nullable
-context usage. Successful runs atomically update
-`records/session-metrics.json`.
-
-Session detail also returns `effectiveConfig` and `configEvents`, derived from
-`records/config-events.jsonl` when present and falling back to the assembly
-manifest for older sessions. If a legacy manifest lacks newer v0.4 config
-fields, the detail projection returns `effectiveConfig: null` instead of
-failing the request.
-
-Runtime events currently cover session creation, existing-session open/resume,
-resume warnings, KB/role-preset selection, and run completion/failure/abort. Pi
-JSONL remains the conversation record; event files do not duplicate message
-bodies.
-
-The normal catalog hides v0.4 roots that have a committed header but no Pi
-session file, no metrics, and no durable run event. Legacy incomplete roots
-remain visible as `legacy-v0.3` incomplete projections for recovery.
-
-## 7. Model Configuration
-
-The core may receive an explicit Pi `models.json` path plus provider/model
-selection and a runtime-only API key. Pi's `ModelRuntime` resolves both custom
-and built-in models and owns runtime authentication.
-
-Local mode exposes Pi-native provider/model setup. The full picker + inline
-editor is embedded in Settings → Models (the `ModelConfigPage embedded` prop
-strips the standalone page chrome); the `/config` route also serves it as the
-first-run screen. Settings → Models also renders an auth-connect card for
-OpenRouter, xAI/Grok, and OpenAI Codex. Its backend delegates OAuth/device-code
-interaction and credential persistence to Pi's native `ModelRuntime`; the
-existing inline frontend panel displays Pi's prompts and opens the
-authorization page. The GUI writes `models.json`, `auth.json`, and
-`settings.json` under `PI_CODING_AGENT_DIR`;
-session creation resolves the current active provider/model at runtime and
-passes that `models.json` path into Pi. Local-mode session materialization
-requires a usable active provider/model; if the active config is missing,
-keyless, or invalid, the server refuses the prompt instead of letting Pi fall
-back to an unrelated default model. Custom provider definitions are sanitized
-before runtime use so stale invalid providers do not poison the whole Pi
-registry. Anthropic-compatible runtime base URLs are normalized by stripping
-trailing `/v1` because the Anthropic SDK appends `/v1/messages`.
-
-The normal UI can set KB to `none`, which disables the built-in `kb/` folder
-context while leaving workspace file reading intact.
-
-### Per-session model override (v1-alpha M7, 2026-07-16)
-
-A session can carry `modelOverride {provider, modelId, thinkingLevel?}` in
-`records/session.json`. The override wins over the deployment-global model
-config at every open/resume path (`SessionService.modelArgsFor`);
-`thinkingLevel` falls back to the global config when unset. WS
-`set_session_model` persists the override and, when the model resolves in
-the live registry, switches the RUNNING session immediately (the same
-`setModel` + manifest-sync mechanism the fallback chain uses, plus Pi's
-native `setThinkingLevel`); an unresolvable model applies on next open.
-Sending `override: null` clears back to the global config, symmetrically
-switching the live session back. Changes append a `model_override_changed`
-session event. Forked children inherit the parent's override at creation.
-The pickable model list is the configured `models.json` registry — the
-override never introduces models outside the configured registry.
-
-**Model-on-resume fallback (v1.2.1).** The override is applied at open via
-`modelArgsFor`, which passes provider/modelId into `createAltTheorySession`; if
-that model was since removed from `models.json`, core throws `Unknown model`.
-`createManagedFromExisting` catches this (guarded by `isUnknownModelError` +
-the presence of an override), reopens with the deployment default, and appends a
-resume-warning naming original→fallback (§2.1.1). The header's stale override is
-deliberately NOT cleared, so the original model is restored on a later reopen if
-it returns. Only the per-session override is recovered this way; a missing
-deployment default still refuses the prompt (see the paragraph above).
-
-### Interim model fallback (v0.5.x pilot)
-
-When `ALT_THEORY_MODEL_FALLBACK_PATH` points at a JSON chain file, `SessionService`
-can recover from certain same-provider model errors without aborting the user
-turn.
-
-Mechanism:
-
-- `alt-theory-app/core/model-fallback.ts` — rule classifier (quota-style
-  messages), per-provider exclusion state, ordered chain resolver.
-- On a matching run failure, the service excludes the failed model id, calls
-  `setModel()` with the next chain entry that still exists in the Pi registry,
-  then `continue()` on the active agent session.
-- Successful switches sync `records/assembly-manifest.json` provider/model and
-  append a `model_fallback` event to `records/session-events.jsonl`.
-- Exclusion state persists under `{dataDir}/runtime/model-fallback-state.json`
-  (local dev may mirror under `runs/local-data/…`).
-
-Configuration:
-
-- Env `ALT_THEORY_MODEL_FALLBACK_PATH` — chain file path (hosted pilot:
-  `/etc/alt-theory/model-fallback.json`).
-- Chain entries are same-provider checkpoint ids sharing one API key; not
-  multi-vendor routing.
-
-Limits (current):
-
-- Ops JSON only; no console UI for chain editing or switch notification.
-- Resume/open still uses current environment model resolution, not
-  manifest-first restore (v0.6 target: see
-  `2026-06-18-v0-6-deferred-observations.md` §8).
-- General provider-agnostic fallback policy is deferred to v0.6 (see same file
-  §6).
-
-## 8. Known Constraints
-
-- Backend REST session list/detail and WebSocket `open_session` are
-  implemented. Browser session-list UI is still pending.
-- Role-preset and soul changes from the researcher console rebuild the internal
-  Pi runtime after materialization but keep the same Alt Theory session ID and
-  history. Before the first prompt, the same controls update draft state only.
-  The browser also offers `None` for both layers, which injects no role/soul
-  prompt section. KB domain changes append a config event but no longer inject
-  per-turn prompt text.
-- KB-use policy for a concrete KB domain now belongs in
-  `agent-assets/kb/metadata/domains.json`, not in role presets. The backend
-  injects it at session creation when that domain is selected; it still does
-  not prepend hidden per-turn prompt text.
-- The assembly manifest hashes selected app context, soul, and role-preset
-  files, but does not yet snapshot all injected content.
-- Runtime config is easy to mislaunch: generic Anthropic-compatible environment
-  variables do not select the tracked Alt Theory provider/model unless the
-  `ALT_THEORY_MODEL_*` and `ALT_THEORY_MODELS_PATH` values are set.
-- Existing-session open uses Pi JSONL history and current Alt Theory asset
-  assembly. Cross-machine cwd mismatch is warning-only; there is no cwd rewrite
-  or migration layer yet.
-- Existing v0.3 sessions without `records/session.json` are read as
-  `legacy-v0.3` projection. The catalog does not fabricate v0.4 trajectory
-  IDs for them.
-- Legacy/incomplete detail may expose `effectiveConfig: null` when newer
-  config structure cannot be inferred safely from old manifests.
-- Opening and abandoning the console does not create a session root. If a v0.4
-  zero-turn root is encountered, the normal catalog suppresses it instead of
-  offering a user-facing empty conversation.
-- Default soul discovery prefers `agent-assets/soul/soul-latest.md`, then
-  `agent-assets/soul/soul.md`; if neither exists, no soul layer is injected.
-  Optional core-soul module activation remains configured by backend
-  environment/config, not UI, but no core-soul assets or launch env are set in
-  production; the layer is effectively unused (v0.6 deprecate: deferred
-  observations §9).
-- Resume/open uses current environment provider/model
-  (`resolveEffectiveRuntimeModelConfig`), not manifest-first restore; provenance
-  may warn on drift (v0.6 §8).
-- Live WebSocket runs forward `assistant_delta` and tool events only; Pi
-  `thinking_delta` is not streamed. Transcript load preserves thinking text for
-  Developer view after the turn. Run-phase labels (connecting vs thinking) are
-  not exposed (v0.6 §7).
-- Conversation compaction is event-driven (v1.4.7): manual `/compact`,
-  threshold, and overflow compaction all publish through one shared projection
-  when Pi's `compaction_end` reports a completed, non-aborted boundary. The
-  transcript rebuilds from the live branch so the marker appears immediately,
-  and metrics republish with unknown (null) context usage until the next real
-  model usage arrives — a stale pre-compaction percentage never persists.
-  Aborted or failed compaction publishes nothing. Manual compaction delegates
-  to Pi's native session compaction. Retry events remain deferred. Write-path
-  enforcement is hard (guarded write + security extension), but it remains
-  policy in trusted code; OS-level enforcement is out of scope.
-- App-level auth is file-backed and process-local in v0.5.0: account records
-  persist in the data directory, but browser auth tokens are in memory and
-  require re-login after server restart. There is no self-registration or
-  global admin UI.
-- Private-session cleanup is explicit backend logic. There is no background
-  scheduler, encryption layer, or broad participant file manager.
-- Hosted model selector UI remains deferred. Local mode has `/config` for model
-  setup; custom instruction loading and visual Alt Theory skill invocation are
-  implemented; the normal skill picker excludes Pi global/project debug skills.
-- Transcript detail now preserves assistant thinking and distinguishes tool
-  calls from tool results so the researcher console can switch between User,
-  Researcher, and Evidence views.
-- Branch creation is available from researcher/debug assistant-message actions,
-  but branch-tree browsing and switching back to older branches are not
-  implemented.
-
-## 9. Verification
-
-- `npm run test:backend`: local unit and integration suite.
-- `npm run smoke:core`: real Pi initialization without an external model turn.
-- `npm run smoke:backend`: three-turn MiMo live test covering identity,
-  KB retrieval, workspace write, metrics, events, and JSONL persistence.
-- `npm run smoke:resume`: Pi-native resume probe with a changed resume-time
-  role preset marker. Both live commands require explicit external-provider
-  approval.
-
-## Change Log
-
-- 2026-07-29: v1.3.0-alpha.6. Deployment mode, visibility, and retention
-  (§2.3): `ALT_THEORY_MODE` now defaults to `local`; `visibility` split into
-  two disjoint per-deployment vocabularies (`research`/`private` hosted,
-  `exportable`/`no-export` local) with `isVisibilityForMode()` enforcing the
-  boundary; retention writes gated on `localMode === false`;
-  `sweepExpiredPrivateSessions` wired at hosted boot (daily, skips open
-  sessions) — previously the cleanup existed but had no call site anywhere.
-  Local conversations can no longer carry `retentionDueAt`.
-- 2026-07-28: v1.3.0-alpha.5. Mid-turn continuity (§5.2): turn-continuity
-  context-sanitation extension, break-point retry-in-place adopting the
-  failed attempt's entries, visible `retrying` phase from Pi's
-  `auto_retry_start`, `canRetry` on `run_failed`, steer-instead-of-busy for
-  user text during a running turn. Agent team (§5.3): subagent sessions as
-  `forkedFrom` purpose `subagent` children, lead/subagent tool surfaces over the
-  `AgentTeamBridge`, mode clamp + relative model tier, 3-slot subagent run
-  queue, durable per-session agent-mail inbox with steer/turn/on-open wake
-  delivery, and addressed transcript rendering.
-- 2026-07-28: v1.3.0-alpha.4 continuity/model-setup repairs: stabilized
-  retry/edit history, draft-to-live state transitions, provider/model
-  metadata, and thinking-effort handling ahead of the alpha.5 break-point
-  work.
-- 2026-07-25: v1.3.0-alpha.3. Transparency: shared tool-argument reader
-  (`web-server/tool-detail.ts`) emitting payloads layered by kind of change
-  (prose, before/after passages, code diff, bash command, skill load), used
-  by both the live event path and the transcript projection; context-usage
-  ring and conversation cost surfaced from the already-published
-  `SessionMetrics`. Background visibility: `sessionActivity()` per-session
-  run state exposed as `runStatus` on `/api/sessions`
-  (running / needs-you / stopped / done-unread). Auth: Pi's `anthropic`
-  OAuth flow added to `PROVIDER_AUTH_IDS` (Claude subscription login).
-  `fork_session` gained optional `sourceSessionId` (duplicate from the
-  list); `skillPrecedence` app-setting selects the skill-precedence prompt
-  section.
-- 2026-07-24: Preserved conversation state across compact and revise; kept
-  detached imported history visible.
-- 2026-07-24: Upgraded the Pi runtime boundary to `ModelRuntime`, connected
-  native OpenRouter, xAI/Grok, and OpenAI Codex authentication in Settings, and
-  exposed Pi-native manual compaction through `/compact`.
-- 2026-07-24: v1.2.1-alpha polish pass. Resume-time recovery + auto-titling
-  (§2.1.1): stale-working-folder degrade-and-warn, removed-per-session-model
-  fallback to default (§7), and best-effort LLM titling into `ui-alias.json`
-  (`autoTitle` app-setting + `/api/settings/auto-title`). User-prompt image
-  attachments (§3): WS `prompt.attachments[]` → `runPrompt` → `imageAttachmentsFor`
-  → Pi `session.prompt({images})`, modality-gated on `model.input`, with the
-  the Helper image-support procedure recording capability. Provider/model config embedded
-  in Settings → Models (always-visible picker + inline editor) with a
-  UI-only auth-connect card that has no backend (§7). Frontend-only in this pass: dark theme
-  (`data-theme` over `--color-*` tokens), Electron native bridge for file/folder
-  pickers + reveal (see `../releases/release-standard.md`).
-- 2026-07-23: Aligned Codex/OpenCode discovery with logical root conversations,
-  added portable searchable child-agent sidecars, collapsed imported
-  instruction context, normal default soul/role resolution, and numbered
-  aliases for changed-source reimports.
-- 2026-07-21: Corrected the meaning of adapter `ready`: the three external
-  engineering routes exist, but product support is incomplete while common
-  Codex compaction and image/attachment records can reject whole sessions.
-  These refusals are implementation gaps, not first-version design decisions.
-- 2026-07-21: Added Grok Build current-history discovery, deterministic
-  projection, complete-session refusal boundaries, full managed source
-  snapshot, shared UI import, and real continuation/repeat/restart acceptance.
-- 2026-07-21: Imported sessions auto-invoke the `imported-session-context`
-  skill on their first Alt Theory run; corrected the stale `ready` semantics
-  note after the common-shape adapter mappings landed.
-- 2026-07-20: Documented the local session-import boundary: harness discovery,
-  Pi managed-copy registration, source provenance/fingerprint records,
-  repeat-state classification, ordinary workspace/mode reuse, and hosted-mode
-  exclusion. Added after backend verification passed 100/100.
-- 2026-07-16: v1-alpha M7 backend pass. `records/session.json` gains
-  `studyTag`, `modelOverride`, and the widened `forkedFrom.purpose`
-  vocabulary (`fork | side | helper | ab-arm`, legacy values normalized on
-  read). Per-session model override with live switch (§7), `setStudyTag` /
-  `setSessionModel` service methods, WS `set_study_tag` /
-  `set_session_model`. Install-level participant designation in
-  `app-settings.json` (`participant {designated, label}`); `/api/auth/me`
-  returns `participant` (hosted from account role, local from the install
-  flag); local non-designated installs default new drafts to `private`
-  (sharing default follows designation, M7 decision doc §4). Fork section
-  rewritten to describe the M5 copy-fork substrate. Registered here after
-  the M7 IA design pass (`compound/2026-07-16-decision-v1-alpha-m7-ia-*`).
-- 2026-07-15: v1-alpha M1–M4 refresh. Per-session Alt mode (§3/§4),
-  workspace model with primary + added directories (§3.1), approval bridge
-  binding extension dialogs to the web UI, always-on vendored security
-  extension with session-records audit (§4), workspace skill source in the
-  manifest, new WebSocket messages (`switch_mode`, `add_workspace_dir`,
-  `respond_approval`, approval/extension server events), and removal of the
-  `ALT_THEORY_ENABLE_FULL` gate.
-- 2026-06-23: Documented interim same-provider model fallback (§7), resume
-  model drift, core-soul unused state, and live thinking/run-phase limits (§8).
-- 2026-06-23: Re-enabled Branch creation through `fork_session` for
-  researcher/debug assistant-message actions, using copied branch workspaces.
-  KB `none` is now a backend-discovered selectable domain and disables only
-  built-in `kb/` folder retrieval, not workspace file access.
-- 2026-06-22: Added v0.5.4 local-mode model configuration architecture:
-  `/config` writes Pi-native provider/auth/default files, runtime resolves the
-  active model per session, KB can be disabled with `none`, custom provider
-  configs are sanitized, Anthropic-compatible base URLs are normalized, and
-  Branch is globally disabled at the UI/WebSocket boundary pending repair.
-- 2026-06-23: Tightened local-mode model setup: active provider/model must be
-  runtime-usable before a local session can materialize, preventing silent Pi
-  fallback to an unrelated default model.
-- 2026-06-18: Added §5.1 role preset resolution (as-is only). Documents
-  `None` as the researcher draft default, legacy `default.md` code debt,
-  participant condition mapping, and resume fallback without treating them as
-  target design.
-- 2026-07-03: Removed branch-index as a current session authority. Transcript
-  projection now derives the active Pi leaf from append-only run records.
-- 2026-06-17: Updated transcript projection and conversation-action runtime
-  notes. `session-store.ts` builds REST transcript from the active Pi branch and
-  filters `deleted` / `superseded` run entries. Documented current WebSocket
-  shapes for `revise_latest`, `delete_latest`, and `fork_session`, and
-  corrected materialized `switch_visibility` behavior.
-- 2026-06-17: Added current UI alias persistence note. Session display aliases
-  are stored as optional `records/ui-alias.json` files via the existing
-  `GET/PUT /api/sessions/{sessionId}/files/content` routes, not in
-  `records/session.json`; participant access remains governed by the existing
-  session content authorization rules.
-- 2026-06-16: Added backend latest-turn delete foundation. The WebSocket
-  protocol accepts `delete_latest`; `SessionService` moves the Pi leaf away from
-  the deleted latest user turn, appends `deleted` run evidence, preserves disk
-  history, and rejects busy or no-completed-turn sessions.
-- 2026-06-16: Added private session retention and workspace-file foundation.
-  Private WebSocket drafts can materialize owner-scoped private sessions,
-  private prompts refresh inactive retention, detail reads do not, researcher
-  normal detail/file routes cannot read private content, explicit cleanup
-  hard-deletes expired private evidence with a tombstone, and workspace
-  download/delete routes are constrained to owner-visible workspace files.
-- 2026-06-16: Added v0.5 pilot account/auth foundation. The backend now has
-  data-dir account records, login/logout/me routes, HttpOnly browser auth,
-  owner/role-condition/consent metadata in `records/session.json`,
-  participant-filtered REST session access, and participant WebSocket
-  first-send ownership.
-- 2026-06-15: Updated after workbench-session-management acceptance. Added
-  durable project assignment, recoverable delete tombstones, and safe legacy
-  detail fallback when v0.4 config projection is unavailable.
-- 2026-06-14: Added append-only run lineage, same-branch latest-turn revision,
-  and explicit collaboration/comparison Fork with shared/copied workspace
-  policies. Alt Theory and Pi session identities are now explicitly separate.
-- 2026-06-14: Added content-validated custom instructions, three-mode skill
-  composition, Alt Theory-only skill discovery, explicit skill invocation, and
-  the minimal `conversation-summary` runtime skill.
-- 2026-06-14: Updated after project-config/live-switching implementation.
-  Added optional project records, effective config events, automatic
-  resume-fallback records, and same-session KB/role/soul switching.
-- 2026-06-14: Updated after draft-first-send implementation. WebSocket connect
-  now creates only `session_draft`; first prompt materializes a readable-ID
-  session; `new_session` returns to draft; v0.4 zero-turn roots are hidden from
-  the normal catalog.
-- 2026-06-08: Added current prompt assembly and per-turn context-prefix
-  architecture, including the known hardcoded hook-substitute constraint.
-- 2026-06-08: Updated after minimal agent-asset loading repair. Backend now
-  loads `ALTTHEORY.md`, selected soul/role assets when present,
-  `agent-assets/kb/`, and `agent-assets/prompts/pi/`.
-- 2026-06-27: Moved KB domain scope/use-policy metadata out of role presets
-  into `agent-assets/kb/metadata/domains.json`; selected KB domains inject
-  metadata during session prompt assembly.
-- 2026-06-08: Added backend session catalog/detail and WebSocket
-  `open_session` for existing persisted sessions.
-- 2026-06-12: Added optional run grouping metadata, transcript thinking/tool
-  result preservation, and session-local records/workspace text-file routes.
-
-## Related Documents
-
-- `development/architecture/researcher-console.md`: browser console consuming the
-  session engine for live testing, inspection, and future session work.
-
-
-
+For module/interface/seam/depth questions, load the `codebase-design` skill.
+For changing product terms or conceptual relationships, load
+`domain-modeling`. For public Architecture or ADR maintenance, load the
+`architecture` skill. Adding, deleting, splitting, merging, renaming, or
+redefining a high-level module changes this map and must be discussed with the
+Owner before it is persisted.
+
+## Related decisions
+
+The most relevant durable decisions are:
+
+- [`ADR 0001 — session-scoped security extension`](adr/0001-session-scoped-security-extension.md)
+  — Pi-native interception with Alt-owned session roots, approvals, and audit.
+- [`ADR 0002 — mediated child-session substrate`](adr/0002-mediated-child-session-substrate.md)
+  — related, helper, and subagent work uses ordinary managed sessions.
+- [`ADR 0003 — deterministic external-session import`](adr/0003-deterministic-external-session-import.md)
+  — source-specific projection, provenance, and explicit loss/refusal.
+- [`ADR 0004 — prompt-cache safety`](adr/0004-prompt-cache-safety.md)
+  — truthful short-horizon prefix reuse without an application TTL model.
+
+These ADRs explain selected durable “why” choices. They do not replace the
+current-behavior documents linked above.

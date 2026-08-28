@@ -31,6 +31,9 @@ workspace layout from this public file.
 - `alt-theory-app/frontend/` owns the current React frontend.
 - `agent-assets/` contains runtime-loaded product assets. Do not treat it as
   contributor documentation or move it under `development/`.
+- Treat Pi packages as upstream dependencies. Never patch installed or vendored
+  Pi package code in place. If a clean fix requires an upstream change, record
+  or report that boundary and use only supported local interfaces in Alt Theory.
 - `development/` contains public engineering explanation, not active private
   planning or session records.
 - Local runtime data, credentials, deployment state, and private test evidence

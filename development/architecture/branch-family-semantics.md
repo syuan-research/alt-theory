@@ -17,8 +17,10 @@ implements: []
 the most complex parts of the app). Full design history, adversarial
 reviews, and superseded alternatives live in the private workstream doc
 `llm-theo-development/workstreams/0-v1-full-stack/notes-and-status/20260804-v1.4-branch-promotion-restore-design.md`
-(+ the 20260805 v1.4.1 swe-plan). This file records only what is shipped,
-and why.
+(+ the 20260805 v1.4.1 swe-plan). This file records only what is shipped and
+the constraints that have an explicit source. The shared managed-session
+substrate for attached children is recorded in [ADR 0002](adr/0002-mediated-child-session-substrate.md);
+family and lineage semantics remain owned here.
 
 Code hotspots this document governs:
 

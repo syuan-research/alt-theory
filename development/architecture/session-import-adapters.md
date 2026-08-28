@@ -1,5 +1,9 @@
 # Session Import Adapters
 
+The durable import boundary is recorded in [ADR 0003](adr/0003-deterministic-external-session-import.md).
+This document owns the implemented adapter behavior; the ADR explains the
+determinism, provenance, and refusal trade-off.
+
 This document describes the session-import behavior implemented in the product.
 Upstream harness storage research lives under
 `development/compound/research-agent-session-history/`. Historical decisions

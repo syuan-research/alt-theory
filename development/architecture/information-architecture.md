@@ -12,6 +12,13 @@ surfaces. It describes architecture and structure, not exact copy, dimensions,
 or visual styling. Revise it through product discussion when the structure
 changes; do not silently bypass it during implementation.
 
+It is a surface-placement map, not the detailed behavior contract for every
+surface. Those contracts remain in the owning Architecture documents, including
+[branch and family semantics](branch-family-semantics.md),
+[agent behavior and assets](agent-behavior-and-assets.md),
+[session import](session-import-adapters.md), and the
+[core session engine](core-session-engine.md).
+
 Alt Theory serves two overlapping audiences: people who want to understand a
 problem, and people who want efficiency without giving up understanding. The
 local bundle must work for non-technical social-science users. Researcher-only
@@ -331,11 +338,11 @@ the normal or advanced product UI.
   used when the conversation materializes.
 - The composer shows the effective thinking effort, not an ambiguous unset
   value.
-- A new draft without an explicit effort uses a reliable upstream
-  recommendation when one exists. Otherwise, order that model's actual
-  supported non-off levels and choose the positional middle; for an even
-  number of levels choose the lower of the two middle values. Do not equate
-  the literal label `medium` with the middle of an expanding level set.
+- A new draft without an explicit effort orders that model's actual supported
+  non-off levels and chooses the positional middle; for an even number of
+  levels it chooses the lower of the two middle values. When no levels are
+  known, the current fallback is `medium`. Do not equate the literal label
+  `medium` with the middle of an expanding level set.
 - Only levels supported by the selected model are offered. A model may expose
   none plus a small set such as high/max, while another may expose several
   levels.

@@ -8,10 +8,10 @@ updated: 2026-07-30
 
 ## 1. Purpose
 
-Alt Theory treats agent behavior as an inspectable composition, not as one
-large system prompt and not as a synonym for tool access. This separation makes
-the behavior understandable as a research object while allowing the underlying
-agent runtime, safety infrastructure, and action capabilities to evolve.
+The current implementation composes agent behavior from inspectable layers,
+rather than treating it as one large system prompt or as a synonym for tool
+access. This document records that composition; it does not claim that every
+underlying implementation boundary is clean or independently modular.
 
 The architecture distinguishes three questions:
 
@@ -75,9 +75,9 @@ Conflicts should be interpreted by source:
 - application invariants govern Alt Theory behavior across roles;
 - Soul and Role specialize stance and expression without inventing capability.
 
-This is why action capability and behavior are resolved separately in code.
-Changing what tools are active must not silently change the agent's values, and
-changing Role must not silently broaden filesystem reach.
+The current code resolves action capability and behavior separately. Changing
+what tools are active must not silently change the agent's values, and changing
+Role must not silently broaden filesystem reach.
 
 ## 4. Global and current reasoning
 

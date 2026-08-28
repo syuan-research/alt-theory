@@ -38,7 +38,7 @@ design.
 - Researcher/admin/anonymous draft sessions start with **no role preset**
   (`None`).
 - Participant draft sessions get a role from the account's `defaultRoleCondition`
-  (see `development/architecture/core-session-engine.md` §5.1).
+  (see `development/architecture/research-identity-visibility-privacy-and-retention.md`).
 
 ### Legacy `default.md` debt
 
