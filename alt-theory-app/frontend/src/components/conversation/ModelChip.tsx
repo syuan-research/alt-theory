@@ -225,12 +225,14 @@ export function ModelChip({
     effectiveModel?.provider === option.provider &&
     effectiveModel?.modelId === option.modelId;
 
-  // Reveal the effort row once, when it mounts. A stable callback fires only
-  // on mount/unmount; an inline ref would re-fire on every parent re-render
-  // (each WS status tick) and repeatedly yank the scroll position back to
-  // the hoisted section — the "list keeps jumping" defect.
+  // Reveal the model row, not just the effort row beneath it: entering from
+  // search with only "Thinking effort" at the edge leaves the model name one
+  // row above the fold. The container holds the model row and the effort row
+  // together. A stable callback fires only on mount/unmount; an inline ref
+  // would re-fire on every parent re-render (each WS status tick) and
+  // repeatedly yank the scroll position back to the hoisted section.
   const revealEffortRow = useCallback((el: HTMLDivElement | null) => {
-    el?.scrollIntoView({ block: "nearest" });
+    el?.parentElement?.scrollIntoView({ block: "nearest" });
   }, []);
 
   const renderModel = (option: ModelOption) => {
