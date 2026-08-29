@@ -6,6 +6,31 @@ detail lives in commit history and `development/`.
 
 ---
 
+## v1.4.7-beta.3 — 2026-08-29
+
+This release lets you stop a waiting conversation immediately, keeps the
+model menu steady from search through thinking-effort selection, and makes
+the subagent model chain reorderable end to end.
+
+### Waiting on subagents
+
+- Pressing stop while the conversation is waiting for subagents now releases
+  the wait at once, so you can send your next message right away. The
+  subagents keep running in the background and their results still arrive.
+
+### Model picker
+
+- The model menu stays where you left it while browsing and searching; it no
+  longer keeps snapping back to the top. Picking a model from search now
+  shows its thinking-effort options with the model name kept in view.
+
+### Subagent model configuration
+
+- The default model and its fallbacks now form one reorderable chain: move
+  any entry up or down, and promoting a fallback makes it the default.
+
+---
+
 ## v1.4.7-beta.2 — 2026-08-28
 
 This release makes tooltips instant and readable, fixes conversation
