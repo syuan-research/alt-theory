@@ -495,15 +495,6 @@ function UserNav({ onImport }: { onImport: () => void }) {
                   <button
                     onClick={(e) => {
                       closeMenu(e);
-                      void addFolder();
-                    }}
-                  >
-                    <i className="ph ph-folder-plus" />
-                    {t("Add working folder…")}
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      closeMenu(e);
                       onImport();
                     }}
                   >
@@ -545,13 +536,20 @@ function UserNav({ onImport }: { onImport: () => void }) {
               </details>
               <button
                 className="btn-new split-plus"
+                data-tip={t("Add working folder…")}
+                onClick={() => void addFolder()}
+              >
+                <i className="ph ph-folder-plus" />
+              </button>
+              <button
+                className="btn-new split-plus"
                 data-tip={t("New conversation")}
                 onClick={() => {
                   shell.openApp();
                   app.startNewSession();
                 }}
               >
-                <i className="ph ph-plus" />
+                <i className="ph ph-note-pencil" />
               </button>
             </div>
           ) : (
