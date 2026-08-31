@@ -86,7 +86,8 @@ The root calculation and live workspace state are in
 
 Alt Theory registers a custom `write` tool that shadows Pi's built-in write.
 Its `mkdir` and `writeFile` operations call the shared `assertWritablePath`
-check before touching the filesystem. The check first requires lexical
+check before touching the filesystem (skipped only while Full Access is
+effective; see below). The check first requires lexical
 containment in a current writable root, then checks real paths and the nearest
 existing ancestor so a symlink or an existing path cannot redirect the write
 outside those roots. See [`alt-theory-core.ts`](../../alt-theory-app/core/alt-theory-core.ts#L757-L774)
@@ -155,6 +156,30 @@ allowance to avoid prompting for every bundled skill or agent configuration
 read. Writes and dangerous operations retain their checks. See
 [`security-extension.ts`](../../alt-theory-app/core/security-extension.ts#L248-L380)
 and [`ADR 0001`](adr/0001-session-scoped-security-extension.md).
+
+### Full Access
+
+Full Access (v1.4.8) is a per-conversation, in-memory bypass of the agent-tool
+mediation above. The composer's permission-mode control (shield, immediately
+right of Toolbox) offers **Ask for approval** — the default posture described
+on this page — and **Full access**. Full access appears only in local Work and
+local Native Pi on an assembled live session; enabling it asks for
+confirmation, disabling is immediate and allowed mid-run.
+
+While effective, the security extension's shared `tool_call` handler returns
+before any mediation, the guarded write tool skips only the writable-root
+assertion (the filesystem operation itself is unchanged), and the bypassed
+decisions produce no security-audit entries. The value lives solely in the
+assembled session runtime — never in a session header, manifest, database, or
+settings — so disposing or reopening the session, or restarting the app,
+restores default mediation; a temporary switch to Understand hides it dormant
+rather than clearing it. The server rejects enabling attempts that are not
+local or not work-capable. Application-level boundaries outside agent-tool
+mediation (account/session visibility, REST file ownership, trash and
+recoverable delete) are unaffected. See
+[`security-extension.ts`](../../alt-theory-app/core/security-extension.ts#L39-L58),
+[`alt-theory-core.ts`](../../alt-theory-app/core/alt-theory-core.ts#L518-L527),
+and [`full-access.test.ts`](../../alt-theory-app/web-server/full-access.test.ts).
 
 ## Approval and audit interfaces
 
