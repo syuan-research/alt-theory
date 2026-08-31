@@ -50,6 +50,6 @@
 
 ## 与内置方法的技能组合
 
-- 让横切的方法技能（`search-policy`、`adaptive-aligning`、`adaptive-plan-record`、`workspace-conventions`）各司其职。它们薄而与领域无关。
+- 让横切的方法技能（`search-policy`、`adaptive-aligning`、`adaptive-planning`、`workspace-conventions`）各司其职。它们薄而与领域无关。
 - 用领域技能承担实质内容。它们与方法层组合，其中 `search-policy` 管理来源标注，用户技能定义其领域中何为「好来源」。
 - 若与某个内置方法有分歧，可替换它（优先级设为「优先用户」即可）。

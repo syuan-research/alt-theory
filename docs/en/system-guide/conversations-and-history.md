@@ -43,7 +43,7 @@ forward, and the conversation continues.
 - Trigger it deliberately with `/compact` at a resting point.
 
 A summary is lossy. Put load-bearing facts in a
-[plan record](bundled-skills.md#adaptive-plan-record) or a file, which
+[plan record](bundled-skills.md#adaptive-planning) or a file, which
 never compact.
 
 ## Deleting a conversation

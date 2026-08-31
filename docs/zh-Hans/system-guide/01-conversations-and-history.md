@@ -28,7 +28,7 @@
 - 运行时显示状态，可随时停止，对话仍然可用。
 - 在停顿点用 `/compact` 主动触发。
 
-摘要有损。关键事实写入 [`adaptive-plan-record`（计划记录）](09-bundled-skills.md#adaptive-plan-record) 或文件，文件不被压缩。
+摘要有损。关键事实写入 [`adaptive-planning`（自适应规划）](09-bundled-skills.md#adaptive-planning) 或文件，文件不被压缩。
 
 ## 删除对话
 

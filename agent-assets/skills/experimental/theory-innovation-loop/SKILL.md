@@ -290,7 +290,7 @@ skill.)
   moments; batched questions carrying the agent's own best guesses is
   the right form for them. Endpoint of aligning here is NOT full
   convergence.
-- **adaptive-plan-record**: when the loop runs more than one round or
+- **adaptive-planning**: when the loop runs more than one round or
   may outlive the conversation, the state ledger
   (selected / deferred / set aside with reason), the current aspect
   card, and the current verifier standards all live in the plan

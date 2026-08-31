@@ -805,10 +805,10 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               ) : null}
               <div
                 className="mi"
-                onClick={() => armCommand("adaptive-plan-record")}
+                onClick={() => armCommand("adaptive-planning")}
               >
                 <i className="ph ph-list-checks" />
-                {t("Plan & record")}
+                {t("Adaptive planning")}
               </div>
               <div className="sep" />
               {understandMode && app.sessionId ? (

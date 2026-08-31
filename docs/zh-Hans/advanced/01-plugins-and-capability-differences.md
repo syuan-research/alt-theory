@@ -24,7 +24,7 @@
 | 智能体团队与子代理会话 | 应用功能 | 工具的委派 |
 | 来自其他工具的导入 | 应用功能 | 不包含 |
 
-方法技能（`search-policy`、`adaptive-aligning`、`adaptive-plan-record`、`precise-edit`、`workspace-conventions`）以纯指令形式迁移。三个工具驱动的技能（`web-search`、`page-fetch`、`doc-convert`）指定具体 CLI 工具，这些必须安装在宿主上，或替换为所用工具的原生工具。`search-policy` 两种方式都可移植，它指明所需工具的类型。
+方法技能（`search-policy`、`adaptive-aligning`、`adaptive-planning`、`precise-edit`、`workspace-conventions`）以纯指令形式迁移。三个工具驱动的技能（`web-search`、`page-fetch`、`doc-convert`）指定具体 CLI 工具，这些必须安装在宿主上，或替换为所用工具的原生工具。`search-policy` 两种方式都可移植，它指明所需工具的类型。
 
 ## 不能迁移的内容
 

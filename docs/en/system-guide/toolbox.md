@@ -12,9 +12,9 @@ typing.
   [aligning skill](bundled-skills.md#adaptive-aligning): the agent
   interviews you to build shared understanding before direction-setting
   work.
-- Plan and record invokes the
-  [plan-record skill](bundled-skills.md#adaptive-plan-record) for work
-  worth tracking beyond one conversation.
+- Adaptive planning invokes the
+  [adaptive-planning skill](bundled-skills.md#adaptive-planning) for ongoing
+  work whose map, stages, and durable record may develop across conversations.
 - Look something up online (Work) invokes
   [live search](search-sources-web.md). In Understand this entry is not a
   disabled button: it is a line explaining that Understand has no live

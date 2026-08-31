@@ -16,14 +16,18 @@ it.**
 
 ## Placement
 
-- **Volatile goes to `output/`**: anything produced by one session that
-  may be superseded — drafts of analyses, reports, extractions — goes in
-  `output/YYYYMMDD-<short-slug>/`. One folder per session or per piece of
-  work, whichever the user prefers. **A session output folder gets a short
-  `README.md`** saying what the folder contains and why — contents inside
-  are mixed, and the README is what makes them findable months later.
-- **Durable plans go to `plans/`**: plan-records and similar living
-  documents, named `YYYYMMDD-<short-slug>-plan.md`.
+- **Keep working outputs together in `output/`**: drafts, analyses, checks,
+  scripts, reports, and extractions that may be superseded belong together
+  rather than in an early content taxonomy. When work has a plan-record, use
+  one plan-scoped `output/YYYYMMDD-<project>-<slug>/` folder across sessions
+  and dates. For standalone work, use one dated folder per coherent piece of
+  work. Add a short `README.md` only when no plan-record or obvious index makes
+  the folder understandable.
+- **Keep plan-records with durable planning and status records**: follow the
+  established home demonstrated by the workspace, such as `notes-and-status/`,
+  `plans/`, or `memories/`; do not choose by folder name alone. If no convention
+  exists, ask whether the user has one or accepts the default `plan-records/`.
+  Name a default record `YYYYMMDD-<project>-<slug>-plan-record.md`.
 - **Converted files sit next to their original** with `_converted`
   appended (e.g. `interview-3_converted.md`), so the pairing is visible.
 - Folder names above are defaults — adapt them to what already exists
@@ -37,7 +41,7 @@ that EVOLVES:
 
 - **Early**: only a few fixed categories — upstream/source materials,
   settled decisions, and the working area. Don't pre-build a taxonomy.
-- **Middle**: dated session folders carry the moving work.
+- **Middle**: dated plan-scoped or coherent-work folders carry the moving work across sessions.
 - **Later**: when something stabilizes, promote it into an emerging fixed
   category (e.g. a `stable/` area for results that graduated out of
   session outputs) — categories are earned by stability, not declared in
@@ -58,11 +62,10 @@ A reference shape (category words, all optional):
 
 ```
 project/
-  source-materials/      upstream inputs this project owns
-  decisions/             settled choices worth not re-deriving
-  plans/                 living plan-records
-  output/YYYYMMDD-…/     dated session work, each with a README
-  stable/                results promoted out of output when they settle
+  source-materials/                  upstream inputs this project owns
+  decisions/                         settled choices worth not re-deriving
+  output/YYYYMMDD-project-slug/      plan-scoped or coherent working outputs
+  stable/                            results promoted out of output when they settle
 ```
 
 ## Naming

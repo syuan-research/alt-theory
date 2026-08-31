@@ -51,7 +51,7 @@ A selected knowledge base can preserve the scope, provenance, and internal tradi
 | Skill | When it helps | How it starts |
 |---|---|---|
 | `adaptive-aligning` | Situation, goals, or direction are not yet shared | Automatic or explicit |
-| `adaptive-plan-record` | Multi-stage work needs a living plan and record | Automatic or explicit |
+| `adaptive-planning` | Ongoing work needs a provisional map, complete stages, and user checkpoints | Automatic or explicit |
 | `search-policy` | Claims need live verification and clear source labels | Automatic |
 | `precise-edit` | Near-final text needs restrained editing | Automatic or explicit |
 | `imported-session-context` | An imported conversation needs contextual recovery | Automatic |

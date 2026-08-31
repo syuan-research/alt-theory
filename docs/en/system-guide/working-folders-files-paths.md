@@ -45,9 +45,10 @@ are themselves readable:
   it, and follows your existing structure over its defaults.
 - Originals untouched. Revising your document means writing a copy or a
   new, clearly-named file, never editing your file in place.
-- Products stay findable. Things it creates go to sensible places: dated
-  output folders for produced work, a `plans/` folder for plan records.
-  Nothing is scattered across your root.
+- Products stay findable. Plan-records follow the project's established home
+  for durable planning and status records. Working products stay together in
+  dated folders organized by plan or coherent work, not scattered across the
+  root or prematurely split by content type.
 - No uninvited reorganization. It never renames, moves, or reorganizes
   your files on its own initiative. It suggests, you decide.
 

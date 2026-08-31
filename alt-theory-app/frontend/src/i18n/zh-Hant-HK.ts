@@ -466,7 +466,7 @@ const catalog: Record<string, string> = {
   "Permanently delete {count} selected conversations?": "永久刪除選中的 {count} 個對話？",
   "Permanently delete this conversation?": "永久刪除此對話？",
   "Pick a knowledge set above the composer to ground answers in your own material.": "在輸入框上方選擇知識集，讓回答以你自己的材料為依據。",
-  "Plan & record": "計劃與記錄",
+  "Adaptive planning": "自適應規劃",
   "Please sign in to continue.": "請登錄以繼續。",
   "Prefer Alt Theory's": "優先使用 Alt Theory 的",
   "Prefer the ones I installed": "優先使用我安裝的",

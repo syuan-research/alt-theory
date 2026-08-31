@@ -26,8 +26,9 @@ readable file you can inspect. Your own skills can take precedence
   without restructuring, your choices preserved, placeholders never filled
   uninvited.
 - workspace-conventions governs where agent-created files go: read the
-  project structure first, dated output folders, plans in `plans/`,
-  originals untouched, no uninvited reorganization.
+  project structure first, keep plan-records with established durable status
+  records, group working outputs by plan or coherent work, leave originals
+  untouched, and do not reorganize without invitation.
 
 ## Running the collaboration
 
@@ -35,10 +36,10 @@ readable file you can inspect. Your own skills can take precedence
   batched questions, each carrying the agent's own best guess, so
   high-confidence points become confirmations. Triggers when you ask to
   align, or when acting on guesses would be expensive.
-- adaptive-plan-record is a living plan for multi-step work that outlives
-  one conversation: goals first, stages loosely, what each action
-  revealed, decided versus assumed versus open. Lives in your working
-  folder; survives compaction.
+- adaptive-planning works with a provisional goal map for ongoing work:
+  each Stage is a complete action-and-checking arc, and every Stage ends with
+  user alignment before the next begins. Its plan-record persists across
+  conversations and records what action changed, including future branches.
 - conversation-summary turns the current conversation into a saved
   markdown summary or handoff note, provenance preserved, open questions
   kept open.

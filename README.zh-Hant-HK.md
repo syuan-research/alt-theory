@@ -51,7 +51,7 @@ Knowledge base（知識庫）可以保留一個領域的範圍、provenance（�
 | Skill（技能） | 適用情況 | 啟動方式 |
 |---|---|---|
 | `adaptive-aligning` | 對情況、目標或方向尚未形成共同理解 | 自動或明確調用 |
-| `adaptive-plan-record` | 多階段工作需要持續更新的計劃與記錄 | 自動或明確調用 |
+| `adaptive-planning` | 持續工作需要可修訂的地圖、完整階段和用戶檢查點 | 自動或明確調用 |
 | `search-policy` | 論斷需要即時核實和清楚的來源標記 | 自動 |
 | `precise-edit` | 接近定稿的文字需要克制、精確的編輯 | 自動或明確調用 |
 | `imported-session-context` | 匯入的對話需要恢復上下文 | 自動 |

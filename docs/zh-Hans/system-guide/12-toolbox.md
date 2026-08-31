@@ -6,7 +6,7 @@
 
 - 询问 Alt 如何工作：打开[助手](16-helper-and-guidance.md)，一个用新上下文回答应用相关问题的助理。
 - 在计划或决定上对齐：调用 [`adaptive-aligning`（自适应对齐）](09-bundled-skills.md#adaptive-aligning)，智能体在定方向工作前访谈你以建立共同理解。
-- 计划与记录：调用 [`adaptive-plan-record`（计划记录）](09-bundled-skills.md#adaptive-plan-record)，用于值得跨对话追踪的工作。
+- 自适应规划：调用 [`adaptive-planning`（自适应规划）](09-bundled-skills.md#adaptive-planning)，用于地图、阶段与持久记录会跨对话发展的持续工作。
 - 在线查资料（工作模式）：调用[实时检索](06-search-sources-web.md)（技能侧为 `web-search` / `page-fetch`）。在理解模式下此项不是一个被禁用的按钮，而是一行说明，理解模式没有实时查核，需切换到工作模式才能搜索。
 - 全部技能：跳到[命令面板](11-commands.md)，且已预输入 `/`。
 

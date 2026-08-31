@@ -32,7 +32,7 @@ Alt Theory skills can trigger automatically. Convenient on-demand manual trigger
 Planning, alignment, and problem-understanding skills (the English id is the invocable name, e.g. `/adaptive-aligning`):
 
 - `adaptive-aligning`: before direction-setting work, the agent aligns with the user through batched questions, each carrying its own best guess, so the gap between the user's framing and the agent's reading becomes explicit.
-- `adaptive-plan-record`: a living plan for multi-step work that persists across sessions.
+- `adaptive-planning`: ongoing planning with a provisional goal map, complete work stages, user checkpoints, and a plan-record that persists across sessions.
 - `workspace-conventions`: where and how the agent creates files in a project, with a flexible structure that can grow as what is settled and unsettled becomes clearer.
 - `conversation-summary`: used when the user asks for a summary, a handoff note, or key information extracted from a long conversation, still with source labels.
 - `search-policy`: when live lookup is warranted and how sources are labeled; in Understand mode it governs fallback when there is no live check.
