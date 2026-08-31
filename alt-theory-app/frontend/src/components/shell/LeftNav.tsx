@@ -162,7 +162,7 @@ export function LeftNav() {
             app.startNewSession();
           }}
         >
-          <i className="ph ph-plus" />
+          <i className="ph ph-note-pencil" />
         </button>
         <button data-tip={t("Search")} onClick={() => shell.setSearchOpen(true)}>
           <i className="ph ph-magnifying-glass" />
@@ -560,7 +560,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                 app.startNewSession();
               }}
             >
-              <i className="ph ph-plus" />
+              <i className="ph ph-note-pencil" />
               {t("New conversation")}
             </button>
           )}
@@ -726,7 +726,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                       data-tip={t("New conversation in {label}", { label: group.label })}
                       onClick={() => startConversationIn(group.dir || null)}
                     >
-                      <i className="ph ph-plus" />
+                      <i className="ph ph-note-pencil" />
                     </button>
                   ) : null}
                 </div>
