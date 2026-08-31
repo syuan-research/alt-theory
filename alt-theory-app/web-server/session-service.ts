@@ -728,14 +728,16 @@ export class SessionService implements AgentTeamBridge {
   /**
    * Full Access (v1.4.8): in-memory, session-lifetime permission bypass.
    * Enabling is validated here and in the core setter (work-capable mode);
-   * the WS layer separately rejects non-local servers. Disabling is immediate.
+   * the WS layer separately rejects non-local servers. Disabling is immediate
+   * and allowed during a run — the guard predicate is live per tool call, and
+   * turning permissions down mid-run is always safe.
    */
   async setFullAccess(
     sessionId: string,
     enabled: boolean,
   ): Promise<SessionSnapshot> {
     const managed = this.requireSession(sessionId);
-    if (managed.busy || managed.session.isStreaming) {
+    if (enabled && (managed.busy || managed.session.isStreaming)) {
       throw new SessionBusyError(sessionId);
     }
     managed.setFullAccess(enabled);

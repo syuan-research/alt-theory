@@ -791,7 +791,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               {!toolboxSeen ? <span className="badge-dot" /> : null}
             </button>
             {fullAccessVisible ? (
-              <>
+              <span className="perm-anchor">
                 <button
                   className={`flat${app.fullAccess ? " perm-on" : ""}`}
                   data-tip={
@@ -810,7 +810,6 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                 </button>
                 <div
                   className={`menu${menu === "perm" ? " on" : ""}`}
-                  style={{ left: 0 }}
                   onClick={(e) => e.stopPropagation()}
                 >
                   <div
@@ -865,7 +864,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                     ) : null}
                   </div>
                 </div>
-              </>
+              </span>
             ) : null}
             <div
               className={`menu${menu === "plus" ? " on" : ""}`}

@@ -943,6 +943,7 @@ async function createAltTheorySessionWithManager(
       await loader.reload();
     },
     getFullAccess: () => runtimeState.fullAccess,
+    isFullAccessEffective,
     setFullAccess: (enabled: boolean): void => {
       if (enabled === runtimeState.fullAccess) return;
       // Enabling requires a work-capable mode; the server additionally rejects

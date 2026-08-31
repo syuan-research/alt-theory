@@ -755,6 +755,9 @@
   /* Full Access (v1.4.8): warning-color shield states in the composer. */
   .flat.perm-on { color: var(--color-warning); }
   .menu .mi i.perm-warn-icon { color: var(--color-warning); }
+  /* Anchors the permission menu under the shield control, not the row edge. */
+  .perm-anchor { position: relative; display: inline-flex; }
+  .perm-anchor > .menu { left: 0; bottom: 40px; }
   .model-picker { min-width: 280px; }
   .model-provider-section + .model-provider-section { border-top: 1px solid var(--hairline); margin-top: 4px; padding-top: 4px; }
   .model-provider-label { padding: 4px 10px 2px; color: var(--text-3); font-size: 0.7rem; }

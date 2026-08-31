@@ -1814,9 +1814,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const setFullAccess = useCallback(
     (enabled: boolean) => {
-      if (sendMessage({ type: "set_full_access", payload: { enabled } })) {
-        setFullAccessState(enabled);
-      }
+      // No optimistic write: the server echoes a session_updated snapshot on
+      // success, and a rejected request (busy/mode) must leave the UI truth on.
+      void sendMessage({ type: "set_full_access", payload: { enabled } });
     },
     [sendMessage],
   );

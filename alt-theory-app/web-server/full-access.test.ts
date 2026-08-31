@@ -7,10 +7,12 @@
  * never persisted; fresh sessions start off; Native Pi can enable.
  */
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, writeFileSync } from "fs";
-import { tmpdir } from "os";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "fs";
+import { homedir, tmpdir } from "os";
 import { join, resolve } from "path";
 import test from "node:test";
+import { createAltTheorySession } from "../core/alt-theory-core.js";
+import { createSessionDirs } from "../core/data-dir.js";
 import { createSecurityExtension } from "../core/security-extension.js";
 import { SessionService } from "./session-service.js";
 import { readV4SessionHeader } from "./session-records.js";
@@ -107,26 +109,47 @@ test("full access bypasses security-extension mediation; off restores it", async
     );
 
   // Off (ask mode): each mediation class fires — command blocklist,
-  // write outside roots, custom-tool SSRF.
+  // write outside roots, sensitive-path read, read outside the workspace,
+  // custom-tool SSRF.
   const sudoOff = (await call("bash", { command: "sudo rm -rf /" })) as
     | { block?: boolean }
     | undefined;
-  assert.ok(!sudoOff || sudoOff.block === true, "sudo blocked while off");
+  assert.equal(sudoOff?.block, true, "sudo blocked while off");
   const writeOff = (await call("write", {
     path: join(root, "elsewhere", "x.txt"),
     content: "x",
   })) as { block?: boolean } | undefined;
-  assert.ok(!writeOff || writeOff.block === true, "outside-root write blocked while off");
+  assert.equal(writeOff?.block, true, "outside-root write blocked while off");
+  const sensitiveOff = (await call("read", {
+    path: join(homedir(), ".ssh", "id_ed25519"),
+  })) as { block?: boolean } | undefined;
+  assert.equal(sensitiveOff?.block, true, "credential-path read blocked while off");
+  const outsideOff = (await call("read", {
+    path: join(tmpdir(), "outside-any-root.txt"),
+  })) as { block?: boolean } | undefined;
+  assert.equal(
+    outsideOff?.block,
+    true,
+    "read outside workspace fails closed while off (no approval UI)",
+  );
   const ssrfOff = (await call("web_fetch", {
     url: "http://169.254.169.254/latest/meta-data",
   })) as { block?: boolean } | undefined;
-  assert.ok(!ssrfOff || ssrfOff.block === true, "SSRF URL blocked while off");
+  assert.equal(ssrfOff?.block, true, "SSRF URL blocked while off");
 
   // Full effective: the shared handler returns without mediating at all.
   full = true;
   assert.equal(await call("bash", { command: "sudo rm -rf /" }), undefined);
   assert.equal(
     await call("write", { path: join(root, "elsewhere", "x.txt"), content: "x" }),
+    undefined,
+  );
+  assert.equal(
+    await call("read", { path: join(homedir(), ".ssh", "id_ed25519") }),
+    undefined,
+  );
+  assert.equal(
+    await call("read", { path: join(tmpdir(), "outside-any-root.txt") }),
     undefined,
   );
   assert.equal(
@@ -139,7 +162,7 @@ test("full access bypasses security-extension mediation; off restores it", async
   const sudoAgain = (await call("bash", { command: "sudo rm -rf /" })) as
     | { block?: boolean }
     | undefined;
-  assert.ok(!sudoAgain || sudoAgain.block === true, "sudo blocked again after disabling");
+  assert.equal(sudoAgain?.block, true, "sudo blocked again after disabling");
 });
 
 test("full access lifetime on the managed session", async () => {
@@ -159,7 +182,7 @@ test("full access lifetime on the managed session", async () => {
   const on = await service.setFullAccess(created.sessionId, true);
   assert.equal(on.fullAccess, true);
 
-  // The value is never persisted to the session header.
+  // The value is never persisted anywhere in the session records.
   const recordsDir = join(fixture.dataDir, "sessions", created.sessionId, "records");
   const header = readV4SessionHeader(recordsDir);
   assert.equal(
@@ -167,6 +190,14 @@ test("full access lifetime on the managed session", async () => {
     false,
     "session header carries no fullAccess field",
   );
+  const recordFiles = readdirSync(recordsDir);
+  for (const file of recordFiles) {
+    const content = readFileSync(join(recordsDir, file), "utf-8");
+    assert.ok(
+      !content.includes("fullAccess"),
+      `fullAccess leaked into records file ${file}`,
+    );
+  }
 
   // Understand keeps the value stored (dormant), not cleared…
   const dormant = await service.switchMode(created.sessionId, "understand");
@@ -197,4 +228,36 @@ test("native pi can enable full access", async () => {
   const created = await service.createSession(selectors);
   const on = await service.setFullAccess(created.sessionId, true);
   assert.equal(on.fullAccess, true);
+});
+
+test("full access is dormant in Understand, effective again back in Work", async () => {
+  const root = mkdtempSync(join(tmpdir(), "alt-full-access-core-"));
+  const kbDir = join(root, "kb");
+  mkdirSync(kbDir, { recursive: true });
+  writeFileSync(join(root, "ALTTHEORY.md"), "Dormancy test context", "utf-8");
+  const runtime = await createAltTheorySession({
+    ...createSessionDirs(join(root, "data"), "full-access-dormancy"),
+    appContextPath: join(root, "ALTTHEORY.md"),
+    kbDir,
+    kbDomain: "none",
+    understandReadOnly: true,
+    altMode: "work",
+    resourceDiscovery: "clean",
+  });
+  assert.equal(runtime.isFullAccessEffective(), false, "off by default");
+  runtime.setFullAccess(true);
+  assert.equal(runtime.isFullAccessEffective(), true, "effective in Work");
+  await runtime.setAltMode("understand");
+  assert.equal(runtime.getFullAccess(), true, "value retained");
+  assert.equal(
+    runtime.isFullAccessEffective(),
+    false,
+    "dormant while in Understand",
+  );
+  await runtime.setAltMode("work");
+  assert.equal(
+    runtime.isFullAccessEffective(),
+    true,
+    "effective again back in Work",
+  );
 });
