@@ -15,13 +15,14 @@ bundled guidance skills.
 ### Approvals and Full Access
 
 - Next to the Toolbox in the composer there is now a shield control for the
-  conversation's permission mode. The default, **Ask for approval**, keeps
-  today's behavior: risky commands and file changes outside your folders ask
-  first. Switching to **Full access** lets tools run without those prompts for
-  this conversation only; enabling asks for confirmation, turning it back is
-  immediate. It is available in local Work and Native Pi modes, it is never
-  saved, and reopening the conversation or restarting the app restores the
-  default.
+  conversation's permission mode — including on the new-conversation screen,
+  where the choice applies once you send the first message. The default,
+  **Ask for approval**, keeps today's behavior: risky commands and file
+  changes outside your folders ask first. Switching to **Full access** lets
+  tools run without those prompts for this conversation only; enabling asks
+  for confirmation, turning it back is immediate. It is available in local
+  Work and Native Pi modes, it is never saved, and reopening the conversation
+  or restarting the app restores the default.
 
 ### Starting conversations
 

@@ -2264,6 +2264,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     studyTag: StudyTag | null = null,
     workspacePrimaryDir: string | null = null,
     resetComposer = false,
+    fullAccess = false,
   ): void {
     send({
       type: "session_draft",
@@ -2275,6 +2276,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         soulSlug: selectors.soulSlug,
         customInstructionRef: selectors.customInstructionRef ?? null,
         mode,
+        fullAccess,
         modelOverride,
         studyTag,
         workspacePrimaryDir,
@@ -2301,6 +2303,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       readAppSettings(dataDir).defaultAltMode ?? "understand";
     let draftModelOverride: SessionModelOverride | null = null;
     let draftStudyTag: StudyTag | null = null;
+    // Draft Full Access (v1.4.8): applies to the conversation this draft
+    // becomes; never sticky past its first message.
+    let draftFullAccess = false;
     // Sticky across new_session: the workspace selector chooses where NEW
     // conversations go until the user changes it (M4).
     let draftWorkspace: string | null = null;
@@ -2328,6 +2333,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         draftStudyTag,
         draftWorkspace,
         resetComposer,
+        draftFullAccess,
       );
     };
 
@@ -2458,6 +2464,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
                 {
                   ...sessionCreationMetadataForAuth(auth, draftVisibility),
                   mode: draftMode,
+                  fullAccess: draftFullAccess,
                   modelOverride: draftModelOverride,
                   studyTag: draftStudyTag,
                   workspace: draftWorkspace
@@ -2465,6 +2472,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
                     : null,
                 },
               );
+              // The draft choice covered only this conversation; the next
+              // draft starts from Ask again.
+              draftFullAccess = false;
               if (closed) return;
               attachToSession(initial.sessionId);
             }
@@ -2741,6 +2751,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
                 {
                   ...sessionCreationMetadataForAuth(auth, draftVisibility),
                   mode: draftMode,
+                  fullAccess: draftFullAccess,
                   modelOverride: draftModelOverride,
                   studyTag: draftStudyTag,
                   workspace: draftWorkspace
@@ -2748,6 +2759,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
                     : null,
                 },
               );
+              // The draft choice covered only this conversation; the next
+              // draft starts from Ask again.
+              draftFullAccess = false;
               if (closed) return;
               attachToSession(initial.sessionId);
             }
@@ -2921,10 +2935,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             sendError(send, new Error("enabled must be a boolean"));
             break;
           }
-          if (!attachedSessionId) {
-            sendError(send, new Error("A materialized session is required"));
-            break;
-          }
           // Full Access is a local-only control (v1.4.8); the mode check
           // (local Work / Native Pi) lives in the session runtime itself.
           if (!localMode) {
@@ -2932,6 +2942,26 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               send,
               new Error("Full access is not enabled on this server"),
             );
+            break;
+          }
+          if (!attachedSessionId) {
+            // Draft: remember the choice; it applies when the first message
+            // materializes the conversation, then resets.
+            if (
+              msg.payload.enabled &&
+              draftMode !== "work" &&
+              readAppSettings(dataDir).runtimeMode !== "native-pi"
+            ) {
+              sendError(
+                send,
+                new Error(
+                  "Full access can only be enabled in local Work or Native Pi mode.",
+                ),
+              );
+              break;
+            }
+            draftFullAccess = msg.payload.enabled;
+            sendCurrentDraft();
             break;
           }
           try {

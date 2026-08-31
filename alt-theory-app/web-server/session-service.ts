@@ -229,6 +229,11 @@ export interface SessionCreationMetadata {
   forkedFrom?: { sessionId: string; purpose: ForkPurpose } | null;
   /** Internal mode override used when a fresh child inherits its parent mode. */
   mode?: AltMode;
+  /**
+   * Full Access (v1.4.8): apply to the newly assembled session runtime when
+   * true. Only valid with a work-capable `mode`; rejected otherwise.
+   */
+  fullAccess?: boolean;
 }
 
 export type { ForkPurpose, StudyTag, SessionModelOverride };
@@ -2495,6 +2500,11 @@ export class SessionService implements AgentTeamBridge {
       counters: { messageCount: 0, toolCallCount: 0, turnCount: 0 },
       transcript: [],
     });
+    // Draft Full Access (v1.4.8): the core setter rejects non-work-capable
+    // assemblies, which is the contract the WS draft layer relies on.
+    if (metadata.fullAccess) {
+      managed.setFullAccess(true);
+    }
     appendSessionEvent(managed.manifest.recordsDir, {
       sessionId: managed.manifest.sessionId,
       type: "session_created",

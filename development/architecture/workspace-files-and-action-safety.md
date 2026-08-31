@@ -162,9 +162,11 @@ and [`ADR 0001`](adr/0001-session-scoped-security-extension.md).
 Full Access (v1.4.8) is a per-conversation, in-memory bypass of the agent-tool
 mediation above. The composer's permission-mode control (shield, immediately
 right of Toolbox) offers **Ask for approval** — the default posture described
-on this page — and **Full access**. Full access appears only in local Work and
-local Native Pi on an assembled live session; enabling it asks for
-confirmation, disabling is immediate and allowed mid-run.
+on this page — and **Full access**. Full access appears only in local Work and local
+Native Pi — on a live session, and on the new-conversation screen, where the
+choice applies when the first message creates the session and the next draft
+starts from Ask again. Enabling it asks for confirmation; disabling is
+immediate and allowed mid-run.
 
 While effective, the security extension's shared `tool_call` handler returns
 before any mediation, the guarded write tool skips only the writable-root

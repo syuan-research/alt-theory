@@ -230,6 +230,22 @@ test("native pi can enable full access", async () => {
   assert.equal(on.fullAccess, true);
 });
 
+test("draft full access applies when the conversation materializes", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  // Work draft + full access: the assembled runtime starts with it on.
+  const created = await service.createSession(selectors, {
+    mode: "work",
+    fullAccess: true,
+  });
+  assert.equal(created.fullAccess, true);
+  // Non-work-capable assembly with full access is rejected, not silently off.
+  await assert.rejects(
+    service.createSession(selectors, { mode: "understand", fullAccess: true }),
+    /Full access can only be enabled/,
+  );
+});
+
 test("full access is dormant in Understand, effective again back in Work", async () => {
   const root = mkdtempSync(join(tmpdir(), "alt-full-access-core-"));
   const kbDir = join(root, "kb");

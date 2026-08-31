@@ -191,11 +191,11 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
   const interactive = app.sessionReady && app.wsConnected;
   const hasText = draft.trim().length > 0;
   const canAttach = app.appMode === "local" && interactive;
-  // Full Access (v1.4.8): local-only, work-capable modes, and only on an
-  // assembled live session — no draft permission state before one exists.
+  // Full Access (v1.4.8): local-only and work-capable modes. On the draft
+  // (new conversation) screen the choice applies once the first message
+  // materializes the session.
   const fullAccessVisible =
     app.appMode === "local" &&
-    app.sessionId !== null &&
     (app.runtimeMode === "native-pi" || app.sessionMode === "work");
   const canSend =
     interactive &&
