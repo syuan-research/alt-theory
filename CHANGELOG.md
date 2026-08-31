@@ -6,7 +6,7 @@ detail lives in commit history and `development/`.
 
 ---
 
-## v1.4.8 — 2026-08-31
+## v1.4.8-beta.1 — 2026-08-31
 
 This version adds a per-conversation permission mode with a Full Access
 option, makes the working-folder row's buttons unambiguous, and updates the
