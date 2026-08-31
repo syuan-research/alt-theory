@@ -47,6 +47,12 @@ export interface SecurityExtensionOptions {
   addWritableRoot?: (root: string) => void;
   /** Session-scoped audit sink (session records, never a machine-global log). */
   recordAudit?: (entry: SecurityAuditEntry) => void;
+  /**
+   * Full Access (v1.4.8): when effective, the whole tool_call handler returns
+   * without mediation — no command blocks, approvals, sensitive-path checks,
+   * external-read escalation, SSRF checks, or audit entries from them.
+   */
+  isFullAccess?: () => boolean;
 }
 
 /** Commands with no legitimate use inside an Alt Theory session: hard block. */
@@ -173,6 +179,7 @@ export function createSecurityExtension(
     getReadableRoots,
     addWritableRoot,
     recordAudit,
+    isFullAccess,
   } =
     options;
   // Session-lifetime allowances (spec §5.2): "allow for this session" lasts
@@ -189,6 +196,10 @@ export function createSecurityExtension(
 
   return (pi) => {
     pi.on("tool_call", async (event, ctx) => {
+      // Full Access: bypass every mediation this extension performs. Checked
+      // first and live per call so a mid-session toggle applies immediately.
+      if (isFullAccess?.()) return undefined;
+
       const blocked = (rule: string, detail: string): ToolCallEventResult => {
         audit({
           toolName: event.toolName,

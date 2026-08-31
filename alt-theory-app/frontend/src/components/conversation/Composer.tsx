@@ -13,7 +13,7 @@ import { fmtTime } from "@/lib/format";
 import { t } from "@/i18n";
 import { autosizeTextarea } from "@/lib/autosizeTextarea";
 
-type MenuKey = "plus" | "model" | "role" | "kb" | "presetcfg" | null;
+type MenuKey = "plus" | "model" | "role" | "kb" | "presetcfg" | "perm" | null;
 const SHOW_HELP_STARTERS = false;
 
 interface SlashCommand {
@@ -191,6 +191,12 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
   const interactive = app.sessionReady && app.wsConnected;
   const hasText = draft.trim().length > 0;
   const canAttach = app.appMode === "local" && interactive;
+  // Full Access (v1.4.8): local-only, work-capable modes, and only on an
+  // assembled live session — no draft permission state before one exists.
+  const fullAccessVisible =
+    app.appMode === "local" &&
+    app.sessionId !== null &&
+    (app.runtimeMode === "native-pi" || app.sessionMode === "work");
   const canSend =
     interactive &&
     (hasText || app.stagedWorkspacePaths.length > 0);
@@ -784,6 +790,83 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               <i className="ph ph-toolbox" />
               {!toolboxSeen ? <span className="badge-dot" /> : null}
             </button>
+            {fullAccessVisible ? (
+              <>
+                <button
+                  className={`flat${app.fullAccess ? " perm-on" : ""}`}
+                  data-tip={
+                    app.fullAccess
+                      ? t("Permission mode: full access")
+                      : t("Permission mode: ask for approval")
+                  }
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggle("perm");
+                  }}
+                >
+                  <i
+                    className={`ph ${app.fullAccess ? "ph-shield-warning" : "ph-shield"}`}
+                  />
+                </button>
+                <div
+                  className={`menu${menu === "perm" ? " on" : ""}`}
+                  style={{ left: 0 }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div
+                    className="mi"
+                    onClick={() => {
+                      setMenu(null);
+                      // Disabling is immediate; no confirmation.
+                      if (app.fullAccess) app.setFullAccess(false);
+                    }}
+                  >
+                    <i className="ph ph-shield-check" />
+                    <span>
+                      {t("Ask for approval")}
+                      <span className="d">
+                        {t("Tool calls need per-action approval; the default mode")}
+                      </span>
+                    </span>
+                    {!app.fullAccess ? (
+                      <i className="ph ph-check check" />
+                    ) : null}
+                  </div>
+                  <div
+                    className="mi"
+                    onClick={() => {
+                      setMenu(null);
+                      if (app.fullAccess) return;
+                      // Enabling goes through the standard confirm window.
+                      app.requestConfirm({
+                        message: t("Enable full access?"),
+                        details: [
+                          t("Bypasses the security extension's command blocks and approvals"),
+                          t("Bypasses credential-path access limits"),
+                          t("Approval prompts and writable-folder checks for external reads and writes are skipped"),
+                          t("Network access limits are skipped"),
+                          t("These decisions are no longer written to the security audit log"),
+                          t("Applies to this conversation only; reopening it or restarting the app turns it off"),
+                        ],
+                        confirmLabel: t("Enable full access"),
+                        onConfirm: () => app.setFullAccess(true),
+                      });
+                    }}
+                  >
+                    <i className="ph ph-shield-warning perm-warn-icon" />
+                    <span>
+                      {t("Full access")}
+                      <span className="d">
+                        {t("Tools run without approval prompts this conversation")}
+                      </span>
+                    </span>
+                    {app.fullAccess ? (
+                      <i className="ph ph-check check" />
+                    ) : null}
+                  </div>
+                </div>
+              </>
+            ) : null}
             <div
               className={`menu${menu === "plus" ? " on" : ""}`}
               style={{ left: 0 }}

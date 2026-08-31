@@ -752,6 +752,9 @@
   .menu .mi .think .levels span:hover { background: var(--hover); color: var(--ink); }
   .menu .mi .think .levels span.on { background: var(--selected); color: var(--ink); }
   .menu .mi .d { font-size: 0.72rem; color: var(--text-3); display: block; margin-top: 1px; }
+  /* Full Access (v1.4.8): warning-color shield states in the composer. */
+  .flat.perm-on { color: var(--color-warning); }
+  .menu .mi i.perm-warn-icon { color: var(--color-warning); }
   .model-picker { min-width: 280px; }
   .model-provider-section + .model-provider-section { border-top: 1px solid var(--hairline); margin-top: 4px; padding-top: 4px; }
   .model-provider-label { padding: 4px 10px 2px; color: var(--text-3); font-size: 0.7rem; }

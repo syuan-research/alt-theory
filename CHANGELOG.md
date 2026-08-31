@@ -6,6 +6,39 @@ detail lives in commit history and `development/`.
 
 ---
 
+## v1.4.8 — 2026-08-31
+
+This version adds a per-conversation permission mode with a Full Access
+option, makes the working-folder row's buttons unambiguous, and updates the
+bundled guidance skills.
+
+### Approvals and Full Access
+
+- Next to the Toolbox in the composer there is now a shield control for the
+  conversation's permission mode. The default, **Ask for approval**, keeps
+  today's behavior: risky commands and file changes outside your folders ask
+  first. Switching to **Full access** lets tools run without those prompts for
+  this conversation only; enabling asks for confirmation, turning it back is
+  immediate. It is available in local Work and Native Pi modes, it is never
+  saved, and reopening the conversation or restarting the app restores the
+  default.
+
+### Starting conversations
+
+- New conversation buttons now use a compose icon instead of a plus, and
+  adding a working folder has its own plus button beside the folder picker —
+  the old single plus could read as "add a folder" when it meant "start a
+  conversation". Adding a working folder is no longer buried in the folder
+  menu.
+
+### Bundled guidance
+
+- The plan-record skill is replaced by an adaptive planning skill, the
+  adaptive aligning skill is deepened, and Alt's response standards for
+  natural language answers are updated.
+
+---
+
 ## v1.4.7-beta.3 — 2026-08-29
 
 This release lets you stop a waiting conversation immediately, keeps the

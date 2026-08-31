@@ -304,6 +304,8 @@ interface ManagedSession {
   getRuntimeMode: () => RuntimeMode;
   setRuntimeMode: (mode: RuntimeMode) => Promise<void>;
   setNativePiScanAltSkills: (enabled: boolean) => Promise<void>;
+  getFullAccess: () => boolean;
+  setFullAccess: (enabled: boolean) => void;
   getWorkspace: () => { primaryDir: string; additionalDirs: string[] };
   addWorkspaceDir: (dir: string) => Promise<string[]>;
   approvalBridge: ApprovalBridge;
@@ -720,6 +722,23 @@ export class SessionService implements AgentTeamBridge {
       changedFields: ["altMode"],
       warnings: [],
     });
+    return this.snapshot(managed);
+  }
+
+  /**
+   * Full Access (v1.4.8): in-memory, session-lifetime permission bypass.
+   * Enabling is validated here and in the core setter (work-capable mode);
+   * the WS layer separately rejects non-local servers. Disabling is immediate.
+   */
+  async setFullAccess(
+    sessionId: string,
+    enabled: boolean,
+  ): Promise<SessionSnapshot> {
+    const managed = this.requireSession(sessionId);
+    if (managed.busy || managed.session.isStreaming) {
+      throw new SessionBusyError(sessionId);
+    }
+    managed.setFullAccess(enabled);
     return this.snapshot(managed);
   }
 
@@ -3561,6 +3580,8 @@ export class SessionService implements AgentTeamBridge {
     getRuntimeMode: () => RuntimeMode;
     setRuntimeMode: (mode: RuntimeMode) => Promise<void>;
     setNativePiScanAltSkills: (enabled: boolean) => Promise<void>;
+    getFullAccess: () => boolean;
+    setFullAccess: (enabled: boolean) => void;
     getWorkspace: () => { primaryDir: string; additionalDirs: string[] };
     addWorkspaceDir: (dir: string) => Promise<string[]>;
     selectors: SessionSelectors;
@@ -4081,6 +4102,7 @@ export class SessionService implements AgentTeamBridge {
       soulSlug: managed.selectors.soulSlug,
       customInstructionRef: managed.selectors.customInstructionRef ?? null,
       mode: managed.getAltMode(),
+      fullAccess: managed.getFullAccess(),
       modelOverride: header?.modelOverride ?? null,
       currentModel: managed.session.model && !isNoModelPlaceholder(managed.session.model)
         ? {

@@ -216,6 +216,9 @@ export interface AppContextValue {
 
   sessionMode: AltMode;
   switchMode: (mode: AltMode) => void;
+  /** Full Access (v1.4.8): live in-memory session state; false = ask mode. */
+  fullAccess: boolean;
+  setFullAccess: (enabled: boolean) => void;
   modelOverride: SessionModelOverride | null;
   currentSessionModel: { provider: string; modelId: string } | null;
   setSessionModel: (override: SessionModelOverride | null) => void;
@@ -366,6 +369,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [wsConnected, setWsConnected] = useState(false);
   const [selectors, setSelectors] = useState<SessionSelectors>(defaultSelectors);
   const [sessionMode, setSessionMode] = useState<AltMode>("understand");
+  const [fullAccess, setFullAccessState] = useState(false);
   const [workspacePrimaryDir, setWorkspacePrimaryDir] = useState<string | null>(
     null,
   );
@@ -768,6 +772,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setConnLabel(t("Ready"));
           setSelectors(applySnapshotSelectors(message.payload));
           setSessionMode(message.payload.mode ?? "understand");
+          setFullAccessState(message.payload.fullAccess ?? false);
           setModelOverride(message.payload.modelOverride ?? null);
           setCurrentSessionModel(null);
           setWorkspacePrimaryDir(message.payload.workspacePrimaryDir ?? null);
@@ -821,6 +826,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           reconnectSessionIdRef.current = message.payload.sessionId;
           setSelectors(applySnapshotSelectors(message.payload));
           setSessionMode(message.payload.mode ?? "understand");
+          setFullAccessState(message.payload.fullAccess ?? false);
           setModelOverride(message.payload.modelOverride ?? null);
           setCurrentSessionModel(message.payload.currentModel ?? null);
           setStudyTagState(message.payload.studyTag ?? null);
@@ -865,6 +871,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
             branchId: message.payload.branchId || prev.branchId,
           }));
           if (message.payload.mode) setSessionMode(message.payload.mode);
+          if (message.payload.fullAccess !== undefined) {
+            setFullAccessState(message.payload.fullAccess);
+          }
           if (message.payload.modelOverride !== undefined) {
             setModelOverride(message.payload.modelOverride);
           }
@@ -1803,6 +1812,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [sendMessage],
   );
 
+  const setFullAccess = useCallback(
+    (enabled: boolean) => {
+      if (sendMessage({ type: "set_full_access", payload: { enabled } })) {
+        setFullAccessState(enabled);
+      }
+    },
+    [sendMessage],
+  );
+
   const setSessionModel = useCallback(
     (override: SessionModelOverride | null) => {
       if (sendMessage({ type: "set_session_model", payload: { override } })) {
@@ -1907,6 +1925,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       presetState,
       pressPreset,
       sessionMode,
+      fullAccess,
+      setFullAccess,
       workspacePrimaryDir,
       knownWorkspaces,
       setDraftWorkspace,
@@ -2018,6 +2038,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       presetState,
       pressPreset,
       sessionMode,
+      fullAccess,
+      setFullAccess,
       workspacePrimaryDir,
       knownWorkspaces,
       setDraftWorkspace,

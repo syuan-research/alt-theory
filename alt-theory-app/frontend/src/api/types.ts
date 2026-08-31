@@ -91,6 +91,8 @@ export interface SessionDraftSnapshot {
   soulSlug: string | null;
   customInstructionRef?: string | null;
   mode: AltMode;
+  /** Full Access (v1.4.8): a draft has no runtime, so always absent/false. */
+  fullAccess?: boolean;
   modelOverride?: SessionModelOverride | null;
   studyTag?: StudyTag | null;
   workspacePrimaryDir?: string | null;
@@ -148,6 +150,8 @@ export interface SessionSnapshot {
   soulSlug: string | null;
   customInstructionRef?: string | null;
   mode?: AltMode;
+  /** Full Access (v1.4.8): in-memory session state; undefined = not reported. */
+  fullAccess?: boolean;
   modelOverride?: SessionModelOverride | null;
   currentModel?: { provider: string; modelId: string };
   studyTag?: StudyTag | null;
@@ -579,6 +583,7 @@ export type ClientMessage =
       };
     }
   | { type: "switch_mode"; payload: { mode: AltMode } }
+  | { type: "set_full_access"; payload: { enabled: boolean } }
   | { type: "add_workspace_dir"; payload: { dir: string } }
   | { type: "set_study_tag"; payload: { studyTag: StudyTag | null } }
   | {

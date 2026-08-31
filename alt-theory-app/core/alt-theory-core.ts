@@ -415,6 +415,9 @@ async function createAltTheorySessionWithManager(
     runtimeMode: config.runtimeMode ?? ("alt-theory" as RuntimeMode),
     altMode: config.altMode ?? ("understand" as AltMode),
     nativePiScanAltSkills: config.nativePiScanAltSkills !== false,
+    // Full Access (v1.4.8): in-memory only, session lifetime. Never persisted
+    // to a session header, manifest, database, or settings.
+    fullAccess: false,
   };
   const resourceDiscovery = config.resourceDiscovery ?? "dev-debug";
   const resolvedSkillsDir = config.skillsDir ? resolve(config.skillsDir) : null;
@@ -517,6 +520,10 @@ async function createAltTheorySessionWithManager(
 
   const isWorkCapable = () =>
     runtimeState.runtimeMode === "native-pi" || runtimeState.altMode === "work";
+  // Full Access stays stored across mode switches but is only effective in a
+  // work-capable mode; Understand keeps it dormant, not cleared.
+  const isFullAccessEffective = () =>
+    runtimeState.fullAccess && isWorkCapable();
   const hasWriteCapability = () =>
     isWorkCapable() || !understandReadOnly;
   // Mutable workspace state (spec §5.1). The primary working directory is the
@@ -644,6 +651,7 @@ async function createAltTheorySessionWithManager(
             join(resolvedRecordsDir, "security-audit.jsonl"),
             `${JSON.stringify(entry)}\n`
           ),
+        isFullAccess: isFullAccessEffective,
       }),
     ],
     noContextFiles: resourceDiscovery !== "dev-debug",
@@ -764,7 +772,10 @@ async function createAltTheorySessionWithManager(
   }
   sessionOpts.customTools = [
     createWriteToolDefinition(cwd, {
-      operations: createGuardedWriteOperations(writableRootsForMode),
+      operations: createGuardedWriteOperations(
+        writableRootsForMode,
+        isFullAccessEffective,
+      ),
     }),
     // Web-access tools ship DISABLED: registered here so the plumbing and
     // security-extension SSRF coverage exist, but absent from every mode's
@@ -931,6 +942,18 @@ async function createAltTheorySessionWithManager(
       runtimeState.nativePiScanAltSkills = enabled;
       await loader.reload();
     },
+    getFullAccess: () => runtimeState.fullAccess,
+    setFullAccess: (enabled: boolean): void => {
+      if (enabled === runtimeState.fullAccess) return;
+      // Enabling requires a work-capable mode; the server additionally rejects
+      // non-local attempts. Disabling is always allowed.
+      if (enabled && !isWorkCapable()) {
+        throw new Error(
+          "Full access can only be enabled in local Work or Native Pi mode."
+        );
+      }
+      runtimeState.fullAccess = enabled;
+    },
     getWorkspace: () => ({
       primaryDir: cwd,
       additionalDirs: [...workspaceState.additionalDirs],
@@ -1003,16 +1026,23 @@ function summarizeOriginalManifest(
 }
 
 function createGuardedWriteOperations(
-  getWritableRoots: () => string[]
+  getWritableRoots: () => string[],
+  skipBoundaryCheck?: () => boolean,
 ): WriteOperations {
   const roots = () => getWritableRoots().map((root) => resolve(root));
+  // Full Access skips only the writable-root assertion; the filesystem
+  // operation itself is unchanged (v1.4.8).
+  const assertWritable = async (path: string) => {
+    if (skipBoundaryCheck?.()) return;
+    await assertWritablePath(path, roots());
+  };
   return {
     async mkdir(dir: string): Promise<void> {
-      await assertWritablePath(dir, roots());
+      await assertWritable(dir);
       await mkdir(dir, { recursive: true });
     },
     async writeFile(path: string, content: string): Promise<void> {
-      await assertWritablePath(path, roots());
+      await assertWritable(path);
       await writeFile(path, content, "utf-8");
     },
   };

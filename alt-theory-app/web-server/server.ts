@@ -2916,6 +2916,35 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           }
           break;
         }
+        case "set_full_access": {
+          if (typeof msg.payload?.enabled !== "boolean") {
+            sendError(send, new Error("enabled must be a boolean"));
+            break;
+          }
+          if (!attachedSessionId) {
+            sendError(send, new Error("A materialized session is required"));
+            break;
+          }
+          // Full Access is a local-only control (v1.4.8); the mode check
+          // (local Work / Native Pi) lives in the session runtime itself.
+          if (!localMode) {
+            sendError(
+              send,
+              new Error("Full access is not enabled on this server"),
+            );
+            break;
+          }
+          try {
+            const snapshot = await sessionService.setFullAccess(
+              attachedSessionId,
+              msg.payload.enabled,
+            );
+            send({ type: "session_updated", payload: snapshot });
+          } catch (error) {
+            sendServiceError(send, error);
+          }
+          break;
+        }
         case "add_workspace_dir": {
           if (!attachedSessionId) {
             sendError(send, new Error("A materialized session is required"));
