@@ -1,7 +1,7 @@
 {
   "name": "llm-theo",
-  "version": "1.4.7-beta.3",
-  "shortVersionWindows": "1.4.7.3",
+  "version": "1.4.8",
+  "shortVersionWindows": "1.4.8.1",
   "description": "An agentic workspace for social-science research.",
   "author": {
     "name": "Shuai Yuan"
@@ -50,7 +50,7 @@
     "typescript": "^5.6.0"
   },
   "build": {
-    "buildVersion": "1.4.7.3",
+    "buildVersion": "1.4.8.1",
     "appId": "com.alttheory.app",
     "productName": "AltTheory",
     "copyright": "Copyright © 2026 Shuai Yuan",
