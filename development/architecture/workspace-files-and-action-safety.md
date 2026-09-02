@@ -64,8 +64,9 @@ external primary path; it is not copied into the data directory. See
 
 The core derives mode-aware roots for each managed session through the one
 root-policy module, `core/root-policy.ts` (`sessionRoots`). Each root carries
-a reason, so every check and the assembly manifest can state why a path is
-reachable, not just that it is:
+a reason, so every check can state why a path is reachable, not just that it
+is (the assembly manifest persists the writable root paths; reasons live in
+the runtime policy layer):
 
 - `session-write` and `asset` — Alt Theory's own writable roots: the session
   write directory and the configured writable asset directory (defaulting to
@@ -80,7 +81,7 @@ reachable, not just that it is:
 
 Two further reason names (`global-list`, `project-secondary`) are reserved
 for the 1.5.x global directory list and project secondary folders; nothing
-produces them yet. Understood does not receive the Work/Native workspace
+produces them yet. Understand does not receive the Work/Native workspace
 context or project skills. Its write capability is controlled by the
 deployment's `understandReadOnly` setting and, when enabled, remains bounded
 to the Alt Theory writable roots plus explicitly approved folders. Switching

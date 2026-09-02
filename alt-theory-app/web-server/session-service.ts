@@ -26,7 +26,7 @@ import {
   writeJsonAtomic,
   type SessionDirectories,
 } from "../core/data-dir.js";
-import { extname, isAbsolute, join, relative, resolve } from "path";
+import { extname, join, resolve } from "path";
 import type { AgentAssetPaths } from "../core/agent-assets.js";
 import {
   isKnownKbDomain,

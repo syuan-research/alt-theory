@@ -48,7 +48,8 @@ export function verdict(
   roots: { readable?: Root[]; writable?: Root[] }
 ): PathVerdict {
   const resolvedPath = resolve(path);
-  const sensitiveRoot = findSensitiveRoot(resolvedPath);
+  const realTarget = realNearestExistingPath(resolvedPath);
+  const sensitiveRoot = findSensitiveRoot(resolvedPath, realTarget);
   if (sensitiveRoot) {
     return { outcome: "sensitive", sensitiveRoot };
   }
@@ -63,7 +64,6 @@ export function verdict(
   // Realpath policy on both sides, each through its nearest existing
   // ancestor: case A/B symlinks fail here, and a not-yet-existing granted
   // root still resolves through the ancestor that does exist.
-  const realTarget = realNearestExistingPath(resolvedPath);
   if (
     realTarget === null ||
     !candidates.some((root) => {
@@ -106,12 +106,14 @@ export function assertWritablePath(
 
 /** Sensitive both lexically and through the nearest existing ancestor, so a
  *  symlink cannot hide a credential store either. */
-function findSensitiveRoot(resolvedPath: string): string | undefined {
-  const real = realNearestExistingPath(resolvedPath);
+function findSensitiveRoot(
+  resolvedPath: string,
+  realTarget: string | null
+): string | undefined {
   return SENSITIVE_PATHS.find(
     (root) =>
       isPathInside(root, resolvedPath) ||
-      (real !== null && isPathInside(root, real))
+      (realTarget !== null && isPathInside(root, realTarget))
   );
 }
 
