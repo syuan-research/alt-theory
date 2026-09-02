@@ -22,6 +22,8 @@ import {
   resolveSessionRoot,
   resolveSessionsRoot,
 } from "../core/data-dir.js";
+import { verdict } from "../core/path-verdict.js";
+import type { Root } from "../core/root-policy.js";
 import type { SessionEvent } from "./session-events.js";
 import {
   extractToolDetail,
@@ -1114,21 +1116,24 @@ function resolveSessionTextFile(
   }
   const rootPath = resolve(sessionRoot, root);
   const target = resolve(rootPath, requestedPath);
-  const relativePath = relative(rootPath, target);
-  if (
-    !relativePath ||
-    relativePath.startsWith("..") ||
-    isAbsolute(relativePath)
-  ) {
+  if (relative(rootPath, target) === "") {
     throw new Error("File path must stay inside the selected session root");
   }
-  const normalizedRelative = relativePath.replace(/\\/g, "/");
-  if (!isAllowedTextFile(normalizedRelative)) {
+  // Session text files go through the one path verdict like every other
+  // read, so a symlink inside the session workspace cannot reach outside it.
+  const check = verdict(target, "read", {
+    readable: [{ path: rootPath, reason: "session-write" }],
+  });
+  if (check.outcome !== "inside") {
+    throw new Error("File path must stay inside the selected session root");
+  }
+  const relativePath = relative(rootPath, target).replace(/\\/g, "/");
+  if (!isAllowedTextFile(relativePath)) {
     throw new Error(
       "Only .md, .txt, .json, .csv, .tsv, and .html files are allowed"
     );
   }
-  return { root, path: target, relativePath: normalizedRelative };
+  return { root, path: target, relativePath };
 }
 
 function isAllowedTextFile(path: string): boolean {
@@ -1458,12 +1463,15 @@ export function readSessionChanges(
   }
 
   const changes = projectChangesFromEntries(branchEntries);
-  const roots = parts.v4Session?.workspace
+  const roots: Root[] = parts.v4Session?.workspace
     ? [
-        parts.v4Session.workspace.primaryDir,
-        ...parts.v4Session.workspace.additionalDirs,
+        { path: parts.v4Session.workspace.primaryDir, reason: "cwd" },
+        ...parts.v4Session.workspace.additionalDirs.map((path) => ({
+          path,
+          reason: "additional" as const,
+        })),
       ]
-    : [join(parts.sessionRoot, "workspace")];
+    : [{ path: join(parts.sessionRoot, "workspace"), reason: "session-write" }];
   return {
     files: changes.files.map((file) => ({
       ...file,
@@ -1483,16 +1491,17 @@ const CHANGE_PREVIEW_EXTENSIONS = new Set([
 const MAX_CHANGE_PREVIEW_BYTES = 1024 * 1024;
 
 export function readCurrentChangedFile(
-  roots: string[],
-  requestedPath: string,
+  roots: Root[],
+  requestedPath: string
 ): Pick<FileChange, "resolvedPath" | "currentContent" | "currentUpdatedAt"> {
-  for (const rootPath of roots) {
-    const root = resolve(rootPath);
+  for (const root of roots) {
     const target = isAbsolute(requestedPath)
       ? resolve(requestedPath)
-      : resolve(root, requestedPath);
-    const rel = relative(root, target);
-    if (!rel || rel.startsWith("..") || isAbsolute(rel)) continue;
+      : resolve(root.path, requestedPath);
+    // Containment through the one path verdict: an absolute or symlinked
+    // path only reads when it is physically inside a workspace root.
+    const check = verdict(target, "read", { readable: [root] });
+    if (check.outcome !== "inside") continue;
     if (!CHANGE_PREVIEW_EXTENSIONS.has(extname(target).toLowerCase())) continue;
     const stats = statSync(target, { throwIfNoEntry: false });
     if (!stats?.isFile() || stats.size > MAX_CHANGE_PREVIEW_BYTES) continue;

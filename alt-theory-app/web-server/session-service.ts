@@ -26,7 +26,7 @@ import {
   writeJsonAtomic,
   type SessionDirectories,
 } from "../core/data-dir.js";
-import { extname, isAbsolute, join, relative, resolve } from "path";
+import { extname, join, resolve } from "path";
 import type { AgentAssetPaths } from "../core/agent-assets.js";
 import {
   isKnownKbDomain,
@@ -36,6 +36,7 @@ import {
 } from "./asset-registry.js";
 import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { clampPromptCacheKey } from "../core/prompt-cache-continuity.js";
+import { isPathInside } from "../core/path-verdict.js";
 import {
   ApprovalBridge,
   type ApprovalRequest,
@@ -4497,11 +4498,7 @@ function extractToolPathFromEvent(event: AgentSessionEvent): string | null {
 /** Whether a session cwd lives inside the app data dir (a managed session
  * workspace) as opposed to a user project directory (spec §5.1 primary). */
 function isInsideDataDir(dataDir: string, target: string): boolean {
-  const relativePath = relative(resolve(dataDir), resolve(target));
-  return (
-    relativePath === "" ||
-    (!relativePath.startsWith("..") && !isAbsolute(relativePath))
-  );
+  return isPathInside(dataDir, target);
 }
 
 const IMAGE_MIME_BY_EXT: Record<string, string> = {

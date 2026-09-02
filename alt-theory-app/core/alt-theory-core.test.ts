@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { mkdtempSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "fs";
 import { homedir, tmpdir } from "os";
 import { join } from "path";
 import { createSessionDirs } from "./data-dir.js";
@@ -346,6 +346,65 @@ test("security extension mediates tool calls at the policy boundary", async () =
   assert.ok(auditLines.some((entry) => entry.rule === "command_blocklist"));
   assert.ok(auditLines.some((entry) => entry.rule === "sensitive_path"));
   assert.ok(auditLines.every((entry) => entry.action === "blocked"));
+
+  await session.dispose();
+});
+
+test("a symlinked workspace read escalates like the matching write", async () => {
+  const root = mkdtempSync(join(tmpdir(), "alt-theory-core-symlink-"));
+  const appContextPath = join(root, "ALTTHEORY.md");
+  const kbDir = join(root, "kb");
+  const documents = join(root, "documents");
+  mkdirSync(kbDir, { recursive: true });
+  mkdirSync(documents, { recursive: true });
+  writeFileSync(appContextPath, "Symlink app context", "utf-8");
+  writeFileSync(join(documents, "secret.md"), "secret", "utf-8");
+
+  const dirs = createSessionDirs(join(root, "data"), "symlink-test");
+  symlinkSync(
+    documents,
+    join(dirs.sessionCwd, "link"),
+    process.platform === "win32" ? "junction" : "dir",
+  );
+
+  const result = await createAltTheorySession({
+    ...dirs,
+    appContextPath,
+    kbDir,
+    kbDomain: "none",
+    understandReadOnly: false,
+    altMode: "work",
+    resourceDiscovery: "clean",
+  });
+  const { session } = result;
+  const agent = session.agent as unknown as {
+    beforeToolCall: (input: {
+      toolCall: { id: string; name: string; arguments: unknown };
+      args: Record<string, unknown>;
+    }) => Promise<{ block?: boolean; reason?: string } | undefined>;
+  };
+
+  // Reading through a symlink that leaves the workspace now escalates to
+  // approval instead of passing silently (review card 4 case A).
+  const readResult = await agent.beforeToolCall({
+    toolCall: { id: "sym-read", name: "read", arguments: {} },
+    args: { path: "link/secret.md" },
+  });
+  assert.match(readResult?.reason ?? "", /requires user approval/);
+
+  // The guarded write tool keeps refusing the same physical reach.
+  const writeTool = session.agent.state.tools.find(
+    (tool) => tool.name === "write"
+  );
+  assert.ok(writeTool);
+  await assert.rejects(
+    () =>
+      writeTool.execute("sym-write", {
+        path: "link/evil.md",
+        content: "blocked",
+      }),
+    /resolves outside Alt Theory writable roots/
+  );
 
   await session.dispose();
 });

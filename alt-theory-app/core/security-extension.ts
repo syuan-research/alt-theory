@@ -13,19 +13,18 @@
  * - Approval semantics (deny / allow once / allow session; fail closed when
  *   no approval UI is attached) follow @amaster.ai/pi-security's design; the
  *   session-allowance TTL follows pi-perm.
- * - The path boundary is Alt Theory's own guarded-write containment
- *   (realpath then path.relative), defined here and shared with the guarded
- *   write tool in alt-theory-core.
+ * - Path containment (sensitive / lexical / realpath) is owned by
+ *   path-verdict.ts; this extension maps each verdict to its mediation
+ *   outcome and owns the approval conversation around it.
  */
 
 import type {
   ExtensionFactory,
   ToolCallEventResult,
 } from "@earendil-works/pi-coding-agent";
-import { existsSync } from "fs";
-import { realpath } from "fs/promises";
-import { homedir } from "os";
-import { dirname, isAbsolute, join, relative, resolve } from "path";
+import { dirname, resolve } from "path";
+import { verdict } from "./path-verdict.js";
+import type { Root } from "./root-policy.js";
 
 export interface SecurityAuditEntry {
   timestamp: string;
@@ -40,9 +39,9 @@ export interface SecurityExtensionOptions {
   /** Session primary working directory; relative tool paths resolve against it. */
   sessionCwd: string;
   /** Mode-aware writable roots, shared with the guarded write tool. */
-  getWritableRoots: () => string[];
+  getWritableRoots: () => Root[];
   /** Mode-aware readable roots (workspace ∪ KB ∪ writable); reads outside escalate. */
-  getReadableRoots: () => string[];
+  getReadableRoots: () => Root[];
   /** Add an explicitly approved external folder for this session. */
   addWritableRoot?: (root: string) => void;
   /** Session-scoped audit sink (session records, never a machine-global log). */
@@ -123,17 +122,6 @@ const NETWORK_COMMANDS = new Set([
   "curl",
   "wget",
 ]);
-
-/** Credential stores: reads and writes are blocked in every mode. */
-const SENSITIVE_PATHS = [
-  join(homedir(), ".ssh"),
-  join(homedir(), ".gnupg"),
-  join(homedir(), ".aws"),
-  join(homedir(), ".netrc"),
-  join(homedir(), ".config", "gh"),
-  "/etc/shadow",
-  "/etc/sudoers",
-];
 
 /** Bash commands referencing a credential store escalate to approval. */
 const SENSITIVE_COMMAND_TOKENS = [
@@ -315,18 +303,18 @@ export function createSecurityExtension(
 
       if (event.toolName === "edit" || event.toolName === "write") {
         if (!path) return undefined;
-        const sensitive = await findSensitiveRoot(sessionCwd, path);
-        if (sensitive) {
-          return blocked("sensitive_path", `Access to credential path denied: ${sensitive}`);
-        }
-        try {
-          await assertWritablePath(
-            resolve(sessionCwd, path),
-            getWritableRoots().map((root) => resolve(root))
+        const resolved = resolve(sessionCwd, path);
+        const check = verdict(resolved, "write", {
+          writable: getWritableRoots(),
+        });
+        if (check.outcome === "sensitive") {
+          return blocked(
+            "sensitive_path",
+            `Access to credential path denied: ${check.sensitiveRoot}`
           );
-        } catch (error) {
-          const resolvedPath = resolve(sessionCwd, path);
-          const root = dirname(resolvedPath);
+        }
+        if (check.outcome === "outside") {
+          const root = dirname(resolved);
           const title = `Allow writes in this folder for this session: ${summarize(root)}`;
           if (!ctx.hasUI || !addWritableRoot) {
             return blocked("path_boundary", `${title} — approval is unavailable`);
@@ -354,17 +342,22 @@ export function createSecurityExtension(
 
       if (["read", "grep", "find", "ls"].includes(event.toolName)) {
         if (!path) return undefined;
-        const sensitive = await findSensitiveRoot(sessionCwd, path);
-        if (sensitive) {
-          return blocked("sensitive_path", `Access to credential path denied: ${sensitive}`);
-        }
-        // Reads reaching outside the workspace/KB escalate to approval
+        const resolved = resolve(sessionCwd, path);
+        // Reads reaching outside the readable roots escalate to approval
         // (OpenCode external_directory convention). Reading is not itself the
         // security boundary — that is write, spec §5.3 — but reaching outside
-        // the workspace is worth a prompt.
-        const resolved = resolve(sessionCwd, path);
-        const readable = getReadableRoots().map((root) => resolve(root));
-        if (!readable.some((root) => isPathInside(root, resolved))) {
+        // the workspace is worth a prompt. The verdict's realpath policy makes
+        // a symlinked read reach count as outside, the same as a write.
+        const check = verdict(resolved, "read", {
+          readable: getReadableRoots(),
+        });
+        if (check.outcome === "sensitive") {
+          return blocked(
+            "sensitive_path",
+            `Access to credential path denied: ${check.sensitiveRoot}`
+          );
+        }
+        if (check.outcome === "outside") {
           return approve(
             "read_outside_workspace",
             `read:${dirname(resolved)}`,
@@ -482,77 +475,4 @@ function hasUnicodeVariance(command: string): boolean {
 function summarize(command: string): string {
   const collapsed = command.replace(/\s+/g, " ").trim();
   return collapsed.length > 160 ? `${collapsed.slice(0, 157)}...` : collapsed;
-}
-
-async function findSensitiveRoot(
-  sessionCwd: string,
-  path: string
-): Promise<string | undefined> {
-  const resolved = resolve(sessionCwd, path);
-  const real = await realpath(await nearestExistingPath(resolved)).catch(
-    () => resolved
-  );
-  return SENSITIVE_PATHS.find(
-    (root) => isPathInside(root, resolved) || isPathInside(root, real)
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Path boundary — the single containment implementation, shared with the
-// guarded write tool in alt-theory-core (spec §5.1/§5.3).
-// ---------------------------------------------------------------------------
-
-export async function assertWritablePath(
-  path: string,
-  writableRoots: string[]
-): Promise<void> {
-  const resolvedPath = resolve(path);
-  const lexicalRoot = writableRoots.find((root) => isPathInside(root, resolvedPath));
-  if (!lexicalRoot) {
-    throw new Error(
-      `Write blocked: ${resolvedPath} is outside Alt Theory writable roots.`
-    );
-  }
-
-  const realRoots = await Promise.all(writableRoots.map((root) => realpath(root)));
-  const realRoot = realRoots.find((root) => isPathInside(root, resolvedPath));
-  if (!realRoot) {
-    const lexicalIndex = writableRoots.indexOf(lexicalRoot);
-    const fallbackRoot = realRoots[lexicalIndex];
-    if (!fallbackRoot) {
-      throw new Error(`Write blocked: writable root is unavailable: ${lexicalRoot}`);
-    }
-  }
-
-  const existingPath = await nearestExistingPath(resolvedPath);
-  const realExistingPath = await realpath(existingPath);
-  if (!realRoots.some((root) => isPathInside(root, realExistingPath))) {
-    throw new Error(
-      `Write blocked: ${resolvedPath} resolves outside Alt Theory writable roots.`
-    );
-  }
-}
-
-async function nearestExistingPath(path: string): Promise<string> {
-  let current = resolve(path);
-  while (!existsSync(current)) {
-    const parent = dirname(current);
-    if (parent === current) return current;
-    current = parent;
-  }
-  return current;
-}
-
-export function isPathInside(root: string, target: string): boolean {
-  const resolvedRoot = normalizePath(resolve(root));
-  const resolvedTarget = normalizePath(resolve(target));
-  const relativePath = relative(resolvedRoot, resolvedTarget);
-  return (
-    relativePath === "" ||
-    (!relativePath.startsWith("..") && !isAbsolute(relativePath))
-  );
-}
-
-function normalizePath(path: string): string {
-  return process.platform === "win32" ? path.toLowerCase() : path;
 }

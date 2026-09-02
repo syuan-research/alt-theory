@@ -3,10 +3,15 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import type { Root } from "../core/root-policy.js";
 import {
   projectChangesFromEntries,
   readCurrentChangedFile,
 } from "./session-store.js";
+
+function workspaceRoot(path: string): Root[] {
+  return [{ path, reason: "cwd" }];
+}
 
 function toolCallEntry(name: string, args: unknown, id?: string) {
   return { message: { content: [{ type: "toolCall", id, name, arguments: args }] } };
@@ -80,11 +85,11 @@ test("current changed-file preview reads the latest safe workspace text", () => 
   writeFileSync(join(root, "binary.md"), Buffer.from([0, 1, 2]));
 
   try {
-    const current = readCurrentChangedFile([root], "notes/draft.md");
+    const current = readCurrentChangedFile(workspaceRoot(root), "notes/draft.md");
     assert.equal(current.currentContent, "# Current\n\nlatest text");
     assert.ok(current.currentUpdatedAt);
-    assert.deepEqual(readCurrentChangedFile([root], "../outside.md"), {});
-    assert.deepEqual(readCurrentChangedFile([root], "binary.md"), {});
+    assert.deepEqual(readCurrentChangedFile(workspaceRoot(root), "../outside.md"), {});
+    assert.deepEqual(readCurrentChangedFile(workspaceRoot(root), "binary.md"), {});
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

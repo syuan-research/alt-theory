@@ -4,7 +4,7 @@ slug: workspace-files-and-action-safety
 scope: Workspace roots, session files, tool-action mediation, approvals, and audit
 summary: Current workspace ownership and the guard-rail boundary around agent file and action access
 status: current
-last_reviewed: 2026-08-28
+last_reviewed: 2026-09-03
 tags: [workspace, files, security, approvals, audit]
 depends_on:
   - core-session-engine
@@ -62,43 +62,78 @@ external primary path; it is not copied into the data directory. See
 
 ## Roots available to the agent
 
-The core derives mode-aware roots for each managed session:
+The core derives mode-aware roots for each managed session through the one
+root-policy module, `core/root-policy.ts` (`sessionRoots`). Each root carries
+a reason, so every check can state why a path is reachable, not just that it
+is (the assembly manifest persists the writable root paths; reasons live in
+the runtime policy layer):
 
-- Alt Theory's own writable roots are the session write directory and the
-  configured writable asset directory (defaulting to `runs/local-assets`).
-- Work and Native Pi add the primary workspace and additional workspace
-  directories to those writable roots.
-- A folder explicitly approved during the session is added to the writable
-  roots for that session.
-- Readable roots include the current writable roots, the primary workspace,
-  the selected KB root, configured trusted-read roots, and the discovered Alt
-  Theory skill root.
+- `session-write` and `asset` — Alt Theory's own writable roots: the session
+  write directory and the configured writable asset directory (defaulting to
+  `runs/local-assets`); present in every mode.
+- `cwd` — the primary workspace directory; writable in Work and Native Pi,
+  readable in every mode.
+- `additional` — user-added workspace directories; writable in Work and
+  Native Pi.
+- `approved` — a folder explicitly approved during the session.
+- `kb`, `trusted`, `skills` — read-only roots: the selected KB root,
+  configured trusted-read roots, and the discovered Alt Theory skill root.
 
-Understand does not receive the Work/Native workspace context or project
-skills. Its write capability is controlled by the deployment's
-`understandReadOnly` setting and, when enabled, remains bounded to the Alt
-Theory writable roots plus explicitly approved folders. Switching mode changes
-the active mediation policy; it does not change the persisted folder identity.
-The root calculation and live workspace state are in
-[`alt-theory-core.ts`](../../alt-theory-app/core/alt-theory-core.ts#L518-L558).
+Two further reason names (`global-list`, `project-secondary`) are reserved
+for the 1.5.x global directory list and project secondary folders; nothing
+produces them yet. Understand does not receive the Work/Native workspace
+context or project skills. Its write capability is controlled by the
+deployment's `understandReadOnly` setting and, when enabled, remains bounded
+to the Alt Theory writable roots plus explicitly approved folders. Switching
+mode changes the active mediation policy; it does not change the persisted
+folder identity. The per-call wiring is in
+[`alt-theory-core.ts`](../../alt-theory-app/core/alt-theory-core.ts#L549-L561)
+and [`root-policy.ts`](../../alt-theory-app/core/root-policy.ts#L1-L90).
 
-## Guarded agent writes and path checks
+## One path verdict, guard-rail posture
 
-Alt Theory registers a custom `write` tool that shadows Pi's built-in write.
-Its `mkdir` and `writeFile` operations call the shared `assertWritablePath`
-check before touching the filesystem (skipped only while Full Access is
-effective; see below). The check first requires lexical
-containment in a current writable root, then checks real paths and the nearest
-existing ancestor so a symlink or an existing path cannot redirect the write
-outside those roots. See [`alt-theory-core.ts`](../../alt-theory-app/core/alt-theory-core.ts#L757-L774)
-and [`security-extension.ts`](../../alt-theory-app/core/security-extension.ts#L489-L523).
+All path containment is stated once in `core/path-verdict.ts`
+(`verdict(path, intent: read | write | browse, roots)`), which returns
+`inside(root)` (naming the root and its reason), `outside`, or `sensitive`:
 
-The Pi `edit` and `write` tool calls are also checked by the security
-extension. Credential-sensitive paths are hard-blocked. A path outside the
-current writable roots requires a session approval; without a UI, or without
-the user's session allowance, the call is blocked. The extension can add the
-approved folder to the session's writable roots through the core callback.
-See [`security-extension.ts`](../../alt-theory-app/core/security-extension.ts#L300-L342).
+1. credential-sensitive paths (`.ssh`, `.gnupg`, `.aws`, `.netrc`, gh
+   config, `/etc/shadow`, `/etc/sudoers`) are refused for every intent,
+   even when a root would contain them;
+2. the path must be lexically inside a root for the intent — writable for
+   write, readable for read and browse;
+3. the real path of the nearest existing ancestor of both the path and each
+   root must keep that containment, so a symlinked path segment cannot
+   redirect access outside the root, and a root granted before it exists
+   applies once its nearest existing ancestor exists.
+
+Reads therefore use the same realpath policy as writes: reading through a
+symlink that leaves the readable roots escalates to approval exactly as the
+matching write would be gated. Alt Theory registers a custom `write` tool
+that shadows Pi's built-in write; its `mkdir` and `writeFile` operations call
+`assertWritablePath` (same module) — the write gate over the verdict — before
+touching the filesystem, skipped only while Full Access is effective (see
+below). `isPathInside` is the shared lexical-containment primitive (also used
+by `session-service.ts`'s `isInsideDataDir`).
+
+Callers: the security extension (read and write mediation,
+[`security-extension.ts`](../../alt-theory-app/core/security-extension.ts#L304-L380)),
+the guarded write tool
+[`alt-theory-core.ts`](../../alt-theory-app/core/alt-theory-core.ts#L1041-L1062),
+the working-folder listing and preview
+([`workspace-files.ts`](../../alt-theory-app/web-server/workspace-files.ts#L424-L460)
+and
+[`workspace-files.ts`](../../alt-theory-app/web-server/workspace-files.ts#L555-L583)),
+and session-store file reads
+([`session-store.ts`](../../alt-theory-app/web-server/session-store.ts#L1101-L1136),
+`readCurrentChangedFile`). See [`path-verdict.ts`](../../alt-theory-app/core/path-verdict.ts#L1-L115).
+
+The Pi `edit` and `write` tool calls are checked by the security extension
+against the verdict's write outcome. Credential-sensitive paths are
+hard-blocked. An `outside` write requires a session approval; without a UI,
+or without the user's session allowance, the call is blocked. The extension
+can add the approved folder to the session's writable roots through the core
+callback. See
+[`security-extension.ts`](../../alt-theory-app/core/security-extension.ts#L304-L341).
 
 These checks protect the application policy boundary in trusted code. They do
 not prevent an already-authorized shell command, another process, or the user
@@ -109,7 +144,9 @@ ADR deliberately call this guard-rail posture rather than sandboxing.
 
 Session file routes are authorized through the session content-access check.
 They expose text and JSON records under a session's `records/` or managed
-`workspace/` roots, with containment checks and size limits. Workspace upload
+`workspace/` roots; `resolveSessionTextFile` resolves each requested path
+through the shared path verdict, with an extension allowlist and size limits.
+Workspace upload
 accepts the configured text types and DOCX/XLSX/PDF binaries, sanitizes the
 filename, applies per-file and per-session/account quotas, and stores binaries
 under `workspace/uploads/`; supported text extraction is written under
@@ -121,9 +158,12 @@ The local-only `root=working` view is different from the managed session
 workspace. It reads the persisted primary/additional external folders, skips
 hidden and common dependency/cache directories, lists one directory at a
 time, bounds search results, and rechecks containment for each listing and
-preview. It is a browsing surface, not a second agent write API. See
-[`workspace-files.ts`](../../alt-theory-app/web-server/workspace-files.ts#L108-L128),
-[`workspace-files.ts`](../../alt-theory-app/web-server/workspace-files.ts#L279-L481),
+preview through the same path verdict — realpath on both sides, so a symlink
+inside a working folder cannot make the preview return a file the listing
+refuses, and credential paths are refused in browsing as everywhere else. It
+is a browsing surface, not a second agent write API. See
+[`workspace-files.ts`](../../alt-theory-app/web-server/workspace-files.ts#L424-L460),
+[`workspace-files.ts`](../../alt-theory-app/web-server/workspace-files.ts#L555-L583),
 and [`server.ts`](../../alt-theory-app/web-server/server.ts#L1590-L1635).
 
 The REST routes for content, upload, download, retry-extract, and deletion
@@ -206,13 +246,16 @@ and [`alt-theory-core.ts`](../../alt-theory-app/core/alt-theory-core.ts#L637-L64
 
 ## Boundary clarity
 
-This is a coherent policy mechanism, but the current code is historically
-coupled: workspace state is assembled in core, session replacement and family
-movement are coordinated by `SessionService`, REST file browsing lives in
+This is a coherent policy mechanism: the path policy itself lives in two deep
+modules — `core/path-verdict.ts` (one verdict, sensitive/lexical/realpath)
+and `core/root-policy.ts` (one root table with reasons) — while workspace
+state is assembled in core, session replacement and family movement are
+coordinated by `SessionService`, REST file browsing lives in
 `workspace-files.ts` and `server.ts`, and Pi supplies the interception hook.
-The document therefore describes shared interfaces and actual checks rather
-than implying one isolated code module. The family lifecycle, identity/access
-policy, and Pi session lifecycle remain neighboring owners with pointers here.
+The document describes shared interfaces and actual checks rather than
+implying one isolated code module. The family lifecycle, identity/access
+policy, and Pi session lifecycle remain neighboring owners with pointers
+here.
 
 The load-bearing choice to use Pi-native interception with Alt-owned
 session-scoped roots, approvals, and audit is recorded in
@@ -221,12 +264,19 @@ deliberately retained here: these are guard rails, not an OS sandbox.
 
 ## Verification anchors
 
+- [`path-verdict.test.ts`](../../alt-theory-app/core/path-verdict.test.ts#L1-L190)
+  covers the symlink cases A and B (workspace read/write gated alike;
+  working-folder listing/preview refused alike), the nearest-existing-ancestor
+  write into a not-yet-existing granted folder, sensitive paths for every
+  intent, a symlinked root, and the root-policy reason table.
 - [`alt-theory-core.test.ts`](../../alt-theory-app/core/alt-theory-core.test.ts#L179-L340)
   covers mode-specific workspace context, added directories, guarded writes,
-  security interception, outside-root reads, and the session audit file.
-- [`workspace-files.test.ts`](../../alt-theory-app/web-server/workspace-files.test.ts#L1-L180)
-  covers uploads, quotas, deletion, agent-authored text, account usage, and
-  persisted working-folder browsing.
+  security interception, outside-root reads, the session audit file, and a
+  symlinked workspace read escalating like the matching write.
+- [`workspace-files.test.ts`](../../alt-theory-app/web-server/workspace-files.test.ts#L1-L280)
+  covers uploads, quotas, deletion, agent-authored text, account usage,
+  persisted working-folder browsing, and listing/preview refusing a symlink
+  out of the folder.
 - [`session-service.test.ts`](../../alt-theory-app/web-server/session-service.test.ts#L3172-L3274)
   covers workspace creation, additional directories, persistence, and reopen.
 - [`session-service.test.ts`](../../alt-theory-app/web-server/session-service.test.ts#L3388-L3660)

@@ -11,6 +11,8 @@ import {
 } from "fs";
 import { basename, extname, isAbsolute, join, relative, resolve } from "path";
 import { resolveSessionRoot, resolveSessionsRoot } from "../core/data-dir.js";
+import { verdict } from "../core/path-verdict.js";
+import type { Root } from "../core/root-policy.js";
 import { readV4SessionHeader } from "./session-records.js";
 import {
   convertedFileName,
@@ -86,6 +88,15 @@ export interface WorkingFolderDescriptor {
   role: "primary" | "additional";
   managed: boolean;
   available: boolean;
+}
+
+/** The browsing root for one working folder; listing and preview pass this
+ *  single root to the shared path verdict. */
+function workingFolderRoot(folder: WorkingFolderDescriptor): Root {
+  return {
+    path: folder.path,
+    reason: folder.role === "primary" ? "cwd" : "additional",
+  };
 }
 
 export interface WorkingTreeEntry {
@@ -433,18 +444,21 @@ export function listWorkingFolderChildren(
   const target = resolve(folder.path, normalized);
   const stats = statSync(target, { throwIfNoEntry: false });
   if (!stats?.isDirectory()) throw new Error("Working-folder directory not found");
-  const realFolder = realpathSync(folder.path);
-  const realTarget = realpathSync(target);
-  const rel = relative(realFolder, realTarget);
-  if (
-    rel === ".." ||
-    rel.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`) ||
-    isAbsolute(rel)
-  ) {
+  // One verdict for the whole app: a symlinked directory inside the folder
+  // (review card 4 case B) is outside, and credential paths are refused.
+  const check = verdict(target, "browse", {
+    readable: [workingFolderRoot(folder)],
+  });
+  if (check.outcome === "sensitive") {
+    throw new Error(
+      `Access to credential path denied: ${check.sensitiveRoot}`
+    );
+  }
+  if (check.outcome !== "inside") {
     throw new Error("Folder path must stay inside the selected working folder");
   }
 
-  const entries = readdirSync(realTarget, { withFileTypes: true })
+  const entries = readdirSync(target, { withFileTypes: true })
     .filter(
       (entry) =>
         !entry.name.startsWith(".") &&
@@ -463,7 +477,7 @@ export function listWorkingFolderChildren(
           previewable: false,
         };
       }
-      const entryStats = statSync(join(realTarget, entry.name));
+      const entryStats = statSync(join(target, entry.name));
       return {
         folderId,
         path,
@@ -550,8 +564,20 @@ export function readWorkingFolderTextFile(
   );
   if (!folder || !relPath || isAbsolute(relPath)) throw new Error("Invalid working-folder path");
   const target = resolve(folder.path, relPath);
-  const rel = relative(folder.path, target);
-  if (!rel || rel.startsWith("..") || isAbsolute(rel)) {
+  if (relative(folder.path, target) === "") {
+    throw new Error("File path must stay inside the selected working folder");
+  }
+  // Same verdict as the listing: the preview cannot return a file the
+  // listing refuses (review card 4 case B, security item 1).
+  const check = verdict(target, "read", {
+    readable: [workingFolderRoot(folder)],
+  });
+  if (check.outcome === "sensitive") {
+    throw new Error(
+      `Access to credential path denied: ${check.sensitiveRoot}`
+    );
+  }
+  if (check.outcome !== "inside") {
     throw new Error("File path must stay inside the selected working folder");
   }
   const stats = statSync(target, { throwIfNoEntry: false });
@@ -561,7 +587,7 @@ export function readWorkingFolderTextFile(
   if (buffer.includes(0)) throw new Error("Binary files cannot be previewed");
   return {
     root: "working",
-    path: `${folderId}/${rel.replace(/\\/g, "/")}`,
+    path: `${folderId}/${relative(folder.path, target).replace(/\\/g, "/")}`,
     size: stats.size,
     updatedAt: stats.mtime.toISOString(),
     content: buffer.toString("utf-8"),
