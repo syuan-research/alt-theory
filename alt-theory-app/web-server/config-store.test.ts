@@ -6,6 +6,7 @@ import { join } from "path";
 import test from "node:test";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import {
+  getConfigStatus,
   getRuntimeModelConfig,
   listProviders,
   normalizeModelListPayload,
@@ -95,21 +96,100 @@ test("OpenAI Codex OAuth config removes stale protocol fields", () => {
   writeFileSync(join(agentDir, "auth.json"), JSON.stringify({
     "openai-codex": { type: "oauth", access: "access", refresh: "refresh", expires: Date.now() + 60_000 },
   }));
-  writeFileSync(join(agentDir, "models.json"), JSON.stringify({ providers: {
+  const modelsRaw = JSON.stringify({ providers: {
     "openai-codex": {
       baseUrl: "https://chatgpt.com/backend-api",
       api: "openai-completions",
       apiKey: "openai-codex",
       models: [{ id: "old-model" }],
     },
-  } }));
-  listProviders(agentDir);
-  const saved = JSON.parse(readFileSync(join(agentDir, "models.json"), "utf-8"));
-  assert.deepEqual(saved.providers["openai-codex"], { models: [{ id: "old-model" }] });
+  } });
+  writeFileSync(join(agentDir, "models.json"), modelsRaw, "utf-8");
+  // Reads sanitize the view but leave the file for an explicit write to
+  // persist (reads never write).
+  const view = listProviders(agentDir).find((p) => p.name === "openai-codex");
+  assert.ok(view);
+  assert.equal(view.api, undefined);
+  assert.equal(view.baseUrl, undefined);
+  assert.equal(readFileSync(join(agentDir, "models.json"), "utf-8"), modelsRaw);
 });
 
 test("model-list normalization accepts the OpenAI Codex response envelope", () => {
   assert.deepEqual(normalizeModelListPayload({ models: [{ slug: "gpt-x", display_name: "GPT X" }] }), [
     { id: "gpt-x", name: "GPT X" },
   ]);
+});
+
+test("provider reads never write: list and status leave config files byte-identical", async () => {
+  const agentDir = mkdtempSync(join(tmpdir(), "alt-theory-provider-read-"));
+  const modelsRaw =
+    '{"providers":{' +
+    '"custom-x":{"api":"openai-completions","baseUrl":"https://example.test/v1/","apiKey":"custom-x","models":[{"id":"m-1"}]},' +
+    '"custom-y":{"api":"openai-completions","baseUrl":"https://example.test","apiKey":"custom-y","models":[{"id":"m-2"}]}' +
+    "}}";
+  writeFileSync(join(agentDir, "models.json"), modelsRaw, "utf-8");
+  writeFileSync(
+    join(agentDir, "auth.json"),
+    JSON.stringify({ "custom-y": { type: "api_key", key: "k" } }),
+    "utf-8",
+  );
+  writeFileSync(
+    join(agentDir, "settings.json"),
+    JSON.stringify({ defaultProvider: "gone-provider", defaultModel: "m-x" }),
+    "utf-8",
+  );
+
+  const providers = listProviders(agentDir);
+  const viewX = providers.find((p) => p.name === "custom-x");
+  assert.ok(viewX, "custom-x in view");
+  assert.equal(viewX.baseUrl, "https://example.test/v1");
+  assert.equal(viewX.keyState, "missing");
+
+  const status = getConfigStatus(agentDir);
+  assert.equal(status.activeProvider, "custom-y");
+
+  assert.equal(readFileSync(join(agentDir, "models.json"), "utf-8"), modelsRaw);
+  assert.equal(
+    readFileSync(join(agentDir, "settings.json"), "utf-8"),
+    JSON.stringify({ defaultProvider: "gone-provider", defaultModel: "m-x" }),
+  );
+});
+
+test("explicit provider writes persist the read-path repairs and migrate the active pointer", async () => {
+  const agentDir = mkdtempSync(join(tmpdir(), "alt-theory-provider-write-"));
+  const modelsRaw =
+    '{"providers":{' +
+    '"custom-x":{"api":"openai-completions","baseUrl":"https://example.test","apiKey":"custom-x","models":[{"id":"m-1"}]},' +
+    '"custom-y":{"api":"openai-completions","baseUrl":"https://example.test","apiKey":"custom-y","models":[{"id":"m-2"}]}' +
+    "}}";
+  writeFileSync(join(agentDir, "models.json"), modelsRaw, "utf-8");
+  writeFileSync(
+    join(agentDir, "auth.json"),
+    JSON.stringify({ "custom-y": { type: "api_key", key: "k" } }),
+    "utf-8",
+  );
+  writeFileSync(
+    join(agentDir, "settings.json"),
+    JSON.stringify({ defaultProvider: "gone-provider", defaultModel: "m-x" }),
+    "utf-8",
+  );
+
+  await upsertProvider(
+    agentDir,
+    {
+      name: "custom-z",
+      baseUrl: "https://example.test",
+      api: "openai-completions",
+      apiKey: "ENV_Z",
+      models: [{ id: "m-3" }],
+    },
+    { keyStorage: "env" },
+  );
+
+  const models = JSON.parse(readFileSync(join(agentDir, "models.json"), "utf-8"));
+  assert.equal(models.providers["custom-x"].apiKey, undefined);
+  assert.equal(models.providers["custom-z"].apiKey, "ENV_Z");
+  const settings = JSON.parse(readFileSync(join(agentDir, "settings.json"), "utf-8"));
+  assert.equal(settings.defaultProvider, "custom-y");
+  assert.equal(settings.defaultModel, "m-2");
 });

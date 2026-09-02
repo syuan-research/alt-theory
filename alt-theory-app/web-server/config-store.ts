@@ -357,20 +357,14 @@ async function writeActive(
 // ---------------------------------------------------------------------------
 
 /**
- * List all provider sets as a safe view (no key plaintext).
+ * List all provider sets as a safe view (no key plaintext). A pure read:
+ * sanitizers run in memory only, so a GET can never rewrite models.json —
+ * repairs persist when an explicit write (upsert/delete) runs them.
  */
 export function listProviders(agentDir: string): ProviderView[] {
   const models = readModelsFile(agentDir);
-  let changed = false;
-  if (repairStaleLiteralAuthMarkers(agentDir, models)) {
-    changed = true;
-  }
-  if (sanitizeCustomProviderAuth(agentDir, models)) {
-    changed = true;
-  }
-  if (changed) {
-    writeModelsFileAtomic(agentDir, models);
-  }
+  repairStaleLiteralAuthMarkers(agentDir, models);
+  sanitizeCustomProviderAuth(agentDir, models);
   const active = readActive(agentDir);
   const names = new Set(Object.keys(models.providers ?? {}));
   for (const name of ["openrouter", "xai", "openai-codex"]) {
@@ -892,7 +886,11 @@ export function getConfigStatus(agentDir: string): ConfigStatus {
         p.keyState === "env-set") &&
       p.models.length > 0,
   );
-  const active = usableActive(agentDir) ?? { provider: null, model: null };
+  // Read path: compute the effective default without migrating settings.json.
+  const active = usableActive(agentDir, { persist: false }) ?? {
+    provider: null,
+    model: null,
+  };
   const activeProvider = providers.find((p) => p.name === active.provider);
   const activeUsable = Boolean(
     activeProvider &&
@@ -1265,6 +1263,10 @@ export async function upsertProvider(
     options?: Record<string, unknown>;
     models?: ConfigModel[];
   };
+  // Explicit write: this is where the read path's in-memory repairs (stale
+  // literal auth markers, custom-provider auth normalization) get persisted.
+  repairStaleLiteralAuthMarkers(agentDir, models);
+  sanitizeCustomProviderAuth(agentDir, models);
   writeModelsFileAtomic(agentDir, models);
 
   // Key handling for auth.json.
@@ -1303,10 +1305,16 @@ export async function upsertProvider(
   };
 }
 
-/** A saved default is a convenience, never a gate. */
+/**
+ * A saved default is a convenience, never a gate. With `persist: false`
+ * (read paths) the fallback is computed but settings.json is left alone;
+ * explicit writes keep the pointer-migration behavior.
+ */
 function usableActive(
   agentDir: string,
+  options: { persist?: boolean } = {},
 ): { provider: string; model: string } | null {
+  const persist = options.persist !== false;
   const active = readActive(agentDir);
   if (!active.provider || !active.model) return null;
   const providers = listProviders(agentDir);
@@ -1325,11 +1333,12 @@ function usableActive(
   }
   const fallback = providers.find(usable);
   if (!fallback) {
-    clearActive(agentDir);
+    if (persist) clearActive(agentDir);
     return null;
   }
-  writeActiveDirect(agentDir, fallback.name, fallback.models[0]!.id);
-  return { provider: fallback.name, model: fallback.models[0]!.id };
+  const resolved = { provider: fallback.name, model: fallback.models[0]!.id };
+  if (persist) writeActiveDirect(agentDir, resolved.provider, resolved.model);
+  return resolved;
 }
 
 export async function deleteProvider(
@@ -1340,6 +1349,8 @@ export async function deleteProvider(
   const models = readModelsFile(agentDir);
   if (models.providers && models.providers[name]) {
     delete models.providers[name];
+    repairStaleLiteralAuthMarkers(agentDir, models);
+    sanitizeCustomProviderAuth(agentDir, models);
     writeModelsFileAtomic(agentDir, models);
   }
   if (providerHasCredential(agentDir, name)) {
