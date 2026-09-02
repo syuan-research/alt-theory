@@ -154,7 +154,7 @@ export type ImportDiscoveryArgs = {
  */
 export interface ImportAdapter {
   readonly harness: ImportHarness;
-  /** English label used in the import alias and served to the dialog. */
+  /** English label used in the import alias. */
   readonly label: string;
   /** List raw source sessions for this harness. */
   discover(args: ImportDiscoveryArgs): Promise<ImportDiscoveredSession[]>;
@@ -215,25 +215,18 @@ const piImportAdapter: ImportAdapter = {
   },
   preflight(source) {
     const sourcePath = resolve(source.sourceId);
-    if (!existsSync(sourcePath) || !statSync(sourcePath).isFile()) {
-      throw new ImportRefusalError(
-        "Pi",
-        "session-file",
-        1,
-        `source session is missing: ${sourcePath}`,
-      );
-    }
     let piSessionJsonl: string;
     try {
+      if (!existsSync(sourcePath) || !statSync(sourcePath).isFile()) {
+        throw new Error(`source session is missing: ${sourcePath}`);
+      }
       piSessionJsonl = readFileSync(sourcePath, "utf-8");
     } catch (error) {
       throw new ImportRefusalError(
         "Pi",
         "session-file",
         1,
-        `source session is not readable: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+        error instanceof Error ? error.message : String(error),
       );
     }
     // parseSessionEntries skips malformed lines, so a usable current tip
