@@ -102,11 +102,19 @@ the supported vocabulary (`off`, `minimal`, `low`, `medium`, `high`, `xhigh`,
 no selectable effort levels even if other metadata says `reasoning: true`.
 `reasoning: true` alone is not a universal thinking-level contract.
 
-When no explicit effort was saved for a selected model,
-`initialThinkingLevelForModel()` chooses the lower positional midpoint of the
-available non-`off` levels; if no levels are known it returns `medium`
-(`config-store.ts:424-441`). This is a default for opening or applying a
-model, not a persistent app-wide thinking preference.
+The thinking level a session runs at is decided in one place,
+`resolveThinkingLevel()` (`web-server/thinking-level.ts`). It takes the
+model's supported levels and the user's explicit choice, if any, and returns
+`{level, source, chosen}` with `source` one of `user`, `model-default`, or
+`clamped`. With no choice it picks the lower positional midpoint of the
+non-`off` levels, or `medium` when no levels are known — a default for opening
+or applying a model, not a persistent app-wide preference. A chosen level the
+model cannot run is clamped by Pi's own rule (nearest higher supported level,
+else nearest lower) and reported as `clamped` with the choice kept; it is
+never silently replaced. `thinkingLevelsForModel()` (`config-store.ts`) supplies
+the registry's level list for the draft path; a live session uses Pi's
+`getSupportedThinkingLevels(model)` (`thinking-level.test.ts` pins parity with
+pi-ai's clamp).
 
 ### Provider fetch
 
@@ -176,10 +184,14 @@ SessionService.modelArgsFor()
              │
              ▼
 createAltTheorySession()
-  Pi ModelRuntime + resolved Model + thinking level
+  Pi ModelRuntime + resolved Model
              │
              ▼
-live Pi session state and assembly manifest
+SessionService.applyThinking()
+  resolver answer against the live model → Pi setThinkingLevel
+             │
+             ▼
+live Pi session state, assembly manifest, snapshot.thinking
 ```
 
 `SessionService.resolveRuntimeModelConfig()` obtains the deployment/global
@@ -190,11 +202,17 @@ session is opened (`session-service.ts:407-440`). The chain is operational
 configuration, not part of the provider catalogue or the user model list.
 
 `modelArgsFor()` applies a persisted session override over that deployment
-configuration. It carries the override's provider/model id and either its
-explicit thinking level or the model-specific initial level
-(`session-service.ts:446-485`). `createAltTheorySession()` then resolves the
-model through the `ModelRuntime` created with the current `models.json` and
-`auth.json` paths and sets the selected thinking level.
+configuration. It carries the override's provider/model id and only an
+explicit thinking choice (the override's, else the deployment config's).
+`createAltTheorySession()` resolves the model through the `ModelRuntime`
+created with the current `models.json` and `auth.json` paths; once the managed
+session exists, `applyThinking()` resolves the choice against that model's
+supported levels, sets it on Pi, and records the answer in `managed.thinking`,
+which the session snapshot exposes as `thinking`. Pi's
+`thinking_level_changed` is subscribed: a level Pi moves on its own is
+reported as `clamped`. The draft (pre-session) path resolves the same way
+from the registry's levels, so the chip renders the resolver's answer in both
+states and computes no level itself.
 
 The resulting model/provider are live runtime state. The assembly manifest
 records the effective provider/model for inspection, while the v0.4 session
@@ -221,15 +239,23 @@ precedence over the deployment/global default on creation and open/resume. If
 its thinking level is omitted, the model-specific initial-level resolver is
 used. A valid user override does not require the global default to be valid.
 
-`set_session_model` calls `SessionService.setSessionModel()`. The service
-rejects a busy/streaming session, persists or clears the header field, and
-tries to apply a resolvable choice to the live Pi session. A choice absent from
-the current runtime registry is persisted and reported as applying on the next
-open. Clearing the override symmetrically returns the session to the effective
-deployment default when that default resolves (`session-service.ts:2255-2330`).
-Changes append a `model_override_changed` event. Fork/related-session creation
-passes the parent's override when the child is created; the child then has its
-own session header and runtime state.
+`set_session_model` calls `SessionService.setSessionModel()`. The choice is
+accepted whether or not a turn is running: while idle it applies now; during a
+run it is deferred through the session's run state and applied when the turn
+ends or is stopped, with the pending value in the snapshot (see the session
+lifecycle document). The applier, `applyModel()`, persists or clears the
+header field and, for a resolvable choice, switches the live Pi session
+through `switchLiveModel()` — the one path shared with both fallback chains:
+thinking resolved against the target model, Pi `setModel`, manifest and
+header updated. A choice absent from the current runtime registry is persisted
+and reported as applying on the next open; the running model keeps its level,
+re-resolved so a user choice is never replaced. Clearing the override
+symmetrically returns the session to the effective deployment default when
+that default resolves. Changes append a `model_override_changed` event.
+Fork/related-session creation passes the parent's override when the child is
+created; the child then has its own session header and runtime state. A
+`thinkingLevel` in the override means the user chose it; its absence means the
+resolver's model default applies.
 
 If an override's model is no longer in `models.json` when a conversation is
 reopened, the open path catches Pi's unknown-model error, opens with the
@@ -244,10 +270,15 @@ There are two distinct fallback mechanisms at this boundary:
 
 1. **Deployment interim fallback** — an optional
    `ALT_THEORY_MODEL_FALLBACK_PATH` JSON chain can select a same-provider model
-   before opening a session. On a matching quota-style run error, the service
-   can exclude the failed model, switch the live Pi session to the next usable
-   chain entry, persist the effective manifest, append `model_fallback`, and
-   continue the turn (`core/model-fallback.ts`, `session-service.ts:3713-3820`).
+   before opening a session. On a matching run error, the service can
+   exclude the failed model, switch the live Pi session to the next usable
+   chain entry through `switchLiveModel()` (which keeps the user's thinking
+   choice, re-resolved, and writes the header override so the chip shows the
+   model in use), append `model_fallback`, and continue the turn
+   (`core/model-fallback.ts`, `session-service.ts` `tryModelFallback`). Rules
+   match on the failure envelope's `kind` from `core/failure.ts` (the default
+   table fails on `auth`); `anyPattern` text rules remain for
+   deployment-specific wording.
 2. **Subagent preset fallback** — a child-session initial-spawn chain is
    resolved against the parent's live `ModelRuntime` and is governed by the
    agent-team mechanism. Its preset semantics belong with agent behavior and
@@ -272,6 +303,10 @@ The effective mechanism crosses these interfaces:
   choice;
 - `web-server/session-service.ts` — deployment resolution, session override
   precedence, live model switching, resume recovery, and fallback switching;
+- `web-server/thinking-level.ts` — the thinking-level resolver (midpoint
+  default, Pi's clamp rule, provenance);
+- `web-server/run-state.ts` — accepts or defers a model switch during a run;
+- `core/failure.ts` — the failure envelope the fallback rules match on;
 - `core/alt-theory-core.ts` — Pi `ModelRuntime` creation and concrete model
   resolution;
 - Pi's `ModelRuntime`/`SettingsManager` — credential handling, provider/model
@@ -314,7 +349,10 @@ Focused tests that pin the current behavior include:
 - `web-server/config-store.test.ts:1-120` — native config persistence and
   response-envelope normalization;
 - `web-server/session-service.test.ts:200-245` — persisted session model
-  override behavior.
+  override behavior;
+- `web-server/thinking-level.test.ts` and the v1.5 cases at the end of
+  `session-service.test.ts` — user level kept or reported clamped, model
+  default, deferred switch applied at settle.
 
 The repository-wide backend command remains the authoritative broader check:
 

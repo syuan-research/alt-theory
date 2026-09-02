@@ -87,6 +87,12 @@ These are integration anchors, not a claim that one file owns every behavior:
   durable session paths.
 - `alt-theory-app/web-server/config-store.ts` — provider/model configuration
   persistence, discovery views, and capability metadata.
+- `alt-theory-app/web-server/run-state.ts`, `thinking-level.ts`,
+  `child-outcome.ts`, and `alt-theory-app/core/failure.ts` — the four
+  single-rule modules the v1.5 round added inside the session substrate: run
+  phase and deferred switches, thinking-level resolution, lead-facing child
+  outcomes, and the shared failure envelope. Each owning document above
+  records their facts.
 - `alt-theory-app/core/agent-assets.ts` — curated runtime asset roots and hashes.
 - `alt-theory-app/web-server/websocket-protocol.ts` — shared transport types.
 

@@ -33,7 +33,9 @@ This module owns:
 - retry-from-start, continue-from-breakpoint, and latest-turn revision/delete
   entry points;
 - compaction boundary publication and in-flight run replay for late joiners;
-- run phases, terminal outcomes, and recovery state exposed to attached clients.
+- run phases, terminal outcomes, and recovery state exposed to attached clients;
+- the per-session run state: one phase, the switches deferred while a turn
+  runs, and the mirror of Pi's prompt queue.
 
 The neighboring documents own different contracts:
 
@@ -98,7 +100,7 @@ the original assembly record.
 Idle role/soul or related selector changes use `replaceSession()`
 (`session-service.ts:640-686`). With history, the service opens the same Pi JSONL
 through `createManagedFromExistingWithSelectors()` and then disposes the prior
-managed runtime. Busy or streaming sessions reject replacement with
+managed runtime. A session whose run state is not idle rejects replacement with
 `session_busy`. A replacement therefore creates a new in-memory assembly while
 preserving the session identity and conversation evidence; it is not a second
 logical conversation.
@@ -109,6 +111,37 @@ shape: new materialization (`createManagedFromDirs`), ordinary reopen
 (`createManagedFromExistingWithSelectors`), and runtime open
 (`openManagedRuntime`). Their assembly inputs include adjacent prompt, model,
 workspace, and agent-team concerns; this module does not redefine those inputs.
+
+## Run state and deferred switches
+
+Each managed session carries one `RunState` (`web-server/run-state.ts`). Its
+phase is `idle`, `running`, `stopping`, or `queued` (running with texts in
+Pi's queue). Every mutation that needs an idle session checks this state
+through `assertIdle()`; `busy || isStreaming` is no longer restated. A run
+calls `begin()` at its start and the service's `settle()` at its end, which is
+the only idle transition: the run's `finally`, `abort()`, and `compact()`.
+
+A model, thinking, mode, Full Access on, or app runtime-mode switch during a
+run is accepted, not refused: `RunState.applyOrDefer()` applies it now when
+idle or records it as pending, and `settle()` drains the pending set through
+the same appliers the live path uses (`applyMode`, `applyModel`,
+`applyRuntime`, the core's `setFullAccess`). Turning Full Access off applies
+immediately, because the guard reads it per tool call. A change that fails at
+drain time is reported as an error-level `extension_notice`; a successful
+drain is followed by a `session_updated` snapshot. The snapshot exposes
+`pending` (the deferred values), `thinking` (the resolver's answer, see the
+provider/model document), and `queue` (Pi's steering and follow-up texts).
+The client renders a deferred switch as the chosen value with a pending mark,
+never as an error; a `session_busy` refusal never changes the client's run
+state (`run-state.test.ts`; `session-service.test.ts` "switches during a run
+are deferred").
+
+Every failure the service reports — `run_failed`, a refused WebSocket request,
+an error-level notice — carries the one envelope from `core/failure.ts`:
+`{operation, kind, message, retryable}`. Kinds come from the error's type
+first (typed abort, busy) and from producer text only inside that module;
+the model-fallback rule table matches on the kind. Interruption is still
+never inferred from text (`core/failure.test.ts`).
 
 ## Managed child-session lifecycle
 
@@ -138,6 +171,19 @@ normal notification turn; a closed parent receives the undelivered envelope on
 next open (`session-service.ts:3034-3088`, `session-service.ts:616-636`). The
 mail envelope is rendered as addressed context, not as an ordinary user bubble.
 
+What the lead is told is composed in one place, `describeChildOutcome()`
+(`web-server/child-outcome.ts`): the envelope's `event`, its `cause`, the body,
+and the status word that `check_agent`, `wait_for_agents`, and `list_agents`
+report. An interrupted envelope carries the run's `interruptionCause`; the
+context tag renders it as `cause="…"`. For `user_abort` the body tells the
+lead the user stopped the subagent and not to restart or continue it unless
+the user asks (Owner ruling 2026-09-02); `lead_abort` (the lead's own
+`interrupt_agent`) and `process_exit` keep a factual body that leaves the child
+continuable. A child whose accepted run is reconciled as `process_exit` on
+reopen mails its lead once, at that reopen. Status lines derive from the same
+function, so an interrupted child reads "interrupted (…)", never idle
+(`child-outcome.test.ts`; `agent-team.test.ts` interrupt cases).
+
 ## Run records and active-turn projection
 
 Every accepted prompt gets a run record in `records/runs.jsonl` with
@@ -149,10 +195,11 @@ assistant entries on completion or failure
 (`session-service.ts:1765-1924`).
 
 The current terminal statuses are `completed`, `failed`, and `interrupted`.
-`interruptionCause` identifies an explicit Alt stop or typed abort such as
-`user_abort`, `process_exit`, or `transport_loss`; an error merely containing
-the word “interrupt” remains a failure. This distinction is exercised by
-`session-service.test.ts:1089-1134`.
+`interruptionCause` identifies an explicit Alt stop or typed abort:
+`user_abort` (the Stop button), `lead_abort` (a lead's `interrupt_agent`),
+`process_exit` (reconciled on reopen), or `unknown`; an error merely
+containing the word “interrupt” remains a failure. This distinction is
+exercised by `session-service.test.ts` (abort classification cases).
 
 The latest active run records determine which Pi leaf and entries are projected
 as the current conversation. Revision and delete mark prior records
@@ -175,14 +222,23 @@ only the trailing failed partial is regenerated
 projection tells the client whether continue or retry-from-start is available.
 
 An ordinary follow-up is a new run after the previous run is terminal. While a
-run is active, a second prompt is not a new ordinary turn: the service either
-rejects the mutation or, for the send-while-running path, sends user text as a
-Pi steering message (`session-service.ts:1977-1989`).
+run is active, a second prompt is not a new ordinary turn: Pi owns the queue.
+The client sends `prompt {deliverAs}` and `SessionService.queuePrompt()` hands
+the text to Pi's steering queue (delivered before the next LLM call — the
+product rule "queued = next API call") or, on request, its follow-up queue.
+Pi's `queue_update` events are mirrored into the run state and forwarded as
+`queue_updated`; a text that leaves the queue is broadcast as `user_steered`
+at that moment, so its bubble appears when the model receives it. Agent-team
+mail rides the same Pi queue but is not shown as queued. `abort()` clears
+Pi's queue first and reports the unsent texts as `restored`, which the client
+puts back into the editor. There is no browser-side queue
+(`session-service.test.ts` "a message during a run joins Pi's steer queue").
 
 Pi's own transient provider retry is represented as a `retrying` run phase. Alt
 Theory does not wrap it in a second retry loop. A successful or failed terminal
-outcome is finalized only after pending run work has settled, which keeps the
-busy flag, run record, and recovery projection aligned.
+outcome is finalized only after pending run work has settled; the run state
+settles in the same `finally`, which keeps the phase, run record, and recovery
+projection aligned.
 
 ## Compaction and live-run state
 
@@ -199,7 +255,7 @@ user prompt and replayable stream events. `appendLiveRunEvent()` coalesces
 successive text/thinking deltas and replaces successive phase events with the
 latest phase (`web-server/live-run.ts:3-47`). The service clears the buffer only
 on `run_completed` or `run_failed`; `getLiveRun()` returns it only while the
-managed session is busy or Pi is streaming (`session-service.ts:4037-4056`).
+run state is not idle.
 Thus a pane attaching mid-run receives the persisted transcript plus the current
 prompt and buffered deltas/tool/phase events, while a terminal run has no stale
 live replay.
@@ -226,3 +282,9 @@ boundaries are already enforced in code.
   `alt-theory-app/web-server/session-service.test.ts`.
 - Live-run coalescing/replay behavior:
   `alt-theory-app/web-server/live-run.test.ts`.
+- Run state, deferred switches, and Pi-owned queue:
+  `alt-theory-app/web-server/run-state.test.ts` and the v1.5 cases at the end
+  of `session-service.test.ts`.
+- Failure envelope: `alt-theory-app/core/failure.test.ts`.
+- Child outcome, cause, and status words:
+  `alt-theory-app/web-server/child-outcome.test.ts`, `agent-team.test.ts`.
