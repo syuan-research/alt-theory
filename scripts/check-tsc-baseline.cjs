@@ -34,6 +34,18 @@ if (result.error) {
 
 const current = parseTscOutput(result.stdout + result.stderr);
 
+// A config-level tsc failure (e.g. missing tsconfig) prints errors with no
+// file(line,col) prefix, which parses to zero diagnostics — without this
+// guard the gate would pass green having checked nothing. Also checked
+// before --update, which would otherwise overwrite the baseline with [].
+if (result.status !== 0 && current.length === 0) {
+  console.error(
+    `[tsc-baseline] FAILED: tsc exited with status ${result.status} and produced no parseable diagnostics:`
+  );
+  console.error(result.stdout + result.stderr);
+  process.exit(2);
+}
+
 if (update) {
   fs.writeFileSync(
     baselinePath,
@@ -46,18 +58,21 @@ if (update) {
   process.exit(0);
 }
 
-let baseline = [];
+// null = file missing or not a JSON array. An empty array is a VALID
+// baseline (the ratchet's target state: zero known errors) and must not be
+// conflated with a missing one.
+let baseline = null;
 if (fs.existsSync(baselinePath)) {
   try {
     const parsed = JSON.parse(fs.readFileSync(baselinePath, "utf-8"));
     if (Array.isArray(parsed)) baseline = parsed;
   } catch {
-    // fall through to the not-found message below
+    // fall through to the missing-or-invalid failure below
   }
 }
-if (!baseline.length) {
+if (baseline === null) {
   console.error(
-    `[tsc-baseline] FAILED: ${path.relative(root, baselinePath)} is missing or empty. ` +
+    `[tsc-baseline] FAILED: ${path.relative(root, baselinePath)} is missing or invalid. ` +
       "Run `node scripts/check-tsc-baseline.cjs --update` to create it, then review the diff."
   );
   process.exit(2);

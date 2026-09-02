@@ -46,19 +46,21 @@ if (result.error) {
   process.exit(1);
 }
 
-let baseline = [];
+// null = file missing or not a JSON array. An empty array is a VALID
+// baseline (zero known errors) and must not be conflated with a missing one.
+let baseline = null;
 const baselinePath = path.join(__dirname, "tsc-baseline.json");
 if (fs.existsSync(baselinePath)) {
   try {
     const parsed = JSON.parse(fs.readFileSync(baselinePath, "utf-8"));
     if (Array.isArray(parsed)) baseline = parsed;
   } catch {
-    // handled by the empty-baseline failure below
+    // handled by the missing-or-invalid failure below
   }
 }
-if (!baseline.length) {
+if (baseline === null) {
   console.error(
-    `[compile-bundle] FAILED: ${path.relative(root, baselinePath)} is missing or empty. ` +
+    `[compile-bundle] FAILED: ${path.relative(root, baselinePath)} is missing or invalid. ` +
       "Run `node scripts/check-tsc-baseline.cjs --update` to create it, then review the diff."
   );
   process.exit(1);
