@@ -32,11 +32,38 @@ export interface ImportResult {
   error?: string;
 }
 
-export type ImportableHarness =
-  | "opencode"
-  | "codex"
-  | "grok-build"
-  | "claude-code";
+/**
+ * The single frontend harness list. It must match the backend adapter table
+ * (`IMPORT_HARNESSES` in web-server/session-import.ts); a backend test
+ * asserts the two agree. The dialog renders the served list from
+ * GET /api/session-import/harnesses rather than this constant.
+ */
+export const IMPORTABLE_HARNESSES = [
+  "pi",
+  "codex",
+  "opencode",
+  "grok-build",
+  "claude-code",
+] as const;
+
+export type ImportableHarness = (typeof IMPORTABLE_HARNESSES)[number];
+
+export interface ImportHarnessInfo {
+  harness: string;
+  status: string;
+}
+
+export async function fetchImportHarnesses(): Promise<ImportHarnessInfo[]> {
+  const response = await fetch("/api/session-import/harnesses");
+  const body = (await response.json().catch(() => ({}))) as {
+    harnesses?: ImportHarnessInfo[];
+    error?: string;
+  };
+  if (!response.ok) {
+    throw new Error(body.error || `Harness list failed (${response.status})`);
+  }
+  return body.harnesses ?? [];
+}
 
 export async function fetchImportSessions(
   harness: ImportableHarness

@@ -33,24 +33,21 @@ import {
 import {
   discoverOpenCodeSessions,
   preflightOpenCodeSession,
-  type OpenCodePreflight,
 } from "./opencode-session-import.js";
 import {
   discoverCodexSessions,
   preflightCodexSession,
-  type CodexPreflight,
 } from "./codex-session-import.js";
 import {
   discoverGrokSessions,
   fingerprintGrokSessionDir,
   preflightGrokSession,
-  type GrokPreflight,
 } from "./grok-session-import.js";
 import {
   discoverClaudeCodeSessions,
   preflightClaudeCodeSession,
-  type ClaudeCodePreflight,
 } from "./claude-code-session-import.js";
+import { ImportRefusalError } from "./session-import-shared.js";
 
 export const IMPORT_HARNESSES = [
   "pi",
@@ -95,6 +92,90 @@ export interface ImportSourceRecord {
   importOrdinal?: number;
 }
 
+/** Raw source listing before repeat classification; every harness maps here. */
+export interface ImportDiscoveredSession {
+  sourceId: string;
+  sourceSessionId: string;
+  sourceStore?: string;
+  sourceVersion?: string;
+  name: string | null;
+  cwd: string;
+  createdAt: string;
+  updatedAt: string;
+  messageCount: number;
+  preview: string;
+}
+
+/** Prepared deterministic projection of one source session (ADR 0003). */
+export interface ImportPreflight {
+  piSessionJsonl: string;
+  sourceFingerprint: string;
+  sourceVersion?: string;
+  transformations: string[];
+  sourceContextFiles?: Array<{ filename: string; content: string }>;
+}
+
+interface ImportRegistrationCore {
+  dataDir: string;
+  source: ImportSourceSession;
+  mode: AltMode;
+  workspacePrimaryDir?: string;
+  ownerAccountId?: string | null;
+  roleCondition?: string | null;
+  rolePresetSlug?: string | null;
+  soulSlug?: string | null;
+  visibility?: SessionVisibility;
+  consentSnapshot?: {
+    researcherReadable: boolean;
+    quoteAfterAnonymization: boolean;
+    privateOverride: boolean;
+  } | null;
+}
+
+export type ImportRegistrationArgs = ImportRegistrationCore & {
+  preflight: ImportPreflight;
+};
+
+export type ImportDiscoveryArgs = {
+  harness: ImportHarness;
+  dataDir: string;
+  piSessionDir?: string;
+  openCodeDbPath?: string;
+  codexSessionsDir?: string;
+  grokSessionsDir?: string;
+  claudeCodeProjectsDir?: string;
+};
+
+/**
+ * One harness, one adapter. Discovery dispatch, repeat classification,
+ * preflight, registration, and the import alias all read from this shape;
+ * the per-harness validate/project internals stay in each adapter module
+ * per ADR 0003.
+ */
+export interface ImportAdapter {
+  readonly harness: ImportHarness;
+  /** English label used in the import alias and served to the dialog. */
+  readonly label: string;
+  /** List raw source sessions for this harness. */
+  discover(args: ImportDiscoveryArgs): Promise<ImportDiscoveredSession[]>;
+  /** Whether a prior import record belongs to this discovered source. */
+  matchesPrior(
+    record: ImportSourceRecord,
+    source: ImportDiscoveredSession,
+  ): boolean;
+  /**
+   * Current revision id of a discovered source (store version or content
+   * hash); compared with the prior record's revision to classify repeats.
+   */
+  fingerprint(source: ImportDiscoveredSession): string | undefined;
+  /** Parse and verify the complete source before any managed write. */
+  preflight(source: ImportSourceSession): ImportPreflight;
+  /** Register a preflighted source as an ordinary managed session. */
+  register(
+    args: ImportRegistrationArgs,
+  ): { sessionId: string; sourceFingerprint: string };
+}
+
 export class ImportHarnessNotImplementedError extends Error {
   constructor(readonly harness: string) {
     super(`Import adapter is not implemented for harness: ${harness}`);
@@ -105,78 +186,269 @@ export function isImportHarness(value: string): value is ImportHarness {
   return (IMPORT_HARNESSES as readonly string[]).includes(value);
 }
 
-export async function discoverImportSessions(args: {
-  harness: ImportHarness;
-  dataDir: string;
-  piSessionDir?: string;
-  openCodeDbPath?: string;
-  codexSessionsDir?: string;
-  grokSessionsDir?: string;
-  claudeCodeProjectsDir?: string;
-}): Promise<ImportSourceSession[]> {
-  if (
-    args.harness === "opencode" ||
-    args.harness === "codex" ||
-    args.harness === "grok-build" ||
-    args.harness === "claude-code"
-  ) {
-    const previous = readImportSourceRecords(args.dataDir);
-    const discovered = args.harness === "opencode"
-      ? discoverOpenCodeSessions(args.openCodeDbPath)
-      : args.harness === "codex"
-        ? discoverCodexSessions(args.codexSessionsDir)
-        : args.harness === "grok-build"
-          ? discoverGrokSessions(args.grokSessionsDir)
-          : discoverClaudeCodeSessions(args.claudeCodeProjectsDir);
-    return discovered.map((source) => {
-      const priors = previous.filter(
-        (candidate) =>
-          candidate.record.harness === args.harness &&
-          candidate.record.sourceSessionId === source.sourceSessionId
-      );
-      const prior = latestImport(priors);
-      return {
-        ...source,
-        cwdAvailable: isDirectory(source.cwd),
-        repeat: !prior
-          ? "new"
-          : prior.record.sourceVersion === source.sourceVersion
-            ? "unchanged"
-            : "changed",
-        importedSessionId: prior?.sessionId ?? null,
-        importCount: priors.length,
-      };
-    });
-  }
-  requirePiAdapter(args.harness);
-  const infos = args.piSessionDir
-    ? await SessionManager.listAll(resolve(args.piSessionDir))
-    : await SessionManager.listAll();
-  const previous = readImportSourceRecords(args.dataDir);
-
-  return infos.map((info) => {
-    const sourceId = resolve(info.path);
-    const priors = previous.filter(
-      (candidate) =>
-        candidate.record.harness === "pi" &&
-        candidate.record.sourceId === sourceId &&
-        candidate.record.sourceSessionId === info.id
-    );
-    const prior = latestImport(priors);
-    const currentFingerprint = prior ? fingerprintFile(sourceId) : null;
-    return {
-      sourceId,
+const piImportAdapter: ImportAdapter = {
+  harness: "pi",
+  label: "Pi",
+  async discover(args) {
+    const infos = args.piSessionDir
+      ? await SessionManager.listAll(resolve(args.piSessionDir))
+      : await SessionManager.listAll();
+    return infos.map((info) => ({
+      sourceId: resolve(info.path),
       sourceSessionId: info.id,
       name: info.name ?? null,
       cwd: info.cwd,
-      cwdAvailable: isDirectory(info.cwd),
       createdAt: info.created.toISOString(),
       updatedAt: info.modified.toISOString(),
       messageCount: info.messageCount,
       preview: info.firstMessage.slice(0, 240),
+    }));
+  },
+  matchesPrior(record, source) {
+    return (
+      record.sourceId === source.sourceId &&
+      record.sourceSessionId === source.sourceSessionId
+    );
+  },
+  fingerprint(source) {
+    return fingerprintFile(source.sourceId);
+  },
+  preflight(source) {
+    const sourcePath = resolve(source.sourceId);
+    if (!existsSync(sourcePath) || !statSync(sourcePath).isFile()) {
+      throw new ImportRefusalError(
+        "Pi",
+        "session-file",
+        1,
+        `source session is missing: ${sourcePath}`,
+      );
+    }
+    let piSessionJsonl: string;
+    try {
+      piSessionJsonl = readFileSync(sourcePath, "utf-8");
+    } catch (error) {
+      throw new ImportRefusalError(
+        "Pi",
+        "session-file",
+        1,
+        `source session is not readable: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+    // parseSessionEntries skips malformed lines, so a usable current tip
+    // means a session header plus at least one entry survived parsing.
+    const entries = parseSessionEntries(piSessionJsonl);
+    if (
+      !entries.some((entry) => entry.type === "session") ||
+      !entries.some((entry) => entry.type !== "session")
+    ) {
+      throw new ImportRefusalError(
+        "Pi",
+        "session-entry",
+        1,
+        "source session has no parseable header and entries — the current tip is not identifiable",
+      );
+    }
+    return {
+      piSessionJsonl,
+      sourceFingerprint: fingerprintFile(sourcePath),
+      transformations: [],
+    };
+  },
+  register({ preflight, source, ...core }) {
+    const sourcePath = resolve(source.sourceId);
+    return registerPreparedImport({
+      ...core,
+      source,
+      harness: "pi",
+      piSessionJsonl: preflight.piSessionJsonl,
+      importedFilename: basename(sourcePath),
+      sourceFingerprint: preflight.sourceFingerprint,
+      sourceStore: dirname(sourcePath),
+      transformations: [],
+    });
+  },
+};
+
+const codexImportAdapter: ImportAdapter = {
+  harness: "codex",
+  label: "Codex",
+  discover(args) {
+    return Promise.resolve(discoverCodexSessions(args.codexSessionsDir));
+  },
+  matchesPrior(record, source) {
+    return record.sourceSessionId === source.sourceSessionId;
+  },
+  fingerprint(source) {
+    return source.sourceVersion;
+  },
+  preflight(source) {
+    return preflightCodexSession({
+      sourceSessionId: source.sourceSessionId,
+      sourceStore: source.sourceStore,
+    });
+  },
+  register({ preflight, source, ...core }) {
+    return registerPreparedImport({
+      ...core,
+      source,
+      harness: "codex",
+      piSessionJsonl: preflight.piSessionJsonl,
+      importedFilename: `codex-${source.sourceSessionId}.jsonl`,
+      sourceFingerprint: preflight.sourceFingerprint,
+      sourceStore: source.sourceStore ?? "",
+      sourceVersion: preflight.sourceVersion,
+      transformations: preflight.transformations,
+      sourceContextFiles: preflight.sourceContextFiles,
+      rawSourceFile: source.sourceStore,
+    });
+  },
+};
+
+const openCodeImportAdapter: ImportAdapter = {
+  harness: "opencode",
+  label: "OpenCode",
+  discover(args) {
+    return Promise.resolve(discoverOpenCodeSessions(args.openCodeDbPath));
+  },
+  matchesPrior(record, source) {
+    return record.sourceSessionId === source.sourceSessionId;
+  },
+  fingerprint(source) {
+    return source.sourceVersion;
+  },
+  preflight(source) {
+    return preflightOpenCodeSession({
+      sourceSessionId: source.sourceSessionId,
+      sourceStore: source.sourceStore,
+    });
+  },
+  register({ preflight, source, ...core }) {
+    return registerPreparedImport({
+      ...core,
+      source,
+      harness: "opencode",
+      piSessionJsonl: preflight.piSessionJsonl,
+      importedFilename: `opencode-${source.sourceSessionId}.jsonl`,
+      sourceFingerprint: preflight.sourceFingerprint,
+      sourceStore: source.sourceStore ?? "",
+      sourceVersion: preflight.sourceVersion,
+      transformations: preflight.transformations,
+      sourceContextFiles: preflight.sourceContextFiles,
+    });
+  },
+};
+
+const grokImportAdapter: ImportAdapter = {
+  harness: "grok-build",
+  label: "Grok Build",
+  discover(args) {
+    return Promise.resolve(discoverGrokSessions(args.grokSessionsDir));
+  },
+  matchesPrior(record, source) {
+    return record.sourceSessionId === source.sourceSessionId;
+  },
+  fingerprint(source) {
+    return source.sourceVersion;
+  },
+  preflight(source) {
+    return preflightGrokSession({
+      sourceSessionId: source.sourceSessionId,
+      sourceStore: source.sourceStore,
+    });
+  },
+  register({ preflight, source, ...core }) {
+    return registerPreparedImport({
+      ...core,
+      source,
+      harness: "grok-build",
+      piSessionJsonl: preflight.piSessionJsonl,
+      importedFilename: `grok-build-${source.sourceSessionId}.jsonl`,
+      sourceFingerprint: preflight.sourceFingerprint,
+      sourceStore: source.sourceStore ?? "",
+      sourceVersion: preflight.sourceVersion,
+      transformations: preflight.transformations,
+      rawSourceDir: source.sourceStore,
+    });
+  },
+};
+
+const claudeCodeImportAdapter: ImportAdapter = {
+  harness: "claude-code",
+  label: "Claude Code",
+  discover(args) {
+    return Promise.resolve(
+      discoverClaudeCodeSessions(args.claudeCodeProjectsDir),
+    );
+  },
+  matchesPrior(record, source) {
+    return record.sourceSessionId === source.sourceSessionId;
+  },
+  fingerprint(source) {
+    return source.sourceVersion;
+  },
+  preflight(source) {
+    return preflightClaudeCodeSession({
+      sourceSessionId: source.sourceSessionId,
+      sourceStore: source.sourceStore,
+    });
+  },
+  register({ preflight, source, ...core }) {
+    return registerPreparedImport({
+      ...core,
+      source,
+      harness: "claude-code",
+      piSessionJsonl: preflight.piSessionJsonl,
+      importedFilename: `claude-code-${source.sourceSessionId}.jsonl`,
+      sourceFingerprint: preflight.sourceFingerprint,
+      sourceStore: source.sourceStore ?? "",
+      sourceVersion: preflight.sourceVersion,
+      transformations: preflight.transformations,
+      sourceContextFiles: preflight.sourceContextFiles,
+    });
+  },
+};
+
+const importAdapters: Record<ImportHarness, ImportAdapter> = {
+  pi: piImportAdapter,
+  codex: codexImportAdapter,
+  opencode: openCodeImportAdapter,
+  "grok-build": grokImportAdapter,
+  "claude-code": claudeCodeImportAdapter,
+};
+
+export function getImportAdapter(harness: ImportHarness): ImportAdapter {
+  const adapter = importAdapters[harness];
+  if (!adapter) {
+    throw new ImportHarnessNotImplementedError(harness);
+  }
+  return adapter;
+}
+
+export async function discoverImportSessions(
+  args: ImportDiscoveryArgs,
+): Promise<ImportSourceSession[]> {
+  const adapter = getImportAdapter(args.harness);
+  const previous = readImportSourceRecords(args.dataDir);
+  const discovered = await adapter.discover(args);
+  return discovered.map((source) => {
+    const priors = previous.filter(
+      (candidate) =>
+        candidate.record.harness === args.harness &&
+        adapter.matchesPrior(candidate.record, source),
+    );
+    const prior = latestImport(priors);
+    const priorRevision = prior
+      ? (prior.record.sourceVersion ?? prior.record.sourceFingerprint)
+      : undefined;
+    const currentRevision = prior ? adapter.fingerprint(source) : undefined;
+    return {
+      ...source,
+      cwdAvailable: isDirectory(source.cwd),
       repeat: !prior
         ? "new"
-        : prior.record.sourceFingerprint === currentFingerprint
+        : priorRevision === currentRevision
           ? "unchanged"
           : "changed",
       importedSessionId: prior?.sessionId ?? null,
@@ -185,216 +457,20 @@ export async function discoverImportSessions(args: {
   });
 }
 
-export function registerPiImport(args: {
-  dataDir: string;
-  source: ImportSourceSession;
-  mode: AltMode;
-  workspacePrimaryDir?: string;
-  ownerAccountId?: string | null;
-  roleCondition?: string | null;
-  rolePresetSlug?: string | null;
-  soulSlug?: string | null;
-  visibility?: SessionVisibility;
-  consentSnapshot?: {
-    researcherReadable: boolean;
-    quoteAfterAnonymization: boolean;
-    privateOverride: boolean;
-  } | null;
-}): { sessionId: string; sourceFingerprint: string } {
-  const sourcePath = resolve(args.source.sourceId);
-  if (!existsSync(sourcePath) || !statSync(sourcePath).isFile()) {
-    throw new Error(`Pi source session is missing: ${sourcePath}`);
-  }
-  const piSessionJsonl = readFileSync(sourcePath, "utf-8");
-  parseSessionEntries(piSessionJsonl);
-  return registerPreparedImport({
-    ...args,
-    harness: "pi",
-    piSessionJsonl,
-    importedFilename: basename(sourcePath),
-    sourceFingerprint: fingerprintFile(sourcePath),
-    sourceStore: dirname(sourcePath),
-    transformations: [],
-  });
-}
-
-export function preflightOpenCodeImport(source: ImportSourceSession): OpenCodePreflight {
-  return preflightOpenCodeSession({
-    sourceSessionId: source.sourceSessionId,
-    sourceStore: source.sourceStore,
-  });
-}
-
-export function preflightCodexImport(source: ImportSourceSession): CodexPreflight {
-  return preflightCodexSession({
-    sourceSessionId: source.sourceSessionId,
-    sourceStore: source.sourceStore,
-  });
-}
-
-export function preflightGrokImport(source: ImportSourceSession): GrokPreflight {
-  return preflightGrokSession({
-    sourceSessionId: source.sourceSessionId,
-    sourceStore: source.sourceStore,
-  });
-}
-
-export function preflightClaudeCodeImport(
-  source: ImportSourceSession
-): ClaudeCodePreflight {
-  return preflightClaudeCodeSession({
-    sourceSessionId: source.sourceSessionId,
-    sourceStore: source.sourceStore,
-  });
-}
-
-export function registerOpenCodeImport(args: {
-  dataDir: string;
-  source: ImportSourceSession;
-  preflight: OpenCodePreflight;
-  mode: AltMode;
-  workspacePrimaryDir?: string;
-  ownerAccountId?: string | null;
-  roleCondition?: string | null;
-  rolePresetSlug?: string | null;
-  soulSlug?: string | null;
-  visibility?: SessionVisibility;
-  consentSnapshot?: {
-    researcherReadable: boolean;
-    quoteAfterAnonymization: boolean;
-    privateOverride: boolean;
-  } | null;
-}): { sessionId: string; sourceFingerprint: string } {
-  return registerPreparedImport({
-    ...args,
-    harness: "opencode",
-    piSessionJsonl: args.preflight.piSessionJsonl,
-    importedFilename: `opencode-${args.source.sourceSessionId}.jsonl`,
-    sourceFingerprint: args.preflight.sourceFingerprint,
-    sourceStore: args.source.sourceStore ?? "",
-    sourceVersion: args.preflight.sourceVersion,
-    transformations: args.preflight.transformations,
-    sourceContextFiles: args.preflight.sourceContextFiles,
-  });
-}
-
-export function registerCodexImport(args: {
-  dataDir: string;
-  source: ImportSourceSession;
-  preflight: CodexPreflight;
-  mode: AltMode;
-  workspacePrimaryDir?: string;
-  ownerAccountId?: string | null;
-  roleCondition?: string | null;
-  rolePresetSlug?: string | null;
-  soulSlug?: string | null;
-  visibility?: SessionVisibility;
-  consentSnapshot?: {
-    researcherReadable: boolean;
-    quoteAfterAnonymization: boolean;
-    privateOverride: boolean;
-  } | null;
-}): { sessionId: string; sourceFingerprint: string } {
-  return registerPreparedImport({
-    ...args,
-    harness: "codex",
-    piSessionJsonl: args.preflight.piSessionJsonl,
-    importedFilename: `codex-${args.source.sourceSessionId}.jsonl`,
-    sourceFingerprint: args.preflight.sourceFingerprint,
-    sourceStore: args.source.sourceStore ?? "",
-    sourceVersion: args.preflight.sourceVersion,
-    transformations: args.preflight.transformations,
-    sourceContextFiles: args.preflight.sourceContextFiles,
-    rawSourceFile: args.source.sourceStore,
-  });
-}
-
-export function registerGrokImport(args: {
-  dataDir: string;
-  source: ImportSourceSession;
-  preflight: GrokPreflight;
-  mode: AltMode;
-  workspacePrimaryDir?: string;
-  ownerAccountId?: string | null;
-  roleCondition?: string | null;
-  rolePresetSlug?: string | null;
-  soulSlug?: string | null;
-  visibility?: SessionVisibility;
-  consentSnapshot?: {
-    researcherReadable: boolean;
-    quoteAfterAnonymization: boolean;
-    privateOverride: boolean;
-  } | null;
-}): { sessionId: string; sourceFingerprint: string } {
-  return registerPreparedImport({
-    ...args,
-    harness: "grok-build",
-    piSessionJsonl: args.preflight.piSessionJsonl,
-    importedFilename: `grok-build-${args.source.sourceSessionId}.jsonl`,
-    sourceFingerprint: args.preflight.sourceFingerprint,
-    sourceStore: args.source.sourceStore ?? "",
-    sourceVersion: args.preflight.sourceVersion,
-    transformations: args.preflight.transformations,
-    rawSourceDir: args.source.sourceStore,
-  });
-}
-
-export function registerClaudeCodeImport(args: {
-  dataDir: string;
-  source: ImportSourceSession;
-  preflight: ClaudeCodePreflight;
-  mode: AltMode;
-  workspacePrimaryDir?: string;
-  ownerAccountId?: string | null;
-  roleCondition?: string | null;
-  rolePresetSlug?: string | null;
-  soulSlug?: string | null;
-  visibility?: SessionVisibility;
-  consentSnapshot?: {
-    researcherReadable: boolean;
-    quoteAfterAnonymization: boolean;
-    privateOverride: boolean;
-  } | null;
-}): { sessionId: string; sourceFingerprint: string } {
-  return registerPreparedImport({
-    ...args,
-    harness: "claude-code",
-    piSessionJsonl: args.preflight.piSessionJsonl,
-    importedFilename: `claude-code-${args.source.sourceSessionId}.jsonl`,
-    sourceFingerprint: args.preflight.sourceFingerprint,
-    sourceStore: args.source.sourceStore ?? "",
-    sourceVersion: args.preflight.sourceVersion,
-    transformations: args.preflight.transformations,
-    sourceContextFiles: args.preflight.sourceContextFiles,
-  });
-}
-
-function registerPreparedImport(args: {
-  dataDir: string;
-  source: ImportSourceSession;
-  harness: "pi" | "opencode" | "codex" | "grok-build" | "claude-code";
-  piSessionJsonl: string;
-  importedFilename: string;
-  sourceFingerprint: string;
-  sourceStore: string;
-  sourceVersion?: string;
-  transformations: string[];
-  sourceContextFiles?: Array<{ filename: string; content: string }>;
-  rawSourceDir?: string;
-  rawSourceFile?: string;
-  mode: AltMode;
-  workspacePrimaryDir?: string;
-  ownerAccountId?: string | null;
-  roleCondition?: string | null;
-  rolePresetSlug?: string | null;
-  soulSlug?: string | null;
-  visibility?: SessionVisibility;
-  consentSnapshot?: {
-    researcherReadable: boolean;
-    quoteAfterAnonymization: boolean;
-    privateOverride: boolean;
-  } | null;
-}): { sessionId: string; sourceFingerprint: string } {
+function registerPreparedImport(
+  args: ImportRegistrationCore & {
+    harness: ImportHarness;
+    piSessionJsonl: string;
+    importedFilename: string;
+    sourceFingerprint: string;
+    sourceStore: string;
+    sourceVersion?: string;
+    transformations: string[];
+    sourceContextFiles?: Array<{ filename: string; content: string }>;
+    rawSourceDir?: string;
+    rawSourceFile?: string;
+  },
+): { sessionId: string; sourceFingerprint: string } {
   parseSessionEntries(args.piSessionJsonl);
   const workspacePrimaryDir = resolve(args.workspacePrimaryDir ?? args.source.cwd);
   if (!isDirectory(workspacePrimaryDir)) {
@@ -556,24 +632,10 @@ function importAlias(
   ordinal: number,
   importedAt: string
 ): string {
-  const label = harness === "grok-build"
-    ? "Grok Build"
-    : harness === "opencode"
-      ? "OpenCode"
-      : harness === "codex"
-        ? "Codex"
-        : harness === "claude-code"
-          ? "Claude Code"
-        : "Pi";
+  const label = importAdapters[harness].label;
   const suffix = ` · ${label} import ${importedAt.slice(0, 10)} #${String(ordinal).padStart(2, "0")}`;
   const base = sourceName.trim().replace(/\s+/g, " ");
   return `${base.slice(0, Math.max(1, 80 - suffix.length))}${suffix}`;
-}
-
-function requirePiAdapter(harness: ImportHarness): void {
-  if (harness !== "pi") {
-    throw new ImportHarnessNotImplementedError(harness);
-  }
 }
 
 function fingerprintFile(path: string): string {

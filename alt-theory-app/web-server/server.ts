@@ -130,16 +130,8 @@ import {
   IMPORT_HARNESSES,
   ImportHarnessNotImplementedError,
   discoverImportSessions,
+  getImportAdapter,
   isImportHarness,
-  preflightCodexImport,
-  preflightClaudeCodeImport,
-  preflightGrokImport,
-  preflightOpenCodeImport,
-  registerCodexImport,
-  registerClaudeCodeImport,
-  registerGrokImport,
-  registerOpenCodeImport,
-  registerPiImport,
 } from "./session-import.js";
 import { ImportRefusalError } from "./session-import-shared.js";
 import {
@@ -1060,12 +1052,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     const visibility =
       body.visibility === "exportable" ? "exportable" : "no-export";
     const preflightOnly = body.preflightOnly === true;
-    if (preflightOnly && harness === "pi") {
-      res.status(400).json({ error: "preflightOnly is currently supported only for converted external sessions", });
-      return;
-    }
 
     try {
+      const adapter = getImportAdapter(harness);
       const discovered = await discoverImportSessions({ harness, dataDir });
       const selected =
         selection === "all"
@@ -1112,79 +1101,19 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           };
         }
         try {
-          if (harness === "grok-build") {
-            const preflight = preflightGrokImport(source);
-            if (preflightOnly) {
-              return {
-                sourceId: source.sourceId,
-                status: "ready" as const,
-                sessionId: null,
-                transformations: preflight.transformations,
-              };
-            }
-            const registered = registerGrokImport({
-              dataDir,
-              source,
-              preflight,
-              mode,
-              workspacePrimaryDir,
-              rolePresetSlug: importSelectors.rolePresetSlug,
-              soulSlug: importSelectors.soulSlug,
-              ...metadata,
-            });
+          const preflight = adapter.preflight(source);
+          if (preflightOnly) {
             return {
               sourceId: source.sourceId,
-              status: preflight.transformations.length
-                ? ("imported_with_transformations" as const)
-                : ("imported" as const),
-              sessionId: registered.sessionId,
+              status: "ready" as const,
+              sessionId: null,
               transformations: preflight.transformations,
             };
           }
-          if (
-            harness === "opencode" ||
-            harness === "codex" ||
-            harness === "claude-code"
-          ) {
-            const preflight = harness === "opencode"
-              ? preflightOpenCodeImport(source)
-              : harness === "codex"
-                ? preflightCodexImport(source)
-                : preflightClaudeCodeImport(source);
-            if (preflightOnly) {
-              return {
-                sourceId: source.sourceId,
-                status: "ready" as const,
-                sessionId: null,
-                transformations: preflight.transformations,
-              };
-            }
-            const common = {
-              dataDir,
-              source,
-              mode: mode as AltMode,
-              workspacePrimaryDir,
-              rolePresetSlug: importSelectors.rolePresetSlug,
-              soulSlug: importSelectors.soulSlug,
-              ...metadata,
-            };
-            const registered = harness === "opencode"
-              ? registerOpenCodeImport({ ...common, preflight })
-              : harness === "codex"
-                ? registerCodexImport({ ...common, preflight })
-                : registerClaudeCodeImport({ ...common, preflight });
-            return {
-              sourceId: source.sourceId,
-              status: preflight.transformations.length
-                ? ("imported_with_transformations" as const)
-                : ("imported" as const),
-              sessionId: registered.sessionId,
-              transformations: preflight.transformations,
-            };
-          }
-          const registered = registerPiImport({
+          const registered = adapter.register({
             dataDir,
             source,
+            preflight,
             mode,
             workspacePrimaryDir,
             rolePresetSlug: importSelectors.rolePresetSlug,
@@ -1193,8 +1122,11 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           });
           return {
             sourceId: source.sourceId,
-            status: "imported" as const,
+            status: preflight.transformations.length
+              ? ("imported_with_transformations" as const)
+              : ("imported" as const),
             sessionId: registered.sessionId,
+            transformations: preflight.transformations,
           };
         } catch (error) {
           if (error instanceof ImportRefusalError) {

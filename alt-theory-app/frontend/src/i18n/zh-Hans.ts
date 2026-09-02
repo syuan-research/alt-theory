@@ -475,6 +475,7 @@ const catalog: Record<string, string> = {
   "Paste the provider API key.": "粘贴服务商 API 密钥。",
   "Permanently delete {count} selected conversations?": "永久删除选中的 {count} 个对话？",
   "Permanently delete this conversation?": "永久删除此对话？",
+  "Pi": "Pi",
   "Pick a knowledge set above the composer to ground answers in your own material.": "在输入框上方选择知识集，让回答以你自己的材料为依据。",
   "Adaptive planning": "自适应规划",
   "Please sign in to continue.": "请登录以继续。",

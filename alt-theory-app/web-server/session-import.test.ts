@@ -6,21 +6,18 @@ import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import {
+  IMPORT_HARNESSES,
   discoverImportSessions,
-  preflightClaudeCodeImport,
-  preflightCodexImport,
-  preflightGrokImport,
-  preflightOpenCodeImport,
-  registerCodexImport,
-  registerClaudeCodeImport,
-  registerGrokImport,
-  registerOpenCodeImport,
-  registerPiImport,
+  getImportAdapter,
 } from "./session-import.js";
-import { CodexImportRefusalError } from "./codex-session-import.js";
-import { GrokImportRefusalError } from "./grok-session-import.js";
-import { ClaudeCodeImportRefusalError } from "./claude-code-session-import.js";
+import { ImportRefusalError } from "./session-import-shared.js";
 import { listSessionSummaries, readSessionDetail } from "./session-store.js";
+
+const piAdapter = getImportAdapter("pi");
+const codexAdapter = getImportAdapter("codex");
+const openCodeAdapter = getImportAdapter("opencode");
+const grokAdapter = getImportAdapter("grok-build");
+const claudeCodeAdapter = getImportAdapter("claude-code");
 
 test("Pi discovery and managed registration preserve history and workspace", async () => {
   const root = mkdtempSync(join(tmpdir(), "alt-theory-session-import-"));
@@ -71,9 +68,10 @@ test("Pi discovery and managed registration preserve history and workspace", asy
   assert.equal(source.cwdAvailable, true);
   assert.equal(source.repeat, "new");
 
-  const registered = registerPiImport({
+  const registered = piAdapter.register({
     dataDir,
     source,
+    preflight: piAdapter.preflight(source),
     mode: "understand",
     rolePresetSlug: "role-conceptual-theory-companion",
     soulSlug: "soul-latest",
@@ -147,9 +145,10 @@ test("Pi discovery and managed registration preserve history and workspace", asy
   });
   assert.equal(changed?.repeat, "changed");
 
-  const reimported = registerPiImport({
+  const reimported = piAdapter.register({
     dataDir,
     source: changed!,
+    preflight: piAdapter.preflight(changed!),
     mode: "understand",
     rolePresetSlug: "role-conceptual-theory-companion",
     soulSlug: "soul-latest",
@@ -237,8 +236,8 @@ test("Grok preflight preserves current history and raw source, and refuses unmat
   assert.ok(source);
   assert.equal(source.sourceSessionId, "grok-supported");
   assert.equal(source.repeat, "new");
-  const preflight = preflightGrokImport(source);
-  assert.equal(preflightGrokImport(source).piSessionJsonl, preflight.piSessionJsonl);
+  const preflight = grokAdapter.preflight(source);
+  assert.equal(grokAdapter.preflight(source).piSessionJsonl, preflight.piSessionJsonl);
   assert.match(preflight.piSessionJsonl, /GROK_SYSTEM_MARKER/);
   assert.match(preflight.piSessionJsonl, /GROK_REASONING_MARKER/);
   assert.match(preflight.piSessionJsonl, /GROK_TOOL_RESULT_MARKER/);
@@ -274,7 +273,7 @@ test("Grok preflight preserves current history and raw source, and refuses unmat
     )
   );
 
-  const registered = registerGrokImport({
+  const registered = grokAdapter.register({
     dataDir,
     source,
     preflight,
@@ -318,7 +317,7 @@ test("Grok preflight preserves current history and raw source, and refuses unmat
   });
   const refused = sources.find((item) => item.sourceSessionId === "grok-refused");
   assert.ok(refused);
-  assert.throws(() => preflightGrokImport(refused), GrokImportRefusalError);
+  assert.throws(() => grokAdapter.preflight(refused), ImportRefusalError);
   assert.equal(existsSync(join(dataDir, "sessions", "grok-refused")), false);
   assert.equal(listSessionSummaries(dataDir).sessions.length, 1);
 
@@ -341,9 +340,9 @@ test("Grok preflight preserves current history and raw source, and refuses unmat
   const legacy = legacySources.find((item) => item.sourceSessionId === "grok-legacy");
   assert.ok(legacy);
   assert.throws(
-    () => preflightGrokImport(legacy),
+    () => grokAdapter.preflight(legacy),
     (error: unknown) =>
-      error instanceof GrokImportRefusalError &&
+      error instanceof ImportRefusalError &&
       error.recordType === "legacy_assistant_context"
   );
   assert.equal(listSessionSummaries(dataDir).sessions.length, 1);
@@ -422,7 +421,7 @@ test("Codex preflight maps supported rollout history and refuses unmatched tool 
   assert.ok(source);
   assert.equal(source.sourceSessionId, "codex-supported");
   assert.equal(source.repeat, "new");
-  const preflight = preflightCodexImport(source);
+  const preflight = codexAdapter.preflight(source);
   assert.match(preflight.piSessionJsonl, /CODEX_BASE_MARKER/);
   assert.match(preflight.piSessionJsonl, /CODEX_DEVELOPER_MARKER/);
   assert.match(preflight.piSessionJsonl, /HISTORY_RESULT_MARKER/);
@@ -430,7 +429,7 @@ test("Codex preflight maps supported rollout history and refuses unmatched tool 
   assert.ok(preflight.transformations.some((item) => item.includes("not registered as active")));
   const entries = preflight.piSessionJsonl.trim().split(/\r?\n/).map((value) => JSON.parse(value));
   assert.equal(entries.some((entry) => entry.customType === "source-codex-record"), false);
-  const registered = registerCodexImport({
+  const registered = codexAdapter.register({
     dataDir,
     source,
     preflight,
@@ -490,7 +489,7 @@ test("Codex preflight maps supported rollout history and refuses unmatched tool 
   });
   const refused = sources.find((item) => item.sourceSessionId === "codex-unsupported");
   assert.ok(refused);
-  assert.throws(() => preflightCodexImport(refused), CodexImportRefusalError);
+  assert.throws(() => codexAdapter.preflight(refused), ImportRefusalError);
   assert.equal(listSessionSummaries(dataDir).sessions.length, 1);
 });
 
@@ -655,7 +654,7 @@ test("OpenCode preflight registers complete supported history and refuses unsupp
   });
   assert.ok(source);
   assert.equal(source.sourceSessionId, "ses_supported");
-  const preflight = preflightOpenCodeImport(source);
+  const preflight = openCodeAdapter.preflight(source);
   assert.match(preflight.piSessionJsonl, /IMPORTED_HISTORY_MARKER/);
   assert.ok(preflight.transformations.some((item) => item.includes("Reasoning")));
   assert.ok(preflight.transformations.some((item) => item.includes("source errors")));
@@ -703,7 +702,7 @@ test("OpenCode preflight registers complete supported history and refuses unsupp
     );
   assert.equal(rawEntry?.data?.message?.id, "msg_user");
   assert.equal(rawEntry?.data?.parts?.[0]?.id, "prt_user");
-  const registered = registerOpenCodeImport({
+  const registered = openCodeAdapter.register({
     dataDir,
     source,
     preflight,
@@ -772,7 +771,7 @@ test("OpenCode preflight registers complete supported history and refuses unsupp
   });
   const placeholder = sources.find((item) => item.sourceSessionId === "ses_placeholder");
   assert.ok(placeholder);
-  const placeholderPreflight = preflightOpenCodeImport(placeholder);
+  const placeholderPreflight = openCodeAdapter.preflight(placeholder);
   assert.match(placeholderPreflight.piSessionJsonl, /Attached file not replayed: scan\.pdf \(application\/pdf\)/);
   assert.ok(
     placeholderPreflight.transformations.some((item) => item.includes("Non-image attached files"))
@@ -961,7 +960,7 @@ test("Codex preflight separates visible history from active context after compac
     codexSessionsDir: join(root, "codex-sessions"),
   });
   assert.ok(source);
-  const preflight = preflightCodexImport(source);
+  const preflight = codexAdapter.preflight(source);
   const entries = preflight.piSessionJsonl.trim().split(/\r?\n/).map((value) => JSON.parse(value));
   const projected = entries.filter((entry) => entry.type === "message");
   const projectedText = JSON.stringify(projected);
@@ -1013,7 +1012,7 @@ test("Codex preflight separates visible history from active context after compac
   assert.ok(preflight.transformations.some((item) => item.includes("inter-agent messages")));
   assert.ok(preflight.transformations.some((item) => item.includes("were not rolled back")));
   assert.equal(entries.some((entry) => entry.customType === "source-codex-record"), false);
-  const registered = registerCodexImport({
+  const registered = codexAdapter.register({
     dataDir,
     source,
     preflight,
@@ -1111,16 +1110,16 @@ test("Codex preflight separates visible history from active context after compac
   const refused = sources.find((item) => item.sourceSessionId === "codex-malformed-compacted");
   assert.ok(refused);
   assert.throws(
-    () => preflightCodexImport(refused),
+    () => codexAdapter.preflight(refused),
     (error: unknown) =>
-      error instanceof CodexImportRefusalError && error.recordType === "compacted"
+      error instanceof ImportRefusalError && error.recordType === "compacted"
   );
   const ambiguous = sources.find((item) => item.sourceSessionId === "codex-ambiguous-rollback");
   assert.ok(ambiguous);
   assert.throws(
-    () => preflightCodexImport(ambiguous),
+    () => codexAdapter.preflight(ambiguous),
     (error: unknown) =>
-      error instanceof CodexImportRefusalError &&
+      error instanceof ImportRefusalError &&
       error.recordType === "turn_aborted" &&
       error.message.includes("explicit num_turns")
   );
@@ -1128,7 +1127,7 @@ test("Codex preflight separates visible history from active context after compac
     (item) => item.sourceSessionId === "codex-deterministic-rollback"
   );
   assert.ok(deterministic);
-  const deterministicPreflight = preflightCodexImport(deterministic);
+  const deterministicPreflight = codexAdapter.preflight(deterministic);
   const deterministicProjected = JSON.stringify(
     deterministicPreflight.piSessionJsonl
       .trim()
@@ -1217,7 +1216,7 @@ test("Grok preflight replays user images and keeps tool-result images as placeho
     grokSessionsDir: sessionsDir,
   });
   assert.ok(source);
-  const preflight = preflightGrokImport(source);
+  const preflight = grokAdapter.preflight(source);
   const entries = preflight.piSessionJsonl.trim().split(/\r?\n/).map((value) => JSON.parse(value));
   const userMessage = entries.find((entry) => entry.message?.role === "user");
   assert.deepEqual(
@@ -1332,7 +1331,7 @@ test("OpenCode preflight replays tool-result image attachments", async () => {
     openCodeDbPath: dbPath,
   });
   assert.ok(source);
-  const preflight = preflightOpenCodeImport(source);
+  const preflight = openCodeAdapter.preflight(source);
   const entries = preflight.piSessionJsonl.trim().split(/\r?\n/).map((value) => JSON.parse(value));
   const toolResult = entries.find((entry) => entry.message?.role === "toolResult");
   assert.ok(toolResult);
@@ -1435,10 +1434,10 @@ test("OpenCode lists roots and archives child sessions beside the imported root"
   assert.ok(source);
   assert.equal(extra, undefined);
   assert.equal(source.sourceSessionId, "ses_root");
-  const preflight = preflightOpenCodeImport(source);
+  const preflight = openCodeAdapter.preflight(source);
   assert.equal(preflight.sourceContextFiles.length, 2);
   assert.match(preflight.sourceContextFiles[1]!.content, /CHILD_MARKER/);
-  const registered = registerOpenCodeImport({
+  const registered = openCodeAdapter.register({
     dataDir,
     source,
     preflight,
@@ -1577,7 +1576,7 @@ test("Codex uses the state index for roots and archives spawned descendants", as
   assert.equal(extra, undefined);
   assert.equal(source.sourceSessionId, "codex-root");
   assert.equal(source.name, "Indexed root conversation");
-  const preflight = preflightCodexImport(source);
+  const preflight = codexAdapter.preflight(source);
   assert.equal(preflight.sourceContextFiles.length, 2);
   assert.match(preflight.sourceContextFiles[1]!.content, /CHILD_MARKER/);
   assert.ok(
@@ -1740,7 +1739,7 @@ test("Claude Code discovery falls back from a stale index and imports one integr
   assert.equal(extra, undefined);
   assert.equal(source.name, "Claude integrated fixture");
   assert.equal(source.messageCount, 3);
-  const preflight = preflightClaudeCodeImport(source);
+  const preflight = claudeCodeAdapter.preflight(source);
   const entries = preflight.piSessionJsonl.trim().split(/\r?\n/).map(JSON.parse);
   const projected = entries.filter((entry) => entry.type === "message");
   const projectedText = JSON.stringify(projected);
@@ -1772,7 +1771,7 @@ test("Claude Code discovery falls back from a stale index and imports one integr
   );
   assert.equal(preflight.sourceContextFiles.length, 2);
   assert.match(preflight.sourceContextFiles[1]!.content, /CLAUDE_CHILD_MARKER/);
-  const registered = registerClaudeCodeImport({
+  const registered = claudeCodeAdapter.register({
     dataDir,
     source,
     preflight,
@@ -1818,9 +1817,9 @@ test("Claude Code discovery falls back from a stale index and imports one integr
   );
   writeFileSync(unknownPath, `${unknownRows.map(JSON.stringify).join("\n")}\n`);
   assert.throws(
-    () => preflightClaudeCodeImport({ ...source, sourceStore: unknownPath }),
+    () => claudeCodeAdapter.preflight({ ...source, sourceStore: unknownPath }),
     (error: unknown) =>
-      error instanceof ClaudeCodeImportRefusalError &&
+      error instanceof ImportRefusalError &&
       error.recordType === "assistant_block:future_block"
   );
 });
@@ -1866,7 +1865,7 @@ test("Claude Code plaintext compaction preserves visible history and resumes fro
     claudeCodeProjectsDir: projectsDir,
   });
   assert.ok(source);
-  const preflight = preflightClaudeCodeImport(source);
+  const preflight = claudeCodeAdapter.preflight(source);
   const entries = preflight.piSessionJsonl.trim().split(/\r?\n/).map(JSON.parse);
   const projectedText = JSON.stringify(entries.filter((entry) => entry.type === "message"));
   assert.match(projectedText, /CLAUDE_OLD_ASSISTANT/);
@@ -1877,7 +1876,7 @@ test("Claude Code plaintext compaction preserves visible history and resumes fro
   assert.equal(compaction.summary, "CLAUDE_PLAINTEXT_COMPACT_SUMMARY");
   const firstKept = entries.find((entry) => entry.id === compaction.firstKeptEntryId);
   assert.match(JSON.stringify(firstKept), /CLAUDE_POST_COMPACT_CONTEXT/);
-  const registered = registerClaudeCodeImport({
+  const registered = claudeCodeAdapter.register({
     dataDir,
     source,
     preflight,
@@ -1895,4 +1894,111 @@ test("Claude Code plaintext compaction preserves visible history and resumes fro
   assert.match(activeText, /CLAUDE_PLAINTEXT_COMPACT_SUMMARY/);
   assert.match(activeText, /CLAUDE_POST_COMPACT_USER/);
   assert.ok(!activeText.includes("CLAUDE_OLD_ASSISTANT"));
+});
+
+test("the harness table and the frontend importable union agree", () => {
+  const frontend = readFileSync(
+    new URL("../frontend/src/api/session-import.ts", import.meta.url),
+    "utf-8",
+  );
+  const match = frontend.match(
+    /export const IMPORTABLE_HARNESSES = \[([\s\S]*?)\] as const;/,
+  );
+  assert.ok(match, "IMPORTABLE_HARNESSES not found in the frontend api");
+  const frontendHarnesses = [...match[1]!.matchAll(/"([^"]+)"/g)].map(
+    (item) => item[1]!,
+  );
+  assert.deepEqual(
+    [...frontendHarnesses].sort(),
+    [...IMPORT_HARNESSES].sort(),
+  );
+});
+
+test("Pi preflight prepares the current tip and refuses missing or unparseable sources", async () => {
+  const root = mkdtempSync(join(tmpdir(), "alt-theory-pi-preflight-"));
+  const sourceDir = join(root, "pi-sessions");
+  const sourceCwd = join(root, "workspace");
+  mkdirSync(sourceCwd, { recursive: true });
+
+  const sourceManager = SessionManager.create(sourceCwd, sourceDir);
+  sourceManager.newSession({ id: "pi-preflight-source" });
+  sourceManager.appendMessage({
+    role: "user",
+    content: "tip that must stay continuable",
+    timestamp: Date.now(),
+  });
+  sourceManager.appendMessage({
+    role: "assistant",
+    content: [{ type: "text", text: "assistant turn that persists the file" }],
+    api: "openai-completions",
+    provider: "test-provider",
+    model: "test-model",
+    usage: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 0,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    },
+    stopReason: "stop",
+    timestamp: Date.now(),
+  });
+
+  const [discovered] = (
+    await discoverImportSessions({
+      harness: "pi",
+      dataDir: join(root, "alt-data"),
+      piSessionDir: sourceDir,
+    })
+  ).filter((source) => source.sourceSessionId === "pi-preflight-source");
+  assert.ok(discovered);
+
+  const preflight = piAdapter.preflight(discovered);
+  assert.equal(preflight.transformations.length, 0);
+  assert.ok(preflight.piSessionJsonl.includes("tip that must stay continuable"));
+  assert.equal(
+    preflight.sourceFingerprint.length,
+    64,
+    "preflight reports the sha256 fingerprint used for repeat classification",
+  );
+
+  assert.throws(
+    () =>
+      piAdapter.preflight({
+        ...discovered,
+        sourceId: join(sourceDir, "missing-session.jsonl"),
+      }),
+    (error: unknown) =>
+      error instanceof ImportRefusalError &&
+      error.recordType === "session-file",
+  );
+
+  const garbagePath = join(sourceDir, "garbage.jsonl");
+  writeFileSync(garbagePath, "not jsonl at all\n");
+  assert.throws(
+    () =>
+      piAdapter.preflight({ ...discovered, sourceId: garbagePath }),
+    (error: unknown) =>
+      error instanceof ImportRefusalError &&
+      error.recordType === "session-entry",
+  );
+
+  const headerOnlyPath = join(sourceDir, "header-only.jsonl");
+  const headerLine = preflight.piSessionJsonl
+    .split(/\r?\n/)
+    .find((line) => {
+      try {
+        return JSON.parse(line).type === "session";
+      } catch {
+        return false;
+      }
+    })!;
+  writeFileSync(headerOnlyPath, `${headerLine}\n`);
+  assert.throws(
+    () => piAdapter.preflight({ ...discovered, sourceId: headerOnlyPath }),
+    (error: unknown) =>
+      error instanceof ImportRefusalError &&
+      error.recordType === "session-entry",
+  );
 });

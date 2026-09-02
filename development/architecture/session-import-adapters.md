@@ -23,14 +23,22 @@ The implemented boundary is:
 5. register that JSONL through the normal managed-session path;
 6. open and continue it as an ordinary Alt Theory session.
 
-`session-import.ts` owns shared discovery dispatch, repeat classification,
-managed registration, provenance, aliases, workspace validation, and atomic
-cleanup. Each external harness has one parser/projector module:
+`session-import.ts` owns the `ImportAdapter` interface
+(`{harness, label, discover(), matchesPrior(), fingerprint(),
+preflight(), register()}`) and one adapter table keyed by harness. Shared
+discovery dispatch, repeat classification, managed registration,
+provenance, aliases, workspace validation, and atomic cleanup live there;
+each harness row carries its own discovery, preflight, and registration
+mapping. Each external harness has one parser/projector module:
 
 - `opencode-session-import.ts`
 - `codex-session-import.ts`
 - `grok-session-import.ts`
 - `claude-code-session-import.ts`
+
+Adding a harness means one adapter module plus one table row (and the
+`IMPORT_HARNESSES` tuple entry and i18n labels); a backend test asserts the
+table and the frontend `IMPORTABLE_HARNESSES` union agree.
 
 The local API exposes the ready harnesses through
 `GET /api/session-import/harnesses`, discovery through
@@ -122,9 +130,15 @@ Later runs are ordinary prompts.
 
 ### Pi
 
-Pi discovery uses `SessionManager.listAll()`. The source Pi JSONL is parsed,
-copied into the managed history directory, and registered through the same
-shared path. Pi import does not need external-session preflight conversion.
+Pi is registered through the same adapter table as the external harnesses.
+Discovery uses `SessionManager.listAll()`. Preflight verifies the source
+file is readable, parses to a session header plus at least one entry (the
+current tip), and reports the file's sha256 fingerprint; the prepared
+import is the source JSONL itself with no transformations. Registration
+copies that JSONL into the managed history directory through the shared
+path. Repeat classification compares the stored fingerprint with the
+current file hash; Pi source sessions only reach disk once they contain an
+assistant turn, so user-only drafts are not discoverable.
 
 ### OpenCode
 
@@ -201,7 +215,9 @@ detection, and is not replayed as an independent main conversation.
 
 ## Current product surface
 
-The shared React dialog offers OpenCode, Codex, Grok Build, and Claude Code.
-The backend registry also supports Pi import. The dialog searches source
-title/folder/conversation, keeps recent activity first, requires dry preflight,
-folds technical details, and opens the resulting normal catalog session.
+The shared React dialog lists harnesses served by
+`GET /api/session-import/harnesses` (Pi, OpenCode, Codex, Grok Build, and
+Claude Code) and requires dry preflight for every harness, Pi included.
+The dialog searches source title/folder/conversation, keeps recent activity
+first, folds technical details, and opens the resulting normal catalog
+session.

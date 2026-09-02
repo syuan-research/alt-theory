@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  fetchImportHarnesses,
   fetchImportSessions,
   submitSessionImport,
+  type ImportHarnessInfo,
   type ImportableHarness,
   type ImportResult,
   type ImportSourceSession,
@@ -11,6 +13,25 @@ import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
 import { folderLabel } from "@/lib/sessionList";
 import { t } from "@/i18n";
+
+// Literals keep the i18n key extraction working; the served list decides
+// which entries appear.
+function harnessLabel(harness: string): string {
+  switch (harness as ImportableHarness) {
+    case "pi":
+      return t("Pi");
+    case "codex":
+      return t("Codex");
+    case "opencode":
+      return t("OpenCode");
+    case "grok-build":
+      return t("Grok Build");
+    case "claude-code":
+      return t("Claude Code");
+    default:
+      return harness;
+  }
+}
 
 export function SessionImportDialog({
   open,
@@ -22,6 +43,7 @@ export function SessionImportDialog({
   const app = useApp();
   const shell = useShell();
   const [harness, setHarness] = useState<ImportableHarness>("opencode");
+  const [harnessOptions, setHarnessOptions] = useState<ImportHarnessInfo[]>([]);
   const [sessions, setSessions] = useState<ImportSourceSession[]>([]);
   const [sourceId, setSourceId] = useState("");
   const [query, setQuery] = useState("");
@@ -36,6 +58,16 @@ export function SessionImportDialog({
     setMode(shell.newMode);
     setQuery("");
     setWorkspaceOverride("");
+    void fetchImportHarnesses()
+      .then((next) => {
+        setHarnessOptions(next);
+        setHarness((current) =>
+          next.some((info) => info.harness === current)
+            ? current
+            : ((next[0]?.harness as ImportableHarness | undefined) ?? current),
+        );
+      })
+      .catch(() => setHarnessOptions([]));
   }, [open, shell.newMode]);
 
   useEffect(() => {
@@ -169,10 +201,11 @@ export function SessionImportDialog({
               setResult(null);
             }}
           >
-            <option value="opencode">{t("OpenCode")}</option>
-            <option value="codex">{t("Codex")}</option>
-            <option value="grok-build">{t("Grok Build")}</option>
-            <option value="claude-code">{t("Claude Code")}</option>
+            {harnessOptions.map((info) => (
+              <option key={info.harness} value={info.harness}>
+                {harnessLabel(info.harness)}
+              </option>
+            ))}
           </select>
         </label>
 
