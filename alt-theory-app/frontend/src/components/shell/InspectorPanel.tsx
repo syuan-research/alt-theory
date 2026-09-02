@@ -359,7 +359,9 @@ function RelatedConversations() {
           >
             <i className={`ph ${iconFor(child, ancestorIds)}`} />
             <span>{sessionTitle(child, app.sessionDisplayNames, app.sessions)}</span>
-            {child.status === "incomplete" ? <span className="dot" /> : null}
+            {child.runStatus === "running" || child.runStatus === "awaiting-approval" ? (
+              <span className="dot" />
+            ) : null}
           </button>
         ))}
       </div>
@@ -425,7 +427,8 @@ function RelatedConversations() {
           <div className="t">
             <i className={`ph ${iconFor(child, ancestorIds)}`} />
             {sessionTitle(child, app.sessionDisplayNames, app.sessions)}
-            {child.status === "incomplete" ? (
+            {child.runStatus === "running" ||
+            child.runStatus === "awaiting-approval" ? (
               <span className="badge-run">{t("running")}</span>
             ) : null}
           </div>
