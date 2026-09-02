@@ -140,6 +140,25 @@ export interface TurnRecovery {
   canRetryFromStart: boolean;
 }
 
+/** Mirror of core/failure.ts (the backend is the source; keep in step). */
+export type FailureKind =
+  | "network"
+  | "auth"
+  | "rate-limit"
+  | "provider"
+  | "busy"
+  | "aborted"
+  | "unknown";
+
+export interface Failure {
+  /** What was being done: "run", or the WS request type that was refused. */
+  operation: string;
+  kind: FailureKind;
+  /** The producer's original text, kept beside the plain wording. */
+  message: string;
+  retryable: boolean;
+}
+
 /** Switches accepted while a turn ran; they apply when it ends (v1.5). */
 export interface PendingChanges {
   model?: SessionModelOverride | null;
@@ -683,7 +702,7 @@ export type ServerMessage =
   | { type: "run_completed"; payload: SessionSnapshot }
   | {
       type: "run_failed";
-      payload: { error: string; canRetry?: boolean; recovery?: TurnRecovery | null };
+      payload: { failure: Failure; canRetry?: boolean; recovery?: TurnRecovery | null };
     }
   /** A message steered into the running turn — broadcast so every pane
    *  (sender and late joiners) renders the bubble exactly once. */
@@ -700,9 +719,9 @@ export type ServerMessage =
     }
   | {
       type: "extension_notice";
-      payload: { message: string; level: "info" | "warning" | "error" };
+      payload: { message: string; level: "info" | "warning" | "error"; failure?: Failure };
     }
-  | { type: "error"; payload: { error: string; code?: string } };
+  | { type: "error"; payload: { failure: Failure; code?: string } };
 
 export interface ActiveToolState {
   callId: string;

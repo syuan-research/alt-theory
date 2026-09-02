@@ -45,6 +45,7 @@ import {
 } from "./approval-bridge.js";
 import { appendSessionEvent } from "./session-events.js";
 import { appendLiveRunEvent, type LiveRun } from "./live-run.js";
+import { describeFailure, type Failure } from "../core/failure.js";
 import { RunState, type PendingChanges } from "./run-state.js";
 import { resolveThinkingLevel, type ResolvedThinking } from "./thinking-level.js";
 import {
@@ -279,7 +280,7 @@ export type SessionServiceEvent =
   | { type: "session_updated"; payload: SessionSnapshot }
   | {
       type: "run_failed";
-      payload: { error: string; canRetry?: boolean; recovery?: TurnRecovery | null };
+      payload: { failure: Failure; canRetry?: boolean; recovery?: TurnRecovery | null };
     }
   | { type: "user_steered"; payload: { text: string } }
   | { type: "session_transcript"; payload: { messages: TranscriptMessage[] } }
@@ -298,7 +299,7 @@ export type SessionServiceEvent =
     }
   | {
       type: "extension_notice";
-      payload: { message: string; level: "info" | "warning" | "error" };
+      payload: { message: string; level: "info" | "warning" | "error"; failure?: Failure };
     };
 
 interface ManagedSession {
@@ -560,12 +561,10 @@ export class SessionService implements AgentTeamBridge {
         await apply();
         applied = true;
       } catch (error) {
+        const failure = describeFailure(error, key);
         this.emit(managed, {
           type: "extension_notice",
-          payload: {
-            message: error instanceof Error ? error.message : String(error),
-            level: "error",
-          },
+          payload: { message: failure.message, level: "error", failure },
         });
       }
     }
@@ -1319,15 +1318,14 @@ export class SessionService implements AgentTeamBridge {
         completedAt: new Date().toISOString(),
       });
       if (failed) {
-        const error =
-          retryError instanceof Error
-            ? retryError.message
-            : finalError ?? String(pendingError ?? retryError ?? "Continue failed");
         const recovery = this.latestRecoveryState(managed);
         this.emit(managed, {
           type: "run_failed",
           payload: {
-            error,
+            failure: describeFailure(
+              retryError ?? finalError ?? pendingError ?? "Continue failed",
+              "run",
+            ),
             canRetry: recovery?.canRetryFromStart ?? false,
             recovery,
           },
@@ -1966,12 +1964,14 @@ export class SessionService implements AgentTeamBridge {
           acceptedAt,
           completedAt: new Date().toISOString(),
         });
-        const error = finalError ?? String(promptError ?? pendingError ?? "Run failed");
         const recovery = this.latestRecoveryState(managed);
         this.emit(managed, {
           type: "run_failed",
           payload: {
-            error,
+            failure: describeFailure(
+              finalError ?? promptError ?? pendingError ?? "Run failed",
+              "run",
+            ),
             canRetry: recovery?.canRetryFromStart ?? false,
             recovery,
           },
@@ -3807,7 +3807,7 @@ export class SessionService implements AgentTeamBridge {
       return false;
     }
 
-    const decision = coordinator.evaluate(error);
+    const decision = coordinator.evaluate(describeFailure(error, "run"));
     if (decision.action !== "exclude_and_fallback") {
       return false;
     }

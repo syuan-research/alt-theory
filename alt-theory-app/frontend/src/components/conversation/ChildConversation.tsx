@@ -9,6 +9,7 @@ import { useWebSocket } from "@/hooks/useWebSocket";
 import { useConversationEngine } from "@/hooks/useConversationEngine";
 import { usePromptQueue } from "@/hooks/usePromptQueue";
 import { useStickToBottom } from "@/hooks/useStickToBottom";
+import { failureText } from "@/lib/failure";
 import { canTakeMainline, isListMember } from "@/lib/sessionList";
 import { t } from "@/i18n";
 import { ApprovalDock } from "@/components/conversation/ApprovalDock";
@@ -77,9 +78,9 @@ export function ChildConversation({
       promptQueue.handleRunCompleted(refreshTranscript());
       void app.refreshSessions();
     },
-    onRunFailed: ({ error: failure }) => {
-      const interrupted = promptQueue.handleRunFailed(failure, refreshTranscript());
-      if (!interrupted) setError(failure);
+    onRunFailed: ({ failure }) => {
+      const interrupted = promptQueue.handleRunFailed(failure.message, refreshTranscript());
+      if (!interrupted) setError(failureText(failure));
       setStatus(interrupted ? t("Ready") : t("Error"));
     },
   });
@@ -152,9 +153,8 @@ export function ChildConversation({
           }
           break;
         case "error":
-          engine.setRunning(false);
-          setError(message.payload.error);
-          setStatus(t("Error"));
+          // A refused request is not a run outcome (card 2).
+          setError(failureText(message.payload.failure));
           break;
         default:
           break;

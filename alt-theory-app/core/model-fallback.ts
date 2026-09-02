@@ -2,14 +2,17 @@ import { existsSync, mkdirSync, readFileSync } from "fs";
 import { dirname, join, resolve } from "path";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { writeJsonAtomic } from "./data-dir.js";
+import { describeFailure, type Failure, type FailureKind } from "./failure.js";
 
 export type FallbackAction = "fail" | "ignore" | "exclude_and_fallback";
 
+/** A rule matches on the failure envelope's kind; `anyPattern` (text) stays for deployment-specific wording. */
 export interface ModelFallbackRule {
   id: string;
   action: FallbackAction;
   match: {
-    anyPattern: string[];
+    kinds?: FailureKind[];
+    anyPattern?: string[];
   };
 }
 
@@ -42,19 +45,17 @@ export interface ModelRef {
 }
 
 const DEFAULT_RULES: ModelFallbackRule[] = [
-  {
-    id: "auth-failure",
-    action: "fail",
-    match: {
-      anyPattern: [
-        "401",
-        "invalid api key",
-        "incorrect api key",
-        "authentication",
-        "unauthorized",
-      ],
-    },
-  },
+  { id: "auth-failure", action: "fail", match: { kinds: ["auth"] } },
+];
+
+const FAILURE_KINDS: FailureKind[] = [
+  "network",
+  "auth",
+  "rate-limit",
+  "provider",
+  "busy",
+  "aborted",
+  "unknown",
 ];
 
 function modelKey(provider: string, modelId: string): string {
@@ -85,19 +86,30 @@ function validateRule(value: unknown): ModelFallbackRule | null {
     (action !== "fail" &&
       action !== "ignore" &&
       action !== "exclude_and_fallback") ||
-    !isRecord(match) ||
-    !Array.isArray(match.anyPattern) ||
-    match.anyPattern.some(
-      (pattern) => typeof pattern !== "string" || pattern.trim().length === 0
-    )
+    !isRecord(match)
   ) {
+    return null;
+  }
+  const { anyPattern, kinds } = match;
+  const validPatterns =
+    anyPattern === undefined ||
+    (Array.isArray(anyPattern) &&
+      anyPattern.every(
+        (pattern) => typeof pattern === "string" && pattern.trim().length > 0
+      ));
+  const validKinds =
+    kinds === undefined ||
+    (Array.isArray(kinds) &&
+      kinds.every((kind) => FAILURE_KINDS.includes(kind as FailureKind)));
+  if (!validPatterns || !validKinds || (anyPattern === undefined && kinds === undefined)) {
     return null;
   }
   return {
     id,
     action,
     match: {
-      anyPattern: [...match.anyPattern],
+      ...(kinds ? { kinds: [...(kinds as FailureKind[])] } : {}),
+      ...(anyPattern ? { anyPattern: [...(anyPattern as string[])] } : {}),
     },
   };
 }
@@ -180,11 +192,16 @@ function validateState(value: unknown): ModelFallbackState | null {
 }
 
 export function classifyModelError(
-  error: string,
+  error: Failure | string,
   rules: ModelFallbackRule[] = DEFAULT_RULES
 ): FallbackDecision {
+  const failure = describeFailure(error, "run");
   for (const rule of rules) {
-    if (matchesAnyPattern(error, rule.match.anyPattern)) {
+    if (
+      rule.match.kinds?.includes(failure.kind) ||
+      (rule.match.anyPattern &&
+        matchesAnyPattern(failure.message, rule.match.anyPattern))
+    ) {
       return { action: rule.action, ruleId: rule.id };
     }
   }
@@ -284,7 +301,7 @@ export class ModelFallbackCoordinator {
     return this.config.provider;
   }
 
-  evaluate(error: string): FallbackDecision {
+  evaluate(error: Failure | string): FallbackDecision {
     return classifyModelError(error, this.config.rules);
   }
 

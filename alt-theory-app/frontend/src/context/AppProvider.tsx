@@ -60,6 +60,7 @@ import {
   setSessionWorkspace as setSessionWorkspaceRequest,
 } from "@/api/workspaces";
 import { useWebSocket } from "@/hooks/useWebSocket";
+import { failureText, isBusyRefusal } from "@/lib/failure";
 import { runStateView, type RunStateView } from "@/lib/runState";
 import { useConversationEngine } from "@/hooks/useConversationEngine";
 import { usePromptQueue, type QueuedPrompt } from "@/hooks/usePromptQueue";
@@ -469,7 +470,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // Same ordering as run_completed: the refresh must land before the
       // queued prompt's optimistic bubble is appended, or it disappears.
       const queueInterrupted = promptQueue.handleRunFailed(
-        payload.error,
+        payload.failure.message,
         sessionId ? refreshCurrentTranscript(sessionId) : Promise.resolve(),
       );
       const interrupted =
@@ -482,13 +483,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setComposerNotice(null);
         setRunHint(t("Editing after Stop won't branch. Use /branch if needed."));
       } else {
-        const oauthRefreshFailed = /oauth refresh failed|refresh[ _-]?token/i.test(payload.error);
+        const oauthRefreshFailed = /oauth refresh failed|refresh[ _-]?token/i.test(
+          payload.failure.message,
+        );
         setComposerNoticeTimed(
           {
             prefix: interrupted ? undefined : "⚠",
             text: oauthRefreshFailed
               ? t("OAuth login could not be refreshed. Open Settings → Models and reconnect this account.")
-              : `${interrupted ? t("Run interrupted: ") : t("Run failed: ")}${payload.error}`,
+              : `${interrupted ? t("Run interrupted: ") : t("Run failed: ")}${failureText(payload.failure)}`,
             warn: !interrupted,
           },
           oauthRefreshFailed ? 0 : 4500,
@@ -978,7 +981,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         case "extension_notice":
           setComposerNoticeTimed({
             prefix: message.payload.level === "info" ? undefined : "⚠",
-            text: message.payload.message,
+            text: message.payload.failure
+              ? failureText(message.payload.failure)
+              : message.payload.message,
             warn: message.payload.level !== "info",
           });
           break;
@@ -994,12 +999,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }
           setComposerNoticeTimed({
             prefix: "⚠",
-            text: message.payload.error,
+            text: failureText(message.payload.failure),
             warn: true,
           });
           // A refusal because the turn is still running is not a run outcome:
           // the run goes on and the UI keeps saying so (card 1 / card 2).
-          if (message.payload.code !== "session_busy") {
+          if (!isBusyRefusal(message.payload.failure)) {
             pendingOpenSessionIdRef.current = "";
             pendingAssetSwitchRef.current = false;
             setIsRunning(false);

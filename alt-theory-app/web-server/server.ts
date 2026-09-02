@@ -83,6 +83,7 @@ import {
   type StudyTag,
 } from "./session-service.js";
 import { resolveThinkingLevel, type ResolvedThinking } from "./thinking-level.js";
+import { describeFailure } from "../core/failure.js";
 import { listInstructionAssets } from "./instruction-assets.js";
 import { listAltTheorySkills } from "./skill-assets.js";
 import {
@@ -2080,26 +2081,20 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     }
   }
 
+  /** Every refused request carries the one failure envelope (card 2). */
   function sendError(
     send: (msg: ServerMessage) => void,
     error: unknown,
     code?: string,
+    operation = "request",
   ): void {
     send({
       type: "error",
       payload: {
-        error: error instanceof Error ? error.message : String(error),
+        failure: describeFailure(error, operation),
         ...(code ? { code } : {}),
       },
     });
-  }
-
-  function sendServiceError(send: (msg: ServerMessage) => void, error: unknown,) {
-    if (error instanceof SessionBusyError) {
-      sendError(send, error, error.code);
-      return;
-    }
-    sendError(send, error);
   }
 
   function createDraftSelectors(): SessionSelectors {
@@ -2341,7 +2336,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     });
 
     if (initialError) {
-      sendServiceError(send, initialError);
+      sendError(send, initialError, undefined, "attach");
     }
     sendCurrentDraft(true);
     detachApprovals = sessionService.attachApprovals((event) => {
@@ -2361,18 +2356,18 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       try {
         msg = JSON.parse(data.toString()) as ClientMessage;
       } catch {
-        send({ type: "error", payload: { error: "Invalid JSON" } });
+        sendError(send, new Error("Invalid JSON"), undefined, "message");
         return;
       }
+      const fail = (error: unknown, code?: string) =>
+        sendError(send, error, code, msg.type);
       if (
         readAppSettings(dataDir).runtimeMode === "native-pi" &&
         ["switch_kb", "switch_role_preset", "switch_soul", "switch_mode"].includes(
           msg.type,
         )
       ) {
-        sendError(
-          send,
-          new Error("This Alt Theory control is inactive while Native Pi is on"),
+        fail(new Error("This Alt Theory control is inactive while Native Pi is on"),
         );
         return;
       }
@@ -2387,7 +2382,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           detach();
           detach = () => {};
           attachedSessionId = null;
-          sendError(send, error);
+          fail(error);
           return;
         }
       }
@@ -2397,9 +2392,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           try {
             if (!attachedSessionId) {
               if (!canMaterializeSession(auth)) {
-                sendError(
-                  send,
-                  new Error("Authentication required"),
+                fail(new Error("Authentication required"),
                   "auth_required",
                 );
                 break;
@@ -2441,7 +2434,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
                 !attachedSessionId ||
                 !sessionService.steerRunningSession(attachedSessionId, msg.payload)
               ) {
-                sendError(send, error, error.code);
+                fail(error);
               }
             } else {
               const recovery = attachedSessionId
@@ -2453,7 +2446,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
                 send({
                   type: "run_failed",
                   payload: {
-                    error: error instanceof Error ? error.message : String(error),
+                    failure: describeFailure(error, "run"),
                     canRetry: false,
                     recovery: null,
                   },
@@ -2471,14 +2464,12 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           try {
             await sessionService.abort(attachedSessionId, "user_stop", "user_abort");
           } catch (error) {
-            sendError(send, error);
+            fail(error);
           }
           break;
         case "compact":
           if (!attachedSessionId) {
-            sendError(
-              send,
-              new Error("Open a conversation before compacting it"),
+            fail(new Error("Open a conversation before compacting it"),
             );
             break;
           }
@@ -2506,7 +2497,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               msg.payload.domain !== KB_DISABLED_DOMAIN &&
               !isKnownKbDomain(kbDir, msg.payload.domain)
             ) {
-              sendError(send, new Error(`Unknown KB domain: ${msg.payload.domain}`),);
+              fail(new Error(`Unknown KB domain: ${msg.payload.domain}`),);
               break;
             }
             draftSelectors = { ...draftSelectors, kbDomain: msg.payload.domain, };
@@ -2516,7 +2507,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           try {
             sessionService.setKbDomain(attachedSessionId, msg.payload.domain);
           } catch (error) {
-            sendServiceError(send, error);
+            fail(error);
           }
           break;
         case "switch_role_preset": {
@@ -2535,7 +2526,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             );
             if (!closed) attachToSession(replacement.sessionId);
           } catch (error) {
-            sendServiceError(send, error);
+            fail(error);
           }
           break;
         }
@@ -2555,7 +2546,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             );
             if (!closed) attachToSession(replacement.sessionId);
           } catch (error) {
-            sendServiceError(send, error);
+            fail(error);
           }
           break;
         }
@@ -2577,7 +2568,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             );
             if (!closed) attachToSession(replacement.sessionId);
           } catch (error) {
-            sendServiceError(send, error);
+            fail(error);
           }
           break;
         }
@@ -2586,7 +2577,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           // never write "private" (the only retention-bearing value), and a
           // hosted one can never write the local export markers.
           if (!isVisibilityForMode(msg.payload.visibility, localMode)) {
-            sendError(send, new Error("Invalid visibility"));
+            fail(new Error("Invalid visibility"));
             break;
           }
           if (attachedSessionId) {
@@ -2604,7 +2595,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
                 ),
               });
             } catch (error) {
-              sendServiceError(send, error);
+              fail(error);
             }
             break;
           }
@@ -2627,13 +2618,13 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               ),
             });
           } catch (error) {
-            sendServiceError(send, error);
+            fail(error);
           }
           break;
         }
         case "set_draft_workspace": {
           if (!localMode) {
-            sendError(send, new Error("Workspaces are local-mode only"));
+            fail(new Error("Workspaces are local-mode only"));
             break;
           }
           const raw = msg.payload.primaryDir;
@@ -2641,9 +2632,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             const resolved = resolve(raw);
             const stat = statSync(resolved, { throwIfNoEntry: false });
             if (!stat?.isDirectory()) {
-              sendError(
-                send,
-                new Error(`Working folder does not exist: ${resolved}`),
+              fail(new Error(`Working folder does not exist: ${resolved}`),
               );
               break;
             }
@@ -2676,7 +2665,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               ),
             });
           } catch (error) {
-            sendServiceError(send, error);
+            fail(error);
           }
           break;
         }
@@ -2684,9 +2673,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           try {
             if (!attachedSessionId) {
               if (!canMaterializeSession(auth)) {
-                sendError(
-                  send,
-                  new Error("Authentication required"),
+                fail(new Error("Authentication required"),
                   "auth_required",
                 );
                 break;
@@ -2717,13 +2704,13 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             );
             await run.completion;
           } catch (error) {
-            sendServiceError(send, error);
+            fail(error);
           }
           break;
         }
         case "revise_latest": {
           if (!attachedSessionId) {
-            sendError(send, new Error("A materialized session is required"));
+            fail(new Error("A materialized session is required"));
             break;
           }
           try {
@@ -2739,13 +2726,13 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
                 );
             await run.completion;
           } catch (error) {
-            sendServiceError(send, error);
+            fail(error);
           }
           break;
         }
         case "branch_revision": {
           if (!attachedSessionId) {
-            sendError(send, new Error("A materialized session is required"));
+            fail(new Error("A materialized session is required"));
             break;
           }
           try {
@@ -2782,13 +2769,13 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             );
             await run.completion;
           } catch (error) {
-            sendServiceError(send, error);
+            fail(error);
           }
           break;
         }
         case "prepare_branch_revision": {
           if (!attachedSessionId) {
-            sendError(send, new Error("A materialized session is required"));
+            fail(new Error("A materialized session is required"));
             break;
           }
           try {
@@ -2803,26 +2790,26 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               payload: { sessionId: forked.sessionId, sourceSessionId },
             });
           } catch (error) {
-            sendServiceError(send, error);
+            fail(error);
           }
           break;
         }
         case "retry_latest": {
           if (!attachedSessionId) {
-            sendError(send, new Error("A materialized session is required"));
+            fail(new Error("A materialized session is required"));
             break;
           }
           try {
             const run = sessionService.retryLatestFromStart(attachedSessionId);
             await run.completion;
           } catch (error) {
-            sendServiceError(send, error);
+            fail(error);
           }
           break;
         }
         case "continue_latest": {
           if (!attachedSessionId) {
-            sendError(send, new Error("A materialized session is required"));
+            fail(new Error("A materialized session is required"));
             break;
           }
           try {
@@ -2831,13 +2818,13 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             );
             await run.completion;
           } catch (error) {
-            sendServiceError(send, error);
+            fail(error);
           }
           break;
         }
         case "delete_latest": {
           if (!attachedSessionId) {
-            sendError(send, new Error("A materialized session is required"));
+            fail(new Error("A materialized session is required"));
             break;
           }
           try {
@@ -2850,13 +2837,13 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               },
             });
           } catch (error) {
-            sendServiceError(send, error);
+            fail(error);
           }
           break;
         }
         case "switch_mode": {
           if (msg.payload.mode !== "understand" && msg.payload.mode !== "work") {
-            sendError(send, new Error("Unknown mode"));
+            fail(new Error("Unknown mode"));
             break;
           }
           if (!attachedSessionId) {
@@ -2871,21 +2858,19 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             );
             send({ type: "session_updated", payload: snapshot });
           } catch (error) {
-            sendServiceError(send, error);
+            fail(error);
           }
           break;
         }
         case "set_full_access": {
           if (typeof msg.payload?.enabled !== "boolean") {
-            sendError(send, new Error("enabled must be a boolean"));
+            fail(new Error("enabled must be a boolean"));
             break;
           }
           // Full Access is a local-only control (v1.4.8); the mode check
           // (local Work / Native Pi) lives in the session runtime itself.
           if (!localMode) {
-            sendError(
-              send,
-              new Error("Full access is not enabled on this server"),
+            fail(new Error("Full access is not enabled on this server"),
             );
             break;
           }
@@ -2897,9 +2882,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               draftMode !== "work" &&
               readAppSettings(dataDir).runtimeMode !== "native-pi"
             ) {
-              sendError(
-                send,
-                new Error(
+              fail(new Error(
                   "Full access can only be enabled in local Work or Native Pi mode.",
                 ),
               );
@@ -2916,21 +2899,19 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             );
             send({ type: "session_updated", payload: snapshot });
           } catch (error) {
-            sendServiceError(send, error);
+            fail(error);
           }
           break;
         }
         case "add_workspace_dir": {
           if (!attachedSessionId) {
-            sendError(send, new Error("A materialized session is required"));
+            fail(new Error("A materialized session is required"));
             break;
           }
           // Workspace directories are available in Work and Native Pi:
           // machine-local paths only make sense in the local form.
           if (!localMode) {
-            sendError(
-              send,
-              new Error("Workspace directories are not enabled on this server"),
+            fail(new Error("Workspace directories are not enabled on this server"),
             );
             break;
           }
@@ -2938,7 +2919,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             typeof msg.payload?.dir !== "string" ||
             !msg.payload.dir.trim()
           ) {
-            sendError(send, new Error("A workspace directory is required"));
+            fail(new Error("A workspace directory is required"));
             break;
           }
           try {
@@ -2948,17 +2929,17 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             );
             send({ type: "session_updated", payload: snapshot });
           } catch (error) {
-            sendServiceError(send, error);
+            fail(error);
           }
           break;
         }
         case "respond_approval": {
           if (!attachedSessionId) {
-            sendError(send, new Error("A materialized session is required"));
+            fail(new Error("A materialized session is required"));
             break;
           }
           if (typeof msg.payload?.approvalId !== "string") {
-            sendError(send, new Error("An approvalId is required"));
+            fail(new Error("An approvalId is required"));
             break;
           }
           try {
@@ -2970,14 +2951,14 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             });
             if (!responded) throw new Error("Approval is no longer pending");
           } catch (error) {
-            sendServiceError(send, error);
+            fail(error);
           }
           break;
         }
         case "fork_session": {
           const forkSource = msg.payload.sourceSessionId ?? attachedSessionId;
           if (!forkSource) {
-            sendError(send, new Error("A materialized session is required"));
+            fail(new Error("A materialized session is required"));
             break;
           }
           try {
@@ -3007,13 +2988,13 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               }
             }
           } catch (error) {
-            sendServiceError(send, error);
+            fail(error);
           }
           break;
         }
         case "create_related_session": {
           if (!attachedSessionId) {
-            sendError(send, new Error("A materialized session is required"));
+            fail(new Error("A materialized session is required"));
             break;
           }
           try {
@@ -3032,13 +3013,13 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               });
             }
           } catch (error) {
-            sendServiceError(send, error);
+            fail(error);
           }
           break;
         }
         case "create_helper_session": {
           if (!canMaterializeSession(auth)) {
-            sendError(send, new Error("Authentication required"), "auth_required");
+            fail(new Error("Authentication required"), "auth_required");
             break;
           }
           const parentSessionId = msg.payload.parentSessionId;
@@ -3085,7 +3066,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             });
             if (!closed) attachToSession(root.sessionId);
           } catch (error) {
-            sendServiceError(send, error);
+            fail(error);
           }
           break;
         }
@@ -3120,7 +3101,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             attachToSession(opened.sessionId);
             sendTranscriptWithLiveReplay(opened.sessionId);
           } catch (error) {
-            sendError(send, error);
+            fail(error);
           }
           break;
         }

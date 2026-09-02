@@ -216,3 +216,19 @@ test("loadModelFallbackState falls back to empty exclusions on invalid input", (
     },
   });
 });
+
+test("rules match on the failure envelope's kind; a text pattern still matches the raw message", () => {
+  const rules: ModelFallbackConfig["rules"] = [
+    { id: "net", action: "ignore", match: { kinds: ["network"] } },
+    { id: "auth", action: "fail", match: { kinds: ["auth"] } },
+    { id: "quota", action: "exclude_and_fallback", match: { anyPattern: ["allocated quota"] } },
+  ];
+  assert.deepEqual(classifyModelError("fetch failed", rules), { action: "ignore", ruleId: "net" });
+  assert.deepEqual(classifyModelError("401 status code", rules), { action: "fail", ruleId: "auth" });
+  assert.deepEqual(classifyModelError("Allocated quota exceeded.", rules), {
+    action: "exclude_and_fallback",
+    ruleId: "quota",
+  });
+  // Default table: auth by kind.
+  assert.deepEqual(classifyModelError("invalid api key"), { action: "fail", ruleId: "auth-failure" });
+});

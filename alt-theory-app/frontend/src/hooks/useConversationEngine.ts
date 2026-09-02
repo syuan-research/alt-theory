@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from "react";
 import type {
   ActiveToolState,
   ApprovalRequestPayload,
+  Failure,
   ServerMessage,
   SessionSnapshot,
   StreamPart,
@@ -14,7 +15,7 @@ export interface ConversationEngineOptions {
   /** Center/child extras after the shared core handling (queue flush, refreshes …). */
   onRunCompleted?: (payload: SessionSnapshot) => void;
   onRunFailed?: (payload: {
-    error: string;
+    failure: Failure;
     canRetry?: boolean;
     recovery?: TurnRecovery | null;
   }) => void;

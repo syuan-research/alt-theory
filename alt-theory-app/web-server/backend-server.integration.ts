@@ -1839,13 +1839,13 @@ test("session routes preserve hosted isolation and local access", async () => {
       type: "open_session",
       payload: { sessionId: p02Session.sessionId },
     }));
-    assert.match((await wsErrorPromise).payload.error, /Unknown session id/);
+    assert.match((await wsErrorPromise).payload.failure.message, /Unknown session id/);
     wsErrorPromise = waitForWsType(participantWs, "error");
     participantWs.send(JSON.stringify({
       type: "fork_session",
       payload: { sourceSessionId: p02Session.sessionId, purpose: "fork" },
     }));
-    assert.match((await wsErrorPromise).payload.error, /Unknown session id/);
+    assert.match((await wsErrorPromise).payload.failure.message, /Unknown session id/);
 
     const researcherCookie = await loginCookie("researcher", "research-code");
     const researcherList = await fetch(`${baseUrl}/api/sessions`, {
@@ -1895,7 +1895,7 @@ test("session routes preserve hosted isolation and local access", async () => {
       type: "open_session",
       payload: { sessionId: p01Session.sessionId },
     }));
-    assert.match((await wsErrorPromise).payload.error, /Conversation is in Trash/);
+    assert.match((await wsErrorPromise).payload.failure.message, /Conversation is in Trash/);
   } finally {
     participantWs?.close();
     restoreMode();
@@ -2080,7 +2080,7 @@ test("WebSocket open_session and Helper placement preserve the intended center s
       }),
     );
     const missingError = await missingErrorPromise;
-    assert.match(missingError.payload.error, /Unknown session id/);
+    assert.match(missingError.payload.failure.message, /Unknown session id/);
 
     const stillCurrentPromise = waitForType(ws, "session_draft");
     ws.send(JSON.stringify({ type: "get_session_metadata" }));
@@ -2318,7 +2318,7 @@ test("WebSocket participant first send creates an owned role-conditioned session
     const authRequiredPromise = waitForType(anonymousWs, "error");
     anonymousWs.send(JSON.stringify({ type: "prompt", payload: "hello" }));
     const authRequired = await authRequiredPromise;
-    assert.equal(authRequired.payload.error, "Authentication required");
+    assert.equal(authRequired.payload.failure.message, "Authentication required");
     assert.equal(authRequired.payload.code, "auth_required");
     anonymousWs.close();
 
@@ -2708,7 +2708,7 @@ test("local mode stays usable without a model and refuses only the prompt", asyn
     const failed = waitForType(ws, "run_failed");
     ws.send(JSON.stringify({ type: "prompt", payload: "hello" }));
     const message = await failed;
-    assert.match(message.payload.error, /No model is selected/);
+    assert.match(message.payload.failure.message, /No model is selected/);
     assert.equal(existsSync(join(dataDir, "sessions")), true);
   } finally {
     ws.close();

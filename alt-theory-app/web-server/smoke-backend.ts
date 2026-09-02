@@ -45,7 +45,7 @@ async function runTurn(ws: WebSocket, prompt: string): Promise<string> {
   ws.on("message", deltaListener);
   const completedPromise = waitForType(ws, "run_completed");
   const failedPromise = waitForType(ws, "run_failed").then((message) => {
-    throw new Error(message.payload.error);
+    throw new Error(message.payload.failure.message);
   });
   ws.send(JSON.stringify({ type: "prompt", payload: prompt }));
 
