@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -215,4 +215,53 @@ test("working-folder browsing follows the persisted external workspace", () => {
     searchWorkingFolder(dataDir, sessionId, "primary", "x.js").entries,
     [],
   );
+});
+
+test("working-folder listing and preview refuse a symlink out of the folder", () => {
+  const root = mkdtempSync(join(tmpdir(), "alt-theory-working-symlink-"));
+  const dataDir = join(root, "data");
+  const external = join(root, "user-project");
+  const outside = join(root, "outside");
+  mkdirSync(join(external, "notes"), { recursive: true });
+  mkdirSync(outside, { recursive: true });
+  writeFileSync(join(external, "notes", "idea.md"), "# Actual work\n", "utf-8");
+  writeFileSync(join(outside, "passwd"), "root:x:0:0", "utf-8");
+  symlinkSync(
+    outside,
+    join(external, "link"),
+    process.platform === "win32" ? "junction" : "dir",
+  );
+  const { sessionId } = createSessionDirs(dataDir);
+  const recordsDir = join(dataDir, "sessions", sessionId, "records");
+  writeFileSync(
+    join(recordsDir, "session.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      recordType: "session",
+      sessionId,
+      createdAt: new Date().toISOString(),
+      recordModel: "v0.4",
+      workspace: { primaryDir: external, additionalDirs: [] },
+    })
+  );
+
+  // Review card 4 case B: the listing refuses, and the preview cannot return
+  // a file the listing refuses.
+  assert.throws(
+    () => listWorkingFolderChildren(dataDir, sessionId, "primary", "link"),
+    /stay inside the selected working folder/,
+  );
+  assert.throws(
+    () =>
+      readWorkingFolderTextFile(dataDir, sessionId, "primary/link/passwd"),
+    /stay inside the selected working folder/,
+  );
+
+  // The folder's own files are unaffected.
+  const file = readWorkingFolderTextFile(
+    dataDir,
+    sessionId,
+    "primary/notes/idea.md"
+  );
+  assert.equal(file.content, "# Actual work\n");
 });

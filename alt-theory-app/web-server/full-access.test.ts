@@ -89,8 +89,8 @@ test("full access bypasses security-extension mediation; off restores it", async
   let full = false;
   const factory = createSecurityExtension({
     sessionCwd: root,
-    getWritableRoots: () => [writable],
-    getReadableRoots: () => [writable],
+    getWritableRoots: () => [{ path: writable, reason: "session-write" }],
+    getReadableRoots: () => [{ path: writable, reason: "cwd" }],
     isFullAccess: () => full,
   });
   let handler: ((event: unknown, ctx: unknown) => Promise<unknown>) | null =

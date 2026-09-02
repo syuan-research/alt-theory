@@ -28,11 +28,16 @@ import type { Model } from "@earendil-works/pi-ai/compat";
 import { appendFileSync, existsSync, readFileSync, statSync } from "fs";
 import { mkdir, writeFile } from "fs/promises";
 import { dirname, join, resolve } from "path";
+import { createSecurityExtension } from "./security-extension.js";
 import {
   assertWritablePath,
-  createSecurityExtension,
   isPathInside,
-} from "./security-extension.js";
+} from "./path-verdict.js";
+import {
+  sessionRoots,
+  type Root,
+  type SessionRootsInput,
+} from "./root-policy.js";
 import { createTurnContinuityExtension } from "./turn-continuity.js";
 import { createPromptCacheContinuityExtension } from "./prompt-cache-continuity.js";
 import { createWebAccessToolDefinitions } from "./web-access-tools.js";
@@ -534,35 +539,26 @@ async function createAltTheorySessionWithManager(
   const workspaceState = {
     additionalDirs: (config.workspaceDirs ?? []).map((dir) => resolve(dir)),
   };
-  // Writable roots are evaluated per call: Understand stays bounded to the
-  // Alt writable roots; Work and Native Pi additionally write within the
-  // workspace (primary + added directories). Shared by the guarded write
-  // tool and the security extension.
+  // Writable/readable roots are computed by the one root-policy module,
+  // evaluated per call: Understand stays bounded to the Alt writable roots;
+  // Work and Native Pi additionally write within the workspace (primary +
+  // added directories). Shared by the guarded write tool, the security
+  // extension, and the assembly manifest.
   const altWritableRoots = [resolvedWriteDir, resolvedWritableAssetDir];
   const approvedWritableRoots = new Set<string>();
-  const writableRootsForMode = () =>
-    isWorkCapable()
-      ? [
-          ...altWritableRoots,
-          cwd,
-          ...workspaceState.additionalDirs,
-          ...approvedWritableRoots,
-        ]
-      : [...altWritableRoots, ...approvedWritableRoots];
-  // Readable roots: everything writable, plus the workspace primary and the
-  // knowledge base (which legitimately lives outside cwd). Reads outside these
-  // escalate to approval; reading is not the security boundary (spec §5.3),
-  // this only matches the OpenCode/Claude Code external-directory prompt.
-  const readableRootsForMode = () => [
-    ...writableRootsForMode(),
-    cwd,
-    resolvedKbDir,
-    ...((config.trustedReadRoots ?? []).map((root) => resolve(root))),
-    // Bundled skills are runtime-read assets like the KB; without this,
-    // every skill invocation prompts "read outside your workspace"
-    // (found by the v1.3.0-alpha.1 walkthrough acceptance).
-    ...(resolvedSkillsDir ? [resolvedSkillsDir] : []),
-  ];
+  const sessionRootsForMode = (): { readable: Root[]; writable: Root[] } =>
+    sessionRoots({
+      writeDir: resolvedWriteDir,
+      assetDir: resolvedWritableAssetDir,
+      cwd,
+      additionalDirs: workspaceState.additionalDirs,
+      approvedDirs: [...approvedWritableRoots],
+      kbDir: resolvedKbDir,
+      trustedReadRoots: config.trustedReadRoots ?? [],
+      skillsDir: resolvedSkillsDir,
+      workCapable: isWorkCapable(),
+    });
+  const writableRootsForMode = () => sessionRootsForMode().writable;
   // One scan of the skills root. Pi's loader already descends into
   // subdirectories, so optional skills are just skills that a packaged build
   // does not carry.
@@ -644,7 +640,7 @@ async function createAltTheorySessionWithManager(
       createSecurityExtension({
         sessionCwd: cwd,
         getWritableRoots: writableRootsForMode,
-        getReadableRoots: readableRootsForMode,
+        getReadableRoots: () => sessionRootsForMode().readable,
         addWritableRoot: (root) => approvedWritableRoots.add(resolve(root)),
         recordAudit: (entry) =>
           appendFileSync(
@@ -878,7 +874,9 @@ async function createAltTheorySessionWithManager(
     piSessionFile: session.sessionFile ?? null,
     recordsDir: resolvedRecordsDir,
     writeDir: hasWriteCapability() ? resolvedWriteDir : null,
-    writableRoots: hasWriteCapability() ? writableRootsForMode() : [],
+    writableRoots: hasWriteCapability()
+      ? writableRootsForMode().map((root) => root.path)
+      : [],
     model: isNoModelPlaceholder(session.model) ? null : (session.model?.id ?? null),
     provider: isNoModelPlaceholder(session.model)
       ? null
@@ -911,7 +909,9 @@ async function createAltTheorySessionWithManager(
 
   const syncManifestActionPolicy = () => {
     manifest.writeDir = hasWriteCapability() ? resolvedWriteDir : null;
-    manifest.writableRoots = hasWriteCapability() ? writableRootsForMode() : [];
+    manifest.writableRoots = hasWriteCapability()
+      ? writableRootsForMode().map((root) => root.path)
+      : [];
   };
 
   writeJsonAtomic(join(resolvedRecordsDir, openMode.manifestFileName), manifest);
@@ -1027,15 +1027,15 @@ function summarizeOriginalManifest(
 }
 
 function createGuardedWriteOperations(
-  getWritableRoots: () => string[],
+  getWritableRoots: () => Root[],
   skipBoundaryCheck?: () => boolean,
 ): WriteOperations {
-  const roots = () => getWritableRoots().map((root) => resolve(root));
+  const roots = () => getWritableRoots();
   // Full Access skips only the writable-root assertion; the filesystem
   // operation itself is unchanged (v1.4.8).
-  const assertWritable = async (path: string) => {
+  const assertWritable = (path: string) => {
     if (skipBoundaryCheck?.()) return;
-    await assertWritablePath(path, roots());
+    assertWritablePath(path, roots());
   };
   return {
     async mkdir(dir: string): Promise<void> {
