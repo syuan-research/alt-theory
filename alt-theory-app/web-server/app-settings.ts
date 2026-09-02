@@ -112,13 +112,46 @@ function settingsPath(dataDir: string): string {
   return join(dataDir, "app-settings.json");
 }
 
-export function readAppSettings(dataDir: string): AppSettings {
+/**
+ * Last settings each dataDir parsed successfully. When a settings file goes
+ * unreadable (corruption, bad schema version), reads fall back to this
+ * instead of pristine defaults — otherwise the next read-modify-write in any
+ * handler would overwrite the user's file with defaults (WP3 item 1).
+ */
+const lastGoodSettings = new Map<string, AppSettings>();
+
+function unreadableWarning(
+  path: string,
+  reason: string,
+): { settings: AppSettings; warning: string } {
+  return {
+    settings: structuredClone(lastGoodSettings.get(path) ?? DEFAULT_SETTINGS),
+    warning: `Could not read app settings (${reason}); keeping the last known settings. Fix or remove ${path} before changing settings.`,
+  };
+}
+
+/** Read with the failure state exposed (mirrors readSubagentConfig). */
+export function readAppSettingsWithWarning(dataDir: string): {
+  settings: AppSettings;
+  warning: string | null;
+} {
   const path = settingsPath(dataDir);
-  if (!existsSync(path)) return structuredClone(DEFAULT_SETTINGS);
+  if (!existsSync(path)) {
+    return { settings: structuredClone(DEFAULT_SETTINGS), warning: null };
+  }
+  let parsed: AppSettings;
   try {
-    const parsed = JSON.parse(readFileSync(path, "utf-8")) as AppSettings;
-    if (parsed?.schemaVersion !== 1) return structuredClone(DEFAULT_SETTINGS);
-    return {
+    parsed = JSON.parse(readFileSync(path, "utf-8")) as AppSettings;
+  } catch (error) {
+    return unreadableWarning(
+      path,
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+  if (parsed?.schemaVersion !== 1) {
+    return unreadableWarning(path, `schema version ${parsed?.schemaVersion}`);
+  }
+  const settings: AppSettings = {
       schemaVersion: 1,
       skills: {
         understand: {
@@ -195,18 +228,40 @@ export function readAppSettings(dataDir: string): AppSettings {
       ...(Array.isArray(parsed.extraKbDirs)
         ? {
             extraKbDirs: parsed.extraKbDirs.filter(
-              (entry): entry is string => typeof entry === "string"
+              (entry): entry is string => typeof entry === "string",
             ),
           }
         : {}),
     };
-  } catch {
-    return structuredClone(DEFAULT_SETTINGS);
-  }
+  lastGoodSettings.set(path, structuredClone(settings));
+  return { settings, warning: null };
+}
+
+export function readAppSettings(dataDir: string): AppSettings {
+  return readAppSettingsWithWarning(dataDir).settings;
 }
 
 export function writeAppSettings(dataDir: string, settings: AppSettings): void {
-  writeJsonAtomic(settingsPath(dataDir), settings);
+  const path = settingsPath(dataDir);
+  // Never overwrite an unparsable file: it may still be recoverable, and the
+  // normal write path is a read-modify-write that would silently replace it
+  // with whatever the (degraded) read returned.
+  if (existsSync(path)) {
+    try {
+      const parsed = JSON.parse(readFileSync(path, "utf-8")) as AppSettings;
+      if (parsed?.schemaVersion !== 1) {
+        throw new Error(`schema version ${parsed?.schemaVersion}`);
+      }
+    } catch (error) {
+      throw new Error(
+        `Refusing to overwrite unreadable app settings at ${path} ` +
+          `(${error instanceof Error ? error.message : String(error)}). ` +
+          "Fix or remove the file, then save again.",
+      );
+    }
+  }
+  writeJsonAtomic(path, settings);
+  lastGoodSettings.set(path, structuredClone(settings));
 }
 
 /**

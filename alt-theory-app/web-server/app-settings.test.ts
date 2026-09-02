@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdtempSync, mkdirSync, writeFileSync } from "fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import {
   readAppSettings,
+  readAppSettingsWithWarning,
   resolveExternalSkillPaths,
   writeAppSettings,
 } from "./app-settings.js";
@@ -122,4 +123,57 @@ test("listAltTheorySkills (/api/skills) includes nested skills", async () => {
   );
   const listed = listAltTheorySkills(skillsDir).map((s) => s.name).sort();
   assert.deepEqual(listed, ["bundled-skill", "theory-innovation-loop"]);
+});
+
+test("unreadable settings keep the last good copy instead of resetting to defaults", () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "alt-theory-settings-"));
+  writeAppSettings(dataDir, {
+    schemaVersion: 1,
+    skills: { understand: { enabledPaths: null }, work: { enabledPaths: null } },
+    lang: "zh-Hans",
+  });
+  const path = join(dataDir, "app-settings.json");
+  writeFileSync(path, "{ not json", "utf-8");
+  const { settings, warning } = readAppSettingsWithWarning(dataDir);
+  assert.equal(settings.lang, "zh-Hans");
+  assert.ok(warning && warning.includes("Could not read app settings"));
+});
+
+test("settings with an unknown schema version keep the last good copy", () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "alt-theory-settings-"));
+  writeAppSettings(dataDir, {
+    schemaVersion: 1,
+    skills: { understand: { enabledPaths: ["/x/a"] }, work: { enabledPaths: null } },
+  });
+  writeFileSync(
+    join(dataDir, "app-settings.json"),
+    JSON.stringify({ schemaVersion: 99 }),
+    "utf-8",
+  );
+  const { settings, warning } = readAppSettingsWithWarning(dataDir);
+  assert.deepEqual(settings.skills.understand.enabledPaths, ["/x/a"]);
+  assert.ok(warning && warning.includes("schema version 99"));
+});
+
+test("writing never overwrites an unreadable settings file", () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "alt-theory-settings-"));
+  const path = join(dataDir, "app-settings.json");
+  writeFileSync(path, "{ not json", "utf-8");
+  assert.throws(
+    () =>
+      writeAppSettings(dataDir, {
+        schemaVersion: 1,
+        skills: { understand: { enabledPaths: null }, work: { enabledPaths: null } },
+      }),
+    /Refusing to overwrite unreadable app settings/,
+  );
+  assert.equal(readFileSync(path, "utf-8"), "{ not json");
+});
+
+test("a corrupt file with no last good copy falls back to defaults with a warning", () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "alt-theory-settings-"));
+  writeFileSync(join(dataDir, "app-settings.json"), "{ not json", "utf-8");
+  const { settings, warning } = readAppSettingsWithWarning(dataDir);
+  assert.deepEqual(settings.skills.understand.enabledPaths, null);
+  assert.ok(warning && warning.includes("Could not read app settings"));
 });
