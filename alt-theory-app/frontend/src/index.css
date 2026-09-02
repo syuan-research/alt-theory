@@ -288,6 +288,43 @@
     max-width: 100%;
     height: auto;
   }
+
+  /* One diagram + its fenced source, swapped by the small toggle. */
+  .mermaid-block {
+    position: relative;
+  }
+
+  .mermaid-block .mermaid-toggle {
+    position: absolute;
+    top: 0;
+    right: 0;
+    z-index: 2;
+    padding: 2px 8px;
+    border: 1px solid var(--hairline);
+    border-radius: var(--r-sm);
+    background: var(--panel);
+    color: var(--text-2);
+    font-size: 0.72rem;
+    cursor: pointer;
+  }
+
+  .mermaid-block .mermaid-toggle:hover {
+    background: var(--hover);
+    color: var(--ink);
+  }
+
+  .mermaid-block .mermaid-source {
+    display: none;
+    margin: 0 0 0.75rem;
+  }
+
+  .mermaid-block.show-source .mermaid-source {
+    display: block;
+  }
+
+  .mermaid-block.show-source .mermaid-figure {
+    display: none;
+  }
 }
 
 /* ============================================================

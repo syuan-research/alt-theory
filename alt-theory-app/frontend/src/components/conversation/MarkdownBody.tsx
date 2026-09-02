@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { MouseEvent } from "react";
 import { renderMarkdown } from "@/lib/markdown";
 import { cn } from "@/lib/cn";
+import { t } from "@/i18n";
 
 let mermaidReady: Promise<typeof import("mermaid").default> | null = null;
 let diagramSeq = 0;
@@ -112,7 +114,26 @@ export function MarkdownBody({
           const figure = document.createElement("div");
           figure.className = "mermaid-figure";
           figure.innerHTML = svg;
-          target.replaceWith(figure);
+          // Diagram + fenced source in one block, with a small control that
+          // swaps between them (the rendered HTML is set via innerHTML, so
+          // the flip is a class toggle handled by onClick on the root below).
+          const wrap = document.createElement("div");
+          wrap.className = "mermaid-block";
+          const toggle = document.createElement("button");
+          toggle.type = "button";
+          toggle.className = "mermaid-toggle";
+          toggle.textContent = t("Source");
+          const sourcePre = target.cloneNode(true) as HTMLElement;
+          sourcePre.classList.add("mermaid-source");
+          // renderMarkdown escapes the whole document before parsing, so the
+          // code text carries one round of entities (--&gt;). Decode to the
+          // true source the user wrote — the toggle exists to copy it.
+          const sourceCode = sourcePre.querySelector("code");
+          if (sourceCode) {
+            sourceCode.textContent = decodeEntities(sourceCode.textContent ?? "");
+          }
+          wrap.append(toggle, figure, sourcePre);
+          target.replaceWith(wrap);
         } catch {
           // Leave the source visible — a broken diagram is still readable text.
         }
@@ -140,9 +161,21 @@ export function MarkdownBody({
       ? diagramHtml.rendered
       : sourceHtml;
 
+  const onMermaidToggle = (event: MouseEvent<HTMLDivElement>) => {
+    const button = (event.target as HTMLElement).closest<HTMLButtonElement>(
+      ".mermaid-toggle",
+    );
+    if (!button) return;
+    const block = button.closest(".mermaid-block");
+    if (!block) return;
+    const showingSource = block.classList.toggle("show-source");
+    button.textContent = showingSource ? t("Rendered") : t("Source");
+  };
+
   return (
     <div
       className={cn("markdown-body", className)}
+      onClick={onMermaidToggle}
       dangerouslySetInnerHTML={{ __html: html }}
     />
   );
