@@ -30,7 +30,6 @@
   --radius-sm: 6px;
   --radius-md: 8px;
   --radius-lg: 12px;
-  --radius-xl: 16px;
 }
 
 /* Dark appearance (v1.2.1 #6): override the @theme color tokens so both
@@ -89,7 +88,6 @@
   --r-sm: var(--radius-sm);
   --r-md: var(--radius-md);
   --r-lg: var(--radius-lg);
-  --ui: var(--font-ui);
   --brand: var(--font-brand);
   --mono: var(--font-mono);
   --on-ink: #f5f4f1;
@@ -104,7 +102,14 @@
      made every accent element borderless/transparent (opus review A1). */
   --accent: var(--ink);
   --line: var(--hairline);
-  --on-accent: var(--on-ink);
+  /* Referenced since alpha.3 but never defined — an undefined var() makes
+     the whole declaration invalid, so these six sites have always rendered
+     with no shadow and no surface fill. Pinned to exactly that (v1.5 WP3,
+     review card F7): deliberate no-shadow/transparent, not accident. */
+  --surface-2: transparent;
+  --shadow-sm: none;
+  --shadow-md: none;
+  --shadow-lg: none;
 }
 
 @layer base {
