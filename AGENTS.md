@@ -79,7 +79,9 @@ and launch checks.
 ## Change Discipline
 
 - Prefer the smallest change at the shared source of truth.
-- Update current architecture when an implemented boundary changes.
+- `development/architecture/` records current implemented truth. Update it when
+  an implemented boundary changes; keep proposed or target architecture in the
+  active plan/design record until code makes it true.
 - Add feature or issue artifacts only when the user asks or they materially
   help explain durable public behavior; do not add private plans, handoffs,
   execution trackers, or agent-session output to this repository.
@@ -104,6 +106,12 @@ agents mistake them for in-progress work.
 ### Current branch status
 
 - `main` — active product line.
+- `archive/wp1-path-verdict` — merged into main (v1.5 round 1: one path
+  verdict and root policy).
+- `wp2-import-adapter` — merged into main (v1.5 round 1: import-adapter
+  interface + Pi adapter). Branch kept under its active name.
+- `archive/wp3-one-place-fixes` — merged into main (v1.5 round 1: one-place
+  fixes); archived right after the fast-forward merge.
 - `docs/v1.4-english-update` — merged into main (v1.4 English docs + Chinese
   README download links).
 - `archive/bundle-mac` — archived 2026-08-09 after the v1.4.3-beta.1 mac build.
