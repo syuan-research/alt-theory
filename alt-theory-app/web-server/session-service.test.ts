@@ -1784,7 +1784,7 @@ test("hosted retention protects attached or running sessions, not idle cache ent
     );
     detach();
     const managed = (service as any).sessions.get(snapshot.sessionId);
-    managed.busy = true;
+    managed.runState.begin();
     assert.deepEqual(
       hardDeleteExpiredPrivateSessions(
         fixture.dataDir,
@@ -1793,7 +1793,7 @@ test("hosted retention protects attached or running sessions, not idle cache ent
       ).deleted.map((record) => record.sessionId),
       [],
     );
-    managed.busy = false;
+    managed.runState.settle();
     assert.deepEqual(
       hardDeleteExpiredPrivateSessions(
         fixture.dataDir,
@@ -3007,7 +3007,7 @@ test("SessionService surfaces fallback continuation failure through run completi
       service.getManifest(created.sessionId).recordsDir,
     )[0];
     assert.equal(latest.status, "failed");
-    assert.equal(managed.busy, false);
+    assert.equal(managed.runState.isIdle(), true);
     assert.equal(events.at(-1)?.type, "run_failed");
   } finally {
     detach();
@@ -4306,6 +4306,172 @@ test("auto-title asks the session model runtime and writes the alias", async () 
       JSON.parse(readFileSync(aliasPath, "utf-8")).alias,
       "Debugging the login flow",
     );
+  } finally {
+    await service.disposeAll();
+  }
+});
+
+// --- v1.5 round 1: run state, apply-when-idle, thinking resolver (M1) ---
+
+function holdPrompt(managed: any): () => void {
+  let release: () => void = () => {};
+  managed.session.prompt = () =>
+    new Promise<void>((resolve) => {
+      release = resolve;
+    });
+  return () => release();
+}
+
+test("switches during a run are deferred and apply when the turn settles", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const created = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const events: SessionServiceEvent[] = [];
+  const detach = service.attach(created.sessionId, (event) => events.push(event));
+  const managed = (service as any).sessions.get(created.sessionId);
+  const release = holdPrompt(managed);
+  try {
+    const run = service.runPrompt(created.sessionId, "long turn");
+    assert.equal(service.getSnapshot(created.sessionId).status, "running");
+
+    const modeSnapshot = await service.switchMode(created.sessionId, "work");
+    assert.equal(modeSnapshot.mode, "understand");
+    assert.equal(modeSnapshot.pending?.mode, "work");
+
+    const fullSnapshot = await service.setFullAccess(created.sessionId, true);
+    assert.equal(fullSnapshot.fullAccess, false);
+    assert.equal(fullSnapshot.pending?.fullAccess, true);
+
+    const override = { provider: "test", modelId: "test-model", thinkingLevel: "low" as const };
+    const modelSnapshot = await service.setSessionModel(created.sessionId, override);
+    assert.deepEqual(modelSnapshot.pending?.model, override);
+    assert.equal(modelSnapshot.modelOverride, null);
+    // Nothing touched the session yet.
+    assert.equal(managed.getAltMode(), "understand");
+    assert.equal(managed.getFullAccess(), false);
+
+    release();
+    await run.completion;
+    const settled = service.getSnapshot(created.sessionId);
+    assert.equal(settled.status, "idle");
+    assert.deepEqual(settled.pending, {});
+    assert.equal(settled.mode, "work");
+    assert.equal(settled.fullAccess, true);
+    assert.deepEqual(settled.modelOverride, override);
+    // The user's "low" is kept as the choice; the test model has no thinking
+    // levels, so it is reported as clamped rather than silently replaced.
+    assert.equal(settled.thinking?.chosen, "low");
+    assert.equal(settled.thinking?.source, "clamped");
+    assert.ok(
+      events.some((event) => event.type === "session_updated" && event.payload.mode === "work"),
+      "a session_updated snapshot follows the drain",
+    );
+  } finally {
+    detach();
+    await service.disposeAll();
+  }
+});
+
+test("stop applies the pending switch; Full Access off is live during a run", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const created = await service.createSession(
+    {
+      rolePresetSlug: "role-conceptual-theory-companion",
+      kbDomain: "ep-core",
+      soulSlug: "soul-latest",
+    },
+    { mode: "work", fullAccess: true },
+  );
+  const managed = (service as any).sessions.get(created.sessionId);
+  const release = holdPrompt(managed);
+  managed.session.abort = async () => release();
+  try {
+    const run = service.runPrompt(created.sessionId, "long turn");
+    const off = await service.setFullAccess(created.sessionId, false);
+    assert.equal(off.fullAccess, false, "turning permissions down is immediate");
+    assert.deepEqual(off.pending, {});
+
+    await service.switchMode(created.sessionId, "understand");
+    assert.equal(service.getSnapshot(created.sessionId).pending?.mode, "understand");
+    await service.abort(created.sessionId, "user_stop", "user_abort");
+    await run.completion.catch(() => {});
+    const stopped = service.getSnapshot(created.sessionId);
+    assert.equal(stopped.status, "idle");
+    assert.equal(stopped.mode, "understand");
+    assert.deepEqual(stopped.pending, {});
+  } finally {
+    await service.disposeAll();
+  }
+});
+
+test("thinking resolver: a chosen level is kept or reported clamped; no choice → model midpoint", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const created = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const managed = (service as any).sessions.get(created.sessionId);
+  // A reasoning model whose provider supports off / medium / high only.
+  const reasoner = (provider: string, id: string) => ({
+    provider,
+    id,
+    reasoning: true,
+    thinkingLevelMap: { minimal: null, low: null },
+  });
+  let currentModel: unknown = managed.session.model;
+  Object.defineProperty(managed.session, "model", {
+    configurable: true,
+    get: () => currentModel,
+  });
+  managed.session.modelRuntime.getModel = reasoner;
+  const set: string[] = [];
+  managed.session.setModel = async (model: unknown) => {
+    currentModel = model;
+  };
+  const original = managed.session.setThinkingLevel.bind(managed.session);
+  managed.session.setThinkingLevel = (level: string) => {
+    set.push(level);
+    original(level);
+  };
+  try {
+    const kept = await service.setSessionModel(created.sessionId, {
+      provider: "r",
+      modelId: "reasoner",
+      thinkingLevel: "high",
+    });
+    assert.deepEqual(kept.thinking, { level: "high", source: "user", chosen: "high" });
+
+    const clamped = await service.setSessionModel(created.sessionId, {
+      provider: "r",
+      modelId: "reasoner",
+      thinkingLevel: "low",
+    });
+    assert.deepEqual(clamped.thinking, { level: "medium", source: "clamped", chosen: "low" });
+
+    const defaulted = await service.setSessionModel(created.sessionId, {
+      provider: "r",
+      modelId: "reasoner",
+    });
+    assert.deepEqual(defaulted.thinking, { level: "medium", source: "model-default" });
+    assert.deepEqual(set.slice(-3), ["high", "medium", "medium"]);
+
+    // Pi moving the level on its own is reported, never hidden.
+    (service as any).handleAgentEvent(managed, {
+      type: "thinking_level_changed",
+      level: "high",
+    });
+    assert.deepEqual(service.getSnapshot(created.sessionId).thinking, {
+      chosen: "medium",
+      level: "high",
+      source: "clamped",
+    });
   } finally {
     await service.disposeAll();
   }

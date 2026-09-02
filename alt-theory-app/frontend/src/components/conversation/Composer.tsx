@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PRESET_TURNS, useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
+import { PendingMark } from "@/components/ui/PendingMark";
 import { ApprovalDock } from "@/components/conversation/ApprovalDock";
 import { ModelChip } from "@/components/conversation/ModelChip";
 import { ContextRing } from "@/components/conversation/ContextRing";
@@ -303,10 +304,10 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                 flashed over user and assistant text alike. */}
             {app.isRunning || app.toolStatus ? (
               <span className="run-phase-slot">
-                {app.isRunning && app.runPhaseLabel ? (
+                {app.runState.detail ? (
                   <span className="run-phase">
                     <i className="ph ph-circle-notch" aria-hidden="true" />
-                    {app.runPhaseLabel}
+                    {app.runState.detail}
                   </span>
                 ) : app.toolStatus ? (
                   <span>{app.toolStatus}</span>
@@ -807,6 +808,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                   <i
                     className={`ph ${app.fullAccess ? "ph-shield-warning" : "ph-shield"}`}
                   />
+                  <PendingMark when={app.pendingChanges.fullAccess !== undefined} />
                 </button>
                 <div
                   className={`menu${menu === "perm" ? " on" : ""}`}
@@ -959,6 +961,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                   }`}
                   aria-hidden="true"
                 />
+                <PendingMark when={app.pendingChanges.mode !== undefined} />
               </button>
             ) : null}
 

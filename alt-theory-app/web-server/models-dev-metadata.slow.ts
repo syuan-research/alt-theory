@@ -4,10 +4,15 @@ import { tmpdir } from "os";
 import { join } from "path";
 import test from "node:test";
 import {
-  initialThinkingLevelForModel,
+  thinkingLevelsForModel,
   listProviders,
   upsertProvider,
 } from "./config-store.js";
+import { defaultThinkingLevel } from "./thinking-level.js";
+
+/** The former config-store default: the resolver's midpoint over the registry's levels. */
+const initialThinkingLevelForModel = (agentDir: string, provider: string, modelId: string) =>
+  defaultThinkingLevel(thinkingLevelsForModel(agentDir, provider, modelId) ?? []);
 
 test("models.dev effort metadata stays provider-specific", async () => {
   const agentDir = mkdtempSync(join(tmpdir(), "alt-theory-models-dev-"));

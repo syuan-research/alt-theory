@@ -410,8 +410,13 @@ export function ChildConversation({
           onToggle={() => setMenu(menu === "model" ? null : "model")}
           session={{
             ready: connected && Boolean(snapshot),
-            modelOverride: snapshot?.modelOverride ?? null,
+            modelOverride:
+              snapshot?.pending?.model !== undefined
+                ? snapshot.pending.model
+                : (snapshot?.modelOverride ?? null),
             currentModel: snapshot?.currentModel ?? null,
+            thinking: snapshot?.thinking ?? null,
+            pendingModel: snapshot?.pending?.model !== undefined,
             setModel: (override) => socket.send({ type: "set_session_model", payload: { override } }),
           }}
         />

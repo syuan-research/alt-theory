@@ -111,7 +111,7 @@ const SELECTORS = {
 };
 
 type StubbableManaged = {
-  busy: boolean;
+  runState: { begin(): void; isIdle(): boolean };
   subagentParentId: string | null;
   subagentConfig: { agents: Array<{ id: string; model: string }> };
   session: {
@@ -273,7 +273,7 @@ test("waitForSubagents honors the run abort signal instead of blocking until tim
     const child = await service.createSession(SELECTORS, {
       forkedFrom: { sessionId: parent.sessionId, purpose: "subagent" },
     });
-    managedOf(service, child.sessionId).busy = true;
+    managedOf(service, child.sessionId).runState.begin();
     // Bridge layer: the wait loop must exit on the signal, not its timeout.
     const bridgeController = new AbortController();
     setTimeout(() => bridgeController.abort(), 150);
@@ -304,7 +304,7 @@ test("waitForSubagents honors the run abort signal instead of blocking until tim
     );
     assert.match(toolReport.content[0]!.text, /user's stop/);
     // The stop releases the wait; it must not stop the watched subagent.
-    assert.equal(managedOf(service, child.sessionId).busy, true);
+    assert.equal(managedOf(service, child.sessionId).runState.isIdle(), false);
   } finally {
     await service.disposeAll();
   }
@@ -363,7 +363,7 @@ test("subagent completion mails the lead and wakes it with a recorded notificati
     // fragment; the transcript renders it as an agent-team system line.
     await waitFor(() => parentPrompts.length === 1);
     assert.match(parentPrompts[0], /^<agent-team-mail /);
-    await waitFor(() => !parentManaged.busy);
+    await waitFor(() => parentManaged.runState.isIdle());
     const transcript =
       readSessionDetail(fixture.dataDir, parent.sessionId)?.transcript ?? [];
     const line = transcript.find((message) => message.marker === "agent-team");
@@ -392,7 +392,7 @@ test("message_parent blocker steers a busy lead", async () => {
     });
 
     const steered: string[] = [];
-    parentManaged.busy = true;
+    parentManaged.runState.begin();
     parentManaged.session.steer = async (text: string) => {
       steered.push(text);
     };
@@ -723,7 +723,7 @@ test("the preset fallback chain exists only until the subagent first produces wo
         };
       };
       manifest: { model: string; recordsDir: string };
-      busy: boolean;
+      runState: { begin(): void; isIdle(): boolean };
     };
     (managed.session.agent as unknown).continue = async () => {
       managed.session.sessionManager.appendMessage({
@@ -846,7 +846,7 @@ test("explicit interrupt sends exactly one interrupted outcome and the child sta
         startSubagentRun(id: string, prompt: string, notify: boolean): string;
       }
     ).startSubagentRun(child.sessionId, "the bounded task", true);
-    await waitFor(() => Boolean(childManaged.busy));
+    await waitFor(() => !childManaged.runState.isIdle());
     await service.interruptSubagent(parent.sessionId, child.sessionId);
 
     const outcomes = () =>
@@ -858,7 +858,7 @@ test("explicit interrupt sends exactly one interrupted outcome and the child sta
       );
     await waitFor(() => outcomes().length === 1);
     assert.equal(outcomes()[0]!.event, "interrupted");
-    await waitFor(() => !childManaged.busy);
+    await waitFor(() => childManaged.runState.isIdle());
 
     // The child remains a usable conversation: a later message acts on it.
     childManaged.session.prompt = async (text: string) => {

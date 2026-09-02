@@ -421,17 +421,16 @@ export function listProviders(agentDir: string): ProviderView[] {
   });
 }
 
-export function initialThinkingLevelForModel(
+/** A model's supported thinking levels from the provider view; null when the model is not in the registry. */
+export function thinkingLevelsForModel(
   agentDir: string,
   providerName: string,
   modelId: string,
-): ThinkingLevel {
+): ThinkingLevel[] | null {
   const model = listProviders(agentDir)
     .find((provider) => provider.name === providerName)
     ?.models.find((candidate) => candidate.id === modelId);
-  const levels =
-    model.availableThinkingLevels?.filter((level) => level !== "off") ?? [];
-  return levels[Math.floor((levels.length - 1) / 2)] ?? "medium";
+  return model?.availableThinkingLevels ?? null;
 }
 
 function isBuiltInProvider(name: string): boolean {

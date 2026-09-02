@@ -147,8 +147,7 @@ export function InspectorPanel() {
           {active === "runtime" ? (
             <RuntimePanel
               sessionId={app.sessionId}
-              connStatus={app.connStatus}
-              connLabel={app.connLabel}
+              runState={app.runState}
               manifest={app.manifest}
               currentDomain={app.selectors.currentDomain}
               metrics={app.metrics}

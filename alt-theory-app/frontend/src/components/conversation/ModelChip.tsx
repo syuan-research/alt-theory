@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ProviderView, SessionModelOverride, ThinkingLevel } from "@/api/types";
+import type {
+  ProviderView,
+  ResolvedThinking,
+  SessionModelOverride,
+  ThinkingLevel,
+} from "@/api/types";
 import { getConfigStatus, listConfigProviders } from "@/api/config";
+import { PendingMark } from "@/components/ui/PendingMark";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
 import { t } from "@/i18n";
@@ -24,13 +30,6 @@ function thinkingLevelsFor(model: ProviderView["models"][number]): ThinkingLevel
   return model.availableThinkingLevels ?? [];
 }
 
-function initialThinkingFor(option: ModelOption): ThinkingLevel {
-  const enabled = option.thinkingLevels.filter((level) => level !== "off");
-  if (enabled.length === 0) return "medium";
-  // Pick the positional middle of this model's actual levels. With an even
-  // count, floor selects the lower of the two middle levels.
-  return enabled[Math.floor((enabled.length - 1) / 2)] ?? "medium";
-}
 
 function groupProviders(providers: ProviderView[]): ProviderOptions[] {
   return providers
@@ -64,6 +63,10 @@ export function ModelChip({
     ready: boolean;
     modelOverride: SessionModelOverride | null;
     currentModel: { provider: string; modelId: string } | null;
+    /** The backend resolver's answer; the chip computes no level itself. */
+    thinking: ResolvedThinking | null;
+    /** A model switch accepted mid-run, applying when the turn ends. */
+    pendingModel: boolean;
     setModel: (override: SessionModelOverride | null) => void;
   };
 }) {
@@ -128,6 +131,10 @@ export function ModelChip({
 
   const modelOverride = session ? session.modelOverride : app.modelOverride;
   const currentModel = session ? session.currentModel : app.currentSessionModel;
+  const thinking = session ? session.thinking : app.thinking;
+  const pendingModel = session
+    ? session.pendingModel
+    : app.pendingChanges.model !== undefined;
   const setModel = session?.setModel ?? app.setSessionModel;
   const effectiveModel = modelOverride ?? currentModel ?? defaultModel;
   const selectedOption = useMemo(
@@ -141,9 +148,17 @@ export function ModelChip({
         ) ?? null,
     [effectiveModel, providers],
   );
-  const effectiveThinking =
-    modelOverride?.thinkingLevel ??
-    (selectedOption ? initialThinkingFor(selectedOption) : "medium");
+  // Rendered, never computed: the level in use and, when the provider
+  // clamped the user's choice, both (copy rule: "low — model uses medium").
+  const effectiveThinking = thinking?.level ?? modelOverride?.thinkingLevel ?? null;
+  const thinkingText =
+    thinking?.source === "clamped" && thinking.chosen
+      ? t("{chosen} — model uses {level}", {
+          chosen: thinking.chosen,
+          level: thinking.level,
+        })
+      : (effectiveThinking ?? "");
+  const checkedThinking = thinking?.chosen ?? effectiveThinking;
   const activeProvider = effectiveModel?.provider ?? defaultModel?.provider ?? null;
   // One-shot snapshot per open menu: hoist the group holding the current
   // model to the top, then keep that order (and the hoisted section
@@ -176,34 +191,31 @@ export function ModelChip({
       );
   }, [providers, query]);
   useEffect(() => setFilterIndex(0), [query]);
+  const showsEffort =
+    Boolean(thinkingText) &&
+    (selectedOption?.thinkingLevels.some((level) => level !== "off") ?? false);
   const chipLabel = effectiveModel
-    ? `${effectiveModel.modelId}${
-        selectedOption?.thinkingLevels.length &&
-        selectedOption.thinkingLevels.some((level) => level !== "off")
-          ? ` · ${effectiveThinking}`
-          : ""
-      }`
+    ? `${effectiveModel.modelId}${showsEffort ? ` · ${thinkingText}` : ""}`
     : t("Choose model");
   const title = effectiveModel
     ? `${effectiveModel.provider} / ${effectiveModel.modelId}${
-        selectedOption?.thinkingLevels.some((level) => level !== "off")
-          ? ` · ${effectiveThinking}`
-          : ""
+        showsEffort ? ` · ${thinkingText}` : ""
       }`
     : t("Choose a model");
 
   const pick = (option: ModelOption, thinkingLevel?: ThinkingLevel) => {
+    // Only a level the user picked travels; absent = the backend resolves
+    // the model's default and says so (source: model-default).
     const selectedThinking =
       thinkingLevel ??
       (effectiveModel?.provider === option.provider &&
-      effectiveModel?.modelId === option.modelId &&
-      modelOverride?.thinkingLevel
-        ? modelOverride.thinkingLevel
-        : initialThinkingFor(option));
+      effectiveModel?.modelId === option.modelId
+        ? modelOverride?.thinkingLevel
+        : undefined);
     setModel({
       provider: option.provider,
       modelId: option.modelId,
-      thinkingLevel: selectedThinking,
+      ...(selectedThinking ? { thinkingLevel: selectedThinking } : {}),
     });
     if (
       thinkingLevel === undefined &&
@@ -252,7 +264,7 @@ export function ModelChip({
               onClick={() => setEffortOpen((value) => !value)}
             >
               <span>{t("Thinking effort")}</span>
-              <span className="model-effort-value">{effectiveThinking}</span>
+              <span className="model-effort-value">{thinkingText}</span>
               <i
                 className={`ph ph-caret-${effortOpen ? "up" : "down"} caret`}
                 aria-hidden
@@ -267,7 +279,7 @@ export function ModelChip({
                     onClick={() => pick(option, level)}
                   >
                     <span>{level}</span>
-                    {effectiveThinking === level ? (
+                    {checkedThinking === level ? (
                       <i className="ph ph-check check" />
                     ) : null}
                   </div>
@@ -293,6 +305,7 @@ export function ModelChip({
         data-tip={title}
       >
         {chipLabel}
+        <PendingMark when={pendingModel} />
         <i className="ph ph-caret-down caret" />
       </button>
       <div

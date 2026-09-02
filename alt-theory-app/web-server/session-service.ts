@@ -8,7 +8,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { resolveCliModel } from "@earendil-works/pi-coding-agent";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
-import type { ImageContent, Model } from "@earendil-works/pi-ai";
+import { getSupportedThinkingLevels, type ImageContent, type Model } from "@earendil-works/pi-ai";
 import {
   createAltTheorySession,
   isNoModelPlaceholder,
@@ -45,6 +45,8 @@ import {
 } from "./approval-bridge.js";
 import { appendSessionEvent } from "./session-events.js";
 import { appendLiveRunEvent, type LiveRun } from "./live-run.js";
+import { RunState, type PendingChanges } from "./run-state.js";
+import { resolveThinkingLevel, type ResolvedThinking } from "./thinking-level.js";
 import {
   appendAbComparisonRecord,
   type AbComparisonRecord,
@@ -167,10 +169,6 @@ export interface SessionServiceConfig {
   runLabel: string | null;
   testBatch: string | null;
   resolveRuntimeModelConfig?: () => RuntimeModelConfig;
-  resolveInitialThinkingLevel?: (
-    provider: string,
-    modelId: string,
-  ) => ThinkingLevel;
   /**
    * Per-mode user-enabled external skill paths (spec §6.1). Read at every
    * session open so settings changes apply on reload without touching
@@ -325,15 +323,16 @@ interface ManagedSession {
   transcriptStamp: string | null;
   listeners: Set<(event: SessionServiceEvent) => void>;
   internalUnsubscribe: () => void;
-  busy: boolean;
+  /** Phase + deferred switches + Pi queue mirror (card 1 / card 11). */
+  runState: RunState;
+  /** The thinking resolver's answer for the current model (card 3). */
+  thinking: ResolvedThinking;
   nextTurnIndex: number;
   nextRevisionIndex: number;
   nextRunIndex: number;
   branchId: string;
   fallbackAttempts: number;
   pendingRunWork: Promise<void> | null;
-  pendingRuntimeMode: RuntimeMode | null;
-  pendingNativePiScanAltSkills: boolean | null;
   /** Set when this session is a subagent child: its lead conversation's id. */
   subagentParentId: string | null;
   subagentModelChain: SessionModelOverride[];
@@ -391,9 +390,7 @@ export class SessionService implements AgentTeamBridge {
     const managed = this.sessions.get(sessionId);
     return Boolean(
       managed &&
-        (managed.listeners.size > 0 ||
-          managed.busy ||
-          managed.session.isStreaming),
+        (managed.listeners.size > 0 || !managed.runState.isIdle()),
     );
   }
 
@@ -449,8 +446,9 @@ export class SessionService implements AgentTeamBridge {
 
   /**
    * Model args for opening a session: a persisted per-session override (M7
-   * §5b) wins over the deployment-global config; thinking uses the model's
-   * supported-level midpoint unless the session has an explicit level.
+   * §5b) wins over the deployment-global config. Only an explicit thinking
+   * choice is passed here; the resolver settles the level once the session
+   * and its model exist (applyThinking).
    */
   private modelArgsFor(
     override: SessionModelOverride | null | undefined,
@@ -471,23 +469,109 @@ export class SessionService implements AgentTeamBridge {
       ...(override
         ? { modelProvider: override.provider, modelId: override.modelId }
         : {}),
-      thinkingLevel:
-        override?.thinkingLevel ??
-        this.initialThinkingLevel(
-          override?.provider ?? base.modelProvider,
-          override?.modelId ?? base.modelId,
-        ),
+      thinkingLevel: override?.thinkingLevel ?? this.config.thinkingLevel,
     };
   }
 
-  private initialThinkingLevel(
-    provider: string | undefined,
-    modelId: string | undefined,
-  ): ThinkingLevel {
-    if (provider && modelId && this.config.resolveInitialThinkingLevel) {
-      return this.config.resolveInitialThinkingLevel(provider, modelId);
+  private assertIdle(managed: ManagedSession): void {
+    if (!managed.runState.isIdle()) {
+      throw new SessionBusyError(managed.manifest.sessionId);
     }
-    return this.config.thinkingLevel ?? "medium";
+  }
+
+  /**
+   * The one place a thinking level is decided for a live session: resolve
+   * the choice against the model's supported levels, set it on Pi, record
+   * provenance. `managed.thinking` is written before the Pi call so Pi's own
+   * thinking_level_changed echo reads as ours; Pi's resulting level is then
+   * the authority — if it still differs, the choice is reported as clamped.
+   */
+  private applyThinking(
+    managed: ManagedSession,
+    chosen: ThinkingLevel | undefined,
+    model: Model<any> | undefined = managed.session.model,
+  ): ResolvedThinking {
+    const available =
+      model && !isNoModelPlaceholder(model) ? getSupportedThinkingLevels(model) : [];
+    const resolved = resolveThinkingLevel(available, chosen);
+    managed.thinking = resolved;
+    managed.session.setThinkingLevel(resolved.level);
+    const actual = managed.session.thinkingLevel;
+    managed.thinking =
+      actual === resolved.level
+        ? resolved
+        : { chosen: chosen ?? resolved.level, level: actual, source: "clamped" };
+    return managed.thinking;
+  }
+
+  /**
+   * Switch the live model (user choice, deployment fallback, subagent chain)
+   * — one rule: thinking resolved against the target (written before Pi's
+   * own re-clamp during setModel), manifest + v0.4 header updated so the
+   * chip shows the model in use.
+   */
+  private async switchLiveModel(
+    managed: ManagedSession,
+    resolved: Model<any>,
+    override: SessionModelOverride | null,
+  ): Promise<void> {
+    managed.thinking = resolveThinkingLevel(
+      getSupportedThinkingLevels(resolved),
+      override?.thinkingLevel,
+    );
+    await managed.session.setModel(resolved);
+    this.applyThinking(managed, override?.thinkingLevel, resolved);
+    managed.manifest.provider = resolved.provider;
+    managed.manifest.model = resolved.id;
+    this.persistManifestModel(managed);
+    this.writeHeaderModelOverride(managed, override);
+  }
+
+  private writeHeaderModelOverride(
+    managed: ManagedSession,
+    override: SessionModelOverride | null,
+  ): void {
+    const header = readV4SessionHeader(managed.manifest.recordsDir);
+    if (!header) return;
+    const { modelOverride: _dropped, ...rest } = header;
+    writeSessionHeader(
+      managed.manifest.recordsDir,
+      override ? { ...rest, modelOverride: override } : rest,
+    );
+  }
+
+  /**
+   * The only idle transition (card 1): drain what was deferred while the turn
+   * ran, through the same appliers the live path uses. A change that fails
+   * to apply is reported, not lost silently.
+   */
+  private async settle(managed: ManagedSession): Promise<void> {
+    const drained = managed.runState.settle();
+    const steps: Array<[keyof PendingChanges, () => Promise<void> | void]> = [
+      ["mode", () => this.applyMode(managed, drained.mode!)],
+      ["fullAccess", () => managed.setFullAccess(drained.fullAccess!)],
+      ["model", () => this.applyModel(managed, drained.model!)],
+      ["runtime", () => this.applyRuntime(managed, drained.runtime!)],
+    ];
+    let applied = false;
+    for (const [key, apply] of steps) {
+      if (drained[key] === undefined) continue;
+      try {
+        await apply();
+        applied = true;
+      } catch (error) {
+        this.emit(managed, {
+          type: "extension_notice",
+          payload: {
+            message: error instanceof Error ? error.message : String(error),
+            level: "error",
+          },
+        });
+      }
+    }
+    if (applied) {
+      this.emit(managed, { type: "session_updated", payload: this.snapshot(managed) });
+    }
   }
 
   private persistManifestModel(managed: ManagedSession): void {
@@ -652,9 +736,7 @@ export class SessionService implements AgentTeamBridge {
     _abortReason: string,
   ): Promise<SessionSnapshot> {
     const previous = this.requireSession(sessionId);
-    if (previous.busy || previous.session.isStreaming) {
-      throw new SessionBusyError(sessionId);
-    }
+    this.assertIdle(previous);
     if (selectors.rolePresetSlug !== previous.selectors.rolePresetSlug) {
       appendSessionEvent(previous.manifest.recordsDir, {
         sessionId: previous.manifest.sessionId,
@@ -704,12 +786,13 @@ export class SessionService implements AgentTeamBridge {
     mode: AltMode,
   ): Promise<SessionSnapshot> {
     const managed = this.requireSession(sessionId);
-    if (managed.busy || managed.session.isStreaming) {
-      throw new SessionBusyError(sessionId);
-    }
-    if (managed.getAltMode() === mode) {
-      return this.snapshot(managed);
-    }
+    await managed.runState.applyOrDefer({ mode }, () => this.applyMode(managed, mode));
+    return this.snapshot(managed);
+  }
+
+  private async applyMode(managed: ManagedSession, mode: AltMode): Promise<void> {
+    const sessionId = managed.manifest.sessionId;
+    if (managed.getAltMode() === mode) return;
     await managed.setAltMode(mode);
     managed.manifest.altMode = mode;
     const header = readV4SessionHeader(managed.manifest.recordsDir);
@@ -729,25 +812,27 @@ export class SessionService implements AgentTeamBridge {
       changedFields: ["altMode"],
       warnings: [],
     });
-    return this.snapshot(managed);
   }
 
   /**
    * Full Access (v1.4.8): in-memory, session-lifetime permission bypass.
-   * Enabling is validated here and in the core setter (work-capable mode);
-   * the WS layer separately rejects non-local servers. Disabling is immediate
-   * and allowed during a run — the guard predicate is live per tool call, and
-   * turning permissions down mid-run is always safe.
+   * Enabling is validated in the core setter (work-capable mode) and deferred
+   * while a turn runs; the WS layer separately rejects non-local servers.
+   * Disabling is immediate and allowed during a run — the guard predicate is
+   * live per tool call, and turning permissions down mid-run is always safe.
    */
   async setFullAccess(
     sessionId: string,
     enabled: boolean,
   ): Promise<SessionSnapshot> {
     const managed = this.requireSession(sessionId);
-    if (enabled && (managed.busy || managed.session.isStreaming)) {
-      throw new SessionBusyError(sessionId);
+    if (!enabled) {
+      managed.setFullAccess(false);
+    } else {
+      await managed.runState.applyOrDefer({ fullAccess: true }, () =>
+        managed.setFullAccess(true),
+      );
     }
-    managed.setFullAccess(enabled);
     return this.snapshot(managed);
   }
 
@@ -756,29 +841,22 @@ export class SessionService implements AgentTeamBridge {
     mode: RuntimeMode,
     nativePiScanAltSkills: boolean,
   ): Promise<void> {
+    const runtime = { mode, nativePiScanAltSkills };
     await Promise.all(
-      [...this.sessions.values()].map(async (managed) => {
-        if (managed.busy || managed.session.isStreaming) {
-          managed.pendingRuntimeMode = mode;
-          managed.pendingNativePiScanAltSkills = nativePiScanAltSkills;
-          return;
-        }
-        await managed.setRuntimeMode(mode);
-        await managed.setNativePiScanAltSkills(nativePiScanAltSkills);
-      }),
+      [...this.sessions.values()].map((managed) =>
+        managed.runState.applyOrDefer({ runtime }, () =>
+          this.applyRuntime(managed, runtime),
+        ),
+      ),
     );
   }
 
-  private async applyPendingRuntime(managed: ManagedSession): Promise<void> {
-    const mode = managed.pendingRuntimeMode;
-    const scanAltSkills = managed.pendingNativePiScanAltSkills;
-    if (!mode && scanAltSkills === null) return;
-    managed.pendingRuntimeMode = null;
-    managed.pendingNativePiScanAltSkills = null;
-    if (mode) await managed.setRuntimeMode(mode);
-    if (scanAltSkills !== null) {
-      await managed.setNativePiScanAltSkills(scanAltSkills);
-    }
+  private async applyRuntime(
+    managed: ManagedSession,
+    runtime: NonNullable<PendingChanges["runtime"]>,
+  ): Promise<void> {
+    await managed.setRuntimeMode(runtime.mode);
+    await managed.setNativePiScanAltSkills(runtime.nativePiScanAltSkills);
   }
 
   /**
@@ -791,9 +869,7 @@ export class SessionService implements AgentTeamBridge {
     dir: string,
   ): Promise<SessionSnapshot> {
     const managed = this.requireSession(sessionId);
-    if (managed.busy || managed.session.isStreaming) {
-      throw new SessionBusyError(sessionId);
-    }
+    this.assertIdle(managed);
     await managed.addWorkspaceDir(dir);
     const workspace = managed.getWorkspace();
     managed.manifest.workspace = workspace;
@@ -841,9 +917,7 @@ export class SessionService implements AgentTeamBridge {
     const family = forkFamilyIds(this.config.dataDir, sessionId);
     for (const id of family) {
       const member = this.sessions.get(id);
-      if (member && (member.busy || member.session.isStreaming)) {
-        throw new SessionBusyError(id);
-      }
+      if (member) this.assertIdle(member);
     }
     let target: SessionSnapshot | null = null;
     for (const id of family) {
@@ -949,9 +1023,7 @@ export class SessionService implements AgentTeamBridge {
     userText?: string,
   ): RunHandle {
     const managed = this.requireSession(sessionId);
-    if (managed.busy || managed.session.isStreaming) {
-      throw new SessionBusyError(sessionId);
-    }
+    this.assertIdle(managed);
     const skill = managed.manifest.skills?.find(
       (candidate) => candidate.name === skillName,
     );
@@ -974,9 +1046,7 @@ export class SessionService implements AgentTeamBridge {
       throw new Error(`Unknown KB domain: ${domain}`);
     }
     const managed = this.requireSession(sessionId);
-    if (managed.busy || managed.session.isStreaming) {
-      throw new SessionBusyError(sessionId);
-    }
+    this.assertIdle(managed);
     managed.selectors.kbDomain = domain;
     appendSessionEvent(managed.manifest.recordsDir, {
       sessionId: managed.manifest.sessionId,
@@ -1028,9 +1098,7 @@ export class SessionService implements AgentTeamBridge {
 
   reviseLatest(sessionId: string, text: string): RunHandle {
     const managed = this.requireSession(sessionId);
-    if (managed.busy || managed.session.isStreaming) {
-      throw new SessionBusyError(sessionId);
-    }
+    this.assertIdle(managed);
     const latest = this.requireLatestActiveCompletedUserRun(managed, "revise");
     return this.reviseFromRun(managed, latest, text);
   }
@@ -1038,9 +1106,7 @@ export class SessionService implements AgentTeamBridge {
   /** Run the latest user message again from its start, without a visible child. */
   retryLatestFromStart(sessionId: string): RunHandle {
     const managed = this.requireSession(sessionId);
-    if (managed.busy || managed.session.isStreaming) {
-      throw new SessionBusyError(sessionId);
-    }
+    this.assertIdle(managed);
     const runs = latestRunSnapshots(managed.manifest.recordsDir).filter(
       (run) =>
         run.branchId === managed.branchId &&
@@ -1115,9 +1181,7 @@ export class SessionService implements AgentTeamBridge {
 
   continueLatestFromBreakpoint(sessionId: string): RunHandle {
     const managed = this.requireSession(sessionId);
-    if (managed.busy || managed.session.isStreaming) {
-      throw new SessionBusyError(sessionId);
-    }
+    this.assertIdle(managed);
     const latest = this.latestContinuableRun(managed);
     if (!latest) {
       throw new Error("No incomplete latest turn is available to continue");
@@ -1162,7 +1226,7 @@ export class SessionService implements AgentTeamBridge {
       completedAt: new Date().toISOString(),
     });
 
-    managed.busy = true;
+    managed.runState.begin();
     managed.fallbackAttempts = 0;
     managed.pendingInterruptionCause = null;
     const revisionId = formatCounter("rev", managed.nextRevisionIndex++);
@@ -1275,8 +1339,7 @@ export class SessionService implements AgentTeamBridge {
         );
       }
     })().finally(async () => {
-      await this.applyPendingRuntime(managed);
-      managed.busy = false;
+      await this.settle(managed);
       managed.pendingInterruptionCause = null;
     });
 
@@ -1301,9 +1364,7 @@ export class SessionService implements AgentTeamBridge {
    */
   reviseAt(sessionId: string, userEntryId: string, text: string): RunHandle {
     const managed = this.requireSession(sessionId);
-    if (managed.busy || managed.session.isStreaming) {
-      throw new SessionBusyError(sessionId);
-    }
+    this.assertIdle(managed);
     if (
       !managed.session.sessionManager
         .getBranch()
@@ -1405,9 +1466,7 @@ export class SessionService implements AgentTeamBridge {
 
   deleteLatest(sessionId: string): SessionSnapshot {
     const managed = this.requireSession(sessionId);
-    if (managed.busy || managed.session.isStreaming) {
-      throw new SessionBusyError(sessionId);
-    }
+    this.assertIdle(managed);
     const latest = this.requireLatestActiveCompletedUserRun(managed, "delete");
     const userEntry = managed.session.sessionManager.getEntry(latest.userEntryId,);
     if (!userEntry) {
@@ -1449,9 +1508,7 @@ export class SessionService implements AgentTeamBridge {
     options?: { exactForkPoint?: boolean; allowEmpty?: boolean },
   ): Promise<SessionSnapshot> {
     const previous = this.requireSession(sessionId);
-    if (previous.busy || previous.session.isStreaming) {
-      throw new SessionBusyError(sessionId);
-    }
+    this.assertIdle(previous);
     // The sub-session substrate (M5): a fork inherits the parent by default, but
     // an A/B arm (or any child that must differ) can override any assembly layer
     // — role, KB domain, soul, instruction — while keeping the parent's
@@ -1739,9 +1796,7 @@ export class SessionService implements AgentTeamBridge {
       }
     }
     const parent = this.requireSession(sessionId);
-    if (parent.busy || parent.session.isStreaming) {
-      throw new SessionBusyError(sessionId);
-    }
+    this.assertIdle(parent);
     const promptEntryId = parent.session.sessionManager.getLeafId();
     // Forks are sequential (each reads the live parent); the arm runs are
     // independent sessions and execute in parallel.
@@ -1802,16 +1857,14 @@ export class SessionService implements AgentTeamBridge {
     } = {},
   ): RunHandle {
     const sessionId = managed.manifest.sessionId;
-    if (managed.busy || managed.session.isStreaming) {
-      throw new SessionBusyError(sessionId);
-    }
+    this.assertIdle(managed);
     if (!managed.session.model || isNoModelPlaceholder(managed.session.model)) {
       throw new Error(
         "No model is selected. Choose a conversation model or configure one in Settings → Models.",
       );
     }
 
-    managed.busy = true;
+    managed.runState.begin();
     managed.fallbackAttempts = 0;
     managed.pendingInterruptionCause = null;
     managed.liveRun = { userText: displayUserTextFromPrompt(text), events: [] };
@@ -1971,8 +2024,7 @@ export class SessionService implements AgentTeamBridge {
       // Fire-and-forget: title generation must never affect the run.
       void this.maybeAutoTitle(managed);
     })().finally(async () => {
-      await this.applyPendingRuntime(managed);
-      managed.busy = false;
+      await this.settle(managed);
       managed.pendingInterruptionCause = null;
     });
 
@@ -2009,7 +2061,7 @@ export class SessionService implements AgentTeamBridge {
    */
   steerRunningSession(sessionId: string, text: string): boolean {
     const managed = this.requireSession(sessionId);
-    if (!managed.busy && !managed.session.isStreaming) return false;
+    if (managed.runState.isIdle()) return false;
     void managed.session.steer(text).catch(() => {});
     // The steered bubble is server-broadcast (and live-run buffered), so
     // every attached pane — sender and late joiners alike — sees it once.
@@ -2024,10 +2076,10 @@ export class SessionService implements AgentTeamBridge {
   ): Promise<void> {
     const managed = this.requireSession(sessionId);
     managed.pendingInterruptionCause = interruptionCause;
+    managed.runState.stopping();
     managed.session.abortCompaction();
     await managed.session.abort();
-    await this.applyPendingRuntime(managed);
-    managed.busy = false;
+    await this.settle(managed);
     this.emitRunPhase(managed, "idle");
     appendSessionEvent(managed.manifest.recordsDir, {
       sessionId: managed.manifest.sessionId,
@@ -2060,15 +2112,12 @@ export class SessionService implements AgentTeamBridge {
 
   async compact(sessionId: string): Promise<SessionSnapshot> {
     const managed = this.requireSession(sessionId);
-    if (managed.busy || managed.session.isStreaming) {
-      throw new SessionBusyError(sessionId);
-    }
-    managed.busy = true;
+    this.assertIdle(managed);
+    managed.runState.begin();
     const leafBeforeCompact = managed.session.sessionManager.getLeafId();
     this.emitRunPhase(managed, "compacting");
     try {
       await managed.session.compact();
-      managed.busy = false;
       // The compaction_end agent event already published the boundary through
       // the shared path; publish again so a stubbed compact() (tests) and any
       // projection ordering race cannot leave the UI without the marker.
@@ -2084,8 +2133,7 @@ export class SessionService implements AgentTeamBridge {
       }
       throw error;
     } finally {
-      await this.applyPendingRuntime(managed);
-      managed.busy = false;
+      await this.settle(managed);
       this.emitRunPhase(managed, "idle");
       this.emit(managed, {
         type: "session_updated",
@@ -2111,7 +2159,7 @@ export class SessionService implements AgentTeamBridge {
 
   runningSessionIds(): string[] {
     return [...this.sessions.entries()]
-      .filter(([, managed]) => managed.busy || managed.session.isStreaming)
+      .filter(([, managed]) => !managed.runState.isIdle())
       .map(([sessionId]) => sessionId);
   }
 
@@ -2123,7 +2171,7 @@ export class SessionService implements AgentTeamBridge {
   sessionActivity(): Map<string, "running" | "awaiting-approval" | "failed"> {
     const activity = new Map<string, "running" | "awaiting-approval" | "failed">();
     for (const [sessionId, managed] of this.sessions) {
-      const running = managed.busy || managed.session.isStreaming;
+      const running = !managed.runState.isIdle();
       if (running && managed.approvalBridge.listPending().length > 0) {
         activity.set(sessionId, "awaiting-approval");
       } else if (running) {
@@ -2217,9 +2265,7 @@ export class SessionService implements AgentTeamBridge {
     consentSnapshot?: SessionCreationMetadata["consentSnapshot"],
   ): SessionSnapshot {
     const managed = this.requireSession(sessionId);
-    if (managed.busy || managed.session.isStreaming) {
-      throw new SessionBusyError(sessionId);
-    }
+    this.assertIdle(managed);
     const header = readV4SessionHeader(managed.manifest.recordsDir);
     if (!header) throw new Error("v0.4 session header is required");
     if (header.visibility === visibility) {
@@ -2285,50 +2331,37 @@ export class SessionService implements AgentTeamBridge {
     override: SessionModelOverride | null,
   ): Promise<SessionSnapshot> {
     const managed = this.requireSession(sessionId);
-    if (managed.busy || managed.session.isStreaming) {
-      throw new SessionBusyError(sessionId);
-    }
-    const header = readV4SessionHeader(managed.manifest.recordsDir);
-    if (!header) throw new Error("v0.4 session header is required");
-    const fallback = override ? null : this.resolveEffectiveRuntimeModelConfig();
-    const { modelOverride: _dropped, ...rest } = header;
-    writeSessionHeader(
-      managed.manifest.recordsDir,
-      override ? { ...rest, modelOverride: override } : rest,
+    await managed.runState.applyOrDefer({ model: override }, () =>
+      this.applyModel(managed, override),
     );
-    let applied = false;
-    if (override) {
-      const resolved = managed.session.modelRuntime.getModel(
-        override.provider,
-        override.modelId,
-      );
-      if (resolved) {
-        await managed.session.setModel(resolved);
-        managed.manifest.provider = override.provider;
-        managed.manifest.model = override.modelId;
-        this.persistManifestModel(managed);
-        applied = true;
-      }
-      managed.session.setThinkingLevel(
-        override.thinkingLevel ??
-          this.initialThinkingLevel(override.provider, override.modelId),
-      );
+    return this.snapshot(managed);
+  }
+
+  private async applyModel(
+    managed: ManagedSession,
+    override: SessionModelOverride | null,
+  ): Promise<void> {
+    const sessionId = managed.manifest.sessionId;
+    if (!readV4SessionHeader(managed.manifest.recordsDir)) {
+      throw new Error("v0.4 session header is required");
+    }
+    const base = override ? null : this.resolveEffectiveRuntimeModelConfig();
+    const target = override
+      ? { provider: override.provider, modelId: override.modelId }
+      : base?.modelProvider && base.modelId
+        ? { provider: base.modelProvider, modelId: base.modelId }
+        : null;
+    const resolved = target
+      ? managed.session.modelRuntime.getModel(target.provider, target.modelId)
+      : undefined;
+    const applied = Boolean(resolved);
+    if (resolved) {
+      await this.switchLiveModel(managed, resolved, override);
     } else {
-      const base = fallback ?? {};
-      const resolved =
-        base.modelProvider && base.modelId
-          ? managed.session.modelRuntime.getModel(base.modelProvider, base.modelId,)
-          : undefined;
-      if (resolved) {
-        await managed.session.setModel(resolved);
-        managed.manifest.provider = base.modelProvider!;
-        managed.manifest.model = base.modelId!;
-        this.persistManifestModel(managed);
-        applied = true;
-      }
-      managed.session.setThinkingLevel(
-        this.initialThinkingLevel(base.modelProvider, base.modelId),
-      );
+      // Saved for the next open; the running model keeps its level, resolved
+      // against the current model so a choice is never silently replaced.
+      this.writeHeaderModelOverride(managed, override);
+      this.applyThinking(managed, override?.thinkingLevel);
     }
     appendSessionEvent(managed.manifest.recordsDir, {
       sessionId,
@@ -2348,7 +2381,6 @@ export class SessionService implements AgentTeamBridge {
       type: "extension_notice",
       payload: { message: notice, level: "info" },
     });
-    return this.snapshot(managed);
   }
 
   async disposeAll(): Promise<void> {
@@ -2436,11 +2468,7 @@ export class SessionService implements AgentTeamBridge {
           }
         : {}),
       thinkingLevel:
-        metadata.modelOverride?.thinkingLevel ??
-        this.initialThinkingLevel(
-          metadata.modelOverride?.provider ?? runtimeModelConfig.modelProvider,
-          metadata.modelOverride?.modelId ?? runtimeModelConfig.modelId,
-        ),
+        metadata.modelOverride?.thinkingLevel ?? this.config.thinkingLevel,
       altMode: metadata.mode ?? appSettings.defaultAltMode ?? "understand",
       runtimeMode: appSettings.runtimeMode ?? "alt-theory",
       trimmedPiBasePrompt: appSettings.experimentTrimmedPiPrompt === true,
@@ -2639,7 +2667,7 @@ export class SessionService implements AgentTeamBridge {
         thinkingLevel:
           suffix && THINKING_LEVELS.includes(suffix as (typeof THINKING_LEVELS)[number])
             ? (suffix as ThinkingLevel)
-            : parent.session.thinkingLevel,
+            : parent.thinking.level,
       };
     }
     const resolved = resolveCliModel({
@@ -2787,7 +2815,7 @@ export class SessionService implements AgentTeamBridge {
     };
     appendAgentMail(child.manifest.recordsDir, envelope);
     const fragment = formatEnvelopeForContext(envelope, "lead");
-    if (child.busy || child.session.isStreaming) {
+    if (!child.runState.isIdle()) {
       await child.session.steer(fragment);
       return "Delivered: the subagent sees your message at its next step.";
     }
@@ -2885,7 +2913,7 @@ export class SessionService implements AgentTeamBridge {
       return "Removed from the queue before it started. Use send_to_agent to give it a task later.";
     }
     const child = this.sessions.get(childId);
-    if (!child || (!child.busy && !child.session.isStreaming)) {
+    if (!child || child.runState.isIdle()) {
       return "The subagent is not running; nothing to interrupt.";
     }
     await this.abort(childId, "interrupt_agent");
@@ -2984,7 +3012,7 @@ export class SessionService implements AgentTeamBridge {
   private subagentIsActive(sessionId: string): boolean {
     if (this.queuedSubagentIds.has(sessionId)) return true;
     const managed = this.sessions.get(sessionId);
-    return Boolean(managed && (managed.busy || managed.session.isStreaming));
+    return Boolean(managed && !managed.runState.isIdle());
   }
 
   private subagentStatusLine(parentSessionId: string, sessionId: string): string {
@@ -3118,7 +3146,7 @@ export class SessionService implements AgentTeamBridge {
       { ...envelope, delivered: true },
       this.agentMailLabel(envelope.from, target),
     );
-    if (target.busy || target.session.isStreaming) {
+    if (!target.runState.isIdle()) {
       void target.session.steer(fragment).catch(() => {});
       return;
     }
@@ -3628,7 +3656,7 @@ export class SessionService implements AgentTeamBridge {
         } as const;
         this.emit(managed, event);
         for (const listener of this.approvalListeners) listener(event);
-        this.emitRunPhase(managed, managed.busy ? "processing" : "idle");
+        this.emitRunPhase(managed, managed.runState.isIdle() ? "idle" : "processing");
       },
       onNotify: (message, level) =>
         this.emit(managed, {
@@ -3646,7 +3674,8 @@ export class SessionService implements AgentTeamBridge {
       pendingInterruptionCause: null,
       listeners: new Set(),
       internalUnsubscribe: () => {},
-      busy: false,
+      runState: new RunState(),
+      thinking: { level: args.session.thinkingLevel, source: "model-default" },
       subagentParentId:
         headerForkedFrom?.purpose === "subagent"
           ? headerForkedFrom.sessionId
@@ -3664,9 +3693,12 @@ export class SessionService implements AgentTeamBridge {
       branchId: args.branchId ?? "main",
       fallbackAttempts: 0,
       pendingRunWork: null,
-      pendingRuntimeMode: null,
-      pendingNativePiScanAltSkills: null,
     };
+    // Resolve the thinking level against the live model now that both exist.
+    this.applyThinking(
+      managed,
+      header?.modelOverride?.thinkingLevel ?? this.config.thinkingLevel,
+    );
     managed.internalUnsubscribe = managed.session.subscribe((event) =>
       this.handleAgentEvent(managed, event),
     );
@@ -3745,7 +3777,6 @@ export class SessionService implements AgentTeamBridge {
           : String(fallbackError);
       managed.session.state.errorMessage = error;
     }
-    managed.busy = false;
     appendSessionEvent(managed.manifest.recordsDir, {
       sessionId: managed.manifest.sessionId,
       type: "run_failed",
@@ -3813,10 +3844,13 @@ export class SessionService implements AgentTeamBridge {
       chainCursor = next.modelId;
     }
 
-    await managed.session.setModel(resolved);
-    managed.manifest.provider = next.provider;
-    managed.manifest.model = next.modelId;
-    this.persistManifestModel(managed);
+    // Same rule as a user switch: the chosen level travels, the header
+    // override follows so the chip shows the model actually in use.
+    await this.switchLiveModel(managed, resolved, {
+      provider: next.provider,
+      modelId: next.modelId,
+      ...(managed.thinking.chosen ? { thinkingLevel: managed.thinking.chosen } : {}),
+    });
 
     appendSessionEvent(managed.manifest.recordsDir, {
       sessionId: managed.manifest.sessionId,
@@ -3886,7 +3920,7 @@ export class SessionService implements AgentTeamBridge {
         entry.provider === current.provider &&
         entry.modelId === current.id &&
         (entry.thinkingLevel === undefined ||
-          entry.thinkingLevel === managed.session.thinkingLevel),
+          entry.thinkingLevel === (managed.thinking.chosen ?? managed.thinking.level)),
     );
     if (currentIndex < 0) return false;
     for (
@@ -3900,20 +3934,7 @@ export class SessionService implements AgentTeamBridge {
         next.modelId,
       );
       if (!resolved) continue;
-      await managed.session.setModel(resolved);
-      managed.session.setThinkingLevel(
-        next.thinkingLevel ?? this.initialThinkingLevel(next.provider, next.modelId),
-      );
-      managed.manifest.provider = next.provider;
-      managed.manifest.model = next.modelId;
-      this.persistManifestModel(managed);
-      const header = readV4SessionHeader(managed.manifest.recordsDir);
-      if (header) {
-        writeSessionHeader(managed.manifest.recordsDir, {
-          ...header,
-          modelOverride: { ...next },
-        });
-      }
+      await this.switchLiveModel(managed, resolved, { ...next });
       appendSessionEvent(managed.manifest.recordsDir, {
         sessionId: managed.manifest.sessionId,
         type: "model_fallback",
@@ -3994,7 +4015,7 @@ export class SessionService implements AgentTeamBridge {
           type: "tool_finished",
           payload: { callId: event.toolCallId, success: !event.isError },
         });
-        if (managed.busy || managed.session.isStreaming) {
+        if (!managed.runState.isIdle()) {
           this.emitRunPhase(managed, "processing");
         }
         break;
@@ -4021,6 +4042,18 @@ export class SessionService implements AgentTeamBridge {
         this.emitRunPhase(managed, event.willRetry ? "processing" : "idle");
         break;
       }
+      case "thinking_level_changed":
+        // Pi clamped (or otherwise moved) the level behind our back: keep the
+        // user's choice, report the level in use.
+        if (event.level !== managed.thinking.level) {
+          managed.thinking = {
+            chosen: managed.thinking.chosen ?? managed.thinking.level,
+            level: event.level,
+            source: "clamped",
+          };
+          this.emit(managed, { type: "session_updated", payload: this.snapshot(managed) });
+        }
+        break;
       case "agent_end": {
         if (event.willRetry) {
           // Pi auto-retries this error and emits another agent_end afterwards;
@@ -4033,9 +4066,6 @@ export class SessionService implements AgentTeamBridge {
           managed.pendingRunWork = pending;
           void pending.catch(() => {});
         } else {
-          managed.busy =
-            managed.pendingRuntimeMode !== null ||
-            managed.pendingNativePiScanAltSkills !== null;
           managed.fallbackAttempts = 0;
           this.syncManifestModelFromSession(managed);
           managed.counters.turnCount++;
@@ -4097,7 +4127,7 @@ export class SessionService implements AgentTeamBridge {
   getLiveRun(sessionId: string): LiveRun | null {
     const managed = this.sessions.get(sessionId);
     if (!managed || !managed.liveRun) return null;
-    if (!managed.busy && !managed.session.isStreaming) return null;
+    if (managed.runState.isIdle()) return null;
     return managed.liveRun;
   }
 
@@ -4110,7 +4140,10 @@ export class SessionService implements AgentTeamBridge {
       sessionId: managed.manifest.sessionId,
       visibility: header?.visibility ?? this.fallbackVisibility,
       retentionDueAt: header?.retentionDueAt ?? null,
-      status: managed.busy || managed.session.isStreaming ? "running" : "idle",
+      status: managed.runState.isIdle() ? "idle" : "running",
+      pending: managed.runState.pendingChanges(),
+      thinking: managed.thinking,
+      queue: managed.runState.queue,
       currentDomain: managed.selectors.kbDomain,
       rolePresetSlug: managed.selectors.rolePresetSlug,
       soulSlug: managed.selectors.soulSlug,

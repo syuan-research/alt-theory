@@ -1,14 +1,14 @@
 import type { AssemblyManifest, DiscoveryLists, SessionMetrics } from "@/api/types";
 import { t } from "@/i18n";
 import { Button } from "@/components/ui/Button";
-import { StatusBadge, type ConnStatus } from "@/components/ui/StatusBadge";
+import { StatusBadge } from "@/components/ui/StatusBadge";
+import type { RunStateView } from "@/lib/runState";
 import { HintText, MonoText, SectionTitle } from "@/components/ui/Typography";
 import { formatCost, formatNumber } from "@/lib/format";
 import { displayKb, displaySlug } from "@/lib/manifest";
 interface RuntimePanelProps {
   sessionId: string | null;
-  connStatus: ConnStatus;
-  connLabel: string;
+  runState: RunStateView;
   manifest: AssemblyManifest | null;
   currentDomain?: string | null;
   metrics: SessionMetrics | null;
@@ -29,8 +29,7 @@ function MetricRow({ label, value }: { label: string; value: string }) {
 
 export function RuntimePanel({
   sessionId,
-  connStatus,
-  connLabel,
+  runState,
   manifest,
   currentDomain,
   metrics,
@@ -75,7 +74,7 @@ export function RuntimePanel({
         <p className="text-[0.75rem] font-semibold text-text-secondary">
           {t("Connection Status")}
         </p>
-        <StatusBadge status={connStatus} label={connLabel} />
+        <StatusBadge status={runState.phase} label={runState.label} />
       </section>
 
       <section className="space-y-1">

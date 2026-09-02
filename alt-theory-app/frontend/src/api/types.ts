@@ -94,6 +94,8 @@ export interface SessionDraftSnapshot {
   /** Full Access (v1.4.8): a draft has no runtime, so always absent/false. */
   fullAccess?: boolean;
   modelOverride?: SessionModelOverride | null;
+  /** Resolver answer for the draft's model (local mode only). */
+  thinking?: ResolvedThinking;
   studyTag?: StudyTag | null;
   workspacePrimaryDir?: string | null;
   resetComposer?: boolean;
@@ -138,10 +140,29 @@ export interface TurnRecovery {
   canRetryFromStart: boolean;
 }
 
+/** Switches accepted while a turn ran; they apply when it ends (v1.5). */
+export interface PendingChanges {
+  model?: SessionModelOverride | null;
+  mode?: AltMode;
+  fullAccess?: boolean;
+}
+
+/** The thinking resolver's answer: the level in use and where it came from. */
+export interface ResolvedThinking {
+  level: ThinkingLevel;
+  source: "user" | "model-default" | "clamped";
+  /** The user's choice; differs from `level` when clamped by the provider. */
+  chosen?: ThinkingLevel;
+}
+
 export interface SessionSnapshot {
   sessionId: string;
   branchId?: string;
   status: "idle" | "running" | "error";
+  pending?: PendingChanges;
+  thinking?: ResolvedThinking;
+  /** Pi's prompt queue for this session (steer = next API call). */
+  queue?: { steering: string[]; followUp: string[] };
   visibility?: SessionVisibility;
   /** Hosted-only expiry for a "private" conversation; null everywhere else. */
   retentionDueAt?: string | null;

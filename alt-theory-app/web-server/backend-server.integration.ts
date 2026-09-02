@@ -142,12 +142,17 @@ import {
   getRuntimeModelConfig,
   fetchProviderModels,
   fetchProviderModelsFromDraft,
-  initialThinkingLevelForModel,
+  thinkingLevelsForModel,
   listProviders,
   normalizeModelListPayload,
   setActive,
   upsertProvider,
 } from "./config-store.js";
+import { defaultThinkingLevel } from "./thinking-level.js";
+
+/** The former config-store default: the resolver's midpoint over the registry's levels. */
+const initialThinkingLevelForModel = (agentDir: string, provider: string, modelId: string) =>
+  defaultThinkingLevel(thinkingLevelsForModel(agentDir, provider, modelId) ?? []);
 
 test("initial thinking effort uses the lower positional middle of model levels", async () => {
   const agentDir = mkdtempSync(join(tmpdir(), "alt-theory-thinking-levels-"));

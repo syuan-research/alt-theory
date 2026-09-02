@@ -26,6 +26,8 @@ import {
   saveSessionAlias,
 } from "@/api/sessions";
 import type {
+  PendingChanges,
+  ResolvedThinking,
   ApprovalRequestPayload,
   AssemblyManifest,
   AuthContext,
@@ -58,6 +60,7 @@ import {
   setSessionWorkspace as setSessionWorkspaceRequest,
 } from "@/api/workspaces";
 import { useWebSocket } from "@/hooks/useWebSocket";
+import { runStateView, type RunStateView } from "@/lib/runState";
 import { useConversationEngine } from "@/hooks/useConversationEngine";
 import { usePromptQueue, type QueuedPrompt } from "@/hooks/usePromptQueue";
 import type { ConnStatus } from "@/components/ui/StatusBadge";
@@ -179,7 +182,8 @@ export interface AppContextValue {
   sessionWarnings: string[];
   isRunning: boolean;
   connStatus: ConnStatus;
-  connLabel: string;
+  /** The one run-state projection for render sites (card 1). */
+  runState: RunStateView;
   wsError: string | null;
   wsConnected: boolean;
 
@@ -220,6 +224,10 @@ export interface AppContextValue {
   fullAccess: boolean;
   setFullAccess: (enabled: boolean) => void;
   modelOverride: SessionModelOverride | null;
+  /** Switches accepted while a turn runs; the controls show them as chosen + pending. */
+  pendingChanges: PendingChanges;
+  /** The backend resolver's thinking answer; the chip renders it, computes nothing. */
+  thinking: ResolvedThinking | null;
   currentSessionModel: { provider: string; modelId: string } | null;
   setSessionModel: (override: SessionModelOverride | null) => void;
   studyTag: StudyTag | null;
@@ -364,7 +372,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     (text: string, attachments: string[]) => boolean
   >(() => false);
   const [connStatus, setConnStatus] = useState<ConnStatus>("connecting");
-  const [connLabel, setConnLabel] = useState(t("Connecting"));
   const [wsError, setWsError] = useState<string | null>(null);
   const [wsConnected, setWsConnected] = useState(false);
   const [selectors, setSelectors] = useState<SessionSelectors>(defaultSelectors);
@@ -376,6 +383,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [knownWorkspaces, setKnownWorkspaces] = useState<string[]>([]);
   const [modelOverride, setModelOverride] =
     useState<SessionModelOverride | null>(null);
+  const [pendingChanges, setPendingChanges] = useState<PendingChanges>({});
+  const [thinking, setThinking] = useState<ResolvedThinking | null>(null);
   const [currentSessionModel, setCurrentSessionModel] = useState<{
     provider: string;
     modelId: string;
@@ -443,7 +452,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setComposerNotice(null);
       setCurrentSessionModel(payload.currentModel ?? null);
       setConnStatus("idle");
-      setConnLabel("Ready");
       setToolStatus("");
       setRunHint("");
       setRunCompletedCount((count) => count + 1);
@@ -469,7 +477,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setRecovery(payload.recovery ?? null);
       setToolStatus("");
       setConnStatus(interrupted ? "idle" : "error");
-      setConnLabel(interrupted ? t("Ready") : t("Error"));
       const userStopped = payload.recovery?.interruptionCause === "user_abort";
       if (userStopped) {
         setComposerNotice(null);
@@ -715,7 +722,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       setIsRunning(true);
       setConnStatus("running");
-      setConnLabel(t("Switching..."));
       setToolStatus(label);
       return true;
     },
@@ -753,7 +759,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
               setToolStatus("");
               setIsRunning(false);
               setConnStatus("idle");
-              setConnLabel(t("Ready"));
               setSelectors(applySnapshotSelectors(message.payload));
             }
             break;
@@ -769,11 +774,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
           pendingAssetSwitchRef.current = false;
           setToolStatus("");
           setConnStatus("idle");
-          setConnLabel(t("Ready"));
           setSelectors(applySnapshotSelectors(message.payload));
           setSessionMode(message.payload.mode ?? "understand");
           setFullAccessState(message.payload.fullAccess ?? false);
           setModelOverride(message.payload.modelOverride ?? null);
+          setPendingChanges({});
+          setThinking(message.payload.thinking ?? null);
           setCurrentSessionModel(null);
           setWorkspacePrimaryDir(message.payload.workspacePrimaryDir ?? null);
           setStudyTagState(message.payload.studyTag ?? null);
@@ -785,7 +791,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setStreamParts([]);
           activeToolsMapRef.current = {};
           setConnStatus("idle");
-          setConnLabel(t("Ready"));
           setRunPhaseLabel("");
           setWsError(null);
           pendingAssetSwitchRef.current = false;
@@ -825,20 +830,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setSessionId(message.payload.sessionId);
           reconnectSessionIdRef.current = message.payload.sessionId;
           setSelectors(applySnapshotSelectors(message.payload));
-          setSessionMode(message.payload.mode ?? "understand");
-          setFullAccessState(message.payload.fullAccess ?? false);
-          setModelOverride(message.payload.modelOverride ?? null);
+          // A deferred switch renders as the chosen value (plus a pending mark).
+          setSessionMode(message.payload.pending?.mode ?? message.payload.mode ?? "understand");
+          setFullAccessState(
+            message.payload.pending?.fullAccess ?? message.payload.fullAccess ?? false,
+          );
+          setModelOverride(
+            message.payload.pending?.model !== undefined
+              ? message.payload.pending.model
+              : (message.payload.modelOverride ?? null),
+          );
+          setPendingChanges(message.payload.pending ?? {});
+          setThinking(message.payload.thinking ?? null);
           setCurrentSessionModel(message.payload.currentModel ?? null);
           setStudyTagState(message.payload.studyTag ?? null);
           setRetentionDueAt(message.payload.retentionDueAt ?? null);
           setSessionReady(true);
           setIsRunning(message.payload.status === "running");
           setConnStatus(message.payload.status === "running" ? "running" : "idle",);
-          setConnLabel(message.payload.status === "running" ? t("Running") : t("Ready"),);
           setWsError(null);
           setToolStatus("");
           setRunPhaseLabel(
-            message.payload.status === "running" ? "Processing…" : "",
+            message.payload.status === "running" ? t("Processing…") : "",
           );
           setRunHint(
             message.payload.recovery?.interruptionCause === "user_abort"
@@ -870,13 +883,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
             visibility: message.payload.visibility ?? prev.visibility,
             branchId: message.payload.branchId || prev.branchId,
           }));
-          if (message.payload.mode) setSessionMode(message.payload.mode);
+          const pending = message.payload.pending ?? {};
+          if (message.payload.mode) setSessionMode(pending.mode ?? message.payload.mode);
           if (message.payload.fullAccess !== undefined) {
-            setFullAccessState(message.payload.fullAccess);
+            setFullAccessState(pending.fullAccess ?? message.payload.fullAccess);
           }
           if (message.payload.modelOverride !== undefined) {
-            setModelOverride(message.payload.modelOverride);
+            setModelOverride(
+              pending.model !== undefined ? pending.model : message.payload.modelOverride,
+            );
           }
+          setPendingChanges(pending);
+          if (message.payload.thinking) setThinking(message.payload.thinking);
           if (message.payload.currentModel) {
             setCurrentSessionModel(message.payload.currentModel);
           }
@@ -888,12 +906,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }
           if (message.payload.status === "running") {
             setConnStatus("running");
-            setConnLabel(t("Running"));
             setIsRunning(true);
             void refreshSessions();
           } else {
             setConnStatus("idle");
-            setConnLabel(message.payload.status || t("Ready"));
             setIsRunning(false);
             setToolStatus("");
             setRunPhaseLabel("");
@@ -934,7 +950,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }
           setIsRunning(false);
           setConnStatus("idle");
-          setConnLabel("Ready");
           setToolStatus("");
           void refreshSessions();
           break;
@@ -955,7 +970,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }
           setIsRunning(false);
           setConnStatus("idle");
-          setConnLabel("Ready");
           setToolStatus("");
           setRunPhaseLabel("");
           void refreshSessions();
@@ -983,11 +997,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
             text: message.payload.error,
             warn: true,
           });
-          pendingOpenSessionIdRef.current = "";
-          pendingAssetSwitchRef.current = false;
-          setIsRunning(false);
-          setConnStatus("error");
-          setConnLabel("Error");
+          // A refusal because the turn is still running is not a run outcome:
+          // the run goes on and the UI keeps saying so (card 1 / card 2).
+          if (message.payload.code !== "session_busy") {
+            pendingOpenSessionIdRef.current = "";
+            pendingAssetSwitchRef.current = false;
+            setIsRunning(false);
+            setConnStatus("error");
+          }
           if (reconnectSessionIdRef.current) {
             reconnectSessionIdRef.current = "";
             setToolStatus("");
@@ -1017,12 +1034,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     enabled: !loading && !loginRequired,
     reconnectSessionId: sessionId,
     onMessage: handleServerMessage,
-    onStatus: (status, detail) => {
+    onStatus: (status) => {
       if (status === "open") {
         setWsConnected(true);
         const resuming = reconnectSessionIdRef.current;
         setConnStatus(resuming ? "idle" : "idle");
-        setConnLabel(detail?.label ?? "Connected");
         if (resuming) {
           setIsRunning(true);
           setToolStatus(t("Restoring conversation…"));
@@ -1034,18 +1050,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setIsRunning(false);
         setApprovals([]);
         setConnStatus("disconnected");
-        setConnLabel(detail?.label ?? "Disconnected");
         setStreamParts([]);
         activeToolsMapRef.current = {};
         setToolStatus(t("Reconnecting..."));
       } else if (status === "error") {
         setWsConnected(false);
         setConnStatus("error");
-        setConnLabel(detail?.label ?? t("Connection error"));
       } else {
         setWsConnected(false);
         setConnStatus("connecting");
-        setConnLabel(detail?.label ?? t("Connecting"));
       }
     },
   });
@@ -1065,7 +1078,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (sendMessage({ type: "new_session" })) {
       setIsRunning(true);
       setConnStatus("running");
-      setConnLabel(t("Starting..."));
       setRunPhaseLabel(t("Connecting…"));
     }
   }, [clearStagedWorkspace, sendMessage]);
@@ -1080,7 +1092,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       pendingCompactRef.current = true;
       setIsRunning(true);
       setConnStatus("running");
-      setConnLabel(t("Compacting..."));
       setToolStatus("");
       setRunPhaseLabel(t("Compacting conversation…"));
     }
@@ -1105,7 +1116,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ) {
         setIsRunning(true);
         setConnStatus("running");
-        setConnLabel(t("Opening..."));
         setToolStatus("");
         setRunPhaseLabel(t("Opening conversation…"));
       } else {
@@ -1186,7 +1196,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (sendMessage(message)) {
         setIsRunning(true);
         setConnStatus("running");
-        setConnLabel(related ? t("Creating...") : t("Forking..."));
         setToolStatus(
           purpose === "helper"
             ? t("Starting a fresh helper…")
@@ -1230,7 +1239,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       })) {
         setIsRunning(true);
         setConnStatus("running");
-        setConnLabel(t("Duplicating..."));
         setToolStatus(t("Making a copy of this conversation…"));
       }
     },
@@ -1338,7 +1346,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setRunPhaseLabel(t("Connecting…"));
       setIsRunning(true);
       setConnStatus("running");
-      setConnLabel(t("Thinking…"));
       return true;
     },
     [sendMessage],
@@ -1570,7 +1577,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ]);
       setIsRunning(true);
       setConnStatus("running");
-      setConnLabel(t("Thinking…"));
       setToolStatus("");
       setRunPhaseLabel(t("Connecting…"));
       return true;
@@ -1616,7 +1622,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       setIsRunning(true);
       setConnStatus("running");
-      setConnLabel(t("Branching..."));
       setToolStatus(t("Preparing comparison…"));
       return true;
     },
@@ -1630,7 +1635,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setRecovery(null);
     setIsRunning(true);
     setConnStatus("running");
-    setConnLabel(t("Retrying…"));
     setToolStatus("");
     setRunPhaseLabel(t("Connecting…"));
     return true;
@@ -1644,7 +1648,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setRunHint("");
     setIsRunning(true);
     setConnStatus("running");
-    setConnLabel(t("Continuing…"));
     setToolStatus("");
     setRunPhaseLabel(t("Connecting…"));
     return true;
@@ -1668,7 +1671,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setRunHint("");
       setIsRunning(true);
       setConnStatus("running");
-      setConnLabel(t("Retrying…"));
       setToolStatus("");
       setRunPhaseLabel(t("Connecting…"));
       return true;
@@ -1862,6 +1864,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     sendMessage({ type: "get_session_metrics" });
   }, [sendMessage]);
 
+  const runState = useMemo(
+    () =>
+      runStateView({
+        connStatus,
+        running: isRunning,
+        phaseLabel: runPhaseLabel,
+        toolStatus,
+        pending: pendingChanges,
+      }),
+    [connStatus, isRunning, runPhaseLabel, toolStatus, pendingChanges],
+  );
+
   const value = useMemo<AppContextValue>(
     () => ({
       auth,
@@ -1911,7 +1925,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       sessionWarnings,
       isRunning,
       connStatus,
-      connLabel,
+      runState,
       wsError,
       wsConnected,
       selectors,
@@ -1935,6 +1949,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       repointSession,
       switchMode,
       modelOverride,
+      pendingChanges,
+      thinking,
       currentSessionModel,
       setSessionModel,
       studyTag,
@@ -2024,7 +2040,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       sessionWarnings,
       isRunning,
       connStatus,
-      connLabel,
+      runState,
       wsError,
       wsConnected,
       selectors,
@@ -2048,6 +2064,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       repointSession,
       switchMode,
       modelOverride,
+      pendingChanges,
+      thinking,
       currentSessionModel,
       setSessionModel,
       studyTag,

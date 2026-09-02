@@ -82,6 +82,7 @@ import {
   type SessionServiceEvent,
   type StudyTag,
 } from "./session-service.js";
+import { resolveThinkingLevel, type ResolvedThinking } from "./thinking-level.js";
 import { listInstructionAssets } from "./instruction-assets.js";
 import { listAltTheorySkills } from "./skill-assets.js";
 import {
@@ -93,7 +94,7 @@ import {
   fetchProviderModelsFromDraftResult,
   getRuntimeModelConfig,
   getVerifiedConfigStatus,
-  initialThinkingLevelForModel,
+  thinkingLevelsForModel,
   listProviders,
   setActive,
   upsertProvider,
@@ -1856,14 +1857,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     resolveRuntimeModelConfig: localMode
       ? () => resolveLocalRuntimeModelConfig()
       : undefined,
-    resolveInitialThinkingLevel: localMode
-      ? (provider, selectedModelId) =>
-          initialThinkingLevelForModel(
-            agentConfigDir(),
-            provider,
-            selectedModelId,
-          )
-      : undefined,
+
     // Discovery of machine-local resources is a local-app capability; hosted
     // deployments never read the server's ~/.pi or ~/.agents directories.
     resolveExternalSkillPaths: localMode
@@ -2213,11 +2207,27 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         mode,
         fullAccess,
         modelOverride,
+        thinking: draftThinking(modelOverride),
         studyTag,
         workspacePrimaryDir,
         resetComposer,
       },
     });
+  }
+
+  /** The chip computes nothing: the draft's thinking level is resolved here too. */
+  function draftThinking(
+    modelOverride: SessionModelOverride | null,
+  ): ResolvedThinking | undefined {
+    if (!localMode) return undefined;
+    const runtime = modelOverride
+      ? { modelProvider: modelOverride.provider, modelId: modelOverride.modelId }
+      : resolveLocalRuntimeModelConfig();
+    if (!runtime.modelProvider || !runtime.modelId) return undefined;
+    return resolveThinkingLevel(
+      thinkingLevelsForModel(agentConfigDir(), runtime.modelProvider, runtime.modelId) ?? [],
+      modelOverride?.thinkingLevel,
+    );
   }
 
   wss.on("connection", async (ws: WebSocket, req) => {
