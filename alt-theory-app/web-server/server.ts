@@ -2127,6 +2127,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       case "run_completed":
         send({ type: "run_completed", payload: event.payload });
         break;
+      case "session_updated":
+        send({ type: "session_updated", payload: event.payload });
+        break;
       case "run_failed":
         send({ type: "run_failed", payload: event.payload });
         break;

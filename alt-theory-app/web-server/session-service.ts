@@ -277,6 +277,7 @@ export type SessionServiceEvent =
   | { type: "tool_updated"; payload: { callId: string } }
   | { type: "tool_finished"; payload: { callId: string; success: boolean } }
   | { type: "run_completed"; payload: SessionSnapshot }
+  | { type: "session_updated"; payload: SessionSnapshot }
   | {
       type: "run_failed";
       payload: { error: string; canRetry?: boolean; recovery?: TurnRecovery | null };

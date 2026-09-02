@@ -1,0 +1,237 @@
+[
+  {
+    "file": "alt-theory-app/core/model-fallback.ts",
+    "code": "TS2322",
+    "message": "Type 'unknown' is not assignable to type 'number'."
+  },
+  {
+    "file": "alt-theory-app/core/model-fallback.ts",
+    "code": "TS2365",
+    "message": "Operator '<' cannot be applied to types 'unknown' and 'number'."
+  },
+  {
+    "file": "alt-theory-app/web-server/auth-session.ts",
+    "code": "TS2339",
+    "message": "Property 'reason' does not exist on type 'AccountAuthResult'."
+  },
+  {
+    "file": "alt-theory-app/web-server/backend-server.integration.ts",
+    "code": "TS2339",
+    "message": "Property 'content' does not exist on type 'AgentMessage'."
+  },
+  {
+    "file": "alt-theory-app/web-server/backend-server.integration.ts",
+    "code": "TS2345",
+    "message": "Argument of type '\"session-complete\"' is not assignable to parameter of type '`${string}-${string}-${string}-${string}-${string}`'."
+  },
+  {
+    "file": "alt-theory-app/web-server/backend-server.integration.ts",
+    "code": "TS2345",
+    "message": "Argument of type '\"session-open-existing\"' is not assignable to parameter of type '`${string}-${string}-${string}-${string}-${string}`'."
+  },
+  {
+    "file": "alt-theory-app/web-server/backend-server.integration.ts",
+    "code": "TS2345",
+    "message": "Argument of type '\"session-v4-empty\"' is not assignable to parameter of type '`${string}-${string}-${string}-${string}-${string}`'."
+  },
+  {
+    "file": "alt-theory-app/web-server/backend-server.integration.ts",
+    "code": "TS2345",
+    "message": "Argument of type '\"session-ws-open\"' is not assignable to parameter of type '`${string}-${string}-${string}-${string}-${string}`'."
+  },
+  {
+    "file": "alt-theory-app/web-server/backend-server.integration.ts",
+    "code": "TS2353",
+    "message": "Object literal may only specify known properties, and 'altMode' does not exist in type 'SessionServiceConfig'."
+  },
+  {
+    "file": "alt-theory-app/web-server/claude-code-session-import.ts",
+    "code": "TS2339",
+    "message": "Property 'isSidechain' does not exist on type '{ sourceIndex: number; }'."
+  },
+  {
+    "file": "alt-theory-app/web-server/claude-code-session-import.ts",
+    "code": "TS2339",
+    "message": "Property 'leafUuid' does not exist on type '{ sourceIndex: number; }'."
+  },
+  {
+    "file": "alt-theory-app/web-server/claude-code-session-import.ts",
+    "code": "TS2339",
+    "message": "Property 'leafUuid' does not exist on type '{ sourceIndex: number; }'."
+  },
+  {
+    "file": "alt-theory-app/web-server/claude-code-session-import.ts",
+    "code": "TS2339",
+    "message": "Property 'leafUuid' does not exist on type '{ sourceIndex: number; }'."
+  },
+  {
+    "file": "alt-theory-app/web-server/claude-code-session-import.ts",
+    "code": "TS2339",
+    "message": "Property 'leafUuid' does not exist on type '{ sourceIndex: number; }'."
+  },
+  {
+    "file": "alt-theory-app/web-server/claude-code-session-import.ts",
+    "code": "TS2339",
+    "message": "Property 'leafUuid' does not exist on type '{ sourceIndex: number; }'."
+  },
+  {
+    "file": "alt-theory-app/web-server/claude-code-session-import.ts",
+    "code": "TS2339",
+    "message": "Property 'leafUuid' does not exist on type '{ sourceIndex: number; }'."
+  },
+  {
+    "file": "alt-theory-app/web-server/claude-code-session-import.ts",
+    "code": "TS2339",
+    "message": "Property 'subtype' does not exist on type '{ sourceIndex: number; }'."
+  },
+  {
+    "file": "alt-theory-app/web-server/claude-code-session-import.ts",
+    "code": "TS2339",
+    "message": "Property 'type' does not exist on type '{ sourceIndex: number; }'."
+  },
+  {
+    "file": "alt-theory-app/web-server/claude-code-session-import.ts",
+    "code": "TS2339",
+    "message": "Property 'type' does not exist on type '{ sourceIndex: number; }'."
+  },
+  {
+    "file": "alt-theory-app/web-server/claude-code-session-import.ts",
+    "code": "TS2339",
+    "message": "Property 'type' does not exist on type '{ sourceIndex: number; }'."
+  },
+  {
+    "file": "alt-theory-app/web-server/claude-code-session-import.ts",
+    "code": "TS2339",
+    "message": "Property 'uuid' does not exist on type '{ sourceIndex: number; }'."
+  },
+  {
+    "file": "alt-theory-app/web-server/claude-code-session-import.ts",
+    "code": "TS2339",
+    "message": "Property 'uuid' does not exist on type '{ sourceIndex: number; }'."
+  },
+  {
+    "file": "alt-theory-app/web-server/claude-code-session-import.ts",
+    "code": "TS2339",
+    "message": "Property 'uuid' does not exist on type '{ sourceIndex: number; }'."
+  },
+  {
+    "file": "alt-theory-app/web-server/claude-code-session-import.ts",
+    "code": "TS2339",
+    "message": "Property 'uuid' does not exist on type '{ sourceIndex: number; }'."
+  },
+  {
+    "file": "alt-theory-app/web-server/claude-code-session-import.ts",
+    "code": "TS2339",
+    "message": "Property 'uuid' does not exist on type '{ sourceIndex: number; }'."
+  },
+  {
+    "file": "alt-theory-app/web-server/claude-code-session-import.ts",
+    "code": "TS2339",
+    "message": "Property 'uuid' does not exist on type '{ sourceIndex: number; }'."
+  },
+  {
+    "file": "alt-theory-app/web-server/claude-code-session-import.ts",
+    "code": "TS2339",
+    "message": "Property 'uuid' does not exist on type '{ sourceIndex: number; }'."
+  },
+  {
+    "file": "alt-theory-app/web-server/claude-code-session-import.ts",
+    "code": "TS2339",
+    "message": "Property 'uuid' does not exist on type '{ sourceIndex: number; }'."
+  },
+  {
+    "file": "alt-theory-app/web-server/codex-session-import.ts",
+    "code": "TS2550",
+    "message": "Property 'findLastIndex' does not exist on type 'Row[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2023' or later."
+  },
+  {
+    "file": "alt-theory-app/web-server/codex-session-import.ts",
+    "code": "TS2550",
+    "message": "Property 'findLastIndex' does not exist on type 'Row[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2023' or later."
+  },
+  {
+    "file": "alt-theory-app/web-server/opencode-session-import.ts",
+    "code": "TS2345",
+    "message": "Argument of type '(this: undefined, part: StoredRow) => { type: string; text: string; }[] | { type: string; thinking: string; }[] | { type: string; id: string; name: string; arguments: any; }[]' is not assignable to parameter of type '(this: undefined, value: StoredRow, index: number, array: StoredRow[]) => { type: string; text: string; } | readonly { type: string; text: string; }[]'."
+  },
+  {
+    "file": "alt-theory-app/web-server/opencode-session-import.ts",
+    "code": "TS2550",
+    "message": "Property 'findLastIndex' does not exist on type 'StoredRow[]'. Do you need to change your target library? Try changing the 'lib' compiler option to 'es2023' or later."
+  },
+  {
+    "file": "alt-theory-app/web-server/server.ts",
+    "code": "TS2339",
+    "message": "Property 'error' does not exist on type 'LoginResult'."
+  },
+  {
+    "file": "alt-theory-app/web-server/server.ts",
+    "code": "TS2339",
+    "message": "Property 'sessionRoot' does not exist on type '{ status: \"ok\"; sessionRoot: string; } | { status: \"missing\" | \"invalid\"; }'."
+  },
+  {
+    "file": "alt-theory-app/web-server/server.ts",
+    "code": "TS2339",
+    "message": "Property 'status' does not exist on type 'LoginResult'."
+  },
+  {
+    "file": "alt-theory-app/web-server/server.ts",
+    "code": "TS2345",
+    "message": "Argument of type 'string | string[]' is not assignable to parameter of type 'string'."
+  },
+  {
+    "file": "alt-theory-app/web-server/server.ts",
+    "code": "TS2345",
+    "message": "Argument of type 'string | string[]' is not assignable to parameter of type 'string'."
+  },
+  {
+    "file": "alt-theory-app/web-server/session-import.ts",
+    "code": "TS2345",
+    "message": "Argument of type 'string' is not assignable to parameter of type '`${string}-${string}-${string}-${string}-${string}`'."
+  },
+  {
+    "file": "alt-theory-app/web-server/session-service.ts",
+    "code": "TS2322",
+    "message": "Type '\"model_override_changed\"' is not assignable to type 'SessionEventType'."
+  },
+  {
+    "file": "alt-theory-app/web-server/session-service.ts",
+    "code": "TS2322",
+    "message": "Type '\"study_tag_changed\"' is not assignable to type 'SessionEventType'."
+  },
+  {
+    "file": "alt-theory-app/web-server/session-service.ts",
+    "code": "TS2322",
+    "message": "Type 'SessionModelOverride' is not assignable to type 'string | number | boolean'."
+  },
+  {
+    "file": "alt-theory-app/web-server/session-service.ts",
+    "code": "TS2322",
+    "message": "Type 'StudyTag' is not assignable to type 'string | number | boolean'."
+  },
+  {
+    "file": "alt-theory-app/web-server/session-service.ts",
+    "code": "TS2345",
+    "message": "Argument of type 'string' is not assignable to parameter of type '`${string}-${string}-${string}-${string}-${string}`'."
+  },
+  {
+    "file": "alt-theory-app/web-server/session-service.ts",
+    "code": "TS2345",
+    "message": "Argument of type 'string' is not assignable to parameter of type '`${string}-${string}-${string}-${string}-${string}`'."
+  },
+  {
+    "file": "alt-theory-app/web-server/session-service.ts",
+    "code": "TS2352",
+    "message": "Conversion of type 'SessionHeader' to type '{ promptCacheFamilyId: string; }' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first."
+  },
+  {
+    "file": "alt-theory-app/web-server/session-service.ts",
+    "code": "TS2353",
+    "message": "Object literal may only specify known properties, and 'detail' does not exist in type 'SessionSnapshot | SessionMetrics | { text: string; } | { text: string; } | { phase: \"error\" | \"thinking\" | \"idle\" | \"tool\" | \"connecting\" | \"processing\" | \"compacting\" | \"retrying\" | \"awaiting-user\"; retry?: { ...; }; } | ... 8 more ... | { ...; }'."
+  },
+  {
+    "file": "alt-theory-app/web-server/session-service.ts",
+    "code": "TS2540",
+    "message": "Cannot assign to 'errorMessage' because it is a read-only property."
+  }
+]

@@ -1,18 +1,24 @@
 /**
  * Compile alt-theory-app TS -> ESM JS for the bundled Electron app.
  *
- * Why a wrapper instead of `tsc -p tsconfig.bundle.json` directly: the project
- * has long-standing pre-existing type errors (it runs under tsx, which does not
- * type-check). tsc emits valid JS regardless (`noEmitOnError: false` in the
- * tsconfig) but still exits non-zero, which would break `npm run build:electron`
- * at the &&. This wrapper runs tsc, then verifies the critical entry JS was
- * actually produced, and exits 0 so the build chain continues.
+ * The project still carries pre-existing type errors (recorded in
+ * scripts/tsc-baseline.json; the backend runs under tsx, which does not
+ * type-check). tsc emits valid JS regardless (`noEmitOnError: false` in
+ * the tsconfig), so this wrapper:
  *
- * If the entry JS is NOT produced, this fails loudly (exit 1).
+ * 1. runs tsc and fails on any type error NOT in the baseline
+ *    (same ratchet as `npm run test:backend`; see check-tsc-baseline.cjs);
+ * 2. verifies the critical entry JS was actually produced and refreshed;
+ * 3. exits 0 while every diagnostic is baseline-covered, so
+ *    `npm run build:electron` continues.
  */
 const { spawnSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
+const {
+  parseTscOutput,
+  diffAgainstBaseline,
+} = require("./tsc-baseline-lib.cjs");
 
 const root = path.resolve(__dirname, "..");
 const entryJs = path.join(
@@ -31,12 +37,47 @@ console.log("[compile-bundle] running tsc -p tsconfig.bundle.json ...");
 const tscBin = path.join(root, "node_modules", "typescript", "bin", "tsc");
 const result = spawnSync(
   process.execPath,
-  [tscBin, "-p", "tsconfig.bundle.json"],
-  { cwd: root, stdio: "inherit" }
+  [tscBin, "-p", "tsconfig.bundle.json", "--pretty", "false"],
+  { cwd: root, encoding: "utf-8", maxBuffer: 32 * 1024 * 1024 }
 );
 
 if (result.error) {
   console.error(`[compile-bundle] FAILED: ${result.error.message}`);
+  process.exit(1);
+}
+
+let baseline = [];
+const baselinePath = path.join(__dirname, "tsc-baseline.json");
+if (fs.existsSync(baselinePath)) {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(baselinePath, "utf-8"));
+    if (Array.isArray(parsed)) baseline = parsed;
+  } catch {
+    // handled by the empty-baseline failure below
+  }
+}
+if (!baseline.length) {
+  console.error(
+    `[compile-bundle] FAILED: ${path.relative(root, baselinePath)} is missing or empty. ` +
+      "Run `node scripts/check-tsc-baseline.cjs --update` to create it, then review the diff."
+  );
+  process.exit(1);
+}
+
+const diagnostics = parseTscOutput(result.stdout + result.stderr);
+const { additions, removals } = diffAgainstBaseline(diagnostics, baseline);
+
+if (additions.length) {
+  console.error(
+    `[compile-bundle] FAILED: ${additions.length} new type error(s) not in the baseline:`
+  );
+  for (const entry of additions) {
+    console.error(`  ${entry.file} ${entry.code}: ${entry.message}`);
+  }
+  console.error(
+    "Fix them, or (only if the growth is approved) run " +
+      "`node scripts/check-tsc-baseline.cjs --update`."
+  );
   process.exit(1);
 }
 
@@ -58,6 +99,9 @@ console.log(
   `[compile-bundle] OK: server.js produced (${Math.round(
     stat.size / 1024
   )} KB, ${stat.mtime.toISOString()}). ` +
-    "Pre-existing type diagnostics are ignored (project runs under tsx)."
+    `${diagnostics.length} baseline-covered type diagnostic(s) tolerated` +
+    (removals.length
+      ? `; ${removals.length} fixed since baseline (shrink via --update).`
+      : ".")
 );
 process.exit(0);

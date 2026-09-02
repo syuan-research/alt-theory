@@ -19,9 +19,9 @@
     "smoke:resume": "tsx alt-theory-app/core/smoke-resume.ts",
     "smoke:backend": "tsx alt-theory-app/web-server/smoke-backend.ts",
     "test": "npm run test:backend && npm run test:frontend",
-    "test:backend": "tsx --test alt-theory-app/core/**/*.test.ts alt-theory-app/web-server/**/*.test.ts && tsx --test alt-theory-app/web-server/backend-server.integration.ts",
+    "test:backend": "node scripts/check-tsc-baseline.cjs && tsx --test alt-theory-app/core/**/*.test.ts alt-theory-app/web-server/**/*.test.ts && tsx --test alt-theory-app/web-server/backend-server.integration.ts",
     "test:models-metadata": "tsx --test alt-theory-app/web-server/models-dev-metadata.slow.ts",
-    "test:frontend": "tsx --tsconfig alt-theory-app/frontend/tsconfig.app.json --test alt-theory-app/frontend/src/**/*.test.ts",
+    "test:frontend": "tsx --tsconfig alt-theory-app/frontend/tsconfig.app.json --test alt-theory-app/frontend/src/**/*.test.ts alt-theory-app/frontend/src/**/*.test.tsx",
     "dev:electron": "electron electron/main.cjs",
     "compile:bundle": "node scripts/compile-bundle.cjs",
     "build:electron": "npm run build:frontend-v6 && npm run compile:bundle && electron-builder build --dir"

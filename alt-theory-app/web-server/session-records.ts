@@ -111,8 +111,6 @@ export interface V4SessionHeader extends RecordEnvelope {
   retentionDueAt?: string | null;
   /** Root Helper launch. Child Helpers use forkedFrom.purpose instead. */
   helper?: true;
-  /** Root Helper launch. Child Helpers use forkedFrom.purpose instead. */
-  helper?: true;
   /** Per-session Alt Theory behavior mode. */
   mode?: "understand" | "work";
   /** Work/Native workspace (spec §5.1); absent = default session workspace only. */
@@ -163,7 +161,6 @@ export function writeFoundationRecords(args: {
   lastActivityAt?: string;
   retentionDueAt?: string | null;
   helper?: boolean;
-  helper?: boolean;
   mode?: "understand" | "work";
   workspace?: {
     primaryDir: string;
@@ -195,7 +192,6 @@ export function writeFoundationRecords(args: {
       : {}),
     lastActivityAt: args.lastActivityAt ?? createdAt,
     retentionDueAt: args.retentionDueAt ?? null,
-    ...(args.helper ? { helper: true } : {}),
     ...(args.helper ? { helper: true } : {}),
     ...(args.mode ? { mode: args.mode } : {}),
     ...(args.workspace ? { workspace: { ...args.workspace } } : {}),
