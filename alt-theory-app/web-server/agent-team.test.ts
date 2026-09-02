@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, writeFileSync } from "fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join, resolve } from "path";
 import test from "node:test";
@@ -947,4 +947,33 @@ test("a user stop tells the lead the user stopped the child, and the status line
   } finally {
     await service.disposeAll();
   }
+});
+
+test("marking delivered is atomic: a failed rewrite leaves the inbox intact", () => {
+  const recordsDir = mkdtempSync(join(tmpdir(), "alt-theory-mail-atomic-"));
+  appendAgentMail(recordsDir, {
+    at: new Date().toISOString(),
+    from: "parent",
+    to: "child",
+    kind: "message",
+    body: "wake up",
+    delivered: false,
+  });
+  const before = readFileSync(join(recordsDir, "agent-mail.jsonl"), "utf-8");
+  // Simulate a crash between the temp write and the rename: the rename
+  // cannot land because the target is read-only.
+  chmodSync(join(recordsDir, "agent-mail.jsonl"), 0o444);
+  try {
+    assert.throws(() => markAgentMailDelivered(recordsDir));
+  } finally {
+    chmodSync(join(recordsDir, "agent-mail.jsonl"), 0o666);
+  }
+  assert.equal(readFileSync(join(recordsDir, "agent-mail.jsonl"), "utf-8"), before);
+  assert.deepEqual(
+    readdirSync(recordsDir).filter((entry) => entry.endsWith(".tmp")),
+    [],
+  );
+  // With the obstacle gone, the rewrite lands and marks everything delivered.
+  markAgentMailDelivered(recordsDir);
+  assert.deepEqual(undeliveredAgentMail(recordsDir), []);
 });

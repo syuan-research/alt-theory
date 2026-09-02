@@ -11,8 +11,9 @@
  * read-modify-write on delivery is safe without locking.
  */
 
-import { existsSync, readFileSync, writeFileSync } from "fs";
-import { join } from "path";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "fs";
+import { randomUUID } from "crypto";
+import { dirname, join } from "path";
 import type { InterruptionCause } from "./run-records.js";
 
 export interface AgentMailEnvelope {
@@ -71,13 +72,24 @@ export function undeliveredAgentMail(recordsDir: string): AgentMailEnvelope[] {
 export function markAgentMailDelivered(recordsDir: string): void {
   const all = readAgentMail(recordsDir);
   if (!all.some((envelope) => !envelope.delivered)) return;
-  writeFileSync(
-    mailPath(recordsDir),
-    `${all
-      .map((envelope) => JSON.stringify({ ...envelope, delivered: true }))
-      .join("\n")}\n`,
-    "utf-8",
-  );
+  // Temp + rename (the writeJsonAtomic pattern in core/data-dir.ts): a crash
+  // mid-rewrite must leave the previous inbox intact, not a truncated file —
+  // the inbox is the source of truth for undelivered wakes.
+  const path = mailPath(recordsDir);
+  const tempPath = `${path}.${randomUUID()}.tmp`;
+  mkdirSync(dirname(path), { recursive: true });
+  try {
+    writeFileSync(
+      tempPath,
+      `${all
+        .map((envelope) => JSON.stringify({ ...envelope, delivered: true }))
+        .join("\n")}\n`,
+      "utf-8",
+    );
+    renameSync(tempPath, path);
+  } finally {
+    rmSync(tempPath, { force: true });
+  }
 }
 
 /**
