@@ -44,9 +44,6 @@ export function formatProviderModel(session: SessionSummary): string {
   return provider || model || "";
 }
 
-export function isInterruptedError(error: string): boolean {
-  return /aborted|abort|interrupted/i.test(error || "");
-}
 
 export function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";

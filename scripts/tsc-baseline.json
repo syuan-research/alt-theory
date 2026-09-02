@@ -226,11 +226,6 @@
   },
   {
     "file": "alt-theory-app/web-server/session-service.ts",
-    "code": "TS2353",
-    "message": "Object literal may only specify known properties, and 'detail' does not exist in type 'SessionSnapshot | SessionMetrics | { text: string; } | { text: string; } | { phase: \"error\" | \"thinking\" | \"idle\" | \"tool\" | \"connecting\" | \"processing\" | \"compacting\" | \"retrying\" | \"awaiting-user\"; retry?: { ...; }; } | ... 8 more ... | { ...; }'."
-  },
-  {
-    "file": "alt-theory-app/web-server/session-service.ts",
     "code": "TS2540",
     "message": "Cannot assign to 'errorMessage' because it is a read-only property."
   }

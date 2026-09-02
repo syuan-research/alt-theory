@@ -68,7 +68,7 @@ import {
   stripSkillWrapper,
 } from "./session-store.js";
 import { readAppSettings } from "./app-settings.js";
-import { extractToolDetail, extractToolPath } from "./tool-detail.js";
+import { extractToolDetail, extractToolPath, type ToolDetail } from "./tool-detail.js";
 import {
   readV4SessionHeader,
   withholdsFromResearch,
@@ -111,12 +111,14 @@ import {
   resolveModelFallbackStatePath,
 } from "../core/model-fallback.js";
 import {
+  AGENT_MAIL_TAG,
   appendAgentMail,
   formatEnvelopeForContext,
   markAgentMailDelivered,
   undeliveredAgentMail,
   type AgentMailEnvelope,
 } from "./agent-mail.js";
+import { describeChildOutcome, type ChildOutcome } from "./child-outcome.js";
 import {
   clampSubagentMode,
   createAgentTeamTools,
@@ -272,7 +274,12 @@ export type SessionServiceEvent =
     }
   | {
       type: "tool_started";
-      payload: { toolName: string; callId: string; path?: string | null };
+      payload: {
+        toolName: string;
+        callId: string;
+        path?: string | null;
+        detail?: ToolDetail;
+      };
     }
   | { type: "tool_updated"; payload: { callId: string } }
   | { type: "tool_finished"; payload: { callId: string; success: boolean } }
@@ -283,6 +290,11 @@ export type SessionServiceEvent =
       payload: { failure: Failure; canRetry?: boolean; recovery?: TurnRecovery | null };
     }
   | { type: "user_steered"; payload: { text: string } }
+  /** Pi's prompt queue changed (card 11); `restored` = texts Stop handed back. */
+  | {
+      type: "queue_updated";
+      payload: { steering: string[]; followUp: string[]; restored?: string[] };
+    }
   | { type: "session_transcript"; payload: { messages: TranscriptMessage[] } }
   | { type: "session_metrics"; payload: SessionMetrics }
   | {
@@ -363,6 +375,11 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  */
 function isTypedAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError";
+}
+
+/** Agent-team mail rides Pi's queue too; only the user's own texts are shown as queued. */
+function isUserQueueText(text: string): boolean {
+  return !text.startsWith(`<${AGENT_MAIL_TAG}`);
 }
 
 export class SessionService implements AgentTeamBridge {
@@ -1977,13 +1994,16 @@ export class SessionService implements AgentTeamBridge {
           },
         });
         if (options.notifyParent && managed.subagentParentId) {
-          this.deliverSubagentOutcome(
-            managed,
-            interrupted ? "interrupted" : "failed",
-            interrupted
-              ? "The subagent's turn was stopped. Its completed work is kept; it can continue from the break point."
-              : `The subagent's turn failed: ${finalError ?? String(promptError ?? "unknown error")}`,
+          const outcome = describeChildOutcome(
+            {
+              status: interrupted ? "interrupted" : "failed",
+              interruptionCause: interrupted
+                ? (managed.pendingInterruptionCause ?? "unknown")
+                : null,
+            },
+            { error: finalError ?? String(promptError ?? "unknown error") },
           );
+          if (outcome) this.deliverSubagentOutcome(managed, outcome);
         }
         throw ( promptError ?? pendingError ?? new Error(finalError ?? "Run failed")
         );
@@ -2013,11 +2033,8 @@ export class SessionService implements AgentTeamBridge {
           )
           .at(-1) as { message?: { content?: unknown } } | undefined;
         const answer = contentToText(lastAssistant?.message?.content).trim();
-        this.deliverSubagentOutcome(
-          managed,
-          "completed",
-          answer || "(the subagent finished without a text answer)",
-        );
+        const outcome = describeChildOutcome({ status: "completed" }, { answer });
+        if (outcome) this.deliverSubagentOutcome(managed, outcome);
       }
 
       // Auto-name the conversation once, after its first real turn (v1.2.1).
@@ -2054,19 +2071,27 @@ export class SessionService implements AgentTeamBridge {
     }
   }
 
+  isRunning(sessionId: string): boolean {
+    return !this.requireSession(sessionId).runState.isIdle();
+  }
+
   /**
-   * Deliver user text into a RUNNING session as a Pi steering message (the
-   * Pi TUI's type-while-running behavior). Returns false when the session is
-   * idle — the caller should run a normal prompt instead.
+   * Pi owns the queue (card 11): a message sent while a turn runs joins Pi's
+   * steering queue (delivered before the next LLM call — the product rule
+   * "queued = next API call") or its follow-up queue. The bubble is shown
+   * when Pi hands the text to the model (queue_update → user_steered).
    */
-  steerRunningSession(sessionId: string, text: string): boolean {
+  async queuePrompt(
+    sessionId: string,
+    text: string,
+    attachments: string[] | undefined,
+    deliverAs: "steer" | "followUp",
+  ): Promise<void> {
     const managed = this.requireSession(sessionId);
-    if (managed.runState.isIdle()) return false;
-    void managed.session.steer(text).catch(() => {});
-    // The steered bubble is server-broadcast (and live-run buffered), so
-    // every attached pane — sender and late joiners alike — sees it once.
-    this.emit(managed, { type: "user_steered", payload: { text } });
-    return true;
+    const images = imageAttachmentsFor(attachments, managed.session.model);
+    const imageArgs = images.length ? images : undefined;
+    if (deliverAs === "followUp") await managed.session.followUp(text, imageArgs);
+    else await managed.session.steer(text, imageArgs);
   }
 
   async abort(
@@ -2077,6 +2102,16 @@ export class SessionService implements AgentTeamBridge {
     const managed = this.requireSession(sessionId);
     managed.pendingInterruptionCause = interruptionCause;
     managed.runState.stopping();
+    // Unsent queued texts go back to the editor, not to the model.
+    const cleared = managed.session.clearQueue();
+    const restored = [...cleared.steering, ...cleared.followUp].filter(isUserQueueText);
+    managed.runState.queue = { steering: [], followUp: [] };
+    if (restored.length > 0) {
+      this.emit(managed, {
+        type: "queue_updated",
+        payload: { steering: [], followUp: [], restored },
+      });
+    }
     managed.session.abortCompaction();
     await managed.session.abort();
     await this.settle(managed);
@@ -2916,7 +2951,7 @@ export class SessionService implements AgentTeamBridge {
     if (!child || child.runState.isIdle()) {
       return "The subagent is not running; nothing to interrupt.";
     }
-    await this.abort(childId, "interrupt_agent");
+    await this.abort(childId, "interrupt_agent", "lead_abort");
     return "Interrupted. The subagent's completed work is kept; message it with send_to_agent to continue.";
   }
 
@@ -3027,9 +3062,7 @@ export class SessionService implements AgentTeamBridge {
       const latest = dirs
         ? latestRunSnapshots(dirs.recordsDir).at(-1)
         : undefined;
-      if (latest?.status === "failed") status = "failed";
-      else if (latest?.status === "aborted") status = "interrupted";
-      else if (latest?.status === "completed") status = "finished";
+      status = (latest && describeChildOutcome(latest)?.statusWord) ?? "idle";
     }
     return `${alias} (${sessionId}): ${status}`;
   }
@@ -3067,13 +3100,13 @@ export class SessionService implements AgentTeamBridge {
       } catch (error) {
         const child = this.sessions.get(childId);
         if (notifyParent && child) {
-          this.deliverSubagentOutcome(
-            child,
-            "failed",
-            `The subagent's turn could not start: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+          const outcome = describeChildOutcome(
+            { status: "failed" },
+            {
+              error: `could not start: ${error instanceof Error ? error.message : String(error)}`,
+            },
           );
+          if (outcome) this.deliverSubagentOutcome(child, outcome);
         }
         return;
       }
@@ -3105,8 +3138,7 @@ export class SessionService implements AgentTeamBridge {
 
   private deliverSubagentOutcome(
     child: ManagedSession,
-    event: "completed" | "failed" | "interrupted",
-    body: string,
+    outcome: ChildOutcome,
   ): void {
     if (!child.subagentParentId) return;
     this.deliverEnvelope(child.subagentParentId, {
@@ -3114,8 +3146,9 @@ export class SessionService implements AgentTeamBridge {
       from: child.manifest.sessionId,
       to: child.subagentParentId,
       kind: "lifecycle",
-      event,
-      body,
+      event: outcome.event,
+      cause: outcome.cause,
+      body: outcome.body,
     });
   }
 
@@ -3345,6 +3378,9 @@ export class SessionService implements AgentTeamBridge {
         ...fallback,
       });
     }
+    const staleRun = latestRunSnapshots(result.manifest.recordsDir)
+      .filter((run) => run.branchId === "main")
+      .at(-1);
     const reconciledRuns = reconcileInterruptedRunOnOpen(
       result.session.sessionManager,
       result.manifest.recordsDir,
@@ -3432,6 +3468,16 @@ export class SessionService implements AgentTeamBridge {
         warnings: managed.resumeWarnings,
         branchId: managed.branchId,
       });
+    }
+    // A child that died with the app tells its lead so on reopen (card 8);
+    // the stale run is reconciled once, so this mail is sent once.
+    const reconciled =
+      staleRun?.status === "accepted"
+        ? reconciledRuns.find((run) => run.runId === staleRun.runId)
+        : undefined;
+    if (reconciled && managed.subagentParentId) {
+      const outcome = describeChildOutcome(reconciled);
+      if (outcome) this.deliverSubagentOutcome(managed, outcome);
     }
     return managed;
   }
@@ -4040,6 +4086,25 @@ export class SessionService implements AgentTeamBridge {
           this.publishCompactionBoundary(managed);
         }
         this.emitRunPhase(managed, event.willRetry ? "processing" : "idle");
+        break;
+      }
+      case "queue_update": {
+        const previous = managed.runState.queue;
+        const next = {
+          steering: event.steering.filter(isUserQueueText),
+          followUp: event.followUp.filter(isUserQueueText),
+        };
+        managed.runState.queue = next;
+        // abort() clears the queue itself and reports the restored texts.
+        if (managed.runState.state() === "stopping") break;
+        // A text that left the queue was just handed to the model: its bubble
+        // appears now, server-broadcast so every pane sees it once.
+        for (const text of [...previous.steering, ...previous.followUp]) {
+          if (!next.steering.includes(text) && !next.followUp.includes(text)) {
+            this.emit(managed, { type: "user_steered", payload: { text } });
+          }
+        }
+        this.emit(managed, { type: "queue_updated", payload: next });
         break;
       }
       case "thinking_level_changed":

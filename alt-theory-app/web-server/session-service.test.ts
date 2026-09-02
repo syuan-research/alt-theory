@@ -4476,3 +4476,77 @@ test("thinking resolver: a chosen level is kept or reported clamped; no choice â
     await service.disposeAll();
   }
 });
+
+// --- v1.5 round 1: Pi-owned prompt queue (M5) ---
+
+test("a message during a run joins Pi's steer queue; delivery shows the bubble; Stop hands unsent text back", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const created = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const events: SessionServiceEvent[] = [];
+  const detach = service.attach(created.sessionId, (event) => events.push(event));
+  const managed = (service as any).sessions.get(created.sessionId);
+  const release = holdPrompt(managed);
+  const steered: string[] = [];
+  managed.session.steer = async (text: string) => {
+    steered.push(text);
+  };
+  const internal = service as any;
+  try {
+    const run = service.runPrompt(created.sessionId, "long turn");
+    assert.equal(service.isRunning(created.sessionId), true);
+    await service.queuePrompt(created.sessionId, "and this", undefined, "steer");
+    assert.deepEqual(steered, ["and this"]);
+
+    // Pi reports its queue; agent-team mail riding the same queue is not shown.
+    internal.handleAgentEvent(managed, {
+      type: "queue_update",
+      steering: ["and this", "<agent-team-mail from=\"x\">\nhi\n</agent-team-mail>"],
+      followUp: [],
+    });
+    assert.equal(service.getSnapshot(created.sessionId).status, "running");
+    assert.deepEqual(service.getSnapshot(created.sessionId).queue, {
+      steering: ["and this"],
+      followUp: [],
+    });
+    assert.equal(managed.runState.state(), "queued");
+    assert.deepEqual(events.at(-1), {
+      type: "queue_updated",
+      payload: { steering: ["and this"], followUp: [] },
+    });
+
+    // Consumed by Pi â†’ the bubble appears now, once, server-broadcast.
+    internal.handleAgentEvent(managed, { type: "queue_update", steering: [], followUp: [] });
+    assert.deepEqual(
+      events.filter((event) => event.type === "user_steered").map((event) => event.payload),
+      [{ text: "and this" }],
+    );
+
+    // Queue again, then Stop: Pi's queue is cleared and the text restored.
+    internal.handleAgentEvent(managed, { type: "queue_update", steering: ["unsent"], followUp: [] });
+    managed.session.clearQueue = () => {
+      internal.handleAgentEvent(managed, { type: "queue_update", steering: [], followUp: [] });
+      return { steering: ["unsent"], followUp: [] };
+    };
+    managed.session.abort = async () => release();
+    await service.abort(created.sessionId, "user_stop", "user_abort");
+    await run.completion.catch(() => {});
+    const restored = events.find(
+      (event) => event.type === "queue_updated" && event.payload.restored,
+    );
+    assert.deepEqual(restored?.payload, { steering: [], followUp: [], restored: ["unsent"] });
+    assert.equal(
+      events.filter((event) => event.type === "user_steered").length,
+      1,
+      "a cleared text is never shown as delivered",
+    );
+    assert.deepEqual(service.getSnapshot(created.sessionId).queue, { steering: [], followUp: [] });
+  } finally {
+    detach();
+    await service.disposeAll();
+  }
+});

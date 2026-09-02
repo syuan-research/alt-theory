@@ -2063,6 +2063,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       case "user_steered":
         send({ type: "user_steered", payload: event.payload });
         break;
+      case "queue_updated":
+        send({ type: "queue_updated", payload: event.payload });
+        break;
       case "session_transcript":
         send({ type: "session_transcript", payload: event.payload });
         break;
@@ -2417,6 +2420,18 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               attachToSession(initial.sessionId);
             }
             const currentSessionId = attachedSessionId;
+            if (sessionService.isRunning(currentSessionId)) {
+              // Pi owns the queue (card 11): a message during a turn joins
+              // Pi's steer queue — "queued = next API call" — unless the
+              // composer asked for a follow-up after the turn.
+              await sessionService.queuePrompt(
+                currentSessionId,
+                msg.payload,
+                msg.attachments,
+                msg.deliverAs ?? "steer",
+              );
+              break;
+            }
             const run = sessionService.runPrompt(
               currentSessionId,
               msg.payload,
@@ -2425,33 +2440,23 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             await run.completion;
           } catch (error) {
             if (error instanceof SessionBusyError) {
-              // Pi TUI behavior: typing while a turn runs steers the turn
-              // instead of erroring — required for messaging running
-              // subagents directly (alpha.5 M2).
-              // The user_steered broadcast renders the bubble in every pane —
-              // no notice needed (queue drains here on every step boundary).
-              if (
-                !attachedSessionId ||
-                !sessionService.steerRunningSession(attachedSessionId, msg.payload)
-              ) {
-                fail(error);
-              }
-            } else {
-              const recovery = attachedSessionId
-                ? sessionService.getSnapshot(attachedSessionId).recovery
-                : null;
-              // Recoverable run failures were already broadcast after their
-              // terminal mapping. Preflight/recordless failures still need one.
-              if (!recovery) {
-                send({
-                  type: "run_failed",
-                  payload: {
-                    failure: describeFailure(error, "run"),
-                    canRetry: false,
-                    recovery: null,
-                  },
-                });
-              }
+              fail(error);
+              break;
+            }
+            const recovery = attachedSessionId
+              ? sessionService.getSnapshot(attachedSessionId).recovery
+              : null;
+            // Recoverable run failures were already broadcast after their
+            // terminal mapping. Preflight/recordless failures still need one.
+            if (!recovery) {
+              send({
+                type: "run_failed",
+                payload: {
+                  failure: describeFailure(error, "run"),
+                  canRetry: false,
+                  recovery: null,
+                },
+              });
             }
           }
           break;

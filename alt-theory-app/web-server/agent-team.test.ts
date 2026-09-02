@@ -214,6 +214,7 @@ test("agent mail roundtrips, marks delivered, and parses fragments", () => {
   assert.deepEqual(parsed, {
     fromLabel: "subagent-1",
     event: "completed",
+    cause: null,
     body: "done: the answer",
   });
   assert.equal(parseAgentMailFragment("plain user text"), null);
@@ -858,7 +859,15 @@ test("explicit interrupt sends exactly one interrupted outcome and the child sta
       );
     await waitFor(() => outcomes().length === 1);
     assert.equal(outcomes()[0]!.event, "interrupted");
+    // The lead's own interrupt records a real cause (card 8), and the status
+    // lines say so instead of reporting idle.
+    assert.equal(outcomes()[0]!.cause, "lead_abort");
+    assert.match(outcomes()[0]!.body, /You stopped this subagent with interrupt_agent/);
     await waitFor(() => childManaged.runState.isIdle());
+    assert.match(
+      await service.listSubagents(parent.sessionId),
+      /interrupted \(by you\)/,
+    );
 
     // The child remains a usable conversation: a later message acts on it.
     childManaged.session.prompt = async (text: string) => {
@@ -883,6 +892,58 @@ test("explicit interrupt sends exactly one interrupted outcome and the child sta
       ),
     );
     assert.equal(outcomes().length, 2, "one interrupted + one completed");
+  } finally {
+    await service.disposeAll();
+  }
+});
+
+test("a user stop tells the lead the user stopped the child, and the status line is not idle", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  try {
+    const parent = await service.createSession(SELECTORS);
+    const parentManaged = managedOf(service, parent.sessionId);
+    stubEchoPrompt(parentManaged, "noted");
+    const child = await service.createSession(SELECTORS, {
+      forkedFrom: { sessionId: parent.sessionId, purpose: "subagent" },
+    });
+    const childManaged = managedOf(service, child.sessionId);
+    let rejectPrompt!: (error: Error) => void;
+    childManaged.session.prompt = (text: string) =>
+      new Promise<void>((_resolve, reject) => {
+        childManaged.session.sessionManager.appendMessage({
+          role: "user",
+          content: [{ type: "text", text }],
+          timestamp: Date.now(),
+        });
+        rejectPrompt = reject;
+      });
+    childManaged.session.abort = async () => {
+      const abortError = new Error("Operation aborted");
+      abortError.name = "AbortError";
+      rejectPrompt(abortError);
+    };
+    (
+      service as unknown as {
+        startSubagentRun(id: string, prompt: string, notify: boolean): string;
+      }
+    ).startSubagentRun(child.sessionId, "the bounded task", true);
+    await waitFor(() => !childManaged.runState.isIdle());
+    // The UI's Stop button on the child conversation.
+    await service.abort(child.sessionId, "user_stop", "user_abort");
+    const outcomes = () =>
+      readAgentMail(parentManaged.manifest.recordsDir).filter(
+        (envelope) => envelope.kind === "lifecycle" && envelope.event === "interrupted",
+      );
+    await waitFor(() => outcomes().length === 1);
+    assert.equal(outcomes()[0]!.cause, "user_abort");
+    assert.match(outcomes()[0]!.body, /The user stopped this subagent/);
+    assert.match(outcomes()[0]!.body, /Do not restart or continue it unless the user asks/);
+    await waitFor(() => childManaged.runState.isIdle());
+    assert.match(
+      await service.checkSubagent(parent.sessionId, child.sessionId, false),
+      /interrupted \(stopped by the user\)/,
+    );
   } finally {
     await service.disposeAll();
   }

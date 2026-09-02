@@ -163,12 +163,17 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
     window.setTimeout(() => textareaRef.current?.focus(), 0);
   };
 
-  const restoreQueuedPrompt = (id: string) => {
-    const text = app.restoreQueuedPrompt(id);
-    if (text === null) return;
-    setDraft((current) => [text, current].filter((part) => part.trim()).join("\n"));
+  // Stop hands unsent queued text back to the editor (card 11).
+  const restoredDraft = app.restoredDraft;
+  const clearRestoredDraft = app.clearRestoredDraft;
+  useEffect(() => {
+    if (restoredDraft === null) return;
+    setDraft((current) =>
+      [restoredDraft, current].filter((part) => part.trim()).join("\n"),
+    );
+    clearRestoredDraft();
     window.setTimeout(() => textareaRef.current?.focus(), 0);
-  };
+  }, [restoredDraft, clearRestoredDraft]);
 
   const slashQuery =
     draft.startsWith("/") && !draft.startsWith("//") ? draft.slice(1) : null;
@@ -378,49 +383,14 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
           </div>
         ) : null}
 
-        {app.queuedPrompts.length > 0 ? (
+        {app.queuedTexts.length > 0 ? (
           <div className="queued-prompts" aria-label={t("Queued messages")}>
-            {app.queuedPrompts.map((item) => (
-              <div className="queued-prompt" key={item.id}>
+            {app.queuedTexts.map((text, index) => (
+              <div className="queued-prompt" key={`${index}:${text}`}>
                 <i className="ph ph-clock" aria-hidden="true" />
-                <span className="queued-prompt-text" data-tip={item.text}>
-                  {item.text}
+                <span className="queued-prompt-text" data-tip={text}>
+                  {text}
                 </span>
-                {item.attachments.length > 0 ? (
-                  <span data-tip={item.attachments.join("\n")}>
-                    <i className="ph ph-paperclip" aria-hidden="true" />
-                    {item.attachments.length}
-                  </span>
-                ) : null}
-                <button
-                  type="button"
-                  className="queued-prompt-action primary"
-                  onClick={() =>
-                    app.isRunning
-                      ? app.interruptAndSendQueuedPrompt(item.id)
-                      : app.sendQueuedPromptNow(item.id)
-                  }
-                >
-                  {app.isRunning ? t("Interrupt & send") : t("Send")}
-                </button>
-                <button
-                  type="button"
-                  className="queued-prompt-action"
-                  onClick={() => restoreQueuedPrompt(item.id)}
-                  data-tip={t("Edit queued message")}
-                  aria-label={t("Edit queued message")}
-                >
-                  <i className="ph ph-pencil-simple" aria-hidden="true" />
-                </button>
-                <button
-                  type="button"
-                  className="queued-prompt-action"
-                  onClick={() => app.deleteQueuedPrompt(item.id)}
-                  data-tip={t("Delete queued message")}
-                  aria-label={t("Delete queued message")}
-                >
-                  <i className="ph ph-trash" aria-hidden="true" />
-                </button>
               </div>
             ))}
           </div>

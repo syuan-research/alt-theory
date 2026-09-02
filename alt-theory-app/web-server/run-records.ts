@@ -12,9 +12,12 @@ export type RunStatus =
   | "superseded";
 
 export type InterruptionCause =
+  /** The user pressed Stop. */
   | "user_abort"
+  /** The lead conversation called interrupt_agent on this child. */
+  | "lead_abort"
+  /** The app died mid-turn; reconciled on next open. */
   | "process_exit"
-  | "transport_loss"
   | "unknown";
 
 export interface RunRecord {
@@ -36,7 +39,7 @@ export interface RunRecord {
 }
 
 export function runOutcome(
-  run: RunRecord,
+  run: Pick<RunRecord, "status">,
 ): "completed" | "interrupted" | "failed" | null {
   if (run.status === "completed") return "completed";
   if (run.status === "failed") return "failed";
@@ -47,7 +50,7 @@ export function runOutcome(
 }
 
 export function runInterruptionCause(
-  run: RunRecord,
+  run: Pick<RunRecord, "status" | "interruptionCause">,
 ): InterruptionCause | null {
   return runOutcome(run) === "interrupted"
     ? (run.interruptionCause ?? "unknown")

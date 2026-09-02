@@ -7,7 +7,6 @@ import {
 import { useApp } from "@/context/AppProvider";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { useConversationEngine } from "@/hooks/useConversationEngine";
-import { usePromptQueue } from "@/hooks/usePromptQueue";
 import { useStickToBottom } from "@/hooks/useStickToBottom";
 import { failureText } from "@/lib/failure";
 import { canTakeMainline, isListMember } from "@/lib/sessionList";
@@ -51,19 +50,13 @@ export function ChildConversation({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 
-  // The ONE prompt queue, same behavior as the center pane: Enter queues
-  // while a run is active, the bolt steers.
   const startPromptRef = useRef<(text: string, attachments: string[]) => boolean>(() => false);
-  const promptQueue = usePromptQueue(startPromptRef);
+  // Pi's queue for this conversation (card 11), mirrored from the server.
+  const [queued, setQueued] = useState<string[]>([]);
 
   // The ONE conversation engine, shared with the center pane; only this
   // pane's snapshot/status handling stays local.
   const engine = useConversationEngine({
-    onStepBoundary: () => {
-      promptQueue.flushIntoRun((text) =>
-        socket.send({ type: "prompt", payload: text }),
-      );
-    },
     onRunCompleted: (payload) => {
       setSnapshot((current) =>
         current
@@ -75,11 +68,12 @@ export function ChildConversation({
           : current,
       );
       setStatus(t("Ready"));
-      promptQueue.handleRunCompleted(refreshTranscript());
+      void refreshTranscript();
       void app.refreshSessions();
     },
-    onRunFailed: ({ failure }) => {
-      const interrupted = promptQueue.handleRunFailed(failure.message, refreshTranscript());
+    onRunFailed: ({ failure, recovery }) => {
+      void refreshTranscript();
+      const interrupted = recovery?.outcome === "interrupted";
       if (!interrupted) setError(failureText(failure));
       setStatus(interrupted ? t("Ready") : t("Error"));
     },
@@ -135,6 +129,19 @@ export function ChildConversation({
           setSnapshot(message.payload);
           engine.setRunning(message.payload.status === "running");
           if (message.payload.status !== "running") setStatus(t("Ready"));
+          setQueued([
+            ...(message.payload.queue?.steering ?? []),
+            ...(message.payload.queue?.followUp ?? []),
+          ]);
+          break;
+        case "queue_updated":
+          setQueued([...message.payload.steering, ...message.payload.followUp]);
+          if (message.payload.restored?.length) {
+            const restored = message.payload.restored.join("\n");
+            setDraft((current) =>
+              [restored, current].filter((part) => part.trim()).join("\n"),
+            );
+          }
           break;
         case "branch_created":
           app.setActiveRelatedSessionId(message.payload.sessionId, { size: "half" });
@@ -206,15 +213,16 @@ export function ChildConversation({
     return true;
   };
 
-  // Enter while a run is active queues (owner 2026-08-07, both panes);
-  // the bolt button steers the running turn instead.
+  // A message during a run joins Pi's steer queue (card 11): delivered at
+  // the next API call, shown as a bubble when Pi hands it to the model.
   const send = () => {
     const text = draft.trim();
     if (!text) return;
-    if (running || promptQueue.queuedPromptsRef.current.length > 0) {
-      promptQueue.enqueue(text, []);
-      setDraft("");
-      setError("");
+    if (running) {
+      if (socket.send({ type: "prompt", payload: text, deliverAs: "steer" })) {
+        setDraft("");
+        setError("");
+      }
       return;
     }
     if (startPromptRef.current(text, [])) {
@@ -336,51 +344,14 @@ export function ChildConversation({
       ) : null}
       {error ? <div className="related-error">{error}</div> : null}
 
-      {promptQueue.queuedPrompts.length > 0 ? (
+      {queued.length > 0 ? (
         <div className="queued-prompts" aria-label={t("Queued messages")}>
-          {promptQueue.queuedPrompts.map((item) => (
-            <div className="queued-prompt" key={item.id}>
+          {queued.map((text, index) => (
+            <div className="queued-prompt" key={`${index}:${text}`}>
               <i className="ph ph-clock" aria-hidden="true" />
-              <span className="queued-prompt-text" data-tip={item.text}>
-                {item.text}
+              <span className="queued-prompt-text" data-tip={text}>
+                {text}
               </span>
-              <button
-                type="button"
-                className="queued-prompt-action primary"
-                onClick={() =>
-                  running
-                    ? promptQueue.interruptAndSend(item.id, () =>
-                        socket.send({ type: "abort" }),
-                      )
-                    : promptQueue.flush(item.id)
-                }
-              >
-                {running ? t("Interrupt & send") : t("Send")}
-              </button>
-              <button
-                type="button"
-                className="queued-prompt-action"
-                onClick={() => {
-                  const queued = promptQueue.restore(item.id);
-                  if (!queued) return;
-                  setDraft((current) =>
-                    [queued.text, current].filter((part) => part.trim()).join("\n"),
-                  );
-                }}
-                data-tip={t("Edit queued message")}
-                aria-label={t("Edit queued message")}
-              >
-                <i className="ph ph-pencil-simple" aria-hidden="true" />
-              </button>
-              <button
-                type="button"
-                className="queued-prompt-action"
-                onClick={() => promptQueue.remove(item.id)}
-                data-tip={t("Delete queued message")}
-                aria-label={t("Delete queued message")}
-              >
-                <i className="ph ph-trash" aria-hidden="true" />
-              </button>
             </div>
           ))}
         </div>
@@ -481,7 +452,6 @@ export function ChildConversation({
               className="send"
               style={{ background: "var(--danger)" }}
               onClick={() => {
-                promptQueue.cancelPendingInterrupt();
                 socket.send({ type: "abort" });
               }}
               data-tip={t("Stop")}

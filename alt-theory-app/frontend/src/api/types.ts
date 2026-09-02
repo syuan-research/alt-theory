@@ -128,8 +128,8 @@ export type RuntimeMode = "alt-theory" | "native-pi";
 
 export type InterruptionCause =
   | "user_abort"
+  | "lead_abort"
   | "process_exit"
-  | "transport_loss"
   | "unknown";
 
 export interface TurnRecovery {
@@ -586,7 +586,13 @@ export interface AssemblyManifest {
 }
 
 export type ClientMessage =
-  | { type: "prompt"; payload: string; attachments?: string[] }
+  | {
+      type: "prompt";
+      payload: string;
+      attachments?: string[];
+      /** While a turn runs: steer = next API call (default), followUp = after the turn. */
+      deliverAs?: "steer" | "followUp";
+    }
   | { type: "abort" }
   | { type: "continue_latest" }
   | { type: "compact" }
@@ -707,6 +713,11 @@ export type ServerMessage =
   /** A message steered into the running turn — broadcast so every pane
    *  (sender and late joiners) renders the bubble exactly once. */
   | { type: "user_steered"; payload: { text: string } }
+  /** Pi's prompt queue changed; `restored` = unsent texts Stop handed back. */
+  | {
+      type: "queue_updated";
+      payload: { steering: string[]; followUp: string[]; restored?: string[] };
+    }
   | { type: "approval_snapshot"; payload: ApprovalRequestPayload[] }
   | { type: "approval_requested"; payload: ApprovalRequestPayload }
   | {
