@@ -444,6 +444,26 @@ test("softDeleteSessionFamily trashes the whole tree from any member", () => {
   assert.deepEqual(forkFamilyIds(dataDir, "other-root"), ["other-root"]);
 });
 
+test("one family walk: a purged root still keeps its siblings in one family", () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "alt-theory-family-purged-"));
+  createSession(dataDir, "root");
+  createSession(dataDir, "b1", { sessionId: "root", purpose: "fork" });
+  createSession(dataDir, "b1-sa", { sessionId: "b1", purpose: "subagent" });
+  createSession(dataDir, "b2", { sessionId: "root", purpose: "fork" });
+  createSession(dataDir, "other-root");
+
+  softDeleteSession(dataDir, "root");
+  permanentlyDeleteSession(dataDir, "root");
+
+  // The purged root's id anchors the family (§0): b2 is b1's sibling, not a
+  // separate tree — the same answer every family operation gets.
+  assert.deepEqual(forkFamilyIds(dataDir, "b1").sort(), ["b1", "b1-sa", "b2"]);
+  assert.deepEqual(forkFamilyIds(dataDir, "b2").sort(), ["b1", "b1-sa", "b2"]);
+  // Deleting b1 (a branch) keeps b2 as the anchor, so b1's subagent stays.
+  assert.deepEqual(softDeleteSession(dataDir, "b1").sessionId, "b1");
+  assert.deepEqual(forkFamilyIds(dataDir, "b1-sa").sort(), ["b1", "b1-sa", "b2"]);
+});
+
 test("softDeleteSessionFamily keeps rootless siblings together after a purged root", () => {
   const dataDir = mkdtempSync(join(tmpdir(), "alt-theory-delete-rootless-family-"));
   createSession(dataDir, "root");

@@ -7,7 +7,7 @@ import { ConversationPanel } from "@/components/shell/ConversationPanel";
 import { InspectorPanel } from "@/components/shell/InspectorPanel";
 import { SettingsView } from "@/components/shell/SettingsView";
 import { ReviewPage } from "@/components/shell/ReviewPage";
-import { SearchOverlay } from "@/components/shell/SearchOverlay";
+
 import { LoginOverlay } from "@/components/auth/LoginOverlay";
 import { ExternalAiSetupDialog } from "@/components/shell/ExternalAiSetupDialog";
 import { ApprovalNotice } from "@/components/shell/ApprovalNotice";
@@ -138,7 +138,7 @@ export function Shell() {
 
   return (
     <div className={rootClass}>
-      <SearchOverlay />
+
       <ExternalAiSetupDialog />
       {shell.surface === "app" ? null : <ApprovalNotice />}
       {shell.surface === "settings" ? (

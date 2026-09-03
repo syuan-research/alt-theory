@@ -292,6 +292,8 @@ export interface SessionSummary {
   studyTag: StudyTag | null;
   /** Working folder (M4); null = default managed workspace. */
   workspacePrimaryDir: string | null;
+  /** Subagent role preset recorded at spawn; absent for everything else. */
+  agentType?: string;
   /** Ancestor ids, root first (server-derived, walks through Trash; a purged
    *  top still anchors the family key). Empty for roots. */
   lineagePath?: string[];

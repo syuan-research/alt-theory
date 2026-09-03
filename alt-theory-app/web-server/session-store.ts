@@ -30,6 +30,7 @@ import {
   extractToolPath as extractSharedToolPath,
 } from "./tool-detail.js";
 import type { SessionMetrics, TranscriptMessage } from "./websocket-protocol.js";
+import { isListMember } from "../frontend/src/lib/listMember.js";
 import { parseAgentMailFragment } from "./agent-mail.js";
 import { t } from "./i18n.js";
 import {
@@ -106,6 +107,8 @@ export interface SessionSummary {
   /** Working folder (M4); null = default managed workspace. The UI groups by
    *  this and shows only the basename, keeping full paths out of the list. */
   workspacePrimaryDir: string | null;
+  /** Subagent role preset recorded at spawn; absent for everything else. */
+  agentType?: string;
   /** Ancestor session ids, root first, self excluded — walked through Trash.
    *  When the top of the chain is purged, its id still anchors the family
    *  key. Empty for roots. Derived, never stored. */
@@ -362,7 +365,7 @@ export function softDeleteSession(
   // tree is alive, the list keeps one representative — deleting the only
   // listed member must not make the whole tree invisible.
   const after = allSessionSummaries(dataDir);
-  const members = forkTreeMembers(sessionId, after);
+  const members = familyOf(sessionId, after);
   const living = members.filter((m) => !m.deletedAt);
   if (living.length > 0 && !living.some(isListVisible)) {
     const byId = new Map(after.map((s) => [s.sessionId, s]));
@@ -398,10 +401,9 @@ export function softDeleteSessionFamily(
   if (!isDurableCatalogSession(selected, parts)) {
     throw new Error(`Session is not available for deletion: ${sessionId}`);
   }
-  const members = lineageFamilyMembers(
-    sessionId,
-    allSessionSummaries(dataDir),
-  ).filter((member) => !member.deletedAt);
+  const members = familyOf(sessionId, allSessionSummaries(dataDir)).filter(
+    (member) => !member.deletedAt,
+  );
   const deletedAt = new Date().toISOString();
   for (const member of members) {
     const root = resolveSessionRoot(dataDir, member.sessionId);
@@ -416,20 +418,16 @@ export function softDeleteSessionFamily(
 }
 
 /**
- * In the conversation list — MUST mirror the frontend's isListMember
- * (lib/sessionList.ts): branches and Helpers are list members by nature,
- * other children only when the user listed them, roots unless delisted (opus D1: a
- * stricter server predicate skipped visible branches in the step-down walk
- * and delisted the wrong ancestor).
+ * Holds a spot in the conversation list right now: the shared membership
+ * predicate (lib/listMember.ts, one implementation for both trees), minus
+ * Trash and minus a delisted root (a member, but demoted — it cannot be the
+ * family's listed representative; opus D1: a stricter predicate skipped
+ * visible branches in the step-down walk and delisted the wrong ancestor).
  */
 function isListVisible(s: SessionSummary): boolean {
   if (s.deletedAt) return false;
   if (!s.forkedFrom) return s.delisted !== true;
-  return (
-    s.forkedFrom.purpose === "fork" ||
-    s.forkedFrom.purpose === "helper" ||
-    s.forkedFrom.listed === true
-  );
+  return isListMember(s);
 }
 
 /** Flip a session's list visibility. Lineage is never touched (M4b). */
@@ -509,42 +507,37 @@ function pickRepresentative(
 export function healFamilyInvariants(dataDir: string): void {
   const summaries = allSessionSummaries(dataDir);
   const byId = new Map(summaries.map((s) => [s.sessionId, s]));
-  const rootIdOf = (s: SessionSummary): string => {
-    let cur = s;
-    while (cur.forkedFrom) {
-      const parent = byId.get(cur.forkedFrom.sessionId);
-      if (!parent) break; // purged ancestor: reachable root wins
-      cur = parent;
-    }
-    return cur.sessionId;
-  };
-  const seenRoots = new Set<string>();
+  const seenKeys = new Set<string>();
   for (const summary of summaries) {
-    const rootId = rootIdOf(summary);
-    if (seenRoots.has(rootId)) continue;
-    seenRoots.add(rootId);
-    const members = forkTreeMembers(rootId, summaries);
+    const key = familyKeyOf(summary);
+    if (seenKeys.has(key)) continue;
+    seenKeys.add(key);
+    const members = familyOf(summary.sessionId, summaries);
     if (members.length < 2) continue;
-    const root = byId.get(rootId);
-    const rootDir = root?.workspacePrimaryDir ?? null;
-    for (const member of members) {
-      if (member.sessionId === rootId) continue;
-      if ((member.workspacePrimaryDir ?? null) === rootDir) continue;
-      const sessionRoot = resolveSessionRoot(dataDir, member.sessionId);
-      if (!sessionRoot) continue;
-      const recordsDir = join(sessionRoot, "records");
-      const header = readV4SessionHeader(recordsDir);
-      if (!header) continue;
-      writeSessionHeader(recordsDir, {
-        ...header,
-        workspace: rootDir
-          ? { primaryDir: rootDir, additionalDirs: [] }
-          : undefined,
-      });
+    // "Root wins" needs a root: a purged root leaves nothing to win, so a
+    // rootless family keeps whatever folders its members have.
+    const root = byId.get(key);
+    if (root) {
+      const rootDir = root.workspacePrimaryDir ?? null;
+      for (const member of members) {
+        if (member.sessionId === key) continue;
+        if ((member.workspacePrimaryDir ?? null) === rootDir) continue;
+        const sessionRoot = resolveSessionRoot(dataDir, member.sessionId);
+        if (!sessionRoot) continue;
+        const recordsDir = join(sessionRoot, "records");
+        const header = readV4SessionHeader(recordsDir);
+        if (!header) continue;
+        writeSessionHeader(recordsDir, {
+          ...header,
+          workspace: rootDir
+            ? { primaryDir: rootDir, additionalDirs: [] }
+            : undefined,
+        });
+      }
     }
     const living = members.filter((m) => !m.deletedAt);
     if (living.length > 0 && !living.some(isListVisible)) {
-      const representative = pickRepresentative(living, rootId);
+      const representative = pickRepresentative(living, key);
       if (representative) {
         writeListFlags(dataDir, representative.sessionId, true);
       }
@@ -552,58 +545,35 @@ export function healFamilyInvariants(dataDir: string): void {
   }
 }
 
-/** Ids of every fork-tree member (root + all descendants), trashed included. */
+/** Ids of every family member, trashed included (the whole fork tree). */
 export function forkFamilyIds(dataDir: string, sessionId: string): string[] {
-  return forkTreeMembers(sessionId, allSessionSummaries(dataDir)).map(
-    (s) => s.sessionId,
-  );
+  return familyOf(sessionId, allSessionSummaries(dataDir)).map((s) => s.sessionId);
 }
 
 /** Every living member sharing the lineage key, including rootless siblings. */
 export function familyMemberIds(dataDir: string, sessionId: string): string[] {
-  return lineageFamilyMembers(sessionId, allSessionSummaries(dataDir))
+  return familyOf(sessionId, allSessionSummaries(dataDir))
     .filter((summary) => !summary.deletedAt)
     .map((summary) => summary.sessionId);
 }
 
-function lineageFamilyMembers(
-  sessionId: string,
-  summaries: SessionSummary[],
-): SessionSummary[] {
-  const selected = summaries.find((summary) => summary.sessionId === sessionId);
-  if (!selected) return [];
-  const familyKey = selected.lineagePath?.[0] ?? selected.sessionId;
-  return summaries.filter(
-    (summary) => (summary.lineagePath?.[0] ?? summary.sessionId) === familyKey,
-  );
+/** Family identity from immutable lineage (§0): the root's id, or the purged
+ *  root's id that still anchors the chain. */
+function familyKeyOf(s: SessionSummary): string {
+  return s.lineagePath?.[0] ?? s.sessionId;
 }
 
-/** Every member of the fork tree reachable from sessionId (root + descendants). */
-function forkTreeMembers(
-  sessionId: string,
-  summaries: SessionSummary[],
-): SessionSummary[] {
-  const byId = new Map(summaries.map((s) => [s.sessionId, s]));
-  let rootId = sessionId;
-  while (byId.get(rootId)?.forkedFrom) {
-    const parentId = byId.get(rootId)!.forkedFrom!.sessionId;
-    if (!byId.has(parentId)) break; // purged ancestor: reachable root wins
-    rootId = parentId;
-  }
-  const members: SessionSummary[] = [];
-  const seen = new Set<string>();
-  const queue = [rootId];
-  while (queue.length > 0) {
-    const id = queue.shift() as string;
-    if (seen.has(id)) continue;
-    seen.add(id);
-    const summary = byId.get(id);
-    if (summary) members.push(summary);
-    for (const child of summaries) {
-      if (child.forkedFrom?.sessionId === id) queue.push(child.sessionId);
-    }
-  }
-  return members;
+/**
+ * The ONE family walk (branch-family doc §0): every summary sharing the
+ * lineage key, Trash included. A purged ancestor keeps its family together —
+ * the old tree walk stopped at the purge and split siblings. `summaries`
+ * must come from a list build (withLineage), never a single-summary read.
+ */
+function familyOf(sessionId: string, summaries: SessionSummary[]): SessionSummary[] {
+  const selected = summaries.find((summary) => summary.sessionId === sessionId);
+  if (!selected) return [];
+  const key = familyKeyOf(selected);
+  return summaries.filter((summary) => familyKeyOf(summary) === key);
 }
 
 /**
@@ -648,7 +618,7 @@ export function promoteToMainlineRecords(
   }
   if (!stepDown) {
     stepDown =
-      forkTreeMembers(sessionId, summaries)
+      familyOf(sessionId, summaries)
         .filter(
           (m) =>
             m.sessionId !== sessionId &&
@@ -675,7 +645,7 @@ export function promoteToMainlineRecords(
     // root's family keeps M4b multi-listed semantics. Listed
     // btw/helper/subagent are never cleared: for them the flag is list
     // membership itself.
-    const family = forkTreeMembers(sessionId, summaries);
+    const family = familyOf(sessionId, summaries);
     const hasLivingRoot = family.some((m) => !m.forkedFrom && !m.deletedAt);
     if (!hasLivingRoot) {
       for (const member of family) {
@@ -994,14 +964,9 @@ export function sessionsAttachedToDeletion(
 }
 
 /** A structural family anchor: a root (delisted or not), a branch, a Helper,
- *  or a child the user listed. Other unlisted attachments are not anchors. */
+ *  or a child the user listed — list membership, Trash and demotion aside. */
 function keepsFamilyAlive(s: SessionSummary): boolean {
-  if (!s.forkedFrom) return true;
-  return (
-    s.forkedFrom.purpose === "fork" ||
-    s.forkedFrom.purpose === "helper" ||
-    s.forkedFrom.listed === true
-  );
+  return isListMember(s);
 }
 
 /**
@@ -1017,7 +982,7 @@ function attachedDeletionTargets(
   sessionId: string,
   summaries: SessionSummary[],
 ): string[] {
-  const family = forkTreeMembers(sessionId, summaries);
+  const family = familyOf(sessionId, summaries);
   const anchorRemains = family.some(
     (m) => m.sessionId !== sessionId && !m.deletedAt && keepsFamilyAlive(m),
   );
@@ -1239,6 +1204,9 @@ function buildSummary(sessionId: string, parts: SessionParts): SessionSummary {
     forkedFrom: parts.v4Session?.forkedFrom ?? null,
     studyTag: parts.v4Session?.studyTag ?? null,
     workspacePrimaryDir: parts.v4Session?.workspace?.primaryDir ?? null,
+    ...(parts.v4Session?.subagentExecution?.agentType
+      ? { agentType: parts.v4Session.subagentExecution.agentType }
+      : {}),
     // Filled by withLineage on list builds; single-summary reads have no
     // family context.
     lineagePath: [],

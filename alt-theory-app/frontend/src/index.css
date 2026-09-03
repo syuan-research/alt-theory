@@ -902,7 +902,38 @@
   /* Marker-token legend: a background watermark pinned to the panel bottom.
      pointer-events off + translucent so conversation cards stay fully usable
      and simply pass over it while scrolling. */
-  .related-legend { position: sticky; bottom: 0; padding: 6px 4px 2px; font-size: 0.68rem; color: var(--text-3); opacity: 0.65; text-align: center; pointer-events: none; }
+  /* related pane filter row (proto E): one card that expands on hover or click,
+     a whole-family card in the same style, search as an icon that drops a
+     borderless field under the row; selected = check + darker hairline */
+  .frow { display: flex; align-items: center; gap: 6px; padding: 2px 4px 8px; min-height: 30px; }
+  .flabel { font-size: 0.72rem; color: var(--text-3); flex: 0 0 auto; }
+  .fspacer { flex: 1; }
+  .fcard { display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto; border: 1px solid var(--hairline); border-radius: var(--r-sm); background: var(--surface); color: var(--ink-soft); font: inherit; font-size: 0.72rem; padding: 3px 8px; cursor: pointer; white-space: nowrap; }
+  .fcard:hover { background: var(--hover); }
+  .fcard .n { color: var(--text-3); }
+  .fcard i { font-size: 0.72rem; color: var(--text-3); }
+  .fcard.on { border-color: var(--text-3); color: var(--ink); }
+  .fsummary { color: var(--text-2); }
+  .fexp { position: relative; display: inline-flex; }
+  .fopts { display: none; gap: 4px; }
+  .fexp:hover .fsummary, .fexp.open .fsummary { display: none; }
+  .fexp:hover .fopts, .fexp.open .fopts { display: inline-flex; }
+  .fsearch-btn { flex: 0 0 auto; width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text-3); cursor: pointer; }
+  .fsearch-btn:hover { background: var(--hover); color: var(--ink); }
+  .fsearch-btn.on { color: var(--ink); }
+  .fsearch { padding: 0 4px 8px; }
+  .fsearch input { width: 100%; border: 0; border-bottom: 1px solid transparent; outline: 0; background: transparent; color: var(--ink); font: inherit; font-size: 0.8rem; padding: 3px 4px; }
+  .fsearch input:focus { border-bottom-color: var(--hairline); }
+  .sect-head { display: flex; align-items: center; gap: 6px; width: 100%; border: 0; background: none; padding: 6px 4px 4px; font: inherit; font-size: 0.72rem; color: var(--text-3); cursor: pointer; text-align: left; }
+  .sect-head .n { color: var(--text-3); }
+  .sc-item .t i { color: var(--text-3); }
+  .sc-item .fline i { font-size: 0.78rem; }
+  /* in-place rail filter (proto E): borderless, a hairline only on focus */
+  .inline-search { display: flex; align-items: center; gap: 7px; margin: 2px 12px 6px; padding: 5px 9px; border: 1px solid transparent; border-radius: var(--r-sm); background: var(--surface); color: var(--text-3); }
+  .inline-search:focus-within { border-color: var(--hairline); }
+  .inline-search input { min-width: 0; width: 100%; border: 0; outline: 0; background: transparent; color: var(--ink); font: inherit; font-size: 0.8rem; }
+  .inline-search .clear { border: 0; background: none; color: var(--text-3); cursor: pointer; padding: 0 2px; font-size: 0.8rem; }
+  .workspace-list-actions > button.on { color: var(--ink); }
   .sc-item, .file-item { background: var(--canvas); border: none; border-radius: var(--r-md); padding: 10px 12px; margin-bottom: 8px; cursor: pointer; width: 100%; text-align: left; display: block; }
   .sc-item:hover, .file-item:hover { box-shadow: 0 2px 8px rgba(31,30,26,0.08); }
   .sc-item .t { font-size: 0.875rem; font-weight: 500; display: flex; align-items: center; gap: 6px; }

@@ -45,6 +45,13 @@ anchors the family) and `lineageMarker` (mechanical name, §3). Everything
 downstream — display tree, cascade, crown, rail, workspace unity — reads
 those. Bugs in this area historically came from per-feature relation
 walks that stopped at deleted middles; do not reintroduce them.
+- Server-side, membership is ONE walk: `familyOf(sessionId, summaries)` in
+  `session-store.ts` (every summary sharing `lineagePath[0]`, Trash
+  included; a purged root's id keeps its children one family). Delete,
+  delete-entire-family, promote, heal, and workspace re-point all read it
+  (v1.5 part 2, card 10 — the earlier tree walk stopped at a purged
+  ancestor and split siblings). Heal's "root wins" folder alignment skips
+  a family whose root is purged: there is no root to win.
 
 ## 1. Data model (immutable lineage, flags move)
 
@@ -68,7 +75,10 @@ walks that stopped at deleted middles; do not reintroduce them.
 ## 2. List membership and the family tree
 
 - Members: all roots (delisted ones included — demoted, never hidden),
-  all branches, plus explicitly listed children (`isListMember`).
+  all branches, plus explicitly listed children (`isListMember` in
+  `frontend/src/lib/listMember.ts` — one implementation, imported by the
+  frontend and by `session-store.ts`; the server's `isListVisible` is
+  that predicate minus Trash and minus a delisted root).
 - **Display parent = nearest list ancestor** (walk `lineagePath` from the
   nearest end): a deleted middle branch never splinters the root from its
   grandchildren — they attach to the closest living ancestor.
@@ -151,7 +161,19 @@ walks that stopped at deleted middles; do not reintroduce them.
 
 ## 6. The Related rail (family-wide attached visibility)
 
-- Rule lives in ONE place: `relatedConversationsFor` in sessionList.ts.
+- Rule lives in ONE place: `relatedRowsFor` in sessionList.ts. It returns
+  one row shape (`RelatedRow`: session, relation, kind, icon, `runStatus`,
+  `role` = the summary's `agentType`, `createdAt`, pane size) and the
+  pane renders rows; filter and search are pure functions over rows
+  (`filterRelatedRows`, tested in `sessionList.test.ts`). The summary
+  carries `agentType` from the spawn record (`buildSummary`).
+- Scope `family` (the pane's "Whole family" card) adds the living family
+  members the default view keeps out — sibling and cousin branches.
+  There is no wider scope. The kind filter (Branches / Subagents / BTW /
+  Helpers, counts from the current scope) and the search intersect; the
+  ancestor chain ignores the kind filter and obeys the search. Rows are
+  grouped by kind under collapsible heads; a member whose working folder
+  differs from the open conversation's shows a folder line.
 - The FULL ancestor chain shows first, root → direct parent (owner
   2026-08-07: a child must always see its parent), living members only —
   deleted middles are skipped without a placeholder (the marker still
@@ -170,7 +192,8 @@ walks that stopped at deleted middles; do not reintroduce them.
 - Invariant: every member of a fork tree shares the tree root's working
   folder. Enforced at: fork creation (inherit from parent), workspace
   re-point (`setSessionWorkspace` walks the WHOLE tree from the
-  structural root via `forkFamilyIds`, whichever member was dragged),
+  structural root via `forkFamilyIds` = `familyOf`, whichever member
+  was dragged),
   and startup (`healFamilyInvariants`: root wins; also repairs
   no-listed-member families).
 - The folder-move dialogs state that the whole family moves. Moving the

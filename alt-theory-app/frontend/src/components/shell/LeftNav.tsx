@@ -10,6 +10,8 @@ import {
   folderLabel,
   isFamilyHead,
   listedOriginLabel,
+  purposeIcon,
+  railMatchIds,
   sessionTitle,
 } from "@/lib/sessionList";
 import { Workbench } from "@/components/shell/Workbench";
@@ -164,7 +166,13 @@ export function LeftNav() {
         >
           <i className="ph ph-note-pencil" />
         </button>
-        <button data-tip={t("Search")} onClick={() => shell.setSearchOpen(true)}>
+        <button
+          data-tip={t("Search")}
+          onClick={() => {
+            shell.setLeftCollapsed(false);
+            shell.setSearchOpen(true);
+          }}
+        >
           <i className="ph ph-magnifying-glass" />
         </button>
         <div style={{ flex: 1 }} />
@@ -238,6 +246,12 @@ function UserNav({ onImport }: { onImport: () => void }) {
     folders: "name",
     conversations: "modified",
   });
+  // In-place filter (proto E): the magnifier reveals a borderless field;
+  // typing narrows folders and conversations right here.
+  const [railQuery, setRailQuery] = useState("");
+  useEffect(() => {
+    if (!shell.searchOpen) setRailQuery("");
+  }, [shell.searchOpen]);
   const local = app.appMode === "local";
   const GROUP_CAP = 4;
 
@@ -296,6 +310,11 @@ function UserNav({ onImport }: { onImport: () => void }) {
         app.sessionDisplayNames,
       ),
     [app.sessions, app.knownWorkspaces, app.sessionDisplayNames, listSort, local],
+  );
+
+  const visibleIds = useMemo(
+    () => railMatchIds(app.sessions, railQuery, app.sessionDisplayNames),
+    [app.sessions, railQuery, app.sessionDisplayNames],
   );
 
   const chooseSort = (next: SessionListSort) => {
@@ -572,9 +591,10 @@ function UserNav({ onImport }: { onImport: () => void }) {
         <div className="workspace-list-actions">
           <button
             type="button"
+            className={shell.searchOpen ? "on" : undefined}
             data-tip={t("Search")}
             aria-label={t("Search")}
-            onClick={() => shell.setSearchOpen(true)}
+            onClick={() => shell.setSearchOpen(!shell.searchOpen)}
           >
             <i className="ph ph-magnifying-glass" aria-hidden="true" />
           </button>
@@ -630,6 +650,25 @@ function UserNav({ onImport }: { onImport: () => void }) {
           </details>
         </div>
       </div>
+      {shell.searchOpen ? (
+        <div className="inline-search">
+          <i className="ph ph-magnifying-glass" aria-hidden="true" />
+          <input
+            autoFocus
+            placeholder={t("Filter folders and conversations…")}
+            value={railQuery}
+            onChange={(event) => setRailQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") shell.setSearchOpen(false);
+            }}
+          />
+          {railQuery ? (
+            <button type="button" className="clear" aria-label={t("Clear")} onClick={() => setRailQuery("")}>
+              <i className="ph ph-x" aria-hidden="true" />
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       <div className="sessions">
         {app.sessionsLoading && app.sessions.length === 0 ? (
           <div className="rp-empty">{t("Loading conversations…")}</div>
@@ -640,6 +679,14 @@ function UserNav({ onImport }: { onImport: () => void }) {
         ) : (
           tree.groups.map((group) => {
             const closed = closedGroups.has(group.dir);
+            // A matching folder name keeps every conversation in it.
+            const folderHit =
+              visibleIds !== null && group.label.toLowerCase().includes(railQuery.trim().toLowerCase());
+            const roots =
+              visibleIds === null || folderHit
+                ? group.roots
+                : group.roots.filter((root) => visibleIds.has(root.sessionId));
+            if (visibleIds !== null && roots.length === 0) return null;
             return (
               <div
                 key={group.dir || "no-folder"}
@@ -730,13 +777,13 @@ function UserNav({ onImport }: { onImport: () => void }) {
                     </button>
                   ) : null}
                 </div>
-                {!closed && group.roots.length === 0 ? (
+                {!closed && roots.length === 0 ? (
                   <div className="rp-empty ws-empty">{t("No conversations yet.")}</div>
                 ) : null}
                 {!closed &&
-                  (expandedGroups.has(group.dir)
-                    ? group.roots
-                    : group.roots.slice(0, GROUP_CAP)
+                  (expandedGroups.has(group.dir) || visibleIds !== null
+                    ? roots
+                    : roots.slice(0, GROUP_CAP)
                   ).map((root) => (
                     <SessionNode
                       key={root.sessionId}
@@ -747,9 +794,10 @@ function UserNav({ onImport }: { onImport: () => void }) {
                       draggable={local}
                       foldedFamilies={foldedFamilies}
                       onToggleFamily={toggleFamily}
+                      visibleIds={folderHit ? null : visibleIds}
                     />
                   ))}
-                {!closed && group.roots.length > GROUP_CAP ? (
+                {!closed && visibleIds === null && roots.length > GROUP_CAP ? (
                   <button
                     className="group-more"
                     onClick={() =>
@@ -763,7 +811,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                   >
                     {expandedGroups.has(group.dir)
                       ? t("Show less")
-                      : t("Show all ({count})", { count: group.roots.length })}
+                      : t("Show all ({count})", { count: roots.length })}
                   </button>
                 ) : null}
               </div>
@@ -783,11 +831,14 @@ function SessionNode({
   draggable,
   foldedFamilies,
   onToggleFamily,
+  visibleIds = null,
 }: {
   session: SessionSummary;
   childrenByParent: Map<string, SessionSummary[]>;
   indent: number;
   onOpen: (id: string) => void;
+  /** Rail filter result; null shows everything. */
+  visibleIds?: Set<string> | null;
   draggable?: boolean;
   foldedFamilies: Set<string>;
   onToggleFamily: (id: string) => void;
@@ -797,7 +848,9 @@ function SessionNode({
   const [renaming, setRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState("");
   const active = app.selectedCatalogSessionId === session.sessionId;
-  const children = childrenByParent.get(session.sessionId) ?? [];
+  const children = (childrenByParent.get(session.sessionId) ?? []).filter(
+    (child) => visibleIds === null || visibleIds.has(child.sessionId),
+  );
   // The active session's own run state is live in the app, ahead of the poll.
   const runStatus =
     app.sessionId === session.sessionId && app.isRunning
@@ -951,15 +1004,7 @@ function SessionNode({
                 />
               ) : (
               <i
-                className={`ph ${
-                  session.forkedFrom.purpose === "subagent"
-                    ? "ph-robot"
-                    : session.forkedFrom.purpose === "helper"
-                      ? "ph-lifebuoy"
-                      : session.forkedFrom.purpose === "side"
-                        ? "ph-arrows-split"
-                        : "ph-git-branch"
-                } s-fork`}
+                className={`ph ${purposeIcon(session)} s-fork`}
                 aria-hidden
                 data-tip={originTitle(session)}
               />
@@ -1076,6 +1121,7 @@ function SessionNode({
           draggable={draggable}
           foldedFamilies={foldedFamilies}
           onToggleFamily={onToggleFamily}
+          visibleIds={visibleIds}
         />
       ))}
     </>

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { SessionSummary } from "../api/types.ts";
-import { buildWorkspaceTree, canTakeMainline, familyMembersOf, isFamilyHead, isListMember, relatedConversationsFor, sessionTitle } from "./sessionList.ts";
+import { buildWorkspaceTree, canTakeMainline, familyMembersOf, filterRelatedRows, isFamilyHead, isListMember, railMatchIds, relatedRowsFor, sessionTitle } from "./sessionList.ts";
 
 function child(
   sessionId: string,
@@ -250,9 +250,11 @@ test("rail: a child sees its full living ancestor chain, root first", () => {
   const leaf = child("leaf", "mid", "fork", "2026-07-02T00:00:00.000Z");
   leaf.lineagePath = ["root", "mid"];
 
-  const { ancestors, others } = relatedConversationsFor("leaf", [root, mid, leaf]);
-  assert.deepEqual(ancestors.map((s) => s.sessionId), ["root", "mid"]);
-  assert.deepEqual(others, []);
+  const rows = relatedRowsFor("leaf", [root, mid, leaf]);
+  assert.deepEqual(
+    rows.map((r) => [r.session.sessionId, r.relation]),
+    [["root", "ancestor"], ["mid", "parent"]],
+  );
 });
 
 test("rail: deleted middles are skipped; family attached still listed once", () => {
@@ -265,9 +267,11 @@ test("rail: deleted middles are skipped; family attached still listed once", () 
   const sub = child("sub", "mid", "subagent", "2026-07-03T00:00:00.000Z");
   sub.lineagePath = ["root", "mid"];
 
-  const { ancestors, others } = relatedConversationsFor("grand", [root, grand, sub]);
-  assert.deepEqual(ancestors.map((s) => s.sessionId), ["root"]);
-  assert.deepEqual(others.map((s) => s.sessionId), ["sub"]);
+  const rows = relatedRowsFor("grand", [root, grand, sub]);
+  assert.deepEqual(
+    rows.map((r) => [r.session.sessionId, r.relation]),
+    [["root", "parent"], ["sub", "subagent"]],
+  );
 });
 
 test("rail: a delisted origin appears as an ancestor (its only door)", () => {
@@ -279,8 +283,69 @@ test("rail: a delisted origin appears as an ancestor (its only door)", () => {
   } as SessionSummary;
   const b = child("b", "origin", "fork", "2026-07-01T00:00:00.000Z");
 
-  const { ancestors } = relatedConversationsFor("b", [origin, b]);
-  assert.deepEqual(ancestors.map((s) => s.sessionId), ["origin"]);
+  const rows = relatedRowsFor("b", [origin, b]);
+  assert.deepEqual(rows.map((r) => [r.session.sessionId, r.relation, r.icon]), [["origin", "origin", "ph-crown-simple"]]);
+});
+
+test("rail rows carry relation, run state, role and creation time for every kind (card 9)", () => {
+  const root = {
+    ...child("root", "unused", "fork", "2026-06-30T00:00:00.000Z"),
+    forkedFrom: null,
+  } as SessionSummary;
+  const br = child("br", "root", "fork", "2026-07-01T00:00:00.000Z");
+  const sa = { ...child("sa", "root", "subagent", "2026-07-02T00:00:00.000Z"), runStatus: "running" as const, agentType: "reviewer" };
+  const btw = child("btw", "br", "side", "2026-07-03T00:00:00.000Z");
+  btw.lineagePath = ["root", "br"];
+  const rows = relatedRowsFor("root", [root, br, sa, btw]);
+  assert.deepEqual(
+    rows.map((r) => [r.session.sessionId, r.relation, r.kind, r.runStatus ?? null, r.role, r.createdAt, r.paneSize]),
+    [
+      ["br", "fork", "fork", null, null, "2026-07-01T00:00:00.000Z", "half"],
+      ["sa", "subagent", "subagent", "running", "reviewer", "2026-07-02T00:00:00.000Z", "default"],
+      ["btw", "side", "side", null, null, "2026-07-03T00:00:00.000Z", "default"],
+    ],
+  );
+});
+
+test("rail: whole-family scope adds sibling branches; kind filter and search intersect, ancestors ignore the kind filter", () => {
+  const root = {
+    ...child("root", "unused", "fork", "2026-06-30T00:00:00.000Z"),
+    forkedFrom: null,
+  } as SessionSummary;
+  const b1 = child("b1", "root", "fork", "2026-07-01T00:00:00.000Z");
+  const b2 = child("b2", "root", "fork", "2026-07-02T00:00:00.000Z");
+  const b1sa = child("b1-sa", "b1", "subagent", "2026-07-03T00:00:00.000Z");
+  b1sa.lineagePath = ["root", "b1"];
+  const b2sa = child("b2-sa", "b2", "subagent", "2026-07-04T00:00:00.000Z");
+  b2sa.lineagePath = ["root", "b2"];
+  const all = [root, b1, b2, b1sa, b2sa];
+
+  const ids = (rows: ReturnType<typeof relatedRowsFor>) => rows.map((r) => r.session.sessionId);
+  // From b1: parent, own subagent, and the family's other subagent — not the sibling branch.
+  assert.deepEqual(ids(relatedRowsFor("b1", all)), ["root", "b1-sa", "b2-sa"]);
+  assert.deepEqual(ids(relatedRowsFor("b1", all, "family")), ["root", "b1-sa", "b2", "b2-sa"]);
+
+  const titles: Record<string, string> = { root: "Interview coding", "b1-sa": "kappa check", "b2-sa": "quote extraction", b2: "codebook v1" };
+  const titleOf = (s: SessionSummary) => titles[s.sessionId] ?? s.sessionId;
+  const rows = relatedRowsFor("b1", all, "family");
+  assert.deepEqual(ids(filterRelatedRows(rows, { kinds: new Set(["subagent"]), query: "", titleOf })), ["root", "b1-sa", "b2-sa"]);
+  assert.deepEqual(ids(filterRelatedRows(rows, { kinds: new Set(["subagent"]), query: "quote", titleOf })), ["b2-sa"]);
+  assert.deepEqual(ids(filterRelatedRows(rows, { kinds: new Set(["fork"]), query: "coding", titleOf })), ["root"]);
+  assert.deepEqual(ids(filterRelatedRows(rows, { kinds: new Set(), query: "", titleOf })), ["root"]);
+});
+
+test("rail filter keeps a match and its ancestors; an empty query means no filter", () => {
+  const root = {
+    ...child("root", "unused", "fork", "2026-06-30T00:00:00.000Z"),
+    forkedFrom: null,
+  } as SessionSummary;
+  const br = child("br", "root", "fork", "2026-07-01T00:00:00.000Z");
+  const nested = child("nested", "br", "fork", "2026-07-02T00:00:00.000Z");
+  nested.lineagePath = ["root", "br"];
+  const other = { ...child("other", "unused", "fork", "2026-07-03T00:00:00.000Z"), forkedFrom: null } as SessionSummary;
+  const names = { nested: { alias: "kappa check", snippet: "" }, other: { alias: "unrelated", snippet: "" } };
+  assert.equal(railMatchIds([root, br, nested, other], "  ", names), null);
+  assert.deepEqual([...railMatchIds([root, br, nested, other], "kappa", names)!].sort(), ["br", "nested", "root"]);
 });
 
 test("family and folder modified sorting follow descendant prompt acceptance", () => {

@@ -2,7 +2,11 @@
 // incidental — read development/architecture/branch-family-semantics.md
 // before changing them.
 import type { SessionSummary } from "@/api/types";
+import { t } from "@/i18n";
 import { shortId } from "@/lib/format";
+import { isListMember } from "@/lib/listMember";
+
+export { isListMember };
 
 export type DisplayNames = Record<string, { alias: string; snippet: string }>;
 
@@ -138,23 +142,6 @@ export function familyMembersOf(
   return all.filter((item) => familyKeyOf(item, byId) === key);
 }
 
-/**
- * Session-list membership: roots, branches, and children the user explicitly
- * added to the list (alpha.6 — they keep their purpose so the row can say where
- * they came from). Everything else is reachable from its parent's panel.
- */
-export function isListMember(session: SessionSummary): boolean {
-  const fork = session.forkedFrom;
-  // A delisted root STAYS a list member — demoted, not hidden: the tree
-  // nests it under its successor (owner 2026-08-04: the old mainline must
-  // degrade to an ordinary branch row, never vanish).
-  if (!fork) return true;
-  return (
-    fork.purpose === "fork" ||
-    fork.purpose === "helper" ||
-    fork.listed === true
-  );
-}
 
 const byAge = (a: SessionSummary, b: SessionSummary) =>
   (a.createdAt ?? "").localeCompare(b.createdAt ?? "");
@@ -243,51 +230,162 @@ export function canTakeMainline(
   return familyHead(key, all)?.sessionId !== session.sessionId;
 }
 
-/** Row label for a listed child: where it came from, not a made-up identity. */
+/** One monochrome icon per conversation kind, shared by the list and the rail. */
+export function purposeIcon(session: SessionSummary): string {
+  switch (session.forkedFrom?.purpose) {
+    case "subagent":
+      return "ph-robot";
+    case "helper":
+      return "ph-lifebuoy";
+    case "side":
+      return "ph-arrows-split";
+    case "ab-arm":
+      return "ph-git-fork";
+    default:
+      return "ph-git-branch";
+  }
+}
+
+/** The kinds a related row can be grouped and filtered by. */
+export type RelatedKind = "fork" | "subagent" | "side" | "helper";
+export const RELATED_KINDS: RelatedKind[] = ["fork", "subagent", "side", "helper"];
+
+export interface RelatedRow {
+  session: SessionSummary;
+  /** Ancestor chain rows (`origin` = delisted root) or the kind. */
+  relation: "origin" | "parent" | "ancestor" | RelatedKind;
+  /** Group for filtering; null for the ancestor chain — always the way up. */
+  kind: RelatedKind | null;
+  icon: string;
+  runStatus: SessionSummary["runStatus"];
+  /** Subagent role preset; null for everything else. */
+  role: string | null;
+  createdAt: string | null;
+  paneSize: "half" | "default";
+}
+
+export type RelatedScope = "conversation" | "family";
+
 /**
- * What the Related rail lists for an open conversation (owner 2026-08-07):
- * the FULL ancestor chain first (root → direct parent, living members only —
- * a child must always see its parent), then direct children (branches and
- * attached), then the family-wide attached pass (a subagent/btw/helper is
- * reachable from every member's rail). The chain covers the delisted-origin
- * door: a delisted root is an ancestor like any other.
+ * What the Related rail lists for an open conversation (owner 2026-08-07;
+ * branch-family doc §6): the FULL ancestor chain first (root → direct parent,
+ * living members only — a child must always see its parent), then direct
+ * children (branches and attached), then the family-wide attached pass (a
+ * subagent/btw/helper is reachable from every member's rail). The chain
+ * covers the delisted-origin door: a delisted root is an ancestor like any
+ * other. Scope `family` adds the rest of the living family — the sibling and
+ * cousin branches §6 keeps out of the default view. One row shape carries
+ * everything the rail renders, filters and groups on (card 9).
  */
-export function relatedConversationsFor(
+export function relatedRowsFor(
   sessionId: string,
   sessions: SessionSummary[],
-): { ancestors: SessionSummary[]; others: SessionSummary[] } {
+  scope: RelatedScope = "conversation",
+): RelatedRow[] {
   const byId = new Map(sessions.map((s) => [s.sessionId, s]));
   const self = byId.get(sessionId);
   const seen = new Set<string>([sessionId]); // never list self (opus E1)
-  const ancestors: SessionSummary[] = [];
-  const others: SessionSummary[] = [];
-  const add = (list: SessionSummary[], s: SessionSummary) => {
+  const rows: RelatedRow[] = [];
+  const add = (s: SessionSummary, relation: RelatedRow["relation"]) => {
     if (seen.has(s.sessionId)) return;
     seen.add(s.sessionId);
-    list.push(s);
+    const kind =
+      relation === "origin" || relation === "parent" || relation === "ancestor"
+        ? null
+        : relation;
+    rows.push({
+      session: s,
+      relation,
+      kind,
+      icon:
+        relation === "origin"
+          ? "ph-crown-simple"
+          : kind === null
+            ? "ph-arrow-elbow-left-up"
+            : purposeIcon(s),
+      runStatus: s.runStatus,
+      role: s.agentType ?? null,
+      createdAt: s.createdAt,
+      paneSize: s.forkedFrom?.purpose === "fork" ? "half" : "default",
+    });
   };
-  if (self) {
-    for (const id of lineagePathOf(self, byId)) {
-      const ancestor = byId.get(id);
-      if (ancestor && !ancestor.deletedAt) add(ancestors, ancestor);
-    }
-  }
+  const kindOf = (s: SessionSummary): RelatedKind | null => {
+    const purpose = s.forkedFrom?.purpose;
+    return purpose && purpose !== "ab-arm" ? purpose : null;
+  };
+  if (!self) return rows;
+  const chain = lineagePathOf(self, byId)
+    .map((id) => byId.get(id))
+    .filter((s): s is SessionSummary => Boolean(s && !s.deletedAt));
+  chain.forEach((ancestor, index) =>
+    add(
+      ancestor,
+      ancestor.delisted && !ancestor.forkedFrom
+        ? "origin"
+        : index === chain.length - 1
+          ? "parent"
+          : "ancestor",
+    ),
+  );
   for (const s of sessions) {
-    if (s.deletedAt || s.forkedFrom?.purpose === "ab-arm") continue;
-    if (s.forkedFrom?.sessionId === sessionId) add(others, s);
+    const kind = kindOf(s);
+    if (kind && !s.deletedAt && s.forkedFrom?.sessionId === sessionId) add(s, kind);
   }
-  if (self) {
-    const key = familyKeyOf(self, byId);
-    for (const s of sessions) {
-      if (s.deletedAt) continue;
-      const purpose = s.forkedFrom?.purpose;
-      if (!purpose || !["subagent", "side", "helper"].includes(purpose)) {
-        continue;
-      }
-      if (familyKeyOf(s, byId) === key) add(others, s);
-    }
+  const key = familyKeyOf(self, byId);
+  for (const s of sessions) {
+    const kind = kindOf(s);
+    if (!kind || s.deletedAt || familyKeyOf(s, byId) !== key) continue;
+    if (kind !== "fork" || scope === "family") add(s, kind);
   }
-  return { ancestors, others };
+  return rows;
+}
+
+/**
+ * Kind filter × search, intersected (proto E). The ancestor chain ignores
+ * the kind filter (it is the way up, not a type) but not the search.
+ */
+export function filterRelatedRows(
+  rows: RelatedRow[],
+  filter: { kinds: Set<RelatedKind>; query: string; titleOf: (s: SessionSummary) => string },
+): RelatedRow[] {
+  const query = filter.query.trim().toLowerCase();
+  return rows.filter(
+    (row) =>
+      (row.kind === null || filter.kinds.has(row.kind)) &&
+      matchesQuery(row.session, query, filter.titleOf(row.session)),
+  );
+}
+
+/**
+ * In-place rail filter (proto E): the list members whose title or metadata
+ * matches, plus their ancestors so the tree path stays. Null = no filter.
+ */
+export function railMatchIds(
+  sessions: SessionSummary[],
+  query: string,
+  displayNames: DisplayNames,
+): Set<string> | null {
+  const q = query.trim().toLowerCase();
+  if (!q) return null;
+  const byId = new Map(sessions.map((s) => [s.sessionId, s]));
+  const ids = new Set<string>();
+  for (const session of sessions) {
+    if (!isListMember(session) || session.deletedAt) continue;
+    if (!matchesQuery(session, q, sessionTitle(session, displayNames, sessions))) continue;
+    ids.add(session.sessionId);
+    for (const id of lineagePathOf(session, byId)) ids.add(id);
+  }
+  return ids;
+}
+
+/** Kind name for a filter option or section head. */
+export function relatedKindLabel(kind: RelatedKind): string {
+  return {
+    fork: t("Branches"),
+    subagent: t("Subagents"),
+    side: t("BTW"),
+    helper: t("Helpers"),
+  }[kind];
 }
 
 export function listedOriginLabel(session: SessionSummary): string | null {

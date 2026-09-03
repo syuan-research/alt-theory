@@ -1,9 +1,22 @@
-import { useEffect, useMemo, useRef, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useApp } from "@/context/AppProvider";
 import { useShell, type RailKey } from "@/context/ShellContext";
 import { t } from "@/i18n";
 import { shouldClearRelatedOnSubChange } from "@/lib/relatedOpen";
-import { canTakeMainline, familyMembersOf, isListMember, relatedConversationsFor, sessionTitle } from "@/lib/sessionList";
+import {
+  RELATED_KINDS,
+  canTakeMainline,
+  familyMembersOf,
+  filterRelatedRows,
+  folderLabel,
+  isListMember,
+  relatedKindLabel,
+  relatedRowsFor,
+  sessionTitle,
+  type RelatedKind,
+  type RelatedRow,
+  type RelatedScope,
+} from "@/lib/sessionList";
 import { ChildConversation } from "@/components/conversation/ChildConversation";
 import { RecordsPanel } from "@/components/inspector/RecordsPanel";
 import { ProvenancePanel } from "@/components/inspector/ProvenancePanel";
@@ -198,39 +211,55 @@ function RelatedConversations() {
   const activeChildId = shell.rightSub?.key.startsWith("related:")
     ? shell.rightSub.key.slice("related:".length)
     : null;
-  // Ancestors first (root → parent — a child always sees its parent), then
-  // children and the family-wide attached pass; rules in sessionList.ts.
-  const { ancestors, others } = useMemo(
-    () =>
-      app.sessionId
-        ? relatedConversationsFor(app.sessionId, app.sessions)
-        : { ancestors: [], others: [] },
-    [app.sessions, app.sessionId],
-  );
-  const children = useMemo(
-    () => [...ancestors, ...others],
-    [ancestors, others],
-  );
-  const parentId = ancestors.at(-1)?.sessionId;
-  const ancestorIds = useMemo(
-    () => new Set(ancestors.map((s) => s.sessionId)),
-    [ancestors],
-  );
 
-  const PURPOSE_ICON: Record<string, string> = {
-    side: "ph-arrows-split",
-    helper: "ph-lifebuoy",
-    "ab-arm": "ph-git-fork",
-    fork: "ph-git-branch",
-    subagent: "ph-robot",
+  // Filter state is pane-local (proto E): it lives as long as the pane does.
+  const [scope, setScope] = useState<RelatedScope>("conversation");
+  const [kinds, setKinds] = useState<Set<RelatedKind>>(() => new Set(RELATED_KINDS));
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [closedKinds, setClosedKinds] = useState<Set<RelatedKind>>(() => new Set());
+
+  const titleOf = (s: (typeof app.sessions)[number]) =>
+    sessionTitle(s, app.sessionDisplayNames, app.sessions);
+  // One row projection carries relation, icon, run state, role (card 9);
+  // the membership rule stays in sessionList.ts (§6).
+  const rows = useMemo(
+    () => (app.sessionId ? relatedRowsFor(app.sessionId, app.sessions, scope) : []),
+    [app.sessions, app.sessionId, scope],
+  );
+  const visible = useMemo(
+    () => filterRelatedRows(rows, { kinds, query, titleOf: (s) => sessionTitle(s, app.sessionDisplayNames, app.sessions) }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rows, kinds, query, app.sessionDisplayNames, app.sessions],
+  );
+  const countOf = (kind: RelatedKind) => rows.filter((row) => row.kind === kind).length;
+  const presentKinds = RELATED_KINDS.filter((kind) => countOf(kind) > 0);
+  const chain = visible.filter((row) => row.kind === null);
+  const ownFolder = app.sessions.find((s) => s.sessionId === app.sessionId)?.workspacePrimaryDir ?? null;
+
+  const toggleKind = (kind: RelatedKind) =>
+    setKinds((prev) => {
+      const next = new Set(prev);
+      if (next.has(kind)) next.delete(kind);
+      else next.add(kind);
+      return next;
+    });
+  const toggleSection = (kind: RelatedKind) =>
+    setClosedKinds((prev) => {
+      const next = new Set(prev);
+      if (next.has(kind)) next.delete(kind);
+      else next.add(kind);
+      return next;
+    });
+  const closeSearch = () => {
+    setSearchOpen(false);
+    setQuery("");
   };
-  // Delisted roots keep the crown; other ancestors read as "up the chain".
-  const iconFor = (child: (typeof children)[number], upChain: Set<string>) =>
-    child.delisted && !child.forkedFrom
-      ? "ph-crown-simple"
-      : upChain.has(child.sessionId)
-        ? "ph-arrow-elbow-left-up"
-        : PURPOSE_ICON[child.forkedFrom?.purpose ?? "side"];
+  const filterSummary =
+    presentKinds.every((kind) => kinds.has(kind))
+      ? t("All types")
+      : presentKinds.filter((kind) => kinds.has(kind)).map(relatedKindLabel).join(" · ") || t("No types");
 
   // Switcher click: setActiveRelatedSessionId only; openSub + width are owned
   // by the one-shot effect on activeRelatedSessionId. Do NOT dual-write openSub.
@@ -239,12 +268,13 @@ function RelatedConversations() {
   // gone. Branch/edit comparisons open the child in this Related rail via
   // branch_created → activeRelatedSessionId (not center compare). Center
   // session is chosen only from the left list.
+  const openRow = (row: RelatedRow) => {
+    shell.openApp();
+    app.setActiveRelatedSessionId(row.session.sessionId, { size: row.paneSize });
+  };
 
-  const sizeForChild = (purpose: string | undefined): "half" | "default" =>
-    purpose === "fork" ? "half" : "default";
-
-  const sessionMenuItems = (child: (typeof children)[number]): ContextMenuItem[] => {
-    const title = sessionTitle(child, app.sessionDisplayNames, app.sessions);
+  const sessionMenuItems = (child: RelatedRow["session"]): ContextMenuItem[] => {
+    const title = titleOf(child);
     const sessionRoot = async () => {
       const detail = await fetchSessionDetail(child.sessionId);
       if (!detail.sessionRoot) throw new Error(t("Session folder is available in the desktop app."));
@@ -302,7 +332,7 @@ function RelatedConversations() {
 
   const openMenuFromKey = (
     event: ReactKeyboardEvent<HTMLButtonElement>,
-    child: (typeof children)[number],
+    child: RelatedRow["session"],
   ) => {
     if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
     event.preventDefault();
@@ -331,35 +361,33 @@ function RelatedConversations() {
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
-  }, [children.length, activeChildId]);
+  }, [visible.length, activeChildId]);
 
   // One row of small buttons, then the conversation itself: switching between
   // related conversations should not cost a round trip through a list.
   const switcher =
-    children.length > 0 ? (
+    visible.length > 0 ? (
       <div className="child-switch" ref={switchRef}>
-        {children.map((child) => (
+        {visible.map((row) => (
           <button
-            key={child.sessionId}
-            className={child.sessionId === activeChildId ? "on" : ""}
-            data-tip={sessionTitle(child, app.sessionDisplayNames, app.sessions)}
-            onContextMenu={(event) => menu.open(event, sessionMenuItems(child))}
-            onKeyDown={(event) => openMenuFromKey(event, child)}
+            key={row.session.sessionId}
+            className={row.session.sessionId === activeChildId ? "on" : ""}
+            data-tip={titleOf(row.session)}
+            onContextMenu={(event) => menu.open(event, sessionMenuItems(row.session))}
+            onKeyDown={(event) => openMenuFromKey(event, row.session)}
             onClick={() => {
               shell.openApp();
-              if (child.sessionId === activeChildId) {
+              if (row.session.sessionId === activeChildId) {
                 app.setActiveRelatedSessionId(null);
                 shell.closeSub();
               } else {
-                app.setActiveRelatedSessionId(child.sessionId, {
-                  size: sizeForChild(child.forkedFrom?.purpose),
-                });
+                app.setActiveRelatedSessionId(row.session.sessionId, { size: row.paneSize });
               }
             }}
           >
-            <i className={`ph ${iconFor(child, ancestorIds)}`} />
-            <span>{sessionTitle(child, app.sessionDisplayNames, app.sessions)}</span>
-            {child.runStatus === "running" || child.runStatus === "awaiting-approval" ? (
+            <i className={`ph ${row.icon}`} />
+            <span>{titleOf(row.session)}</span>
+            {row.runStatus === "running" || row.runStatus === "awaiting-approval" ? (
               <span className="dot" />
             ) : null}
           </button>
@@ -385,7 +413,7 @@ function RelatedConversations() {
     );
   }
 
-  if (children.length === 0) {
+  if (rows.length === 0) {
     return (
       <div className="rp-empty">
         <div>{t("No related conversations.")}</div>
@@ -408,50 +436,140 @@ function RelatedConversations() {
     );
   }
 
+  const detailOf = (row: RelatedRow) => {
+    const count = row.session.messageCount ?? 0;
+    switch (row.relation) {
+      case "origin":
+        return t("Origin conversation · {count} messages", { count });
+      case "parent":
+        return t("Parent · {count} messages", { count });
+      case "ancestor":
+        return t("Ancestor · {count} messages", { count });
+      case "helper":
+        return t("How Alt works, and fixing setup · fresh context");
+      case "subagent":
+        return row.role
+          ? t("Subagent · {role} · {count} messages", { role: row.role, count })
+          : t("Subagent · {count} messages", { count });
+      case "fork":
+        return t("Branch · {count} messages", { count });
+      default:
+        return t("Side conversation · {count} messages", { count });
+    }
+  };
+
+  const item = (row: RelatedRow) => (
+    <button
+      key={row.session.sessionId}
+      className="sc-item"
+      onContextMenu={(event) => menu.open(event, sessionMenuItems(row.session))}
+      onKeyDown={(event) => openMenuFromKey(event, row.session)}
+      onClick={() => openRow(row)}
+    >
+      <div className="t">
+        <i className={`ph ${row.icon}`} />
+        {titleOf(row.session)}
+        {row.runStatus === "running" || row.runStatus === "awaiting-approval" ? (
+          <span className="badge-run">{t("running")}</span>
+        ) : null}
+      </div>
+      <div className="d">{detailOf(row)}</div>
+      {row.session.workspacePrimaryDir && row.session.workspacePrimaryDir !== ownFolder ? (
+        <div className="d fline">
+          <i className="ph ph-folder-simple" /> {t("In {folder}", { folder: folderLabel(row.session.workspacePrimaryDir) })}
+        </div>
+      ) : null}
+    </button>
+  );
+
   return (
     <>
       {switcher}
-      {children.map((child) => (
-        <button
-          key={child.sessionId}
-          className="sc-item"
-          onContextMenu={(event) => menu.open(event, sessionMenuItems(child))}
-          onKeyDown={(event) => openMenuFromKey(event, child)}
-          onClick={() => {
-            shell.openApp();
-            app.setActiveRelatedSessionId(child.sessionId, {
-              size: sizeForChild(child.forkedFrom?.purpose),
-            });
-          }}
+      <div className="frow">
+        <span className="flabel">{t("Filter")}</span>
+        <span
+          className={`fexp${filterOpen ? " open" : ""}`}
+          onMouseLeave={() => setFilterOpen(false)}
         >
-          <div className="t">
-            <i className={`ph ${iconFor(child, ancestorIds)}`} />
-            {sessionTitle(child, app.sessionDisplayNames, app.sessions)}
-            {child.runStatus === "running" ||
-            child.runStatus === "awaiting-approval" ? (
-              <span className="badge-run">{t("running")}</span>
-            ) : null}
-          </div>
-          <div className="d">
-            {child.delisted && !child.forkedFrom
-              ? t("Origin conversation · {count} messages", { count: child.messageCount ?? 0 })
-              : child.sessionId === parentId
-                ? t("Parent · {count} messages", { count: child.messageCount ?? 0 })
-                : ancestorIds.has(child.sessionId)
-                  ? t("Ancestor · {count} messages", { count: child.messageCount ?? 0 })
-                  : child.forkedFrom?.purpose === "helper"
-                    ? t("How Alt works, and fixing setup · fresh context")
-                    : child.forkedFrom?.purpose === "subagent"
-                      ? t("Subagent · {count} messages", { count: child.messageCount ?? 0 })
-                      : child.forkedFrom?.purpose === "fork"
-                        ? t("Branch · {count} messages", { count: child.messageCount ?? 0 })
-                        : t("Side conversation · {count} messages", { count: child.messageCount ?? 0 })}
-          </div>
+          {/* The card expands on hover; the click path is for trackpad and keyboard users. */}
+          <button
+            type="button"
+            className="fcard fsummary"
+            aria-expanded={filterOpen}
+            onClick={() => setFilterOpen((open) => !open)}
+          >
+            {filterSummary}
+          </button>
+          <span className="fopts">
+            {presentKinds.map((kind) => (
+              <button
+                type="button"
+                key={kind}
+                className={`fcard${kinds.has(kind) ? " on" : ""}`}
+                aria-pressed={kinds.has(kind)}
+                onClick={() => toggleKind(kind)}
+              >
+                {kinds.has(kind) ? <i className="ph ph-check" /> : null}
+                {relatedKindLabel(kind)}
+                <span className="n">{countOf(kind)}</span>
+              </button>
+            ))}
+          </span>
+        </span>
+        <button
+          type="button"
+          className={`fcard${scope === "family" ? " on" : ""}`}
+          aria-pressed={scope === "family"}
+          onClick={() => setScope((prev) => (prev === "family" ? "conversation" : "family"))}
+        >
+          {scope === "family" ? <i className="ph ph-check" /> : null}
+          {t("Whole family")}
         </button>
-      ))}
-      <div className="related-legend" aria-hidden="true">
-        {t("br = Branch · btw = side chat · Helper · sa = Subagent")}
+        <span className="fspacer" />
+        <button
+          type="button"
+          className={`fsearch-btn${searchOpen || query ? " on" : ""}`}
+          data-tip={t("Search within these")}
+          aria-label={t("Search within these")}
+          onClick={() => (searchOpen ? closeSearch() : setSearchOpen(true))}
+        >
+          <i className="ph ph-magnifying-glass" />
+        </button>
       </div>
+      {searchOpen ? (
+        <div className="fsearch">
+          <input
+            autoFocus
+            placeholder={t("Search…")}
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") closeSearch();
+            }}
+          />
+        </div>
+      ) : null}
+      {chain.map(item)}
+      {presentKinds
+        .filter((kind) => kinds.has(kind))
+        .map((kind) => {
+          const members = visible.filter((row) => row.kind === kind);
+          if (members.length === 0) return null;
+          const closed = closedKinds.has(kind);
+          return (
+            <div key={kind}>
+              <button type="button" className="sect-head" onClick={() => toggleSection(kind)}>
+                <i className={`ph ph-caret-${closed ? "right" : "down"}`} />
+                {relatedKindLabel(kind)}
+                <span className="n">{members.length}</span>
+              </button>
+              {closed ? null : members.map(item)}
+            </div>
+          );
+        })}
+      {visible.length === 0 ? (
+        <div className="rp-empty">{t("No matching related conversations.")}</div>
+      ) : null}
       {menu.element}
     </>
   );
