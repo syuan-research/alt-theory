@@ -971,11 +971,13 @@ export async function getVerifiedConfigStatus(
   try {
     // ponytail: this bounds the response; ModelRuntime has no cancellation signal,
     // so a late refresh may still finish in the background.
+    // The timer stays referenced: it is the only thing holding the event loop
+    // while a refresh is in flight, and an unref'd one lets the loop drain
+    // before it fires, hanging this await. The finally clears it either way.
     const verified = await Promise.race([
       resolveOAuth(status.activeProvider),
       new Promise<"timeout">((resolveTimeout) => {
         timeout = setTimeout(() => resolveTimeout("timeout"), timeoutMs);
-        timeout.unref?.();
       }),
     ]);
     if (verified === "timeout") {
