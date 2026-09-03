@@ -862,6 +862,18 @@ export function AuthConnectCard({
     setInput("");
     openedUrl.current = null;
     popup.current = window.open("about:blank", "_blank");
+    // The popup slot is reserved up front so the later window.open for the
+    // provider URL is not blocker-killed. Until that URL arrives (which for
+    // prompt-first flows like GitHub Copilot only happens after the domain
+    // prompt is answered), show a waiting placeholder instead of a blank tab.
+    if (popup.current) {
+      popup.current.document.write(
+        `<!doctype html><html><body style="font-family:system-ui;padding:40px;color:#777"><p>${t(
+          "Preparing the secure sign-in flow…"
+        )}</p></body></html>`
+      );
+      popup.current.document.close();
+    }
     setFlow({ ...flow, step: "waiting", error: undefined });
     try {
       const auth = await startProviderAuth(flow.provider.id);

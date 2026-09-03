@@ -793,7 +793,7 @@ export function ModelConfigPage({
             )}
           </span>
           <label className="default-model-picker active-model-inline">
-            <span>{t("Default")}</span>
+            <span>{t("Session default model:")}</span>
             <select
               value={
                 status.activeProvider && status.activeModel
@@ -1087,10 +1087,6 @@ export function ModelConfigPage({
                 <strong>{status.activeModel}</strong>
                 {" — "}
                 {t("change it from the Default control at the top of Models.")}
-              </p>
-            ) : editingName ? (
-              <p className="provider-default-note">
-                {t("This provider is not the default. Use Set as default at the top of Models when you want new conversations to use one of its models.")}
               </p>
             ) : null}
 
