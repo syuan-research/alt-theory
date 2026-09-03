@@ -2119,6 +2119,11 @@ export class SessionService implements AgentTeamBridge {
    * Matched by text, not by index: Pi may have handed the entry to the model
    * between the mirrored `queue_update` and this call, and a stale index
    * would drop the wrong message. A miss is `not_found`.
+   *
+   * A re-queue that fails does not fail the retract: each remaining entry is
+   * attempted on its own (one throw cannot abandon the suffix), the call
+   * still resolves, and Pi's queue — mirrored in the `finally` — is the
+   * truth about what survived.
    */
   async retractQueued(
     sessionId: string,
@@ -2143,6 +2148,7 @@ export class SessionService implements AgentTeamBridge {
     const attachments = managed.queuedAttachments.get(text) ?? [];
     managed.queuedAttachments.delete(text);
     managed.retractingQueue = true;
+    const replayed: string[] = [];
     try {
       managed.session.clearQueue();
       const replayFor = (entry: string) => {
@@ -2152,8 +2158,22 @@ export class SessionService implements AgentTeamBridge {
         );
         return images.length ? images : undefined;
       };
-      for (const entry of steering) await managed.session.steer(entry, replayFor(entry));
-      for (const entry of followUp) await managed.session.followUp(entry, replayFor(entry));
+      for (const entry of steering) {
+        try {
+          await managed.session.steer(entry, replayFor(entry));
+          replayed.push(entry);
+        } catch (error) {
+          console.warn("[retract_queued] re-queuing an entry failed", error);
+        }
+      }
+      for (const entry of followUp) {
+        try {
+          await managed.session.followUp(entry, replayFor(entry));
+          replayed.push(entry);
+        } catch (error) {
+          console.warn("[retract_queued] re-queuing an entry failed", error);
+        }
+      }
     } finally {
       managed.retractingQueue = false;
       // Mirror Pi's real queue, not the intended one: a re-queue that threw
@@ -2162,6 +2182,19 @@ export class SessionService implements AgentTeamBridge {
         steering: managed.session.getSteeringMessages().filter(isUserQueueText),
         followUp: managed.session.getFollowUpMessages().filter(isUserQueueText),
       };
+      // A re-queued entry that Pi no longer holds was consumed mid-restore:
+      // it reached the model, so its bubble appears now and its staged paths
+      // are consumed with it. Entries whose re-queue threw are not in
+      // `replayed` and raise no delivery bubble.
+      const stillQueued = new Set([
+        ...managed.runState.queue.steering,
+        ...managed.runState.queue.followUp,
+      ]);
+      for (const entry of replayed) {
+        if (stillQueued.has(entry)) continue;
+        managed.queuedAttachments.delete(entry);
+        this.emit(managed, { type: "user_steered", payload: { text: entry } });
+      }
       this.emit(managed, {
         type: "queue_updated",
         payload: managed.runState.queue,

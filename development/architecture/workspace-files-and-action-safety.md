@@ -121,7 +121,12 @@ that shadows Pi's built-in write; its `mkdir` and `writeFile` operations call
 `assertWritablePath` (same module) — the write gate over the verdict — before
 touching the filesystem, skipped only while Full Access is effective (see
 below). `isPathInside` is the shared lexical-containment primitive (also used
-by `session-service.ts`'s `isInsideDataDir`).
+by `session-service.ts`'s `isInsideDataDir`). Two more identity exports from
+the same module serve path comparisons outside containment: `samePath`
+(case-folded equality on win32) for settings/workspace folder matching, and
+`canonicalPathKey` (resolved, folded, symlink-collapsed through the nearest
+existing ancestor) as the merge key for the changes projection, so two
+spellings or an in-root alias of one file cannot split into two rows.
 
 Callers: the security extension (read and write mediation,
 [`security-extension.ts`](../../alt-theory-app/core/security-extension.ts#L304-L380)),

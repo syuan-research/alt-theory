@@ -333,6 +333,55 @@ test("provider write without a catalog match stays a bare entry", async () => {
   assert.deepEqual(piThinkingLevels(entry), ["off"]);
 });
 
+test("an ambiguous URL-only catalog match stays bare instead of key-order-dependent", async () => {
+  const agentDir = mkdtempSync(join(tmpdir(), "alt-theory-thinking-write-ambig-"));
+  // Two catalog providers share the API URL and carry the same model id with
+  // different effort levels: whichever Object.values yields first would win.
+  writeFileSync(
+    join(agentDir, "models-dev-cache.json"),
+    JSON.stringify({
+      "alpha-proxy": {
+        api: "https://proxy.example/v1",
+        models: {
+          "shared-model": {
+            reasoning: true,
+            reasoning_options: [{ type: "effort", values: ["low", "max"] }],
+          },
+        },
+      },
+      "beta-proxy": {
+        api: "https://proxy.example/v1",
+        models: {
+          "shared-model": {
+            reasoning: true,
+            reasoning_options: [{ type: "effort", values: ["low", "high"] }],
+          },
+        },
+      },
+    }),
+  );
+  await upsertProvider(
+    agentDir,
+    {
+      name: "my-proxy",
+      baseUrl: "https://proxy.example/v1",
+      api: "openai-completions",
+      apiKey: "PROXY_KEY",
+      models: [{ id: "shared-model" }],
+    },
+    { keyStorage: "env" },
+  );
+  const entry = writtenProviderModel(agentDir, "my-proxy", "shared-model");
+  assert.equal(entry.reasoning, undefined);
+  assert.equal(entry.thinkingLevelMap, undefined);
+  assert.deepEqual(piThinkingLevels(entry), ["off"]);
+  // The picker chain falls through the same ambiguity: neither candidate's
+  // levels are offered for the model.
+  const view = listProviders(agentDir).find((provider) => provider.name === "my-proxy");
+  assert.ok(view);
+  assert.deepEqual(view.models[0].availableThinkingLevels, []);
+});
+
 test("user-explicit thinkingLevels survive a catalog hit", async () => {
   const agentDir = mkdtempSync(join(tmpdir(), "alt-theory-thinking-write-user-"));
   writeFileSync(

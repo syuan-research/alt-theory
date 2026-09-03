@@ -11,7 +11,7 @@ import {
 } from "fs";
 import { basename, extname, isAbsolute, join, relative, resolve } from "path";
 import { resolveSessionRoot, resolveSessionsRoot } from "../core/data-dir.js";
-import { verdict } from "../core/path-verdict.js";
+import { samePath, verdict } from "../core/path-verdict.js";
 import type { Root } from "../core/root-policy.js";
 import { readV4SessionHeader } from "./session-records.js";
 import {
@@ -415,7 +415,7 @@ export function describeWorkingFolders(
       id: index === 0 ? "primary" : `additional-${index}`,
       path: resolved,
       role: index === 0 ? "primary" : "additional",
-      managed: resolved === resolve(managedDir),
+      managed: samePath(resolved, managedDir),
       available: statSync(resolved, { throwIfNoEntry: false })?.isDirectory() ?? false,
     };
   });

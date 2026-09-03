@@ -148,6 +148,31 @@ export function isPathInside(root: string, target: string): boolean {
   );
 }
 
+/**
+ * Whether two path spellings name the same location. Case folds on win32
+ * (its filesystems are case-insensitive); exact elsewhere. Callers that
+ * compare workspace folders, settings paths, or change rows against each
+ * other go through this instead of raw string equality.
+ */
+export function samePath(a: string, b: string): boolean {
+  return normalizePath(resolve(a)) === normalizePath(resolve(b));
+}
+
+/**
+ * A stable identity key for one physical path: resolved, case-folded on
+ * win32, with symlinks collapsed through the nearest existing ancestor —
+ * a not-yet-existing tail is kept lexically. Two spellings or an in-root
+ * alias of one file produce one key, so merging or grouping by this key
+ * cannot split a file into two rows.
+ */
+export function canonicalPathKey(path: string): string {
+  const resolved = resolve(path);
+  const existing = nearestExistingPath(resolved);
+  const real = realNearestExistingPath(resolved) ?? resolved;
+  if (existing === resolved) return normalizePath(real);
+  return normalizePath(join(real, relative(existing, resolved)));
+}
+
 function normalizePath(path: string): string {
   return process.platform === "win32" ? path.toLowerCase() : path;
 }

@@ -248,8 +248,12 @@ in `ManagedSession.queuedAttachments` (Pi's queue holds only the strings): a
 retract returns them with the text and a re-queue replays the remaining
 entries' own attachments; delivery and Stop clear them (Stop still restores
 text only). The child conversation pane drops retracted attachments — its
-editor stages none (`session-service.test.ts` "a queued message is recalled by
-text", "a retract hands the queued attachments back").
+editor stages none. Each remaining entry is re-queued on its own: a re-queue
+that fails does not fail the retract (the call still resolves and Pi's queue,
+mirrored after the attempt, is the truth about what survived), and an entry
+consumed mid-restore still receives its `user_steered` bubble
+(`session-service.test.ts` "a queued message is recalled by text", "a retract
+hands the queued attachments back", "a restore-time delivery still bubbles").
 
 Pi's own transient provider retry is represented as a `retrying` run phase. Alt
 Theory does not wrap it in a second retry loop. A successful or failed terminal

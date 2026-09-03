@@ -23,7 +23,7 @@ import {
   resolveSessionRoot,
   resolveSessionsRoot,
 } from "../core/data-dir.js";
-import { verdict } from "../core/path-verdict.js";
+import { canonicalPathKey, isPathInside, verdict } from "../core/path-verdict.js";
 import type { Root } from "../core/root-policy.js";
 import type { SessionEvent } from "./session-events.js";
 import {
@@ -1490,7 +1490,11 @@ export function mergeSessionChanges(
   for (const { sessionId, files } of perSession) {
     for (const file of [...files].reverse()) {
       const located = locateChangedFile(roots, file.path);
-      const key = located.resolvedPath;
+      // One physical file is one row: two family members writing it through
+      // different spellings (Windows case variants) or an in-root symlink
+      // alias must not split the counts. The resolved path itself stays as
+      // the tool spelled it; only the merge key is canonical.
+      const key = canonicalPathKey(located.resolvedPath);
       const existing = byPath.get(key);
       byPath.delete(key);
       byPath.set(key, {
@@ -1592,7 +1596,9 @@ function roleRank(role: ChangeGroup["role"]): number {
 }
 
 function cappedAncestor(dir: string, home: string): string {
-  const base = dir === home || dir.startsWith(home + sep) ? home : parse(dir).root;
+  // isPathInside folds case on win32, so a differently-cased home still
+  // anchors its own folders instead of falling to the drive root.
+  const base = isPathInside(home, dir) ? home : parse(dir).root;
   const below = relative(base, dir).split(sep).filter(Boolean);
   return below.length > CHANGE_GROUP_DEPTH_CAP
     ? join(base, ...below.slice(0, CHANGE_GROUP_DEPTH_CAP))
@@ -2225,11 +2231,6 @@ function compareSummaries(a: SessionSummary, b: SessionSummary): number {
   // Timestamps are second-granular; same-second sessions tie. IDs carry the
   // creation counter, so a numeric-aware descending ID compare keeps newest first.
   return b.sessionId.localeCompare(a.sessionId, undefined, { numeric: true });
-}
-
-function isPathInside(root: string, path: string): boolean {
-  const relativePath = relative(resolve(root), resolve(path));
-  return Boolean(relativePath) && !relativePath.startsWith("..") && !isAbsolute(relativePath);
 }
 
 function uniqueWarnings(warnings: string[]): string[] {

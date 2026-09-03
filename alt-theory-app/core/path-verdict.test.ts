@@ -5,7 +5,9 @@ import { join } from "path";
 import test from "node:test";
 import {
   assertWritablePath,
+  canonicalPathKey,
   isPathInside,
+  samePath,
   verdict,
 } from "./path-verdict.js";
 import { sessionRoots, type Root } from "./root-policy.js";
@@ -239,6 +241,37 @@ test("sessionRoots lists every root with its reason", () => {
     const allReasons = [...bounded.readable, ...bounded.writable].map((r) => r.reason);
     assert.ok(!allReasons.includes("global-list" as never));
     assert.ok(!allReasons.includes("project-secondary" as never));
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test("samePath folds case on win32 and not elsewhere", () => {
+  if (process.platform === "win32") {
+    const drive = process.cwd().slice(0, 2);
+    assert.ok(samePath(drive + "\\Users\\a\\Note.MD", drive.toLowerCase() + "\\users\\A\\note.md"));
+    assert.ok(!samePath(drive + "\\a\\f.txt", drive + "\\a\\g.txt"));
+  } else {
+    assert.ok(!samePath("/tmp/a/note.md", "/TMP/A/note.md"));
+    assert.ok(samePath("/tmp/a/../a/note.md", "/tmp/a/note.md"));
+  }
+});
+
+test("canonicalPathKey collapses a symlinked spelling onto the real one", () => {
+  const base = mkdtempSync(join(tmpdir(), "alt-theory-verdict-key-"));
+  try {
+    mkdirSync(join(base, "real"));
+    writeFileSync(join(base, "real", "f.txt"), "x");
+    linkDir(join(base, "real"), join(base, "alias"));
+    assert.equal(
+      canonicalPathKey(join(base, "alias", "f.txt")),
+      canonicalPathKey(join(base, "real", "f.txt")),
+    );
+    // A not-yet-existing tail is kept lexically but stays identity-stable.
+    assert.equal(
+      canonicalPathKey(join(base, "alias", "new.txt")),
+      canonicalPathKey(join(base, "real", "new.txt")),
+    );
   } finally {
     rmSync(base, { recursive: true, force: true });
   }

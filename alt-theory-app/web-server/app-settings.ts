@@ -6,8 +6,9 @@
  * session applies the new selection.
  */
 import { existsSync, readFileSync } from "fs";
-import { join, resolve } from "path";
+import { join } from "path";
 import { writeJsonAtomic } from "../core/data-dir.js";
+import { samePath } from "../core/path-verdict.js";
 import type { AltMode, RuntimeMode } from "../core/alt-theory-core.js";
 
 /**
@@ -120,7 +121,7 @@ export function folderPolicyFor(
   const folders = settings.workingFolders;
   const project =
     primaryDir && folders
-      ? folders.projects.find((item) => resolve(item.primaryDir) === resolve(primaryDir))
+      ? folders.projects.find((item) => samePath(item.primaryDir, primaryDir))
       : undefined;
   return {
     globalFolders: folders?.global ?? [],

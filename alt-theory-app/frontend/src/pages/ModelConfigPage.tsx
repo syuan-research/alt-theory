@@ -761,10 +761,14 @@ export function ModelConfigPage({
   };
 
   const modelActionResult = fetchResult ?? testResult;
+  // Reconnect is the failed-refresh action (IA doc): the active provider is
+  // a reconnect target only when its OAuth is actually unusable. A healthy
+  // connected account manages instead — its editor offers Sign in again.
   // OAuth providers are whichever providers report keyState "oauth" — no
   // second id list to keep in sync (the server's PROVIDER_AUTH_IDS owns it).
   const reconnectTarget =
     status?.activeProvider &&
+    status.activeUsable === false &&
     providers.find((provider) => provider.name === status.activeProvider)
       ?.keyState === "oauth"
       ? `oauth:${status.activeProvider}`

@@ -4684,3 +4684,62 @@ test("a retract hands the queued attachments back and a re-queue keeps the other
     await service.disposeAll();
   }
 });
+
+test("a restore-time delivery still bubbles and a failed re-queue does not abandon the rest", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const created = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const events: SessionServiceEvent[] = [];
+  const detach = service.attach(created.sessionId, (event) => events.push(event));
+  const managed = (service as any).sessions.get(created.sessionId);
+  const release = holdPrompt(managed);
+  const stagedForC = join(fixture.root, "pic-c.png");
+  try {
+    const run = service.runPrompt(created.sessionId, "long turn");
+    await service.queuePrompt(created.sessionId, "A", undefined, "steer");
+    await service.queuePrompt(created.sessionId, "B", undefined, "steer");
+    await service.queuePrompt(created.sessionId, "C", [stagedForC], "steer");
+    assert.deepEqual([...managed.session.getSteeringMessages()], ["A", "B", "C"]);
+
+    // Re-queue outcomes, one per entry: B's write fails; C goes back in and
+    // Pi consumes it immediately (the queue no longer holds it).
+    const realSteer = managed.session.steer.bind(managed.session);
+    const realClear = managed.session.clearQueue.bind(managed.session);
+    managed.session.steer = async (text: string, images?: unknown) => {
+      if (text === "B") throw new Error("queue write failed");
+      await realSteer(text, images as never);
+      if (text === "C") await realClear();
+    };
+
+    const retracted = await service.retractQueued(created.sessionId, "A");
+    assert.deepEqual(retracted, { text: "A", attachments: [] });
+    // The consumed entry's bubble appears; the failed one raises no delivery.
+    assert.deepEqual(
+      events.filter((event) => event.type === "user_steered").map((event) => event.payload),
+      [{ text: "C" }],
+    );
+    // Pi's queue (empty: B never went back, C was consumed) is what the
+    // client sees; the run was never interrupted.
+    assert.deepEqual(service.getSnapshot(created.sessionId).queue, {
+      steering: [],
+      followUp: [],
+    });
+    assert.equal(events.at(-1)?.type, "queue_updated");
+    assert.equal(service.isRunning(created.sessionId), true);
+    // The consumed entry's staged paths went with it; the failed entry's
+    // record is left in place (its fate is unknown, a later queue overwrites).
+    assert.equal(managed.queuedAttachments.has("C"), false);
+    assert.equal(managed.queuedAttachments.has("B"), true);
+    assert.equal(managed.queuedAttachments.has("A"), false);
+
+    release();
+    await run.completion.catch(() => {});
+  } finally {
+    detach();
+    await service.disposeAll();
+  }
+});

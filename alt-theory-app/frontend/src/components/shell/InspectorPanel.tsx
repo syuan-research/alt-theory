@@ -117,22 +117,40 @@ export function InspectorPanel() {
   };
 
   // Scroll memory per (conversation, rail, sub): saved on scroll, restored
-  // when that view mounts again — retried briefly because the list arrives
-  // after the mount.
+  // when that view mounts again. Content (file text, lists) arrives after
+  // the mount and grows the scroll height, so the restore retries while the
+  // content changes instead of on a fixed frame budget: DOM mutations cover
+  // React renders, a ResizeObserver on the content covers height-only
+  // changes (images loading). Both stop once the position lands; scrolling
+  // updates the saved value, so a restore during active reading is a no-op.
   const bodyRef = useRef<HTMLDivElement>(null);
   const scrollKey = `${app.sessionId}:${active}:${shell.rightSub?.key ?? ""}:scroll`;
   useLayoutEffect(() => {
     const el = bodyRef.current;
     const saved = paneMemory.get<number>(scrollKey) ?? 0;
     if (!el || !saved) return;
-    let tries = 0;
-    let frame = 0;
+    let resize: ResizeObserver | null = null;
     const restore = () => {
       el.scrollTop = saved;
-      if (Math.abs(el.scrollTop - saved) > 1 && tries++ < 30) frame = requestAnimationFrame(restore);
+      if (Math.abs(el.scrollTop - saved) <= 1) {
+        mutations.disconnect();
+        resize?.disconnect();
+        return;
+      }
+      // The content element is replaced as views swap; follow it.
+      resize?.disconnect();
+      if (el.firstElementChild) {
+        resize = new ResizeObserver(restore);
+        resize.observe(el.firstElementChild);
+      }
     };
+    const mutations = new MutationObserver(restore);
+    mutations.observe(el, { childList: true, subtree: true });
     restore();
-    return () => cancelAnimationFrame(frame);
+    return () => {
+      mutations.disconnect();
+      resize?.disconnect();
+    };
   }, [scrollKey]);
 
   return (

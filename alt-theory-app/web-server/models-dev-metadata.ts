@@ -131,10 +131,9 @@ export function catalogSdkFamily(
 ): CatalogSdkFamily | undefined {
   const catalog = loadCache(agentDir);
   if (!catalog) return undefined;
-  for (const provider of providerCandidates(catalog, providerName, baseUrl)) {
-    const model = provider.models?.[modelId];
-    if (!model) continue;
-    const npm = model.provider?.npm ?? provider.npm;
+  const hit = pickCatalogProvider(catalog, providerName, baseUrl, modelId, () => true);
+  if (hit) {
+    const npm = hit.model.provider?.npm ?? hit.provider.npm;
     if (npm?.includes("anthropic")) return "anthropic";
     if (npm?.includes("openai")) return "openai";
   }
@@ -172,66 +171,93 @@ export function catalogModelMetadata(
 ): CatalogModelMetadata | undefined {
   const catalog = loadCache(agentDir);
   if (!catalog) return undefined;
-  for (const provider of providerCandidates(catalog, providerName, baseUrl)) {
-    const model = provider.models?.[modelId];
-    if (!model) continue;
-    const input = Array.isArray(model.modalities?.input)
-      ? model.modalities.input.filter(
-          (value): value is "text" | "image" =>
-            value === "text" || value === "image",
-        )
-      : [];
-    const contextWindow = Number(model.limit?.context);
-    const maxTokens = Number(model.limit?.output);
-    return {
-      ...(model.name ? { name: model.name } : {}),
-      ...(typeof model.reasoning === "boolean"
-        ? { reasoning: model.reasoning }
-        : {}),
-      ...(Array.isArray(model.reasoning_options)
-        ? {
-            availableThinkingLevels:
-              thinkingLevelsFromModel(model) ?? [],
-          }
-        : {}),
-      ...(input.length ? { input } : {}),
-      ...(Number.isInteger(contextWindow) && contextWindow > 0
-        ? { contextWindow }
-        : {}),
-      ...(Number.isInteger(maxTokens) && maxTokens > 0 ? { maxTokens } : {}),
-    };
-  }
-  return undefined;
+  const hit = pickCatalogProvider(catalog, providerName, baseUrl, modelId, () => true);
+  if (!hit) return undefined;
+  const model = hit.model;
+  const input = Array.isArray(model.modalities?.input)
+    ? model.modalities.input.filter(
+        (value): value is "text" | "image" =>
+          value === "text" || value === "image",
+      )
+    : [];
+  const contextWindow = Number(model.limit?.context);
+  const maxTokens = Number(model.limit?.output);
+  return {
+    ...(model.name ? { name: model.name } : {}),
+    ...(typeof model.reasoning === "boolean"
+      ? { reasoning: model.reasoning }
+      : {}),
+    ...(Array.isArray(model.reasoning_options)
+      ? {
+          availableThinkingLevels:
+            thinkingLevelsFromModel(model) ?? [],
+        }
+      : {}),
+    ...(input.length ? { input } : {}),
+    ...(Number.isInteger(contextWindow) && contextWindow > 0
+      ? { contextWindow }
+      : {}),
+    ...(Number.isInteger(maxTokens) && maxTokens > 0 ? { maxTokens } : {}),
+  };
 }
 
 function providerCandidates(
   catalog: ModelsDevCatalog,
   providerName: string,
   baseUrl?: string,
-): ModelsDevProvider[] {
-  const result: ModelsDevProvider[] = [];
+): { named: ModelsDevProvider[]; byUrl: ModelsDevProvider[] } {
+  const named: ModelsDevProvider[] = [];
   const exact = catalog[providerName];
-  if (exact) result.push(exact);
+  if (exact) named.push(exact);
 
   // Pi's OAuth provider suffix identifies the auth route, while models.dev
   // catalogs the underlying model provider.
   if (providerName.endsWith("-codex")) {
     const baseProvider = catalog[providerName.slice(0, -"-codex".length)];
-    if (baseProvider && !result.includes(baseProvider)) result.push(baseProvider);
+    if (baseProvider && !named.includes(baseProvider)) named.push(baseProvider);
   }
 
+  const byUrl: ModelsDevProvider[] = [];
   const normalizedBaseUrl = normalizeUrl(baseUrl);
   if (normalizedBaseUrl) {
     for (const provider of Object.values(catalog)) {
       if (
         normalizeUrl(provider.api) === normalizedBaseUrl &&
-        !result.includes(provider)
+        !named.includes(provider)
       ) {
-        result.push(provider);
+        byUrl.push(provider);
       }
     }
   }
-  return result;
+  return { named, byUrl };
+}
+
+/**
+ * The catalog provider answering for this model, or undefined. Named
+ * matches (exact id, `-codex` base) are authoritative and first-match.
+ * URL-only matches are unordered in the catalog, so they answer only when
+ * exactly one of them carries the model — two would make the answer depend
+ * on catalog key order, and the caller falls back instead.
+ */
+function pickCatalogProvider(
+  catalog: ModelsDevCatalog,
+  providerName: string,
+  baseUrl: string | undefined,
+  modelId: string,
+  usable: (model: ModelsDevModel) => boolean,
+): { provider: ModelsDevProvider; model: ModelsDevModel } | undefined {
+  const { named, byUrl } = providerCandidates(catalog, providerName, baseUrl);
+  for (const provider of named) {
+    const model = provider.models?.[modelId];
+    if (model && usable(model)) return { provider, model };
+  }
+  const urlMatches = byUrl
+    .map((provider) => ({ provider, model: provider.models?.[modelId] }))
+    .filter(
+      (candidate): candidate is { provider: ModelsDevProvider; model: ModelsDevModel } =>
+        candidate.model !== undefined && usable(candidate.model),
+    );
+  return urlMatches.length === 1 ? urlMatches[0] : undefined;
 }
 
 /**
@@ -246,12 +272,14 @@ export function catalogThinkingLevels(
 ): CatalogThinkingLevel[] | undefined {
   const catalog = loadCache(agentDir);
   if (!catalog) return undefined;
-  for (const provider of providerCandidates(catalog, providerName, baseUrl)) {
-    const model = provider.models?.[modelId];
-    if (!model || !Array.isArray(model.reasoning_options)) continue;
-    return thinkingLevelsFromModel(model) ?? [];
-  }
-  return undefined;
+  const hit = pickCatalogProvider(
+    catalog,
+    providerName,
+    baseUrl,
+    modelId,
+    (model) => Array.isArray(model.reasoning_options),
+  );
+  return hit ? (thinkingLevelsFromModel(hit.model) ?? []) : undefined;
 }
 
 function thinkingLevelsFromModel(

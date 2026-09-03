@@ -143,3 +143,27 @@ test("changes group by project folder, then by capped containing folder, titled 
     ],
   );
 });
+
+// A Windows platform fact (case-insensitive filesystems): run by the other
+// machine's next package before it counts as green on both (Fog L rule).
+test("Windows case variants of one file merge into one change row", { skip: process.platform !== "win32" }, () => {
+  const root = mkdtempSync(join(tmpdir(), "alt-theory-change-case-"));
+  try {
+    const roots = workspaceRoot(root);
+    const asWritten = projectChangesFromEntries([
+      toolCallEntry("write", { path: join(root, "notes", "draft.md"), content: "a\nb" }),
+    ]).files;
+    const asRespelled = projectChangesFromEntries([
+      toolCallEntry("write", { path: join(root, "notes", "draft.md").toUpperCase(), content: "c" }),
+    ]).files;
+    const merged = mergeSessionChanges(
+      [{ sessionId: "sa", files: asRespelled }, { sessionId: "sb", files: asWritten }],
+      roots,
+    );
+    assert.equal(merged.length, 1, "two spellings of one file are one row");
+    assert.deepEqual(merged[0].sessionIds, ["sa", "sb"]);
+    assert.equal(merged[0].added, 2 + 1);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
