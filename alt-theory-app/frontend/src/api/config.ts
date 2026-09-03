@@ -10,7 +10,11 @@ import type {
 } from "./types";
 
 export async function listProviderAuthStatus(): Promise<{
-  providers: { provider: ProviderAuthId; connected: boolean }[];
+  providers: {
+    provider: ProviderAuthId;
+    name: string;
+    connected: boolean;
+  }[];
 }> {
   return fetchJson("/api/config/auth/providers");
 }

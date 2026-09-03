@@ -193,3 +193,53 @@ test("explicit provider writes persist the read-path repairs and migrate the act
   assert.equal(settings.defaultProvider, "custom-y");
   assert.equal(settings.defaultModel, "m-2");
 });
+
+test("Copilot OAuth model list follows the account, never the stale builtin", () => {
+  const agentDir = mkdtempSync(join(tmpdir(), "alt-theory-copilot-models-"));
+  writeFileSync(join(agentDir, "auth.json"), JSON.stringify({
+    "github-copilot": {
+      type: "oauth",
+      access: "access",
+      refresh: "refresh",
+      // 60s would be below Pi 0.84's refresh margin, but listProviders reads
+      // the stored credential without resolving it, so no refresh happens.
+      expires: Date.now() + 60_000,
+      availableModelIds: ["claude-sonnet-4.5", "brand-new-model-9"],
+    },
+  }));
+  const view = listProviders(agentDir).find(
+    (p) => p.name === "github-copilot",
+  );
+  assert.ok(view, "copilot appears once its credential exists");
+  // The account-enabled ids are the list; one is builtin-known (decorated),
+  // one is not yet in the builtin catalog and still appears bare. Builtin
+  // ids the account lacks (e.g. claude-opus-4.8) stay out.
+  assert.deepEqual(
+    view.models.map((model) => model.id),
+    ["claude-sonnet-4.5", "brand-new-model-9"],
+  );
+  const known = view.models.find((model) => model.id === "claude-sonnet-4.5");
+  assert.ok(known?.name, "builtin metadata decorates a known id");
+  const unknown = view.models.find((model) => model.id === "brand-new-model-9");
+  assert.ok(unknown, "unknown ids still appear (fallback to bare id)");
+});
+
+test("Copilot without availableModelIds falls back to the builtin catalog", () => {
+  const agentDir = mkdtempSync(join(tmpdir(), "alt-theory-copilot-fallback-"));
+  writeFileSync(join(agentDir, "auth.json"), JSON.stringify({
+    "github-copilot": {
+      type: "oauth",
+      access: "access",
+      refresh: "refresh",
+      expires: Date.now() + 60_000,
+    },
+  }));
+  const view = listProviders(agentDir).find(
+    (p) => p.name === "github-copilot",
+  );
+  assert.ok(view);
+  assert.ok(
+    (view.models.length ?? 0) > 0,
+    "builtin catalog is the last fallback when the credential carries no list",
+  );
+});

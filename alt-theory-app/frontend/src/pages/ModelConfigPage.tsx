@@ -761,9 +761,12 @@ export function ModelConfigPage({
   };
 
   const modelActionResult = fetchResult ?? testResult;
+  // OAuth providers are whichever providers report keyState "oauth" — no
+  // second id list to keep in sync (the server's PROVIDER_AUTH_IDS owns it).
   const reconnectTarget =
     status?.activeProvider &&
-    ["openrouter", "xai", "openai-codex"].includes(status.activeProvider)
+    providers.find((provider) => provider.name === status.activeProvider)
+      ?.keyState === "oauth"
       ? `oauth:${status.activeProvider}`
       : null;
 

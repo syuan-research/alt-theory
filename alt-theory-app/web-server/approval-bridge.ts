@@ -166,10 +166,12 @@ export class ApprovalBridge {
       addAutocompleteProvider: () => {},
       setEditorComponent: () => {},
       getEditorComponent: () => undefined,
-      get theme(): never {
-        throw new Error(
-          "Terminal theme access is not available in the Alt Theory web runtime"
-        );
+      // Pi 0.84's ExtensionRunner spreads the UI context when wrapping prompt
+      // methods, which evaluates this getter — it must not throw. The web
+      // runtime has no terminal theme; undefined states that (mirrors Pi's
+      // no-op getTheme), unlike the throwing guard used before 0.84.
+      get theme(): undefined {
+        return undefined;
       },
       getAllThemes: () => [],
       getTheme: () => undefined,

@@ -548,7 +548,7 @@ test("OAuth provider keeps the exact user-saved model list across normal reads",
         type: "oauth",
         access: "test",
         refresh: "test",
-        expires: Date.now() + 60_000,
+        expires: Date.now() + 60 * 60_000, // Pi 0.84 refreshes under 5 min of validity; keep valid so stubs only serve model lists
       },
     }),
     "utf-8",
@@ -592,7 +592,7 @@ test("xAI OAuth Fetch keeps remote models absent from the bundled catalog", asyn
         type: "oauth",
         access: "test",
         refresh: "test",
-        expires: Date.now() + 60_000,
+        expires: Date.now() + 60 * 60_000, // Pi 0.84 refreshes under 5 min of validity; keep valid so stubs only serve model lists
       },
     }),
     "utf-8",

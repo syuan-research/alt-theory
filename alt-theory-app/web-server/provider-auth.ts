@@ -8,12 +8,28 @@ import {
 
 export const PROVIDER_AUTH_IDS = [
   // Keep this list to the subscription/OAuth paths Alt explicitly offers.
+  // It is the single source every OAuth surface derives from (status, login
+  // and logout routes, config-store's credential providers, and the settings
+  // auth cards). Pi also ships anthropic (Claude subscription); it stays out
+  // because Anthropic bills third-party harness usage from extra usage, not
+  // the plan.
   "openrouter",
   "xai",
   "openai-codex",
+  "github-copilot",
+  "kimi-coding",
 ] as const;
 
 export type ProviderAuthId = (typeof PROVIDER_AUTH_IDS)[number];
+
+/** Display names for the ids above, in list order (v1.5 M7). */
+export const PROVIDER_AUTH_NAMES: Record<ProviderAuthId, string> = {
+  openrouter: "OpenRouter",
+  xai: "Grok",
+  "openai-codex": "ChatGPT (Codex)",
+  "github-copilot": "GitHub Copilot",
+  "kimi-coding": "Kimi For Coding",
+};
 
 export interface ProviderAuthPromptView {
   id: string;
@@ -48,9 +64,9 @@ const currentByProvider = new Map<ProviderAuthId, string>();
 let xaiFetchPatched = false;
 
 /**
- * Pi 0.82 uses xAI's current device endpoints, but xAI now returns HTTP 404
- * unless CLI identity headers are present. Keep Pi's OAuth/storage flow and
- * add only the headers required by those two xAI requests.
+ * Pi (checked through 0.84.4) posts xAI's device/token endpoints without CLI
+ * identity headers, and xAI returns HTTP 404 without them. Keep Pi's
+ * OAuth/storage flow and add only the headers those two xAI requests need.
  */
 function ensureXaiOAuthHeaders(): void {
   if (xaiFetchPatched) return;
@@ -70,9 +86,9 @@ function ensureXaiOAuthHeaders(): void {
         init?.headers ?? (input instanceof Request ? input.headers : undefined)
       );
       if (!headers.has("User-Agent")) {
-        headers.set("User-Agent", "alt-theory/0.5.6 pi/0.82.0");
+        headers.set("User-Agent", "alt-theory/1.4.8 pi/0.84.4");
       }
-      headers.set("x-grok-client-version", "0.82.0");
+      headers.set("x-grok-client-version", "0.84.4");
       headers.set("x-grok-client-surface", "cli");
       headers.set("referrer", "pi");
       return nativeFetch(input, { ...init, headers });
@@ -90,6 +106,7 @@ export function listProviderAuthStatus(agentDir: string) {
   const authPath = join(agentDir, "auth.json");
   return PROVIDER_AUTH_IDS.map((provider) => ({
     provider,
+    name: PROVIDER_AUTH_NAMES[provider],
     connected: readStoredCredential(provider, authPath)?.type === "oauth",
   }));
 }

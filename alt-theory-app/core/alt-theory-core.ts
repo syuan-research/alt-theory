@@ -736,10 +736,11 @@ async function createAltTheorySessionWithManager(
       modelsPath: config.modelsPath ? resolve(config.modelsPath) : undefined,
     });
     if (config.runtimeApiKey) {
+      // Offline by design in Pi 0.84: setRuntimeApiKey synchronizes without
+      // network (the 0.82 allowNetwork:false option became the default).
       await modelRuntime.setRuntimeApiKey(
         config.modelProvider,
-        config.runtimeApiKey,
-        { allowNetwork: false }
+        config.runtimeApiKey
       );
     }
     const model = modelRuntime.getModel(config.modelProvider, config.modelId);

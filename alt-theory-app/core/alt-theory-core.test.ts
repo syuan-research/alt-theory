@@ -205,18 +205,22 @@ test("workspace directories apply in Work only and extend guarded write", async 
     workspaceDirs: [dirA],
   });
   const { session } = result;
+  // Mode switches and addWorkspaceDir replace/reload the session; Pi 0.84
+  // marks tool handles captured before a replacement as stale, so look the
+  // write tool up from the live session at each use.
+  const writeTool = () => {
+    const tool = session.agent.state.tools.find((t) => t.name === "write");
+    assert.ok(tool);
+    return tool;
+  };
 
   // Understand stays bounded to the session workspace: no workspace context,
   // no workspace skills, no workspace write access.
   assert.doesNotMatch(session.systemPrompt, /WORKSPACE-DIR-CONTEXT-A/);
   assert.doesNotMatch(session.systemPrompt, /ws-helper/);
-  const writeTool = session.agent.state.tools.find(
-    (tool) => tool.name === "write"
-  );
-  assert.ok(writeTool);
   await assert.rejects(
     () =>
-      writeTool.execute("ws-understand", {
+      writeTool().execute("ws-understand", {
         path: join(dirA, "understand.md"),
         content: "blocked",
       }),
@@ -228,7 +232,7 @@ test("workspace directories apply in Work only and extend guarded write", async 
   await result.setAltMode("work");
   assert.match(session.systemPrompt, /WORKSPACE-DIR-CONTEXT-A/);
   assert.match(session.systemPrompt, /ws-helper/);
-  await writeTool.execute("ws-work", {
+  await writeTool().execute("ws-work", {
     path: join(dirA, "work.md"),
     content: "allowed",
   });
@@ -245,7 +249,7 @@ test("workspace directories apply in Work only and extend guarded write", async 
   assert.doesNotMatch(session.systemPrompt, /WORKSPACE-DIR-CONTEXT-A/);
   await assert.rejects(
     () =>
-      writeTool.execute("ws-understand-again", {
+      writeTool().execute("ws-understand-again", {
         path: join(dirA, "understand-again.md"),
         content: "blocked",
       }),

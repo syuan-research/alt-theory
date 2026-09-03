@@ -27,9 +27,9 @@
     "build:electron": "npm run build:frontend-v6 && npm run compile:bundle && electron-builder build --dir"
   },
   "dependencies": {
-    "@earendil-works/pi-agent-core": "^0.82.0",
-    "@earendil-works/pi-ai": "^0.82.0",
-    "@earendil-works/pi-coding-agent": "^0.82.0",
+    "@earendil-works/pi-agent-core": "^0.84.4",
+    "@earendil-works/pi-ai": "^0.84.4",
+    "@earendil-works/pi-coding-agent": "^0.84.4",
     "dotenv": "^16.4.7",
     "express": "^5.2.1",
     "jszip": "^3.10.1",

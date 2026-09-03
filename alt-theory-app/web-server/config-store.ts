@@ -38,6 +38,7 @@ import {
 import { dirname, join, resolve } from "path";
 import { ensureLocalModeDefaults } from "./local-mode-paths.js";
 import { writeJsonAtomic } from "../core/data-dir.js";
+import { PROVIDER_AUTH_IDS } from "./provider-auth.js";
 import {
   catalogModelMetadata,
   catalogSdkFamily,
@@ -222,6 +223,21 @@ function providerHasCredential(agentDir: string, provider: string): boolean {
   return Boolean(storedCredential(agentDir, provider));
 }
 
+/** The account-reported model ids an OAuth credential carries (Copilot
+ *  fetches these live at login and on every token refresh), or null when
+ *  the credential has no such list. */
+function credentialAvailableModelIds(
+  agentDir: string,
+  provider: string,
+): string[] | null {
+  const credential = storedCredential(agentDir, provider);
+  const ids = (credential as { availableModelIds?: unknown } | undefined)
+    ?.availableModelIds;
+  return Array.isArray(ids) && ids.every((id) => typeof id === "string")
+    ? ids
+    : null;
+}
+
 function keyStateForProvider(
   agentDir: string,
   provider: string,
@@ -367,16 +383,30 @@ export function listProviders(agentDir: string): ProviderView[] {
   sanitizeCustomProviderAuth(agentDir, models);
   const active = readActive(agentDir);
   const names = new Set(Object.keys(models.providers ?? {}));
-  for (const name of ["openrouter", "xai", "openai-codex"]) {
+  for (const name of PROVIDER_AUTH_IDS) {
     if (providerHasCredential(agentDir, name)) names.add(name);
   }
   return [...names].map((name) => {
     const block = models.providers?.[name] ?? {};
     const configuredModels = Array.isArray(block.models) ? block.models : [];
+    // Model-list sources, most live first: what the user saved in
+    // models.json, then what the account itself reports (Copilot's login
+    // and every token refresh fetch availableModelIds from its API; the
+    // builtin catalog goes stale, so it only decorates ids it knows and
+    // never adds ids the account does not have), then the builtin catalog
+    // as the last fallback.
+    const credentialModelIds = credentialAvailableModelIds(agentDir, name);
     const sourceModels =
       configuredModels.length > 0
         ? configuredModels
-        : builtinConfigModels(name);
+        : credentialModelIds
+          ? credentialModelIds.map(
+              (id) =>
+                builtinConfigModels(name).find((model) => model.id === id) ?? {
+                  id,
+                },
+            )
+          : builtinConfigModels(name);
     const firstBuiltin = builtinModelList(name).find(
       (model) => model.id === sourceModels[0]?.id,
     );

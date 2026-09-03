@@ -706,39 +706,62 @@ export function AuthConnectCard({
   openRequest?: { provider: ProviderAuthId; id: number } | null;
   onOpenRequestHandled?: () => void;
 }) {
-  const PROVIDERS = useMemo(() => [
-    {
-      id: "openrouter",
-      name: t("OpenRouter"),
-      icon: "ph-compass",
-    },
-    { id: "xai", name: t("Grok"), icon: "ph-lightning" },
-    {
-      id: "openai-codex",
-      name: t("ChatGPT (Codex)"),
-      icon: "ph-code",
-    },
-  ] as const, []);
+  // Presentation only: one icon and the localized name per provider id. The
+  // provider LIST itself comes from the server status response, whose ids
+  // mirror the server's single PROVIDER_AUTH_IDS source. Names stay t()
+  // literals so the i18n key scanner catalogues them.
+  const PROVIDER_ICONS: Record<string, string> = {
+    openrouter: "ph-compass",
+    xai: "ph-lightning",
+    "openai-codex": "ph-code",
+    "github-copilot": "ph-github-logo",
+    "kimi-coding": "ph-moon-stars",
+  };
+  const PROVIDER_NAMES: Record<string, string> = {
+    openrouter: t("OpenRouter"),
+    xai: t("Grok"),
+    "openai-codex": t("ChatGPT (Codex)"),
+    "github-copilot": t("GitHub Copilot"),
+    "kimi-coding": t("Kimi For Coding"),
+  };
+  const providerName = (id: ProviderAuthId | string, fallback: string) =>
+    PROVIDER_NAMES[id] ?? fallback;
+  // Known Pi prompt/event wording restated in plain language; anything not
+  // listed passes through unchanged. The information Pi gives must reach the
+  // user, not the jargon (owner ruling 2026-09-03).
+  const PLAIN_AUTH_TEXT: Record<string, string> = {
+    "GitHub Enterprise URL/domain (blank for github.com)": t(
+      "Company GitHub server address — leave blank for a normal GitHub account"
+    ),
+    "Enabling models...": t(
+      "Turning on the models included with your subscription…"
+    ),
+  };
+  const plainAuthText = (text: string) => PLAIN_AUTH_TEXT[text] ?? text;
   const [flow, setFlow] = useState<{
-    provider: (typeof PROVIDERS)[number];
+    provider: { id: ProviderAuthId; name: string };
     step: "link" | "waiting" | "done";
     auth?: ProviderAuthFlow;
     error?: string;
   } | null>(null);
-  const [connected, setConnected] = useState<Set<ProviderAuthId>>(new Set());
+  const [authProviders, setAuthProviders] = useState<
+    { provider: ProviderAuthId; name: string; connected: boolean }[]
+  >([]);
   const [input, setInput] = useState("");
   const popup = useRef<Window | null>(null);
   const openedUrl = useRef<string | null>(null);
-
-  const refreshStatus = async () => {
-    const result = await listProviderAuthStatus();
-    setConnected(
+  const connected = useMemo(
+    () =>
       new Set(
-        result.providers
+        authProviders
           .filter((provider) => provider.connected)
           .map((provider) => provider.provider)
-      )
-    );
+      ),
+    [authProviders]
+  );
+
+  const refreshStatus = async () => {
+    setAuthProviders((await listProviderAuthStatus()).providers);
   };
 
   useEffect(() => {
@@ -747,10 +770,20 @@ export function AuthConnectCard({
 
   useEffect(() => {
     if (!openRequest) return;
-    const provider = PROVIDERS.find((item) => item.id === openRequest.provider);
-    if (provider) setFlow({ provider, step: "link", error: undefined });
+    const provider = authProviders.find(
+      (item) => item.provider === openRequest.provider
+    );
+    if (provider)
+      setFlow({
+        provider: {
+          id: provider.provider,
+          name: providerName(provider.provider, provider.name),
+        },
+        step: "link",
+        error: undefined,
+      });
     onOpenRequestHandled?.();
-  }, [openRequest, onOpenRequestHandled, PROVIDERS]);
+  }, [openRequest, onOpenRequestHandled, authProviders]);
 
   useEffect(() => {
     const auth = flow?.auth;
@@ -880,22 +913,44 @@ export function AuthConnectCard({
   const deviceEvent = [...(flow?.auth?.events ?? [])]
     .reverse()
     .find((event) => event.type === "device_code");
+  // Every message-bearing event in order (consecutive duplicates collapsed),
+  // each restated in plain wording where the raw text is jargon.
+  const authTrail = [...(flow?.auth?.events ?? [])]
+    .map((event) =>
+      event.type === "info"
+        ? event.message
+        : event.type === "progress"
+          ? event.message
+          : event.type === "auth_url"
+            ? event.instructions
+            : null
+    )
+    .filter((line): line is string => Boolean(line))
+    .map(plainAuthText)
+    .filter((line, index, all) => line !== all[index - 1]);
 
   return (
     <div className="oauth-options">
       {!flow ? (
         <div className="auth-providers">
-          {PROVIDERS.map((p) => (
+          {authProviders.map((p) => (
             <button
-              key={p.id}
+              key={p.provider}
               className="auth-provider"
               onClick={() =>
-                setFlow({ provider: p, step: "link", error: undefined })
+                setFlow({
+                  provider: {
+                    id: p.provider,
+                    name: providerName(p.provider, p.name),
+                  },
+                  step: "link",
+                  error: undefined,
+                })
               }
             >
-              <i className={`ph ${p.icon}`} />
-              <span className="apn">{p.name}</span>
-              {connected.has(p.id) ? <span className="aps">{t("Connected")}</span> : null}
+              <i className={`ph ${PROVIDER_ICONS[p.provider] ?? "ph-sign-in"}`} />
+              <span className="apn">{providerName(p.provider, p.name)}</span>
+              {connected.has(p.provider) ? <span className="aps">{t("Connected")}</span> : null}
             </button>
           ))}
         </div>
@@ -937,7 +992,7 @@ export function AuthConnectCard({
             <>
               <p className="auth-step">
                 {latestEvent?.type === "progress"
-                  ? latestEvent.message
+                  ? plainAuthText(latestEvent.message)
                   : latestEvent?.type === "auth_url"
                     ? latestEvent.instructions ||
                       t("Finish signing in in your browser.")
@@ -948,6 +1003,17 @@ export function AuthConnectCard({
               {deviceEvent?.type === "device_code" ? (
                 <div className="auth-linkrow">
                   <code>{deviceEvent.userCode}</code>
+                </div>
+              ) : null}
+              {/* Full trail of what the provider flow said so far, so no
+                  Pi-issued hint is hidden by a later state. */}
+              {authTrail.length > 1 ? (
+                <div className="auth-trail">
+                  {authTrail.map((line, index) => (
+                    <p className="fine" key={index}>
+                      {line}
+                    </p>
+                  ))}
                 </div>
               ) : null}
               {flow.auth?.prompt?.type === "select" ? (
@@ -970,7 +1036,7 @@ export function AuthConnectCard({
                       flow.auth.prompt.type === "secret" ? "password" : "text"
                     }
                     placeholder={flow.auth.prompt.placeholder}
-                    aria-label={flow.auth.prompt.message}
+                    aria-label={plainAuthText(flow.auth.prompt.message)}
                     onChange={(event) => setInput(event.target.value)}
                   />
                   <button
@@ -983,7 +1049,7 @@ export function AuthConnectCard({
                 </div>
               ) : null}
               {flow.auth?.prompt ? (
-                <p className="fine">{flow.auth.prompt.message}</p>
+                <p className="fine">{plainAuthText(flow.auth.prompt.message)}</p>
               ) : null}
               {flow.error ? <p className="fine">{flow.error}</p> : null}
             </>
@@ -991,7 +1057,7 @@ export function AuthConnectCard({
             <>
               <p className="auth-step auth-done">
                 <i className="ph ph-check-circle" /> {t("Connected to ")}
-                {flow.provider.name}
+                {t(flow.provider.name)}
               </p>
               <p className="fine">
                 {t("Connected. Choose one of this provider's models below.")}

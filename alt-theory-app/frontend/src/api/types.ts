@@ -417,10 +417,16 @@ export interface ConfigStatus {
   activeModel: string | null;
 }
 
+// Mirrors the server's PROVIDER_AUTH_IDS — the single source of which
+// subscription/OAuth providers Alt offers. The settings auth cards render
+// whatever the status endpoint returns, so this union only types ids that
+// appear in flow payloads.
 export type ProviderAuthId =
   | "openrouter"
   | "xai"
-  | "openai-codex";
+  | "openai-codex"
+  | "github-copilot"
+  | "kimi-coding";
 
 export type ProviderAuthEvent =
   | { type: "info"; message: string; links?: { url: string; label?: string }[] }
