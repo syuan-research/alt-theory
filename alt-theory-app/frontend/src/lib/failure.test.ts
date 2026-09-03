@@ -17,3 +17,15 @@ test("a busy refusal never changes run state; other errors may clear a client-si
   assert.equal(isBusyRefusal({ operation: "switch_kb", kind: "busy", message: "Session is busy", retryable: false }), true);
   assert.equal(isBusyRefusal({ operation: "open_session", kind: "unknown", message: "Unknown session id", retryable: false }), false);
 });
+
+test("a busy refusal shows only the kind wording", () => {
+  assert.equal(
+    failureText({
+      operation: "switch_kb",
+      kind: "busy",
+      message: "Session is busy: s1",
+      retryable: false,
+    }),
+    "The conversation is still running.",
+  );
+});

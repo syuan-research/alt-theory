@@ -62,7 +62,7 @@ import {
 } from "@/api/workspaces";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { failureText, isBusyRefusal } from "@/lib/failure";
-import { runStateView, type RunStateView } from "@/lib/runState";
+import { runPhaseLabels, runStateView, type RunStateView } from "@/lib/runState";
 import { useConversationEngine } from "@/hooks/useConversationEngine";
 import type { ConnStatus } from "@/components/ui/StatusBadge";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -1488,7 +1488,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const abortRun = useCallback(() => {
     if (sendMessage({ type: "abort" })) {
       setToolStatus("");
-      setRunPhaseLabel(t("Stopping…"));
+      setRunPhaseLabel(runPhaseLabels().stopping);
       setRunHint("");
     }
   }, [sendMessage]);

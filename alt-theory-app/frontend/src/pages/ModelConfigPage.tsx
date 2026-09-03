@@ -785,11 +785,9 @@ export function ModelConfigPage({
             {status.activeUsable ? (
               <span className="text-success">{t("Ready.")}</span>
             ) : status.anyUsable ? (
-              <span className="text-warning">
-                {t("No default is set. Choose one for new conversations, or select a model in the composer.")}
-              </span>
+              <span>{t("No default model.")}</span>
             ) : (
-              <span className="text-warning">{t("No provider has a key yet.")}</span>
+              <span>{t("No provider has a key yet.")}</span>
             )}
           </span>
           <label className="default-model-picker active-model-inline">
@@ -1094,15 +1092,17 @@ export function ModelConfigPage({
               {editingOAuth ? (
                 <div className="provider-default-note flex items-center justify-between gap-3">
                   <span>
-                    <strong>{t("OAuth sign-in saved")}</strong>
-                    {" · "}{editingName}
+                    {t("Connected.")}
+                    {editingName ? ` · ${editingName}` : ""}
                   </span>
                   <button
                     type="button"
                     className="link-btn"
                     onClick={() => requestProviderTarget(`oauth:${editingName}`)}
                   >
-                    {t("Reconnect")}
+                    {reconnectTarget === `oauth:${editingName}`
+                      ? t("Reconnect")
+                      : t("Sign in again")}
                   </button>
                 </div>
               ) : (

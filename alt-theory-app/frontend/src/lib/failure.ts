@@ -17,6 +17,8 @@ export function failureText(failure: Failure): string {
     unknown: "",
   }[failure.kind];
   if (!wording) return failure.message;
+  // Busy is the kind wording only: the producer text is "Session is busy: <id>".
+  if (failure.kind === "busy") return wording;
   return failure.message ? `${wording} ${failure.message}` : wording;
 }
 

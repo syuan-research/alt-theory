@@ -11,6 +11,7 @@ import { useConversationEngine } from "@/hooks/useConversationEngine";
 import { useStickToBottom } from "@/hooks/useStickToBottom";
 import { appendDraft } from "@/lib/draft";
 import { failureText } from "@/lib/failure";
+import { runPhaseLabels } from "@/lib/runState";
 import { canTakeMainline, isListMember } from "@/lib/sessionList";
 import { t } from "@/i18n";
 import { ApprovalDock } from "@/components/conversation/ApprovalDock";
@@ -449,7 +450,10 @@ export function ChildConversation({
               event.preventDefault();
               if (menu) setMenu(null);
               else if (slashOpen) setSlashDismissed(true);
-              else if (running) socket.send({ type: "abort" });
+              else if (running) {
+                socket.send({ type: "abort" });
+                engine.setPhaseLabel(runPhaseLabels().stopping);
+              }
               return;
             }
             if (slashOpen) {
@@ -476,7 +480,7 @@ export function ChildConversation({
             className="send"
             disabled={!draft.trim()}
             onClick={send}
-            data-tip={running ? t("Queued — the agent sees it at its next step") : t("Send")}
+            data-tip={running ? runPhaseLabels().queued : t("Send")}
           >
             <i className="ph ph-arrow-up" aria-hidden="true" />
           </button>
@@ -486,6 +490,7 @@ export function ChildConversation({
               style={{ background: "var(--danger)" }}
               onClick={() => {
                 socket.send({ type: "abort" });
+                engine.setPhaseLabel(runPhaseLabels().stopping);
               }}
               data-tip={t("Stop")}
             >

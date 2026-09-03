@@ -14,6 +14,7 @@ import { fmtTime } from "@/lib/format";
 import { t } from "@/i18n";
 import { autosizeTextarea } from "@/lib/autosizeTextarea";
 import { appendDraft } from "@/lib/draft";
+import { runPhaseLabels } from "@/lib/runState";
 
 type MenuKey = "plus" | "model" | "role" | "kb" | "presetcfg" | "perm" | null;
 const SHOW_HELP_STARTERS = false;
@@ -973,7 +974,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                   className="send"
                   disabled={!canSend}
                   onClick={handleSubmit}
-                  data-tip={t("Queued — the agent sees it at its next step")}
+                  data-tip={runPhaseLabels().queued}
                 >
                   <i className="ph ph-arrow-up" />
                 </button>

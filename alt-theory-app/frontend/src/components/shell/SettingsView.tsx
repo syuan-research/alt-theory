@@ -40,6 +40,7 @@ import type {
   SessionSummary,
 } from "@/api/types";
 import { ModelConfigPage } from "@/pages/ModelConfigPage";
+import { authConnectEntryStep } from "@/lib/authConnect";
 import { hasNativeBridge, pickDirectory, pickFiles, revealPath } from "@/lib/native";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
@@ -745,7 +746,7 @@ export function AuthConnectCard({
   const plainAuthText = (text: string) => PLAIN_AUTH_TEXT[text] ?? text;
   const [flow, setFlow] = useState<{
     provider: { id: ProviderAuthId; name: string };
-    step: "link" | "waiting" | "done";
+    step: "manage" | "link" | "waiting" | "done";
     auth?: ProviderAuthFlow;
     error?: string;
   } | null>(null);
@@ -784,7 +785,7 @@ export function AuthConnectCard({
           id: provider.provider,
           name: providerName(provider.provider, provider.name),
         },
-        step: "link",
+        step: authConnectEntryStep(provider.connected, true),
         error: undefined,
       });
     onOpenRequestHandled?.();
@@ -965,7 +966,7 @@ export function AuthConnectCard({
                     id: p.provider,
                     name: providerName(p.provider, p.name),
                   },
-                  step: "link",
+                  step: authConnectEntryStep(connected.has(p.provider), false),
                   error: undefined,
                 })
               }
@@ -980,17 +981,35 @@ export function AuthConnectCard({
         <div className="auth-flow">
           <div className="auth-flow-head">
             <span>
-              {t("Sign in to ")} <strong>{flow.provider.name}</strong>
+              {flow.step === "manage" ? (
+                <strong>{flow.provider.name}</strong>
+              ) : (
+                <>
+                  {t("Sign in to ")} <strong>{flow.provider.name}</strong>
+                </>
+              )}
             </span>
             <button className="link-btn" onClick={cancel}>
               {t("Cancel")}
             </button>
           </div>
-          {flow.step === "link" ? (
+          {flow.step === "manage" ? (
+            <>
+              <p className="auth-step">{t("Connected.")}</p>
+              <div className="auth-linkrow">
+                <button className="link-btn" onClick={disconnect}>
+                  {t("Disconnect")}
+                </button>
+                <button className="link-btn" onClick={() => void start()}>
+                  {t("Sign in again")}
+                </button>
+              </div>
+            </>
+          ) : flow.step === "link" ? (
             <>
               <p className="auth-step">
                 {connected.has(flow.provider.id)
-                  ? t("This account is connected. Reconnect or disconnect it.")
+                  ? t("This account needs to sign in again.")
                   : t("Open the provider sign-in flow and approve access.")}
               </p>
               <div className="auth-linkrow">
@@ -999,9 +1018,7 @@ export function AuthConnectCard({
                   onClick={start}
                 >
                   <i className="ph ph-arrow-square-out" />
-                  {connected.has(flow.provider.id)
-                    ? t("Reconnect")
-                    : t("Open in browser")}
+                  {t("Open in browser")}
                 </button>
                 {connected.has(flow.provider.id) ? (
                   <button className="link-btn" onClick={disconnect}>

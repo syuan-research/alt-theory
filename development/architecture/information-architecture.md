@@ -1,7 +1,7 @@
 ---
 title: Alt Theory information architecture
 status: v2
-last_updated: 2026-08-21
+last_updated: 2026-09-03
 scope: where user-facing things live, how the major surfaces relate, and which information belongs in each
 ---
 
@@ -274,10 +274,12 @@ The Models surface uses a master-detail structure:
 - Fetch and Test report pending, success, no-change, partial, and understandable
   failure states in one inline row directly below those actions.
 - OAuth-connected providers sort before ordinary API-key providers.
-- A saved OAuth provider shows account status and an always-available
-  **Reconnect** action in its detail view. Its fixed Base URL, protocol/API
-  adapter, and API-key plumbing are runtime invariants, not user settings, so
-  they are not displayed (including under Advanced).
+- A saved OAuth provider that is connected opens as a manage view
+  (**Connected.**, Disconnect, Sign in again), not a sign-in flow. Sign-in /
+  **Reconnect** is for a failed refresh (the warning notice on Models) or when
+  the user chooses Sign in again. Its fixed Base URL, protocol/API adapter, and
+  API-key plumbing are runtime invariants, not user settings, so they are not
+  displayed (including under Advanced).
 - OAuth-connected providers may carry the single low-key word `OAuth` in the
   provider list. Ordinary API-key providers need no corresponding badge.
 - A visually clear `+ Add provider` action opens the add flow in the right

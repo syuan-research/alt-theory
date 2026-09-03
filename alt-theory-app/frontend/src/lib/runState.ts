@@ -16,6 +16,19 @@ export interface RunStateView {
   pending: PendingChanges;
 }
 
+/** The one label set for run-state surfaces (queued / stopping included). */
+export function runPhaseLabels() {
+  return {
+    connecting: t("Connecting"),
+    disconnected: t("Disconnected"),
+    error: t("Error"),
+    running: t("Running"),
+    idle: t("Ready"),
+    stopping: t("Stopping…"),
+    queued: t("Queued — the agent sees it at its next step"),
+  };
+}
+
 export function runStateView(input: {
   connStatus: ConnStatus;
   running: boolean;
@@ -23,14 +36,15 @@ export function runStateView(input: {
   toolStatus: string;
   pending: PendingChanges;
 }): RunStateView {
+  const labels = runPhaseLabels();
   const phase: ConnStatus =
     input.running && input.connStatus === "idle" ? "running" : input.connStatus;
   const label = {
-    connecting: t("Connecting"),
-    disconnected: t("Disconnected"),
-    error: t("Error"),
-    running: input.phaseLabel || input.toolStatus || t("Running"),
-    idle: input.toolStatus || t("Ready"),
+    connecting: labels.connecting,
+    disconnected: labels.disconnected,
+    error: labels.error,
+    running: input.phaseLabel || input.toolStatus || labels.running,
+    idle: input.toolStatus || labels.idle,
   }[phase];
   return {
     phase,

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { runStateView } from "./runState.ts";
+import { runPhaseLabels, runStateView } from "./runState.ts";
 
 test("running shows the live detail; idle shows Ready; a deferred switch is carried, not an error", () => {
   const running = runStateView({
@@ -36,4 +36,18 @@ test("running shows the live detail; idle shows Ready; a deferred switch is carr
       .label,
     "Opening…",
   );
+});
+
+test("stopping and queued come from the run-state label set", () => {
+  const labels = runPhaseLabels();
+  const stopping = runStateView({
+    connStatus: "running",
+    running: true,
+    phaseLabel: labels.stopping,
+    toolStatus: "",
+    pending: {},
+  });
+  assert.equal(stopping.label, "Stopping…");
+  assert.equal(stopping.detail, "Stopping…");
+  assert.equal(labels.queued, "Queued — the agent sees it at its next step");
 });
