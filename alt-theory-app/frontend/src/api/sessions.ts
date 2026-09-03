@@ -195,14 +195,15 @@ export async function promoteToMainline(sessionId: string): Promise<void> {
 }
 
 /**
- * Recall one queued message (card 11 follow-up). Returns the text so the
- * caller can put it back in the editor, or null when Pi already delivered it
- * — either way the card goes.
+ * Recall one queued message (card 11 follow-up). Returns the text and the
+ * staged attachment paths it was queued with so the caller can put both back
+ * in the editor, or null when Pi already delivered it — either way the card
+ * goes.
  */
 export async function retractQueuedText(
   sessionId: string,
   text: string
-): Promise<string | null> {
+): Promise<{ text: string; attachments: string[] } | null> {
   const res = await fetch(
     `/api/sessions/${encodeURIComponent(sessionId)}/queue/retract`,
     {
@@ -211,6 +212,15 @@ export async function retractQueuedText(
       body: JSON.stringify({ text }),
     }
   );
-  const body = (await res.json().catch(() => ({}))) as { text?: string };
-  return res.ok && typeof body.text === "string" ? body.text : null;
+  const body = (await res.json().catch(() => ({}))) as {
+    text?: unknown;
+    attachments?: unknown;
+  };
+  if (!res.ok || typeof body.text !== "string") return null;
+  return {
+    text: body.text,
+    attachments: Array.isArray(body.attachments)
+      ? body.attachments.filter((item): item is string => typeof item === "string")
+      : [],
+  };
 }

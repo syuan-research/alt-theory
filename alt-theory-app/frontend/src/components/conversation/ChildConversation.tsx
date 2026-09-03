@@ -58,7 +58,8 @@ export function ChildConversation({
   const [queued, setQueued] = useState<string[]>([]);
 
   // Same recall as the main composer: edit puts the text back in the editor,
-  // delete drops it; the card goes even when Pi already sent it.
+  // delete drops it; the card goes even when Pi already sent it. This pane's
+  // editor stages no attachments, so retracted paths are dropped here.
   const recallQueued = async (text: string, toEditor: boolean) => {
     const retracted = await retractQueuedText(sessionId, text);
     setQueued((current) => {
@@ -68,7 +69,7 @@ export function ChildConversation({
         : [...current.slice(0, index), ...current.slice(index + 1)];
     });
     if (toEditor && retracted !== null) {
-      setDraft((current) => appendDraft(current, retracted));
+      setDraft((current) => appendDraft(current, retracted.text));
     }
   };
 

@@ -268,7 +268,9 @@ export interface AppContextValue {
   /** Pi's queue for this conversation (card 11): texts waiting for the next API call. */
   queuedTexts: string[];
   /** Take one queued message back; returns the text for the editor, null if Pi already sent it. */
-  retractQueued: (text: string) => Promise<string | null>;
+  retractQueued: (
+    text: string
+  ) => Promise<{ text: string; attachments: string[] } | null>;
   /** Unsent queued text handed back by Stop; the composer takes it into the draft. */
   restoredDraft: string | null;
   clearRestoredDraft: () => void;
@@ -1469,6 +1471,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
    * Card 11 follow-up: edit and delete on a queued card both retract. The card
    * goes either way — `not_found` means Pi handed the text to the model
    * between the mirror and the click, and no `queue_updated` will drop it.
+   * The retracted text and its staged paths come back for the editor.
    */
   const retractQueued = useCallback(
     async (text: string) => {

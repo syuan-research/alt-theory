@@ -1371,7 +1371,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     }
   });
   // Card 11 follow-up: recall one queued message (edit or delete) without
-  // interrupting the run. `not_found` = Pi already delivered it.
+  // interrupting the run. `not_found` = Pi already delivered it. The staged
+  // attachment paths it was queued with come back for the editor.
   app.post("/api/sessions/:sessionId/queue/retract", async (req, res) => {
     const sessionId = req.params.sessionId;
     if (!requireSessionRestContentAccess(req, res, sessionId)) return;
@@ -1383,7 +1384,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       return;
     }
     try {
-      res.json({ text: await sessionService.retractQueued(sessionId, text) });
+      res.json(await sessionService.retractQueued(sessionId, text));
     } catch (error) {
       res.status(409).json({ failure: describeFailure(error, "retract_queued") });
     }

@@ -80,19 +80,22 @@ test("failed or pending writes are not reported as file changes", () => {
 
 test("family changes merge on the resolved path; the content route address travels instead of the content", () => {
   const root = mkdtempSync(join(tmpdir(), "alt-theory-change-merge-"));
+  // An absolute path outside every root; tmpdir-anchored so it resolves the
+  // same way on POSIX and win32 (a literal /tmp path gains a drive on Windows).
+  const elsewhere = join(tmpdir(), "alt-theory-change-elsewhere", "out.txt");
   try {
     const roots = workspaceRoot(root);
     const lead = projectChangesFromEntries([toolCallEntry("write", { path: "notes/draft.md", content: "a\nb" })]).files;
     const child = projectChangesFromEntries([
       toolCallEntry("edit", { path: join(root, "notes/draft.md"), oldText: "a", newText: "c" }),
-      toolCallEntry("write", { path: "/tmp/elsewhere/out.txt", content: "x" }),
+      toolCallEntry("write", { path: elsewhere, content: "x" }),
     ]).files;
     const merged = mergeSessionChanges([{ sessionId: "sa", files: child }, { sessionId: "lead", files: lead }], roots);
     assert.deepEqual(
       merged.map((f) => [f.resolvedPath, f.added, f.removed, f.sessionIds, f.contentRef ?? null]),
       [
         [join(root, "notes/draft.md"), 3, 1, ["sa", "lead"], { root: "working", path: "primary/notes/draft.md" }],
-        ["/tmp/elsewhere/out.txt", 1, 0, ["sa"], null],
+        [elsewhere, 1, 0, ["sa"], null],
       ],
     );
     assert.equal("currentContent" in merged[0], false);
@@ -102,7 +105,10 @@ test("family changes merge on the resolved path; the content route address trave
 });
 
 test("changes group by project folder, then by capped containing folder, titled by the deepest common ancestor", () => {
-  const home = "/Users/owner";
+  // A fake home passed in, anchored under the real tmpdir: same depth
+  // arithmetic on POSIX and win32 (a literal /Users path never sits under
+  // the Windows home, so the cap would fall back to the drive root).
+  const home = join(tmpdir(), "alt-theory-change-home");
   const project = join(home, "Research", "climate");
   const second = join(home, "Research", "shared");
   const roots: ChangeRoot[] = [

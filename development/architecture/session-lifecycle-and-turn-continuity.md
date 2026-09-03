@@ -243,9 +243,13 @@ may have delivered it since the last mirror. The run is not interrupted, the
 intermediate empty queue raises no `user_steered` bubble, and a miss returns
 the failure envelope with `kind: not_found`, on which the client just drops
 the card. Edit puts the returned text back into the editor after any existing
-draft; delete discards it. Attachments on a re-queued entry are not preserved
-— Pi's queue holds only the strings (`session-service.test.ts` "a queued
-message is recalled by text").
+draft; delete discards it. Staged attachments are kept beside each queued text
+in `ManagedSession.queuedAttachments` (Pi's queue holds only the strings): a
+retract returns them with the text and a re-queue replays the remaining
+entries' own attachments; delivery and Stop clear them (Stop still restores
+text only). The child conversation pane drops retracted attachments — its
+editor stages none (`session-service.test.ts` "a queued message is recalled by
+text", "a retract hands the queued attachments back").
 
 Pi's own transient provider retry is represented as a `retrying` run phase. Alt
 Theory does not wrap it in a second retry loop. A successful or failed terminal

@@ -365,6 +365,12 @@ interface ManagedSession {
    * follow-up); the empty queue it passes through is not a delivery.
    */
   retractingQueue: boolean;
+  /**
+   * Staged attachment paths queued with each user text (M8): Pi's queue keeps
+   * only strings, so the paths live here until the text is delivered, cleared,
+   * or retracted — a retract hands them back and a re-queue replays them.
+   */
+  queuedAttachments: Map<string, string[]>;
 }
 
 /** Background subagent runs allowed at once; further first-runs queue FIFO. */
@@ -2095,20 +2101,29 @@ export class SessionService implements AgentTeamBridge {
     const managed = this.requireSession(sessionId);
     const images = imageAttachmentsFor(attachments, managed.session.model);
     const imageArgs = images.length ? images : undefined;
+    // Recorded before the queue call: a delivery that interleaves after it
+    // must find the entry, not re-add a stale one. Pi's queue keeps only
+    // strings, so the staged paths live beside the text until delivery,
+    // clear, or retract hands them back (M8).
+    managed.queuedAttachments.set(text, [...(attachments ?? [])]);
     if (deliverAs === "followUp") await managed.session.followUp(text, imageArgs);
     else await managed.session.steer(text, imageArgs);
   }
 
   /**
-   * Take one text out of Pi's queue and hand it back (card 11 follow-up).
-   * Pi has no per-entry API, so the queue is cleared and every other string
-   * re-queued in its original order and kind. The run is not touched.
+   * Take one text out of Pi's queue and hand it back with the attachments it
+   * was queued with (card 11 follow-up). Pi has no per-entry API, so the queue
+   * is cleared and every other string re-queued in its original order and
+   * kind, each with its own attachments replayed. The run is not touched.
    *
    * Matched by text, not by index: Pi may have handed the entry to the model
    * between the mirrored `queue_update` and this call, and a stale index
    * would drop the wrong message. A miss is `not_found`.
    */
-  async retractQueued(sessionId: string, text: string): Promise<string> {
+  async retractQueued(
+    sessionId: string,
+    text: string,
+  ): Promise<{ text: string; attachments: string[] }> {
     const managed = this.requireSession(sessionId);
     const steering = [...managed.session.getSteeringMessages()];
     const followUp = [...managed.session.getFollowUpMessages()];
@@ -2125,13 +2140,20 @@ export class SessionService implements AgentTeamBridge {
     }
     if (inSteering >= 0) steering.splice(inSteering, 1);
     else followUp.splice(inFollowUp, 1);
+    const attachments = managed.queuedAttachments.get(text) ?? [];
+    managed.queuedAttachments.delete(text);
     managed.retractingQueue = true;
     try {
       managed.session.clearQueue();
-      // ponytail: attachments on a re-queued entry are lost — Pi's queue keeps
-      // only the strings. Per-entry images need a Pi API.
-      for (const entry of steering) await managed.session.steer(entry);
-      for (const entry of followUp) await managed.session.followUp(entry);
+      const replayFor = (entry: string) => {
+        const images = imageAttachmentsFor(
+          managed.queuedAttachments.get(entry),
+          managed.session.model,
+        );
+        return images.length ? images : undefined;
+      };
+      for (const entry of steering) await managed.session.steer(entry, replayFor(entry));
+      for (const entry of followUp) await managed.session.followUp(entry, replayFor(entry));
     } finally {
       managed.retractingQueue = false;
       // Mirror Pi's real queue, not the intended one: a re-queue that threw
@@ -2145,7 +2167,7 @@ export class SessionService implements AgentTeamBridge {
         payload: managed.runState.queue,
       });
     }
-    return text;
+    return { text, attachments };
   }
 
   async abort(
@@ -2156,8 +2178,10 @@ export class SessionService implements AgentTeamBridge {
     const managed = this.requireSession(sessionId);
     managed.pendingInterruptionCause = interruptionCause;
     managed.runState.stopping();
-    // Unsent queued texts go back to the editor, not to the model.
+    // Unsent queued texts go back to the editor, not to the model. Stop
+    // restores text only (round-1 behavior); the staged paths are dropped.
     const cleared = managed.session.clearQueue();
+    managed.queuedAttachments.clear();
     const restored = [...cleared.steering, ...cleared.followUp].filter(isUserQueueText);
     managed.runState.queue = { steering: [], followUp: [] };
     if (restored.length > 0) {
@@ -3734,6 +3758,7 @@ export class SessionService implements AgentTeamBridge {
       liveRun: null,
       pendingInterruptionCause: null,
       retractingQueue: false,
+      queuedAttachments: new Map(),
       listeners: new Set(),
       internalUnsubscribe: () => {},
       runState: new RunState(),
@@ -4117,9 +4142,11 @@ export class SessionService implements AgentTeamBridge {
         // was delivered and no half-torn-down queue reaches the client.
         if (managed.retractingQueue) break;
         // A text that left the queue was just handed to the model: its bubble
-        // appears now, server-broadcast so every pane sees it once.
+        // appears now, server-broadcast so every pane sees it once. Its staged
+        // paths were consumed with it.
         for (const text of [...previous.steering, ...previous.followUp]) {
           if (!next.steering.includes(text) && !next.followUp.includes(text)) {
+            managed.queuedAttachments.delete(text);
             this.emit(managed, { type: "user_steered", payload: { text } });
           }
         }

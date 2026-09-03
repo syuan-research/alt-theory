@@ -4571,7 +4571,10 @@ test("a queued message is recalled by text, keeping the rest in order and kind",
 
     // Pi has no per-entry API: the middle steering text comes out and the
     // other two go back where they were.
-    assert.equal(await service.retractQueued(created.sessionId, "two"), "two");
+    assert.deepEqual(await service.retractQueued(created.sessionId, "two"), {
+      text: "two",
+      attachments: [],
+    });
     assert.deepEqual([...managed.session.getSteeringMessages()], ["one"]);
     assert.deepEqual([...managed.session.getFollowUpMessages()], ["three"]);
     assert.deepEqual(service.getSnapshot(created.sessionId).queue, {
@@ -4595,6 +4598,83 @@ test("a queued message is recalled by text, keeping the rest in order and kind",
       () => service.retractQueued(created.sessionId, "two"),
       (error: any) =>
         error.kind === "not_found" && error.operation === "retract_queued",
+    );
+
+    release();
+    await run.completion.catch(() => {});
+  } finally {
+    detach();
+    await service.disposeAll();
+  }
+});
+
+test("a retract hands the queued attachments back and a re-queue keeps the others'", async () => {
+  const fixture = setupFixture();
+  // Image input must be declared for staged paths to become image blocks.
+  const visionModelsPath = join(fixture.root, "agent", "models-vision.json");
+  writeFileSync(visionModelsPath, JSON.stringify({ providers: {
+    test: {
+      baseUrl: "https://example.test/v1",
+      api: "openai-completions",
+      apiKey: "test",
+      models: [{ id: "test-model", contextWindow: 16_000, maxTokens: 4_000, input: ["text", "image"] }],
+    },
+  } }), "utf-8");
+  const service = createTestService(fixture, "clean", true, {
+    modelProvider: "test",
+    modelId: "test-model",
+    modelsPath: visionModelsPath,
+    authPath: join(fixture.root, "agent", "auth.json"),
+  });
+  const created = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const events: SessionServiceEvent[] = [];
+  const detach = service.attach(created.sessionId, (event) => events.push(event));
+  const managed = (service as any).sessions.get(created.sessionId);
+  const release = holdPrompt(managed);
+  const imgOne = join(fixture.root, "pic-one.png");
+  const imgTwo = join(fixture.root, "pic-two.png");
+  writeFileSync(imgOne, "one");
+  writeFileSync(imgTwo, "two");
+  // Wrap, not replace: the real Pi queue is still what holds the strings, and
+  // the wrapper records what each queue call carried.
+  const steerCalls: Array<{ text: string; images: unknown }> = [];
+  const realSteer = managed.session.steer.bind(managed.session);
+  managed.session.steer = async (text: string, images?: unknown) => {
+    steerCalls.push({ text, images });
+    return realSteer(text, images as never);
+  };
+  const internal = service as any;
+  try {
+    const run = service.runPrompt(created.sessionId, "long turn");
+    await service.queuePrompt(created.sessionId, "one", [imgOne], "steer");
+    await service.queuePrompt(created.sessionId, "two", [imgTwo], "steer");
+    assert.equal(steerCalls.length, 2);
+    assert.ok(Array.isArray(steerCalls[0].images) && steerCalls[0].images.length === 1);
+
+    // The retracted entry's paths come back; the run is untouched.
+    assert.deepEqual(await service.retractQueued(created.sessionId, "two"), {
+      text: "two",
+      attachments: [imgTwo],
+    });
+    assert.equal(service.isRunning(created.sessionId), true);
+    // The re-queued entry kept its own image.
+    assert.deepEqual([...managed.session.getSteeringMessages()], ["one"]);
+    assert.equal(steerCalls.length, 3);
+    assert.equal(steerCalls[2].text, "one");
+    assert.ok(Array.isArray(steerCalls[2].images) && steerCalls[2].images.length === 1);
+    assert.equal((steerCalls[2].images as any[])[0].mimeType, "image/png");
+    assert.equal(typeof (steerCalls[2].images as any[])[0].data, "string");
+
+    // Delivery consumes the stored paths with the text.
+    internal.handleAgentEvent(managed, { type: "queue_update", steering: [], followUp: [] });
+    assert.equal(managed.queuedAttachments.has("one"), false);
+    assert.deepEqual(
+      events.filter((event) => event.type === "user_steered").map((event) => event.payload),
+      [{ text: "one" }],
     );
 
     release();

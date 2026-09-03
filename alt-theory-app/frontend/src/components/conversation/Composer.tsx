@@ -166,11 +166,13 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
   };
 
   // Edit and delete both take the message out of Pi's queue; only edit puts
-  // it back in the editor. Neither interrupts the run.
+  // it back in the editor, text and staged attachments alike. Neither
+  // interrupts the run.
   const recallQueued = async (text: string, toEditor: boolean) => {
     const retracted = await app.retractQueued(text);
     if (!toEditor || retracted === null) return;
-    setDraft((current) => appendDraft(current, retracted));
+    setDraft((current) => appendDraft(current, retracted.text));
+    for (const path of retracted.attachments) app.stageWorkspacePath(path);
     window.setTimeout(() => textareaRef.current?.focus(), 0);
   };
 
