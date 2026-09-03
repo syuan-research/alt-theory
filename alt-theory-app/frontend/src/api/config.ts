@@ -143,6 +143,28 @@ export interface AssetDirs {
   extraKbDirs: string[];
 }
 
+/** Working folders page (v1.5 part 2). */
+export interface WorkingFoldersSettings {
+  knownWorkspaces: string[];
+  global: Array<{ path: string; writable: boolean }>;
+  projects: Array<{ primaryDir: string; secondaryDirs: string[] }>;
+}
+
+export async function getWorkingFolders(): Promise<WorkingFoldersSettings> {
+  return fetchJson<WorkingFoldersSettings>("/api/settings/working-folders");
+}
+
+export async function saveWorkingFolders(next: {
+  global?: WorkingFoldersSettings["global"];
+  projects?: WorkingFoldersSettings["projects"];
+}): Promise<WorkingFoldersSettings> {
+  return fetchJson<WorkingFoldersSettings>("/api/settings/working-folders", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(next),
+  });
+}
+
 export async function getAssetDirs(): Promise<AssetDirs> {
   return fetchJson<AssetDirs>("/api/settings/asset-dirs");
 }

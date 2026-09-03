@@ -30,6 +30,9 @@ import {
   type SkillPrecedence,
   type SubagentConfig,
   type SubagentPreset,
+  getWorkingFolders,
+  saveWorkingFolders,
+  type WorkingFoldersSettings,
 } from "@/api/config";
 import type {
   ProviderAuthFlow,
@@ -47,7 +50,7 @@ import {
   restoreSession,
   type SessionDisplayName,
 } from "@/api/sessions";
-import { sessionTitle } from "@/lib/sessionList";
+import { folderLabel, sessionTitle } from "@/lib/sessionList";
 import { GENERAL_TIPS, productTipText } from "@/config/productTips";
 
 interface NavItem {
@@ -65,6 +68,7 @@ export function SettingsView() {
     { key: "general", label: t("General"), icon: "ph-gear" },
     { key: "models", label: t("Models"), icon: "ph-cpu" },
     { key: "agents", label: t("Subagents"), icon: "ph-robot" },
+    { key: "folders", label: t("Working folders"), icon: "ph-folders" },
     { key: "rolekb", label: t("Role & Knowledge"), icon: "ph-books" },
     { key: "skills", label: t("Skills"), icon: "ph-toolbox" },
     ...(shell.participantTabEnabled
@@ -113,6 +117,7 @@ export function SettingsView() {
         {shell.settingsPanel === "models" ? <ModelsPanel /> : null}
         {shell.settingsPanel === "agents" ? <AgentsPanel /> : null}
         {shell.settingsPanel === "general" ? <GeneralPanel /> : null}
+        {shell.settingsPanel === "folders" ? <WorkingFoldersPanel /> : null}
         {shell.settingsPanel === "rolekb" ? <RoleKbPanel /> : null}
         {shell.settingsPanel === "skills" ? <SkillsPanel /> : null}
         {shell.settingsPanel === "participant" ? (
@@ -1900,6 +1905,179 @@ function FeaturesPanel() {
             <li key={tip.id}>{productTipText(tip)}</li>
           ))}
         </ul>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Working folders (v1.5 part 2, prototype D): Projects — a main working
+ * folder plus the second folders that belong with it — and the global list
+ * of folders Alt may read in every conversation, with one Edit tick per row.
+ * No mechanism words on the page; the root policy behind it is
+ * core/root-policy.ts (global-list / project-secondary).
+ */
+function WorkingFoldersPanel() {
+  const app = useApp();
+  const [folders, setFolders] = useState<WorkingFoldersSettings | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    getWorkingFolders()
+      .then((value) => {
+        if (alive) setFolders(value);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const mainFolders = useMemo(() => {
+    const dirs = new Set(app.knownWorkspaces);
+    for (const session of app.sessions) {
+      if (session.workspacePrimaryDir) dirs.add(session.workspacePrimaryDir);
+    }
+    return [...dirs].sort((a, b) => folderLabel(a).localeCompare(folderLabel(b)));
+  }, [app.knownWorkspaces, app.sessions]);
+
+  const save = (next: { global?: WorkingFoldersSettings["global"]; projects?: WorkingFoldersSettings["projects"] }) =>
+    saveWorkingFolders(next)
+      .then((saved) => {
+        setFolders(saved);
+        setNotice(null);
+      })
+      .catch((err) => setNotice(err instanceof Error ? err.message : t("Could not save.")));
+
+  const secondaryOf = (primaryDir: string) =>
+    folders?.projects.find((project) => project.primaryDir === primaryDir)?.secondaryDirs ?? [];
+  const setSecondary = (primaryDir: string, secondaryDirs: string[]) => {
+    if (!folders) return;
+    const others = folders.projects.filter((project) => project.primaryDir !== primaryDir);
+    void save({ projects: secondaryDirs.length ? [...others, { primaryDir, secondaryDirs }] : others });
+  };
+
+  const newProject = () => {
+    void pickDirectory(t("Full path of the working folder to add:")).then((path) => {
+      if (path) void app.addKnownWorkspace(path).catch((err) => setNotice(err instanceof Error ? err.message : t("Could not add folder")));
+    });
+  };
+  const addSecondary = (primaryDir: string) => {
+    void pickDirectory(t("Full path of the folder to add to this project:")).then((path) => {
+      if (path && !secondaryOf(primaryDir).includes(path)) setSecondary(primaryDir, [...secondaryOf(primaryDir), path]);
+    });
+  };
+  const addGlobal = () => {
+    void pickDirectory(t("Full path of the folder to add:")).then((path) => {
+      if (!path || !folders || folders.global.some((folder) => folder.path === path)) return;
+      void save({ global: [...folders.global, { path, writable: false }] });
+    });
+  };
+  const setWritable = (path: string, writable: boolean) => {
+    if (!folders) return;
+    void save({ global: folders.global.map((folder) => (folder.path === path ? { ...folder, writable } : folder)) });
+  };
+  const removeGlobal = (path: string) => {
+    if (!folders) return;
+    void save({ global: folders.global.filter((folder) => folder.path !== path) });
+  };
+  const removeTip = t("Remove from the list (the folder itself is not deleted)");
+
+  return (
+    <div className="set-panel">
+      <h2>{t("Working folders")}</h2>
+      <p className="sub">{t("Which folders Alt can open, and which ones it may change.")}</p>
+      {notice ? <p className="sub">{notice}</p> : null}
+
+      <div className="set-card">
+        <div className="row2">
+          <div>
+            <h4>{t("Projects")}</h4>
+            <p className="lead">{t("Where conversations work.")}</p>
+            <p>{t("One main folder plus any others that belong with it. A conversation started here sees all of them.")}</p>
+          </div>
+          <button className="flat" onClick={newProject}>
+            <i className="ph ph-plus" aria-hidden="true" /> {t("New project")}
+          </button>
+        </div>
+        {mainFolders.length === 0 ? (
+          <p className="fine">{t("No working folders yet.")}</p>
+        ) : (
+          mainFolders.map((primaryDir) => (
+            <div className="proj" key={primaryDir}>
+              <div className="proj-head">
+                <i className="ph ph-folder-open" aria-hidden="true" />
+                <span className="pname">{folderLabel(primaryDir)}</span>
+                <span className="sp" />
+                <button className="flat" onClick={() => addSecondary(primaryDir)}>
+                  <i className="ph ph-plus" aria-hidden="true" /> {t("Add a folder")}
+                </button>
+              </div>
+              <div className="sf">
+                <i className="ph ph-folder" aria-hidden="true" />
+                <span className="lbl">{primaryDir}</span>
+                <span className="role">{t("Main folder")}</span>
+              </div>
+              {secondaryOf(primaryDir).map((dir) => (
+                <div className="sf" key={dir}>
+                  <i className="ph ph-folder" aria-hidden="true" />
+                  <span className="lbl">{dir}</span>
+                  <button
+                    className="icon-x"
+                    data-tip={removeTip}
+                    aria-label={removeTip}
+                    onClick={() => setSecondary(primaryDir, secondaryOf(primaryDir).filter((item) => item !== dir))}
+                  >
+                    <i className="ph ph-x" aria-hidden="true" />
+                  </button>
+                </div>
+              ))}
+              {secondaryOf(primaryDir).length === 0 ? (
+                <div className="sf"><span className="lbl quiet">{t("No other folders yet.")}</span></div>
+              ) : null}
+            </div>
+          ))
+        )}
+      </div>
+
+      <div className="set-card">
+        <div className="row2">
+          <div>
+            <h4>{t("Global folders")}</h4>
+            <p className="lead">{t("Folders Alt may read from any conversation.")}</p>
+            <p>{t("Readable in every conversation. Tick to let Alt save changes there too.")}</p>
+          </div>
+          <button className="flat" onClick={addGlobal} disabled={!folders}>
+            <i className="ph ph-plus" aria-hidden="true" /> {t("Add a folder")}
+          </button>
+        </div>
+        <div className="folder-eye">
+          <i className="ph ph-eye" aria-hidden="true" /> {t("All folders here are readable")}
+        </div>
+        {folders?.global.map((folder) => (
+          <div className="folder-row" key={folder.path}>
+            <i className="ph ph-folder" aria-hidden="true" />
+            <div className="grow">
+              <div className="nm">{folderLabel(folder.path)}</div>
+              <div className="path">{folder.path}</div>
+            </div>
+            <label className={`folder-tick${folder.writable ? " on" : ""}`}>
+              <input
+                type="checkbox"
+                checked={folder.writable}
+                onChange={(event) => setWritable(folder.path, event.target.checked)}
+              />
+              {t("Edit")}
+            </label>
+            <button className="icon-x" data-tip={removeTip} aria-label={removeTip} onClick={() => removeGlobal(folder.path)}>
+              <i className="ph ph-x" aria-hidden="true" />
+            </button>
+          </div>
+        ))}
+        {folders && folders.global.length === 0 ? <p className="fine">{t("No folders on the list yet.")}</p> : null}
+        <p className="fine">{t("Readable in Understand and Work; saving only in Work.")}</p>
+        <p className="fine">{t("Knowledge folders are readable too; you manage those on the Knowledge page.")}</p>
       </div>
     </div>
   );

@@ -17,12 +17,9 @@ export type RootReason =
   | "approved" // a folder approved mid-session through the write gate
   | "kb" // the selected knowledge-base root (read)
   | "trusted" // configured trusted-read roots (read)
-  | "skills"; // the discovered Alt Theory skills root (read)
-
-// Reserved reason names for 1.5.x surfaces: the global directory list and
-// project secondary folders. Nothing produces them in this round; they exist
-// so those surfaces extend this table instead of adding a parallel mechanism.
-export type ReservedRootReason = "global-list" | "project-secondary";
+  | "skills" // the discovered Alt Theory skills root (read)
+  | "global-list" // a folder on the Working folders page's global list (read; write when ticked)
+  | "project-secondary"; // a second folder of the project the session works in
 
 export interface Root {
   path: string;
@@ -39,6 +36,10 @@ export interface SessionRootsInput {
   trustedReadRoots: string[];
   skillsDir: string | null;
   workCapable: boolean;
+  /** Working folders page (v1.5 part 2): readable everywhere, writable while work-capable when ticked. */
+  globalFolders?: Array<{ path: string; writable: boolean }>;
+  /** The project's second folders for this session's main folder: like additional dirs. */
+  projectSecondaryDirs?: string[];
 }
 
 /**
@@ -76,12 +77,29 @@ export function sessionRoots(input: SessionRootsInput): {
   const skills: Root[] = input.skillsDir
     ? [{ path: resolve(input.skillsDir), reason: "skills" }]
     : [];
+  const projectSecondary: Root[] = (input.projectSecondaryDirs ?? []).map((path) => ({
+    path: resolve(path),
+    reason: "project-secondary",
+  }));
+  const global = (input.globalFolders ?? []).map((folder) => ({
+    root: { path: resolve(folder.path), reason: "global-list" as const },
+    writable: folder.writable,
+  }));
   const writable: Root[] = input.workCapable
-    ? [...altWritable, cwdRoot, ...additional, ...approved]
+    ? [
+        ...altWritable,
+        cwdRoot,
+        ...additional,
+        ...projectSecondary,
+        ...global.filter((folder) => folder.writable).map((folder) => folder.root),
+        ...approved,
+      ]
     : [...altWritable, ...approved];
   const readable: Root[] = [
     ...writable,
     cwdRoot,
+    ...projectSecondary,
+    ...global.map((folder) => folder.root),
     { path: resolve(input.kbDir), reason: "kb" },
     ...trusted,
     ...skills,

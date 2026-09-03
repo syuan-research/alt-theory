@@ -145,6 +145,51 @@ test("isPathInside is containment with Windows case-insensitivity", () => {
   assert.equal(isPathInside("C:\\A\\B", "c:\\a\\b\\c.txt"), process.platform === "win32");
 });
 
+test("Working folders page: a listed folder reads everywhere, the Edit tick writes only while work-capable, project second folders join like additional dirs", () => {
+  const base = mkdtempSync(join(tmpdir(), "alt-theory-roots-global-"));
+  try {
+    const input = {
+      writeDir: join(base, "workspace"),
+      assetDir: join(base, "assets"),
+      cwd: join(base, "project"),
+      additionalDirs: [],
+      approvedDirs: [],
+      kbDir: join(base, "kb"),
+      trustedReadRoots: [],
+      skillsDir: null,
+      workCapable: true,
+      globalFolders: [
+        { path: join(base, "vault"), writable: false },
+        { path: join(base, "papers"), writable: true },
+      ],
+      projectSecondaryDirs: [join(base, "shared")],
+    };
+    const work = sessionRoots(input);
+    assert.deepEqual(
+      work.writable.map((r) => [r.path, r.reason]),
+      [
+        [input.writeDir, "session-write"],
+        [input.assetDir, "asset"],
+        [input.cwd, "cwd"],
+        [join(base, "shared"), "project-secondary"],
+        [join(base, "papers"), "global-list"],
+      ],
+    );
+    assert.deepEqual(
+      [...new Set(work.readable.filter((r) => r.reason === "global-list").map((r) => r.path))],
+      [join(base, "papers"), join(base, "vault")],
+    );
+    const understand = sessionRoots({ ...input, workCapable: false });
+    assert.deepEqual(understand.writable.map((r) => r.reason), ["session-write", "asset"]);
+    assert.deepEqual(
+      understand.readable.map((r) => r.reason),
+      ["session-write", "asset", "cwd", "project-secondary", "global-list", "global-list", "kb"],
+    );
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
 test("sessionRoots lists every root with its reason", () => {
   const base = mkdtempSync(join(tmpdir(), "alt-theory-roots-"));
   try {

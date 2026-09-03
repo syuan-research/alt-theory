@@ -6,7 +6,7 @@
  * session applies the new selection.
  */
 import { existsSync, readFileSync } from "fs";
-import { join } from "path";
+import { join, resolve } from "path";
 import { writeJsonAtomic } from "../core/data-dir.js";
 import type { AltMode, RuntimeMode } from "../core/alt-theory-core.js";
 
@@ -98,6 +98,34 @@ export interface AppSettings {
   extraRolePresetDirs?: string[];
   /** User-added knowledge-base directories (alpha.5, add-only). */
   extraKbDirs?: string[];
+  /**
+   * Working folders page (v1.5 part 2). `global`: folders Alt may read in
+   * every conversation, `writable` = the Edit tick (saves only in Work).
+   * `projects`: a main working folder's second folders, joined to every
+   * conversation whose main folder matches.
+   */
+  workingFolders?: WorkingFoldersSettings;
+}
+
+export interface WorkingFoldersSettings {
+  global: Array<{ path: string; writable: boolean }>;
+  projects: Array<{ primaryDir: string; secondaryDirs: string[] }>;
+}
+
+/** The root policy a session gets from the Working folders page, for its main folder. */
+export function folderPolicyFor(
+  settings: Pick<AppSettings, "workingFolders">,
+  primaryDir: string | null | undefined,
+): { globalFolders: Array<{ path: string; writable: boolean }>; projectSecondaryDirs: string[] } {
+  const folders = settings.workingFolders;
+  const project =
+    primaryDir && folders
+      ? folders.projects.find((item) => resolve(item.primaryDir) === resolve(primaryDir))
+      : undefined;
+  return {
+    globalFolders: folders?.global ?? [],
+    projectSecondaryDirs: project?.secondaryDirs ?? [],
+  };
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -230,6 +258,23 @@ export function readAppSettingsWithWarning(dataDir: string): {
             extraKbDirs: parsed.extraKbDirs.filter(
               (entry): entry is string => typeof entry === "string",
             ),
+          }
+        : {}),
+      ...(parsed.workingFolders
+        ? {
+            workingFolders: {
+              global: (Array.isArray(parsed.workingFolders.global) ? parsed.workingFolders.global : [])
+                .filter((entry) => entry && typeof entry.path === "string")
+                .map((entry) => ({ path: entry.path, writable: entry.writable === true })),
+              projects: (Array.isArray(parsed.workingFolders.projects) ? parsed.workingFolders.projects : [])
+                .filter((entry) => entry && typeof entry.primaryDir === "string")
+                .map((entry) => ({
+                  primaryDir: entry.primaryDir,
+                  secondaryDirs: (Array.isArray(entry.secondaryDirs) ? entry.secondaryDirs : []).filter(
+                    (dir): dir is string => typeof dir === "string",
+                  ),
+                })),
+            },
           }
         : {}),
     };

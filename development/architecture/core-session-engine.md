@@ -153,6 +153,17 @@ loading, tools, workspace policy, and Pi interception. Frontend surfaces,
 backend routes, persisted records, and Pi runtime behavior form one product
 mechanism across several trees.
 
+Within `SessionService`, session assembly has one resolver (v1.5 part 2,
+card 6): `assemblyArgs({sessionId, selectors, workspace, modelArgs, altMode,
+forkPurpose})` produces the shared `AltTheoryConfig` keys (asset paths, role
+/ soul / instruction resolution, KB, app-settings-driven flags, trusted and
+skill roots, external skills, extension factories, agent-team tools and
+prompt sections, `workspaceDirs`, the live folder-policy reader). The four
+open paths — `createManagedFromDirs`, reopen, replace with new selectors,
+`openManagedRuntime` — spread it and add only what names the session on
+disk (dirs, cwd, Pi file, original manifest, cwd override). A new assembly
+input lands in the resolver once.
+
 This coupling is a current fact. It is not evidence that all of these concerns
 should be merged, nor evidence that the current map has already been enforced by
 code. When authorized work touches a module, improving locality or clarifying

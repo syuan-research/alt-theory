@@ -205,6 +205,15 @@ export interface AltTheoryConfig extends SessionDirectories {
    */
   workspaceDirs?: string[];
   /**
+   * Working folders page (v1.5 part 2): the global folder list and the
+   * project's second folders, read live at every root check so a tick on the
+   * page applies to open conversations too. Absent = none.
+   */
+  readFolderPolicy?: () => {
+    globalFolders: Array<{ path: string; writable: boolean }>;
+    projectSecondaryDirs: string[];
+  };
+  /**
    * Inline Pi extension factories, loaded explicitly by the app (M4 policy
    * layer, tests). Ambient extension discovery stays off in every mode
    * (noExtensions, spec §3.4/§4.2); this is the only extension entry point.
@@ -546,8 +555,9 @@ async function createAltTheorySessionWithManager(
   // extension, and the assembly manifest.
   const altWritableRoots = [resolvedWriteDir, resolvedWritableAssetDir];
   const approvedWritableRoots = new Set<string>();
-  const sessionRootsForMode = (): { readable: Root[]; writable: Root[] } =>
-    sessionRoots({
+  const sessionRootsForMode = (): { readable: Root[]; writable: Root[] } => {
+    const folderPolicy = config.readFolderPolicy?.();
+    return sessionRoots({
       writeDir: resolvedWriteDir,
       assetDir: resolvedWritableAssetDir,
       cwd,
@@ -557,7 +567,10 @@ async function createAltTheorySessionWithManager(
       trustedReadRoots: config.trustedReadRoots ?? [],
       skillsDir: resolvedSkillsDir,
       workCapable: isWorkCapable(),
+      globalFolders: folderPolicy?.globalFolders ?? [],
+      projectSecondaryDirs: folderPolicy?.projectSecondaryDirs ?? [],
     });
+  };
   const writableRootsForMode = () => sessionRootsForMode().writable;
   // One scan of the skills root. Pi's loader already descends into
   // subdirectories, so optional skills are just skills that a packaged build

@@ -67,7 +67,7 @@ import {
   getSessionRootForRequest,
   stripSkillWrapper,
 } from "./session-store.js";
-import { readAppSettings } from "./app-settings.js";
+import { folderPolicyFor, readAppSettings } from "./app-settings.js";
 import { extractToolDetail, extractToolPath, type ToolDetail } from "./tool-detail.js";
 import {
   readV4SessionHeader,
@@ -2484,6 +2484,65 @@ export class SessionService implements AgentTeamBridge {
    * subagent prompt section is formatted from the caller's config snapshot
    * (read once per assembly) so it cannot diverge from spawn validation.
    */
+  /**
+   * The ONE session-assembly resolver (card 6): every open path — create,
+   * reopen, replace with new selectors, openManagedRuntime — reads its inputs
+   * where it holds them and gets the same config from here. A new assembly
+   * input lands once. Callers add only what names the session on disk
+   * (dirs, cwd, Pi file, original manifest).
+   */
+  private assemblyArgs(input: {
+    sessionId: string;
+    selectors: SessionSelectors;
+    /** Persisted working folder; null / undefined = the managed workspace. */
+    workspace: { primaryDir?: string | null; additionalDirs?: string[] } | null | undefined;
+    modelArgs: RuntimeModelConfig & { thinkingLevel?: ThinkingLevel };
+    altMode: AltMode;
+    forkPurpose: ForkPurpose | null | undefined;
+  }) {
+    const appSettings = readAppSettings(this.config.dataDir);
+    const subagentConfig = readSubagentConfig(this.config.dataDir).config;
+    const instruction = this.resolveOptionalInstruction(
+      input.selectors.customInstructionRef,
+    );
+    const primaryDir = input.workspace?.primaryDir ?? null;
+    return {
+      workspaceDirs: input.workspace?.additionalDirs,
+      // Read live: a tick on the Working folders page applies to open
+      // conversations at their next root check.
+      readFolderPolicy: () =>
+        folderPolicyFor(readAppSettings(this.config.dataDir), primaryDir),
+      appContextPath: this.config.assetPaths.appContextPath,
+      soulPath: this.resolveOptionalSoulPath(input.selectors.soulSlug),
+      soulSlug: input.selectors.soulSlug,
+      rolePresetPath: this.resolveOptionalRolePresetPath(
+        input.selectors.rolePresetSlug,
+      ),
+      rolePresetSlug: input.selectors.rolePresetSlug,
+      customInstructionPath: instruction?.path ?? null,
+      customInstructionRef: instruction?.ref ?? null,
+      kbDir: resolveKbDirForDomain(this.config.kbDir, input.selectors.kbDomain),
+      kbDomain: input.selectors.kbDomain,
+      piPromptTemplatesDir: this.config.assetPaths.piPromptTemplatesDir,
+      ...input.modelArgs,
+      altMode: input.altMode,
+      runtimeMode: appSettings.runtimeMode ?? "alt-theory",
+      trimmedPiBasePrompt: appSettings.experimentTrimmedPiPrompt === true,
+      modelHooks: appSettings.modelHooks !== false,
+      nativePiScanAltSkills: appSettings.nativePiScanAltSkills !== false,
+      resourceDiscovery: this.config.resourceDiscovery,
+      skillsDir: this.config.skillsDir,
+      trustedReadRoots: this.config.trustedReadRoots,
+      runLabel: this.config.runLabel,
+      testBatch: this.config.testBatch,
+      understandReadOnly: this.config.understandReadOnly,
+      externalSkillPaths: this.config.resolveExternalSkillPaths?.(),
+      skillPrecedence: appSettings.skillPrecedence,
+      extensionFactories: this.config.extensionFactories,
+      ...this.agentTeamArgsFor(input.sessionId, input.forkPurpose, subagentConfig),
+    };
+  }
+
   private agentTeamArgsFor(
     sessionId: string,
     purpose: ForkPurpose | null | undefined,
@@ -2538,45 +2597,24 @@ export class SessionService implements AgentTeamBridge {
     const result = await createAltTheorySession({
       ...sessionDirs,
       ...(primaryDir ? { sessionCwd: primaryDir } : {}),
-      workspaceDirs: metadata.workspace?.additionalDirs,
-      appContextPath: this.config.assetPaths.appContextPath,
-      soulPath,
-      soulSlug: selectors.soulSlug,
-      rolePresetPath,
-      rolePresetSlug: selectors.rolePresetSlug,
-      customInstructionPath: instruction?.path ?? null,
-      customInstructionRef: instruction?.ref ?? null,
-      kbDir: resolveKbDirForDomain(this.config.kbDir, selectors.kbDomain),
-      kbDomain: selectors.kbDomain,
-      piPromptTemplatesDir: this.config.assetPaths.piPromptTemplatesDir,
-      ...runtimeModelConfig,
-      ...(metadata.modelOverride
-        ? {
-            modelProvider: metadata.modelOverride.provider,
-            modelId: metadata.modelOverride.modelId,
-          }
-        : {}),
-      thinkingLevel:
-        metadata.modelOverride?.thinkingLevel ?? this.config.thinkingLevel,
-      altMode: metadata.mode ?? appSettings.defaultAltMode ?? "understand",
-      runtimeMode: appSettings.runtimeMode ?? "alt-theory",
-      trimmedPiBasePrompt: appSettings.experimentTrimmedPiPrompt === true,
-      modelHooks: appSettings.modelHooks !== false,
-      nativePiScanAltSkills: appSettings.nativePiScanAltSkills !== false,
-      resourceDiscovery: this.config.resourceDiscovery,
-      skillsDir: this.config.skillsDir,
-      trustedReadRoots: this.config.trustedReadRoots,
-      runLabel: this.config.runLabel,
-      testBatch: this.config.testBatch,
-      understandReadOnly: this.config.understandReadOnly,
-      externalSkillPaths: this.config.resolveExternalSkillPaths?.(),
-      skillPrecedence: appSettings.skillPrecedence,
-      extensionFactories: this.config.extensionFactories,
-      ...this.agentTeamArgsFor(
-        sessionDirs.sessionId,
-        metadata.forkedFrom?.purpose ?? null,
-        subagentConfig,
-      ),
+      ...this.assemblyArgs({
+        sessionId: sessionDirs.sessionId,
+        selectors,
+        workspace: metadata.workspace,
+        modelArgs: {
+          ...runtimeModelConfig,
+          ...(metadata.modelOverride
+            ? {
+                modelProvider: metadata.modelOverride.provider,
+                modelId: metadata.modelOverride.modelId,
+              }
+            : {}),
+          thinkingLevel:
+            metadata.modelOverride?.thinkingLevel ?? this.config.thinkingLevel,
+        },
+        altMode: metadata.mode ?? appSettings.defaultAltMode ?? "understand",
+        forkPurpose: metadata.forkedFrom?.purpose ?? null,
+      }),
     });
     const visibility = metadata.visibility ?? this.fallbackVisibility;
     const consentSnapshot =
@@ -3341,10 +3379,8 @@ export class SessionService implements AgentTeamBridge {
       effectiveCustomInstructionRef ?? detail.manifest?.customInstruction?.ref,
       fallbackSelectors.customInstructionRef,
     );
-    const instruction = this.resolveOptionalInstruction(activeInstructionRef);
     const persistedHeader = readV4SessionHeader(sessionDirs.recordsDir);
     const persistedMode = persistedHeader?.mode ?? "understand";
-    const appSettings = readAppSettings(this.config.dataDir);
     const subagentConfig = readSubagentConfig(this.config.dataDir).config;
 
     // Stale-workspace recovery (v1.2.1): the recorded working folder can vanish
@@ -3369,41 +3405,22 @@ export class SessionService implements AgentTeamBridge {
       ...(persistedHeader?.workspace && !workspaceMissing
         ? { sessionCwd: persistedHeader.workspace.primaryDir }
         : {}),
-      workspaceDirs: workspaceMissing
-        ? undefined
-        : persistedHeader?.workspace?.additionalDirs,
       sessionFile: detail.pi.sessionFile,
       originalManifest: detail.manifest,
-      appContextPath: this.config.assetPaths.appContextPath,
-      soulPath: this.resolveOptionalSoulPath(activeSoulSlug),
-      soulSlug: activeSoulSlug,
-      rolePresetPath: this.resolveOptionalRolePresetPath(activeRolePresetSlug),
-      rolePresetSlug: activeRolePresetSlug,
-      customInstructionPath: instruction?.path ?? null,
-      customInstructionRef: instruction?.ref ?? null,
-      kbDir: resolveKbDirForDomain(this.config.kbDir, activeDomain),
-      kbDomain: activeDomain,
-      piPromptTemplatesDir: this.config.assetPaths.piPromptTemplatesDir,
-      ...this.modelArgsFor(persistedHeader?.modelOverride),
-      altMode: persistedMode,
-      runtimeMode: appSettings.runtimeMode ?? "alt-theory",
-      trimmedPiBasePrompt: appSettings.experimentTrimmedPiPrompt === true,
-      modelHooks: appSettings.modelHooks !== false,
-      nativePiScanAltSkills: appSettings.nativePiScanAltSkills !== false,
-      resourceDiscovery: this.config.resourceDiscovery,
-      skillsDir: this.config.skillsDir,
-      trustedReadRoots: this.config.trustedReadRoots,
-      runLabel: this.config.runLabel,
-      testBatch: this.config.testBatch,
-      understandReadOnly: this.config.understandReadOnly,
-      externalSkillPaths: this.config.resolveExternalSkillPaths?.(),
-      skillPrecedence: appSettings.skillPrecedence,
-      extensionFactories: this.config.extensionFactories,
-      ...this.agentTeamArgsFor(
+      ...this.assemblyArgs({
         sessionId,
-        persistedHeader?.forkedFrom?.purpose ?? null,
-        subagentConfig,
-      ),
+        selectors: {
+          ...fallbackSelectors,
+          soulSlug: activeSoulSlug,
+          rolePresetSlug: activeRolePresetSlug,
+          customInstructionRef: activeInstructionRef,
+          kbDomain: activeDomain,
+        },
+        workspace: workspaceMissing ? null : persistedHeader?.workspace,
+        modelArgs: this.modelArgsFor(persistedHeader?.modelOverride),
+        altMode: persistedMode,
+        forkPurpose: persistedHeader?.forkedFrom?.purpose ?? null,
+      }),
     };
     // Model-on-resume recovery (v1.2.1 item 2): a per-session model override can
     // point at a model that's since been removed from config — core then throws
@@ -3558,47 +3575,20 @@ export class SessionService implements AgentTeamBridge {
       sessionCwd: previous.manifest.sessionCwd ?? sessionDirs.sessionCwd,
     };
     const persistedMode = previous.getAltMode();
-    const appSettings = readAppSettings(this.config.dataDir);
+    const replacedHeader = readV4SessionHeader(sessionDirs.recordsDir);
     const subagentConfig = readSubagentConfig(this.config.dataDir).config;
     const result = await openAltTheorySession({
       ...activeSessionDirs,
-      workspaceDirs: previous.getWorkspace().additionalDirs,
       sessionFile,
       originalManifest: detail?.manifest ?? previous.manifest,
-      appContextPath: this.config.assetPaths.appContextPath,
-      soulPath: this.resolveOptionalSoulPath(selectors.soulSlug),
-      soulSlug: selectors.soulSlug,
-      rolePresetPath: this.resolveOptionalRolePresetPath(selectors.rolePresetSlug,),
-      rolePresetSlug: selectors.rolePresetSlug,
-      customInstructionPath: this.resolveOptionalInstruction(
-        selectors.customInstructionRef,
-      )?.path,
-      customInstructionRef: selectors.customInstructionRef ?? null,
-      kbDir: resolveKbDirForDomain(this.config.kbDir, selectors.kbDomain),
-      kbDomain: selectors.kbDomain,
-      piPromptTemplatesDir: this.config.assetPaths.piPromptTemplatesDir,
-      ...this.modelArgsFor(
-        readV4SessionHeader(sessionDirs.recordsDir)?.modelOverride,
-      ),
-      altMode: persistedMode,
-      runtimeMode: appSettings.runtimeMode ?? "alt-theory",
-      trimmedPiBasePrompt: appSettings.experimentTrimmedPiPrompt === true,
-      modelHooks: appSettings.modelHooks !== false,
-      nativePiScanAltSkills: appSettings.nativePiScanAltSkills !== false,
-      resourceDiscovery: this.config.resourceDiscovery,
-      skillsDir: this.config.skillsDir,
-      trustedReadRoots: this.config.trustedReadRoots,
-      runLabel: this.config.runLabel,
-      testBatch: this.config.testBatch,
-      understandReadOnly: this.config.understandReadOnly,
-      externalSkillPaths: this.config.resolveExternalSkillPaths?.(),
-      skillPrecedence: appSettings.skillPrecedence,
-      extensionFactories: this.config.extensionFactories,
-      ...this.agentTeamArgsFor(
-        previous.manifest.sessionId,
-        readV4SessionHeader(sessionDirs.recordsDir)?.forkedFrom?.purpose ?? null,
-        subagentConfig,
-      ),
+      ...this.assemblyArgs({
+        sessionId: previous.manifest.sessionId,
+        selectors,
+        workspace: previous.getWorkspace(),
+        modelArgs: this.modelArgsFor(replacedHeader?.modelOverride),
+        altMode: persistedMode,
+        forkPurpose: replacedHeader?.forkedFrom?.purpose ?? null,
+      }),
       overrideSessionCwd: true,
     });
     if (detail) {
@@ -3641,12 +3631,8 @@ export class SessionService implements AgentTeamBridge {
     /** Fork flows call this before the child's header exists on disk. */
     forkPurpose?: ForkPurpose;
   }): Promise<ManagedSession> {
-    const instruction = this.resolveOptionalInstruction(
-      args.selectors.customInstructionRef,
-    );
     const persistedHeader = readV4SessionHeader(args.sessionDirs.recordsDir);
     const persistedMode = args.mode ?? persistedHeader?.mode ?? "understand";
-    const appSettings = readAppSettings(this.config.dataDir);
     const subagentConfig = readSubagentConfig(this.config.dataDir).config;
     const persistedWorkspace = args.workspace ?? persistedHeader?.workspace;
     const result = await openAltTheorySession({
@@ -3656,43 +3642,18 @@ export class SessionService implements AgentTeamBridge {
       ...(persistedWorkspace && !args.overrideSessionCwd
         ? { sessionCwd: persistedWorkspace.primaryDir }
         : {}),
-      workspaceDirs: persistedWorkspace?.additionalDirs,
       sessionId: args.sessionId,
       sessionFile: args.sessionFile,
       originalManifest: args.originalManifest,
       overrideSessionCwd: args.overrideSessionCwd,
-      appContextPath: this.config.assetPaths.appContextPath,
-      soulPath: this.resolveOptionalSoulPath(args.selectors.soulSlug),
-      soulSlug: args.selectors.soulSlug,
-      rolePresetPath: this.resolveOptionalRolePresetPath(
-        args.selectors.rolePresetSlug,
-      ),
-      rolePresetSlug: args.selectors.rolePresetSlug,
-      customInstructionPath: instruction?.path ?? null,
-      customInstructionRef: instruction?.ref ?? null,
-      kbDir: resolveKbDirForDomain(this.config.kbDir, args.selectors.kbDomain),
-      kbDomain: args.selectors.kbDomain,
-      piPromptTemplatesDir: this.config.assetPaths.piPromptTemplatesDir,
-      ...this.modelArgsFor(args.modelOverride ?? persistedHeader?.modelOverride,),
-      altMode: persistedMode,
-      runtimeMode: appSettings.runtimeMode ?? "alt-theory",
-      trimmedPiBasePrompt: appSettings.experimentTrimmedPiPrompt === true,
-      modelHooks: appSettings.modelHooks !== false,
-      nativePiScanAltSkills: appSettings.nativePiScanAltSkills !== false,
-      resourceDiscovery: this.config.resourceDiscovery,
-      skillsDir: this.config.skillsDir,
-      trustedReadRoots: this.config.trustedReadRoots,
-      runLabel: this.config.runLabel,
-      testBatch: this.config.testBatch,
-      understandReadOnly: this.config.understandReadOnly,
-      externalSkillPaths: this.config.resolveExternalSkillPaths?.(),
-      skillPrecedence: appSettings.skillPrecedence,
-      extensionFactories: this.config.extensionFactories,
-      ...this.agentTeamArgsFor(
-        args.sessionId,
-        args.forkPurpose ?? persistedHeader?.forkedFrom?.purpose ?? null,
-        subagentConfig,
-      ),
+      ...this.assemblyArgs({
+        sessionId: args.sessionId,
+        selectors: args.selectors,
+        workspace: persistedWorkspace,
+        modelArgs: this.modelArgsFor(args.modelOverride ?? persistedHeader?.modelOverride),
+        altMode: persistedMode,
+        forkPurpose: args.forkPurpose ?? persistedHeader?.forkedFrom?.purpose ?? null,
+      }),
     });
     if ("activeLeafEntryId" in args) {
       alignSessionManagerLeaf(

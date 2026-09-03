@@ -203,6 +203,14 @@ surfaces remain designation-gated and absent for everyone else.
 - **Settings**
   - General: app behavior and ordinary preferences.
   - Models: provider connection, model choice, and model capability correction.
+  - Working folders (v1.5 part 2, prototype D): two cards. Projects — every
+    known main working folder with the second folders that belong with it
+    (add / remove); Global folders — folders Alt may read in every
+    conversation, one quiet eye line above the rows saying they are all
+    readable, each row name, path, an Edit tick (saves only in Work) and
+    remove. No per-row badge, no mechanism words. Stored in app settings
+    (`workingFolders`), applied through the root policy as `global-list` /
+    `project-secondary`.
   - Role & Knowledge: role, knowledge sets, and related paths when implemented.
   - Help center: a curated capability guide and the shipped localized tips.
     The global Help menu opens either this surface or a new Helper conversation.

@@ -8,6 +8,7 @@ import {
   readAppSettingsWithWarning,
   resolveExternalSkillPaths,
   writeAppSettings,
+  folderPolicyFor,
 } from "./app-settings.js";
 import { discoverSkillResources } from "./resource-discovery.js";
 
@@ -176,4 +177,19 @@ test("a corrupt file with no last good copy falls back to defaults with a warnin
   const { settings, warning } = readAppSettingsWithWarning(dataDir);
   assert.deepEqual(settings.skills.understand.enabledPaths, null);
   assert.ok(warning && warning.includes("Could not read app settings"));
+});
+
+test("folderPolicyFor: the global list applies to every session; a project's second folders only to sessions in that main folder", () => {
+  const settings = {
+    workingFolders: {
+      global: [{ path: "/vault", writable: false }],
+      projects: [{ primaryDir: "/research/climate", secondaryDirs: ["/research/shared"] }],
+    },
+  };
+  assert.deepEqual(folderPolicyFor(settings, "/research/climate"), {
+    globalFolders: [{ path: "/vault", writable: false }],
+    projectSecondaryDirs: ["/research/shared"],
+  });
+  assert.deepEqual(folderPolicyFor(settings, "/elsewhere").projectSecondaryDirs, []);
+  assert.deepEqual(folderPolicyFor({}, null), { globalFolders: [], projectSecondaryDirs: [] });
 });

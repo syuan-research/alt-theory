@@ -510,6 +510,46 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       extraKbDirs: saved.extraKbDirs ?? [],
     });
   });
+  // Working folders page (v1.5 part 2): the global readable list with its
+  // Edit ticks, and each project's second folders. Applied live through
+  // the session assembly's folder-policy reader.
+  app.get("/api/settings/working-folders", (_req, res) => {
+    if (!requireLocalConfigMode(res)) return;
+    const settings = readAppSettings(dataDir);
+    res.json({
+      knownWorkspaces: settings.knownWorkspaces ?? [],
+      ...(settings.workingFolders ?? { global: [], projects: [] }),
+    });
+  });
+  app.put("/api/settings/working-folders", (req, res) => {
+    if (!requireLocalConfigMode(res)) return;
+    const body = req.body as { global?: unknown; projects?: unknown };
+    const current = readAppSettings(dataDir);
+    const existing = current.workingFolders ?? { global: [], projects: [] };
+    const dir = (value: unknown): string | null =>
+      typeof value === "string" && value.trim() && existsSync(resolve(value)) ? resolve(value) : null;
+    const global = Array.isArray(body.global)
+      ? (body.global as Array<{ path?: unknown; writable?: unknown }>)
+          .map((entry) => ({ path: dir(entry?.path), writable: entry?.writable === true }))
+          .filter((entry): entry is { path: string; writable: boolean } => entry.path !== null)
+      : existing.global;
+    const projects = Array.isArray(body.projects)
+      ? (body.projects as Array<{ primaryDir?: unknown; secondaryDirs?: unknown }>)
+          .map((entry) => ({
+            primaryDir: dir(entry?.primaryDir),
+            secondaryDirs: (Array.isArray(entry?.secondaryDirs) ? entry.secondaryDirs : [])
+              .map(dir)
+              .filter((path): path is string => path !== null),
+          }))
+          .filter((entry): entry is { primaryDir: string; secondaryDirs: string[] } => entry.primaryDir !== null)
+      : existing.projects;
+    writeAppSettings(dataDir, { ...current, workingFolders: { global, projects } });
+    const saved = readAppSettings(dataDir);
+    res.json({
+      knownWorkspaces: saved.knownWorkspaces ?? [],
+      ...(saved.workingFolders ?? { global: [], projects: [] }),
+    });
+  });
   // Copy a picked .md file into the user's role folder — never touches the
   // bundled role-presets directory.
   app.post("/api/role-presets/upload", (req, res) => {

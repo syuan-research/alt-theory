@@ -78,10 +78,18 @@ the runtime policy layer):
 - `approved` — a folder explicitly approved during the session.
 - `kb`, `trusted`, `skills` — read-only roots: the selected KB root,
   configured trusted-read roots, and the discovered Alt Theory skill root.
+- `global-list` — a folder on the Settings > Working folders global list
+  (v1.5 part 2): readable in every mode and every conversation; writable in
+  Work and Native Pi only when its Edit tick is on.
+- `project-secondary` — a second folder of the project whose main folder is
+  the session's primary working folder (the same Settings page); readable
+  everywhere, writable in Work and Native Pi, like `additional`.
 
-Two further reason names (`global-list`, `project-secondary`) are reserved
-for the 1.5.x global directory list and project secondary folders; nothing
-produces them yet. Understand does not receive the Work/Native workspace
+Both come from `app-settings.json` (`workingFolders`; `folderPolicyFor` in
+`web-server/app-settings.ts`) and are read live at every root check through
+`AltTheoryConfig.readFolderPolicy`, so a change on the page applies to open
+conversations at their next path check. The page is a list with one tick
+per row; there is no other scope. Understand does not receive the Work/Native workspace
 context or project skills. Its write capability is controlled by the
 deployment's `understandReadOnly` setting and, when enabled, remains bounded
 to the Alt Theory writable roots plus explicitly approved folders. Switching
