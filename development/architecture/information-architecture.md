@@ -166,6 +166,33 @@ surfaces remain designation-gated and absent for everyone else.
     branches must not open a second center-column “compare pane.”
   - File preview occupies the rail as a real reading surface; rendered Markdown
     is the default for non-technical users, with source available on demand.
+    One renderer serves Files, Changes and Records
+    (`components/inspector/FilePreview.tsx`): the control follows the file
+    type (`lib/fileContent.ts` `previewModes`) — a diff first when the
+    conversation changed the file, Rendered + Source for `.md` / `.html`
+    (HTML in a sandboxed iframe), the whole file for everything else, Edit
+    where the write route allows (records, managed workspace). Content loads
+    by reference through the content route; the changes route no longer
+    inlines file text.
+  - Changes lists the whole conversation family's writes (subagents and
+    branches included), merged on the resolved absolute path and grouped as
+    prototype D groups them: each project folder (main, then each second
+    folder) is one group, never subdivided; everything outside groups by
+    containing folder with a depth cap of three levels below home or the
+    drive root (`session-store.ts` `groupChanges`,
+    `CHANGE_GROUP_DEPTH_CAP`). Every group is titled by the deepest common
+    ancestor of its files; rows show paths relative to that title; the role
+    (Main folder / Second folder / Outside) is quiet grey text, and a group
+    that absorbed deeper folders says so in one muted line.
+  - Right-pane view state outlives the pane (Owner 2026-09-03). The shell
+    remembers, per rail, the last open sub (file, changed file, related
+    child) and restores it when that rail reopens after a collapse or
+    switch; when a related child takes the pane over from another rail,
+    leaving it returns to that rail and its sub. Tree expansion, filter
+    text, view mode, related-pane filters and per-view scroll position
+    live in `lib/paneMemory.ts` (`usePaneMemory`, an app-lifetime map keyed
+    per conversation and surface). Nothing of this persists across a
+    restart.
   - Files has one inline filter above the existing tree. It keeps matches and
     their ancestors in that tree, expands those ancestors while filtering, and
     restores the prior expansion when cleared. File-change rows may reveal the

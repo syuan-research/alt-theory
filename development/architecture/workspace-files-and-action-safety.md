@@ -125,7 +125,10 @@ and
 [`workspace-files.ts`](../../alt-theory-app/web-server/workspace-files.ts#L555-L583)),
 and session-store file reads
 ([`session-store.ts`](../../alt-theory-app/web-server/session-store.ts#L1101-L1136),
-`readCurrentChangedFile`). See [`path-verdict.ts`](../../alt-theory-app/core/path-verdict.ts#L1-L115).
+and the changes projection's `locateChangedFile` / `groupChanges`, which
+decide whether a changed path is inside a root and, if so, how the content
+route addresses it — the projection carries that address, never the file
+text). See [`path-verdict.ts`](../../alt-theory-app/core/path-verdict.ts#L1-L115).
 
 The Pi `edit` and `write` tool calls are checked by the security extension
 against the verdict's write outcome. Credential-sensitive paths are

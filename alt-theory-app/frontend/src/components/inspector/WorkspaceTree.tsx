@@ -7,7 +7,6 @@ import {
 import { useTree } from "@headless-tree/react";
 import type { WorkingFolderDescriptor, WorkingTreeEntry, WorkspaceFileEntry } from "@/api/types";
 import {
-  getSessionFileContent,
   listWorkingDirectory,
   listWorkingFolders,
   listWorkspaceFiles,
@@ -19,8 +18,10 @@ import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
 import { hasNativeBridge, revealPath } from "@/lib/native";
 import { stagePathAfterUpload, WORKSPACE_PATH_MIME } from "@/lib/workspace";
-import { MarkdownBody } from "@/components/conversation/MarkdownBody";
+import { FilePreview } from "@/components/inspector/FilePreview";
 import { buildFileTreeModel, getFileTreeNode, type FileTreeNode } from "@/lib/fileTree";
+import type { PreviewMode } from "@/lib/fileContent";
+import { usePaneMemory } from "@/lib/paneMemory";
 import { copyText } from "@/lib/clipboard";
 import { useContextMenu, type ContextMenuItem } from "@/components/shell/ContextMenu";
 
@@ -30,22 +31,24 @@ export function WorkspaceTree() {
   const [entries, setEntries] = useState<WorkspaceFileEntry[] | null>(null);
   const [workingFolders, setWorkingFolders] = useState<WorkingFolderDescriptor[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [preview, setPreview] = useState<{
-    path: string;
-    content: string;
-    source: "managed" | "working";
-  } | null>(null);
   const [uploadStatus, setUploadStatus] = useState("");
-  const [previewView, setPreviewView] = useState<"rendered" | "source">(
-    "rendered",
-  );
   const [expandSignal, setExpandSignal] = useState(0);
   const [collapseSignal, setCollapseSignal] = useState(0);
-  const [query, setQuery] = useState("");
   const uploadInput = useRef<HTMLInputElement>(null);
 
   const sessionId = app.sessionId;
   const runCount = app.runCompletedCount;
+  // View state that outlives the pane (the tree unmounts on every collapse
+  // or rail switch): the open file is the shell's `ws:` / `working:` sub;
+  // the view mode and filter live in pane memory.
+  const [previewView, setPreviewView] = usePaneMemory<PreviewMode>(`${sessionId}:files:mode`, "rendered");
+  const [query, setQuery] = usePaneMemory(`${sessionId}:files:query`, "");
+  const subKey = shell.rightSub?.key ?? "";
+  const preview: { path: string; source: "managed" | "working" } | null = subKey.startsWith("ws:")
+    ? { path: subKey.slice("ws:".length), source: "managed" }
+    : subKey.startsWith("working:")
+      ? { path: subKey.slice("working:".length), source: "working" }
+      : null;
   const understandMode =
     app.runtimeMode === "alt-theory" &&
     (sessionId
@@ -79,21 +82,11 @@ export function WorkspaceTree() {
   }, [app.appMode, sessionId, runCount]);
 
   useEffect(() => {
-    if (!shell.rightSub) setPreview(null);
-  }, [shell.rightSub]);
-
-  useEffect(() => {
-    setPreview(null);
-    setQuery("");
-  }, [sessionId]);
-
-  useEffect(() => {
     const target = shell.workspaceRevealPath;
     if (!target) return;
-    setPreview(null);
     setQuery(target.split(/[\\/]/).filter(Boolean).at(-1) ?? target);
     shell.clearWorkspaceRevealPath();
-  }, [shell.workspaceRevealPath, shell.clearWorkspaceRevealPath]);
+  }, [shell.workspaceRevealPath, shell.clearWorkspaceRevealPath, setQuery]);
 
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const filterEntries = <T extends { path: string }>(items: T[]) =>
@@ -101,25 +94,6 @@ export function WorkspaceTree() {
       ? items.filter((entry) => entry.path.toLocaleLowerCase().includes(normalizedQuery))
       : items;
 
-  useEffect(() => {
-    if (!sessionId || !preview) return;
-    const selected = preview;
-    const root = selected.source === "working" ? "working" : "workspace";
-    let cancelled = false;
-    getSessionFileContent(sessionId, root, selected.path)
-      .then((res) => {
-        if (cancelled) return;
-        setPreview((current) =>
-          current?.path === selected.path && current.source === selected.source
-            ? { ...current, content: res.content }
-            : current,
-        );
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [sessionId, runCount]);
 
   const referenceEntries = useMemo(
     () => filterEntries((entries ?? []).filter((entry) => /^(uploads|extracted)\//.test(entry.path))),
@@ -131,39 +105,16 @@ export function WorkspaceTree() {
   );
   const managedFolderPath = workingFolders.find((folder) => folder.managed)?.path ?? "";
 
-  const openFile = async (entry: WorkspaceFileEntry) => {
+  const openFile = (entry: WorkspaceFileEntry) => {
     if (!sessionId || entry.kind === "binary-original") return;
-    try {
-      const res = await getSessionFileContent(sessionId, "workspace", entry.path);
-      setPreviewView("rendered");
-      setPreview({ path: entry.path, content: res.content, source: "managed" });
-      shell.openSub({ key: `ws:${entry.path}`, title: entry.path });
-    } catch (e) {
-      setPreview({
-        path: entry.path,
-        content: e instanceof Error ? e.message : "Could not read file.",
-        source: "managed",
-      });
-      shell.openSub({ key: `ws:${entry.path}`, title: entry.path });
-    }
+    setPreviewView("rendered");
+    shell.openSub({ key: `ws:${entry.path}`, title: entry.path });
   };
 
-  const openWorkingFile = async (entry: WorkingTreeEntry) => {
+  const openWorkingFile = (entry: WorkingTreeEntry) => {
     if (!sessionId || !entry.previewable) return;
-    const path = `${entry.folderId}/${entry.path}`;
-    try {
-      const res = await getSessionFileContent(sessionId, "working", path);
-      setPreviewView("rendered");
-      setPreview({ path, content: res.content, source: "working" });
-      shell.openSub({ key: `working:${path}`, title: entry.path });
-    } catch (e) {
-      setPreview({
-        path,
-        content: e instanceof Error ? e.message : "Could not read file.",
-        source: "working",
-      });
-      shell.openSub({ key: `working:${path}`, title: entry.path });
-    }
+    setPreviewView("rendered");
+    shell.openSub({ key: `working:${entry.folderId}/${entry.path}`, title: entry.path });
   };
 
   const importFile = async (file: File) => {
@@ -191,45 +142,29 @@ export function WorkspaceTree() {
 
   if (preview) {
     const staged = app.stagedWorkspacePaths.includes(preview.path);
-    const renderedAvailable = /\.md$/i.test(preview.path);
     return (
-      <div className="preview">
-        {renderedAvailable ? (
-          <div className="change-preview-toolbar">
+      <FilePreview
+        key={`${runCount}:${preview.source}:${preview.path}`}
+        sessionId={sessionId}
+        path={preview.path}
+        fileRef={{ root: preview.source === "working" ? "working" : "workspace", path: preview.path }}
+        mode={previewView}
+        onModeChange={setPreviewView}
+        footer={
+          preview.source === "managed" ? (
             <button
-              className={`flat${previewView === "rendered" ? " on" : ""}`}
-              onClick={() => setPreviewView("rendered")}
+              className="wb-apply"
+              onClick={() =>
+                staged
+                  ? app.unstageWorkspacePaths([preview.path])
+                  : app.stageWorkspacePath(preview.path)
+              }
             >
-              {t("Rendered")}
+              {staged ? t("Remove from message") : t("Attach to message")}
             </button>
-            <button
-              className={`flat${previewView === "source" ? " on" : ""}`}
-              onClick={() => setPreviewView("source")}
-            >
-              {t("Source code")}
-            </button>
-          </div>
-        ) : null}
-        <div className="pv-card change-preview-body expanded">
-          {renderedAvailable && previewView === "rendered" ? (
-            <MarkdownBody text={preview.content} />
-          ) : (
-            <pre>{preview.content}</pre>
-          )}
-        </div>
-        {preview.source === "managed" ? (
-          <button
-            className="wb-apply"
-            onClick={() =>
-              staged
-                ? app.unstageWorkspacePaths([preview.path])
-                : app.stageWorkspacePath(preview.path)
-            }
-          >
-            {staged ? t("Remove from message") : t("Attach to message")}
-          </button>
-        ) : null}
-      </div>
+          ) : null
+        }
+      />
     );
   }
 
@@ -295,6 +230,7 @@ export function WorkspaceTree() {
                   expandSignal={expandSignal}
                   collapseSignal={collapseSignal}
                   query={query}
+                  memoryKey={`${sessionId}:files:${folder.id}`}
                 />
               ) : null}
             </div>
@@ -347,6 +283,7 @@ export function WorkspaceTree() {
                   collapseSignal={collapseSignal}
                   label={t("References")}
                   filterActive={Boolean(normalizedQuery)}
+                  memoryKey={`${sessionId}:files:references`}
                 />
               </div>
             </>
@@ -364,6 +301,7 @@ export function WorkspaceTree() {
                   collapseSignal={collapseSignal}
                   label={t("Conversation folder")}
                   filterActive={Boolean(normalizedQuery)}
+                  memoryKey={`${sessionId}:files:conversation`}
                 />
               </div>
             </>
@@ -383,6 +321,7 @@ function WorkingTree({
   expandSignal,
   collapseSignal,
   query,
+  memoryKey,
 }: {
   sessionId: string;
   folderId: string;
@@ -392,6 +331,7 @@ function WorkingTree({
   expandSignal: number;
   collapseSignal: number;
   query: string;
+  memoryKey: string;
 }) {
   const [childrenByPath, setChildrenByPath] = useState(
     () => new Map<string, WorkingTreeEntry[]>(),
@@ -523,6 +463,7 @@ function WorkingTree({
         collapseSignal={collapseSignal}
         label={basePath}
         filterActive={Boolean(query.trim())}
+        memoryKey={memoryKey}
       />
       {searchTruncated ? <div className="wb-note">{t("Showing the first 200 matches.")}</div> : null}
     </div>
@@ -542,6 +483,7 @@ function FileTree<T extends { path: string; isDirectory?: boolean }>({
   collapseSignal,
   label,
   filterActive = false,
+  memoryKey,
 }: {
   entries: T[];
   onOpenFile: (entry: T) => void;
@@ -555,11 +497,14 @@ function FileTree<T extends { path: string; isDirectory?: boolean }>({
   collapseSignal: number;
   label: string;
   filterActive?: boolean;
+  /** Pane-memory key: which folders were open survives a remount. */
+  memoryKey: string;
 }) {
   const menu = useContextMenu();
   const model = useMemo(() => buildFileTreeModel(entries, basePath), [basePath, entries]);
-  const [expandedItems, setExpandedItems] = useState(
-    initiallyExpanded ? model.folderIds : [],
+  const [expandedItems, setExpandedItems] = usePaneMemory<string[]>(
+    `${memoryKey}:expanded`,
+    () => (initiallyExpanded ? model.folderIds : []),
   );
   const [copiedPath, setCopiedPath] = useState<string | null>(null);
   const seenFolderIds = useRef(new Set(model.folderIds));

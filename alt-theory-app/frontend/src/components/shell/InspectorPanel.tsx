@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useApp } from "@/context/AppProvider";
 import { useShell, type RailKey } from "@/context/ShellContext";
 import { t } from "@/i18n";
@@ -27,6 +27,7 @@ import { useContextMenu, type ContextMenuItem } from "@/components/shell/Context
 import { fetchSessionDetail, promoteToMainline } from "@/api/sessions";
 import { copyText } from "@/lib/clipboard";
 import { hasNativeBridge, revealPath } from "@/lib/native";
+import { paneMemory, usePaneMemory } from "@/lib/paneMemory";
 import { downloadMarkdown, markdownFileName, sessionTranscriptToMarkdown } from "@/lib/sessionMarkdown";
 
 const RAIL_META: Record<RailKey, { title: string; icon: string; adv?: boolean }> = {
@@ -115,6 +116,25 @@ export function InspectorPanel() {
     shell.closeSub();
   };
 
+  // Scroll memory per (conversation, rail, sub): saved on scroll, restored
+  // when that view mounts again — retried briefly because the list arrives
+  // after the mount.
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const scrollKey = `${app.sessionId}:${active}:${shell.rightSub?.key ?? ""}:scroll`;
+  useLayoutEffect(() => {
+    const el = bodyRef.current;
+    const saved = paneMemory.get<number>(scrollKey) ?? 0;
+    if (!el || !saved) return;
+    let tries = 0;
+    let frame = 0;
+    const restore = () => {
+      el.scrollTop = saved;
+      if (Math.abs(el.scrollTop - saved) > 1 && tries++ < 30) frame = requestAnimationFrame(restore);
+    };
+    restore();
+    return () => cancelAnimationFrame(frame);
+  }, [scrollKey]);
+
   return (
     <aside className={`right${open ? " open" : ""}`}>
       <div className="rpanel">
@@ -138,7 +158,11 @@ export function InspectorPanel() {
             <span>{title}</span>
           </div>
         ) : null}
-        <div className="body">
+        <div
+          className="body"
+          ref={bodyRef}
+          onScroll={(event) => paneMemory.set(scrollKey, event.currentTarget.scrollTop)}
+        >
           {active === "chats" ? <RelatedConversations /> : null}
           {active === "changes" ? <ChangesPanel /> : null}
           {active === "workspace" ? <WorkspaceTree /> : null}
@@ -212,13 +236,14 @@ function RelatedConversations() {
     ? shell.rightSub.key.slice("related:".length)
     : null;
 
-  // Filter state is pane-local (proto E): it lives as long as the pane does.
-  const [scope, setScope] = useState<RelatedScope>("conversation");
-  const [kinds, setKinds] = useState<Set<RelatedKind>>(() => new Set(RELATED_KINDS));
+  // Filter state outlives the pane (proto E; pane memory per conversation).
+  const memoryKey = `${app.sessionId}:related`;
+  const [scope, setScope] = usePaneMemory<RelatedScope>(`${memoryKey}:scope`, "conversation");
+  const [kinds, setKinds] = usePaneMemory<Set<RelatedKind>>(`${memoryKey}:kinds`, () => new Set(RELATED_KINDS));
   const [filterOpen, setFilterOpen] = useState(false);
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const [closedKinds, setClosedKinds] = useState<Set<RelatedKind>>(() => new Set());
+  const [searchOpen, setSearchOpen] = usePaneMemory(`${memoryKey}:searchOpen`, false);
+  const [query, setQuery] = usePaneMemory(`${memoryKey}:query`, "");
+  const [closedKinds, setClosedKinds] = usePaneMemory<Set<RelatedKind>>(`${memoryKey}:closed`, () => new Set());
 
   const titleOf = (s: (typeof app.sessions)[number]) =>
     sessionTitle(s, app.sessionDisplayNames, app.sessions);

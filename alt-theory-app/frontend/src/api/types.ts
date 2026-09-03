@@ -356,18 +356,28 @@ export interface SessionDetailResponse {
   abComparisons?: AbComparisonRecord[];
 }
 
+/** Mirror of session-store.ts FileChange / ChangeGroup (card 7). */
 export interface FileChange {
   path: string;
-  resolvedPath?: string;
+  resolvedPath: string;
+  displayPath: string;
   added: number;
   removed: number;
   diff: string;
-  currentContent?: string;
-  currentUpdatedAt?: string;
+  contentRef?: { root: "workspace" | "working"; path: string };
+  sessionIds: string[];
+}
+
+export interface ChangeGroup {
+  title: string;
+  path: string;
+  role: "primary" | "additional" | "outside";
+  capped: boolean;
+  files: FileChange[];
 }
 
 export interface SessionChanges {
-  files: FileChange[];
+  groups: ChangeGroup[];
 }
 
 export type ApiType =

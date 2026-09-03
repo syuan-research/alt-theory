@@ -1,15 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
-import {
-  getSessionFileContent,
-  listSessionFiles,
-  putSessionFileContent,
-} from "@/api/session-files";
+import { listSessionFiles } from "@/api/session-files";
 import type { SessionTextFile } from "@/api/types";
 import { t } from "@/i18n";
 import { Button } from "@/components/ui/Button";
-import { TextArea } from "@/components/ui/Field";
 import { HintText, SectionTitle } from "@/components/ui/Typography";
+import { FilePreview } from "@/components/inspector/FilePreview";
 import { cn } from "@/lib/cn";
+import type { PreviewMode } from "@/lib/fileContent";
+import { usePaneMemory } from "@/lib/paneMemory";
 
 interface RecordsPanelProps {
   sessionId: string | null;
@@ -23,17 +21,14 @@ export function RecordsPanel({
   tabActive = false,
 }: RecordsPanelProps) {
   const [files, setFiles] = useState<SessionTextFile[]>([]);
-  const [selected, setSelected] = useState<SessionTextFile | null>(null);
-  const [editorValue, setEditorValue] = useState("");
+  const [selected, setSelected] = usePaneMemory<SessionTextFile | null>(`${sessionId}:records:selected`, null);
+  const [mode, setMode] = usePaneMemory<PreviewMode>(`${sessionId}:records:mode`, "edit");
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
 
   const refresh = useCallback(async () => {
     if (!sessionId) {
       setFiles([]);
-      setSelected(null);
-      setEditorValue("");
       setStatus(t("No session selected."));
       return;
     }
@@ -44,24 +39,18 @@ export function RecordsPanel({
       const nextFiles = Array.isArray(data.files) ? data.files : [];
       setFiles(nextFiles);
       setStatus(nextFiles.length ? "" : t("No records."));
-      if (
-        selected &&
-        !nextFiles.some(
-          (file) => file.root === selected.root && file.path === selected.path
-        )
-      ) {
-        setSelected(null);
-        setEditorValue("");
-      }
+      setSelected((current) =>
+        current && !nextFiles.some((file) => file.root === current.root && file.path === current.path)
+          ? null
+          : current,
+      );
     } catch {
       setFiles([]);
-      setSelected(null);
-      setEditorValue("");
       setStatus(t("Could not load records."));
     } finally {
       setLoading(false);
     }
-  }, [sessionId]);
+  }, [sessionId, setSelected]);
 
   useEffect(() => {
     void refresh();
@@ -71,40 +60,6 @@ export function RecordsPanel({
     if (tabActive) void refresh();
   }, [tabActive, refresh]);
 
-  const openFile = async (file: SessionTextFile) => {
-    if (!sessionId) return;
-    setSelected(file);
-    setEditorValue("");
-    setSaving(false);
-    setStatus(t("Opening..."));
-    try {
-      const data = await getSessionFileContent(sessionId, file.root, file.path);
-      setSelected({ root: data.root, path: data.path, size: data.size, updatedAt: data.updatedAt });
-      setEditorValue(data.content || "");
-      setStatus(`${data.root}/${data.path}`);
-    } catch {
-      setStatus(t("Could not open file."));
-    }
-  };
-
-  const saveFile = async () => {
-    if (!sessionId || !selected) return;
-    setSaving(true);
-    setStatus(t("Saving..."));
-    try {
-      const data = await putSessionFileContent(sessionId, {
-        root: selected.root,
-        path: selected.path,
-        content: editorValue,
-      });
-      setStatus(t("Saved {path}", { path: `${data.root}/${data.path}` }));
-      await refresh();
-    } catch {
-      setStatus(t("Could not save file."));
-    } finally {
-      setSaving(false);
-    }
-  };
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
@@ -138,7 +93,7 @@ export function RecordsPanel({
                     ? "border-ink-soft bg-selected"
                     : "border-hairline bg-surface hover:bg-hover"
                 )}
-                onClick={() => void openFile(file)}
+                onClick={() => setSelected(file)}
               >
                 <span className="truncate">{file.path}</span>
                 <span className="shrink-0 text-[0.75rem] text-text-muted">
@@ -150,25 +105,18 @@ export function RecordsPanel({
         )}
       </div>
 
-      <TextArea
-        value={editorValue}
-        onChange={(event) => setEditorValue(event.target.value)}
-        disabled={!selected}
-        spellCheck={false}
-        className="min-h-40 flex-1 font-[family-name:var(--font-mono)] text-[0.8125rem]"
-      />
+      {selected ? (
+        <FilePreview
+          sessionId={sessionId}
+          path={selected.path}
+          fileRef={{ root: selected.root as "records" | "workspace", path: selected.path }}
+          mode={mode}
+          onModeChange={setMode}
+          onSaved={() => void refresh()}
+        />
+      ) : null}
 
-      <div className="flex items-center justify-between gap-2">
-        <HintText className="min-w-0 truncate">{status}</HintText>
-        <Button
-          variant="secondary"
-          className="min-h-8 shrink-0"
-          onClick={() => void saveFile()}
-          disabled={!selected || saving}
-        >
-          {t("Save")}
-        </Button>
-      </div>
+      <HintText className="min-w-0 truncate">{status}</HintText>
     </div>
   );
 }

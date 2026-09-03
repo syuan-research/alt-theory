@@ -16,7 +16,8 @@ import {
   unlinkSync,
   writeFileSync,
 } from "fs";
-import { basename, dirname, extname, isAbsolute, join, relative, resolve } from "path";
+import { homedir } from "node:os";
+import { basename, dirname, extname, isAbsolute, join, parse, relative, resolve, sep } from "path";
 import type { AssemblyManifest } from "../core/alt-theory-core.js";
 import {
   resolveSessionRoot,
@@ -1388,22 +1389,37 @@ function readPiInfo(
   }
 }
 
-/** One agent-modified file in a conversation (M7 §2 Changes projection). */
+/** One agent-modified file in a conversation family (M7 §2 Changes projection; card 7). */
 export interface FileChange {
+  /** The path as the tool wrote it. */
   path: string;
-  /** Absolute path of the current file when it resolves under a working root. */
-  resolvedPath?: string;
+  /** Absolute path the tool path resolves to (the merge key across a family). */
+  resolvedPath: string;
+  /** Path relative to its group's title folder. */
+  displayPath: string;
   added: number;
   removed: number;
   /** Display-oriented diff, capped for transport. */
   diff: string;
-  /** Current on-disk text, when the changed path still resolves safely. */
-  currentContent?: string;
-  currentUpdatedAt?: string;
+  /** How the content route reaches the current file; absent when it is outside every root. */
+  contentRef?: { root: "workspace" | "working"; path: string };
+  /** Family members that touched it. */
+  sessionIds: string[];
+}
+
+export interface ChangeGroup {
+  /** Deepest common ancestor of the group's files. */
+  title: string;
+  /** The root folder (project groups) or the capped anchor (outside groups). */
+  path: string;
+  role: "primary" | "additional" | "outside";
+  /** Some files sat below the depth cap and were pulled up to this group. */
+  capped: boolean;
+  files: FileChange[];
 }
 
 export interface SessionChanges {
-  files: FileChange[];
+  groups: ChangeGroup[];
 }
 
 const CHANGE_TOOL_NAMES = new Set(["edit", "write", "create", "multiedit"]);
@@ -1420,48 +1436,86 @@ export function readSessionChanges(
 ): SessionChanges | null {
   const parts = readSessionParts(dataDir, sessionId);
   if (!parts) return null;
-  if (!parts.sessionFile) return { files: [] };
-
-  let branchEntries: unknown[];
-  try {
-    const sessionManager = SessionManager.open(parts.sessionFile, parts.historyDir);
-    branchEntries = sessionManager.getBranch();
-  } catch {
-    return { files: [] };
-  }
-
-  const changes = projectChangesFromEntries(branchEntries);
-  const roots: Root[] = parts.v4Session?.workspace
+  const roots: ChangeRoot[] = parts.v4Session?.workspace
     ? [
-        { path: parts.v4Session.workspace.primaryDir, reason: "cwd" },
-        ...parts.v4Session.workspace.additionalDirs.map((path) => ({
+        { path: parts.v4Session.workspace.primaryDir, reason: "cwd", contentRoot: "working", folderId: "primary" },
+        ...parts.v4Session.workspace.additionalDirs.map((path, index) => ({
           path,
           reason: "additional" as const,
+          contentRoot: "working" as const,
+          folderId: `additional-${index + 1}`,
         })),
       ]
-    : [{ path: join(parts.sessionRoot, "workspace"), reason: "session-write" }];
-  return {
-    files: changes.files.map((file) => ({
-      ...file,
-      ...readCurrentChangedFile(roots, file.path),
-    })),
-  };
+    : [{ path: join(parts.sessionRoot, "workspace"), reason: "session-write", contentRoot: "workspace", folderId: "" }];
+  // Family scope (card 7): a subagent's or branch's writes are this
+  // conversation's changes too; the family shares one folder (§7), so the
+  // open conversation's roots apply to every member.
+  const memberIds = familyMemberIds(dataDir, sessionId);
+  const perSession = [...memberIds.filter((id) => id !== sessionId), sessionId]
+    .map((id) => {
+      const member = id === sessionId ? parts : readSessionParts(dataDir, id);
+      if (!member?.sessionFile) return null;
+      try {
+        const manager = SessionManager.open(member.sessionFile, member.historyDir);
+        return { sessionId: id, files: projectChangesFromEntries(manager.getBranch()).files };
+      } catch {
+        return null;
+      }
+    })
+    .filter((item): item is { sessionId: string; files: ProjectedChange[] } => item !== null);
+  return { groups: groupChanges(mergeSessionChanges(perSession, roots), roots, homedir()) };
 }
 
-const CHANGE_PREVIEW_EXTENSIONS = new Set([
-  ".md",
-  ".txt",
-  ".json",
-  ".csv",
-  ".tsv",
-  ".html",
-]);
-const MAX_CHANGE_PREVIEW_BYTES = 1024 * 1024;
+/** A workspace root plus how the content route addresses files under it. */
+export interface ChangeRoot extends Root {
+  contentRoot: "workspace" | "working";
+  /** Working-folder id for `root=working` paths; empty for the managed workspace. */
+  folderId: string;
+}
 
-export function readCurrentChangedFile(
-  roots: Root[],
-  requestedPath: string
-): Pick<FileChange, "resolvedPath" | "currentContent" | "currentUpdatedAt"> {
+/** Levels below home (or the drive root) at which outside-folder groups stop splitting. */
+export const CHANGE_GROUP_DEPTH_CAP = 3;
+
+/**
+ * Merge per-session projections on the resolved absolute path (card 7): the
+ * same file touched by two family members is one row with both ids, added
+ * and removed summed, diffs joined in order. Later sessions in the input win
+ * recency, so pass the open conversation last.
+ */
+export function mergeSessionChanges(
+  perSession: Array<{ sessionId: string; files: ProjectedChange[] }>,
+  roots: ChangeRoot[],
+): FileChange[] {
+  const byPath = new Map<string, FileChange>();
+  for (const { sessionId, files } of perSession) {
+    for (const file of [...files].reverse()) {
+      const located = locateChangedFile(roots, file.path);
+      const key = located.resolvedPath;
+      const existing = byPath.get(key);
+      byPath.delete(key);
+      byPath.set(key, {
+        path: file.path,
+        resolvedPath: located.resolvedPath,
+        displayPath: file.path,
+        added: (existing?.added ?? 0) + file.added,
+        removed: (existing?.removed ?? 0) + file.removed,
+        diff: [existing?.diff, file.diff].filter(Boolean).join("\n").split("\n").slice(0, MAX_DIFF_LINES).join("\n"),
+        ...(located.contentRef ? { contentRef: located.contentRef } : {}),
+        sessionIds: [...new Set([...(existing?.sessionIds ?? []), sessionId])],
+      });
+    }
+  }
+  return [...byPath.values()].reverse();
+}
+
+/** Where a tool path lands on disk and, when it is inside a root, how the content route reaches it. */
+function locateChangedFile(
+  roots: ChangeRoot[],
+  requestedPath: string,
+): { resolvedPath: string; contentRef?: FileChange["contentRef"] } {
+  const fallback = isAbsolute(requestedPath)
+    ? resolve(requestedPath)
+    : resolve(roots[0]?.path ?? process.cwd(), requestedPath);
   for (const root of roots) {
     const target = isAbsolute(requestedPath)
       ? resolve(requestedPath)
@@ -1470,27 +1524,95 @@ export function readCurrentChangedFile(
     // path only reads when it is physically inside a workspace root.
     const check = verdict(target, "read", { readable: [root] });
     if (check.outcome !== "inside") continue;
-    if (!CHANGE_PREVIEW_EXTENSIONS.has(extname(target).toLowerCase())) continue;
-    const stats = statSync(target, { throwIfNoEntry: false });
-    if (!stats?.isFile() || stats.size > MAX_CHANGE_PREVIEW_BYTES) continue;
-    const buffer = readFileSync(target);
-    if (buffer.includes(0)) continue;
+    const rel = relative(root.path, target).replace(/\\/g, "/");
     return {
       resolvedPath: target,
-      currentContent: buffer.toString("utf-8"),
-      currentUpdatedAt: stats.mtime.toISOString(),
+      contentRef: {
+        root: root.contentRoot,
+        path: root.contentRoot === "working" ? `${root.folderId}/${rel}` : rel,
+      },
     };
   }
-  return {};
+  return { resolvedPath: fallback };
 }
 
 /**
- * Deterministic projection of write/edit tool calls into per-file changes. Split out so
- * the parsing is unit-testable without a Pi session on disk.
+ * Prototype D's grouping (Owner 2026-09-02): a project folder is a group as
+ * the app defines it (main folder, each second folder), never subdivided.
+ * Everything outside groups by containing folder with a depth cap —
+ * CHANGE_GROUP_DEPTH_CAP levels below home or the drive root; deeper folders
+ * collapse onto that ancestor so a temp tree cannot mint a group per
+ * directory. Each group is titled by the deepest common ancestor of its
+ * files (at or below the anchor); rows show paths relative to the title.
  */
-export function projectChangesFromEntries(branchEntries: unknown[]): SessionChanges {
+export function groupChanges(
+  files: FileChange[],
+  roots: ChangeRoot[],
+  home: string,
+): ChangeGroup[] {
+  const groups = new Map<string, ChangeGroup & { dirs: string[] }>();
+  for (const file of files) {
+    const root = roots.find((candidate) =>
+      verdict(file.resolvedPath, "read", { readable: [candidate] }).outcome === "inside",
+    );
+    const dir = dirname(file.resolvedPath);
+    const anchor = root ? resolve(root.path) : cappedAncestor(dir, home);
+    const key = `${root ? root.reason : "outside"}:${anchor}`;
+    const group = groups.get(key) ?? {
+      title: anchor,
+      path: anchor,
+      role: !root ? "outside" : root.reason === "additional" ? "additional" : "primary",
+      capped: false,
+      files: [],
+      dirs: [],
+    };
+    group.files.push(file);
+    group.dirs.push(dir);
+    if (!root && dir !== anchor) group.capped = true;
+    groups.set(key, group);
+  }
+  return [...groups.values()]
+    .map(({ dirs, ...group }) => {
+      const common = commonAncestor(dirs);
+      const title = common.startsWith(group.path) ? common : group.path;
+      return {
+        ...group,
+        title,
+        files: group.files.map((file) => ({
+          ...file,
+          displayPath: relative(title, file.resolvedPath).replace(/\\/g, "/") || file.path,
+        })),
+      };
+    })
+    .sort((a, b) => roleRank(a.role) - roleRank(b.role) || a.title.localeCompare(b.title));
+}
+
+function roleRank(role: ChangeGroup["role"]): number {
+  return role === "primary" ? 0 : role === "additional" ? 1 : 2;
+}
+
+function cappedAncestor(dir: string, home: string): string {
+  const base = dir === home || dir.startsWith(home + sep) ? home : parse(dir).root;
+  const below = relative(base, dir).split(sep).filter(Boolean);
+  return below.length > CHANGE_GROUP_DEPTH_CAP
+    ? join(base, ...below.slice(0, CHANGE_GROUP_DEPTH_CAP))
+    : dir;
+}
+
+function commonAncestor(dirs: string[]): string {
+  const split = dirs.map((dir) => dir.split(sep));
+  const first = split[0] ?? [];
+  let depth = 0;
+  while (depth < first.length && split.every((parts) => parts[depth] === first[depth])) depth++;
+  return first.slice(0, depth).join(sep) || (first[0] === "" ? sep : "");
+}
+
+/** A file touch as one session's transcript records it, before family merge and placement. */
+export type ProjectedChange = Pick<FileChange, "path" | "added" | "removed" | "diff">;
+
+export function projectChangesFromEntries(branchEntries: unknown[]): { files: ProjectedChange[] } {
   // Aggregate per path, keeping most-recently-touched first.
-  const byPath = new Map<string, FileChange>();
+  const byPath = new Map<string, ProjectedChange>();
   const toolOutcomes = new Map<string, boolean>();
   for (const entry of branchEntries) {
     const message = (entry as { message?: {

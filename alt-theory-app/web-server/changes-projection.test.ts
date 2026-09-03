@@ -3,14 +3,15 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import type { Root } from "../core/root-policy.js";
 import {
+  groupChanges,
+  mergeSessionChanges,
   projectChangesFromEntries,
-  readCurrentChangedFile,
+  type ChangeRoot,
 } from "./session-store.js";
 
-function workspaceRoot(path: string): Root[] {
-  return [{ path, reason: "cwd" }];
+function workspaceRoot(path: string): ChangeRoot[] {
+  return [{ path, reason: "cwd", contentRoot: "working", folderId: "primary" }];
 }
 
 function toolCallEntry(name: string, args: unknown, id?: string) {
@@ -77,20 +78,62 @@ test("failed or pending writes are not reported as file changes", () => {
   assert.deepEqual(files.map((file) => file.path), ["done.md"]);
 });
 
-test("current changed-file preview reads the latest safe workspace text", () => {
-  const root = mkdtempSync(join(tmpdir(), "alt-theory-change-preview-"));
-  const notes = join(root, "notes");
-  mkdirSync(notes);
-  writeFileSync(join(notes, "draft.md"), "# Current\n\nlatest text", "utf-8");
-  writeFileSync(join(root, "binary.md"), Buffer.from([0, 1, 2]));
-
+test("family changes merge on the resolved path; the content route address travels instead of the content", () => {
+  const root = mkdtempSync(join(tmpdir(), "alt-theory-change-merge-"));
   try {
-    const current = readCurrentChangedFile(workspaceRoot(root), "notes/draft.md");
-    assert.equal(current.currentContent, "# Current\n\nlatest text");
-    assert.ok(current.currentUpdatedAt);
-    assert.deepEqual(readCurrentChangedFile(workspaceRoot(root), "../outside.md"), {});
-    assert.deepEqual(readCurrentChangedFile(workspaceRoot(root), "binary.md"), {});
+    const roots = workspaceRoot(root);
+    const lead = projectChangesFromEntries([toolCallEntry("write", { path: "notes/draft.md", content: "a\nb" })]).files;
+    const child = projectChangesFromEntries([
+      toolCallEntry("edit", { path: join(root, "notes/draft.md"), oldText: "a", newText: "c" }),
+      toolCallEntry("write", { path: "/tmp/elsewhere/out.txt", content: "x" }),
+    ]).files;
+    const merged = mergeSessionChanges([{ sessionId: "sa", files: child }, { sessionId: "lead", files: lead }], roots);
+    assert.deepEqual(
+      merged.map((f) => [f.resolvedPath, f.added, f.removed, f.sessionIds, f.contentRef ?? null]),
+      [
+        [join(root, "notes/draft.md"), 3, 1, ["sa", "lead"], { root: "working", path: "primary/notes/draft.md" }],
+        ["/tmp/elsewhere/out.txt", 1, 0, ["sa"], null],
+      ],
+    );
+    assert.equal("currentContent" in merged[0], false);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("changes group by project folder, then by capped containing folder, titled by the deepest common ancestor", () => {
+  const home = "/Users/owner";
+  const project = join(home, "Research", "climate");
+  const second = join(home, "Research", "shared");
+  const roots: ChangeRoot[] = [
+    { path: project, reason: "cwd", contentRoot: "working", folderId: "primary" },
+    { path: second, reason: "additional", contentRoot: "working", folderId: "additional-1" },
+  ];
+  const file = (resolvedPath: string) => ({
+    path: resolvedPath, resolvedPath, displayPath: resolvedPath, added: 1, removed: 0, diff: "+x", sessionIds: ["s"],
+  });
+  const groups = groupChanges(
+    [
+      file(join(project, "notes", "lit.md")),
+      file(join(project, "notes", "wave3", "log.md")),
+      file(join(second, "instruments", "items.csv")),
+      file(join(home, "Downloads", "export", "clean.py")),
+      file(join(home, "Downloads", "export", "tmp", "exports", "README.md")),
+      file(join(home, "Downloads", "export", "tmp", "exports", "deep", "run.log")),
+    ],
+    roots,
+    home,
+  );
+  assert.deepEqual(
+    groups.map((g) => [g.role, g.path, g.title, g.capped, g.files.map((f) => f.displayPath)]),
+    [
+      // Project groups are never subdivided; the title is the files' common ancestor.
+      ["primary", project, join(project, "notes"), false, ["lit.md", "wave3/log.md"]],
+      ["additional", second, join(second, "instruments"), false, ["items.csv"]],
+      // Two levels below home keeps its own group; four and five levels collapse
+      // onto the level-3 ancestor and are titled by their own common ancestor.
+      ["outside", join(home, "Downloads", "export"), join(home, "Downloads", "export"), false, ["clean.py"]],
+      ["outside", join(home, "Downloads", "export", "tmp"), join(home, "Downloads", "export", "tmp", "exports"), true, ["README.md", "deep/run.log"]],
+    ],
+  );
 });

@@ -217,6 +217,17 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [rightPanel, setRightPanel] = useState<RailKey | null>(null);
   const [rightSub, setRightSub] = useState<RightSub | null>(null);
+  // Right-pane memory (Owner 2026-09-03): what each rail showed last, so a
+  // collapse or a rail switch does not forget the open file or child; and
+  // where the user was before a related child took the pane over, so leaving
+  // it goes back there.
+  const rightRef = useRef<{ panel: RailKey | null; sub: RightSub | null }>({ panel: null, sub: null });
+  rightRef.current = { panel: rightPanel, sub: rightSub };
+  const lastSubByPanel = useRef<Partial<Record<RailKey, RightSub | null>>>({});
+  useEffect(() => {
+    if (rightPanel) lastSubByPanel.current[rightPanel] = rightSub;
+  }, [rightPanel, rightSub]);
+  const returnTo = useRef<{ panel: RailKey; sub: RightSub | null } | null>(null);
   const [workspaceRevealPath, setWorkspaceRevealPath] = useState<string | null>(null);
   const [rightWidth, setRightWidthState] = useState(() => readStoredRightWidth());
   const [participantTabEnabled, setParticipantTabState] = useState(() =>
@@ -305,20 +316,34 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   }, [darkMode]);
 
   const toggleRail = useCallback((key: RailKey) => {
-    setRightSub(null);
-    setRightPanel((prev) => (prev === key ? null : key));
+    returnTo.current = null;
+    const opening = rightRef.current.panel !== key;
+    setRightPanel(opening ? key : null);
+    setRightSub(opening ? (lastSubByPanel.current[key] ?? null) : null);
   }, []);
   const openRail = useCallback((key: RailKey) => {
+    const { panel, sub } = rightRef.current;
+    if (panel && panel !== key) returnTo.current = { panel, sub };
     setRightSub(null);
     setRightPanel(key);
   }, []);
   const closeRight = useCallback(() => {
+    returnTo.current = null;
     setRightPanel(null);
     setRightSub(null);
   }, []);
 
   const openSub = useCallback((sub: RightSub) => setRightSub(sub), []);
-  const closeSub = useCallback(() => setRightSub(null), []);
+  const closeSub = useCallback(() => {
+    const back = returnTo.current;
+    returnTo.current = null;
+    if (back) {
+      setRightPanel(back.panel);
+      setRightSub(back.sub);
+      return;
+    }
+    setRightSub(null);
+  }, []);
   const revealWorkspacePath = useCallback((path: string) => {
     setSurface("app");
     setRightSub(null);

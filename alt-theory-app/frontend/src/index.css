@@ -980,6 +980,17 @@
   .change-preview-body.expanded { max-height: none; overflow: visible; }
   .change-preview-body pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--mono); font-size: 0.78rem; }
   .change-preview-more { margin: 4px 0 8px; }
+  /* changes grouped by folder (proto D): folder names normal case, a little
+     more present than the rail's labels; the role is quiet grey text */
+  .changes-group { margin-bottom: 6px; }
+  .changes-group-head { width: 100%; border: 0; background: none; font-size: 0.78rem; font-weight: 600; color: var(--text-2); padding: 8px 4px 4px; }
+  .changes-group-head .group-name { color: var(--ink-soft); }
+  .changes-group-role { flex: 0 0 auto; font-size: 0.7rem; font-weight: 400; color: var(--text-3); }
+  .changes-group-open { flex: 0 0 auto; color: var(--text-3); cursor: pointer; }
+  .changes-group-open:hover { color: var(--ink); }
+  .file-edit { width: 100%; min-height: 14rem; border: 0; outline: 0; resize: vertical; background: transparent; color: var(--ink); font-family: var(--mono); font-size: 0.78rem; line-height: 1.45; }
+  .file-edit-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 6px 0; }
+  .file-html { width: 100%; min-height: 20rem; border: 0; background: var(--surface); }
   .change-diff { margin-top: 8px; }
   .change-diff summary { cursor: pointer; color: var(--text-2); font-size: 0.75rem; }
   .preview { font-size: 0.85rem; }
