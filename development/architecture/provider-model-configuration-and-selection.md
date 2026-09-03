@@ -4,7 +4,7 @@ slug: provider-model-configuration-and-selection
 scope: Provider configuration, model discovery, capability metadata, defaults, per-session model choice, and runtime model resolution
 summary: Current truth for how Alt Theory stores, discovers, selects, and applies providers and models
 status: current
-last_reviewed: 2026-08-28
+last_reviewed: 2026-09-03
 tags: [core, backend, frontend, models, providers, settings]
 depends_on: [core-session-engine, information-architecture]
 implements: []
@@ -101,6 +101,15 @@ the supported vocabulary (`off`, `minimal`, `low`, `medium`, `high`, `xhigh`,
 `max`). A catalog entry with no effort values can therefore leave a model with
 no selectable effort levels even if other metadata says `reasoning: true`.
 `reasoning: true` alone is not a universal thinking-level contract.
+
+On an explicit provider write (`upsertProvider`), a saved row that omits
+`reasoning` or `thinkingLevelMap` is filled from that same local models.dev
+cache (match as the picker: provider name, then base URL, then model id). A
+user-supplied `thinkingLevels`, `thinkingLevelMap`, or `reasoning` value is
+kept. User-supplied `thinkingLevels` also produce a `thinkingLevelMap` so
+Pi's runtime reads the same levels. A cache miss writes the row as supplied —
+no network, no error, and no migration of already-saved bare rows until the
+next edit/save.
 
 The thinking level a session runs at is decided in one place,
 `resolveThinkingLevel()` (`web-server/thinking-level.ts`). It takes the
@@ -348,6 +357,9 @@ Focused tests that pin the current behavior include:
   override WebSocket state;
 - `web-server/config-store.test.ts:1-120` — native config persistence and
   response-envelope normalization;
+- `web-server/config-store.test.ts` — provider write fills Pi-readable
+  `reasoning` / `thinkingLevelMap` from the local catalog; a miss stays
+  bare; user-explicit `thinkingLevels` survive;
 - `web-server/session-service.test.ts:200-245` — persisted session model
   override behavior;
 - `web-server/thinking-level.test.ts` and the v1.5 cases at the end of

@@ -6,12 +6,42 @@ import { join } from "path";
 import test from "node:test";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import {
+  getSupportedThinkingLevels,
+  type Model,
+} from "@earendil-works/pi-ai";
+import {
   getConfigStatus,
   getRuntimeModelConfig,
   listProviders,
   normalizeModelListPayload,
   upsertProvider,
 } from "./config-store.js";
+
+function writtenProviderModel(
+  agentDir: string,
+  provider: string,
+  modelId: string,
+) {
+  const models = JSON.parse(
+    readFileSync(join(agentDir, "models.json"), "utf-8"),
+  ) as {
+    providers: Record<string, { models: Array<Record<string, unknown>> }>;
+  };
+  const row = models.providers[provider]?.models.find(
+    (model) => model.id === modelId,
+  );
+  assert.ok(row, `${provider}/${modelId} was written`);
+  return row;
+}
+
+function piThinkingLevels(entry: Record<string, unknown>) {
+  return getSupportedThinkingLevels({
+    id: String(entry.id),
+    provider: "test",
+    reasoning: entry.reasoning === true,
+    thinkingLevelMap: entry.thinkingLevelMap,
+  } as unknown as Model<any>);
+}
 
 test("provider save completes after the key is durable even when catalog refresh stalls", async (t) => {
   const agentDir = mkdtempSync(join(tmpdir(), "alt-theory-provider-save-"));
@@ -242,4 +272,106 @@ test("Copilot without availableModelIds falls back to the builtin catalog", () =
     (view.models.length ?? 0) > 0,
     "builtin catalog is the last fallback when the credential carries no list",
   );
+});
+
+test("provider write fills reasoning from the local catalog so Pi sees the cache levels", async () => {
+  const agentDir = mkdtempSync(join(tmpdir(), "alt-theory-thinking-write-hit-"));
+  writeFileSync(
+    join(agentDir, "models-dev-cache.json"),
+    JSON.stringify({
+      deepseek: {
+        api: "https://api.deepseek.com",
+        models: {
+          "deepseek-v4-flash": {
+            reasoning: true,
+            reasoning_options: [
+              { type: "effort", values: ["low", "high", "max"] },
+            ],
+          },
+        },
+      },
+    }),
+  );
+  await upsertProvider(
+    agentDir,
+    {
+      name: "deepseek-official",
+      baseUrl: "https://api.deepseek.com/v1",
+      api: "openai-completions",
+      apiKey: "DEEPSEEK_API_KEY",
+      models: [{ id: "deepseek-v4-flash", name: "DeepSeek V4 Flash" }],
+    },
+    { keyStorage: "env" },
+  );
+  const entry = writtenProviderModel(
+    agentDir,
+    "deepseek-official",
+    "deepseek-v4-flash",
+  );
+  assert.equal(entry.reasoning, true);
+  assert.equal(entry.thinkingLevels, undefined);
+  assert.deepEqual(piThinkingLevels(entry), ["low", "high", "max"]);
+});
+
+test("provider write without a catalog match stays a bare entry", async () => {
+  const agentDir = mkdtempSync(join(tmpdir(), "alt-theory-thinking-write-miss-"));
+  await upsertProvider(
+    agentDir,
+    {
+      name: "custom-bare",
+      baseUrl: "https://example.invalid/v1",
+      api: "openai-completions",
+      apiKey: "ENV_BARE",
+      models: [{ id: "ghost-model" }],
+    },
+    { keyStorage: "env" },
+  );
+  const entry = writtenProviderModel(agentDir, "custom-bare", "ghost-model");
+  assert.equal(entry.reasoning, undefined);
+  assert.equal(entry.thinkingLevelMap, undefined);
+  assert.equal(entry.thinkingLevels, undefined);
+  assert.deepEqual(piThinkingLevels(entry), ["off"]);
+});
+
+test("user-explicit thinkingLevels survive a catalog hit", async () => {
+  const agentDir = mkdtempSync(join(tmpdir(), "alt-theory-thinking-write-user-"));
+  writeFileSync(
+    join(agentDir, "models-dev-cache.json"),
+    JSON.stringify({
+      deepseek: {
+        api: "https://api.deepseek.com",
+        models: {
+          "deepseek-v4-flash": {
+            reasoning: true,
+            reasoning_options: [
+              { type: "effort", values: ["low", "high", "max"] },
+            ],
+          },
+        },
+      },
+    }),
+  );
+  await upsertProvider(
+    agentDir,
+    {
+      name: "deepseek-official",
+      baseUrl: "https://api.deepseek.com/v1",
+      api: "openai-completions",
+      apiKey: "DEEPSEEK_API_KEY",
+      models: [
+        {
+          id: "deepseek-v4-flash",
+          thinkingLevels: ["off", "high"],
+        },
+      ],
+    },
+    { keyStorage: "env" },
+  );
+  const entry = writtenProviderModel(
+    agentDir,
+    "deepseek-official",
+    "deepseek-v4-flash",
+  );
+  assert.deepEqual(entry.thinkingLevels, ["off", "high"]);
+  assert.deepEqual(piThinkingLevels(entry), ["off", "high"]);
 });

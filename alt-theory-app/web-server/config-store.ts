@@ -1164,6 +1164,59 @@ function normalizeThinkingLevelMap(
   return Object.keys(result).length > 0 ? result : undefined;
 }
 
+const THINKING_LEVEL_KEYS = [
+  "off",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+] as const;
+
+function thinkingLevelMapFromLevels(
+  levels: readonly ThinkingLevel[],
+): NonNullable<ConfigModel["thinkingLevelMap"]> {
+  const result: NonNullable<ConfigModel["thinkingLevelMap"]> = {};
+  for (const level of THINKING_LEVEL_KEYS) {
+    result[level] = levels.includes(level) ? level : null;
+  }
+  return result;
+}
+
+/** Pi reads `reasoning` + `thinkingLevelMap` from models.json; the picker does not. */
+function enrichPersistedModelFromCatalog(
+  agentDir: string,
+  providerName: string,
+  baseUrl: string | undefined,
+  model: ConfigModel,
+): ConfigModel {
+  const catalog = catalogModelMetadata(
+    agentDir,
+    providerName,
+    baseUrl,
+    model.id,
+  );
+  const result: ConfigModel = { ...model };
+
+  if (result.thinkingLevelMap === undefined) {
+    const levels = result.thinkingLevels ?? catalog?.availableThinkingLevels;
+    if (levels !== undefined) {
+      result.thinkingLevelMap = thinkingLevelMapFromLevels(levels);
+    }
+  }
+
+  if (result.reasoning === undefined) {
+    if (typeof catalog?.reasoning === "boolean") {
+      result.reasoning = catalog.reasoning;
+    } else if (result.thinkingLevelMap !== undefined) {
+      result.reasoning = true;
+    }
+  }
+
+  return result;
+}
+
 function assertValidProviderName(name: string): void {
   if (!name || typeof name !== "string") {
     throw new ConfigValidationError("Provider name is required");
@@ -1222,17 +1275,29 @@ export async function upsertProvider(
   const existingBlock = models.providers[input.name];
 
   const runtimeBaseUrl = normalizeRuntimeBaseUrl(input.api, input.baseUrl);
+  const catalogBaseUrl =
+    runtimeBaseUrl ??
+    builtinModelList(input.name).find((candidate) => candidate.baseUrl)
+      ?.baseUrl;
   const persistedModels = input.models.map(
     ({
       availableThinkingLevels: _availableThinkingLevels,
       thinkingLevels,
       ...model
-    }) => ({
-      ...model,
-      ...(thinkingLevels !== undefined
-        ? { thinkingLevels: normalizeThinkingLevels(thinkingLevels) ?? [] }
-        : {}),
-    }),
+    }) => {
+      const persisted: ConfigModel = {
+        ...model,
+        ...(thinkingLevels !== undefined
+          ? { thinkingLevels: normalizeThinkingLevels(thinkingLevels) ?? [] }
+          : {}),
+      };
+      return enrichPersistedModelFromCatalog(
+        agentDir,
+        input.name,
+        catalogBaseUrl,
+        persisted,
+      );
+    },
   );
   const providerBlock: Record<string, unknown> = { models: persistedModels };
   if (runtimeBaseUrl) providerBlock.baseUrl = runtimeBaseUrl;
