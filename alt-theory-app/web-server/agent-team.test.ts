@@ -960,13 +960,16 @@ test("marking delivered is atomic: a failed rewrite leaves the inbox intact", ()
     delivered: false,
   });
   const before = readFileSync(join(recordsDir, "agent-mail.jsonl"), "utf-8");
-  // Simulate a crash between the temp write and the rename: the rename
-  // cannot land because the target is read-only.
-  chmodSync(join(recordsDir, "agent-mail.jsonl"), 0o444);
+  // Simulate a crash between the temp write and the rename. Windows refuses
+  // the rename onto a read-only target; POSIX checks write permission on the
+  // containing directory instead, so there the directory is the obstacle.
+  const onWindows = process.platform === "win32";
+  const obstacle = onWindows ? join(recordsDir, "agent-mail.jsonl") : recordsDir;
+  chmodSync(obstacle, onWindows ? 0o444 : 0o555);
   try {
     assert.throws(() => markAgentMailDelivered(recordsDir));
   } finally {
-    chmodSync(join(recordsDir, "agent-mail.jsonl"), 0o666);
+    chmodSync(obstacle, onWindows ? 0o666 : 0o755);
   }
   assert.equal(readFileSync(join(recordsDir, "agent-mail.jsonl"), "utf-8"), before);
   assert.deepEqual(
