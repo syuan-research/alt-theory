@@ -4550,3 +4550,57 @@ test("a message during a run joins Pi's steer queue; delivery shows the bubble; 
     await service.disposeAll();
   }
 });
+
+test("a queued message is recalled by text, keeping the rest in order and kind", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const created = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const events: SessionServiceEvent[] = [];
+  const detach = service.attach(created.sessionId, (event) => events.push(event));
+  const managed = (service as any).sessions.get(created.sessionId);
+  const release = holdPrompt(managed);
+  try {
+    const run = service.runPrompt(created.sessionId, "long turn");
+    await service.queuePrompt(created.sessionId, "one", undefined, "steer");
+    await service.queuePrompt(created.sessionId, "two", undefined, "steer");
+    await service.queuePrompt(created.sessionId, "three", undefined, "followUp");
+
+    // Pi has no per-entry API: the middle steering text comes out and the
+    // other two go back where they were.
+    assert.equal(await service.retractQueued(created.sessionId, "two"), "two");
+    assert.deepEqual([...managed.session.getSteeringMessages()], ["one"]);
+    assert.deepEqual([...managed.session.getFollowUpMessages()], ["three"]);
+    assert.deepEqual(service.getSnapshot(created.sessionId).queue, {
+      steering: ["one"],
+      followUp: ["three"],
+    });
+    assert.deepEqual(events.at(-1), {
+      type: "queue_updated",
+      payload: { steering: ["one"], followUp: ["three"] },
+    });
+    // Taking the queue apart is not a delivery, and the run goes on.
+    assert.equal(
+      events.filter((event) => event.type === "user_steered").length,
+      0,
+      "a retracted text is never shown as delivered",
+    );
+    assert.equal(service.isRunning(created.sessionId), true);
+
+    // Pi consumed it between the mirror and the click.
+    await assert.rejects(
+      () => service.retractQueued(created.sessionId, "two"),
+      (error: any) =>
+        error.kind === "not_found" && error.operation === "retract_queued",
+    );
+
+    release();
+    await run.completion.catch(() => {});
+  } finally {
+    detach();
+    await service.disposeAll();
+  }
+});

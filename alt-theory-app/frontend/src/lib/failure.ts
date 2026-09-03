@@ -13,6 +13,7 @@ export function failureText(failure: Failure): string {
     provider: t("The provider returned an error."),
     busy: t("The conversation is still running."),
     aborted: t("Stopped."),
+    not_found: "",
     unknown: "",
   }[failure.kind];
   if (!wording) return failure.message;

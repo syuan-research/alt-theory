@@ -23,6 +23,7 @@ import {
   fetchSessionList,
   normalizeSessionAlias,
   promoteRelatedSession as promoteRelatedSessionRequest,
+  retractQueuedText,
   saveSessionAlias,
 } from "@/api/sessions";
 import type {
@@ -266,6 +267,8 @@ export interface AppContextValue {
   sendPrompt: (text: string) => boolean;
   /** Pi's queue for this conversation (card 11): texts waiting for the next API call. */
   queuedTexts: string[];
+  /** Take one queued message back; returns the text for the editor, null if Pi already sent it. */
+  retractQueued: (text: string) => Promise<string | null>;
   /** Unsent queued text handed back by Stop; the composer takes it into the draft. */
   restoredDraft: string | null;
   clearRestoredDraft: () => void;
@@ -1462,6 +1465,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     ],
   );
 
+  /**
+   * Card 11 follow-up: edit and delete on a queued card both retract. The card
+   * goes either way — `not_found` means Pi handed the text to the model
+   * between the mirror and the click, and no `queue_updated` will drop it.
+   */
+  const retractQueued = useCallback(
+    async (text: string) => {
+      if (!sessionId) return null;
+      const retracted = await retractQueuedText(sessionId, text);
+      setQueuedTexts((current) => {
+        const index = current.indexOf(text);
+        return index < 0
+          ? current
+          : [...current.slice(0, index), ...current.slice(index + 1)];
+      });
+      return retracted;
+    },
+    [sessionId],
+  );
+
   const abortRun = useCallback(() => {
     if (sendMessage({ type: "abort" })) {
       setToolStatus("");
@@ -1959,6 +1982,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       compactCurrentSession,
       sendPrompt,
       queuedTexts,
+      retractQueued,
       restoredDraft,
       clearRestoredDraft,
       abortRun,
@@ -2072,6 +2096,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       compactCurrentSession,
       sendPrompt,
       queuedTexts,
+      retractQueued,
       restoredDraft,
       clearRestoredDraft,
       abortRun,
