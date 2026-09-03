@@ -10,6 +10,7 @@
  */
 import zhHans from "../frontend/src/i18n/zh-Hans.js";
 import zhHantHK from "../frontend/src/i18n/zh-Hant-HK.js";
+import { englishOf } from "../frontend/src/i18n/source.js";
 
 export type BackendLang = "en" | "zh-Hans" | "zh-Hant-HK";
 
@@ -28,7 +29,7 @@ export function t(
   text: string,
   params?: Record<string, string | number>,
 ): string {
-  let out = catalog[text] ?? text;
+  let out = catalog[text] ?? englishOf(text);
   if (params) {
     for (const [key, value] of Object.entries(params)) {
       out = out.split(`{${key}}`).join(String(value));

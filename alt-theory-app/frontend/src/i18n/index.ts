@@ -3,9 +3,12 @@
  * plain module function keyed on the English source string; the active
  * catalog is loaded ONCE before first render (initI18n in main.tsx), and
  * changing the language setting reloads the page — so no context/re-render
- * plumbing exists anywhere else.
+ * plumbing exists anywhere else. A key may end with ` // <token>` so two
+ * uses of the same English can differ in zh; English display drops it
+ * (`englishOf` in `./source`).
  */
 import { getLangSetting } from "../api/config";
+import { englishOf } from "./source";
 
 export type Lang = "en" | "zh-Hans" | "zh-Hant-HK";
 export type LangSetting = Lang | "auto";
@@ -57,7 +60,7 @@ export function t(
   text: string,
   params?: Record<string, string | number>,
 ): string {
-  let out = catalog[text] ?? text;
+  let out = catalog[text] ?? englishOf(text);
   if (params) {
     for (const [key, value] of Object.entries(params)) {
       out = out.split(`{${key}}`).join(String(value));

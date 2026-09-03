@@ -2085,7 +2085,7 @@ function WorkingFoldersPanel() {
                 checked={folder.writable}
                 onChange={(event) => setWritable(folder.path, event.target.checked)}
               />
-              {t("Edit")}
+              {t("Edit // writable")}
             </label>
             <button className="icon-x" data-tip={removeTip} aria-label={removeTip} onClick={() => removeGlobal(folder.path)}>
               <i className="ph ph-x" aria-hidden="true" />

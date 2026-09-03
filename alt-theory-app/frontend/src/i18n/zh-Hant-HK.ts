@@ -293,6 +293,7 @@ const catalog: Record<string, string> = {
   "Duplicate": "複製",
   "Each knowledge set is a folder of material Alt can ground its answers in. Add a folder of your own to make it selectable; the bundled sets stay untouched.": "每個知識庫是一個資料夾，包含 Alt 可引用以支撐其回答的材料。添加自己的資料夾使其可選；捆綁的知識庫保持不變。",
   "Edit": "編輯",
+  "Edit // writable": "可編輯",
   "Edit an earlier question of yours — the answer often moves more than you'd expect, and this conversation stays whole.": "編輯你之前提出的問題——答案往往會比你預想的變動更大，而且這段對話保持完整。",
   "Edit and compare": "編輯並比較",
   "Edit and retry": "編輯後重試",
