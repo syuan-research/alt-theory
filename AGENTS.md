@@ -114,6 +114,8 @@ agents mistake them for in-progress work.
   fixes); archived right after the fast-forward merge.
 - `archive/wp-thinking-truth` — merged into main (v1.5 part 2 M3:
   thinking-level truth at the models.json write).
+- `archive/wp-status-copy` — merged into main (v1.5 part 2 M7:
+  status and copy bundle).
 - `docs/v1.4-english-update` — merged into main (v1.4 English docs + Chinese
   README download links).
 - `archive/bundle-mac` — archived 2026-08-09 after the v1.4.3-beta.1 mac build.
