@@ -1184,6 +1184,8 @@
   .auth-step.auth-done { color: var(--color-success); display: flex; align-items: center; gap: 6px; font-weight: 500; }
   .auth-linkrow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .auth-linkrow code { font-family: var(--mono); font-size: 0.72rem; color: var(--text-2); background: var(--card); border: 1px solid var(--hairline); border-radius: var(--r-sm); padding: 4px 8px; }
+  .auth-trail { display: flex; flex-direction: column; gap: 2px; margin: 8px 0 0; }
+  .auth-trail .fine { margin: 0; }
   .provider-block { border-top: 1px solid var(--hairline); padding-top: 8px; margin-top: 8px; }
   .provider-block:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
   .provider-head { display: flex; align-items: baseline; gap: 8px; padding: 2px 0 4px; }
@@ -1253,7 +1255,7 @@
     color: var(--text-2);
   }
   .model-config-layout { display: grid; grid-template-columns: minmax(180px, 230px) minmax(0, 1fr); min-height: 520px; border: 1px solid var(--hairline); border-radius: var(--r-lg); overflow: hidden; background: var(--surface); }
-  .provider-master { padding: 12px; border-right: 1px solid var(--hairline); background: var(--panel); }
+  .provider-master { padding: 12px; border-right: 1px solid var(--hairline); background: var(--surface); }
   .add-provider-primary { width: 100%; display: flex; align-items: center; justify-content: center; gap: 7px; padding: 9px 12px; border: 1px solid var(--ink); border-radius: var(--r-md); background: var(--ink); color: var(--on-ink); font: inherit; font-size: 0.84rem; font-weight: 600; cursor: pointer; }
   .add-provider-primary:hover { opacity: 0.9; }
   .provider-master-list { display: flex; flex-direction: column; gap: 2px; margin-top: 10px; }
