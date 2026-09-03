@@ -4,7 +4,7 @@ slug: session-lifecycle-and-turn-continuity
 scope: Alt Theory session materialization, managed runtime lifecycle, and turn continuity
 summary: Materializes sessions, owns their live runtime, records runs, and preserves recoverable turn state across retry, continue, compaction, and reconnect
 status: current
-last_reviewed: 2026-08-28
+last_reviewed: 2026-09-03
 tags: [core, backend, session, continuity]
 depends_on:
   - branch-family-semantics.md

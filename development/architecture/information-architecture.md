@@ -140,10 +140,11 @@ surfaces remain designation-gated and absent for everyone else.
     children, not merely a display toggle. Helper needs no promotion: it is an
     ordinary, independently retainable conversation carrying a help marker and
     the bundled help Skill.
-  - Related children in the list or Related switcher show an **English prefix
-    plus the real title**, not a rename: e.g. `Branch 1 · …`, `BTW 1 · …`,
-    `Helper · …`, `Subagent 1 · …`. Numbering is per parent + purpose; Helper is
-    not numbered. Do not overwrite `ui-alias` to a bare token like `branch1`.
+  - Related children in the list or Related switcher show a **lineage-marker
+    prefix plus the real title**, not a rename: the marker is the machine token
+    from `lineageMarker` — e.g. `br1 · …`, `br1-btw2 · …`, `sa1 · …` — and
+    `Helper · …` unnumbered. Numbering is per parent + purpose. Do not
+    overwrite `ui-alias` to a bare token like `branch1`.
 - **Right rail**
   - Holds files/changes and one selected related conversation (Branch, BTW,
     Helper, or subagent).
@@ -192,7 +193,8 @@ surfaces remain designation-gated and absent for everyone else.
     text, view mode, related-pane filters and per-view scroll position
     live in `lib/paneMemory.ts` (`usePaneMemory`, an app-lifetime map keyed
     per conversation and surface). Nothing of this persists across a
-    restart.
+    restart. Pane memory is the only home for such state: view state that
+    must survive an unmount lives there, not in a component or a context.
   - Files has one inline filter above the existing tree. It keeps matches and
     their ancestors in that tree, expands those ancestors while filtering, and
     restores the prior expansion when cleared. File-change rows may reveal the

@@ -49,6 +49,11 @@ For backend or shared runtime changes:
 npm run test:backend
 ```
 
+`test:backend` runs `scripts/run-backend-gates.cjs`, which executes all three
+gate steps (tsc baseline, unit tests, integration tests) to completion with one
+exit-code summary line each, so a unit failure does not hide the integration
+result; it exits 1 when any step failed.
+
 For frontend changes:
 
 ```bash

@@ -4,7 +4,7 @@ slug: branch-family-semantics
 scope: Conversation families — branches, attached conversations, promotion, deletion, workspace unity
 summary: The shipped rules for fork trees; one of the most intricate areas of the app — read this BEFORE touching any of it
 status: current
-last_reviewed: 2026-08-17
+last_reviewed: 2026-09-03
 tags: [core, backend, frontend, sessions, branching]
 depends_on: [core-session-engine]
 implements: []
@@ -112,8 +112,9 @@ walks that stopped at deleted middles; do not reintroduce them.
   lineage only; a bare machine-token alias (old "Branch 1" or new "br1")
   collapses to the marker, a real name is kept under the prefix.
 - Tokens are all-lowercase by ruling (owner 2026-08-06: consistency over
-  word-vs-acronym casing like `Br`/`BTW`). The Related rail carries a
-  small sticky legend (`.related-legend`) explaining the tokens.
+  word-vs-acronym casing like `Br`/`BTW`). The related pane's collapsible
+  kind heads (Branches / Subagents / BTW / Helpers) name the kinds; the
+  former sticky token legend was removed with them (v1.5 part 2 M4).
 
 ## 4. Promotion ("Make this the main conversation" — role swap + coexist)
 

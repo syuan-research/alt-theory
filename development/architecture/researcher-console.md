@@ -4,7 +4,7 @@ slug: researcher-console
 scope: Current researcher-facing frontend surfaces and their provisional study/review surfaces
 summary: Implemented researcher-mode surfaces in the shared React shell; study workflow meaning remains provisional.
 status: current
-last_reviewed: 2026-08-28
+last_reviewed: 2026-09-03
 tags: [frontend, researcher-console, research, view-modes, ia]
 depends_on:
   - information-architecture
@@ -66,8 +66,8 @@ Code: `frontend/src/components/shell/Workbench.tsx`.
 
 ## Researcher-only detail and review
 
-The shared right inspector contains researcher-only detail tabs for Records,
-Provenance, Paths, and Runtime. The exact global pane placement is owned by the
+The shared right inspector contains researcher-only detail rails for Records,
+Provenance, and Runtime. The exact global pane placement is owned by the
 IA document; this file only records that these surfaces exist in the current
 shell.
 

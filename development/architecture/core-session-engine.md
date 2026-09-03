@@ -4,7 +4,7 @@ slug: core-session-engine
 scope: Alt Theory's high-level module map and managed-session integration overview
 summary: Compatibility entry point for the current session substrate, neighboring modules, and their interfaces
 status: current
-last_reviewed: 2026-08-28
+last_reviewed: 2026-09-03
 tags: [core, backend, session, architecture-map]
 depends_on: []
 ---
