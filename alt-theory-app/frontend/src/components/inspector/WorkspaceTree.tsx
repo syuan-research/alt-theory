@@ -206,7 +206,7 @@ export function WorkspaceTree() {
               className={`flat${previewView === "source" ? " on" : ""}`}
               onClick={() => setPreviewView("source")}
             >
-              {t("Source")}
+              {t("Source code")}
             </button>
           </div>
         ) : null}

@@ -294,16 +294,12 @@
     height: auto;
   }
 
-  /* One diagram + its fenced source, swapped by the small toggle. */
-  .mermaid-block {
-    position: relative;
-  }
-
+  /* One diagram + its fenced source, swapped by the small toggle. The
+     toggle sits in its own row ABOVE the diagram — a screenshot of the
+     figure must not contain the control. */
   .mermaid-block .mermaid-toggle {
-    position: absolute;
-    top: 0;
-    right: 0;
-    z-index: 2;
+    display: block;
+    margin: 0 0 4px auto;
     padding: 2px 8px;
     border: 1px solid var(--hairline);
     border-radius: var(--r-sm);

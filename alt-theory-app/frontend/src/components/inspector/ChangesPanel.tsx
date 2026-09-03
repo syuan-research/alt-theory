@@ -129,7 +129,7 @@ function DiffView({ file }: { file: FileChange }) {
               className={`flat${view === "source" ? " on" : ""}`}
               onClick={() => setView("source")}
             >
-              {t("Source")}
+              {t("Source code")}
             </button>
           </>
         ) : (

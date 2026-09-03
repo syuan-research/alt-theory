@@ -122,7 +122,7 @@ export function MarkdownBody({
           const toggle = document.createElement("button");
           toggle.type = "button";
           toggle.className = "mermaid-toggle";
-          toggle.textContent = t("Source");
+          toggle.textContent = t("Source code");
           const sourcePre = target.cloneNode(true) as HTMLElement;
           sourcePre.classList.add("mermaid-source");
           // renderMarkdown escapes the whole document before parsing, so the
@@ -169,7 +169,7 @@ export function MarkdownBody({
     const block = button.closest(".mermaid-block");
     if (!block) return;
     const showingSource = block.classList.toggle("show-source");
-    button.textContent = showingSource ? t("Rendered") : t("Source");
+    button.textContent = showingSource ? t("Rendered") : t("Source code");
   };
 
   return (

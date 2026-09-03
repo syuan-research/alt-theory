@@ -645,6 +645,7 @@ const catalog: Record<string, string> = {
   "Sort conversations": "排序对话",
   "Soul not loaded — this conversation runs without Alt's persona.": "Soul 未加载——此对话没有 Alt 的角色设定。",
   "Source": "源",
+  "Source code": "源代码",
   "spawned": "已生成",
   "Start a new conversation": "开始新对话",
   "Start a side conversation without adding it to the list": "开始侧边对话，不加入列表",
