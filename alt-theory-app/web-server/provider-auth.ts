@@ -61,42 +61,6 @@ interface ProviderAuthJob {
 
 const jobs = new Map<string, ProviderAuthJob>();
 const currentByProvider = new Map<ProviderAuthId, string>();
-let xaiFetchPatched = false;
-
-/**
- * Pi (checked through 0.84.4) posts xAI's device/token endpoints without CLI
- * identity headers, and xAI returns HTTP 404 without them. Keep Pi's
- * OAuth/storage flow and add only the headers those two xAI requests need.
- */
-function ensureXaiOAuthHeaders(): void {
-  if (xaiFetchPatched) return;
-  const nativeFetch = globalThis.fetch;
-  globalThis.fetch = (input, init) => {
-    const url =
-      typeof input === "string"
-        ? input
-        : input instanceof URL
-          ? input.href
-          : input.url;
-    if (
-      url === "https://auth.x.ai/oauth2/device/code" ||
-      url === "https://auth.x.ai/oauth2/token"
-    ) {
-      const headers = new Headers(
-        init?.headers ?? (input instanceof Request ? input.headers : undefined)
-      );
-      if (!headers.has("User-Agent")) {
-        headers.set("User-Agent", "alt-theory/1.4.8 pi/0.84.4");
-      }
-      headers.set("x-grok-client-version", "0.84.4");
-      headers.set("x-grok-client-surface", "cli");
-      headers.set("referrer", "pi");
-      return nativeFetch(input, { ...init, headers });
-    }
-    return nativeFetch(input, init);
-  };
-  xaiFetchPatched = true;
-}
 
 export function isProviderAuthId(value: string): value is ProviderAuthId {
   return (PROVIDER_AUTH_IDS as readonly string[]).includes(value);
@@ -157,7 +121,6 @@ function requestPrompt(
 
 async function runLogin(agentDir: string, job: ProviderAuthJob): Promise<void> {
   try {
-    if (job.view.provider === "xai") ensureXaiOAuthHeaders();
     const runtime = await ModelRuntime.create({
       authPath: join(agentDir, "auth.json"),
       modelsPath: join(agentDir, "models.json"),
