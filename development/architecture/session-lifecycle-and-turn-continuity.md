@@ -273,6 +273,17 @@ Thus a pane attaching mid-run receives the persisted transcript plus the current
 prompt and buffered deltas/tool/phase events, while a terminal run has no stale
 live replay.
 
+A reply that did not finish carries Pi's `stopReason` (`aborted` or `error`) on
+its last assistant transcript row (`buildTranscriptFromEntries` in
+`web-server/session-store.ts`; an empty stopped reply still yields a row). The
+client draws one grey line under the bubble from that field alone
+(`frontend/src/lib/replyStop.ts`): `aborted` says the model keeps the part,
+`error` says it does not (Pi removes an errored partial from the agent state
+before retrying and keeps it in the session file). Live and reload read the
+same field because the client refreshes the transcript on `run_failed`; the
+transient retry notice in the stream uses the same wording. No separate
+boundary row exists (`transcript-stop-reason.test.ts`, `replyStop.test.ts`).
+
 Run phases currently include `connecting`, `processing`, `thinking`, `tool`,
 `compacting`, `retrying`, `awaiting-user`, `idle`, and `error`. Attached panes
 receive these events through the session service; the frontend decides how to

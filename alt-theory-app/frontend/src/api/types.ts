@@ -246,8 +246,10 @@ export interface TranscriptMessage {
   success?: boolean;
   truncated?: boolean;
   /** Non-message boundary markers rendered specially (e.g. context compaction). */
-  marker?: "compaction" | "imported-context" | "retry-boundary" | "agent-team";
+  marker?: "compaction" | "imported-context" | "agent-team";
   sourceRole?: "system" | "developer";
+  /** Pi's stop reason on a stored reply; `aborted` / `error` draw a line under the bubble. */
+  stopReason?: "aborted" | "error";
 }
 
 export interface SessionSummary {

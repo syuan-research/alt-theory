@@ -11,6 +11,7 @@ import { MarkdownBody } from "@/components/conversation/MarkdownBody";
 import { fileName, toolLabel } from "@/lib/tools";
 import { cn } from "@/lib/cn";
 import { hasNativeBridge, pickDirectory, revealPath } from "@/lib/native";
+import { replyStopLine } from "@/lib/replyStop";
 import { t } from "@/i18n";
 import { autosizeTextarea } from "@/lib/autosizeTextarea";
 import { useStickToBottom } from "@/hooks/useStickToBottom";
@@ -228,12 +229,7 @@ export function StreamPartsView({
       );
     }
     if (part.kind === "notice") {
-      return (
-        <SysLine key={`sp-${index}`}>
-          <i className="ph ph-arrows-clockwise" />
-          {part.text}
-        </SysLine>
-      );
+      return <div key={`sp-${index}`} className="reply-stop">{part.text}</div>;
     }
     return <ToolLine key={part.tool.callId} tool={part.tool} />;
   });
@@ -441,12 +437,14 @@ export function TranscriptEntry({
   }
 
   if (message.role === "assistant") {
+    const stopLine = replyStopLine(message.stopReason);
     return (
       <>
         {(developer || showThinking) && message.thinking ? (
           <ThinkingBlock text={message.thinking} defaultOpen={thinkingExpanded} />
         ) : null}
         <AssistantBubble text={message.text} />
+        {stopLine ? <div className="reply-stop">{stopLine}</div> : null}
       </>
     );
   }
@@ -486,14 +484,6 @@ export function TranscriptEntry({
           </summary>
           <div className="compact-summary-body">{message.text}</div>
         </details>
-      );
-    }
-    if (message.marker === "retry-boundary") {
-      return (
-        <SysLine>
-          <i className="ph ph-arrows-clockwise" />
-          {message.text}
-        </SysLine>
       );
     }
     if (message.marker === "agent-team") {

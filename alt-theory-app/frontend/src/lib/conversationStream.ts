@@ -4,6 +4,7 @@ import type {
   StreamPart,
 } from "@/api/types";
 import { t } from "@/i18n";
+import { replyStopLine } from "@/lib/replyStop";
 import { toolLabel } from "@/lib/tools";
 
 export interface ConversationStreamControls {
@@ -107,10 +108,9 @@ export function handleConversationStreamMessage(
             ? parts
             : [
                 ...parts,
-                {
-                  kind: "notice",
-                  text: t("Connection dropped — continuing from where it left off"),
-                },
+                // Pi keeps the partial in history and drops it from the model's
+                // context before retrying: same line the stored reply gets.
+                { kind: "notice", text: replyStopLine("error") ?? "" },
               ],
         );
         return true;
