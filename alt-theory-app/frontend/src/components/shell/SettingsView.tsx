@@ -861,22 +861,27 @@ export function AuthConnectCard({
     if (!flow) return;
     setInput("");
     openedUrl.current = null;
-    popup.current = window.open("about:blank", "_blank");
     // The popup slot is reserved up front so the later window.open for the
-    // provider URL is not blocker-killed. Until that URL arrives (which for
-    // prompt-first flows like GitHub Copilot only happens after the domain
-    // prompt is answered), show a waiting placeholder instead of a blank tab.
-    if (popup.current) {
-      popup.current.document.write(
-        `<!doctype html><html><body style="font-family:system-ui;padding:40px;color:#777"><p>${t(
-          "Preparing the secure sign-in flow…"
-        )}</p></body></html>`
-      );
-      popup.current.document.close();
-    }
+    // provider URL is not blocker-killed. Its placeholder text is written
+    // after the flow starts, because what it must say depends on the flow's
+    // first step: a question answered in the app (GitHub Copilot's domain
+    // prompt) or the provider page itself.
+    popup.current = window.open("about:blank", "_blank");
     setFlow({ ...flow, step: "waiting", error: undefined });
     try {
       const auth = await startProviderAuth(flow.provider.id);
+      if (popup.current && !popup.current.closed) {
+        popup.current.document.write(
+          `<!doctype html><html><body style="font-family:system-ui;padding:40px;color:#777"><p>${
+            auth.prompt
+              ? t(
+                  "Return to the app and answer the question — this page will then open the provider sign-in."
+                )
+              : t("Preparing the secure sign-in flow…")
+          }</p></body></html>`
+        );
+        popup.current.document.close();
+      }
       setFlow((current) =>
         current ? { ...current, step: "waiting", auth } : current
       );
@@ -1003,14 +1008,16 @@ export function AuthConnectCard({
           ) : flow.step === "waiting" ? (
             <>
               <p className="auth-step">
-                {latestEvent?.type === "progress"
-                  ? plainAuthText(latestEvent.message)
-                  : latestEvent?.type === "auth_url"
-                    ? latestEvent.instructions ||
-                      t("Finish signing in in your browser.")
-                    : latestEvent?.type === "device_code"
-                      ? t("Enter this code in the provider page:")
-                      : t("Preparing the secure sign-in flow…")}
+                {flow.auth?.prompt
+                  ? t("Answer the question here to continue:")
+                  : latestEvent?.type === "progress"
+                    ? plainAuthText(latestEvent.message)
+                    : latestEvent?.type === "auth_url"
+                      ? latestEvent.instructions ||
+                        t("Finish signing in in your browser.")
+                      : latestEvent?.type === "device_code"
+                        ? t("Enter this code in the provider page:")
+                        : t("Preparing the secure sign-in flow…")}
               </p>
               {deviceEvent?.type === "device_code" ? (
                 <div className="auth-linkrow">

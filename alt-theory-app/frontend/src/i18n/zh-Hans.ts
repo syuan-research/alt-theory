@@ -205,6 +205,8 @@ const catalog: Record<string, string> = {
   "Continue in": "继续于",
   "Continue with this response": "继续使用此回复",
   "Continue without": "不选择继续",
+  "Answer the question here to continue:": "请在这里回答以继续",
+  "Return to the app and answer the question — this page will then open the provider sign-in.": "请先回到应用回答问题，之后本页会自动打开登录页。",
   "Company GitHub server address — leave blank for a normal GitHub account": "公司 GitHub 服务器地址——普通 GitHub 账号留空",
   "Turning on the models included with your subscription…": "正在开启你订阅中包含的模型…",
   "Conversation": "对话",
