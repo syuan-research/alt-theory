@@ -234,6 +234,19 @@ Pi's queue first and reports the unsent texts as `restored`, which the client
 puts back into the editor. There is no browser-side queue
 (`session-service.test.ts` "a message during a run joins Pi's steer queue").
 
+A queued card carries an edit label and a delete icon; both call
+`POST /api/sessions/:id/queue/retract`, which runs
+`SessionService.retractQueued()`. Pi has no per-entry queue API, so the
+operation clears the queue and re-queues every other string in its original
+order and kind, and matches the entry by text rather than by index because Pi
+may have delivered it since the last mirror. The run is not interrupted, the
+intermediate empty queue raises no `user_steered` bubble, and a miss returns
+the failure envelope with `kind: not_found`, on which the client just drops
+the card. Edit puts the returned text back into the editor after any existing
+draft; delete discards it. Attachments on a re-queued entry are not preserved
+— Pi's queue holds only the strings (`session-service.test.ts` "a queued
+message is recalled by text").
+
 Pi's own transient provider retry is represented as a `retrying` run phase. Alt
 Theory does not wrap it in a second retry loop. A successful or failed terminal
 outcome is finalized only after pending run work has settled; the run state

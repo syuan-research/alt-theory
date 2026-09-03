@@ -1330,6 +1330,24 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       });
     }
   });
+  // Card 11 follow-up: recall one queued message (edit or delete) without
+  // interrupting the run. `not_found` = Pi already delivered it.
+  app.post("/api/sessions/:sessionId/queue/retract", async (req, res) => {
+    const sessionId = req.params.sessionId;
+    if (!requireSessionRestContentAccess(req, res, sessionId)) return;
+    const text = (req.body as { text?: unknown } | undefined)?.text;
+    if (typeof text !== "string") {
+      res.status(400).json({
+        failure: describeFailure(new Error("text is required"), "retract_queued"),
+      });
+      return;
+    }
+    try {
+      res.json({ text: await sessionService.retractQueued(sessionId, text) });
+    } catch (error) {
+      res.status(409).json({ failure: describeFailure(error, "retract_queued") });
+    }
+  });
   app.post("/api/sessions/:sessionId/promote", (req, res) => {
     const sessionId = req.params.sessionId;
     if (!requireSessionRestContentAccess(req, res, sessionId)) return;

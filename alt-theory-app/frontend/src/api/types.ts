@@ -148,6 +148,7 @@ export type FailureKind =
   | "provider"
   | "busy"
   | "aborted"
+  | "not_found"
   | "unknown";
 
 export interface Failure {

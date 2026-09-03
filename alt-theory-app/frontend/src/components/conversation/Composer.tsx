@@ -13,6 +13,7 @@ import { isWithheld } from "@/api/types";
 import { fmtTime } from "@/lib/format";
 import { t } from "@/i18n";
 import { autosizeTextarea } from "@/lib/autosizeTextarea";
+import { appendDraft } from "@/lib/draft";
 
 type MenuKey = "plus" | "model" | "role" | "kb" | "presetcfg" | "perm" | null;
 const SHOW_HELP_STARTERS = false;
@@ -160,6 +161,15 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
   const armCommand = (name: string) => {
     setDraft(`/${name} `);
     setMenu(null);
+    window.setTimeout(() => textareaRef.current?.focus(), 0);
+  };
+
+  // Edit and delete both take the message out of Pi's queue; only edit puts
+  // it back in the editor. Neither interrupts the run.
+  const recallQueued = async (text: string, toEditor: boolean) => {
+    const retracted = await app.retractQueued(text);
+    if (!toEditor || retracted === null) return;
+    setDraft((current) => appendDraft(current, retracted));
     window.setTimeout(() => textareaRef.current?.focus(), 0);
   };
 
@@ -391,6 +401,22 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                 <span className="queued-prompt-text" data-tip={text}>
                   {text}
                 </span>
+                <button
+                  type="button"
+                  className="queued-prompt-action"
+                  onClick={() => void recallQueued(text, true)}
+                >
+                  {t("Edit")}
+                </button>
+                <button
+                  type="button"
+                  className="queued-prompt-action"
+                  onClick={() => void recallQueued(text, false)}
+                  data-tip={t("Delete")}
+                  aria-label={t("Delete")}
+                >
+                  <i className="ph ph-trash" aria-hidden="true" />
+                </button>
               </div>
             ))}
           </div>

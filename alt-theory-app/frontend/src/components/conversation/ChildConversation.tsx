@@ -3,11 +3,13 @@ import type { ServerMessage, SessionSnapshot } from "@/api/types";
 import {
   fetchSessionDetail,
   promoteToMainline as promoteToMainlineRequest,
+  retractQueuedText,
 } from "@/api/sessions";
 import { useApp } from "@/context/AppProvider";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { useConversationEngine } from "@/hooks/useConversationEngine";
 import { useStickToBottom } from "@/hooks/useStickToBottom";
+import { appendDraft } from "@/lib/draft";
 import { failureText } from "@/lib/failure";
 import { canTakeMainline, isListMember } from "@/lib/sessionList";
 import { t } from "@/i18n";
@@ -53,6 +55,21 @@ export function ChildConversation({
   const startPromptRef = useRef<(text: string, attachments: string[]) => boolean>(() => false);
   // Pi's queue for this conversation (card 11), mirrored from the server.
   const [queued, setQueued] = useState<string[]>([]);
+
+  // Same recall as the main composer: edit puts the text back in the editor,
+  // delete drops it; the card goes even when Pi already sent it.
+  const recallQueued = async (text: string, toEditor: boolean) => {
+    const retracted = await retractQueuedText(sessionId, text);
+    setQueued((current) => {
+      const index = current.indexOf(text);
+      return index < 0
+        ? current
+        : [...current.slice(0, index), ...current.slice(index + 1)];
+    });
+    if (toEditor && retracted !== null) {
+      setDraft((current) => appendDraft(current, retracted));
+    }
+  };
 
   // The ONE conversation engine, shared with the center pane; only this
   // pane's snapshot/status handling stays local.
@@ -352,6 +369,22 @@ export function ChildConversation({
               <span className="queued-prompt-text" data-tip={text}>
                 {text}
               </span>
+              <button
+                type="button"
+                className="queued-prompt-action"
+                onClick={() => void recallQueued(text, true)}
+              >
+                {t("Edit")}
+              </button>
+              <button
+                type="button"
+                className="queued-prompt-action"
+                onClick={() => void recallQueued(text, false)}
+                data-tip={t("Delete")}
+                aria-label={t("Delete")}
+              >
+                <i className="ph ph-trash" aria-hidden="true" />
+              </button>
             </div>
           ))}
         </div>

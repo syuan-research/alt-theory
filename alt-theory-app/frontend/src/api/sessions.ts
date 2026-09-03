@@ -193,3 +193,24 @@ export async function promoteToMainline(sessionId: string): Promise<void> {
     throw new Error(body.error || `Promotion failed (${res.status})`);
   }
 }
+
+/**
+ * Recall one queued message (card 11 follow-up). Returns the text so the
+ * caller can put it back in the editor, or null when Pi already delivered it
+ * — either way the card goes.
+ */
+export async function retractQueuedText(
+  sessionId: string,
+  text: string
+): Promise<string | null> {
+  const res = await fetch(
+    `/api/sessions/${encodeURIComponent(sessionId)}/queue/retract`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    }
+  );
+  const body = (await res.json().catch(() => ({}))) as { text?: string };
+  return res.ok && typeof body.text === "string" ? body.text : null;
+}

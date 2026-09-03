@@ -360,6 +360,11 @@ interface ManagedSession {
   liveRun: LiveRun | null;
   /** Structured cause for the in-flight turn when Alt asks Pi to stop it. */
   pendingInterruptionCause: InterruptionCause | null;
+  /**
+   * A retract is taking Pi's queue apart and putting it back (card 11
+   * follow-up); the empty queue it passes through is not a delivery.
+   */
+  retractingQueue: boolean;
 }
 
 /** Background subagent runs allowed at once; further first-runs queue FIFO. */
@@ -2094,6 +2099,55 @@ export class SessionService implements AgentTeamBridge {
     else await managed.session.steer(text, imageArgs);
   }
 
+  /**
+   * Take one text out of Pi's queue and hand it back (card 11 follow-up).
+   * Pi has no per-entry API, so the queue is cleared and every other string
+   * re-queued in its original order and kind. The run is not touched.
+   *
+   * Matched by text, not by index: Pi may have handed the entry to the model
+   * between the mirrored `queue_update` and this call, and a stale index
+   * would drop the wrong message. A miss is `not_found`.
+   */
+  async retractQueued(sessionId: string, text: string): Promise<string> {
+    const managed = this.requireSession(sessionId);
+    const steering = [...managed.session.getSteeringMessages()];
+    const followUp = [...managed.session.getFollowUpMessages()];
+    const inSteering = steering.indexOf(text);
+    const inFollowUp = inSteering < 0 ? followUp.indexOf(text) : -1;
+    if (inSteering < 0 && inFollowUp < 0) {
+      const failure: Failure = {
+        operation: "retract_queued",
+        kind: "not_found",
+        message: "That message is no longer queued.",
+        retryable: false,
+      };
+      throw failure;
+    }
+    if (inSteering >= 0) steering.splice(inSteering, 1);
+    else followUp.splice(inFollowUp, 1);
+    managed.retractingQueue = true;
+    try {
+      managed.session.clearQueue();
+      // ponytail: attachments on a re-queued entry are lost — Pi's queue keeps
+      // only the strings. Per-entry images need a Pi API.
+      for (const entry of steering) await managed.session.steer(entry);
+      for (const entry of followUp) await managed.session.followUp(entry);
+    } finally {
+      managed.retractingQueue = false;
+      // Mirror Pi's real queue, not the intended one: a re-queue that threw
+      // must not leave the client showing a queue that does not exist.
+      managed.runState.queue = {
+        steering: managed.session.getSteeringMessages().filter(isUserQueueText),
+        followUp: managed.session.getFollowUpMessages().filter(isUserQueueText),
+      };
+      this.emit(managed, {
+        type: "queue_updated",
+        payload: managed.runState.queue,
+      });
+    }
+    return text;
+  }
+
   async abort(
     sessionId: string,
     reason?: string,
@@ -3718,6 +3772,7 @@ export class SessionService implements AgentTeamBridge {
       transcriptStamp: null,
       liveRun: null,
       pendingInterruptionCause: null,
+      retractingQueue: false,
       listeners: new Set(),
       internalUnsubscribe: () => {},
       runState: new RunState(),
@@ -4097,6 +4152,9 @@ export class SessionService implements AgentTeamBridge {
         managed.runState.queue = next;
         // abort() clears the queue itself and reports the restored texts.
         if (managed.runState.state() === "stopping") break;
+        // A retract passes through an empty queue on its way back: nothing
+        // was delivered and no half-torn-down queue reaches the client.
+        if (managed.retractingQueue) break;
         // A text that left the queue was just handed to the model: its bubble
         // appears now, server-broadcast so every pane sees it once.
         for (const text of [...previous.steering, ...previous.followUp]) {

@@ -15,6 +15,8 @@ export type FailureKind =
   | "provider"
   | "busy"
   | "aborted"
+  /** The thing the request named is gone — a queued text Pi already delivered. */
+  | "not_found"
   | "unknown";
 
 export interface Failure {
