@@ -6,6 +6,72 @@ detail lives in commit history and `development/`.
 
 ---
 
+## v1.5.0-beta.1 — 2026-09-04
+
+This is a large update. It adds a Working folders page, subscription sign-in
+for GitHub Copilot and Kimi For Coding, filtering and search for related
+conversations, and a reorganized file-changes view, along with many other
+improvements and fixes.
+
+### Working folders
+
+- A new page under Settings, in two sections. **Projects** lists your
+  project folders; each project can have second folders outside it, added
+  and removed on the page.
+- **Global folders** are folders the app can read in every conversation —
+  the page says so in one line above the list. Each has an **Edit** tick:
+  ticked, the agent can also write files there without asking; unticked,
+  it asks first. The tick applies to conversations that are already open —
+  no reopening needed.
+
+### Sign in with Copilot and Kimi
+
+- The Providers page can sign in to **GitHub Copilot** and **Kimi For
+  Coding** with your subscription. A login window shows the device code
+  and waits for your browser approval; a connected account then shows as
+  **Connected**, with Disconnect and Sign in again.
+- Copilot's model list follows your account, so new models appear without
+  an app update.
+
+### Related conversations
+
+- The Related pane has a filter row — Branches, Subagents, BTW, Helpers,
+  and a whole-family scope — plus search; the left rail's magnifier now
+  filters the conversation list in place.
+
+### File changes
+
+- Changes are grouped by folder. Markdown and HTML files open as
+  Rendered / Source; code files open as a diff with a whole-file toggle.
+  The right pane remembers what you had open and where you had scrolled.
+
+### Other improvements and fixes
+
+- Switching model, thinking level, or permission mode during a reply is
+  accepted and applied when the turn ends, or at Stop; turning Full access
+  off is immediate.
+- The thinking chip reports what will actually be sent, including a
+  provider clamp ("low — model uses medium"), and saved models keep the
+  catalog's thinking levels so the chip and the request agree.
+- Queued messages can again be edited or deleted while a reply runs, and
+  editing brings the attachments back with the text.
+- A stopped reply reads "Stopped here. The model keeps this part."; a
+  failed one reads "Failed here. The model does not keep this part." — in
+  the conversation and after reopening.
+- Errors name what failed — "Could not reach DeepSeek (network)" instead of
+  "fetch failed" — and a busy conversation shows one plain line instead of
+  a session id.
+- A subagent you stopped reports "the user stopped this" to its lead, and
+  the lead does not restart it.
+- An unreadable settings file no longer resets your settings; the last
+  good settings are kept.
+- Mermaid diagrams gained a source toggle; left-rail folder names use
+  normal capitalization.
+- Pi's own session files can be imported, with a preflight check before
+  the import runs.
+- Dependency refresh: production dependencies report no known
+  vulnerabilities.
+
 ## v1.4.8-beta.1 — 2026-08-31
 
 This version adds a per-conversation permission mode with a Full Access
