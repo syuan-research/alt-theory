@@ -124,6 +124,10 @@ agents mistake them for in-progress work.
 - `archive/wp-part2-residue` — merged into main (v1.5 part 2 M8:
   backend gate runner, Windows-safe change fixtures, retract returns
   attachments).
+- `archive/wp-part2-review-fixes` — merged into main (v1.5 part 2
+  walkthrough-fixes: queue restore keeps every entry and its delivery,
+  one path identity, Reconnect only on failed refresh, unambiguous
+  catalog match, scroll restore follows content).
 - `docs/v1.4-english-update` — merged into main (v1.4 English docs + Chinese
   README download links).
 - `archive/bundle-mac` — archived 2026-08-09 after the v1.4.3-beta.1 mac build.
