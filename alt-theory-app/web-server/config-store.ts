@@ -390,15 +390,22 @@ export function listProviders(agentDir: string): ProviderView[] {
     const block = models.providers?.[name] ?? {};
     const configuredModels = Array.isArray(block.models) ? block.models : [];
     // Model-list sources, most live first: what the user saved in
-    // models.json, then what the account itself reports (Copilot's login
+    // models.json (Copilot: intersected with the account's availableModelIds
+    // at read time), then what the account itself reports (Copilot's login
     // and every token refresh fetch availableModelIds from its API; the
     // builtin catalog goes stale, so it only decorates ids it knows and
     // never adds ids the account does not have), then the builtin catalog
     // as the last fallback.
     const credentialModelIds = credentialAvailableModelIds(agentDir, name);
+    const savedModels =
+      name === "github-copilot" && credentialModelIds
+        ? configuredModels.filter((model) =>
+            credentialModelIds.includes(model.id),
+          )
+        : configuredModels;
     const sourceModels =
-      configuredModels.length > 0
-        ? configuredModels
+      savedModels.length > 0
+        ? savedModels
         : credentialModelIds
           ? credentialModelIds.map(
               (id) =>

@@ -254,6 +254,39 @@ test("Copilot OAuth model list follows the account, never the stale builtin", ()
   assert.ok(unknown, "unknown ids still appear (fallback to bare id)");
 });
 
+test("Copilot saved models hide ids the account does not offer", () => {
+  const agentDir = mkdtempSync(join(tmpdir(), "alt-theory-copilot-intersect-"));
+  writeFileSync(
+    join(agentDir, "models.json"),
+    JSON.stringify({
+      providers: {
+        "github-copilot": {
+          models: [
+            { id: "claude-sonnet-4.5" },
+            { id: "not-on-this-account" },
+          ],
+        },
+      },
+    }),
+  );
+  writeFileSync(join(agentDir, "auth.json"), JSON.stringify({
+    "github-copilot": {
+      type: "oauth",
+      access: "access",
+      refresh: "refresh",
+      expires: Date.now() + 60_000,
+      availableModelIds: ["claude-sonnet-4.5", "brand-new-model-9"],
+    },
+  }));
+  const view = listProviders(agentDir).find(
+    (p) => p.name === "github-copilot",
+  );
+  assert.deepEqual(
+    view?.models.map((model) => model.id),
+    ["claude-sonnet-4.5"],
+  );
+});
+
 test("Copilot without availableModelIds falls back to the builtin catalog", () => {
   const agentDir = mkdtempSync(join(tmpdir(), "alt-theory-copilot-fallback-"));
   writeFileSync(join(agentDir, "auth.json"), JSON.stringify({

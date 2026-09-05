@@ -61,9 +61,11 @@ provider configuration.
 `listProviders(agentDir)` builds the safe settings view from `models.json`,
 Pi's built-in provider/model catalogue, credential state, and
 `settings.json`'s active pointer (`config-store.ts:362-420`). A configured
-provider with a non-empty saved model list uses that list. A built-in provider
-without a saved block can be represented from Pi's built-in model list when it
-is otherwise discoverable.
+provider with a non-empty saved model list uses that list. GitHub Copilot
+intersects those saved ids with the credential's `availableModelIds` at read
+time; the saved file is not rewritten. A built-in provider without a saved
+block can be represented from Pi's built-in model list when it is otherwise
+discoverable.
 
 The view combines several different kinds of fact; they must not be treated as
 one source:
