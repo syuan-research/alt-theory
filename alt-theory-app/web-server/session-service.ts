@@ -1,4 +1,4 @@
-import { cpSync, existsSync, readFileSync, rmSync, statSync, writeFileSync, } from "fs";
+import { cpSync, existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync, } from "fs";
 import { randomUUID } from "crypto";
 import type {
   AgentSession,
@@ -23,6 +23,7 @@ import {
   allocateReadableSessionId,
   createSessionDirs,
   getSessionDirs,
+  resolveSessionsRoot,
   writeJsonAtomic,
   type SessionDirectories,
 } from "../core/data-dir.js";
@@ -36,7 +37,7 @@ import {
 } from "./asset-registry.js";
 import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
 import { clampPromptCacheKey } from "../core/prompt-cache-continuity.js";
-import { isPathInside } from "../core/path-verdict.js";
+import { isPathInside, samePath } from "../core/path-verdict.js";
 import {
   ApprovalBridge,
   type ApprovalRequest,
@@ -67,7 +68,12 @@ import {
   getSessionRootForRequest,
   stripSkillWrapper,
 } from "./session-store.js";
-import { folderPolicyFor, readAppSettings } from "./app-settings.js";
+import {
+  folderPolicyFor,
+  readAppSettings,
+  writeAppSettings,
+  type ProjectFolderSettings,
+} from "./app-settings.js";
 import { extractToolDetail, extractToolPath, type ToolDetail } from "./tool-detail.js";
 import {
   readV4SessionHeader,
@@ -214,12 +220,10 @@ export interface SessionCreationMetadata {
   } | null;
   /**
    * Work/Native workspace (spec §5.1). primaryDir replaces the default session
-   * workspace as Pi's cwd; additionalDirs are intentional user additions.
-   * Local app form only — the server layer gates this.
+   * workspace as Pi's cwd. Local app form only — the server layer gates this.
    */
   workspace?: {
     primaryDir?: string;
-    additionalDirs?: string[];
   } | null;
   studyTag?: StudyTag | null;
   modelOverride?: SessionModelOverride | null;
@@ -330,8 +334,7 @@ interface ManagedSession {
   setNativePiScanAltSkills: (enabled: boolean) => Promise<void>;
   getFullAccess: () => boolean;
   setFullAccess: (enabled: boolean) => void;
-  getWorkspace: () => { primaryDir: string; additionalDirs: string[] };
-  addWorkspaceDir: (dir: string) => Promise<string[]>;
+  getWorkspace: () => { primaryDir: string };
   approvalBridge: ApprovalBridge;
   selectors: SessionSelectors;
   openedFrom: "new" | "existing";
@@ -920,42 +923,13 @@ export class SessionService implements AgentTeamBridge {
   }
 
   /**
-   * Add a workspace directory to a live session (spec §5.1) — an intentional
-   * user act. Applies from the next turn via loader reload; persisted in the
-   * session header so reopen restores it.
-   */
-  async addWorkspaceDir(
-    sessionId: string,
-    dir: string,
-  ): Promise<SessionSnapshot> {
-    const managed = this.requireSession(sessionId);
-    this.assertIdle(managed);
-    await managed.addWorkspaceDir(dir);
-    const workspace = managed.getWorkspace();
-    managed.manifest.workspace = workspace;
-    this.persistManifestModel(managed);
-    const header = readV4SessionHeader(managed.manifest.recordsDir);
-    if (header) {
-      writeSessionHeader(managed.manifest.recordsDir, { ...header, workspace });
-    }
-    appendSessionEvent(managed.manifest.recordsDir, {
-      sessionId,
-      type: "workspace_dir_added",
-      details: {
-        dir: resolve(dir),
-        additionalDirCount: workspace.additionalDirs.length,
-      },
-    });
-    return this.snapshot(managed);
-  }
-
-  /**
    * Re-point a session's working folder (M4). Header is the source of truth;
    * a live session is disposed and reopened so Pi's cwd and the security
    * boundary rebuild against the new folder — which also resets session
    * approval allowances (conservative: re-ask in the new context).
-   * additionalDirs are dropped for the same reason. Returns null when the
-   * session was not live (header-only change; next open picks it up).
+   * Legacy per-session additionalDirs are dropped for the same reason.
+   * Returns null when the session was not live (header-only change; next
+   * open picks it up).
    */
   async setSessionWorkspace(
     sessionId: string,
@@ -974,17 +948,101 @@ export class SessionService implements AgentTeamBridge {
     // Family = the WHOLE tree from its structural root (owner 2026-08-05):
     // dragging a promoted branch used to miss its ancestors' subtrees and
     // leave part of the family behind in the old folder.
+    // forkFamilyIds is summary-based and returns [] for a conversation the
+    // catalog does not list yet (never finished a run) — fall back to the
+    // session itself, or the busy check below would skip it.
     const family = forkFamilyIds(this.config.dataDir, sessionId);
-    for (const id of family) {
+    const members = family.length ? family : [sessionId];
+    for (const id of members) {
       const member = this.sessions.get(id);
       if (member) this.assertIdle(member);
     }
     let target: SessionSnapshot | null = null;
-    for (const id of family) {
+    for (const id of members) {
       const snapshot = await this.repointOne(id, resolved);
       if (id === sessionId) target = snapshot;
     }
     return target;
+  }
+
+  /**
+   * Change a project's main folder (v1.5.1, owner decision 2026-09-05): every
+   * conversation of the project moves through the ordinary re-point path
+   * (header rewrite, family together, live sessions disposed and reopened).
+   * All of them must be idle — one running conversation refuses the change
+   * with nothing written. The settings entry is updated last, so a failed
+   * move leaves the project pointing where its conversations still are.
+   */
+  async repointProjectMainFolder(
+    projectId: string,
+    primaryDir: string,
+  ): Promise<{ project: ProjectFolderSettings; movedCount: number }> {
+    const settings = readAppSettings(this.config.dataDir);
+    const project = settings.workingFolders?.projects.find(
+      (entry) => entry.id === projectId,
+    );
+    if (!project) {
+      throw new Error(`Unknown project: ${projectId}`);
+    }
+    const resolved = resolve(primaryDir);
+    if (!statSync(resolved, { throwIfNoEntry: false })?.isDirectory()) {
+      throw new Error(`Working folder does not exist: ${resolved}`);
+    }
+    if (samePath(project.primaryDir, resolved)) {
+      return { project, movedCount: 0 };
+    }
+    // One pass over the session headers groups the project's conversations
+    // into fork families (they share one folder by construction); any member
+    // id carries its whole family through setSessionWorkspace. Header-based,
+    // not list-based: a conversation that never finished a run still belongs
+    // to the project it was started in.
+    const sessionsRoot = resolveSessionsRoot(this.config.dataDir);
+    const affected: string[] = [];
+    if (existsSync(sessionsRoot)) {
+      for (const entry of readdirSync(sessionsRoot, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        const recordsDir =
+          getSessionDirs(this.config.dataDir, entry.name)?.recordsDir;
+        const header = recordsDir ? readV4SessionHeader(recordsDir) : null;
+        if (
+          header?.workspace &&
+          samePath(header.workspace.primaryDir, project.primaryDir)
+        ) {
+          affected.push(header.sessionId);
+        }
+      }
+    }
+    const seen = new Set<string>();
+    const familyHeads: string[] = [];
+    for (const sessionId of affected) {
+      if (seen.has(sessionId)) continue;
+      // Same empty-family fallback as setSessionWorkspace: a conversation
+      // missing from the catalog summaries still moves (and still counts
+      // for the busy check) on its own.
+      const family = forkFamilyIds(this.config.dataDir, sessionId);
+      const members = family.length ? family : [sessionId];
+      for (const id of members) seen.add(id);
+      familyHeads.push(members[0]);
+    }
+    // Refuse before anything is written when any live member is working.
+    for (const id of seen) {
+      const member = this.sessions.get(id);
+      if (member) this.assertIdle(member);
+    }
+    for (const head of familyHeads) {
+      await this.setSessionWorkspace(head, resolved);
+    }
+    const updated: ProjectFolderSettings = { ...project, primaryDir: resolved };
+    writeAppSettings(this.config.dataDir, {
+      ...settings,
+      workingFolders: {
+        global: settings.workingFolders?.global ?? [],
+        projects: (settings.workingFolders?.projects ?? []).map((entry) =>
+          entry.id === project.id ? updated : entry,
+        ),
+      },
+    });
+    return { project: updated, movedCount: seen.size };
   }
 
   private async repointOne(
@@ -1005,7 +1063,7 @@ export class SessionService implements AgentTeamBridge {
     writeSessionHeader(recordsDir, {
       ...header,
       workspace: resolved
-        ? { primaryDir: resolved, additionalDirs: [] }
+        ? { primaryDir: resolved }
         : undefined,
     });
     appendSessionEvent(recordsDir, {
@@ -2581,7 +2639,7 @@ export class SessionService implements AgentTeamBridge {
     sessionId: string;
     selectors: SessionSelectors;
     /** Persisted working folder; null / undefined = the managed workspace. */
-    workspace: { primaryDir?: string | null; additionalDirs?: string[] } | null | undefined;
+    workspace: { primaryDir?: string | null } | null | undefined;
     modelArgs: RuntimeModelConfig & { thinkingLevel?: ThinkingLevel };
     altMode: AltMode;
     forkPurpose: ForkPurpose | null | undefined;
@@ -2593,7 +2651,6 @@ export class SessionService implements AgentTeamBridge {
     );
     const primaryDir = input.workspace?.primaryDir ?? null;
     return {
-      workspaceDirs: input.workspace?.additionalDirs,
       // Read live: a tick on the Working folders page applies to open
       // conversations at their next root check.
       readFolderPolicy: () =>
@@ -2676,7 +2733,7 @@ export class SessionService implements AgentTeamBridge {
       ? resolve(metadata.workspace.primaryDir)
       : null;
     if (primaryDir && !statSync(primaryDir, { throwIfNoEntry: false })?.isDirectory()) {
-      throw new Error(`Workspace primary directory does not exist: ${primaryDir}`,);
+      throw new Error(`Working folder does not exist: ${primaryDir}`,);
     }
     const appSettings = readAppSettings(this.config.dataDir);
     const subagentConfig = readSubagentConfig(this.config.dataDir).config;
@@ -3712,7 +3769,7 @@ export class SessionService implements AgentTeamBridge {
     overrideSessionCwd: boolean;
     activeLeafEntryId?: string | null;
     mode?: AltMode;
-    workspace?: { primaryDir: string; additionalDirs: string[] };
+    workspace?: { primaryDir: string };
     modelOverride?: SessionModelOverride | null;
     /** Fork flows call this before the child's header exists on disk. */
     forkPurpose?: ForkPurpose;
@@ -3771,8 +3828,7 @@ export class SessionService implements AgentTeamBridge {
     setNativePiScanAltSkills: (enabled: boolean) => Promise<void>;
     getFullAccess: () => boolean;
     setFullAccess: (enabled: boolean) => void;
-    getWorkspace: () => { primaryDir: string; additionalDirs: string[] };
-    addWorkspaceDir: (dir: string) => Promise<string[]>;
+    getWorkspace: () => { primaryDir: string };
     selectors: SessionSelectors;
     subagentConfig: SubagentConfig;
     openedFrom: "new" | "existing";

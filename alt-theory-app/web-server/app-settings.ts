@@ -5,6 +5,7 @@
  * change never mutates a running agent context — reopening or starting a
  * session applies the new selection.
  */
+import { randomUUID } from "crypto";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { writeJsonAtomic } from "../core/data-dir.js";
@@ -48,6 +49,10 @@ export interface AppSettings {
    * Working folders the user added explicitly (M4). Lets an empty workspace
    * appear in the session list before any conversation exists in it; folders
    * that already host sessions are derived from session summaries instead.
+   *
+   * Stored only by pre-v1.5.1 settings; since projects became entities the
+   * list is derived (`knownWorkspacesOf`) and read-time migration folds these
+   * into `workingFolders.projects`.
    */
   knownWorkspaces?: string[];
   sessionListSort?: {
@@ -102,15 +107,34 @@ export interface AppSettings {
   /**
    * Working folders page (v1.5 part 2). `global`: folders Alt may read in
    * every conversation, `writable` = the Edit tick (saves only in Work).
-   * `projects`: a main working folder's second folders, joined to every
-   * conversation whose main folder matches.
+   * `projects` (v1.5.1): a project is its own entity — id, editable name
+   * (absent = the main folder's name), a changeable main folder, and
+   * companion folders joined to every conversation whose main folder matches.
    */
   workingFolders?: WorkingFoldersSettings;
 }
 
+export interface ProjectFolderSettings {
+  /** Generated id (v1.5.1), stable across main-folder changes; never the path. */
+  id: string;
+  /** Absent = default: the main folder's basename. */
+  name?: string;
+  primaryDir: string;
+  secondaryDirs: string[];
+}
+
 export interface WorkingFoldersSettings {
   global: Array<{ path: string; writable: boolean }>;
-  projects: Array<{ primaryDir: string; secondaryDirs: string[] }>;
+  projects: ProjectFolderSettings[];
+}
+
+/** The rail's explicit working folders: every project's main folder (v1.5.1). */
+export function knownWorkspacesOf(
+  settings: Pick<AppSettings, "workingFolders">,
+): string[] {
+  return (settings.workingFolders?.projects ?? []).map(
+    (project) => project.primaryDir,
+  );
 }
 
 /** The root policy a session gets from the Working folders page, for its main folder. */
@@ -199,13 +223,6 @@ export function readAppSettingsWithWarning(dataDir: string): {
             },
           }
         : {}),
-      ...(Array.isArray(parsed.knownWorkspaces)
-        ? {
-            knownWorkspaces: parsed.knownWorkspaces.filter(
-              (entry): entry is string => typeof entry === "string"
-            ),
-          }
-        : {}),
       ...(parsed.sessionListSort &&
       (parsed.sessionListSort.folders === "name" ||
         parsed.sessionListSort.folders === "modified") &&
@@ -261,20 +278,13 @@ export function readAppSettingsWithWarning(dataDir: string): {
             ),
           }
         : {}),
-      ...(parsed.workingFolders
+      ...(parsed.workingFolders || Array.isArray(parsed.knownWorkspaces)
         ? {
             workingFolders: {
-              global: (Array.isArray(parsed.workingFolders.global) ? parsed.workingFolders.global : [])
+              global: (Array.isArray(parsed.workingFolders?.global) ? parsed.workingFolders.global : [])
                 .filter((entry) => entry && typeof entry.path === "string")
                 .map((entry) => ({ path: entry.path, writable: entry.writable === true })),
-              projects: (Array.isArray(parsed.workingFolders.projects) ? parsed.workingFolders.projects : [])
-                .filter((entry) => entry && typeof entry.primaryDir === "string")
-                .map((entry) => ({
-                  primaryDir: entry.primaryDir,
-                  secondaryDirs: (Array.isArray(entry.secondaryDirs) ? entry.secondaryDirs : []).filter(
-                    (dir): dir is string => typeof dir === "string",
-                  ),
-                })),
+              projects: normalizeProjects(parsed),
             },
           }
         : {}),
@@ -327,4 +337,48 @@ export function resolveExternalSkillPaths(
 function normalizePaths(value: unknown): string[] | null {
   if (!Array.isArray(value)) return null;
   return value.filter((entry): entry is string => typeof entry === "string");
+}
+
+/**
+ * Read-time migration (v1.5.1): projects gain generated ids and an optional
+ * name; a pre-v1.5.1 file's explicitly added folders (`knownWorkspaces`,
+ * which only became projects once they gained second folders) fold in as
+ * projects with no companions. The merged list persists on the next
+ * read-modify-write of any setting.
+ */
+function normalizeProjects(parsed: AppSettings): ProjectFolderSettings[] {
+  const projects: ProjectFolderSettings[] = (
+    Array.isArray(parsed.workingFolders?.projects)
+      ? parsed.workingFolders.projects
+      : []
+  )
+    .filter(
+      (entry) =>
+        entry && typeof entry.primaryDir === "string" && entry.primaryDir.trim(),
+    )
+    .map((entry) => ({
+      id:
+        typeof entry.id === "string" && entry.id.trim()
+          ? entry.id
+          : randomUUID(),
+      ...(typeof entry.name === "string" && entry.name.trim()
+        ? { name: entry.name }
+        : {}),
+      primaryDir: entry.primaryDir,
+      secondaryDirs: (Array.isArray(entry.secondaryDirs)
+        ? entry.secondaryDirs
+        : []
+      ).filter((dir): dir is string => typeof dir === "string"),
+    }));
+  const legacyKnown = Array.isArray(parsed.knownWorkspaces)
+    ? parsed.knownWorkspaces.filter(
+        (entry): entry is string => typeof entry === "string",
+      )
+    : [];
+  for (const dir of legacyKnown) {
+    if (!projects.some((project) => samePath(project.primaryDir, dir))) {
+      projects.push({ id: randomUUID(), primaryDir: dir, secondaryDirs: [] });
+    }
+  }
+  return projects;
 }

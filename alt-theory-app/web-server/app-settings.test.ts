@@ -4,11 +4,12 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import {
+  folderPolicyFor,
+  knownWorkspacesOf,
   readAppSettings,
   readAppSettingsWithWarning,
   resolveExternalSkillPaths,
   writeAppSettings,
-  folderPolicyFor,
 } from "./app-settings.js";
 import { discoverSkillResources } from "./resource-discovery.js";
 
@@ -192,4 +193,66 @@ test("folderPolicyFor: the global list applies to every session; a project's sec
   });
   assert.deepEqual(folderPolicyFor(settings, "/elsewhere").projectSecondaryDirs, []);
   assert.deepEqual(folderPolicyFor({}, null), { globalFolders: [], projectSecondaryDirs: [] });
+});
+
+// v1.5.1 migration: projects are entities (generated id, optional name) and
+// a pre-v1.5.1 file's explicitly added folders (knownWorkspaces, which only
+// became projects once they gained second folders) fold in as projects with
+// no companions. The merged list persists on the next settings write.
+test("app settings migrate in place: projects gain ids and names, legacy known folders become projects", () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "alt-theory-settings-"));
+  mkdirSync(join(dataDir, "climate"), { recursive: true });
+  mkdirSync(join(dataDir, "papers"), { recursive: true });
+  writeFileSync(
+    join(dataDir, "app-settings.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      skills: { understand: { enabledPaths: null }, work: { enabledPaths: null } },
+      knownWorkspaces: [join(dataDir, "papers")],
+      workingFolders: {
+        global: [],
+        projects: [
+          {
+            primaryDir: join(dataDir, "climate"),
+            secondaryDirs: [join(dataDir, "papers")],
+          },
+        ],
+      },
+    }),
+    "utf-8",
+  );
+
+  const settings = readAppSettings(dataDir);
+  // The existing project gained an id and kept its companions; the legacy
+  // known folder folded in as its own project (companions may repeat across
+  // projects — one folder can be a main here and a companion elsewhere).
+  assert.equal(settings.workingFolders?.projects.length, 2);
+  const climate = settings.workingFolders!.projects[0];
+  assert.ok(climate.id, "migrated project has a generated id");
+  assert.equal(climate.primaryDir, join(dataDir, "climate"));
+  assert.equal(climate.name, undefined);
+  const papers = settings.workingFolders!.projects[1];
+  assert.ok(papers.id);
+  assert.deepEqual(papers.secondaryDirs, []);
+  // knownWorkspaces is derived from projects now.
+  assert.deepEqual(knownWorkspacesOf(settings).sort(), [
+    join(dataDir, "climate"),
+    join(dataDir, "papers"),
+  ]);
+
+  // A name survives the read-write round trip; ids stay stable.
+  const named = {
+    ...settings,
+    workingFolders: {
+      ...settings.workingFolders!,
+      projects: settings.workingFolders!.projects.map((project, index) =>
+        index === 0 ? { ...project, name: "Climate work" } : project,
+      ),
+    },
+  };
+  writeAppSettings(dataDir, named);
+  const reread = readAppSettings(dataDir);
+  assert.equal(reread.workingFolders?.projects[0].name, "Climate work");
+  assert.equal(reread.workingFolders?.projects[0].id, climate.id);
+  assert.equal((reread as { knownWorkspaces?: string[] }).knownWorkspaces, undefined);
 });

@@ -176,15 +176,13 @@ test("skills nested under agent-assets/skills load into the session", async () =
   await result.session.dispose();
 });
 
-test("workspace directories apply in Work only and extend guarded write", async () => {
+test("project companion folders apply in Work only and extend guarded write", async () => {
   const root = mkdtempSync(join(tmpdir(), "alt-theory-core-workspace-"));
   const appContextPath = join(root, "ALTTHEORY.md");
   const kbDir = join(root, "kb");
   const dirA = join(root, "project-a");
-  const dirB = join(root, "project-b");
   mkdirSync(kbDir, { recursive: true });
   mkdirSync(join(dirA, ".agents", "skills"), { recursive: true });
-  mkdirSync(dirB, { recursive: true });
   writeFileSync(appContextPath, "Workspace app context", "utf-8");
   writeFileSync(join(dirA, "AGENTS.md"), "WORKSPACE-DIR-CONTEXT-A", "utf-8");
   writeFileSync(
@@ -192,8 +190,9 @@ test("workspace directories apply in Work only and extend guarded write", async 
     "---\nname: ws-helper\ndescription: Workspace project skill\n---\nHelp.",
     "utf-8"
   );
-  writeFileSync(join(dirB, "CLAUDE.md"), "WORKSPACE-DIR-CONTEXT-B", "utf-8");
 
+  // Companions arrive the way the app supplies them: read live from the
+  // project's Working-folders entry, like the root policy does.
   const result = await createAltTheorySession({
     ...createSessionDirs(join(root, "data"), "workspace-test"),
     appContextPath,
@@ -202,12 +201,15 @@ test("workspace directories apply in Work only and extend guarded write", async 
     understandReadOnly: false,
     altMode: "understand",
     resourceDiscovery: "internal",
-    workspaceDirs: [dirA],
+    readFolderPolicy: () => ({
+      globalFolders: [],
+      projectSecondaryDirs: [dirA],
+    }),
   });
   const { session } = result;
-  // Mode switches and addWorkspaceDir replace/reload the session; Pi 0.84
-  // marks tool handles captured before a replacement as stale, so look the
-  // write tool up from the live session at each use.
+  // Mode switches replace/reload the session; Pi 0.84 marks tool handles
+  // captured before a replacement as stale, so look the write tool up from
+  // the live session at each use.
   const writeTool = () => {
     const tool = session.agent.state.tools.find((t) => t.name === "write");
     assert.ok(tool);
@@ -227,8 +229,8 @@ test("workspace directories apply in Work only and extend guarded write", async 
     /outside Alt Theory writable roots/
   );
 
-  // Work receives the added directory's context file and project skills,
-  // and the guarded write roots grow to the workspace.
+  // Work receives the companion's context file and project skills, and the
+  // guarded write roots grow to the workspace.
   await result.setAltMode("work");
   assert.match(session.systemPrompt, /WORKSPACE-DIR-CONTEXT-A/);
   assert.match(session.systemPrompt, /ws-helper/);
@@ -237,12 +239,6 @@ test("workspace directories apply in Work only and extend guarded write", async 
     content: "allowed",
   });
   assert.equal(readFileSync(join(dirA, "work.md"), "utf-8"), "allowed");
-
-  // Adding a directory is a live action: context applies after reload.
-  await result.addWorkspaceDir(dirB);
-  assert.match(session.systemPrompt, /WORKSPACE-DIR-CONTEXT-B/);
-  assert.deepEqual(result.getWorkspace().additionalDirs, [dirA, dirB]);
-  assert.deepEqual(result.manifest.workspace.additionalDirs, [dirA, dirB]);
 
   // Switching back to Understand withdraws workspace access again.
   await result.setAltMode("understand");

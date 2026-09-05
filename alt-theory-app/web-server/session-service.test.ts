@@ -39,6 +39,7 @@ test("retry reconstructs a persisted skill invocation", () => {
 import { listSessionSummaries, readSessionDetail } from "./session-store.js";
 import { readAbComparisonRecords } from "./ab-records.js";
 import { readV4SessionHeader } from "./session-records.js";
+import { readAppSettings, writeAppSettings } from "./app-settings.js";
 import { hardDeleteExpiredPrivateSessions } from "./session-retention.js";
 import { readConfigEvents } from "./config-events.js";
 import {
@@ -3174,11 +3175,7 @@ test("SessionService creates workspace sessions and restores workspace on reopen
   const fixture = setupFixture();
   const service = createTestService(fixture);
   const primaryDir = join(fixture.root, "user-project");
-  const extraDir = join(fixture.root, "reference-material");
-  const laterDir = join(fixture.root, "added-later");
   mkdirSync(primaryDir, { recursive: true });
-  mkdirSync(extraDir, { recursive: true });
-  mkdirSync(laterDir, { recursive: true });
 
   const created = await service.createSession(
     {
@@ -3186,7 +3183,7 @@ test("SessionService creates workspace sessions and restores workspace on reopen
       kbDomain: "ep-core",
       soulSlug: "soul-latest",
     },
-    { workspace: { primaryDir, additionalDirs: [extraDir] } },
+    { workspace: { primaryDir } },
   );
 
   const managed = (
@@ -3218,7 +3215,6 @@ test("SessionService creates workspace sessions and restores workspace on reopen
   try {
     assert.deepEqual(created.workspace, {
       primaryDir: resolve(primaryDir),
-      additionalDirs: [resolve(extraDir)],
     });
     const manifest = service.getManifest(created.sessionId);
     assert.equal(manifest.sessionCwd, resolve(primaryDir));
@@ -3227,33 +3223,10 @@ test("SessionService creates workspace sessions and restores workspace on reopen
     );
     assert.deepEqual(header.workspace, {
       primaryDir: resolve(primaryDir),
-      additionalDirs: [resolve(extraDir)],
     });
 
     const run = service.runPrompt(created.sessionId, "hello");
     await run.completion;
-
-    const updated = await service.addWorkspaceDir(created.sessionId, laterDir);
-    assert.deepEqual(updated.workspace?.additionalDirs, [
-      resolve(extraDir),
-      resolve(laterDir),
-    ]);
-    const updatedHeader = JSON.parse(
-      readFileSync(join(manifest.recordsDir, "session.json"), "utf-8"),
-    );
-    assert.deepEqual(updatedHeader.workspace.additionalDirs, [
-      resolve(extraDir),
-      resolve(laterDir),
-    ]);
-
-    await assert.rejects(
-      () =>
-        service.addWorkspaceDir(
-          created.sessionId,
-          join(fixture.root, "missing"),
-        ),
-      /does not exist/,
-    );
   } finally {
     await service.disposeAll();
   }
@@ -3267,7 +3240,6 @@ test("SessionService creates workspace sessions and restores workspace on reopen
     });
     assert.deepEqual(reopened.workspace, {
       primaryDir: resolve(primaryDir),
-      additionalDirs: [resolve(extraDir), resolve(laterDir)],
     });
   } finally {
     await reopenedService.disposeAll();
@@ -3286,7 +3258,7 @@ test("SessionService opens with a missing workspace and warns instead of pointin
       kbDomain: "ep-core",
       soulSlug: "soul-latest",
     },
-    { workspace: { primaryDir, additionalDirs: [] } },
+    { workspace: { primaryDir } },
   );
 
   const managed = (
@@ -4015,7 +3987,6 @@ test("SessionService setSessionWorkspace re-points a session's working folder", 
     const recordsDir = service.getManifest(created.sessionId).recordsDir;
     const header = readV4SessionHeader(recordsDir);
     assert.equal(header?.workspace?.primaryDir, resolve(folder));
-    assert.deepEqual(header?.workspace?.additionalDirs, []);
 
     // Clearing goes back to the managed default workspace.
     const cleared = await service.setSessionWorkspace(created.sessionId, null);
@@ -4031,6 +4002,121 @@ test("SessionService setSessionWorkspace re-points a session's working folder", 
           join(folder, "does-not-exist"),
         ),
       /does not exist/,
+    );
+  } finally {
+    await service.disposeAll();
+  }
+});
+
+test("SessionService repointProjectMainFolder moves every conversation of the project, or refuses while one runs", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const oldMain = mkdtempSync(join(tmpdir(), "alt-theory-proj-old-"));
+  const newMain = mkdtempSync(join(tmpdir(), "alt-theory-proj-new-"));
+
+  const stubPrompt = (sessionId: string) => {
+    const managed = (
+      service as unknown as {
+        sessions: Map<
+          string,
+          {
+            session: {
+              prompt(text: string): Promise<void>;
+              sessionManager: { appendMessage(message: unknown): string };
+            };
+          }
+        >;
+      }
+    ).sessions.get(sessionId)!;
+    managed.session.prompt = async (text: string) => {
+      managed.session.sessionManager.appendMessage({
+        role: "user",
+        content: [{ type: "text", text }],
+        timestamp: Date.now(),
+      });
+      managed.session.sessionManager.appendMessage({
+        role: "assistant",
+        content: [{ type: "text", text: `answer:${text}` }],
+        timestamp: Date.now(),
+      });
+    };
+    return managed;
+  };
+  const createInProject = () =>
+    service.createSession(
+      {
+        rolePresetSlug: "role-conceptual-theory-companion",
+        kbDomain: "ep-core",
+        soulSlug: "soul-latest",
+      },
+      { workspace: { primaryDir: oldMain } },
+    );
+  const first = await createInProject();
+  const second = await createInProject();
+  stubPrompt(first.sessionId);
+  stubPrompt(second.sessionId);
+  // Both have talked once, so each has a Pi session file to reopen against
+  // (a live conversation that never ran has none — the ordinary drag path
+  // cannot move that one either).
+  await service.runPrompt(first.sessionId, "one").completion;
+  await service.runPrompt(second.sessionId, "two").completion;
+  writeAppSettings(fixture.dataDir, {
+    ...readAppSettings(fixture.dataDir),
+    workingFolders: {
+      global: [],
+      projects: [{ id: "proj-1", primaryDir: oldMain, secondaryDirs: [] }],
+    },
+  });
+
+  const repointedEvents = (sessionId: string) => {
+    const recordsDir = service.getManifest(sessionId).recordsDir;
+    return readFileSync(join(recordsDir, "session-events.jsonl"), "utf-8")
+      .split("\n")
+      .filter((line) => line.includes("\"type\":\"workspace_repointed\"")).length;
+  };
+
+  try {
+    // A running conversation in the project refuses the change with nothing
+    // written: headers keep the old folder and the project entry stays put.
+    let resolvePrompt: (() => void) | null = null;
+    const busyManaged = stubPrompt(first.sessionId);
+    busyManaged.session.prompt = () =>
+      new Promise<void>((resolve) => {
+        resolvePrompt = resolve;
+      });
+    const run = service.runPrompt(first.sessionId, "still working");
+    await assert.rejects(
+      () => service.repointProjectMainFolder("proj-1", newMain),
+      (error) => error instanceof SessionBusyError,
+    );
+    assert.equal(
+      readV4SessionHeader(service.getManifest(first.sessionId).recordsDir)
+        ?.workspace?.primaryDir,
+      resolve(oldMain),
+    );
+    assert.equal(
+      readAppSettings(fixture.dataDir).workingFolders?.projects[0].primaryDir,
+      resolve(oldMain),
+    );
+    resolvePrompt!();
+    await run.completion;
+    stubPrompt(first.sessionId);
+
+    // Both idle: both headers re-point and each conversation records the
+    // move once; the project entry follows.
+    const result = await service.repointProjectMainFolder("proj-1", newMain);
+    assert.equal(result.movedCount, 2);
+    for (const snapshot of [first, second]) {
+      assert.equal(
+        readV4SessionHeader(service.getManifest(snapshot.sessionId).recordsDir)
+          ?.workspace?.primaryDir,
+        resolve(newMain),
+      );
+      assert.equal(repointedEvents(snapshot.sessionId), 1);
+    }
+    assert.equal(
+      readAppSettings(fixture.dataDir).workingFolders?.projects[0].primaryDir,
+      resolve(newMain),
     );
   } finally {
     await service.disposeAll();

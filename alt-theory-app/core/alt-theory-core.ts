@@ -25,7 +25,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { Model } from "@earendil-works/pi-ai/compat";
-import { appendFileSync, existsSync, readFileSync, statSync } from "fs";
+import { appendFileSync, existsSync, readFileSync } from "fs";
 import { mkdir, writeFile } from "fs/promises";
 import { dirname, join, resolve } from "path";
 import { createSecurityExtension } from "./security-extension.js";
@@ -114,12 +114,11 @@ export interface AssemblyManifest {
   sessionCwd: string;
   /**
    * Work/Native workspace (spec §5.1): the primary working directory is the
-   * session cwd; additional directories are intentional user additions whose
-   * context files and project skills join the work-capable assembly.
+   * session cwd. Companion folders belong to the project (app settings),
+   * read live through the folder-policy reader — not recorded per session.
    */
   workspace: {
     primaryDir: string;
-    additionalDirs: string[];
   };
   piSessionDir: string;
   piSessionFile: string | null;
@@ -198,16 +197,9 @@ export interface AltTheoryConfig extends SessionDirectories {
   /** App setting (§6.1) deciding bundled-vs-user skill precedence in the prompt. */
   skillPrecedence?: "prefer-bundled" | "prefer-user" | "ask";
   /**
-   * Additional workspace directories (spec §5.1), applied in Work/Native only.
-   * The primary working directory is sessionCwd. Each added directory
-   * contributes its AGENTS.md/CLAUDE.md and project skills to the assembly
-   * and joins the guarded-write roots.
-   */
-  workspaceDirs?: string[];
-  /**
    * Working folders page (v1.5 part 2): the global folder list and the
-   * project's second folders, read live at every root check so a tick on the
-   * page applies to open conversations too. Absent = none.
+   * project's companion folders, read live at every root check so a tick on
+   * the page applies to open conversations too. Absent = none.
    */
   readFolderPolicy?: () => {
     globalFolders: Array<{ path: string; writable: boolean }>;
@@ -540,28 +532,22 @@ async function createAltTheorySessionWithManager(
     runtimeState.fullAccess && isWorkCapable();
   const hasWriteCapability = () =>
     isWorkCapable() || !understandReadOnly;
-  // Mutable workspace state (spec §5.1). The primary working directory is the
-  // session cwd; additional directories are intentional user additions.
-  // Adding one mutates this state and reloads the loader — the overrides
-  // below re-read it, so the new directory's context files and project
-  // skills apply from the next turn.
-  const workspaceState = {
-    additionalDirs: (config.workspaceDirs ?? []).map((dir) => resolve(dir)),
-  };
   // Writable/readable roots are computed by the one root-policy module,
   // evaluated per call: Understand stays bounded to the Alt writable roots;
   // Work and Native Pi additionally write within the workspace (primary +
-  // added directories). Shared by the guarded write tool, the security
-  // extension, and the assembly manifest.
+  // the project's companion folders, both read live from the folder policy).
+  // Shared by the guarded write tool, the security extension, and the
+  // assembly manifest.
   const altWritableRoots = [resolvedWriteDir, resolvedWritableAssetDir];
   const approvedWritableRoots = new Set<string>();
+  const projectSecondaryDirs = () =>
+    config.readFolderPolicy?.().projectSecondaryDirs ?? [];
   const sessionRootsForMode = (): { readable: Root[]; writable: Root[] } => {
     const folderPolicy = config.readFolderPolicy?.();
     return sessionRoots({
       writeDir: resolvedWriteDir,
       assetDir: resolvedWritableAssetDir,
       cwd,
-      additionalDirs: workspaceState.additionalDirs,
       approvedDirs: [...approvedWritableRoots],
       kbDir: resolvedKbDir,
       trustedReadRoots: config.trustedReadRoots ?? [],
@@ -610,11 +596,12 @@ async function createAltTheorySessionWithManager(
     understand: loadExternalSkills(config.externalSkillPaths?.understand),
     work: loadExternalSkills(config.externalSkillPaths?.work),
   };
-  // Project skills from the work-capable workspace (spec §5.1): the primary and each
-  // added directory contribute their standard project skill locations.
-  // Re-read at every loader reload so directories added mid-session apply.
+  // Project skills from the work-capable workspace (spec §5.1): the primary
+  // directory and each of the project's companion folders contribute their
+  // standard project skill locations. Re-read at every loader reload so
+  // companions added on the Working folders page apply.
   const workspaceSkillRoots = () =>
-    [cwd, ...workspaceState.additionalDirs].flatMap((dir) =>
+    [cwd, ...projectSecondaryDirs()].flatMap((dir) =>
       [".pi/skills", ".agents/skills"].map((sub) => join(dir, sub))
     );
   const loadWorkspaceSkills = () =>
@@ -694,8 +681,9 @@ async function createAltTheorySessionWithManager(
     },
     // Workspace context: Work and Native Pi get the primary directory and
     // Pi's own discovery (global + ancestor AGENTS.md/CLAUDE.md chain); each
-    // added directory contributes its own context file. Understand stays bounded
-    // to the session workspace and receives none of this.
+    // of the project's companion folders contributes its own context file.
+    // Understand stays bounded to the session workspace and receives none of
+    // this.
     agentsFilesOverride: (base) => {
       if (!isWorkCapable()) {
         return base;
@@ -711,7 +699,7 @@ async function createAltTheorySessionWithManager(
       for (const file of loadProjectContextFiles({ cwd, agentDir })) {
         add(file);
       }
-      for (const dir of workspaceState.additionalDirs) {
+      for (const dir of projectSecondaryDirs()) {
         add(readWorkspaceContextFile(dir));
       }
       return { agentsFiles: files };
@@ -882,7 +870,6 @@ async function createAltTheorySessionWithManager(
     sessionCwd: cwd,
     workspace: {
       primaryDir: cwd,
-      additionalDirs: [...workspaceState.additionalDirs],
     },
     piSessionDir: resolvedPiSessionDir,
     piSessionFile: session.sessionFile ?? null,
@@ -971,39 +958,15 @@ async function createAltTheorySessionWithManager(
     },
     getWorkspace: () => ({
       primaryDir: cwd,
-      additionalDirs: [...workspaceState.additionalDirs],
     }),
-    /**
-     * Add a workspace directory to the live session (spec §5.1). Its context
-     * files and project skills apply from the next turn via loader reload;
-     * it also joins the Work/Native guarded-write roots.
-     */
-    addWorkspaceDir: async (dir: string): Promise<string[]> => {
-      const resolved = resolve(dir);
-      if (!statSync(resolved, { throwIfNoEntry: false })?.isDirectory()) {
-        throw new Error(`Workspace directory does not exist: ${resolved}`);
-      }
-      if (
-        resolved !== cwd &&
-        !workspaceState.additionalDirs.includes(resolved)
-      ) {
-        workspaceState.additionalDirs.push(resolved);
-        manifest.workspace.additionalDirs = [...workspaceState.additionalDirs];
-        // session.reload() (not a bare loader.reload()) so Pi rebuilds the
-        // runtime and system prompt from the reloaded resources.
-        await session.reload();
-        syncManifestActionPolicy();
-      }
-      return [...workspaceState.additionalDirs];
-    },
   };
 }
 
 /**
- * Read an added workspace directory's own context file (spec §5.1). Matches
- * Pi's candidate names; unlike the primary directory, added directories do
- * not climb their ancestor chain — the user added this directory, not its
- * parents.
+ * Read a companion folder's own context file (spec §5.1; v1.5.1: companions
+ * belong to the project). Matches Pi's candidate names; unlike the primary
+ * directory, companion folders do not climb their ancestor chain — the user
+ * added this folder, not its parents.
  */
 function readWorkspaceContextFile(
   dir: string

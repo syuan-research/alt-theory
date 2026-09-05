@@ -147,14 +147,13 @@ test("isPathInside is containment with Windows case-insensitivity", () => {
   assert.equal(isPathInside("C:\\A\\B", "c:\\a\\b\\c.txt"), process.platform === "win32");
 });
 
-test("Working folders page: a listed folder reads everywhere, the Edit tick writes only while work-capable, project second folders join like additional dirs", () => {
+test("Working folders page: a listed folder reads everywhere, the Edit tick writes only while work-capable, project companions join the workspace", () => {
   const base = mkdtempSync(join(tmpdir(), "alt-theory-roots-global-"));
   try {
     const input = {
       writeDir: join(base, "workspace"),
       assetDir: join(base, "assets"),
       cwd: join(base, "project"),
-      additionalDirs: [],
       approvedDirs: [],
       kbDir: join(base, "kb"),
       trustedReadRoots: [],
@@ -199,7 +198,6 @@ test("sessionRoots lists every root with its reason", () => {
       writeDir: join(base, "workspace"),
       assetDir: join(base, "assets"),
       cwd: join(base, "project"),
-      additionalDirs: [join(base, "extra")],
       approvedDirs: [join(base, "approved")],
       kbDir: join(base, "kb"),
       trustedReadRoots: [join(base, "trusted")],
@@ -213,7 +211,6 @@ test("sessionRoots lists every root with its reason", () => {
         [input.writeDir, "session-write"],
         [input.assetDir, "asset"],
         [input.cwd, "cwd"],
-        [input.additionalDirs[0], "additional"],
         [input.approvedDirs[0], "approved"],
       ]
     );
@@ -227,7 +224,7 @@ test("sessionRoots lists every root with its reason", () => {
       ]
     );
 
-    // Not work-capable: the workspace and additional folders drop out of the
+    // Not work-capable: the workspace folders drop out of the
     // writable set but the primary cwd stays readable.
     const bounded = sessionRoots({ ...input, workCapable: false });
     assert.deepEqual(

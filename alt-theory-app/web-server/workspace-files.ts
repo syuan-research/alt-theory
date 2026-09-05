@@ -14,6 +14,7 @@ import { resolveSessionRoot, resolveSessionsRoot } from "../core/data-dir.js";
 import { samePath, verdict } from "../core/path-verdict.js";
 import type { Root } from "../core/root-policy.js";
 import { readV4SessionHeader } from "./session-records.js";
+import { folderPolicyFor, readAppSettings } from "./app-settings.js";
 import {
   convertedFileName,
   extractUploadedBinary,
@@ -85,7 +86,7 @@ export interface WorkspaceFilesResponse {
 export interface WorkingFolderDescriptor {
   id: string;
   path: string;
-  role: "primary" | "additional";
+  role: "primary" | "secondary";
   managed: boolean;
   available: boolean;
 }
@@ -95,7 +96,7 @@ export interface WorkingFolderDescriptor {
 function workingFolderRoot(folder: WorkingFolderDescriptor): Root {
   return {
     path: folder.path,
-    reason: folder.role === "primary" ? "cwd" : "additional",
+    reason: folder.role === "primary" ? "cwd" : "project-secondary",
   };
 }
 
@@ -405,16 +406,21 @@ export function describeWorkingFolders(
   const header = readV4SessionHeader(
     join(resolveSessionRoot(dataDir, sessionId)!, "records")
   );
-  const workspace = header?.workspace;
-  const folders = workspace
-    ? [workspace.primaryDir, ...workspace.additionalDirs]
+  const primaryDir = header?.workspace?.primaryDir ?? null;
+  // Companion folders belong to the project (v1.5.1): read them from app
+  // settings by this session's main folder, exactly as the root policy does.
+  const companions = primaryDir
+    ? folderPolicyFor(readAppSettings(dataDir), primaryDir).projectSecondaryDirs
+    : [];
+  const folders = primaryDir
+    ? [primaryDir, ...companions]
     : [managedDir];
   return folders.map((path, index) => {
     const resolved = resolve(path);
     return {
-      id: index === 0 ? "primary" : `additional-${index}`,
+      id: index === 0 ? "primary" : `secondary-${index}`,
       path: resolved,
-      role: index === 0 ? "primary" : "additional",
+      role: index === 0 ? "primary" : "secondary",
       managed: samePath(resolved, managedDir),
       available: statSync(resolved, { throwIfNoEntry: false })?.isDirectory() ?? false,
     };

@@ -113,10 +113,11 @@ export interface V4SessionHeader extends RecordEnvelope {
   helper?: true;
   /** Per-session Alt Theory behavior mode. */
   mode?: "understand" | "work";
-  /** Work/Native workspace (spec §5.1); absent = default session workspace only. */
+  /** Work/Native workspace (spec §5.1); absent = default session workspace only.
+   *  v1.5.1: companion folders belong to the project in app settings; headers
+   *  from before v1.5.1 may still carry a legacy `additionalDirs` field. */
   workspace?: {
     primaryDir: string;
-    additionalDirs: string[];
   };
   /** Set on forked children (M5 substrate); absent = a root conversation. */
   forkedFrom?: {
@@ -164,7 +165,6 @@ export function writeFoundationRecords(args: {
   mode?: "understand" | "work";
   workspace?: {
     primaryDir: string;
-    additionalDirs: string[];
   } | null;
   forkedFrom?: {
     sessionId: string;
