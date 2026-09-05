@@ -30,6 +30,7 @@ import { extname, join, resolve } from "path";
 import type { AgentAssetPaths } from "../core/agent-assets.js";
 import {
   isKnownKbDomain,
+  listRolePresets,
   resolveKbDirForDomain,
   resolveRolePresetSlug,
   resolveSoulSlug,
@@ -45,7 +46,7 @@ import {
 } from "./approval-bridge.js";
 import { appendSessionEvent } from "./session-events.js";
 import { appendLiveRunEvent, type LiveRun } from "./live-run.js";
-import { describeFailure, type Failure } from "../core/failure.js";
+import { describeFailure, throwFailure, type Failure } from "../core/failure.js";
 import { RunState, type PendingChanges } from "./run-state.js";
 import { resolveThinkingLevel, type ResolvedThinking } from "./thinking-level.js";
 import {
@@ -2634,13 +2635,16 @@ export class SessionService implements AgentTeamBridge {
     purpose: ForkPurpose | null | undefined,
     subagentConfig: SubagentConfig,
   ): { extraTools: ToolDefinition[]; extraPromptSections: string[] } {
+    const roleIds = listRolePresets(this.config.rolePresetsDir).map(
+      (asset) => asset.slug,
+    );
     if (purpose === "subagent") {
       return {
-        extraTools: createAgentTeamTools(this, sessionId, "subagent"),
+        extraTools: createAgentTeamTools(this, sessionId, "subagent", roleIds),
         extraPromptSections: [
           SUBAGENT_PROMPT_SECTION,
           LEAD_DELEGATION_PROMPT_SECTION,
-          formatSubagentConfigForPrompt(subagentConfig),
+          formatSubagentConfigForPrompt(subagentConfig, roleIds),
         ],
       };
     }
@@ -2648,10 +2652,10 @@ export class SessionService implements AgentTeamBridge {
       return { extraTools: [], extraPromptSections: [] };
     }
     return {
-      extraTools: createAgentTeamTools(this, sessionId, "lead"),
+      extraTools: createAgentTeamTools(this, sessionId, "lead", roleIds),
       extraPromptSections: [
         LEAD_DELEGATION_PROMPT_SECTION,
-        formatSubagentConfigForPrompt(subagentConfig),
+        formatSubagentConfigForPrompt(subagentConfig, roleIds),
       ],
     };
   }
@@ -2906,6 +2910,20 @@ export class SessionService implements AgentTeamBridge {
     const parent = this.requireSession(parentSessionId);
     const header = readV4SessionHeader(parent.manifest.recordsDir);
     const mode = clampSubagentMode(parent.getAltMode(), options.mode);
+    const requestedRole = options.role?.trim() || undefined;
+    if (
+      requestedRole &&
+      !resolveRolePresetSlug(this.config.rolePresetsDir, requestedRole)
+    ) {
+      throwFailure(
+        "spawn_agent",
+        "not_found",
+        `Unknown role "${requestedRole}"`,
+      );
+    }
+    const selectors = requestedRole
+      ? { ...parent.selectors, rolePresetSlug: requestedRole }
+      : parent.selectors;
 
     // Validate against the parent's assembled snapshot, not the current file:
     // within one open conversation, prompt candidates and spawn validation
@@ -2953,7 +2971,7 @@ export class SessionService implements AgentTeamBridge {
       throw new Error(`No model in subagent preset "${agentType}" could be resolved.`);
     }
 
-    const child = await this.createSession(parent.selectors, {
+    const child = await this.createSession(selectors, {
       ownerAccountId: header?.ownerAccountId ?? null,
       roleCondition: header?.roleCondition ?? null,
       visibility: header?.visibility ?? this.fallbackVisibility,

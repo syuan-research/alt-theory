@@ -67,3 +67,16 @@ export function describeFailure(error: unknown, operation: string): Failure {
         : failureKind(message);
   return { operation, kind, message, retryable: RETRYABLE.has(kind) };
 }
+
+/** Throw a failure envelope as an Error so `catch` and `describeFailure` share one object. */
+export function throwFailure(
+  operation: string,
+  kind: FailureKind,
+  message: string,
+): never {
+  throw Object.assign(new Error(message), {
+    operation,
+    kind,
+    retryable: RETRYABLE.has(kind),
+  });
+}

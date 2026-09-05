@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { describeFailure } from "./failure.js";
+import { describeFailure, throwFailure } from "./failure.js";
 
 test("fetch failed is a network failure; the raw text is kept", () => {
   assert.deepEqual(describeFailure(new TypeError("fetch failed"), "run"), {
@@ -33,4 +33,18 @@ test("provider text maps to auth, rate-limit, provider; anything else is unknown
 test("an envelope passes through unchanged", () => {
   const failure = describeFailure("fetch failed", "run");
   assert.equal(describeFailure(failure, "other"), failure);
+});
+
+test("throwFailure is a not_found envelope, not a classified Error message", () => {
+  try {
+    throwFailure("spawn_agent", "not_found", 'Unknown role "missing"');
+  } catch (error) {
+    const failure = describeFailure(error, "other");
+    assert.equal(failure.kind, "not_found");
+    assert.equal(failure.operation, "spawn_agent");
+    assert.equal(failure.retryable, false);
+    assert.equal(failure.message, 'Unknown role "missing"');
+    return;
+  }
+  assert.fail("throwFailure must throw");
 });

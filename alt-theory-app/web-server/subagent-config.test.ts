@@ -4,6 +4,8 @@ import { tmpdir } from "os";
 import { join } from "path";
 import test from "node:test";
 import {
+  DEFAULT_SUBAGENT_CONFIG,
+  formatSubagentConfigForPrompt,
   modelReferenceIdentity,
   readSubagentConfig,
   subagentConfigPath,
@@ -56,6 +58,15 @@ test("subagent config defaults safely and derives provider/model candidates", ()
     modelReferenceIdentity("openrouter/vendor/model:exacto"),
     "openrouter/vendor/model:exacto",
   );
+});
+
+test("subagent prompt lists available role ids for spawn_agent", () => {
+  const text = formatSubagentConfigForPrompt(
+    DEFAULT_SUBAGENT_CONFIG,
+    ["role-a", "role-b"],
+  );
+  assert.match(text, /Available roles: role-a, role-b/);
+  assert.match(text, /unknown role fails and creates no child/i);
 });
 
 test("invalid independent config cannot block general/inherit", () => {

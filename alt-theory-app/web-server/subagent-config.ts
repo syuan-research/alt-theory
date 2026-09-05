@@ -171,7 +171,10 @@ export function subagentModelCandidates(config: SubagentConfig): string[] {
   return [...candidates];
 }
 
-export function formatSubagentConfigForPrompt(config: SubagentConfig): string {
+export function formatSubagentConfigForPrompt(
+  config: SubagentConfig,
+  roleIds: string[] = [],
+): string {
   const agents = config.agents.map((agent) => {
     const chain = [agent.model, ...agent.fallbackModels].join(" -> ");
     return `- ${agent.id}${agent.description ? `: ${agent.description}` : ""} [${chain}]`;
@@ -183,5 +186,7 @@ export function formatSubagentConfigForPrompt(config: SubagentConfig): string {
     `Model override candidates: ${subagentModelCandidates(config).join(", ")}.`,
     "Use general-low for high-volume, error-tolerant extraction, web search, and simple checks with clear criteria. Use general-medium for most other work and whenever uncertain. Use general-high for review, strategic planning, and complex framework or architecture analysis with interdependent internals or unknown unknowns.",
     "Normally use the selected agent type's configured model chain. Use model overrides only when the user requests one; append :off|minimal|low|medium|high|xhigh|max to override thinking for this spawn.",
+    `Available roles: ${roleIds.length ? roleIds.join(", ") : "(none)"}.`,
+    "spawn_agent role names one of these; an unknown role fails and creates no child. Omit to inherit this conversation's role.",
   ].join("\n");
 }

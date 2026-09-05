@@ -24,6 +24,8 @@ export interface SpawnSubagentOptions {
   message: string;
   name?: string;
   agentType?: string;
+  /** Existing role id (role-preset slug). Omit to inherit the parent's role. */
+  role?: string;
   model?: string;
   mode?: "understand" | "work";
 }
@@ -108,33 +110,44 @@ const text = (value: string) => ({
   details: undefined,
 });
 
-const spawnSchema = Type.Object({
-  message: Type.String({
-    description:
-      "The complete bounded task packet for the subagent: instructions, facts, paths, and constraints. The subagent does not see this conversation.",
-  }),
-  name: Type.Optional(
-    Type.String({ description: "Short display name for the subagent (shown to the user)" }),
-  ),
-  agent_type: Type.Optional(
-    Type.String({
+function spawnSchema(availableRoles: string[]) {
+  const roleList = availableRoles.length
+    ? availableRoles.join(", ")
+    : "(none installed)";
+  return Type.Object({
+    message: Type.String({
       description:
-        "Configured subagent type from the Delegation section. Defaults to general-medium when omitted.",
+        "The complete bounded task packet for the subagent: instructions, facts, paths, and constraints. The subagent does not see this conversation.",
     }),
-  ),
-  model: Type.Optional(
-    Type.String({
-      description:
-        "Exact user-requested model override from the configured candidate list, in provider/model[:thinking] format. Normally omit this and use the agent type's model chain.",
-    }),
-  ),
-  mode: Type.Optional(
-    Type.Union([Type.Literal("understand"), Type.Literal("work")], {
-      description:
-        "Subagent Alt mode. Defaults to this conversation's mode (inherited); pass 'understand' to spawn a read-only child from a Work conversation. Never exceeds this conversation's mode.",
-    }),
-  ),
-});
+    name: Type.Optional(
+      Type.String({ description: "Short display name for the subagent (shown to the user)" }),
+    ),
+    agent_type: Type.Optional(
+      Type.String({
+        description:
+          "Configured subagent type from the Delegation section. Defaults to general-medium when omitted.",
+      }),
+    ),
+    role: Type.Optional(
+      Type.String({
+        description:
+          `Existing role id. Available: ${roleList}. Unknown id fails the spawn; no child is created. Omit to inherit this conversation's role.`,
+      }),
+    ),
+    model: Type.Optional(
+      Type.String({
+        description:
+          "Exact user-requested model override from the configured candidate list, in provider/model[:thinking] format. Normally omit this and use the agent type's model chain.",
+      }),
+    ),
+    mode: Type.Optional(
+      Type.Union([Type.Literal("understand"), Type.Literal("work")], {
+        description:
+          "Subagent Alt mode. Defaults to this conversation's mode (inherited); pass 'understand' to spawn a read-only child from a Work conversation. Never exceeds this conversation's mode.",
+      }),
+    ),
+  });
+}
 
 const agentRef = Type.String({
   description: "Subagent reference: the name or sessionId from spawn_agent/list_agents",
@@ -144,18 +157,21 @@ export function createAgentTeamTools(
   bridge: AgentTeamBridge,
   sessionId: string,
   role: "lead" | "subagent",
+  availableRoles: string[] = [],
 ): ToolDefinition<any, any>[] {
-  const spawnAgent: ToolDefinition<typeof spawnSchema, undefined> = {
+  const parameters = spawnSchema(availableRoles);
+  const spawnAgent: ToolDefinition<typeof parameters, undefined> = {
     name: "spawn_agent",
     label: "Spawn subagent",
     description:
       "Delegate a bounded task to a background subagent (a real conversation the user can watch and join). Returns the subagent's name and status; its completion arrives in this conversation automatically.",
-    parameters: spawnSchema,
+    parameters,
     async execute(_id, params) {
       const spawned = await bridge.spawnSubagent(sessionId, {
         message: params.message,
         name: params.name,
         agentType: params.agent_type,
+        role: params.role,
         model: params.model,
         mode: params.mode,
       });

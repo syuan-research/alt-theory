@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join, resolve } from "path";
 import test from "node:test";
@@ -20,6 +20,7 @@ import {
 import { DEFAULT_SUBAGENT_CONFIG } from "./subagent-config.js";
 import { readV4SessionHeader } from "./session-records.js";
 import { readSessionDetail } from "./session-store.js";
+import { describeFailure } from "../core/failure.js";
 
 function setupFixture() {
   const root = mkdtempSync(join(tmpdir(), "alt-theory-agent-team-"));
@@ -169,6 +170,15 @@ test("clampSubagentMode: children inherit the parent's Alt mode, clamped to it",
 
 test("createAgentTeamTools lets spawned agents delegate and message their parent", () => {
   const bridge = {} as never;
+  const spawn = createAgentTeamTools(bridge, "s1", "lead", ["role-a"]).find(
+    (tool) => tool.name === "spawn_agent",
+  );
+  const roleDescription = (
+    spawn?.parameters as {
+      properties?: { role?: { description?: string } };
+    }
+  ).properties?.role?.description;
+  assert.match(roleDescription ?? "", /role-a/);
   const leadNames = createAgentTeamTools(bridge, "s1", "lead").map((t) => t.name);
   assert.deepEqual(leadNames, [
     "spawn_agent",
@@ -261,6 +271,58 @@ test("spawnSubagent creates a subagent child with clamped mode, alias, and spawn
       }
     ).resolveSubagentId(parent.sessionId, "docs-subagent");
     assert.equal(resolved, spawned.sessionId);
+  } finally {
+    await service.disposeAll();
+  }
+});
+
+test("spawn with a role writes that role on the child's assembly manifest", async () => {
+  const fixture = setupFixture();
+  writeFileSync(join(fixture.rolePresetsDir, "role-b.md"), "Role B", "utf-8");
+  const service = createTestService(fixture);
+  try {
+    const parent = await service.createSession(SELECTORS);
+    stubEchoPrompt(managedOf(service, parent.sessionId), "parent answer");
+    const spawned = await service.spawnSubagent(parent.sessionId, {
+      message: "review the draft",
+      role: "role-b",
+    });
+    const manifest = JSON.parse(
+      readFileSync(
+        join(
+          managedOf(service, spawned.sessionId).manifest.recordsDir,
+          "assembly-manifest.json",
+        ),
+        "utf-8",
+      ),
+    ) as { rolePreset?: { slug?: string | null } };
+    assert.equal(manifest.rolePreset?.slug, "role-b");
+  } finally {
+    await service.disposeAll();
+  }
+});
+
+test("unknown spawn role is not_found and creates no session directory", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  try {
+    const parent = await service.createSession(SELECTORS);
+    stubEchoPrompt(managedOf(service, parent.sessionId), "parent answer");
+    const sessionsRoot = join(fixture.dataDir, "sessions");
+    const before = existsSync(sessionsRoot) ? readdirSync(sessionsRoot).sort() : [];
+    try {
+      await service.spawnSubagent(parent.sessionId, {
+        message: "review the draft",
+        role: "missing-role",
+      });
+      assert.fail("unknown role must fail the spawn");
+    } catch (error) {
+      const failure = describeFailure(error, "spawn_agent");
+      assert.equal(failure.kind, "not_found");
+      assert.match(failure.message, /missing-role/);
+    }
+    const after = existsSync(sessionsRoot) ? readdirSync(sessionsRoot).sort() : [];
+    assert.deepEqual(after, before);
   } finally {
     await service.disposeAll();
   }
