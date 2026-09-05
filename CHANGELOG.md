@@ -26,6 +26,24 @@ detail lives in commit history and `development/`.
 - If a subscription login (GitHub Copilot, Kimi) can no longer be refreshed,
   the notice says so and points to Settings → Models.
 
+### Updates
+
+- The desktop app looks up the latest GitHub release at most once a day.
+  About has a Check for updates button. When a newer version is available,
+  the left rail shows one line with a download link; Dismiss hides that
+  version.
+
+### File changes
+
+- Opening the Changes pane again no longer starts from a blank loading
+  state when nothing in the conversation has changed.
+
+### Other
+
+- A long thinking or file block can be collapsed by clicking anywhere on
+  it. Dragging to select text does not collapse it.
+- Copilot's saved model list hides models your account does not offer.
+
 ## v1.5.0-beta.1 — 2026-09-04
 
 This is a large update. It adds a Working folders page, subscription sign-in
