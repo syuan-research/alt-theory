@@ -13,7 +13,20 @@ export function buildSessionMetrics(
   session: Pick<AgentSession, "getSessionStats">,
   counters: SessionCounters
 ): SessionMetrics {
-  const stats = session.getSessionStats();
+  let stats: ReturnType<AgentSession["getSessionStats"]>;
+  try {
+    stats = session.getSessionStats();
+  } catch {
+    // Pi's totals throw on an assistant entry without `usage` (imported
+    // sessions, stubbed turns). Metrics are a report, never a reason to fail
+    // the run: unknown context, zero totals.
+    return {
+      ...counters,
+      tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      cost: 0,
+      contextUsage: null,
+    };
+  }
   return {
     ...counters,
     tokens: stats.tokens,

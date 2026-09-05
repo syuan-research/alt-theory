@@ -842,12 +842,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setStudyTagState(message.payload.studyTag ?? null);
           setRetentionDueAt(message.payload.retentionDueAt ?? null);
           setSessionReady(true);
-          setIsRunning(message.payload.status === "running");
-          setConnStatus(message.payload.status === "running" ? "running" : "idle",);
+          setIsRunning(message.payload.status !== "idle");
+          setConnStatus(message.payload.status !== "idle" ? "running" : "idle",);
           setWsError(null);
           setToolStatus("");
           setRunPhaseLabel(
-            message.payload.status === "running" ? t("Processing…") : "",
+            message.payload.status !== "idle" ? t("Processing…") : "",
           );
           setRunHint(
             message.payload.recovery?.interruptionCause === "user_abort"
@@ -900,7 +900,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           if (message.payload.retentionDueAt !== undefined) {
             setRetentionDueAt(message.payload.retentionDueAt);
           }
-          if (message.payload.status === "running") {
+          if (message.payload.status !== "idle") {
             setConnStatus("running");
             setIsRunning(true);
             void refreshSessions();

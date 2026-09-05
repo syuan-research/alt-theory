@@ -2601,7 +2601,8 @@ test("an aborted compaction publishes nothing; an overflow retry keeps the bound
   service.attach(snapshot.sessionId, (event) => events.push(event));
 
   try {
-    // Aborted compaction: no completed boundary, back to idle.
+    // Aborted compaction: no completed boundary; the run goes on (idle only
+    // comes from settle()).
     (service as any).handleAgentEvent(managed, {
       type: "compaction_start",
       reason: "overflow",
@@ -2619,7 +2620,7 @@ test("an aborted compaction publishes nothing; an overflow retry keeps the bound
     );
     assert.equal(
       events.at(-1)?.type === "run_phase" ? events.at(-1)?.payload.phase : null,
-      "idle",
+      "processing",
     );
 
     // The retried overflow compaction completes: the boundary publishes and
@@ -4508,7 +4509,7 @@ test("a message during a run joins Pi's steer queue; delivery shows the bubble; 
       steering: ["and this", "<agent-team-mail from=\"x\">\nhi\n</agent-team-mail>"],
       followUp: [],
     });
-    assert.equal(service.getSnapshot(created.sessionId).status, "running");
+    assert.equal(service.getSnapshot(created.sessionId).status, "queued");
     assert.deepEqual(service.getSnapshot(created.sessionId).queue, {
       steering: ["and this"],
       followUp: [],
@@ -4740,6 +4741,70 @@ test("a restore-time delivery still bubbles and a failed re-queue does not aband
     await run.completion.catch(() => {});
   } finally {
     detach();
+    await service.disposeAll();
+  }
+});
+
+test("v1.5.1 M1: agent_end does not end the turn; idle and run_completed follow settle", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const created = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const managed = (service as any).sessions.get(created.sessionId);
+  const events: SessionServiceEvent[] = [];
+  service.attach(created.sessionId, (event) => events.push(event));
+  let releasePostTurn!: () => void;
+  const postTurn = new Promise<void>((resolve) => {
+    releasePostTurn = resolve;
+  });
+  managed.session.prompt = async (text: string) => {
+    managed.session.sessionManager.appendMessage({
+      role: "user",
+      content: [{ type: "text", text }],
+      timestamp: Date.now(),
+    });
+    managed.session.sessionManager.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: `answer:${text}` }],
+      timestamp: Date.now(),
+    });
+    // Pi emits agent_end first, then runs its post-turn compaction check;
+    // only after that does the prompt call resolve.
+    (service as any).handleAgentEvent(managed, {
+      type: "agent_end",
+      messages: [],
+      willRetry: false,
+    });
+    await postTurn;
+  };
+  try {
+    const handle = service.runPrompt(created.sessionId, "turn");
+    const begun = events.find((event) => event.type === "session_updated");
+    assert.equal(begun?.type === "session_updated" ? begun.payload.status : null, "running");
+    // In the post-turn window the turn is still owned by the run.
+    assert.equal(managed.runState.isIdle(), false);
+    assert.ok(!events.some((event) => event.type === "run_completed"));
+    assert.ok(
+      !events.some((event) => event.type === "run_phase" && event.payload.phase === "idle"),
+    );
+    releasePostTurn();
+    await handle.completion;
+    const types = events.map((event) =>
+      event.type === "run_phase" ? `run_phase:${event.payload.phase}` : event.type,
+    );
+    const idleAt = types.indexOf("run_phase:idle");
+    const completedAt = types.indexOf("run_completed");
+    const metricsAt = types.lastIndexOf("session_metrics");
+    assert.ok(idleAt >= 0 && completedAt > idleAt && metricsAt > completedAt, types.join(","));
+    const completedEvent = events[completedAt];
+    assert.equal(
+      completedEvent?.type === "run_completed" ? completedEvent.payload.status : null,
+      "idle",
+    );
+  } finally {
     await service.disposeAll();
   }
 });

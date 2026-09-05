@@ -146,7 +146,7 @@ export function ChildConversation({
         case "session_opened":
         case "session_updated":
           setSnapshot(message.payload);
-          engine.setRunning(message.payload.status === "running");
+          engine.setRunning(message.payload.status !== "idle");
           if (message.payload.status !== "running") setStatus(t("Ready"));
           setQueued([
             ...(message.payload.queue?.steering ?? []),

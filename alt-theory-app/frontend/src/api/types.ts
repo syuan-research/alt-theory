@@ -178,7 +178,8 @@ export interface ResolvedThinking {
 export interface SessionSnapshot {
   sessionId: string;
   branchId?: string;
-  status: "idle" | "running" | "error";
+  /** The server's run phase; anything but idle means a run owns the session. */
+  status: "idle" | "running" | "stopping" | "queued";
   pending?: PendingChanges;
   thinking?: ResolvedThinking;
   /** Pi's prompt queue for this session (steer = next API call). */

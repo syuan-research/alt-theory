@@ -314,6 +314,12 @@ export type SessionServiceEvent =
       payload: { message: string; level: "info" | "warning" | "error"; failure?: Failure };
     };
 
+/** What a run reports after settle(): nothing (interrupted), done, or its failure event. */
+type RunOutcomeEvent =
+  | null
+  | "completed"
+  | Extract<SessionServiceEvent, { type: "run_failed" }>;
+
 interface ManagedSession {
   session: AgentSession;
   manifest: AssemblyManifest;
@@ -596,9 +602,36 @@ export class SessionService implements AgentTeamBridge {
         });
       }
     }
+    // The only idle transition is also the only "idle" the client hears
+    // (v1.5.1 M1): nothing else hand-builds a done signal.
+    this.emitRunPhase(managed, "idle");
     if (applied) {
       this.emit(managed, { type: "session_updated", payload: this.snapshot(managed) });
     }
+  }
+
+  /** A run owns the session from here; the client hears it at once. */
+  private beginRun(managed: ManagedSession): void {
+    managed.runState.begin();
+    this.emit(managed, { type: "session_updated", payload: this.snapshot(managed) });
+  }
+
+  /**
+   * Run end, both run paths: settle (idle), then the outcome. `run_completed`
+   * goes out only here, after Pi's post-turn work (compaction check, queued
+   * continuation) has finished — `agent_end` fires before that and must not
+   * end the turn (see the compaction-timing research, 2026-09-05).
+   */
+  private async finishRun(managed: ManagedSession, outcome: RunOutcomeEvent): Promise<void> {
+    await this.settle(managed);
+    managed.pendingInterruptionCause = null;
+    if (outcome === null) return;
+    if (outcome === "completed") {
+      this.emit(managed, { type: "run_completed", payload: this.snapshot(managed) });
+      this.emit(managed, { type: "session_metrics", payload: this.persistMetrics(managed) });
+      return;
+    }
+    this.emit(managed, outcome);
   }
 
   private persistManifestModel(managed: ManagedSession): void {
@@ -1253,7 +1286,7 @@ export class SessionService implements AgentTeamBridge {
       completedAt: new Date().toISOString(),
     });
 
-    managed.runState.begin();
+    this.beginRun(managed);
     managed.fallbackAttempts = 0;
     managed.pendingInterruptionCause = null;
     const revisionId = formatCounter("rev", managed.nextRevisionIndex++);
@@ -1287,6 +1320,7 @@ export class SessionService implements AgentTeamBridge {
     this.publishCurrentBranchTranscript(managed);
     this.emitRunPhase(managed, "connecting");
 
+    let outcome: RunOutcomeEvent = null;
     const completion = (async () => {
       let retryError: unknown = null;
       let pendingError: unknown = null;
@@ -1347,7 +1381,7 @@ export class SessionService implements AgentTeamBridge {
       });
       if (failed) {
         const recovery = this.latestRecoveryState(managed);
-        this.emit(managed, {
+        outcome = {
           type: "run_failed",
           payload: {
             failure: describeFailure(
@@ -1357,17 +1391,15 @@ export class SessionService implements AgentTeamBridge {
             canRetry: recovery?.canRetryFromStart ?? false,
             recovery,
           },
-        });
+        };
         throw (
           retryError ??
           pendingError ??
           new Error(finalError ?? "Retry failed")
         );
       }
-    })().finally(async () => {
-      await this.settle(managed);
-      managed.pendingInterruptionCause = null;
-    });
+      if (!interrupted) outcome = "completed";
+    })().finally(() => this.finishRun(managed, outcome));
 
     return {
       ids: {
@@ -1890,10 +1922,10 @@ export class SessionService implements AgentTeamBridge {
       );
     }
 
-    managed.runState.begin();
     managed.fallbackAttempts = 0;
     managed.pendingInterruptionCause = null;
     managed.liveRun = { userText: displayUserTextFromPrompt(text), events: [] };
+    this.beginRun(managed);
     managed.counters.messageCount++;
     const turnId =
       options.turnId ?? formatCounter("turn", managed.nextTurnIndex++);
@@ -1924,6 +1956,7 @@ export class SessionService implements AgentTeamBridge {
 
     this.emitRunPhase(managed, "connecting");
 
+    let outcome: RunOutcomeEvent = null;
     const completion = (async () => {
       let promptError: unknown = null;
       let pendingError: unknown = null;
@@ -1993,7 +2026,7 @@ export class SessionService implements AgentTeamBridge {
           completedAt: new Date().toISOString(),
         });
         const recovery = this.latestRecoveryState(managed);
-        this.emit(managed, {
+        outcome = {
           type: "run_failed",
           payload: {
             failure: describeFailure(
@@ -2003,7 +2036,7 @@ export class SessionService implements AgentTeamBridge {
             canRetry: recovery?.canRetryFromStart ?? false,
             recovery,
           },
-        });
+        };
         if (options.notifyParent && managed.subagentParentId) {
           const outcome = describeChildOutcome(
             {
@@ -2051,10 +2084,8 @@ export class SessionService implements AgentTeamBridge {
       // Auto-name the conversation once, after its first real turn (v1.2.1).
       // Fire-and-forget: title generation must never affect the run.
       void this.maybeAutoTitle(managed);
-    })().finally(async () => {
-      await this.settle(managed);
-      managed.pendingInterruptionCause = null;
-    });
+      outcome = "completed";
+    })().finally(() => this.finishRun(managed, outcome));
 
     return {
       ids: {
@@ -2226,7 +2257,6 @@ export class SessionService implements AgentTeamBridge {
     managed.session.abortCompaction();
     await managed.session.abort();
     await this.settle(managed);
-    this.emitRunPhase(managed, "idle");
     appendSessionEvent(managed.manifest.recordsDir, {
       sessionId: managed.manifest.sessionId,
       type: "run_aborted",
@@ -2259,7 +2289,7 @@ export class SessionService implements AgentTeamBridge {
   async compact(sessionId: string): Promise<SessionSnapshot> {
     const managed = this.requireSession(sessionId);
     this.assertIdle(managed);
-    managed.runState.begin();
+    this.beginRun(managed);
     const leafBeforeCompact = managed.session.sessionManager.getLeafId();
     this.emitRunPhase(managed, "compacting");
     try {
@@ -2280,7 +2310,6 @@ export class SessionService implements AgentTeamBridge {
       throw error;
     } finally {
       await this.settle(managed);
-      this.emitRunPhase(managed, "idle");
       this.emit(managed, {
         type: "session_updated",
         payload: this.snapshot(managed),
@@ -2322,7 +2351,7 @@ export class SessionService implements AgentTeamBridge {
         activity.set(sessionId, "awaiting-approval");
       } else if (running) {
         activity.set(sessionId, "running");
-      } else if (managed.session.state.errorMessage) {
+      } else if (this.latestRecoveryState(managed)?.outcome === "failed") {
         activity.set(sessionId, "failed");
       }
     }
@@ -4159,7 +4188,9 @@ export class SessionService implements AgentTeamBridge {
         if (!event.aborted && !event.errorMessage && event.result) {
           this.publishCompactionBoundary(managed);
         }
-        this.emitRunPhase(managed, event.willRetry ? "processing" : "idle");
+        // The run is not over: Pi either retries the turn or hands control
+        // back to the prompt call, whose settle() says idle.
+        this.emitRunPhase(managed, "processing");
         break;
       }
       case "queue_update": {
@@ -4213,7 +4244,7 @@ export class SessionService implements AgentTeamBridge {
           managed.fallbackAttempts = 0;
           this.syncManifestModelFromSession(managed);
           managed.counters.turnCount++;
-          const metrics = this.persistMetrics(managed);
+          this.persistMetrics(managed);
           appendSessionEvent(managed.manifest.recordsDir, {
             sessionId: managed.manifest.sessionId,
             type: "run_completed",
@@ -4222,12 +4253,8 @@ export class SessionService implements AgentTeamBridge {
               toolCallCount: managed.counters.toolCallCount,
             },
           });
-          this.emitRunPhase(managed, "idle");
-          this.emit(managed, {
-            type: "run_completed",
-            payload: this.snapshot(managed, { status: "idle" }),
-          });
-          this.emit(managed, { type: "session_metrics", payload: metrics });
+          // Not the end of the turn: Pi's post-turn compaction check and any
+          // queued continuation still run. finishRun() reports completion.
         }
         break;
       }
@@ -4284,7 +4311,7 @@ export class SessionService implements AgentTeamBridge {
       sessionId: managed.manifest.sessionId,
       visibility: header?.visibility ?? this.fallbackVisibility,
       retentionDueAt: header?.retentionDueAt ?? null,
-      status: managed.runState.isIdle() ? "idle" : "running",
+      status: managed.runState.state(),
       pending: managed.runState.pendingChanges(),
       thinking: managed.thinking,
       queue: managed.runState.queue,
