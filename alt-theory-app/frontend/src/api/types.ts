@@ -249,8 +249,10 @@ export interface TranscriptMessage {
   /** Non-message boundary markers rendered specially (e.g. context compaction). */
   marker?: "compaction" | "imported-context" | "agent-team";
   sourceRole?: "system" | "developer";
-  /** Pi's stop reason on a stored reply; `aborted` / `error` draw a line under the bubble. */
-  stopReason?: "aborted" | "error";
+  /** Pi's stop reason, set only on the last text row of a stopped, failed or truncated attempt. */
+  stopReason?: "aborted" | "error" | "length";
+  /** Whether the model still sees that text (user stop, or a final attempt) or Pi dropped it (retried). */
+  stopKept?: boolean;
 }
 
 export interface SessionSummary {

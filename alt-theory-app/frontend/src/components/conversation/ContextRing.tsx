@@ -12,7 +12,21 @@ import { t } from "@/i18n";
 export function ContextRing() {
   const metrics = useApp().metrics;
   const usage = metrics?.contextUsage;
-  if (!usage || usage.percent === null) return null;
+  if (!metrics) return null;
+  // Unknown is a state, not an absence: right after a compaction the fill is
+  // unknown until the next reply reports usage. Draw the ring empty, say so.
+  if (!usage || usage.percent === null) {
+    return (
+      <span
+        className="ctx-ring unknown"
+        data-tip-title={t("Context usage")}
+        data-tip={t("Context usage is unknown until the next reply.")}
+      >
+        <span className="ctx-ring-dial" style={{ ["--pct" as string]: "0deg" }} />
+        –
+      </span>
+    );
+  }
 
   const percent = Math.max(0, Math.min(100, Math.round(usage.percent)));
   const tone = percent >= 90 ? "danger" : percent >= 75 ? "warn" : "";

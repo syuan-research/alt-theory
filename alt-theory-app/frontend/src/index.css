@@ -534,6 +534,7 @@
   .ctx-ring { display: inline-flex; align-items: center; gap: 5px; font-size: 0.72rem; color: var(--text-3); cursor: default; white-space: nowrap; }
   .ctx-ring.warn { color: var(--color-warning); }
   .ctx-ring.danger { color: var(--color-danger); }
+  .ctx-ring.unknown .ctx-ring-dial { background: var(--hairline); }
   .ctx-ring-dial { width: 11px; height: 11px; border-radius: 50%; background: conic-gradient(currentColor var(--pct), var(--hairline) 0); }
 
   /* compaction boundary: gray divider with label */

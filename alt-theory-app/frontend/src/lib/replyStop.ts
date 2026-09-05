@@ -2,13 +2,24 @@ import type { TranscriptMessage } from "@/api/types";
 import { t } from "@/i18n";
 
 /**
- * The one line under a reply that did not finish, by Pi's stored stopReason
- * (live and after reload read the same field). `aborted` = the user stopped
- * it and the partial stays in the model's context; `error` = the provider
- * failed and Pi drops the partial from the model's context (kept in history).
+ * The one line under a text block that did not finish (live and reload read
+ * the same two fields, set by the transcript builder). It speaks only about
+ * the text above it: what stopped it, and whether the model still sees it.
  */
-export function replyStopLine(stopReason: TranscriptMessage["stopReason"] | undefined): string | null {
-  if (stopReason === "aborted") return t("Stopped here. The model keeps this part.");
-  if (stopReason === "error") return t("Failed here. The model does not keep this part.");
+export function replyStopLine(
+  stopReason: TranscriptMessage["stopReason"] | undefined,
+  kept: boolean | undefined,
+): string | null {
+  if (stopReason === "aborted") return t("Stopped here. The model can see this part.");
+  if (stopReason === "error") {
+    return kept
+      ? t("Failed here. The model can see this part.")
+      : t("Failed here. This part was not sent to the model.");
+  }
+  if (stopReason === "length") {
+    return kept
+      ? t("Cut off here: the reply was too long. The model can see this part.")
+      : t("Cut off here: the reply was too long. This part was not sent to the model.");
+  }
   return null;
 }

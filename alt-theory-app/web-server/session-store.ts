@@ -1850,7 +1850,7 @@ export function buildTranscriptFromEntries(
       orderedEntries.splice(adjustedTarget + 1, 0, entry);
     }
   }
-  for (const entry of orderedEntries) {
+  for (const [entryIndex, entry] of orderedEntries.entries()) {
     const value = entry as {
       id?: string;
       type?: string;
@@ -1940,13 +1940,22 @@ export function buildTranscriptFromEntries(
         timestamp,
         value.id ?? null
       );
-      // Pi's stopReason travels on the reply's last row; the renderer says
-      // what a stopped or failed partial means (one field, live and reload).
+      // The stop line belongs to a visible text block (Owner rule, v1.5.1):
+      // it sits under the last text the model produced in a stopped or
+      // failed attempt and speaks only about that text. No text, no line —
+      // thinking and tool runs are kept and are not "the reply". Whether the
+      // model still sees the text: a user stop keeps it; a failed or
+      // truncated attempt that Pi retried (another assistant entry follows
+      // before the next user turn) was dropped, a final one is kept.
       const stopReason = (value.message as { stopReason?: unknown }).stopReason;
-      if (stopReason === "error" || stopReason === "aborted") {
-        const last = [...rows].reverse().find((row) => row.role === "assistant");
-        if (last) last.stopReason = stopReason;
-        else rows.push({ role: "assistant", text: "", timestamp, entryId: value.id ?? null, stopReason });
+      if (stopReason === "error" || stopReason === "aborted" || stopReason === "length") {
+        const last = [...rows].reverse().find((row) => row.role === "assistant" && row.text);
+        if (last) {
+          last.stopReason = stopReason;
+          last.stopKept =
+            stopReason === "aborted" ||
+            nextMessageRole(orderedEntries, entryIndex) !== "assistant";
+        }
       }
       transcript.push(...rows);
       continue;
@@ -1993,6 +2002,16 @@ export function buildTranscriptFromEntries(
     }
   }
   return transcript;
+}
+
+/** Role of the next message entry on the branch, or null at the end. */
+function nextMessageRole(entries: unknown[], fromIndex: number): string | null {
+  for (let index = fromIndex + 1; index < entries.length; index++) {
+    const candidate = entries[index] as { type?: unknown; message?: { role?: unknown } };
+    if (candidate?.type !== "message" || typeof candidate.message?.role !== "string") continue;
+    return normalizeRole(candidate.message.role);
+  }
+  return null;
 }
 
 function assistantContentToTranscript(

@@ -5,6 +5,7 @@ import type {
 } from "@/api/types";
 import { t } from "@/i18n";
 import { replyStopLine } from "@/lib/replyStop";
+import { toolOutcome } from "@/lib/toolOutcome";
 import { toolLabel } from "@/lib/tools";
 
 export interface ConversationStreamControls {
@@ -81,7 +82,7 @@ export function handleConversationStreamMessage(
       if (current) {
         const tool: ActiveToolState = {
           ...current,
-          status: message.payload.success ? "finished" : "failed",
+          status: toolOutcome({ success: message.payload.success }),
           success: message.payload.success,
         };
         const remaining = { ...activeTools.current };
@@ -110,7 +111,7 @@ export function handleConversationStreamMessage(
                 ...parts,
                 // Pi keeps the partial in history and drops it from the model's
                 // context before retrying: same line the stored reply gets.
-                { kind: "notice", text: replyStopLine("error") ?? "" },
+                { kind: "notice", text: replyStopLine("error", false) ?? "" },
               ],
         );
         return true;

@@ -12,6 +12,7 @@ import { fileName, toolLabel } from "@/lib/tools";
 import { cn } from "@/lib/cn";
 import { hasNativeBridge, pickDirectory, revealPath } from "@/lib/native";
 import { replyStopLine } from "@/lib/replyStop";
+import { toolOutcome } from "@/lib/toolOutcome";
 import { t } from "@/i18n";
 import { autosizeTextarea } from "@/lib/autosizeTextarea";
 import { useStickToBottom } from "@/hooks/useStickToBottom";
@@ -333,32 +334,22 @@ function countLines(text: string): number {
 }
 
 function ToolLine({ tool }: { tool: ActiveToolState }) {
+  const outcome = toolOutcome({ running: tool.status === "running", success: tool.success });
   return (
     <SysLine
-      detail={tool.status === "running" ? null : tool.detail}
-      tone={
-        tool.status === "failed"
-          ? "danger"
-          : tool.status === "finished"
-            ? "ok"
-            : "running"
-      }
+      detail={outcome === "running" ? null : tool.detail}
+      tone={outcome === "failed" ? "danger" : outcome === "finished" ? "ok" : "running"}
     >
       <i
         className={
-          tool.status === "running"
+          outcome === "running"
             ? "ph ph-circle-notch"
-            : tool.success === false
+            : outcome === "failed"
               ? "ph ph-x"
               : "ph ph-check"
         }
       />
-      {toolLabel(
-        tool.toolName,
-        tool.path,
-        tool.detail,
-        tool.status === "running" ? "running" : tool.success === false ? "failed" : "finished",
-      )}
+      {toolLabel(tool.toolName, tool.path, tool.detail, outcome)}
       {tool.progressText ? ` — ${tool.progressText}` : ""}
     </SysLine>
   );
@@ -437,7 +428,7 @@ export function TranscriptEntry({
   }
 
   if (message.role === "assistant") {
-    const stopLine = replyStopLine(message.stopReason);
+    const stopLine = replyStopLine(message.stopReason, message.stopKept);
     return (
       <>
         {(developer || showThinking) && message.thinking ? (
@@ -451,15 +442,15 @@ export function TranscriptEntry({
 
   if (message.role === "tool") {
     if (isDuplicateToolCall) return null;
-    const success = message.success !== false;
+    const outcome = toolOutcome({ success: message.success });
     return (
-      <SysLine tone={success ? "ok" : "danger"} detail={message.toolDetail}>
-        <i className={success ? "ph ph-check" : "ph ph-x"} />
+      <SysLine tone={outcome === "failed" ? "danger" : "ok"} detail={message.toolDetail}>
+        <i className={outcome === "failed" ? "ph ph-x" : "ph ph-check"} />
         {toolLabel(
           message.toolName || message.text || "tool",
           message.toolPath,
           message.toolDetail,
-          success ? "finished" : "failed",
+          outcome,
         )}
       </SysLine>
     );
