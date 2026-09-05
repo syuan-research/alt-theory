@@ -22,6 +22,7 @@ test("typed shapes win over text: abort and busy", () => {
 test("provider text maps to auth, rate-limit, provider; anything else is unknown and not retryable", () => {
   assert.equal(describeFailure("401 status code (no body)", "run").kind, "auth");
   assert.equal(describeFailure("429 Too Many Requests", "run").kind, "rate-limit");
+  assert.equal(describeFailure("OAuth refresh failed: invalid refresh_token", "run").kind, "auth-refresh");
   assert.equal(describeFailure("502 Bad Gateway", "run").kind, "provider");
   const unknown = describeFailure("No model is selected.", "run");
   assert.equal(unknown.kind, "unknown");

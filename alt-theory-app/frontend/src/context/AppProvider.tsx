@@ -473,14 +473,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setComposerNotice(null);
         setRunHint(t("Editing after Stop won't branch. Use /branch if needed."));
       } else {
-        const oauthRefreshFailed = /oauth refresh failed|refresh[ _-]?token/i.test(
-          payload.failure.message,
-        );
+        const oauthRefreshFailed = payload.failure.kind === "auth-refresh";
         setComposerNoticeTimed(
           {
             prefix: interrupted ? undefined : "⚠",
             text: oauthRefreshFailed
-              ? t("OAuth login could not be refreshed. Open Settings → Models and reconnect this account.")
+              ? failureText(payload.failure)
               : `${interrupted ? t("Run interrupted: ") : t("Run failed: ")}${failureText(payload.failure)}`,
             warn: !interrupted,
           },

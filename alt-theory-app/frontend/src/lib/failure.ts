@@ -8,6 +8,7 @@ import { t } from "@/i18n";
 export function failureText(failure: Failure): string {
   const wording = {
     network: t("Could not reach the provider (network)."),
+    "auth-refresh": t("OAuth login could not be refreshed. Open Settings → Models and reconnect this account."),
     auth: t("The provider rejected the credentials."),
     "rate-limit": t("The provider is limiting requests."),
     provider: t("The provider returned an error."),
@@ -18,7 +19,7 @@ export function failureText(failure: Failure): string {
   }[failure.kind];
   if (!wording) return failure.message;
   // Busy is the kind wording only: the producer text is "Session is busy: <id>".
-  if (failure.kind === "busy") return wording;
+  if (failure.kind === "busy" || failure.kind === "auth-refresh") return wording;
   return failure.message ? `${wording} ${failure.message}` : wording;
 }
 

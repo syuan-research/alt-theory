@@ -10,6 +10,8 @@
 
 export type FailureKind =
   | "network"
+  /** A stored OAuth login could not be refreshed: reconnect the account. */
+  | "auth-refresh"
   | "auth"
   | "rate-limit"
   | "provider"
@@ -30,6 +32,7 @@ export interface Failure {
 
 const KIND_PATTERNS: Array<[FailureKind, RegExp]> = [
   ["network", /fetch failed|ECONNREFUSED|ECONNRESET|ENOTFOUND|ETIMEDOUT|EAI_AGAIN|socket hang up|UND_ERR|network (error|is unavailable)/i],
+  ["auth-refresh", /oauth refresh failed|refresh[ _-]?token/i],
   ["auth", /\b401\b|\b403\b|invalid api key|incorrect api key|authentication|unauthori[sz]ed|no api key|oauth refresh failed/i],
   ["rate-limit", /\b429\b|rate.?limit|too many requests|quota/i],
   ["provider", /\b5\d\d\b|overloaded|internal server error|bad gateway|service unavailable/i],

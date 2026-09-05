@@ -144,6 +144,7 @@ export interface TurnRecovery {
 export type FailureKind =
   | "network"
   | "auth"
+  | "auth-refresh"
   | "rate-limit"
   | "provider"
   | "busy"

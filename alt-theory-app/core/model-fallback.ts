@@ -45,7 +45,7 @@ export interface ModelRef {
 }
 
 const DEFAULT_RULES: ModelFallbackRule[] = [
-  { id: "auth-failure", action: "fail", match: { kinds: ["auth"] } },
+  { id: "auth-failure", action: "fail", match: { kinds: ["auth", "auth-refresh"] } },
 ];
 
 const FAILURE_KINDS: FailureKind[] = [
