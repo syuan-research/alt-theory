@@ -60,11 +60,10 @@ import {
   removeWorkspace as removeWorkspaceRequest,
   setSessionWorkspace as setSessionWorkspaceRequest,
 } from "@/api/workspaces";
-import { useWebSocket } from "@/hooks/useWebSocket";
+import { useWebSocket, type WsConnStatus } from "@/hooks/useWebSocket";
 import { failureText, isBusyRefusal } from "@/lib/failure";
 import { runPhaseLabels, runStateView, type RunStateView } from "@/lib/runState";
 import { useConversationEngine } from "@/hooks/useConversationEngine";
-import type { ConnStatus } from "@/components/ui/StatusBadge";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { DEFAULT_KB_DOMAIN } from "@/lib/constants";
 import { notifyBackground } from "@/lib/notify";
@@ -180,8 +179,8 @@ export interface AppContextValue {
   sessionCreatedHere: boolean;
   /** Resume warnings from the backend, e.g. an asset fallback on reopen. */
   sessionWarnings: string[];
+  /** Server run phase or a request of this client in flight (one projection, runState). */
   isRunning: boolean;
-  connStatus: ConnStatus;
   /** The one run-state projection for render sites (card 1). */
   runState: RunStateView;
   wsError: string | null;
@@ -375,7 +374,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const startPromptRef = useRef<
     (text: string, attachments: string[]) => boolean
   >(() => false);
-  const [connStatus, setConnStatus] = useState<ConnStatus>("connecting");
+  // The socket's own state, set only by the socket (v1.5.1 M1 rule 3).
+  const [socket, setSocket] = useState<WsConnStatus>("connecting");
+  // A request of this client in flight (open, fork, compact, asset switch):
+  // the client's fact, set by the request layer, never by a run event.
+  const [requestBusy, setRequestBusy] = useState(false);
   const [wsError, setWsError] = useState<string | null>(null);
   const [wsConnected, setWsConnected] = useState(false);
   const [selectors, setSelectors] = useState<SessionSelectors>(defaultSelectors);
@@ -448,7 +451,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setRecovery(null);
       setComposerNotice(null);
       setCurrentSessionModel(payload.currentModel ?? null);
-      setConnStatus("idle");
       setToolStatus("");
       setRunHint("");
       setRunCompletedCount((count) => count + 1);
@@ -466,7 +468,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const interrupted = payload.recovery?.outcome === "interrupted";
       setRecovery(payload.recovery ?? null);
       setToolStatus("");
-      setConnStatus(interrupted ? "idle" : "error");
       const userStopped = payload.recovery?.interruptionCause === "user_abort";
       if (userStopped) {
         setComposerNotice(null);
@@ -712,8 +713,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         pendingAssetSwitchRef.current = false;
         return false;
       }
-      setIsRunning(true);
-      setConnStatus("running");
+      setRequestBusy(true);
       setToolStatus(label);
       return true;
     },
@@ -749,8 +749,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             if (pendingAssetSwitchRef.current && !sessionId) {
               pendingAssetSwitchRef.current = false;
               setToolStatus("");
-              setIsRunning(false);
-              setConnStatus("idle");
+              setRequestBusy(false);
               setSelectors(applySnapshotSelectors(message.payload));
             }
             break;
@@ -760,12 +759,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setSessionCreatedHere(false);
           setSessionWarnings([]);
           setIsRunning(false);
+          setRequestBusy(false);
           // A draft answers asset switches with this message and nothing else,
           // so the "Switching role preset…" status has to be cleared here or it
           // sits on the new-conversation screen forever.
           pendingAssetSwitchRef.current = false;
           setToolStatus("");
-          setConnStatus("idle");
           setSelectors(applySnapshotSelectors(message.payload));
           setSessionMode(message.payload.mode ?? "understand");
           setFullAccessState(message.payload.fullAccess ?? false);
@@ -782,7 +781,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setMessages([]);
           setStreamParts([]);
           activeToolsMapRef.current = {};
-          setConnStatus("idle");
           setRunPhaseLabel("");
           setWsError(null);
           pendingAssetSwitchRef.current = false;
@@ -842,8 +840,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setStudyTagState(message.payload.studyTag ?? null);
           setRetentionDueAt(message.payload.retentionDueAt ?? null);
           setSessionReady(true);
-          setIsRunning(message.payload.status !== "idle");
-          setConnStatus(message.payload.status !== "idle" ? "running" : "idle",);
+          engine.applySnapshot(message.payload);
+          setRequestBusy(false);
           setWsError(null);
           setToolStatus("");
           setRunPhaseLabel(
@@ -900,13 +898,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
           if (message.payload.retentionDueAt !== undefined) {
             setRetentionDueAt(message.payload.retentionDueAt);
           }
+          engine.applySnapshot(message.payload);
           if (message.payload.status !== "idle") {
-            setConnStatus("running");
-            setIsRunning(true);
             void refreshSessions();
           } else {
-            setConnStatus("idle");
-            setIsRunning(false);
             setToolStatus("");
             setRunPhaseLabel("");
           }
@@ -951,8 +946,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             });
             pendingHelperSeedRef.current = null;
           }
-          setIsRunning(false);
-          setConnStatus("idle");
+          setRequestBusy(false);
           setToolStatus("");
           void refreshSessions();
           break;
@@ -971,8 +965,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             });
             pendingChildSeedRef.current = null;
           }
-          setIsRunning(false);
-          setConnStatus("idle");
+          setRequestBusy(false);
           setToolStatus("");
           setRunPhaseLabel("");
           void refreshSessions();
@@ -1007,8 +1000,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           if (!isBusyRefusal(message.payload.failure)) {
             pendingOpenSessionIdRef.current = "";
             pendingAssetSwitchRef.current = false;
+            setRequestBusy(false);
             setIsRunning(false);
-            setConnStatus("error");
           }
           if (reconnectSessionIdRef.current) {
             reconnectSessionIdRef.current = "";
@@ -1040,12 +1033,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     reconnectSessionId: sessionId,
     onMessage: handleServerMessage,
     onStatus: (status) => {
+      setSocket(status);
       if (status === "open") {
         setWsConnected(true);
-        const resuming = reconnectSessionIdRef.current;
-        setConnStatus(resuming ? "idle" : "idle");
-        if (resuming) {
-          setIsRunning(true);
+        if (reconnectSessionIdRef.current) {
+          setRequestBusy(true);
           setToolStatus(t("Restoring conversation…"));
         }
       } else if (status === "closed") {
@@ -1053,17 +1045,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setWsConnected(false);
         setSessionReady(false);
         setIsRunning(false);
+        setRequestBusy(false);
         setApprovals([]);
-        setConnStatus("disconnected");
         setStreamParts([]);
         activeToolsMapRef.current = {};
         setToolStatus(t("Reconnecting..."));
-      } else if (status === "error") {
-        setWsConnected(false);
-        setConnStatus("error");
       } else {
         setWsConnected(false);
-        setConnStatus("connecting");
       }
     },
   });
@@ -1081,8 +1069,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setRunPhaseLabel("");
     clearStagedWorkspace();
     if (sendMessage({ type: "new_session" })) {
-      setIsRunning(true);
-      setConnStatus("running");
+      setRequestBusy(true);
       setRunPhaseLabel(t("Connecting…"));
     }
   }, [clearStagedWorkspace, sendMessage]);
@@ -1095,8 +1082,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!sessionId || isRunning) return;
     if (sendMessage({ type: "compact" })) {
       pendingCompactRef.current = true;
-      setIsRunning(true);
-      setConnStatus("running");
+      setRequestBusy(true);
       setToolStatus("");
       setRunPhaseLabel(t("Compacting conversation…"));
     }
@@ -1119,8 +1105,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           payload: { sessionId: targetSessionId },
         })
       ) {
-        setIsRunning(true);
-        setConnStatus("running");
+        setRequestBusy(true);
         setToolStatus("");
         setRunPhaseLabel(t("Opening conversation…"));
       } else {
@@ -1199,8 +1184,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         ? { text: seedPrompt.trim(), autoSend: true }
         : null;
       if (sendMessage(message)) {
-        setIsRunning(true);
-        setConnStatus("running");
+        setRequestBusy(true);
         setToolStatus(
           purpose === "helper"
             ? t("Starting a fresh helper…")
@@ -1242,8 +1226,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         type: "fork_session",
         payload: { purpose: "fork", sourceSessionId: targetSessionId },
       })) {
-        setIsRunning(true);
-        setConnStatus("running");
+        setRequestBusy(true);
         setToolStatus(t("Making a copy of this conversation…"));
       }
     },
@@ -1360,7 +1343,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setToolStatus("");
       setRunPhaseLabel(t("Connecting…"));
       setIsRunning(true);
-      setConnStatus("running");
       return true;
     },
     [isRunning, sendMessage],
@@ -1583,7 +1565,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         },
       ]);
       setIsRunning(true);
-      setConnStatus("running");
       setToolStatus("");
       setRunPhaseLabel(t("Connecting…"));
       return true;
@@ -1627,8 +1608,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         pendingChildSeedRef.current = null;
         return false;
       }
-      setIsRunning(true);
-      setConnStatus("running");
+      setRequestBusy(true);
       setToolStatus(t("Preparing comparison…"));
       return true;
     },
@@ -1641,7 +1621,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
     setRecovery(null);
     setIsRunning(true);
-    setConnStatus("running");
     setToolStatus("");
     setRunPhaseLabel(t("Connecting…"));
     return true;
@@ -1654,7 +1633,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setRecovery(null);
     setRunHint("");
     setIsRunning(true);
-    setConnStatus("running");
     setToolStatus("");
     setRunPhaseLabel(t("Connecting…"));
     return true;
@@ -1677,7 +1655,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setRecovery(null);
       setRunHint("");
       setIsRunning(true);
-      setConnStatus("running");
       setToolStatus("");
       setRunPhaseLabel(t("Connecting…"));
       return true;
@@ -1874,13 +1851,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const runState = useMemo(
     () =>
       runStateView({
-        connStatus,
+        socket,
         running: isRunning,
+        busy: requestBusy,
         phaseLabel: runPhaseLabel,
         toolStatus,
         pending: pendingChanges,
       }),
-    [connStatus, isRunning, runPhaseLabel, toolStatus, pendingChanges],
+    [socket, isRunning, requestBusy, runPhaseLabel, toolStatus, pendingChanges],
   );
 
   const value = useMemo<AppContextValue>(
@@ -1930,8 +1908,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       sessionReady,
       sessionCreatedHere,
       sessionWarnings,
-      isRunning,
-      connStatus,
+      isRunning: runState.phase === "running",
       runState,
       wsError,
       wsConnected,
@@ -2045,7 +2022,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       sessionCreatedHere,
       sessionWarnings,
       isRunning,
-      connStatus,
       runState,
       wsError,
       wsConnected,

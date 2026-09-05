@@ -44,6 +44,11 @@ export function useConversationEngine(options?: ConversationEngineOptions) {
     activeToolsRef.current = {};
   }, []);
 
+  /** The server's snapshot is the run fact; anything but idle is a run. */
+  const applySnapshot = useCallback((snapshot: SessionSnapshot) => {
+    setRunning(snapshot.status !== "idle");
+  }, []);
+
   /** Returns true when the message was conversation-scoped and consumed. */
   const handleMessage = useCallback(
     (message: ServerMessage): boolean => {
@@ -116,6 +121,7 @@ export function useConversationEngine(options?: ConversationEngineOptions) {
     setStreamParts,
     running,
     setRunning,
+    applySnapshot,
     phaseLabel,
     setPhaseLabel,
     approvals,

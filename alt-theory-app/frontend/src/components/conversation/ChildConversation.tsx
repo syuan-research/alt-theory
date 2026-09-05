@@ -6,12 +6,12 @@ import {
   retractQueuedText,
 } from "@/api/sessions";
 import { useApp } from "@/context/AppProvider";
-import { useWebSocket } from "@/hooks/useWebSocket";
+import { useWebSocket, type WsConnStatus } from "@/hooks/useWebSocket";
 import { useConversationEngine } from "@/hooks/useConversationEngine";
 import { useStickToBottom } from "@/hooks/useStickToBottom";
 import { appendDraft } from "@/lib/draft";
 import { failureText } from "@/lib/failure";
-import { runPhaseLabels } from "@/lib/runState";
+import { runPhaseLabels, runStateView } from "@/lib/runState";
 import { canTakeMainline, isListMember } from "@/lib/sessionList";
 import { t } from "@/i18n";
 import { ApprovalDock } from "@/components/conversation/ApprovalDock";
@@ -37,9 +37,12 @@ export function ChildConversation({
 }) {
   const app = useApp();
   const [draft, setDraft] = useState("");
-  const [status, setStatus] = useState(t("Connecting…"));
   const [error, setError] = useState("");
-  const [connected, setConnected] = useState(false);
+  // This pane's own socket state, set only by the socket; info notices ride
+  // as the idle label. The header label is runStateView's (rule 3).
+  const [socketStatus, setSocketStatus] = useState<WsConnStatus>("connecting");
+  const [notice, setNotice] = useState("");
+  const connected = socketStatus === "open";
   const [snapshot, setSnapshot] = useState<SessionSnapshot | null>(null);
   const [menu, setMenu] = useState<"role" | "model" | null>(null);
   const [slashIndex, setSlashIndex] = useState(0);
@@ -77,16 +80,8 @@ export function ChildConversation({
   // pane's snapshot/status handling stays local.
   const engine = useConversationEngine({
     onRunCompleted: (payload) => {
-      setSnapshot((current) =>
-        current
-          ? {
-              ...current,
-              status: "idle",
-              currentModel: payload.currentModel ?? current.currentModel,
-            }
-          : current,
-      );
-      setStatus(t("Ready"));
+      setSnapshot(payload);
+      setNotice("");
       void refreshTranscript();
       void app.refreshSessions();
     },
@@ -94,7 +89,6 @@ export function ChildConversation({
       void refreshTranscript();
       const interrupted = recovery?.outcome === "interrupted";
       if (!interrupted) setError(failureText(failure));
-      setStatus(interrupted ? t("Ready") : t("Error"));
     },
   });
   const { messages, streamParts, running } = engine;
@@ -146,8 +140,7 @@ export function ChildConversation({
         case "session_opened":
         case "session_updated":
           setSnapshot(message.payload);
-          engine.setRunning(message.payload.status !== "idle");
-          if (message.payload.status !== "running") setStatus(t("Ready"));
+          engine.applySnapshot(message.payload);
           setQueued([
             ...(message.payload.queue?.steering ?? []),
             ...(message.payload.queue?.followUp ?? []),
@@ -172,7 +165,7 @@ export function ChildConversation({
           break;
         case "extension_notice":
           if (message.payload.level === "info") {
-            setStatus(message.payload.message);
+            setNotice(message.payload.message);
             setError("");
           } else {
             setError(message.payload.message);
@@ -187,20 +180,14 @@ export function ChildConversation({
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [app, engine.handleMessage, engine.setRunning],
+    [app, engine.handleMessage, engine.applySnapshot],
   );
 
   const socket = useWebSocket({
     enabled: true,
     reconnectSessionId: sessionId,
     onMessage,
-    onStatus: (next) => {
-      setConnected(next === "open");
-      if (next === "open") setStatus(t("Opening…"));
-      else if (next === "connecting") setStatus(t("Connecting…"));
-      else if (next === "closed") setStatus(t("Reconnecting…"));
-      else setStatus(t("Connection error"));
-    },
+    onStatus: setSocketStatus,
   });
 
   // A Helper/BTW opened with a question already typed asks it straight away
@@ -228,7 +215,6 @@ export function ChildConversation({
     if (!socket.send({ type: "prompt", payload: text })) return false;
     engine.setMessages((current) => [...current, { role: "user", text, timestamp: null }]);
     engine.setRunning(true);
-    setStatus(t("Working…"));
     return true;
   };
 
@@ -309,7 +295,18 @@ export function ChildConversation({
           <i className="ph ph-arrow-left" aria-hidden="true" />
         </button>
         <span className="child-what">{childBlurb(purpose, variant)}</span>
-        <span className="child-status">{engine.phaseLabel || status}</span>
+        <span className="child-status">
+          {
+            runStateView({
+              socket: socketStatus,
+              running,
+              busy: false,
+              phaseLabel: engine.phaseLabel,
+              toolStatus: notice,
+              pending: snapshot?.pending ?? {},
+            }).label
+          }
+        </span>
         {mainlineAction ? (
           <button
             className="flat promote-action"

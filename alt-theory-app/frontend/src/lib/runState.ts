@@ -1,5 +1,6 @@
 import type { PendingChanges } from "@/api/types";
 import type { ConnStatus } from "@/components/ui/StatusBadge";
+import type { WsConnStatus } from "@/hooks/useWebSocket";
 import { t } from "@/i18n";
 
 /**
@@ -30,15 +31,25 @@ export function runPhaseLabels() {
 }
 
 export function runStateView(input: {
-  connStatus: ConnStatus;
+  /** The socket's own state (set by the socket only). */
+  socket: WsConnStatus;
+  /** The server's run fact (snapshot / run events), or the optimistic send. */
   running: boolean;
+  /** A request of this client in flight (open, fork, compact, asset switch). */
+  busy: boolean;
   phaseLabel: string;
   toolStatus: string;
   pending: PendingChanges;
 }): RunStateView {
   const labels = runPhaseLabels();
   const phase: ConnStatus =
-    input.running && input.connStatus === "idle" ? "running" : input.connStatus;
+    input.socket === "open"
+      ? input.running || input.busy
+        ? "running"
+        : "idle"
+      : input.socket === "closed"
+        ? "disconnected"
+        : input.socket;
   const label = {
     connecting: labels.connecting,
     disconnected: labels.disconnected,
