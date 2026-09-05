@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type {
   ActiveToolState,
   StreamPart,
@@ -11,6 +11,7 @@ import { MarkdownBody } from "@/components/conversation/MarkdownBody";
 import { fileName, toolLabel } from "@/lib/tools";
 import { cn } from "@/lib/cn";
 import { hasNativeBridge, pickDirectory, revealPath } from "@/lib/native";
+import { shouldToggleCollapseOnClick } from "@/lib/collapseAnywhere";
 import { replyStopLine } from "@/lib/replyStop";
 import { toolOutcome } from "@/lib/toolOutcome";
 import { t } from "@/i18n";
@@ -355,6 +356,49 @@ function ToolLine({ tool }: { tool: ActiveToolState }) {
   );
 }
 
+function CollapseAnywhereDetails({
+  className,
+  summary,
+  children,
+  defaultOpen = false,
+}: {
+  className?: string;
+  summary: ReactNode;
+  children: ReactNode;
+  defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  const down = useRef<{ x: number; y: number } | null>(null);
+  return (
+    <details
+      className={className}
+      open={open}
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+      onMouseDown={(event) => {
+        down.current = { x: event.clientX, y: event.clientY };
+      }}
+      onClick={(event) => {
+        if (!open) return;
+        if ((event.target as HTMLElement | null)?.closest("summary")) return;
+        if (
+          !shouldToggleCollapseOnClick({
+            selectionCollapsed: window.getSelection()?.isCollapsed !== false,
+            down: down.current,
+            up: { x: event.clientX, y: event.clientY },
+          })
+        ) {
+          return;
+        }
+        event.preventDefault();
+        setOpen(false);
+      }}
+    >
+      <summary>{summary}</summary>
+      {children}
+    </details>
+  );
+}
+
 function ThinkingBlock({
   text,
   defaultOpen,
@@ -362,18 +406,18 @@ function ThinkingBlock({
   text: string;
   defaultOpen: boolean;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
   return (
-    <details
+    <CollapseAnywhereDetails
       className="think-block"
-      open={open}
-      onToggle={(event) => setOpen(event.currentTarget.open)}
+      defaultOpen={defaultOpen}
+      summary={
+        <>
+          <i className="ph ph-brain" aria-hidden="true" /> {t("Thinking")}
+        </>
+      }
     >
-      <summary>
-        <i className="ph ph-brain" aria-hidden="true" /> {t("Thinking")}
-      </summary>
       <MarkdownBody className="think-body" text={text} renderMermaid={false} />
-    </details>
+    </CollapseAnywhereDetails>
   );
 }
 
@@ -459,22 +503,26 @@ export function TranscriptEntry({
   if (message.role === "system") {
     if (message.marker === "imported-context") {
       return (
-        <details className="think-block">
-          <summary>
-            <i className="ph ph-file-text" aria-hidden="true" /> {t("Imported {role} context", { role: message.sourceRole || "instruction" })}
-          </summary>
+        <CollapseAnywhereDetails
+          className="think-block"
+          summary={
+            <>
+              <i className="ph ph-file-text" aria-hidden="true" /> {t("Imported {role} context", { role: message.sourceRole || "instruction" })}
+            </>
+          }
+        >
           <div className="think-body">{message.text}</div>
-        </details>
+        </CollapseAnywhereDetails>
       );
     }
     if (message.marker === "compaction") {
       return (
-        <details className="compact-summary">
-          <summary>
-            <span>{t("Conversation compressed here")}</span>
-          </summary>
+        <CollapseAnywhereDetails
+          className="compact-summary"
+          summary={<span>{t("Conversation compressed here")}</span>}
+        >
           <div className="compact-summary-body">{message.text}</div>
-        </details>
+        </CollapseAnywhereDetails>
       );
     }
     if (message.marker === "agent-team") {
@@ -716,10 +764,9 @@ function SysLine({
     return <div className={className}>{children}</div>;
   }
   return (
-    <details className={cn(className, "sys-detail")}>
-      <summary>{children}</summary>
+    <CollapseAnywhereDetails className={cn(className, "sys-detail")} summary={children}>
       <ToolDetailBody detail={detail} />
-    </details>
+    </CollapseAnywhereDetails>
   );
 }
 
