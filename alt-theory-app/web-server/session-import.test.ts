@@ -168,6 +168,61 @@ test("Pi discovery and managed registration preserve history and workspace", asy
   assert.equal(reimportedUnchanged?.importedSessionId, reimported.sessionId);
 });
 
+test("Pi discovery reads ~/.pi sessions, not PI_CODING_AGENT_DIR", async () => {
+  const root = mkdtempSync(join(tmpdir(), "alt-theory-pi-discover-root-"));
+  const dataDir = join(root, "alt-data");
+  const isolatedAgent = join(root, "alt-pi-agent");
+  const piSessionsRoot = join(root, "pi-sessions-root");
+  const encodedCwd = join(piSessionsRoot, "--encoded-cwd--");
+  const sourceCwd = join(root, "workspace");
+  mkdirSync(encodedCwd, { recursive: true });
+  mkdirSync(sourceCwd, { recursive: true });
+  mkdirSync(isolatedAgent, { recursive: true });
+
+  const sourceManager = SessionManager.create(sourceCwd, encodedCwd);
+  sourceManager.newSession({ id: "pi-nested-source" });
+  sourceManager.appendMessage({
+    role: "user",
+    content: "nested pi session that default discovery must find",
+    timestamp: Date.now(),
+  });
+  sourceManager.appendMessage({
+    role: "assistant",
+    content: [{ type: "text", text: "persisted" }],
+    api: "openai-completions",
+    provider: "test-provider",
+    model: "test-model",
+    usage: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 0,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    },
+    stopReason: "stop",
+    timestamp: Date.now(),
+  });
+
+  const previousSessionsDir = process.env.PI_SESSIONS_DIR;
+  const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+  process.env.PI_SESSIONS_DIR = piSessionsRoot;
+  process.env.PI_CODING_AGENT_DIR = isolatedAgent;
+  try {
+    const discovered = await discoverImportSessions({
+      harness: "pi",
+      dataDir,
+    });
+    assert.equal(discovered.length, 1);
+    assert.equal(discovered[0]?.sourceSessionId, "pi-nested-source");
+  } finally {
+    if (previousSessionsDir === undefined) delete process.env.PI_SESSIONS_DIR;
+    else process.env.PI_SESSIONS_DIR = previousSessionsDir;
+    if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+  }
+});
+
 test("Grok preflight preserves current history and raw source, and refuses unmatched tools atomically", async () => {
   const root = mkdtempSync(join(tmpdir(), "alt-theory-grok-import-"));
   const dataDir = join(root, "alt-data");

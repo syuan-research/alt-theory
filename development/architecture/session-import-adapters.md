@@ -131,7 +131,9 @@ Later runs are ordinary prompts.
 ### Pi
 
 Pi is registered through the same adapter table as the external harnesses.
-Discovery uses `SessionManager.listAll()`. Preflight verifies the source
+Discovery lists `~/.pi/agent/sessions` (overridable by `PI_SESSIONS_DIR`),
+including encoded-cwd subdirectories, and does not use Alt Theory's isolated
+`PI_CODING_AGENT_DIR`. Preflight verifies the source
 file is readable, parses to a session header plus at least one entry (the
 current tip), and reports the file's sha256 fingerprint; the prepared
 import is the source JSONL itself with no transformations. Registration

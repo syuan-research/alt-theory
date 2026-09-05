@@ -10,6 +10,7 @@ import {
   statSync,
   writeFileSync,
 } from "fs";
+import { homedir } from "os";
 import { basename, dirname, join, resolve } from "path";
 import {
   parseSessionEntries,
@@ -186,13 +187,32 @@ export function isImportHarness(value: string): value is ImportHarness {
   return (IMPORT_HARNESSES as readonly string[]).includes(value);
 }
 
+export function defaultPiSessionsDir(): string {
+  return resolve(
+    process.env.PI_SESSIONS_DIR?.trim() ||
+      join(homedir(), ".pi", "agent", "sessions"),
+  );
+}
+
+async function listPiSessions(sessionDir = defaultPiSessionsDir()) {
+  const root = resolve(sessionDir);
+  const infos = await SessionManager.listAll(root);
+  if (!existsSync(root)) {
+    return infos;
+  }
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
+    infos.push(...(await SessionManager.listAll(join(root, entry.name))));
+  }
+  infos.sort((a, b) => b.modified.getTime() - a.modified.getTime());
+  return infos;
+}
+
 const piImportAdapter: ImportAdapter = {
   harness: "pi",
   label: "Pi",
   async discover(args) {
-    const infos = args.piSessionDir
-      ? await SessionManager.listAll(resolve(args.piSessionDir))
-      : await SessionManager.listAll();
+    const infos = await listPiSessions(args.piSessionDir);
     return infos.map((info) => ({
       sourceId: resolve(info.path),
       sourceSessionId: info.id,
