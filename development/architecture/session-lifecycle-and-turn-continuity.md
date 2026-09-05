@@ -118,8 +118,37 @@ Each managed session carries one `RunState` (`web-server/run-state.ts`). Its
 phase is `idle`, `running`, `stopping`, or `queued` (running with texts in
 Pi's queue). Every mutation that needs an idle session checks this state
 through `assertIdle()`; `busy || isStreaming` is no longer restated. A run
-calls `begin()` at its start and the service's `settle()` at its end, which is
-the only idle transition: the run's `finally`, `abort()`, and `compact()`.
+calls the service's `beginRun()` at its start, which pushes a `session_updated`
+snapshot, and `settle()` at its end, which is the only idle transition and
+the only `run_phase: idle` the client hears: the run's `finally` (through
+`finishRun()`), `abort()`, and `compact()`. The snapshot's `status` is the
+run phase itself (`idle | running | stopping | queued`).
+
+Where a status fact lives (v1.5.1):
+
+- **What the conversation is doing** has one source, `RunState`. Every
+  message about phase, context usage, or the last failure derives from it;
+  no handler builds a done or idle signal by hand. Pi's `agent_end` fires
+  before Pi's own post-turn compaction check and any queued continuation,
+  so it only does bookkeeping; `run_completed` (with the snapshot) and
+  `session_metrics` go out from `finishRun()` after `session.prompt()`
+  resolves and `settle()` ran, where `run_failed` goes out too. The
+  sessions-list projection (`sessionActivity()`) reads the run record's
+  outcome for "failed", never Pi's raw error text.
+- **What happened** is a pure function of the session file
+  (`buildTranscriptFromEntries`), the same function live and on reload.
+  A row-level fact (stop line, tool outcome, compaction divider) is set
+  there or derived by one shared client function (`toolOutcome`,
+  `replyStopLine`), never twice.
+- **The client renders, it does not derive.** `runStateView`
+  (`frontend/src/lib/runState.ts`) is the one combination point: the
+  socket's own state (set by the socket only), the server's run fact
+  (`engine.applySnapshot` and run events), and a request of this client in
+  flight (`requestBusy`, set by the request layer). `app.isRunning` is its
+  phase; no pane keeps its own status string or reads `payload.status` to
+  decide "running" (`runState.test.ts`; `session-service.test.ts` "agent_end
+  does not end the turn"). A failed run shows its failure envelope and
+  recovery; the phase is idle, not "error".
 
 A model, thinking, mode, Full Access on, or app runtime-mode switch during a
 run is accepted, not refused: `RunState.applyOrDefer()` applies it now when
@@ -265,11 +294,15 @@ projection aligned.
 
 Manual, threshold, and overflow compaction share the Pi event path. A completed
 `compaction_end` with a result rebuilds the transcript from the live Pi branch
-and republishes metrics; aborted or failed compaction publishes no boundary.
-Context usage is cleared to unknown until a later model-usage event, avoiding a
-stale pre-compaction percentage (`session-service.ts:2011-2066`,
-`session-service.ts:3965-3976`). The threshold and aborted/overflow cases are
-covered by `session-service.test.ts:2459-2639`.
+and republishes metrics (`publishCompactionBoundary()`); aborted or failed
+compaction publishes no boundary, and the run phase after any `compaction_end`
+is `processing` — the run is idle only when `settle()` says so. Pi's automatic
+compaction runs after `agent_end`, inside the same `prompt()` call, so the
+composer stays busy through it and a message sent then is queued visibly or
+refused, never steered into the closing turn. Context usage is unknown until
+a later model-usage event; the client draws that as an explicit unknown ring
+rather than nothing. The threshold and aborted/overflow cases are covered by
+`session-service.test.ts` ("compaction" cases).
 
 Each active turn has a process-local `LiveRun` buffer containing the displayable
 user prompt and replayable stream events. `appendLiveRunEvent()` coalesces
@@ -281,16 +314,17 @@ Thus a pane attaching mid-run receives the persisted transcript plus the current
 prompt and buffered deltas/tool/phase events, while a terminal run has no stale
 live replay.
 
-A reply that did not finish carries Pi's `stopReason` (`aborted` or `error`) on
-its last assistant transcript row (`buildTranscriptFromEntries` in
-`web-server/session-store.ts`; an empty stopped reply still yields a row). The
-client draws one grey line under the bubble from that field alone
-(`frontend/src/lib/replyStop.ts`): `aborted` says the model keeps the part,
-`error` says it does not (Pi removes an errored partial from the agent state
-before retrying and keeps it in the session file). Live and reload read the
-same field because the client refreshes the transcript on `run_failed`; the
-transient retry notice in the stream uses the same wording. No separate
-boundary row exists (`transcript-stop-reason.test.ts`, `replyStop.test.ts`).
+The stop line belongs to a visible text block. `buildTranscriptFromEntries`
+(`web-server/session-store.ts`) sets `stopReason` (`aborted`, `error`, or
+`length`) only on the last text row of a stopped, failed, or truncated
+attempt, together with `stopKept`: a user stop keeps the text in the model's
+context; a failed or truncated attempt that Pi retried (another assistant
+entry follows before the next user turn) was dropped from it, a final one is
+kept. An attempt without text — thinking or a tool call only, or Pi's empty
+placeholder after a network failure — yields no row and no line. The client
+draws the line from those two fields alone (`frontend/src/lib/replyStop.ts`),
+live and on reload; the transient retry notice uses the dropped wording
+(`transcript-stop-reason.test.ts`, `replyStop.test.ts`).
 
 Run phases currently include `connecting`, `processing`, `thinking`, `tool`,
 `compacting`, `retrying`, `awaiting-user`, `idle`, and `error`. Attached panes

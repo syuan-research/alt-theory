@@ -6,6 +6,26 @@ detail lives in commit history and `development/`.
 
 ---
 
+## v1.5.1 — unreleased
+
+### Conversation status
+
+- The app no longer says a reply is finished before it is. Automatic
+  compaction after a reply used to arrive after a false "done": a message
+  sent in that moment was quietly folded into the closing reply and its
+  bubble did not appear until later. The status now waits for the whole
+  turn.
+- After a compaction the context ring shows an empty dial with a note,
+  instead of vanishing, until the next reply reports its usage.
+- The grey line under an unfinished reply now belongs to the text above it
+  and says two things: what stopped it (you, a failure, or the reply being
+  too long) and whether the model can still see that text. A failed attempt
+  that produced no text shows no line at all.
+- A failed reply no longer paints the conversation badge "Error"; the
+  notice and the retry / continue options say what happened.
+- If a subscription login (GitHub Copilot, Kimi) can no longer be refreshed,
+  the notice says so and points to Settings → Models.
+
 ## v1.5.0-beta.1 — 2026-09-04
 
 This is a large update. It adds a Working folders page, subscription sign-in
