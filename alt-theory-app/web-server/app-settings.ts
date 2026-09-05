@@ -106,6 +106,16 @@ export interface AppSettings {
    * conversation whose main folder matches.
    */
   workingFolders?: WorkingFoldersSettings;
+  /**
+   * Cached GitHub update check (desktop bundle). Last check time, latest
+   * tag found, download URL, and the version the user dismissed on the rail.
+   */
+  updateCheck?: {
+    lastCheckedAt?: string;
+    latestVersion?: string | null;
+    htmlUrl?: string | null;
+    dismissedVersion?: string | null;
+  };
 }
 
 export interface WorkingFoldersSettings {
@@ -275,6 +285,27 @@ export function readAppSettingsWithWarning(dataDir: string): {
                     (dir): dir is string => typeof dir === "string",
                   ),
                 })),
+            },
+          }
+        : {}),
+      ...(parsed.updateCheck && typeof parsed.updateCheck === "object"
+        ? {
+            updateCheck: {
+              ...(typeof parsed.updateCheck.lastCheckedAt === "string"
+                ? { lastCheckedAt: parsed.updateCheck.lastCheckedAt }
+                : {}),
+              ...(typeof parsed.updateCheck.latestVersion === "string" ||
+              parsed.updateCheck.latestVersion === null
+                ? { latestVersion: parsed.updateCheck.latestVersion }
+                : {}),
+              ...(typeof parsed.updateCheck.htmlUrl === "string" ||
+              parsed.updateCheck.htmlUrl === null
+                ? { htmlUrl: parsed.updateCheck.htmlUrl }
+                : {}),
+              ...(typeof parsed.updateCheck.dismissedVersion === "string" ||
+              parsed.updateCheck.dismissedVersion === null
+                ? { dismissedVersion: parsed.updateCheck.dismissedVersion }
+                : {}),
             },
           }
         : {}),

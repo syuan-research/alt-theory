@@ -20,4 +20,13 @@ contextBridge.exposeInMainWorld("altElectron", {
       return "";
     }
   },
+  getUpdateStatus: () => ipcRenderer.invoke("alt:getUpdateStatus"),
+  checkForUpdates: () => ipcRenderer.invoke("alt:checkForUpdates"),
+  dismissUpdate: (version) => ipcRenderer.invoke("alt:dismissUpdate", version),
+  openExternal: (url) => ipcRenderer.invoke("alt:openExternal", url),
+  onUpdateStatus: (callback) => {
+    const listener = (_event, status) => callback(status);
+    ipcRenderer.on("alt:updateStatus", listener);
+    return () => ipcRenderer.removeListener("alt:updateStatus", listener);
+  },
 });

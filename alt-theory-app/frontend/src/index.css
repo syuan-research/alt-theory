@@ -409,6 +409,9 @@
   .search-box .s-result:hover { background: var(--hover); }
   .search-box .recent { padding: 4px 14px 10px; font-size: 0.8125rem; color: var(--text-3); }
 
+  .update-line { border-top: 1px solid var(--hairline); padding: 8px 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 0.75rem; color: var(--text-2); }
+  .update-line .link-btn { background: none; border: none; padding: 0; color: var(--ink-soft); cursor: pointer; font: inherit; text-decoration: underline; text-underline-offset: 2px; }
+  .update-line .link-btn:hover { color: var(--ink); }
   .left-foot { border-top: 1px solid var(--hairline); padding: 10px 12px; display: flex; align-items: center; gap: 10px; }
   .left-foot .gear { display: flex; align-items: center; gap: 8px; color: var(--ink-soft); cursor: pointer; padding: 6px 10px; border-radius: var(--r-sm); font-size: 0.875rem; background: none; border: none; }
   .left-foot .gear:hover { background: var(--hover); }

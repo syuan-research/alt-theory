@@ -22,6 +22,8 @@ const { app, BrowserWindow, dialog, ipcMain, shell } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
+const https = require("https");
+const appUpdate = require("./app-update.cjs");
 
 // --- GPU/sandbox default-off (D4, 2026-06-19). ---
 // Maximize compatibility for unknown recipient machines: the Win11 25H2 +
@@ -154,6 +156,169 @@ ipcMain.handle("alt:revealPath", (_event, target) => {
   if (typeof target === "string" && target) shell.showItemInFolder(target);
 });
 
+const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
+let updateStatus = {
+  currentVersion: "",
+  latestVersion: null,
+  htmlUrl: null,
+};
+
+function appSettingsPath() {
+  return path.join(process.env.ALT_THEORY_DATA_DIR || LOCAL_DATA_DIR, "app-settings.json");
+}
+
+function readAppSettingsFile() {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(appSettingsPath(), "utf8"));
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function patchUpdateCheck(patch) {
+  const current = readAppSettingsFile();
+  if (current.schemaVersion && current.schemaVersion !== 1) return;
+  const next = {
+    schemaVersion: 1,
+    skills: current.skills ?? {
+      understand: { enabledPaths: null },
+      work: { enabledPaths: null },
+    },
+    ...current,
+    updateCheck: { ...(current.updateCheck ?? {}), ...patch },
+  };
+  fs.mkdirSync(path.dirname(appSettingsPath()), { recursive: true });
+  fs.writeFileSync(appSettingsPath(), `${JSON.stringify(next, null, 2)}\n`);
+}
+
+function publicUpdateStatus() {
+  const dismissed = readAppSettingsFile().updateCheck?.dismissedVersion;
+  const latest = updateStatus.latestVersion;
+  const newer = Boolean(
+    latest &&
+      appUpdate.compareSemver(latest, updateStatus.currentVersion) > 0 &&
+      dismissed !== latest,
+  );
+  return { ...updateStatus, newer };
+}
+
+function pushUpdateStatus() {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("alt:updateStatus", publicUpdateStatus());
+  }
+}
+
+function fetchGithubJson(url) {
+  return new Promise((resolve, reject) => {
+    const req = https.get(
+      url,
+      {
+        headers: {
+          Accept: "application/vnd.github+json",
+          "User-Agent": "AltTheory",
+          "X-GitHub-Api-Version": "2022-11-28",
+        },
+      },
+      (res) => {
+        const status = res.statusCode ?? 0;
+        if (status !== 200) {
+          res.resume();
+          reject(new Error(`GitHub ${status}`));
+          return;
+        }
+        let body = "";
+        res.setEncoding("utf8");
+        res.on("data", (chunk) => {
+          body += chunk;
+        });
+        res.on("end", () => {
+          try {
+            resolve(JSON.parse(body));
+          } catch (error) {
+            reject(error);
+          }
+        });
+      },
+    );
+    req.on("error", reject);
+    req.setTimeout(15000, () => {
+      req.destroy(new Error("timeout"));
+    });
+  });
+}
+
+async function runUpdateCheck({ force }) {
+  updateStatus.currentVersion = app.getVersion();
+  let pkg = {};
+  try {
+    pkg = JSON.parse(
+      fs.readFileSync(path.join(app.getAppPath(), "package.json"), "utf8"),
+    );
+  } catch {
+    return publicUpdateStatus();
+  }
+  const repo = appUpdate.parseRepo(pkg);
+  if (!repo) return publicUpdateStatus();
+  const stored = readAppSettingsFile().updateCheck ?? {};
+  const last = Date.parse(stored.lastCheckedAt ?? "") || 0;
+  if (!force && last && Date.now() - last < UPDATE_CHECK_INTERVAL_MS) {
+    updateStatus.latestVersion = stored.latestVersion ?? null;
+    updateStatus.htmlUrl = stored.htmlUrl ?? null;
+    return publicUpdateStatus();
+  }
+  try {
+    const found = await appUpdate.findUpdate({
+      currentVersion: updateStatus.currentVersion,
+      owner: repo.owner,
+      repo: repo.repo,
+      getJson: fetchGithubJson,
+    });
+    updateStatus.latestVersion = found?.version ?? null;
+    updateStatus.htmlUrl = found?.htmlUrl ?? null;
+    patchUpdateCheck({
+      lastCheckedAt: new Date().toISOString(),
+      latestVersion: updateStatus.latestVersion,
+      htmlUrl: updateStatus.htmlUrl,
+    });
+  } catch {
+    // Offline or rate-limited: show nothing, no dialog.
+  }
+  return publicUpdateStatus();
+}
+
+ipcMain.handle("alt:getUpdateStatus", () => {
+  if (!updateStatus.currentVersion) {
+    updateStatus.currentVersion = app.getVersion();
+  }
+  const stored = readAppSettingsFile().updateCheck ?? {};
+  if (!updateStatus.latestVersion && stored.latestVersion) {
+    updateStatus.latestVersion = stored.latestVersion;
+    updateStatus.htmlUrl = stored.htmlUrl ?? null;
+  }
+  return publicUpdateStatus();
+});
+ipcMain.handle("alt:checkForUpdates", async () => {
+  const status = await runUpdateCheck({ force: true });
+  pushUpdateStatus();
+  return status;
+});
+ipcMain.handle("alt:dismissUpdate", (_event, version) => {
+  if (typeof version === "string" && version) {
+    patchUpdateCheck({ dismissedVersion: version });
+  }
+  const status = publicUpdateStatus();
+  pushUpdateStatus();
+  return status;
+});
+ipcMain.handle("alt:openExternal", async (_event, url) => {
+  if (typeof url !== "string" || !url.startsWith("https://github.com/")) {
+    return false;
+  }
+  await shell.openExternal(url);
+  return true;
+});
+
 app.whenReady().then(async () => {
   createWindow();
 
@@ -197,6 +362,9 @@ app.whenReady().then(async () => {
     await startBackend(codeRoot, resourceRoot);
     loadedUrl = true;
     loadShell();
+    void runUpdateCheck({ force: false }).then(() => {
+      pushUpdateStatus();
+    });
   } catch (err) {
     // Backend failed; show an error page so the user is not stuck on a blank
     // window. The bundle-debug.log has the stack.

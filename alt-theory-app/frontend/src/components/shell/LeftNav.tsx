@@ -19,7 +19,16 @@ import { SessionImportDialog } from "@/components/shell/SessionImportDialog";
 import { HelpMenu } from "@/components/shell/HelpMenu";
 import { scrollAffectsAnchor, useContextMenu, type ContextMenuItem } from "@/components/shell/ContextMenu";
 import { promoteToMainline as promoteToMainlineRequest } from "@/api/sessions";
-import { hasNativeBridge, pickDirectory, revealPath } from "@/lib/native";
+import {
+  dismissUpdate,
+  getUpdateStatus,
+  hasNativeBridge,
+  onUpdateStatus,
+  openExternal,
+  pickDirectory,
+  revealPath,
+  type AppUpdateStatus,
+} from "@/lib/native";
 import { fetchSessionDetail } from "@/api/sessions";
 import {
   getSessionListSort,
@@ -207,6 +216,7 @@ export function LeftNav() {
 
         <UserNav onImport={() => shell.setImportOpen(true)} />
         <Workbench />
+        <UpdateLine />
 
         <div className="left-foot">
           <button className="gear" onClick={() => shell.openSettings()}>
@@ -231,6 +241,42 @@ export function LeftNav() {
         onClose={() => shell.setImportOpen(false)}
       />
     </aside>
+  );
+}
+
+function UpdateLine() {
+  const [status, setStatus] = useState<AppUpdateStatus | null>(null);
+  useEffect(() => {
+    if (!hasNativeBridge()) return;
+    let alive = true;
+    void getUpdateStatus().then((next) => alive && setStatus(next));
+    const stop = onUpdateStatus((next) => {
+      if (alive) setStatus(next);
+    });
+    return () => {
+      alive = false;
+      stop();
+    };
+  }, []);
+  if (!status?.newer || !status.latestVersion) return null;
+  return (
+    <div className="update-line">
+      <span>{t("Version {version} is available.", { version: status.latestVersion })}</span>
+      {status.htmlUrl ? (
+        <button type="button" className="link-btn" onClick={() => void openExternal(status.htmlUrl!)}>
+          {t("Open download page")}
+        </button>
+      ) : null}
+      <button
+        type="button"
+        className="link-btn"
+        onClick={() => {
+          void dismissUpdate(status.latestVersion!).then(setStatus);
+        }}
+      >
+        {t("Dismiss")}
+      </button>
+    </div>
   );
 }
 

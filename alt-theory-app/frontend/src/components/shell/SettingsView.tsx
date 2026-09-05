@@ -41,7 +41,16 @@ import type {
 } from "@/api/types";
 import { ModelConfigPage } from "@/pages/ModelConfigPage";
 import { authConnectEntryStep } from "@/lib/authConnect";
-import { hasNativeBridge, pickDirectory, pickFiles, revealPath } from "@/lib/native";
+import {
+  checkForUpdates,
+  getUpdateStatus,
+  hasNativeBridge,
+  openExternal,
+  pickDirectory,
+  pickFiles,
+  revealPath,
+  type AppUpdateStatus,
+} from "@/lib/native";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
 import { t } from "@/i18n";
@@ -1817,19 +1826,56 @@ function ParticipantPanel({
 
 function AboutPanel() {
   const [dataDir, setDataDir] = useState<string | null>(null);
+  const [update, setUpdate] = useState<AppUpdateStatus | null>(null);
+  const [checked, setChecked] = useState(false);
   useEffect(() => {
     let alive = true;
     getDataFolder()
       .then((r) => alive && setDataDir(r.dataDir))
       .catch(() => {});
+    if (hasNativeBridge()) {
+      void getUpdateStatus().then((status) => alive && setUpdate(status));
+    }
     return () => {
       alive = false;
     };
   }, []);
+  const version = update?.currentVersion || __ALT_THEORY_VERSION__;
   return (
     <div className="set-panel">
       <h2>{t("About")}</h2>
-      <p className="sub">Alt Theory v{__ALT_THEORY_VERSION__}.</p>
+      <p className="sub">Alt Theory v{version}.</p>
+      {hasNativeBridge() ? (
+        <div className="set-card">
+          <h4>{t("Updates")}</h4>
+          {update?.newer && update.latestVersion ? (
+            <p>{t("Version {version} is available.", { version: update.latestVersion })}</p>
+          ) : checked && update && !update.newer ? (
+            <p>{t("No newer version.")}</p>
+          ) : null}
+          <div className="row2">
+            <button
+              className="add-btn"
+              onClick={() => {
+                void checkForUpdates().then((status) => {
+                  setUpdate(status);
+                  setChecked(true);
+                });
+              }}
+            >
+              {t("Check for updates")}
+            </button>
+            {update?.newer && update.htmlUrl ? (
+              <button
+                className="add-btn"
+                onClick={() => void openExternal(update.htmlUrl!)}
+              >
+                {t("Open download page")}
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
       {dataDir ? (
         <div className="set-card">
           <div className="row2">

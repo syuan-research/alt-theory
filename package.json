@@ -6,6 +6,10 @@
   "author": {
     "name": "Shuai Yuan"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/syuan-research/alt-theory.git"
+  },
   "private": true,
   "type": "module",
   "main": "electron/main.cjs",

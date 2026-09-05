@@ -35,6 +35,32 @@ test("app settings persist immediately and round-trip explicit selections", () =
   assert.deepEqual(resolved.work, []);
 });
 
+test("app settings keep a cached update check across a later write", () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "alt-theory-settings-update-"));
+  writeAppSettings(dataDir, {
+    schemaVersion: 1,
+    skills: {
+      understand: { enabledPaths: null },
+      work: { enabledPaths: null },
+    },
+    updateCheck: {
+      lastCheckedAt: "2026-09-05T00:00:00.000Z",
+      latestVersion: "1.5.1",
+      htmlUrl: "https://github.com/syuan-research/alt-theory/releases/tag/v1.5.1",
+      dismissedVersion: null,
+    },
+  });
+  const settings = readAppSettings(dataDir);
+  settings.lang = "en";
+  writeAppSettings(dataDir, settings);
+  assert.deepEqual(readAppSettings(dataDir).updateCheck, {
+    lastCheckedAt: "2026-09-05T00:00:00.000Z",
+    latestVersion: "1.5.1",
+    htmlUrl: "https://github.com/syuan-research/alt-theory/releases/tag/v1.5.1",
+    dismissedVersion: null,
+  });
+});
+
 test("app settings keep session-list sort preferences", () => {
   const dataDir = mkdtempSync(join(tmpdir(), "alt-theory-settings-"));
   const settings = readAppSettings(dataDir);
