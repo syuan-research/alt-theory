@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import {
+  familyMemberIds,
   groupChanges,
   mergeSessionChanges,
   projectChangesFromEntries,
@@ -146,6 +147,39 @@ test("changes group by project folder, then by capped containing folder, titled 
       ["outside", join(home, "Downloads", "export", "tmp"), join(home, "Downloads", "export", "tmp", "exports"), true, ["README.md", "deep/run.log"]],
     ],
   );
+});
+
+test("familyMemberIds walks headers, not every session summary", () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "alt-theory-lineage-index-"));
+  const header = (sessionId: string, parent?: string) => ({
+    schemaVersion: 1,
+    recordType: "session",
+    sessionId,
+    createdAt: "2026-09-05T00:00:00.000Z",
+    recordModel: "v0.4",
+    ...(parent
+      ? { forkedFrom: { sessionId: parent, purpose: "fork" } }
+      : {}),
+  });
+  for (const [id, parent] of [
+    ["root", undefined],
+    ["child", "root"],
+    ["other", undefined],
+  ] as const) {
+    const records = join(dataDir, "sessions", id, "records");
+    mkdirSync(records, { recursive: true });
+    writeFileSync(join(records, "session.json"), JSON.stringify(header(id, parent)));
+  }
+  try {
+    const counted = withChangesProjectionCounts(() =>
+      familyMemberIds(dataDir, "child"),
+    );
+    assert.equal(counted.partsReads, 0);
+    assert.deepEqual(counted.result.sort(), ["child", "root"]);
+    assert.deepEqual(familyMemberIds(dataDir, "other"), ["other"]);
+  } finally {
+    rmSync(dataDir, { recursive: true, force: true });
+  }
 });
 
 test("one request locates each file once; a stable remount does not reparse", () => {

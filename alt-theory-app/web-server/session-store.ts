@@ -592,11 +592,100 @@ export function forkFamilyIds(dataDir: string, sessionId: string): string[] {
   return familyOf(sessionId, allSessionSummaries(dataDir)).map((s) => s.sessionId);
 }
 
+type LineageIndexEntry = {
+  sessionId: string;
+  parentId: string | null;
+  deletedAt: string | null;
+};
+
+type LineageIndex = {
+  stamp: string;
+  entries: LineageIndexEntry[];
+  familyKeyById: Map<string, string>;
+};
+
+const lineageIndexCache = new Map<string, LineageIndex>();
+
+function lineageStamp(dataDir: string, ids: string[]): string {
+  return ids
+    .map((id) => {
+      const root = resolveSessionRoot(dataDir, id);
+      if (!root) return `${id}:0`;
+      const recordsDir = join(root, "records");
+      let latest = 0;
+      for (const name of ["session.json", "deleted.json"]) {
+        const path = join(recordsDir, name);
+        try {
+          if (existsSync(path)) {
+            const stamp = statSync(path).mtimeMs;
+            if (stamp > latest) latest = stamp;
+          }
+        } catch {
+          // skip unreadable stamps
+        }
+      }
+      return `${id}:${latest}`;
+    })
+    .join(",");
+}
+
+function loadLineageIndex(dataDir: string): LineageIndex {
+  const resolved = resolve(dataDir);
+  const ids = listSessionDirIds(resolved);
+  const stamp = lineageStamp(resolved, ids);
+  const cached = lineageIndexCache.get(resolved);
+  if (cached && cached.stamp === stamp) return cached;
+
+  const entries: LineageIndexEntry[] = [];
+  for (const id of ids) {
+    const root = resolveSessionRoot(resolved, id);
+    if (!root) continue;
+    const recordsDir = join(root, "records");
+    const tombstone = readDeletedSessionRecord(recordsDir);
+    if (tombstone && !isRecoverableDeletion(tombstone)) continue;
+    const header = readV4SessionHeader(recordsDir);
+    entries.push({
+      sessionId: id,
+      parentId: header?.forkedFrom?.sessionId ?? null,
+      deletedAt: tombstone?.deletedAt ?? null,
+    });
+  }
+  const byId = new Map(entries.map((entry) => [entry.sessionId, entry]));
+  const familyKeyById = new Map<string, string>();
+  for (const entry of entries) {
+    const walked = new Set([entry.sessionId]);
+    let cursor = entry.parentId;
+    let purgedTop: string | null = null;
+    const chain: string[] = [];
+    while (cursor) {
+      const parent = byId.get(cursor);
+      if (!parent) {
+        purgedTop = cursor;
+        break;
+      }
+      if (walked.has(parent.sessionId)) break;
+      walked.add(parent.sessionId);
+      chain.unshift(parent.sessionId);
+      cursor = parent.parentId;
+    }
+    familyKeyById.set(entry.sessionId, purgedTop ?? chain[0] ?? entry.sessionId);
+  }
+  const index = { stamp, entries, familyKeyById };
+  lineageIndexCache.set(resolved, index);
+  return index;
+}
+
 /** Every living member sharing the lineage key, including rootless siblings. */
 export function familyMemberIds(dataDir: string, sessionId: string): string[] {
-  return familyOf(sessionId, allSessionSummaries(dataDir))
-    .filter((summary) => !summary.deletedAt)
-    .map((summary) => summary.sessionId);
+  const index = loadLineageIndex(dataDir);
+  const key = index.familyKeyById.get(sessionId);
+  if (!key) return [];
+  return index.entries
+    .filter(
+      (entry) =>
+        index.familyKeyById.get(entry.sessionId) === key && !entry.deletedAt,
+    )
+    .map((entry) => entry.sessionId);
 }
 
 /** Family identity from immutable lineage (§0): the root's id, or the purged
