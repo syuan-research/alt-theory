@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import type { ChangeGroup, FileChange } from "@/api/types";
 import { fetchSessionChanges } from "@/api/session-files";
 import { t } from "@/i18n";
@@ -20,14 +20,14 @@ import type { PreviewMode } from "@/lib/fileContent";
 export function ChangesPanel() {
   const app = useApp();
   const shell = useShell();
-  const [groups, setGroups] = useState<ChangeGroup[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const menu = useContextMenu();
 
   const sessionId = app.sessionId;
   const runCount = app.runCompletedCount;
   const [closed, setClosed] = usePaneMemory<string[]>(`${sessionId}:changes:closed`, []);
   const [mode, setMode] = usePaneMemory<PreviewMode>(`${sessionId}:changes:mode`, "diff");
+  const [groups, setGroups] = usePaneMemory<ChangeGroup[] | null>(`${sessionId}:changes:groups`, null);
+  const [error, setError] = usePaneMemory<string | null>(`${sessionId}:changes:error`, null);
 
   useEffect(() => {
     if (!sessionId) {

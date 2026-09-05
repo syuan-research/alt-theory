@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -7,6 +8,9 @@ import {
   groupChanges,
   mergeSessionChanges,
   projectChangesFromEntries,
+  readSessionChanges,
+  readSessionDetailWithParts,
+  withChangesProjectionCounts,
   type ChangeRoot,
 } from "./session-store.js";
 
@@ -142,6 +146,54 @@ test("changes group by project folder, then by capped containing folder, titled 
       ["outside", join(home, "Downloads", "export", "tmp"), join(home, "Downloads", "export", "tmp", "exports"), true, ["README.md", "deep/run.log"]],
     ],
   );
+});
+
+test("one request locates each file once; a stable remount does not reparse", () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "alt-theory-changes-once-"));
+  const sessionId = "s1";
+  const sessionRoot = join(dataDir, "sessions", sessionId);
+  const historyDir = join(sessionRoot, "history");
+  const workspace = join(sessionRoot, "workspace");
+  mkdirSync(join(sessionRoot, "records"), { recursive: true });
+  mkdirSync(historyDir, { recursive: true });
+  mkdirSync(workspace, { recursive: true });
+  const manager = SessionManager.create(workspace, historyDir);
+  manager.appendMessage({
+    role: "assistant",
+    content: [
+      {
+        type: "toolCall",
+        id: "w1",
+        name: "write",
+        arguments: { path: "notes.md", content: "hello" },
+      },
+    ],
+    timestamp: Date.now(),
+  });
+  manager.appendMessage({
+    role: "toolResult",
+    toolCallId: "w1",
+    toolName: "write",
+    isError: false,
+    content: [{ type: "text", text: "ok" }],
+    timestamp: Date.now(),
+  });
+  try {
+    const loaded = readSessionDetailWithParts(dataDir, sessionId);
+    assert.ok(loaded, "fixture session is readable");
+    const first = withChangesProjectionCounts(() =>
+      readSessionChanges(dataDir, sessionId, loaded.parts),
+    );
+    assert.equal(first.memberOpens, 1, "primary transcript opened once");
+    assert.equal(first.verdicts, 1, "one file is placed with one verdict");
+    const second = withChangesProjectionCounts(() =>
+      readSessionChanges(dataDir, sessionId, loaded.parts),
+    );
+    assert.equal(second.memberOpens, 0, "cache skips the transcript walk");
+    assert.equal(second.verdicts, 0, "cache skips locate/group");
+  } finally {
+    rmSync(dataDir, { recursive: true, force: true });
+  }
 });
 
 // A Windows platform fact (case-insensitive filesystems): run by the other

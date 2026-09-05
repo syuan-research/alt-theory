@@ -52,6 +52,7 @@ import {
   healFamilyInvariants,
   readSessionAccessSummary,
   readSessionDetail,
+  readSessionDetailWithParts,
   readSessionChanges,
   type SessionSummary,
   sessionsAttachedToDeletion,
@@ -1267,16 +1268,16 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     }
     const auth = resolveSessionRestAuth(req, res);
     if (!auth) return;
-    const detail = readSessionDetail(dataDir, sessionId);
-    if (!detail || !canAccessSessionSummary(auth, detail.session)) {
+    const loaded = readSessionDetailWithParts(dataDir, sessionId);
+    if (!loaded || !canAccessSessionSummary(auth, loaded.detail.session)) {
       res.status(404).json({ error: `Unknown session id: ${sessionId}` });
       return;
     }
-    if (!canAccessSessionContent(auth, detail.session)) {
+    if (!canAccessSessionContent(auth, loaded.detail.session)) {
       res.status(403).json({ error: "Session content is private" });
       return;
     }
-    const changes = readSessionChanges(dataDir, sessionId);
+    const changes = readSessionChanges(dataDir, sessionId, loaded.parts);
     if (!changes) {
       res.status(404).json({ error: `Unknown session id: ${sessionId}` });
       return;

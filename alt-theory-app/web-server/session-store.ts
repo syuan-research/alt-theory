@@ -165,7 +165,7 @@ interface ReadState {
   hasError: boolean;
 }
 
-interface SessionParts {
+export interface SessionParts {
   sessionRoot: string;
   recordsDir: string;
   historyDir: string;
@@ -175,6 +175,36 @@ interface SessionParts {
   deleted: DeletedSessionRecord | null;
   sessionFile: string | null;
   state: ReadState;
+}
+
+type LocatedFile = FileChange & { groupRoot?: ChangeRoot | null };
+
+let projectionCounts: {
+  partsReads: number;
+  verdicts: number;
+  memberOpens: number;
+} | null = null;
+
+function countedVerdict(
+  path: string,
+  intent: "read" | "write" | "browse",
+  roots: { readable?: Root[]; writable?: Root[] },
+) {
+  if (projectionCounts) projectionCounts.verdicts += 1;
+  return verdict(path, intent, roots);
+}
+
+/** Test seam: parse/verdict/open counts while computing a changes projection. */
+export function withChangesProjectionCounts<T>(
+  fn: () => T,
+): { result: T; partsReads: number; verdicts: number; memberOpens: number } {
+  projectionCounts = { partsReads: 0, verdicts: 0, memberOpens: 0 };
+  try {
+    const result = fn();
+    return { result, ...projectionCounts };
+  } finally {
+    projectionCounts = null;
+  }
 }
 
 export function listSessionSummaries(dataDir: string): SessionListResponse {
@@ -278,6 +308,14 @@ export function readSessionDetail(
   dataDir: string,
   sessionId: string
 ): SessionDetailResponse | null {
+  return readSessionDetailWithParts(dataDir, sessionId)?.detail ?? null;
+}
+
+/** Detail plus the parts it already parsed — the changes route reuses them. */
+export function readSessionDetailWithParts(
+  dataDir: string,
+  sessionId: string
+): { detail: SessionDetailResponse; parts: SessionParts } | null {
   const sessionRoot = resolveSessionRoot(dataDir, sessionId);
   if (!sessionRoot || !existsSync(sessionRoot)) return null;
 
@@ -300,23 +338,26 @@ export function readSessionDetail(
   const transcriptPreview = pi.transcript.slice(-12);
 
   return {
-    session,
-    manifest: parts.manifest,
-    metrics: parts.metrics,
-    events: {
-      count: events.length,
-      tail: events.slice(-20),
+    parts,
+    detail: {
+      session,
+      manifest: parts.manifest,
+      metrics: parts.metrics,
+      events: {
+        count: events.length,
+        tail: events.slice(-20),
+      },
+      pi: pi.info,
+      transcript: pi.transcript,
+      transcriptPreview,
+      effectiveConfig:
+        configEvents.at(-1)?.effective ??
+        inferEffectiveConfig(parts.manifest),
+      configEvents,
+      runs,
+      abComparisons,
+      warnings: uniqueWarnings([...session.warnings, ...parts.state.warnings]),
     },
-    pi: pi.info,
-    transcript: pi.transcript,
-    transcriptPreview,
-    effectiveConfig:
-      configEvents.at(-1)?.effective ??
-      inferEffectiveConfig(parts.manifest),
-    configEvents,
-    runs,
-    abComparisons,
-    warnings: uniqueWarnings([...session.warnings, ...parts.state.warnings]),
   };
 }
 
@@ -1110,6 +1151,7 @@ function readSessionParts(
   dataDir: string,
   sessionId: string
 ): SessionParts | null {
+  if (projectionCounts) projectionCounts.partsReads += 1;
   const sessionRoot = resolveSessionRoot(dataDir, sessionId);
   if (!sessionRoot || !existsSync(sessionRoot)) return null;
 
@@ -1430,11 +1472,37 @@ const MAX_DIFF_LINES = 160;
  * aggregated from the Pi transcript's write/edit tool calls (M7 §2). The ONE
  * sanctioned backend addition for the v1-alpha frontend; never mutates state.
  */
+const CHANGES_CACHE_LIMIT = 32;
+const changesCache = new Map<string, SessionChanges>();
+
+function familyTranscriptStamp(dataDir: string, memberIds: string[]): string {
+  return memberIds
+    .map((id) => {
+      const root = resolveSessionRoot(dataDir, id);
+      if (!root) return `${id}:0`;
+      const historyDir = join(root, "history");
+      let latest = 0;
+      if (existsSync(historyDir)) {
+        for (const name of readdirSync(historyDir)) {
+          try {
+            const stamp = statSync(join(historyDir, name)).mtimeMs;
+            if (stamp > latest) latest = stamp;
+          } catch {
+            // skip unreadable entries
+          }
+        }
+      }
+      return `${id}:${latest}`;
+    })
+    .join(",");
+}
+
 export function readSessionChanges(
   dataDir: string,
-  sessionId: string
+  sessionId: string,
+  primaryParts?: SessionParts | null,
 ): SessionChanges | null {
-  const parts = readSessionParts(dataDir, sessionId);
+  const parts = primaryParts ?? readSessionParts(dataDir, sessionId);
   if (!parts) return null;
   const roots: ChangeRoot[] = parts.v4Session?.workspace
     ? [
@@ -1450,12 +1518,16 @@ export function readSessionChanges(
   // Family scope (card 7): a subagent's or branch's writes are this
   // conversation's changes too; the family shares one folder (§7), so the
   // open conversation's roots apply to every member.
-  const memberIds = familyMemberIds(dataDir, sessionId);
+  const memberIds = [...new Set([...familyMemberIds(dataDir, sessionId), sessionId])];
+  const cacheKey = `${resolve(dataDir)}|${familyTranscriptStamp(dataDir, memberIds)}`;
+  const cached = changesCache.get(cacheKey);
+  if (cached) return cached;
   const perSession = [...memberIds.filter((id) => id !== sessionId), sessionId]
     .map((id) => {
       const member = id === sessionId ? parts : readSessionParts(dataDir, id);
       if (!member?.sessionFile) return null;
       try {
+        if (projectionCounts) projectionCounts.memberOpens += 1;
         const manager = SessionManager.open(member.sessionFile, member.historyDir);
         return { sessionId: id, files: projectChangesFromEntries(manager.getBranch()).files };
       } catch {
@@ -1463,7 +1535,13 @@ export function readSessionChanges(
       }
     })
     .filter((item): item is { sessionId: string; files: ProjectedChange[] } => item !== null);
-  return { groups: groupChanges(mergeSessionChanges(perSession, roots), roots, homedir()) };
+  const result = { groups: groupChanges(mergeSessionChanges(perSession, roots), roots, homedir()) };
+  if (changesCache.size >= CHANGES_CACHE_LIMIT) {
+    const oldest = changesCache.keys().next().value;
+    if (oldest) changesCache.delete(oldest);
+  }
+  changesCache.set(cacheKey, result);
+  return result;
 }
 
 /** A workspace root plus how the content route addresses files under it. */
@@ -1506,7 +1584,8 @@ export function mergeSessionChanges(
         diff: [existing?.diff, file.diff].filter(Boolean).join("\n").split("\n").slice(0, MAX_DIFF_LINES).join("\n"),
         ...(located.contentRef ? { contentRef: located.contentRef } : {}),
         sessionIds: [...new Set([...(existing?.sessionIds ?? []), sessionId])],
-      });
+        groupRoot: located.groupRoot,
+      } as LocatedFile);
     }
   }
   return [...byPath.values()].reverse();
@@ -1516,7 +1595,11 @@ export function mergeSessionChanges(
 function locateChangedFile(
   roots: ChangeRoot[],
   requestedPath: string,
-): { resolvedPath: string; contentRef?: FileChange["contentRef"] } {
+): {
+  resolvedPath: string;
+  contentRef?: FileChange["contentRef"];
+  groupRoot: ChangeRoot | null;
+} {
   const fallback = isAbsolute(requestedPath)
     ? resolve(requestedPath)
     : resolve(roots[0]?.path ?? process.cwd(), requestedPath);
@@ -1526,7 +1609,7 @@ function locateChangedFile(
       : resolve(root.path, requestedPath);
     // Containment through the one path verdict: an absolute or symlinked
     // path only reads when it is physically inside a workspace root.
-    const check = verdict(target, "read", { readable: [root] });
+    const check = countedVerdict(target, "read", { readable: [root] });
     if (check.outcome !== "inside") continue;
     const rel = relative(root.path, target).replace(/\\/g, "/");
     return {
@@ -1535,9 +1618,10 @@ function locateChangedFile(
         root: root.contentRoot,
         path: root.contentRoot === "working" ? `${root.folderId}/${rel}` : rel,
       },
+      groupRoot: root,
     };
   }
-  return { resolvedPath: fallback };
+  return { resolvedPath: fallback, groupRoot: null };
 }
 
 /**
@@ -1556,9 +1640,15 @@ export function groupChanges(
 ): ChangeGroup[] {
   const groups = new Map<string, ChangeGroup & { dirs: string[] }>();
   for (const file of files) {
-    const root = roots.find((candidate) =>
-      verdict(file.resolvedPath, "read", { readable: [candidate] }).outcome === "inside",
-    );
+    const located = file as LocatedFile;
+    const root =
+      located.groupRoot !== undefined
+        ? located.groupRoot
+        : roots.find(
+            (candidate) =>
+              countedVerdict(file.resolvedPath, "read", { readable: [candidate] })
+                .outcome === "inside",
+          ) ?? null;
     const dir = dirname(file.resolvedPath);
     const anchor = root ? resolve(root.path) : cappedAncestor(dir, home);
     const key = `${root ? root.reason : "outside"}:${anchor}`;
@@ -1582,10 +1672,13 @@ export function groupChanges(
       return {
         ...group,
         title,
-        files: group.files.map((file) => ({
-          ...file,
-          displayPath: relative(title, file.resolvedPath).replace(/\\/g, "/") || file.path,
-        })),
+        files: group.files.map((file) => {
+          const { groupRoot: _groupRoot, ...rest } = file as LocatedFile;
+          return {
+            ...rest,
+            displayPath: relative(title, rest.resolvedPath).replace(/\\/g, "/") || rest.path,
+          };
+        }),
       };
     })
     .sort((a, b) => roleRank(a.role) - roleRank(b.role) || a.title.localeCompare(b.title));
