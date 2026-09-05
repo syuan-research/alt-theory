@@ -111,6 +111,10 @@ agents mistake them for in-progress work.
 ### Current branch status
 
 - `main` — active product line.
+- `archive/wp-small-items` — merged into main (v1.5.1 WP-B: role on
+  spawn, update check, changes-pane local fixes, Copilot intersect,
+  collapse-anywhere, family lineage index); archived right after the
+  fast-forward merge.
 - `archive/wp1-path-verdict` — merged into main (v1.5 round 1: one path
   verdict and root policy).
 - `wp2-import-adapter` — merged into main (v1.5 round 1: import-adapter
