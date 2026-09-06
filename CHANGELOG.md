@@ -60,6 +60,9 @@ detail lives in commit history and `development/`.
 - A long thinking or file block can be collapsed by clicking anywhere on
   it. Dragging to select text does not collapse it.
 - Copilot's saved model list hides models your account does not offer.
+- A conversation that spawns subagents can start one with one of your
+  existing roles. A role name that does not exist refuses the spawn
+  instead of leaving a half-made subagent.
 
 ## v1.5.0-beta.1 — 2026-09-04
 
