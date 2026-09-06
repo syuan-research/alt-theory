@@ -118,7 +118,7 @@ test("changes group by project folder, then by capped containing folder, titled 
   const second = join(home, "Research", "shared");
   const roots: ChangeRoot[] = [
     { path: project, reason: "cwd", contentRoot: "working", folderId: "primary" },
-    { path: second, reason: "additional", contentRoot: "working", folderId: "additional-1" },
+    { path: second, reason: "project-secondary", contentRoot: "working", folderId: "secondary-1" },
   ];
   const file = (resolvedPath: string) => ({
     path: resolvedPath, resolvedPath, displayPath: resolvedPath, added: 1, removed: 0, diff: "+x", sessionIds: ["s"],
@@ -140,7 +140,7 @@ test("changes group by project folder, then by capped containing folder, titled 
     [
       // Project groups are never subdivided; the title is the files' common ancestor.
       ["primary", project, join(project, "notes"), false, ["lit.md", "wave3/log.md"]],
-      ["additional", second, join(second, "instruments"), false, ["items.csv"]],
+      ["companion", second, join(second, "instruments"), false, ["items.csv"]],
       // Two levels below home keeps its own group; four and five levels collapse
       // onto the level-3 ancestor and are titled by their own common ancestor.
       ["outside", join(home, "Downloads", "export"), join(home, "Downloads", "export"), false, ["clean.py"]],

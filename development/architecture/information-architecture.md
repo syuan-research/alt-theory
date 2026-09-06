@@ -118,7 +118,10 @@ surfaces remain designation-gated and absent for everyone else.
   - Thinking, tool activity, compaction boundaries, and connection/run states
     render as conversation events, not settings.
 - **Conversation list**
-  - Conversations are grouped by workspace.
+  - Conversations are grouped by workspace. A group that is a project's
+    main folder carries the project's name (default: the folder's), lists
+    the project's companion folders greyed beneath it, and offers "Add a
+    folder to this project" in its folder menu (v1.5.1).
   - The Working folders header owns folder-only collapse all, expand all, and
     sorting. These controls do not change conversation-family folding.
   - A family head may collapse or expand its descendants without changing their
@@ -177,13 +180,13 @@ surfaces remain designation-gated and absent for everyone else.
     inlines file text.
   - Changes lists the whole conversation family's writes (subagents and
     branches included), merged on the resolved absolute path and grouped as
-    prototype D groups them: each project folder (main, then each second
+    prototype D groups them: each project folder (main, then each companion
     folder) is one group, never subdivided; everything outside groups by
     containing folder with a depth cap of three levels below home or the
     drive root (`session-store.ts` `groupChanges`,
     `CHANGE_GROUP_DEPTH_CAP`). Every group is titled by the deepest common
     ancestor of its files; rows show paths relative to that title; the role
-    (Main folder / Second folder / Outside) is quiet grey text, and a group
+    (Main folder / Companion folder / Outside) is quiet grey text, and a group
     that absorbed deeper folders says so in one muted line.
   - Right-pane view state outlives the pane (Owner 2026-09-03). The shell
     remembers, per rail, the last open sub (file, changed file, related
@@ -205,14 +208,19 @@ surfaces remain designation-gated and absent for everyone else.
 - **Settings**
   - General: app behavior and ordinary preferences.
   - Models: provider connection, model choice, and model capability correction.
-  - Working folders (v1.5 part 2, prototype D): two cards. Projects — every
-    known main working folder with the second folders that belong with it
-    (add / remove); Global folders — folders Alt may read in every
-    conversation, one quiet eye line above the rows saying they are all
-    readable, each row name, path, an Edit tick (saves only in Work) and
-    remove. No per-row badge, no mechanism words. Stored in app settings
-    (`workingFolders`), applied through the root policy as `global-list` /
-    `project-secondary`.
+  - Working folders (v1.5.1): two cards. Projects — each its own entity
+    with a generated id, an editable name (defaults to the main folder's
+    name), a changeable main folder (picker + confirm; every conversation
+    of the project moves, one running conversation refuses with nothing
+    written), and companion folders (add / remove); Global folders —
+    folders Alt may read in every conversation, one quiet eye line above
+    the rows saying they are all readable, each row name, path, an Edit
+    tick (saves only in Work) and remove. No per-row badge, no mechanism
+    words. A project whose main folder is missing on disk stays listed with
+    a quiet line; starting a conversation in it is refused. Stored in app
+    settings (`workingFolders.projects`), applied through the root policy
+    as `global-list` / `project-secondary`; the explicit working-folder
+    registry (`knownWorkspaces`) is derived from projects.
   - Role & Knowledge: role, knowledge sets, and related paths when implemented.
   - Help center: a curated capability guide and the shipped localized tips.
     The global Help menu opens either this surface or a new Helper conversation.

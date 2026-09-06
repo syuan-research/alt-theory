@@ -143,11 +143,22 @@ export interface AssetDirs {
   extraKbDirs: string[];
 }
 
-/** Working folders page (v1.5 part 2). */
+/** A project on the Working folders page (v1.5.1). */
+export interface ProjectFolder {
+  id: string;
+  /** Absent = default: the main folder's name. */
+  name?: string;
+  primaryDir: string;
+  secondaryDirs: string[];
+  /** Server-checked: false when the folder is missing on disk right now. */
+  available?: boolean;
+}
+
+/** Working folders page (v1.5 part 2; projects since v1.5.1). */
 export interface WorkingFoldersSettings {
   knownWorkspaces: string[];
   global: Array<{ path: string; writable: boolean }>;
-  projects: Array<{ primaryDir: string; secondaryDirs: string[] }>;
+  projects: ProjectFolder[];
 }
 
 export async function getWorkingFolders(): Promise<WorkingFoldersSettings> {

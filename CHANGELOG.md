@@ -26,6 +26,23 @@ detail lives in commit history and `development/`.
 - If a subscription login (GitHub Copilot, Kimi) can no longer be refreshed,
   the notice says so and points to Settings → Models.
 
+### Working folders
+
+- Every working folder is now a project with its own name. The name
+  defaults to the folder's name and can be edited on the Working folders
+  page; the conversation list shows it.
+- A project's main folder can be changed on the same page: every
+  conversation of the project moves to the new folder together. A
+  conversation that is working right now refuses the move — nothing
+  changes until it is idle.
+- Folders that belong to a project can be added from the conversation
+  list too (Add a folder to this project), and they appear greyed under
+  the project's folder there.
+- A project whose main folder has gone missing (renamed, moved, an
+  unmounted drive) stays on the page with a note instead of silently
+  disappearing; starting a conversation in it is refused until you point
+  the project at a folder that exists.
+
 ### Updates
 
 - The desktop app looks up the latest GitHub release at most once a day.

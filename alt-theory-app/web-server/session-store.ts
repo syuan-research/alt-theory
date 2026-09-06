@@ -25,6 +25,7 @@ import {
 } from "../core/data-dir.js";
 import { canonicalPathKey, isPathInside, verdict } from "../core/path-verdict.js";
 import type { Root } from "../core/root-policy.js";
+import { folderPolicyFor, readAppSettings } from "./app-settings.js";
 import type { SessionEvent } from "./session-events.js";
 import {
   extractToolDetail,
@@ -571,9 +572,7 @@ export function healFamilyInvariants(dataDir: string): void {
         if (!header) continue;
         writeSessionHeader(recordsDir, {
           ...header,
-          workspace: rootDir
-            ? { primaryDir: rootDir, additionalDirs: [] }
-            : undefined,
+          workspace: rootDir ? { primaryDir: rootDir } : undefined,
         });
       }
     }
@@ -1543,7 +1542,7 @@ export interface ChangeGroup {
   title: string;
   /** The root folder (project groups) or the capped anchor (outside groups). */
   path: string;
-  role: "primary" | "additional" | "outside";
+  role: "primary" | "companion" | "outside";
   /** Some files sat below the depth cap and were pulled up to this group. */
   capped: boolean;
   files: FileChange[];
@@ -1593,14 +1592,20 @@ export function readSessionChanges(
 ): SessionChanges | null {
   const parts = primaryParts ?? readSessionParts(dataDir, sessionId);
   if (!parts) return null;
-  const roots: ChangeRoot[] = parts.v4Session?.workspace
+  const primaryDir = parts.v4Session?.workspace?.primaryDir ?? null;
+  // Companion folders belong to the project (v1.5.1): read them from app
+  // settings by the session's main folder, exactly as the root policy does.
+  const companions = primaryDir
+    ? folderPolicyFor(readAppSettings(dataDir), primaryDir).projectSecondaryDirs
+    : [];
+  const roots: ChangeRoot[] = primaryDir
     ? [
-        { path: parts.v4Session.workspace.primaryDir, reason: "cwd", contentRoot: "working", folderId: "primary" },
-        ...parts.v4Session.workspace.additionalDirs.map((path, index) => ({
+        { path: primaryDir, reason: "cwd", contentRoot: "working", folderId: "primary" },
+        ...companions.map((path, index) => ({
           path,
-          reason: "additional" as const,
+          reason: "project-secondary" as const,
           contentRoot: "working" as const,
-          folderId: `additional-${index + 1}`,
+          folderId: `secondary-${index + 1}`,
         })),
       ]
     : [{ path: join(parts.sessionRoot, "workspace"), reason: "session-write", contentRoot: "workspace", folderId: "" }];
@@ -1715,7 +1720,7 @@ function locateChangedFile(
 
 /**
  * Prototype D's grouping (Owner 2026-09-02): a project folder is a group as
- * the app defines it (main folder, each second folder), never subdivided.
+ * the app defines it (main folder, each companion folder), never subdivided.
  * Everything outside groups by containing folder with a depth cap —
  * CHANGE_GROUP_DEPTH_CAP levels below home or the drive root; deeper folders
  * collapse onto that ancestor so a temp tree cannot mint a group per
@@ -1744,7 +1749,7 @@ export function groupChanges(
     const group = groups.get(key) ?? {
       title: anchor,
       path: anchor,
-      role: !root ? "outside" : root.reason === "additional" ? "additional" : "primary",
+      role: !root ? "outside" : root.reason === "project-secondary" ? "companion" : "primary",
       capped: false,
       files: [],
       dirs: [],
@@ -1774,7 +1779,7 @@ export function groupChanges(
 }
 
 function roleRank(role: ChangeGroup["role"]): number {
-  return role === "primary" ? 0 : role === "additional" ? 1 : 2;
+  return role === "primary" ? 0 : role === "companion" ? 1 : 2;
 }
 
 function cappedAncestor(dir: string, home: string): string {

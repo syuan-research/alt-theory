@@ -162,7 +162,7 @@ test("working-folder browsing follows the persisted external workspace", () => {
       sessionId,
       createdAt: new Date().toISOString(),
       recordModel: "v0.4",
-      workspace: { primaryDir: external, additionalDirs: [] },
+      workspace: { primaryDir: external },
     })
   );
 
@@ -241,7 +241,7 @@ test("working-folder listing and preview refuse a symlink out of the folder", ()
       sessionId,
       createdAt: new Date().toISOString(),
       recordModel: "v0.4",
-      workspace: { primaryDir: external, additionalDirs: [] },
+      workspace: { primaryDir: external },
     })
   );
 

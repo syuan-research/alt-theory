@@ -495,7 +495,7 @@ function setWorkspace(recordsDir: string, primaryDir: string | null) {
   writeSessionHeader(recordsDir, {
     ...header,
     workspace: primaryDir
-      ? { primaryDir, additionalDirs: [] }
+      ? { primaryDir }
       : undefined,
   });
 }

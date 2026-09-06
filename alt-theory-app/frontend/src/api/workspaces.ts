@@ -40,3 +40,22 @@ export async function setSessionWorkspace(
     }
   );
 }
+
+/** Change a project's main folder (v1.5.1); every conversation moves. */
+export async function setProjectMainFolder(
+  projectId: string,
+  primaryDir: string
+): Promise<{
+  project: { id: string; primaryDir: string };
+  movedCount: number;
+  workspaces: string[];
+}> {
+  return fetchJson(
+    `/api/projects/${encodeURIComponent(projectId)}/main-folder`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ primaryDir }),
+    }
+  );
+}

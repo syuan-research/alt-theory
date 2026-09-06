@@ -201,7 +201,7 @@ export function WorkspaceTree() {
                 <i className="ph ph-folder-open" />
                 <div>
                   <div className="working-folder-role">
-                    {folder.role === "primary" ? t("Main folder") : t("Additional folder")}
+                    {folder.role === "primary" ? t("Main folder") : t("Companion folder")}
                     {folder.managed ? ` · ${t("conversation folder")}` : ""}
                   </div>
                   <div className="working-folder-path" data-tip={folder.path}>{folder.path}</div>

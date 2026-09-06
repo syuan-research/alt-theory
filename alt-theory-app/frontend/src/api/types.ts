@@ -198,7 +198,7 @@ export interface SessionSnapshot {
   modelOverride?: SessionModelOverride | null;
   currentModel?: { provider: string; modelId: string };
   studyTag?: StudyTag | null;
-  workspace?: { primaryDir: string; additionalDirs: string[] } | null;
+  workspace?: { primaryDir: string } | null;
   openedFrom?: "new" | "existing";
   resumeWarnings?: string[];
   messageCount: number;
@@ -375,7 +375,7 @@ export interface FileChange {
 export interface ChangeGroup {
   title: string;
   path: string;
-  role: "primary" | "additional" | "outside";
+  role: "primary" | "companion" | "outside";
   capped: boolean;
   files: FileChange[];
 }
@@ -545,7 +545,7 @@ export interface WorkspaceFilesResponse {
 export interface WorkingFolderDescriptor {
   id: string;
   path: string;
-  role: "primary" | "additional";
+  role: "primary" | "secondary";
   managed: boolean;
   available: boolean;
 }
@@ -655,7 +655,6 @@ export type ClientMessage =
     }
   | { type: "switch_mode"; payload: { mode: AltMode } }
   | { type: "set_full_access"; payload: { enabled: boolean } }
-  | { type: "add_workspace_dir"; payload: { dir: string } }
   | { type: "set_study_tag"; payload: { studyTag: StudyTag | null } }
   | {
       type: "set_session_model";

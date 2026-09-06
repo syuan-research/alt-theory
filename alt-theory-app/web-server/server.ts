@@ -8,6 +8,7 @@
 import "dotenv/config";
 import express, { type Response } from "express";
 import multer from "multer";
+import { randomUUID } from "crypto";
 import { copyFileSync, existsSync, mkdirSync, statSync } from "fs";
 import { createServer } from "http";
 import { homedir } from "os";
@@ -22,6 +23,7 @@ import {
   KB_DISABLED_DOMAIN,
 } from "../core/alt-theory-core.js";
 import { resolveDataDir } from "../core/data-dir.js";
+import { samePath } from "../core/path-verdict.js";
 import {
   resolveAgentAssetPaths,
   type AgentAssetPaths,
@@ -138,10 +140,13 @@ import {
 } from "./session-import.js";
 import { ImportRefusalError } from "./session-import-shared.js";
 import {
+  knownWorkspacesOf,
   readAppSettings,
   resolveExternalSkillPaths,
   writeAppSettings,
   SKILL_PRECEDENCE_VALUES,
+  type AppSettings,
+  type ProjectFolderSettings,
   type SkillPrecedence,
 } from "./app-settings.js";
 import { discoverSkillResources } from "./resource-discovery.js";
@@ -511,20 +516,41 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       extraKbDirs: saved.extraKbDirs ?? [],
     });
   });
-  // Working folders page (v1.5 part 2): the global readable list with its
-  // Edit ticks, and each project's second folders. Applied live through
-  // the session assembly's folder-policy reader.
+  // Working folders page (v1.5.1): projects (id, name, main folder,
+  // companions) and the global readable list with its Edit ticks. Applied
+  // live through the session assembly's folder-policy reader. `available`
+  // says whether a folder exists on disk right now — a project survives its
+  // main folder going missing (snapshot / renamed-folder case); starting a
+  // conversation in it is refused until the folder returns.
+  const projectRows = (
+    projects: ProjectFolderSettings[]
+  ): Array<ProjectFolderSettings & { available: boolean }> =>
+    projects.map((project) => ({
+      ...project,
+      available:
+        statSync(project.primaryDir, { throwIfNoEntry: false })?.isDirectory() ??
+        false,
+    }));
+  const workingFoldersResponse = (settings: AppSettings) => ({
+    knownWorkspaces: knownWorkspacesOf(settings),
+    ...(settings.workingFolders ?? { global: [], projects: [] }),
+    projects: projectRows(settings.workingFolders?.projects ?? []),
+  });
   app.get("/api/settings/working-folders", (_req, res) => {
     if (!requireLocalConfigMode(res)) return;
-    const settings = readAppSettings(dataDir);
-    res.json({
-      knownWorkspaces: settings.knownWorkspaces ?? [],
-      ...(settings.workingFolders ?? { global: [], projects: [] }),
-    });
+    res.json(workingFoldersResponse(readAppSettings(dataDir)));
   });
   app.put("/api/settings/working-folders", (req, res) => {
     if (!requireLocalConfigMode(res)) return;
-    const body = req.body as { global?: unknown; projects?: unknown };
+    const body = req.body as {
+      global?: unknown;
+      projects?: Array<{
+        id?: unknown;
+        name?: unknown;
+        primaryDir?: unknown;
+        secondaryDirs?: unknown;
+      }>;
+    };
     const current = readAppSettings(dataDir);
     const existing = current.workingFolders ?? { global: [], projects: [] };
     const dir = (value: unknown): string | null =>
@@ -535,21 +561,38 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           .filter((entry): entry is { path: string; writable: boolean } => entry.path !== null)
       : existing.global;
     const projects = Array.isArray(body.projects)
-      ? (body.projects as Array<{ primaryDir?: unknown; secondaryDirs?: unknown }>)
-          .map((entry) => ({
-            primaryDir: dir(entry?.primaryDir),
-            secondaryDirs: (Array.isArray(entry?.secondaryDirs) ? entry.secondaryDirs : [])
-              .map(dir)
-              .filter((path): path is string => path !== null),
-          }))
-          .filter((entry): entry is { primaryDir: string; secondaryDirs: string[] } => entry.primaryDir !== null)
+      ? body.projects
+          .map((entry): ProjectFolderSettings | null => {
+            if (
+              typeof entry?.primaryDir !== "string" ||
+              !entry.primaryDir.trim()
+            ) {
+              return null;
+            }
+            return {
+              id:
+                typeof entry.id === "string" && entry.id.trim()
+                  ? entry.id
+                  : randomUUID(),
+              ...(typeof entry.name === "string" && entry.name.trim()
+                ? { name: entry.name }
+                : {}),
+              // The main folder is not existence-checked: a project whose
+              // main folder went missing stays listed so the user can
+              // re-point it.
+              primaryDir: resolve(entry.primaryDir),
+              secondaryDirs: (Array.isArray(entry.secondaryDirs)
+                ? entry.secondaryDirs
+                : []
+              )
+                .map(dir)
+                .filter((path): path is string => path !== null),
+            };
+          })
+          .filter((entry): entry is ProjectFolderSettings => entry !== null)
       : existing.projects;
     writeAppSettings(dataDir, { ...current, workingFolders: { global, projects } });
-    const saved = readAppSettings(dataDir);
-    res.json({
-      knownWorkspaces: saved.knownWorkspaces ?? [],
-      ...(saved.workingFolders ?? { global: [], projects: [] }),
-    });
+    res.json(workingFoldersResponse(readAppSettings(dataDir)));
   });
   // Copy a picked .md file into the user's role folder — never touches the
   // bundled role-presets directory.
@@ -1442,14 +1485,16 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     }
   });
   // M4: explicit working-folder registry so empty workspaces can appear in
-  // the list before any conversation exists in them.
+  // the list before any conversation exists in them. v1.5.1: the registry is
+  // the project list — every project's main folder. POST creates a project
+  // (a folder with no companions yet); DELETE removes the project.
   app.get("/api/workspaces", (_req, res) => {
     if (!localMode) {
       res.json({ workspaces: [] });
       return;
     }
     res.json({
-      workspaces: readAppSettings(dataDir).knownWorkspaces ?? [],
+      workspaces: knownWorkspacesOf(readAppSettings(dataDir)),
     });
   });
   app.post("/api/workspaces", (req, res) => {
@@ -1470,14 +1515,24 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       return;
     }
     const settings = readAppSettings(dataDir);
-    const known = settings.knownWorkspaces ?? [];
-    if (!known.includes(resolved)) {
+    const projects = settings.workingFolders?.projects ?? [];
+    if (
+      !projects.some((project) => samePath(project.primaryDir, resolved))
+    ) {
+      const project: ProjectFolderSettings = {
+        id: randomUUID(),
+        primaryDir: resolved,
+        secondaryDirs: [],
+      };
       writeAppSettings(dataDir, {
         ...settings,
-        knownWorkspaces: [...known, resolved],
+        workingFolders: {
+          global: settings.workingFolders?.global ?? [],
+          projects: [...projects, project],
+        },
       });
     }
-    res.json({ workspaces: readAppSettings(dataDir).knownWorkspaces ?? [] });
+    res.json({ workspaces: knownWorkspacesOf(readAppSettings(dataDir)) });
   });
   app.delete("/api/workspaces", (req, res) => {
     if (!localMode) {
@@ -1492,13 +1547,50 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     }
     const target = resolve(raw);
     const settings = readAppSettings(dataDir);
+    const projects = settings.workingFolders?.projects ?? [];
     writeAppSettings(dataDir, {
       ...settings,
-      knownWorkspaces: (settings.knownWorkspaces ?? []).filter(
-        (workspace) => workspace !== target,
-      ),
+      workingFolders: {
+        global: settings.workingFolders?.global ?? [],
+        projects: projects.filter(
+          (project) => !samePath(project.primaryDir, target),
+        ),
+      },
     });
-    res.json({ workspaces: readAppSettings(dataDir).knownWorkspaces ?? [] });
+    res.json({ workspaces: knownWorkspacesOf(readAppSettings(dataDir)) });
+  });
+  // v1.5.1: change a project's main folder. Every conversation of the
+  // project moves through the ordinary re-point path; all must be idle or
+  // nothing is written. Local form only, like the per-conversation move.
+  app.put("/api/projects/:projectId/main-folder", async (req, res) => {
+    if (!localMode) {
+      res.status(403).json({ error: "Workspace changes are local-mode only" });
+      return;
+    }
+    const body = req.body as { primaryDir?: unknown };
+    const primaryDir =
+      typeof body.primaryDir === "string" && body.primaryDir.trim()
+        ? body.primaryDir
+        : null;
+    if (!primaryDir) {
+      res.status(400).json({ error: "primaryDir is required" });
+      return;
+    }
+    try {
+      const result = await sessionService.repointProjectMainFolder(
+        req.params.projectId,
+        primaryDir,
+      );
+      res.json({
+        project: projectRows([result.project])[0],
+        movedCount: result.movedCount,
+        workspaces: knownWorkspacesOf(readAppSettings(dataDir)),
+      });
+    } catch (error) {
+      res.status(409).json({
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   });
   app.post("/api/sessions/:sessionId/ab-comparisons", (req, res) => {
     const sessionId = req.params.sessionId;
@@ -2961,36 +3053,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             const snapshot = await sessionService.setFullAccess(
               attachedSessionId,
               msg.payload.enabled,
-            );
-            send({ type: "session_updated", payload: snapshot });
-          } catch (error) {
-            fail(error);
-          }
-          break;
-        }
-        case "add_workspace_dir": {
-          if (!attachedSessionId) {
-            fail(new Error("A materialized session is required"));
-            break;
-          }
-          // Workspace directories are available in Work and Native Pi:
-          // machine-local paths only make sense in the local form.
-          if (!localMode) {
-            fail(new Error("Workspace directories are not enabled on this server"),
-            );
-            break;
-          }
-          if (
-            typeof msg.payload?.dir !== "string" ||
-            !msg.payload.dir.trim()
-          ) {
-            fail(new Error("A workspace directory is required"));
-            break;
-          }
-          try {
-            const snapshot = await sessionService.addWorkspaceDir(
-              attachedSessionId,
-              msg.payload.dir,
             );
             send({ type: "session_updated", payload: snapshot });
           } catch (error) {

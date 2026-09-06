@@ -561,7 +561,6 @@ function registerPreparedImport(
       sessionCwd: workspacePrimaryDir,
       workspace: {
         primaryDir: workspacePrimaryDir,
-        additionalDirs: [],
       },
       piSessionDir: dirs.piSessionDir,
       piSessionFile: importedPath,

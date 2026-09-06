@@ -38,22 +38,30 @@ working folder and exposes a warning; the old header value remains until the
 user acts. See [`session-service.ts`](../../alt-theory-app/web-server/session-service.ts#L3186-L3215)
 and [`session-lifecycle-and-turn-continuity.md`](session-lifecycle-and-turn-continuity.md).
 
-Adding a directory is a live session action in local mode. It is rejected for
-a busy or streaming session, validates that the directory exists, updates the
-header and manifest, reloads the session so its own context and skills apply
-from the next turn, and records `workspace_dir_added`. The WebSocket action is
-`add_workspace_dir`; hosted mode rejects machine-local workspace paths. See
-[`session-service.ts`](../../alt-theory-app/web-server/session-service.ts#L756-L785)
-and [`server.ts`](../../alt-theory-app/web-server/server.ts#L2919-L2949).
+Extra workspace folders belong to the project, not the session (v1.5.1).
+There is no per-session additional-directory mechanism anymore: a project
+on the Settings > Working folders page carries companion folders, and they
+join every conversation whose main folder is the project's — read live
+from `app-settings.json`, so adding one applies to open conversations at
+their next path check and on their next loader reload (context file and
+project skills). Hosted mode rejects machine-local workspace paths. See
+[`session-service.ts`](../../alt-theory-app/web-server/session-service.ts)
+(`repointProjectMainFolder`, `setSessionWorkspace`) and
+[`app-settings.ts`](../../alt-theory-app/web-server/app-settings.ts) (`folderPolicyFor`).
 
 Changing the primary working folder is a separate researcher-console action.
-`setSessionWorkspace` writes the new primary (and clears additional folders),
-rebuilds live sessions against it, and carries the change across the fork
-family. A failed live rebuild restores the prior header and reopens the old
-folder. The family behavior is owned by the lineage mechanism; this document
-only records the workspace boundary it exposes. See
-[`session-service.ts`](../../alt-theory-app/web-server/session-service.ts#L788-L880)
-and [`branch-family-semantics.md`](branch-family-semantics.md).
+`setSessionWorkspace` writes the new primary, rebuilds live sessions against
+it, and carries the change across the fork family. Changing a project's main
+folder (`repointProjectMainFolder`, REST
+`PUT /api/projects/:id/main-folder`) moves every conversation of the
+project through the same path, refusing with nothing written while any of
+them is running, and updates the project entry last. A failed live rebuild
+restores the prior header and reopens the old folder. The family behavior is
+owned by the lineage mechanism; this document only records the workspace
+boundary it exposes. See
+[`session-service.ts`](../../alt-theory-app/web-server/session-service.ts)
+(`setSessionWorkspace`) and
+[`branch-family-semantics.md`](branch-family-semantics.md).
 
 Fork behavior depends on workspace ownership. A managed workspace inside the
 data directory is copied for the fork. An external user project remains an
@@ -73,17 +81,16 @@ the runtime policy layer):
   `runs/local-assets`); present in every mode.
 - `cwd` — the primary workspace directory; writable in Work and Native Pi,
   readable in every mode.
-- `additional` — user-added workspace directories; writable in Work and
-  Native Pi.
 - `approved` — a folder explicitly approved during the session.
 - `kb`, `trusted`, `skills` — read-only roots: the selected KB root,
   configured trusted-read roots, and the discovered Alt Theory skill root.
 - `global-list` — a folder on the Settings > Working folders global list
   (v1.5 part 2): readable in every mode and every conversation; writable in
   Work and Native Pi only when its Edit tick is on.
-- `project-secondary` — a second folder of the project whose main folder is
-  the session's primary working folder (the same Settings page); readable
-  everywhere, writable in Work and Native Pi, like `additional`.
+- `project-secondary` — a companion folder of the project whose main folder
+  is the session's primary working folder (the same Settings page, v1.5.1:
+  the one folder mechanism); readable everywhere, writable in Work and
+  Native Pi.
 
 Both come from `app-settings.json` (`workingFolders`; `folderPolicyFor` in
 `web-server/app-settings.ts`) and are read live at every root check through
@@ -95,8 +102,8 @@ deployment's `understandReadOnly` setting and, when enabled, remains bounded
 to the Alt Theory writable roots plus explicitly approved folders. Switching
 mode changes the active mediation policy; it does not change the persisted
 folder identity. The per-call wiring is in
-[`alt-theory-core.ts`](../../alt-theory-app/core/alt-theory-core.ts#L549-L561)
-and [`root-policy.ts`](../../alt-theory-app/core/root-policy.ts#L1-L90).
+[`alt-theory-core.ts`](../../alt-theory-app/core/alt-theory-core.ts)
+(`sessionRootsForMode`) and [`root-policy.ts`](../../alt-theory-app/core/root-policy.ts).
 
 ## One path verdict, guard-rail posture
 
