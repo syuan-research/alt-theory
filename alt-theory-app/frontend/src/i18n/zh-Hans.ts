@@ -733,6 +733,7 @@ const catalog: Record<string, string> = {
   "The main conversation becomes active history. Preserved supporting records remain available when the agent needs to search them.": "主对话变为活跃历史。保存的支持记录在子代理需要搜索时仍可用。",
   "The name or code that identifies your data in the study. Set by your study when the app was installed.": "在研究标识您的数据的名称或代码。由您的研究在安装应用时设置。",
   "The original working folder is unavailable. Choose its current location to continue.": "原始工作文件夹不可用。选择其当前位置以继续。",
+  "The project's companion folders are removed from the list with it.": "项目的配套文件夹会随项目一起从列表中移除。",
   "The provider is limiting requests.": "服务商正在限制请求。",
   "The provider rejected the credentials.": "服务商拒绝了凭据。",
   "The provider returned an error.": "服务商返回了一个错误。",

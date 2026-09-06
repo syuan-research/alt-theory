@@ -1613,7 +1613,11 @@ export function readSessionChanges(
   // conversation's changes too; the family shares one folder (§7), so the
   // open conversation's roots apply to every member.
   const memberIds = [...new Set([...familyMemberIds(dataDir, sessionId), sessionId])];
-  const cacheKey = `${resolve(dataDir)}|${familyTranscriptStamp(dataDir, memberIds)}`;
+  // The roots above come from the header AND the live folder policy, so both
+  // belong in the cache key: a companion added or removed, or the project's
+  // main folder changed, must not serve the previous grouping (with stale
+  // working-folder contentRefs) until the next run writes history.
+  const cacheKey = `${resolve(dataDir)}|${primaryDir ?? ""}|${companions.join(";")}|${familyTranscriptStamp(dataDir, memberIds)}`;
   const cached = changesCache.get(cacheKey);
   if (cached) return cached;
   const perSession = [...memberIds.filter((id) => id !== sessionId), sessionId]

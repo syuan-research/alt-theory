@@ -569,6 +569,25 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             ) {
               return null;
             }
+            // Companions dedupe case-insensitively (samePath) against each
+            // other and the main folder; the main folder itself is not
+            // existence-checked: a project whose main folder went missing
+            // stays listed so the user can re-point it.
+            const primaryDir = resolve(entry.primaryDir);
+            const secondaryDirs: string[] = [];
+            for (const candidate of (Array.isArray(entry.secondaryDirs)
+              ? entry.secondaryDirs
+              : []
+            )
+              .map(dir)
+              .filter((path): path is string => path !== null)) {
+              if (
+                !samePath(candidate, primaryDir) &&
+                !secondaryDirs.some((kept) => samePath(kept, candidate))
+              ) {
+                secondaryDirs.push(candidate);
+              }
+            }
             return {
               id:
                 typeof entry.id === "string" && entry.id.trim()
@@ -577,16 +596,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               ...(typeof entry.name === "string" && entry.name.trim()
                 ? { name: entry.name }
                 : {}),
-              // The main folder is not existence-checked: a project whose
-              // main folder went missing stays listed so the user can
-              // re-point it.
-              primaryDir: resolve(entry.primaryDir),
-              secondaryDirs: (Array.isArray(entry.secondaryDirs)
-                ? entry.secondaryDirs
-                : []
-              )
-                .map(dir)
-                .filter((path): path is string => path !== null),
+              primaryDir,
+              secondaryDirs,
             };
           })
           .filter((entry): entry is ProjectFolderSettings => entry !== null)
@@ -1458,8 +1469,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       });
     }
   });
-  // M4: re-point a session's working folder (local form only, like
-  // add_workspace_dir). primaryDir null = back to the managed default.
+  // M4: re-point a session's working folder (local form only).
+  // primaryDir null = back to the managed default.
   app.put("/api/sessions/:sessionId/workspace", async (req, res) => {
     if (!localMode) {
       res.status(403).json({ error: "Workspace changes are local-mode only" });

@@ -2001,14 +2001,15 @@ function WorkingFoldersPanel() {
   }, []);
 
   // Project rows come through the app state too, so a change made in the
-  // rail (add companion, remove folder) is reflected here on return.
+  // rail (add companion, remove folder) is reflected here on return —
+  // including the list becoming empty, once the app has loaded it once.
   useEffect(() => {
-    if (app.projects.length > 0) {
+    if (app.workingFoldersLoaded) {
       setFolders((prev) =>
         prev ? { ...prev, projects: app.projects, knownWorkspaces: app.knownWorkspaces } : prev,
       );
     }
-  }, [app.projects, app.knownWorkspaces]);
+  }, [app.projects, app.knownWorkspaces, app.workingFoldersLoaded]);
 
   const projects = (folders?.projects ?? app.projects)
     .slice()

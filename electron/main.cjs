@@ -177,8 +177,20 @@ function readAppSettingsFile() {
 }
 
 function patchUpdateCheck(patch) {
-  const current = readAppSettingsFile();
-  if (current.schemaVersion && current.schemaVersion !== 1) return;
+  const settingsFile = appSettingsPath();
+  let current = {};
+  if (fs.existsSync(settingsFile)) {
+    // The backend refuses to overwrite an unreadable settings file (it may
+    // still be recoverable); the update check must not be the path that
+    // destroys it with defaults. Skip persisting and keep state in memory.
+    try {
+      const parsed = JSON.parse(fs.readFileSync(settingsFile, "utf8"));
+      if (!parsed || parsed.schemaVersion !== 1) return;
+      current = parsed;
+    } catch {
+      return;
+    }
+  }
   const next = {
     schemaVersion: 1,
     skills: current.skills ?? {
@@ -188,8 +200,8 @@ function patchUpdateCheck(patch) {
     ...current,
     updateCheck: { ...(current.updateCheck ?? {}), ...patch },
   };
-  fs.mkdirSync(path.dirname(appSettingsPath()), { recursive: true });
-  fs.writeFileSync(appSettingsPath(), `${JSON.stringify(next, null, 2)}\n`);
+  fs.mkdirSync(path.dirname(settingsFile), { recursive: true });
+  fs.writeFileSync(settingsFile, `${JSON.stringify(next, null, 2)}\n`);
 }
 
 function publicUpdateStatus() {

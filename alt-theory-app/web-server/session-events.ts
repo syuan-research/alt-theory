@@ -13,6 +13,8 @@ export type SessionEventType =
   | "profile_selected_next_session"
   | "soul_selected"
   | "mode_selected"
+  /** Pre-v1.5.1 session-level additional dirs; the mechanism is gone, the
+   *  events of old conversations stay readable. */
   | "workspace_dir_added"
   | "workspace_repointed"
   | "skill_invoked"

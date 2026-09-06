@@ -379,7 +379,11 @@ function CollapseAnywhereDetails({
       }}
       onClick={(event) => {
         if (!open) return;
-        if ((event.target as HTMLElement | null)?.closest("summary")) return;
+        const target = event.target as HTMLElement | null;
+        // Interactive content inside the open block (links, the rendered /
+        // source toggle) keeps its own click; collapsing is the click on
+        // plain block content.
+        if (target?.closest("summary, a, button")) return;
         if (
           !shouldToggleCollapseOnClick({
             selectionCollapsed: window.getSelection()?.isCollapsed !== false,

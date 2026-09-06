@@ -201,6 +201,8 @@ export interface AppContextValue {
   knownWorkspaces: string[];
   /** Projects (v1.5.1): id, name, main folder, companions. */
   projects: ProjectFolder[];
+  /** True once a working-folders fetch answered (even with an empty list). */
+  workingFoldersLoaded: boolean;
   /** Fetch projects + the derived workspace list again. */
   refreshWorkingFolders: () => Promise<void>;
   /** Choose the working folder for the next (or current) conversation. */
@@ -401,6 +403,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
   const [knownWorkspaces, setKnownWorkspaces] = useState<string[]>([]);
   const [projects, setProjects] = useState<ProjectFolder[]>([]);
+  /** True once a working-folders fetch answered (even with an empty list). */
+  const [workingFoldersLoaded, setWorkingFoldersLoaded] = useState(false);
   const [modelOverride, setModelOverride] =
     useState<SessionModelOverride | null>(null);
   const [pendingChanges, setPendingChanges] = useState<PendingChanges>({});
@@ -1696,6 +1700,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const folders = await getWorkingFolders();
       setProjects(folders.projects);
       setKnownWorkspaces(folders.knownWorkspaces);
+      setWorkingFoldersLoaded(true);
     } catch {
       /* hosted or endpoint unavailable */
     }
@@ -1976,6 +1981,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       workspacePrimaryDir,
       knownWorkspaces,
       projects,
+      workingFoldersLoaded,
       refreshWorkingFolders,
       setDraftWorkspace,
       addKnownWorkspace,
@@ -2092,6 +2098,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       workspacePrimaryDir,
       knownWorkspaces,
       projects,
+      workingFoldersLoaded,
       refreshWorkingFolders,
       setDraftWorkspace,
       addKnownWorkspace,

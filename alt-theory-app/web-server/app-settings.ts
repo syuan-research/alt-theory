@@ -214,6 +214,12 @@ export function readAppSettingsWithWarning(dataDir: string): {
   if (parsed?.schemaVersion !== 1) {
     return unreadableWarning(path, `schema version ${parsed?.schemaVersion}`);
   }
+  // v1.5.1 migration: compute once — the same result feeds the normalized
+  // settings below and the id-persisting write-through after.
+  const migrated =
+    parsed.workingFolders || Array.isArray(parsed.knownWorkspaces)
+      ? normalizeProjects(parsed)
+      : null;
   const settings: AppSettings = {
       schemaVersion: 1,
       skills: {
@@ -294,7 +300,7 @@ export function readAppSettingsWithWarning(dataDir: string): {
               global: (Array.isArray(parsed.workingFolders?.global) ? parsed.workingFolders.global : [])
                 .filter((entry) => entry && typeof entry.path === "string")
                 .map((entry) => ({ path: entry.path, writable: entry.writable === true })),
-              projects: normalizeProjects(parsed),
+              projects: migrated ? migrated.projects : [],
             },
           }
         : {}),
@@ -321,6 +327,17 @@ export function readAppSettingsWithWarning(dataDir: string): {
         : {}),
     };
   lastGoodSettings.set(path, structuredClone(settings));
+  if (migrated?.migrated) {
+    // Persist the generated ids right away: they are not stable across
+    // reads, and every id-addressed action (change a project's main folder)
+    // reads settings again. A failed write keeps the pre-migration behavior
+    // (regenerate on the next read) instead of breaking the read itself.
+    try {
+      writeAppSettings(dataDir, settings);
+    } catch {
+      /* transient write failure; the next read retries */
+    }
+  }
   return { settings, warning: null };
 }
 
@@ -374,10 +391,16 @@ function normalizePaths(value: unknown): string[] | null {
  * Read-time migration (v1.5.1): projects gain generated ids and an optional
  * name; a pre-v1.5.1 file's explicitly added folders (`knownWorkspaces`,
  * which only became projects once they gained second folders) fold in as
- * projects with no companions. The merged list persists on the next
- * read-modify-write of any setting.
+ * projects with no companions. Generating an id is not stable across reads,
+ * so `migrated` tells the caller to persist the normalized list at once —
+ * otherwise a project handed to the client with id X is read back as id Y
+ * and every id-addressed action (change main folder) misses.
  */
-function normalizeProjects(parsed: AppSettings): ProjectFolderSettings[] {
+function normalizeProjects(parsed: AppSettings): {
+  projects: ProjectFolderSettings[];
+  migrated: boolean;
+} {
+  let migrated = false;
   const projects: ProjectFolderSettings[] = (
     Array.isArray(parsed.workingFolders?.projects)
       ? parsed.workingFolders.projects
@@ -387,20 +410,25 @@ function normalizeProjects(parsed: AppSettings): ProjectFolderSettings[] {
       (entry) =>
         entry && typeof entry.primaryDir === "string" && entry.primaryDir.trim(),
     )
-    .map((entry) => ({
-      id:
-        typeof entry.id === "string" && entry.id.trim()
-          ? entry.id
-          : randomUUID(),
-      ...(typeof entry.name === "string" && entry.name.trim()
-        ? { name: entry.name }
-        : {}),
-      primaryDir: entry.primaryDir,
-      secondaryDirs: (Array.isArray(entry.secondaryDirs)
-        ? entry.secondaryDirs
-        : []
-      ).filter((dir): dir is string => typeof dir === "string"),
-    }));
+    .map((entry) => {
+      if (!(typeof entry.id === "string" && entry.id.trim())) {
+        migrated = true;
+      }
+      return {
+        id:
+          typeof entry.id === "string" && entry.id.trim()
+            ? entry.id
+            : randomUUID(),
+        ...(typeof entry.name === "string" && entry.name.trim()
+          ? { name: entry.name }
+          : {}),
+        primaryDir: entry.primaryDir,
+        secondaryDirs: (Array.isArray(entry.secondaryDirs)
+          ? entry.secondaryDirs
+          : []
+        ).filter((dir): dir is string => typeof dir === "string"),
+      };
+    });
   const legacyKnown = Array.isArray(parsed.knownWorkspaces)
     ? parsed.knownWorkspaces.filter(
         (entry): entry is string => typeof entry === "string",
@@ -408,8 +436,9 @@ function normalizeProjects(parsed: AppSettings): ProjectFolderSettings[] {
     : [];
   for (const dir of legacyKnown) {
     if (!projects.some((project) => samePath(project.primaryDir, dir))) {
+      migrated = true;
       projects.push({ id: randomUUID(), primaryDir: dir, secondaryDirs: [] });
     }
   }
-  return projects;
+  return { projects, migrated };
 }

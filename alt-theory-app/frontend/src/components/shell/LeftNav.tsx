@@ -499,9 +499,17 @@ function UserNav({ onImport }: { onImport: () => void }) {
       );
       return;
     }
+    const project = projectByDir.get(dir);
     app.requestConfirm({
       message:
         t("Move this folder's conversations to No folder, then remove the working folder from the list? Conversations and files are not deleted."),
+      ...(project?.secondaryDirs.length
+        ? {
+            details: [
+              t("The project's companion folders are removed from the list with it."),
+            ],
+          }
+        : {}),
       confirmLabel: t("Move conversations and remove"),
       cancelLabel: t("Keep working folder"),
       onConfirm: () => {

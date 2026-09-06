@@ -224,7 +224,9 @@ test("folderPolicyFor: the global list applies to every session; a project's sec
 // v1.5.1 migration: projects are entities (generated id, optional name) and
 // a pre-v1.5.1 file's explicitly added folders (knownWorkspaces, which only
 // became projects once they gained second folders) fold in as projects with
-// no companions. The merged list persists on the next settings write.
+// no companions. Generated ids persist immediately — a read that hands the
+// client id X must never hand back id Y on the next read, or every
+// id-addressed action (change a project's main folder) misses.
 test("app settings migrate in place: projects gain ids and names, legacy known folders become projects", () => {
   const dataDir = mkdtempSync(join(tmpdir(), "alt-theory-settings-"));
   mkdirSync(join(dataDir, "climate"), { recursive: true });
@@ -265,6 +267,18 @@ test("app settings migrate in place: projects gain ids and names, legacy known f
     join(dataDir, "climate"),
     join(dataDir, "papers"),
   ]);
+
+  // The migration persisted itself: a fresh read — no write in between —
+  // returns the SAME ids, and the file on disk carries them.
+  const rereadImmediate = readAppSettings(dataDir);
+  assert.deepEqual(
+    rereadImmediate.workingFolders?.projects.map((project) => project.id),
+    [climate.id, papers.id],
+  );
+  const onDisk = JSON.parse(
+    readFileSync(join(dataDir, "app-settings.json"), "utf-8"),
+  ) as { workingFolders?: { projects?: Array<{ id?: string }> } };
+  assert.ok(onDisk.workingFolders?.projects?.every((project) => project.id));
 
   // A name survives the read-write round trip; ids stay stable.
   const named = {
