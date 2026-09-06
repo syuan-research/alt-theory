@@ -77,7 +77,7 @@ export function ChangesPanel() {
     ...(hasNativeBridge() ? [{ label: t("Show in file manager"), icon: "ph-folder-open", onSelect: () => void revealPath(file.resolvedPath) }] : []),
   ];
   const roleText = (group: ChangeGroup) =>
-    group.role === "primary" ? t("Main folder") : group.role === "additional" ? t("Second folder") : t("Outside");
+    group.role === "primary" ? t("Main folder") : group.role === "companion" ? t("Companion folder") : t("Outside");
   const titleOf = (group: ChangeGroup) => group.title.split(/[\\/]/).filter(Boolean).at(-1) ?? group.title;
   const toggle = (path: string) =>
     setClosed((prev) => (prev.includes(path) ? prev.filter((item) => item !== path) : [...prev, path]));

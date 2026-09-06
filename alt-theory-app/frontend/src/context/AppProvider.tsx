@@ -16,6 +16,8 @@ import {
   logout as logoutRequest,
 } from "@/api/auth";
 import { fetchDiscovery } from "@/api/discovery";
+import type { ProjectFolder } from "@/api/config";
+import { getWorkingFolders } from "@/api/config";
 import {
   deleteSession as deleteSessionRequest,
   deleteSessionFamily as deleteSessionFamilyRequest,
@@ -56,8 +58,8 @@ import type {
 } from "@/api/types";
 import {
   addWorkspace as addWorkspaceRequest,
-  listWorkspaces,
   removeWorkspace as removeWorkspaceRequest,
+  setProjectMainFolder as setProjectMainFolderRequest,
   setSessionWorkspace as setSessionWorkspaceRequest,
 } from "@/api/workspaces";
 import { useWebSocket, type WsConnStatus } from "@/hooks/useWebSocket";
@@ -197,12 +199,18 @@ export interface AppContextValue {
   workspacePrimaryDir: string | null;
   /** Explicitly added working folders (may be empty of sessions). */
   knownWorkspaces: string[];
+  /** Projects (v1.5.1): id, name, main folder, companions. */
+  projects: ProjectFolder[];
+  /** Fetch projects + the derived workspace list again. */
+  refreshWorkingFolders: () => Promise<void>;
   /** Choose the working folder for the next (or current) conversation. */
   setDraftWorkspace: (primaryDir: string | null) => void;
   addKnownWorkspace: (path: string) => Promise<void>;
   removeKnownWorkspace: (path: string) => Promise<void>;
   /** Re-point any existing session's working folder (drag & drop, M4). */
   repointSession: (sessionId: string, primaryDir: string | null,) => Promise<void>;
+  /** Change a project's main folder; every conversation of it moves. */
+  repointProject: (projectId: string, primaryDir: string) => Promise<number>;
 
   /** Situational preset buttons (v1.4 round 1 experiment). */
   presetButtons: string[];
@@ -388,6 +396,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     null,
   );
   const [knownWorkspaces, setKnownWorkspaces] = useState<string[]>([]);
+  const [projects, setProjects] = useState<ProjectFolder[]>([]);
   const [modelOverride, setModelOverride] =
     useState<SessionModelOverride | null>(null);
   const [pendingChanges, setPendingChanges] = useState<PendingChanges>({});
@@ -1678,15 +1687,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [sendMessage],
   );
 
-  const addKnownWorkspace = useCallback(async (path: string) => {
-    const result = await addWorkspaceRequest(path);
-    setKnownWorkspaces(result.workspaces);
+  const refreshWorkingFolders = useCallback(async () => {
+    try {
+      const folders = await getWorkingFolders();
+      setProjects(folders.projects);
+      setKnownWorkspaces(folders.knownWorkspaces);
+    } catch {
+      /* hosted or endpoint unavailable */
+    }
   }, []);
 
-  const removeKnownWorkspace = useCallback(async (path: string) => {
-    const result = await removeWorkspaceRequest(path);
-    setKnownWorkspaces(result.workspaces);
-  }, []);
+  const addKnownWorkspace = useCallback(
+    async (path: string) => {
+      await addWorkspaceRequest(path);
+      await refreshWorkingFolders();
+    },
+    [refreshWorkingFolders],
+  );
+
+  const removeKnownWorkspace = useCallback(
+    async (path: string) => {
+      await removeWorkspaceRequest(path);
+      await refreshWorkingFolders();
+    },
+    [refreshWorkingFolders],
+  );
 
   const repointSession = useCallback(
     async (targetSessionId: string, primaryDir: string | null) => {
@@ -1702,14 +1727,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [refreshSessions, sessionId],
   );
 
+  /** Change a project's main folder (v1.5.1); returns how many conversations moved. */
+  const repointProject = useCallback(
+    async (projectId: string, primaryDir: string) => {
+      const result = await setProjectMainFolderRequest(projectId, primaryDir);
+      await refreshWorkingFolders();
+      void refreshSessions();
+      return result.movedCount;
+    },
+    [refreshSessions, refreshWorkingFolders],
+  );
+
   useEffect(() => {
     if (appMode !== "local") return;
-    listWorkspaces()
-      .then((result) => setKnownWorkspaces(result.workspaces))
-      .catch(() => {
-        /* hosted or endpoint unavailable */
-      });
-  }, [appMode]);
+    void refreshWorkingFolders();
+  }, [appMode, refreshWorkingFolders]);
 
   const switchKb = useCallback(
     (domain: string) => {
@@ -1925,10 +1957,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setFullAccess,
       workspacePrimaryDir,
       knownWorkspaces,
+      projects,
+      refreshWorkingFolders,
       setDraftWorkspace,
       addKnownWorkspace,
       removeKnownWorkspace,
       repointSession,
+      repointProject,
       switchMode,
       modelOverride,
       pendingChanges,
@@ -2038,10 +2073,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setFullAccess,
       workspacePrimaryDir,
       knownWorkspaces,
+      projects,
+      refreshWorkingFolders,
       setDraftWorkspace,
       addKnownWorkspace,
       removeKnownWorkspace,
       repointSession,
+      repointProject,
       switchMode,
       modelOverride,
       pendingChanges,

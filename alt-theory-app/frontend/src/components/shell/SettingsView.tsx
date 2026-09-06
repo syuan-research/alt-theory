@@ -32,6 +32,7 @@ import {
   type SubagentPreset,
   getWorkingFolders,
   saveWorkingFolders,
+  type ProjectFolder,
   type WorkingFoldersSettings,
 } from "@/api/config";
 import type {
@@ -1928,9 +1929,9 @@ function FeaturesPanel() {
 }
 
 /**
- * Working folders (v1.5 part 2, prototype D): Projects — a main working
- * folder plus the second folders that belong with it — and the global list
- * of folders Alt may read in every conversation, with one Edit tick per row.
+ * Working folders (v1.5.1): projects — each its own entity with an editable
+ * name, a changeable main folder, and companion folders — plus the global
+ * list of folders Alt may read in every conversation, one Edit tick per row.
  * No mechanism words on the page; the root policy behind it is
  * core/root-policy.ts (global-list / project-secondary).
  */
@@ -1938,6 +1939,8 @@ function WorkingFoldersPanel() {
   const app = useApp();
   const [folders, setFolders] = useState<WorkingFoldersSettings | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
 
   useEffect(() => {
     let alive = true;
@@ -1951,39 +1954,84 @@ function WorkingFoldersPanel() {
     };
   }, []);
 
-  const mainFolders = useMemo(() => {
-    const dirs = new Set(app.knownWorkspaces);
-    for (const session of app.sessions) {
-      if (session.workspacePrimaryDir) dirs.add(session.workspacePrimaryDir);
+  // Project rows come through the app state too, so a change made in the
+  // rail (add companion, remove folder) is reflected here on return.
+  useEffect(() => {
+    if (app.projects.length > 0) {
+      setFolders((prev) =>
+        prev ? { ...prev, projects: app.projects, knownWorkspaces: app.knownWorkspaces } : prev,
+      );
     }
-    return [...dirs].sort((a, b) => folderLabel(a).localeCompare(folderLabel(b)));
-  }, [app.knownWorkspaces, app.sessions]);
+  }, [app.projects, app.knownWorkspaces]);
 
-  const save = (next: { global?: WorkingFoldersSettings["global"]; projects?: WorkingFoldersSettings["projects"] }) =>
+  const projects = (folders?.projects ?? app.projects)
+    .slice()
+    .sort((a, b) =>
+      (a.name ?? folderLabel(a.primaryDir)).localeCompare(
+        b.name ?? folderLabel(b.primaryDir),
+      ),
+    );
+
+  const save = (next: { global?: WorkingFoldersSettings["global"]; projects?: ProjectFolder[] }) =>
     saveWorkingFolders(next)
       .then((saved) => {
         setFolders(saved);
         setNotice(null);
+        void app.refreshWorkingFolders();
       })
       .catch((err) => setNotice(err instanceof Error ? err.message : t("Could not save.")));
 
-  const secondaryOf = (primaryDir: string) =>
-    folders?.projects.find((project) => project.primaryDir === primaryDir)?.secondaryDirs ?? [];
-  const setSecondary = (primaryDir: string, secondaryDirs: string[]) => {
-    if (!folders) return;
-    const others = folders.projects.filter((project) => project.primaryDir !== primaryDir);
-    void save({ projects: secondaryDirs.length ? [...others, { primaryDir, secondaryDirs }] : others });
-  };
+  const displayName = (project: ProjectFolder) =>
+    project.name ?? folderLabel(project.primaryDir);
 
   const newProject = () => {
     void pickDirectory(t("Full path of the working folder to add:")).then((path) => {
-      if (path) void app.addKnownWorkspace(path).catch((err) => setNotice(err instanceof Error ? err.message : t("Could not add folder")));
+      if (path)
+        void app
+          .addKnownWorkspace(path)
+          .then(() => getWorkingFolders().then((value) => setFolders(value)))
+          .catch((err) => setNotice(err instanceof Error ? err.message : t("Could not add folder")));
     });
   };
-  const addSecondary = (primaryDir: string) => {
+  const companionsOf = (project: ProjectFolder) => project.secondaryDirs;
+  const setProject = (next: ProjectFolder) =>
+    void save({ projects: projects.map((project) => (project.id === next.id ? next : project)) });
+  const addCompanion = (project: ProjectFolder) => {
     void pickDirectory(t("Full path of the folder to add to this project:")).then((path) => {
-      if (path && !secondaryOf(primaryDir).includes(path)) setSecondary(primaryDir, [...secondaryOf(primaryDir), path]);
+      if (!path || companionsOf(project).includes(path)) return;
+      setProject({ ...project, secondaryDirs: [...companionsOf(project), path] });
     });
+  };
+  const changeMainFolder = (project: ProjectFolder) => {
+    void pickDirectory(t("Full path of the project's new main folder:")).then((path) => {
+      if (!path || path === project.primaryDir) return;
+      const label = folderLabel(path);
+      app.requestConfirm({
+        message: t("Move this project to work in \"{label}\"?", { label }),
+        details: [
+          t("Every conversation of the project moves with it — families stay together."),
+          t("Alt will ask for permissions again in the new folder."),
+          t("Files already on disk are not moved."),
+          t("A conversation that is working right now refuses the move; try again when it is idle."),
+        ],
+        confirmLabel: t("Move"),
+        onConfirm: () => {
+          void app
+            .repointProject(project.id, path)
+            .then(() => getWorkingFolders().then((value) => setFolders(value)))
+            .catch((err) => setNotice(err instanceof Error ? err.message : t("Could not save.")));
+        },
+      });
+    });
+  };
+  const commitRename = (project: ProjectFolder) => {
+    const name = renameValue.trim();
+    setRenaming(null);
+    setProject(
+      name && name !== folderLabel(project.primaryDir)
+        ? { ...project, name }
+        : { ...project, name: undefined },
+    );
   };
   const addGlobal = () => {
     void pickDirectory(t("Full path of the folder to add:")).then((path) => {
@@ -2012,31 +2060,78 @@ function WorkingFoldersPanel() {
           <div>
             <h4>{t("Projects")}</h4>
             <p className="lead">{t("Where conversations work.")}</p>
-            <p>{t("One main folder plus any others that belong with it. A conversation started here sees all of them.")}</p>
+            <p>{t("One main folder plus companion folders that belong with it. A conversation started here sees all of them.")}</p>
           </div>
           <button className="flat" onClick={newProject}>
             <i className="ph ph-plus" aria-hidden="true" /> {t("New project")}
           </button>
         </div>
-        {mainFolders.length === 0 ? (
+        {projects.length === 0 ? (
           <p className="fine">{t("No working folders yet.")}</p>
         ) : (
-          mainFolders.map((primaryDir) => (
-            <div className="proj" key={primaryDir}>
+          projects.map((project) => (
+            <div className="proj" key={project.id}>
               <div className="proj-head">
                 <i className="ph ph-folder-open" aria-hidden="true" />
-                <span className="pname">{folderLabel(primaryDir)}</span>
+                {renaming === project.id ? (
+                  <form
+                    className="session-rename-inline"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      commitRename(project);
+                    }}
+                  >
+                    <input
+                      autoFocus
+                      aria-label={t("Project name")}
+                      value={renameValue}
+                      onChange={(event) => setRenameValue(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Escape") setRenaming(null);
+                      }}
+                    />
+                    <button type="button" data-tip={t("Cancel")} onClick={() => setRenaming(null)}>
+                      <i className="ph ph-x" />
+                    </button>
+                    <button type="submit" data-tip={t("Save")}>
+                      <i className="ph ph-check" />
+                    </button>
+                  </form>
+                ) : (
+                  <>
+                    <span className="pname">{displayName(project)}</span>
+                    <button
+                      className="icon-x"
+                      data-tip={t("Rename")}
+                      aria-label={t("Rename")}
+                      onClick={() => {
+                        setRenameValue(displayName(project));
+                        setRenaming(project.id);
+                      }}
+                    >
+                      <i className="ph ph-pencil-simple" aria-hidden="true" />
+                    </button>
+                  </>
+                )}
                 <span className="sp" />
-                <button className="flat" onClick={() => addSecondary(primaryDir)}>
+                <button className="flat" onClick={() => addCompanion(project)}>
                   <i className="ph ph-plus" aria-hidden="true" /> {t("Add a folder")}
                 </button>
               </div>
               <div className="sf">
                 <i className="ph ph-folder" aria-hidden="true" />
-                <span className="lbl">{primaryDir}</span>
+                <span className="lbl">{project.primaryDir}</span>
                 <span className="role">{t("Main folder")}</span>
+                <button className="flat" onClick={() => changeMainFolder(project)}>
+                  {t("Change")}
+                </button>
               </div>
-              {secondaryOf(primaryDir).map((dir) => (
+              {project.available === false ? (
+                <div className="sf">
+                  <span className="lbl quiet">{t("This folder is not on this computer right now. Move the project to its new location, or bring the folder back.")}</span>
+                </div>
+              ) : null}
+              {companionsOf(project).map((dir) => (
                 <div className="sf" key={dir}>
                   <i className="ph ph-folder" aria-hidden="true" />
                   <span className="lbl">{dir}</span>
@@ -2044,14 +2139,19 @@ function WorkingFoldersPanel() {
                     className="icon-x"
                     data-tip={removeTip}
                     aria-label={removeTip}
-                    onClick={() => setSecondary(primaryDir, secondaryOf(primaryDir).filter((item) => item !== dir))}
+                    onClick={() =>
+                      setProject({
+                        ...project,
+                        secondaryDirs: companionsOf(project).filter((item) => item !== dir),
+                      })
+                    }
                   >
                     <i className="ph ph-x" aria-hidden="true" />
                   </button>
                 </div>
               ))}
-              {secondaryOf(primaryDir).length === 0 ? (
-                <div className="sf"><span className="lbl quiet">{t("No other folders yet.")}</span></div>
+              {companionsOf(project).length === 0 ? (
+                <div className="sf"><span className="lbl quiet">{t("No companion folders yet.")}</span></div>
               ) : null}
             </div>
           ))
@@ -2094,7 +2194,7 @@ function WorkingFoldersPanel() {
         ))}
         {folders && folders.global.length === 0 ? <p className="fine">{t("No folders on the list yet.")}</p> : null}
         <p className="fine">{t("Readable in Understand and Work; saving only in Work.")}</p>
-        <p className="fine">{t("Knowledge folders are readable too; you manage those on the Knowledge page.")}</p>
+        <p className="fine">{t("Knowledge folders are readable too; you manage those in Role & Knowledge.")}</p>
       </div>
     </div>
   );

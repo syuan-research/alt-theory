@@ -375,7 +375,7 @@ export interface FileChange {
 export interface ChangeGroup {
   title: string;
   path: string;
-  role: "primary" | "additional" | "outside";
+  role: "primary" | "companion" | "outside";
   capped: boolean;
   files: FileChange[];
 }
@@ -545,7 +545,7 @@ export interface WorkspaceFilesResponse {
 export interface WorkingFolderDescriptor {
   id: string;
   path: string;
-  role: "primary" | "additional";
+  role: "primary" | "secondary";
   managed: boolean;
   available: boolean;
 }

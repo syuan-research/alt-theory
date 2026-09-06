@@ -19,6 +19,7 @@ import { SessionImportDialog } from "@/components/shell/SessionImportDialog";
 import { HelpMenu } from "@/components/shell/HelpMenu";
 import { scrollAffectsAnchor, useContextMenu, type ContextMenuItem } from "@/components/shell/ContextMenu";
 import { promoteToMainline as promoteToMainlineRequest } from "@/api/sessions";
+import { getWorkingFolders, saveWorkingFolders, type ProjectFolder } from "@/api/config";
 import { hasNativeBridge, pickDirectory, revealPath } from "@/lib/native";
 import { fetchSessionDetail } from "@/api/sessions";
 import {
@@ -312,6 +313,21 @@ function UserNav({ onImport }: { onImport: () => void }) {
     [app.sessions, app.knownWorkspaces, app.sessionDisplayNames, listSort, local],
   );
 
+  // Projects (v1.5.1): the group's label is the project's name (defaults to
+  // the main folder's), and a project's companions show greyed under it.
+  const projectByDir = useMemo(
+    () => new Map(app.projects.map((project) => [project.primaryDir, project])),
+    [app.projects],
+  );
+  const groups = useMemo(
+    () =>
+      tree.groups.map((group) => {
+        const project = projectByDir.get(group.dir);
+        return project?.name ? { ...group, label: project.name } : group;
+      }),
+    [tree, projectByDir],
+  );
+
   const visibleIds = useMemo(
     () => railMatchIds(app.sessions, railQuery, app.sessionDisplayNames),
     [app.sessions, railQuery, app.sessionDisplayNames],
@@ -398,6 +414,25 @@ function UserNav({ onImport }: { onImport: () => void }) {
     if (!path) return;
     try {
       await app.addKnownWorkspace(path);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  /** Add a companion folder to the project this rail group belongs to (v1.5.1). */
+  const addProjectFolder = async (project: ProjectFolder) => {
+    const path = await pickDirectory(t("Full path of the folder to add to this project:"));
+    if (!path || project.secondaryDirs.includes(path)) return;
+    try {
+      const current = await getWorkingFolders();
+      await saveWorkingFolders({
+        projects: current.projects.map((entry) =>
+          entry.id === project.id
+            ? { ...entry, secondaryDirs: [...entry.secondaryDirs, path] }
+            : entry,
+        ),
+      });
+      await app.refreshWorkingFolders();
     } catch (error) {
       window.alert(error instanceof Error ? error.message : String(error));
     }
@@ -674,11 +709,13 @@ function UserNav({ onImport }: { onImport: () => void }) {
           <div className="rp-empty">{t("Loading conversations…")}</div>
         ) : app.sessionsError && app.sessions.length === 0 ? (
           <div className="rp-empty">{app.sessionsError}</div>
-        ) : tree.groups.length === 0 ? (
+        ) : groups.length === 0 ? (
           <div className="rp-empty">{t("No conversations yet.")}</div>
         ) : (
-          tree.groups.map((group) => {
+          groups.map((group) => {
             const closed = closedGroups.has(group.dir);
+            const project = group.dir ? projectByDir.get(group.dir) : undefined;
+            const companions = project?.secondaryDirs ?? [];
             // A matching folder name keeps every conversation in it.
             const folderHit =
               visibleIds !== null && group.label.toLowerCase().includes(railQuery.trim().toLowerCase());
@@ -752,6 +789,17 @@ function UserNav({ onImport }: { onImport: () => void }) {
                           <i className="ph ph-copy" />
                           {t("Copy folder path")}
                         </button>
+                        {project ? (
+                          <button
+                            onClick={(event) => {
+                              closeMenu(event);
+                              void addProjectFolder(project);
+                            }}
+                          >
+                            <i className="ph ph-folder-plus" />
+                            {t("Add a folder to this project")}
+                          </button>
+                        ) : null}
                         <button
                           onClick={(event) => {
                             closeMenu(event);
@@ -777,6 +825,14 @@ function UserNav({ onImport }: { onImport: () => void }) {
                     </button>
                   ) : null}
                 </div>
+                {!closed && companions.length > 0
+                  ? companions.map((dir) => (
+                      <div className="ws-companion" key={dir} data-tip={dir}>
+                        <i className="ph ph-folder-simple" aria-hidden />
+                        <span className="group-name">{folderLabel(dir)}</span>
+                      </div>
+                    ))
+                  : null}
                 {!closed && roots.length === 0 ? (
                   <div className="rp-empty ws-empty">{t("No conversations yet.")}</div>
                 ) : null}
