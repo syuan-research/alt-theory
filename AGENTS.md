@@ -115,6 +115,10 @@ agents mistake them for in-progress work.
   spawn, update check, changes-pane local fixes, Copilot intersect,
   collapse-anywhere, family lineage index); archived right after the
   fast-forward merge.
+- `archive/wp-projects` — merged into main (v1.5.1 WP-A: projects as
+  entities — id, editable name, changeable main folder with a
+  project-level re-point — and one folder mechanism; session
+  additionalDirs deleted); archived after the reviewed merge.
 - `archive/wp1-path-verdict` — merged into main (v1.5 round 1: one path
   verdict and root policy).
 - `wp2-import-adapter` — merged into main (v1.5 round 1: import-adapter
