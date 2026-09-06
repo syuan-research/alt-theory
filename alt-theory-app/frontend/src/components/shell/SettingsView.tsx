@@ -2017,7 +2017,7 @@ function WorkingFoldersPanel() {
         confirmLabel: t("Move"),
         onConfirm: () => {
           void app
-            .repointProject(project.id, path)
+            .repointProject(project.id, path, project.primaryDir)
             .then(() => getWorkingFolders().then((value) => setFolders(value)))
             .catch((err) => setNotice(err instanceof Error ? err.message : t("Could not save.")));
         },

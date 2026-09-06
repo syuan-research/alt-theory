@@ -210,7 +210,11 @@ export interface AppContextValue {
   /** Re-point any existing session's working folder (drag & drop, M4). */
   repointSession: (sessionId: string, primaryDir: string | null,) => Promise<void>;
   /** Change a project's main folder; every conversation of it moves. */
-  repointProject: (projectId: string, primaryDir: string) => Promise<number>;
+  repointProject: (
+    projectId: string,
+    primaryDir: string,
+    previousPrimaryDir?: string,
+  ) => Promise<number>;
 
   /** Situational preset buttons (v1.4 round 1 experiment). */
   presetButtons: string[];
@@ -1729,13 +1733,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   /** Change a project's main folder (v1.5.1); returns how many conversations moved. */
   const repointProject = useCallback(
-    async (projectId: string, primaryDir: string) => {
+    async (
+      projectId: string,
+      primaryDir: string,
+      previousPrimaryDir?: string,
+    ) => {
       const result = await setProjectMainFolderRequest(projectId, primaryDir);
+      // The attached conversation moves with its project: follow it locally
+      // like the per-conversation move does, or the folder indicator keeps
+      // showing the old workspace until the next reopen.
+      if (
+        sessionId &&
+        previousPrimaryDir &&
+        (workspacePrimaryDir ?? "") === previousPrimaryDir
+      ) {
+        setWorkspacePrimaryDir(primaryDir);
+      }
       await refreshWorkingFolders();
       void refreshSessions();
       return result.movedCount;
     },
-    [refreshSessions, refreshWorkingFolders],
+    [refreshSessions, refreshWorkingFolders, sessionId, workspacePrimaryDir],
   );
 
   useEffect(() => {
