@@ -33,18 +33,20 @@ export function ConversationPanel() {
 
   return (
     <main className="center">
-      <ApprovalNotice />
-      {shell.compareOpen ? <Comparison /> : null}
-      {shell.armsComparisonId ? (
-        <ArmSplit />
-      ) : live ? (
-        <div className="live-state">
-          <MessageList />
-          <Composer variant="live" />
-        </div>
-      ) : (
-        <EmptyState />
-      )}
+      <div className="workcard">
+        <ApprovalNotice />
+        {shell.compareOpen ? <Comparison /> : null}
+        {shell.armsComparisonId ? (
+          <ArmSplit />
+        ) : live ? (
+          <div className="live-state">
+            <MessageList />
+            <Composer variant="live" />
+          </div>
+        ) : (
+          <EmptyState />
+        )}
+      </div>
     </main>
   );
 }

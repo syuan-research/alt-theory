@@ -20,6 +20,8 @@ interface AltElectron {
   dismissUpdate?(version: string): Promise<AppUpdateStatus>;
   openExternal?(url: string): Promise<boolean>;
   onUpdateStatus?(callback: (status: AppUpdateStatus) => void): () => void;
+  getViewSize?(): Promise<number>;
+  setViewSize?(stop: number): Promise<number>;
 }
 
 function bridge(): AltElectron | null {
@@ -29,6 +31,17 @@ function bridge(): AltElectron | null {
 /** True when running inside the Electron bundle (native dialogs available). */
 export function hasNativeBridge(): boolean {
   return bridge() !== null;
+}
+
+/** View-size stop (0–5) — bundle-only zoom preference, stored by the shell. */
+export async function getViewSize(): Promise<number> {
+  const el = bridge();
+  return el?.getViewSize ? el.getViewSize() : 2;
+}
+
+export async function setViewSize(stop: number): Promise<void> {
+  const el = bridge();
+  if (el?.setViewSize) await el.setViewSize(stop);
 }
 
 /** Pick a working folder — native dialog in Electron, path prompt otherwise. */

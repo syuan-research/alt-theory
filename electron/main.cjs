@@ -18,7 +18,7 @@
  * no env override is present. Setting env here would override the GUI's choice.
  */
 
-const { app, BrowserWindow, dialog, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, shell, Menu } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
@@ -38,6 +38,10 @@ const appUpdate = require("./app-update.cjs");
 // User reference: ZCode/Obsidian GPU fallback notes.
 app.disableHardwareAcceleration();
 app.commandLine.appendSwitch("no-sandbox");
+
+// No window chrome: hidden title bar with OS-drawn overlay buttons, and the
+// default application menu removed entirely (20260907 bundle-chrome issue).
+Menu.setApplicationMenu(null);
 
 // Port: honor an explicit override (ALT_THEORY_PORT / PORT) when present;
 // otherwise prefer a STABLE default port. The renderer's localStorage (UI
@@ -116,12 +120,32 @@ function createWindow() {
     width: 1280,
     height: 860,
     title: "Alt Theory",
-    backgroundColor: "#f8f8f9",
+    backgroundColor: "#ebebec",
+    titleBarStyle: "hidden",
+    titleBarOverlay: { color: "#ebebec", symbolColor: "#1f1e1a", height: 48 },
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, "preload.cjs"),
     },
+  });
+  mainWindow.webContents.on("did-finish-load", () => applyViewStop());
+  // Zoom keys by physical code: the default menu roles are gone, and zoomIn's
+  // "Plus" accelerator never matched Ctrl+= anyway (Electron treats Plus as the
+  // shifted key — electron#6731). Numpad variants included.
+  const zoomKeySteps = { Equal: 1, NumpadAdd: 1, Minus: -1, NumpadSubtract: -1 };
+  mainWindow.webContents.on("before-input-event", (event, input) => {
+    if (input.type !== "keyDown" || !input.control) return;
+    if (input.code === "Digit0") {
+      event.preventDefault();
+      setViewStop(DEFAULT_VIEW_STOP);
+      return;
+    }
+    const step = zoomKeySteps[input.code];
+    if (step) {
+      event.preventDefault();
+      setViewStop(viewStop + step);
+    }
   });
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (
@@ -176,13 +200,12 @@ function readAppSettingsFile() {
   }
 }
 
-function patchUpdateCheck(patch) {
+function patchAppSettings(patch) {
   const settingsFile = appSettingsPath();
   let current = {};
   if (fs.existsSync(settingsFile)) {
     // The backend refuses to overwrite an unreadable settings file (it may
-    // still be recoverable); the update check must not be the path that
-    // destroys it with defaults. Skip persisting and keep state in memory.
+    // still be recoverable); no writer here may destroy it with defaults.
     try {
       const parsed = JSON.parse(fs.readFileSync(settingsFile, "utf8"));
       if (!parsed || parsed.schemaVersion !== 1) return;
@@ -198,11 +221,55 @@ function patchUpdateCheck(patch) {
       work: { enabledPaths: null },
     },
     ...current,
-    updateCheck: { ...(current.updateCheck ?? {}), ...patch },
+    ...patch,
   };
   fs.mkdirSync(path.dirname(settingsFile), { recursive: true });
   fs.writeFileSync(settingsFile, `${JSON.stringify(next, null, 2)}\n`);
 }
+
+function patchUpdateCheck(patch) {
+  patchAppSettings({
+    updateCheck: { ...(readAppSettingsFile().updateCheck ?? {}), ...patch },
+  });
+}
+
+// --- View size (bundle-only zoom preference). Six stops, stored in
+// app-settings.json alongside the other shell preferences. ---
+const ZOOM_STOPS = [0.8, 0.9, 1, 1.1, 1.25, 1.5];
+const DEFAULT_VIEW_STOP = 2; // 100%
+let viewStop = readViewStop();
+
+function readViewStop() {
+  const stored = readAppSettingsFile().viewSize?.stop;
+  return Number.isInteger(stored) && stored >= 0 && stored < ZOOM_STOPS.length
+    ? stored
+    : DEFAULT_VIEW_STOP;
+}
+
+function applyViewStop() {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.setZoomFactor(ZOOM_STOPS[viewStop]);
+  }
+}
+
+function setViewStop(stop) {
+  if (!Number.isInteger(stop)) return;
+  const clamped = Math.min(ZOOM_STOPS.length - 1, Math.max(0, stop));
+  if (clamped === viewStop) return;
+  viewStop = clamped;
+  applyViewStop();
+  try {
+    patchAppSettings({ viewSize: { stop: clamped } });
+  } catch {
+    // keep the in-memory value if the settings file is unwritable
+  }
+}
+
+ipcMain.handle("alt:getViewSize", () => viewStop);
+ipcMain.handle("alt:setViewSize", (_event, stop) => {
+  setViewStop(stop);
+  return viewStop;
+});
 
 function publicUpdateStatus() {
   const dismissed = readAppSettingsFile().updateCheck?.dismissedVersion;

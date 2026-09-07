@@ -29,4 +29,6 @@ contextBridge.exposeInMainWorld("altElectron", {
     ipcRenderer.on("alt:updateStatus", listener);
     return () => ipcRenderer.removeListener("alt:updateStatus", listener);
   },
+  getViewSize: () => ipcRenderer.invoke("alt:getViewSize"),
+  setViewSize: (stop) => ipcRenderer.invoke("alt:setViewSize", stop),
 });

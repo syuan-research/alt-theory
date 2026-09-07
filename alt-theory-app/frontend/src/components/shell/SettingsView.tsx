@@ -45,11 +45,13 @@ import { authConnectEntryStep } from "@/lib/authConnect";
 import {
   checkForUpdates,
   getUpdateStatus,
+  getViewSize,
   hasNativeBridge,
   openExternal,
   pickDirectory,
   pickFiles,
   revealPath,
+  setViewSize,
   type AppUpdateStatus,
 } from "@/lib/native";
 import { useApp } from "@/context/AppProvider";
@@ -1121,6 +1123,64 @@ export function AuthConnectCard({
   );
 }
 
+const ZOOM_STOPS = [80, 90, 100, 110, 125, 150];
+
+function ViewSizeCard() {
+  const [stop, setStop] = useState(2);
+
+  useEffect(() => {
+    let alive = true;
+    getViewSize()
+      .then((value) => {
+        if (alive) setStop(value);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const change = (next: number) => {
+    setStop(next);
+    void setViewSize(next);
+  };
+
+  return (
+    <div className="set-card">
+      <div className="row2">
+        <div>
+          <h4>{t("View size")}</h4>
+          <p>{t("Zoom the whole app. Remembered after a restart.")}</p>
+        </div>
+        <div className="zval">
+          {stop !== 2 ? (
+            <button className="ghostbtn" onClick={() => change(2)}>
+              {t("Reset to default")}
+            </button>
+          ) : null}
+          <b>{ZOOM_STOPS[stop]}%</b>
+        </div>
+      </div>
+      <div className="zrow">
+        <input
+          type="range"
+          min={0}
+          max={ZOOM_STOPS.length - 1}
+          step={1}
+          value={stop}
+          onChange={(e) => change(Number(e.target.value))}
+          aria-label={t("View size")}
+        />
+        <div className="zticks">
+          {ZOOM_STOPS.map((s) => (
+            <span key={s}>{s}</span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function GeneralPanel() {
   const shell = useShell();
   return (
@@ -1141,6 +1201,7 @@ function GeneralPanel() {
           />
         </div>
       </div>
+      {hasNativeBridge() ? <ViewSizeCard /> : null}
       <div className="set-card">
         <div className="row2">
           <div>

@@ -343,6 +343,24 @@
   body.resizing-pane { cursor: col-resize; user-select: none; }
   body.resizing-pane .rpanel { transition: none; }
 
+  /* A2 trial (20260907 bundle-chrome issue): the work area is one floating card
+     on shared gray; column hairlines go away. Scoped to .cols.a2cols so other
+     surfaces keep the flat layout. The top 48px of the center column is the
+     window drag band; header rows drag too and their buttons opt out. Inert in
+     a plain browser (-webkit-app-region is ignored there). */
+  .cols.a2cols { background: var(--panel); }
+  .cols.a2cols .left { border-right: none; }
+  .cols.a2cols .right { border-left: none; }
+  .cols.a2cols .center { background: transparent; }
+  .cols.a2cols .center::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 48px; -webkit-app-region: drag; }
+  .cols.a2cols .workcard { flex: 1; display: flex; flex-direction: column; min-height: 0; margin: 48px 14px 7px; background: var(--canvas); border-radius: var(--r-lg); box-shadow: 0 1px 2px rgba(31, 30, 26, 0.05), 0 4px 18px rgba(31, 30, 26, 0.07); overflow: hidden; }
+  .cols.a2cols .left-head, .cols.a2cols .rpanel .head { -webkit-app-region: drag; }
+  .cols.a2cols .left-head button, .cols.a2cols .rpanel .head button { -webkit-app-region: no-drag; }
+  /* Windows overlay buttons own the window's top-right ~48px: the right column
+     reserves that band (real DOM has no full-width top row, unlike the mock). */
+  .cols.a2cols .right .rail { padding-top: 56px; }
+  .cols.a2cols .rpanel .head { margin-top: 48px; }
+
   /* ------- left ------- */
   .left { width: var(--left-width); flex-shrink: 0; background: var(--panel); border-right: 1px solid var(--hairline); display: flex; flex-direction: column; }
   .app-root.leftCol .left { width: 52px; }
@@ -1178,6 +1196,15 @@
   .set-card .fine { font-size: 0.75rem; color: var(--text-3); margin-top: 7px; line-height: 1.45; }
   /* Working folders page (proto D): quiet rows, one tick, no badges */
   .set-card .lead { color: var(--ink-soft); font-weight: 500; margin-bottom: 2px; }
+  /* 视图大小 slider (20260907 issue, bundle-only card) */
+  .zval { display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .zval b { font-size: 0.95rem; min-width: 44px; text-align: right; }
+  .set-card .ghostbtn { border: none; background: none; color: var(--text-2); font-size: 0.8125rem; cursor: pointer; padding: 4px 6px; border-radius: var(--r-sm); }
+  .set-card .ghostbtn:hover { background: var(--hover); color: var(--ink); }
+  .zrow { margin-top: 14px; }
+  .zrow input[type="range"] { width: 100%; accent-color: var(--ink); margin: 0; }
+  .zticks { display: flex; justify-content: space-between; padding: 0 7px; margin-top: 2px; }
+  .zticks span { width: 30px; text-align: center; font-size: 0.6875rem; color: var(--text-3); }
   .proj { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--hairline); }
   .proj-head { display: flex; align-items: center; gap: 8px; font-size: 0.875rem; font-weight: 500; }
   .proj-head .sp { flex: 1; }

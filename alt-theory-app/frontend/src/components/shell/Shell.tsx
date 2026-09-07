@@ -150,7 +150,7 @@ export function Shell() {
           open — hidden, not unmounted — so the composer draft, DOM editing
           state, and browser undo survive the round trip (v1.4.7). */}
       <div
-        className="cols"
+        className="cols a2cols"
         hidden={shell.surface !== "app"}
         style={
           {
