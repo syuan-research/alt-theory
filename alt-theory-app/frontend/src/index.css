@@ -102,6 +102,9 @@
      made every accent element borderless/transparent (opus review A1). */
   --accent: var(--ink);
   --line: var(--hairline);
+  /* OS overlay-button band, zoom-aware: JS sets this to 48px ÷ zoom factor so
+     the reserve always matches the buttons' fixed screen-space height. */
+  --titlebar-h: 48px;
   /* Referenced since alpha.3 but never defined — an undefined var() makes
      the whole declaration invalid, so these six sites have always rendered
      with no shadow and no surface fill. Pinned to exactly that (v1.5 WP3,
@@ -338,8 +341,6 @@
   .app-root { height: 100%; display: flex; flex-direction: column; min-height: 0; }
   .cols { --left-width: 264px; --right-width: 480px; flex: 1; display: flex; min-height: 0; }
   .pane-resizer { flex: 0 0 5px; margin: 0 -2px; position: relative; z-index: 30; cursor: col-resize; touch-action: none; outline: none; }
-  .pane-resizer::after { content: ""; position: absolute; inset: 0 2px; background: transparent; transition: background 0.12s; }
-  .pane-resizer:hover::after, .pane-resizer:focus-visible::after { background: var(--text-3); }
   body.resizing-pane { cursor: col-resize; user-select: none; }
   body.resizing-pane .rpanel { transition: none; }
 
@@ -352,14 +353,20 @@
   .cols.a2cols .left { border-right: none; }
   .cols.a2cols .right { border-left: none; }
   .cols.a2cols .center { background: transparent; }
-  .cols.a2cols .center::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 48px; -webkit-app-region: drag; }
-  .cols.a2cols .workcard { flex: 1; display: flex; flex-direction: column; min-height: 0; margin: 48px 14px 7px; background: var(--canvas); border-radius: var(--r-lg); box-shadow: 0 1px 2px rgba(31, 30, 26, 0.05), 0 4px 18px rgba(31, 30, 26, 0.07); overflow: hidden; }
+  .cols.a2cols .center::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: var(--titlebar-h); -webkit-app-region: drag; }
+  .cols.a2cols .workcard { flex: 1; display: flex; flex-direction: column; min-height: 0; margin: var(--titlebar-h) 10px 7px; background: var(--canvas); border-radius: var(--r-lg); box-shadow: 0 1px 2px rgba(31, 30, 26, 0.05), 0 4px 18px rgba(31, 30, 26, 0.07); overflow: hidden; }
   .cols.a2cols .left-head, .cols.a2cols .rpanel .head { -webkit-app-region: drag; }
   .cols.a2cols .left-head button, .cols.a2cols .rpanel .head button { -webkit-app-region: no-drag; }
   /* Windows overlay buttons own the window's top-right ~48px: the right column
      reserves that band (real DOM has no full-width top row, unlike the mock). */
-  .cols.a2cols .right .rail { padding-top: 56px; }
-  .cols.a2cols .rpanel .head { margin-top: 48px; }
+  .cols.a2cols .right .rail { padding-top: calc(var(--titlebar-h) + 8px); }
+  .cols.a2cols .rpanel .head { margin-top: var(--titlebar-h); }
+  /* A2: resize hit-strips hug the card edges (users grab the card boundary),
+     not the middle of the gray gutter. first/last-of-type = the two resize
+     divs; the strips overlay the card's rounded edge by ~2px. Cursor-only —
+     no hover highlight (owner ruling). */
+  .cols.a2cols .pane-resizer:first-of-type { margin-right: -10px; }
+  .cols.a2cols .pane-resizer:last-of-type { margin-left: -10px; }
 
   /* ------- left ------- */
   .left { width: var(--left-width); flex-shrink: 0; background: var(--panel); border-right: 1px solid var(--hairline); display: flex; flex-direction: column; }
@@ -485,8 +492,8 @@
   .native-pi-empty-note { max-width: 520px; margin: 10px auto 28px; color: var(--muted); font-size: 14px; line-height: 1.55; }
   .mode-card { width: 310px; min-height: 188px; background: var(--surface); border: 1.5px solid var(--hairline); border-radius: var(--r-lg); padding: 16px 18px; cursor: pointer; box-shadow: 0 1px 3px rgba(31,30,26,0.05); text-align: left; color: var(--ink); }
   .mode-card:hover { box-shadow: 0 2px 8px rgba(31,30,26,0.08); }
-  .mode-card.understand.on { border-color: var(--mode-understand); }
-  .mode-card.work.on { border-color: var(--mode-work); }
+  .mode-card.understand.on { border-color: var(--mode-understand); border-width: 1px; }
+  .mode-card.work.on { border-color: var(--mode-work); border-width: 1px; }
   .mode-card .t { font-family: var(--brand); font-weight: 600; font-size: 1.05rem; display: flex; align-items: center; gap: 8px; }
   .mode-card.understand .t i { color: var(--mode-understand); }
   .mode-card.work .t i { color: var(--mode-work); }
@@ -1201,10 +1208,12 @@
   .zval b { font-size: 0.95rem; min-width: 44px; text-align: right; }
   .set-card .ghostbtn { border: none; background: none; color: var(--text-2); font-size: 0.8125rem; cursor: pointer; padding: 4px 6px; border-radius: var(--r-sm); }
   .set-card .ghostbtn:hover { background: var(--hover); color: var(--ink); }
-  .zrow { margin-top: 14px; }
+  .zrow { margin-top: 14px; max-width: 480px; margin-left: auto; }
   .zrow input[type="range"] { width: 100%; accent-color: var(--ink); margin: 0; }
   .zticks { display: flex; justify-content: space-between; padding: 0 7px; margin-top: 2px; }
   .zticks span { width: 30px; text-align: center; font-size: 0.6875rem; color: var(--text-3); }
+  /* every surface clears the OS overlay-button band (zoom-aware reserve) */
+  .settings, .page { padding-top: var(--titlebar-h); }
   .proj { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--hairline); }
   .proj-head { display: flex; align-items: center; gap: 8px; font-size: 0.875rem; font-weight: 500; }
   .proj-head .sp { flex: 1; }

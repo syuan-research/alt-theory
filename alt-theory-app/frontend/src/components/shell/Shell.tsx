@@ -1,7 +1,8 @@
-import { useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { useApp } from "@/context/AppProvider";
 import { RIGHT_PANE, useShell } from "@/context/ShellContext";
 import { t } from "@/i18n";
+import { applyTitlebarVar, getViewSize } from "@/lib/native";
 import { LeftNav } from "@/components/shell/LeftNav";
 import { ConversationPanel } from "@/components/shell/ConversationPanel";
 import { InspectorPanel } from "@/components/shell/InspectorPanel";
@@ -119,6 +120,11 @@ export function Shell() {
       shell.setRightPaneWidth(shell.rightWidth + delta, true);
     }
   };
+
+  // Reserve the right height for the OS overlay-button band at any zoom level.
+  useEffect(() => {
+    void getViewSize().then(applyTitlebarVar);
+  }, []);
 
   if (app.loading) {
     return (

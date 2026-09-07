@@ -44,6 +44,22 @@ export async function setViewSize(stop: number): Promise<void> {
   if (el?.setViewSize) await el.setViewSize(stop);
 }
 
+/** Zoom stops (percent) offered by the view-size setting. */
+export const ZOOM_STOPS = [80, 90, 100, 110, 125, 150];
+
+/**
+ * Keep the OS overlay-button reserve zoom-proof: the buttons are drawn in a
+ * fixed ~48px screen-space band, so the CSS reserve must grow as the page
+ * zooms out (48px ÷ factor) and shrink as it zooms in.
+ */
+export function applyTitlebarVar(stop: number): void {
+  const factor = ZOOM_STOPS[stop] / 100;
+  document.documentElement.style.setProperty(
+    "--titlebar-h",
+    `${(48 / factor).toFixed(2)}px`,
+  );
+}
+
 /** Pick a working folder — native dialog in Electron, path prompt otherwise. */
 export async function pickDirectory(promptLabel: string): Promise<string | null> {
   const el = bridge();

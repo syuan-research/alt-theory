@@ -43,6 +43,7 @@ import type {
 import { ModelConfigPage } from "@/pages/ModelConfigPage";
 import { authConnectEntryStep } from "@/lib/authConnect";
 import {
+  applyTitlebarVar,
   checkForUpdates,
   getUpdateStatus,
   getViewSize,
@@ -53,6 +54,7 @@ import {
   revealPath,
   setViewSize,
   type AppUpdateStatus,
+  ZOOM_STOPS,
 } from "@/lib/native";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
@@ -1123,8 +1125,6 @@ export function AuthConnectCard({
   );
 }
 
-const ZOOM_STOPS = [80, 90, 100, 110, 125, 150];
-
 function ViewSizeCard() {
   const [stop, setStop] = useState(2);
 
@@ -1140,9 +1140,12 @@ function ViewSizeCard() {
     };
   }, []);
 
-  const change = (next: number) => {
-    setStop(next);
-    void setViewSize(next);
+  // Drag updates the thumb only; the zoom commits on release. Applying per
+  // pixel rescales the whole window — including this track — so a held cursor
+  // lands on a different stop and the value oscillates (20260907 trial).
+  const commit = () => {
+    applyTitlebarVar(stop);
+    void setViewSize(stop);
   };
 
   return (
@@ -1154,7 +1157,14 @@ function ViewSizeCard() {
         </div>
         <div className="zval">
           {stop !== 2 ? (
-            <button className="ghostbtn" onClick={() => change(2)}>
+            <button
+              className="ghostbtn"
+              onClick={() => {
+                setStop(2);
+                applyTitlebarVar(2);
+                void setViewSize(2);
+              }}
+            >
               {t("Reset to default")}
             </button>
           ) : null}
@@ -1168,7 +1178,9 @@ function ViewSizeCard() {
           max={ZOOM_STOPS.length - 1}
           step={1}
           value={stop}
-          onChange={(e) => change(Number(e.target.value))}
+          onChange={(e) => setStop(Number(e.target.value))}
+          onPointerUp={commit}
+          onKeyUp={commit}
           aria-label={t("View size")}
         />
         <div className="zticks">
