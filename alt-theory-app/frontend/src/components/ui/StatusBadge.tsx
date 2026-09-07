@@ -20,7 +20,7 @@ export function StatusBadge({ status, label, className }: StatusBadgeProps) {
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-2 text-[0.75rem] text-text-secondary",
+        "inline-flex items-center gap-2 text-[length:var(--fs-secondary)] text-text-secondary",
         className
       )}
     >

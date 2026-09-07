@@ -26,7 +26,7 @@ export function Button({
     <button
       type={type}
       className={cn(
-        "inline-flex min-h-8 items-center justify-center rounded-md px-3 py-1.5 text-[0.8125rem] font-medium transition-colors disabled:cursor-not-allowed",
+        "inline-flex min-h-8 items-center justify-center rounded-md px-3 py-1.5 text-[length:var(--fs-primary)] font-medium transition-colors disabled:cursor-not-allowed",
         variantClasses[variant],
         className
       )}

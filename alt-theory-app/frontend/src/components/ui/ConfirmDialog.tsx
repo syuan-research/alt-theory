@@ -50,18 +50,18 @@ export function ConfirmDialog({
         )}
         onClick={(event) => event.stopPropagation()}
       >
-        <p id="confirm-dialog-message" className="text-[0.9375rem] text-ink">
+        <p id="confirm-dialog-message" className="text-[length:var(--fs-primary)] text-ink">
           {message}
         </p>
         {details?.length ? (
-          <ul className="mt-2 list-disc space-y-1 pl-5 text-[0.8125rem] text-text-muted">
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-[length:var(--fs-secondary)] text-text-muted">
             {details.map((detail) => <li key={detail}>{detail}</li>)}
           </ul>
         ) : null}
         {checkbox ? (
           <label
             className={cn(
-              "mt-3 flex items-center gap-2 text-[0.875rem] cursor-pointer",
+              "mt-3 flex items-center gap-2 text-[length:var(--fs-secondary)] cursor-pointer",
               checkbox.danger ? "text-danger" : "text-ink"
             )}
           >

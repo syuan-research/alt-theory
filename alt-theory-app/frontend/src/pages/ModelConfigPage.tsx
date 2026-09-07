@@ -857,7 +857,7 @@ export function ModelConfigPage({
         {!embedded ? (
         <div className="mb-6 flex items-center justify-between">
           <button
-            className="text-[0.85rem] text-text-secondary hover:text-ink"
+            className="text-[length:var(--fs-secondary)] text-text-secondary hover:text-ink"
             onClick={() => {
               const next = !dark;
               setDark(next);
@@ -869,7 +869,7 @@ export function ModelConfigPage({
           </button>
           <Link
             to="/"
-            className="text-[0.85rem] text-text-secondary hover:text-ink"
+            className="text-[length:var(--fs-secondary)] text-text-secondary hover:text-ink"
           >
             {t("← Back to app")}
           </Link>
@@ -889,7 +889,7 @@ export function ModelConfigPage({
 
         {firstRun ? (
           <div className="mt-5 rounded-lg border border-hairline bg-surface p-5">
-            <p className="text-[0.9375rem] font-semibold text-ink">
+            <p className="text-[length:var(--fs-primary)] font-semibold text-ink">
               {t("Connect an AI model to begin")}
             </p>
             <div className="mt-4">
@@ -900,10 +900,10 @@ export function ModelConfigPage({
               ].map((step, i, all) => (
                 <div key={i}>
                   <div className="flex items-center gap-3">
-                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-ink text-[0.8125rem] font-semibold text-surface">
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-ink text-[length:var(--fs-secondary)] font-semibold text-surface">
                       {i + 1}
                     </span>
-                    <span className="text-[0.875rem] text-ink">{step}</span>
+                    <span className="text-[length:var(--fs-primary)] text-ink">{step}</span>
                   </div>
                   {i < all.length - 1 ? (
                     <i className="ph ph-arrow-down my-0.5 block pl-[9px] text-[0.85rem] text-text-muted" />
@@ -911,7 +911,7 @@ export function ModelConfigPage({
                 </div>
               ))}
             </div>
-            <p className="mt-4 text-[0.75rem] text-text-muted">
+            <p className="mt-4 text-[length:var(--fs-secondary)] text-text-muted">
               {t("Takes about a minute.")}
             </p>
           </div>
@@ -1054,7 +1054,7 @@ export function ModelConfigPage({
         {editorOpen ? (
           <div className="provider-editor">
             <div className="provider-editor-head">
-              <h3 className="text-[1rem] font-semibold text-ink">
+              <h3 className="text-[length:var(--fs-title)] font-semibold text-ink">
                 {editingName ? editingName : t("New provider")}
               </h3>
               {editingName ? (
@@ -1127,7 +1127,7 @@ export function ModelConfigPage({
                     <TextInput value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} autoComplete="off" />
                   </FieldFrame>
                   <FieldFrame label={t("API type")}>
-                    <select className="w-full rounded-md border border-hairline bg-surface px-2.5 py-2 text-[0.9375rem]" value={apiType} onChange={(event) => setApiType(event.target.value as ApiType)}>
+                    <select className="w-full rounded-md border border-hairline bg-surface px-2.5 py-2 text-[length:var(--fs-primary)]" value={apiType} onChange={(event) => setApiType(event.target.value as ApiType)}>
                       <option value="openai-completions">{t("openai-completions (most compatible)")}</option>
                       <option value="openai-responses">{t("openai-responses")}</option>
                       <option value="anthropic-messages">{t("anthropic-messages")}</option>
@@ -1136,8 +1136,8 @@ export function ModelConfigPage({
                   </FieldFrame>
                   <FieldFrame label={t("API key")} hint={keyHint}>
                     <TextInput type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} autoComplete="off" />
-                    {keyUrl ? <a className="mt-2 inline-flex items-center gap-1 text-[0.75rem] text-text-secondary underline underline-offset-2 hover:text-ink" href={keyUrl} target="_blank" rel="noreferrer">{t("Where do I get a key?")}</a> : null}
-                    <div className="mt-2 flex gap-4 text-[0.75rem] text-text-secondary">
+                    {keyUrl ? <a className="mt-2 inline-flex items-center gap-1 text-[length:var(--fs-secondary)] text-text-secondary underline underline-offset-2 hover:text-ink" href={keyUrl} target="_blank" rel="noreferrer">{t("Where do I get a key?")}</a> : null}
+                    <div className="mt-2 flex gap-4 text-[length:var(--fs-secondary)] text-text-secondary">
                       <label className="flex items-center gap-1"><input type="radio" checked={keyStorage === "literal"} onChange={() => setKeyStorage("literal")} />{t("Save my key on this computer")}</label>
                       <label className="flex items-center gap-1" data-tip={t("Advanced: store only the name of an environment variable that holds the key, not the key itself.")}><input type="radio" checked={keyStorage === "env"} onChange={() => setKeyStorage("env")} />{t("Use an environment variable (advanced)")}</label>
                     </div>
@@ -1147,7 +1147,7 @@ export function ModelConfigPage({
 
               <div className="space-y-3">
                 <div>
-                  <p className="text-[0.8125rem] font-semibold text-ink">{t("Models")}</p>
+                  <p className="text-[length:var(--fs-title)] font-semibold text-ink">{t("Models")}</p>
                   <HintText className="mt-0.5">
                     {t("Correct model limits and the effort choices shown in the composer.")}
                   </HintText>
@@ -1225,7 +1225,7 @@ export function ModelConfigPage({
                       </Button>
                     </div>
                     <div className="grid gap-2 sm:grid-cols-3">
-                      <label className="space-y-1 text-[0.75rem] text-text-secondary">
+                      <label className="space-y-1 text-[length:var(--fs-secondary)] text-text-secondary">
                         <span>{t("Context window")}</span>
                         <TextInput
                           type="number"
@@ -1243,7 +1243,7 @@ export function ModelConfigPage({
                           }
                         />
                       </label>
-                      <label className="space-y-1 text-[0.75rem] text-text-secondary">
+                      <label className="space-y-1 text-[length:var(--fs-secondary)] text-text-secondary">
                         <span>{t("Max output tokens")}</span>
                         <TextInput
                           type="number"
@@ -1261,7 +1261,7 @@ export function ModelConfigPage({
                           }
                         />
                       </label>
-                      <label className="flex items-end gap-1.5 pb-2 text-[0.75rem] text-text-secondary">
+                      <label className="flex items-end gap-1.5 pb-2 text-[length:var(--fs-secondary)] text-text-secondary">
                         <input
                           type="checkbox"
                           checked={row.input?.includes("image") ?? false}
@@ -1336,7 +1336,7 @@ export function ModelConfigPage({
                       {row.thinkingLevels !== undefined ? (
                         <button
                           type="button"
-                          className="text-[0.75rem] text-text-muted underline"
+                          className="text-[length:var(--fs-secondary)] text-text-muted underline"
                           onClick={() =>
                             setModelRows((previous) =>
                               previous.map((item, itemIndex) =>
@@ -1356,10 +1356,10 @@ export function ModelConfigPage({
               </div>
 
               {!editingOAuth ? <details className="config-advanced space-y-2" open={optionRows.length > 0}>
-                <summary className="cursor-pointer text-[0.8125rem] font-semibold text-ink">
+                <summary className="cursor-pointer text-[length:var(--fs-secondary)] font-semibold text-ink">
                   {t("Advanced options")}
                 </summary>
-                <p className="pt-1 text-[0.75rem] text-text-secondary">
+                <p className="pt-1 text-[length:var(--fs-secondary)] text-text-secondary">
                   {t("Extra provider settings passed through to Pi. Most setups don't need these.")}
                 </p>
                 {optionRows.map((row, index) => (
@@ -1414,7 +1414,7 @@ export function ModelConfigPage({
                 <p
                   role={saveResult.kind === "error" ? "alert" : "status"}
                   className={cn(
-                    "text-[0.8125rem]",
+                    "text-[length:var(--fs-secondary)]",
                     saveResult.kind === "error"
                       ? "text-danger"
                       : saveResult.kind === "warning"
@@ -1452,7 +1452,7 @@ export function ModelConfigPage({
       {toast ? (
         <div
           className={cn(
-            "fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-md px-4 py-2 text-[0.8125rem] text-surface shadow-lg",
+            "fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-md px-4 py-2 text-[length:var(--fs-secondary)] text-surface shadow-lg",
             toast.error ? "bg-danger" : "bg-ink"
           )}
         >
