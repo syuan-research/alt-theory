@@ -4564,6 +4564,34 @@ test("thinking resolver: a chosen level is kept or reported clamped; no choice â
   }
 });
 
+test("fork keeps a hand-picked thinking level instead of the model midpoint", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const created = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  try {
+    const parent = await service.setSessionModel(created.sessionId, {
+      provider: "test",
+      modelId: "test-model",
+      thinkingLevel: "high",
+    });
+    assert.equal(parent.thinking?.chosen, "high");
+    assert.notEqual(parent.thinking?.source, "model-default");
+
+    const forked = await service.forkSession(created.sessionId, "fork");
+    assert.equal(forked.modelOverride?.modelId, "test-model");
+    assert.equal(forked.modelOverride?.thinkingLevel, "high");
+    assert.equal(forked.thinking?.chosen, parent.thinking?.chosen);
+    assert.equal(forked.thinking?.source, parent.thinking?.source);
+    assert.equal(forked.thinking?.level, parent.thinking?.level);
+  } finally {
+    await service.disposeAll();
+  }
+});
+
 // --- v1.5 round 1: Pi-owned prompt queue (M5) ---
 
 test("a message during a run joins Pi's steer queue; delivery shows the bubble; Stop hands unsent text back", async () => {

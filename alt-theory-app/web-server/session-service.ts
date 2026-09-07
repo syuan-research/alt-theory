@@ -3796,6 +3796,7 @@ export class SessionService implements AgentTeamBridge {
     const persistedMode = args.mode ?? persistedHeader?.mode ?? "understand";
     const subagentConfig = readSubagentConfig(this.config.dataDir).config;
     const persistedWorkspace = args.workspace ?? persistedHeader?.workspace;
+    const modelOverride = args.modelOverride ?? persistedHeader?.modelOverride;
     const result = await openAltTheorySession({
       ...args.sessionDirs,
       // Workspace sessions keep their primary directory as cwd unless the
@@ -3811,7 +3812,7 @@ export class SessionService implements AgentTeamBridge {
         sessionId: args.sessionId,
         selectors: args.selectors,
         workspace: persistedWorkspace,
-        modelArgs: this.modelArgsFor(args.modelOverride ?? persistedHeader?.modelOverride),
+        modelArgs: this.modelArgsFor(modelOverride),
         altMode: persistedMode,
         forkPurpose: args.forkPurpose ?? persistedHeader?.forkedFrom?.purpose ?? null,
       }),
@@ -3833,6 +3834,7 @@ export class SessionService implements AgentTeamBridge {
       counters: args.counters,
       transcript: args.transcript,
       branchId: args.branchId,
+      modelOverride,
     });
   }
 
@@ -3854,8 +3856,11 @@ export class SessionService implements AgentTeamBridge {
     counters: SessionCounters;
     transcript: TranscriptMessage[];
     branchId?: string;
+    /** Caller-held override. Fork has no child header yet; reopen falls back to disk. */
+    modelOverride?: SessionModelOverride | null;
   }): Promise<ManagedSession> {
-    const persistedRuns = latestRunSnapshots(args.manifest.recordsDir);
+    const { modelOverride, ...sessionArgs } = args;
+    const persistedRuns = latestRunSnapshots(sessionArgs.manifest.recordsDir);
     const approvalBridge = new ApprovalBridge({
       onRequest: (request) => {
         this.emitRunPhase(managed, "awaiting-user");
@@ -3885,10 +3890,10 @@ export class SessionService implements AgentTeamBridge {
           payload: { message, level },
         }),
     });
-    const header = readV4SessionHeader(args.manifest.recordsDir);
+    const header = readV4SessionHeader(sessionArgs.manifest.recordsDir);
     const headerForkedFrom = header?.forkedFrom;
     const managed: ManagedSession = {
-      ...args,
+      ...sessionArgs,
       approvalBridge,
       transcriptStamp: null,
       liveRun: null,
@@ -3918,9 +3923,12 @@ export class SessionService implements AgentTeamBridge {
       pendingRunWork: null,
     };
     // Resolve the thinking level against the live model now that both exist.
+    // Fork has no child header yet; use the caller-held override first (same
+    // object modelArgsFor already used). Reopen still reads the on-disk header.
     this.applyThinking(
       managed,
-      header?.modelOverride?.thinkingLevel ?? this.config.thinkingLevel,
+      (modelOverride ?? header?.modelOverride)?.thinkingLevel ??
+        this.config.thinkingLevel,
     );
     managed.internalUnsubscribe = managed.session.subscribe((event) =>
       this.handleAgentEvent(managed, event),
