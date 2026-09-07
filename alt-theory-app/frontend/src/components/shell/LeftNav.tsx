@@ -144,9 +144,16 @@ function unanchorMenu(details: HTMLDetailsElement) {
     ?.classList.remove("anchored");
 }
 
-export function LeftNav() {
+export function LeftNav({ hidden = false }: { hidden?: boolean }) {
   const app = useApp();
   const shell = useShell();
+
+  // Settings surface: same persistent rail instance, content swapped for the
+  // settings nav (foot is only "Back to app"; collapsed strip is logo + ←).
+  if (shell.surface === "settings") {
+    return <SettingsRail hidden={hidden} />;
+  }
+
   const avatarLetter = (
     app.auth.displayLabel ||
     app.auth.accountId ||
@@ -157,7 +164,7 @@ export function LeftNav() {
     .toUpperCase();
 
   return (
-    <aside className="left">
+    <aside className="left" hidden={hidden}>
       {/* collapsed icon strip */}
       <div className="mini">
         <button
@@ -241,6 +248,104 @@ export function LeftNav() {
         open={shell.importOpen}
         onClose={() => shell.setImportOpen(false)}
       />
+    </aside>
+  );
+}
+
+/**
+ * The settings surface's view of the shared left rail. Expanded: brand head,
+ * the settings nav (same .set-item rows the old set-nav rendered), and a foot
+ * with only "Back to app". Collapsed: the logo (expands) and ← (back to app),
+ * nothing else.
+ */
+function SettingsRail({ hidden }: { hidden?: boolean }) {
+  const shell = useShell();
+
+  const items = [
+    { key: "general", label: t("General"), icon: "ph-gear" },
+    { key: "models", label: t("Models"), icon: "ph-cpu" },
+    { key: "agents", label: t("Subagents"), icon: "ph-robot" },
+    { key: "folders", label: t("Working folders"), icon: "ph-folders" },
+    { key: "rolekb", label: t("Role & Knowledge"), icon: "ph-books" },
+    { key: "skills", label: t("Skills"), icon: "ph-toolbox" },
+    ...(shell.participantTabEnabled
+      ? [
+          {
+            key: "participant",
+            label: t("Participant mode"),
+            icon: "ph-identification-badge",
+          },
+        ]
+      : []),
+    { key: "features", label: t("Help center"), icon: "ph-lifebuoy" },
+    { key: "trash", label: t("Trash"), icon: "ph-trash" },
+    { key: "about", label: t("About"), icon: "ph-info" },
+  ];
+
+  if (shell.leftCollapsed) {
+    return (
+      <aside className="left" hidden={hidden}>
+        <div className="mini">
+          <button
+            className="mono"
+            data-tip={t("Expand")}
+            onClick={() => shell.setLeftCollapsed(false)}
+          >
+            <img className="brand-mark" src={altTheoryMark} alt="" />
+          </button>
+          <div style={{ flex: 1 }} />
+          <button
+            className="mini-back"
+            data-tip={t("Back to app")}
+            onClick={() => shell.openApp()}
+          >
+            <i className="ph ph-arrow-left" />
+          </button>
+        </div>
+      </aside>
+    );
+  }
+
+  return (
+    <aside className="left" hidden={hidden}>
+      <div
+        className="full"
+        style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}
+      >
+        <div className="left-head">
+          <span className="brand-lockup">
+            <img className="brand-mark" src={altTheoryMark} alt="" />
+            <span className="wordmark">{t("Alt Theory")}</span>
+          </span>
+          <div className="icons">
+            <button
+              className="icon-btn"
+              data-tip={t("Collapse")}
+              onClick={() => shell.setLeftCollapsed(true)}
+            >
+              <i className="ph ph-sidebar-simple" />
+            </button>
+          </div>
+        </div>
+        <nav className="set-rail">
+          {items.map((item) => (
+            <button
+              key={item.key}
+              className={`set-item${shell.settingsPanel === item.key ? " on" : ""}`}
+              onClick={() => shell.setSettingsPanel(item.key)}
+            >
+              <i className={`ph ${item.icon}`} />
+              {item.label}
+            </button>
+          ))}
+        </nav>
+        <div className="left-foot">
+          <button className="gear" onClick={() => shell.openApp()}>
+            <i className="ph ph-arrow-left" />
+            {t("Back to app")}
+          </button>
+        </div>
+      </div>
     </aside>
   );
 }

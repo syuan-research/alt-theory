@@ -68,41 +68,28 @@ import {
 import { folderLabel, sessionTitle } from "@/lib/sessionList";
 import { GENERAL_TIPS, productTipText } from "@/config/productTips";
 
-interface NavItem {
-  key: string;
-  label: string;
-  icon: string;
-  soon?: boolean;
-}
+// Panel keys for the validity fallback below. The nav rows themselves render
+// in the shared left rail (SettingsRail in LeftNav.tsx) since the hoist.
+const PANEL_KEYS = [
+  "general",
+  "models",
+  "agents",
+  "folders",
+  "rolekb",
+  "skills",
+  "participant",
+  "features",
+  "trash",
+  "about",
+];
 
 export function SettingsView() {
   const app = useApp();
   const shell = useShell();
 
-  const items: NavItem[] = [
-    { key: "general", label: t("General"), icon: "ph-gear" },
-    { key: "models", label: t("Models"), icon: "ph-cpu" },
-    { key: "agents", label: t("Subagents"), icon: "ph-robot" },
-    { key: "folders", label: t("Working folders"), icon: "ph-folders" },
-    { key: "rolekb", label: t("Role & Knowledge"), icon: "ph-books" },
-    { key: "skills", label: t("Skills"), icon: "ph-toolbox" },
-    ...(shell.participantTabEnabled
-      ? [
-          {
-            key: "participant",
-            label: t("Participant mode"),
-            icon: "ph-identification-badge",
-          },
-        ]
-      : []),
-    { key: "features", label: t("Help center"), icon: "ph-lifebuoy" },
-    { key: "trash", label: t("Trash"), icon: "ph-trash" },
-    { key: "about", label: t("About"), icon: "ph-info" },
-  ];
-
   // If the participant tab is disabled while selected, fall back to general.
   useEffect(() => {
-    if (!items.some((i) => i.key === shell.settingsPanel)) {
+    if (!PANEL_KEYS.includes(shell.settingsPanel)) {
       shell.setSettingsPanel("general");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -110,24 +97,6 @@ export function SettingsView() {
 
   return (
     <div className="settings">
-      <nav className="set-nav">
-        <button className="back-app" onClick={shell.openApp}>
-          <i className="ph ph-arrow-left" />
-          {t("Back to app")}
-        </button>
-        {items.map((item) => (
-          <button
-            key={item.key}
-            className={`set-item${shell.settingsPanel === item.key ? " on" : ""}`}
-            onClick={() => shell.setSettingsPanel(item.key)}
-          >
-            <i className={`ph ${item.icon}`} />
-            {item.label}
-            {item.soon ? <span className="soon">{t("soon")}</span> : null}
-          </button>
-        ))}
-        <div className="set-nav-spacer" />
-      </nav>
       <div className="set-body">
         <div className="set-scroll">
           {shell.settingsPanel === "models" ? <ModelsPanel /> : null}
@@ -699,22 +668,38 @@ function AgentsPanel() {
         <div><h2>{t("Subagents")}</h2><p className="sub">{t("Choose model and thinking defaults for delegated work.")}</p></div>
         <button className="add-btn" disabled={saving} onClick={() => void save()}>{saving ? t("Saving…") : t("Save")}</button>
       </div>
-      <div className="agent-default-row">
-        <label htmlFor="default-agent">{t("Default subagent")}</label>
-        <select id="default-agent" value={config.defaultAgent} onChange={(event) => setConfig({ ...config, defaultAgent: event.target.value })}>
-          {config.agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.id}</option>)}
-        </select>
+      <div className="set-card agent-default-card">
+        <div className="row2">
+          <div>
+            <h4>{t("Default subagent")}</h4>
+            <p>
+              {t(
+                "The subagent used when a conversation doesn't specify one — built-in or custom. Name another subagent in the conversation to override it.",
+              )}
+            </p>
+          </div>
+          <select id="default-agent" value={config.defaultAgent} onChange={(event) => setConfig({ ...config, defaultAgent: event.target.value })}>
+            {config.agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.id}</option>)}
+          </select>
+        </div>
       </div>
       <section className="agent-section">
-        <h3>{t("Built-in subagents")}</h3>
-        <div className="agent-preset-list">{config.agents.map((agent, index) => BUILTIN_AGENT_IDS.has(agent.id) ? renderAgent(agent, index, true) : null)}</div>
+        <div className="set-card">
+          <h4>{t("Built-in subagents")}</h4>
+          <div className="agent-preset-list">{config.agents.map((agent, index) => BUILTIN_AGENT_IDS.has(agent.id) ? renderAgent(agent, index, true) : null)}</div>
+        </div>
       </section>
       <section className="agent-section">
-        <div className="agent-section-heading"><h3>{t("Custom subagents")}</h3><button className="add-btn" onClick={addCustom}><i className="ph ph-plus" />{t("New")}</button></div>
-        <div className="agent-preset-list">{config.agents.map((agent, index) => !BUILTIN_AGENT_IDS.has(agent.id) ? renderAgent(agent, index, false) : null)}</div>
+        <div className="set-card">
+          <div className="agent-section-heading">
+            <h4>{t("Custom subagents")}</h4>
+            <button className="add-btn" onClick={addCustom}><i className="ph ph-plus" />{t("New")}</button>
+          </div>
+          <div className="agent-preset-list">{config.agents.map((agent, index) => !BUILTIN_AGENT_IDS.has(agent.id) ? renderAgent(agent, index, false) : null)}</div>
+          {path ? <p className="agent-config-path">{path}</p> : null}
+        </div>
       </section>
       {status ? <p className="agent-status">{status}</p> : null}
-      {path ? <p className="agent-config-path">{path}</p> : null}
     </div>
   );
 }

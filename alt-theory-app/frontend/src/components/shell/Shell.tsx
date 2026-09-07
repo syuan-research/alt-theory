@@ -155,6 +155,22 @@ export function Shell() {
 
       <ExternalAiSetupDialog />
       {shell.surface === "app" ? null : <ApprovalNotice />}
+      {/* One persistent left rail shared by the app and settings surfaces;
+          review stays full width this round (hidden, not unmounted). */}
+      <LeftNav hidden={shell.surface === "review"} />
+      <div
+        className="pane-resizer"
+        hidden={shell.surface === "review"}
+        role="separator"
+        aria-label={t("Resize conversation list")}
+        aria-orientation="vertical"
+        aria-valuemin={0}
+        aria-valuemax={LEFT_PANE.max}
+        aria-valuenow={shell.leftCollapsed ? 0 : leftWidth}
+        tabIndex={0}
+        onPointerDown={(event) => beginResize("left", event)}
+        onKeyDown={(event) => resizeKey("left", event.key)}
+      />
       {shell.surface === "settings" ? (
         <SettingsView />
       ) : shell.surface === "review" ? (
@@ -167,19 +183,6 @@ export function Shell() {
         className="cols a2cols"
         hidden={shell.surface !== "app"}
       >
-        <LeftNav />
-        <div
-          className="pane-resizer"
-          role="separator"
-          aria-label={t("Resize conversation list")}
-          aria-orientation="vertical"
-          aria-valuemin={0}
-          aria-valuemax={LEFT_PANE.max}
-          aria-valuenow={shell.leftCollapsed ? 0 : leftWidth}
-          tabIndex={0}
-          onPointerDown={(event) => beginResize("left", event)}
-          onKeyDown={(event) => resizeKey("left", event.key)}
-        />
         <ConversationPanel />
         <div
           className="pane-resizer"

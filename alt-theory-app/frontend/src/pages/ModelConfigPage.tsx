@@ -947,7 +947,13 @@ export function ModelConfigPage({
                 <i className="ph ph-chats-circle" aria-hidden />
                 {t("Let a chatbot write the config")}
             </button>
+            <p className="provider-master-heading provider-section-label">
+              {t("Configured providers")}
+            </p>
             <div className="provider-master-list">
+              {providers.length === 0 ? (
+                <p className="provider-empty-note">{t("No providers yet.")}</p>
+              ) : null}
               {[...providers]
                 .sort((a, b) => {
                   const authOrder =
@@ -1434,6 +1440,11 @@ export function ModelConfigPage({
             </div>
           </div>
         ) : null}
+          {!addingProvider && !editorOpen ? (
+            <p className="provider-empty-note">
+              {t("Choose a provider to see its configuration.")}
+            </p>
+          ) : null}
           </section>
         </div>
       </div>

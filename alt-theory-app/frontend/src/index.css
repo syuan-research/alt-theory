@@ -338,8 +338,10 @@
 @layer components {
   i.ph { font-size: 1.05em; vertical-align: -0.12em; }
 
-  .app-root { height: 100%; display: flex; flex-direction: column; min-height: 0; }
-  .cols { flex: 1; display: flex; min-height: 0; }
+  /* Row layout: the persistent left rail + its resizer sit at the root, the
+     surface (app columns / settings / review) fills the rest. */
+  .app-root { height: 100%; display: flex; flex-direction: row; min-height: 0; }
+  .cols { flex: 1; display: flex; min-height: 0; min-width: 0; }
   .pane-resizer { flex: 0 0 5px; margin: 0 -2px; position: relative; z-index: 30; cursor: col-resize; touch-action: none; outline: none; }
   body.resizing-pane { cursor: col-resize; user-select: none; }
   body.resizing-pane .rpanel { transition: none; }
@@ -350,13 +352,12 @@
      window drag band; header rows drag too and their buttons opt out. Inert in
      a plain browser (-webkit-app-region is ignored there). */
   .cols.a2cols { background: var(--panel); }
-  .cols.a2cols .left { border-right: none; }
   .cols.a2cols .right { border-left: none; }
   .cols.a2cols .center { background: transparent; }
   .cols.a2cols .center::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: var(--titlebar-h); -webkit-app-region: drag; }
   .cols.a2cols .workcard { flex: 1; display: flex; flex-direction: column; min-height: 0; margin: var(--titlebar-h) 10px 7px; background: var(--canvas); border-radius: var(--r-lg); box-shadow: 0 1px 2px rgba(31, 30, 26, 0.05), 0 4px 18px rgba(31, 30, 26, 0.07); overflow: hidden; }
-  .cols.a2cols .left-head, .cols.a2cols .rpanel .head { -webkit-app-region: drag; }
-  .cols.a2cols .left-head button, .cols.a2cols .rpanel .head button { -webkit-app-region: no-drag; }
+  .left-head, .cols.a2cols .rpanel .head { -webkit-app-region: drag; }
+  .left-head button, .cols.a2cols .rpanel .head button { -webkit-app-region: no-drag; }
   /* Keep the card scrollbar's top end below the rounded corner (bottom already
      clears it via the composer area). */
   .cols.a2cols .msgs-wrap { padding-top: 8px; }
@@ -365,14 +366,15 @@
   .cols.a2cols .right .rail { padding-top: calc(var(--titlebar-h) + 8px); }
   .cols.a2cols .rpanel .head { margin-top: var(--titlebar-h); }
   /* A2: resize hit-strips hug the card edges (users grab the card boundary),
-     not the middle of the gray gutter. first/last-of-type = the two resize
-     divs; the strips overlay the card's rounded edge by ~2px. Cursor-only —
-     no hover highlight (owner ruling). */
-  .cols.a2cols .pane-resizer:first-of-type { margin-right: -10px; }
+     not the middle of the gray gutter. The hoisted left resizer overlays the
+     work card's left edge; last-of-type = the right resizer inside .cols. The
+     strips overlay the card's rounded edge by ~2px. Cursor-only — no hover
+     highlight (owner ruling). */
+  .app-root > .pane-resizer { margin-right: -10px; }
   .cols.a2cols .pane-resizer:last-of-type { margin-left: -10px; }
 
   /* ------- left ------- */
-  .left { width: var(--left-width); flex-shrink: 0; background: var(--panel); border-right: 1px solid var(--hairline); display: flex; flex-direction: column; }
+  .left { width: var(--left-width); flex-shrink: 0; background: var(--panel); display: flex; flex-direction: column; }
   .app-root.leftCol .left { width: 52px; }
   .app-root.leftCol .left .full { display: none !important; }
   .left .mini { display: none; flex-direction: column; align-items: center; gap: 6px; padding-top: 12px; flex: 1; }
@@ -380,6 +382,13 @@
   .mini button { width: 36px; height: 36px; border: none; background: transparent; border-radius: var(--r-sm); color: var(--text-2); cursor: pointer; font-size: 1.05rem; display: inline-flex; align-items: center; justify-content: center; }
   .mini button:hover { background: var(--hover); }
   .mini .mono { font-family: var(--brand); font-weight: 600; font-size: 1rem; color: var(--ink); }
+  /* Pin the collapsed logo to the exact spot the expanded head paints it
+     (left-head padding 12/12, .brand-mark 24px in a 30px row → x12 y15);
+     collapsing then no longer nudges the mark (owner-visible jitter). */
+  .mini .mono { margin: -3px auto 0 6px; }
+  /* Settings rail, collapsed: match the expanded foot's ← — same glyph size
+     and ink as .left-foot .gear, icon column aligned to the foot's (x≈22). */
+  .mini .mini-back { align-self: flex-start; margin: 0 0 8px 12px; font-size: 0.875rem; color: var(--ink-soft); }
   .left-head { display: flex; align-items: center; padding: 12px 12px 4px; }
   .brand-lockup { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
   .brand-mark { display: block; width: 24px; height: 24px; flex: none; object-fit: contain; }
@@ -1132,17 +1141,15 @@
   table.review tr { cursor: default; }
   .chosen { color: var(--ink); font-weight: 600; }
 
-  .settings { flex: 1; display: flex; min-height: 0; background: var(--panel); }
-  .set-nav { width: 264px; flex-shrink: 0; background: transparent; border-right: none; padding: 16px 10px; display: flex; flex-direction: column; }
-  .set-nav .back-app { display: flex; align-items: center; gap: 8px; color: var(--text-2); font-size: 0.85rem; padding: 6px 10px; cursor: pointer; margin-bottom: 14px; background: none; border: none; width: 100%; text-align: left; }
-  .set-nav .back-app:hover { color: var(--ink); }
+  .settings { flex: 1; display: flex; min-height: 0; min-width: 0; background: var(--panel); }
+  /* Settings nav rows live in the shared left rail (.set-rail in LeftNav);
+     same row styling the old in-page set-nav used. */
+  .set-rail { flex: 1; min-height: 0; overflow-y: auto; padding: 10px 10px 12px; display: flex; flex-direction: column; }
   .set-item { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: var(--r-sm); font-size: 0.9rem; color: var(--ink-soft); cursor: pointer; width: 100%; text-align: left; background: none; border: none; }
   .set-item:hover { background: var(--hover); }
   .set-item.on { background: var(--selected); font-weight: 500; }
   .set-item i { color: var(--text-2); }
   .set-item.on i { color: var(--ink); }
-  .set-nav-spacer { flex: 1; min-height: 18px; }
-  .set-nav .help-menu .help-popover { bottom: calc(100% + 6px); }
   .help-ask { margin: 4px 0 18px; }
   .help-tip-catalog ul { columns: 2; column-gap: 28px; margin-top: 10px; padding-left: 18px; }
   .help-tip-catalog li { break-inside: avoid; margin: 0 0 8px; color: var(--ink-soft); font-size: 0.84rem; line-height: 1.45; }
@@ -1237,15 +1244,16 @@
   .folder-tick.on { color: var(--ink); }
   .icon-x { flex: 0 0 auto; border: 0; background: none; color: var(--text-3); cursor: pointer; padding: 2px 4px; border-radius: var(--r-sm); }
   .icon-x:hover { background: var(--hover); color: var(--ink); }
-  .agents-heading, .agent-section-heading, .agent-default-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+  .agents-heading, .agent-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
   .agents-heading .sub { margin-bottom: 0; }
-  .agent-default-row { margin: 22px 0 28px; padding: 12px 14px; border: 1px solid var(--hairline); border-radius: var(--r-md); font-size: 0.875rem; }
-  .agent-default-row label { font-weight: 600; }
-  .agent-default-row select, .agent-model-fields select { border: 1px solid var(--hairline); border-radius: var(--r-sm); background: var(--surface); color: var(--ink); padding: 7px 9px; font: inherit; }
+  .agent-default-card select { border: 1px solid var(--hairline); border-radius: var(--r-sm); background: var(--surface); color: var(--ink); padding: 7px 9px; font: inherit; }
   .agent-section { margin-top: 26px; }
-  .agent-section h3 { margin: 0 0 10px; font-size: 0.8rem; font-weight: 600; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.05em; }
   .agent-preset-list { border: 1px solid var(--hairline); border-radius: var(--r-md); overflow: hidden; background: var(--surface); }
   .agent-preset-list:empty { display: none; }
+  /* The section cards (.set-card) own the card chrome; the agent list itself
+     goes flat inside them, one hairline below the heading. */
+  .set-card .agent-preset-list { margin-top: 10px; border: none; border-radius: 0; background: none; overflow: visible; }
+  .set-card .agent-preset:first-child { border-top: 1px solid var(--hairline); }
   .agent-preset { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(420px, 1.3fr); gap: 24px; padding: 18px; border-top: 1px solid var(--hairline); }
   .agent-preset:first-child { border-top: 0; }
   .agent-preset-copy h4 { margin: 0 0 5px; font-size: 0.95rem; }
@@ -1366,8 +1374,12 @@
     font-size: 0.75rem;
     color: var(--text-2);
   }
-  .model-config-layout { display: grid; grid-template-columns: minmax(180px, 230px) minmax(0, 1fr); min-height: 520px; border: 1px solid var(--hairline); border-radius: var(--r-lg); overflow: hidden; background: var(--surface); }
-  .provider-master { padding: 12px; border-right: 1px solid var(--hairline); background: var(--surface); }
+  /* Options-乙 (20260907): no inner card chrome — the layout sits flat on the
+     set-body card surface; only a hairline divides master and detail. */
+  .model-config-layout { display: grid; grid-template-columns: minmax(180px, 230px) minmax(0, 1fr); min-height: 520px; overflow: hidden; }
+  .provider-master { padding: 12px; border-right: 1px solid var(--hairline); }
+  .provider-master-heading.provider-section-label { margin: 0 2px; }
+  .provider-empty-note { margin: 0; padding: 10px 2px; color: var(--text-3); font-size: 0.78rem; line-height: 1.6; }
   .add-provider-primary { width: 100%; display: flex; align-items: center; justify-content: center; gap: 7px; padding: 9px 12px; border: 1px solid var(--ink); border-radius: var(--r-md); background: var(--ink); color: var(--on-ink); font: inherit; font-size: 0.84rem; font-weight: 600; cursor: pointer; }
   .add-provider-primary:hover { opacity: 0.9; }
   .provider-master-list { display: flex; flex-direction: column; gap: 2px; margin-top: 10px; }
