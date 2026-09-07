@@ -82,6 +82,12 @@ playwright-mcp.log
 /runs/raw/
 /eval-runs/raw/
 
+# Impeccable working set (canonical copy is OneDrive llm-theo-development/impeccable)
+.impeccable/
+/PRODUCT.md
+/DESIGN.md
+.grok/
+
 # Local snapshots and backups
 /_archives/
 /alt-theory-deploy*.tar

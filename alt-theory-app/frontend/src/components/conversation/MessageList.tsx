@@ -572,7 +572,6 @@ function UserBubble({
   const trimmed = (text || "").trim();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(trimmed);
-  const [editWidth, setEditWidth] = useState<number | null>(null);
   const bubbleRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
@@ -589,7 +588,7 @@ function UserBubble({
       <div
         ref={bubbleRef}
         className="bubble"
-        style={editing && editWidth ? { width: editWidth, boxSizing: "border-box" } : undefined}
+        style={editing ? { width: "100%", maxWidth: "82%", boxSizing: "border-box" } : undefined}
       >
         {editing ? (
           <textarea
@@ -652,7 +651,6 @@ function UserBubble({
               aria-label={replacementEdit ? t("Edit and retry") : t("Edit and compare")}
               disabled={isRunning}
               onClick={() => {
-                setEditWidth(bubbleRef.current?.getBoundingClientRect().width ?? null);
                 setEditing(true);
               }}
             >
