@@ -67,7 +67,7 @@ export function RecordsPanel({
         <SectionTitle>{t("Session Records")}</SectionTitle>
         <Button
           variant="ghost"
-          className="min-h-7 px-2 text-[0.75rem]"
+          className="min-h-7 px-2 text-[length:var(--fs-secondary)]"
           onClick={() => void refresh()}
           disabled={!sessionReady || !sessionId || loading}
           data-tip={t("Refresh records")}
@@ -88,7 +88,7 @@ export function RecordsPanel({
                 key={`${file.root}/${file.path}`}
                 type="button"
                 className={cn(
-                  "flex w-full items-center justify-between gap-2 rounded-md border px-2 py-1.5 text-left text-[0.8125rem] transition-colors",
+                  "flex w-full items-center justify-between gap-2 rounded-md border px-2 py-1.5 text-left text-[length:var(--fs-primary)] transition-colors",
                   isSelected
                     ? "border-ink-soft bg-selected"
                     : "border-hairline bg-surface hover:bg-hover"
@@ -96,7 +96,7 @@ export function RecordsPanel({
                 onClick={() => setSelected(file)}
               >
                 <span className="truncate">{file.path}</span>
-                <span className="shrink-0 text-[0.75rem] text-text-muted">
+                <span className="shrink-0 text-[length:var(--fs-secondary)] text-text-muted">
                   {file.root}
                 </span>
               </button>

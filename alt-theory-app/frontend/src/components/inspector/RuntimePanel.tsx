@@ -21,7 +21,7 @@ interface RuntimePanelProps {
 function MetricRow({ label, value }: { label: string; value: string }) {
   return (
     <>
-      <span className="text-[0.75rem] text-text-muted">{label}</span>
+      <span className="text-[length:var(--fs-secondary)] text-text-muted">{label}</span>
       <MonoText className="text-right">{value}</MonoText>
     </>
   );
@@ -49,7 +49,7 @@ export function RuntimePanel({
         <SectionTitle>{t("Runtime")}</SectionTitle>
         <Button
           variant="ghost"
-          className="min-h-7 px-2 text-[0.75rem]"
+          className="min-h-7 px-2 text-[length:var(--fs-secondary)]"
           onClick={onRefresh}
           disabled={disabled}
           data-tip={t("Refresh metadata & metrics")}
@@ -59,7 +59,7 @@ export function RuntimePanel({
       </div>
 
       <section className="space-y-1">
-        <p className="text-[0.75rem] font-semibold text-text-secondary">
+        <p className="text-[length:var(--fs-secondary)] font-semibold text-text-secondary">
           {t("Session ID")}
         </p>
         <MonoText
@@ -71,14 +71,14 @@ export function RuntimePanel({
       </section>
 
       <section className="space-y-1">
-        <p className="text-[0.75rem] font-semibold text-text-secondary">
+        <p className="text-[length:var(--fs-secondary)] font-semibold text-text-secondary">
           {t("Connection Status")}
         </p>
         <StatusBadge status={runState.phase} label={runState.label} />
       </section>
 
       <section className="space-y-1">
-        <p className="text-[0.75rem] font-semibold text-text-secondary">
+        <p className="text-[length:var(--fs-secondary)] font-semibold text-text-secondary">
           {t("Active KB / Soul / Role")}
         </p>
         <MonoText className="block">{displayKb(kbDomain, discovery)}</MonoText>
@@ -87,7 +87,7 @@ export function RuntimePanel({
       </section>
 
       <section className="space-y-1">
-        <p className="text-[0.75rem] font-semibold text-text-secondary">
+        <p className="text-[length:var(--fs-secondary)] font-semibold text-text-secondary">
           {t("Model / Provider")}
         </p>
         <MonoText className="block">{manifest?.model ?? "—"}</MonoText>
@@ -95,7 +95,7 @@ export function RuntimePanel({
       </section>
 
       <section className="space-y-2">
-        <p className="text-[0.75rem] font-semibold text-text-secondary">
+        <p className="text-[length:var(--fs-secondary)] font-semibold text-text-secondary">
           {t("Counters")}
         </p>
         <div className="grid grid-cols-2 gap-x-3 gap-y-1">
@@ -112,7 +112,7 @@ export function RuntimePanel({
       </section>
 
       <section className="space-y-2">
-        <p className="text-[0.75rem] font-semibold text-text-secondary">
+        <p className="text-[length:var(--fs-secondary)] font-semibold text-text-secondary">
           {t("Tokens")}
         </p>
         <div className="grid grid-cols-2 gap-x-3 gap-y-1">
@@ -131,7 +131,7 @@ export function RuntimePanel({
       </section>
 
       <section className="space-y-2">
-        <p className="text-[0.75rem] font-semibold text-text-secondary">
+        <p className="text-[length:var(--fs-secondary)] font-semibold text-text-secondary">
           {t("Context")}
         </p>
         <div className="grid grid-cols-2 gap-x-3 gap-y-1">
@@ -155,12 +155,12 @@ export function RuntimePanel({
       </section>
 
       <section className="space-y-1">
-        <p className="text-[0.75rem] font-semibold text-text-secondary">{t("Cost")}</p>
+        <p className="text-[length:var(--fs-secondary)] font-semibold text-text-secondary">{t("Cost")}</p>
         <MonoText>{formatCost(metrics?.cost)}</MonoText>
       </section>
 
       {approvalMarkers.length > 0 ? (
-        <details className="text-[0.75rem] text-text-muted">
+        <details className="text-[length:var(--fs-secondary)] text-text-muted">
           <summary className="cursor-pointer">{t("Conversation permissions")}</summary>
           <ul className="mt-2 space-y-1 pl-4">
             {approvalMarkers.map((marker) => (

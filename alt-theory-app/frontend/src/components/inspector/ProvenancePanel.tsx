@@ -16,7 +16,7 @@ interface ProvenancePanelProps {
 function ProvenanceItem({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-md border border-hairline bg-surface px-2 py-1.5">
-      <p className="text-[0.75rem] font-semibold text-text-secondary">{label}</p>
+      <p className="text-[length:var(--fs-secondary)] font-semibold text-text-secondary">{label}</p>
       <MonoText className="block break-words">{value || "—"}</MonoText>
     </div>
   );
@@ -85,7 +85,7 @@ export function ProvenancePanel({
         <SectionTitle>{t("Effective Configuration")}</SectionTitle>
         <Button
           variant="ghost"
-          className="min-h-7 px-2 text-[0.75rem]"
+          className="min-h-7 px-2 text-[length:var(--fs-secondary)]"
           onClick={() => void refresh()}
           disabled={!sessionReady || !sessionId || loading}
           data-tip={t("Refresh provenance")}

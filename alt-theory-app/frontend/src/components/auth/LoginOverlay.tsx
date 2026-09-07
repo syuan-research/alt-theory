@@ -52,7 +52,7 @@ export function LoginOverlay({ onLogin, error }: LoginOverlayProps) {
           />
         </FieldFrame>
         {localError || error ? (
-          <p className="text-[0.8125rem] text-danger">{localError || error}</p>
+          <p className="text-[length:var(--fs-secondary)] text-danger">{localError || error}</p>
         ) : null}
         <Button
           type="submit"
