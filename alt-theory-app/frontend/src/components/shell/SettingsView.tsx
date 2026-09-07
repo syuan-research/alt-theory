@@ -129,18 +129,20 @@ export function SettingsView() {
         <div className="set-nav-spacer" />
       </nav>
       <div className="set-body">
-        {shell.settingsPanel === "models" ? <ModelsPanel /> : null}
-        {shell.settingsPanel === "agents" ? <AgentsPanel /> : null}
-        {shell.settingsPanel === "general" ? <GeneralPanel /> : null}
-        {shell.settingsPanel === "folders" ? <WorkingFoldersPanel /> : null}
-        {shell.settingsPanel === "rolekb" ? <RoleKbPanel /> : null}
-        {shell.settingsPanel === "skills" ? <SkillsPanel /> : null}
-        {shell.settingsPanel === "participant" ? (
-          <ParticipantPanel designated={app.participant?.designated ?? false} label={app.participant?.label ?? null} local={app.appMode === "local"} />
-        ) : null}
-        {shell.settingsPanel === "features" ? <FeaturesPanel /> : null}
-        {shell.settingsPanel === "trash" ? <TrashPanel /> : null}
-        {shell.settingsPanel === "about" ? <AboutPanel /> : null}
+        <div className="set-scroll">
+          {shell.settingsPanel === "models" ? <ModelsPanel /> : null}
+          {shell.settingsPanel === "agents" ? <AgentsPanel /> : null}
+          {shell.settingsPanel === "general" ? <GeneralPanel /> : null}
+          {shell.settingsPanel === "folders" ? <WorkingFoldersPanel /> : null}
+          {shell.settingsPanel === "rolekb" ? <RoleKbPanel /> : null}
+          {shell.settingsPanel === "skills" ? <SkillsPanel /> : null}
+          {shell.settingsPanel === "participant" ? (
+            <ParticipantPanel designated={app.participant?.designated ?? false} label={app.participant?.label ?? null} local={app.appMode === "local"} />
+          ) : null}
+          {shell.settingsPanel === "features" ? <FeaturesPanel /> : null}
+          {shell.settingsPanel === "trash" ? <TrashPanel /> : null}
+          {shell.settingsPanel === "about" ? <AboutPanel /> : null}
+        </div>
       </div>
     </div>
   );

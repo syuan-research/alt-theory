@@ -143,7 +143,15 @@ export function Shell() {
     .join(" ");
 
   return (
-    <div className={rootClass}>
+    <div
+      className={rootClass}
+      style={
+        {
+          "--left-width": `${leftWidth}px`,
+          "--right-width": `${shell.rightWidth}px`,
+        } as CSSProperties
+      }
+    >
 
       <ExternalAiSetupDialog />
       {shell.surface === "app" ? null : <ApprovalNotice />}
@@ -158,12 +166,6 @@ export function Shell() {
       <div
         className="cols a2cols"
         hidden={shell.surface !== "app"}
-        style={
-          {
-            "--left-width": `${leftWidth}px`,
-            "--right-width": `${shell.rightWidth}px`,
-          } as CSSProperties
-        }
       >
         <LeftNav />
         <div
