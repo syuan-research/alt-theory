@@ -857,7 +857,7 @@ export function ModelConfigPage({
         {!embedded ? (
         <div className="mb-6 flex items-center justify-between">
           <button
-            className="text-[0.8125rem] text-text-secondary hover:text-ink"
+            className="text-[0.85rem] text-text-secondary hover:text-ink"
             onClick={() => {
               const next = !dark;
               setDark(next);
@@ -1054,7 +1054,7 @@ export function ModelConfigPage({
         {editorOpen ? (
           <div className="provider-editor">
             <div className="provider-editor-head">
-              <h3 className="text-[0.9375rem] font-semibold text-ink">
+              <h3 className="text-[1rem] font-semibold text-ink">
                 {editingName ? editingName : t("New provider")}
               </h3>
               {editingName ? (
@@ -1225,7 +1225,7 @@ export function ModelConfigPage({
                       </Button>
                     </div>
                     <div className="grid gap-2 sm:grid-cols-3">
-                      <label className="space-y-1 text-[0.72rem] text-text-secondary">
+                      <label className="space-y-1 text-[0.75rem] text-text-secondary">
                         <span>{t("Context window")}</span>
                         <TextInput
                           type="number"
@@ -1243,7 +1243,7 @@ export function ModelConfigPage({
                           }
                         />
                       </label>
-                      <label className="space-y-1 text-[0.72rem] text-text-secondary">
+                      <label className="space-y-1 text-[0.75rem] text-text-secondary">
                         <span>{t("Max output tokens")}</span>
                         <TextInput
                           type="number"
@@ -1336,7 +1336,7 @@ export function ModelConfigPage({
                       {row.thinkingLevels !== undefined ? (
                         <button
                           type="button"
-                          className="text-[0.75rem] text-muted underline"
+                          className="text-[0.75rem] text-text-muted underline"
                           onClick={() =>
                             setModelRows((previous) =>
                               previous.map((item, itemIndex) =>

@@ -11,7 +11,7 @@ export function PageTitle({ children, className }: TextProps) {
   return (
     <h1
       className={cn(
-        "text-[1.375rem] font-semibold leading-[1.2] text-ink",
+        "text-[1.5rem] font-semibold leading-[1.2] text-ink",
         className
       )}
     >
