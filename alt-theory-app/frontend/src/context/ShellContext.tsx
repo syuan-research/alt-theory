@@ -117,6 +117,10 @@ const ShellContext = createContext<ShellContextValue | null>(null);
 
 const PARTICIPANT_TAB_KEY = "alt-theory-participant-tab";
 const LEFT_COLLAPSED_KEY = "alt-theory-left-collapsed";
+// Below this window width the settings column can no longer hold its widest
+// control row with the rail expanded, so the rail yields (see the window
+// minWidth in electron/main.cjs for the hard floor underneath this).
+const LEFT_COLLAPSE_AT = 800;
 const SHOW_THINKING_KEY = "alt-theory-show-thinking";
 const THINKING_EXPANDED_KEY = "alt-theory-thinking-expanded";
 const NEW_MODE_KEY = "alt-theory-new-mode";
@@ -215,6 +219,14 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   const [leftCollapsed, setLeftCollapsedState] = useState(() =>
     readFlag(LEFT_COLLAPSED_KEY)
   );
+  // Auto-collapse is derived, never persisted: the user's own choice above is
+  // restored as soon as the window is wide again.
+  const [narrow, setNarrow] = useState(() => window.innerWidth < LEFT_COLLAPSE_AT);
+  useEffect(() => {
+    const onResize = () => setNarrow(window.innerWidth < LEFT_COLLAPSE_AT);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
   const [searchOpen, setSearchOpen] = useState(false);
   const [rightPanel, setRightPanel] = useState<RailKey | null>(null);
   const [rightSub, setRightSub] = useState<RightSub | null>(null);
@@ -389,7 +401,7 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       externalAiSetupOpen,
       openExternalAiSetup,
       closeExternalAiSetup,
-      leftCollapsed,
+      leftCollapsed: leftCollapsed || narrow,
       setLeftCollapsed,
       searchOpen,
       setSearchOpen,
@@ -436,6 +448,7 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       closeExternalAiSetup,
       leftCollapsed,
       setLeftCollapsed,
+      narrow,
       searchOpen,
       rightPanel,
       toggleRail,

@@ -905,16 +905,21 @@
   .model-provider-label { padding: 4px 10px 2px; color: var(--text-3); font-size: var(--fs-micro); }
   /* MenuSelect: native-select replacement reusing the .menu pattern above.
      The trigger mirrors the old select chrome; the popup is the regular
-     themed .menu, top-anchored inside settings cards. */
-  .msel { position: relative; display: inline-flex; }
-  .msel-trigger { display: inline-flex; align-items: center; gap: 8px; padding: 7px 9px; border: 1px solid var(--hairline); border-radius: var(--r-sm); background: var(--surface); color: var(--ink); font: inherit; font-size: var(--fs-primary); cursor: pointer; text-align: left; }
+     themed .menu, top-anchored inside settings cards. The popup is capped
+     so long provider/model labels ellipsize instead of running off-window. */
+  .msel { position: relative; display: inline-flex; flex-shrink: 0; min-width: 0; }
+  .msel-trigger { display: inline-flex; align-items: center; gap: 8px; padding: 7px 9px; border: 1px solid var(--hairline); border-radius: var(--r-sm); background: var(--surface); color: var(--ink); font: inherit; font-size: var(--fs-primary); cursor: pointer; text-align: left; white-space: nowrap; min-width: 0; max-width: 100%; }
+  .msel-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .msel-trigger:hover { background: var(--hover); }
   .msel-trigger:disabled { opacity: 0.45; cursor: default; }
   .msel-trigger:disabled:hover { background: var(--surface); }
-  .msel-trigger .ph-caret-down { color: var(--text-3); }
-  .msel-menu { top: calc(100% + 4px); left: 0; right: auto; bottom: auto; min-width: 200px; max-height: 300px; }
+  .msel-trigger .ph-caret-down { color: var(--text-3); flex-shrink: 0; }
+  .msel-menu { top: calc(100% + 4px); left: 0; right: auto; bottom: auto; min-width: 200px; max-width: min(460px, 52vw); max-height: 300px; }
   .msel-menu .mi span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .msel-menu .mi .check { flex-shrink: 0; }
+  /* Rows put the control at the card's right end: a left-anchored popup there
+     runs past the window edge and takes the selection check with it. */
+  .set-card .row2 .msel-menu, .active-model-summary .msel-menu { right: 0; left: auto; }
   .model-provider-trigger .caret, .model-effort-trigger .caret { margin-left: 0; color: var(--text-3); }
   .model-provider-models, .model-effort-options { margin-left: 10px; padding-left: 6px; border-left: 1px solid var(--hairline); }
   .model-effort-trigger { color: var(--text-2) !important; font-size: var(--fs-secondary) !important; }
@@ -936,7 +941,7 @@
   .cmp-prompt { width: 100%; min-height: 48px; margin-top: 10px; border: 1px solid var(--hairline); border-radius: var(--r-md); padding: 8px 10px; font: inherit; font-size: var(--fs-primary); resize: vertical; outline: none; }
   .cmp-arms { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
   .cmp-arm { display: flex; align-items: center; gap: 6px; }
-  .cmp-arm select { flex: 1; min-width: 0; border: 1px solid var(--hairline); border-radius: var(--r-sm); padding: 5px 6px; font: inherit; font-size: var(--fs-secondary); background: var(--surface); }
+  .cmp-arm .msel-trigger { flex: 1; min-width: 0; }
   .cmp-label { width: 52px; border: 1px solid var(--hairline); border-radius: var(--r-sm); padding: 5px 6px; font: inherit; font-size: var(--fs-secondary); outline: none; }
   .cmp-rm { border: none; background: none; color: var(--danger); cursor: pointer; padding: 2px; }
   .cmp-error { margin-top: 8px; font-size: var(--fs-secondary); color: var(--danger); }
@@ -1243,7 +1248,7 @@
      rounded corners (12px top) and clears the bottom ones (10px), so the
      scrollbar never collides with a corner. */
   .set-body { flex: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; margin: var(--titlebar-h) 10px 7px; background: var(--canvas); border-radius: var(--r-lg); box-shadow: 0 1px 2px rgba(31, 30, 26, 0.05), 0 4px 18px rgba(31, 30, 26, 0.07); }
-  .set-scroll { flex: 1; overflow-y: auto; padding: 36px 44px; margin: 12px 0 10px; }
+  .set-scroll { flex: 1; overflow-y: auto; padding: 36px 44px; margin: 12px 0 10px; container-type: inline-size; }
   .set-panel { max-width: 1040px; }
   .set-panel h2 { font-family: var(--brand); font-weight: 600; font-size: var(--fs-page); margin: 0 0 4px; }
   .set-panel .sub { color: var(--text-2); font-size: var(--fs-primary); margin: 0 0 24px; }
@@ -1311,7 +1316,7 @@
   .agent-preset-copy p { margin: 0; max-width: 48ch; color: var(--text-2); font-size: var(--fs-primary); line-height: 1.45; }
   .agent-preset-controls { min-width: 0; }
   .agent-model-fields { display: grid; grid-template-columns: minmax(180px, 1fr) 120px auto; gap: 8px; align-items: center; }
-  .agent-model-fields select { min-width: 0; width: 100%; }
+  .agent-model-fields .msel-trigger { width: 100%; }
   .agent-fallback { margin-top: 10px; }
   .agent-fallback-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; font-size: var(--fs-micro); color: var(--text-3); }
   .agent-fallback-heading .agent-icon-btn { padding: 2px 4px; }
@@ -1320,12 +1325,16 @@
   .agent-row-actions .danger { color: var(--danger); }
   .agent-icon-btn { border: 0; background: transparent; color: var(--text-3); cursor: pointer; padding: 6px; }
   .agent-icon-btn:hover { color: var(--danger); }
+  .agent-icon-btn:disabled { opacity: 0.3; cursor: default; }
+  .agent-icon-btn:disabled:hover { color: var(--text-3); }
   .agent-name-input, .agent-description-input { display: block; width: 100%; border: 0; border-bottom: 1px solid var(--hairline); background: transparent; color: var(--ink); padding: 3px 0 5px; font: inherit; outline: none; }
   .agent-name-input { font-weight: 600; }
   .agent-description-input { margin-top: 6px; font-size: var(--fs-secondary); color: var(--text-2); }
   .agent-status { margin: 12px 0 0; color: var(--text-2); font-size: var(--fs-secondary); }
   .agent-config-path { margin: 6px 0 0; color: var(--text-3); font: var(--fs-micro) var(--mono); overflow-wrap: anywhere; }
-  @media (max-width: 980px) {
+  /* Container-based, not viewport-based: the preset stacks when the settings
+     column itself runs out of room, which is what the layout depends on. */
+  @container (max-width: 780px) {
     .agent-preset { grid-template-columns: 1fr; gap: 14px; }
   }
   .participant-label { font-family: var(--mono); font-size: var(--fs-primary); color: var(--ink); background: var(--card); border: 1px solid var(--hairline); border-radius: var(--r-sm); padding: 4px 10px; }

@@ -453,11 +453,17 @@ function AgentModelFields({
         }))}
         onChange={(value) => onChange(joinAgentModelRef(model, value))}
       />
-      {onRemove ? (
-        <button className="agent-icon-btn" aria-label={t("Remove fallback")} onClick={onRemove}>
-          <i className="ph ph-trash" />
-        </button>
-      ) : null}
+      {/* Always rendered so every row's third grid track is the same width:
+          the main model row has nothing to remove, the fallbacks do. */}
+      <button
+        className="agent-icon-btn"
+        aria-label={t("Remove fallback")}
+        aria-hidden={onRemove ? undefined : true}
+        disabled={!onRemove}
+        onClick={onRemove}
+      >
+        <i className="ph ph-trash" />
+      </button>
     </div>
   );
 }

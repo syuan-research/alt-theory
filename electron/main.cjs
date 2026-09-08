@@ -119,6 +119,10 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 860,
+    // Below this the settings column cannot keep its widest control row
+    // (model + thinking + remove ≈ 342px) inside the card, and the left rail
+    // is already collapsed, so the layout would push controls out of bounds.
+    minWidth: 600,
     title: "Alt Theory",
     backgroundColor: "#ebebec",
     titleBarStyle: "hidden",
