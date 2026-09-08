@@ -545,7 +545,7 @@ export interface WorkspaceFilesResponse {
 export interface WorkingFolderDescriptor {
   id: string;
   path: string;
-  role: "primary" | "secondary";
+  role: "primary" | "secondary" | "global";
   managed: boolean;
   available: boolean;
 }

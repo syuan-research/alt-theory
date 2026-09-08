@@ -30,7 +30,7 @@ function approvalTitle(title: string): string {
   }
   const read = "Read outside your workspace: ";
   if (title.startsWith(read)) {
-    return t("Read outside your workspace: {value}", {
+    return t("Read outside your project and global folders: {value}", {
       value: title.slice(read.length),
     });
   }

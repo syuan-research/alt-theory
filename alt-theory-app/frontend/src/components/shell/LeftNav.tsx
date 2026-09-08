@@ -265,7 +265,7 @@ function SettingsRail({ hidden }: { hidden?: boolean }) {
     { key: "general", label: t("General"), icon: "ph-gear" },
     { key: "models", label: t("Models"), icon: "ph-cpu" },
     { key: "agents", label: t("Subagents"), icon: "ph-robot" },
-    { key: "folders", label: t("Working folders"), icon: "ph-folders" },
+    { key: "folders", label: t("Projects and global folders"), icon: "ph-folders" },
     { key: "rolekb", label: t("Role & Knowledge"), icon: "ph-books" },
     { key: "skills", label: t("Skills"), icon: "ph-toolbox" },
     ...(shell.participantTabEnabled
@@ -542,11 +542,11 @@ function UserNav({ onImport }: { onImport: () => void }) {
       return;
     }
     if ((dir ?? "") === (app.workspacePrimaryDir ?? "")) return;
-    const label = dir ? folderLabel(dir) : t("no working folder");
+    const label = dir ? folderLabel(dir) : t("no project");
     app.requestConfirm({
       message: t("Move this conversation to work in \"{label}\"?", { label }),
       details: [
-        t("Its whole family moves with it — branches and attached conversations always share one working folder."),
+        t("Its whole family moves with it — branches and attached conversations always share one main folder."),
         t("Alt will ask for permissions again in the new folder."),
         t("Files already on disk are not moved."),
       ],
@@ -562,7 +562,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
   };
 
   const addFolder = async () => {
-    const path = await pickDirectory("Full path of the working folder to add:");
+    const path = await pickDirectory(t("Full path of the project to add:"));
     if (!path) return;
     try {
       await app.addKnownWorkspace(path);
@@ -608,7 +608,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
     const project = projectByDir.get(dir);
     app.requestConfirm({
       message:
-        t("Move this folder's conversations to No folder, then remove the working folder from the list? Conversations and files are not deleted."),
+        t("Move this project's conversations to No project, then remove the project from the list? Conversations and files are not deleted."),
       ...(project?.secondaryDirs.length
         ? {
             details: [
@@ -616,8 +616,8 @@ function UserNav({ onImport }: { onImport: () => void }) {
             ],
           }
         : {}),
-      confirmLabel: t("Move conversations and remove"),
-      cancelLabel: t("Keep working folder"),
+      confirmLabel: t("Move conversations and remove project"),
+      cancelLabel: t("Keep this project"),
       onConfirm: () => {
         void run().catch((error) =>
           window.alert(error instanceof Error ? error.message : String(error)),
@@ -635,7 +635,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
     const dragged = app.sessions.find((s) => s.sessionId === sessionId);
     const sourceDir = dragged?.workspacePrimaryDir || "";
     if ((target ?? "") === sourceDir) return; // dropped back on its own folder
-    const label = target ? folderLabel(target) : t("no working folder");
+    const label = target ? folderLabel(target) : t("no project");
 
     // Whole-folder migration (item 4): when the dragged conversation's current
     // folder holds other conversations too (the "renamed/merged folder" case),
@@ -659,7 +659,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
     app.requestConfirm({
       message: t("Move this conversation to work in \"{label}\"?", { label }),
       details: [
-        t("Its whole family moves with it — branches and attached conversations always share one working folder."),
+        t("Its whole family moves with it — branches and attached conversations always share one main folder."),
         t("Alt will ask for permissions again in the new folder."),
         t("Files already on disk are not moved."),
       ],
@@ -695,7 +695,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
             <div className="split-new">
               <details className="list-more ws-pick">
                 <summary
-                  data-tip={app.workspacePrimaryDir ?? t("No working folder")}
+                  data-tip={app.workspacePrimaryDir ?? t("No project")}
                 >
                   <i className="ph ph-folder-simple" />
                   <span className="ws-label">
@@ -750,7 +750,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
               </details>
               <button
                 className="btn-new split-plus"
-                data-tip={t("Add working folder…")}
+                data-tip={t("Add project…")}
                 onClick={() => void addFolder()}
               >
                 <i className="ph ph-folder-plus" />
@@ -782,7 +782,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
         <RunningCount sessions={app.sessions} />
       </div>
       <div className="workspace-list-head">
-        <span>{t("Working folders")}</span>
+        <span>{t("Projects")}</span>
         <div className="workspace-list-actions">
           <button
             type="button"
@@ -795,16 +795,16 @@ function UserNav({ onImport }: { onImport: () => void }) {
           </button>
           <button
             type="button"
-            data-tip={t("Collapse all working folders")}
-            aria-label={t("Collapse all working folders")}
+            data-tip={t("Collapse all projects")}
+            aria-label={t("Collapse all projects")}
             onClick={() => setClosedGroups(new Set(tree.groups.map((group) => group.dir)))}
           >
             <i className="ph ph-arrows-in-line-vertical" aria-hidden="true" />
           </button>
           <button
             type="button"
-            data-tip={t("Expand all working folders")}
-            aria-label={t("Expand all working folders")}
+            data-tip={t("Expand all projects")}
+            aria-label={t("Expand all projects")}
             onClick={() => setClosedGroups(new Set())}
           >
             <i className="ph ph-arrows-out-line-vertical" aria-hidden="true" />
@@ -940,7 +940,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                             else unanchorMenu(details);
                           }}
                         >
-                          <summary data-tip={t("Working folder actions")}>
+                          <summary data-tip={t("Project actions")}>
                             <i className="ph ph-dots-three" />
                           </summary>
                           <div className="list-menu">
@@ -997,7 +997,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                               }}
                             >
                               <i className="ph ph-minus-circle" />
-                              {t("Remove from working folders")}
+                              {t("Remove this project from the list")}
                             </button>
                           </div>
                         </details>

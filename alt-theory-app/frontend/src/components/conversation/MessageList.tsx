@@ -106,7 +106,7 @@ export function MessageList() {
       {app.sessionWarnings.map((warning) =>
         // ponytail: the dead-folder notice is matched by its distinctive phrase
         // (backend session-service pushes it verbatim). Keep the strings in sync.
-        /working folder .* no longer exists/.test(warning) ? (
+        /main folder .* no longer exists/.test(warning) ? (
           <StaleWorkspaceNotice key={warning} warning={warning} />
         ) : (
           <SysLine key={warning}>
@@ -723,7 +723,7 @@ function StaleWorkspaceNotice({ warning }: { warning: string }) {
   const choose = () => {
     if (!app.sessionId) return;
     void pickDirectory(
-      t("Full path of the working folder for this conversation:"),
+      t("Full path of the main folder for this conversation:"),
     ).then((path) => {
       if (!path || !app.sessionId) return;
       void app.repointSession(app.sessionId, path).catch((error) => {

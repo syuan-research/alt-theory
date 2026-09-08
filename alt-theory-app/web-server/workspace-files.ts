@@ -86,7 +86,7 @@ export interface WorkspaceFilesResponse {
 export interface WorkingFolderDescriptor {
   id: string;
   path: string;
-  role: "primary" | "secondary";
+  role: "primary" | "secondary" | "global";
   managed: boolean;
   available: boolean;
 }
@@ -407,20 +407,25 @@ export function describeWorkingFolders(
     join(resolveSessionRoot(dataDir, sessionId)!, "records")
   );
   const primaryDir = header?.workspace?.primaryDir ?? null;
-  // Companion folders belong to the project (v1.5.1): read them from app
-  // settings by this session's main folder, exactly as the root policy does.
-  const companions = primaryDir
-    ? folderPolicyFor(readAppSettings(dataDir), primaryDir).projectSecondaryDirs
-    : [];
-  const folders = primaryDir
-    ? [primaryDir, ...companions]
+  // Folder roles follow the root policy (v1.5.1 + WP-C): the project's
+  // main and companion folders, then the global list — everything this
+  // session may read — so the browser shows the same set the policy grants.
+  const policy = folderPolicyFor(readAppSettings(dataDir), primaryDir);
+  const project = primaryDir
+    ? [primaryDir, ...policy.projectSecondaryDirs]
     : [managedDir];
-  return folders.map((path, index) => {
+  const globals = policy.globalFolders.map((folder) => folder.path);
+  return [...project, ...globals].map((path, index) => {
     const resolved = resolve(path);
+    const global = index >= project.length;
     return {
-      id: index === 0 ? "primary" : `secondary-${index}`,
+      id: global
+        ? `global-${index - project.length + 1}`
+        : index === 0
+          ? "primary"
+          : `secondary-${index}`,
       path: resolved,
-      role: index === 0 ? "primary" : "secondary",
+      role: global ? "global" : index === 0 ? "primary" : "secondary",
       managed: samePath(resolved, managedDir),
       available: statSync(resolved, { throwIfNoEntry: false })?.isDirectory() ?? false,
     };

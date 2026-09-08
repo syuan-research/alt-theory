@@ -900,7 +900,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                   onClick={() => (shell.openRail("workspace"), setMenu(null))}
                 >
                   <i className="ph ph-folder-open" />
-                  {t("Browse working folder")}
+                  {t("Browse folders")}
                 </div>
               ) : null}
               <div

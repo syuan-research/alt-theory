@@ -194,16 +194,20 @@ export function WorkspaceTree() {
       ) : null}
       {workingFolders.length > 0 ? (
         <div className="working-folders">
-          <div className="files-section-title">{t("Working folders")}</div>
+          <div className="files-section-title">{t("Projects and global folders")}</div>
           {workingFolders.map((folder) => (
             <div className="working-folder-group" key={folder.id}>
               <div className="working-folder">
                 <i className="ph ph-folder-open" />
                 <div>
-                  <div className="working-folder-role">
-                    {folder.role === "primary" ? t("Main folder") : t("Companion folder")}
-                    {folder.managed ? ` · ${t("conversation folder")}` : ""}
-                  </div>
+                      <div className="working-folder-role">
+                        {folder.role === "primary"
+                          ? t("Main folder")
+                          : folder.role === "global"
+                            ? t("Global folder")
+                            : t("Companion folder")}
+                        {folder.managed ? ` · ${t("conversation folder")}` : ""}
+                      </div>
                   <div className="working-folder-path" data-tip={folder.path}>{folder.path}</div>
                   {folder.available && hasNativeBridge() ? (
                     <button

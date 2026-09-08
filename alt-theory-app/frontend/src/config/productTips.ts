@@ -35,7 +35,7 @@ const general: ProductTip[] = [
   { id: "role", condition: { kind: "general" }, text: localized("A role changes who Alt speaks as; you can change or clear it at any point.") },
   { id: "btw", condition: { kind: "general" }, text: localized("BTW opens a side question that doesn't clutter this conversation.") },
   { id: "helper", condition: { kind: "general" }, text: localized("Open Helper from Help or Related — it answers from the current documentation, in its own conversation.") },
-  { id: "work-mode", condition: { kind: "general" }, text: localized("In Work mode Alt can act in your working folders; boundary crossings still ask you first.") },
+  { id: "work-mode", condition: { kind: "general" }, text: localized("In Work mode Alt can act in your project and global folders; boundary crossings still ask you first.") },
   { id: "understand-mode", condition: { kind: "general" }, text: localized("Understand mode keeps Alt to what you brought into the conversation.") },
   { id: "compact", condition: { kind: "general" }, text: localized("If a conversation gets long, /compact summarizes the early turns and shows you the summary.") },
   { id: "handoff", condition: { kind: "general" }, text: localized("Ask for a summary or handoff note and it lands as a file you can share.") },

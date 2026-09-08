@@ -140,6 +140,48 @@ test("account usage sums owned session workspaces", async () => {
   assert.equal(listed.usage.sessionBytes, 1024);
 });
 
+test("describeWorkingFolders lists the global list after the project folders", () => {
+  const root = mkdtempSync(join(tmpdir(), "alt-theory-working-folder-global-"));
+  const dataDir = join(root, "data");
+  const external = join(root, "user-project");
+  const shared = join(root, "shared");
+  mkdirSync(external, { recursive: true });
+  mkdirSync(join(shared, "refs"), { recursive: true });
+  writeFileSync(join(shared, "refs", "guide.md"), "guide", "utf-8");
+  const { sessionId } = createSessionDirs(dataDir);
+  const recordsDir = join(dataDir, "sessions", sessionId, "records");
+  writeFileSync(
+    join(recordsDir, "session.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      recordType: "session",
+      sessionId,
+      createdAt: new Date().toISOString(),
+      recordModel: "v0.4",
+      workspace: { primaryDir: external },
+    })
+  );
+  writeFileSync(
+    join(dataDir, "app-settings.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      workingFolders: { global: [{ path: shared, writable: false }], projects: [] },
+    })
+  );
+
+  const folders = describeWorkingFolders(dataDir, sessionId);
+  assert.deepEqual(
+    folders.map((folder) => [folder.id, folder.role, folder.available]),
+    [["primary", "primary", true], ["global-1", "global", true]]
+  );
+  const sharedEntries = listWorkingFolderChildren(
+    dataDir,
+    sessionId,
+    "global-1"
+  ).entries;
+  assert.deepEqual(sharedEntries.map((entry) => entry.path), ["refs"]);
+});
+
 test("working-folder browsing follows the persisted external workspace", () => {
   const root = mkdtempSync(join(tmpdir(), "alt-theory-working-folder-"));
   const dataDir = join(root, "data");

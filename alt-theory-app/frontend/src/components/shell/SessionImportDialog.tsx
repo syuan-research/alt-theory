@@ -117,7 +117,7 @@ export function SessionImportDialog({
       .sort(([, a], [, b]) => b[0]!.updatedAt.localeCompare(a[0]!.updatedAt))
       .map(([cwd, group]) => ({
         cwd,
-        label: cwd ? folderLabel(cwd) : "No working folder",
+        label: cwd ? folderLabel(cwd) : t("No project"),
         sessions: group,
       }));
   }, [visibleSessions]);
@@ -214,7 +214,7 @@ export function SessionImportDialog({
           <input
             type="search"
             className="mt-1 w-full rounded-md border border-hairline bg-canvas px-3 py-2 text-sm"
-            placeholder={t("Title, working folder, or conversation text")}
+            placeholder={t("Title, project folder, or conversation text")}
             value={query}
             disabled={busy}
             onChange={(event) => setQuery(event.target.value)}
@@ -256,14 +256,14 @@ export function SessionImportDialog({
               {selected.repeat}
             </p>
             <p className="break-all" data-tip={selected.cwd}>
-              {t("Working folder: {cwd}", { cwd: selected.cwd || t("not recorded") })}
+              {t("Main folder: {cwd}", { cwd: selected.cwd || t("not recorded") })}
             </p>
           </div>
         ) : null}
 
         {selected && !selected.cwdAvailable ? (
           <div className="mt-3 rounded-md border border-warning/30 bg-warning/5 p-3 text-sm text-text-secondary">
-            <p>{t("The original working folder is unavailable. Choose its current location to continue.")}</p>
+            <p>{t("The original main folder is unavailable. Choose its current location to continue.")}</p>
             {workspaceOverride ? (
               <p className="mt-1 break-all text-xs text-text-muted">
                 {t("Replacement: {path}", { path: workspaceOverride })}
@@ -275,7 +275,7 @@ export function SessionImportDialog({
               disabled={busy}
               onClick={() => {
                 const path = window.prompt(
-                  t("Full path of the replacement working folder:"),
+                  t("Full path of the replacement main folder:"),
                   workspaceOverride,
                 );
                 if (!path?.trim()) return;
@@ -305,7 +305,7 @@ export function SessionImportDialog({
           <div className="mt-2 flex gap-5 text-sm">
             <label className="flex items-center gap-2">
               <input type="radio" checked={mode === "work"} disabled={app.runtimeMode === "native-pi"} onChange={() => setMode("work")} />
-              {t("Work (tools and working folder)")}
+              {t("Work (tools and project folders)")}
             </label>
             <label className="flex items-center gap-2">
               <input type="radio" checked={mode === "understand"} disabled={app.runtimeMode === "native-pi"} onChange={() => setMode("understand")} />

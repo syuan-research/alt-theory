@@ -3555,7 +3555,7 @@ export class SessionService implements AgentTeamBridge {
       !statSync(persistedPrimaryDir, { throwIfNoEntry: false })?.isDirectory();
     if (workspaceMissing) {
       assetWarnings.push(
-        `This conversation's working folder "${persistedPrimaryDir}" no longer exists — continuing without a working folder. Drag the conversation onto a folder, or use the folder selector, to keep working there.`,
+        `This conversation's main folder "${persistedPrimaryDir}" no longer exists — continuing without one. Drag the conversation onto a project, or use the folder selector, to keep working there.`,
       );
     }
 

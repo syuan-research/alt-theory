@@ -26,11 +26,11 @@ detail lives in commit history and `development/`.
 - If a subscription login (GitHub Copilot, Kimi) can no longer be refreshed,
   the notice says so and points to Settings → Models.
 
-### Working folders
+### Projects
 
 - Every working folder is now a project with its own name. The name
-  defaults to the folder's name and can be edited on the Working folders
-  page; the conversation list shows it.
+  defaults to the folder's name and can be edited on the Projects and
+  global folders page; the conversation list shows it.
 - A project's main folder can be changed on the same page: every
   conversation of the project moves to the new folder together. A
   conversation that is working right now refuses the move — nothing
@@ -41,8 +41,17 @@ detail lives in commit history and `development/`.
   under it. Hover the project's name instead: the tooltip lists its main
   folder, its companion folders, and its name.
 - The project menu (the ⋯ button) gains Manage folders in this project,
-  which opens Settings → Working folders. File actions and folder actions
-  in that menu are separated by a line.
+  which opens Settings → Projects and global folders. File actions and
+  folder actions in that menu are separated by a line.
+- The old "working folder" wording is retired everywhere: management
+  actions speak of projects, the folders a project brings are its project
+  folders, and the one a conversation runs in is its main folder. The
+  remove action now says what it does — Remove this project from the
+  list — and its confirmation is written the same way.
+- The file browser (Browse folders in the toolbox) now lists global
+  folders beside a project's folders. Alt could already read them; the
+  browser now shows the same set, each row labelled Main folder,
+  Companion folder, or Global folder.
 - A project whose main folder has gone missing (renamed, moved, an
   unmounted drive) stays on the page with a note instead of silently
   disappearing; starting a conversation in it is refused until you point

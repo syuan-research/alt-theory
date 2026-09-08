@@ -60,7 +60,7 @@ function EmptyState() {
         <div className="greet">{t("Where shall we begin?")}</div>
         {app.runtimeMode === "native-pi" ? (
           <div className="native-pi-empty-note">
-            {t("Native Pi uses its normal work-capable tools and working-folder access.")}
+            {t("Native Pi uses its normal work-capable tools and project and global folder access.")}
           </div>
         ) : (
           <div className="mode-pick">
@@ -93,7 +93,7 @@ function EmptyState() {
               <ul>
                 <li>{t("Keep the same careful thinking while advancing a concrete task.")}</li>
                 <li>{t("Research and verify information, analyze data, and work across documents.")}</li>
-                <li>{t("Create or update documents, spreadsheets, presentations, and other files in your working folders.")}</li>
+                <li>{t("Create or update documents, spreadsheets, presentations, and other files in your project and global folders.")}</li>
               </ul>
             </button>
           </div>

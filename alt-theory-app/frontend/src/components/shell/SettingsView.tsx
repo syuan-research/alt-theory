@@ -1338,7 +1338,7 @@ function DefaultModeCard() {
         <div>
           <h4>{t("New conversations start in")}</h4>
           <p>
-            {t("Understand talks things through without changing files; Work can act in your working folders. Each conversation can still switch its own mode.")}
+            {t("Understand talks things through without changing files; Work can act in your project and global folders. Each conversation can still switch its own mode.")}
           </p>
         </div>
         <select
@@ -1989,7 +1989,7 @@ function FeaturesPanel() {
       <div className="set-card">
         <h4>{t("Do concrete work on your materials")}</h4>
         <p>
-          {t("In ")} <strong>{t("Work")}</strong>, {t("the same conversation can read and produce documents, work through the files in your working folders, and search the web and literature. Actions that cross a boundary ask for your approval first. Switching modes never moves or changes your folders.")}
+          {t("In ")} <strong>{t("Work")}</strong>, {t("the same conversation can read and produce documents, work through the files in your project and global folders, and search the web and literature. Actions that cross a boundary ask for your approval first. Switching modes never moves or changes your folders.")}
         </p>
       </div>
       <div className="set-card">
@@ -2019,7 +2019,7 @@ function FeaturesPanel() {
       <div className="set-card">
         <h4>{t("Choose what each conversation can use")}</h4>
         <p>
-          {t("The controls above the composer choose role, knowledge, mode, model, and working folder for that conversation. The toolbox keeps file attachment, planning, folder browsing, and the full skill list close without putting every option on screen.")}
+          {t("The controls above the composer choose role, knowledge, mode, model, and main folder for that conversation. The toolbox keeps file attachment, planning, folder browsing, and the full skill list close without putting every option on screen.")}
         </p>
       </div>
       <div className="set-card help-tip-catalog">
@@ -2092,7 +2092,7 @@ function WorkingFoldersPanel() {
     project.name ?? folderLabel(project.primaryDir);
 
   const newProject = () => {
-    void pickDirectory(t("Full path of the working folder to add:")).then((path) => {
+    void pickDirectory(t("Full path of the project to add:")).then((path) => {
       if (path)
         void app
           .addKnownWorkspace(path)
@@ -2158,7 +2158,7 @@ function WorkingFoldersPanel() {
 
   return (
     <div className="set-panel">
-      <h2>{t("Working folders")}</h2>
+      <h2>{t("Projects and global folders")}</h2>
       <p className="sub">{t("Which folders Alt can open, and which ones it may change.")}</p>
       {notice ? <p className="sub">{notice}</p> : null}
 
@@ -2174,7 +2174,7 @@ function WorkingFoldersPanel() {
           </button>
         </div>
         {projects.length === 0 ? (
-          <p className="fine">{t("No working folders yet.")}</p>
+          <p className="fine">{t("No projects yet.")}</p>
         ) : (
           projects.map((project) => (
             <div className="proj" key={project.id}>
@@ -2235,7 +2235,7 @@ function WorkingFoldersPanel() {
               </div>
               {project.available === false ? (
                 <div className="sf">
-                  <span className="lbl quiet">{t("This folder is not on this computer right now. Move the project to its new location, or bring the folder back.")}</span>
+                  <span className="lbl quiet">{t("The main folder is not on this computer right now. Move the project to its new location, or bring the folder back.")}</span>
                 </div>
               ) : null}
               {companionsOf(project).map((dir) => (
