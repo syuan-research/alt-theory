@@ -1052,7 +1052,7 @@
   .working-folder-group + .working-folder-group { border-top: 1px solid var(--hairline); padding-top: 6px; }
   .working-folder { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 7px; padding: 9px 8px 5px; border-radius: var(--r-sm); background: transparent; color: var(--ink-soft); }
   .working-folder-role { font-size: var(--fs-primary); font-weight: 500; }
-  .working-folder-path { margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3); font-family: var(--mono); font-size: var(--fs-micro); }
+  .working-folder-path { margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3); font-family: var(--mono); font-size: var(--fs-secondary); }
   .working-folder-open { display: inline-flex; align-items: center; gap: 5px; margin-top: 6px; padding: 0; border: 0; background: none; color: var(--accent); font: inherit; font-size: var(--fs-secondary); cursor: pointer; }
   .working-folder-open:hover { text-decoration: underline; }
   .working-folder-missing { margin-top: 3px; color: var(--danger); font-size: var(--fs-secondary); }
@@ -1277,7 +1277,7 @@
   .folder-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--hairline); font-size: var(--fs-primary); }
   .folder-row .grow { flex: 1; min-width: 0; }
   .folder-row .nm { color: var(--ink); }
-  .folder-row .path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3); font-family: var(--mono); font-size: var(--fs-micro); }
+  .folder-row .path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3); font-family: var(--mono); font-size: var(--fs-secondary); }
   .folder-tick { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; font-size: var(--fs-secondary); color: var(--text-2); cursor: pointer; }
   .folder-tick.on { color: var(--ink); }
   .icon-x { flex: 0 0 auto; border: 0; background: none; color: var(--text-3); cursor: pointer; padding: 2px 4px; border-radius: var(--r-sm); }
