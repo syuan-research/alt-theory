@@ -1282,7 +1282,8 @@
   .folder-tick.on { color: var(--ink); }
   .icon-x { flex: 0 0 auto; border: 0; background: none; color: var(--text-3); cursor: pointer; padding: 2px 4px; border-radius: var(--r-sm); }
   .icon-x:hover { background: var(--hover); color: var(--ink); }
-  .agents-heading, .agent-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+  .agent-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+  .agents-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
   .agents-heading .sub { margin-bottom: 0; }
   .agent-default-card select { border: 1px solid var(--hairline); border-radius: var(--r-sm); background: var(--surface); color: var(--ink); padding: 7px 9px; font: inherit; }
   .agent-section { margin-top: 26px; }
