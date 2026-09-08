@@ -475,7 +475,9 @@ function UserNav({ onImport }: { onImport: () => void }) {
     () =>
       tree.groups.map((group) => {
         const project = projectByDir.get(group.dir);
-        return project?.name ? { ...group, label: project.name } : group;
+        if (project?.name) return { ...group, label: project.name };
+        if (!group.dir) return { ...group, label: t("No project") };
+        return group;
       }),
     [tree, projectByDir],
   );
@@ -701,7 +703,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                   <span className="ws-label">
                     {app.workspacePrimaryDir
                       ? folderLabel(app.workspacePrimaryDir)
-                      : t("No folder")}
+                      : t("No project")}
                   </span>
                   <i className="ph ph-caret-down caret" />
                 </summary>
@@ -723,7 +725,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                     }}
                   >
                     <i className="ph ph-prohibit" />
-                    {t("No folder")}
+                    {t("No project")}
                     {!app.workspacePrimaryDir ? (
                       <i className="ph ph-check check" />
                     ) : null}

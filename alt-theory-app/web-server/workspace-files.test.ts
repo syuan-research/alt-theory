@@ -291,12 +291,12 @@ test("working-folder listing and preview refuse a symlink out of the folder", ()
   // a file the listing refuses.
   assert.throws(
     () => listWorkingFolderChildren(dataDir, sessionId, "primary", "link"),
-    /stay inside the selected working folder/,
+    /must stay inside the selected folder/,
   );
   assert.throws(
     () =>
       readWorkingFolderTextFile(dataDir, sessionId, "primary/link/passwd"),
-    /stay inside the selected working folder/,
+    /must stay inside the selected folder/,
   );
 
   // The folder's own files are unaffected.

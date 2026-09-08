@@ -96,7 +96,11 @@ export interface WorkingFolderDescriptor {
 function workingFolderRoot(folder: WorkingFolderDescriptor): Root {
   return {
     path: folder.path,
-    reason: folder.role === "primary" ? "cwd" : "project-secondary",
+    reason: folder.role === "primary"
+      ? "cwd"
+      : folder.role === "global"
+        ? "global-list"
+        : "project-secondary",
   };
 }
 
@@ -441,20 +445,20 @@ export function listWorkingFolderChildren(
   const folder = describeWorkingFolders(dataDir, sessionId).find(
     (item) => item.id === folderId,
   );
-  if (!folder?.available) throw new Error("Working folder is not available");
+  if (!folder?.available) throw new Error("This folder is not available");
   const normalized = requestedPath.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
-  if (isAbsolute(normalized)) throw new Error("Invalid working-folder path");
+  if (isAbsolute(normalized)) throw new Error("Invalid folder path");
   if (
     normalized
       .split("/")
       .filter(Boolean)
       .some((part) => part.startsWith(".") || WORKING_TREE_SKIP_DIRS.has(part))
   ) {
-    throw new Error("Working-folder directory is omitted from the tree");
+    throw new Error("This folder is omitted from the tree");
   }
   const target = resolve(folder.path, normalized);
   const stats = statSync(target, { throwIfNoEntry: false });
-  if (!stats?.isDirectory()) throw new Error("Working-folder directory not found");
+  if (!stats?.isDirectory()) throw new Error("Folder not found");
   // One verdict for the whole app: a symlinked directory inside the folder
   // (review card 4 case B) is outside, and credential paths are refused.
   const check = verdict(target, "browse", {
@@ -466,7 +470,7 @@ export function listWorkingFolderChildren(
     );
   }
   if (check.outcome !== "inside") {
-    throw new Error("Folder path must stay inside the selected working folder");
+    throw new Error("Folder path must stay inside the selected folder");
   }
 
   const entries = readdirSync(target, { withFileTypes: true })
@@ -514,7 +518,7 @@ export function searchWorkingFolder(
   limit = 200,
 ): { folderId: string; path: string; entries: WorkingTreeEntry[]; truncated: boolean } {
   const folder = describeWorkingFolders(dataDir, sessionId).find((item) => item.id === folderId);
-  if (!folder?.available) throw new Error("Working folder is not available");
+  if (!folder?.available) throw new Error("This folder is not available");
   const query = rawQuery.trim().toLocaleLowerCase();
   if (!query) return { folderId, path: "", entries: [], truncated: false };
 
@@ -573,10 +577,10 @@ export function readWorkingFolderTextFile(
   const folder = describeWorkingFolders(dataDir, sessionId).find(
     (item) => item.id === folderId
   );
-  if (!folder || !relPath || isAbsolute(relPath)) throw new Error("Invalid working-folder path");
+  if (!folder || !relPath || isAbsolute(relPath)) throw new Error("Invalid folder path");
   const target = resolve(folder.path, relPath);
   if (relative(folder.path, target) === "") {
-    throw new Error("File path must stay inside the selected working folder");
+    throw new Error("File path must stay inside the selected folder");
   }
   // Same verdict as the listing: the preview cannot return a file the
   // listing refuses (review card 4 case B, security item 1).
@@ -589,10 +593,10 @@ export function readWorkingFolderTextFile(
     );
   }
   if (check.outcome !== "inside") {
-    throw new Error("File path must stay inside the selected working folder");
+    throw new Error("File path must stay inside the selected folder");
   }
   const stats = statSync(target, { throwIfNoEntry: false });
-  if (!stats?.isFile()) throw new Error("Working-folder file not found");
+  if (!stats?.isFile()) throw new Error("File not found in this folder");
   if (stats.size > MAX_WORKING_TEXT_BYTES) throw new Error("File is too large to preview");
   const buffer = readFileSync(target);
   if (buffer.includes(0)) throw new Error("Binary files cannot be previewed");

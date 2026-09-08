@@ -214,7 +214,7 @@ export function SessionImportDialog({
           <input
             type="search"
             className="mt-1 w-full rounded-md border border-hairline bg-canvas px-3 py-2 text-sm"
-            placeholder={t("Title, project folder, or conversation text")}
+            placeholder={t("Title, main folder, or conversation text")}
             value={query}
             disabled={busy}
             onChange={(event) => setQuery(event.target.value)}
@@ -305,7 +305,7 @@ export function SessionImportDialog({
           <div className="mt-2 flex gap-5 text-sm">
             <label className="flex items-center gap-2">
               <input type="radio" checked={mode === "work"} disabled={app.runtimeMode === "native-pi"} onChange={() => setMode("work")} />
-              {t("Work (tools and project folders)")}
+              {t("Work (tools and project and global folders)")}
             </label>
             <label className="flex items-center gap-2">
               <input type="radio" checked={mode === "understand"} disabled={app.runtimeMode === "native-pi"} onChange={() => setMode("understand")} />

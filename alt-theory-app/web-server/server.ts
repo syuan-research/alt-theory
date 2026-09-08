@@ -1708,7 +1708,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       }
       if (rootName === "working") {
         if (!localMode) {
-          res.status(403).json({ error: "Working-folder browsing is local-only" });
+          res.status(403).json({ error: "Folder browsing is local-only" });
           return;
         }
         const folderId =
@@ -1790,7 +1790,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     try {
       if (rootName === "working") {
         if (!localMode) {
-          res.status(403).json({ error: "Working-folder browsing is local-only" });
+          res.status(403).json({ error: "Folder browsing is local-only" });
           return;
         }
         res.json(readWorkingFolderTextFile(dataDir, sessionId, requestedPath));
@@ -2800,7 +2800,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             const resolved = resolve(raw);
             const stat = statSync(resolved, { throwIfNoEntry: false });
             if (!stat?.isDirectory()) {
-              fail(new Error(`Working folder does not exist: ${resolved}`),
+              fail(new Error(`Main folder does not exist:${resolved}`),
               );
               break;
             }

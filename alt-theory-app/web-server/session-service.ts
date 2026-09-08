@@ -940,7 +940,7 @@ export class SessionService implements AgentTeamBridge {
     if (resolved) {
       const stat = statSync(resolved, { throwIfNoEntry: false });
       if (!stat?.isDirectory()) {
-        throw new Error(`Working folder does not exist: ${resolved}`);
+        throw new Error(`Main folder does not exist:${resolved}`);
       }
     }
     // Branches move with their conversation (owner decision 2026-07-24): one
@@ -987,7 +987,7 @@ export class SessionService implements AgentTeamBridge {
     }
     const resolved = resolve(primaryDir);
     if (!statSync(resolved, { throwIfNoEntry: false })?.isDirectory()) {
-      throw new Error(`Working folder does not exist: ${resolved}`);
+      throw new Error(`Main folder does not exist:${resolved}`);
     }
     if (samePath(project.primaryDir, resolved)) {
       return { project, movedCount: 0 };
@@ -2737,7 +2737,7 @@ export class SessionService implements AgentTeamBridge {
       ? resolve(metadata.workspace.primaryDir)
       : null;
     if (primaryDir && !statSync(primaryDir, { throwIfNoEntry: false })?.isDirectory()) {
-      throw new Error(`Working folder does not exist: ${primaryDir}`,);
+      throw new Error(`Main folder does not exist:${primaryDir}`,);
     }
     const appSettings = readAppSettings(this.config.dataDir);
     const subagentConfig = readSubagentConfig(this.config.dataDir).config;

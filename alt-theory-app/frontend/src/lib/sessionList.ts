@@ -589,7 +589,7 @@ export function buildWorkspaceTree(
   const groups = [...byDir.entries()]
     .map(([dir, groupRoots]) => ({
       dir,
-      label: dir ? folderLabel(dir) : "No folder",
+      label: dir ? folderLabel(dir) : "No project",
       roots: groupRoots.sort(familyComparator),
       modified: Math.max(
         0,
