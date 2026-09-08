@@ -903,6 +903,18 @@
   .model-picker { min-width: 280px; }
   .model-provider-section + .model-provider-section { border-top: 1px solid var(--hairline); margin-top: 4px; padding-top: 4px; }
   .model-provider-label { padding: 4px 10px 2px; color: var(--text-3); font-size: var(--fs-micro); }
+  /* MenuSelect: native-select replacement reusing the .menu pattern above.
+     The trigger mirrors the old select chrome; the popup is the regular
+     themed .menu, top-anchored inside settings cards. */
+  .msel { position: relative; display: inline-flex; }
+  .msel-trigger { display: inline-flex; align-items: center; gap: 8px; padding: 7px 9px; border: 1px solid var(--hairline); border-radius: var(--r-sm); background: var(--surface); color: var(--ink); font: inherit; font-size: var(--fs-primary); cursor: pointer; text-align: left; }
+  .msel-trigger:hover { background: var(--hover); }
+  .msel-trigger:disabled { opacity: 0.45; cursor: default; }
+  .msel-trigger:disabled:hover { background: var(--surface); }
+  .msel-trigger .ph-caret-down { color: var(--text-3); }
+  .msel-menu { top: calc(100% + 4px); left: 0; right: auto; bottom: auto; min-width: 200px; max-height: 300px; }
+  .msel-menu .mi span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .msel-menu .mi .check { flex-shrink: 0; }
   .model-provider-trigger .caret, .model-effort-trigger .caret { margin-left: 0; color: var(--text-3); }
   .model-provider-models, .model-effort-options { margin-left: 10px; padding-left: 6px; border-left: 1px solid var(--hairline); }
   .model-effort-trigger { color: var(--text-2) !important; font-size: var(--fs-secondary) !important; }

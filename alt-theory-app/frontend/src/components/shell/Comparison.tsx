@@ -2,6 +2,7 @@ import { useState } from "react";
 import { generateAbComparison, type AbArmConfig } from "@/api/sessions";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
+import { MenuSelect } from "@/components/ui/MenuSelect";
 import { t } from "@/i18n";
 
 const INHERIT = "__inherit__";
@@ -75,20 +76,14 @@ export function Comparison() {
     }
   };
 
-  const armOption = (
+  const armOptions = (
     assets: Array<{ slug: string; displayName: string }>,
     allowNone: boolean
-  ) => (
-    <>
-      <option value={INHERIT}>(inherit)</option>
-      {allowNone ? <option value={NONE}>(none)</option> : null}
-      {assets.map((a) => (
-        <option key={a.slug} value={a.slug}>
-          {a.displayName || a.slug}
-        </option>
-      ))}
-    </>
-  );
+  ) => [
+    { value: INHERIT, label: "(inherit)" },
+    ...(allowNone ? [{ value: NONE, label: "(none)" }] : []),
+    ...assets.map((a) => ({ value: a.slug, label: a.displayName || a.slug })),
+  ];
 
   return (
     <div className="float-cmp cmp-setup">
@@ -116,24 +111,20 @@ export function Comparison() {
               placeholder={t("Arm {num}", { num: i + 1 })}
               disabled={busy}
             />
-            <select
+            <MenuSelect
               value={arm.rolePresetSlug}
-              onChange={(e) => updateArm(i, { rolePresetSlug: e.target.value })}
+              options={armOptions(app.discovery?.rolePresets ?? [], true)}
+              onChange={(value) => updateArm(i, { rolePresetSlug: value })}
               disabled={busy}
-              aria-label={t("Role")}
-              data-tip={t("Role")}
-            >
-              {armOption(app.discovery?.rolePresets ?? [], true)}
-            </select>
-            <select
+              ariaLabel={t("Role")}
+            />
+            <MenuSelect
               value={arm.kbDomain}
-              onChange={(e) => updateArm(i, { kbDomain: e.target.value })}
+              options={armOptions(app.discovery?.kbDomains ?? [], false)}
+              onChange={(value) => updateArm(i, { kbDomain: value })}
               disabled={busy}
-              aria-label={t("Knowledge base")}
-              data-tip={t("Knowledge base")}
-            >
-              {armOption(app.discovery?.kbDomains ?? [], false)}
-            </select>
+              ariaLabel={t("Knowledge base")}
+            />
             {arms.length > 2 ? (
               <button
                 className="cmp-rm"

@@ -18,6 +18,7 @@ import type {
   ThinkingLevel,
 } from "@/api/types";
 import { Button } from "@/components/ui/Button";
+import { MenuSelect } from "@/components/ui/MenuSelect";
 import { FieldFrame, TextInput } from "@/components/ui/Field";
 import { BodyText, HintText, PageTitle } from "@/components/ui/Typography";
 import { cn } from "@/lib/cn";
@@ -796,40 +797,40 @@ export function ModelConfigPage({
           </span>
           <label className="default-model-picker active-model-inline">
             <span>{t("Session default model:")}</span>
-            <select
-              value={
-                status.activeProvider && status.activeModel
-                  ? `${status.activeProvider}::${status.activeModel}`
-                  : ""
+          <MenuSelect
+            ariaLabel={t("Session default model:")}
+            value={
+              status.activeProvider && status.activeModel
+                ? `${status.activeProvider}::${status.activeModel}`
+                : ""
+            }
+            options={[
+              { value: "", label: t("Choose a model") },
+              ...providers.flatMap((provider) =>
+                (provider.models ?? []).map((model) => ({
+                  value: `${provider.name}::${model.id}`,
+                  label: `${provider.name} / ${model.name || model.id}`,
+                })),
+              ),
+            ]}
+            onChange={async (value) => {
+              if (!value) return;
+              const sep = value.indexOf("::");
+              if (sep < 0) return;
+              const provider = value.slice(0, sep);
+              const modelId = value.slice(sep + 2);
+              try {
+                await setActiveModel(provider, modelId);
+                showToast(t("Default model: {model}", { model: modelId }));
+                await Promise.all([refresh(), onConfigChanged?.()]);
+              } catch (err) {
+                showToast(
+                  err instanceof Error ? err.message : t("Could not change model"),
+                  true,
+                );
               }
-              onChange={async (event) => {
-                const value = event.target.value;
-                if (!value) return;
-                const sep = value.indexOf("::");
-                if (sep < 0) return;
-                const provider = value.slice(0, sep);
-                const modelId = value.slice(sep + 2);
-                try {
-                  await setActiveModel(provider, modelId);
-                  showToast(t("Default model: {model}", { model: modelId }));
-                  await Promise.all([refresh(), onConfigChanged?.()]);
-                } catch (err) {
-                  showToast(
-                    err instanceof Error ? err.message : t("Could not change model"),
-                    true,
-                  );
-                }
-              }}
-            >
-              <option value="" disabled>{t("Choose a model")}</option>
-              {providers.flatMap((provider) =>
-                (provider.models ?? []).map((model) => (
-                  <option key={`${provider.name}::${model.id}`} value={`${provider.name}::${model.id}`}>
-                    {provider.name} / {model.name || model.id}
-                  </option>
-                )),
-              )}
-            </select>
+            }}
+          />
           </label>
         </div>
       ) : null}
@@ -1127,12 +1128,17 @@ export function ModelConfigPage({
                     <TextInput value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} autoComplete="off" />
                   </FieldFrame>
                   <FieldFrame label={t("API type")}>
-                    <select className="w-full rounded-md border border-hairline bg-surface px-2.5 py-2 text-[length:var(--fs-primary)]" value={apiType} onChange={(event) => setApiType(event.target.value as ApiType)}>
-                      <option value="openai-completions">{t("openai-completions (most compatible)")}</option>
-                      <option value="openai-responses">{t("openai-responses")}</option>
-                      <option value="anthropic-messages">{t("anthropic-messages")}</option>
-                      <option value="google-generative-ai">{t("google-generative-ai")}</option>
-                    </select>
+                    <MenuSelect
+                      ariaLabel={t("API type")}
+                      value={apiType}
+                      options={[
+                        { value: "openai-completions", label: t("openai-completions (most compatible)") },
+                        { value: "openai-responses", label: t("openai-responses") },
+                        { value: "anthropic-messages", label: t("anthropic-messages") },
+                        { value: "google-generative-ai", label: t("google-generative-ai") },
+                      ]}
+                      onChange={(value) => setApiType(value as ApiType)}
+                    />
                   </FieldFrame>
                   <FieldFrame label={t("API key")} hint={keyHint}>
                     <TextInput type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} autoComplete="off" />

@@ -42,6 +42,7 @@ import type {
 } from "@/api/types";
 import { ModelConfigPage } from "@/pages/ModelConfigPage";
 import { authConnectEntryStep } from "@/lib/authConnect";
+import { MenuSelect } from "@/components/ui/MenuSelect";
 import {
   applyTitlebarVar,
   checkForUpdates,
@@ -437,26 +438,21 @@ function AgentModelFields({
     : [...models, { value: model, label: model }];
   return (
     <div className="agent-model-fields">
-      <select
-        aria-label={t("Model")}
+      <MenuSelect
+        ariaLabel={t("Model")}
         value={model}
-        onChange={(event) => onChange(joinAgentModelRef(event.target.value, thinking))}
-      >
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>{option.label}</option>
-        ))}
-      </select>
-      <select
-        aria-label={t("Thinking")}
+        options={options}
+        onChange={(value) => onChange(joinAgentModelRef(value, thinking))}
+      />
+      <MenuSelect
+        ariaLabel={t("Thinking")}
         value={thinking}
-        onChange={(event) => onChange(joinAgentModelRef(model, event.target.value))}
-      >
-        {AGENT_THINKING_LEVELS.map((level) => (
-          <option key={level || "default"} value={level}>
-            {level ? t(level) : t("Model default")}
-          </option>
-        ))}
-      </select>
+        options={AGENT_THINKING_LEVELS.map((level) => ({
+          value: level,
+          label: level ? t(level) : t("Model default"),
+        }))}
+        onChange={(value) => onChange(joinAgentModelRef(model, value))}
+      />
       {onRemove ? (
         <button className="agent-icon-btn" aria-label={t("Remove fallback")} onClick={onRemove}>
           <i className="ph ph-trash" />
@@ -678,9 +674,12 @@ function AgentsPanel() {
               )}
             </p>
           </div>
-          <select id="default-agent" value={config.defaultAgent} onChange={(event) => setConfig({ ...config, defaultAgent: event.target.value })}>
-            {config.agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.id}</option>)}
-          </select>
+          <MenuSelect
+            ariaLabel={t("Default subagent")}
+            value={config.defaultAgent}
+            options={config.agents.map((agent) => ({ value: agent.id, label: agent.id }))}
+            onChange={(value) => setConfig({ ...config, defaultAgent: value })}
+          />
         </div>
       </div>
       <section className="agent-section">
@@ -1291,16 +1290,18 @@ function LanguageCard() {
             )}
           </p>
         </div>
-        <select
+        <MenuSelect
+          ariaLabel={t("Language")}
           value={lang}
           disabled={!loaded}
-          onChange={(e) => persist(e.target.value as LangSettingValue)}
-        >
-          <option value="auto">{t("Auto (system)")}</option>
-          <option value="en">English</option>
-          <option value="zh-Hans">简体中文</option>
-          <option value="zh-Hant-HK">繁體中文（香港）</option>
-        </select>
+          options={[
+            { value: "auto", label: t("Auto (system)") },
+            { value: "en", label: "English" },
+            { value: "zh-Hans", label: "简体中文" },
+            { value: "zh-Hant-HK", label: "繁體中文（香港）" },
+          ]}
+          onChange={(value) => persist(value as LangSettingValue)}
+        />
       </div>
     </div>
   );
@@ -1341,14 +1342,16 @@ function DefaultModeCard() {
             {t("Understand talks things through without changing files; Work can act in your project and global folders. Each conversation can still switch its own mode.")}
           </p>
         </div>
-        <select
+        <MenuSelect
+          ariaLabel={t("New conversations start in")}
           value={mode ?? shell.newMode}
           disabled={!loaded}
-          onChange={(e) => persist(e.target.value as "understand" | "work")}
-        >
-          <option value="understand">{t("Understand")}</option>
-          <option value="work">{t("Work")}</option>
-        </select>
+          options={[
+            { value: "understand", label: t("Understand") },
+            { value: "work", label: t("Work") },
+          ]}
+          onChange={(value) => persist(value as "understand" | "work")}
+        />
       </div>
     </div>
   );
@@ -1406,19 +1409,21 @@ function RuntimeCard() {
             )}
           </p>
         </div>
-        <select
+        <MenuSelect
+          ariaLabel={t("Agent behavior")}
           value={mode}
           disabled={!loaded}
-          onChange={(event) =>
+          options={[
+            { value: "alt-theory", label: "Alt Theory" },
+            { value: "native-pi", label: "Native Pi" },
+          ]}
+          onChange={(value) =>
             persist(
-              event.target.value as "alt-theory" | "native-pi",
+              value as "alt-theory" | "native-pi",
               scanAltSkills,
             )
           }
-        >
-          <option value="alt-theory">Alt Theory</option>
-          <option value="native-pi">Native Pi</option>
-        </select>
+        />
       </div>
     </div>
   );
@@ -1598,11 +1603,18 @@ function AutoTitleCard() {
             <h4>{t("Naming model")}</h4>
             <p>{t("A small model is recommended — cheaper and faster.")}</p>
           </div>
-          <select
+          <MenuSelect
+            ariaLabel={t("Naming model")}
             value={modelKey}
             disabled={!loaded}
-            onChange={(e) => {
-              const v = e.target.value;
+            options={[
+              { value: "", label: t("Same as conversation") },
+              ...models.map((m) => ({
+                value: `${m.provider}::${m.modelId}`,
+                label: m.label,
+              })),
+            ]}
+            onChange={(v) => {
               if (!v) return persist({ enabled, model: null });
               const idx = v.indexOf("::");
               persist({
@@ -1610,17 +1622,7 @@ function AutoTitleCard() {
                 model: { provider: v.slice(0, idx), modelId: v.slice(idx + 2) },
               });
             }}
-          >
-            <option value="">{t("Same as conversation")}</option>
-            {models.map((m) => (
-              <option
-                key={`${m.provider}::${m.modelId}`}
-                value={`${m.provider}::${m.modelId}`}
-              >
-                {m.label}
-              </option>
-            ))}
-          </select>
+          />
         </div>
       ) : null}
     </div>
@@ -1667,19 +1669,20 @@ function SkillPrecedenceCard() {
             {t("Which one wins when a bundled skill and one of yours fit the same job.")}
           </p>
         </div>
-        <select
+        <MenuSelect
+          ariaLabel={t("Skill precedence")}
           value={value}
           disabled={!loaded}
-          onChange={(e) => {
-            const next = e.target.value as SkillPrecedence;
-            setValue(next);
-            void saveSkillPrecedence(next).catch(() => {});
+          options={[
+            { value: "prefer-bundled", label: t("Prefer Alt Theory's") },
+            { value: "prefer-user", label: t("Prefer the ones I installed") },
+            { value: "ask", label: t("Ask me each time") },
+          ]}
+          onChange={(next) => {
+            setValue(next as SkillPrecedence);
+            void saveSkillPrecedence(next as SkillPrecedence).catch(() => {});
           }}
-        >
-          <option value="prefer-bundled">{t("Prefer Alt Theory's")}</option>
-          <option value="prefer-user">{t("Prefer the ones I installed")}</option>
-          <option value="ask">{t("Ask me each time")}</option>
-        </select>
+        />
       </div>
     </div>
   );

@@ -9,6 +9,7 @@ import {
   type ImportSourceSession,
 } from "@/api/session-import";
 import { Button } from "@/components/ui/Button";
+import { MenuSelect } from "@/components/ui/MenuSelect";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
 import { folderLabel } from "@/lib/sessionList";
@@ -188,25 +189,25 @@ export function SessionImportDialog({
 
         <label className="mt-4 block text-sm font-medium text-ink">
           {t("Source")}
-          <select
-            className="mt-1 w-full rounded-md border border-hairline bg-canvas px-3 py-2 text-sm"
-            value={harness}
-            disabled={busy}
-            onChange={(event) => {
-              setHarness(event.target.value as ImportableHarness);
-              setSessions([]);
-              setSourceId("");
-              setQuery("");
-              setWorkspaceOverride("");
-              setResult(null);
-            }}
-          >
-            {harnessOptions.map((info) => (
-              <option key={info.harness} value={info.harness}>
-                {harnessLabel(info.harness)}
-              </option>
-            ))}
-          </select>
+          <span className="mt-1 block">
+            <MenuSelect
+              ariaLabel={t("Source")}
+              value={harness}
+              disabled={busy}
+              options={harnessOptions.map((info) => ({
+                value: info.harness,
+                label: harnessLabel(info.harness),
+              }))}
+              onChange={(value) => {
+                setHarness(value as ImportableHarness);
+                setSessions([]);
+                setSourceId("");
+                setQuery("");
+                setWorkspaceOverride("");
+                setResult(null);
+              }}
+            />
+          </span>
         </label>
 
         <label className="mt-3 block text-sm font-medium text-ink">
