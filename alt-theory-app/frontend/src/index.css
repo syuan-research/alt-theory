@@ -426,7 +426,7 @@
   .sessions { flex: 0 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 4px 8px; }
   .group-label { display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; font-size: var(--fs-micro); text-align: left; color: var(--text-3); padding: 12px 8px 4px; cursor: pointer; user-select: none; }
   .group-label .group-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .group-label .tw { font-size: var(--fs-micro); transition: transform 0.12s; margin-left: auto; }
+  .group-label .tw { font-size: var(--fs-micro); transition: transform 0.12s, opacity 0.12s; margin-left: auto; }
   .group-label.closed .tw { transform: rotate(-90deg); }
   .session-row {
     display: flex;
@@ -442,7 +442,7 @@
   .sess {
     flex: 1;
     min-width: 0; display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: var(--r-sm); cursor: pointer; color: var(--ink-soft); font-size: var(--fs-primary); text-align: left; white-space: nowrap; overflow: hidden; }
-  .sess:hover { background: var(--hover); }
+  .session-row:hover .sess, .session-row:focus-within .sess { background: var(--hover); }
   .sess.active { background: color-mix(in srgb, var(--panel) 92%, var(--ink)); font-weight: 500; }
   .sess .s-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .sess .s-fork { color: var(--text-3); flex-shrink: 0; }
@@ -659,8 +659,7 @@
   /* workspace group rows (M4) */
   .group-row { display: flex; align-items: center; }
   .group-row .group-label { flex: 1; min-width: 0; }
-  .group-add { border: none; background: none; color: var(--text-3); width: 22px; height: 22px; border-radius: var(--r-sm); cursor: pointer; opacity: 0; }
-  .group-row:hover .group-add { opacity: 1; }
+  .group-add { border: none; background: none; color: var(--text-3); width: 22px; height: 22px; border-radius: var(--r-sm); cursor: pointer; }
   .group-add:hover { background: var(--hover); color: var(--ink); }
   .drop-target { outline: 1.5px dashed var(--color-warning); outline-offset: -1px; border-radius: var(--r-sm); }
   .ws-empty { padding: 2px 12px 8px; font-size: var(--fs-secondary); }
@@ -669,19 +668,43 @@
   .list-more > summary::-webkit-details-marker { display: none; }
   .list-more > summary:hover { background: var(--hover); color: var(--ink); }
   .list-more[open] > summary { background: var(--selected); }
-  .session-more {
-    flex: 0 0 auto;
-    opacity: 0;
-  }
-  .session-row:hover .session-more,
-  .session-row:focus-within .session-more,
-  .session-more[open] {
-    opacity: 1;
-  }
   .session-more > summary {
     width: 24px;
     height: 24px;
   }
+  /* Hover-reveal row actions ("reveal" pattern; treatment B of
+     0-v1-beta/output/20260908-proto-hover-reveal-rail-actions). The row's
+     action controls leave the layout: an absolutely positioned layer floats
+     above the row, dissolving what is beneath over a 30px gradient, shown
+     on row hover / focus / an open menu. No transform on the layer —
+     position:fixed menus anchored from inside it must keep the viewport as
+     their containing block. */
+  .reveal-row { position: relative; }
+  .reveal-row .reveal-layer {
+    position: absolute;
+    top: 0; bottom: 0; right: 0;
+    margin-top: auto; margin-bottom: auto;
+    display: flex; align-items: center; gap: 1px;
+    z-index: 3;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.12s ease;
+  }
+  .reveal-row:hover .reveal-layer,
+  .reveal-row:focus-within .reveal-layer,
+  .reveal-row .reveal-layer:has(details[open]),
+  .reveal-row details.reveal-layer[open] { opacity: 1; pointer-events: auto; }
+  .reveal-layer.-fade {
+    padding: 2px 2px 2px 30px;
+    background: linear-gradient(90deg, transparent 0, var(--reveal-fade, var(--panel)) 30px);
+  }
+  .group-row .reveal-layer { --reveal-fade: var(--panel); }
+  .session-row .reveal-layer { --reveal-fade: var(--hover); }
+  /* right-edge affordances yield the stage while the controls are up */
+  .reveal-row:hover .group-label .tw,
+  .reveal-row:focus-within .group-label .tw { opacity: 0; }
+  .badge-run { transition: opacity 0.12s ease; }
+  .reveal-row:hover .badge-run,
+  .reveal-row:focus-within .badge-run { opacity: 0; }
   /* Fixed one-line slot so status text can change without resizing the band
      above the composer (that reflow jittered the whole live column). */
   .run-phase-slot {

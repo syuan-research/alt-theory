@@ -919,7 +919,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                 }
                 onDrop={local ? (e) => dropSession(group.dir, e) : undefined}
               >
-                <div className="group-row">
+                <div className="group-row reveal-row">
                   <button
                     className={`group-label ws${closed ? " closed" : ""}`}
                     data-tip={folderTip}
@@ -929,85 +929,87 @@ function UserNav({ onImport }: { onImport: () => void }) {
                     <span className="group-name">{group.label}</span>
                     <i className="ph ph-caret-down tw" />
                   </button>
-                  {local && group.dir ? (
-                    <details
-                      className="list-more group-folder-more"
-                      onToggle={(event) => {
-                        const details = event.currentTarget;
-                        if (details.open) anchorMenuToSummary(details);
-                        else unanchorMenu(details);
-                      }}
-                    >
-                      <summary data-tip={t("Working folder actions")}>
-                        <i className="ph ph-dots-three" />
-                      </summary>
-                      <div className="list-menu">
-                        {hasNativeBridge() ? (
-                          <button
-                            onClick={(event) => {
-                              closeMenu(event);
-                              void revealPath(group.dir);
-                            }}
-                          >
-                            <i className="ph ph-folder-open" />
-                            {t("Show in file manager")}
-                          </button>
-                        ) : null}
-                        <button
-                          onClick={(event) => {
-                            closeMenu(event);
-                            void navigator.clipboard?.writeText(group.dir);
-                          }}
-                        >
-                          <i className="ph ph-copy" />
-                          {t("Copy folder path")}
-                        </button>
-                        <div className="sep" />
-                        {project ? (
-                          <button
-                            onClick={(event) => {
-                              closeMenu(event);
-                              void addProjectFolder(project);
-                            }}
-                          >
-                            <i className="ph ph-folder-plus" />
-                            {t("Add a folder to this project")}
-                          </button>
-                        ) : null}
-                        {project ? (
-                          <button
-                            onClick={(event) => {
-                              closeMenu(event);
-                              shell.openSettings("folders");
-                            }}
-                          >
-                            <i className="ph ph-folders" />
-                            {t("Manage folders in this project")}
-                          </button>
-                        ) : null}
-                        <button
-                          onClick={(event) => {
-                            closeMenu(event);
-                            removeFolder(
-                              group.dir,
-                              group.roots.map((root) => root.sessionId),
-                            );
-                          }}
-                        >
-                          <i className="ph ph-minus-circle" />
-                          {t("Remove from working folders")}
-                        </button>
-                      </div>
-                    </details>
-                  ) : null}
                   {local ? (
-                    <button
-                      className="group-add"
-                      data-tip={t("New conversation in {label}", { label: group.label })}
-                      onClick={() => startConversationIn(group.dir || null)}
-                    >
-                      <i className="ph ph-note-pencil" />
-                    </button>
+                    <div className="reveal-layer -fade">
+                      {group.dir ? (
+                        <details
+                          className="list-more group-folder-more"
+                          onToggle={(event) => {
+                            const details = event.currentTarget;
+                            if (details.open) anchorMenuToSummary(details);
+                            else unanchorMenu(details);
+                          }}
+                        >
+                          <summary data-tip={t("Working folder actions")}>
+                            <i className="ph ph-dots-three" />
+                          </summary>
+                          <div className="list-menu">
+                            {hasNativeBridge() ? (
+                              <button
+                                onClick={(event) => {
+                                  closeMenu(event);
+                                  void revealPath(group.dir);
+                                }}
+                              >
+                                <i className="ph ph-folder-open" />
+                                {t("Show in file manager")}
+                              </button>
+                            ) : null}
+                            <button
+                              onClick={(event) => {
+                                closeMenu(event);
+                                void navigator.clipboard?.writeText(group.dir);
+                              }}
+                            >
+                              <i className="ph ph-copy" />
+                              {t("Copy folder path")}
+                            </button>
+                            <div className="sep" />
+                            {project ? (
+                              <button
+                                onClick={(event) => {
+                                  closeMenu(event);
+                                  void addProjectFolder(project);
+                                }}
+                              >
+                                <i className="ph ph-folder-plus" />
+                                {t("Add a folder to this project")}
+                              </button>
+                            ) : null}
+                            {project ? (
+                              <button
+                                onClick={(event) => {
+                                  closeMenu(event);
+                                  shell.openSettings("folders");
+                                }}
+                              >
+                                <i className="ph ph-folders" />
+                                {t("Manage folders in this project")}
+                              </button>
+                            ) : null}
+                            <button
+                              onClick={(event) => {
+                                closeMenu(event);
+                                removeFolder(
+                                  group.dir,
+                                  group.roots.map((root) => root.sessionId),
+                                );
+                              }}
+                            >
+                              <i className="ph ph-minus-circle" />
+                              {t("Remove from working folders")}
+                            </button>
+                          </div>
+                        </details>
+                      ) : null}
+                      <button
+                        className="group-add"
+                        data-tip={t("New conversation in {label}", { label: group.label })}
+                        onClick={() => startConversationIn(group.dir || null)}
+                      >
+                        <i className="ph ph-note-pencil" />
+                      </button>
+                    </div>
                   ) : null}
                 </div>
                 {!closed && roots.length === 0 ? (
@@ -1162,7 +1164,7 @@ function SessionNode({
 
   return (
     <>
-      <div className="session-row">
+      <div className="session-row reveal-row">
         {!renaming && children.length ? (
           <button
             type="button"
@@ -1259,7 +1261,7 @@ function SessionNode({
         )}
         {!renaming ? (
         <details
-          className="list-more session-more"
+          className="list-more session-more reveal-layer -fade"
           onToggle={(event) => {
             const details = event.currentTarget;
             if (!details.open) {
