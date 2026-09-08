@@ -180,6 +180,23 @@ ipcMain.handle("alt:revealPath", (_event, target) => {
   if (typeof target === "string" && target) shell.showItemInFolder(target);
 });
 
+// The OS overlay-button band must match the page behind it: the app shell
+// paints that strip with --color-panel (light #ebebec — the createWindow
+// default — and dark #1e1e22). The renderer pushes its theme on mount and on
+// every toggle; light values here match the titleBarOverlay defaults.
+const TITLEBAR_OVERLAY = {
+  light: { color: "#ebebec", symbolColor: "#1f1e1a" },
+  dark: { color: "#1e1e22", symbolColor: "#ececeb" },
+};
+ipcMain.handle("alt:setTheme", (_event, theme) => {
+  const overlay = TITLEBAR_OVERLAY[theme === "dark" ? "dark" : "light"];
+  try {
+    mainWindow?.setTitleBarOverlay(overlay);
+  } catch (err) {
+    log(`setTitleBarOverlay failed: ${err.message}`);
+  }
+});
+
 const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 let updateStatus = {
   currentVersion: "",

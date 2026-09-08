@@ -10,6 +10,7 @@ import {
 } from "react";
 import type { AltMode } from "@/api/types";
 import { getDefaultAltMode } from "@/api/config";
+import { syncTitlebarTheme } from "@/lib/native";
 
 /** Full-screen surface. `app` is the 3-pane shell; the others take over. */
 export type Surface = "app" | "settings" | "review";
@@ -309,10 +310,9 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    document.documentElement.setAttribute(
-      "data-theme",
-      darkMode ? "dark" : "light"
-    );
+    const theme = darkMode ? "dark" : "light";
+    document.documentElement.setAttribute("data-theme", theme);
+    syncTitlebarTheme(theme);
   }, [darkMode]);
 
   const toggleRail = useCallback((key: RailKey) => {

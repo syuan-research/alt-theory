@@ -22,6 +22,7 @@ interface AltElectron {
   onUpdateStatus?(callback: (status: AppUpdateStatus) => void): () => void;
   getViewSize?(): Promise<number>;
   setViewSize?(stop: number): Promise<number>;
+  setTheme?(theme: "light" | "dark"): Promise<void>;
 }
 
 function bridge(): AltElectron | null {
@@ -58,6 +59,14 @@ export function applyTitlebarVar(stop: number): void {
     "--titlebar-h",
     `${(48 / factor).toFixed(2)}px`,
   );
+}
+
+/**
+ * Keep the OS overlay-button band in step with the app theme (Electron only;
+ * the plain-browser preview has no overlay to recolor).
+ */
+export function syncTitlebarTheme(theme: "light" | "dark"): void {
+  void bridge()?.setTheme?.(theme);
 }
 
 /** Pick a working folder — native dialog in Electron, path prompt otherwise. */

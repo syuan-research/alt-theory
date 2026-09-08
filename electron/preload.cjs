@@ -31,4 +31,5 @@ contextBridge.exposeInMainWorld("altElectron", {
   },
   getViewSize: () => ipcRenderer.invoke("alt:getViewSize"),
   setViewSize: (stop) => ipcRenderer.invoke("alt:setViewSize", stop),
+  setTheme: (theme) => ipcRenderer.invoke("alt:setTheme", theme),
 });
