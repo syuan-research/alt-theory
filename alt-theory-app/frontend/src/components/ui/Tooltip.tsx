@@ -10,6 +10,11 @@
  *   <button data-tip-title={t("Context usage")}      — optional small-caps
  *            data-tip={usageSummary} />                label above the body
  *
+ * Body lines: a line of the exact form [[label]] renders as a small-caps
+ * group label (the same level as the title); every other line is a value
+ * line — the bubble's two text levels. Used e.g. by the rail's project
+ * tooltip (main folder / companion folders / project name).
+ *
  * One singleton bubble lives under a fixed-position root; a single delegated
  * `mouseover` listener manages it, so 80+ call sites stay untouched apart
  * from the attribute rename. Wheel/touch are untouched: desktop Electron is
@@ -20,6 +25,19 @@ import { useEffect } from "react";
 
 const SHOW_DELAY_MS = 120;
 const EDGE_MARGIN = 8;
+
+/** Body lines: [[label]] lines render as small-caps group labels, every
+ *  other line as a value line (the bubble's two text levels). */
+const renderBody = (body: HTMLDivElement, text: string) => {
+  body.replaceChildren();
+  for (const line of text.split("\n")) {
+    const label = /^\[\[(.+)\]\]$/.exec(line);
+    const row = document.createElement("div");
+    if (label) row.className = "app-tooltip-label";
+    row.textContent = label ? label[1] : line;
+    body.append(row);
+  }
+};
 
 export function TooltipRoot() {
   useEffect(() => {
@@ -49,7 +67,7 @@ export function TooltipRoot() {
       if (!bodyText) return;
       title.textContent = titleText ?? "";
       title.style.display = titleText ? "" : "none";
-      body.textContent = bodyText;
+      renderBody(body, bodyText);
       tip.classList.add("show");
       position(el);
     };

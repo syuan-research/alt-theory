@@ -465,7 +465,8 @@ function UserNav({ onImport }: { onImport: () => void }) {
   );
 
   // Projects (v1.5.1): the group's label is the project's name (defaults to
-  // the main folder's), and a project's companions show greyed under it.
+  // the main folder's). Companions left the rail (WP-C, 2026-09-08) — the
+  // label's tooltip lists main / companion folders and the name.
   const projectByDir = useMemo(
     () => new Map(app.projects.map((project) => [project.primaryDir, project])),
     [app.projects],
@@ -875,6 +876,19 @@ function UserNav({ onImport }: { onImport: () => void }) {
             const closed = closedGroups.has(group.dir);
             const project = group.dir ? projectByDir.get(group.dir) : undefined;
             const companions = project?.secondaryDirs ?? [];
+            // Tooltip sections appear only when they have content (WP-C).
+            const folderTip = group.dir
+              ? [
+                  `[[${t("Main folder")}]]`,
+                  group.dir,
+                  ...(companions.length
+                    ? [`[[${t("Companion folders")}]]`, ...companions]
+                    : []),
+                  ...(project?.name
+                    ? [`[[${t("Project name")}]]`, project.name]
+                    : []),
+                ].join("\n")
+              : undefined;
             // A matching folder name keeps every conversation in it.
             const folderHit =
               visibleIds !== null && group.label.toLowerCase().includes(railQuery.trim().toLowerCase());
@@ -908,7 +922,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                 <div className="group-row">
                   <button
                     className={`group-label ws${closed ? " closed" : ""}`}
-                    data-tip={group.dir || undefined}
+                    data-tip={folderTip}
                     onClick={() => toggleGroup(group.dir)}
                   >
                     <i className="ph ph-folder-simple" />
@@ -948,6 +962,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                           <i className="ph ph-copy" />
                           {t("Copy folder path")}
                         </button>
+                        <div className="sep" />
                         {project ? (
                           <button
                             onClick={(event) => {
@@ -957,6 +972,17 @@ function UserNav({ onImport }: { onImport: () => void }) {
                           >
                             <i className="ph ph-folder-plus" />
                             {t("Add a folder to this project")}
+                          </button>
+                        ) : null}
+                        {project ? (
+                          <button
+                            onClick={(event) => {
+                              closeMenu(event);
+                              shell.openSettings("folders");
+                            }}
+                          >
+                            <i className="ph ph-folders" />
+                            {t("Manage folders in this project")}
                           </button>
                         ) : null}
                         <button
@@ -984,14 +1010,6 @@ function UserNav({ onImport }: { onImport: () => void }) {
                     </button>
                   ) : null}
                 </div>
-                {!closed && companions.length > 0
-                  ? companions.map((dir) => (
-                      <div className="ws-companion" key={dir} data-tip={dir}>
-                        <i className="ph ph-folder-simple" aria-hidden />
-                        <span className="group-name">{folderLabel(dir)}</span>
-                      </div>
-                    ))
-                  : null}
                 {!closed && roots.length === 0 ? (
                   <div className="rp-empty ws-empty">{t("No conversations yet.")}</div>
                 ) : null}

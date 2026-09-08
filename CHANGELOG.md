@@ -36,8 +36,13 @@ detail lives in commit history and `development/`.
   conversation that is working right now refuses the move — nothing
   changes until it is idle.
 - Folders that belong to a project can be added from the conversation
-  list too (Add a folder to this project), and they appear greyed under
-  the project's folder there.
+  list too (Add a folder to this project).
+- The conversation list no longer shows a project's other folders as rows
+  under it. Hover the project's name instead: the tooltip lists its main
+  folder, its companion folders, and its name.
+- The project menu (the ⋯ button) gains Manage folders in this project,
+  which opens Settings → Working folders. File actions and folder actions
+  in that menu are separated by a line.
 - A project whose main folder has gone missing (renamed, moved, an
   unmounted drive) stays on the page with a note instead of silently
   disappearing; starting a conversation in it is refused until you point
