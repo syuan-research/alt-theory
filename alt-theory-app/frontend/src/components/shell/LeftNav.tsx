@@ -175,6 +175,7 @@ export function LeftNav({ hidden = false }: { hidden?: boolean }) {
           <img className="brand-mark" src={altTheoryMark} alt="" />
         </button>
         <button
+          className="mini-new"
           data-tip={t("New conversation")}
           onClick={() => {
             shell.openApp();
@@ -184,6 +185,7 @@ export function LeftNav({ hidden = false }: { hidden?: boolean }) {
           <i className="ph ph-note-pencil" />
         </button>
         <button
+          className="mini-search"
           data-tip={t("Search")}
           onClick={() => {
             shell.setLeftCollapsed(false);
@@ -193,13 +195,14 @@ export function LeftNav({ hidden = false }: { hidden?: boolean }) {
           <i className="ph ph-magnifying-glass" />
         </button>
         <div style={{ flex: 1 }} />
+        <HelpMenu compact />
         <button
+          className="mini-gear"
           data-tip={t("Settings")}
           onClick={() => shell.openSettings()}
         >
           <i className="ph ph-gear" />
         </button>
-        <HelpMenu compact />
       </div>
 
       <div
@@ -283,24 +286,40 @@ function SettingsRail({ hidden }: { hidden?: boolean }) {
   ];
 
   if (shell.leftCollapsed) {
+    // The expanded markup stays and only the ink is hidden: the logo, the nav
+    // icons and the back arrow keep their expanded positions by construction,
+    // with no hand-tuned offsets left to drift when type or padding changes.
     return (
       <aside className="left" hidden={hidden}>
-        <div className="mini">
-          <button
-            className="mono"
-            data-tip={t("Expand")}
-            onClick={() => shell.setLeftCollapsed(false)}
-          >
-            <img className="brand-mark" src={altTheoryMark} alt="" />
-          </button>
-          <div style={{ flex: 1 }} />
-          <button
-            className="mini-back"
-            data-tip={t("Back to app")}
-            onClick={() => shell.openApp()}
-          >
-            <i className="ph ph-arrow-left" />
-          </button>
+        <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+          <div className="left-head">
+            <button
+              className="brand-btn"
+              data-tip={t("Expand")}
+              onClick={() => shell.setLeftCollapsed(false)}
+            >
+              <img className="brand-mark" src={altTheoryMark} alt="" />
+            </button>
+          </div>
+          <nav className="set-rail">
+            {items.map((item) => (
+              <button
+                key={item.key}
+                className={`set-item${shell.settingsPanel === item.key ? " on" : ""}`}
+                data-tip={item.label}
+                onClick={() => shell.setSettingsPanel(item.key)}
+              >
+                <i className={`ph ${item.icon}`} />
+                <span className="lbl">{item.label}</span>
+              </button>
+            ))}
+          </nav>
+          <div className="left-foot">
+            <button className="gear" data-tip={t("Back to app")} onClick={() => shell.openApp()}>
+              <i className="ph ph-arrow-left" />
+              <span className="lbl">{t("Back to app")}</span>
+            </button>
+          </div>
         </div>
       </aside>
     );
@@ -335,7 +354,7 @@ function SettingsRail({ hidden }: { hidden?: boolean }) {
               onClick={() => shell.setSettingsPanel(item.key)}
             >
               <i className={`ph ${item.icon}`} />
-              {item.label}
+              <span className="lbl">{item.label}</span>
             </button>
           ))}
         </nav>

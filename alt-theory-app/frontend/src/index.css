@@ -419,18 +419,29 @@
   .left { width: var(--left-width); flex-shrink: 0; background: var(--panel); display: flex; flex-direction: column; }
   .app-root.leftCol .left { width: 52px; }
   .app-root.leftCol .left .full { display: none !important; }
-  .left .mini { display: none; flex-direction: column; align-items: center; gap: 6px; padding-top: 12px; flex: 1; }
+  /* Collapsed conversation rail (LeftNav) still uses the icon strip. */
+  .left .mini { display: none; flex-direction: column; align-items: center; gap: 6px; padding-top: 12px; padding-bottom: 8px; flex: 1; }
   .app-root.leftCol .left .mini { display: flex; }
-  .mini button { width: 36px; height: 36px; border: none; background: transparent; border-radius: var(--r-sm); color: var(--text-2); cursor: pointer; font-size: 1.05rem; display: inline-flex; align-items: center; justify-content: center; }
+  .mini button { width: 36px; height: 36px; border: none; background: transparent; border-radius: var(--r-sm); color: var(--text-2); cursor: pointer; font-size: 1rem; display: inline-flex; align-items: center; justify-content: center; }
+  /* Row heights follow the expanded rows (project row 33px, list header 32px)
+     and the two foot glyphs match the foot's own size, so collapsing moves the
+     icons by ~1px instead of a visible step. */
+  .mini .mini-new { height: 34px; }
+  .mini .mini-search, .mini .mini-gear { font-size: var(--fs-primary); }
   .mini button:hover { background: var(--hover); }
   .mini .mono { font-family: var(--brand); font-weight: 600; font-size: 1rem; color: var(--ink); }
   /* Pin the collapsed logo to the exact spot the expanded head paints it
-     (left-head padding 12/12, .brand-mark 24px in a 30px row → x12 y15);
-     collapsing then no longer nudges the mark (owner-visible jitter). */
+     (left-head padding 12/12, .brand-mark 24px in a 30px row → x12 y15). */
   .mini .mono { margin: -3px auto 0 6px; }
-  /* Settings rail, collapsed: match the expanded foot's ← — same glyph size
-     and ink as .left-foot .gear, icon column aligned to the foot's (x≈22). */
-  .mini .mini-back { align-self: flex-start; margin: 0 0 8px 12px; font-size: var(--fs-primary); color: var(--ink-soft); }
+  /* Collapsed settings rail keeps the expanded markup and only hides the ink,
+     so the nav icons and the back arrow hold their expanded positions instead
+     of being matched by hand-tuned offsets. */
+  .app-root.leftCol .left-head .brand-btn { display: inline-flex; align-items: center; flex: none; width: 30px; height: 30px; padding: 0; border: none; background: none; border-radius: var(--r-sm); cursor: pointer; }
+  .app-root.leftCol .left-head .brand-btn:hover { background: var(--hover); }
+  .app-root.leftCol .set-item { overflow: hidden; padding-right: 0; }
+  .app-root.leftCol .set-item .lbl { visibility: hidden; white-space: nowrap; }
+  .app-root.leftCol .left-foot { overflow: hidden; }
+  .app-root.leftCol .left-foot .lbl { visibility: hidden; white-space: nowrap; }
   .left-head { display: flex; align-items: center; padding: 12px 12px 4px; }
   .brand-lockup { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
   .brand-mark { display: block; width: 24px; height: 24px; flex: none; object-fit: contain; }
@@ -501,7 +512,7 @@
   .help-menu > summary { list-style: none; display: flex; align-items: center; gap: 8px; color: var(--ink-soft); cursor: pointer; padding: 6px 10px; border-radius: var(--r-sm); font-size: var(--fs-primary); }
   .help-menu > summary::-webkit-details-marker { display: none; }
   .help-menu > summary:hover { background: var(--hover); }
-  .help-menu.compact > summary { width: 36px; height: 36px; justify-content: center; padding: 0; font-size: 1.05rem; color: var(--text-2); }
+  .help-menu.compact > summary { width: 36px; height: 36px; justify-content: center; padding: 0; font-size: var(--fs-primary); color: var(--text-2); }
   .help-popover { position: absolute; z-index: 80; left: 0; bottom: calc(100% + 6px); width: 238px; padding: 5px; border: 1px solid var(--hairline); border-radius: var(--r-md); background: var(--canvas); box-shadow: var(--shadow-lg); }
   .help-menu.compact .help-popover { left: 44px; bottom: 0; }
   .help-popover button { width: 100%; min-height: 36px; display: flex; align-items: flex-start; gap: 9px; padding: 8px 9px; border: 0; border-radius: var(--r-sm); background: none; color: var(--ink-soft); text-align: left; cursor: pointer; }
