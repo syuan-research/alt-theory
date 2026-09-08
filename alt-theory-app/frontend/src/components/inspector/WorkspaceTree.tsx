@@ -194,7 +194,6 @@ export function WorkspaceTree() {
       ) : null}
       {workingFolders.length > 0 ? (
         <div className="working-folders">
-          <div className="files-section-title">{t("Projects and global folders")}</div>
           {workingFolders.map((folder) => (
             <div className="working-folder-group" key={folder.id}>
               <div className="working-folder">
