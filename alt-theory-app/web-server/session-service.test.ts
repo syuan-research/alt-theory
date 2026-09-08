@@ -4922,3 +4922,61 @@ test("v1.5.1 M1: agent_end does not end the turn; idle and run_completed follow 
     await service.disposeAll();
   }
 });
+
+test("auto_retry_start reports whether the dropped attempt had visible text", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const snapshot = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const managed = (service as any).sessions.get(snapshot.sessionId);
+  const events: SessionServiceEvent[] = [];
+  service.attach(snapshot.sessionId, (event) => events.push(event));
+  const lastRetry = () => {
+    const event = events.at(-1);
+    return event?.type === "run_phase" ? event.payload.retry ?? null : null;
+  };
+  const pushAssistant = (content: unknown[]) =>
+    (managed.session.agent.state.messages as unknown[]).push({ role: "assistant", content });
+
+  try {
+    // Pi emits auto_retry_start while the failed assistant is still in state.
+    pushAssistant([{ type: "text", text: "partial" }]);
+    (service as any).handleAgentEvent(managed, {
+      type: "auto_retry_start",
+      attempt: 1,
+      maxAttempts: 3,
+      delayMs: 1,
+    });
+    assert.equal(lastRetry()?.droppedPartialText, true);
+
+    // thinking-only attempt: nothing visible was lost, so nothing may be claimed
+    managed.session.agent.state.messages.pop();
+    pushAssistant([{ type: "thinking", thinking: "only thought" }]);
+    (service as any).handleAgentEvent(managed, {
+      type: "auto_retry_start",
+      attempt: 2,
+      maxAttempts: 3,
+      delayMs: 1,
+    });
+    assert.equal(lastRetry()?.droppedPartialText, false);
+
+    // the turn died before any assistant streamed: same silence
+    managed.session.agent.state.messages.pop();
+    (managed.session.agent.state.messages as unknown[]).push({
+      role: "user",
+      content: [{ type: "text", text: "user again" }],
+    });
+    (service as any).handleAgentEvent(managed, {
+      type: "auto_retry_start",
+      attempt: 3,
+      maxAttempts: 3,
+      delayMs: 1,
+    });
+    assert.equal(lastRetry()?.droppedPartialText, false);
+  } finally {
+    await service.disposeAll();
+  }
+});

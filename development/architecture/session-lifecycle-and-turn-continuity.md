@@ -314,17 +314,22 @@ Thus a pane attaching mid-run receives the persisted transcript plus the current
 prompt and buffered deltas/tool/phase events, while a terminal run has no stale
 live replay.
 
-The stop line belongs to a visible text block. `buildTranscriptFromEntries`
-(`web-server/session-store.ts`) sets `stopReason` (`aborted`, `error`, or
-`length`) only on the last text row of a stopped, failed, or truncated
-attempt, together with `stopKept`: a user stop keeps the text in the model's
-context; a failed or truncated attempt that Pi retried (another assistant
-entry follows before the next user turn) was dropped from it, a final one is
-kept. An attempt without text — thinking or a tool call only, or Pi's empty
-placeholder after a network failure — yields no row and no line. The client
-draws the line from those two fields alone (`frontend/src/lib/replyStop.ts`),
-live and on reload; the transient retry notice uses the dropped wording
-(`transcript-stop-reason.test.ts`, `replyStop.test.ts`).
+A stopped or failed attempt is filtered from the model's context as a whole
+message: the installed Pi provider transform (`pi-ai` `transform-messages`)
+skips any assistant whose own `stopReason` is `aborted` or `error`, while
+`length` and completed messages are never dropped for those reasons
+(`web-server/pi-stop-filter-contract.test.ts` pins this against the real
+function). `buildTranscriptFromEntries` (`web-server/session-store.ts`)
+therefore sets `stopReason` on **every** visible row of such an attempt — rows
+share the entryId — and on the last text row of a `length` cut; a length cut
+drops nothing. An attempt without visible rows yields no line. The client
+groups consecutive same-entryId stopped/failed rows into one tinted range with
+a single line at its end (`frontend/src/lib/replyStop.ts`,
+`MessageList.tsx`), live and on reload. A retry phase carries
+`droppedPartialText` — read from Pi's still-present trailing assistant before
+the retry removes it — and the client shows a lost-output line only when that
+is true (`transcript-stop-reason.test.ts`, `replyStop.test.ts`,
+`conversationStream.test.ts`).
 
 Run phases currently include `connecting`, `processing`, `thinking`, `tool`,
 `compacting`, `retrying`, `awaiting-user`, `idle`, and `error`. Attached panes

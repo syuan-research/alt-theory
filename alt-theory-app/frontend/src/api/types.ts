@@ -250,10 +250,12 @@ export interface TranscriptMessage {
   /** Non-message boundary markers rendered specially (e.g. context compaction). */
   marker?: "compaction" | "imported-context" | "agent-team";
   sourceRole?: "system" | "developer";
-  /** Pi's stop reason, set only on the last text row of a stopped, failed or truncated attempt. */
+  /**
+   * Pi's stop reason, on every visible row of a stopped or failed attempt
+   * (aborted/error — the whole message is filtered from the model's context)
+   * or on the last text row of a length-truncated one (kept, just cut off).
+   */
   stopReason?: "aborted" | "error" | "length";
-  /** Whether the model still sees that text (user stop, or a final attempt) or Pi dropped it (retried). */
-  stopKept?: boolean;
 }
 
 export interface SessionSummary {
@@ -723,7 +725,13 @@ export type ServerMessage =
           | "awaiting-user"
           | "idle"
           | "error";
-        retry?: { attempt: number; maxAttempts: number; delayMs: number };
+        retry?: {
+          attempt: number;
+          maxAttempts: number;
+          delayMs: number;
+          /** True when the dropped attempt produced visible text — the only case a lost-content line may claim. */
+          droppedPartialText?: boolean;
+        };
       };
     }
   | { type: "tool_started"; payload: { toolName: string; callId: string; path?: string | null; detail?: ToolDetail } }

@@ -587,6 +587,15 @@
   .msg.assistant .bubble { padding: 0 2px; color: var(--ink-soft); }
   /* one grey line under a reply that did not finish (Pi stopReason) */
   .reply-stop { max-width: 660px; margin: -14px auto 22px; padding: 0 26px; font-size: var(--fs-secondary); color: var(--text-2); }
+  /* every visible row of one stopped/failed assistant, tinted as one range
+     (Owner direction 1, 2026-09-09 prototype): error = danger wash, user
+     stop = neutral wash — no bars, they collide with sys-line's own edges. */
+  .reply-range { max-width: 660px; margin: 0 auto 22px; padding: 4px 0 6px; border-radius: var(--r-sm); }
+  .reply-range.error { background: color-mix(in srgb, var(--danger) 6%, transparent); }
+  .reply-range.aborted { background: color-mix(in srgb, var(--ink) 5%, transparent); }
+  .reply-range > .msg, .reply-range > .sys-line, .reply-range > .think-block { margin-bottom: 12px; }
+  .reply-range > :last-child { margin-bottom: 0; }
+  .reply-range-line { font-size: var(--fs-secondary); color: var(--text-2); padding: 0 26px; margin: 4px 0 0; }
   .sys-line { max-width: 660px; margin: 0 auto 18px; padding: 0 24px; text-align: left; font-size: var(--fs-secondary); color: var(--text-3); display: flex; align-items: baseline; gap: 6px; border-left: 2px solid transparent; }
   .sys-line i { font-size: 0.8rem; }
   .sys-line.sys-danger { color: var(--danger); border-left-color: var(--color-danger); }

@@ -4,7 +4,7 @@ import type {
   StreamPart,
 } from "@/api/types";
 import { t } from "@/i18n";
-import { replyStopLine } from "@/lib/replyStop";
+import { retryDroppedLine } from "@/lib/replyStop";
 import { toolOutcome } from "@/lib/toolOutcome";
 import { toolLabel } from "@/lib/tools";
 
@@ -104,16 +104,16 @@ export function handleConversationStreamMessage(
             maxAttempts: retry.maxAttempts,
           }),
         );
-        setParts((parts) =>
-          parts.length === 0 || parts.at(-1)?.kind === "notice"
-            ? parts
-            : [
-                ...parts,
-                // Pi keeps the partial in history and drops it from the model's
-                // context before retrying: same line the stored reply gets.
-                { kind: "notice", text: replyStopLine("error", false) ?? "" },
-              ],
-        );
+        // Only the server knows whether the dropped attempt produced text
+        // (it reads Pi's state before the retry drops the message); without
+        // that fact the parts above are just as likely completed steps.
+        if (retry.droppedPartialText) {
+          setParts((parts) =>
+            parts.length === 0 || parts.at(-1)?.kind === "notice"
+              ? parts
+              : [...parts, { kind: "notice", text: retryDroppedLine() }],
+          );
+        }
         return true;
       }
       setPhaseLabel(

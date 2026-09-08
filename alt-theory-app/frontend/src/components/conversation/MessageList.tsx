@@ -189,8 +189,38 @@ export const SettledMessages = memo(function SettledMessages({
       return false;
     });
   }, [messages]);
+  // A stopped/failed assistant is filtered from the model's context as a
+  // whole message, so its consecutive rows (same entryId + stop reason) form
+  // one tinted range with a single line at the end — not one line per block.
+  const segments = useMemo(() => {
+    const result: (
+      | { kind: "solo"; index: number }
+      | { kind: "range"; cause: "aborted" | "error"; indexes: number[] }
+    )[] = [];
+    let index = 0;
+    while (index < messages.length) {
+      const { stopReason, entryId } = messages[index];
+      if (stopReason !== "aborted" && stopReason !== "error") {
+        result.push({ kind: "solo", index });
+        index += 1;
+        continue;
+      }
+      const indexes: number[] = [];
+      while (
+        index < messages.length &&
+        messages[index].stopReason === stopReason &&
+        messages[index].entryId === entryId
+      ) {
+        indexes.push(index);
+        index += 1;
+      }
+      result.push({ kind: "range", cause: stopReason, indexes });
+    }
+    return result;
+  }, [messages]);
   let userOrdinal = -1;
-  return messages.map((message, index) => {
+  const entryAt = (index: number) => {
+    const message = messages[index];
     if (message.role === "user") userOrdinal += 1;
     return (
       <TranscriptEntry
@@ -204,6 +234,15 @@ export const SettledMessages = memo(function SettledMessages({
         isRunning={isRunning}
         actions={actions}
       />
+    );
+  };
+  return segments.map((segment) => {
+    if (segment.kind === "solo") return entryAt(segment.index);
+    return (
+      <div key={`range-${segment.indexes[0]}`} className={`reply-range ${segment.cause}`}>
+        {segment.indexes.map(entryAt)}
+        <div className="reply-range-line">{replyStopLine(segment.cause)}</div>
+      </div>
     );
   });
 });
@@ -476,7 +515,9 @@ export function TranscriptEntry({
   }
 
   if (message.role === "assistant") {
-    const stopLine = replyStopLine(message.stopReason, message.stopKept);
+    // Range rows (aborted/error) get their line from the range wrapper; a
+    // length cut is not dropped, so it stays a plain line under the text.
+    const stopLine = message.stopReason === "length" ? replyStopLine("length") : null;
     return (
       <>
         {(developer || showThinking) && message.thinking ? (

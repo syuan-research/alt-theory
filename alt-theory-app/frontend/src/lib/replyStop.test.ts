@@ -1,14 +1,18 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { replyStopLine } from "./replyStop.ts";
+import { replyStopLine, retryDroppedLine } from "./replyStop.ts";
 
-test("the stop line says what stopped the text and whether the model still sees it", () => {
-  assert.equal(replyStopLine("aborted", true), "Stopped here. The model can see this part.");
-  assert.equal(replyStopLine("error", true), "Failed here. The model can see this part.");
-  assert.equal(replyStopLine("error", false), "Failed here. This part was not sent to the model.");
+test("the stop line says what happened and whether the model can see the output", () => {
+  assert.equal(replyStopLine("aborted"), "Stopped. The model can't see this output.");
+  assert.equal(replyStopLine("error"), "The reply failed. The model can't see this output.");
+  // a length cut keeps the text in context — no drop claim, ever
   assert.equal(
-    replyStopLine("length", false),
-    "Cut off here: the reply was too long. This part was not sent to the model.",
+    replyStopLine("length"),
+    "Cut off here: the reply was too long. The model can see this part.",
   );
-  assert.equal(replyStopLine(undefined, undefined), null);
+  assert.equal(replyStopLine(undefined), null);
+  assert.equal(
+    retryDroppedLine(),
+    "The previous attempt failed. The model can't see that output.",
+  );
 });

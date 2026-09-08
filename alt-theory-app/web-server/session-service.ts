@@ -274,7 +274,13 @@ export type SessionServiceEvent =
           | "awaiting-user"
           | "idle"
           | "error";
-        retry?: { attempt: number; maxAttempts: number; delayMs: number };
+        retry?: {
+          attempt: number;
+          maxAttempts: number;
+          delayMs: number;
+          /** True when the attempt Pi is dropping produced visible text — the only case a lost-content line may claim. */
+          droppedPartialText?: boolean;
+        };
       };
     }
   | {
@@ -387,6 +393,26 @@ interface ManagedSession {
 const SUBAGENT_CONCURRENCY = 10;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Whether the Pi agent's trailing message is an assistant with visible text
+ * (thinking does not count). Read at auto_retry_start, which Pi emits before
+ * dropping that assistant from state — after that the fact is gone.
+ */
+function trailingAssistantHasText(managed: ManagedSession): boolean {
+  const last = managed.session.agent.state.messages.at(-1) as
+    | { role?: unknown; content?: unknown }
+    | undefined;
+  if (!last || last.role !== "assistant") return false;
+  const content = last.content;
+  if (typeof content === "string") return content.trim().length > 0;
+  if (!Array.isArray(content)) return false;
+  return content.some(
+    (part) =>
+      part && typeof part === "object" && (part as { type?: unknown }).type === "text" &&
+      String((part as { text?: unknown }).text ?? "").trim().length > 0,
+  );
+}
 
 /**
  * An already-typed upstream abort signal (Pi aborts surface as
@@ -4254,10 +4280,14 @@ export class SessionService implements AgentTeamBridge {
         // Pi is waiting out a transient provider error before resuming the
         // turn from the last completed step. Completed tool calls stay in
         // context; only the dropped stream's partial message is regenerated.
+        // Pi emits this before removing that assistant from state, so its
+        // trailing message is still readable here — whether it had visible
+        // text is the difference between a claimable loss and silence.
         this.emitRunPhase(managed, "retrying", {
           attempt: event.attempt,
           maxAttempts: event.maxAttempts,
           delayMs: event.delayMs,
+          droppedPartialText: trailingAssistantHasText(managed),
         });
         break;
       case "compaction_start":
@@ -4355,7 +4385,12 @@ export class SessionService implements AgentTeamBridge {
       | "awaiting-user"
       | "idle"
       | "error",
-    retry?: { attempt: number; maxAttempts: number; delayMs: number },
+    retry?: {
+      attempt: number;
+      maxAttempts: number;
+      delayMs: number;
+      droppedPartialText?: boolean;
+    },
   ): void {
     this.emit(managed, {
       type: "run_phase",
