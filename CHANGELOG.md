@@ -6,27 +6,15 @@ detail lives in commit history and `development/`.
 
 ---
 
-## v1.5.1 — unreleased
+## v1.6.0-beta.1 — unreleased
 
-### Conversation status
+This is a large update. Working folders become projects with their own names
+and clearer wording, the desktop window gets a new look with a scalable view
+size and unified dark mode, stop and failure notices now say exactly what the
+model can and cannot see, and one typographic scale runs through the whole
+app — along with many other improvements and fixes.
 
-- The app no longer says a reply is finished before it is. Automatic
-  compaction after a reply used to arrive after a false "done": a message
-  sent in that moment was quietly folded into the closing reply and its
-  bubble did not appear until later. The status now waits for the whole
-  turn.
-- After a compaction the context ring shows an empty dial with a note,
-  instead of vanishing, until the next reply reports its usage.
-- The grey line under an unfinished reply now belongs to the text above it
-  and says two things: what stopped it (you, a failure, or the reply being
-  too long) and whether the model can still see that text. A failed attempt
-  that produced no text shows no line at all.
-- A failed reply no longer paints the conversation badge "Error"; the
-  notice and the retry / continue options say what happened.
-- If a subscription login (GitHub Copilot, Kimi) can no longer be refreshed,
-  the notice says so and points to Settings → Models.
-
-### Projects
+### Projects and folders
 
 - Every working folder is now a project with its own name. The name
   defaults to the folder's name and can be edited on the Projects and
@@ -57,19 +45,66 @@ detail lives in commit history and `development/`.
   disappearing; starting a conversation in it is refused until you point
   the project at a folder that exists.
 
+### Desktop window and appearance
+
+- The work area is now a floating card on a quiet grey background, with
+  the window's title bar hidden — drag the top edge of the window to move
+  it. (Landed on Windows; Mac verification is in progress.)
+- View size scales the whole app — Ctrl+= / Ctrl+- / Ctrl+0, or the
+  slider under Settings → General — and keeps your choice after restart.
+- Scrollbars are unified app-wide, and dark mode closes its gaps: the
+  title-bar controls, native controls, and the file-diff view all follow
+  the theme.
+- Dropdown menus replace the native ones across settings and adapt to
+  narrow windows; the window's minimum width is now 600 px.
+
+### Conversation status
+
+- The app no longer says a reply is finished before it is. Automatic
+  compaction after a reply used to arrive after a false "done": a message
+  sent in that moment was quietly folded into the closing reply and its
+  bubble did not appear until later. The status now waits for the whole
+  turn.
+- After a compaction the context ring shows an empty dial with a note,
+  instead of vanishing, until the next reply reports its usage.
+- The line under an unfinished reply now marks exactly what the model
+  cannot see. A stopped or failed attempt is invisible to the model as a
+  whole, so all of its text sits on a light background — red-tinted when
+  something failed, grey when you stopped it — with one line underneath.
+  Completed replies, tool calls and their results before a failure are
+  never called lost. A reply cut off for being too long keeps its text in
+  the model's context; the line no longer suggests otherwise. During a
+  connection retry, a lost-output line appears only when the dropped
+  attempt had actually written something.
+- A failed reply no longer paints the conversation badge "Error"; the
+  notice and the retry / continue options say what happened.
+- If a subscription login (GitHub Copilot, Kimi) can no longer be
+  refreshed, the notice says so and points to Settings → Models.
+
+### Reading and typography
+
+- Font sizes across the app follow one five-step scale; the conversation
+  body settles at 14 px. Menus, rails, panels and dialogs draw from the
+  same steps.
+- Chinese text in the brand serif renders in Noto Serif SC; Western text
+  stays Georgia. Project names in the left rail use a monospace face.
+- Same-job text greys are unified across menus, list titles, chips and
+  card bodies; full-path lines everywhere share one secondary monospace
+  style.
+
 ### Updates
 
 - The desktop app looks up the latest GitHub release at most once a day.
-  About has a Check for updates button. When a newer version is available,
-  the left rail shows one line with a download link; Dismiss hides that
-  version.
+  About has a Check for updates button. When a newer version is
+  available, the left rail shows one line with a download link; Dismiss
+  hides that version.
 
 ### File changes
 
 - Opening the Changes pane again no longer starts from a blank loading
   state when nothing in the conversation has changed.
 
-### Other
+### Other improvements and fixes
 
 - A long thinking or file block can be collapsed by clicking anywhere on
   it. Dragging to select text does not collapse it.
@@ -77,6 +112,9 @@ detail lives in commit history and `development/`.
 - A conversation that spawns subagents can start one with one of your
   existing roles. A role name that does not exist refuses the spawn
   instead of leaving a half-made subagent.
+- Editing a message you sent opens an editor as wide as its bubble,
+  instead of a narrow fixed box.
+- Forking a session keeps the thinking level you had picked for it.
 
 ## v1.5.0-beta.1 — 2026-09-04
 
