@@ -2166,8 +2166,7 @@ function WorkingFoldersPanel() {
         <div className="row2">
           <div>
             <h4>{t("Projects")}</h4>
-            <p className="lead">{t("Where conversations work.")}</p>
-            <p>{t("One main folder plus companion folders that belong with it. A conversation started here sees all of them.")}</p>
+            <p>{t("Main and companion folders are visible to the project's conversations.")}</p>
           </div>
           <button className="flat" onClick={newProject}>
             <i className="ph ph-plus" aria-hidden="true" /> {t("New project")}
@@ -2269,8 +2268,7 @@ function WorkingFoldersPanel() {
         <div className="row2">
           <div>
             <h4>{t("Global folders")}</h4>
-            <p className="lead">{t("Folders Alt may read from any conversation.")}</p>
-            <p>{t("Readable in every conversation. Tick to let Alt save changes there too.")}</p>
+            <p>{t("Readable by all conversations by default.")}</p>
           </div>
           <button className="flat" onClick={addGlobal} disabled={!folders}>
             <i className="ph ph-plus" aria-hidden="true" /> {t("Add a folder")}
@@ -2300,8 +2298,7 @@ function WorkingFoldersPanel() {
           </div>
         ))}
         {folders && folders.global.length === 0 ? <p className="fine">{t("No folders on the list yet.")}</p> : null}
-        <p className="fine">{t("Readable in Understand and Work; saving only in Work.")}</p>
-        <p className="fine">{t("Knowledge folders are readable too; you manage those in Role & Knowledge.")}</p>
+        <p className="fine">{t("Editing is limited to Work mode.")}</p>
       </div>
     </div>
   );
