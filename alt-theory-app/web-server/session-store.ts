@@ -2258,7 +2258,8 @@ function assistantContentToTranscript(
           typeof typedPart.id === "string" ? typedPart.id : undefined,
         toolPath: extractToolPath(typedPart.arguments),
         toolDetail: extractToolDetail(toolName, typedPart.arguments) ?? undefined,
-        success: true,
+        // No result yet: a call in an aborted/error message is never run by
+        // Pi, so `success` stays unset and the row reads as not completed.
         timestamp,
         entryId,
       });

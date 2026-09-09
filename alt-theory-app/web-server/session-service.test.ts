@@ -4923,6 +4923,41 @@ test("v1.5.1 M1: agent_end does not end the turn; idle and run_completed follow 
   }
 });
 
+test("tool_execution_update forwards the last output line of Pi's partial result", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const snapshot = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const managed = (service as any).sessions.get(snapshot.sessionId);
+  const events: SessionServiceEvent[] = [];
+  service.attach(snapshot.sessionId, (event) => events.push(event));
+  const update = (partialResult: unknown) =>
+    (service as any).handleAgentEvent(managed, {
+      type: "tool_execution_update",
+      toolCallId: "c1",
+      toolName: "bash",
+      args: { command: "make" },
+      partialResult,
+    });
+  const lastText = () => {
+    const event = events.at(-1);
+    return event?.type === "tool_updated" ? event.payload.text : "no tool_updated";
+  };
+  try {
+    update({ content: [{ type: "text", text: "line 1\nline 2\n\n" }] });
+    assert.equal(lastText(), "line 2");
+    update({ content: [], details: undefined }); // Pi's initial empty update
+    assert.equal(lastText(), undefined);
+    update(undefined);
+    assert.equal(lastText(), undefined);
+  } finally {
+    await service.disposeAll();
+  }
+});
+
 test("auto_retry_start reports whether the dropped attempt had visible text", async () => {
   const fixture = setupFixture();
   const service = createTestService(fixture);

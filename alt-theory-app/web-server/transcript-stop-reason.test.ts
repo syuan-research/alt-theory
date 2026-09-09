@@ -57,3 +57,28 @@ test("aborted/error mark every row of the attempt; length marks its last text; e
     ],
   );
 });
+
+// Pi never runs the tool calls of an aborted or failed assistant message, so
+// such a call has no result: the row must not read as a success (screen and
+// export both derive from `success` through toolOutcome).
+test("a tool call without a result carries no success; one with a result carries it", () => {
+  const call = (id: string, stopReason: string) => ({
+    type: "message",
+    id,
+    message: {
+      role: "assistant",
+      stopReason,
+      content: [{ type: "toolCall", id: `${id}-c`, name: "write", arguments: { path: "notes.md" } }],
+    },
+  });
+  const transcript = buildTranscriptFromEntries([
+    call("a1", "toolUse"),
+    { type: "message", id: "r1", message: { role: "toolResult", toolCallId: "a1-c", content: [{ type: "text", text: "ok" }] } },
+    call("a2", "aborted"),
+  ]);
+  const rows = transcript.filter((row) => row.role === "tool").map(({ toolCallId, success }) => ({ toolCallId, success }));
+  assert.deepEqual(rows, [
+    { toolCallId: "a1-c", success: true },
+    { toolCallId: "a2-c", success: undefined },
+  ]);
+});

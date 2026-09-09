@@ -14,63 +14,108 @@ export function fileName(path: string | null | undefined): string | null {
   return parts.length ? parts[parts.length - 1] : null;
 }
 
+type ToolState = "running" | "finished" | "failed" | "pending";
+
 /**
  * One line describing what the agent is doing, in the user's terms.
  *
- * This is the single choke point for tool display: both the live stream
- * (MessageList ToolLine) and replayed history render through it, so a branch
- * added here shows up in both. Before alpha.3 it ignored the path it was
- * given, which is why every action read "Reading file… / Writing notes…".
+ * This is the single choke point for tool display: the live stream
+ * (MessageList ToolLine), replayed history and the Markdown export all
+ * render through it, so a branch added here shows up everywhere. Every
+ * tool speaks in the row's state: running, finished, failed, or pending —
+ * a call that never got a result, which must not read as done.
  */
 export function toolLabel(
   name: string,
   path?: string | null,
   detail?: ToolDetail | null,
-  state: "running" | "finished" | "failed" | "pending" = "finished",
+  state: ToolState = "finished",
 ): string {
   if (detail?.kind === "skill" && detail.skillName) {
     return t("Using the {skillName} skill", { skillName: detail.skillName });
   }
+  const lines = (byState: Record<ToolState, string>) => byState[state];
   if (name === "bash" || name === "shell") {
     const command = detail?.kind === "command" ? detail.body.split("\n")[0] : null;
-    if (state === "failed") {
-      return command ? t("Did not run {command}", { command }) : t("Command did not run");
-    }
-    if (state === "running") return t("Running a command…");
-    return command ? t("Ran {command}", { command }) : t("Command finished");
+    return lines({
+      running: t("Running a command…"),
+      finished: command ? t("Ran {command}", { command }) : t("Command finished"),
+      failed: command ? t("Did not run {command}", { command }) : t("Command did not run"),
+      pending: command ? t("{command} did not complete", { command }) : t("Command did not complete"),
+    });
   }
 
   const kbPath = isKbPath(path);
   const named = fileName(path);
 
   if (name === "read") {
-    if (state === "failed") {
-      return named ? t("Did not read {name}", { name: named }) : t("File was not read");
-    }
-    if (kbPath) return t("Reading knowledge base…");
-    return named ? t("Reading {name}", { name: named }) : t("Reading file…");
+    return lines({
+      running: kbPath ? t("Reading knowledge base…") : named ? t("Reading {name}…", { name: named }) : t("Reading file…"),
+      finished: kbPath ? t("Read the knowledge base") : named ? t("Read {name}", { name: named }) : t("Read a file"),
+      failed: named ? t("Did not read {name}", { name: named }) : t("File was not read"),
+      pending: named ? t("Reading did not complete for {name}", { name: named }) : t("Reading did not complete"),
+    });
   }
   if (name === "grep") {
-    return kbPath ? t("Searching for relevant theories…") : t("Searching files…");
+    return lines({
+      running: kbPath ? t("Searching for relevant theories…") : t("Searching files…"),
+      finished: kbPath ? t("Searched for relevant theories") : t("Searched files"),
+      failed: t("Search failed"),
+      pending: t("Search did not complete"),
+    });
   }
   if (name === "find") {
-    return kbPath ? t("Locating knowledge base files…") : t("Locating files…");
+    return lines({
+      running: kbPath ? t("Locating knowledge base files…") : t("Locating files…"),
+      finished: kbPath ? t("Located knowledge base files") : t("Located files"),
+      failed: t("Could not locate files"),
+      pending: t("Locating files did not complete"),
+    });
   }
   if (name === "ls") {
-    if (kbPath) return t("Listing knowledge base…");
-    return named ? t("Listing {name}", { name: named }) : t("Listing resources…");
+    return lines({
+      running: kbPath ? t("Listing knowledge base…") : named ? t("Listing {name}…", { name: named }) : t("Listing resources…"),
+      finished: kbPath ? t("Listed the knowledge base") : named ? t("Listed {name}", { name: named }) : t("Listed resources"),
+      failed: named ? t("Did not list {name}", { name: named }) : t("Listing failed"),
+      pending: named ? t("Listing did not complete for {name}", { name: named }) : t("Listing did not complete"),
+    });
   }
   if (name === "write") {
-    if (state === "failed") return named ? t("Did not write {name}", { name: named }) : t("File was not written");
-    if (state === "pending") return named ? t("Writing did not complete for {name}", { name: named }) : t("Writing did not complete");
-    return named ? t("Writing {name}", { name: named }) : t("Writing notes…");
+    return lines({
+      running: named ? t("Writing {name}…", { name: named }) : t("Writing notes…"),
+      finished: named ? t("Wrote {name}", { name: named }) : t("Wrote notes"),
+      failed: named ? t("Did not write {name}", { name: named }) : t("File was not written"),
+      pending: named ? t("Writing did not complete for {name}", { name: named }) : t("Writing did not complete"),
+    });
   }
   if (name === "edit" || name === "multi_edit" || name === "str_replace") {
-    if (state === "failed") return named ? t("Did not edit {name}", { name: named }) : t("File was not edited");
-    if (state === "pending") return named ? t("Editing did not complete for {name}", { name: named }) : t("Editing did not complete");
-    return named ? t("Editing {name}", { name: named }) : t("Editing a file…");
+    return lines({
+      running: named ? t("Editing {name}…", { name: named }) : t("Editing a file…"),
+      finished: named ? t("Edited {name}", { name: named }) : t("Edited a file"),
+      failed: named ? t("Did not edit {name}", { name: named }) : t("File was not edited"),
+      pending: named ? t("Editing did not complete for {name}", { name: named }) : t("Editing did not complete"),
+    });
   }
-  if (name === "web_search" || name === "websearch") return t("Searching online…");
-  if (name === "fetch" || name === "page_fetch") return t("Reading a web page…");
-  return t("{name}…", { name });
+  if (name === "web_search" || name === "websearch") {
+    return lines({
+      running: t("Searching online…"),
+      finished: t("Searched online"),
+      failed: t("Online search failed"),
+      pending: t("Online search did not complete"),
+    });
+  }
+  if (name === "fetch" || name === "page_fetch") {
+    return lines({
+      running: t("Reading a web page…"),
+      finished: t("Read a web page"),
+      failed: t("Did not read the web page"),
+      pending: t("Reading the web page did not complete"),
+    });
+  }
+  return lines({
+    running: t("{name}…", { name }),
+    finished: name,
+    failed: t("{name} failed", { name }),
+    pending: t("{name} did not complete", { name }),
+  });
 }

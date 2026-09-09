@@ -84,6 +84,7 @@ export function handleConversationStreamMessage(
           ...current,
           status: toolOutcome({ success: message.payload.success }),
           success: message.payload.success,
+          progressText: undefined,
         };
         const remaining = { ...activeTools.current };
         delete remaining[message.payload.callId];

@@ -13,6 +13,7 @@ test("Markdown export keeps thinking and tool descriptions but omits tool result
       toolCallId: "read-1",
       toolName: "read",
       toolPath: "notes/report.md",
+      success: true,
       timestamp: null,
     },
     {
@@ -26,7 +27,7 @@ test("Markdown export keeps thinking and tool descriptions but omits tool result
   ]);
 
   assert.match(markdown, /### Thinking\n\nI should inspect it\./);
-  assert.match(markdown, /Tool:\*\* Reading report\.md/);
+  assert.match(markdown, /Tool:\*\* Read report\.md/);
   assert.doesNotMatch(markdown, /raw output must stay out/);
 });
 
@@ -62,5 +63,5 @@ test("Markdown export does not present an unfinished write as complete", () => {
   ]);
 
   assert.match(markdown, /Writing did not complete for report\.md/);
-  assert.doesNotMatch(markdown, /Tool:\*\* Writing report\.md/);
+  assert.doesNotMatch(markdown, /Tool:\*\* Wrote report\.md/);
 });

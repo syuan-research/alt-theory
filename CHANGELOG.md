@@ -76,6 +76,15 @@ app — along with many other improvements and fixes.
   the model's context; the line no longer suggests otherwise. During a
   connection retry, a lost-output line appears only when the dropped
   attempt had actually written something.
+- Tool rows now say what actually happened. A finished write reads
+  "Wrote notes.md", not "Writing notes.md" with a tick; a call that never
+  ran — the tools of a stopped or failed reply are never run — shows a
+  neutral dash and "Writing did not complete for notes.md" instead of a
+  tick, on screen and in the Markdown export alike. Every tool has the
+  same four states: running, finished, failed, did not complete.
+- A running command shows the last line of its output beside "Running a
+  command…", in the conversation and in the header, so a long command is
+  no longer a bare spinner.
 - A failed reply no longer paints the conversation badge "Error"; the
   notice and the retry / continue options say what happened.
 - If a subscription login (GitHub Copilot, Kimi) can no longer be

@@ -1,5 +1,6 @@
 import type { TranscriptMessage } from "@/api/types";
 import { t } from "@/i18n";
+import { toolOutcome } from "@/lib/toolOutcome";
 import { toolLabel } from "@/lib/tools";
 
 function quote(text: string): string {
@@ -12,14 +13,6 @@ export function sessionTranscriptToMarkdown(
 ): string {
   const sections = [`# ${title.trim().replace(/\s+/g, " ") || t("Conversation")}`];
   const renderedToolCalls = new Set<string>();
-  const toolStates = new Map(
-    transcript
-      .filter((message) => message.toolType === "result" && message.toolCallId)
-      .map((message) => [
-        message.toolCallId!,
-        message.success === false ? "failed" as const : "finished" as const,
-      ]),
-  );
 
   for (const message of transcript) {
     const text = message.text.trim();
@@ -40,13 +33,7 @@ export function sessionTranscriptToMarkdown(
           message.toolName || message.text || "tool",
           message.toolPath,
           message.toolDetail,
-          message.success === false
-            ? "failed"
-            : message.success === true
-              ? "finished"
-              : message.toolCallId
-                ? (toolStates.get(message.toolCallId) ?? "pending")
-                : undefined,
+          toolOutcome({ success: message.success }),
         )}`,
       );
     } else if (message.role === "system" && text) {

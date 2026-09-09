@@ -13,7 +13,7 @@ import { cn } from "@/lib/cn";
 import { hasNativeBridge, pickDirectory, revealPath } from "@/lib/native";
 import { shouldToggleCollapseOnClick } from "@/lib/collapseAnywhere";
 import { replyStopLine } from "@/lib/replyStop";
-import { toolOutcome } from "@/lib/toolOutcome";
+import { toolOutcome, type ToolOutcome } from "@/lib/toolOutcome";
 import { t } from "@/i18n";
 import { autosizeTextarea } from "@/lib/autosizeTextarea";
 import { useStickToBottom } from "@/hooks/useStickToBottom";
@@ -373,22 +373,26 @@ function countLines(text: string): number {
   return text.trim() ? text.split(/\r?\n/).length : 0;
 }
 
+/** A tool row's mark and tone follow its outcome; pending stays neutral —
+ * the reason the call never ran is said by the reply's own range line. */
+const TOOL_ICON: Record<ToolOutcome, string> = {
+  running: "ph ph-circle-notch",
+  finished: "ph ph-check",
+  failed: "ph ph-x",
+  pending: "ph ph-minus",
+};
+const TOOL_TONE: Record<ToolOutcome, "danger" | "ok" | "running" | "pending"> = {
+  running: "running",
+  finished: "ok",
+  failed: "danger",
+  pending: "pending",
+};
+
 function ToolLine({ tool }: { tool: ActiveToolState }) {
   const outcome = toolOutcome({ running: tool.status === "running", success: tool.success });
   return (
-    <SysLine
-      detail={outcome === "running" ? null : tool.detail}
-      tone={outcome === "failed" ? "danger" : outcome === "finished" ? "ok" : "running"}
-    >
-      <i
-        className={
-          outcome === "running"
-            ? "ph ph-circle-notch"
-            : outcome === "failed"
-              ? "ph ph-x"
-              : "ph ph-check"
-        }
-      />
+    <SysLine detail={outcome === "running" ? null : tool.detail} tone={TOOL_TONE[outcome]}>
+      <i className={TOOL_ICON[outcome]} />
       {toolLabel(tool.toolName, tool.path, tool.detail, outcome)}
       {tool.progressText ? ` — ${tool.progressText}` : ""}
     </SysLine>
@@ -533,8 +537,8 @@ export function TranscriptEntry({
     if (isDuplicateToolCall) return null;
     const outcome = toolOutcome({ success: message.success });
     return (
-      <SysLine tone={outcome === "failed" ? "danger" : "ok"} detail={message.toolDetail}>
-        <i className={outcome === "failed" ? "ph ph-x" : "ph ph-check"} />
+      <SysLine tone={TOOL_TONE[outcome]} detail={message.toolDetail}>
+        <i className={TOOL_ICON[outcome]} />
         {toolLabel(
           message.toolName || message.text || "tool",
           message.toolPath,
@@ -793,7 +797,7 @@ function SysLine({
   detail,
 }: {
   children: React.ReactNode;
-  tone?: "danger" | "ok" | "running";
+  tone?: "danger" | "ok" | "running" | "pending";
   /** When present the line becomes expandable — see ToolDetailBody. */
   detail?: ToolDetail | null;
 }) {
@@ -802,6 +806,7 @@ function SysLine({
     tone === "danger" && "sys-danger",
     tone === "ok" && "sys-ok",
     tone === "running" && "sys-running",
+    tone === "pending" && "sys-pending",
   );
   if (!detail || detail.kind === "skill") {
     return <div className={className}>{children}</div>;

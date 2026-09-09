@@ -771,7 +771,8 @@ export interface ActiveToolState {
   toolName: string;
   path?: string | null;
   detail?: ToolDetail | null;
-  status: "running" | "finished" | "failed";
+  status: "running" | "finished" | "failed" | "pending";
+  /** Last output line of a running command (Pi sends bash progress only). */
   progressText?: string;
   success?: boolean;
 }

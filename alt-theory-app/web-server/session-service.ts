@@ -292,7 +292,7 @@ export type SessionServiceEvent =
         detail?: ToolDetail;
       };
     }
-  | { type: "tool_updated"; payload: { callId: string } }
+  | { type: "tool_updated"; payload: { callId: string; text?: string } }
   | { type: "tool_finished"; payload: { callId: string; success: boolean } }
   | { type: "run_completed"; payload: SessionSnapshot }
   | { type: "session_updated"; payload: SessionSnapshot }
@@ -4263,7 +4263,10 @@ export class SessionService implements AgentTeamBridge {
       case "tool_execution_update":
         this.emit(managed, {
           type: "tool_updated",
-          payload: { callId: event.toolCallId },
+          payload: {
+            callId: event.toolCallId,
+            text: lastOutputLine(event.partialResult),
+          },
         });
         break;
       case "tool_execution_end":
@@ -4810,6 +4813,21 @@ function configChangedFields(
     fields.push("customInstructionRef");
   }
   return fields;
+}
+
+/**
+ * The last non-empty line of a tool's partial result (Pi's bash tool sends
+ * the accumulated output snapshot, already throttled) — the one line a
+ * running command row can show.
+ */
+function lastOutputLine(partialResult: unknown): string | undefined {
+  const content = (partialResult as { content?: unknown })?.content;
+  if (!Array.isArray(content)) return undefined;
+  const text = content
+    .map((part) => (part as { type?: string; text?: string })?.type === "text" ? (part as { text?: string }).text ?? "" : "")
+    .join("");
+  const line = text.trimEnd().split("\n").pop()?.trim();
+  return line ? line.slice(0, 200) : undefined;
 }
 
 function extractToolPathFromEvent(event: AgentSessionEvent): string | null {

@@ -139,7 +139,14 @@ Where a status fact lives (v1.5.1):
   (`buildTranscriptFromEntries`), the same function live and on reload.
   A row-level fact (stop line, tool outcome, compaction divider) is set
   there or derived by one shared client function (`toolOutcome`,
-  `replyStopLine`), never twice.
+  `replyStopLine`), never twice. A tool-call row carries `success` only
+  once its result entry exists; a call with no result (Pi never runs the
+  calls of an aborted or failed assistant message) is `pending` — the
+  conversation, the Related pane and the Markdown export all read it
+  through `toolOutcome`, and `toolLabel` speaks in that state (running /
+  finished / failed / pending) for every tool. A running command's row
+  shows the last line of Pi's partial result (`tool_updated.text`,
+  bash only), dropped when the tool finishes.
 - **The client renders, it does not derive.** `runStateView`
   (`frontend/src/lib/runState.ts`) is the one combination point: the
   socket's own state (set by the socket only), the server's run fact

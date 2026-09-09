@@ -615,7 +615,7 @@
   .group-more { display: block; width: calc(100% - 16px); margin: 2px 8px 6px; padding: 4px 8px; text-align: left; background: none; border: none; font: inherit; font-size: var(--fs-secondary); color: var(--text-3); cursor: pointer; border-radius: var(--r-sm); }
   .group-more:hover { background: var(--card-2); color: var(--ink); }
   .sys-line.sys-ok { border-left-color: var(--color-success); }
-  .sys-line.sys-running { border-left-color: var(--color-text-muted); }
+  .sys-line.sys-running, .sys-line.sys-pending { border-left-color: var(--color-text-muted); }
 
   /* an expandable tool line: the action stays one quiet line, the evidence
      is one click away and never competes with the conversation (alpha.3) */
