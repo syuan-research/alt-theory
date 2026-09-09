@@ -415,6 +415,17 @@
   .app-root > .pane-resizer { margin-right: -10px; }
   .cols.a2cols .pane-resizer:last-of-type { margin-left: -10px; }
 
+  /* macOS bundle: the OS paints the traffic lights over the window's top-left
+     — measured 14px buttons spanning x 9–68, y 17–30, i.e. already centred in
+     the 48px band. The rail cannot share that row: collapsed it is 52px wide,
+     narrower than the buttons themselves, and expanded the buttons sit exactly
+     on the brand mark. So the whole rail starts below the band and the band
+     stays empty across the full window width — one continuous drag strip with
+     only the lights in it. Windows keeps its layout (its buttons are top-RIGHT
+     and the right rail already reserves for them). */
+  [data-mac-chrome] .left { position: relative; padding-top: var(--titlebar-h); }
+  [data-mac-chrome] .left::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: var(--titlebar-h); -webkit-app-region: drag; }
+
   /* ------- left ------- */
   .left { width: var(--left-width); flex-shrink: 0; background: var(--panel); display: flex; flex-direction: column; }
   .app-root.leftCol .left { width: 52px; }

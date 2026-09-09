@@ -9,6 +9,9 @@
 const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
 contextBridge.exposeInMainWorld("altElectron", {
+  /** Where the OS paints the window buttons differs per platform (macOS: the
+      traffic lights sit in the window's top-left, over the app's left rail). */
+  platform: process.platform,
   pickDirectory: () => ipcRenderer.invoke("alt:pickDirectory"),
   pickFiles: () => ipcRenderer.invoke("alt:pickFiles"),
   revealPath: (target) => ipcRenderer.invoke("alt:revealPath", target),

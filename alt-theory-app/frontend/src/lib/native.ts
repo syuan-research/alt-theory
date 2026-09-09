@@ -10,6 +10,7 @@ export interface AppUpdateStatus {
 }
 
 interface AltElectron {
+  platform?: string;
   pickDirectory(): Promise<string | null>;
   pickFiles(): Promise<string[]>;
   revealPath(target: string): Promise<void>;
@@ -32,6 +33,15 @@ function bridge(): AltElectron | null {
 /** True when running inside the Electron bundle (native dialogs available). */
 export function hasNativeBridge(): boolean {
   return bridge() !== null;
+}
+
+/**
+ * True in the macOS bundle only: the OS paints the traffic lights over the
+ * window's top-left corner, so the left rail has to start below them. A Mac
+ * browser is not this — there is no window chrome inside the page there.
+ */
+export function isMacBundle(): boolean {
+  return bridge()?.platform === "darwin";
 }
 
 /** View-size stop (0–5) — bundle-only zoom preference, stored by the shell. */

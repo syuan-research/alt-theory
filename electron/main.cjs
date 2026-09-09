@@ -39,9 +39,16 @@ const appUpdate = require("./app-update.cjs");
 app.disableHardwareAcceleration();
 app.commandLine.appendSwitch("no-sandbox");
 
-// No window chrome: hidden title bar with OS-drawn overlay buttons, and the
-// default application menu removed entirely (20260907 bundle-chrome issue).
-Menu.setApplicationMenu(null);
+const isMac = process.platform === "darwin";
+
+// No window chrome. Windows/Linux: hidden title bar with OS-drawn overlay
+// buttons and no application menu at all (20260907 bundle-chrome issue).
+// macOS: the menu lives in the screen bar, not in the window, so removing it
+// costs the user every standard shortcut it carries (copy/paste/undo, ⌘Q, ⌘W)
+// and leaves a dead app name in the menu bar. Mac keeps a trimmed menu — the
+// four menus whose shortcuts users actually press — built after app.whenReady
+// (see buildMacMenu), since the labels follow the app language setting.
+if (!isMac) Menu.setApplicationMenu(null);
 
 // Port: honor an explicit override (ALT_THEORY_PORT / PORT) when present;
 // otherwise prefer a STABLE default port. The renderer's localStorage (UI
@@ -125,8 +132,21 @@ function createWindow() {
     minWidth: 600,
     title: "Alt Theory",
     backgroundColor: "#ebebec",
+    // Both platforms hide the title bar; only Windows/Linux draw window
+    // buttons into the page (titleBarOverlay). On macOS the OS keeps painting
+    // the traffic lights at the window's top-left — measured at 14px buttons
+    // centred on y 23.5, i.e. already centred in the app's 48px top band, so
+    // no trafficLightPosition override is needed.
     titleBarStyle: "hidden",
-    titleBarOverlay: { color: "#ebebec", symbolColor: "#1f1e1a", height: 48 },
+    ...(isMac
+      ? {}
+      : {
+          titleBarOverlay: {
+            color: "#ebebec",
+            symbolColor: "#1f1e1a",
+            height: 48,
+          },
+        }),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -193,6 +213,9 @@ const TITLEBAR_OVERLAY = {
   dark: { color: "#1e1e22", symbolColor: "#ececeb" },
 };
 ipcMain.handle("alt:setTheme", (_event, theme) => {
+  // macOS draws its own traffic lights: no overlay band exists to recolor,
+  // and setTitleBarOverlay throws there.
+  if (isMac) return;
   const overlay = TITLEBAR_OVERLAY[theme === "dark" ? "dark" : "light"];
   try {
     mainWindow?.setTitleBarOverlay(overlay);
@@ -291,6 +314,99 @@ ipcMain.handle("alt:setViewSize", (_event, stop) => {
   setViewStop(stop);
   return viewStop;
 });
+
+// --- macOS screen menu (trimmed). Four menus, no File: everything a desktop
+// user reaches for by keyboard and nothing else. Without them macOS has no
+// route for copy/paste/undo, ⌘Q or ⌘W at all — the menu bar is where the OS
+// keeps those, unlike Windows where they are window-local. Labels follow the
+// app language setting (same resolution the frontend uses). ---
+const MENU_LABELS = {
+  en: {
+    about: "About Alt Theory", hide: "Hide Alt Theory", quit: "Quit Alt Theory",
+    edit: "Edit", undo: "Undo", redo: "Redo", cut: "Cut", copy: "Copy",
+    paste: "Paste", selectAll: "Select All",
+    view: "View", zoomIn: "Zoom In", zoomOut: "Zoom Out",
+    actualSize: "Actual Size", fullScreen: "Toggle Full Screen",
+    window: "Window", minimize: "Minimize", zoom: "Zoom", close: "Close Window",
+  },
+  "zh-Hans": {
+    about: "关于 Alt Theory", hide: "隐藏 Alt Theory", quit: "退出 Alt Theory",
+    edit: "编辑", undo: "撤销", redo: "重做", cut: "剪切", copy: "拷贝",
+    paste: "粘贴", selectAll: "全选",
+    view: "显示", zoomIn: "放大", zoomOut: "缩小",
+    actualSize: "实际大小", fullScreen: "进入/退出全屏幕",
+    window: "窗口", minimize: "最小化", zoom: "缩放", close: "关闭窗口",
+  },
+  "zh-Hant-HK": {
+    about: "關於 Alt Theory", hide: "隱藏 Alt Theory", quit: "結束 Alt Theory",
+    edit: "編輯", undo: "還原", redo: "重做", cut: "剪下", copy: "拷貝",
+    paste: "貼上", selectAll: "全選",
+    view: "顯示", zoomIn: "放大", zoomOut: "縮小",
+    actualSize: "實際大小", fullScreen: "進入/退出全螢幕",
+    window: "視窗", minimize: "縮到最小", zoom: "縮放", close: "關閉視窗",
+  },
+};
+
+function menuLabels() {
+  const stored = readAppSettingsFile().lang;
+  const lang =
+    stored && stored !== "auto" ? stored : app.getLocale().toLowerCase();
+  if (MENU_LABELS[lang]) return MENU_LABELS[lang];
+  if (!lang.startsWith("zh")) return MENU_LABELS.en;
+  return lang.includes("hant") || lang.startsWith("zh-hk") || lang.startsWith("zh-tw")
+    ? MENU_LABELS["zh-Hant-HK"]
+    : MENU_LABELS["zh-Hans"];
+}
+
+function buildMacMenu() {
+  const L = menuLabels();
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate([
+      {
+        label: app.name,
+        submenu: [
+          { role: "about", label: L.about },
+          { type: "separator" },
+          { role: "hide", label: L.hide },
+          { type: "separator" },
+          { role: "quit", label: L.quit },
+        ],
+      },
+      {
+        label: L.edit,
+        submenu: [
+          { role: "undo", label: L.undo },
+          { role: "redo", label: L.redo },
+          { type: "separator" },
+          { role: "cut", label: L.cut },
+          { role: "copy", label: L.copy },
+          { role: "paste", label: L.paste },
+          { role: "selectAll", label: L.selectAll },
+        ],
+      },
+      {
+        label: L.view,
+        submenu: [
+          // The app's own six view-size stops, not Chromium's zoom roles, so
+          // the menu and the Settings slider stay one setting.
+          { label: L.zoomIn, accelerator: "Command+=", click: () => setViewStop(viewStop + 1) },
+          { label: L.zoomOut, accelerator: "Command+-", click: () => setViewStop(viewStop - 1) },
+          { label: L.actualSize, accelerator: "Command+0", click: () => setViewStop(DEFAULT_VIEW_STOP) },
+          { type: "separator" },
+          { role: "togglefullscreen", label: L.fullScreen },
+        ],
+      },
+      {
+        label: L.window,
+        submenu: [
+          { role: "minimize", label: L.minimize },
+          { role: "zoom", label: L.zoom },
+          { role: "close", label: L.close },
+        ],
+      },
+    ])
+  );
+}
 
 function publicUpdateStatus() {
   const dismissed = readAppSettingsFile().updateCheck?.dismissedVersion;
@@ -420,6 +536,7 @@ ipcMain.handle("alt:openExternal", async (_event, url) => {
 });
 
 app.whenReady().then(async () => {
+  if (isMac) buildMacMenu();
   createWindow();
 
   // Local bundle mode is one codebase with an explicit runtime/distribution
@@ -484,7 +601,18 @@ app.whenReady().then(async () => {
 });
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit();
+  if (!isMac) app.quit();
+});
+
+// macOS convention: ⌘W closes the window but the app stays in the dock, so
+// clicking the dock icon (or ⌘Tab + reopen) must bring the window back.
+app.on("activate", () => {
+  if (mainWindow) {
+    mainWindow.show();
+    return;
+  }
+  createWindow();
+  if (loadedUrl) loadShell();
 });
 
 app.on("before-quit", async () => {
