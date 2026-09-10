@@ -6,13 +6,13 @@ detail lives in commit history and `development/`.
 
 ---
 
-## v1.6.0-beta.1 — unreleased
+## v1.6.0-beta.1 — 2026-09-10
 
-This is a large update. Working folders become projects with their own names
-and clearer wording, the desktop window gets a new look with a scalable view
-size and unified dark mode, stop and failure notices now say exactly what the
-model can and cannot see, and one typographic scale runs through the whole
-app — along with many other improvements and fixes.
+Projects and global folders make read/write permission control more
+flexible and reduce the number of approvals. The desktop gets a new look
+that helps you focus, with a scalable view size and unified dark mode.
+Stop and failure notices in conversation status are more precise — along
+with many other stability and user-experience improvements and fixes.
 
 ### Projects and folders
 
