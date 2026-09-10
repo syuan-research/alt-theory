@@ -45,9 +45,7 @@ export function ConfirmDialog({
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="confirm-dialog-message"
-        className={cn(
-          "w-full max-w-md rounded-lg border border-hairline bg-surface p-4 shadow-lg"
-        )}
+        className={cn("ui-dialog w-full max-w-md p-4")}
         onClick={(event) => event.stopPropagation()}
       >
         <p id="confirm-dialog-message" className="text-[length:var(--fs-primary)] text-ink">

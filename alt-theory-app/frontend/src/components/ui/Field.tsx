@@ -19,14 +19,11 @@ export function FieldFrame({ label, hint, children, className }: FieldFrameProps
   );
 }
 
-const controlClasses =
-  "w-full rounded-md border border-hairline bg-surface px-2.5 py-2 text-[length:var(--fs-primary)] text-ink outline-none transition-colors placeholder:text-text-muted/85 focus:border-ink-soft disabled:cursor-not-allowed disabled:text-text-muted";
-
 export function TextInput({
   className,
   ...props
 }: InputHTMLAttributes<HTMLInputElement>) {
-  return <input className={cn(controlClasses, className)} {...props} />;
+  return <input className={cn("ui-field", className)} {...props} />;
 }
 
 export function TextArea({
@@ -35,7 +32,7 @@ export function TextArea({
 }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return (
     <textarea
-      className={cn(controlClasses, "min-h-24 resize-y", className)}
+      className={cn("ui-field min-h-24 resize-y", className)}
       {...props}
     />
   );
@@ -45,5 +42,5 @@ export function Select({
   className,
   ...props
 }: SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select className={cn(controlClasses, "py-1.5", className)} {...props} />;
+  return <select className={cn("ui-field", className)} {...props} />;
 }

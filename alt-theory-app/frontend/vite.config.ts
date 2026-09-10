@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
@@ -8,6 +8,16 @@ const backendOrigin = process.env.ALT_THEORY_BACKEND_URL ?? "http://127.0.0.1:30
 const appVersion = (JSON.parse(
   readFileSync(path.resolve(__dirname, "../../package.json"), "utf8"),
 ) as { version: string }).version;
+
+function nodeModulesAllow(): string[] {
+  const local = path.resolve(__dirname, "node_modules");
+  try {
+    const real = realpathSync(local);
+    return real === local ? [local] : [local, real];
+  } catch {
+    return [local];
+  }
+}
 
 export default defineConfig({
   define: {
@@ -21,6 +31,9 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    fs: {
+      allow: [path.resolve(__dirname, "../.."), ...nodeModulesAllow()],
+    },
     proxy: {
       "/api": {
         target: backendOrigin,

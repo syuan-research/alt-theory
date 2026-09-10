@@ -177,7 +177,7 @@ export function SessionImportDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="session-import-title"
-        className="max-h-[calc(100vh-2rem)] w-full max-w-2xl overflow-y-auto rounded-lg border border-hairline bg-surface p-5 shadow-lg"
+        className="ui-dialog max-h-[calc(100vh-2rem)] w-full max-w-2xl overflow-y-auto p-5"
         onClick={(event) => event.stopPropagation()}
       >
         <h2 id="session-import-title" className="text-lg font-semibold text-ink">
@@ -214,7 +214,7 @@ export function SessionImportDialog({
           {t("Search")}
           <input
             type="search"
-            className="mt-1 w-full rounded-md border border-hairline bg-canvas px-3 py-2 text-sm"
+            className="ui-field mt-1"
             placeholder={t("Title, main folder, or conversation text")}
             value={query}
             disabled={busy}
@@ -225,7 +225,7 @@ export function SessionImportDialog({
         <label className="mt-3 block text-sm font-medium text-ink">
           {t("Conversation")}
           <select
-            className="mt-1 w-full rounded-md border border-hairline bg-canvas px-3 py-1 text-sm"
+            className="ui-field ui-listbox mt-1"
             size={8}
             value={sourceId}
             disabled={busy}

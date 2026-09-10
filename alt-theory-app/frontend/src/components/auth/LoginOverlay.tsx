@@ -31,7 +31,7 @@ export function LoginOverlay({ onLogin, error }: LoginOverlayProps) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-canvas/90 p-4">
       <form
         onSubmit={handleSubmit}
-        className="w-full max-w-sm space-y-4 rounded-lg border border-hairline bg-surface p-5 shadow-sm"
+        className="ui-dialog w-full max-w-sm space-y-4 p-5"
       >
         <SectionTitle>{t("Sign in")}</SectionTitle>
         <FieldFrame label={t("Account ID")} hint={t("Use the account id provided for this pilot.")}>
