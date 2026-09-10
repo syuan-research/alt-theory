@@ -95,6 +95,7 @@
   --hairline: var(--color-hairline);
   --hover: var(--color-hover);
   --selected: var(--color-selected);
+  --row-active: color-mix(in srgb, var(--panel) 92%, var(--ink));
   --danger: var(--color-danger);
   --mode-understand: var(--color-mode-understand);
   --mode-understand-soft: var(--color-mode-understand-soft);
@@ -544,8 +545,8 @@
   .sess {
     flex: 1;
     min-width: 0; display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: var(--r-sm); cursor: pointer; color: var(--ink-soft); font-size: var(--fs-primary); text-align: left; white-space: nowrap; overflow: hidden; }
-  .session-row:hover .sess, .session-row:focus-within .sess { background: var(--hover); }
-  .sess.active { background: color-mix(in srgb, var(--panel) 92%, var(--ink)); font-weight: 500; }
+  .session-row:hover .sess, .session-row:focus-within .sess { background: var(--row-active); }
+  .sess.active { background: var(--row-active); font-weight: 500; }
   .sess .s-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .sess .s-fork { color: var(--text-3); flex-shrink: 0; }
   .family-fold { position: absolute; z-index: 1; display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 20px; padding: 0; border: 0; background: transparent; color: var(--text-3); cursor: pointer; }
@@ -805,7 +806,7 @@
     background: linear-gradient(90deg, transparent 0, var(--reveal-fade, var(--panel)) 30px);
   }
   .group-row .reveal-layer { --reveal-fade: var(--panel); }
-  .session-row .reveal-layer { --reveal-fade: var(--hover); }
+  .session-row .reveal-layer { --reveal-fade: var(--row-active); }
   /* right-edge affordances yield the stage while the controls are up */
   .reveal-row:hover .group-label .tw,
   .reveal-row:focus-within .group-label .tw { opacity: 0; }
@@ -1135,15 +1136,16 @@
   .inline-search { display: flex; align-items: center; gap: 7px; margin: 2px 12px 6px; padding: 5px 9px; color: var(--text-3); }
   .inline-search .clear { border: 0; background: none; color: var(--text-3); cursor: pointer; padding: 0 2px; font-size: 0.8rem; }
   .workspace-list-actions > button.on { color: var(--ink); }
-  .sc-item, .file-item { background: var(--canvas); border: none; border-radius: var(--r-md); padding: 10px 12px; margin-bottom: 8px; cursor: pointer; width: 100%; text-align: left; display: block; }
-  .sc-item:hover, .file-item:hover { background: var(--hover); }
+  .sc-item { background: var(--canvas); border: none; border-radius: var(--r-md); padding: 10px 12px; margin-bottom: 8px; cursor: pointer; width: 100%; text-align: left; display: block; }
+  .sc-item:hover { background: var(--hover); }
   .sc-item .t { font-size: var(--fs-primary); font-weight: 500; display: flex; align-items: center; gap: 6px; color: var(--ink-soft); }
   .sc-item .d { font-size: var(--fs-secondary); color: var(--text-3); margin-top: 2px; }
-  .file-item { display: flex; align-items: center; gap: 8px; font-size: var(--fs-primary); }
+  .file-item { display: flex; align-items: center; gap: 7px; padding: 5px 8px; border-radius: var(--r-sm); background: none; border: none; margin: 0; cursor: pointer; width: 100%; text-align: left; font-size: var(--fs-primary); color: var(--ink-soft); }
+  .file-item:hover { background: var(--row-active); }
   .file-item .delta { margin-left: auto; font-family: var(--mono); font-size: var(--fs-micro); color: var(--text-2); flex-shrink: 0; }
   .tree { font-size: var(--fs-primary); }
   .tree .ti { display: flex; align-items: center; gap: 7px; padding: 5px 8px; border-radius: var(--r-sm); cursor: pointer; color: var(--ink-soft); width: 100%; text-align: left; background: none; border: none; }
-  .tree .ti:hover { background: var(--hover); }
+  .tree .ti:hover { background: var(--row-active); }
   .tree .ti span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .tree .ti.indent { padding-left: 28px; }
   .files-tree-toolbar { display: flex; justify-content: flex-end; gap: 4px; margin: 0 4px 4px; }
@@ -1158,7 +1160,7 @@
   /* Its label moved to the shared data-tip bubble (v1.4.7-beta.2); the old
      ::after tooltip went with it. The copied state keeps its own accent. */
   .files-section-title { margin: 8px 4px 6px; color: var(--text-3); font-size: var(--fs-micro); font-weight: 600; }
-  .working-folders { margin-bottom: 10px; padding: 4px 8px 10px; border-radius: var(--r-md); background: var(--canvas); }
+  .working-folders { margin-bottom: 10px; padding: 0; }
   .working-folder-group + .working-folder-group { border-top: 1px solid var(--hairline); padding-top: 6px; }
   .working-folder { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 7px; padding: 9px 8px 5px; border-radius: var(--r-sm); background: transparent; color: var(--ink-soft); }
   .working-folder-role { font-size: var(--fs-primary); font-weight: 500; }
@@ -1169,7 +1171,7 @@
   .working-tree { max-height: 62vh; overflow: auto; margin: 0 0 8px 20px; border-left: 1px solid var(--hairline); padding-left: 4px; }
   .working-tree .ti { display: flex; align-items: center; gap: 6px; width: 100%; border: none; background: transparent; color: var(--ink-soft); padding: 4px 6px; text-align: left; font: inherit; font-size: var(--fs-primary); cursor: pointer; }
   .working-tree .ti span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .working-tree .ti:hover { background: var(--hover); }
+  .working-tree .ti:hover { background: var(--row-active); }
   .working-tree .ti[aria-disabled="true"] { opacity: 0.45; cursor: default; }
   .tree-caret { font-size: 0.65rem; transition: transform 0.12s; }
   .tree-caret.closed { transform: rotate(-90deg); }
