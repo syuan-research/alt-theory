@@ -96,8 +96,10 @@ const defaultSelectors: SessionSelectors = {
 /** Why a conversation in the list is asking for attention (alpha.3). */
 export type SessionAlert = "done" | "failed" | "approval";
 
+export type ComposerNoticeIcon = "warning" | "bookmark" | "eject";
+
 export interface ComposerNotice {
-  prefix?: string;
+  prefix?: ComposerNoticeIcon;
   text: string;
   warn?: boolean;
 }
@@ -493,7 +495,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const oauthRefreshFailed = payload.failure.kind === "auth-refresh";
         setComposerNoticeTimed(
           {
-            prefix: interrupted ? undefined : "⚠",
+            prefix: interrupted ? undefined : "warning",
             text: oauthRefreshFailed
               ? failureText(payload.failure)
               : `${interrupted ? t("Run interrupted: ") : t("Run failed: ")}${failureText(payload.failure)}`,
@@ -712,7 +714,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     (message: ClientMessage): boolean => {
       const sent = wsApiRef.current?.send(message) ?? false;
       if (!sent) {
-        setComposerNoticeTimed({ prefix: "⚠", text: t("Not connected"), warn: true, });
+        setComposerNoticeTimed({ prefix: "warning", text: t("Not connected"), warn: true, });
         wsApiRef.current?.reconnect();
       }
       return sent;
@@ -988,7 +990,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         case "extension_notice":
           setComposerNoticeTimed({
-            prefix: message.payload.level === "info" ? undefined : "⚠",
+            prefix: message.payload.level === "info" ? undefined : "warning",
             text: message.payload.failure
               ? failureText(message.payload.failure)
               : message.payload.message,
@@ -1006,7 +1008,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             break;
           }
           setComposerNoticeTimed({
-            prefix: "⚠",
+            prefix: "warning",
             text: failureText(message.payload.failure),
             warn: true,
           });
@@ -1828,12 +1830,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         // say when. Local markers change nothing about what is kept.
         if (visibility === "private") {
           setComposerNoticeTimed({
-            prefix: "⏏",
+            prefix: "eject",
             text: t("Private conversations and their files are deleted 7 days after you last use them. Download anything you want to keep."),
           });
         } else if (visibility === "no-export") {
           setComposerNoticeTimed({
-            prefix: "🔖",
+            prefix: "bookmark",
             text: t("Marked as not for export. Nothing is deleted or sent anywhere — this only affects what a future export includes."),
           });
         }

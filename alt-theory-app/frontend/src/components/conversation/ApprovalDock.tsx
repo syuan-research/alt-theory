@@ -72,13 +72,7 @@ export function ApprovalDock({ request, onRespond, onSessionAllow }: ApprovalDoc
         (request.options ?? []).map((option) => (
           <button
             key={option}
-            className={
-              option === ALLOW_SESSION
-                ? "primary"
-                : DENY_LABELS.has(option)
-                  ? "deny"
-                  : ""
-            }
+            className={DENY_LABELS.has(option) ? "deny" : ""}
             onClick={() => choose(option)}
           >
             {approvalOption(option)}

@@ -337,10 +337,19 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               </span>
             ) : null}
             {app.composerNotice ? (
-              <span className={app.composerNotice.warn ? "warn" : ""}>
-                {app.composerNotice.prefix
-                  ? `${app.composerNotice.prefix} `
-                  : ""}
+              <span className={`run-tip${app.composerNotice.warn ? " warn" : ""}`}>
+                {app.composerNotice.prefix ? (
+                  <i
+                    className={`ph ${
+                      app.composerNotice.prefix === "warning"
+                        ? "ph-warning"
+                        : app.composerNotice.prefix === "bookmark"
+                          ? "ph-bookmark-simple"
+                          : "ph-export"
+                    }`}
+                    aria-hidden="true"
+                  />
+                ) : null}
                 {app.composerNotice.text}
               </span>
             ) : null}

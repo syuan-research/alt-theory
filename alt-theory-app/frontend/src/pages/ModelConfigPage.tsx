@@ -1223,11 +1223,12 @@ export function ModelConfigPage({
                       <Button
                         variant="ghost"
                         className="text-danger"
+                        aria-label={t("Remove")}
                         onClick={() =>
                           setModelRows((prev) => prev.filter((_, i) => i !== index))
                         }
                       >
-                        ✕
+                        <i className="ph ph-x" aria-hidden="true" />
                       </Button>
                     </div>
                     <div className="grid gap-2 sm:grid-cols-3">
@@ -1397,11 +1398,12 @@ export function ModelConfigPage({
                     <Button
                       variant="ghost"
                       className="text-danger"
+                      aria-label={t("Remove")}
                       onClick={() =>
                         setOptionRows((prev) => prev.filter((_, i) => i !== index))
                       }
                     >
-                      ✕
+                      <i className="ph ph-x" aria-hidden="true" />
                     </Button>
                   </div>
                 ))}
@@ -1469,7 +1471,7 @@ export function ModelConfigPage({
               aria-label={t("Dismiss")}
               onClick={() => setToast(null)}
             >
-              ✕
+              <i className="ph ph-x" aria-hidden="true" />
             </button>
           ) : null}
         </div>
