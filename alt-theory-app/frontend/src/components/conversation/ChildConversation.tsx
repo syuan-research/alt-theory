@@ -384,6 +384,15 @@ export function ChildConversation({
               <button
                 type="button"
                 className="queued-prompt-action"
+                onClick={() =>
+                  socket.send({ type: "send_queued_now", payload: { text } })
+                }
+              >
+                {t("Jump the queue")}
+              </button>
+              <button
+                type="button"
+                className="queued-prompt-action"
                 onClick={() => void recallQueued(text, false)}
                 data-tip={t("Delete")}
                 aria-label={t("Delete")}

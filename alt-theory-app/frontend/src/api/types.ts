@@ -627,6 +627,8 @@ export type ClientMessage =
       deliverAs?: "steer" | "followUp";
     }
   | { type: "abort" }
+  /** Interrupt-and-send: stop the current answer, send this queued message next. */
+  | { type: "send_queued_now"; payload: { text: string } }
   | { type: "continue_latest" }
   | { type: "compact" }
   | { type: "switch_kb"; payload: { domain: string } }
@@ -751,10 +753,15 @@ export type ServerMessage =
   /** A message steered into the running turn — broadcast so every pane
    *  (sender and late joiners) renders the bubble exactly once. */
   | { type: "user_steered"; payload: { text: string } }
-  /** Pi's prompt queue changed; `restored` = unsent texts Stop handed back. */
+  /** Pi's prompt queue changed; `restored` (+ its staged paths) = what Stop handed back. */
   | {
       type: "queue_updated";
-      payload: { steering: string[]; followUp: string[]; restored?: string[] };
+      payload: {
+        steering: string[];
+        followUp: string[];
+        restored?: string[];
+        restoredAttachments?: string[];
+      };
     }
   | { type: "approval_snapshot"; payload: ApprovalRequestPayload[] }
   | { type: "approval_requested"; payload: ApprovalRequestPayload }

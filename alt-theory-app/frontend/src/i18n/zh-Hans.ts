@@ -390,6 +390,7 @@ const catalog: Record<string, string> = {
   "Import status: {status}": "导入状态：{status}",
   "Imported {role} context": "已导入 {role} 上下文",
   "Importing…": "导入中…",
+  "Jump the queue": "插队发送",
   "In ": "在 ",
   "In {folder}": "在 {folder} 中",
   "In Work mode Alt can act in your project and global folders; boundary crossings still ask you first.": "在工作模式下，Alt可以在你的项目文件夹和全局文件夹中操作；涉及越界时仍会先征求你的同意。",

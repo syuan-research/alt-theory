@@ -307,10 +307,15 @@ export type SessionServiceEvent =
       payload: { failure: Failure; canRetry?: boolean; recovery?: TurnRecovery | null };
     }
   | { type: "user_steered"; payload: { text: string } }
-  /** Pi's prompt queue changed (card 11); `restored` = texts Stop handed back. */
+  /** Pi's prompt queue changed (card 11); `restored` (+ its staged paths) = what Stop handed back. */
   | {
       type: "queue_updated";
-      payload: { steering: string[]; followUp: string[]; restored?: string[] };
+      payload: {
+        steering: string[];
+        followUp: string[];
+        restored?: string[];
+        restoredAttachments?: string[];
+      };
     }
   | { type: "session_transcript"; payload: { messages: TranscriptMessage[] } }
   | { type: "session_metrics"; payload: SessionMetrics }
@@ -360,6 +365,12 @@ interface ManagedSession {
   internalUnsubscribe: () => void;
   /** Phase + deferred switches + Pi queue mirror (card 1 / card 11). */
   runState: RunState;
+  /**
+   * The most recent run's completion, finishRun included and never
+   * rejecting. Interrupt-and-send awaits it after a stop so the stopped
+   * run's final events (run_failed) land before the next message starts.
+   */
+  runSettlement: Promise<void> | null;
   /** The thinking resolver's answer for the current model (card 3). */
   thinking: ResolvedThinking;
   nextTurnIndex: number;
@@ -1591,6 +1602,7 @@ export class SessionService implements AgentTeamBridge {
       }
       if (!interrupted) outcome = "completed";
     })().finally(() => this.finishRun(managed, outcome));
+    managed.runSettlement = completion.catch(() => {});
 
     return {
       ids: {
@@ -2284,6 +2296,7 @@ export class SessionService implements AgentTeamBridge {
       const live = this.sessions.get(managed.manifest.sessionId);
       if (live) void this.maybeAutoTitle(live);
     });
+    managed.runSettlement = completion.catch(() => {});
 
     return {
       ids: {
@@ -2377,7 +2390,6 @@ export class SessionService implements AgentTeamBridge {
     const attachments = managed.queuedAttachments.get(text) ?? [];
     managed.queuedAttachments.delete(text);
     managed.retractingQueue = true;
-    const replayed: string[] = [];
     try {
       managed.session.clearQueue();
       const replayFor = (entry: string) => {
@@ -2390,7 +2402,6 @@ export class SessionService implements AgentTeamBridge {
       for (const entry of steering) {
         try {
           await managed.session.steer(entry, replayFor(entry));
-          replayed.push(entry);
         } catch (error) {
           console.warn("[retract_queued] re-queuing an entry failed", error);
         }
@@ -2398,7 +2409,6 @@ export class SessionService implements AgentTeamBridge {
       for (const entry of followUp) {
         try {
           await managed.session.followUp(entry, replayFor(entry));
-          replayed.push(entry);
         } catch (error) {
           console.warn("[retract_queued] re-queuing an entry failed", error);
         }
@@ -2411,19 +2421,9 @@ export class SessionService implements AgentTeamBridge {
         steering: managed.session.getSteeringMessages().filter(isUserQueueText),
         followUp: managed.session.getFollowUpMessages().filter(isUserQueueText),
       };
-      // A re-queued entry that Pi no longer holds was consumed mid-restore:
-      // it reached the model, so its bubble appears now and its staged paths
-      // are consumed with it. Entries whose re-queue threw are not in
-      // `replayed` and raise no delivery bubble.
-      const stillQueued = new Set([
-        ...managed.runState.queue.steering,
-        ...managed.runState.queue.followUp,
-      ]);
-      for (const entry of replayed) {
-        if (stillQueued.has(entry)) continue;
-        managed.queuedAttachments.delete(entry);
-        this.emit(managed, { type: "user_steered", payload: { text: entry } });
-      }
+      // A re-queued entry consumed mid-restore bubbles through its own user
+      // message_start (it is still tracked as queued); nothing is inferred
+      // from queue membership here.
       this.emit(managed, {
         type: "queue_updated",
         payload: managed.runState.queue,
@@ -2440,16 +2440,25 @@ export class SessionService implements AgentTeamBridge {
     const managed = this.requireSession(sessionId);
     managed.pendingInterruptionCause = interruptionCause;
     managed.runState.stopping();
-    // Unsent queued texts go back to the editor, not to the model. Stop
-    // restores text only (round-1 behavior); the staged paths are dropped.
+    // Unsent queued messages go back to the editor whole: the text and the
+    // paths staged with it (round 1 dropped the staged paths — that loss is
+    // the bug this fixes).
     const cleared = managed.session.clearQueue();
-    managed.queuedAttachments.clear();
     const restored = [...cleared.steering, ...cleared.followUp].filter(isUserQueueText);
+    const restoredAttachments = restored.flatMap(
+      (text) => managed.queuedAttachments.get(text) ?? [],
+    );
+    managed.queuedAttachments.clear();
     managed.runState.queue = { steering: [], followUp: [] };
     if (restored.length > 0) {
       this.emit(managed, {
         type: "queue_updated",
-        payload: { steering: [], followUp: [], restored },
+        payload: {
+          steering: [],
+          followUp: [],
+          restored,
+          ...(restoredAttachments.length > 0 ? { restoredAttachments } : {}),
+        },
       });
     }
     managed.session.abortCompaction();
@@ -2460,6 +2469,79 @@ export class SessionService implements AgentTeamBridge {
       type: "run_aborted",
       details: reason ? { reason } : undefined,
     });
+  }
+
+  /**
+   * Interrupt-and-send (pre-1.5 behavior restored, WP part 2 2026-09-13):
+   * stop the current answer, send the selected queued message as the next
+   * real message, and put every other queued entry behind it (follow-up
+   * queue — never steer, or they would enter the selected message's first
+   * model request). The stop shares plain Stop's implementation; the queue
+   * is drained here first, so the shared stop's own queue disposal has
+   * nothing left to take. A selection Pi already took into the current turn
+   * is no longer retractable: nothing is stopped or re-sent, and the
+   * delivery events finish the card-to-bubble transition on their own.
+   */
+  async interruptAndSend(sessionId: string, text: string): Promise<void> {
+    const managed = this.requireSession(sessionId);
+    const steering = [...managed.session.getSteeringMessages()];
+    const followUp = [...managed.session.getFollowUpMessages()];
+    const inSteering = steering.indexOf(text);
+    const inFollowUp = inSteering < 0 ? followUp.indexOf(text) : -1;
+    if (inSteering < 0 && inFollowUp < 0) return;
+    if (inSteering >= 0) steering.splice(inSteering, 1);
+    else followUp.splice(inFollowUp, 1);
+    const selectedAttachments = managed.queuedAttachments.get(text) ?? [];
+    const rest = [
+      ...steering.map((entry) => ({
+        text: entry,
+        attachments: managed.queuedAttachments.get(entry) ?? [],
+      })),
+      ...followUp.map((entry) => ({
+        text: entry,
+        attachments: managed.queuedAttachments.get(entry) ?? [],
+      })),
+    ];
+    managed.retractingQueue = true;
+    try {
+      // One clear of Pi's queue; the mirror catches up with the re-queues.
+      managed.session.clearQueue();
+      managed.queuedAttachments.clear();
+      managed.runState.queue = { steering: [], followUp: [] };
+      await this.abort(sessionId, "interrupt_send_now", "user_abort");
+      // The stopped run's final events (run_failed) must land before the
+      // next message starts, or the client reads "stopped" while it runs.
+      await managed.runSettlement;
+      this.runPrompt(sessionId, text, selectedAttachments);
+    } catch (error) {
+      // Nothing taken out may be lost: if the stop or the selected
+      // message's start failed, hand everything back to the editor the
+      // way plain Stop would, then report the failure.
+      const live = this.requireSession(sessionId);
+      const restoredAttachments = [
+        ...selectedAttachments,
+        ...rest.flatMap((item) => item.attachments),
+      ];
+      this.emit(live, {
+        type: "queue_updated",
+        payload: {
+          steering: [],
+          followUp: [],
+          restored: [text, ...rest.map((item) => item.text)],
+          ...(restoredAttachments.length > 0 ? { restoredAttachments } : {}),
+        },
+      });
+      throw error;
+    } finally {
+      managed.retractingQueue = false;
+    }
+    for (const item of rest) {
+      try {
+        await this.queuePrompt(sessionId, item.text, item.attachments, "followUp");
+      } catch (error) {
+        console.warn("[interrupt_send_now] re-queuing an entry failed", error);
+      }
+    }
   }
 
   /**
@@ -4078,6 +4160,7 @@ export class SessionService implements AgentTeamBridge {
       branchId: args.branchId ?? "main",
       fallbackAttempts: 0,
       pendingRunWork: null,
+      runSettlement: null,
     };
     // Resolve the thinking level against the live model now that both exist.
     // Fork has no child header yet; use the caller-held override first (same
@@ -4440,7 +4523,6 @@ export class SessionService implements AgentTeamBridge {
         break;
       }
       case "queue_update": {
-        const previous = managed.runState.queue;
         const next = {
           steering: event.steering.filter(isUserQueueText),
           followUp: event.followUp.filter(isUserQueueText),
@@ -4451,16 +4533,25 @@ export class SessionService implements AgentTeamBridge {
         // A retract passes through an empty queue on its way back: nothing
         // was delivered and no half-torn-down queue reaches the client.
         if (managed.retractingQueue) break;
-        // A text that left the queue was just handed to the model: its bubble
-        // appears now, server-broadcast so every pane sees it once. Its staged
-        // paths were consumed with it.
-        for (const text of [...previous.steering, ...previous.followUp]) {
-          if (!next.steering.includes(text) && !next.followUp.includes(text)) {
-            managed.queuedAttachments.delete(text);
-            this.emit(managed, { type: "user_steered", payload: { text } });
-          }
-        }
+        // Disappearance from the queue proves nothing (retract and Stop also
+        // remove entries), so this event only mirrors the cards. The
+        // delivery bubble is the queued user message_start below.
         this.emit(managed, { type: "queue_updated", payload: next });
+        break;
+      }
+      case "message_start": {
+        // The one true delivery signal for a queued message (WP part 2,
+        // 2026-09-13): Pi started a user turn with it. Only texts still
+        // tracked as queued count — normal sends and already-retracted or
+        // Stop-cleared texts have no entry and raise no bubble.
+        if ((event.message as { role?: string }).role !== "user") break;
+        const text = contentToText(
+          (event.message as { content?: unknown }).content,
+        );
+        if (managed.queuedAttachments.has(text)) {
+          managed.queuedAttachments.delete(text);
+          this.emit(managed, { type: "user_steered", payload: { text } });
+        }
         break;
       }
       case "thinking_level_changed":

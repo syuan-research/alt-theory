@@ -286,6 +286,8 @@ export interface AppContextValue {
   retractQueued: (
     text: string
   ) => Promise<{ text: string; attachments: string[] } | null>;
+  /** Interrupt-and-send: stop the current answer, send this queued message next. */
+  sendQueuedNow: (text: string) => void;
   /** Unsent queued text handed back by Stop; the composer takes it into the draft. */
   restoredDraft: string | null;
   clearRestoredDraft: () => void;
@@ -1001,6 +1003,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setQueuedTexts([...message.payload.steering, ...message.payload.followUp]);
           if (message.payload.restored?.length) {
             setRestoredDraft(message.payload.restored.join("\n"));
+            // Stop hands the staged paths back with the text; re-stage them
+            // so nothing the user attached is lost.
+            for (const path of message.payload.restoredAttachments ?? []) {
+              stageWorkspacePath(path);
+            }
           }
           break;
 
@@ -1564,6 +1571,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [sendMessage]);
 
+  // Interrupt-and-send (pre-1.5 behavior restored): the outcome arrives as
+  // events — the stopped run's failure, the new run, the re-queued cards.
+  const sendQueuedNow = useCallback(
+    (text: string) => {
+      sendMessage({ type: "send_queued_now", payload: { text } });
+    },
+    [sendMessage],
+  );
+
   const invokeSkillRef = useRef<
     ((skillName: string, userText?: string) => boolean) | null
   >(null);
@@ -2091,6 +2107,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       sendPrompt,
       queuedTexts,
       retractQueued,
+      sendQueuedNow,
       restoredDraft,
       clearRestoredDraft,
       abortRun,
@@ -2208,6 +2225,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       sendPrompt,
       queuedTexts,
       retractQueued,
+      sendQueuedNow,
       restoredDraft,
       clearRestoredDraft,
       abortRun,

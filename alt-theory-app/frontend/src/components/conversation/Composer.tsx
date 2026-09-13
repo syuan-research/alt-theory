@@ -433,6 +433,13 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                 <button
                   type="button"
                   className="queued-prompt-action"
+                  onClick={() => app.sendQueuedNow(text)}
+                >
+                  {t("Jump the queue")}
+                </button>
+                <button
+                  type="button"
+                  className="queued-prompt-action"
                   onClick={() => void recallQueued(text, false)}
                   data-tip={t("Delete")}
                   aria-label={t("Delete")}

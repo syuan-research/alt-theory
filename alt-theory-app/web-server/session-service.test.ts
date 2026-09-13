@@ -4706,8 +4706,19 @@ test("a message during a run joins Pi's steer queue; delivery shows the bubble; 
       payload: { steering: ["and this"], followUp: [] },
     });
 
-    // Consumed by Pi → the bubble appears now, once, server-broadcast.
+    // Consumed by Pi → the delivery bubble comes from the queued user
+    // message_start, never from queue disappearance (retract and Stop also
+    // remove entries).
     internal.handleAgentEvent(managed, { type: "queue_update", steering: [], followUp: [] });
+    assert.equal(
+      events.filter((event) => event.type === "user_steered").length,
+      0,
+      "a disappearance alone raises no bubble",
+    );
+    internal.handleAgentEvent(managed, {
+      type: "message_start",
+      message: { role: "user", content: "and this" },
+    } as any);
     assert.deepEqual(
       events.filter((event) => event.type === "user_steered").map((event) => event.payload),
       [{ text: "and this" }],
@@ -4856,8 +4867,13 @@ test("a retract hands the queued attachments back and a re-queue keeps the other
     assert.equal((steerCalls[2].images as any[])[0].mimeType, "image/png");
     assert.equal(typeof (steerCalls[2].images as any[])[0].data, "string");
 
-    // Delivery consumes the stored paths with the text.
+    // Delivery consumes the stored paths with the text — signalled by the
+    // queued user message_start, not by queue disappearance.
     internal.handleAgentEvent(managed, { type: "queue_update", steering: [], followUp: [] });
+    internal.handleAgentEvent(managed, {
+      type: "message_start",
+      message: { role: "user", content: [{ type: "text", text: "one" }] },
+    } as any);
     assert.equal(managed.queuedAttachments.has("one"), false);
     assert.deepEqual(
       events.filter((event) => event.type === "user_steered").map((event) => event.payload),
@@ -4894,12 +4910,21 @@ test("a restore-time delivery still bubbles and a failed re-queue does not aband
 
     // Re-queue outcomes, one per entry: B's write fails; C goes back in and
     // Pi consumes it immediately (the queue no longer holds it).
+    const internal = service as any;
     const realSteer = managed.session.steer.bind(managed.session);
     const realClear = managed.session.clearQueue.bind(managed.session);
     managed.session.steer = async (text: string, images?: unknown) => {
       if (text === "B") throw new Error("queue write failed");
       await realSteer(text, images as never);
-      if (text === "C") await realClear();
+      if (text === "C") {
+        // Pi took C straight into the turn: the queue no longer holds it,
+        // and the queued user message_start is what says so.
+        await realClear();
+        internal.handleAgentEvent(managed, {
+          type: "message_start",
+          message: { role: "user", content: "C" },
+        } as any);
+      }
     };
 
     const retracted = await service.retractQueued(created.sessionId, "A");
@@ -4925,6 +4950,105 @@ test("a restore-time delivery still bubbles and a failed re-queue does not aband
 
     release();
     await run.completion.catch(() => {});
+  } finally {
+    detach();
+    await service.disposeAll();
+  }
+});
+
+test("interrupt-and-send stops the run, sends the selection, and re-queues the rest behind it", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const created = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const events: SessionServiceEvent[] = [];
+  const detach = service.attach(created.sessionId, (event) => events.push(event));
+  const managed = (service as any).sessions.get(created.sessionId);
+  const promptTexts: string[] = [];
+  let release: () => void = () => {};
+  managed.session.prompt = (text: string) => {
+    promptTexts.push(text);
+    return new Promise<void>((resolve) => {
+      release = resolve;
+    });
+  };
+  managed.session.abort = async () => release();
+  try {
+    const run = service.runPrompt(created.sessionId, "long turn");
+    await service.queuePrompt(created.sessionId, "A", undefined, "steer");
+    await service.queuePrompt(created.sessionId, "B", undefined, "steer");
+    await service.queuePrompt(created.sessionId, "C", undefined, "followUp");
+
+    // A selection Pi already took into the turn is a no-op: nothing is
+    // stopped and nothing is re-sent.
+    await service.interruptAndSend(created.sessionId, "not queued");
+    assert.equal(service.isRunning(created.sessionId), true);
+    assert.deepEqual(promptTexts, ["long turn"]);
+
+    await service.interruptAndSend(created.sessionId, "B");
+    // The stopped run's failure lands before the selected message's run
+    // starts, so the client never reads "stopped" while the new one runs.
+    const failedAt = events.findIndex((event) => event.type === "run_failed");
+    const runningBegins = events
+      .map((event, index) =>
+        event.type === "session_updated" &&
+        (event.payload as { status?: string }).status === "running"
+          ? index
+          : -1,
+      )
+      .filter((index) => index >= 0);
+    assert.equal(runningBegins.length, 2);
+    assert.ok(failedAt > runningBegins[0]);
+    assert.ok(failedAt < runningBegins[1]);
+    assert.deepEqual(promptTexts, ["long turn", "B"]);
+    // The rest sits behind B, in order, as follow-ups — never steer, or
+    // they would enter B's first model request.
+    assert.deepEqual([...managed.session.getSteeringMessages()], []);
+    assert.deepEqual([...managed.session.getFollowUpMessages()], ["A", "C"]);
+    assert.deepEqual(service.getSnapshot(created.sessionId).queue, {
+      steering: [],
+      followUp: ["A", "C"],
+    });
+
+    release();
+    await run.completion.catch(() => {});
+  } finally {
+    detach();
+    await service.disposeAll();
+  }
+});
+
+test("Stop hands unsent queued text and its staged paths back to the editor", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const created = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const events: SessionServiceEvent[] = [];
+  const detach = service.attach(created.sessionId, (event) => events.push(event));
+  const managed = (service as any).sessions.get(created.sessionId);
+  const release = holdPrompt(managed);
+  const staged = join(fixture.root, "note.md");
+  try {
+    const run = service.runPrompt(created.sessionId, "long turn");
+    await service.queuePrompt(created.sessionId, "unsent", [staged], "steer");
+    managed.session.abort = async () => release();
+    await service.abort(created.sessionId, "user_stop", "user_abort");
+    await run.completion.catch(() => {});
+    const restored = events.find(
+      (event) => event.type === "queue_updated" && event.payload.restored,
+    );
+    assert.deepEqual(restored?.payload, {
+      steering: [],
+      followUp: [],
+      restored: ["unsent"],
+      restoredAttachments: [staged],
+    });
   } finally {
     detach();
     await service.disposeAll();

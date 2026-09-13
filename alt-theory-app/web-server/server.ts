@@ -2659,6 +2659,24 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             fail(error);
           }
           break;
+        case "send_queued_now": {
+          if (!attachedSessionId) {
+            sendCurrentDraft();
+            break;
+          }
+          // Interrupt-and-send: the outcome arrives as events (the stopped
+          // run's failure, the new run, the re-queued cards). A selection
+          // already taken into the turn is a silent no-op by design.
+          try {
+            await sessionService.interruptAndSend(
+              attachedSessionId,
+              msg.payload.text,
+            );
+          } catch (error) {
+            fail(error);
+          }
+          break;
+        }
         case "compact":
           if (!attachedSessionId) {
             fail(new Error("Open a conversation before compacting it"),
