@@ -296,6 +296,12 @@ export type SessionServiceEvent =
   | { type: "tool_finished"; payload: { callId: string; success: boolean } }
   | { type: "run_completed"; payload: SessionSnapshot }
   | { type: "session_updated"; payload: SessionSnapshot }
+  /**
+   * The managed instance behind this conversation was swapped (deferred
+   * role/soul/instruction switch applied at settle). Service-internal: the WS
+   * layer re-attaches on it; clients never see it.
+   */
+  | { type: "session_replaced"; payload: { sessionId: string } }
   | {
       type: "run_failed";
       payload: { failure: Failure; canRetry?: boolean; recovery?: TurnRecovery | null };
@@ -608,15 +614,63 @@ export class SessionService implements AgentTeamBridge {
   /**
    * The only idle transition (card 1): drain what was deferred while the turn
    * ran, through the same appliers the live path uses. A change that fails
-   * to apply is reported, not lost silently.
+   * to apply is reported, not lost silently. Returns the instance that owns
+   * the conversation after settling — a deferred role/soul/instruction
+   * switch replaces it.
    */
-  private async settle(managed: ManagedSession): Promise<void> {
+  private async settle(managed: ManagedSession): Promise<ManagedSession> {
     const drained = managed.runState.settle();
+    // Assembly switches chosen mid-run apply by instance replacement, first
+    // so the other deferred changes land on the replacement. Live
+    // connections sit on the old instance; `session_replaced` tells the WS
+    // layer to re-attach, keeping the idle/completion events below flowing
+    // to the windows that already follow this conversation.
+    let current = managed;
+    const assetPatch: Partial<SessionSelectors> = {};
+    if (drained.rolePresetSlug !== undefined) {
+      assetPatch.rolePresetSlug = drained.rolePresetSlug;
+    }
+    if (drained.soulSlug !== undefined) {
+      assetPatch.soulSlug = drained.soulSlug;
+    }
+    if (drained.customInstructionRef !== undefined) {
+      assetPatch.customInstructionRef = drained.customInstructionRef;
+    }
+    if (Object.keys(assetPatch).length > 0) {
+      try {
+        const replacement = await this.replaceSession(
+          managed.manifest.sessionId,
+          { ...managed.selectors, ...assetPatch },
+          "asset_selector_switch",
+        );
+        current = this.requireSession(replacement.sessionId);
+        this.emit(managed, {
+          type: "session_replaced",
+          payload: { sessionId: replacement.sessionId },
+        });
+      } catch (error) {
+        const failure = describeFailure(error, "asset_selector_switch");
+        this.emit(managed, {
+          type: "extension_notice",
+          payload: { message: failure.message, level: "error", failure },
+        });
+      }
+    }
     const steps: Array<[keyof PendingChanges, () => Promise<void> | void]> = [
-      ["mode", () => this.applyMode(managed, drained.mode!)],
-      ["fullAccess", () => managed.setFullAccess(drained.fullAccess!)],
-      ["model", () => this.applyModel(managed, drained.model!)],
-      ["runtime", () => this.applyRuntime(managed, drained.runtime!)],
+      ["mode", () => this.applyMode(current, drained.mode!)],
+      ["fullAccess", () => current.setFullAccess(drained.fullAccess!)],
+      ["model", () => this.applyModel(current, drained.model!)],
+      ["kbDomain", () => this.applyKbDomain(current, drained.kbDomain!)],
+      [
+        "visibility",
+        () =>
+          this.applyVisibility(
+            current,
+            drained.visibility!.visibility,
+            drained.visibility!.consentSnapshot,
+          ),
+      ],
+      ["runtime", () => this.applyRuntime(current, drained.runtime!)],
     ];
     let applied = false;
     for (const [key, apply] of steps) {
@@ -626,7 +680,7 @@ export class SessionService implements AgentTeamBridge {
         applied = true;
       } catch (error) {
         const failure = describeFailure(error, key);
-        this.emit(managed, {
+        this.emit(current, {
           type: "extension_notice",
           payload: { message: failure.message, level: "error", failure },
         });
@@ -634,10 +688,11 @@ export class SessionService implements AgentTeamBridge {
     }
     // The only idle transition is also the only "idle" the client hears
     // (v1.5.1 M1): nothing else hand-builds a done signal.
-    this.emitRunPhase(managed, "idle");
+    this.emitRunPhase(current, "idle");
     if (applied) {
-      this.emit(managed, { type: "session_updated", payload: this.snapshot(managed) });
+      this.emit(current, { type: "session_updated", payload: this.snapshot(current) });
     }
+    return current;
   }
 
   /** A run owns the session from here; the client hears it at once. */
@@ -650,18 +705,20 @@ export class SessionService implements AgentTeamBridge {
    * Run end, both run paths: settle (idle), then the outcome. `run_completed`
    * goes out only here, after Pi's post-turn work (compaction check, queued
    * continuation) has finished — `agent_end` fires before that and must not
-   * end the turn (see the compaction-timing research, 2026-09-05).
+   * end the turn (see the compaction-timing research, 2026-09-05). The
+   * events go through whatever instance settle() left owning the
+   * conversation (a deferred asset switch replaces it).
    */
   private async finishRun(managed: ManagedSession, outcome: RunOutcomeEvent): Promise<void> {
-    await this.settle(managed);
-    managed.pendingInterruptionCause = null;
+    const current = await this.settle(managed);
+    current.pendingInterruptionCause = null;
     if (outcome === null) return;
     if (outcome === "completed") {
-      this.emit(managed, { type: "run_completed", payload: this.snapshot(managed) });
-      this.emit(managed, { type: "session_metrics", payload: this.persistMetrics(managed) });
+      this.emit(current, { type: "run_completed", payload: this.snapshot(current) });
+      this.emit(current, { type: "session_metrics", payload: this.persistMetrics(current) });
       return;
     }
-    this.emit(managed, outcome);
+    this.emit(current, outcome);
   }
 
   private persistManifestModel(managed: ManagedSession): void {
@@ -864,6 +921,34 @@ export class SessionService implements AgentTeamBridge {
       branchId: replacement.branchId,
     });
     return this.snapshot(replacement);
+  }
+
+  /**
+   * Role / soul / custom-instruction switch (busy-refusal cure, 2026-09-13):
+   * idle → the pre-existing replacement swap; running → the choice defers on
+   * the run state and settle() applies it when the whole turn (Pi's queued
+   * continuation included) ends. Per field, null clears and the last choice
+   * wins.
+   */
+  async switchAssetSelectors(
+    sessionId: string,
+    patch: {
+      rolePresetSlug?: string | null;
+      soulSlug?: string | null;
+      customInstructionRef?: string | null;
+    },
+  ): Promise<{ deferred: boolean; snapshot: SessionSnapshot }> {
+    const managed = this.requireSession(sessionId);
+    let replacement: SessionSnapshot | null = null;
+    await managed.runState.applyOrDefer(patch, async () => {
+      replacement = await this.replaceSession(
+        sessionId,
+        { ...managed.selectors, ...patch },
+        "asset_selector_switch",
+      );
+    });
+    if (replacement) return { deferred: false, snapshot: replacement };
+    return { deferred: true, snapshot: this.snapshot(managed) };
   }
 
   /**
@@ -1186,12 +1271,23 @@ export class SessionService implements AgentTeamBridge {
     );
   }
 
-  setKbDomain(sessionId: string, domain: string): SessionSnapshot {
+  /**
+   * KB domain switch (busy-refusal cure, 2026-09-13): the in-place applier is
+   * unchanged; only the idle gate moved — idle applies now, running defers to
+   * settle. A bad domain fails at once either way.
+   */
+  async setKbDomain(sessionId: string, domain: string): Promise<SessionSnapshot> {
     if (domain !== KB_DISABLED_DOMAIN && !isKnownKbDomain(this.config.kbDir, domain)) {
       throw new Error(`Unknown KB domain: ${domain}`);
     }
     const managed = this.requireSession(sessionId);
-    this.assertIdle(managed);
+    await managed.runState.applyOrDefer({ kbDomain: domain }, () =>
+      this.applyKbDomain(managed, domain),
+    );
+    return this.snapshot(managed);
+  }
+
+  private applyKbDomain(managed: ManagedSession, domain: string): void {
     managed.selectors.kbDomain = domain;
     appendSessionEvent(managed.manifest.recordsDir, {
       sessionId: managed.manifest.sessionId,
@@ -1213,7 +1309,6 @@ export class SessionService implements AgentTeamBridge {
       warnings: [],
       branchId: managed.branchId,
     });
-    return this.snapshot(managed);
   }
 
   runPrompt(sessionId: string, text: string, attachments?: string[],): RunHandle {
@@ -2519,17 +2614,36 @@ export class SessionService implements AgentTeamBridge {
     return { ...this.requireSession(sessionId).selectors };
   }
 
-  setVisibility(
+  /**
+   * Visibility switch (busy-refusal cure, 2026-09-13): same in-place header
+   * write as before, only the idle gate moved — idle applies now, running
+   * defers to settle with the consent snapshot captured at choice time.
+   */
+  async setVisibility(
     sessionId: string,
     visibility: SessionVisibility,
     consentSnapshot?: SessionCreationMetadata["consentSnapshot"],
-  ): SessionSnapshot {
+  ): Promise<SessionSnapshot> {
     const managed = this.requireSession(sessionId);
-    this.assertIdle(managed);
+    const header = readV4SessionHeader(managed.manifest.recordsDir);
+    if (!header) throw new Error("v0.4 session header is required");
+    await managed.runState.applyOrDefer(
+      { visibility: { visibility, consentSnapshot } },
+      () => this.applyVisibility(managed, visibility, consentSnapshot),
+    );
+    return this.snapshot(managed);
+  }
+
+  private applyVisibility(
+    managed: ManagedSession,
+    visibility: SessionVisibility,
+    consentSnapshot?: SessionCreationMetadata["consentSnapshot"],
+  ): void {
+    const sessionId = managed.manifest.sessionId;
     const header = readV4SessionHeader(managed.manifest.recordsDir);
     if (!header) throw new Error("v0.4 session header is required");
     if (header.visibility === visibility) {
-      return this.snapshot(managed);
+      return;
     }
     const nextBase = {
       ...header,
@@ -2560,7 +2674,6 @@ export class SessionService implements AgentTeamBridge {
       type: "visibility_changed",
       details: { visibility },
     });
-    return this.snapshot(managed);
   }
 
   setStudyTag(sessionId: string, studyTag: StudyTag | null): SessionSnapshot {

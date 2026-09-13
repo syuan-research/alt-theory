@@ -2474,11 +2474,35 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         if (event.type === "approval_requested" || event.type === "approval_resolved") {
           return;
         }
+        // A deferred role/soul/instruction switch replaced the instance
+        // under this conversation at settle: re-attach so the run-end events
+        // emitted right after still reach this window. Clients never see it.
+        if (event.type === "session_replaced") {
+          if (!closed && attachedSessionId === event.payload.sessionId) {
+            attachToSession(event.payload.sessionId);
+          }
+          return;
+        }
         forwardServiceEvent(send, event);
       });
       send({ type: "session_opened", payload: sessionService.getSnapshot(sessionId), });
       send({ type: "session_metadata", payload: sessionService.getManifest(sessionId), });
       send({ type: "session_metrics", payload: sessionService.getMetrics(sessionId), });
+    };
+
+    // Busy-refusal cure (2026-09-13): a mid-run role/soul/instruction
+    // choice is acked as pending (chip + clock mark) instead of refused; an
+    // idle switch re-attaches to the replacement exactly as before.
+    const switchAsset = async (
+      patch: Parameters<SessionService["switchAssetSelectors"]>[1],
+    ) => {
+      if (!attachedSessionId) return;
+      const result = await sessionService.switchAssetSelectors(attachedSessionId, patch);
+      if (!result.deferred) {
+        if (!closed) attachToSession(result.snapshot.sessionId);
+      } else {
+        send({ type: "session_updated", payload: result.snapshot });
+      }
     };
 
     // SessionService owns the one displayable transcript projection, including
@@ -2673,7 +2697,15 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             break;
           }
           try {
-            sessionService.setKbDomain(attachedSessionId, msg.payload.domain);
+            const snapshot = await sessionService.setKbDomain(
+              attachedSessionId,
+              msg.payload.domain,
+            );
+            // A mid-run choice is acked as pending (chip + clock mark)
+            // instead of refused; an idle switch stays silent as today.
+            if (snapshot.pending?.kbDomain !== undefined) {
+              send({ type: "session_updated", payload: snapshot });
+            }
           } catch (error) {
             fail(error);
           }
@@ -2685,14 +2717,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             sendCurrentDraft();
             break;
           }
-          const selectors = sessionService.getSelectors(attachedSessionId);
           try {
-            const replacement = await sessionService.replaceSession(
-              attachedSessionId,
-              { ...selectors, rolePresetSlug },
-              "role_preset_switch",
-            );
-            if (!closed) attachToSession(replacement.sessionId);
+            await switchAsset({ rolePresetSlug });
           } catch (error) {
             fail(error);
           }
@@ -2705,14 +2731,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             sendCurrentDraft();
             break;
           }
-          const selectors = sessionService.getSelectors(attachedSessionId);
           try {
-            const replacement = await sessionService.replaceSession(
-              attachedSessionId,
-              { ...selectors, soulSlug },
-              "soul_switch",
-            );
-            if (!closed) attachToSession(replacement.sessionId);
+            await switchAsset({ soulSlug });
           } catch (error) {
             fail(error);
           }
@@ -2727,14 +2747,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             sendCurrentDraft();
             break;
           }
-          const selectors = sessionService.getSelectors(attachedSessionId);
           try {
-            const replacement = await sessionService.replaceSession(
-              attachedSessionId,
-              { ...selectors, customInstructionRef },
-              "instruction_switch",
-            );
-            if (!closed) attachToSession(replacement.sessionId);
+            await switchAsset({ customInstructionRef });
           } catch (error) {
             fail(error);
           }
@@ -2754,9 +2768,11 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
                 auth,
                 msg.payload.visibility,
               );
+              // Idle applies now; mid-run the same snapshot carries the
+              // pending choice (no more busy refusal).
               send({
                 type: "session_updated",
-                payload: sessionService.setVisibility(
+                payload: await sessionService.setVisibility(
                   attachedSessionId,
                   msg.payload.visibility,
                   metadata.consentSnapshot,

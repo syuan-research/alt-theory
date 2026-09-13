@@ -166,6 +166,12 @@ export interface PendingChanges {
   model?: SessionModelOverride | null;
   mode?: AltMode;
   fullAccess?: boolean;
+  /** Assembly switches chosen mid-run (busy-refusal cure); null = cleared. */
+  rolePresetSlug?: string | null;
+  soulSlug?: string | null;
+  customInstructionRef?: string | null;
+  kbDomain?: string;
+  visibility?: { visibility: SessionVisibility };
 }
 
 /** The thinking resolver's answer: the level in use and where it came from. */

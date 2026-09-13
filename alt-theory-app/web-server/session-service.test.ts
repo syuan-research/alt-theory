@@ -1931,7 +1931,7 @@ test("SessionService switches role and soul inside the same materialized session
     } as any);
 
     const beforeManifest = service.getManifest(snapshot.sessionId);
-    const kbSwitched = service.setKbDomain(snapshot.sessionId, "all");
+    const kbSwitched = await service.setKbDomain(snapshot.sessionId, "all");
     assert.equal(kbSwitched.sessionId, snapshot.sessionId);
     assert.equal(kbSwitched.currentDomain, "all");
     const switchedRole = await service.replaceSession(
@@ -1996,7 +1996,7 @@ test("SessionService can disable kb-folder retrieval without disabling the sessi
   });
 
   try {
-    const switched = service.setKbDomain(snapshot.sessionId, "none");
+    const switched = await service.setKbDomain(snapshot.sessionId, "none");
     assert.equal(switched.sessionId, snapshot.sessionId);
     assert.equal(switched.currentDomain, "none");
 
@@ -2018,7 +2018,7 @@ test("SessionService preserves disabled kb-domain when resuming an existing sess
   });
 
   try {
-    service.setKbDomain(created.sessionId, "none");
+    await service.setKbDomain(created.sessionId, "none");
     const managed = (
       service as unknown as {
         sessions: Map<
@@ -2273,11 +2273,11 @@ test("SessionService rejects concurrent same-session prompt mutations with sessi
       (error) =>
         error instanceof SessionBusyError && error.code === "session_busy",
     );
-    assert.throws(
-      () => service.setKbDomain(snapshot.sessionId, "all"),
-      (error) =>
-        error instanceof SessionBusyError && error.code === "session_busy",
-    );
+    // KB no longer refuses mid-run (busy-refusal cure, 2026-09-13): the
+    // choice defers to settle instead of throwing session_busy.
+    const deferredKb = await service.setKbDomain(snapshot.sessionId, "all");
+    assert.equal(deferredKb.pending?.kbDomain, "all");
+    assert.equal(deferredKb.currentDomain, "ep-core");
     await assert.rejects(
       () =>
         service.replaceSession(
@@ -2310,6 +2310,78 @@ test("SessionService rejects concurrent same-session prompt mutations with sessi
     assert.ok(resolvePrompt);
     resolvePrompt();
     await run.completion;
+  } finally {
+    await service.disposeAll();
+  }
+});
+
+test("mid-run role/soul/kb choices defer and apply together at run end", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const snapshot = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+
+  try {
+    let resolvePrompt: (() => void) | null = null;
+    const managed = (service as any).sessions.get(snapshot.sessionId);
+    managed.session.prompt = () =>
+      new Promise<void>((resolve) => {
+        resolvePrompt = resolve;
+      });
+
+    // One "window" following this conversation; on session_replaced it
+    // re-attaches exactly like the WS layer, so run-end events must still
+    // arrive after the instance swap.
+    const events: string[] = [];
+    let detachListener = service.attach(snapshot.sessionId, (event) => {
+      events.push(event.type);
+      if (event.type === "session_replaced") {
+        detachListener();
+        detachListener = service.attach(event.payload.sessionId, (e) =>
+          events.push(e.type),
+        );
+      }
+    });
+
+    const run = service.runPrompt(snapshot.sessionId, "prompt");
+    const role = await service.switchAssetSelectors(snapshot.sessionId, {
+      rolePresetSlug: "alternate",
+    });
+    assert.equal(role.deferred, true);
+    assert.equal(role.snapshot.pending?.rolePresetSlug, "alternate");
+    assert.equal(
+      role.snapshot.rolePresetSlug,
+      "role-conceptual-theory-companion",
+    );
+    // A later soul choice joins the same pending set; KB defers too.
+    const soul = await service.switchAssetSelectors(snapshot.sessionId, {
+      soulSlug: "soul-test",
+    });
+    assert.equal(soul.snapshot.pending?.soulSlug, "soul-test");
+    await service.setKbDomain(snapshot.sessionId, "all");
+
+    assert.ok(resolvePrompt);
+    resolvePrompt();
+    await run.completion;
+
+    assert.ok(events.includes("session_replaced"));
+    assert.ok(events.includes("run_completed"));
+    assert.ok(
+      events.indexOf("session_replaced") < events.indexOf("run_completed"),
+    );
+    const finalSnapshot = service.getSnapshot(snapshot.sessionId);
+    assert.equal(finalSnapshot.sessionId, snapshot.sessionId);
+    assert.equal(finalSnapshot.rolePresetSlug, "alternate");
+    assert.equal(finalSnapshot.soulSlug, "soul-test");
+    assert.equal(finalSnapshot.currentDomain, "all");
+    assert.equal(finalSnapshot.pending?.rolePresetSlug, undefined);
+    assert.equal(finalSnapshot.pending?.soulSlug, undefined);
+    assert.equal(finalSnapshot.pending?.kbDomain, undefined);
+
+    detachListener();
   } finally {
     await service.disposeAll();
   }

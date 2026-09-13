@@ -838,6 +838,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
           reconnectSessionIdRef.current = message.payload.sessionId;
           setSelectors(applySnapshotSelectors(message.payload));
           // A deferred switch renders as the chosen value (plus a pending mark).
+          const openedPending = message.payload.pending;
+          if (
+            openedPending &&
+            (openedPending.rolePresetSlug !== undefined ||
+              openedPending.soulSlug !== undefined ||
+              openedPending.customInstructionRef !== undefined ||
+              openedPending.kbDomain !== undefined)
+          ) {
+            setSelectors((prev) => ({
+              ...prev,
+              rolePresetSlug:
+                openedPending.rolePresetSlug !== undefined
+                  ? (openedPending.rolePresetSlug ?? null)
+                  : prev.rolePresetSlug,
+              soulSlug:
+                openedPending.soulSlug !== undefined
+                  ? (openedPending.soulSlug ?? null)
+                  : prev.soulSlug,
+              customInstructionRef:
+                openedPending.customInstructionRef !== undefined
+                  ? (openedPending.customInstructionRef ?? null)
+                  : prev.customInstructionRef,
+              currentDomain:
+                openedPending.kbDomain !== undefined
+                  ? openedPending.kbDomain
+                  : prev.currentDomain,
+            }));
+          }
           setSessionMode(message.payload.pending?.mode ?? message.payload.mode ?? "understand");
           setFullAccessState(
             message.payload.pending?.fullAccess ?? message.payload.fullAccess ?? false,
@@ -883,18 +911,51 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
 
         case "session_updated": {
+          const pending = message.payload.pending ?? {};
           setSelectors((prev) => ({
             ...prev,
-            currentDomain: message.payload.currentDomain || prev.currentDomain,
+            // Mid-run switch choices render as the chosen value (plus the
+            // pending mark), like deferred mode/model. A null from the
+            // server is a real clear and must not fall back to the previous
+            // value.
+            currentDomain:
+              pending.kbDomain !== undefined
+                ? pending.kbDomain
+                : message.payload.currentDomain || prev.currentDomain,
             rolePresetSlug:
-              message.payload.rolePresetSlug ?? prev.rolePresetSlug,
-            soulSlug: message.payload.soulSlug ?? prev.soulSlug,
+              pending.rolePresetSlug !== undefined
+                ? pending.rolePresetSlug
+                : message.payload.rolePresetSlug !== undefined
+                  ? message.payload.rolePresetSlug
+                  : prev.rolePresetSlug,
+            soulSlug:
+              pending.soulSlug !== undefined
+                ? pending.soulSlug
+                : message.payload.soulSlug !== undefined
+                  ? message.payload.soulSlug
+                  : prev.soulSlug,
             customInstructionRef:
-              message.payload.customInstructionRef ?? prev.customInstructionRef,
+              pending.customInstructionRef !== undefined
+                ? pending.customInstructionRef
+                : message.payload.customInstructionRef !== undefined
+                  ? message.payload.customInstructionRef
+                  : prev.customInstructionRef,
             visibility: message.payload.visibility ?? prev.visibility,
             branchId: message.payload.branchId || prev.branchId,
           }));
-          const pending = message.payload.pending ?? {};
+          // The mid-run switch ack also answers the optimistic asset switch:
+          // release the busy state so waiting for the turn to end never
+          // locks the composer.
+          if (
+            pendingAssetSwitchRef.current &&
+            (pending.rolePresetSlug !== undefined ||
+              pending.soulSlug !== undefined ||
+              pending.customInstructionRef !== undefined)
+          ) {
+            pendingAssetSwitchRef.current = false;
+            setRequestBusy(false);
+            setToolStatus("");
+          }
           if (message.payload.mode) setSessionMode(pending.mode ?? message.payload.mode);
           if (message.payload.fullAccess !== undefined) {
             setFullAccessState(pending.fullAccess ?? message.payload.fullAccess);

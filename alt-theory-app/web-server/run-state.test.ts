@@ -70,3 +70,38 @@ test("queued messages show as the queued phase only while running", () => {
   state.queue = { steering: [], followUp: [] };
   assert.equal(state.state(), "running");
 });
+
+test("assembly-switch choices defer per key; last choice per key wins", async () => {
+  const state = new RunState();
+  state.begin();
+  let applied = 0;
+  assert.equal(
+    await state.applyOrDefer({ rolePresetSlug: "first" }, () => {
+      applied++;
+    }),
+    "deferred",
+  );
+  // A different key joins the same pending set; the same key is replaced;
+  // null (cleared) is a choice, distinct from undefined (nothing pending).
+  await state.applyOrDefer({ soulSlug: "soul" }, () => {
+    applied++;
+  });
+  await state.applyOrDefer({ rolePresetSlug: null }, () => {
+    applied++;
+  });
+  await state.applyOrDefer({ kbDomain: "all" }, () => {
+    applied++;
+  });
+  assert.equal(applied, 0);
+  assert.deepEqual(state.pendingChanges(), {
+    rolePresetSlug: null,
+    soulSlug: "soul",
+    kbDomain: "all",
+  });
+  assert.deepEqual(state.settle(), {
+    rolePresetSlug: null,
+    soulSlug: "soul",
+    kbDomain: "all",
+  });
+  assert.deepEqual(state.pendingChanges(), {});
+});

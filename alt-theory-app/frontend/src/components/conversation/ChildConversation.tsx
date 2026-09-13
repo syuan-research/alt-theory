@@ -17,6 +17,7 @@ import { t } from "@/i18n";
 import { ApprovalDock } from "@/components/conversation/ApprovalDock";
 import { SettledMessages, StreamPartsView } from "@/components/conversation/MessageList";
 import { ModelChip } from "@/components/conversation/ModelChip";
+import { PendingMark } from "@/components/ui/PendingMark";
 
 /**
  * A conversation other than the one in the center: a branch shown beside it for
@@ -92,6 +93,11 @@ export function ChildConversation({
     },
   });
   const { messages, streamParts, running } = engine;
+  // A role chosen mid-run renders as the chosen value plus the pending mark
+  // (same rule as the main composer).
+  const pendingChildRole = snapshot?.pending?.rolePresetSlug;
+  const childRoleSlug =
+    pendingChildRole !== undefined ? pendingChildRole : (snapshot?.rolePresetSlug ?? null);
   const approvals = app.approvals.filter(
     (request) => request.sessionId === sessionId,
   );
@@ -393,17 +399,20 @@ export function ChildConversation({
         <div className="ctx-picker">
           <button className="ctx-item" onClick={() => setMenu(menu === "role" ? null : "role")}>
             <i className="ph ph-user-circle" />
-            {snapshot?.rolePresetSlug
-              ? (app.discovery?.rolePresets.find((role) => role.slug === snapshot.rolePresetSlug)?.userLabel ?? snapshot.rolePresetSlug)
+            {childRoleSlug
+              ? (app.discovery?.rolePresets.find((role) => role.slug === childRoleSlug)?.userLabel ?? childRoleSlug)
               : t("No role")}
+            <PendingMark when={pendingChildRole !== undefined} />
           </button>
           <div className={`menu${menu === "role" ? " on" : ""}`}>
             <div className="mi" onClick={() => (socket.send({ type: "switch_role_preset", payload: { rolePresetSlug: null } }), setMenu(null))}>
               <span>{t("No role")}</span>
+              {!childRoleSlug ? <i className="ph ph-check check" /> : null}
             </div>
             {(app.discovery?.rolePresets ?? []).map((role) => (
               <div key={role.slug} className="mi" onClick={() => (socket.send({ type: "switch_role_preset", payload: { rolePresetSlug: role.slug } }), setMenu(null))}>
                 <span>{role.userLabel || role.displayName}</span>
+                {childRoleSlug === role.slug ? <i className="ph ph-check check" /> : null}
               </div>
             ))}
           </div>

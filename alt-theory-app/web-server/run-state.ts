@@ -7,7 +7,8 @@
  * Pi; the service owns the appliers, so this is testable on its own.
  */
 import type { AltMode, RuntimeMode } from "../core/alt-theory-core.js";
-import type { SessionModelOverride } from "./session-records.js";
+import type { SessionModelOverride, SessionVisibility } from "./session-records.js";
+import type { SessionCreationMetadata } from "./session-service.js";
 
 export type RunPhase = "idle" | "running" | "stopping" | "queued";
 
@@ -19,6 +20,20 @@ export interface PendingChanges {
   /** Only `true` is ever deferred; turning Full Access off applies live. */
   fullAccess?: boolean;
   runtime?: { mode: RuntimeMode; nativePiScanAltSkills: boolean };
+  /**
+   * Assembly-selector switches chosen mid-run (busy-refusal cure, 2026-09-13):
+   * null = cleared. Role/soul/instruction apply by instance replacement at
+   * settle; kbDomain applies in place. Per key, the last choice wins.
+   */
+  rolePresetSlug?: string | null;
+  soulSlug?: string | null;
+  customInstructionRef?: string | null;
+  kbDomain?: string;
+  /** Hosted visibility switch; the consent snapshot travels with the choice. */
+  visibility?: {
+    visibility: SessionVisibility;
+    consentSnapshot?: SessionCreationMetadata["consentSnapshot"];
+  };
 }
 
 export interface QueueSnapshot {

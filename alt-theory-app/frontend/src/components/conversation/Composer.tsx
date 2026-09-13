@@ -272,20 +272,30 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
   };
 
   // ctx-line labels
-  const roleLabel = app.selectors.rolePresetSlug
+  // A switch chosen mid-run renders as the chosen value plus the pending
+  // mark (same rule as deferred mode/model switches).
+  const pendingRoleSlug = app.pendingChanges.rolePresetSlug;
+  const roleSlug =
+    pendingRoleSlug !== undefined ? pendingRoleSlug : app.selectors.rolePresetSlug;
+  const roleLabel = roleSlug
     ? (app.discovery?.rolePresets.find(
-        (r) => r.slug === app.selectors.rolePresetSlug,
+        (r) => r.slug === roleSlug,
       )?.userLabel ??
       app.discovery?.rolePresets.find(
-        (r) => r.slug === app.selectors.rolePresetSlug,
+        (r) => r.slug === roleSlug,
       )?.displayName ??
-      app.selectors.rolePresetSlug)
+      roleSlug)
     : "No role";
-  const kbOff = app.selectors.currentDomain === KB_OFF_VALUE;
+  const pendingKbDomain = app.pendingChanges.kbDomain;
+  const kbDomain =
+    pendingKbDomain !== undefined
+      ? pendingKbDomain
+      : app.selectors.currentDomain;
+  const kbOff = kbDomain === KB_OFF_VALUE;
   const kbLabel = kbOff
     ? "No knowledge base"
     : (app.discovery?.kbDomains.find(
-        (k) => k.slug === app.selectors.currentDomain,
+        (k) => k.slug === kbDomain,
       )?.displayName ?? "Knowledge base");
 
   const toggle = (key: MenuKey) =>
@@ -531,13 +541,14 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
             open={menu === "role"}
             onToggle={() => toggle("role")}
             disabled={altControlsDisabled}
+            pending={pendingRoleSlug !== undefined}
           >
             <div
               className="mi"
               onClick={() => (app.switchRolePreset(null), setMenu(null))}
             >
               <span>{t("No role")}</span>
-              {!app.selectors.rolePresetSlug ? (
+              {!roleSlug ? (
                 <i className="ph ph-check check" />
               ) : null}
             </div>
@@ -548,7 +559,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                 onClick={() => (app.switchRolePreset(r.slug), setMenu(null))}
               >
                 <span>{r.userLabel || r.displayName}</span>
-                {app.selectors.rolePresetSlug === r.slug ? (
+                {roleSlug === r.slug ? (
                   <i className="ph ph-check check" />
                 ) : null}
               </div>
@@ -561,6 +572,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
             open={menu === "kb"}
             onToggle={() => toggle("kb")}
             disabled={altControlsDisabled}
+            pending={pendingKbDomain !== undefined}
           >
             <div
               className="mi"
@@ -578,7 +590,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                   onClick={() => (app.switchKb(k.slug), setMenu(null))}
                 >
                   <span>{k.displayName}</span>
-                  {app.selectors.currentDomain === k.slug ? (
+                  {kbDomain === k.slug ? (
                     <i className="ph ph-check check" />
                   ) : null}
                 </div>
@@ -627,6 +639,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                 : withheld
                   ? t("Not for export")
                   : t("Exportable")}
+              <PendingMark when={app.pendingChanges.visibility !== undefined} />
             </button>
           ) : null}
           </>
@@ -1021,6 +1034,7 @@ function CtxPicker({
   open,
   onToggle,
   disabled = false,
+  pending = false,
   children,
 }: {
   icon: string;
@@ -1028,6 +1042,8 @@ function CtxPicker({
   open: boolean;
   onToggle: () => void;
   disabled?: boolean;
+  /** Show the mid-run pending mark beside the label. */
+  pending?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -1043,6 +1059,7 @@ function CtxPicker({
       >
         <i className={`ph ${icon}`} />
         <span className="ctx-label">{label}</span>
+        <PendingMark when={pending} />
         <i className="ph ph-caret-down caret" />
       </button>
       <div
