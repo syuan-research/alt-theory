@@ -1891,8 +1891,8 @@ test("local: a withheld conversation never gets a retention date", async () => {
     assert.equal(created.retentionDueAt, null);
 
     // Even switching the marker by hand cannot introduce one.
-    service.setVisibility(snapshot.sessionId, "exportable");
-    service.setVisibility(snapshot.sessionId, "no-export");
+    await service.setVisibility(snapshot.sessionId, "exportable");
+    await service.setVisibility(snapshot.sessionId, "no-export");
     const after = JSON.parse(readFileSync(sessionPath, "utf-8"));
     assert.equal(after.visibility, "no-export");
     assert.equal(after.retentionDueAt, null);

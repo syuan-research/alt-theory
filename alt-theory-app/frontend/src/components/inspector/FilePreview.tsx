@@ -74,8 +74,12 @@ export function FilePreview({
   // unchanged file keeps the exact same content object (no re-render, the
   // DOM selection survives) and an unsaved edit is never overwritten. When
   // the content did change, the body swaps and the selection resets: that is
-  // the accepted local trade, not a selection-preservation system.
+  // the accepted local trade, not a selection-preservation system. Deps are
+  // the file primitives so an unrelated parent re-render (several fire at
+  // run completion) cannot cancel the in-flight load.
   const previousRefreshSignal = useRef(refreshSignal);
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
   useEffect(() => {
     if (!sessionId || !fileRef) return;
     if (refreshSignal === previousRefreshSignal.current) return;
@@ -83,14 +87,14 @@ export function FilePreview({
     let cancelled = false;
     loadFileContent(sessionId, fileRef)
       .then((loaded) => {
-        if (cancelled || draft !== null) return;
+        if (cancelled || draftRef.current !== null) return;
         setFile((prev) => (prev && prev.content === loaded.content ? prev : loaded));
       })
       .catch(() => undefined);
     return () => {
       cancelled = true;
     };
-  }, [refreshSignal, sessionId, fileRef, draft]);
+  }, [refreshSignal, sessionId, fileRef?.root, fileRef?.path]);
 
   const save = async () => {
     if (!sessionId || !fileRef || draft === null) return;

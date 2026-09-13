@@ -844,7 +844,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
             (openedPending.rolePresetSlug !== undefined ||
               openedPending.soulSlug !== undefined ||
               openedPending.customInstructionRef !== undefined ||
-              openedPending.kbDomain !== undefined)
+              openedPending.kbDomain !== undefined ||
+              openedPending.visibility !== undefined)
           ) {
             setSelectors((prev) => ({
               ...prev,
@@ -864,6 +865,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 openedPending.kbDomain !== undefined
                   ? openedPending.kbDomain
                   : prev.currentDomain,
+              visibility:
+                openedPending.visibility !== undefined
+                  ? openedPending.visibility.visibility
+                  : prev.visibility,
             }));
           }
           setSessionMode(message.payload.pending?.mode ?? message.payload.mode ?? "understand");
@@ -940,7 +945,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 : message.payload.customInstructionRef !== undefined
                   ? message.payload.customInstructionRef
                   : prev.customInstructionRef,
-            visibility: message.payload.visibility ?? prev.visibility,
+            visibility:
+              pending.visibility !== undefined
+                ? pending.visibility.visibility
+                : (message.payload.visibility ?? prev.visibility),
             branchId: message.payload.branchId || prev.branchId,
           }));
           // The mid-run switch ack also answers the optimistic asset switch:

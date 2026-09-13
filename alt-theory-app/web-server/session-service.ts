@@ -654,6 +654,17 @@ export class SessionService implements AgentTeamBridge {
           type: "extension_notice",
           payload: { message: failure.message, level: "error", failure },
         });
+        // A partially-completed swap (instance registered, then the config
+        // event write failed) already owns the session id; follow the map so
+        // the events below flow from whichever instance is live.
+        const liveNow = this.sessions.get(managed.manifest.sessionId);
+        if (liveNow && liveNow !== managed) {
+          current = liveNow;
+          this.emit(managed, {
+            type: "session_replaced",
+            payload: { sessionId: liveNow.manifest.sessionId },
+          });
+        }
       }
     }
     const steps: Array<[keyof PendingChanges, () => Promise<void> | void]> = [
@@ -2262,10 +2273,17 @@ export class SessionService implements AgentTeamBridge {
       }
 
       // Auto-name the conversation once, after its first real turn (v1.2.1).
-      // Fire-and-forget: title generation must never affect the run.
-      void this.maybeAutoTitle(managed);
+      // Fire-and-forget: title generation must never affect the run. It fires
+      // after settle, on whichever instance owns the session then — a
+      // deferred asset switch replaces (and disposes) the instance inside
+      // finishRun, and the old instance's model runtime would die mid-call.
       outcome = "completed";
-    })().finally(() => this.finishRun(managed, outcome));
+    })().finally(async () => {
+      await this.finishRun(managed, outcome);
+      if (outcome !== "completed") return;
+      const live = this.sessions.get(managed.manifest.sessionId);
+      if (live) void this.maybeAutoTitle(live);
+    });
 
     return {
       ids: {
