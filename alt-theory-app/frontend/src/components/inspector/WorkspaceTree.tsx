@@ -144,8 +144,6 @@ export function WorkspaceTree() {
     const staged = app.stagedWorkspacePaths.includes(preview.path);
     return (
       <FilePreview
-        key={`${preview.source}:${preview.path}`}
-        refreshSignal={runCount}
         sessionId={sessionId}
         path={preview.path}
         fileRef={{ root: preview.source === "working" ? "working" : "workspace", path: preview.path }}

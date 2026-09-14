@@ -147,6 +147,13 @@ export function MarkdownBody({
     };
   }, [renderMermaid, sourceHtml, streaming]);
 
+  const html =
+    renderMermaid && diagramHtml?.source === sourceHtml
+      ? diagramHtml.rendered
+      : sourceHtml;
+  // Stable identity prevents same-HTML renders from replacing selected DOM text.
+  const innerHtml = useMemo(() => ({ __html: html }), [html]);
+
   if (streaming) {
     return (
       <div ref={rootRef} className={cn("markdown-body", className)}>
@@ -155,11 +162,6 @@ export function MarkdownBody({
       </div>
     );
   }
-
-  const html =
-    renderMermaid && diagramHtml?.source === sourceHtml
-      ? diagramHtml.rendered
-      : sourceHtml;
 
   const onMermaidToggle = (event: MouseEvent<HTMLDivElement>) => {
     const button = (event.target as HTMLElement).closest<HTMLButtonElement>(
@@ -176,7 +178,7 @@ export function MarkdownBody({
     <div
       className={cn("markdown-body", className)}
       onClick={onMermaidToggle}
-      dangerouslySetInnerHTML={{ __html: html }}
+      dangerouslySetInnerHTML={innerHtml}
     />
   );
 }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { t } from "@/i18n";
 import { MarkdownBody } from "@/components/conversation/MarkdownBody";
 import {
@@ -27,7 +27,6 @@ export function FilePreview({
   onModeChange,
   onSaved,
   footer,
-  refreshSignal,
 }: {
   sessionId: string | null;
   /** Display path (toolbar rule and title). */
@@ -39,8 +38,6 @@ export function FilePreview({
   onModeChange: (mode: PreviewMode) => void;
   onSaved?: (content: FileContent) => void;
   footer?: ReactNode;
-  /** Run-completion signal: reload beside the visible body (see below). */
-  refreshSignal?: number;
 }) {
   const [file, setFile] = useState<FileContent | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -68,33 +65,6 @@ export function FilePreview({
       cancelled = true;
     };
   }, [sessionId, fileRef?.root, fileRef?.path]);
-
-  // Run-completion refresh (the caller's `refreshSignal`): the preview keeps
-  // its identity, so the reload happens beside the visible body — an
-  // unchanged file keeps the exact same content object (no re-render, the
-  // DOM selection survives) and an unsaved edit is never overwritten. When
-  // the content did change, the body swaps and the selection resets: that is
-  // the accepted local trade, not a selection-preservation system. Deps are
-  // the file primitives so an unrelated parent re-render (several fire at
-  // run completion) cannot cancel the in-flight load.
-  const previousRefreshSignal = useRef(refreshSignal);
-  const draftRef = useRef(draft);
-  draftRef.current = draft;
-  useEffect(() => {
-    if (!sessionId || !fileRef) return;
-    if (refreshSignal === previousRefreshSignal.current) return;
-    previousRefreshSignal.current = refreshSignal;
-    let cancelled = false;
-    loadFileContent(sessionId, fileRef)
-      .then((loaded) => {
-        if (cancelled || draftRef.current !== null) return;
-        setFile((prev) => (prev && prev.content === loaded.content ? prev : loaded));
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [refreshSignal, sessionId, fileRef?.root, fileRef?.path]);
 
   const save = async () => {
     if (!sessionId || !fileRef || draft === null) return;
