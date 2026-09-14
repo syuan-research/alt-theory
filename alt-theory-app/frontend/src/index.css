@@ -851,7 +851,8 @@
   .list-menu button { display: flex; align-items: center; gap: var(--space-tight); width: 100%; border: none; background: none; padding: var(--space-tight) var(--space-control); border-radius: var(--r-sm); font-size: var(--fs-primary); color: var(--ink-soft); cursor: pointer; text-align: left; }
   .list-menu button:hover { background: var(--hover); }
   /* thinking block: collapsible, amber bar (v0.5.x lineage) */
-  .think-block { max-width: 660px; margin: 0 auto var(--space-column); padding: 0 var(--space-column); font-size: var(--fs-secondary); color: var(--text-3); border-left: 2px solid var(--text-3); }
+  .think-block { max-width: 660px; margin: 0 auto var(--space-column); padding: 0 var(--space-column); font-size: var(--fs-secondary); color: var(--text-3); border-left: 2px solid var(--color-text-muted); }
+  .think-block.think-done { border-left-color: var(--color-success); }
   .think-block > summary { cursor: pointer; display: flex; align-items: baseline; gap: var(--space-tight); list-style: none; user-select: none; }
   .think-block > summary::-webkit-details-marker { display: none; }
   .think-block > summary i { font-size: 0.8rem; }

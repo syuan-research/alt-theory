@@ -457,7 +457,7 @@ function ThinkingBlock({
 }) {
   return (
     <CollapseAnywhereDetails
-      className="think-block"
+      className={complete ? "think-block think-done" : "think-block"}
       defaultOpen={defaultOpen}
       summary={
         <>
