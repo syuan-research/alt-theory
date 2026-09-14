@@ -13,6 +13,7 @@ import {
   purposeIcon,
   railMatchIds,
   sessionTitle,
+  type WorkspaceTree,
 } from "@/lib/sessionList";
 import { Workbench } from "@/components/shell/Workbench";
 import { SessionImportDialog } from "@/components/shell/SessionImportDialog";
@@ -405,6 +406,59 @@ function UpdateLine() {
   );
 }
 
+function SessionRootList({
+  roots,
+  tree,
+  folderHit,
+  visibleIds,
+  expanded,
+  onToggleExpanded,
+  foldedFamilies,
+  onToggleFamily,
+  onOpen,
+  draggable,
+  cap,
+}: {
+  roots: SessionSummary[];
+  tree: WorkspaceTree;
+  folderHit: boolean;
+  visibleIds: Set<string> | null;
+  expanded: boolean;
+  onToggleExpanded: () => void;
+  foldedFamilies: Set<string>;
+  onToggleFamily: (id: string) => void;
+  onOpen: (id: string) => void;
+  draggable: boolean;
+  cap: number;
+}) {
+  const shown = expanded || visibleIds !== null ? roots : roots.slice(0, cap);
+  return (
+    <>
+      {roots.length === 0 ? (
+        <div className="rp-empty ws-empty">{t("No conversations yet.")}</div>
+      ) : null}
+      {shown.map((root) => (
+        <SessionNode
+          key={root.sessionId}
+          session={root}
+          childrenByParent={tree.childrenByParent}
+          indent={0}
+          onOpen={onOpen}
+          draggable={draggable}
+          foldedFamilies={foldedFamilies}
+          onToggleFamily={onToggleFamily}
+          visibleIds={folderHit ? null : visibleIds}
+        />
+      ))}
+      {visibleIds === null && roots.length > cap ? (
+        <button className="group-more" onClick={onToggleExpanded}>
+          {expanded ? t("Show less") : t("Show all ({count})", { count: roots.length })}
+        </button>
+      ) : null}
+    </>
+  );
+}
+
 function UserNav({ onImport }: { onImport: () => void }) {
   const app = useApp();
   const shell = useShell();
@@ -495,10 +549,17 @@ function UserNav({ onImport }: { onImport: () => void }) {
       tree.groups.map((group) => {
         const project = projectByDir.get(group.dir);
         if (project?.name) return { ...group, label: project.name };
-        if (!group.dir) return { ...group, label: t("No project") };
         return group;
       }),
     [tree, projectByDir],
+  );
+  const projectGroups = useMemo(
+    () => groups.filter((group) => group.dir),
+    [groups],
+  );
+  const looseGroup = useMemo(
+    () => groups.find((group) => !group.dir),
+    [groups],
   );
 
   const visibleIds = useMemo(
@@ -563,7 +624,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
       return;
     }
     if ((dir ?? "") === (app.workspacePrimaryDir ?? "")) return;
-    const label = dir ? folderLabel(dir) : t("no project");
+    const label = dir ? folderLabel(dir) : t("Independent conversations");
     app.requestConfirm({
       message: t("Move this conversation to work in \"{label}\"?", { label }),
       details: [
@@ -629,7 +690,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
     const project = projectByDir.get(dir);
     app.requestConfirm({
       message:
-        t("Move this project's conversations to No project, then remove the project from the list? Conversations and files are not deleted."),
+        t("Move this project's conversations to Independent conversations, then remove the project from the list? Conversations and files are not deleted."),
       ...(project?.secondaryDirs.length
         ? {
             details: [
@@ -656,7 +717,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
     const dragged = app.sessions.find((s) => s.sessionId === sessionId);
     const sourceDir = dragged?.workspacePrimaryDir || "";
     if ((target ?? "") === sourceDir) return; // dropped back on its own folder
-    const label = target ? folderLabel(target) : t("no project");
+    const label = target ? folderLabel(target) : t("Independent conversations");
 
     // Whole-folder migration (item 4): when the dragged conversation's current
     // folder holds other conversations too (the "renamed/merged folder" case),
@@ -716,13 +777,13 @@ function UserNav({ onImport }: { onImport: () => void }) {
             <div className="split-new">
               <details className="list-more ws-pick">
                 <summary
-                  data-tip={app.workspacePrimaryDir ?? t("No project")}
+                  data-tip={app.workspacePrimaryDir ?? t("Independent conversations")}
                 >
-                  <i className="ph ph-folder-simple" />
+                  <i className={`ph ${app.workspacePrimaryDir ? "ph-folder-simple" : "ph-note"}`} />
                   <span className="ws-label">
                     {app.workspacePrimaryDir
                       ? folderLabel(app.workspacePrimaryDir)
-                      : t("No project")}
+                      : t("Independent conversations")}
                   </span>
                   <i className="ph ph-caret-down caret" />
                 </summary>
@@ -743,8 +804,8 @@ function UserNav({ onImport }: { onImport: () => void }) {
                       chooseFolder(null);
                     }}
                   >
-                    <i className="ph ph-prohibit" />
-                    {t("No project")}
+                    <i className="ph ph-note" />
+                    {t("Independent conversations")}
                     {!app.workspacePrimaryDir ? (
                       <i className="ph ph-check check" />
                     ) : null}
@@ -769,36 +830,8 @@ function UserNav({ onImport }: { onImport: () => void }) {
                   ))}
                 </div>
               </details>
-              <button
-                className="btn-new split-plus"
-                data-tip={t("Add project…")}
-                onClick={() => void addFolder()}
-              >
-                <i className="ph ph-folder-plus" />
-              </button>
-              <button
-                className="btn-new split-plus"
-                data-tip={t("New conversation")}
-                onClick={() => {
-                  shell.openApp();
-                  app.startNewSession();
-                }}
-              >
-                <i className="ph ph-note-pencil" />
-              </button>
             </div>
-          ) : (
-            <button
-              className="btn-new"
-              onClick={() => {
-                shell.openApp();
-                app.startNewSession();
-              }}
-            >
-              <i className="ph ph-note-pencil" />
-              {t("New conversation")}
-            </button>
-          )}
+          ) : null}
         </div>
         <RunningCount sessions={app.sessions} />
       </div>
@@ -818,7 +851,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
             type="button"
             data-tip={t("Collapse all projects")}
             aria-label={t("Collapse all projects")}
-            onClick={() => setClosedGroups(new Set(tree.groups.map((group) => group.dir)))}
+            onClick={() => setClosedGroups(new Set(projectGroups.map((group) => group.dir)))}
           >
             <i className="ph ph-arrows-in-line-vertical" aria-hidden="true" />
           </button>
@@ -830,6 +863,16 @@ function UserNav({ onImport }: { onImport: () => void }) {
           >
             <i className="ph ph-arrows-out-line-vertical" aria-hidden="true" />
           </button>
+          {local ? (
+            <button
+              type="button"
+              data-tip={t("Add project…")}
+              aria-label={t("Add project…")}
+              onClick={() => void addFolder()}
+            >
+              <i className="ph ph-folder-plus" aria-hidden="true" />
+            </button>
+          ) : null}
           <details className="list-more list-sort">
             <summary data-tip={t("Sort conversations")}>
               <i className="ph ph-sort-ascending" />
@@ -890,16 +933,13 @@ function UserNav({ onImport }: { onImport: () => void }) {
           <div className="rp-empty">{t("Loading conversations…")}</div>
         ) : app.sessionsError && app.sessions.length === 0 ? (
           <div className="rp-empty">{app.sessionsError}</div>
-        ) : groups.length === 0 ? (
-          <div className="rp-empty">{t("No conversations yet.")}</div>
         ) : (
-          groups.map((group) => {
+          <>
+            {projectGroups.map((group) => {
             const closed = closedGroups.has(group.dir);
-            const project = group.dir ? projectByDir.get(group.dir) : undefined;
+            const project = projectByDir.get(group.dir);
             const companions = project?.secondaryDirs ?? [];
-            // Tooltip sections appear only when they have content (WP-C).
-            const folderTip = group.dir
-              ? [
+            const folderTip = [
                   `[[${t("Main folder")}]]`,
                   group.dir,
                   ...(companions.length
@@ -908,9 +948,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                   ...(project?.name
                     ? [`[[${t("Project name")}]]`, project.name]
                     : []),
-                ].join("\n")
-              : undefined;
-            // A matching folder name keeps every conversation in it.
+                ].join("\n");
             const folderHit =
               visibleIds !== null && group.label.toLowerCase().includes(railQuery.trim().toLowerCase());
             const roots =
@@ -920,7 +958,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
             if (visibleIds !== null && roots.length === 0) return null;
             return (
               <div
-                key={group.dir || "no-folder"}
+                key={group.dir}
                 className={dropTarget === group.dir ? "drop-target" : undefined}
                 onDragOver={
                   local
@@ -952,7 +990,6 @@ function UserNav({ onImport }: { onImport: () => void }) {
                   </button>
                   {local ? (
                     <div className="reveal-layer -fade">
-                      {group.dir ? (
                         <details
                           className="list-more group-folder-more"
                           onToggle={(event) => {
@@ -1022,41 +1059,24 @@ function UserNav({ onImport }: { onImport: () => void }) {
                             </button>
                           </div>
                         </details>
-                      ) : null}
                       <button
                         className="group-add"
                         data-tip={t("New conversation in {label}", { label: group.label })}
-                        onClick={() => startConversationIn(group.dir || null)}
+                        onClick={() => startConversationIn(group.dir)}
                       >
                         <i className="ph ph-note-pencil" />
                       </button>
                     </div>
                   ) : null}
                 </div>
-                {!closed && roots.length === 0 ? (
-                  <div className="rp-empty ws-empty">{t("No conversations yet.")}</div>
-                ) : null}
-                {!closed &&
-                  (expandedGroups.has(group.dir) || visibleIds !== null
-                    ? roots
-                    : roots.slice(0, GROUP_CAP)
-                  ).map((root) => (
-                    <SessionNode
-                      key={root.sessionId}
-                      session={root}
-                      childrenByParent={tree.childrenByParent}
-                      indent={0}
-                      onOpen={openSession}
-                      draggable={local}
-                      foldedFamilies={foldedFamilies}
-                      onToggleFamily={toggleFamily}
-                      visibleIds={folderHit ? null : visibleIds}
-                    />
-                  ))}
-                {!closed && visibleIds === null && roots.length > GROUP_CAP ? (
-                  <button
-                    className="group-more"
-                    onClick={() =>
+                {!closed ? (
+                  <SessionRootList
+                    roots={roots}
+                    tree={tree}
+                    folderHit={folderHit}
+                    visibleIds={visibleIds}
+                    expanded={expandedGroups.has(group.dir)}
+                    onToggleExpanded={() =>
                       setExpandedGroups((prev) => {
                         const next = new Set(prev);
                         if (next.has(group.dir)) next.delete(group.dir);
@@ -1064,15 +1084,84 @@ function UserNav({ onImport }: { onImport: () => void }) {
                         return next;
                       })
                     }
-                  >
-                    {expandedGroups.has(group.dir)
-                      ? t("Show less")
-                      : t("Show all ({count})", { count: roots.length })}
-                  </button>
+                    foldedFamilies={foldedFamilies}
+                    onToggleFamily={toggleFamily}
+                    onOpen={openSession}
+                    draggable={local}
+                    cap={GROUP_CAP}
+                  />
                 ) : null}
               </div>
             );
-          })
+          })}
+            {(() => {
+              const looseLabel = t("Independent conversations");
+              const folderHit =
+                visibleIds !== null &&
+                looseLabel.toLowerCase().includes(railQuery.trim().toLowerCase());
+              const looseRoots = looseGroup?.roots ?? [];
+              const roots =
+                visibleIds === null || folderHit
+                  ? looseRoots
+                  : looseRoots.filter((root) => visibleIds.has(root.sessionId));
+              if (visibleIds !== null && roots.length === 0) return null;
+              return (
+                <div
+                  key="independent"
+                  className={dropTarget === "" ? "drop-target" : undefined}
+                  onDragOver={
+                    local
+                      ? (e) => {
+                          e.preventDefault();
+                          setDropTarget("");
+                        }
+                      : undefined
+                  }
+                  onDragLeave={
+                    local
+                      ? () =>
+                          setDropTarget((prev) => (prev === "" ? null : prev))
+                      : undefined
+                  }
+                  onDrop={local ? (e) => dropSession("", e) : undefined}
+                >
+                  <div className="workspace-list-head loose-head">
+                    <span>{looseLabel}</span>
+                    <div className="workspace-list-actions">
+                      <button
+                        type="button"
+                        data-tip={t("New conversation")}
+                        aria-label={t("New conversation")}
+                        onClick={() => startConversationIn(null)}
+                      >
+                        <i className="ph ph-note-pencil" aria-hidden="true" />
+                      </button>
+                    </div>
+                  </div>
+                  <SessionRootList
+                    roots={roots}
+                    tree={tree}
+                    folderHit={folderHit}
+                    visibleIds={visibleIds}
+                    expanded={expandedGroups.has("")}
+                    onToggleExpanded={() =>
+                      setExpandedGroups((prev) => {
+                        const next = new Set(prev);
+                        if (next.has("")) next.delete("");
+                        else next.add("");
+                        return next;
+                      })
+                    }
+                    foldedFamilies={foldedFamilies}
+                    onToggleFamily={toggleFamily}
+                    onOpen={openSession}
+                    draggable={local}
+                    cap={GROUP_CAP}
+                  />
+                </div>
+              );
+            })()}
+          </>
         )}
       </div>
     </div>

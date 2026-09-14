@@ -118,7 +118,7 @@ export function SessionImportDialog({
       .sort(([, a], [, b]) => b[0]!.updatedAt.localeCompare(a[0]!.updatedAt))
       .map(([cwd, group]) => ({
         cwd,
-        label: cwd ? folderLabel(cwd) : t("No project"),
+        label: cwd ? folderLabel(cwd) : t("Independent conversations"),
         sessions: group,
       }));
   }, [visibleSessions]);

@@ -17,11 +17,11 @@ type PaneSide = "left" | "right";
 
 const LEFT_PANE = {
   key: "alt-theory-left-width",
-  initial: 264,
+  initial: 256,
   min: 200,
-  max: 420,
-  collapsed: 52,
-} as const;
+  max: 416,
+  collapsed: 48,
+} as const; // 8px module; collapsed pairs with RIGHT_PANE.collapsed
 
 function readLeftWidth(): number {
   try {

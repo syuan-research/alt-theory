@@ -157,7 +157,7 @@ function halfCenterRightWorkArea(): number {
     /* ignore measurement failures */
   }
   // Fallback when shell not mounted yet: rough window minus typical left+rail.
-  return Math.round((window.innerWidth - 264 - RIGHT_PANE.collapsed) / 2);
+  return Math.round((window.innerWidth - 256 - RIGHT_PANE.collapsed) / 2);
 }
 
 function readFlag(key: string): boolean {
