@@ -666,12 +666,8 @@ export function writeWorkingFolderTextFile(
   const out = applyTextFlags(content, readTextFlags(target));
   const finalPath = options.conflictCopy ? conflictCopyPath(target) : target;
   const tempPath = `${finalPath}.${Date.now()}.tmp`;
-  try {
-    writeFileSync(tempPath, out, "utf-8");
-    renameSync(tempPath, finalPath);
-  } catch (error) {
-    throw error;
-  }
+  writeFileSync(tempPath, out, "utf-8");
+  renameSync(tempPath, finalPath);
   return readWorkingFolderTextFile(
     dataDir,
     sessionId,

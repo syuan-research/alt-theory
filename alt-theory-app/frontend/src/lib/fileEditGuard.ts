@@ -42,20 +42,20 @@ export function onArmedChange(fn: (armed: string | null) => void): () => void {
 }
 
 /** Wrap a leave action: clean editor → straight through; dirty → block the
- *  first attempt, save-and-leave on any further one. A failed save (save
- *  conflict) aborts the leave; the conflict bar takes over. */
+ *  first attempt, save-and-leave on any further one (to whatever target the
+ *  user just clicked). A failed save (save conflict) aborts the leave; the
+ *  conflict bar takes over. */
 export async function guardLeave(action: () => void): Promise<void> {
   if (!editor || !editor.isDirty()) {
     action();
     return;
   }
   if (armedKey === editor.key) {
-    const leave = pendingLeave;
     armedKey = null;
     pendingLeave = null;
     emit();
     const ok = await editor.save();
-    if (ok) leave?.();
+    if (ok) action();
     return;
   }
   armedKey = editor.key;

@@ -105,3 +105,67 @@ test("leave guard: resolveArmed(saveFirst) saves then leaves; discard path drops
   assert.equal(left, 1, "clearArmed dissolves the pending leave (typing = stay)");
   registerGuardEditor(null);
 });
+
+test("leave guard: a failed save aborts the leave (conflict bar takes over)", async () => {
+  registerGuardEditor({
+    key: "k3",
+    isDirty: () => true,
+    save: async () => false, // 409 counts as failure
+    discard: () => undefined,
+  });
+  let left = 0;
+  await guardLeave(() => {
+    left += 1;
+  });
+  await guardLeave(() => {
+    left += 1;
+  });
+  assert.equal(left, 0, "blocked first, aborted second — never left");
+  registerGuardEditor(null);
+});
+
+test("leave guard: resolveArmed(saveFirst) awaits the save before leaving", async () => {
+  let saved = false;
+  registerGuardEditor({
+    key: "k4",
+    isDirty: () => true,
+    save: async () => {
+      saved = true;
+      return true;
+    },
+    discard: () => undefined,
+  });
+  let left = 0;
+  void guardLeave(() => {
+    left += 1;
+  });
+  resolveArmed(true);
+  assert.equal(saved, true, "save fired");
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(left, 1, "leave ran after the save resolved");
+  registerGuardEditor(null);
+});
+
+test("leave guard: the second leave goes to the target just clicked", async () => {
+  let draft: string | null = "dirty";
+  registerGuardEditor({
+    key: "k5",
+    isDirty: () => draft !== null,
+    save: async () => {
+      draft = null;
+      return true;
+    },
+    discard: () => {
+      draft = null;
+    },
+  });
+  let wentTo = "";
+  await guardLeave(() => {
+    wentTo = "file-b";
+  }); // first attempt (file B) bounces
+  await guardLeave(() => {
+    wentTo = "back";
+  }); // user changed their mind and clicked Back
+  assert.equal(wentTo, "back", "the latest leave target wins");
+  registerGuardEditor(null);
+});

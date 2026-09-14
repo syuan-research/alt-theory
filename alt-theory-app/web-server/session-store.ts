@@ -1002,12 +1002,8 @@ export function writeSessionTextFile(
   const finalPath = options.conflictCopy ? conflictCopyPath(target.path) : target.path;
   mkdirSync(dirname(finalPath), { recursive: true });
   const tempPath = `${finalPath}.${Date.now()}.tmp`;
-  try {
-    writeFileSync(tempPath, out, "utf-8");
-    renameSync(tempPath, finalPath);
-  } catch (error) {
-    throw error;
-  }
+  writeFileSync(tempPath, out, "utf-8");
+  renameSync(tempPath, finalPath);
   return readSessionTextFile(
     dataDir,
     sessionId,

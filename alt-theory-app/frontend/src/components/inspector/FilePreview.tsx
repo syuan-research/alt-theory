@@ -84,6 +84,8 @@ export function FilePreview({
   // Latest-value refs so stable callbacks (hotkey, guard) never go stale.
   const draftRef = useRef(draft);
   draftRef.current = draft;
+  const keyRef = useRef(key);
+  keyRef.current = key;
   const fileUpdatedAtRef = useRef<string | null>(null);
   fileUpdatedAtRef.current = file?.updatedAt ?? null;
   const onSavedRef = useRef(onSaved);
@@ -149,6 +151,10 @@ export function FilePreview({
         setConflict(false);
         setFile(saved);
         setDraft(null);
+        // The draft died by saving (also for a conflict copy: its text went
+        // to the sibling, so the parked draft must not come back on the
+        // original file as a phantom dirty edit).
+        clearDraft(draftKey(sessionId, fileRef.root, fileRef.path));
         if (options.conflictCopy) {
           const name = saved.path.split("/").at(-1) ?? saved.path;
           setStatus(t("Saved as {name}.", { name }));
@@ -178,9 +184,14 @@ export function FilePreview({
     setStatus("");
     setDraft(null);
     if (!sessionId || !fileRef) return;
-    clearDraft(draftKey(sessionId, fileRef.root, fileRef.path));
+    const clearKey = draftKey(sessionId, fileRef.root, fileRef.path);
+    clearDraft(clearKey);
     loadFileContent(sessionId, fileRef)
-      .then((loaded) => setFile(loaded))
+      .then((loaded) => {
+        // resolveArmed(false) navigates right after this fires; a late
+        // return must not clobber whatever file the pane shows now.
+        if (keyRef.current === clearKey) setFile(loaded);
+      })
       .catch(() => undefined);
   }, [sessionId, fileRef]);
 
@@ -220,8 +231,13 @@ export function FilePreview({
   };
 
   const canSave = active === "edit" && draft !== null;
-  const hotkeySave = useCallback(() => void doSave(), [doSave]);
-  useHotkey("save", canSave && !conflict ? hotkeySave : null);
+  const hotkeySave = useCallback(() => {
+    // Registered during the conflict bar too, so Ctrl+S never falls through
+    // to the browser's save-page default; it just does nothing there.
+    if (conflict) return;
+    void doSave();
+  }, [doSave, conflict]);
+  useHotkey("save", active === "edit" && (canSave || conflict) ? hotkeySave : null);
 
   const label = (m: PreviewMode) =>
     m === "diff"
