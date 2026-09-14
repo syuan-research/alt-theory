@@ -5,6 +5,7 @@ import {
   loadFileContent,
   previewModes,
   saveFileContent,
+  selectionHeldIn,
   type FileContent,
   type FileRef,
   type PreviewMode,
@@ -46,6 +47,12 @@ export function FilePreview({
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState<string | null>(null);
   const [status, setStatus] = useState("");
+  // Reading state: a refresh that arrives while the user holds a selection in
+  // the body parks here instead of swapping the body out from under them —
+  // same idea as the draft guard below. It lands on selectionchange, or is
+  // superseded by the next refresh.
+  const parkedFileRef = useRef<FileContent | null>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
 
   const modes = previewModes(path, {
     hasDiff: Boolean(diff),
@@ -59,6 +66,7 @@ export function FilePreview({
     setError(null);
     setDraft(null);
     setStatus("");
+    parkedFileRef.current = null;
     if (!sessionId || !fileRef) return;
     let cancelled = false;
     loadFileContent(sessionId, fileRef)
@@ -73,10 +81,11 @@ export function FilePreview({
   // its identity, so the reload happens beside the visible body — an
   // unchanged file keeps the exact same content object (no re-render, the
   // DOM selection survives) and an unsaved edit is never overwritten. When
-  // the content did change, the body swaps and the selection resets: that is
-  // the accepted local trade, not a selection-preservation system. Deps are
-  // the file primitives so an unrelated parent re-render (several fire at
-  // run completion) cannot cancel the in-flight load.
+  // the content did change, the swap additionally waits out any selection
+  // held in the body (parkedFileRef): reading beats freshness until the
+  // selection goes. Deps are the file primitives so an unrelated parent
+  // re-render (several fire at run completion) cannot cancel the in-flight
+  // load.
   const previousRefreshSignal = useRef(refreshSignal);
   const draftRef = useRef(draft);
   draftRef.current = draft;
@@ -88,6 +97,11 @@ export function FilePreview({
     loadFileContent(sessionId, fileRef)
       .then((loaded) => {
         if (cancelled || draftRef.current !== null) return;
+        if (selectionHeldIn(bodyRef.current, document.getSelection())) {
+          parkedFileRef.current = loaded;
+          return;
+        }
+        parkedFileRef.current = null;
         setFile((prev) => (prev && prev.content === loaded.content ? prev : loaded));
       })
       .catch(() => undefined);
@@ -95,6 +109,20 @@ export function FilePreview({
       cancelled = true;
     };
   }, [refreshSignal, sessionId, fileRef?.root, fileRef?.path]);
+
+  // The parked refresh lands when the user's selection goes (or leaves the
+  // body). Bound once: it reads only refs, so it stays correct across files.
+  useEffect(() => {
+    const onSelectionChange = () => {
+      const parked = parkedFileRef.current;
+      if (!parked || draftRef.current !== null) return;
+      if (selectionHeldIn(bodyRef.current, document.getSelection())) return;
+      parkedFileRef.current = null;
+      setFile((prev) => (prev && prev.content === parked.content ? prev : parked));
+    };
+    document.addEventListener("selectionchange", onSelectionChange);
+    return () => document.removeEventListener("selectionchange", onSelectionChange);
+  }, []);
 
   const save = async () => {
     if (!sessionId || !fileRef || draft === null) return;
@@ -162,7 +190,7 @@ export function FilePreview({
           </span>
         ) : null}
       </div>
-      <div className="change-preview-body expanded">{body()}</div>
+      <div className="change-preview-body expanded" ref={bodyRef}>{body()}</div>
       {active === "edit" ? (
         <div className="file-edit-actions">
           <span className="wb-note">{status}</span>

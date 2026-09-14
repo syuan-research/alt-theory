@@ -52,6 +52,23 @@ export async function loadFileContent(sessionId: string, ref: FileRef): Promise<
   };
 }
 
+/**
+ * True when the user is holding a non-collapsed selection inside `container`.
+ * The preview's background refresh defers its body swap while this holds —
+ * reading wins over freshness. Takes the selection structurally so tests
+ * don't need a DOM; selections inside the .html iframe live in the iframe's
+ * own document and are invisible to this check.
+ */
+export function selectionHeldIn(
+  container: HTMLElement | null,
+  selection: { isCollapsed: boolean; anchorNode: Node | null; focusNode: Node | null } | null,
+): boolean {
+  if (!selection || selection.isCollapsed) return false;
+  const { anchorNode, focusNode } = selection;
+  if (!container || !anchorNode || !focusNode) return false;
+  return container.contains(anchorNode) && container.contains(focusNode);
+}
+
 export async function saveFileContent(sessionId: string, ref: FileRef, content: string): Promise<FileContent> {
   const data = await putSessionFileContent(sessionId, { root: ref.root, path: ref.path, content });
   return {
