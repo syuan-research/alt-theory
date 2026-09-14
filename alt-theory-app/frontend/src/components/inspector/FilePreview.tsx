@@ -129,6 +129,9 @@ export function FilePreview({
     setStatus(t("Saving…"));
     try {
       const saved = await saveFileContent(sessionId, fileRef, draft);
+      // A park from before the edit would otherwise land over the just-saved
+      // content on the next selectionchange.
+      parkedFileRef.current = null;
       setFile(saved);
       setDraft(null);
       setStatus(t("Saved."));
