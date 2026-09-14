@@ -347,7 +347,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               </span>
             ) : null}
             {app.composerNotice ? (
-              <span className={`run-tip${app.composerNotice.warn ? " warn" : ""}`}>
+              <span className="run-tip">
                 {app.composerNotice.prefix ? (
                   <i
                     className={`ph ${
@@ -371,7 +371,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               </button>
             ) : null}
             {needsModel ? (
-              <span className="warn">
+              <span className="danger">
                 {app.localConfig?.anyUsable
                   ? t("Choose a model for this conversation, or set a default in Settings.")
                   : t("No usable model is configured.")}{" "}

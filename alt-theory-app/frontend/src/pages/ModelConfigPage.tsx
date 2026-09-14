@@ -24,6 +24,7 @@ import { BodyText, HintText, PageTitle } from "@/components/ui/Typography";
 import { cn } from "@/lib/cn";
 import { applyTheme, isDarkStored, setDarkStored } from "@/lib/theme";
 import { t } from "@/i18n";
+import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
 
 const PROVIDER_PRESETS = [
@@ -334,6 +335,7 @@ export function ModelConfigPage({
   onReconnectOAuth?: (provider: string) => void;
 } = {}) {
   const shell = useShell();
+  const app = useApp();
   const [status, setStatus] = useState<ConfigStatus | null>(null);
   const [providers, setProviders] = useState<ProviderView[]>([]);
   const [loading, setLoading] = useState(true);
@@ -780,7 +782,7 @@ export function ModelConfigPage({
       {loading ? (
         <HintText>{t("Loading…")}</HintText>
       ) : error ? (
-        <HintText className="text-warning">{error}</HintText>
+        <HintText className="text-danger">{error}</HintText>
       ) : status ? (
         <div
           className="active-model-summary"
@@ -921,10 +923,13 @@ export function ModelConfigPage({
         ) : null}
 
         {embedded ? (
-          <div className="model-config-heading">
-            <h2>{t("Models")}</h2>
-            <div className="model-config-status">{statusSummary}</div>
-          </div>
+          <>
+            <div className="model-config-heading">
+              <h2>{t("Models")}</h2>
+              <div className="model-config-status">{statusSummary}</div>
+            </div>
+            <p className="sub">{t("Configure providers and models.")}</p>
+          </>
         ) : (
           <div className="model-config-status">{statusSummary}</div>
         )}
@@ -1062,27 +1067,30 @@ export function ModelConfigPage({
                 <button
                   type="button"
                   className="provider-delete"
-                  onClick={async () => {
-                    if (
-                      !window.confirm(
-                        t('Delete provider "{name}" and its saved key?', { name: editingName }),
-                      )
-                    ) {
-                      return;
-                    }
-                    try {
-                      await deleteConfigProvider(editingName);
-                      showToast(t("Deleted {name}", { name: editingName }));
-                      initialized.current = false;
-                      setEditorOpen(false);
-                      setEditingName(null);
-                      await Promise.all([refresh(), onConfigChanged?.()]);
-                    } catch (err) {
-                      showToast(
-                        err instanceof Error ? err.message : t("Delete failed"),
-                        true,
-                      );
-                    }
+                  onClick={() => {
+                    const name = editingName;
+                    if (!name) return;
+                    app.requestConfirm({
+                      message: t('Delete provider "{name}" and its saved key?', { name }),
+                      confirmLabel: t("Delete"),
+                      onConfirm: () => {
+                        void (async () => {
+                          try {
+                            await deleteConfigProvider(name);
+                            showToast(t("Deleted {name}", { name }));
+                            initialized.current = false;
+                            setEditorOpen(false);
+                            setEditingName(null);
+                            await Promise.all([refresh(), onConfigChanged?.()]);
+                          } catch (err) {
+                            showToast(
+                              err instanceof Error ? err.message : t("Delete failed"),
+                              true,
+                            );
+                          }
+                        })();
+                      },
+                    });
                   }}
                 >
                   {t("Delete")}
@@ -1460,9 +1468,10 @@ export function ModelConfigPage({
       {toast ? (
         <div
           className={cn(
-            "fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-md px-4 py-2 text-[length:var(--fs-secondary)] text-surface shadow-lg",
+            "fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-md px-4 py-2 text-[length:var(--fs-secondary)] text-surface",
             toast.error ? "bg-danger" : "bg-ink"
           )}
+          style={{ boxShadow: "var(--shadow-popup)" }}
         >
           <span>{toast.text}</span>
           {toast.error ? (
