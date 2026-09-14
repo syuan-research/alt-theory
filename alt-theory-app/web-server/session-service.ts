@@ -2332,7 +2332,8 @@ export class SessionService implements AgentTeamBridge {
    * Pi owns the queue (card 11): a message sent while a turn runs joins Pi's
    * steering queue (delivered before the next LLM call — the product rule
    * "queued = next API call") or its follow-up queue. The bubble is shown
-   * when Pi hands the text to the model (queue_update → user_steered).
+   * when Pi starts a user turn with the text (queued-user message_start →
+   * user_steered).
    */
   async queuePrompt(
     sessionId: string,

@@ -1414,7 +1414,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const attachments = attachmentPaths.length ? attachmentPaths : undefined;
       if (isRunning) {
         // Pi owns the queue (card 11): the text steers the running turn and
-        // its bubble appears when Pi hands it to the model (user_steered).
+        // its bubble appears when Pi starts a user turn with it (queued-user
+        // message_start → user_steered).
         return sendMessage({
           type: "prompt",
           payload: outgoing,
