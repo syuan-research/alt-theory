@@ -21,7 +21,7 @@ export function sessionTranscriptToMarkdown(
     } else if (message.role === "assistant" && (message.thinking?.trim() || text)) {
       const parts = [`## ${t("Alt")}`];
       if (message.thinking?.trim()) {
-        parts.push(`### ${t("Thinking")}\n\n${message.thinking.trim()}`);
+        parts.push(`### ${t("Thinking complete")}\n\n${message.thinking.trim()}`);
       }
       if (text) parts.push(`### ${t("Answer")}\n\n${text}`);
       sections.push(parts.join("\n\n"));

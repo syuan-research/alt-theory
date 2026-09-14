@@ -464,6 +464,8 @@ function UserNav({ onImport }: { onImport: () => void }) {
   const shell = useShell();
   const navRef = useRef<HTMLDivElement>(null);
   const [closedGroups, setClosedGroups] = useState<Set<string>>(new Set());
+  const [projectsCollapsed, setProjectsCollapsed] = useState(false);
+  const [looseCollapsed, setLooseCollapsed] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [foldedFamilies, setFoldedFamilies] = useState<Set<string>>(new Set());
   const [dropTarget, setDropTarget] = useState<string | null>(null);
@@ -830,13 +832,36 @@ function UserNav({ onImport }: { onImport: () => void }) {
                   ))}
                 </div>
               </details>
+              <button
+                className="btn-new split-plus"
+                data-tip={t("New conversation")}
+                onClick={() =>
+                  startConversationIn(app.workspacePrimaryDir || null)
+                }
+              >
+                <i className="ph ph-note-pencil" />
+              </button>
             </div>
-          ) : null}
+          ) : (
+            <button
+              className="btn-new"
+              onClick={() => startConversationIn(null)}
+            >
+              <i className="ph ph-note-pencil" />
+              {t("New conversation")}
+            </button>
+          )}
         </div>
         <RunningCount sessions={app.sessions} />
       </div>
       <div className="workspace-list-head">
-        <span>{t("Projects")}</span>
+        <button
+          type="button"
+          className="workspace-list-title"
+          onClick={() => setProjectsCollapsed((value) => !value)}
+        >
+          {t("Projects")}
+        </button>
         <div className="workspace-list-actions">
           <button
             type="button"
@@ -935,7 +960,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
           <div className="rp-empty">{app.sessionsError}</div>
         ) : (
           <>
-            {projectGroups.map((group) => {
+            {!projectsCollapsed && projectGroups.map((group) => {
             const closed = closedGroups.has(group.dir);
             const project = projectByDir.get(group.dir);
             const companions = project?.secondaryDirs ?? [];
@@ -1126,7 +1151,13 @@ function UserNav({ onImport }: { onImport: () => void }) {
                   onDrop={local ? (e) => dropSession("", e) : undefined}
                 >
                   <div className="workspace-list-head loose-head">
-                    <span>{looseLabel}</span>
+                    <button
+                      type="button"
+                      className="workspace-list-title"
+                      onClick={() => setLooseCollapsed((value) => !value)}
+                    >
+                      {looseLabel}
+                    </button>
                     <div className="workspace-list-actions">
                       <button
                         type="button"
@@ -1138,6 +1169,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                       </button>
                     </div>
                   </div>
+                  {looseCollapsed ? null : (
                   <SessionRootList
                     roots={roots}
                     tree={tree}
@@ -1158,6 +1190,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                     draggable={local}
                     cap={GROUP_CAP}
                   />
+                  )}
                 </div>
               );
             })()}

@@ -162,7 +162,7 @@ export function FilePreview({
           </span>
         ) : null}
       </div>
-      <div className="pv-card change-preview-body expanded">{body()}</div>
+      <div className="change-preview-body expanded">{body()}</div>
       {active === "edit" ? (
         <div className="file-edit-actions">
           <span className="wb-note">{status}</span>
@@ -180,7 +180,7 @@ function DiffLines({ diff }: { diff: string }) {
   const lines = diff ? diff.split("\n") : [];
   if (lines.length === 0) return <div className="rp-empty">{t("Nothing to compare against.")}</div>;
   return (
-    <div style={{ padding: "var(--space-tight) 0" }}>
+    <div>
       {lines.map((line, i) => (
         <div key={i} className={line.startsWith("+") ? "diffline add" : line.startsWith("-") ? "diffline del" : "diffline"}>
           {line}

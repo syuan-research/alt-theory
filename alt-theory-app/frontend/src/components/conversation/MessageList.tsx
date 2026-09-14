@@ -449,9 +449,11 @@ function CollapseAnywhereDetails({
 function ThinkingBlock({
   text,
   defaultOpen,
+  complete,
 }: {
   text: string;
   defaultOpen: boolean;
+  complete?: boolean;
 }) {
   return (
     <CollapseAnywhereDetails
@@ -459,7 +461,8 @@ function ThinkingBlock({
       defaultOpen={defaultOpen}
       summary={
         <>
-          <i className="ph ph-brain" aria-hidden="true" /> {t("Thinking")}
+          <i className="ph ph-brain" aria-hidden="true" />{" "}
+          {complete ? t("Thinking complete") : t("Thinking in progress")}
         </>
       }
     >
@@ -525,7 +528,11 @@ export function TranscriptEntry({
     return (
       <>
         {(developer || showThinking) && message.thinking ? (
-          <ThinkingBlock text={message.thinking} defaultOpen={thinkingExpanded} />
+          <ThinkingBlock
+            text={message.thinking}
+            defaultOpen={thinkingExpanded}
+            complete
+          />
         ) : null}
         <AssistantBubble text={message.text} />
         {stopLine ? <div className="reply-stop">{stopLine}</div> : null}

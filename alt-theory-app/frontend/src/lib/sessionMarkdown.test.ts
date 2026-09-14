@@ -26,7 +26,7 @@ test("Markdown export keeps thinking and tool descriptions but omits tool result
     },
   ]);
 
-  assert.match(markdown, /### Thinking\n\nI should inspect it\./);
+  assert.match(markdown, /### Thinking complete\n\nI should inspect it\./);
   assert.match(markdown, /Tool:\*\* Read report\.md/);
   assert.doesNotMatch(markdown, /raw output must stay out/);
 });
