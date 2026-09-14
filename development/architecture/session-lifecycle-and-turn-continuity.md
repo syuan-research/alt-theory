@@ -4,12 +4,13 @@ slug: session-lifecycle-and-turn-continuity
 scope: Alt Theory session materialization, managed runtime lifecycle, and turn continuity
 summary: Materializes sessions, owns their live runtime, records runs, and preserves recoverable turn state across retry, continue, compaction, and reconnect
 status: current
-last_reviewed: 2026-09-03
+last_reviewed: 2026-09-15
 tags: [core, backend, session, continuity]
 depends_on:
   - branch-family-semantics.md
   - adr/0002-mediated-child-session-substrate.md
   - adr/0004-prompt-cache-safety.md
+  - adr/0006-pi-owned-queued-prompt-lifecycle.md
 ---
 
 # Architecture: Session Lifecycle and Turn Continuity
@@ -62,7 +63,7 @@ Prompt-cache behavior for copied session history is constrained by
 ## Materialization and managed runtime
 
 A WebSocket connection begins with selector state only. The first prompt calls
-`SessionService.createSession()` (`alt-theory-app/web-server/session-service.ts:562-588`),
+`SessionService.createSession()` in `alt-theory-app/web-server/session-service.ts`,
 allocates the readable session ID, creates the session directories, assembles an
 Alt Theory/Pi runtime, writes foundation records, and registers a
 `ManagedSession`. Merely connecting, opening the composer, or calling
@@ -83,13 +84,14 @@ subscription to all attached WebSocket listeners.
 ## Open, reopen, and runtime replacement
 
 `openSession()` returns the existing managed instance when the session is already
-live (`session-service.ts:590-601`). This avoids stacking a second runtime over
+live. This avoids stacking a second runtime over
 the same JSONL while a run is active. When no live instance exists,
 `createManagedFromExisting()` restores the persisted Pi file and current runtime
 assembly, reconciles an accepted run left by process exit, aligns the active Pi
-leaf from run evidence, builds the transcript, and registers the managed runtime
-(`session-service.ts:3097-3308`). Undelivered addressed child-session mail is
-injected as a no-turn custom message during open (`session-service.ts:616-636`).
+leaf from run evidence, builds the transcript, and registers the managed runtime.
+Undelivered addressed child-session mail is injected as a no-turn custom message
+during open. See `session-service.ts` (`openSession`,
+`createManagedFromExisting`, and `openManagedRuntime`).
 
 Opening is recovery-oriented. Missing role, soul, or KB assets can produce a
 visible resume warning and use the current fallback selector. A missing
@@ -97,13 +99,14 @@ per-session model override can fall back to the deployment model while retaining
 the stale override in the header. These are resume behaviors; they do not rewrite
 the original assembly record.
 
-Idle role/soul or related selector changes use `replaceSession()`
-(`session-service.ts:640-686`). With history, the service opens the same Pi JSONL
-through `createManagedFromExistingWithSelectors()` and then disposes the prior
-managed runtime. A session whose run state is not idle rejects replacement with
-`session_busy`. A replacement therefore creates a new in-memory assembly while
-preserving the session identity and conversation evidence; it is not a second
-logical conversation.
+Idle Role, Soul, and Custom Instruction changes use `replaceSession()`. With
+history, the service opens the same Pi JSONL through
+`createManagedFromExistingWithSelectors()` and then disposes the prior managed
+runtime. The same choices made while a turn runs are deferred; `settle()` folds
+the three pending selectors into one replacement after the complete run. A
+replacement therefore creates a new in-memory assembly while preserving the
+session identity and conversation evidence; it is not a second logical
+conversation.
 
 The four current assembly paths all retain the same session-service lifecycle
 shape: new materialization (`createManagedFromDirs`), ordinary reopen
@@ -157,20 +160,26 @@ Where a status fact lives (v1.5.1):
   does not end the turn"). A failed run shows its failure envelope and
   recovery; the phase is idle, not "error".
 
-A model, thinking, mode, Full Access on, or app runtime-mode switch during a
-run is accepted, not refused: `RunState.applyOrDefer()` applies it now when
-idle or records it as pending, and `settle()` drains the pending set through
-the same appliers the live path uses (`applyMode`, `applyModel`,
-`applyRuntime`, the core's `setFullAccess`). Turning Full Access off applies
-immediately, because the guard reads it per tool call. A change that fails at
-drain time is reported as an error-level `extension_notice`; a successful
-drain is followed by a `session_updated` snapshot. The snapshot exposes
-`pending` (the deferred values), `thinking` (the resolver's answer, see the
-provider/model document), and `queue` (Pi's steering and follow-up texts).
-The client renders a deferred switch as the chosen value with a pending mark,
-never as an error; a `session_busy` refusal never changes the client's run
-state (`run-state.test.ts`; `session-service.test.ts` "switches during a run
-are deferred").
+A model/thinking, mode, Full Access on, app runtime-mode, Role, Soul, Custom
+Instruction, knowledge-base, or visibility switch during a run is accepted,
+not refused: `RunState.applyOrDefer()` applies it now when idle or records the
+last choice for that key as pending. Turning Full Access off still applies
+immediately, because the guard reads it per tool call. At `settle()`, Role,
+Soul, and Custom Instruction are combined into one instance replacement first;
+the internal `session_replaced` event reattaches existing WebSocket listeners,
+then mode, Full Access, model, knowledge, visibility, and runtime changes run
+through their ordinary appliers on the live instance. A null Role, Soul, or
+instruction means clear. A failed drain keeps the unaffected current value and
+emits an error-level `extension_notice`; successful in-place work is followed
+by a `session_updated` snapshot.
+
+The snapshot exposes `pending` (the deferred values), `thinking` (the
+resolver's answer, see the provider/model document), and `queue` (Pi's steering
+and follow-up texts). The client renders a deferred switch as the chosen value
+with a pending mark, never as an error. Operations that revise or delete the
+history being generated remain idle-only; they are not configuration switches
+(`run-state.test.ts`; `session-service.test.ts` "switches during a run are
+deferred").
 
 Every failure the service reports — `run_failed`, a refused WebSocket request,
 an error-level notice — carries the one envelope from `core/failure.ts`:
@@ -183,9 +192,9 @@ never inferred from text (`core/failure.test.ts`).
 
 An agent-team child is a normal managed Alt Theory session, created through
 `createSession()` with `forkedFrom.purpose: "subagent"`, durable records, its own
-Pi history, and a parent session id (`session-service.ts:2628-2693`). It starts a
-background run immediately or enters the process-wide FIFO subagent queue when
-the concurrency cap is full (`session-service.ts:2979-3023`). The child remains
+Pi history, and a parent session id. It starts a background run immediately or
+enters the process-wide FIFO subagent queue when the concurrency cap is full.
+The child remains
 an inspectable, messageable session after its turn ends or is interrupted; this
 is the managed-session substrate recorded in
 [`adr/0002-mediated-child-session-substrate.md`](adr/0002-mediated-child-session-substrate.md).
@@ -193,10 +202,18 @@ is the managed-session substrate recorded in
 At spawn, the parent supplies the bounded task packet and the child records its
 resolved initial model chain in `subagentExecution`; the live child restores that
 chain when reopened. The parent’s assembled subagent configuration snapshot is
-used for spawn validation (`session-service.ts:2636-2654`). Initial fallback-gate
+used for spawn validation. Initial fallback-gate
 and model/thinking semantics remain owned by the agent behavior/model material;
 this module records only that child creation and later turns use the ordinary
-managed run lifecycle (`session-service.ts:3797-3890`).
+managed run lifecycle. See `session-service.ts` (`spawnSubagent`,
+`startSubagentRun`, and `openManagedRuntime`).
+
+The spawn may also name an existing Role. That Role is validated before any
+child session is created and enters the ordinary selector/assembly path;
+omission inherits the parent's Role, while an unknown id fails with
+`not_found` and leaves no partial session. Role semantics and the distinction
+from the execution preset are owned by
+[`agent-behavior-and-assets.md`](agent-behavior-and-assets.md).
 
 Child lifecycle outcomes are delivered to the parent through the durable
 per-session `agent-mail.jsonl` inbox. Only terminal child turn outcomes—
@@ -204,7 +221,7 @@ per-session `agent-mail.jsonl` inbox. Only terminal child turn outcomes—
 provider auto-retry and a successful initial fallback do not. A running parent
 receives the envelope at its next step boundary; an idle open parent receives a
 normal notification turn; a closed parent receives the undelivered envelope on
-next open (`session-service.ts:3034-3088`, `session-service.ts:616-636`). The
+next open (`session-service.ts`, `deliverEnvelope` and `openSession`). The
 mail envelope is rendered as addressed context, not as an ordinary user bubble.
 
 What the lead is told is composed in one place, `describeChildOutcome()`
@@ -228,7 +245,7 @@ entry IDs, and terminal status. The accepted record is completed by a later
 snapshot; the conversation body remains in Pi JSONL. `runPromptWithLineage()`
 creates the accepted record before calling Pi and records the discovered user and
 assistant entries on completion or failure
-(`session-service.ts:1765-1924`).
+(`session-service.ts`, `runPromptWithLineage`).
 
 The current terminal statuses are `completed`, `failed`, and `interrupted`.
 `interruptionCause` identifies an explicit Alt stop or typed abort:
@@ -242,19 +259,20 @@ as the current conversation. Revision and delete mark prior records
 `superseded` or `deleted`; Pi evidence stays on disk. On open, an accepted run
 with durable entries after its prior leaf is reconciled as `interrupted`, so
 partial work remains visible and can be continued
-(`session-service.ts:3276-3286`; `session-service.test.ts:1139-1243`).
+(`session-service.ts`, `openManagedRuntime`; `session-service.test.ts`, reopen
+and continuation cases).
 
 ## Retry, continue, and ordinary follow-up
 
 `retry_latest` rewinds the current latest user turn and runs its stored
 model-facing prompt again from the start. It supersedes the prior attempt and
-does not create a visible child (`session-service.ts:1010-1062`).
+does not create a visible child (`session-service.ts`, `retryLatestFromStart`).
 
 `continue_latest` is available only for a latest run whose outcome is
 `failed` or `interrupted`. It keeps the existing user entry, adopts the failed
 attempt's completed assistant/tool entries, and calls Pi's continuation path so
 only the trailing failed partial is regenerated
-(`session-service.ts:1082-1124`; `session-service.ts:1126-1265`). The recovery
+(`session-service.ts`, `continueLatestFromBreakpoint`). The recovery
 projection tells the client whether continue or retry-from-start is available.
 
 An ordinary follow-up is a new run after the previous run is terminal. While a
@@ -263,12 +281,15 @@ The client sends `prompt {deliverAs}` and `SessionService.queuePrompt()` hands
 the text to Pi's steering queue (delivered before the next LLM call — the
 product rule "queued = next API call") or, on request, its follow-up queue.
 Pi's `queue_update` events are mirrored into the run state and forwarded as
-`queue_updated`; a text that leaves the queue is broadcast as `user_steered`
-at that moment, so its bubble appears when the model receives it. Agent-team
-mail rides the same Pi queue but is not shown as queued. `abort()` clears
-Pi's queue first and reports the unsent texts as `restored`, which the client
-puts back into the editor. There is no browser-side queue
-(`session-service.test.ts` "a message during a run joins Pi's steer queue").
+`queue_updated`, but queue removal is not delivery: retract, Stop, and Pi's own
+drain all remove entries. A queued user bubble appears only when Pi emits a
+user `message_start` for text still tracked as queued; the service then emits
+`user_steered` and retires its staged-attachment entry. Agent-team mail rides
+the same Pi queue but is not shown as queued. `abort()` clears Pi's queue and
+reports every unsent text plus its staged attachment paths as restored, which
+the main composer puts back into the editor and attachment stage. There is no
+browser-side queue. This authority and delivery boundary is recorded in
+[`ADR 0006`](adr/0006-pi-owned-queued-prompt-lifecycle.md).
 
 A queued card carries an edit label and a delete icon; both call
 `POST /api/sessions/:id/queue/retract`, which runs
@@ -281,15 +302,27 @@ the failure envelope with `kind: not_found`, on which the client just drops
 the card. Edit puts the returned text back into the editor after any existing
 draft; delete discards it. Staged attachments are kept beside each queued text
 in `ManagedSession.queuedAttachments` (Pi's queue holds only the strings): a
-retract returns them with the text and a re-queue replays the remaining
-entries' own attachments; delivery and Stop clear them (Stop still restores
-text only). The child conversation pane drops retracted attachments — its
-editor stages none. Each remaining entry is re-queued on its own: a re-queue
+retract returns the paths found under that text, while delivery retires them and
+Stop restores all paths into the main attachment stage. Because the side map is
+keyed by text, identical queued texts do not retain distinct attachment
+identity. The child conversation pane remains text-only because its editor
+stages no attachments. Each remaining entry is re-queued on its own: a re-queue
 that fails does not fail the retract (the call still resolves and Pi's queue,
 mirrored after the attempt, is the truth about what survived), and an entry
 consumed mid-restore still receives its `user_steered` bubble
 (`session-service.test.ts` "a queued message is recalled by text", "a retract
 hands the queued attachments back", "a restore-time delivery still bubbles").
+
+`send_queued_now` is the third queued-card action. `interruptAndSend()` verifies
+that Pi still owns the selected text, clears the live queue once, stops and
+settles the current run, starts the selected text as the next real prompt with
+its attachments, then re-queues every other entry as `followUp` in its original
+order so none can steer into the selected prompt's first model request. If Pi
+already consumed the selected entry, the operation is a no-op and the normal
+delivery events finish the card-to-bubble transition. If stopping or starting
+fails, all removed text and attachments are restored before the failure is
+reported. A later failure to re-queue one of the other entries only warns; Pi's
+resulting queue remains the authority.
 
 Pi's own transient provider retry is represented as a `retrying` run phase. Alt
 Theory does not wrap it in a second retry loop. A successful or failed terminal
@@ -314,7 +347,7 @@ rather than nothing. The threshold and aborted/overflow cases are covered by
 Each active turn has a process-local `LiveRun` buffer containing the displayable
 user prompt and replayable stream events. `appendLiveRunEvent()` coalesces
 successive text/thinking deltas and replaces successive phase events with the
-latest phase (`web-server/live-run.ts:3-47`). The service clears the buffer only
+latest phase (`web-server/live-run.ts`). The service clears the buffer only
 on `run_completed` or `run_failed`; `getLiveRun()` returns it only while the
 run state is not idle.
 Thus a pane attaching mid-run receives the persisted transcript plus the current

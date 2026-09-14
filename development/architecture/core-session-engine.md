@@ -4,7 +4,7 @@ slug: core-session-engine
 scope: Alt Theory's high-level module map and managed-session integration overview
 summary: Compatibility entry point for the current session substrate, neighboring modules, and their interfaces
 status: current
-last_reviewed: 2026-09-03
+last_reviewed: 2026-09-15
 tags: [core, backend, session, architecture-map]
 depends_on: []
 ---
@@ -158,7 +158,7 @@ card 6): `assemblyArgs({sessionId, selectors, workspace, modelArgs, altMode,
 forkPurpose})` produces the shared `AltTheoryConfig` keys (asset paths, role
 / soul / instruction resolution, KB, app-settings-driven flags, trusted and
 skill roots, external skills, extension factories, agent-team tools and
-prompt sections, `workspaceDirs`, the live folder-policy reader). The four
+prompt sections, and the live folder-policy reader). The four
 open paths — `createManagedFromDirs`, reopen, replace with new selectors,
 `openManagedRuntime` — spread it and add only what names the session on
 disk (dirs, cwd, Pi file, original manifest, cwd override). A new assembly
@@ -250,6 +250,14 @@ The most relevant durable decisions are:
   — source-specific projection, provenance, and explicit loss/refusal.
 - [`ADR 0004 — prompt-cache safety`](adr/0004-prompt-cache-safety.md)
   — truthful short-horizon prefix reuse without an application TTL model.
+- [`ADR 0005 — project-owned folder composition`](adr/0005-project-owned-folder-composition.md)
+  — projects have stable identity and own companion folders; sessions persist
+  only their main folder.
+- [`ADR 0006 — Pi-owned queued-prompt lifecycle`](adr/0006-pi-owned-queued-prompt-lifecycle.md)
+  — Pi owns the live queue, while visible delivery waits for Pi to start the
+  queued user turn.
+- [`ADR 0007 — user file edits versus agent write permission`](adr/0007-separate-user-file-edits-from-agent-write-permission.md)
+  — local user editing has its own authority and optimistic conflict boundary.
 
 These ADRs explain selected durable “why” choices. They do not replace the
 current-behavior documents linked above.

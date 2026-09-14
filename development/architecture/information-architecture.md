@@ -1,7 +1,7 @@
 ---
 title: Alt Theory information architecture
 status: v2
-last_updated: 2026-09-03
+last_updated: 2026-09-15
 scope: where user-facing things live, how the major surfaces relate, and which information belongs in each
 ---
 
@@ -64,6 +64,19 @@ surfaces remain designation-gated and absent for everyone else.
 
 ## Surface map
 
+- **Current application shell and desktop frame** (A2 trial; implementation
+  fact, not a settled product principle)
+  - One app-root Left rail and resizer is shared by the conversation and
+    Settings surfaces. Settings replaces the center/right work area; Review is
+    full width. The conversation subtree remains mounted but hidden while
+    either surface is open, preserving drafts, DOM editing state, and undo.
+  - The desktop bundle uses a hidden window title bar. Windows/Linux draw the
+    system window buttons into the app's top band and have no application menu;
+    macOS keeps its traffic lights and a trimmed localized system menu for the
+    standard app, edit, view, and window shortcuts.
+  - Settings > General exposes six bundle-only **View size** stops (80–150%).
+    Electron applies whole-window zoom and persists the chosen stop; the web
+    app has no native bridge or duplicate setting.
 - **Composer and empty state**
   - Empty state presents the Understand/Work choice without forcing a modal.
     Native Pi instead shows a short note about its normal work-capable tools;
@@ -117,13 +130,22 @@ surfaces remain designation-gated and absent for everyone else.
     retained for inspection, they live collapsed in advanced Runtime.
   - Thinking, tool activity, compaction boundaries, and connection/run states
     render as conversation events, not settings.
+  - A message sent during a run appears first as a Pi-queue card. Edit recalls
+    it to the composer and Delete removes it without stopping the run;
+    **Interrupt & send** stops the current answer and sends the selected entry
+    next, with the remaining entries following afterward. A user bubble appears
+    only when Pi starts that queued user turn, not merely because a card
+    disappeared.
 - **Conversation list**
-  - Conversations are grouped by workspace. A group that is a project's
-    main folder carries the project's name (default: the folder's), lists
-    the project's companion folders greyed beneath it, and offers "Add a
-    folder to this project" in its folder menu (v1.5.1).
-  - The Working folders header owns folder-only collapse all, expand all, and
-    sorting. These controls do not change conversation-family folding.
+  - Conversations with a project main folder are grouped under that project;
+    folderless roots live in a separate collapsible **Independent
+    conversations** section. A project group carries the project's name
+    (default: the main folder's). Its tooltip lists the main and companion
+    paths; companions are not separate rail rows. The group menu offers Add
+    folder and Manage folders actions.
+  - The Projects header owns project-only collapse all, expand all, search,
+    add, and sorting. These controls do not change conversation-family folding
+    or the Independent conversations section's own collapse state.
   - A family head may collapse or expand its descendants without changing their
     list membership. Session identifiers and local session-folder paths remain
     available on demand through the row actions rather than default labels.
@@ -174,10 +196,22 @@ surfaces remain designation-gated and absent for everyone else.
     (`components/inspector/FilePreview.tsx`): the control follows the file
     type (`lib/fileContent.ts` `previewModes`) — a diff first when the
     conversation changed the file, Rendered + Source for `.md` / `.html`
-    (HTML in a sandboxed iframe), the whole file for everything else, Edit
-    where the write route allows (records, managed workspace). Content loads
-    by reference through the content route; the changes route no longer
-    inlines file text.
+    (HTML in a sandboxed iframe), the whole file for everything else, and Edit
+    for text files at or below the edit-size cap in records, managed workspace,
+    or local working folders. A user's working-folder edit is independent of
+    the agent's Edit grant. Content loads by reference through the content
+    route; the changes route no longer inlines file text.
+  - An open preview is a reading snapshot. Refreshing the file tree, Changes,
+    or conversation list does not remount it or replace an unchanged rendered
+    body. Selecting or reopening a file reads the current content unless an
+    unsaved in-memory draft for that session/root/path resumes. This keeps text
+    selection and edits stable during background conversation refreshes without
+    adding a general live-file subscription.
+  - Saving uses the file's load-time modification timestamp as an optimistic
+    conflict check. A conflict stays in the editor and offers discard, save a
+    copy, or overwrite. Drafts survive rail and conversation switches in memory
+    but not an app restart. See
+    [ADR 0007](adr/0007-separate-user-file-edits-from-agent-write-permission.md).
   - Changes lists the whole conversation family's writes (subagents and
     branches included), merged on the resolved absolute path and grouped as
     prototype D groups them: each project folder (main, then each companion
@@ -208,7 +242,7 @@ surfaces remain designation-gated and absent for everyone else.
 - **Settings**
   - General: app behavior and ordinary preferences.
   - Models: provider connection, model choice, and model capability correction.
-  - Working folders (v1.5.1): two cards. Projects — each its own entity
+  - Projects and global folders (v1.5.1): two cards. Projects — each its own entity
     with a generated id, an editable name (defaults to the main folder's
     name), a changeable main folder (picker + confirm; every conversation
     of the project moves, one running conversation refuses with nothing
@@ -230,8 +264,13 @@ surfaces remain designation-gated and absent for everyone else.
     records, including a managed import-source copy, but not attachments or
     working files.
   - About: version, changes, and stable storage statements. Bundle version
-    display already follows the normal build path; this iteration adds no
-    alternate version mechanism.
+    display follows the normal build path. After a successful automatic check,
+    the Electron bundle waits 24 hours before another automatic GitHub release
+    check (prerelease builds may see newer prereleases; stable builds do not).
+    The explicit About action may check immediately. Successful results are
+    cached and may show a dismissible rail notice; offline or rate-limited
+    checks stay silent and do not advance the last-checked time. Download links
+    open only on GitHub.
   - Opening Settings or Review hides the mounted conversation instead of
     unmounting it, so an in-progress composer draft, browser undo history, and
     DOM editing state survive the round trip (v1.4.7). Draft persistence across

@@ -9,9 +9,11 @@ link compatibility; this document describes the present tree.
 |---|---|
 | `alt-theory-app/` | Core session engine, web server, tests, and frontend source. |
 | `agent-assets/` | Runtime-loaded product assets: context, prompts, roles, KB material, and bundled skills. |
-| `electron/` | Electron entry points for the local Windows application. |
+| `electron/` | Electron entry points and native bridge for the Windows and macOS desktop bundles. |
 | `scripts/` | Build, packaging, smoke, and maintenance scripts. |
-| `docs/about/` | Existing high-level public product/version material; the broader docs system is intentionally deferred. |
+| `docs/en/`, `docs/zh-Hans/` | Public user documentation and localized navigation. |
+| `docs/assets/` | Public documentation and README media. |
+| `docs/about/` | Product and version notes outside the user-guide tree. |
 | `development/architecture/` | Current technical architecture. |
 | `development/features/` | Implemented feature design and acceptance evidence. |
 | `development/issues/` | Retained issue analysis and fix evidence. |
@@ -20,9 +22,11 @@ link compatibility; this document describes the present tree.
 
 ## Documentation Boundaries
 
-`docs/` is reserved for material that can become part of a public documentation
-site. During the initial public release only `docs/about/` exists; user guides,
-concepts, and reference navigation will be designed in a later docs session.
+`docs/` contains public user documentation intended for both repository reading
+and a future documentation site. English is the complete source tree;
+`docs/zh-Hans/` carries the current Simplified Chinese set, while shared media
+lives under `docs/assets/`. `docs/about/` retains product and version notes; it
+is not part of the user-guide tree.
 
 `development/` explains the implementation to contributors and coding agents.
 It does not replace user documentation and is not a location for private

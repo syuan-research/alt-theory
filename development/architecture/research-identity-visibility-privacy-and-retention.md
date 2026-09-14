@@ -4,7 +4,7 @@ slug: research-identity-visibility-privacy-and-retention
 scope: Account and install designation, session ownership and visibility, hosted/local privacy meaning, retention, and researcher access
 summary: The current identity, access, privacy, and retention contract for research-designated Alt Theory use
 status: current
-last_reviewed: 2026-08-28
+last_reviewed: 2026-09-15
 tags: [research, identity, privacy, retention, access]
 depends_on: [core-session-engine]
 implements: []
@@ -112,6 +112,13 @@ Before materialization, visibility is draft state. After materialization,
 `switch_visibility` validates the deployment vocabulary and updates the session
 record through the session service. The same session-level switch therefore
 does not change account designation or the meaning of the deployment mode.
+
+If the user changes visibility while a run is active, the switch is accepted as
+pending rather than refused. Settle applies the chosen visibility together with
+the `consentSnapshot` captured at selection time, in place on the session
+record. The pending timing is part of the ordinary selector lifecycle; it does
+not alter the account-level consent or deployment rules above. See
+[`session-lifecycle-and-turn-continuity.md`](session-lifecycle-and-turn-continuity.md).
 
 The hosted/local distinction is a privacy promise, not encryption or
 end-to-end secrecy. Local mode has no automatic upload path in this contract;

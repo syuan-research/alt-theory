@@ -4,7 +4,7 @@ slug: workspace-files-and-action-safety
 scope: Workspace roots, session files, tool-action mediation, approvals, and audit
 summary: Current workspace ownership and the guard-rail boundary around agent file and action access
 status: current
-last_reviewed: 2026-09-03
+last_reviewed: 2026-09-15
 tags: [workspace, files, security, approvals, audit]
 depends_on:
   - core-session-engine
@@ -22,34 +22,31 @@ reach other paths.
 
 ## Workspace ownership and selection
 
-A work-capable session has one primary working directory and may have
-additional directories. The primary directory is Pi's session `cwd`:
+A work-capable session persists at most one main folder. That folder is Pi's
+session `cwd`; when none is selected, the session uses its data-directory
+`workspace/`. A user-selected main folder stays in place rather than being
+copied into the data directory. The v0.4 session header stores only
+`workspace.primaryDir`, while the assembly manifest records the effective
+`sessionCwd`. Headers written before v1.5.1 may still contain a legacy
+`additionalDirs` field, but current code does not load or write it.
 
-- a new session defaults to the data-directory `workspace/`;
-- a user-selected primary directory is kept as the session's own project
-  directory rather than copied into the data directory;
-- additional directories are intentional user additions and are recorded with
-  the primary directory.
+Other roots belong to application-level project and global-folder settings,
+not the session. A project on Settings > Projects and global folders carries
+companion folders; `folderPolicyFor()` joins them to every conversation whose
+main folder matches that project. Global folders join every conversation.
+Both are read live from `app-settings.json`, so changes apply to an open
+conversation at its next path check and on its next loader reload (context file
+and project skills). Hosted mode rejects machine-local workspace paths.
 
-The workspace is persisted in the v0.4 session header and in the assembly
-manifest. Reopen restores the persisted primary and additional directories
-when they still exist. If the persisted primary is unavailable, reopen uses no
-working folder and exposes a warning; the old header value remains until the
-user acts. See [`session-service.ts`](../../alt-theory-app/web-server/session-service.ts#L3186-L3215)
-and [`session-lifecycle-and-turn-continuity.md`](session-lifecycle-and-turn-continuity.md).
-
-Extra workspace folders belong to the project, not the session (v1.5.1).
-There is no per-session additional-directory mechanism anymore: a project
-on the Settings > Working folders page carries companion folders, and they
-join every conversation whose main folder is the project's — read live
-from `app-settings.json`, so adding one applies to open conversations at
-their next path check and on their next loader reload (context file and
-project skills). Hosted mode rejects machine-local workspace paths. See
+Reopen restores the persisted main folder when it still exists. If it is
+unavailable, reopen uses no working folder and exposes a warning; the old
+header value remains until the user acts. See
 [`session-service.ts`](../../alt-theory-app/web-server/session-service.ts)
-(`repointProjectMainFolder`, `setSessionWorkspace`) and
-[`app-settings.ts`](../../alt-theory-app/web-server/app-settings.ts) (`folderPolicyFor`).
+and [`app-settings.ts`](../../alt-theory-app/web-server/app-settings.ts)
+(`folderPolicyFor`). The durable project/folder choice is recorded in
+[`ADR 0005`](adr/0005-project-owned-folder-composition.md).
 
-Changing the primary working folder is a separate researcher-console action.
+Changing one conversation's main folder is a separate local session action.
 `setSessionWorkspace` writes the new primary, rebuilds live sessions against
 it, and carries the change across the fork family. Changing a project's main
 folder (`repointProjectMainFolder`, REST
@@ -66,7 +63,7 @@ boundary it exposes. See
 Fork behavior depends on workspace ownership. A managed workspace inside the
 data directory is copied for the fork. An external user project remains an
 external primary path; it is not copied into the data directory. See
-[`session-service.ts`](../../alt-theory-app/web-server/session-service.ts#L1531-L1565).
+[`session-service.ts`](../../alt-theory-app/web-server/session-service.ts).
 
 ## Roots available to the agent
 
@@ -84,7 +81,7 @@ the runtime policy layer):
 - `approved` — a folder explicitly approved during the session.
 - `kb`, `trusted`, `skills` — read-only roots: the selected KB root,
   configured trusted-read roots, and the discovered Alt Theory skill root.
-- `global-list` — a folder on the Settings > Working folders global list
+- `global-list` — a folder on the Settings > Projects and global folders list
   (v1.5 part 2): readable in every mode and every conversation; writable in
   Work and Native Pi only when its Edit tick is on.
 - `project-secondary` — a companion folder of the project whose main folder
@@ -136,19 +133,19 @@ existing ancestor) as the merge key for the changes projection, so two
 spellings or an in-root alias of one file cannot split into two rows.
 
 Callers: the security extension (read and write mediation,
-[`security-extension.ts`](../../alt-theory-app/core/security-extension.ts#L304-L380)),
+[`security-extension.ts`](../../alt-theory-app/core/security-extension.ts)),
 the guarded write tool
-[`alt-theory-core.ts`](../../alt-theory-app/core/alt-theory-core.ts#L1041-L1062),
+[`alt-theory-core.ts`](../../alt-theory-app/core/alt-theory-core.ts),
 the working-folder listing and preview
-([`workspace-files.ts`](../../alt-theory-app/web-server/workspace-files.ts#L424-L460)
+([`workspace-files.ts`](../../alt-theory-app/web-server/workspace-files.ts)
 and
-[`workspace-files.ts`](../../alt-theory-app/web-server/workspace-files.ts#L555-L583)),
+[`workspace-files.ts`](../../alt-theory-app/web-server/workspace-files.ts)),
 and session-store file reads
-([`session-store.ts`](../../alt-theory-app/web-server/session-store.ts#L1101-L1136),
+([`session-store.ts`](../../alt-theory-app/web-server/session-store.ts),
 and the changes projection's `locateChangedFile` / `groupChanges`, which
 decide whether a changed path is inside a root and, if so, how the content
 route addresses it — the projection carries that address, never the file
-text). See [`path-verdict.ts`](../../alt-theory-app/core/path-verdict.ts#L1-L115).
+text). See [`path-verdict.ts`](../../alt-theory-app/core/path-verdict.ts).
 
 The Pi `edit` and `write` tool calls are checked by the security extension
 against the verdict's write outcome. Credential-sensitive paths are
@@ -156,7 +153,7 @@ hard-blocked. An `outside` write requires a session approval; without a UI,
 or without the user's session allowance, the call is blocked. The extension
 can add the approved folder to the session's writable roots through the core
 callback. See
-[`security-extension.ts`](../../alt-theory-app/core/security-extension.ts#L304-L341).
+[`security-extension.ts`](../../alt-theory-app/core/security-extension.ts).
 
 These checks protect the application policy boundary in trusted code. They do
 not prevent an already-authorized shell command, another process, or the user
@@ -178,29 +175,44 @@ download route. Workspace deletion removes the requested file and, for a
 binary upload, its conversion and extraction-error companions.
 
 The local-only `root=working` view is different from the managed session
-workspace. It reads the persisted primary/additional external folders, skips
+workspace. `describeWorkingFolders()` gives it the session's main folder (or
+managed workspace), the matching project's current companions, and the global
+folder list — the same readable set supplied by the root policy. It skips
 hidden and common dependency/cache directories, lists one directory at a
 time, bounds search results, and rechecks containment for each listing,
-preview, and user edit through the same path verdict — realpath on both
-sides, so a symlink inside a working folder cannot make the preview return a
-file the listing refuses, and credential paths are refused in browsing as
-everywhere else. It is a browsing surface plus a local-only *user* write
+preview, and user edit through the same path verdict — realpath on both sides,
+so a symlink inside a listed folder cannot make the preview return a file the
+listing refuses, and credential paths are refused in browsing as everywhere
+else. It is a browsing surface plus a local-only *user* write
 route for editing text files (owner ruling 2026-09-15: the user edits their
 own folders regardless of the agent's "editable" tick; the write carries the
 same local-only gate, containment verdict with write intent, size caps, and
 a save-time staleness check that returns 409 so the editor offers discard /
 save-a-copy / overwrite). It is still not a second *agent* write API — agent
 writes keep going through the guarded write tool and its approval flow. See
-[`workspace-files.ts`](../../alt-theory-app/web-server/workspace-files.ts#L424-L460),
-[`workspace-files.ts`](../../alt-theory-app/web-server/workspace-files.ts#L555-L583),
-[`workspace-files.ts`](../../alt-theory-app/web-server/workspace-files.ts#L619-L676),
-and [`server.ts`](../../alt-theory-app/web-server/server.ts#L1590-L1635).
+[`workspace-files.ts`](../../alt-theory-app/web-server/workspace-files.ts)
+(`describeWorkingFolders`, `readWorkingFolderTextFile`,
+`writeWorkingFolderTextFile`) and
+[`server.ts`](../../alt-theory-app/web-server/server.ts) (the session file
+content routes).
+
+All three text roots share one size policy: preview reads stop at 5 MB
+(5 × 1024² bytes) and editing stops at 1 MiB. The Changes projection separately
+truncates generated diffs at 160 lines. These are product-selected limits rather
+than measured performance thresholds.
+
+Unsaved preview edits live in an in-process map keyed by session, root, and
+path — not in pane memory or the session record. Rail and conversation switches
+restore that draft. Save, explicit discard, or app restart ends it. A direct
+file-to-file or close/back attempt first holds navigation and exposes the inline
+leave guard; a later attempt saves before leaving, while a save conflict keeps
+the current editor open for resolution.
 
 The REST routes for content, upload, download, retry-extract, and deletion
 remain subject to account/session visibility rules. Participant accounts are
 restricted to their own sessions, and private-session content is owner-only.
 Download and delete are intentionally workspace-only. See
-[`server.ts`](../../alt-theory-app/web-server/server.ts#L1637-L1787) and the
+[`server.ts`](../../alt-theory-app/web-server/server.ts) and the
 identity/access contract in
 [`research-identity-visibility-privacy-and-retention.md`](research-identity-visibility-privacy-and-retention.md).
 
@@ -210,7 +222,7 @@ Pi's native `tool_call` interception is the integration point. Alt Theory
 explicitly registers its extensions and registers the security extension last,
 so it evaluates the final tool input after earlier handlers. The application
 owns the session-specific roots, approval state, and audit sink around that Pi
-hook. See [`alt-theory-core.ts`](../../alt-theory-app/core/alt-theory-core.ts#L620-L647).
+hook. See [`alt-theory-core.ts`](../../alt-theory-app/core/alt-theory-core.ts).
 
 The current policy has three relevant outcomes:
 
@@ -224,7 +236,7 @@ Reads outside the readable roots are approval-gated, but reading is not the
 write security boundary. Fixed product/configuration roots have a read
 allowance to avoid prompting for every bundled skill or agent configuration
 read. Writes and dangerous operations retain their checks. See
-[`security-extension.ts`](../../alt-theory-app/core/security-extension.ts#L248-L380)
+[`security-extension.ts`](../../alt-theory-app/core/security-extension.ts)
 and [`ADR 0001`](adr/0001-session-scoped-security-extension.md).
 
 ### Full Access
@@ -249,8 +261,8 @@ rather than clearing it. The server rejects enabling attempts that are not
 local or not work-capable. Application-level boundaries outside agent-tool
 mediation (account/session visibility, REST file ownership, trash and
 recoverable delete) are unaffected. See
-[`security-extension.ts`](../../alt-theory-app/core/security-extension.ts#L39-L58),
-[`alt-theory-core.ts`](../../alt-theory-app/core/alt-theory-core.ts#L518-L527),
+[`security-extension.ts`](../../alt-theory-app/core/security-extension.ts),
+[`alt-theory-core.ts`](../../alt-theory-app/core/alt-theory-core.ts),
 and [`full-access.test.ts`](../../alt-theory-app/web-server/full-access.test.ts).
 
 ## Approval and audit interfaces
@@ -263,16 +275,16 @@ session, and is emitted as `approval_requested`. The UI replies with
 and all pending dialogs are cancelled when the managed session is disposed.
 Dispose, abort, timeout, no client, or an invalid choice fails closed rather
 than silently allowing the action. See
-[`approval-bridge.ts`](../../alt-theory-app/web-server/approval-bridge.ts#L22-L126),
-[`session-service.ts`](../../alt-theory-app/web-server/session-service.ts#L3563-L3633),
-and [`server.ts`](../../alt-theory-app/web-server/server.ts#L2348-L2408).
+[`approval-bridge.ts`](../../alt-theory-app/web-server/approval-bridge.ts),
+[`session-service.ts`](../../alt-theory-app/web-server/session-service.ts),
+and [`server.ts`](../../alt-theory-app/web-server/server.ts).
 
 Security decisions append JSON entries to the managed session's
 `records/security-audit.jsonl`. Entries contain a timestamp, tool name and
 call ID, outcome (`blocked`, `approved-once`, `approved-session`, or
 `session-allowance`), rule, and detail. The audit sink is session-local, not a
-machine-global security log. See [`security-extension.ts`](../../alt-theory-app/core/security-extension.ts#L30-L50)
-and [`alt-theory-core.ts`](../../alt-theory-app/core/alt-theory-core.ts#L637-L646).
+machine-global security log. See [`security-extension.ts`](../../alt-theory-app/core/security-extension.ts)
+and [`alt-theory-core.ts`](../../alt-theory-app/core/alt-theory-core.ts).
 
 ## Boundary clarity
 
@@ -291,26 +303,38 @@ The load-bearing choice to use Pi-native interception with Alt-owned
 session-scoped roots, approvals, and audit is recorded in
 [`ADR 0001`](adr/0001-session-scoped-security-extension.md). Its wording is
 deliberately retained here: these are guard rails, not an OS sandbox.
+Project identity and the choice to derive companion roots from project settings
+instead of session `additionalDirs` are recorded in
+[`ADR 0005`](adr/0005-project-owned-folder-composition.md).
+The separate authority and concurrency rules for user file edits are recorded
+in
+[`ADR 0007`](adr/0007-separate-user-file-edits-from-agent-write-permission.md).
 
 ## Verification anchors
 
-- [`path-verdict.test.ts`](../../alt-theory-app/core/path-verdict.test.ts#L1-L190)
+- [`path-verdict.test.ts`](../../alt-theory-app/core/path-verdict.test.ts)
   covers the symlink cases A and B (workspace read/write gated alike;
   working-folder listing/preview refused alike), the nearest-existing-ancestor
   write into a not-yet-existing granted folder, sensitive paths for every
   intent, a symlinked root, and the root-policy reason table.
-- [`alt-theory-core.test.ts`](../../alt-theory-app/core/alt-theory-core.test.ts#L179-L340)
-  covers mode-specific workspace context, added directories, guarded writes,
-  security interception, outside-root reads, the session audit file, and a
-  symlinked workspace read escalating like the matching write.
-- [`workspace-files.test.ts`](../../alt-theory-app/web-server/workspace-files.test.ts#L1-L280)
+- [`alt-theory-core.test.ts`](../../alt-theory-app/core/alt-theory-core.test.ts)
+  covers mode-specific workspace context, live project/global folder policy,
+  guarded writes, security interception, outside-root reads, the session audit
+  file, and a symlinked workspace read escalating like the matching write.
+- [`workspace-files.test.ts`](../../alt-theory-app/web-server/workspace-files.test.ts)
   covers uploads, quotas, deletion, agent-authored text, account usage,
   persisted working-folder browsing, and listing/preview refusing a symlink
   out of the folder.
-- [`session-service.test.ts`](../../alt-theory-app/web-server/session-service.test.ts#L3172-L3274)
-  covers workspace creation, additional directories, persistence, and reopen.
-- [`session-service.test.ts`](../../alt-theory-app/web-server/session-service.test.ts#L3388-L3660)
+- [`text-file-edit.test.ts`](../../alt-theory-app/web-server/text-file-edit.test.ts)
+  covers the shared caps and text flags, stale saves, conflict-copy naming, and
+  both session-root and working-root writes.
+- [`fileEditGuard.test.ts`](../../alt-theory-app/frontend/src/lib/fileEditGuard.test.ts)
+  covers the in-memory draft leave guard and its save/discard outcomes.
+- [`session-service.test.ts`](../../alt-theory-app/web-server/session-service.test.ts)
+  covers workspace creation, main-folder persistence, missing-folder recovery,
+  project re-point, family propagation, and reopen.
+- [`session-service.test.ts`](../../alt-theory-app/web-server/session-service.test.ts)
   covers the approval bridge, fail-closed responses, session allowances, and
   host-scoped network approvals.
-- [`session-service.test.ts`](../../alt-theory-app/web-server/session-service.test.ts#L3972-L4088)
+- [`session-service.test.ts`](../../alt-theory-app/web-server/session-service.test.ts)
   covers primary-folder repointing and family propagation.

@@ -1,7 +1,7 @@
 ---
 title: Agent behavior and asset architecture
 status: current
-updated: 2026-07-30
+updated: 2026-09-15
 ---
 
 # Agent behavior and asset architecture
@@ -139,12 +139,27 @@ Understand and Work are capability contexts, not different personalities:
 Switching the application to Native Pi does not rewrite those session choices.
 It temporarily makes them inactive. Switching back restores them.
 
-## 6. Persistence and research interpretation
+## 6. Role selection for managed subagents
+
+`spawn_agent` may name an existing Role independently of its agent execution
+preset, model override, and Understand/Work mode. Omitting `role` inherits the
+parent conversation's Role. A named Role is validated before the child session
+is allocated; an unknown Role returns the shared `not_found` failure envelope
+and creates no partial child. A known Role enters the ordinary session-selector
+and prompt-assembly path, so the child receives the same Role behavior as a
+user-selected conversation rather than a parallel subagent-only prompt path.
+
+Role and agent type remain separate concepts. Role shapes interpretation and
+expression; `subagentExecution.agentType` records the execution preset and its
+model chain. Selecting one does not redefine the other or create a new Role.
+
+## 7. Persistence and research interpretation
 
 Session records preserve the selected Alt mode and asset references. Assembly
 records preserve enough provenance to interpret which assets and current facts
-formed a run. The application-wide runtime is a current application setting,
-not a per-session identity.
+formed a run. A managed subagent additionally records its execution preset and
+model chain separately from those selectors. The application-wide runtime is a
+current application setting, not a per-session identity.
 
 Stable concepts belong in this document and in the corresponding agent assets.
 Volatile skill catalogs, UI labels, endpoint names, and implementation
