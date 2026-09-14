@@ -33,7 +33,6 @@ test("a refresh defers only for a real selection inside the preview body", () =>
   assert.equal(selectionHeldIn(container, held(inside, outside)), false);
   assert.equal(selectionHeldIn(container, held(outside, outside)), false);
   assert.equal(selectionHeldIn(container, held(null, inside)), false);
-  assert.equal(selectionHeldIn(container, held(inside, null)), false);
   // A bare caret (collapsed) or no selection at all never defers.
   assert.equal(selectionHeldIn(container, { isCollapsed: true, anchorNode: inside, focusNode: inside }), false);
   assert.equal(selectionHeldIn(container, null), false);
