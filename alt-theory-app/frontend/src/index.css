@@ -297,11 +297,11 @@
     margin-top: 0;
   }
 
-  .markdown-body h1 {
+  .markdown-body h1,
+  .markdown-body h2 {
     font-size: var(--fs-title);
   }
 
-  .markdown-body h2,
   .markdown-body h3,
   .markdown-body h4,
   .markdown-body h5,
