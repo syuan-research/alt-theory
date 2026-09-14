@@ -62,7 +62,6 @@ const catalog: Record<string, string> = {
   "Advanced: store only the name of an environment variable that holds the key, not the key itself.": "高级：仅存储包含密钥的环境变量名称，而非密钥本身。",
   "Agent behavior": "智能体行为",
   "AI answers can change—or conflict—when a question is framed differently. At important moments, edit your question or retry it to open a comparison, then continue from the answer that offers the stronger direction.": "AI 的答案会随提示词和提问方向改变，甚至彼此矛盾。遇到关键问题时，可以修改问题或重试并打开对比视图，再从更合理、线索更完整的答案继续。",
-  "All folders here are readable": "这里的文件夹都可读",
   "All skills…": "所有技能…",
   "All types": "全部类型",
   "Allow": "允许",

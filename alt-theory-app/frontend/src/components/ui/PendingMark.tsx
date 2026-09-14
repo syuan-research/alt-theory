@@ -6,7 +6,7 @@ export function PendingMark({ when }: { when: boolean }) {
   return (
     <i
       className="ph ph-clock"
-      style={{ opacity: 0.6, marginLeft: 4 }}
+      style={{ opacity: 0.6, marginLeft: "var(--space-hair)" }}
       data-tip={t("Applies after this turn")}
       aria-label={t("Applies after this turn")}
     />

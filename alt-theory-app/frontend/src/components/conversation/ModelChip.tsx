@@ -328,15 +328,15 @@ export function ModelChip({
         </div>
         <div className="sep" />
         {error ? (
-          <div className="rp-empty" style={{ padding: "8px 10px" }}>
+          <div className="rp-empty" style={{ padding: "var(--space-tight) var(--space-control)" }}>
             {t("Models unavailable here.")}
           </div>
         ) : !providers ? (
-          <div className="rp-empty" style={{ padding: "8px 10px" }}>
+          <div className="rp-empty" style={{ padding: "var(--space-tight) var(--space-control)" }}>
             {t("Loading…")}
           </div>
         ) : providers.length === 0 ? (
-          <div className="rp-empty" style={{ padding: "8px 10px" }}>
+          <div className="rp-empty" style={{ padding: "var(--space-tight) var(--space-control)" }}>
             {t("No models configured.")}
           </div>
         ) : (
@@ -357,7 +357,7 @@ export function ModelChip({
                   ))}
                 </div>
               ) : (
-                <div className="rp-empty" style={{ padding: "8px 10px" }}>
+                <div className="rp-empty" style={{ padding: "var(--space-tight) var(--space-control)" }}>
                   {t("No matching models")}
                 </div>
               )

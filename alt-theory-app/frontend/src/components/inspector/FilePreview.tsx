@@ -180,7 +180,7 @@ function DiffLines({ diff }: { diff: string }) {
   const lines = diff ? diff.split("\n") : [];
   if (lines.length === 0) return <div className="rp-empty">{t("Nothing to compare against.")}</div>;
   return (
-    <div style={{ padding: "8px 0" }}>
+    <div style={{ padding: "var(--space-tight) 0" }}>
       {lines.map((line, i) => (
         <div key={i} className={line.startsWith("+") ? "diffline add" : line.startsWith("-") ? "diffline del" : "diffline"}>
           {line}

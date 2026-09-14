@@ -922,7 +922,7 @@ export function ModelConfigPage({
 
         {embedded ? (
           <div className="model-config-heading">
-            <h2>Models</h2>
+            <h2>{t("Models")}</h2>
             <div className="model-config-status">{statusSummary}</div>
           </div>
         ) : (

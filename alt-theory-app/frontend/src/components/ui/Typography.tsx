@@ -24,7 +24,7 @@ export function BrandTitle({ children, className }: TextProps) {
   return (
     <h1
       className={cn(
-        "font-[family-name:var(--font-brand)] text-[1.375rem] font-medium leading-[1.15] text-ink",
+        "font-[family-name:var(--font-brand)] text-[length:var(--fs-page)] font-medium leading-[1.15] text-ink",
         className
       )}
     >

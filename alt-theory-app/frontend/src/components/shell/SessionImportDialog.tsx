@@ -180,7 +180,7 @@ export function SessionImportDialog({
         className="ui-dialog max-h-[calc(100vh-2rem)] w-full max-w-2xl overflow-y-auto p-5"
         onClick={(event) => event.stopPropagation()}
       >
-        <h2 id="session-import-title" className="text-lg font-semibold text-ink">
+        <h2 id="session-import-title" className="text-[length:var(--fs-title)] font-semibold text-ink">
           {t("Import a conversation")}
         </h2>
         <p className="mt-1 text-sm text-text-secondary">

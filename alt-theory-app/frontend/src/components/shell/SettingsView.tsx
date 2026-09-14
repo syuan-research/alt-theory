@@ -1604,7 +1604,7 @@ function AutoTitleCard() {
         />
       </div>
       {enabled ? (
-        <div className="row2" style={{ marginTop: 10 }}>
+        <div className="row2" style={{ marginTop: "var(--space-control)" }}>
           <div>
             <h4>{t("Naming model")}</h4>
             <p>{t("A small model is recommended — cheaper and faster.")}</p>
@@ -2283,9 +2283,6 @@ function WorkingFoldersPanel() {
             <i className="ph ph-plus" aria-hidden="true" /> {t("Add a folder")}
           </button>
         </div>
-        <div className="folder-eye">
-          <i className="ph ph-eye" aria-hidden="true" /> {t("All folders here are readable")}
-        </div>
         {folders?.global.map((folder) => (
           <div className="folder-row" key={folder.path}>
             <i className="ph ph-folder" aria-hidden="true" />
@@ -2307,7 +2304,9 @@ function WorkingFoldersPanel() {
           </div>
         ))}
         {folders && folders.global.length === 0 ? <p className="fine">{t("No folders on the list yet.")}</p> : null}
-        <p className="fine">{t("Editing is limited to Work mode.")}</p>
+        {folders && folders.global.length > 0 ? (
+          <p className="fine">{t("Editing is limited to Work mode.")}</p>
+        ) : null}
       </div>
     </div>
   );
