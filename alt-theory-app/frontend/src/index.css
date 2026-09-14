@@ -1193,7 +1193,7 @@
   .change-preview-body.expanded { max-height: none; overflow: visible; }
   .preview .change-preview-body {
     background: var(--surface);
-    color: var(--text-2);
+    color: var(--ink);
     padding: var(--space-tight);
   }
   .change-preview-body pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--mono); font-size: var(--fs-secondary); }
