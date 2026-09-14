@@ -26,6 +26,15 @@ import {
 import { canonicalPathKey, isPathInside, verdict } from "../core/path-verdict.js";
 import type { Root } from "../core/root-policy.js";
 import { folderPolicyFor, readAppSettings } from "./app-settings.js";
+import {
+  applyTextFlags,
+  checkStale,
+  conflictCopyPath,
+  MAX_TEXT_EDIT_BYTES,
+  MAX_TEXT_VIEW_BYTES,
+  readTextFlags,
+  type WriteTextFileOptions,
+} from "./text-file-policy.js";
 import type { SessionEvent } from "./session-events.js";
 import {
   extractToolDetail,
@@ -960,11 +969,7 @@ export function readSessionTextFile(
   if (!stats.isFile()) {
     throw new Error("Requested path is not a file");
   }
-  const maxBytes =
-    target.root === "workspace"
-      ? MAX_WORKSPACE_TEXT_FILE_BYTES
-      : MAX_TEXT_FILE_BYTES;
-  if (stats.size > maxBytes) {
+  if (stats.size > MAX_TEXT_VIEW_BYTES) {
     throw new Error(`File is too large to read: ${target.relativePath}`);
   }
   return {
@@ -981,25 +986,37 @@ export function writeSessionTextFile(
   sessionId: string,
   rootName: string,
   requestedPath: string,
-  content: string
+  content: string,
+  options: WriteTextFileOptions = {}
 ): SessionTextFileContent {
-  const maxBytes =
-    rootName === "workspace"
-      ? MAX_WORKSPACE_TEXT_FILE_BYTES
-      : MAX_TEXT_FILE_BYTES;
-  if (Buffer.byteLength(content, "utf-8") > maxBytes) {
-    throw new Error(`File is too large to write: ${maxBytes} byte limit`);
+  if (Buffer.byteLength(content, "utf-8") > MAX_TEXT_EDIT_BYTES) {
+    throw new Error(`File is too large to write: ${MAX_TEXT_EDIT_BYTES} byte limit`);
   }
   const target = resolveSessionTextFile(dataDir, sessionId, rootName, requestedPath);
-  mkdirSync(dirname(target.path), { recursive: true });
-  const tempPath = `${target.path}.${Date.now()}.tmp`;
+  if (!options.force && !options.conflictCopy) {
+    checkStale(target.path, options.expectedUpdatedAt);
+  }
+  // Line endings and BOM follow the file already on disk, not the
+  // textarea's LF-only value (see text-file-policy).
+  const out = applyTextFlags(content, readTextFlags(target.path));
+  const finalPath = options.conflictCopy ? conflictCopyPath(target.path) : target.path;
+  mkdirSync(dirname(finalPath), { recursive: true });
+  const tempPath = `${finalPath}.${Date.now()}.tmp`;
   try {
-    writeFileSync(tempPath, content, "utf-8");
-    renameSync(tempPath, target.path);
+    writeFileSync(tempPath, out, "utf-8");
+    renameSync(tempPath, finalPath);
   } catch (error) {
     throw error;
   }
-  return readSessionTextFile(dataDir, sessionId, rootName, target.relativePath);
+  return readSessionTextFile(
+    dataDir,
+    sessionId,
+    rootName,
+    // The conflict copy is a sibling: swap the basename, keep the dir.
+    target.relativePath.includes("/")
+      ? `${target.relativePath.slice(0, target.relativePath.lastIndexOf("/"))}/${basename(finalPath)}`
+      : basename(finalPath)
+  );
 }
 
 export function deleteSessionTextFile(
@@ -1137,8 +1154,6 @@ const ALLOWED_TEXT_FILE_EXTENSIONS = new Set([
   ".tsv",
   ".html",
 ]);
-const MAX_TEXT_FILE_BYTES = 512 * 1024;
-const MAX_WORKSPACE_TEXT_FILE_BYTES = 2 * 1024 * 1024;
 
 function selectTextFileRoots(
   dataDir: string,
@@ -1178,11 +1193,7 @@ function listTextFilesInRoot(
       }
       if (!entry.isFile() || !isAllowedTextFile(relPath)) continue;
       const stats = statSync(fullPath);
-      const maxBytes =
-        root === "workspace"
-          ? MAX_WORKSPACE_TEXT_FILE_BYTES
-          : MAX_TEXT_FILE_BYTES;
-      if (stats.size > maxBytes) continue;
+      if (stats.size > MAX_TEXT_VIEW_BYTES) continue;
       files.push({
         root,
         path: relPath,

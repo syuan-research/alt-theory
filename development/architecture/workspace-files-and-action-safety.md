@@ -180,13 +180,20 @@ binary upload, its conversion and extraction-error companions.
 The local-only `root=working` view is different from the managed session
 workspace. It reads the persisted primary/additional external folders, skips
 hidden and common dependency/cache directories, lists one directory at a
-time, bounds search results, and rechecks containment for each listing and
-preview through the same path verdict — realpath on both sides, so a symlink
-inside a working folder cannot make the preview return a file the listing
-refuses, and credential paths are refused in browsing as everywhere else. It
-is a browsing surface, not a second agent write API. See
+time, bounds search results, and rechecks containment for each listing,
+preview, and user edit through the same path verdict — realpath on both
+sides, so a symlink inside a working folder cannot make the preview return a
+file the listing refuses, and credential paths are refused in browsing as
+everywhere else. It is a browsing surface plus a local-only *user* write
+route for editing text files (owner ruling 2026-09-15: the user edits their
+own folders regardless of the agent's "editable" tick; the write carries the
+same local-only gate, containment verdict with write intent, size caps, and
+a save-time staleness check that returns 409 so the editor offers discard /
+save-a-copy / overwrite). It is still not a second *agent* write API — agent
+writes keep going through the guarded write tool and its approval flow. See
 [`workspace-files.ts`](../../alt-theory-app/web-server/workspace-files.ts#L424-L460),
 [`workspace-files.ts`](../../alt-theory-app/web-server/workspace-files.ts#L555-L583),
+[`workspace-files.ts`](../../alt-theory-app/web-server/workspace-files.ts#L619-L676),
 and [`server.ts`](../../alt-theory-app/web-server/server.ts#L1590-L1635).
 
 The REST routes for content, upload, download, retry-extract, and deletion

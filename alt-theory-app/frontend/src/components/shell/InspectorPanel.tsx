@@ -29,6 +29,7 @@ import { copyText } from "@/lib/clipboard";
 import { hasNativeBridge, revealPath } from "@/lib/native";
 import { paneMemory, usePaneMemory } from "@/lib/paneMemory";
 import { downloadMarkdown, markdownFileName, sessionTranscriptToMarkdown } from "@/lib/sessionMarkdown";
+import { guardLeave } from "@/lib/fileEditGuard";
 
 const RAIL_META: Record<RailKey, { title: string; icon: string; adv?: boolean }> = {
   chats: { title: t("Related conversations"), icon: "ph-arrows-split" },
@@ -112,8 +113,12 @@ export function InspectorPanel() {
   }, [shell.rightSub, app.activeRelatedSessionId, app.setActiveRelatedSessionId]);
 
   const leaveRelated = () => {
-    app.setActiveRelatedSessionId(null);
-    shell.closeSub();
+    // Leaving with an unsaved draft bounces once into the red bar (the
+    // guard saves and proceeds on a second click) — owner ruling 2026-09-15.
+    void guardLeave(() => {
+      app.setActiveRelatedSessionId(null);
+      shell.closeSub();
+    });
   };
 
   // Scroll memory per (conversation, rail, sub): saved on scroll, restored
@@ -163,8 +168,10 @@ export function InspectorPanel() {
             <button
               className="rp-close"
               onClick={() => {
-                app.setActiveRelatedSessionId(null);
-                shell.closeRight();
+                void guardLeave(() => {
+                  app.setActiveRelatedSessionId(null);
+                  shell.closeRight();
+                });
               }}
               data-tip={t("Collapse")}
             >

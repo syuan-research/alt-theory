@@ -12,9 +12,9 @@ test("the viewer control follows the file type: .md/.html get rendered + source,
   assert.deepEqual(previewModes("records/notes.md", { editable: true }), ["rendered", "source", "edit"]);
 });
 
-test("only records and the managed workspace are editable through the write route", () => {
+test("every root is editable through the write route (owner ruling 2026-09-15)", () => {
   assert.equal(isEditable({ root: "records", path: "a.md" }), true);
   assert.equal(isEditable({ root: "workspace", path: "a.md" }), true);
-  assert.equal(isEditable({ root: "working", path: "primary/a.md" }), false);
+  assert.equal(isEditable({ root: "working", path: "primary/a.md" }), true);
   assert.equal(isEditable(null), false);
 });

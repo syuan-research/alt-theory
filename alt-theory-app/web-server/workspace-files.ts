@@ -16,6 +16,15 @@ import type { Root } from "../core/root-policy.js";
 import { readV4SessionHeader } from "./session-records.js";
 import { folderPolicyFor, readAppSettings } from "./app-settings.js";
 import {
+  applyTextFlags,
+  checkStale,
+  conflictCopyPath,
+  MAX_TEXT_EDIT_BYTES,
+  MAX_TEXT_VIEW_BYTES,
+  readTextFlags,
+  type WriteTextFileOptions,
+} from "./text-file-policy.js";
+import {
   convertedFileName,
   extractUploadedBinary,
   type ExtractResult,
@@ -56,7 +65,6 @@ const CONVERTED_SUFFIX = "_converted_from_binary";
 const WORKING_TREE_SKIP_DIRS = new Set([
   ".git", "node_modules", ".next", ".cache", ".venv", "__pycache__",
 ]);
-const MAX_WORKING_TEXT_BYTES = 1024 * 1024;
 
 export interface WorkspaceUsage {
   sessionBytes: number;
@@ -499,7 +507,7 @@ export function listWorkingFolderChildren(
         isDirectory: false,
         size: entryStats.size,
         updatedAt: entryStats.mtime.toISOString(),
-        previewable: entryStats.size <= MAX_WORKING_TEXT_BYTES,
+        previewable: entryStats.size <= MAX_TEXT_VIEW_BYTES,
       };
     })
     .sort(
@@ -555,7 +563,7 @@ export function searchWorkingFolder(
             isDirectory: false,
             size: stats.size,
             updatedAt: stats.mtime.toISOString(),
-            previewable: stats.size <= MAX_WORKING_TEXT_BYTES,
+            previewable: stats.size <= MAX_TEXT_VIEW_BYTES,
           });
         }
       }
@@ -597,7 +605,7 @@ export function readWorkingFolderTextFile(
   }
   const stats = statSync(target, { throwIfNoEntry: false });
   if (!stats?.isFile()) throw new Error("File not found in this folder");
-  if (stats.size > MAX_WORKING_TEXT_BYTES) throw new Error("File is too large to preview");
+  if (stats.size > MAX_TEXT_VIEW_BYTES) throw new Error("File is too large to preview");
   const buffer = readFileSync(target);
   if (buffer.includes(0)) throw new Error("Binary files cannot be previewed");
   return {
@@ -607,6 +615,68 @@ export function readWorkingFolderTextFile(
     updatedAt: stats.mtime.toISOString(),
     content: buffer.toString("utf-8"),
   };
+}
+
+/**
+ * The user's own edit into a working folder — the write twin of
+ * `readWorkingFolderTextFile` (owner ruling 2026-09-15). Local mode only
+ * (the route gates that); it deliberately does NOT consult the Settings
+ * "editable" tick, which is the agent's write grant, not the user's.
+ */
+export function writeWorkingFolderTextFile(
+  dataDir: string,
+  sessionId: string,
+  requestedPath: string,
+  content: string,
+  options: WriteTextFileOptions = {}
+): { root: "working"; path: string; size: number; updatedAt: string; content: string } {
+  const [folderId, ...parts] = requestedPath.replace(/\\/g, "/").split("/");
+  const relPath = parts.join("/");
+  const folder = describeWorkingFolders(dataDir, sessionId).find(
+    (item) => item.id === folderId
+  );
+  if (!folder || !relPath || isAbsolute(relPath)) throw new Error("Invalid folder path");
+  const target = resolve(folder.path, relPath);
+  if (relative(folder.path, target) === "") {
+    throw new Error("File path must stay inside the selected folder");
+  }
+  // Same verdict as the read, intent write: containment plus credential
+  // paths, so a symlinked file inside the folder is still outside.
+  const check = verdict(target, "write", {
+    writable: [workingFolderRoot(folder)],
+  });
+  if (check.outcome === "sensitive") {
+    throw new Error(
+      `Access to credential path denied: ${check.sensitiveRoot}`
+    );
+  }
+  if (check.outcome !== "inside") {
+    throw new Error("File path must stay inside the selected folder");
+  }
+  const stats = statSync(target, { throwIfNoEntry: false });
+  if (!stats?.isFile()) throw new Error("File not found in this folder");
+  if (Buffer.byteLength(content, "utf-8") > MAX_TEXT_EDIT_BYTES) {
+    throw new Error(`File is too large to write: ${MAX_TEXT_EDIT_BYTES} byte limit`);
+  }
+  if (!options.force && !options.conflictCopy) {
+    checkStale(target, options.expectedUpdatedAt);
+  }
+  // Line endings and BOM follow the file on disk, not the textarea's
+  // LF-only value (see text-file-policy).
+  const out = applyTextFlags(content, readTextFlags(target));
+  const finalPath = options.conflictCopy ? conflictCopyPath(target) : target;
+  const tempPath = `${finalPath}.${Date.now()}.tmp`;
+  try {
+    writeFileSync(tempPath, out, "utf-8");
+    renameSync(tempPath, finalPath);
+  } catch (error) {
+    throw error;
+  }
+  return readWorkingFolderTextFile(
+    dataDir,
+    sessionId,
+    `${folderId}/${relative(folder.path, finalPath).replace(/\\/g, "/")}`
+  );
 }
 
 export function isWorkspaceDownloadAllowed(path: string): boolean {

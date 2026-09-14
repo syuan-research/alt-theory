@@ -55,9 +55,11 @@ are themselves readable:
 ## File panel and paths
 
 The right-side panel shows the working folder as a file tree: browse it,
-open a file to view, or reveal it in Finder or Explorer. Files can be
-brought into the discussion from here, and the panel is where you inspect
-what changed after agent work.
+open a file to view or edit (text files up to 1 MiB), or reveal it in Finder
+or Explorer. Files can be brought into the discussion from here, and the
+panel is where you inspect what changed after agent work. If a file changed
+outside the app while you were editing, saving offers to discard your
+changes, save a copy, or overwrite.
 
 When the agent mentions files, it shows paths relative to the working
 folder where possible. Converted copies of documents appear next to their

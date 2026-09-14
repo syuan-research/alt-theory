@@ -582,6 +582,13 @@ export interface WriteSessionFileInput {
   root: string;
   path: string;
   content: string;
+  /** Load-time updatedAt; the server refuses with 409 if the file changed
+   *  on disk since (save-conflict guard). */
+  expectedUpdatedAt?: string;
+  /** Overwrite without the staleness check (conflict bar's Overwrite). */
+  force?: boolean;
+  /** Write an auto-named `name (conflict).ext` sibling instead. */
+  conflictCopy?: boolean;
 }
 
 export interface UploadWorkspaceFileResult {

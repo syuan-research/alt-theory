@@ -69,7 +69,9 @@ import {
   listWorkspaceFiles,
   retryWorkspaceExtraction,
   uploadWorkspaceFile,
+  writeWorkingFolderTextFile,
 } from "./workspace-files.js";
+import { FileConflictError, type WriteTextFileOptions } from "./text-file-policy.js";
 import {
   appendAbComparisonRecord,
   currentAbComparisonRecords,
@@ -1807,6 +1809,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       root?: unknown;
       path?: unknown;
       content?: unknown;
+      expectedUpdatedAt?: unknown;
+      force?: unknown;
+      conflictCopy?: unknown;
     };
     if (
       typeof body?.root !== "string" ||
@@ -1816,8 +1821,26 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       res.status(400).json({ error: "root, path, and content are required" });
       return;
     }
+    const options: WriteTextFileOptions = {
+      expectedUpdatedAt:
+        typeof body.expectedUpdatedAt === "string" ? body.expectedUpdatedAt : undefined,
+      force: body.force === true,
+      conflictCopy: body.conflictCopy === true,
+    };
     if (!requireSessionRestContentAccess(req, res, sessionId)) return;
     try {
+      if (body.root === "working") {
+        // Same local-only gate as the working GET: a hosted client must not
+        // reach this branch, or it would write the server's own disk.
+        if (!localMode) {
+          res.status(403).json({ error: "Folder editing is local-only" });
+          return;
+        }
+        res.json(
+          writeWorkingFolderTextFile(dataDir, sessionId, body.path, body.content, options),
+        );
+        return;
+      }
       res.json(
         writeSessionTextFile(
           dataDir,
@@ -1825,9 +1848,17 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           body.root,
           body.path,
           body.content,
+          options,
         ),
       );
     } catch (error) {
+      if (error instanceof FileConflictError) {
+        res.status(409).json({
+          error: error.message,
+          currentUpdatedAt: error.currentUpdatedAt,
+        });
+        return;
+      }
       sendFileApiError(res, error);
     }
   });

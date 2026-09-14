@@ -21,6 +21,7 @@ import { stagePathAfterUpload, WORKSPACE_PATH_MIME } from "@/lib/workspace";
 import { FilePreview } from "@/components/inspector/FilePreview";
 import { buildFileTreeModel, getFileTreeNode, type FileTreeNode } from "@/lib/fileTree";
 import type { PreviewMode } from "@/lib/fileContent";
+import { guardLeave } from "@/lib/fileEditGuard";
 import { usePaneMemory } from "@/lib/paneMemory";
 import { copyText } from "@/lib/clipboard";
 import { useContextMenu, type ContextMenuItem } from "@/components/shell/ContextMenu";
@@ -105,16 +106,19 @@ export function WorkspaceTree() {
   );
   const managedFolderPath = workingFolders.find((folder) => folder.managed)?.path ?? "";
 
+  // Opening another file is a leave from a dirty editor: the guard bounces
+  // the first attempt into the red bar and saves-and-proceeds on the next
+  // (owner ruling 2026-09-15).
   const openFile = (entry: WorkspaceFileEntry) => {
     if (!sessionId || entry.kind === "binary-original") return;
     setPreviewView("rendered");
-    shell.openSub({ key: `ws:${entry.path}`, title: entry.path });
+    void guardLeave(() => shell.openSub({ key: `ws:${entry.path}`, title: entry.path }));
   };
 
   const openWorkingFile = (entry: WorkingTreeEntry) => {
     if (!sessionId || !entry.previewable) return;
     setPreviewView("rendered");
-    shell.openSub({ key: `working:${entry.folderId}/${entry.path}`, title: entry.path });
+    void guardLeave(() => shell.openSub({ key: `working:${entry.folderId}/${entry.path}`, title: entry.path }));
   };
 
   const importFile = async (file: File) => {
@@ -149,6 +153,17 @@ export function WorkspaceTree() {
         fileRef={{ root: preview.source === "working" ? "working" : "workspace", path: preview.path }}
         mode={previewView}
         onModeChange={setPreviewView}
+        onSaved={(saved) => {
+          // A conflict copy saved to a sibling: follow it there.
+          if (saved.path === preview.path) return;
+          const title = preview.source === "working"
+            ? saved.path.slice(saved.path.indexOf("/") + 1)
+            : saved.path;
+          shell.openSub({
+            key: preview.source === "working" ? `working:${saved.path}` : `ws:${saved.path}`,
+            title,
+          });
+        }}
         footer={
           preview.source === "managed" ? (
             <button

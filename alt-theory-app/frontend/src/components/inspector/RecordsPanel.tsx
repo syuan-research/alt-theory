@@ -7,6 +7,7 @@ import { HintText, SectionTitle } from "@/components/ui/Typography";
 import { FilePreview } from "@/components/inspector/FilePreview";
 import { cn } from "@/lib/cn";
 import type { PreviewMode } from "@/lib/fileContent";
+import { guardLeave } from "@/lib/fileEditGuard";
 import { usePaneMemory } from "@/lib/paneMemory";
 
 interface RecordsPanelProps {
@@ -93,7 +94,7 @@ export function RecordsPanel({
                     ? "border-ink-soft bg-selected"
                     : "border-hairline bg-surface hover:bg-hover"
                 )}
-                onClick={() => setSelected(file)}
+                onClick={() => void guardLeave(() => setSelected(file))}
               >
                 <span className="truncate">{file.path}</span>
                 <span className="shrink-0 text-[length:var(--fs-secondary)] text-text-muted">
@@ -112,7 +113,17 @@ export function RecordsPanel({
           fileRef={{ root: selected.root as "records" | "workspace", path: selected.path }}
           mode={mode}
           onModeChange={setMode}
-          onSaved={() => void refresh()}
+          onSaved={(saved) => {
+            void refresh();
+            // A conflict copy saved to a sibling: follow it there.
+            if (saved.path !== selected.path) {
+              setSelected((current) =>
+                current && current.root === (selected.root as "records" | "workspace") && current.path === selected.path
+                  ? { root: current.root, path: saved.path, size: saved.size ?? 0, updatedAt: saved.updatedAt }
+                  : current
+              );
+            }
+          }}
         />
       ) : null}
 
