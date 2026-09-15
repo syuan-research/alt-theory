@@ -516,6 +516,10 @@ export interface SessionTextFile {
 
 export interface SessionTextFileContent extends SessionTextFile {
   content: string;
+  /** Working root only: the folder this address resolved to at load time;
+   *  saves carry it back so a repointed folder refuses instead of writing
+   *  the draft into the new folder. */
+  folderPath?: string;
 }
 
 export interface WorkspaceFileEntry {
@@ -585,6 +589,9 @@ export interface WriteSessionFileInput {
   /** Load-time updatedAt; the server refuses with 409 if the file changed
    *  on disk since (save-conflict guard). */
   expectedUpdatedAt?: string;
+  /** Load-time resolved path of the working folder (working root only);
+   *  the server refuses with 409 if the address repointed since load. */
+  expectedFolderPath?: string;
   /** Overwrite without the staleness check (conflict bar's Overwrite). */
   force?: boolean;
   /** Write an auto-named `name (conflict).ext` sibling instead. */

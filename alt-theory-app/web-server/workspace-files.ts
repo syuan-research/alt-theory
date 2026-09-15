@@ -19,9 +19,11 @@ import {
   applyTextFlags,
   checkStale,
   conflictCopyPath,
+  FileConflictError,
   MAX_TEXT_EDIT_BYTES,
   MAX_TEXT_VIEW_BYTES,
   readTextFlags,
+  writeTextFilePreservingIdentity,
   type WriteTextFileOptions,
 } from "./text-file-policy.js";
 import {
@@ -579,7 +581,7 @@ export function readWorkingFolderTextFile(
   dataDir: string,
   sessionId: string,
   requestedPath: string
-): { root: "working"; path: string; size: number; updatedAt: string; content: string } {
+): { root: "working"; path: string; folderPath: string; size: number; updatedAt: string; content: string } {
   const [folderId, ...parts] = requestedPath.replace(/\\/g, "/").split("/");
   const relPath = parts.join("/");
   const folder = describeWorkingFolders(dataDir, sessionId).find(
@@ -611,6 +613,10 @@ export function readWorkingFolderTextFile(
   return {
     root: "working",
     path: `${folderId}/${relative(folder.path, target).replace(/\\/g, "/")}`,
+    // Stable identity of the folder this address resolved to: saves carry it
+    // back so a repointed folder refuses instead of silently writing the
+    // draft into the new folder's same-named file.
+    folderPath: folder.path,
     size: stats.size,
     updatedAt: stats.mtime.toISOString(),
     content: buffer.toString("utf-8"),
@@ -629,13 +635,26 @@ export function writeWorkingFolderTextFile(
   requestedPath: string,
   content: string,
   options: WriteTextFileOptions = {}
-): { root: "working"; path: string; size: number; updatedAt: string; content: string } {
+): { root: "working"; path: string; folderPath: string; size: number; updatedAt: string; content: string } {
   const [folderId, ...parts] = requestedPath.replace(/\\/g, "/").split("/");
   const relPath = parts.join("/");
   const folder = describeWorkingFolders(dataDir, sessionId).find(
     (item) => item.id === folderId
   );
   if (!folder || !relPath || isAbsolute(relPath)) throw new Error("Invalid folder path");
+  // The folder identity check: the address (primary / secondary-N) resolves
+  // to whatever the settings say NOW, so a repoint since load refuses the
+  // save (409 → the conflict bar) instead of writing the draft into the new
+  // folder's same-named file. Like the staleness check, force and
+  // conflictCopy are the conscious ways past it.
+  if (
+    !options.force &&
+    !options.conflictCopy &&
+    options.expectedFolderPath !== undefined &&
+    folder.path !== options.expectedFolderPath
+  ) {
+    throw new FileConflictError(null);
+  }
   const target = resolve(folder.path, relPath);
   if (relative(folder.path, target) === "") {
     throw new Error("File path must stay inside the selected folder");
@@ -665,9 +684,7 @@ export function writeWorkingFolderTextFile(
   // LF-only value (see text-file-policy).
   const out = applyTextFlags(content, readTextFlags(target));
   const finalPath = options.conflictCopy ? conflictCopyPath(target) : target;
-  const tempPath = `${finalPath}.${Date.now()}.tmp`;
-  writeFileSync(tempPath, out, "utf-8");
-  renameSync(tempPath, finalPath);
+  writeTextFilePreservingIdentity(finalPath, out);
   return readWorkingFolderTextFile(
     dataDir,
     sessionId,

@@ -1,8 +1,15 @@
 import assert from "node:assert/strict";
-import { readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "fs";
+import {
+  chmodSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  utimesSync,
+  writeFileSync,
+} from "fs";
 import { mkdtempSync } from "fs";
 import { tmpdir } from "os";
-import { join } from "path";
+import { join, resolve } from "path";
 import test from "node:test";
 import { createSessionDirs } from "../core/data-dir.js";
 import {
@@ -219,6 +226,74 @@ test("working write: round trip, escape refused, staleness, copy naming", () => 
   assert.equal(copy.path, "primary/plan (conflict).md");
   assert.equal(readFileSync(join(folder, "plan (conflict).md"), "utf-8"), "mine");
   assert.equal(readFileSync(join(folder, "plan.md"), "utf-8"), "v2");
+
+  rmSync(dataDir, { recursive: true, force: true });
+  rmSync(folder, { recursive: true, force: true });
+});
+
+test("working write refuses when the folder repointed since load", () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "alt-theory-repoint-"));
+  const dirs = createSession(dataDir, "w2");
+  const oldFolder = mkdtempSync(join(tmpdir(), "alt-theory-old-folder-"));
+  const newFolder = mkdtempSync(join(tmpdir(), "alt-theory-new-folder-"));
+  setPrimaryDir(dirs.recordsDir, oldFolder);
+  writeFileSync(join(oldFolder, "plan.md"), "old");
+  writeFileSync(join(newFolder, "plan.md"), "new");
+
+  const loaded = readWorkingFolderTextFile(dataDir, "w2", "primary/plan.md");
+  assert.equal(loaded.folderPath, resolve(oldFolder));
+
+  // Repoint: the same "primary" address now resolves elsewhere.
+  setPrimaryDir(dirs.recordsDir, newFolder);
+  assert.throws(
+    () =>
+      writeWorkingFolderTextFile(dataDir, "w2", "primary/plan.md", "draft", {
+        expectedFolderPath: loaded.folderPath,
+      }),
+    FileConflictError
+  );
+  assert.equal(readFileSync(join(newFolder, "plan.md"), "utf-8"), "new", "new folder untouched");
+  assert.equal(readFileSync(join(oldFolder, "plan.md"), "utf-8"), "old", "old folder untouched");
+  // The current folder's identity passes.
+  const ok = writeWorkingFolderTextFile(dataDir, "w2", "primary/plan.md", "ok", {
+    expectedFolderPath: resolve(newFolder),
+  });
+  assert.equal(ok.content, "ok");
+
+  rmSync(dataDir, { recursive: true, force: true });
+  rmSync(oldFolder, { recursive: true, force: true });
+  rmSync(newFolder, { recursive: true, force: true });
+});
+
+test("working write keeps file identity: mode (and symlink on POSIX)", async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "alt-theory-identity-"));
+  const dirs = createSession(dataDir, "w3");
+  const folder = mkdtempSync(join(tmpdir(), "alt-theory-id-folder-"));
+  setPrimaryDir(dirs.recordsDir, folder);
+
+  if (process.platform !== "win32") {
+    const { symlinkSync, lstatSync } = await import("node:fs");
+    const real = join(folder, "real.md");
+    const link = join(folder, "link.md");
+    writeFileSync(real, "v1");
+    symlinkSync("real.md", link);
+    const saved = writeWorkingFolderTextFile(dataDir, "w3", "primary/link.md", "v2");
+    assert.equal(saved.content, "v2");
+    assert.equal(lstatSync(link).isSymbolicLink(), true, "the link stays a link");
+    assert.equal(readFileSync(real, "utf-8"), "v2", "the write went to the link's target");
+
+    const script = join(folder, "run.sh");
+    writeFileSync(script, "#!/bin/sh\n");
+    chmodSync(script, 0o755);
+    writeWorkingFolderTextFile(dataDir, "w3", "primary/run.sh", "#!/bin/sh\necho hi\n");
+    assert.equal(statSync(script).mode & 0o777, 0o755, "mode survives the save");
+  } else {
+    // Windows: no symlink privileges assumed; the plain round trip is
+    // already covered by the other tests.
+    writeFileSync(join(folder, "plan.md"), "v1");
+    const saved = writeWorkingFolderTextFile(dataDir, "w3", "primary/plan.md", "v2");
+    assert.equal(saved.content, "v2");
+  }
 
   rmSync(dataDir, { recursive: true, force: true });
   rmSync(folder, { recursive: true, force: true });

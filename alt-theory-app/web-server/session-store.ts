@@ -33,6 +33,7 @@ import {
   MAX_TEXT_EDIT_BYTES,
   MAX_TEXT_VIEW_BYTES,
   readTextFlags,
+  writeTextFilePreservingIdentity,
   type WriteTextFileOptions,
 } from "./text-file-policy.js";
 import type { SessionEvent } from "./session-events.js";
@@ -1000,10 +1001,7 @@ export function writeSessionTextFile(
   // textarea's LF-only value (see text-file-policy).
   const out = applyTextFlags(content, readTextFlags(target.path));
   const finalPath = options.conflictCopy ? conflictCopyPath(target.path) : target.path;
-  mkdirSync(dirname(finalPath), { recursive: true });
-  const tempPath = `${finalPath}.${Date.now()}.tmp`;
-  writeFileSync(tempPath, out, "utf-8");
-  renameSync(tempPath, finalPath);
+  writeTextFilePreservingIdentity(finalPath, out);
   return readSessionTextFile(
     dataDir,
     sessionId,

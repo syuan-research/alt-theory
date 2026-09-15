@@ -352,6 +352,13 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     limits: { fileSize: 20 * 1024 * 1024 },
   });
 
+  // The file-content save route carries up to a 1 MiB edit (JSON-escaped),
+  // so it parses under its own larger limit before the global 600kb parser
+  // would refuse it (body-parser skips already-parsed bodies).
+  app.use(
+    "/api/sessions/:sessionId/files/content",
+    express.json({ limit: "2mb" })
+  );
   app.use(express.json({ limit: "600kb" }));
   app.use(
     express.static(publicDir, {
@@ -1810,6 +1817,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       path?: unknown;
       content?: unknown;
       expectedUpdatedAt?: unknown;
+      expectedFolderPath?: unknown;
       force?: unknown;
       conflictCopy?: unknown;
     };
@@ -1824,6 +1832,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     const options: WriteTextFileOptions = {
       expectedUpdatedAt:
         typeof body.expectedUpdatedAt === "string" ? body.expectedUpdatedAt : undefined,
+      expectedFolderPath:
+        typeof body.expectedFolderPath === "string" ? body.expectedFolderPath : undefined,
       force: body.force === true,
       conflictCopy: body.conflictCopy === true,
     };

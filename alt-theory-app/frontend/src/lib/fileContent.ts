@@ -20,6 +20,8 @@ export interface FileContent {
   size: number | null;
   /** Server-side path in FileRef form (differs after a conflict copy). */
   path: string;
+  /** Working root only: the folder's resolved path at load time. */
+  folderPath: string | null;
 }
 
 export type PreviewMode = "diff" | "rendered" | "source" | "edit";
@@ -37,6 +39,7 @@ export function isEditable(ref: FileRef | null | undefined): boolean {
 
 export interface SaveFileOptions {
   expectedUpdatedAt?: string;
+  expectedFolderPath?: string;
   force?: boolean;
   conflictCopy?: boolean;
 }
@@ -67,6 +70,7 @@ export async function loadFileContent(sessionId: string, ref: FileRef): Promise<
     editable: isEditable(ref) && (data.size ?? 0) <= MAX_TEXT_EDIT_BYTES,
     size: data.size ?? null,
     path: data.path ?? ref.path,
+    folderPath: data.folderPath ?? null,
   };
 }
 
@@ -81,6 +85,7 @@ export async function saveFileContent(
     path: ref.path,
     content,
     ...(options.expectedUpdatedAt !== undefined ? { expectedUpdatedAt: options.expectedUpdatedAt } : {}),
+    ...(options.expectedFolderPath !== undefined ? { expectedFolderPath: options.expectedFolderPath } : {}),
     ...(options.force ? { force: true } : {}),
     ...(options.conflictCopy ? { conflictCopy: true } : {}),
   });
@@ -91,5 +96,6 @@ export async function saveFileContent(
     editable: isEditable(ref) && (data.size ?? 0) <= MAX_TEXT_EDIT_BYTES,
     size: data.size ?? null,
     path: data.path ?? ref.path,
+    folderPath: data.folderPath ?? null,
   };
 }

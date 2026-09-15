@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, extname, join } from "node:path";
 
 /**
@@ -15,6 +15,11 @@ export interface WriteTextFileOptions {
   /** The `updatedAt` the editor loaded with; a mismatching on-disk mtime
    *  refuses the save (409) so the user can discard / copy / overwrite. */
   expectedUpdatedAt?: string;
+  /** The working folder's resolved path at load time; the `primary` /
+   *  `secondary-N` / `global-N` address is re-resolved at save time, so a
+   *  repointed folder must refuse instead of silently writing the draft
+   *  into the new folder's same-named file. */
+  expectedFolderPath?: string;
   /** Overwrite without the staleness check (the conflict bar's Overwrite). */
   force?: boolean;
   /** Write to an auto-named `name (conflict).ext` sibling instead. */
@@ -87,4 +92,22 @@ export function conflictCopyPath(target: string): string {
     candidate = join(dir, `${base} (conflict ${i})${ext}`);
   }
   return candidate;
+}
+
+/**
+ * Atomic text write that keeps the file's identity: plain tmp+rename would
+ * replace a symlink with a regular file (instead of editing what it points
+ * at) and drop the original mode bits. The path verdict has already proven
+ * the real target stays inside the granted root, so writing the realpath
+ * opens no escape. A not-yet-existing target (conflict copy) writes as-is.
+ */
+export function writeTextFilePreservingIdentity(target: string, content: string): void {
+  const stats = statSync(target, { throwIfNoEntry: false });
+  const writePath = stats ? realpathSync(target) : target;
+  const mode = stats ? statSync(writePath).mode : undefined;
+  mkdirSync(dirname(writePath), { recursive: true });
+  const tempPath = `${writePath}.${Date.now()}.tmp`;
+  writeFileSync(tempPath, content, "utf-8");
+  if (mode !== undefined) chmodSync(tempPath, mode);
+  renameSync(tempPath, writePath);
 }
