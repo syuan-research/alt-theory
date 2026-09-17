@@ -404,6 +404,8 @@ interface ManagedSession {
    * or retracted — a retract hands them back and a re-queue replays them.
    */
   queuedAttachments: Map<string, string[]>;
+  /** Direct prompt selected from Pi's queue; confirm its bubble at user message_start. */
+  pendingInterruptSendText: string | null;
 }
 
 /** Background subagent runs allowed at once; further first-runs queue FIFO. */
@@ -734,6 +736,8 @@ export class SessionService implements AgentTeamBridge {
   private async finishRun(managed: ManagedSession, outcome: RunOutcomeEvent): Promise<void> {
     const current = await this.settle(managed);
     current.pendingInterruptionCause = null;
+    managed.pendingInterruptSendText = null;
+    current.pendingInterruptSendText = null;
     if (outcome === null) return;
     if (outcome === "completed") {
       this.emit(current, { type: "run_completed", payload: this.snapshot(current) });
@@ -2513,12 +2517,17 @@ export class SessionService implements AgentTeamBridge {
       // The stopped run's final events (run_failed) must land before the
       // next message starts, or the client reads "stopped" while it runs.
       await managed.runSettlement;
+      // A deferred selector switch may have replaced the managed runtime at
+      // settle(); mark the instance that will actually receive message_start.
+      this.requireSession(sessionId).pendingInterruptSendText = text;
       this.runPrompt(sessionId, text, selectedAttachments);
     } catch (error) {
+      managed.pendingInterruptSendText = null;
       // Nothing taken out may be lost: if the stop or the selected
       // message's start failed, hand everything back to the editor the
       // way plain Stop would, then report the failure.
       const live = this.requireSession(sessionId);
+      live.pendingInterruptSendText = null;
       const restoredAttachments = [
         ...selectedAttachments,
         ...rest.flatMap((item) => item.attachments),
@@ -4140,6 +4149,7 @@ export class SessionService implements AgentTeamBridge {
       pendingInterruptionCause: null,
       retractingQueue: false,
       queuedAttachments: new Map(),
+      pendingInterruptSendText: null,
       listeners: new Set(),
       internalUnsubscribe: () => {},
       runState: new RunState(),
@@ -4549,7 +4559,10 @@ export class SessionService implements AgentTeamBridge {
         const text = contentToText(
           (event.message as { content?: unknown }).content,
         );
-        if (managed.queuedAttachments.has(text)) {
+        if (managed.pendingInterruptSendText === text) {
+          managed.pendingInterruptSendText = null;
+          this.emit(managed, { type: "user_steered", payload: { text } });
+        } else if (managed.queuedAttachments.has(text)) {
           managed.queuedAttachments.delete(text);
           this.emit(managed, { type: "user_steered", payload: { text } });
         }
@@ -4682,6 +4695,7 @@ export class SessionService implements AgentTeamBridge {
   }
 
   private latestRecoveryState(managed: ManagedSession): TurnRecovery | null {
+    if (!managed.runState.isIdle()) return null;
     const latest = latestRunSnapshots(managed.manifest.recordsDir)
       .filter(
         (run) =>

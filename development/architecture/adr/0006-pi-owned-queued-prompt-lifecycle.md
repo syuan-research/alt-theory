@@ -4,8 +4,8 @@ status: current
 date: 2026-09-13
 architecture: [session-lifecycle-and-turn-continuity]
 source:
-  - "Owner Decision 2026-09-13: queued-message delivery and interrupt-and-send"
   - "git commits 9c31de8, c77e894, and ce6ca6d"
+  - "Owner 2026-09-15 correction: the delivery-signal mechanism was an agent implementation choice, not a separately approved Owner rule"
 ---
 
 # Keep queued prompts Pi-owned and separate queue state from delivery
@@ -31,8 +31,11 @@ queue.
 
 ## Consequences
 
-- The client may render queue membership from `queue_update`, but only a queued
-  user `message_start` may cause `user_steered` and its transcript bubble.
+- The client may render queue membership from `queue_update`, but only the
+  tracked user's `message_start` may cause `user_steered` and its transcript
+  bubble. The selected Interrupt & send text has a separate short-lived
+  direct-prompt marker after it leaves Pi's queue; queue removal alone is not
+  the confirmation.
 - Pi has no per-entry mutation interface, so Edit and Delete clear and rebuild
   the remaining queue. The implementation matches by text; attachment side data
   is also keyed by text, so identical queued texts do not have distinct

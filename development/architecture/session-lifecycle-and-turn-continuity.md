@@ -4,7 +4,7 @@ slug: session-lifecycle-and-turn-continuity
 scope: Alt Theory session materialization, managed runtime lifecycle, and turn continuity
 summary: Materializes sessions, owns their live runtime, records runs, and preserves recoverable turn state across retry, continue, compaction, and reconnect
 status: current
-last_reviewed: 2026-09-15
+last_reviewed: 2026-09-17
 tags: [core, backend, session, continuity]
 depends_on:
   - branch-family-semantics.md
@@ -158,7 +158,14 @@ Where a status fact lives (v1.5.1):
   phase; no pane keeps its own status string or reads `payload.status` to
   decide "running" (`runState.test.ts`; `session-service.test.ts` "agent_end
   does not end the turn"). A failed run shows its failure envelope and
-  recovery; the phase is idle, not "error".
+  recovery; the phase is idle, not "error". The shared
+  `useConversationEngine` also applies queue and recovery from every session
+  snapshot and queue event for both panes. A running snapshot makes an older
+  turn's recovery unavailable; the center's stop-edit hint is derived from
+  idle recovery rather than stored separately. The right pane receives this
+  recovery fact but does not yet expose a Continue control. Both panes call
+  the same `beginLocalPrompt` for their immediate, optimistic idle-send bubble;
+  this is not yet an explicit `sending`/`sent` visual distinction.
 
 A model/thinking, mode, Full Access on, app runtime-mode, Role, Soul, Custom
 Instruction, knowledge-base, or visibility switch during a run is accepted,
@@ -284,8 +291,10 @@ Pi's `queue_update` events are mirrored into the run state and forwarded as
 `queue_updated`, but queue removal is not delivery: retract, Stop, and Pi's own
 drain all remove entries. A queued user bubble appears only when Pi emits a
 user `message_start` for text still tracked as queued; the service then emits
-`user_steered` and retires its staged-attachment entry. Agent-team mail rides
-the same Pi queue but is not shown as queued. `abort()` clears Pi's queue and
+`user_steered` and retires its staged-attachment entry. Interrupt & send's
+selected text is tracked separately while its direct prompt starts and emits
+the same bubble signal at its user `message_start`, not at queue removal.
+Agent-team mail rides the same Pi queue but is not shown as queued. `abort()` clears Pi's queue and
 reports every unsent text plus its staged attachment paths as restored, which
 the main composer puts back into the editor and attachment stage. There is no
 browser-side queue. This authority and delivery boundary is recorded in
@@ -322,7 +331,11 @@ already consumed the selected entry, the operation is a no-op and the normal
 delivery events finish the card-to-bubble transition. If stopping or starting
 fails, all removed text and attachments are restored before the failure is
 reported. A later failure to re-queue one of the other entries only warns; Pi's
-resulting queue remains the authority.
+resulting queue remains the authority. The new run's snapshot carries the
+queue after the clear (empty at that moment); any remaining cards appear in
+the later follow-up re-queue events. The selected direct prompt's delivery is
+confirmed separately by its user `message_start`. Recovery projection returns
+no Continue while a run is active.
 
 Pi's own transient provider retry is represented as a `retrying` run phase. Alt
 Theory does not wrap it in a second retry loop. A successful or failed terminal
@@ -352,7 +365,9 @@ on `run_completed` or `run_failed`; `getLiveRun()` returns it only while the
 run state is not idle.
 Thus a pane attaching mid-run receives the persisted transcript plus the current
 prompt and buffered deltas/tool/phase events, while a terminal run has no stale
-live replay.
+live replay. A REST transcript refresh started for a prior run is applied by
+`useConversationEngine` only if its session and message revision are still
+current, so a late response cannot replace a newer live user bubble.
 
 A stopped or failed attempt is filtered from the model's context as a whole
 message: the installed Pi provider transform (`pi-ai` `transform-messages`)

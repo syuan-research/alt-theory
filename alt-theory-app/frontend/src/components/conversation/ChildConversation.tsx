@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ServerMessage, SessionSnapshot } from "@/api/types";
 import {
-  fetchSessionDetail,
   promoteToMainline as promoteToMainlineRequest,
   retractQueuedText,
 } from "@/api/sessions";
@@ -51,48 +50,39 @@ export function ChildConversation({
   const ctxLineRef = useRef<HTMLDivElement>(null);
   const developer = app.transcriptView === "developer";
 
-  const refreshTranscript = useCallback(async () => {
-    const detail = await fetchSessionDetail(sessionId);
-    engine.setMessages(detail.transcript ?? []);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId]);
-
   const startPromptRef = useRef<(text: string, attachments: string[]) => boolean>(() => false);
-  // Pi's queue for this conversation (card 11), mirrored from the server.
-  const [queued, setQueued] = useState<string[]>([]);
 
   // Same recall as the main composer: edit puts the text back in the editor,
   // delete drops it; the card goes even when Pi already sent it. This pane's
   // editor stages no attachments, so retracted paths are dropped here.
   const recallQueued = async (text: string, toEditor: boolean) => {
     const retracted = await retractQueuedText(sessionId, text);
-    setQueued((current) => {
-      const index = current.indexOf(text);
-      return index < 0
-        ? current
-        : [...current.slice(0, index), ...current.slice(index + 1)];
-    });
+    engine.dropQueuedText(text);
     if (toEditor && retracted !== null) {
       setDraft((current) => appendDraft(current, retracted.text));
     }
   };
 
-  // The ONE conversation engine, shared with the center pane; only this
-  // pane's snapshot/status handling stays local.
+  // The same per-conversation state transitions as the center pane.
   const engine = useConversationEngine({
     onRunCompleted: (payload) => {
       setSnapshot(payload);
       setNotice("");
-      void refreshTranscript();
+      void engine.refreshTranscript(sessionId);
       void app.refreshSessions();
     },
     onRunFailed: ({ failure, recovery }) => {
-      void refreshTranscript();
+      void engine.refreshTranscript(sessionId);
       const interrupted = recovery?.outcome === "interrupted";
       if (!interrupted) setError(failureText(failure));
     },
+    onQueueRestored: (payload) => {
+      setDraft((current) =>
+        [payload.restored?.join("\n") ?? "", current].filter((part) => part.trim()).join("\n"),
+      );
+    },
   });
-  const { messages, streamParts, running } = engine;
+  const { messages, streamParts, running, queuedTexts: queued } = engine;
   // A role chosen mid-run renders as the chosen value plus the pending mark
   // (same rule as the main composer).
   const pendingChildRole = snapshot?.pending?.rolePresetSlug;
@@ -147,19 +137,6 @@ export function ChildConversation({
         case "session_updated":
           setSnapshot(message.payload);
           engine.applySnapshot(message.payload);
-          setQueued([
-            ...(message.payload.queue?.steering ?? []),
-            ...(message.payload.queue?.followUp ?? []),
-          ]);
-          break;
-        case "queue_updated":
-          setQueued([...message.payload.steering, ...message.payload.followUp]);
-          if (message.payload.restored?.length) {
-            const restored = message.payload.restored.join("\n");
-            setDraft((current) =>
-              [restored, current].filter((part) => part.trim()).join("\n"),
-            );
-          }
           break;
         case "branch_created":
           app.setActiveRelatedSessionId(message.payload.sessionId, { size: "half" });
@@ -219,8 +196,7 @@ export function ChildConversation({
   // Direct send (idle only — the queue flush also lands here).
   startPromptRef.current = (text: string) => {
     if (!socket.send({ type: "prompt", payload: text })) return false;
-    engine.setMessages((current) => [...current, { role: "user", text, timestamp: null }]);
-    engine.setRunning(true);
+    engine.beginLocalPrompt(text);
     return true;
   };
 

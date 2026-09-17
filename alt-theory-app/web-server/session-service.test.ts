@@ -5021,6 +5021,68 @@ test("interrupt-and-send stops the run, sends the selection, and re-queues the r
   }
 });
 
+test("interrupt-and-send publishes one delivered bubble and no stale recovery while the new run is live", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const created = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const managed = (service as any).sessions.get(created.sessionId);
+  const internal = service as any;
+  const events: SessionServiceEvent[] = [];
+  const detach = service.attach(created.sessionId, (event) => events.push(event));
+  let rejectOld!: (error: Error) => void;
+  let finishNew!: () => void;
+  managed.session.prompt = (text: string) => {
+    managed.session.sessionManager.appendMessage({
+      role: "user",
+      content: [{ type: "text", text }],
+      timestamp: Date.now(),
+    });
+    internal.handleAgentEvent(managed, {
+      type: "message_start",
+      message: { role: "user", content: text },
+    });
+    return text === "old"
+      ? new Promise<void>((_resolve, reject) => { rejectOld = reject; })
+      : new Promise<void>((resolve) => { finishNew = resolve; });
+  };
+  managed.session.abort = async () => rejectOld(new Error("Operation aborted"));
+
+  try {
+    const oldRun = service.runPrompt(created.sessionId, "old");
+    await service.queuePrompt(created.sessionId, "selected", undefined, "steer");
+    await service.interruptAndSend(created.sessionId, "selected");
+
+    const starts = events.filter(
+      (event) => event.type === "session_updated" && event.payload.status === "running",
+    );
+    assert.equal(starts.length, 2);
+    assert.equal(starts[1].payload.recovery, null);
+    assert.deepEqual(starts[1].payload.queue, { steering: [], followUp: [] });
+    assert.deepEqual(
+      events.filter((event) => event.type === "user_steered").map((event) => event.payload.text),
+      ["selected"],
+    );
+    assert.equal(service.getSnapshot(created.sessionId).recovery, null);
+    finishNew();
+    await oldRun.completion.catch(() => {});
+    await managed.runSettlement;
+    assert.deepEqual(
+      events.filter((event) => event.type === "user_steered").map((event) => event.payload.text),
+      ["selected"],
+    );
+    assert.deepEqual(service.getSnapshot(created.sessionId).queue, {
+      steering: [], followUp: [],
+    });
+  } finally {
+    detach();
+    await service.disposeAll();
+  }
+});
+
 test("Stop hands unsent queued text and its staged paths back to the editor", async () => {
   const fixture = setupFixture();
   const service = createTestService(fixture);

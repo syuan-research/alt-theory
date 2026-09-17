@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { runPhaseLabels, runStateView } from "./runState.ts";
+import { conversationSnapshotView, runPhaseLabels, runStateView } from "./runState.ts";
+import type { SessionSnapshot } from "@/api/types";
 
 const base = { socket: "open" as const, busy: false, phaseLabel: "", toolStatus: "", pending: {} };
 
@@ -32,4 +33,17 @@ test("stopping and queued come from the run-state label set", () => {
   assert.equal(stopping.label, "Stopping…");
   assert.equal(stopping.detail, "Stopping…");
   assert.equal(labels.queued, "Queued — the agent sees it at its next step");
+});
+
+test("a new running turn clears the old Continue and empty queue in both panes", () => {
+  const snapshot = {
+    status: "running",
+    queue: { steering: [], followUp: [] },
+    recovery: { outcome: "interrupted", canContinue: true },
+  } as unknown as SessionSnapshot;
+  assert.deepEqual(conversationSnapshotView(snapshot), {
+    running: true,
+    queuedTexts: [],
+    recovery: null,
+  });
 });

@@ -1,4 +1,4 @@
-import type { PendingChanges } from "@/api/types";
+import type { PendingChanges, SessionSnapshot } from "@/api/types";
 import type { ConnStatus } from "@/components/ui/StatusBadge";
 import type { WsConnStatus } from "@/hooks/useWebSocket";
 import { t } from "@/i18n";
@@ -27,6 +27,16 @@ export function runPhaseLabels() {
     idle: t("Ready"),
     stopping: t("Stopping…"),
     queued: t("Queued — the agent sees it at its next step"),
+  };
+}
+
+/** The server snapshot's queue and recovery mean the same thing in both panes. */
+export function conversationSnapshotView(snapshot: SessionSnapshot) {
+  const running = snapshot.status !== "idle";
+  return {
+    running,
+    queuedTexts: [...(snapshot.queue?.steering ?? []), ...(snapshot.queue?.followUp ?? [])],
+    recovery: running ? null : (snapshot.recovery ?? null),
   };
 }
 

@@ -426,8 +426,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [composerNotice, setComposerNotice] = useState<ComposerNotice | null>(
     null,
   );
-  const [runHint, setRunHint] = useState<string | null>(null);
-  const [recovery, setRecovery] = useState<TurnRecovery | null>(null);
   const [stagedWorkspacePaths, setStagedWorkspacePaths] = useState<string[]>([],);
   const [runCompletedCount, setRunCompletedCount] = useState(0);
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(
@@ -450,7 +448,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const sessionListRequestRef = useRef(0);
   const sessionDetailRequestRef = useRef(0);
 
-  const [queuedTexts, setQueuedTexts] = useState<string[]>([]);
   const [restoredDraft, setRestoredDraft] = useState<string | null>(null);
   const clearRestoredDraft = useCallback(() => setRestoredDraft(null), []);
 
@@ -469,30 +466,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     },
     onRunCompleted: (payload) => {
-      setRecovery(null);
       setComposerNotice(null);
       setCurrentSessionModel(payload.currentModel ?? null);
       setToolStatus("");
-      setRunHint("");
       setRunCompletedCount((count) => count + 1);
       // Keep the composer's context ring honest without polling.
       sendMessage({ type: "get_session_metrics" });
       if (payload.sessionId) {
         reconnectSessionIdRef.current = payload.sessionId;
         void refreshSessions();
-        void refreshCurrentTranscript(payload.sessionId);
+        void engine.refreshTranscript(payload.sessionId);
       }
     },
     onRunFailed: (payload) => {
-      if (sessionId) void refreshCurrentTranscript(sessionId);
+      if (sessionId) void engine.refreshTranscript(sessionId);
       // Interruption is a recorded outcome, never a guess from error text.
       const interrupted = payload.recovery?.outcome === "interrupted";
-      setRecovery(payload.recovery ?? null);
       setToolStatus("");
       const userStopped = payload.recovery?.interruptionCause === "user_abort";
       if (userStopped) {
         setComposerNotice(null);
-        setRunHint(t("Editing after Stop won't branch. Use /branch if needed."));
       } else {
         const oauthRefreshFailed = payload.failure.kind === "auth-refresh";
         setComposerNoticeTimed(
@@ -505,8 +498,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
           },
           oauthRefreshFailed ? 0 : 4500,
         );
-        if (!interrupted) setRunHint("");
       }
+    },
+    onQueueRestored: (payload) => {
+      setRestoredDraft(payload.restored?.join("\n") ?? null);
+      for (const path of payload.restoredAttachments ?? []) stageWorkspacePath(path);
     },
   });
   const {
@@ -516,12 +512,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setStreamParts,
     running: isRunning,
     setRunning: setIsRunning,
+    queuedTexts,
+    setQueuedTexts,
+    recovery,
+    setRecovery,
     phaseLabel: runPhaseLabel,
     setPhaseLabel: setRunPhaseLabel,
     approvals,
     setApprovals,
     activeToolsRef: activeToolsMapRef,
   } = engine;
+  const runHint = !isRunning && recovery?.interruptionCause === "user_abort"
+    ? t("Editing after Stop won't branch. Use /branch if needed.")
+    : null;
 
   const clearStagedWorkspace = useCallback(() => {
     setStagedWorkspacePaths([]);
@@ -739,17 +742,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [sendMessage],
   );
 
-  const refreshCurrentTranscript = useCallback(async (activeSessionId: string) => {
-    try {
-      const detail = await fetchSessionDetail(activeSessionId);
-      if (Array.isArray(detail.transcript) && detail.transcript.length > 0) {
-        setMessages(detail.transcript);
-      }
-    } catch {
-      // Non-fatal; transcript may arrive via websocket.
-    }
-  }, [],);
-
   const handleServerMessage = useCallback(
     (message: ServerMessage) => {
       // Stream/transcript/run messages and the connection-wide approval registry
@@ -809,7 +801,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
           break;
 
         case "session_opened": {
-          setRecovery(message.payload.recovery ?? null);
           // Decide "created here" before the pending refs are consumed below:
           // an explicit open, an asset-switch rebuild, or a reconnect to the
           // same id is NOT a new conversation (persisted Work mode must not
@@ -884,10 +875,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
           );
           setPendingChanges(message.payload.pending ?? {});
           setThinking(message.payload.thinking ?? null);
-          setQueuedTexts([
-            ...(message.payload.queue?.steering ?? []),
-            ...(message.payload.queue?.followUp ?? []),
-          ]);
           setCurrentSessionModel(message.payload.currentModel ?? null);
           setStudyTagState(message.payload.studyTag ?? null);
           setRetentionDueAt(message.payload.retentionDueAt ?? null);
@@ -898,11 +885,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setToolStatus("");
           setRunPhaseLabel(
             message.payload.status !== "idle" ? t("Processing…") : "",
-          );
-          setRunHint(
-            message.payload.recovery?.interruptionCause === "user_abort"
-              ? t("Editing after Stop won't branch. Use /branch if needed.")
-              : "",
           );
           clearStagedWorkspace();
           void refreshSessions();
@@ -998,18 +980,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }
           break;
         }
-
-        case "queue_updated":
-          setQueuedTexts([...message.payload.steering, ...message.payload.followUp]);
-          if (message.payload.restored?.length) {
-            setRestoredDraft(message.payload.restored.join("\n"));
-            // Stop hands the staged paths back with the text; re-stage them
-            // so nothing the user attached is lost.
-            for (const path of message.payload.restoredAttachments ?? []) {
-              stageWorkspacePath(path);
-            }
-          }
-          break;
 
         case "session_metadata":
           setManifest(message.payload);
@@ -1158,7 +1128,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setMessages([]);
     setStreamParts([]);
     setWsError(null);
-    setRunHint(null);
+    setRecovery(null);
     setRunPhaseLabel("");
     clearStagedWorkspace();
     if (sendMessage({ type: "new_session" })) {
@@ -1426,17 +1396,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (!sendMessage({ type: "prompt", payload: outgoing, attachments })) {
         return false;
       }
-      setMessages((prev) => [
-        ...prev,
-        { role: "user", text: outgoing, timestamp: null },
-      ]);
+      engine.beginLocalPrompt(outgoing);
       setStreamParts([]);
       setWsError(null);
-      setRunHint("");
-      setRecovery(null);
       setToolStatus("");
       setRunPhaseLabel(t("Connecting…"));
-      setIsRunning(true);
       return true;
     },
     [isRunning, sendMessage],
@@ -1553,12 +1517,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     async (text: string) => {
       if (!sessionId) return null;
       const retracted = await retractQueuedText(sessionId, text);
-      setQueuedTexts((current) => {
-        const index = current.indexOf(text);
-        return index < 0
-          ? current
-          : [...current.slice(0, index), ...current.slice(index + 1)];
-      });
+      engine.dropQueuedText(text);
       return retracted;
     },
     [sessionId],
@@ -1568,7 +1527,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (sendMessage({ type: "abort" })) {
       setToolStatus("");
       setRunPhaseLabel(runPhaseLabels().stopping);
-      setRunHint("");
     }
   }, [sendMessage]);
 
@@ -1659,15 +1617,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         ...(userText?.trim() ? { userText: userText.trim() } : {}),
       };
       if (!sendMessage({ type: "invoke_skill", payload })) return false;
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "user",
-          text: userText?.trim() || t("Invoke {skillName}", { skillName }),
-          timestamp: null,
-        },
-      ]);
-      setIsRunning(true);
+      engine.beginLocalPrompt(userText?.trim() || t("Invoke {skillName}", { skillName }));
       setToolStatus("");
       setRunPhaseLabel(t("Connecting…"));
       return true;
@@ -1722,8 +1672,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (isRunning || !sessionId || !sendMessage({ type: "retry_latest" })) {
       return false;
     }
-    setRecovery(null);
-    setIsRunning(true);
+    engine.beginLocalRun();
     setToolStatus("");
     setRunPhaseLabel(t("Connecting…"));
     return true;
@@ -1733,9 +1682,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (isRunning || !sessionId || !sendMessage({ type: "continue_latest" })) {
       return false;
     }
-    setRecovery(null);
-    setRunHint("");
-    setIsRunning(true);
+    engine.beginLocalRun();
     setToolStatus("");
     setRunPhaseLabel(t("Connecting…"));
     return true;
@@ -1755,9 +1702,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ) {
         return false;
       }
-      setRecovery(null);
-      setRunHint("");
-      setIsRunning(true);
+      engine.beginLocalRun();
       setToolStatus("");
       setRunPhaseLabel(t("Connecting…"));
       return true;
@@ -1768,7 +1713,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const deleteLatest = useCallback(() => {
     if (!sendMessage({ type: "delete_latest" })) return;
     setToolStatus(t("Deleting latest turn..."));
-    setRunHint("");
   }, [sendMessage]);
 
 

@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import type {
   ActiveToolState,
   ApprovalRequestPayload,
@@ -10,6 +10,8 @@ import type {
   TurnRecovery,
 } from "@/api/types";
 import { handleConversationStreamMessage } from "@/lib/conversationStream";
+import { fetchSessionDetail } from "@/api/sessions";
+import { conversationSnapshotView } from "@/lib/runState";
 
 export interface ConversationEngineOptions {
   /** Center/child extras after the shared core handling (queue flush, refreshes …). */
@@ -20,24 +22,36 @@ export interface ConversationEngineOptions {
     recovery?: TurnRecovery | null;
   }) => void;
   onTranscript?: (messages: TranscriptMessage[]) => void;
+  onQueueRestored?: (payload: Extract<ServerMessage, { type: "queue_updated" }>["payload"]) => void;
 }
 
 /**
- * The ONE conversation engine (v1.4.3, owner ruling): message + stream +
- * approval state and their server-message handling, shared by the center
- * conversation (AppProvider) and the right-pane ChildConversation. Pane
- * -specific behavior stays in the pane, wired through the options
- * callbacks — never duplicate these transitions per pane again.
+ * Per-conversation messages, stream, run, queue, recovery, and approvals,
+ * shared by the center conversation and the right-pane ChildConversation.
+ * Drafts, restored attachments, and pane layout remain with their owners.
  */
 export function useConversationEngine(options?: ConversationEngineOptions) {
-  const [messages, setMessages] = useState<TranscriptMessage[]>([]);
+  const [messages, setMessageState] = useState<TranscriptMessage[]>([]);
   const [streamParts, setStreamParts] = useState<StreamPart[]>([]);
   const [running, setRunning] = useState(false);
+  const [queuedTexts, setQueuedTexts] = useState<string[]>([]);
+  const [recovery, setRecovery] = useState<TurnRecovery | null>(null);
   const [phaseLabel, setPhaseLabel] = useState("");
   const [approvals, setApprovals] = useState<ApprovalRequestPayload[]>([]);
   const activeToolsRef = useRef<Record<string, ActiveToolState>>({});
+  const messageRevisionRef = useRef(0);
+  const sessionIdRef = useRef<string | null>(null);
+  const runningRef = useRef(false);
   const optionsRef = useRef(options);
   optionsRef.current = options;
+
+  const setMessages = useCallback<Dispatch<SetStateAction<TranscriptMessage[]>>>(
+    (update) => {
+      messageRevisionRef.current++;
+      setMessageState(update);
+    },
+    [],
+  );
 
   const clearStream = useCallback(() => {
     setStreamParts([]);
@@ -46,8 +60,50 @@ export function useConversationEngine(options?: ConversationEngineOptions) {
 
   /** The server's snapshot is the run fact; anything but idle is a run. */
   const applySnapshot = useCallback((snapshot: SessionSnapshot) => {
-    setRunning(snapshot.status !== "idle");
+    const { running: nextRunning, queuedTexts: nextQueue, recovery: nextRecovery } =
+      conversationSnapshotView(snapshot);
+    if (sessionIdRef.current !== snapshot.sessionId || runningRef.current !== nextRunning) {
+      messageRevisionRef.current++;
+    }
+    sessionIdRef.current = snapshot.sessionId;
+    runningRef.current = nextRunning;
+    setRunning(nextRunning);
+    setQueuedTexts(nextQueue);
+    setRecovery(nextRecovery);
   }, []);
+
+  const beginLocalRun = useCallback(() => {
+    messageRevisionRef.current++;
+    runningRef.current = true;
+    setRunning(true);
+    setRecovery(null);
+  }, []);
+
+  const beginLocalPrompt = useCallback((text: string) => {
+    setMessages((current) => [...current, { role: "user", text, timestamp: null }]);
+    beginLocalRun();
+  }, [beginLocalRun, setMessages]);
+
+  const dropQueuedText = useCallback((text: string) => {
+    setQueuedTexts((current) => {
+      const index = current.indexOf(text);
+      return index < 0 ? current : [...current.slice(0, index), ...current.slice(index + 1)];
+    });
+  }, []);
+
+  const refreshTranscript = useCallback(async (sessionId: string) => {
+    const revision = messageRevisionRef.current;
+    try {
+      const detail = await fetchSessionDetail(sessionId);
+      // A preceding run's REST response must not replace a newer live bubble.
+      if (revision !== messageRevisionRef.current || sessionIdRef.current !== sessionId) return;
+      if (Array.isArray(detail.transcript)) {
+        setMessages(detail.transcript);
+      }
+    } catch {
+      // WebSocket transcript and the next refresh remain available.
+    }
+  }, [setMessages]);
 
   /** Returns true when the message was conversation-scoped and consumed. */
   const handleMessage = useCallback(
@@ -59,10 +115,10 @@ export function useConversationEngine(options?: ConversationEngineOptions) {
           setPhaseLabel,
         })
       ) {
-        setRunning(
-          message.type !== "run_phase" ||
-            (message.payload.phase !== "idle" && message.payload.phase !== "error"),
-        );
+        const nextRunning = message.type !== "run_phase" ||
+          (message.payload.phase !== "idle" && message.payload.phase !== "error");
+        runningRef.current = nextRunning;
+        setRunning(nextRunning);
         return true;
       }
       switch (message.type) {
@@ -75,13 +131,16 @@ export function useConversationEngine(options?: ConversationEngineOptions) {
           optionsRef.current?.onTranscript?.(message.payload.messages);
           return true;
         case "run_completed":
-          setRunning(false);
+          applySnapshot(message.payload);
           clearStream();
           setPhaseLabel("");
           optionsRef.current?.onRunCompleted?.(message.payload);
           return true;
         case "run_failed":
+          runningRef.current = false;
           setRunning(false);
+          setRecovery(message.payload.recovery ?? null);
+          messageRevisionRef.current++;
           clearStream();
           setPhaseLabel("");
           optionsRef.current?.onRunFailed?.(message.payload);
@@ -92,6 +151,12 @@ export function useConversationEngine(options?: ConversationEngineOptions) {
             ...current,
             { role: "user", text: message.payload.text, timestamp: null },
           ]);
+          return true;
+        case "queue_updated":
+          setQueuedTexts([...message.payload.steering, ...message.payload.followUp]);
+          if (message.payload.restored?.length) {
+            optionsRef.current?.onQueueRestored?.(message.payload);
+          }
           return true;
         case "approval_requested":
           setApprovals((prev) =>
@@ -111,7 +176,7 @@ export function useConversationEngine(options?: ConversationEngineOptions) {
           return false;
       }
     },
-    [clearStream],
+    [applySnapshot, clearStream, setMessages],
   );
 
   return {
@@ -121,6 +186,14 @@ export function useConversationEngine(options?: ConversationEngineOptions) {
     setStreamParts,
     running,
     setRunning,
+    beginLocalRun,
+    beginLocalPrompt,
+    queuedTexts,
+    setQueuedTexts,
+    dropQueuedText,
+    recovery,
+    setRecovery,
+    refreshTranscript,
     applySnapshot,
     phaseLabel,
     setPhaseLabel,
