@@ -9,6 +9,10 @@ import type {
   UpsertProviderInput,
 } from "./types";
 
+export async function getDocsRoot(): Promise<{ docsRoot: string | null }> {
+  return fetchJson("/api/config/docs-root");
+}
+
 export async function listProviderAuthStatus(): Promise<{
   providers: {
     provider: ProviderAuthId;

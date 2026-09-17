@@ -71,19 +71,43 @@ reverse-engineering the app.
 
 Settings is the ordinary route, and the [Helper](helper-and-guidance.md) can
 walk you through it inside the app. If you would rather hand the job to a
-chatbot you already use — ChatGPT, Kimi, DeepSeek, Gemini, or any local agent
-that can edit files — copy the prompt below and paste it there.
+chatbot you already use — ChatGPT, Kimi, DeepSeek, Gemini — open "Let a
+chatbot write the config" in Settings, copy the prompt there, and send it
+together with a screenshot of the provider form.
 
 ```text
-I use an app called Alt Theory. It reads its model configuration from
-~/.alt-theory/pi-agent/models.json (Windows: %USERPROFILE%\.alt-theory\pi-agent\models.json).
-It does NOT read ~/.pi/ or any other agent's configuration.
+I'm adding an AI provider in a desktop app. Below is the setup guide the app gave me:
 
-The file looks like this:
+The form has four fields (see the attached image if there is one): Name, Base URL (baseUrl), API type (openai-completions / openai-responses / anthropic-messages — pick one), and API key.
+
+Ask the user:
+1. If the user hasn't said, first ask which provider(s) they plan to use, e.g. DeepSeek, Opencode Go, etc. If already stated, skip.
+2. If the user hasn't said, ask whether they need help finding the page to get an API key. If so, help as much as possible, using language that someone who has never used an API can understand; keep jargon to a minimum.
+3. If the user has an API key, provide the three items other than the API key. If you are not sure about the baseUrl or which API type to choose, follow the provider's official documentation's current recommendation; if you cannot go online, use your own knowledge. The model list can be pulled inside the app; thinking levels are auto-fetched too, but if you search the web later, help the user find the latest list of thinking levels.
+
+When explaining, don't pile up too many terms at once; if this takes several rounds, cover only a few points each round and move forward step by step.
+```
+
+Two things to know before you paste it anywhere: an API key is a password, so
+only give it to a tool you trust, and after the provider entry exists, Fetch
+in Settings is more reliable than any chatbot's memory of which model ids
+exist today.
+
+### Configure models with an agent that can edit files
+
+If you have an agent that can read and write files on this machine — a coding
+agent or an office agent — send it the whole prompt below: it scouts existing
+configs and keys, confirms with you before writing anything, and backs up the
+file first.
+
+```text
+I'm using a desktop app and need to add an AI provider. If you cannot read or write files on this machine, say so directly and give me steps to do it myself instead — that's all.
+
+Target file: ~/.alt-theory/pi-agent/models.json (create it if it doesn't exist). Target structure:
 
 {
   "providers": {
-    "<provider-name>": {
+    "<provider name>": {
       "baseUrl": "<endpoint URL>",
       "api": "openai-completions" | "openai-responses" | "anthropic-messages",
       "apiKey": "<the key, or the name of an environment variable>",
@@ -92,17 +116,23 @@ The file looks like this:
   }
 }
 
-Please ask me which provider I have access to and what my key is, then show
-me the exact file contents to save. Explain anything I need to check first.
-Do not invent model ids: after the provider entry exists, I will click
-"Fetch model list" in Alt Theory's Settings and it will ask the provider
-itself.
-```
+Ask me three things first:
+1. Which provider am I adding?
+2. Is it a subscription or an API key? Subscriptions (e.g. ChatGPT subscription, Grok subscription, Kimi Code subscription) go through OAuth login — I sign in inside the app myself and you have nothing to write; just guide me through the login.
+3. Which tools have I configured this provider in before?
 
-Two things to know before you paste it anywhere: an API key is a password, so
-only give it to a tool you trust, and after the provider entry exists, Fetch
-in Settings is more reliable than any chatbot's memory of which model ids
-exist today.
+Then scout: fetch the configured providers and keys from the tools I named; check this machine's environment variables for existing API keys (names only, values not needed); read the existing models.json; check your own harness's model support table.
+
+Order for model ids: first look at the model catalog the app has recorded — real ids for this provider are often already there (results of "Fetch model list" are recorded in it); then your harness's model support table; then fetch this provider's model list endpoint online; if still nothing, leave the array empty and tell me the two-step finish — open the provider in the app, click "Fetch model list", save.
+
+After scouting, report to me: what you found, what's missing, and how I should fill the gaps (get it now / paste it later / switch provider). Write only after I confirm what to use.
+
+Then ask me the division of labor: you edit the file directly, or you give me steps to do it myself.
+
+Before writing, copy the original file to a timestamped copy in the same directory (e.g. models.json.bak-20260916-2130); skip the backup if the file doesn't exist. After writing, report what changed and what you didn't touch, and let me click "Test connection" in the app.
+
+For more detailed documentation see: {{docsRoot}}\docs\en\system-guide\models-providers-access.md
+```
 
 ## Per-session model and thinking effort
 

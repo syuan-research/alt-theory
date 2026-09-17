@@ -487,7 +487,7 @@ function AgentsPanel() {
   ]);
   const [path, setPath] = useState("");
   const [status, setStatus] = useState("");
-  const [saving, setSaving] = useState(false);
+  const saveTimer = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     if (app.appMode !== "local") return;
@@ -519,30 +519,30 @@ function AgentsPanel() {
     return <div className="set-panel agents-panel"><p className="sub">{status || t("Loading…")}</p></div>;
   }
 
-  const updateAgent = (index: number, update: (agent: SubagentPreset) => SubagentPreset) => {
-    setConfig((current) => current && ({
-      ...current,
-      agents: current.agents.map((agent, i) => i === index ? update(agent) : agent),
-    }));
+  // Fire-and-forget auto-save on every edit, debounced: the text inputs would
+  // otherwise PUT per keystroke, and out-of-order responses could let stale
+  // content win. No echo application — like the other settings cards, the
+  // input shows what was typed and server normalization lands on remount.
+  const edit = (next: SubagentConfig) => {
+    setConfig(next);
     setStatus("");
+    window.clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(() => {
+      saveSubagentSettings(next).catch((error) =>
+        setStatus(error instanceof Error ? error.message : String(error)),
+      );
+    }, 500);
   };
-  const save = async () => {
-    setSaving(true);
-    setStatus("");
-    try {
-      const result = await saveSubagentSettings(config);
-      setConfig(result.config);
-      setStatus(t("Saved. New conversations use these settings now. Open conversations keep their current agent setup until they are reopened."));
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : String(error));
-    } finally {
-      setSaving(false);
-    }
+  const updateAgent = (index: number, update: (agent: SubagentPreset) => SubagentPreset) => {
+    edit({
+      ...config,
+      agents: config.agents.map((agent, i) => i === index ? update(agent) : agent),
+    });
   };
   const addCustom = () => {
     let number = 1;
     while (config.agents.some((agent) => agent.id === `custom-${number}`)) number += 1;
-    setConfig({
+    edit({
       ...config,
       agents: [...config.agents, {
         id: `custom-${number}`,
@@ -551,7 +551,6 @@ function AgentsPanel() {
         fallbackModels: [],
       }],
     });
-    setStatus("");
   };
   const renderAgent = (agent: SubagentPreset, index: number, builtIn: boolean) => (
     <div className="agent-preset" key={agent.id}>
@@ -563,12 +562,11 @@ function AgentsPanel() {
             value={agent.id}
             onChange={(event) => {
               const id = event.target.value;
-              setConfig((current) => current && ({
-                ...current,
-                defaultAgent: current.defaultAgent === agent.id ? id : current.defaultAgent,
-                agents: current.agents.map((item, i) => i === index ? { ...item, id } : item),
-              }));
-              setStatus("");
+              edit({
+                ...config,
+                defaultAgent: config.defaultAgent === agent.id ? id : config.defaultAgent,
+                agents: config.agents.map((item, i) => i === index ? { ...item, id } : item),
+              });
             }}
           />
         )}
@@ -653,7 +651,7 @@ function AgentsPanel() {
             fallbackModels: [...item.fallbackModels, "inherit"],
           }))}>{t("Add fallback")}</button>
           {!builtIn ? (
-            <button className="link-btn danger" onClick={() => setConfig({
+            <button className="link-btn danger" onClick={() => edit({
               ...config,
               agents: config.agents.filter((_, i) => i !== index),
               defaultAgent: config.defaultAgent === agent.id ? "general-medium" : config.defaultAgent,
@@ -668,7 +666,6 @@ function AgentsPanel() {
     <div className="set-panel agents-panel">
       <div className="agents-heading">
         <div><h2>{t("Subagents")}</h2><p className="sub">{t("Choose model and thinking defaults for delegated work.")}</p></div>
-        <button className="add-btn" disabled={saving} onClick={() => void save()}>{saving ? t("Saving…") : t("Save")}</button>
       </div>
       <div className="set-card agent-default-card">
         <div className="row2">
@@ -684,7 +681,7 @@ function AgentsPanel() {
             ariaLabel={t("Default subagent")}
             value={config.defaultAgent}
             options={config.agents.map((agent) => ({ value: agent.id, label: agent.id }))}
-            onChange={(value) => setConfig({ ...config, defaultAgent: value })}
+            onChange={(value) => edit({ ...config, defaultAgent: value })}
           />
         </div>
       </div>

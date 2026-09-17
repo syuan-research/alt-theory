@@ -419,6 +419,14 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     res.json({ dataDir });
   });
 
+  // Docs location for the external-AI setup prompt (local installs ship docs;
+  // hosted deployments have no on-machine docs, so the prompt omits the line).
+  app.get("/api/config/docs-root", (_req, res) => {
+    if (!requireLocalConfigMode(res)) return;
+    const docsRoot = join(RESOURCE_ROOT, "docs");
+    res.json({ docsRoot: existsSync(docsRoot) ? docsRoot : null });
+  });
+
   // --- Auto-naming of conversations (v1.2.1) ---
   app.get("/api/settings/auto-title", (_req, res) => {
     if (!requireLocalConfigMode(res)) return;
