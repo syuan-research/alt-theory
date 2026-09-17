@@ -131,7 +131,7 @@ Then ask me the division of labor: you edit the file directly, or you give me st
 
 Before writing, copy the original file to a timestamped copy in the same directory (e.g. models.json.bak-20260916-2130); skip the backup if the file doesn't exist. After writing, report what changed and what you didn't touch, and let me click "Test connection" in the app.
 
-For more detailed documentation see: {{docsRoot}}\docs\en\system-guide\models-providers-access.md
+For more detailed documentation see: {{docsRoot}}/en/system-guide/models-providers-access.md
 ```
 
 ## Per-session model and thinking effort

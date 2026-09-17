@@ -59,7 +59,7 @@ const enAgentPrompt = [
 ].join("\n");
 
 const enAgentDocsLine =
-  "For more detailed documentation see: {{docsRoot}}\\docs\\en\\system-guide\\models-providers-access.md";
+  "For more detailed documentation see: {{docsRoot}}/en/system-guide/models-providers-access.md";
 
 const zhHansPrompt = [
   "我要在一个桌面应用里添加一个 AI 服务商，下面是它给我的配置指南：",
@@ -107,7 +107,7 @@ const zhHansAgentPrompt = [
 ].join("\n");
 
 const zhHansAgentDocsLine =
-  "更仔细的说明见：{{docsRoot}}\\docs\\zh-Hans\\system-guide\\02-models-providers-access.md";
+  "更仔细的说明见：{{docsRoot}}/zh-Hans/system-guide/02-models-providers-access.md";
 
 const zhHantPrompt = [
   "我要在一個桌面 app 加一個 AI 服務商，下面是它給我的設定指南：",
@@ -155,7 +155,7 @@ const zhHantAgentPrompt = [
 ].join("\n");
 
 const zhHantAgentDocsLine =
-  "更詳細的說明見：{{docsRoot}}\\docs\\zh-Hans\\system-guide\\02-models-providers-access.md";
+  "更詳細的說明見：{{docsRoot}}/zh-Hans/system-guide/02-models-providers-access.md";
 
 export const EXTERNAL_AI_SETUP: Record<Lang, ExternalAiSetupContent> = {
   en: {

@@ -78,7 +78,7 @@ export function ExternalAiSetupDialog() {
             <li>{content.safety}</li>
             <li>{content.modelIds}</li>
           </ul>
-          <div className="external-ai-block">
+          <div>
             <div className="external-ai-blockhead">
               <span className="external-ai-blocklabel">{content.chatLabel}</span>
               <button
@@ -91,7 +91,7 @@ export function ExternalAiSetupDialog() {
             </div>
             <pre>{content.chatPrompt}</pre>
           </div>
-          <div className="external-ai-block">
+          <div>
             <div className="external-ai-blockhead">
               <span className="external-ai-blocklabel">{content.agentLabel}</span>
               <button

@@ -654,7 +654,6 @@ const catalog: Record<string, string> = {
   "Saved as {name}.": "已另存为 {name}。",
   "Saved, but the current status could not be refreshed. Reload Settings to retry.": "已保存，但无法刷新当前状态。请重新加载设置后重试。",
   "Saved.": "已保存。",
-  "Saved. New conversations use these settings now. Open conversations keep their current agent setup until they are reopened.": "已保存。新对话现在就会使用这些设置；已打开的对话会保留当前的代理配置，直到重新打开。",
   "Saving...": "保存中...",
   "Saving…": "保存中…",
   "Say “align with me first” before a big piece of work and Alt interviews you instead of guessing.": "在处理大任务前说“先和我对齐”，Alt就会来询问你，而不是自己猜测。",

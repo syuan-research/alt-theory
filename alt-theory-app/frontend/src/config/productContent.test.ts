@@ -79,14 +79,16 @@ test("external-AI setup prompts vs docs: divergences are logged for adjudication
   assert.ok(EXTERNAL_AI_SETUP["zh-Hant-HK"].agentPrompt.includes("models.json"));
   assert.ok(EXTERNAL_AI_SETUP["zh-Hant-HK"].safety.length > 10);
   // The injected path suffix must name docs files that actually ship.
+  // Forward slashes: the server root is platform-native, and Windows agents
+  // accept / fine — backslashes would break on macOS/Linux.
   assert.ok(
     EXTERNAL_AI_SETUP.en.agentDocsLine.endsWith(
-      "\\docs\\en\\system-guide\\models-providers-access.md",
+      "/en/system-guide/models-providers-access.md",
     ),
   );
   assert.ok(
     EXTERNAL_AI_SETUP["zh-Hans"].agentDocsLine.endsWith(
-      "\\docs\\zh-Hans\\system-guide\\02-models-providers-access.md",
+      "/zh-Hans/system-guide/02-models-providers-access.md",
     ),
   );
 });

@@ -100,7 +100,7 @@ settings.json  { defaultProvider, defaultModel, ... }
 
 动手前把原文件复制成同目录的时间戳副本（如 models.json.bak-20260916-2130）；文件不存在就跳过备份。写完汇报改了什么、什么没做，让我在应用里点「测试连接」。
 
-更仔细的说明见：{{docsRoot}}\docs\zh-Hans\system-guide\02-models-providers-access.md
+更仔细的说明见：{{docsRoot}}/zh-Hans/system-guide/02-models-providers-access.md
 ```
 
 ## 每会话模型与思考强度
