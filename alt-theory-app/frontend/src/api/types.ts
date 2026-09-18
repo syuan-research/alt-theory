@@ -726,7 +726,7 @@ export type ServerMessage =
   | { type: "session_transcript"; payload: { messages: TranscriptMessage[] } }
   | {
       type: "related_session_created";
-      payload: { sessionId: string; purpose: "side" | "helper" };
+      payload: { sessionId: string; purpose: "side" | "helper" | "subagent" };
     }
   | {
       type: "branch_created";

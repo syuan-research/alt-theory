@@ -2293,6 +2293,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       case "extension_notice":
         send({ type: "extension_notice", payload: event.payload });
         break;
+      case "related_session_created":
+        send({ type: "related_session_created", payload: event.payload });
+        break;
     }
   }
 

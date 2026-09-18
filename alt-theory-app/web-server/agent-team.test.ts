@@ -19,7 +19,8 @@ import {
 } from "./agent-team.js";
 import { DEFAULT_SUBAGENT_CONFIG } from "./subagent-config.js";
 import { readV4SessionHeader } from "./session-records.js";
-import { readSessionDetail } from "./session-store.js";
+import { listSessionSummaries, readSessionDetail } from "./session-store.js";
+import type { SessionServiceEvent } from "./session-service.js";
 import { describeFailure } from "../core/failure.js";
 
 function setupFixture() {
@@ -297,6 +298,51 @@ test("spawn with a role writes that role on the child's assembly manifest", asyn
       ),
     ) as { rolePreset?: { slug?: string | null } };
     assert.equal(manifest.rolePreset?.slug, "role-b");
+  } finally {
+    await service.disposeAll();
+  }
+});
+
+test("spawn birth: parent is told, and the fresh child is catalog-listed while empty roots stay hidden", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  try {
+    const parent = await service.createSession(SELECTORS);
+    stubEchoPrompt(managedOf(service, parent.sessionId), "parent answer");
+    // A root session with no Pi file, metrics, or run outcome stays hidden.
+    const rootListed = listSessionSummaries(fixture.dataDir).sessions.some(
+      (session) => session.sessionId === parent.sessionId,
+    );
+    assert.equal(rootListed, false);
+
+    const events: SessionServiceEvent[] = [];
+    const detach = service.attach(parent.sessionId, (event) => events.push(event));
+    const spawned = await service.spawnSubagent(parent.sessionId, {
+      message: "summarize the docs",
+    });
+    detach();
+
+    const birth = events.find(
+      (event) => event.type === "related_session_created",
+    );
+    assert.ok(birth && birth.type === "related_session_created", "parent must receive the birth event");
+    assert.equal(birth.payload.sessionId, spawned.sessionId);
+    assert.equal(birth.payload.purpose, "subagent");
+
+    // The birth receipt on the child's own records is what the catalog reads.
+    const childEvents = readFileSync(
+      join(managedOf(service, spawned.sessionId).manifest.recordsDir, "session-events.jsonl"),
+      "utf-8",
+    );
+    assert.match(childEvents, /"type":"subagent_spawned"/);
+    assert.match(childEvents, new RegExp(`"parentSessionId":"${parent.sessionId}"`));
+
+    const listed = listSessionSummaries(fixture.dataDir).sessions.find(
+      (session) => session.sessionId === spawned.sessionId,
+    );
+    assert.ok(listed, "fresh subagent child must be catalog-listed");
+    assert.equal(listed?.forkedFrom?.sessionId, parent.sessionId);
+    assert.equal(listed?.forkedFrom?.purpose, "subagent");
   } finally {
     await service.disposeAll();
   }

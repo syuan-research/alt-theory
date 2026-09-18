@@ -112,6 +112,14 @@ export function toolLabel(
       pending: t("Reading the web page did not complete"),
     });
   }
+  if (name === "spawn_agent") {
+    return lines({
+      running: t("Creating a subagent…"),
+      finished: t("Created a subagent"),
+      failed: t("Subagent was not created"),
+      pending: t("Subagent creation did not complete"),
+    });
+  }
   return lines({
     running: t("{name}…", { name }),
     finished: name,

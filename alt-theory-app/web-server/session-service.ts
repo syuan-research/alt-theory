@@ -334,6 +334,15 @@ export type SessionServiceEvent =
   | {
       type: "extension_notice";
       payload: { message: string; level: "info" | "warning" | "error"; failure?: Failure };
+    }
+  /**
+   * A spawned subagent child was accepted and started. Emitted on the parent
+   * so its windows can surface the child immediately, before any durable
+   * catalog artifact exists.
+   */
+  | {
+      type: "related_session_created";
+      payload: { sessionId: string; purpose: "subagent" };
     };
 
 /** What a run reports after settle(): nothing (interrupted), done, or its failure event. */
@@ -3318,6 +3327,19 @@ export class SessionService implements AgentTeamBridge {
     });
 
     const started = this.startSubagentRun(child.sessionId, options.message.trim(), true);
+    // Birth receipt on the child's own records: the catalog treats it as
+    // durable existence, so the child is listed before its first Pi artifact.
+    // Written only after the run actually started, so a failed spawn leaves
+    // no visible child session behind.
+    appendSessionEvent(childManaged.manifest.recordsDir, {
+      sessionId: child.sessionId,
+      type: "subagent_spawned",
+      details: { parentSessionId, label, mode },
+    });
+    this.emit(parent, {
+      type: "related_session_created",
+      payload: { sessionId: child.sessionId, purpose: "subagent" },
+    });
     const report = [
       `Spawned subagent "${label}" (session ${child.sessionId}, ${agentType}, ${mode === "understand" ? "understand" : "work"} mode, ${modelOverride ? `model ${modelOverride.provider}/${modelOverride.modelId}${modelOverride.thinkingLevel ? `:${modelOverride.thinkingLevel}` : ""}` : "no model selected"}).`,
       started === "queued"

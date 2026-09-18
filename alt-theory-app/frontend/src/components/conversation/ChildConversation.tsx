@@ -11,6 +11,7 @@ import { useStickToBottom } from "@/hooks/useStickToBottom";
 import { appendDraft } from "@/lib/draft";
 import { failureText } from "@/lib/failure";
 import { runPhaseLabels, runStateView } from "@/lib/runState";
+import { shouldAutoOpenRelated } from "@/lib/relatedOpen";
 import { canTakeMainline, isListMember } from "@/lib/sessionList";
 import { t } from "@/i18n";
 import { ApprovalDock } from "@/components/conversation/ApprovalDock";
@@ -82,7 +83,7 @@ export function ChildConversation({
       );
     },
   });
-  const { messages, streamParts, running, queuedTexts: queued } = engine;
+  const { messages, streamParts, running, queuedTexts: queued, recovery } = engine;
   // A role chosen mid-run renders as the chosen value plus the pending mark
   // (same rule as the main composer).
   const pendingChildRole = snapshot?.pending?.rolePresetSlug;
@@ -143,7 +144,11 @@ export function ChildConversation({
           void app.refreshSessions();
           break;
         case "related_session_created":
-          app.setActiveRelatedSessionId(message.payload.sessionId, { size: "default" });
+          // A subagent spawned from this pane must not steal the rail the
+          // user is reading; btw/helper keep taking over as before.
+          if (shouldAutoOpenRelated(message.payload.purpose, app.activeRelatedSessionId)) {
+            app.setActiveRelatedSessionId(message.payload.sessionId, { size: "default" });
+          }
           void app.refreshSessions();
           break;
         case "extension_notice":
@@ -468,6 +473,22 @@ export function ChildConversation({
           }}
         />
         <div className="row">
+          {!running && recovery?.canContinue ? (
+            <button
+              className="flat retry-run"
+              onClick={() => {
+                // Same transition as the main composer: one continue_latest
+                // over this pane's socket; the shared engine drops the old
+                // recovery the moment the run begins.
+                if (socket.send({ type: "continue_latest" })) {
+                  engine.beginLocalRun();
+                }
+              }}
+            >
+              <i className="ph ph-play" aria-hidden="true" />
+              {t("Continue")}
+            </button>
+          ) : null}
           <button
             className="send"
             disabled={!draft.trim()}

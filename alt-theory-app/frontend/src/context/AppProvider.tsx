@@ -64,6 +64,7 @@ import {
 } from "@/api/workspaces";
 import { useWebSocket, type WsConnStatus } from "@/hooks/useWebSocket";
 import { failureText, isBusyRefusal } from "@/lib/failure";
+import { shouldAutoOpenRelated } from "@/lib/relatedOpen";
 import { runPhaseLabels, runStateView, type RunStateView } from "@/lib/runState";
 import { useConversationEngine } from "@/hooks/useConversationEngine";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -991,9 +992,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         case "related_session_created":
           // btw / helper: keep the original compact default (~480), not 50%.
-          setActiveRelatedSessionId(message.payload.sessionId, {
-            size: "default",
-          });
+          // A spawned subagent only claims an empty rail (its Related row is
+          // the feedback) — see shouldAutoOpenRelated.
+          if (shouldAutoOpenRelated(message.payload.purpose, activeRelatedSessionId)) {
+            setActiveRelatedSessionId(message.payload.sessionId, {
+              size: "default",
+            });
+          }
           if (pendingChildSeedRef.current) {
             setChildSeed({
               sessionId: message.payload.sessionId,
@@ -1079,6 +1084,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     },
     [
       clearStagedWorkspace,
+      activeRelatedSessionId,
       engine.handleMessage,
       refreshSessionDetail,
       refreshSessions,

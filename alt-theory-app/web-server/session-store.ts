@@ -1390,7 +1390,7 @@ function isDurableCatalogSession(
     summary.recordModel === "v0.4" &&
     !summary.hasSessionFile &&
     !parts.metrics &&
-    !hasDurableRunEvent(parts)
+    !hasDurableLifecycleEvent(parts)
   );
 }
 
@@ -1461,9 +1461,17 @@ function readSessionEvents(
   return events;
 }
 
-function hasDurableRunEvent(parts: SessionParts): boolean {
+function hasDurableLifecycleEvent(parts: SessionParts): boolean {
+  // subagent_spawned on the child's own records is the birth receipt: a
+  // freshly accepted subagent has no Pi file, metrics, or run outcome yet,
+  // and without this marker the catalog would hide a real child.
   return readSessionEvents(parts.recordsDir, parts.state).some((event) =>
-    ["run_completed", "run_failed", "run_aborted"].includes(event.type)
+    [
+      "run_completed",
+      "run_failed",
+      "run_aborted",
+      "subagent_spawned",
+    ].includes(event.type)
   );
 }
 
