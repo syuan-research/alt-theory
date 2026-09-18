@@ -833,6 +833,16 @@ function UserNav({ onImport }: { onImport: () => void }) {
                 </div>
               </details>
               <button
+                type="button"
+                className={`btn-new split-search${shell.searchOpen ? " on" : ""}`}
+                data-tip={t("Search")}
+                aria-label={t("Search")}
+                aria-expanded={shell.searchOpen}
+                onClick={() => shell.setSearchOpen(!shell.searchOpen)}
+              >
+                <i className="ph ph-magnifying-glass" aria-hidden="true" />
+              </button>
+              <button
                 className="btn-new split-plus"
                 data-tip={t("New conversation")}
                 onClick={() =>
@@ -843,15 +853,46 @@ function UserNav({ onImport }: { onImport: () => void }) {
               </button>
             </div>
           ) : (
-            <button
-              className="btn-new"
-              onClick={() => startConversationIn(null)}
-            >
-              <i className="ph ph-note-pencil" />
-              {t("New conversation")}
-            </button>
+            <div className="split-new">
+              <button
+                type="button"
+                className={`btn-new split-search${shell.searchOpen ? " on" : ""}`}
+                data-tip={t("Search")}
+                aria-label={t("Search")}
+                aria-expanded={shell.searchOpen}
+                onClick={() => shell.setSearchOpen(!shell.searchOpen)}
+              >
+                <i className="ph ph-magnifying-glass" aria-hidden="true" />
+              </button>
+              <button
+                className="btn-new split-new-text"
+                onClick={() => startConversationIn(null)}
+              >
+                <i className="ph ph-note-pencil" />
+                {t("New conversation")}
+              </button>
+            </div>
           )}
         </div>
+        {shell.searchOpen ? (
+          <div className="inline-search">
+            <i className="ph ph-magnifying-glass" aria-hidden="true" />
+            <input
+              autoFocus
+              placeholder={t("Filter folders and conversations…")}
+              value={railQuery}
+              onChange={(event) => setRailQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") shell.setSearchOpen(false);
+              }}
+            />
+            {railQuery ? (
+              <button type="button" className="clear" aria-label={t("Clear")} onClick={() => setRailQuery("")}>
+                <i className="ph ph-x" aria-hidden="true" />
+              </button>
+            ) : null}
+          </div>
+        ) : null}
         <RunningCount sessions={app.sessions} />
       </div>
       <div className="workspace-list-head">
@@ -863,15 +904,6 @@ function UserNav({ onImport }: { onImport: () => void }) {
           {t("Projects")}
         </button>
         <div className="workspace-list-actions">
-          <button
-            type="button"
-            className={shell.searchOpen ? "on" : undefined}
-            data-tip={t("Search")}
-            aria-label={t("Search")}
-            onClick={() => shell.setSearchOpen(!shell.searchOpen)}
-          >
-            <i className="ph ph-magnifying-glass" aria-hidden="true" />
-          </button>
           <button
             type="button"
             data-tip={t("Collapse all projects")}
@@ -1011,7 +1043,6 @@ function UserNav({ onImport }: { onImport: () => void }) {
                   >
                     <i className="ph ph-folder-simple" />
                     <span className="group-name">{group.label}</span>
-                    <i className="ph ph-caret-down tw" />
                   </button>
                   {local ? (
                     <div className="reveal-layer -fade">

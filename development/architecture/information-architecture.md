@@ -143,9 +143,12 @@ surfaces remain designation-gated and absent for everyone else.
     (default: the main folder's). Its tooltip lists the main and companion
     paths; companions are not separate rail rows. The group menu offers Add
     folder and Manage folders actions.
-  - The Projects header owns project-only collapse all, expand all, search,
-    add, and sorting. These controls do not change conversation-family folding
-    or the Independent conversations section's own collapse state.
+  - The Projects header owns project-only collapse all, expand all, add, and
+    sorting. Search sits in the new-conversation row's control group, left of
+    the new-conversation button, and filters projects and the Independent
+    conversations section alike. These controls do not change
+    conversation-family folding or the Independent conversations section's own
+    collapse state.
   - A family head may collapse or expand its descendants without changing their
     list membership. Session identifiers and local session-folder paths remain
     available on demand through the row actions rather than default labels.

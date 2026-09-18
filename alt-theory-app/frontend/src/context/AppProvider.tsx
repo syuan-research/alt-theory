@@ -443,6 +443,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const reconnectSessionIdRef = useRef<string | null>(null);
   const pendingOpenSessionIdRef = useRef("");
+  // While a new-conversation draft is open, selection is null on purpose; the
+  // session list's "select the most recent" fallback must not resurrect the
+  // previous conversation's highlight (owner 2026-09-18).
+  const newDraftOpenRef = useRef(false);
   const pendingAssetSwitchRef = useRef(false);
   const pendingCompactRef = useRef(false);
   const composerNoticeTimerRef = useRef<number | null>(null);
@@ -690,7 +694,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setSelectedCatalogSessionId((current) =>
         current && list.some((item) => item.sessionId === current)
           ? current
-          : ( list[0]?.sessionId ?? null
+          : newDraftOpenRef.current
+            ? null
+            : ( list[0]?.sessionId ?? null
       ),
       );
     } catch (err) {
@@ -806,11 +812,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
           // an explicit open, an asset-switch rebuild, or a reconnect to the
           // same id is NOT a new conversation (persisted Work mode must not
           // silently expand an existing Understand session's tools).
-          setSessionCreatedHere(
+          const createdHere =
             !pendingOpenSessionIdRef.current &&
-              !pendingAssetSwitchRef.current &&
-              message.payload.sessionId !== reconnectSessionIdRef.current,
-          );
+            !pendingAssetSwitchRef.current &&
+            message.payload.sessionId !== reconnectSessionIdRef.current;
+          setSessionCreatedHere(createdHere);
+          if (createdHere) {
+            // The born conversation takes the rail highlight immediately
+            // (owner 2026-09-18); nothing else ever selects a new session.
+            newDraftOpenRef.current = false;
+            setSelectedCatalogSessionId(message.payload.sessionId);
+          }
           setSessionWarnings(message.payload.resumeWarnings ?? []);
           if (
             pendingOpenSessionIdRef.current &&
@@ -1129,6 +1141,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const beginNewSession = useCallback(() => {
     reconnectSessionIdRef.current = null;
+    newDraftOpenRef.current = true;
     setSelectedCatalogSessionId(null);
     setQueuedTexts([]);
     setMessages([]);
@@ -1166,6 +1179,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return;
       }
       setQueuedTexts([]);
+      newDraftOpenRef.current = false;
       setSelectedCatalogSessionId(targetSessionId);
       pendingOpenSessionIdRef.current = targetSessionId;
       if (
