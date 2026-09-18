@@ -731,11 +731,12 @@
   .workspace-list-head { display: flex; align-items: center; justify-content: space-between; margin: 0 var(--space-control); padding: var(--space-hair) var(--space-tight) var(--space-hair); color: var(--ink); font-size: var(--fs-primary); font-weight: 600; }
   .workspace-list-head.loose-head { margin: var(--space-block) var(--space-hair) 0; }
   /* Disclosure chevron on section titles (prototype round 2, variant B): the
-     16px slot is pulled to the rail's x=8 guide column — same column as
-     .family-fold icons — and the title text then starts at x=28 like .sess
-     rows. Leading edges: projects head 12+8=20 → -12px; loose head 4+8=12 → -4px. */
-  .workspace-list-title { display: flex; align-items: center; gap: var(--space-hair); min-width: 0; border: 0; background: none; color: inherit; font: inherit; font-weight: inherit; cursor: pointer; padding: 0; text-align: left; margin-left: -12px; }
-  .workspace-list-head.loose-head .workspace-list-title { margin-left: -4px; }
+     16px slot joins .family-fold's column — family-fold anchors to .session-row
+     inside .sessions' 8px left padding, so its slot sits at x=16, center 24.
+     Both heads' absolute leading edge is 20px (Projects head is outside
+     .sessions: 12+8; loose head inside: 8+4+8), so one -4px offset serves both
+     and the title text then starts at x=36 like .sess rows (8+28). */
+  .workspace-list-title { display: flex; align-items: center; gap: var(--space-hair); min-width: 0; border: 0; background: none; color: inherit; font: inherit; font-weight: inherit; cursor: pointer; padding: 0; text-align: left; margin-left: -4px; }
   .workspace-list-title .tw { width: 16px; display: inline-flex; justify-content: center; font-size: var(--fs-micro); color: var(--text-3); transition: transform 0.12s; }
   .workspace-list-title.closed .tw { transform: rotate(-90deg); }
   .workspace-list-title:hover { color: var(--ink-soft); }
