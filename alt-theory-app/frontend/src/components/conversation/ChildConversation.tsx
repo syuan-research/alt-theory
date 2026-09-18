@@ -11,7 +11,6 @@ import { useStickToBottom } from "@/hooks/useStickToBottom";
 import { appendDraft } from "@/lib/draft";
 import { failureText } from "@/lib/failure";
 import { runPhaseLabels, runStateView } from "@/lib/runState";
-import { shouldAutoOpenRelated } from "@/lib/relatedOpen";
 import { canTakeMainline, isListMember } from "@/lib/sessionList";
 import { t } from "@/i18n";
 import { ApprovalDock } from "@/components/conversation/ApprovalDock";
@@ -144,9 +143,9 @@ export function ChildConversation({
           void app.refreshSessions();
           break;
         case "related_session_created":
-          // A subagent spawned from this pane must not steal the rail the
-          // user is reading; btw/helper keep taking over as before.
-          if (shouldAutoOpenRelated(message.payload.purpose, app.activeRelatedSessionId)) {
+          // A subagent spawned from this pane never opens the rail; its
+          // Related row is the feedback. btw/helper keep taking over as before.
+          if (message.payload.purpose !== "subagent") {
             app.setActiveRelatedSessionId(message.payload.sessionId, { size: "default" });
           }
           void app.refreshSessions();
@@ -275,6 +274,18 @@ export function ChildConversation({
     return -1;
   }, [messages]);
 
+  // The status band lives at the composer, same seat as the center pane —
+  // not up in the header (owner 2026-09-18: running/ready states read there
+  // made the pane hard to converse with).
+  const statusLabel = runStateView({
+    socket: socketStatus,
+    running,
+    busy: false,
+    phaseLabel: engine.phaseLabel,
+    toolStatus: notice,
+    pending: snapshot?.pending ?? {},
+  }).label;
+
   return (
     <div className={`child-conv ${variant}`}>
       <div className="child-head">
@@ -282,18 +293,6 @@ export function ChildConversation({
           <i className="ph ph-arrow-left" aria-hidden="true" />
         </button>
         <span className="child-what">{childBlurb(purpose, variant)}</span>
-        <span className="child-status">
-          {
-            runStateView({
-              socket: socketStatus,
-              running,
-              busy: false,
-              phaseLabel: engine.phaseLabel,
-              toolStatus: notice,
-              pending: snapshot?.pending ?? {},
-            }).label
-          }
-        </span>
         {mainlineAction ? (
           <button
             className="flat promote-action"
@@ -433,6 +432,38 @@ export function ChildConversation({
           ))}
         </div>
       ) : null}
+      {running || notice || recovery?.canContinue ? (
+        <div className="composer-notes">
+          {running || notice ? (
+            <span className="run-phase-slot">
+              {running ? (
+                <span className="run-phase">
+                  <i className="ph ph-circle-notch" aria-hidden="true" />
+                  {statusLabel}
+                </span>
+              ) : (
+                <span>{notice}</span>
+              )}
+            </span>
+          ) : null}
+          {!running && recovery?.canContinue ? (
+            <button
+              className="flat retry-run"
+              onClick={() => {
+                // Same transition as the main composer: one continue_latest
+                // over this pane's socket; the shared engine drops the old
+                // recovery the moment the run begins.
+                if (socket.send({ type: "continue_latest" })) {
+                  engine.beginLocalRun();
+                }
+              }}
+            >
+              <i className="ph ph-play" aria-hidden="true" />
+              {t("Continue")}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       <div className="composer child-composer">
         <textarea
           rows={1}
@@ -473,22 +504,6 @@ export function ChildConversation({
           }}
         />
         <div className="row">
-          {!running && recovery?.canContinue ? (
-            <button
-              className="flat retry-run"
-              onClick={() => {
-                // Same transition as the main composer: one continue_latest
-                // over this pane's socket; the shared engine drops the old
-                // recovery the moment the run begins.
-                if (socket.send({ type: "continue_latest" })) {
-                  engine.beginLocalRun();
-                }
-              }}
-            >
-              <i className="ph ph-play" aria-hidden="true" />
-              {t("Continue")}
-            </button>
-          ) : null}
           <button
             className="send"
             disabled={!draft.trim()}

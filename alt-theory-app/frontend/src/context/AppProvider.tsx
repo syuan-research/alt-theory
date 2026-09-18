@@ -64,7 +64,6 @@ import {
 } from "@/api/workspaces";
 import { useWebSocket, type WsConnStatus } from "@/hooks/useWebSocket";
 import { failureText, isBusyRefusal } from "@/lib/failure";
-import { shouldAutoOpenRelated } from "@/lib/relatedOpen";
 import { runPhaseLabels, runStateView, type RunStateView } from "@/lib/runState";
 import { useConversationEngine } from "@/hooks/useConversationEngine";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -1004,17 +1003,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         case "related_session_created":
           // btw / helper: keep the original compact default (~480), not 50%.
-          // A spawned subagent only claims an empty rail (its Related row is
-          // the feedback) — see shouldAutoOpenRelated.
-          if (shouldAutoOpenRelated(message.payload.purpose, activeRelatedSessionId)) {
+          // A spawned subagent never opens the rail (owner 2026-09-18); the
+          // Related row is its feedback. Seeds and the request-busy clear
+          // likewise belong only to the user-initiated creation.
+          if (message.payload.purpose !== "subagent") {
             setActiveRelatedSessionId(message.payload.sessionId, {
               size: "default",
             });
-          }
-          if (message.payload.purpose !== "subagent") {
-            // Seeds and the request-busy clear belong to the user-initiated
-            // creation that queued them. A subagent birth is agent-initiated
-            // and must never consume a pending Helper/BTW question.
             if (pendingChildSeedRef.current) {
               setChildSeed({
                 sessionId: message.payload.sessionId,
@@ -1101,7 +1096,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     },
     [
       clearStagedWorkspace,
-      activeRelatedSessionId,
       engine.handleMessage,
       refreshSessionDetail,
       refreshSessions,

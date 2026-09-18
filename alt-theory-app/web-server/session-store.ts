@@ -1462,16 +1462,13 @@ function readSessionEvents(
 }
 
 function hasDurableLifecycleEvent(parts: SessionParts): boolean {
-  // subagent_spawned on the child's own records is the birth receipt: a
-  // freshly accepted subagent has no Pi file, metrics, or run outcome yet,
-  // and without this marker the catalog would hide a real child.
+  // A run Pi accepted is real work in flight: its record lands in runs.jsonl
+  // before the model is called, so a freshly accepted session (e.g. a spawned
+  // subagent child) is listable before any model output. Drafts that never
+  // ran keep no record and stay hidden — one rule for every session.
+  if (readRunRecords(parts.recordsDir).length > 0) return true;
   return readSessionEvents(parts.recordsDir, parts.state).some((event) =>
-    [
-      "run_completed",
-      "run_failed",
-      "run_aborted",
-      "subagent_spawned",
-    ].includes(event.type)
+    ["run_completed", "run_failed", "run_aborted"].includes(event.type)
   );
 }
 

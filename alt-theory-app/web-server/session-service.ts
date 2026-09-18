@@ -3327,17 +3327,10 @@ export class SessionService implements AgentTeamBridge {
     });
 
     const started = this.startSubagentRun(child.sessionId, options.message.trim(), true);
-    // Birth receipt on the child's own records: the catalog treats it as
-    // durable existence, so the child is listed before its first Pi artifact.
-    // startSubagentRun never throws (a startup failure is reported to the
-    // parent by mail instead), so the only spawn failure that leaves no
-    // receipt — and no visible child — is a validation rejection before the
-    // child exists.
-    appendSessionEvent(childManaged.manifest.recordsDir, {
-      sessionId: child.sessionId,
-      type: "subagent_spawned",
-      details: { parentSessionId, label, mode },
-    });
+    // Birth push only — no receipt, no catalog special case. Visibility rides
+    // on the accepted run record runPromptWithLineage writes before the model
+    // call, so the child is listed the moment its run starts, under the same
+    // durable-evidence rule as every other session.
     this.emit(parent, {
       type: "related_session_created",
       payload: { sessionId: child.sessionId, purpose: "subagent" },

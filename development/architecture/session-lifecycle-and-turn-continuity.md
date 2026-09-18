@@ -215,21 +215,20 @@ this module records only that child creation and later turns use the ordinary
 managed run lifecycle. See `session-service.ts` (`spawnSubagent`,
 `startSubagentRun`, and `openManagedRuntime`).
 
-Once `startSubagentRun` accepts the child (started or queued), spawn writes a
-`subagent_spawned` birth receipt on the child's own records and emits a live
+Once `startSubagentRun` accepts the child's task, spawn emits a live
 `related_session_created` (purpose `subagent`) session event on the parent —
 socket delivery through `forwardServiceEvent`; nothing is appended to the
-parent's session-events.jsonl. The receipt counts as durable lifecycle
-evidence in `isDurableCatalogSession`, so a fresh child with no Pi session
-file, metrics, or terminal run event is still listed by `GET /api/sessions`
-and Related. A spawn rejected during validation, before the child exists,
-writes neither and leaves no visible child. `startSubagentRun` itself never
-throws (a startup failure is reported to the parent by mail), so a child whose
-run fails at startup keeps its receipt and stays listed — a visibility gap the
-receipt surfaces, not one it introduces. On the client, that birth opens the
-right rail only when it is empty — a spawned subagent never replaces the
-conversation the user is reading (`relatedOpen.ts`, `shouldAutoOpenRelated`),
-and it never consumes a pending Helper/BTW seed.
+parent's session-events.jsonl. Catalog visibility needs no subagent special
+case: `runPromptWithLineage` writes the accepted run record before the model
+call, and `isDurableCatalogSession` counts any accepted run record as durable
+evidence, so a fresh child is listed the moment its run starts under the same
+rule as every other session. A spawn rejected during validation, before the
+child exists, leaves nothing. On the client, a subagent birth never opens the
+right rail (owner 2026-09-18) — the Related row is the feedback — and it never
+consumes a pending Helper/BTW seed. The right rail's own status band sits at
+its composer, the same seat as the center pane, and carries the idle Continue
+qualification (shared engine recovery + `continue_latest` over its own
+socket).
 
 The spawn may also name an existing Role. That Role is validated before any
 child session is created and enters the ordinary selector/assembly path;
