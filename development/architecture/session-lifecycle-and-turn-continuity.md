@@ -215,15 +215,21 @@ this module records only that child creation and later turns use the ordinary
 managed run lifecycle. See `session-service.ts` (`spawnSubagent`,
 `startSubagentRun`, and `openManagedRuntime`).
 
-Once the child's run actually starts, spawn writes a `subagent_spawned` birth
-receipt on the child's own records and pushes `related_session_created`
-(purpose `subagent`) on the parent's session events. The receipt counts as
-durable lifecycle evidence in `isDurableCatalogSession`, so a fresh child with
-no Pi session file, metrics, or terminal run event is still listed by
-`GET /api/sessions` and Related; a failed spawn writes neither and leaves no
-visible child. On the client, that birth opens the right rail only when it is
-empty — a spawned subagent never replaces the conversation the user is reading
-(`relatedOpen.ts`, `shouldAutoOpenRelated`).
+Once `startSubagentRun` accepts the child (started or queued), spawn writes a
+`subagent_spawned` birth receipt on the child's own records and emits a live
+`related_session_created` (purpose `subagent`) session event on the parent —
+socket delivery through `forwardServiceEvent`; nothing is appended to the
+parent's session-events.jsonl. The receipt counts as durable lifecycle
+evidence in `isDurableCatalogSession`, so a fresh child with no Pi session
+file, metrics, or terminal run event is still listed by `GET /api/sessions`
+and Related. A spawn rejected during validation, before the child exists,
+writes neither and leaves no visible child. `startSubagentRun` itself never
+throws (a startup failure is reported to the parent by mail), so a child whose
+run fails at startup keeps its receipt and stays listed — a visibility gap the
+receipt surfaces, not one it introduces. On the client, that birth opens the
+right rail only when it is empty — a spawned subagent never replaces the
+conversation the user is reading (`relatedOpen.ts`, `shouldAutoOpenRelated`),
+and it never consumes a pending Helper/BTW seed.
 
 The spawn may also name an existing Role. That Role is validated before any
 child session is created and enters the ordinary selector/assembly path;

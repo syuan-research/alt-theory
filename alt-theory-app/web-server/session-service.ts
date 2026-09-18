@@ -3329,8 +3329,10 @@ export class SessionService implements AgentTeamBridge {
     const started = this.startSubagentRun(child.sessionId, options.message.trim(), true);
     // Birth receipt on the child's own records: the catalog treats it as
     // durable existence, so the child is listed before its first Pi artifact.
-    // Written only after the run actually started, so a failed spawn leaves
-    // no visible child session behind.
+    // startSubagentRun never throws (a startup failure is reported to the
+    // parent by mail instead), so the only spawn failure that leaves no
+    // receipt — and no visible child — is a validation rejection before the
+    // child exists.
     appendSessionEvent(childManaged.manifest.recordsDir, {
       sessionId: child.sessionId,
       type: "subagent_spawned",

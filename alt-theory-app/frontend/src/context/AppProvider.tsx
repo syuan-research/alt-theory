@@ -1011,23 +1011,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
               size: "default",
             });
           }
-          if (pendingChildSeedRef.current) {
-            setChildSeed({
-              sessionId: message.payload.sessionId,
-              ...pendingChildSeedRef.current,
-            });
-            pendingChildSeedRef.current = null;
+          if (message.payload.purpose !== "subagent") {
+            // Seeds and the request-busy clear belong to the user-initiated
+            // creation that queued them. A subagent birth is agent-initiated
+            // and must never consume a pending Helper/BTW question.
+            if (pendingChildSeedRef.current) {
+              setChildSeed({
+                sessionId: message.payload.sessionId,
+                ...pendingChildSeedRef.current,
+              });
+              pendingChildSeedRef.current = null;
+            }
+            if (pendingHelperSeedRef.current) {
+              setChildSeed({
+                sessionId: message.payload.sessionId,
+                text: pendingHelperSeedRef.current,
+                autoSend: true,
+              });
+              pendingHelperSeedRef.current = null;
+            }
+            setRequestBusy(false);
+            setToolStatus("");
           }
-          if (pendingHelperSeedRef.current) {
-            setChildSeed({
-              sessionId: message.payload.sessionId,
-              text: pendingHelperSeedRef.current,
-              autoSend: true,
-            });
-            pendingHelperSeedRef.current = null;
-          }
-          setRequestBusy(false);
-          setToolStatus("");
           void refreshSessions();
           break;
 
