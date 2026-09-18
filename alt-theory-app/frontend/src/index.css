@@ -543,7 +543,7 @@
   .sess .s-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .sess .s-fork { color: var(--text-3); flex-shrink: 0; }
   .family-fold { position: absolute; z-index: 1; display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 20px; padding: 0; border: 0; background: transparent; color: var(--text-3); cursor: pointer; }
-  .family-fold i { transition: transform 0.12s; }
+  .family-fold i { transition: transform 0.12s; font-size: var(--fs-micro); }
   .family-fold.folded i { transform: rotate(-90deg); }
   .badge-run { margin-left: auto; font-size: var(--fs-micro); color: var(--text-3); background: var(--card); border-radius: 999px; padding: 1px var(--space-tight); flex-shrink: 0; }
   .badge-run.ok { color: var(--color-success); }
@@ -730,7 +730,15 @@
   .new-row .btn-new { flex: 1; }
   .workspace-list-head { display: flex; align-items: center; justify-content: space-between; margin: 0 var(--space-control); padding: var(--space-hair) var(--space-tight) var(--space-hair); color: var(--ink); font-size: var(--fs-primary); font-weight: 600; }
   .workspace-list-head.loose-head { margin: var(--space-block) var(--space-hair) 0; }
-  .workspace-list-title { display: flex; align-items: center; gap: var(--space-tight); min-width: 0; border: 0; background: none; color: inherit; font: inherit; font-weight: inherit; cursor: pointer; padding: 0; text-align: left; }
+  /* Disclosure chevron on section titles (prototype round 2, variant B): the
+     16px slot is pulled to the rail's x=8 guide column — same column as
+     .family-fold icons — and the title text then starts at x=28 like .sess
+     rows. Leading edges: projects head 12+8=20 → -12px; loose head 4+8=12 → -4px. */
+  .workspace-list-title { display: flex; align-items: center; gap: var(--space-hair); min-width: 0; border: 0; background: none; color: inherit; font: inherit; font-weight: inherit; cursor: pointer; padding: 0; text-align: left; margin-left: -12px; }
+  .workspace-list-head.loose-head .workspace-list-title { margin-left: -4px; }
+  .workspace-list-title .tw { width: 16px; display: inline-flex; justify-content: center; font-size: var(--fs-micro); color: var(--text-3); transition: transform 0.12s; }
+  .workspace-list-title.closed .tw { transform: rotate(-90deg); }
+  .workspace-list-title:hover { color: var(--ink-soft); }
   .workspace-list-actions { display: flex; align-items: center; gap: 1px; }
   .workspace-list-actions > button, .workspace-list-actions > .list-more > summary { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text-3); cursor: pointer; list-style: none; }
   .workspace-list-actions > button:hover, .workspace-list-actions > .list-more > summary:hover { background: var(--hover); color: var(--ink); }

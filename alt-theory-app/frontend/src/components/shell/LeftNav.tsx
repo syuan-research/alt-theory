@@ -898,9 +898,11 @@ function UserNav({ onImport }: { onImport: () => void }) {
       <div className="workspace-list-head">
         <button
           type="button"
-          className="workspace-list-title"
+          className={`workspace-list-title${projectsCollapsed ? " closed" : ""}`}
+          aria-expanded={!projectsCollapsed}
           onClick={() => setProjectsCollapsed((value) => !value)}
         >
+          <i className="ph ph-caret-down tw" aria-hidden="true" />
           {t("Projects")}
         </button>
         <div className="workspace-list-actions">
@@ -1184,9 +1186,11 @@ function UserNav({ onImport }: { onImport: () => void }) {
                   <div className="workspace-list-head loose-head">
                     <button
                       type="button"
-                      className="workspace-list-title"
+                      className={`workspace-list-title${looseCollapsed ? " closed" : ""}`}
+                      aria-expanded={!looseCollapsed}
                       onClick={() => setLooseCollapsed((value) => !value)}
                     >
+                      <i className="ph ph-caret-down tw" aria-hidden="true" />
                       {looseLabel}
                     </button>
                     <div className="workspace-list-actions">
