@@ -1199,7 +1199,7 @@
   .change-preview-body { max-height: 15rem; overflow: hidden; padding: var(--space-control) var(--space-control); }
   .change-preview-body.expanded { max-height: none; overflow: visible; }
   .preview .change-preview-body {
-    background: var(--surface);
+    background: var(--canvas);
     color: var(--ink);
     padding: var(--space-tight);
   }
