@@ -240,7 +240,7 @@ export function LeftNav({ hidden = false }: { hidden?: boolean }) {
             className="avatar"
             data-tip={
               app.appMode === "local"
-                ? t("Local mode — no account")
+                ? undefined
                 : (app.auth.displayLabel ?? t("Signed in"))
             }
           >
@@ -490,7 +490,9 @@ function UserNav({ onImport }: { onImport: () => void }) {
   useEffect(() => {
     const closeOpenMenus = (event: PointerEvent) => {
       navRef.current
-        ?.querySelectorAll<HTMLDetailsElement>("details.list-more[open]")
+        ?.querySelectorAll<HTMLDetailsElement>(
+          "details.list-more[open], details.help-menu[open]",
+        )
         .forEach((details) => {
           if (!details.contains(event.target as Node)) details.open = false;
         });
@@ -508,7 +510,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
     const closeTopMenu = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       const open = navRef.current?.querySelectorAll<HTMLDetailsElement>(
-        "details.list-more[open]",
+        "details.list-more[open], details.help-menu[open]",
       );
       const details = open?.[open.length - 1];
       if (!details) return;

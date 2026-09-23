@@ -197,13 +197,13 @@ surfaces remain designation-gated and absent for everyone else.
     is the default for non-technical users, with source available on demand.
     One renderer serves Files, Changes and Records
     (`components/inspector/FilePreview.tsx`): the control follows the file
-    type (`lib/fileContent.ts` `previewModes`) — a diff first when the
-    conversation changed the file, Rendered + Source for `.md` / `.html`
-    (HTML in a sandboxed iframe), the whole file for everything else, and Edit
-    for text files at or below the edit-size cap in records, managed workspace,
-    or local working folders. A user's working-folder edit is independent of
-    the agent's Edit grant. Content loads by reference through the content
-    route; the changes route no longer inlines file text.
+    type (`lib/fileContent.ts` `previewModes`) — changed `.md` / `.html`
+    opens in Rendered, followed by Diff, Source, and Edit when available.
+    HTML renders in a sandboxed iframe; other files show Diff and/or Source.
+    Edit is available for text files at or below the edit-size cap in records,
+    managed workspace, or local working folders. A user's working-folder edit
+    is independent of the agent's Edit grant. Content loads by reference
+    through the content route; the changes route no longer inlines file text.
   - An open preview is a reading snapshot. Refreshing the file tree, Changes,
     or conversation list does not remount it or replace an unchanged rendered
     body. Selecting or reopening a file reads the current content unless an

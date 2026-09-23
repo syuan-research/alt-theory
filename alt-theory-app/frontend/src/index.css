@@ -729,7 +729,7 @@
   .new-row { display: flex; align-items: center; gap: var(--space-tight); }
   .new-row .btn-new { flex: 1; }
   .workspace-list-head { display: flex; align-items: center; justify-content: space-between; margin: 0 var(--space-control); padding: var(--space-hair) var(--space-tight) var(--space-hair); color: var(--ink); font-size: var(--fs-primary); font-weight: 600; }
-  .workspace-list-head.loose-head { margin: var(--space-block) var(--space-hair) 0; }
+  .workspace-list-head.loose-head { margin: var(--space-block) var(--space-hair) 0; border-top: 1px solid var(--hairline); padding-top: var(--space-control); }
   /* Disclosure chevron on section titles (prototype round 2, variant B): the
      16px slot joins .family-fold's column — family-fold anchors to .session-row
      inside .sessions' 8px left padding, so its slot sits at x=16, center 24.

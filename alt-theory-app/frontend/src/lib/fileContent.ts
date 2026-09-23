@@ -45,16 +45,15 @@ export interface SaveFileOptions {
 }
 
 /**
- * Prototype D's rule: the control follows the file, not what the backend
- * happened to send. `.md` / `.html` get Rendered + Source; everything else
- * has no rendered form, so it gets the whole file only. A diff comes first
- * whenever there is one (a click in Changes always lands on the diff).
+ * The control follows the file, not what the backend happened to send.
+ * Renderable files open with Rendered first; Changes places Diff beside it.
+ * Other files have no rendered form, so Diff or Source is first.
  */
 export function previewModes(path: string, options: { hasDiff?: boolean; hasFile?: boolean; editable?: boolean } = {}): PreviewMode[] {
   const modes: PreviewMode[] = [];
+  if ((options.hasFile ?? true) && isRenderable(path)) modes.push("rendered");
   if (options.hasDiff) modes.push("diff");
   if (options.hasFile ?? true) {
-    if (isRenderable(path)) modes.push("rendered");
     modes.push("source");
     if (options.editable) modes.push("edit");
   }

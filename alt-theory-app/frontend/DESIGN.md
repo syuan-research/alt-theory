@@ -1,3 +1,4 @@
+<!-- Superseded by the root DESIGN.md (2026-09-23). This file is the historical v0.6.0-era version. -->
 ---
 version: alpha
 name: Alt Theory

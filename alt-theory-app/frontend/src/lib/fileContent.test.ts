@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { isEditable, previewModes } from "./fileContent.ts";
 
-test("the viewer control follows the file type: .md/.html get rendered + source, code gets the file only, diff first when there is one", () => {
-  assert.deepEqual(previewModes("notes/lit.md", { hasDiff: true }), ["diff", "rendered", "source"]);
-  assert.deepEqual(previewModes("report/figures.html", { hasDiff: true }), ["diff", "rendered", "source"]);
+test("the viewer control opens renderable changes with rendered first and keeps diff for other changes", () => {
+  assert.deepEqual(previewModes("notes/lit.md", { hasDiff: true, editable: true }), ["rendered", "diff", "source", "edit"]);
+  assert.deepEqual(previewModes("report/figures.html", { hasDiff: true }), ["rendered", "diff", "source"]);
   assert.deepEqual(previewModes("src/coding_scheme.ts", { hasDiff: true }), ["diff", "source"]);
   assert.deepEqual(previewModes("data/items.csv"), ["source"]);
   // Outside every root there is no current file to show: the diff stands alone.

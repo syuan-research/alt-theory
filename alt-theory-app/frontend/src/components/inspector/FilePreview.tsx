@@ -28,8 +28,8 @@ import {
 /**
  * The ONE file renderer for the right pane (card 7): Changes, Files and
  * Records all show a file through this. Modes follow the file type
- * (`previewModes`): a diff when the conversation changed it, rendered +
- * source for .md/.html, the whole file for everything else, edit where the
+ * (`previewModes`): rendered first for changed .md/.html, then diff and
+ * source; the whole file for everything else, edit where the
  * write route allows (every root, owner ruling 2026-09-15). The current file
  * loads by reference through the content route; nothing is inlined by the
  * caller.

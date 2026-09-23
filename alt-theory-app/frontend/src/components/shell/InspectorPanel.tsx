@@ -133,7 +133,9 @@ export function InspectorPanel() {
   useLayoutEffect(() => {
     const el = bodyRef.current;
     const saved = paneMemory.get<number>(scrollKey) ?? 0;
-    if (!el || !saved) return;
+    if (!el) return;
+    el.scrollTop = saved;
+    if (!saved) return;
     let resize: ResizeObserver | null = null;
     const restore = () => {
       el.scrollTop = saved;
