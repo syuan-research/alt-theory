@@ -203,6 +203,8 @@ export interface AppContextValue {
   knownWorkspaces: string[];
   /** Projects (v1.5.1): id, name, main folder, companions. */
   projects: ProjectFolder[];
+  /** Global working folders (settings): readable by every conversation. */
+  globalFolders: Array<{ path: string; writable: boolean }>;
   /** True once a working-folders fetch answered (even with an empty list). */
   workingFoldersLoaded: boolean;
   /** Fetch projects + the derived workspace list again. */
@@ -407,6 +409,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
   const [knownWorkspaces, setKnownWorkspaces] = useState<string[]>([]);
   const [projects, setProjects] = useState<ProjectFolder[]>([]);
+  const [globalFolders, setGlobalFolders] = useState<
+    Array<{ path: string; writable: boolean }>
+  >([]);
   /** True once a working-folders fetch answered (even with an empty list). */
   const [workingFoldersLoaded, setWorkingFoldersLoaded] = useState(false);
   const [modelOverride, setModelOverride] =
@@ -890,6 +895,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setCurrentSessionModel(message.payload.currentModel ?? null);
           setStudyTagState(message.payload.studyTag ?? null);
           setRetentionDueAt(message.payload.retentionDueAt ?? null);
+          // The folder indicator follows the opened conversation's record so
+          // "+" inherits its folder. Row present → its recorded value (null =
+          // independent); row absent (created here, list not refreshed yet)
+          // → keep the draft value the conversation was materialized from.
+          const openedRow = sessions.find(
+            (s) => s.sessionId === message.payload.sessionId,
+          );
+          if (openedRow) {
+            setWorkspacePrimaryDir(openedRow.workspacePrimaryDir ?? null);
+          }
           setSessionReady(true);
           engine.applySnapshot(message.payload);
           setRequestBusy(false);
@@ -1101,6 +1116,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       refreshSessions,
       selectedCatalogSessionId,
       sessionId,
+      sessions,
       setActiveRelatedSessionId,
       setComposerNoticeTimed,
     ],
@@ -1751,6 +1767,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const folders = await getWorkingFolders();
       setProjects(folders.projects);
       setKnownWorkspaces(folders.knownWorkspaces);
+      setGlobalFolders(folders.global);
       setWorkingFoldersLoaded(true);
     } catch {
       /* hosted or endpoint unavailable */
@@ -2032,6 +2049,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       workspacePrimaryDir,
       knownWorkspaces,
       projects,
+      globalFolders,
       workingFoldersLoaded,
       refreshWorkingFolders,
       setDraftWorkspace,
@@ -2150,6 +2168,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       workspacePrimaryDir,
       knownWorkspaces,
       projects,
+      globalFolders,
       workingFoldersLoaded,
       refreshWorkingFolders,
       setDraftWorkspace,

@@ -56,6 +56,38 @@ export function WorkspaceTree() {
       ? app.sessionMode === "understand"
       : shell.newMode === "understand");
 
+  // Draft pane: before the first message there is no session to read folders
+  // from, so show the ones this conversation will get — the picker's folder,
+  // its project's companions, and the global list — the same rows the
+  // materialized record will produce. ponytail: availability is pick-time
+  // and settings-time, not re-checked while the pane sits open; live
+  // re-checking arrives with the session's own fetch.
+  const draftFolders = useMemo<WorkingFolderDescriptor[]>(() => {
+    if (sessionId || !app.workspacePrimaryDir) return [];
+    const dir = app.workspacePrimaryDir;
+    const project = app.projects.find(
+      (entry) => entry.primaryDir.toLowerCase() === dir.toLowerCase(),
+    );
+    return [
+      { id: "primary", path: dir, role: "primary", managed: false, available: true },
+      ...(project?.secondaryDirs ?? []).map((path, index) => ({
+        id: `secondary-${index + 1}`,
+        path,
+        role: "secondary" as const,
+        managed: false,
+        available: project?.available !== false,
+      })),
+      ...app.globalFolders.map((folder, index) => ({
+        id: `global-${index + 1}`,
+        path: folder.path,
+        role: "global" as const,
+        managed: false,
+        available: true,
+      })),
+    ];
+  }, [sessionId, app.workspacePrimaryDir, app.projects, app.globalFolders]);
+  const folders = sessionId ? workingFolders : draftFolders;
+
   useEffect(() => {
     setUploadStatus("");
     if (!sessionId) {
@@ -206,9 +238,9 @@ export function WorkspaceTree() {
           </button>
         </div>
       ) : null}
-      {workingFolders.length > 0 ? (
+      {folders.length > 0 ? (
         <div className="working-folders">
-          {workingFolders.map((folder) => (
+          {folders.map((folder) => (
             <div className="working-folder-group" key={folder.id}>
               <div className="working-folder">
                 <i className="ph ph-folder-open" />
@@ -236,7 +268,7 @@ export function WorkspaceTree() {
                   ) : null}
                 </div>
               </div>
-              {folder.available && !folder.managed ? (
+              {folder.available && !folder.managed && sessionId ? (
                 <WorkingTree
                   key={`${sessionId}:${folder.id}`}
                   sessionId={sessionId!}
