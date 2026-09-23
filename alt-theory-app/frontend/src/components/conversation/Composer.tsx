@@ -520,7 +520,8 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                   .map((skill) => {
                     const picked = app.presetButtons.includes(skill.name);
                     return (
-                      <div
+                      <button
+                        type="button"
                         key={skill.name}
                         className={`mi${!picked && app.presetButtons.length >= 5 ? " disabled" : ""}`}
                         onClick={() =>
@@ -535,7 +536,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                       >
                         <span>{skill.name}</span>
                         {picked ? <i className="ph ph-check check" /> : null}
-                      </div>
+                      </button>
                     );
                   })}
               </CtxPicker>
@@ -550,7 +551,8 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
             disabled={altControlsDisabled}
             pending={pendingRoleSlug !== undefined}
           >
-            <div
+            <button
+              type="button"
               className="mi"
               onClick={() => (app.switchRolePreset(null), setMenu(null))}
             >
@@ -558,9 +560,10 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               {!roleSlug ? (
                 <i className="ph ph-check check" />
               ) : null}
-            </div>
+            </button>
             {(app.discovery?.rolePresets ?? []).map((r) => (
-              <div
+              <button
+                type="button"
                 key={r.slug}
                 className="mi"
                 onClick={() => (app.switchRolePreset(r.slug), setMenu(null))}
@@ -569,7 +572,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                 {roleSlug === r.slug ? (
                   <i className="ph ph-check check" />
                 ) : null}
-              </div>
+              </button>
             ))}
           </CtxPicker>
 
@@ -581,17 +584,19 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
             disabled={altControlsDisabled}
             pending={pendingKbDomain !== undefined}
           >
-            <div
+            <button
+              type="button"
               className="mi"
               onClick={() => (app.switchKb(DEFAULT_KB_DOMAIN), setMenu(null))}
             >
               <span>{t("EP knowledge base")}</span>
               {!kbOff ? <i className="ph ph-check check" /> : null}
-            </div>
+            </button>
             {(app.discovery?.kbDomains ?? [])
               .filter((k) => k.slug !== DEFAULT_KB_DOMAIN)
               .map((k) => (
-                <div
+                <button
+                  type="button"
                   key={k.slug}
                   className="mi"
                   onClick={() => (app.switchKb(k.slug), setMenu(null))}
@@ -600,16 +605,17 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                   {kbDomain === k.slug ? (
                     <i className="ph ph-check check" />
                   ) : null}
-                </div>
+                </button>
               ))}
             <div className="sep" />
-            <div
+            <button
+              type="button"
               className="mi"
               onClick={() => (app.switchKb(KB_OFF_VALUE), setMenu(null))}
             >
               <span>{t("No knowledge base")}</span>
               {kbOff ? <i className="ph ph-check check" /> : null}
-            </div>
+            </button>
           </CtxPicker>
 
           {showVisibility ? (

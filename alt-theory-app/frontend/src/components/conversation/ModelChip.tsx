@@ -243,7 +243,7 @@ export function ModelChip({
   // together. A stable callback fires only on mount/unmount; an inline ref
   // would re-fire on every parent re-render (each WS status tick) and
   // repeatedly yank the scroll position back to the hoisted section.
-  const revealEffortRow = useCallback((el: HTMLDivElement | null) => {
+  const revealEffortRow = useCallback((el: HTMLElement | null) => {
     el?.parentElement?.scrollIntoView({ block: "nearest" });
   }, []);
 
@@ -252,13 +252,14 @@ export function ModelChip({
     const hasEffort = option.thinkingLevels.some((level) => level !== "off");
     return (
       <div key={`${option.provider}:${option.modelId}`} className="model-menu-item">
-        <div className="mi" onClick={() => pick(option)}>
+        <button type="button" className="mi" onClick={() => pick(option)}>
           <span style={{ fontWeight: active ? 500 : 400 }}>{option.label}</span>
           {active ? <i className="ph ph-check check" /> : null}
-        </div>
+        </button>
         {active && hasEffort ? (
           <>
-            <div
+            <button
+              type="button"
               className="mi model-effort-trigger"
               ref={revealEffortRow}
               onClick={() => setEffortOpen((value) => !value)}
@@ -269,11 +270,12 @@ export function ModelChip({
                 className={`ph ph-caret-${effortOpen ? "up" : "down"} caret`}
                 aria-hidden
               />
-            </div>
+            </button>
             {effortOpen ? (
               <div className="model-effort-options">
                 {option.thinkingLevels.map((level) => (
-                  <div
+                  <button
+                    type="button"
                     key={level}
                     className="mi"
                     onClick={() => pick(option, level)}
@@ -282,7 +284,7 @@ export function ModelChip({
                     {checkedThinking === level ? (
                       <i className="ph ph-check check" />
                     ) : null}
-                  </div>
+                  </button>
                 ))}
               </div>
             ) : null}
@@ -313,7 +315,8 @@ export function ModelChip({
         style={{ right: 40, bottom: 36, left: "auto" }}
         onClick={(event) => event.stopPropagation()}
       >
-        <div
+        <button
+          type="button"
           className="mi"
           onClick={() => {
             setModel(null);
@@ -325,7 +328,7 @@ export function ModelChip({
             {defaultModel ? ` · ${defaultModel.modelId}` : ""}
           </span>
           {usingDefault ? <i className="ph ph-check check" /> : null}
-        </div>
+        </button>
         <div className="sep" />
         {error ? (
           <div className="rp-empty" style={{ padding: "var(--space-tight) var(--space-control)" }}>
@@ -345,7 +348,8 @@ export function ModelChip({
               filteredModels.length ? (
                 <div className="model-provider-section">
                   {filteredModels.map((option, index) => (
-                    <div
+                    <button
+                      type="button"
                       key={`${option.provider}:${option.modelId}`}
                       className={`mi${index === filterIndex ? " on" : ""}`}
                       onMouseEnter={() => setFilterIndex(index)}
@@ -353,7 +357,7 @@ export function ModelChip({
                     >
                       <span>{option.label}</span>
                       <span className="model-filter-provider">{option.provider}</span>
-                    </div>
+                    </button>
                   ))}
                 </div>
               ) : (
@@ -370,7 +374,8 @@ export function ModelChip({
                     {hoisted ? (
                       <div className="model-provider-label">{provider.name}</div>
                     ) : (
-                      <div
+                      <button
+                        type="button"
                         className="mi model-provider-trigger"
                         onClick={() =>
                           setExpandedProvider(expanded ? null : provider.name)
@@ -381,7 +386,7 @@ export function ModelChip({
                           className={`ph ph-caret-${expanded ? "up" : "down"} caret`}
                           aria-hidden
                         />
-                      </div>
+                      </button>
                     )}
                     {expanded ? (
                       <div className="model-provider-models">
@@ -419,10 +424,10 @@ export function ModelChip({
           />
         </div>
         <div className="sep" />
-        <div className="mi" onClick={() => shell.openSettings("models")}>
+        <button type="button" className="mi" onClick={() => shell.openSettings("models")}>
           <i className="ph ph-cpu" />
           {t("Manage models")}
-        </div>
+        </button>
       </div>
     </>
   );

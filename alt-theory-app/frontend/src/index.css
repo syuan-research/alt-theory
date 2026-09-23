@@ -994,8 +994,11 @@
   /* menus */
   .menu { display: none; position: absolute; bottom: 36px; background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--r-md); box-shadow: var(--shadow-popup); padding: var(--space-tight); z-index: 50; min-width: 230px; max-height: 340px; overflow-y: auto; }
   .menu.on { display: block; }
-  .menu .mi { display: flex; align-items: center; gap: var(--space-control); padding: var(--space-tight) var(--space-control); border-radius: var(--r-sm); font-size: var(--fs-primary); color: var(--ink-soft); cursor: pointer; position: relative; text-align: left; }
+  /* .mi rows are real <button>s where menus are keyboard-operable; this reset
+     strips the UA button chrome so they render exactly like the old divs. */
+  .menu .mi { display: flex; align-items: center; gap: var(--space-control); width: 100%; padding: var(--space-tight) var(--space-control); border-radius: var(--r-sm); border: 0; background: transparent; font: inherit; font-size: var(--fs-primary); color: var(--ink-soft); cursor: pointer; position: relative; text-align: left; }
   .menu .mi:hover { background: var(--hover); }
+  .menu .mi:focus-visible { background: var(--hover); outline: none; }
   .menu .mi i { color: var(--text-2); }
   .menu .mi .check { margin-left: auto; color: var(--ink); }
   .menu .sep { height: 1px; background: var(--hairline); margin: var(--space-tight) var(--space-hair); }
