@@ -45,7 +45,7 @@ export function HelpMenu({
             shell.openSettings("features");
           }}
         >
-          <i className="ph ph-book-open-text" />
+          <i className="ph ph-lifebuoy" />
           <span>{t("Help center")}</span>
         </button>
       </div>

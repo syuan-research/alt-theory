@@ -506,7 +506,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                 );
               })}
               <CtxPicker
-                icon="ph-gear-six"
+                icon="ph-gear"
                 label={t("Choose buttons")}
                 open={menu === "presetcfg"}
                 onToggle={() => toggle("presetcfg")}
@@ -577,7 +577,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
           </CtxPicker>
 
           <CtxPicker
-            icon="ph-books"
+            icon="ph-book-open"
             label={kbLabel}
             open={menu === "kb"}
             onToggle={() => toggle("kb")}

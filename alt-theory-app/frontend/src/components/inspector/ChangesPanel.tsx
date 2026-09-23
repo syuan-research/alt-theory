@@ -89,7 +89,7 @@ export function ChangesPanel() {
         return (
           <div key={`${group.role}:${group.path}`} className="changes-group">
             <button type="button" className={`group-label changes-group-head${isClosed ? " closed" : ""}`} data-tip={group.title} onClick={() => toggle(group.path)}>
-              <i className="ph ph-folder-simple" />
+              <i className="ph ph-folder" />
               <span className="group-name">{titleOf(group)}</span>
               <span className="changes-group-role">{roleText(group)}</span>
               {group.role === "outside" && hasNativeBridge() ? (

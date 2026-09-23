@@ -270,7 +270,7 @@ function SettingsRail({ hidden }: { hidden?: boolean }) {
     { key: "models", label: t("Models"), icon: "ph-cpu" },
     { key: "agents", label: t("Subagents"), icon: "ph-robot" },
     { key: "folders", label: t("Projects and global folders"), icon: "ph-folders" },
-    { key: "rolekb", label: t("Role & Knowledge"), icon: "ph-books" },
+    { key: "rolekb", label: t("Role & Knowledge"), icon: "ph-book-open" },
     { key: "skills", label: t("Skills"), icon: "ph-toolbox" },
     ...(shell.participantTabEnabled
       ? [
@@ -781,7 +781,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                 <summary
                   data-tip={app.workspacePrimaryDir ?? t("Independent conversations")}
                 >
-                  <i className={`ph ${app.workspacePrimaryDir ? "ph-folder-simple" : "ph-note"}`} />
+                  <i className={`ph ${app.workspacePrimaryDir ? "ph-folder" : "ph-note"}`} />
                   <span className="ws-label">
                     {app.workspacePrimaryDir
                       ? folderLabel(app.workspacePrimaryDir)
@@ -823,7 +823,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                         chooseFolder(dir);
                       }}
                     >
-                      <i className="ph ph-folder-simple" />
+                      <i className="ph ph-folder" />
                       {folderLabel(dir)}
                       {app.workspacePrimaryDir === dir ? (
                         <i className="ph ph-check check" />
@@ -1043,7 +1043,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                     data-tip={folderTip}
                     onClick={() => toggleGroup(group.dir)}
                   >
-                    <i className="ph ph-folder-simple" />
+                    <i className="ph ph-folder" />
                     <span className="group-name">{group.label}</span>
                   </button>
                   {local ? (

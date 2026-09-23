@@ -526,7 +526,7 @@ function RelatedConversations() {
       <div className="d">{detailOf(row)}</div>
       {row.session.workspacePrimaryDir && row.session.workspacePrimaryDir !== ownFolder ? (
         <div className="d fline">
-          <i className="ph ph-folder-simple" /> {t("In {folder}", { folder: folderLabel(row.session.workspacePrimaryDir) })}
+          <i className="ph ph-folder" /> {t("In {folder}", { folder: folderLabel(row.session.workspacePrimaryDir) })}
         </div>
       ) : null}
     </button>

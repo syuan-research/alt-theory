@@ -724,7 +724,7 @@ export function AuthConnectCard({
     xai: "ph-lightning",
     "openai-codex": "ph-code",
     "github-copilot": "ph-github-logo",
-    "kimi-coding": "ph-moon-stars",
+    "kimi-coding": "ph-moon",
   };
   const PROVIDER_NAMES: Record<string, string> = {
     openrouter: t("OpenRouter"),
@@ -1100,7 +1100,7 @@ export function AuthConnectCard({
           ) : (
             <>
               <p className="auth-step auth-done">
-                <i className="ph ph-check-circle" /> {t("Connected to ")}
+                <i className="ph ph-check" /> {t("Connected to ")}
                 {t(flow.provider.name)}
               </p>
               <p className="fine">
