@@ -17,39 +17,12 @@ import {
 import { fetchDiscovery } from "@/api/discovery";
 import type { ProjectFolder } from "@/api/config";
 import { getWorkingFolders } from "@/api/config";
-import {
-  deleteSession as deleteSessionRequest,
-  deleteSessionFamily as deleteSessionFamilyRequest,
-  fetchSessionDetail,
-  fetchSessionList,
-  normalizeSessionAlias,
-  promoteRelatedSession as promoteRelatedSessionRequest,
-  retractQueuedText,
-  saveSessionAlias,
-} from "@/api/sessions";
+import { fetchSessionList } from "@/api/sessions";
 import type {
-  PendingChanges,
-  ResolvedThinking,
-  ApprovalRequestPayload,
-  AssemblyManifest,
   AuthContext,
-  AltMode,
-  ClientMessage,
   DiscoveryLists,
-  ServerMessage,
-  SessionDetailResponse,
-  SessionDraftSnapshot,
-  SessionMetrics,
-  SessionModelOverride,
-  SessionSelectors,
-  SessionSnapshot,
   SessionSummary,
-  SessionVisibility,
-  StreamPart,
-  StudyTag,
-  TranscriptMessage,
   TranscriptView,
-  TurnRecovery,
   ViewMode,
   ParticipantInfo,
   ConfigStatus,
@@ -61,14 +34,7 @@ import {
   setProjectMainFolder as setProjectMainFolderRequest,
   setSessionWorkspace as setSessionWorkspaceRequest,
 } from "@/api/workspaces";
-import { useWebSocket, type WsConnStatus } from "@/hooks/useWebSocket";
-import { failureText, isBusyRefusal } from "@/lib/failure";
-import { runPhaseLabels, runStateView, type RunStateView } from "@/lib/runState";
-import { useConversationEngine } from "@/hooks/useConversationEngine";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import { DEFAULT_KB_DOMAIN } from "@/lib/constants";
-import { notifyBackground } from "@/lib/notify";
-import { buildOutgoingPrompt } from "@/lib/workspace";
 import { defaultTranscriptView, viewModeForRole } from "@/lib/viewMode";
 
 const anonymousAuth: AuthContext = {
@@ -79,26 +45,8 @@ const anonymousAuth: AuthContext = {
   defaultConsent: null,
 };
 
-const defaultSelectors: SessionSelectors = {
-  currentDomain: DEFAULT_KB_DOMAIN,
-  rolePresetSlug: null,
-  soulSlug: null,
-  customInstructionRef: null,
-  visibility: "research",
-  branchId: "main",
-};
-
 /** Why a conversation in the list is asking for attention (alpha.3). */
 export type SessionAlert = "done" | "failed" | "approval";
-
-export type ComposerNoticeIcon = "warning" | "bookmark" | "eject";
-
-export interface ComposerNotice {
-  prefix?: ComposerNoticeIcon;
-  text: string;
-  warn?: boolean;
-}
-
 
 export interface ConfirmRequest {
   message: string;
@@ -110,11 +58,25 @@ export interface ConfirmRequest {
   checkbox?: { label: string; defaultChecked?: boolean; danger?: boolean };
 }
 
+/** A Steer press waiting to ride the next message of its conversation. */
+export interface PendingPreset {
+  invoke: string | null;
+  texts: string[];
+}
+
+/**
+ * App-level state only: who is signed in, what exists (assets, conversations,
+ * folders), app dialogs, the view mode, and the Steer preset experiment.
+ * A conversation's own state lives in its conversation module
+ * (hooks/useConversation); what the main view shows lives in MainView.
+ */
 export interface AppContextValue {
   auth: AuthContext;
   appMode: "local" | "hosted";
   runtimeMode: RuntimeMode;
   loginRequired: boolean;
+  /** The server refused for lack of a sign-in: show the login overlay. */
+  requireLogin: () => void;
   loading: boolean;
   authError: string | null;
   login: (accountId: string, loginCode: string) => Promise<void>;
@@ -133,22 +95,11 @@ export interface AppContextValue {
   refreshLocalConfig: () => Promise<void>;
 
   sessions: SessionSummary[];
-  selectedCatalogSessionId: string | null;
-  selectedSessionDetail: SessionDetailResponse | null;
   sessionDisplayNames: Record<string, { alias: string; snippet: string }>;
+  setSessionDisplayName: (sessionId: string, alias: string) => void;
   sessionsLoading: boolean;
   sessionsError: string | null;
   refreshSessions: () => Promise<void>;
-  /** False when nothing was sent (same session, cannot open, socket down). */
-  openCatalogSession: (sessionId: string) => boolean;
-  forkCurrentSession: (
-    purpose: "fork" | "side" | "helper" | "ab-arm",
-    seedPrompt?: string,
-  ) => void;
-  openHelper: (question?: string, attachToCenter?: boolean) => void;
-  duplicateSession: (sessionId: string) => void;
-  /** Conversations that changed state while you were looking elsewhere. */
-  sessionAlerts: Record<string, SessionAlert>;
   activeRelatedSessionId: string | null;
   /**
    * Preferred right-rail width when this related conversation is opened:
@@ -159,31 +110,7 @@ export interface AppContextValue {
     sessionId: string | null,
     opts?: { size?: "half" | "default" },
   ) => void;
-  /** Draft for a just-created child; helper sends immediately, compare waits. */
-  childSeed: { sessionId: string; text: string; autoSend: boolean } | null;
-  clearChildSeed: () => void;
-  promoteRelatedSession: (sessionId: string) => Promise<void>;
-  renameSelectedSession: (sessionId: string, name: string) => Promise<boolean>;
-  deleteSelectedSession: (sessionId?: string) => void;
-  deleteSessionFamily: (sessionId: string) => void;
 
-  sessionId: string | null;
-  sessionReady: boolean;
-  /** Resume warnings from the backend, e.g. an asset fallback on reopen. */
-  sessionWarnings: string[];
-  /** Server run phase or a request of this client in flight (one projection, runState). */
-  isRunning: boolean;
-  /** The one run-state projection for render sites (card 1). */
-  runState: RunStateView;
-  wsConnected: boolean;
-
-  selectors: SessionSelectors;
-  switchKb: (domain: string) => void;
-  switchRolePreset: (rolePresetSlug: string | null) => void;
-  switchVisibility: (visibility: SessionVisibility) => void;
-
-  /** Working folder for the draft/current conversation; null = none. */
-  workspacePrimaryDir: string | null;
   /** Explicitly added working folders (may be empty of sessions). */
   knownWorkspaces: string[];
   /** Projects (v1.5.1): id, name, main folder, companions. */
@@ -194,18 +121,13 @@ export interface AppContextValue {
   workingFoldersLoaded: boolean;
   /** Fetch projects + the derived workspace list again. */
   refreshWorkingFolders: () => Promise<void>;
-  /** Choose the working folder for the next (or current) conversation. */
-  setDraftWorkspace: (primaryDir: string | null) => void;
   addKnownWorkspace: (path: string) => Promise<void>;
   removeKnownWorkspace: (path: string) => Promise<void>;
-  /** Re-point any existing session's working folder (drag & drop, M4). */
-  repointSession: (sessionId: string, primaryDir: string | null,) => Promise<void>;
+  /** Re-point any existing session's working folder (drag & drop, M4). The
+   *  open conversation hears its new folder in its snapshot. */
+  repointSession: (sessionId: string, primaryDir: string | null) => Promise<void>;
   /** Change a project's main folder; every conversation of it moves. */
-  repointProject: (
-    projectId: string,
-    primaryDir: string,
-    previousPrimaryDir?: string,
-  ) => Promise<number>;
+  repointProject: (projectId: string, primaryDir: string) => Promise<number>;
 
   /** Situational preset buttons (v1.4 round 1 experiment). */
   presetButtons: string[];
@@ -218,85 +140,16 @@ export interface AppContextValue {
     locked: boolean;
   } | null;
   /** Click state machine: inactive → press, active → lock, locked → unlock. */
-  pressPreset: (name: string) => void;
+  pressPreset: (sessionId: string, name: string) => void;
+  /** What an armed preset adds to the next message of this conversation. */
+  pendingPreset: (sessionId: string | null) => PendingPreset | null;
+  /** The next message carried the pending preset: consume it, spend a turn. */
+  presetSent: (sessionId: string | null) => void;
 
-  sessionMode: AltMode;
-  switchMode: (mode: AltMode) => void;
-  /** Full Access (v1.4.8): live in-memory session state; false = ask mode. */
-  fullAccess: boolean;
-  setFullAccess: (enabled: boolean) => void;
-  modelOverride: SessionModelOverride | null;
-  /** Switches accepted while a turn runs; the controls show them as chosen + pending. */
-  pendingChanges: PendingChanges;
-  /** The backend resolver's thinking answer; the chip renders it, computes nothing. */
-  thinking: ResolvedThinking | null;
-  currentSessionModel: { provider: string; modelId: string } | null;
-  setSessionModel: (override: SessionModelOverride | null) => void;
-  studyTag: StudyTag | null;
-  /** Hosted-only deletion date for a "private" conversation; null locally. */
-  retentionDueAt: string | null;
-  setStudyTag: (tag: StudyTag | null) => void;
-
-  messages: TranscriptMessage[];
-  toolStatus: string;
-  composerNotice: ComposerNotice | null;
-  runHint: string | null;
-  recovery: TurnRecovery | null;
-
-  stagedWorkspacePaths: string[];
-  stageWorkspacePath: (path: string) => void;
-  unstageWorkspacePaths: (paths: string[]) => void;
-
-  /** Bumps whenever a run ends — completed, failed, or stopped. A stopped
-   *  Work turn may have written files too, so file views refetch on it. */
-  runSettledCount: number;
   requestConfirm: (request: ConfirmRequest) => void;
-
-  approvals: ApprovalRequestPayload[];
-  respondApproval: (
-    approvalId: string,
-    response: { accept?: boolean; choice?: string | null; text?: string | null; },
-  ) => void;
-  approvalMarkers: string[];
-  addApprovalMarker: (text: string) => void;
-
-  manifest: AssemblyManifest | null;
-  metrics: SessionMetrics | null;
-
-  startNewSession: () => void;
-  compactCurrentSession: () => void;
-  sendPrompt: (text: string) => boolean;
-  /** Pi's queue for this conversation (card 11): texts waiting for the next API call. */
-  queuedTexts: string[];
-  /** Take one queued message back; returns the text for the editor, null if Pi already sent it. */
-  retractQueued: (
-    text: string
-  ) => Promise<{ text: string; attachments: string[] } | null>;
-  /** Interrupt-and-send: stop the current answer, send this queued message next. */
-  sendQueuedNow: (text: string) => void;
-  /** Unsent queued text handed back by Stop; the composer takes it into the draft. */
-  restoredDraft: string | null;
-  clearRestoredDraft: () => void;
-  abortRun: () => void;
-  continueLatest: () => boolean;
-  invokeSkill: (skillName: string, userText?: string) => boolean;
-  branchRevision: (text: string, entryId?: string) => boolean;
-  reviseLatestInPlace: (text: string, entryId: string) => boolean;
-  prepareBranchRevision: (text: string, entryId: string) => boolean;
-  retryLatest: () => boolean;
-  requestMetadata: () => void;
-  requestMetrics: () => void;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
-
-/**
- * The in-flight assistant turn, alone in its own context: a streaming delta
- * replaces this value on every token, and nothing else. Keeping it out of
- * AppContext means the token tick invalidates only the component drawing the
- * stream, not every useApp() consumer (perf backlog item 3).
- */
-const StreamContext = createContext<StreamPart[]>([]);
 
 /** Situational preset buttons (v1.4 round 1): turns a press stays active. */
 export const PRESET_TURNS = 5;
@@ -306,22 +159,6 @@ const DEFAULT_PRESET_BUTTONS = [
   "guided-next-steps",
   "clear-misunderstanding",
 ];
-
-function applySnapshotSelectors(
-  payload: SessionSnapshot | SessionDraftSnapshot,
-): SessionSelectors {
-  return {
-    currentDomain: payload.currentDomain || DEFAULT_KB_DOMAIN,
-    rolePresetSlug: payload.rolePresetSlug ?? null,
-    soulSlug: payload.soulSlug ?? null,
-    customInstructionRef: payload.customInstructionRef ?? null,
-    visibility: payload.visibility ?? "research",
-    branchId:
-      "branchId" in payload
-        ? (payload as SessionSnapshot).branchId || "main"
-        : "main",
-  };
-}
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [auth, setAuth] = useState<AuthContext>(anonymousAuth);
@@ -351,41 +188,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     },
     [],
   );
-  const pendingChildSeedRef = useRef<{ text: string; autoSend: boolean } | null>(null);
-  const pendingHelperSeedRef = useRef<string | null>(null);
-  const [childSeed, setChildSeed] = useState<
-    { sessionId: string; text: string; autoSend: boolean } | null
-  >(null);
-  const [selectedCatalogSessionId, setSelectedCatalogSessionId] = useState<
-    string | null
-  >(null);
-  const [selectedSessionDetail, setSelectedSessionDetail] =
-    useState<SessionDetailResponse | null>(null);
   const [sessionDisplayNames, setSessionDisplayNames] = useState<
     Record<string, { alias: string; snippet: string }>
   >({});
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
 
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [sessionReady, setSessionReady] = useState(false);
-  const [sessionWarnings, setSessionWarnings] = useState<string[]>([]);
-  const startPromptRef = useRef<
-    (text: string, attachments: string[]) => boolean
-  >(() => false);
-  // The socket's own state, set only by the socket (v1.5.1 M1 rule 3).
-  const [socket, setSocket] = useState<WsConnStatus>("connecting");
-  // A request of this client in flight (open, new, fork, asset switch). Each
-  // one must be answered by a message that clears it; compact is not one of
-  // them — the server runs it as a run, so the run state already says busy.
-  const [requestBusy, setRequestBusy] = useState(false);
-  const [wsConnected, setWsConnected] = useState(false);
-  const [selectors, setSelectors] = useState<SessionSelectors>(defaultSelectors);
-  const [sessionMode, setSessionMode] = useState<AltMode>("understand");
-  const [fullAccess, setFullAccessState] = useState(false);
-  const [workspacePrimaryDir, setWorkspacePrimaryDir] = useState<string | null>(
-    null,
-  );
   const [knownWorkspaces, setKnownWorkspaces] = useState<string[]>([]);
   const [projects, setProjects] = useState<ProjectFolder[]>([]);
   const [globalFolders, setGlobalFolders] = useState<
@@ -393,161 +201,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
   >([]);
   /** True once a working-folders fetch answered (even with an empty list). */
   const [workingFoldersLoaded, setWorkingFoldersLoaded] = useState(false);
-  const [modelOverride, setModelOverride] =
-    useState<SessionModelOverride | null>(null);
-  const [pendingChanges, setPendingChanges] = useState<PendingChanges>({});
-  const [thinking, setThinking] = useState<ResolvedThinking | null>(null);
-  const [currentSessionModel, setCurrentSessionModel] = useState<{
-    provider: string;
-    modelId: string;
-  } | null>(null);
-  const [studyTag, setStudyTagState] = useState<StudyTag | null>(null);
-  // Hosted-only: when a "private" conversation gets deleted. Null locally —
-  // local conversations have no expiry at all.
-  const [retentionDueAt, setRetentionDueAt] = useState<string | null>(null);
-
-  const [toolStatus, setToolStatus] = useState("");
-  const [composerNotice, setComposerNotice] = useState<ComposerNotice | null>(
-    null,
-  );
-  const [stagedWorkspacePaths, setStagedWorkspacePaths] = useState<string[]>([],);
-  const [runSettledCount, setRunSettledCount] = useState(0);
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(
     null,
   );
-  // Conversation-scoped approval markers, recorded
-  // client-side the moment the user grants a conversation allowance (M7 §3).
-  const [approvalMarkers, setApprovalMarkers] = useState<string[]>([]);
-
-  const [manifest, setManifest] = useState<AssemblyManifest | null>(null);
-  const [metrics, setMetrics] = useState<SessionMetrics | null>(null);
-  const [sessionAlerts, setSessionAlerts] = useState<Record<string, SessionAlert>>({});
-  const sessionRunStatusRef = useRef<Record<string, string>>({});
-
-  const reconnectSessionIdRef = useRef<string | null>(null);
-  const pendingOpenSessionIdRef = useRef("");
-  const pendingAssetSwitchRef = useRef(false);
-  const pendingCompactRef = useRef(false);
-  const composerNoticeTimerRef = useRef<number | null>(null);
   const sessionListRequestRef = useRef(0);
-  const sessionDetailRequestRef = useRef(0);
-
-  const [restoredDraft, setRestoredDraft] = useState<string | null>(null);
-  const clearRestoredDraft = useCallback(() => setRestoredDraft(null), []);
-
-  // The ONE center engine (v1.4.3): messages / stream / running plus the
-  // connection-wide approval registry and server-message transitions live in the shared hook
-  // (also used by the right-pane ChildConversation). Only center-specific
-  // behavior stays here, via the callbacks below.
-  const engine = useConversationEngine({
-    onTranscript: (transcript) => {
-      if (
-        pendingCompactRef.current &&
-        transcript.some((item) => item.marker === "compaction")
-      ) {
-        pendingCompactRef.current = false;
-        setComposerNoticeTimed({ text: t("Conversation compacted.") });
-      }
-    },
-    onRunCompleted: (payload) => {
-      setComposerNotice(null);
-      setCurrentSessionModel(payload.currentModel ?? null);
-      setToolStatus("");
-      setRunSettledCount((count) => count + 1);
-      // Keep the composer's context ring honest without polling.
-      sendMessage({ type: "get_session_metrics" });
-      if (payload.sessionId) {
-        reconnectSessionIdRef.current = payload.sessionId;
-        void refreshSessions();
-        void engine.refreshTranscript(payload.sessionId);
-      }
-    },
-    onRunFailed: (payload) => {
-      if (sessionId) void engine.refreshTranscript(sessionId);
-      setRunSettledCount((count) => count + 1);
-      // Interruption is a recorded outcome, never a guess from error text.
-      const recovery = payload.snapshot.recovery;
-      const interrupted = recovery?.outcome === "interrupted";
-      setToolStatus("");
-      const userStopped = recovery?.interruptionCause === "user_abort";
-      if (userStopped) {
-        setComposerNotice(null);
-      } else {
-        const oauthRefreshFailed = payload.failure.kind === "auth-refresh";
-        setComposerNoticeTimed(
-          {
-            prefix: interrupted ? undefined : "warning",
-            text: oauthRefreshFailed
-              ? failureText(payload.failure)
-              : `${interrupted ? t("Run interrupted: ") : t("Run failed: ")}${failureText(payload.failure)}`,
-            warn: !interrupted,
-          },
-          oauthRefreshFailed ? 0 : 4500,
-        );
-      }
-    },
-    onQueueRestored: (payload) => {
-      setRestoredDraft(payload.restored?.join("\n") ?? null);
-      for (const path of payload.restoredAttachments ?? []) stageWorkspacePath(path);
-    },
-  });
-  const {
-    messages,
-    setMessages,
-    streamParts,
-    setStreamParts,
-    running: isRunning,
-    setRunning: setIsRunning,
-    queuedTexts,
-    setQueuedTexts,
-    recovery,
-    setRecovery,
-    phaseLabel: runPhaseLabel,
-    setPhaseLabel: setRunPhaseLabel,
-    approvals,
-    setApprovals,
-    activeToolsRef: activeToolsMapRef,
-  } = engine;
-  const runHint = !isRunning && recovery?.interruptionCause === "user_abort"
-    ? t("Editing after Stop won't branch. Use /branch if needed.")
-    : null;
-
-  const clearStagedWorkspace = useCallback(() => {
-    setStagedWorkspacePaths([]);
-  }, []);
-
-  const stageWorkspacePath = useCallback((path: string) => {
-    setStagedWorkspacePaths((prev) =>
-      prev.includes(path) ? prev : [...prev, path],
-    );
-  }, []);
-
-  const unstageWorkspacePaths = useCallback((paths: string[]) => {
-    if (!paths.length) return;
-    const remove = new Set(paths);
-    setStagedWorkspacePaths((prev) => prev.filter((item) => !remove.has(item)));
-  }, []);
 
   const requestConfirm = useCallback((request: ConfirmRequest) => {
     setConfirmRequest(request);
   }, []);
 
-  const setComposerNoticeTimed = useCallback(
-    (notice: ComposerNotice | null, ttlMs = 4500) => {
-      if (composerNoticeTimerRef.current) {
-        window.clearTimeout(composerNoticeTimerRef.current);
-        composerNoticeTimerRef.current = null;
-      }
-      setComposerNotice(notice);
-      if (notice?.text && ttlMs > 0) {
-        composerNoticeTimerRef.current = window.setTimeout(() => {
-          setComposerNotice(null);
-          composerNoticeTimerRef.current = null;
-        }, ttlMs);
-      }
-    },
-    [],
-  );
+  const requireLogin = useCallback(() => setLoginRequired(true), []);
 
   const refreshAuth = useCallback(async () => {
     setLoading(true);
@@ -609,24 +272,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const refreshSessionDetail = useCallback(async (targetSessionId: string | null) => {
-    const requestId = ++sessionDetailRequestRef.current;
-    if (!targetSessionId) {
-      setSelectedSessionDetail(null);
-      return;
-    }
-    try {
-      const detail = await fetchSessionDetail(targetSessionId);
-      if (requestId === sessionDetailRequestRef.current) {
-        setSelectedSessionDetail(detail);
-      }
-    } catch {
-      if (requestId === sessionDetailRequestRef.current) {
-        setSelectedSessionDetail(null);
-      }
-    }
-  }, [],);
-
   const refreshDiscovery = useCallback(async () => {
     try {
       setDiscovery(await fetchDiscovery());
@@ -652,8 +297,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
           ]),
         ),
       );
-      // The highlight follows what the user opened or created, nothing else:
-      // a fresh app shows no conversation highlighted (owner 2026-09-24).
     } catch (err) {
       if (requestId === sessionListRequestRef.current) {
         setSessionsError(
@@ -667,496 +310,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [loginRequired]);
 
+  const setSessionDisplayName = useCallback((sessionId: string, alias: string) => {
+    setSessionDisplayNames((prev) => ({
+      ...prev,
+      [sessionId]: { ...(prev[sessionId] ?? { snippet: "" }), alias },
+    }));
+  }, []);
+
   useEffect(() => {
     if (!loading && !loginRequired) {
       void refreshSessions();
     }
   }, [loading, loginRequired, refreshSessions]);
-
-  useEffect(() => {
-    void refreshSessionDetail(selectedCatalogSessionId);
-  }, [refreshSessionDetail, selectedCatalogSessionId]);
-
-  const sendMessage = useCallback(
-    (message: ClientMessage): boolean => {
-      const sent = wsApiRef.current?.send(message) ?? false;
-      if (!sent) {
-        setComposerNoticeTimed({ prefix: "warning", text: t("Not connected"), warn: true, });
-        wsApiRef.current?.reconnect();
-      }
-      return sent;
-    },
-    [setComposerNoticeTimed],
-  );
-
-  const requestAssetSwitch = useCallback(
-    (message: ClientMessage, label: string): boolean => {
-      pendingAssetSwitchRef.current = true;
-      const sent = sendMessage(message);
-      if (!sent) {
-        pendingAssetSwitchRef.current = false;
-        return false;
-      }
-      setRequestBusy(true);
-      setToolStatus(label);
-      return true;
-    },
-    [sendMessage],
-  );
-
-  const handleServerMessage = useCallback(
-    (message: ServerMessage) => {
-      // Stream/transcript/run messages and the connection-wide approval registry
-      // are the shared engine's; center extras run via its callbacks.
-      if (engine.handleMessage(message)) return;
-      switch (message.type) {
-        case "session_draft":
-          setRecovery(null);
-          if (reconnectSessionIdRef.current) {
-            // Even when the draft message is ignored (reconnect race), a
-            // pending asset switch was answered by THIS message — leaving its
-            // "Switching role preset…" status would strand the composer in a
-            // fake busy state with nothing left to clear it. Only while NOT
-            // attached: draft selectors must never overwrite a live
-            // session's chips (opus H1).
-            if (pendingAssetSwitchRef.current && !sessionId) {
-              pendingAssetSwitchRef.current = false;
-              setToolStatus("");
-              setRequestBusy(false);
-              setSelectors(applySnapshotSelectors(message.payload));
-            }
-            break;
-          }
-          setSessionId(null);
-          setSessionReady(true);
-          setSessionWarnings([]);
-          setIsRunning(false);
-          setRequestBusy(false);
-          // A draft answers asset switches with this message and nothing else,
-          // so the "Switching role preset…" status has to be cleared here or it
-          // sits on the new-conversation screen forever.
-          pendingAssetSwitchRef.current = false;
-          setToolStatus("");
-          setSelectors(applySnapshotSelectors(message.payload));
-          setSessionMode(message.payload.mode ?? "understand");
-          setFullAccessState(message.payload.fullAccess ?? false);
-          setModelOverride(message.payload.modelOverride ?? null);
-          setPendingChanges({});
-          setThinking(message.payload.thinking ?? null);
-          setCurrentSessionModel(null);
-          setWorkspacePrimaryDir(message.payload.workspacePrimaryDir ?? null);
-          setStudyTagState(message.payload.studyTag ?? null);
-          setRetentionDueAt(null);
-          setApprovalMarkers([]);
-          setManifest(null);
-          setMetrics(null);
-          setMessages([]);
-          setStreamParts([]);
-          activeToolsMapRef.current = {};
-          setRunPhaseLabel("");
-          pendingAssetSwitchRef.current = false;
-          pendingOpenSessionIdRef.current = "";
-          if (message.payload.resetComposer) clearStagedWorkspace();
-          void refreshSessions();
-          break;
-
-        case "session_opened": {
-          // Decide "created here" before the pending refs are consumed below:
-          // an explicit open, an asset-switch rebuild, or a reconnect to the
-          // same id is NOT a new conversation (persisted Work mode must not
-          // silently expand an existing Understand session's tools).
-          const createdHere =
-            !pendingOpenSessionIdRef.current &&
-            !pendingAssetSwitchRef.current &&
-            message.payload.sessionId !== reconnectSessionIdRef.current;
-          // The user moved to another conversation (list open) — as opposed
-          // to a reconnect or an asset switch re-attaching the same one.
-          const openedHere =
-            Boolean(pendingOpenSessionIdRef.current) &&
-            message.payload.sessionId === pendingOpenSessionIdRef.current;
-          if (createdHere) {
-            // The born conversation takes the rail highlight immediately
-            // (owner 2026-09-18); nothing else ever selects a new session.
-            setSelectedCatalogSessionId(message.payload.sessionId);
-          }
-          setSessionWarnings(message.payload.resumeWarnings ?? []);
-          if (openedHere) {
-            setMessages([]);
-            setStreamParts([]);
-            pendingOpenSessionIdRef.current = "";
-          }
-          // An asset switch keeps the conversation (same id, same history)
-          // and the server sends no transcript with it: keep the rows.
-          pendingAssetSwitchRef.current = false;
-          if (message.payload.sessionId !== reconnectSessionIdRef.current) {
-            setApprovalMarkers([]);
-          }
-          setSessionId(message.payload.sessionId);
-          reconnectSessionIdRef.current = message.payload.sessionId;
-          setSelectors(applySnapshotSelectors(message.payload));
-          // A deferred switch renders as the chosen value (plus a pending mark).
-          const openedPending = message.payload.pending;
-          if (
-            openedPending &&
-            (openedPending.rolePresetSlug !== undefined ||
-              openedPending.soulSlug !== undefined ||
-              openedPending.customInstructionRef !== undefined ||
-              openedPending.kbDomain !== undefined ||
-              openedPending.visibility !== undefined)
-          ) {
-            setSelectors((prev) => ({
-              ...prev,
-              rolePresetSlug:
-                openedPending.rolePresetSlug !== undefined
-                  ? (openedPending.rolePresetSlug ?? null)
-                  : prev.rolePresetSlug,
-              soulSlug:
-                openedPending.soulSlug !== undefined
-                  ? (openedPending.soulSlug ?? null)
-                  : prev.soulSlug,
-              customInstructionRef:
-                openedPending.customInstructionRef !== undefined
-                  ? (openedPending.customInstructionRef ?? null)
-                  : prev.customInstructionRef,
-              currentDomain:
-                openedPending.kbDomain !== undefined
-                  ? openedPending.kbDomain
-                  : prev.currentDomain,
-              visibility:
-                openedPending.visibility !== undefined
-                  ? openedPending.visibility.visibility
-                  : prev.visibility,
-            }));
-          }
-          setSessionMode(message.payload.pending?.mode ?? message.payload.mode ?? "understand");
-          setFullAccessState(
-            message.payload.pending?.fullAccess ?? message.payload.fullAccess ?? false,
-          );
-          setModelOverride(
-            message.payload.pending?.model !== undefined
-              ? message.payload.pending.model
-              : (message.payload.modelOverride ?? null),
-          );
-          setPendingChanges(message.payload.pending ?? {});
-          setThinking(message.payload.thinking ?? null);
-          setCurrentSessionModel(message.payload.currentModel ?? null);
-          setStudyTagState(message.payload.studyTag ?? null);
-          setRetentionDueAt(message.payload.retentionDueAt ?? null);
-          // The folder indicator follows the opened conversation's record so
-          // "+" inherits its folder. Row present → its recorded value (null =
-          // independent); row absent (created here, list not refreshed yet)
-          // → keep the draft value the conversation was materialized from.
-          const openedRow = sessions.find(
-            (s) => s.sessionId === message.payload.sessionId,
-          );
-          if (openedRow) {
-            setWorkspacePrimaryDir(openedRow.workspacePrimaryDir ?? null);
-          }
-          setSessionReady(true);
-          engine.applySnapshot(message.payload);
-          setRequestBusy(false);
-          setToolStatus("");
-          setRunPhaseLabel(
-            message.payload.status !== "idle" ? t("Processing…") : "",
-          );
-          // Staged files belong to the conversation they were picked for:
-          // reconnects and instance swaps (asset switch, deferred switch at
-          // settle) re-send session_opened for the same one and keep them.
-          if (openedHere || createdHere) clearStagedWorkspace();
-          void refreshSessions();
-          if (selectedCatalogSessionId === message.payload.sessionId) {
-            void refreshSessionDetail(message.payload.sessionId);
-          }
-          if (pendingHelperSeedRef.current) {
-            const seed = pendingHelperSeedRef.current;
-            pendingHelperSeedRef.current = null;
-            window.setTimeout(() => startPromptRef.current(seed, []), 0);
-          }
-          break;
-        }
-
-        case "session_updated": {
-          const pending = message.payload.pending ?? {};
-          setSelectors((prev) => ({
-            ...prev,
-            // Mid-run switch choices render as the chosen value (plus the
-            // pending mark), like deferred mode/model. A null from the
-            // server is a real clear and must not fall back to the previous
-            // value.
-            currentDomain:
-              pending.kbDomain !== undefined
-                ? pending.kbDomain
-                : message.payload.currentDomain || prev.currentDomain,
-            rolePresetSlug:
-              pending.rolePresetSlug !== undefined
-                ? pending.rolePresetSlug
-                : message.payload.rolePresetSlug !== undefined
-                  ? message.payload.rolePresetSlug
-                  : prev.rolePresetSlug,
-            soulSlug:
-              pending.soulSlug !== undefined
-                ? pending.soulSlug
-                : message.payload.soulSlug !== undefined
-                  ? message.payload.soulSlug
-                  : prev.soulSlug,
-            customInstructionRef:
-              pending.customInstructionRef !== undefined
-                ? pending.customInstructionRef
-                : message.payload.customInstructionRef !== undefined
-                  ? message.payload.customInstructionRef
-                  : prev.customInstructionRef,
-            visibility:
-              pending.visibility !== undefined
-                ? pending.visibility.visibility
-                : (message.payload.visibility ?? prev.visibility),
-            branchId: message.payload.branchId || prev.branchId,
-          }));
-          // The mid-run switch ack also answers the optimistic asset switch:
-          // release the busy state so waiting for the turn to end never
-          // locks the composer.
-          if (pendingAssetSwitchRef.current) {
-            pendingAssetSwitchRef.current = false;
-            setRequestBusy(false);
-            setToolStatus("");
-          }
-          if (message.payload.mode) setSessionMode(pending.mode ?? message.payload.mode);
-          if (message.payload.fullAccess !== undefined) {
-            setFullAccessState(pending.fullAccess ?? message.payload.fullAccess);
-          }
-          if (message.payload.modelOverride !== undefined) {
-            setModelOverride(
-              pending.model !== undefined ? pending.model : message.payload.modelOverride,
-            );
-          }
-          setPendingChanges(pending);
-          if (message.payload.thinking) setThinking(message.payload.thinking);
-          if (message.payload.currentModel) {
-            setCurrentSessionModel(message.payload.currentModel);
-          }
-          if (message.payload.studyTag !== undefined) {
-            setStudyTagState(message.payload.studyTag);
-          }
-          if (message.payload.retentionDueAt !== undefined) {
-            setRetentionDueAt(message.payload.retentionDueAt);
-          }
-          engine.applySnapshot(message.payload);
-          if (message.payload.status !== "idle") {
-            void refreshSessions();
-          } else {
-            setToolStatus("");
-            setRunPhaseLabel("");
-          }
-          if (selectedCatalogSessionId === message.payload.sessionId) {
-            void refreshSessionDetail(message.payload.sessionId);
-          }
-          break;
-        }
-
-        case "session_metadata":
-          setManifest(message.payload);
-          break;
-
-        case "session_metrics":
-          setMetrics(message.payload);
-          break;
-
-        case "related_session_created":
-          // btw / helper: keep the original compact default (~480), not 50%.
-          // A spawned subagent never opens the rail (owner 2026-09-18); the
-          // Related row is its feedback. Seeds and the request-busy clear
-          // likewise belong only to the user-initiated creation.
-          if (message.payload.purpose !== "subagent") {
-            setActiveRelatedSessionId(message.payload.sessionId, {
-              size: "default",
-            });
-            if (pendingChildSeedRef.current) {
-              setChildSeed({
-                sessionId: message.payload.sessionId,
-                ...pendingChildSeedRef.current,
-              });
-              pendingChildSeedRef.current = null;
-            }
-            if (pendingHelperSeedRef.current) {
-              setChildSeed({
-                sessionId: message.payload.sessionId,
-                text: pendingHelperSeedRef.current,
-                autoSend: true,
-              });
-              pendingHelperSeedRef.current = null;
-            }
-            setRequestBusy(false);
-            setToolStatus("");
-          }
-          void refreshSessions();
-          break;
-
-        case "branch_created":
-          // Main conversation stays in the center. Branched edit work opens in
-          // the right Related rail at ~50% width.
-          // Center multi-arm compare stays on Workbench A/B only.
-          setActiveRelatedSessionId(message.payload.sessionId, {
-            size: "half",
-          });
-          if (pendingChildSeedRef.current) {
-            setChildSeed({
-              sessionId: message.payload.sessionId,
-              ...pendingChildSeedRef.current,
-            });
-            pendingChildSeedRef.current = null;
-          }
-          setRequestBusy(false);
-          setToolStatus("");
-          setRunPhaseLabel("");
-          void refreshSessions();
-          break;
-
-        case "extension_notice":
-          setComposerNoticeTimed({
-            prefix: message.payload.level === "info" ? undefined : "warning",
-            text: message.payload.failure
-              ? failureText(message.payload.failure)
-              : message.payload.message,
-            warn: message.payload.level !== "info",
-          });
-          break;
-
-        case "error": {
-          pendingHelperSeedRef.current = null;
-          pendingCompactRef.current = false;
-          if (message.payload.code === "auth_required") {
-            setToolStatus(t("Please sign in to continue."));
-            setLoginRequired(true);
-            setIsRunning(false);
-            break;
-          }
-          setComposerNoticeTimed({
-            prefix: "warning",
-            text: failureText(message.payload.failure),
-            warn: true,
-          });
-          // A refusal because the turn is still running is not a run outcome:
-          // the run goes on and the UI keeps saying so (card 1 / card 2).
-          if (!isBusyRefusal(message.payload.failure)) {
-            pendingOpenSessionIdRef.current = "";
-            pendingAssetSwitchRef.current = false;
-            setRequestBusy(false);
-            setIsRunning(false);
-          }
-          if (reconnectSessionIdRef.current) {
-            reconnectSessionIdRef.current = "";
-            setToolStatus("");
-          }
-          break;
-        }
-
-        default:
-          break;
-      }
-    },
-    [
-      clearStagedWorkspace,
-      engine.handleMessage,
-      refreshSessionDetail,
-      refreshSessions,
-      selectedCatalogSessionId,
-      sessionId,
-      sessions,
-      setActiveRelatedSessionId,
-      setComposerNoticeTimed,
-    ],
-  );
-
-  const wsApiRef = useRef<ReturnType<typeof useWebSocket> | null>(null);
-
-  const wsApi = useWebSocket({
-    enabled: !loading && !loginRequired,
-    reconnectSessionId: sessionId,
-    onMessage: handleServerMessage,
-    onStatus: (status) => {
-      setSocket(status);
-      if (status === "open") {
-        setWsConnected(true);
-        if (reconnectSessionIdRef.current) {
-          setRequestBusy(true);
-          setToolStatus(t("Restoring conversation…"));
-        }
-      } else if (status === "closed") {
-        reconnectSessionIdRef.current = sessionId || reconnectSessionIdRef.current;
-        setWsConnected(false);
-        setSessionReady(false);
-        setIsRunning(false);
-        setRequestBusy(false);
-        setApprovals([]);
-        setStreamParts([]);
-        activeToolsMapRef.current = {};
-        setToolStatus(t("Reconnecting..."));
-      } else {
-        setWsConnected(false);
-      }
-    },
-  });
-
-  wsApiRef.current = wsApi;
-
-  const beginNewSession = useCallback(() => {
-    reconnectSessionIdRef.current = null;
-    setSelectedCatalogSessionId(null);
-    setQueuedTexts([]);
-    setMessages([]);
-    setStreamParts([]);
-    setRecovery(null);
-    setRunPhaseLabel("");
-    clearStagedWorkspace();
-    if (sendMessage({ type: "new_session" })) {
-      setRequestBusy(true);
-      setRunPhaseLabel(t("Connecting…"));
-    }
-  }, [clearStagedWorkspace, sendMessage]);
-
-  const startNewSession = useCallback(() => {
-    beginNewSession();
-  }, [beginNewSession]);
-
-  const compactCurrentSession = useCallback(() => {
-    if (!sessionId || isRunning) return;
-    if (sendMessage({ type: "compact" })) {
-      // No requestBusy: the server runs compaction as a run (beginRun →
-      // settle), so the run state says busy and idle; nothing answers a
-      // compact the way session_opened answers an open, so a request flag
-      // set here was never cleared (the composer stayed "running").
-      pendingCompactRef.current = true;
-      setToolStatus("");
-      setRunPhaseLabel(t("Compacting conversation…"));
-    }
-  }, [isRunning, sendMessage, sessionId]);
-
-  const openCatalogSession = useCallback(
-    (targetSessionId: string): boolean => {
-      if (!targetSessionId || targetSessionId === sessionId) return false;
-      const summary = sessions.find((item) => item.sessionId === targetSessionId,);
-      if (summary && !summary.hasSessionFile) {
-        setToolStatus(t("Conversation cannot be opened."));
-        return false;
-      }
-      setQueuedTexts([]);
-      setSelectedCatalogSessionId(targetSessionId);
-      pendingOpenSessionIdRef.current = targetSessionId;
-      if (
-        sendMessage({
-          type: "open_session",
-          payload: { sessionId: targetSessionId },
-        })
-      ) {
-        setRequestBusy(true);
-        setToolStatus("");
-        setRunPhaseLabel(t("Opening conversation…"));
-        return true;
-      }
-      pendingOpenSessionIdRef.current = "";
-      return false;
-    },
-    [sendMessage, sessionId, sessions],
-  );
 
   useEffect(() => {
     if (
@@ -1171,220 +336,57 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => window.clearInterval(timer);
   }, [refreshSessions, sessions]);
 
-  // Background visibility (alpha.3). Switching between running Work sessions
-  // already worked, but a session that finished, failed, or stopped for an
-  // approval while you were elsewhere signalled nothing. Watch the polled list
-  // for transitions and leave a mark that survives until the session is opened.
-  useEffect(() => {
-    const previous = sessionRunStatusRef.current;
-    const next: Record<string, string> = {};
-    const raised: Record<string, SessionAlert> = {};
-    for (const session of sessions) {
-      const id = session.sessionId;
-      const now = session.runStatus ?? "idle";
-      next[id] = now;
-      const before = previous[id];
-      if (before === undefined || id === sessionId || now === before) continue;
-      const name = sessionDisplayNames[id]?.alias || t("A conversation");
-      if (before === "running" && now === "idle") {
-        raised[id] = "done";
-        notifyBackground(t("Work finished"), t("{name} finished its turn.", { name }));
-      } else if (now === "failed") {
-        raised[id] = "failed";
-        notifyBackground(t("Work stopped"), t("{name} ran into an error.", { name }));
-      } else if (now === "awaiting-approval") {
-        raised[id] = "approval";
-        notifyBackground(t("Waiting for you"), t("{name} needs your approval.", { name }));
-      }
-    }
-    sessionRunStatusRef.current = next;
-    if (Object.keys(raised).length > 0) {
-      setSessionAlerts((prev) => ({ ...prev, ...raised }));
-    }
-  }, [sessions, sessionId, sessionDisplayNames]);
-
-  // Opening a conversation is reading it.
-  useEffect(() => {
-    if (!sessionId) return;
-    setSessionAlerts((prev) => {
-      if (!(sessionId in prev)) return prev;
-      const next = { ...prev };
-      delete next[sessionId];
-      return next;
-    });
-  }, [sessionId]);
-
-  const forkCurrentSession = useCallback(
-    (purpose: "fork" | "side" | "helper" | "ab-arm", seedPrompt?: string) => {
-      if (!sessionId || isRunning) return;
-      const related = purpose === "side" || purpose === "helper";
-      const message: ClientMessage = related
-        ? { type: "create_related_session", payload: { purpose } }
-        : { type: "fork_session", payload: { purpose } };
-      // The child asks the question the user already typed, instead of opening
-      // with "what can I help with?".
-      pendingChildSeedRef.current = seedPrompt?.trim()
-        ? { text: seedPrompt.trim(), autoSend: true }
-        : null;
-      if (sendMessage(message)) {
-        setRequestBusy(true);
-        setToolStatus(
-          purpose === "helper"
-            ? t("Starting a fresh helper…")
-            : related
-              ? t("Starting a related conversation…")
-              : t("Branching conversation…"),
-        );
-      }
-    },
-    [isRunning, sendMessage, sessionId],
-  );
-
-  const openHelper = useCallback(
-    (question?: string, attachToCenter = true) => {
-      const seed = question?.trim() || null;
-      pendingHelperSeedRef.current = seed;
-      const current = sessions.find((item) => item.sessionId === sessionId);
-      const currentIsHelper =
-        current?.helper || current?.forkedFrom?.purpose === "helper";
-      const parentSessionId =
-        attachToCenter && sessionId && !currentIsHelper ? sessionId : undefined;
-      if (
-        !sendMessage({
-          type: "create_helper_session",
-          payload: parentSessionId ? { parentSessionId } : {},
-        })
-      ) {
-        pendingHelperSeedRef.current = null;
-      }
-    },
-    [sendMessage, sessionId, sessions],
-  );
-
-  // Duplicate straight from the session list — no need to open the source first.
-  // The server attaches to the copy, so the view follows it.
-  const duplicateSession = useCallback(
-    (targetSessionId: string) => {
-      if (sendMessage({
-        type: "fork_session",
-        payload: { purpose: "fork", sourceSessionId: targetSessionId },
-      })) {
-        setRequestBusy(true);
-        setToolStatus(t("Making a copy of this conversation…"));
-      }
-    },
-    [sendMessage],
-  );
-
-  const clearChildSeed = useCallback(() => setChildSeed(null), []);
-
-  const promoteRelatedSession = useCallback(
-    async (targetSessionId: string) => {
-      await promoteRelatedSessionRequest(targetSessionId);
-      await refreshSessions();
-      setActiveRelatedSessionId(null);
-      openCatalogSession(targetSessionId);
-    },
-    [openCatalogSession, refreshSessions],
-  );
-
-  const renameSelectedSession = useCallback(async (targetId: string, name: string) => {
-    const alias = normalizeSessionAlias(name);
+  const refreshWorkingFolders = useCallback(async () => {
     try {
-      await saveSessionAlias(targetId, alias);
-      setSessionDisplayNames((prev) => ({
-        ...prev,
-        [targetId]: { ...(prev[targetId] ?? { snippet: "" }), alias },
-      }));
-      setToolStatus("");
-      return true;
-    } catch (err) {
-      setToolStatus(
-        `Rename failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      return false;
+      const folders = await getWorkingFolders();
+      setProjects(folders.projects);
+      setKnownWorkspaces(folders.knownWorkspaces);
+      setGlobalFolders(folders.global);
+      setWorkingFoldersLoaded(true);
+    } catch {
+      /* hosted or endpoint unavailable */
     }
   }, []);
 
-  const performDeleteSessions = useCallback(async (
-    targetId: string,
-    wholeFamily: boolean,
-  ) => {
-    try {
-      const deletedIds = wholeFamily
-        ? await deleteSessionFamilyRequest(targetId)
-        : (await deleteSessionRequest(targetId), [targetId]);
-      if (sessionId && deletedIds.includes(sessionId)) {
-        reconnectSessionIdRef.current = null;
-        setQueuedTexts([]);
-        setMessages([]);
-        clearStagedWorkspace();
-        sendMessage({ type: "new_session" });
-      }
-      if (activeRelatedSessionId && deletedIds.includes(activeRelatedSessionId)) {
-        setActiveRelatedSessionId(null);
-      }
-      if (
-        selectedCatalogSessionId &&
-        deletedIds.includes(selectedCatalogSessionId)
-      ) {
-        setSelectedCatalogSessionId(null);
-        setSelectedSessionDetail(null);
-      }
-      await refreshSessions();
-    } catch (err) {
-      setToolStatus(
-        `Delete failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-  }, [
-    activeRelatedSessionId,
-    clearStagedWorkspace,
-    refreshSessions,
-    selectedCatalogSessionId,
-    sendMessage,
-    sessionId,
-    setActiveRelatedSessionId,
-  ]);
-
-  const deleteSelectedSession = useCallback((sessionId?: string) => {
-    const targetId = sessionId ?? selectedSessionDetail?.session?.sessionId;
-    if (!targetId) return;
-    void performDeleteSessions(targetId, false);
-  }, [performDeleteSessions, selectedSessionDetail],);
-
-  const deleteSessionFamily = useCallback((targetId: string) => {
-    void performDeleteSessions(targetId, true);
-  }, [performDeleteSessions]);
-
-  const startPrompt = useCallback(
-    (text: string, attachmentPaths: string[]) => {
-      const outgoing = buildOutgoingPrompt(text.trim(), attachmentPaths);
-      if (!outgoing) return false;
-      const attachments = attachmentPaths.length ? attachmentPaths : undefined;
-      if (isRunning) {
-        // Pi owns the queue (card 11): the text steers the running turn and
-        // its bubble appears when Pi starts a user turn with it (queued-user
-        // message_start → user_steered).
-        return sendMessage({
-          type: "prompt",
-          payload: outgoing,
-          attachments,
-          deliverAs: "steer",
-        });
-      }
-      if (!sendMessage({ type: "prompt", payload: outgoing, attachments })) {
-        return false;
-      }
-      engine.beginLocalPrompt(outgoing);
-      setStreamParts([]);
-      setToolStatus("");
-      setRunPhaseLabel(t("Connecting…"));
-      return true;
+  const addKnownWorkspace = useCallback(
+    async (path: string) => {
+      await addWorkspaceRequest(path);
+      await refreshWorkingFolders();
     },
-    [isRunning, sendMessage],
+    [refreshWorkingFolders],
   );
-  startPromptRef.current = startPrompt;
+
+  const removeKnownWorkspace = useCallback(
+    async (path: string) => {
+      await removeWorkspaceRequest(path);
+      await refreshWorkingFolders();
+    },
+    [refreshWorkingFolders],
+  );
+
+  const repointSession = useCallback(
+    async (targetSessionId: string, primaryDir: string | null) => {
+      await setSessionWorkspaceRequest(targetSessionId, primaryDir);
+      void refreshSessions();
+    },
+    [refreshSessions],
+  );
+
+  /** Change a project's main folder (v1.5.1); returns how many conversations moved. */
+  const repointProject = useCallback(
+    async (projectId: string, primaryDir: string) => {
+      const result = await setProjectMainFolderRequest(projectId, primaryDir);
+      await refreshWorkingFolders();
+      void refreshSessions();
+      return result.movedCount;
+    },
+    [refreshSessions, refreshWorkingFolders],
+  );
+
+  useEffect(() => {
+    if (appMode !== "local") return;
+    void refreshWorkingFolders();
+  }, [appMode, refreshWorkingFolders]);
 
   // --- Situational preset buttons (v1.4 round 1 experiment) ---
   // ponytail: config in localStorage, active state in memory only — promote
@@ -1422,108 +424,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
     invoke: string | null;
     texts: string[];
   }>({ sessionId: null, invoke: null, texts: [] });
-  const notePresetTurn = useCallback(
-    (forSessionId: string | null) => {
-      setPresetState((current) => {
-        if (!current || current.locked) return current;
-        if (!forSessionId || current.sessionId !== forSessionId) return current;
-        const turnsLeft = current.turnsLeft - 1;
-        return turnsLeft <= 0 ? null : { ...current, turnsLeft };
-      });
-    },
-    [],
-  );
 
-  const sendPrompt = useCallback(
-    (text: string) => {
-      // A pending preset applies only to the conversation it was armed in
-      // (opus B2); a leftover from another conversation is dropped.
-      const pending =
-        pendingPresetRef.current.sessionId === sessionId
-          ? pendingPresetRef.current
-          : null;
-      let trimmed = text.trim();
-      const attachments = [...stagedWorkspacePaths];
-      if (!trimmed && attachments.length === 0) return false;
-      // Merge AFTER the empty-guard, and also for attachment-only sends
-      // (opus B4: the announcement must never be silently discarded while
-      // the button still claims to be active).
-      if (pending?.texts.length) {
-        trimmed = [...pending.texts, trimmed].filter(Boolean).join("\n\n");
-      }
-      const consumePending = () => {
-        if (!pending) return;
-        pending.sessionId = null;
-        pending.invoke = null;
-        pending.texts = [];
-      };
-      // ponytail: a message sent during a run can't ride the /skill: invoke
-      // path, so an armed press degrades to the wrapper text (which names the
-      // skill); the skill body loads on a later idle press if it matters.
-      if (pending?.invoke && attachments.length === 0 && !isRunning) {
-        if (!invokeSkillRef.current?.(pending.invoke, trimmed)) return false;
-        consumePending();
-        clearStagedWorkspace();
-        notePresetTurn(sessionId);
-        return true;
-      }
-      // ponytail: with attachments the wrapper text rides along but the
-      // /skill: invoke is skipped (invoke_skill carries no attachments) —
-      // the wrapper names the skill, same degrade as the queue path.
-      if (!startPrompt(trimmed, attachments)) return false;
-      consumePending();
-      clearStagedWorkspace();
-      notePresetTurn(sessionId);
-      return true;
-    },
-    [
-      clearStagedWorkspace,
-      isRunning,
-      notePresetTurn,
-      sessionId,
-      stagedWorkspacePaths,
-      startPrompt,
-    ],
-  );
+  const pendingPreset = useCallback((sessionId: string | null) => {
+    const pending = pendingPresetRef.current;
+    return pending.sessionId === sessionId && (pending.invoke || pending.texts.length)
+      ? { invoke: pending.invoke, texts: [...pending.texts] }
+      : null;
+  }, []);
 
-  /**
-   * Card 11 follow-up: edit and delete on a queued card both retract. The card
-   * goes either way — `not_found` means Pi handed the text to the model
-   * between the mirror and the click, and no `queue_updated` will drop it.
-   * The retracted text and its staged paths come back for the editor.
-   */
-  const retractQueued = useCallback(
-    async (text: string) => {
-      if (!sessionId) return null;
-      const retracted = await retractQueuedText(sessionId, text);
-      engine.dropQueuedText(text);
-      return retracted;
-    },
-    [sessionId],
-  );
-
-  const abortRun = useCallback(() => {
-    if (sendMessage({ type: "abort" })) {
-      setToolStatus("");
-      setRunPhaseLabel(runPhaseLabels().stopping);
+  const presetSent = useCallback((forSessionId: string | null) => {
+    const pending = pendingPresetRef.current;
+    if (pending.sessionId === forSessionId) {
+      pending.sessionId = null;
+      pending.invoke = null;
+      pending.texts = [];
     }
-  }, [sendMessage]);
+    setPresetState((current) => {
+      if (!current || current.locked) return current;
+      if (!forSessionId || current.sessionId !== forSessionId) return current;
+      const turnsLeft = current.turnsLeft - 1;
+      return turnsLeft <= 0 ? null : { ...current, turnsLeft };
+    });
+  }, []);
 
-  // Interrupt-and-send (pre-1.5 behavior restored): the outcome arrives as
-  // events — the stopped run's failure, the new run, the re-queued cards.
-  const sendQueuedNow = useCallback(
-    (text: string) => {
-      sendMessage({ type: "send_queued_now", payload: { text } });
-    },
-    [sendMessage],
-  );
-
-  const invokeSkillRef = useRef<
-    ((skillName: string, userText?: string) => boolean) | null
-  >(null);
   const pressPreset = useCallback(
-    (name: string) => {
-      if (!sessionId) return;
+    (sessionId: string, name: string) => {
       const ordinal = presetButtons.indexOf(name) + 1;
       if (ordinal === 0) return;
       const active =
@@ -1585,311 +510,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       setPresetState(null);
     },
-    [sessionId, presetButtons, presetState],
-  );
-
-  const invokeSkill = useCallback(
-    (skillName: string, userText?: string) => {
-      if (!skillName || isRunning) return false;
-      const payload = {
-        skillName,
-        ...(userText?.trim() ? { userText: userText.trim() } : {}),
-      };
-      if (!sendMessage({ type: "invoke_skill", payload })) return false;
-      engine.beginLocalPrompt(userText?.trim() || t("Invoke {skillName}", { skillName }));
-      setToolStatus("");
-      setRunPhaseLabel(t("Connecting…"));
-      return true;
-    },
-    [isRunning, sendMessage],
-  );
-  invokeSkillRef.current = invokeSkill;
-
-  const branchRevision = useCallback(
-    (text: string, entryId?: string) => {
-      const trimmed = text.trim();
-      if (!trimmed || isRunning || !sessionId) return false;
-      if (
-        !sendMessage({
-          type: "branch_revision",
-          payload: entryId
-            ? { text: trimmed, entryId }
-            : { text: trimmed },
-        })
-      )
-        return false;
-      // This conversation keeps running its own life — the branch opens in
-      // the right Related panel on `branch_created`.
-      setRecovery(null);
-      setComposerNoticeTimed({
-        text: entryId
-          ? t("Same question, fresh answer. What repeats is probably solid; what changes was a choice.")
-          : t("Both takes are kept — the branch is in Related conversations on the right."),
-      });
-      return true;
-    },
-    [isRunning, sendMessage, sessionId, setComposerNoticeTimed],
-  );
-
-  const prepareBranchRevision = useCallback(
-    (text: string, entryId: string) => {
-      const trimmed = text.trim();
-      if (!trimmed || !entryId || isRunning || !sessionId) return false;
-      pendingChildSeedRef.current = { text: trimmed, autoSend: false };
-      if (!sendMessage({ type: "prepare_branch_revision", payload: { entryId } })) {
-        pendingChildSeedRef.current = null;
-        return false;
-      }
-      setRequestBusy(true);
-      setToolStatus(t("Preparing comparison…"));
-      return true;
-    },
-    [isRunning, sendMessage, sessionId],
-  );
-
-  const retryLatest = useCallback(() => {
-    if (isRunning || !sessionId || !sendMessage({ type: "retry_latest" })) {
-      return false;
-    }
-    engine.beginLocalRun();
-    setToolStatus("");
-    setRunPhaseLabel(t("Connecting…"));
-    return true;
-  }, [isRunning, sendMessage, sessionId]);
-
-  const continueLatest = useCallback(() => {
-    if (isRunning || !sessionId || !sendMessage({ type: "continue_latest" })) {
-      return false;
-    }
-    engine.beginLocalRun();
-    setToolStatus("");
-    setRunPhaseLabel(t("Connecting…"));
-    return true;
-  }, [isRunning, sendMessage, sessionId]);
-
-  const reviseLatestInPlace = useCallback(
-    (text: string, entryId: string) => {
-      const trimmed = text.trim();
-      if (
-        !trimmed ||
-        isRunning ||
-        !sessionId ||
-        !sendMessage({
-          type: "revise_latest",
-          payload: { text: trimmed, entryId },
-        })
-      ) {
-        return false;
-      }
-      engine.beginLocalRun();
-      setToolStatus("");
-      setRunPhaseLabel(t("Connecting…"));
-      return true;
-    },
-    [isRunning, sendMessage, sessionId],
-  );
-
-  const setDraftWorkspace = useCallback(
-    (primaryDir: string | null) => {
-      if (sendMessage({ type: "set_draft_workspace", payload: { primaryDir } })) {
-        // Sticky choice for the NEXT conversation; server echoes only in
-        // draft state, so track it optimistically here.
-        setWorkspacePrimaryDir(primaryDir);
-      }
-    },
-    [sendMessage],
-  );
-
-  const refreshWorkingFolders = useCallback(async () => {
-    try {
-      const folders = await getWorkingFolders();
-      setProjects(folders.projects);
-      setKnownWorkspaces(folders.knownWorkspaces);
-      setGlobalFolders(folders.global);
-      setWorkingFoldersLoaded(true);
-    } catch {
-      /* hosted or endpoint unavailable */
-    }
-  }, []);
-
-  const addKnownWorkspace = useCallback(
-    async (path: string) => {
-      await addWorkspaceRequest(path);
-      await refreshWorkingFolders();
-    },
-    [refreshWorkingFolders],
-  );
-
-  const removeKnownWorkspace = useCallback(
-    async (path: string) => {
-      await removeWorkspaceRequest(path);
-      await refreshWorkingFolders();
-    },
-    [refreshWorkingFolders],
-  );
-
-  const repointSession = useCallback(
-    async (targetSessionId: string, primaryDir: string | null) => {
-      await setSessionWorkspaceRequest(targetSessionId, primaryDir);
-      // The server reopened the session against the new folder; the attached
-      // conversation's local state must follow or the file tree and folder
-      // indicator keep showing the old workspace until a manual reopen.
-      if (targetSessionId === sessionId) {
-        setWorkspacePrimaryDir(primaryDir);
-      }
-      void refreshSessions();
-    },
-    [refreshSessions, sessionId],
-  );
-
-  /** Change a project's main folder (v1.5.1); returns how many conversations moved. */
-  const repointProject = useCallback(
-    async (
-      projectId: string,
-      primaryDir: string,
-      previousPrimaryDir?: string,
-    ) => {
-      const result = await setProjectMainFolderRequest(projectId, primaryDir);
-      // The attached conversation moves with its project: follow it locally
-      // like the per-conversation move does, or the folder indicator keeps
-      // showing the old workspace until the next reopen.
-      if (
-        sessionId &&
-        previousPrimaryDir &&
-        (workspacePrimaryDir ?? "") === previousPrimaryDir
-      ) {
-        setWorkspacePrimaryDir(primaryDir);
-      }
-      await refreshWorkingFolders();
-      void refreshSessions();
-      return result.movedCount;
-    },
-    [refreshSessions, refreshWorkingFolders, sessionId, workspacePrimaryDir],
-  );
-
-  useEffect(() => {
-    if (appMode !== "local") return;
-    void refreshWorkingFolders();
-  }, [appMode, refreshWorkingFolders]);
-
-  const switchKb = useCallback(
-    (domain: string) => {
-      if (!domain) return;
-      if (sendMessage({ type: "switch_kb", payload: { domain } })) {
-        setSelectors((prev) => ({ ...prev, currentDomain: domain }));
-      }
-    },
-    [sendMessage],
-  );
-
-  const switchRolePreset = useCallback(
-    (rolePresetSlug: string | null) => {
-      if (
-        requestAssetSwitch(
-          { type: "switch_role_preset", payload: { rolePresetSlug } },
-          "Switching role preset...",
-        )
-      ) {
-        setSelectors((prev) => ({ ...prev, rolePresetSlug }));
-      }
-    },
-    [requestAssetSwitch],
-  );
-
-  const switchVisibility = useCallback(
-    (visibility: SessionVisibility) => {
-      if (
-        sendMessage({ type: "switch_visibility", payload: { visibility } })
-      ) {
-        setSelectors((prev) => ({ ...prev, visibility }));
-        // Hosted "private" is the one value that really deletes — say so, and
-        // say when. Local markers change nothing about what is kept.
-        if (visibility === "private") {
-          setComposerNoticeTimed({
-            prefix: "eject",
-            text: t("Private conversations and their files are deleted 7 days after you last use them. Download anything you want to keep."),
-          });
-        } else if (visibility === "no-export") {
-          setComposerNoticeTimed({
-            prefix: "bookmark",
-            text: t("Marked as not for export. Nothing is deleted or sent anywhere — this only affects what a future export includes."),
-          });
-        }
-      }
-    },
-    [sendMessage, setComposerNoticeTimed],
-  );
-
-  const switchMode = useCallback(
-    (mode: AltMode) => {
-      if (sendMessage({ type: "switch_mode", payload: { mode } })) {
-        setSessionMode(mode);
-      }
-    },
-    [sendMessage],
-  );
-
-  const setFullAccess = useCallback(
-    (enabled: boolean) => {
-      // No optimistic write: the server echoes a session_updated snapshot on
-      // success, and a rejected request (busy/mode) must leave the UI truth on.
-      void sendMessage({ type: "set_full_access", payload: { enabled } });
-    },
-    [sendMessage],
-  );
-
-  const setSessionModel = useCallback(
-    (override: SessionModelOverride | null) => {
-      if (sendMessage({ type: "set_session_model", payload: { override } })) {
-        setModelOverride(override);
-      }
-    },
-    [sendMessage],
-  );
-
-  const setStudyTag = useCallback(
-    (tag: StudyTag | null) => {
-      if (sendMessage({ type: "set_study_tag", payload: { studyTag: tag } })) {
-        setStudyTagState(tag);
-        if (sessionId) void refreshSessions();
-      }
-    },
-    [refreshSessions, sendMessage, sessionId],
-  );
-
-  const respondApproval = useCallback(
-    (
-      approvalId: string,
-      response: { accept?: boolean; choice?: string | null; text?: string | null; },
-    ) => {
-      sendMessage({ type: "respond_approval", payload: { approvalId, ...response }, });
-    },
-    [sendMessage],
-  );
-
-  const addApprovalMarker = useCallback((text: string) => {
-    setApprovalMarkers((prev) =>prev.includes(text) ? prev : [...prev, text],);
-  }, []);
-
-  const requestMetadata = useCallback(() => {
-    sendMessage({ type: "get_session_metadata" });
-  }, [sendMessage]);
-
-  const requestMetrics = useCallback(() => {
-    sendMessage({ type: "get_session_metrics" });
-  }, [sendMessage]);
-
-  const runState = useMemo(
-    () =>
-      runStateView({
-        socket,
-        running: isRunning,
-        busy: requestBusy,
-        phaseLabel: runPhaseLabel,
-        toolStatus,
-        pending: pendingChanges,
-      }),
-    [socket, isRunning, requestBusy, runPhaseLabel, toolStatus, pendingChanges],
+    [presetButtons, presetState],
   );
 
   const value = useMemo<AppContextValue>(
@@ -1898,6 +519,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       appMode,
       runtimeMode,
       loginRequired,
+      requireLogin,
       loading,
       authError,
       login,
@@ -1910,102 +532,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
       localConfig,
       refreshLocalConfig,
       sessions,
-      selectedCatalogSessionId,
-      selectedSessionDetail,
       sessionDisplayNames,
+      setSessionDisplayName,
       sessionsLoading,
       sessionsError,
       refreshSessions,
-      openCatalogSession,
-      forkCurrentSession,
-      openHelper,
-      duplicateSession,
-      sessionAlerts,
       activeRelatedSessionId,
       relatedPaneSize,
       setActiveRelatedSessionId,
-      childSeed,
-      clearChildSeed,
-      promoteRelatedSession,
-      renameSelectedSession,
-      deleteSelectedSession,
-      deleteSessionFamily,
-      sessionId,
-      sessionReady,
-      sessionWarnings,
-      isRunning: runState.phase === "running",
-      runState,
-      wsConnected,
-      selectors,
-      switchKb,
-      switchRolePreset,
-      switchVisibility,
-      presetButtons,
-      setPresetButtons,
-      presetState,
-      pressPreset,
-      sessionMode,
-      fullAccess,
-      setFullAccess,
-      workspacePrimaryDir,
       knownWorkspaces,
       projects,
       globalFolders,
       workingFoldersLoaded,
       refreshWorkingFolders,
-      setDraftWorkspace,
       addKnownWorkspace,
       removeKnownWorkspace,
       repointSession,
       repointProject,
-      switchMode,
-      modelOverride,
-      pendingChanges,
-      thinking,
-      currentSessionModel,
-      setSessionModel,
-      studyTag,
-      retentionDueAt,
-      setStudyTag,
-      messages,
-      toolStatus,
-      composerNotice,
-      runHint,
-      recovery,
-      stagedWorkspacePaths,
-      stageWorkspacePath,
-      unstageWorkspacePaths,
-      runSettledCount,
+      presetButtons,
+      setPresetButtons,
+      presetState,
+      pressPreset,
+      pendingPreset,
+      presetSent,
       requestConfirm,
-      approvals,
-      respondApproval,
-      approvalMarkers,
-      addApprovalMarker,
-      manifest,
-      metrics,
-      startNewSession,
-      compactCurrentSession,
-      sendPrompt,
-      queuedTexts,
-      retractQueued,
-      sendQueuedNow,
-      restoredDraft,
-      clearRestoredDraft,
-      abortRun,
-      continueLatest,
-      invokeSkill,
-      branchRevision,
-      reviseLatestInPlace,
-      prepareBranchRevision,
-      retryLatest,
-      requestMetadata,
-      requestMetrics,
     }),
     [
       auth,
       appMode,
       runtimeMode,
       loginRequired,
+      requireLogin,
       loading,
       authError,
       login,
@@ -2018,102 +575,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
       localConfig,
       refreshLocalConfig,
       sessions,
-      selectedCatalogSessionId,
-      selectedSessionDetail,
       sessionDisplayNames,
+      setSessionDisplayName,
       sessionsLoading,
       sessionsError,
       refreshSessions,
-      openCatalogSession,
-      forkCurrentSession,
-      openHelper,
-      duplicateSession,
-      sessionAlerts,
       activeRelatedSessionId,
       relatedPaneSize,
       setActiveRelatedSessionId,
-      childSeed,
-      clearChildSeed,
-      promoteRelatedSession,
-      renameSelectedSession,
-      deleteSelectedSession,
-      deleteSessionFamily,
-      sessionId,
-      sessionReady,
-      sessionWarnings,
-      isRunning,
-      runState,
-      wsConnected,
-      selectors,
-      switchKb,
-      switchRolePreset,
-      switchVisibility,
-      presetButtons,
-      setPresetButtons,
-      presetState,
-      pressPreset,
-      sessionMode,
-      fullAccess,
-      setFullAccess,
-      workspacePrimaryDir,
       knownWorkspaces,
       projects,
       globalFolders,
       workingFoldersLoaded,
       refreshWorkingFolders,
-      setDraftWorkspace,
       addKnownWorkspace,
       removeKnownWorkspace,
       repointSession,
       repointProject,
-      switchMode,
-      modelOverride,
-      pendingChanges,
-      thinking,
-      currentSessionModel,
-      setSessionModel,
-      studyTag,
-      retentionDueAt,
-      setStudyTag,
-      messages,
-      toolStatus,
-      composerNotice,
-      runHint,
-      recovery,
-      stagedWorkspacePaths,
-      stageWorkspacePath,
-      unstageWorkspacePaths,
-      runSettledCount,
+      presetButtons,
+      setPresetButtons,
+      presetState,
+      pressPreset,
+      pendingPreset,
+      presetSent,
       requestConfirm,
-      approvals,
-      respondApproval,
-      approvalMarkers,
-      addApprovalMarker,
-      manifest,
-      metrics,
-      startNewSession,
-      compactCurrentSession,
-      sendPrompt,
-      queuedTexts,
-      retractQueued,
-      sendQueuedNow,
-      restoredDraft,
-      clearRestoredDraft,
-      abortRun,
-      continueLatest,
-      invokeSkill,
-      branchRevision,
-      reviseLatestInPlace,
-      prepareBranchRevision,
-      retryLatest,
-      requestMetadata,
-      requestMetrics,
     ],
   );
 
   return (
     <AppContext.Provider value={value}>
-      <StreamContext.Provider value={streamParts}>
       {children}
       <ConfirmDialog
         open={Boolean(confirmRequest)}
@@ -2128,13 +618,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }}
         onCancel={() => setConfirmRequest(null)}
       />
-      </StreamContext.Provider>
     </AppContext.Provider>
   );
-}
-
-export function useStreamParts(): StreamPart[] {
-  return useContext(StreamContext);
 }
 
 export function useApp(): AppContextValue {

@@ -1,4 +1,4 @@
-import { useApp } from "@/context/AppProvider";
+import { useConversationContext } from "@/context/ConversationContext";
 import { t } from "@/i18n";
 
 /**
@@ -10,7 +10,7 @@ import { t } from "@/i18n";
  * answered is "how much room is left", not "how many tokens".
  */
 export function ContextRing() {
-  const metrics = useApp().metrics;
+  const { metrics } = useConversationContext();
   const usage = metrics?.contextUsage;
   if (!metrics) return null;
   // Unknown is a state, not an absence: right after a compaction the fill is

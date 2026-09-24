@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { useConversationContext } from "@/context/ConversationContext";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
 import { t } from "@/i18n";
@@ -9,25 +10,25 @@ import { Comparison } from "@/components/shell/Comparison";
 import { ApprovalNotice } from "@/components/shell/ApprovalNotice";
 
 export function ConversationPanel() {
-  const app = useApp();
+  const conv = useConversationContext();
   const shell = useShell();
-  const live = Boolean(app.sessionId);
+  const live = Boolean(conv.sessionId);
 
   // Draft mode must reach the server before the first prompt materializes.
   // Reopened conversations bypass this path and retain their persisted mode.
   useEffect(() => {
     if (
-      !app.sessionId &&
-      app.sessionReady &&
-      app.sessionMode !== shell.newMode
+      !conv.sessionId &&
+      conv.sessionReady &&
+      conv.sessionMode !== shell.newMode
     ) {
-      app.switchMode(shell.newMode);
+      conv.switchMode(shell.newMode);
     }
   }, [
-    app.sessionId,
-    app.sessionMode,
-    app.sessionReady,
-    app.switchMode,
+    conv.sessionId,
+    conv.sessionMode,
+    conv.sessionReady,
+    conv.switchMode,
     shell.newMode,
   ]);
 

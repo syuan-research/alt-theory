@@ -1,102 +1,97 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ServerMessage, SessionSnapshot } from "@/api/types";
-import {
-  promoteToMainline as promoteToMainlineRequest,
-  retractQueuedText,
-} from "@/api/sessions";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { ServerMessage } from "@/api/types";
+import { promoteToMainline as promoteToMainlineRequest } from "@/api/sessions";
 import { useApp } from "@/context/AppProvider";
-import { useWebSocket, type WsConnStatus } from "@/hooks/useWebSocket";
-import { useConversationEngine } from "@/hooks/useConversationEngine";
+import { ConversationScope, useConversationContext, useTurnParts } from "@/context/ConversationContext";
+import { useMainView } from "@/context/MainView";
+import { useConversation } from "@/hooks/useConversation";
 import { useStickToBottom } from "@/hooks/useStickToBottom";
 import { useFindTarget } from "@/lib/find";
 import { appendDraft } from "@/lib/draft";
-import { failureText } from "@/lib/failure";
-import { runPhaseLabels, runStateView } from "@/lib/runState";
+import { runPhaseLabels } from "@/lib/runState";
 import { canTakeMainline, isListMember } from "@/lib/sessionList";
 import { t } from "@/i18n";
 import { ApprovalDock } from "@/components/conversation/ApprovalDock";
 import { SettledMessages, StreamPartsView } from "@/components/conversation/MessageList";
 import { ModelChip } from "@/components/conversation/ModelChip";
+import { QueuedCards } from "@/components/conversation/QueuedCards";
+import { ContinueButton, NoticeLine, RunStatusSlot } from "@/components/conversation/RunNotes";
+import { SlashPalette, useSlashCommands, useSlashPalette } from "@/components/conversation/SlashPalette";
 import { PendingMark } from "@/components/ui/PendingMark";
 
 /**
  * A conversation other than the one in the center: a branch shown beside it for
- * comparison, a BTW/Helper side chat, or a subagent. Same bubbles, same
- * composer, same send button as the main conversation — only the width and the
- * header line differ. Per-message branching stays with the center conversation;
- * open this one from the list if you want to branch off it.
+ * comparison, a BTW/Helper side chat, or a subagent. Same conversation module,
+ * same bubbles and shared composer pieces as the main conversation — only the
+ * width and the header line differ. Per-message branching stays with the
+ * center conversation; open this one from the list if you want to branch off it.
  */
 export function ChildConversation({
   sessionId,
-  variant = "panel",
   onClose,
 }: {
   sessionId: string;
-  /** @deprecated Only "panel" remains; center compare pane was removed (A/B uses Comparison/ArmSplit). */
-  variant?: "panel" | "compare";
   onClose: () => void;
 }) {
   const app = useApp();
-  const [draft, setDraft] = useState("");
-  const [error, setError] = useState("");
-  // This pane's own socket state, set only by the socket; info notices ride
-  // as the idle label. The header label is runStateView's (rule 3).
-  const [socketStatus, setSocketStatus] = useState<WsConnStatus>("connecting");
-  const [notice, setNotice] = useState("");
-  const connected = socketStatus === "open";
-  const [snapshot, setSnapshot] = useState<SessionSnapshot | null>(null);
-  const [menu, setMenu] = useState<"role" | "model" | null>(null);
-  const [slashIndex, setSlashIndex] = useState(0);
-  const [slashDismissed, setSlashDismissed] = useState(false);
-  const ctxLineRef = useRef<HTMLDivElement>(null);
-  const developer = app.transcriptView === "developer";
-
-  const startPromptRef = useRef<(text: string, attachments: string[]) => boolean>(() => false);
-
-  // Same recall as the main composer: edit puts the text back in the editor,
-  // delete drops it; the card goes even when Pi already sent it. This pane's
-  // editor stages no attachments, so retracted paths are dropped here.
-  const recallQueued = async (text: string, toEditor: boolean) => {
-    const retracted = await retractQueuedText(sessionId, text);
-    engine.dropQueuedText(text);
-    if (toEditor && retracted !== null) {
-      setDraft((current) => appendDraft(current, retracted.text));
-    }
-  };
-
-  // The same per-conversation state transitions as the center pane.
-  const engine = useConversationEngine({
-    onRunCompleted: (payload) => {
-      setSnapshot(payload);
-      setNotice("");
-      void engine.refreshTranscript(sessionId);
-      void app.refreshSessions();
-    },
-    onRunFailed: ({ failure, snapshot }) => {
-      void engine.refreshTranscript(sessionId);
-      const interrupted = snapshot.recovery?.outcome === "interrupted";
-      if (!interrupted) setError(failureText(failure));
-    },
-    onQueueRestored: (payload) => {
-      setDraft((current) =>
-        [payload.restored?.join("\n") ?? "", current].filter((part) => part.trim()).join("\n"),
-      );
+  const { conversation, parts } = useConversation({
+    sessionId,
+    enabled: true,
+    onMessage: (message: ServerMessage) => {
+      switch (message.type) {
+        case "branch_created":
+          app.setActiveRelatedSessionId(message.payload.sessionId, { size: "half" });
+          void app.refreshSessions();
+          break;
+        case "related_session_created":
+          // A subagent spawned from this pane never opens the rail; its
+          // Related row is the feedback. btw/helper keep taking over.
+          if (message.payload.purpose !== "subagent") {
+            app.setActiveRelatedSessionId(message.payload.sessionId, { size: "default" });
+          }
+          void app.refreshSessions();
+          break;
+        case "run_completed":
+          void app.refreshSessions();
+          break;
+        default:
+          break;
+      }
     },
   });
-  const { messages, streamParts, running, queuedTexts: queued, recovery } = engine;
+  return (
+    <ConversationScope conversation={conversation} parts={parts}>
+      <ChildPane sessionId={sessionId} onClose={onClose} />
+    </ConversationScope>
+  );
+}
+
+function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => void }) {
+  const app = useApp();
+  const main = useMainView();
+  const conversation = useConversationContext();
+  const parts = useTurnParts();
+  const [draft, setDraft] = useState("");
+  const [menu, setMenu] = useState<"role" | "model" | null>(null);
+  const ctxLineRef = useRef<HTMLDivElement>(null);
+  const developer = app.transcriptView === "developer";
+  const { messages, isRunning: running } = conversation;
   // A role chosen mid-run renders as the chosen value plus the pending mark
   // (same rule as the main composer).
-  const pendingChildRole = snapshot?.pending?.rolePresetSlug;
-  const childRoleSlug =
-    pendingChildRole !== undefined ? pendingChildRole : (snapshot?.rolePresetSlug ?? null);
-  const approvals = app.approvals.filter(
-    (request) => request.sessionId === sessionId,
-  );
-  const { containerRef: messagesRef, onScroll } = useStickToBottom([
-    messages,
-    streamParts,
-  ]);
+  const childRoleSlug = conversation.selectors.rolePresetSlug;
+  const pendingChildRole = conversation.pendingChanges.rolePresetSlug !== undefined;
+  const approval = conversation.approvals.find((request) => request.sessionId === sessionId);
+  const { containerRef: messagesRef, onScroll } = useStickToBottom([messages, parts]);
   useFindTarget(messagesRef, {});
+
+  // Text handed back (Stop's unsent queue, a refused or lost send) joins
+  // what is typed.
+  const returned = conversation.returned;
+  useEffect(() => {
+    if (!returned) return;
+    setDraft((current) => [returned.text, current].filter((part) => part.trim()).join("\n"));
+    conversation.takeReturned(returned.id);
+  }, [conversation, returned]);
 
   // Role/model menus close on any click outside the context line (same
   // pattern as the main Composer).
@@ -130,138 +125,45 @@ export function ChildConversation({
         ? t("Make this the main conversation")
         : t("Make this the main conversation again")
       : null;
-
-  const onMessage = useCallback(
-    (message: ServerMessage) => {
-      if (engine.handleMessage(message)) return;
-      switch (message.type) {
-        case "session_opened":
-        case "session_updated":
-          setSnapshot(message.payload);
-          engine.applySnapshot(message.payload);
-          break;
-        case "branch_created":
-          app.setActiveRelatedSessionId(message.payload.sessionId, { size: "half" });
-          void app.refreshSessions();
-          break;
-        case "related_session_created":
-          // A subagent spawned from this pane never opens the rail; its
-          // Related row is the feedback. btw/helper keep taking over as before.
-          if (message.payload.purpose !== "subagent") {
-            app.setActiveRelatedSessionId(message.payload.sessionId, { size: "default" });
-          }
-          void app.refreshSessions();
-          break;
-        case "extension_notice":
-          if (message.payload.level === "info") {
-            setNotice(message.payload.message);
-            setError("");
-          } else {
-            setError(message.payload.message);
-          }
-          break;
-        case "error":
-          // A refused request is not a run outcome (card 2).
-          setError(failureText(message.payload.failure));
-          break;
-        default:
-          break;
-      }
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [app, engine.handleMessage, engine.applySnapshot],
-  );
-
-  const socket = useWebSocket({
-    enabled: true,
-    reconnectSessionId: sessionId,
-    onMessage,
-    onStatus: setSocketStatus,
-  });
+  const reportError = (reason: unknown) =>
+    conversation.notify({
+      kind: "text",
+      text: reason instanceof Error ? reason.message : String(reason),
+      icon: "warning",
+      warn: true,
+    });
 
   // A Helper/BTW opened with a question already typed asks it straight away
   // instead of greeting the user with "what can I help with?".
-  const seed = app.childSeed;
+  const seed = main.childSeed;
   const seedSentRef = useRef(false);
   useEffect(() => {
     if (!seed || seed.sessionId !== sessionId || seedSentRef.current) return;
-    if (!connected) return;
-    if (!seed.autoSend) {
-      seedSentRef.current = true;
-      setDraft(seed.text);
-      app.clearChildSeed();
-      return;
-    }
-    if (startPromptRef.current(seed.text, [])) {
-      seedSentRef.current = true;
-      app.clearChildSeed();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [app, connected, seed, sessionId, socket]);
+    if (!conversation.sessionReady) return;
+    seedSentRef.current = true;
+    main.clearChildSeed();
+    if (seed.autoSend) conversation.prompt(seed.text);
+    else setDraft(seed.text);
+  }, [conversation, main, seed, sessionId]);
 
-  // Direct send (idle only — the queue flush also lands here).
-  startPromptRef.current = (text: string) => {
-    if (!socket.send({ type: "prompt", payload: text })) return false;
-    engine.beginLocalPrompt(text);
-    return true;
-  };
-
-  // A message during a run joins Pi's steer queue (card 11): delivered at
-  // the next API call, shown as a bubble when Pi hands it to the model.
   const send = () => {
     const text = draft.trim();
-    if (!text) return;
-    if (running) {
-      if (socket.send({ type: "prompt", payload: text, deliverAs: "steer" })) {
-        setDraft("");
-        setError("");
-      }
-      return;
-    }
-    if (startPromptRef.current(text, [])) {
-      setDraft("");
-      setError("");
-    }
+    // While a turn runs the text joins Pi's steer queue (card 11): delivered
+    // at the next API call, a bubble when Pi hands it to the model.
+    if (text && conversation.prompt(text)) setDraft("");
   };
 
-
-  const slashCommands = useMemo(() => [
-    { name: "helper", description: t("Ask how Alt works, or get setup fixed — in a fresh Helper conversation"), run: () => app.openHelper(undefined, true), immediate: true },
-    { name: "branch", description: t("Branch this conversation into a new direction"), run: () => socket.send({ type: "fork_session", payload: { purpose: "fork" } }), immediate: true },
-    { name: "btw", description: t("Start a side conversation without adding it to the list"), run: () => socket.send({ type: "create_related_session", payload: { purpose: "side" } }), immediate: true },
-    { name: "compact", description: t("Compact this conversation to free context space"), run: () => socket.send({ type: "compact" }), immediate: true },
-    { name: "new", description: t("Start a new conversation"), run: () => app.startNewSession(), immediate: true },
-    ...(app.discovery?.skills ?? []).filter((skill) => skill.enabled?.[snapshot?.mode ?? "understand"] !== false).map((skill) => ({
-      name: skill.name,
-      description: skill.description || t("Alt Theory skill"),
-      run: (args: string) => socket.send({ type: "invoke_skill", payload: { skillName: skill.name, ...(args.trim() ? { userText: args.trim() } : {}) } }),
-      immediate: false,
-    })),
-  ], [app, socket]);
-  const slashQuery = draft.startsWith("/") && !draft.startsWith("//") ? draft.slice(1) : null;
-  const slashMatches = useMemo(() => {
-    if (slashQuery === null) return [];
-    const token = slashQuery.split(/\s+/, 1)[0].toLowerCase();
-    return slashCommands.filter((command) => command.name.toLowerCase().startsWith(token));
-  }, [slashCommands, slashQuery]);
-  const slashOpen = !slashDismissed && slashMatches.length > 0;
-  useEffect(() => setSlashIndex(0), [slashMatches.length]);
-  const runSlash = (command: (typeof slashCommands)[number]) => {
-    const args = slashQuery?.split(/\s+/).slice(1).join(" ") ?? "";
-    if (!command.immediate && !args.trim()) {
-      setDraft(`/${command.name} `);
-      return;
-    }
-    setDraft("");
-    command.run(args);
-  };
-
-  const respondApproval = (
-    approvalId: string,
-    response: { accept?: boolean; choice?: string | null; text?: string | null },
-  ) => {
-    socket.send({ type: "respond_approval", payload: { approvalId, ...response } });
-  };
+  const helper = useMemo(
+    () => ({
+      name: "helper",
+      description: t("Ask how Alt works, or get setup fixed — in a fresh Helper conversation"),
+      run: () => main.openHelper(undefined, true),
+      immediate: true,
+    }),
+    [main],
+  );
+  const commands = useSlashCommands({ live: true, mode: conversation.sessionMode, helper });
+  const palette = useSlashPalette({ draft, commands, setDraft });
 
   const latestUserIndex = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i -= 1) {
@@ -276,25 +178,15 @@ export function ChildConversation({
     return -1;
   }, [messages]);
 
-  // The status band lives at the composer, same seat as the center pane —
-  // not up in the header (owner 2026-09-18: running/ready states read there
-  // made the pane hard to converse with).
-  const statusLabel = runStateView({
-    socket: socketStatus,
-    running,
-    busy: false,
-    phaseLabel: engine.phaseLabel,
-    toolStatus: notice,
-    pending: snapshot?.pending ?? {},
-  }).label;
+  const abort = () => conversation.abort();
 
   return (
-    <div className={`child-conv ${variant}`}>
+    <div className="child-conv panel">
       <div className="child-head">
         <button className="flat" onClick={onClose} data-tip={t("Close")}>
           <i className="ph ph-arrow-left" aria-hidden="true" />
         </button>
-        <span className="child-what">{childBlurb(purpose, variant)}</span>
+        <span className="child-what">{childBlurb(purpose)}</span>
         {mainlineAction ? (
           <button
             className="flat promote-action"
@@ -302,11 +194,7 @@ export function ChildConversation({
             onClick={() => {
               void promoteToMainlineRequest(sessionId)
                 .then(() => app.refreshSessions())
-                .catch((reason) =>
-                  setError(
-                    reason instanceof Error ? reason.message : String(reason),
-                  ),
-                );
+                .catch(reportError);
             }}
           >
             <i className="ph ph-crown-simple" aria-hidden="true" />{" "}
@@ -317,9 +205,7 @@ export function ChildConversation({
             className="flat promote-action"
             data-tip={t("Keep this conversation in your list, with where it came from.")}
             onClick={() => {
-              void app.promoteRelatedSession(sessionId).catch((reason) =>
-                setError(reason instanceof Error ? reason.message : String(reason)),
-              );
+              void main.promoteRelatedSession(sessionId).catch(reportError);
             }}
           >
             <i className="ph ph-arrow-line-up" aria-hidden="true" />{" "}
@@ -336,55 +222,18 @@ export function ChildConversation({
           latestAssistantIndex={latestAssistantIndex}
           isRunning={running}
         />
-        <StreamPartsView parts={streamParts} developer={developer} />
+        <StreamPartsView parts={parts} developer={developer} />
       </div>
 
-      {approvals[0] ? (
+      {approval ? (
         <ApprovalDock
-          request={approvals[0]}
-          onRespond={respondApproval}
+          request={approval}
+          onRespond={conversation.respondApproval}
           onSessionAllow={() => undefined}
         />
       ) : null}
-      {error ? <div className="related-error">{error}</div> : null}
 
-      {queued.length > 0 ? (
-        <div className="queued-prompts" aria-label={t("Queued messages")}>
-          {queued.map((text, index) => (
-            <div className="queued-prompt" key={`${index}:${text}`}>
-              <i className="ph ph-clock" aria-hidden="true" />
-              <span className="queued-prompt-text" data-tip={text}>
-                {text}
-              </span>
-              <button
-                type="button"
-                className="queued-prompt-action"
-                onClick={() => void recallQueued(text, true)}
-              >
-                {t("Edit")}
-              </button>
-              <button
-                type="button"
-                className="queued-prompt-action"
-                onClick={() =>
-                  socket.send({ type: "send_queued_now", payload: { text } })
-                }
-              >
-                {t("Jump the queue")}
-              </button>
-              <button
-                type="button"
-                className="queued-prompt-action"
-                onClick={() => void recallQueued(text, false)}
-                data-tip={t("Delete")}
-                aria-label={t("Delete")}
-              >
-                <i className="ph ph-trash" aria-hidden="true" />
-              </button>
-            </div>
-          ))}
-        </div>
-      ) : null}
+      <QueuedCards onEdit={(retracted) => setDraft((current) => appendDraft(current, retracted.text))} />
 
       <div className="ctx-line child-ctx-line" ref={ctxLineRef}>
         <div className="ctx-picker">
@@ -393,77 +242,29 @@ export function ChildConversation({
             {childRoleSlug
               ? (app.discovery?.rolePresets.find((role) => role.slug === childRoleSlug)?.userLabel ?? childRoleSlug)
               : t("No role")}
-            <PendingMark when={pendingChildRole !== undefined} />
+            <PendingMark when={pendingChildRole} />
           </button>
           <div className={`menu${menu === "role" ? " on" : ""}`}>
-            <div className="mi" onClick={() => (socket.send({ type: "switch_role_preset", payload: { rolePresetSlug: null } }), setMenu(null))}>
+            <div className="mi" onClick={() => (conversation.switchRolePreset(null), setMenu(null))}>
               <span>{t("No role")}</span>
               {!childRoleSlug ? <i className="ph ph-check check" /> : null}
             </div>
             {(app.discovery?.rolePresets ?? []).map((role) => (
-              <div key={role.slug} className="mi" onClick={() => (socket.send({ type: "switch_role_preset", payload: { rolePresetSlug: role.slug } }), setMenu(null))}>
+              <div key={role.slug} className="mi" onClick={() => (conversation.switchRolePreset(role.slug), setMenu(null))}>
                 <span>{role.userLabel || role.displayName}</span>
                 {childRoleSlug === role.slug ? <i className="ph ph-check check" /> : null}
               </div>
             ))}
           </div>
         </div>
-        <ModelChip
-          open={menu === "model"}
-          onToggle={() => setMenu(menu === "model" ? null : "model")}
-          session={{
-            ready: connected && Boolean(snapshot),
-            modelOverride:
-              snapshot?.pending?.model !== undefined
-                ? snapshot.pending.model
-                : (snapshot?.modelOverride ?? null),
-            currentModel: snapshot?.currentModel ?? null,
-            thinking: snapshot?.thinking ?? null,
-            pendingModel: snapshot?.pending?.model !== undefined,
-            setModel: (override) => socket.send({ type: "set_session_model", payload: { override } }),
-          }}
-        />
+        <ModelChip open={menu === "model"} onToggle={() => setMenu(menu === "model" ? null : "model")} />
       </div>
-      {slashOpen ? (
-        <div className="slash-palette child-slash-palette">
-          {slashMatches.map((command, index) => (
-            <button key={command.name} className={`slash-item${index === slashIndex ? " on" : ""}`} onMouseEnter={() => setSlashIndex(index)} onClick={() => runSlash(command)}>
-              <span className="cmd">/{command.name}</span>
-              <span className="desc">{command.description}</span>
-            </button>
-          ))}
-        </div>
-      ) : null}
-      {running || notice || recovery?.canContinue ? (
+      <SlashPalette palette={palette} className="slash-palette child-slash-palette" />
+      {running || conversation.notice || conversation.recovery?.canContinue ? (
         <div className="composer-notes">
-          {running || notice ? (
-            <span className="run-phase-slot">
-              {running ? (
-                <span className="run-phase">
-                  <i className="ph ph-circle-notch" aria-hidden="true" />
-                  {statusLabel}
-                </span>
-              ) : (
-                <span>{notice}</span>
-              )}
-            </span>
-          ) : null}
-          {!running && recovery?.canContinue ? (
-            <button
-              className="flat retry-run"
-              onClick={() => {
-                // Same transition as the main composer: one continue_latest
-                // over this pane's socket; the shared engine drops the old
-                // recovery the moment the run begins.
-                if (socket.send({ type: "continue_latest" })) {
-                  engine.beginLocalRun();
-                }
-              }}
-            >
-              <i className="ph ph-play" aria-hidden="true" />
-              {t("Continue")}
-            </button>
-          ) : null}
+          <RunStatusSlot />
+          <NoticeLine />
+          <ContinueButton />
         </div>
       ) : null}
       <div className="composer child-composer">
@@ -473,32 +274,17 @@ export function ChildConversation({
           placeholder={t("Reply here")}
           onChange={(event) => {
             setDraft(event.target.value);
-            setSlashDismissed(false);
+            palette.reset();
           }}
           onKeyDown={(event) => {
             if (event.key === "Escape") {
               event.preventDefault();
               if (menu) setMenu(null);
-              else if (slashOpen) setSlashDismissed(true);
-              else if (running) {
-                socket.send({ type: "abort" });
-                engine.setPhaseLabel(runPhaseLabels().stopping);
-              }
+              else if (palette.open) palette.dismiss();
+              else if (running) abort();
               return;
             }
-            if (slashOpen) {
-              if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-                event.preventDefault();
-                const step = event.key === "ArrowDown" ? 1 : -1;
-                setSlashIndex((index) => (index + step + slashMatches.length) % slashMatches.length);
-                return;
-              }
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                runSlash(slashMatches[slashIndex]);
-                return;
-              }
-            }
+            if (palette.onKeyDown(event)) return;
             if (event.key === "Enter" && !event.shiftKey) {
               event.preventDefault();
               send();
@@ -518,10 +304,7 @@ export function ChildConversation({
             <button
               className="send"
               style={{ background: "var(--danger)" }}
-              onClick={() => {
-                socket.send({ type: "abort" });
-                engine.setPhaseLabel(runPhaseLabels().stopping);
-              }}
+              onClick={abort}
               data-tip={t("Stop")}
             >
               <i className="ph ph-square" aria-hidden="true" />
@@ -534,7 +317,7 @@ export function ChildConversation({
 }
 
 /** One lowkey line saying what this pane is — not a repeat of the title. */
-function childBlurb(purpose: string, _variant?: "panel" | "compare"): string {
+function childBlurb(purpose: string): string {
   if (purpose === "helper") {
     return t("Questions about Alt itself, and setup fixes — fresh context.");
   }

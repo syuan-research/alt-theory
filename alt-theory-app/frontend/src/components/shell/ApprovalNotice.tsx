@@ -1,3 +1,5 @@
+import { useConversationContext } from "@/context/ConversationContext";
+import { useMainView } from "@/context/MainView";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
 import { t } from "@/i18n";
@@ -5,21 +7,23 @@ import { approvalTarget } from "@/lib/approvalTarget";
 
 export function ApprovalNotice() {
   const app = useApp();
+  const conv = useConversationContext();
+  const main = useMainView();
   const shell = useShell();
-  const request = app.approvals.find(
+  const request = conv.approvals.find(
     ({ sessionId }) =>
       shell.surface !== "app" ||
-      (sessionId !== app.sessionId && sessionId !== app.activeRelatedSessionId),
+      (sessionId !== conv.sessionId && sessionId !== app.activeRelatedSessionId),
   );
   if (!request) return null;
 
   const name =
     app.sessionDisplayNames[request.sessionId]?.alias || t("A conversation");
-  const count = app.approvals.length;
+  const count = conv.approvals.length;
   const open = () => {
     const target = approvalTarget(request.sessionId, app.sessions);
     shell.openApp();
-    app.openCatalogSession(target.center);
+    main.openCatalogSession(target.center);
     if (target.related) {
       app.setActiveRelatedSessionId(target.related, { size: "default" });
     }

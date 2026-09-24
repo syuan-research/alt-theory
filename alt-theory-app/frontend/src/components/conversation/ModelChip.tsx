@@ -1,13 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type {
-  ProviderView,
-  ResolvedThinking,
-  SessionModelOverride,
-  ThinkingLevel,
-} from "@/api/types";
+import type { ProviderView, ThinkingLevel } from "@/api/types";
 import { getConfigStatus, listConfigProviders } from "@/api/config";
 import { PendingMark } from "@/components/ui/PendingMark";
-import { useApp } from "@/context/AppProvider";
+import { useConversationContext } from "@/context/ConversationContext";
 import { useShell } from "@/context/ShellContext";
 import { t } from "@/i18n";
 
@@ -51,26 +46,19 @@ function groupProviders(providers: ProviderView[]): ProviderOptions[] {
     .filter((provider) => provider.models.length > 0);
 }
 
-/** Conversation model and effort picker, backed by WS set_session_model. */
+/**
+ * Model and effort picker of the conversation drawn here, backed by WS
+ * set_session_model. The thinking level is the backend resolver's answer;
+ * the chip computes none itself.
+ */
 export function ModelChip({
   open,
   onToggle,
-  session,
 }: {
   open: boolean;
   onToggle: () => void;
-  session?: {
-    ready: boolean;
-    modelOverride: SessionModelOverride | null;
-    currentModel: { provider: string; modelId: string } | null;
-    /** The backend resolver's answer; the chip computes no level itself. */
-    thinking: ResolvedThinking | null;
-    /** A model switch accepted mid-run, applying when the turn ends. */
-    pendingModel: boolean;
-    setModel: (override: SessionModelOverride | null) => void;
-  };
 }) {
-  const app = useApp();
+  const conversation = useConversationContext();
   const shell = useShell();
   const [providers, setProviders] = useState<ProviderOptions[] | null>(null);
   const [defaultModel, setDefaultModel] = useState<{
@@ -129,13 +117,11 @@ export function ModelChip({
     }
   }, [open]);
 
-  const modelOverride = session ? session.modelOverride : app.modelOverride;
-  const currentModel = session ? session.currentModel : app.currentSessionModel;
-  const thinking = session ? session.thinking : app.thinking;
-  const pendingModel = session
-    ? session.pendingModel
-    : app.pendingChanges.model !== undefined;
-  const setModel = session?.setModel ?? app.setSessionModel;
+  const { modelOverride, thinking } = conversation;
+  const currentModel = conversation.currentSessionModel;
+  // A model switch accepted mid-run shows as chosen + pending.
+  const pendingModel = conversation.pendingChanges.model !== undefined;
+  const setModel = conversation.setSessionModel;
   const effectiveModel = modelOverride ?? currentModel ?? defaultModel;
   const selectedOption = useMemo(
     () =>
@@ -303,7 +289,7 @@ export function ModelChip({
           event.stopPropagation();
           onToggle();
         }}
-        disabled={!(session?.ready ?? app.sessionReady)}
+        disabled={!conversation.sessionReady}
         data-tip={title}
       >
         {chipLabel}

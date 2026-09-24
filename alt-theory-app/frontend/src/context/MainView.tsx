@@ -1,0 +1,408 @@
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import {
+  deleteSession as deleteSessionRequest,
+  deleteSessionFamily as deleteSessionFamilyRequest,
+  fetchSessionDetail,
+  normalizeSessionAlias,
+  promoteRelatedSession as promoteRelatedSessionRequest,
+  saveSessionAlias,
+} from "@/api/sessions";
+import type { ServerMessage, SessionDetailResponse } from "@/api/types";
+import { useApp, type SessionAlert } from "@/context/AppProvider";
+import { ConversationScope } from "@/context/ConversationContext";
+import { useConversation, type Conversation } from "@/hooks/useConversation";
+import { t } from "@/i18n";
+import { notifyBackground } from "@/lib/notify";
+
+/**
+ * The main view: which conversation the center shows, and what follows from
+ * that — its navigation (open, new, branch, helper, copy, delete), the list
+ * highlight, the right-pane seeds, and the list's attention marks. The
+ * conversation itself is a plain useConversation, bound to the subtree.
+ */
+export interface MainViewValue {
+  conversation: Conversation;
+  /** The list highlight: the conversation being opened, else the one shown. */
+  selectedCatalogSessionId: string | null;
+  selectedSessionDetail: SessionDetailResponse | null;
+  /** Conversations that changed state while you were looking elsewhere. */
+  sessionAlerts: Record<string, SessionAlert>;
+  /** False when nothing was sent (same session, cannot open, socket down). */
+  openCatalogSession: (sessionId: string) => boolean;
+  startNewSession: () => void;
+  compactCurrentSession: () => void;
+  forkCurrentSession: (purpose: "fork" | "side" | "helper" | "ab-arm", seedPrompt?: string) => void;
+  openHelper: (question?: string, attachToCenter?: boolean) => void;
+  duplicateSession: (sessionId: string) => void;
+  branchRevision: (text: string, entryId?: string) => boolean;
+  prepareBranchRevision: (text: string, entryId: string) => boolean;
+  /** Draft for a just-created child; helper sends immediately, compare waits. */
+  childSeed: { sessionId: string; text: string; autoSend: boolean } | null;
+  clearChildSeed: () => void;
+  promoteRelatedSession: (sessionId: string) => Promise<void>;
+  renameSession: (sessionId: string, name: string) => Promise<boolean>;
+  deleteSession: (sessionId: string) => void;
+  deleteSessionFamily: (sessionId: string) => void;
+  /** Conversation allowances granted in this view (M7 §3), for the inspector. */
+  approvalMarkers: string[];
+  addApprovalMarker: (text: string) => void;
+}
+
+const MainViewContext = createContext<MainViewValue | null>(null);
+
+export function MainViewProvider({ children }: { children: ReactNode }) {
+  const app = useApp();
+  const pendingChildSeedRef = useRef<{ text: string; autoSend: boolean } | null>(null);
+  const pendingHelperSeedRef = useRef<string | null>(null);
+  const [childSeed, setChildSeed] = useState<MainViewValue["childSeed"]>(null);
+  const [selectedSessionDetail, setSelectedSessionDetail] =
+    useState<SessionDetailResponse | null>(null);
+  const [sessionAlerts, setSessionAlerts] = useState<Record<string, SessionAlert>>({});
+  const [approvalMarkers, setApprovalMarkers] = useState<string[]>([]);
+  const sessionRunStatusRef = useRef<Record<string, string>>({});
+  const detailRequestRef = useRef(0);
+
+  const onMessageRef = useRef<(message: ServerMessage) => void>(() => {});
+  const { conversation: conv, parts } = useConversation({
+    sessionId: null,
+    enabled: !app.loading && !app.loginRequired,
+    onMessage: (message) => onMessageRef.current(message),
+  });
+  const sessionId = conv.sessionId;
+
+  // The list highlight follows what the user opened or created, nothing
+  // else: a fresh app shows none (owner 2026-09-24); an open in flight shows
+  // its target, a refused open falls back to what is shown.
+  const selectedCatalogSessionId = conv.opening ?? sessionId;
+
+  const refreshSessionDetail = useCallback(async (target: string | null) => {
+    const requestId = ++detailRequestRef.current;
+    if (!target) {
+      setSelectedSessionDetail(null);
+      return;
+    }
+    try {
+      const detail = await fetchSessionDetail(target);
+      if (requestId === detailRequestRef.current) setSelectedSessionDetail(detail);
+    } catch {
+      if (requestId === detailRequestRef.current) setSelectedSessionDetail(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshSessionDetail(selectedCatalogSessionId);
+  }, [refreshSessionDetail, selectedCatalogSessionId]);
+
+  // Conversation allowances belong to the conversation they were granted in.
+  useEffect(() => setApprovalMarkers([]), [sessionId]);
+
+  onMessageRef.current = (message) => {
+    switch (message.type) {
+      case "session_opened":
+        void app.refreshSessions();
+        if (selectedCatalogSessionId === message.payload.sessionId) {
+          void refreshSessionDetail(message.payload.sessionId);
+        }
+        if (pendingHelperSeedRef.current) {
+          const seed = pendingHelperSeedRef.current;
+          pendingHelperSeedRef.current = null;
+          window.setTimeout(() => conv.prompt(seed), 0);
+        }
+        break;
+      case "session_draft":
+      case "run_completed":
+      case "run_failed":
+        void app.refreshSessions();
+        break;
+      case "session_updated":
+        if (message.payload.status !== "idle") void app.refreshSessions();
+        if (selectedCatalogSessionId === message.payload.sessionId) {
+          void refreshSessionDetail(message.payload.sessionId);
+        }
+        break;
+      case "related_session_created":
+        // btw / helper: keep the original compact default (~480), not 50%.
+        // A spawned subagent never opens the rail (owner 2026-09-18); the
+        // Related row is its feedback, and seeds belong to user creations.
+        if (message.payload.purpose !== "subagent") {
+          app.setActiveRelatedSessionId(message.payload.sessionId, { size: "default" });
+          const seed = pendingChildSeedRef.current ??
+            (pendingHelperSeedRef.current
+              ? { text: pendingHelperSeedRef.current, autoSend: true }
+              : null);
+          if (seed) setChildSeed({ sessionId: message.payload.sessionId, ...seed });
+          pendingChildSeedRef.current = null;
+          pendingHelperSeedRef.current = null;
+        }
+        void app.refreshSessions();
+        break;
+      case "branch_created":
+        // Main conversation stays in the center. Branched edit work opens in
+        // the right Related rail at ~50% width.
+        app.setActiveRelatedSessionId(message.payload.sessionId, { size: "half" });
+        if (pendingChildSeedRef.current) {
+          setChildSeed({ sessionId: message.payload.sessionId, ...pendingChildSeedRef.current });
+          pendingChildSeedRef.current = null;
+        }
+        void app.refreshSessions();
+        break;
+      case "error":
+        pendingHelperSeedRef.current = null;
+        if (message.payload.code === "auth_required") app.requireLogin();
+        break;
+      default:
+        break;
+    }
+  };
+
+  // Background visibility (alpha.3). A conversation that finished, failed,
+  // or stopped for an approval while you were elsewhere leaves a mark that
+  // survives until it is opened. Transitions of the polled list.
+  useEffect(() => {
+    const previous = sessionRunStatusRef.current;
+    const next: Record<string, string> = {};
+    const raised: Record<string, SessionAlert> = {};
+    for (const session of app.sessions) {
+      const id = session.sessionId;
+      const now = session.runStatus ?? "idle";
+      next[id] = now;
+      const before = previous[id];
+      if (before === undefined || id === sessionId || now === before) continue;
+      const name = app.sessionDisplayNames[id]?.alias || t("A conversation");
+      if (before === "running" && now === "idle") {
+        raised[id] = "done";
+        notifyBackground(t("Work finished"), t("{name} finished its turn.", { name }));
+      } else if (now === "failed") {
+        raised[id] = "failed";
+        notifyBackground(t("Work stopped"), t("{name} ran into an error.", { name }));
+      } else if (now === "awaiting-approval") {
+        raised[id] = "approval";
+        notifyBackground(t("Waiting for you"), t("{name} needs your approval.", { name }));
+      }
+    }
+    sessionRunStatusRef.current = next;
+    if (Object.keys(raised).length > 0) {
+      setSessionAlerts((prev) => ({ ...prev, ...raised }));
+    }
+  }, [app.sessions, app.sessionDisplayNames, sessionId]);
+
+  // Opening a conversation is reading it.
+  useEffect(() => {
+    if (!sessionId) return;
+    setSessionAlerts((prev) => {
+      if (!(sessionId in prev)) return prev;
+      const next = { ...prev };
+      delete next[sessionId];
+      return next;
+    });
+  }, [sessionId]);
+
+  const openCatalogSession = useCallback(
+    (target: string): boolean => {
+      if (!target || target === sessionId) return false;
+      const summary = app.sessions.find((item) => item.sessionId === target);
+      if (summary && !summary.hasSessionFile) {
+        conv.notify({ kind: "text", text: t("Conversation cannot be opened.") });
+        return false;
+      }
+      return conv.open(target);
+    },
+    [app.sessions, conv, sessionId],
+  );
+
+  const startNewSession = useCallback(() => {
+    conv.startNew();
+  }, [conv]);
+
+  const compactCurrentSession = useCallback(() => {
+    if (!sessionId || conv.isRunning) return;
+    conv.compact();
+  }, [conv, sessionId]);
+
+  const forkCurrentSession = useCallback(
+    (purpose: "fork" | "side" | "helper" | "ab-arm", seedPrompt?: string) => {
+      if (!sessionId || conv.isRunning) return;
+      // The child asks the question the user already typed, instead of
+      // opening with "what can I help with?".
+      pendingChildSeedRef.current = seedPrompt?.trim()
+        ? { text: seedPrompt.trim(), autoSend: true }
+        : null;
+      if (!conv.fork(purpose)) pendingChildSeedRef.current = null;
+    },
+    [conv, sessionId],
+  );
+
+  const openHelper = useCallback(
+    (question?: string, attachToCenter = true) => {
+      pendingHelperSeedRef.current = question?.trim() || null;
+      const current = app.sessions.find((item) => item.sessionId === sessionId);
+      const currentIsHelper = current?.helper || current?.forkedFrom?.purpose === "helper";
+      const parent = attachToCenter && sessionId && !currentIsHelper ? sessionId : undefined;
+      if (!conv.createHelper(parent)) pendingHelperSeedRef.current = null;
+    },
+    [app.sessions, conv, sessionId],
+  );
+
+  // Duplicate straight from the session list — no need to open the source
+  // first. The server attaches to the copy, so the view follows it.
+  const duplicateSession = useCallback((target: string) => {
+    conv.duplicate(target);
+  }, [conv]);
+
+  const branchRevision = useCallback(
+    (text: string, entryId?: string) => {
+      if (!text.trim() || conv.isRunning || !sessionId) return false;
+      if (!conv.branchRevision(text, entryId)) return false;
+      // This conversation keeps running its own life — the branch opens in
+      // the right Related panel on `branch_created`.
+      conv.notify({
+        kind: "text",
+        text: entryId
+          ? t("Same question, fresh answer. What repeats is probably solid; what changes was a choice.")
+          : t("Both takes are kept — the branch is in Related conversations on the right."),
+      });
+      return true;
+    },
+    [conv, sessionId],
+  );
+
+  const prepareBranchRevision = useCallback(
+    (text: string, entryId: string) => {
+      const trimmed = text.trim();
+      if (!trimmed || !entryId || conv.isRunning || !sessionId) return false;
+      pendingChildSeedRef.current = { text: trimmed, autoSend: false };
+      if (!conv.prepareBranchRevision(entryId)) {
+        pendingChildSeedRef.current = null;
+        return false;
+      }
+      return true;
+    },
+    [conv, sessionId],
+  );
+
+  const clearChildSeed = useCallback(() => setChildSeed(null), []);
+
+  const promoteRelatedSession = useCallback(
+    async (target: string) => {
+      await promoteRelatedSessionRequest(target);
+      await app.refreshSessions();
+      app.setActiveRelatedSessionId(null);
+      openCatalogSession(target);
+    },
+    [app, openCatalogSession],
+  );
+
+  const renameSession = useCallback(
+    async (target: string, name: string) => {
+      const alias = normalizeSessionAlias(name);
+      try {
+        await saveSessionAlias(target, alias);
+        app.setSessionDisplayName(target, alias);
+        return true;
+      } catch (err) {
+        conv.notify({
+          kind: "text",
+          text: `Rename failed: ${err instanceof Error ? err.message : String(err)}`,
+          warn: true,
+        });
+        return false;
+      }
+    },
+    [app, conv],
+  );
+
+  const deleteSessions = useCallback(
+    async (target: string, wholeFamily: boolean) => {
+      try {
+        const deletedIds = wholeFamily
+          ? await deleteSessionFamilyRequest(target)
+          : (await deleteSessionRequest(target), [target]);
+        if (sessionId && deletedIds.includes(sessionId)) conv.startNew();
+        if (app.activeRelatedSessionId && deletedIds.includes(app.activeRelatedSessionId)) {
+          app.setActiveRelatedSessionId(null);
+        }
+        await app.refreshSessions();
+      } catch (err) {
+        conv.notify({
+          kind: "text",
+          text: `Delete failed: ${err instanceof Error ? err.message : String(err)}`,
+          warn: true,
+        });
+      }
+    },
+    [app, conv, sessionId],
+  );
+
+  const addApprovalMarker = useCallback((text: string) => {
+    setApprovalMarkers((prev) => (prev.includes(text) ? prev : [...prev, text]));
+  }, []);
+
+  const value = useMemo<MainViewValue>(
+    () => ({
+      conversation: conv,
+      selectedCatalogSessionId,
+      selectedSessionDetail,
+      sessionAlerts,
+      openCatalogSession,
+      startNewSession,
+      compactCurrentSession,
+      forkCurrentSession,
+      openHelper,
+      duplicateSession,
+      branchRevision,
+      prepareBranchRevision,
+      childSeed,
+      clearChildSeed,
+      promoteRelatedSession,
+      renameSession,
+      deleteSession: (target) => void deleteSessions(target, false),
+      deleteSessionFamily: (target) => void deleteSessions(target, true),
+      approvalMarkers,
+      addApprovalMarker,
+    }),
+    [
+      conv,
+      selectedCatalogSessionId,
+      selectedSessionDetail,
+      sessionAlerts,
+      openCatalogSession,
+      startNewSession,
+      compactCurrentSession,
+      forkCurrentSession,
+      openHelper,
+      duplicateSession,
+      branchRevision,
+      prepareBranchRevision,
+      childSeed,
+      clearChildSeed,
+      promoteRelatedSession,
+      renameSession,
+      deleteSessions,
+      approvalMarkers,
+      addApprovalMarker,
+    ],
+  );
+
+  return (
+    <MainViewContext.Provider value={value}>
+      <ConversationScope conversation={conv} parts={parts}>
+        {children}
+      </ConversationScope>
+    </MainViewContext.Provider>
+  );
+}
+
+export function useMainView(): MainViewValue {
+  const value = useContext(MainViewContext);
+  if (!value) throw new Error("useMainView must be used within MainViewProvider");
+  return value;
+}

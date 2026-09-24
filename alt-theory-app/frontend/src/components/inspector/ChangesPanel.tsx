@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import type { ChangeGroup, FileChange } from "@/api/types";
 import { fetchSessionChanges } from "@/api/session-files";
 import { t } from "@/i18n";
-import { useApp } from "@/context/AppProvider";
+import { useConversationContext } from "@/context/ConversationContext";
 import { useShell } from "@/context/ShellContext";
 import { FilePreview } from "@/components/inspector/FilePreview";
 import { FolderHead, ListTools } from "@/components/inspector/FolderList";
@@ -21,12 +21,12 @@ import { fileQueryScore, parseFileQuery } from "../../../../shared/quick-find";
  * in Rendered when available; the viewer control follows the file type.
  */
 export function ChangesPanel() {
-  const app = useApp();
+  const conv = useConversationContext();
   const shell = useShell();
   const menu = useContextMenu();
 
-  const sessionId = app.sessionId;
-  const runCount = app.runSettledCount;
+  const sessionId = conv.sessionId;
+  const runCount = conv.runSettledCount;
   const key = shell.rightSub?.key;
   const [closed, setClosed] = usePaneMemory<string[]>(`${sessionId}:changes:closed`, []);
   const [mode, setMode] = usePaneMemory<PreviewMode>(`${sessionId}:changes:${key ?? ""}:mode`, "rendered");

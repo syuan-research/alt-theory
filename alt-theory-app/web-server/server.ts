@@ -38,9 +38,10 @@ import {
   setExtraAssetDirs,
 } from "./asset-registry.js";
 import { setBackendLang, t } from "./i18n.js";
-import type {
-  ClientMessage,
-  ServerMessage
+import {
+  toServerMessage,
+  type ClientMessage,
+  type ServerMessage,
 } from "./websocket-protocol.js";
 import {
   getSessionRootForRequest,
@@ -2280,62 +2281,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     send: (msg: ServerMessage) => void,
     event: SessionServiceEvent,
   ): void {
-    switch (event.type) {
-      case "snapshot":
-        send({ type: "session_updated", payload: event.payload });
-        break;
-      case "assistant_delta":
-        send({ type: "assistant_delta", payload: event.payload });
-        break;
-      case "thinking_delta":
-        send({ type: "thinking_delta", payload: event.payload });
-        break;
-      case "run_phase":
-        send({ type: "run_phase", payload: event.payload });
-        break;
-      case "tool_started":
-        send({ type: "tool_started", payload: event.payload });
-        break;
-      case "tool_updated":
-        send({ type: "tool_updated", payload: event.payload });
-        break;
-      case "tool_finished":
-        send({ type: "tool_finished", payload: event.payload });
-        break;
-      case "run_completed":
-        send({ type: "run_completed", payload: event.payload });
-        break;
-      case "session_updated":
-        send({ type: "session_updated", payload: event.payload });
-        break;
-      case "run_failed":
-        send({ type: "run_failed", payload: event.payload });
-        break;
-      case "user_steered":
-        send({ type: "user_steered", payload: event.payload });
-        break;
-      case "queue_updated":
-        send({ type: "queue_updated", payload: event.payload });
-        break;
-      case "session_transcript":
-        send({ type: "session_transcript", payload: event.payload });
-        break;
-      case "session_metrics":
-        send({ type: "session_metrics", payload: event.payload });
-        break;
-      case "approval_requested":
-        send({ type: "approval_requested", payload: event.payload });
-        break;
-      case "approval_resolved":
-        send({ type: "approval_resolved", payload: event.payload });
-        break;
-      case "extension_notice":
-        send({ type: "extension_notice", payload: event.payload });
-        break;
-      case "related_session_created":
-        send({ type: "related_session_created", payload: event.payload });
-        break;
-    }
+    send(toServerMessage(event));
   }
 
   /** Every refused request carries the one failure envelope (card 2). */
@@ -2586,8 +2532,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       const result = await sessionService.switchAssetSelectors(sessionId, patch);
       if (!result.deferred) {
         send({ type: "session_metadata", payload: sessionService.getManifest(sessionId) });
-      } else {
-        send({ type: "session_updated", payload: result.snapshot });
       }
     };
 
@@ -2777,7 +2721,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               await compaction;
               send({
                 type: "extension_notice",
-                payload: { message: "Conversation compacted", level: "info" },
+                payload: { message: t("Conversation compacted."), level: "info" },
               });
             } catch (error) {
               send({
@@ -2806,15 +2750,10 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               break;
             }
             try {
-              const snapshot = await sessionService.setKbDomain(
-                attachedSessionId,
-                msg.payload.domain,
-              );
-              // A mid-run choice is acked as pending (chip + clock mark)
-              // instead of refused; an idle switch stays silent as today.
-              if (snapshot.pending?.kbDomain !== undefined) {
-                send({ type: "session_updated", payload: snapshot });
-              }
+              // Idle applies now, mid-run the choice is pending (chip + clock
+              // mark); either way the service publishes the snapshot to every
+              // window — clients show what the server holds, not a guess.
+              await sessionService.setKbDomain(attachedSessionId, msg.payload.domain);
             } catch (error) {
               fail(error);
             }
@@ -2877,16 +2816,13 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
                   auth,
                   msg.payload.visibility,
                 );
-                // Idle applies now; mid-run the same snapshot carries the
-                // pending choice (no more busy refusal).
-                send({
-                  type: "session_updated",
-                  payload: await sessionService.setVisibility(
-                    attachedSessionId,
-                    msg.payload.visibility,
-                    metadata.consentSnapshot,
-                  ),
-                });
+                // Idle applies now; mid-run the published snapshot carries
+                // the pending choice (no more busy refusal).
+                await sessionService.setVisibility(
+                  attachedSessionId,
+                  msg.payload.visibility,
+                  metadata.consentSnapshot,
+                );
               } catch (error) {
                 fail(error);
               }
@@ -2903,13 +2839,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               break;
             }
             try {
-              send({
-                type: "session_updated",
-                payload: sessionService.setStudyTag(
-                  attachedSessionId,
-                  msg.payload.studyTag ?? null,
-                ),
-              });
+              sessionService.setStudyTag(attachedSessionId, msg.payload.studyTag ?? null);
             } catch (error) {
               fail(error);
             }
@@ -2950,13 +2880,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               break;
             }
             try {
-              send({
-                type: "session_updated",
-                payload: await sessionService.setSessionModel(
-                  attachedSessionId,
-                  msg.payload.override ?? null,
-                ),
-              });
+              await sessionService.setSessionModel(attachedSessionId, msg.payload.override ?? null);
             } catch (error) {
               fail(error);
             }
@@ -3105,14 +3029,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               break;
             }
             try {
-              const snapshot = sessionService.deleteLatest(attachedSessionId);
-              send({ type: "session_updated", payload: snapshot });
-              send({
-                type: "session_transcript",
-                payload: {
-                  messages: sessionService.getTranscript(attachedSessionId),
-                },
-              });
+              // The service publishes the snapshot and the rows to every window.
+              sessionService.deleteLatest(attachedSessionId);
             } catch (error) {
               fail(error);
             }
@@ -3129,11 +3047,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               break;
             }
             try {
-              const snapshot = await sessionService.switchMode(
-                attachedSessionId,
-                msg.payload.mode,
-              );
-              send({ type: "session_updated", payload: snapshot });
+              await sessionService.switchMode(attachedSessionId, msg.payload.mode);
             } catch (error) {
               fail(error);
             }
@@ -3170,11 +3084,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               break;
             }
             try {
-              const snapshot = await sessionService.setFullAccess(
-                attachedSessionId,
-                msg.payload.enabled,
-              );
-              send({ type: "session_updated", payload: snapshot });
+              await sessionService.setFullAccess(attachedSessionId, msg.payload.enabled);
             } catch (error) {
               fail(error);
             }

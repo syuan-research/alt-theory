@@ -205,6 +205,8 @@ export interface SessionSnapshot {
   currentModel?: { provider: string; modelId: string };
   studyTag?: StudyTag | null;
   workspace?: { primaryDir: string } | null;
+  /** The conversation's recorded main folder (header); null = independent. */
+  workspacePrimaryDir?: string | null;
   openedFrom?: "new" | "existing";
   resumeWarnings?: string[];
   messageCount: number;
@@ -825,8 +827,8 @@ export type StreamPart =
   | { kind: "thinking"; text: string }
   | { kind: "text"; text: string }
   | { kind: "tool"; tool: ActiveToolState }
-  /** In-stream status divider, e.g. a connection retry boundary. */
-  | { kind: "notice"; text: string };
+  /** In-stream status divider: the attempt Pi dropped on auto-retry. */
+  | { kind: "notice"; notice: "retry-dropped" };
 
 export interface SessionSelectors {
   currentDomain: string;

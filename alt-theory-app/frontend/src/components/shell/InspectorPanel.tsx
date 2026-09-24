@@ -1,4 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useConversationContext } from "@/context/ConversationContext";
+import { useMainView } from "@/context/MainView";
 import { useApp } from "@/context/AppProvider";
 import { useShell, type RailKey } from "@/context/ShellContext";
 import { t } from "@/i18n";
@@ -46,6 +48,8 @@ const ADVANCED: RailKey[] = ["records", "provenance", "runtime"];
 
 export function InspectorPanel() {
   const app = useApp();
+  const conv = useConversationContext();
+  const main = useMainView();
   const shell = useShell();
   const advanced = app.viewMode === "researcher";
   const open = shell.rightPanel !== null;
@@ -56,11 +60,11 @@ export function InspectorPanel() {
     () =>
       app.sessions.some(
         (s) =>
-          s.forkedFrom?.sessionId === app.sessionId &&
+          s.forkedFrom?.sessionId === conv.sessionId &&
           s.forkedFrom.purpose !== "ab-arm" &&
           !s.deletedAt
       ),
-    [app.sessions, app.sessionId]
+    [app.sessions, conv.sessionId]
   );
 
   const title = shell.rightSub?.title ?? (active ? RAIL_META[active].title : "");
@@ -130,7 +134,7 @@ export function InspectorPanel() {
   // changes (images loading). Both stop once the position lands; scrolling
   // updates the saved value, so a restore during active reading is a no-op.
   const bodyRef = useRef<HTMLDivElement>(null);
-  const scrollKey = `${app.sessionId}:${active}:${shell.rightSub?.key ?? ""}:scroll`;
+  const scrollKey = `${conv.sessionId}:${active}:${shell.rightSub?.key ?? ""}:scroll`;
   useLayoutEffect(() => {
     const el = bodyRef.current;
     const saved = paneMemory.get<number>(scrollKey) ?? 0;
@@ -205,33 +209,33 @@ export function InspectorPanel() {
           {active === "workspace" ? <WorkspaceTree /> : null}
           {active === "records" ? (
             <RecordsPanel
-              sessionId={app.sessionId}
-              sessionReady={app.sessionReady}
+              sessionId={conv.sessionId}
+              sessionReady={conv.sessionReady}
               tabActive
             />
           ) : null}
           {active === "provenance" ? (
             <ProvenancePanel
-              sessionId={app.sessionId}
-              sessionReady={app.sessionReady}
+              sessionId={conv.sessionId}
+              sessionReady={conv.sessionReady}
               discovery={app.discovery}
               tabActive
             />
           ) : null}
           {active === "runtime" ? (
             <RuntimePanel
-              sessionId={app.sessionId}
-              runState={app.runState}
-              manifest={app.manifest}
-              currentDomain={app.selectors.currentDomain}
-              metrics={app.metrics}
-              approvalMarkers={app.approvalMarkers}
+              sessionId={conv.sessionId}
+              runState={conv.runState}
+              manifest={conv.manifest}
+              currentDomain={conv.selectors.currentDomain}
+              metrics={conv.metrics}
+              approvalMarkers={main.approvalMarkers}
               discovery={app.discovery}
               onRefresh={() => {
-                app.requestMetadata();
-                app.requestMetrics();
+                conv.requestMetadata();
+                conv.requestMetrics();
               }}
-              disabled={!app.sessionReady || !app.wsConnected}
+              disabled={!conv.sessionReady || !conv.wsConnected}
             />
           ) : null}
         </div>
@@ -267,6 +271,8 @@ export function InspectorPanel() {
 
 function RelatedConversations() {
   const app = useApp();
+  const conv = useConversationContext();
+  const main = useMainView();
   const shell = useShell();
   const menu = useContextMenu();
   const activeChildId = shell.rightSub?.key.startsWith("related:")
@@ -274,7 +280,7 @@ function RelatedConversations() {
     : null;
 
   // Filter state outlives the pane (proto E; pane memory per conversation).
-  const memoryKey = `${app.sessionId}:related`;
+  const memoryKey = `${conv.sessionId}:related`;
   const [scope, setScope] = usePaneMemory<RelatedScope>(`${memoryKey}:scope`, "conversation");
   const [kinds, setKinds] = usePaneMemory<Set<RelatedKind>>(`${memoryKey}:kinds`, () => new Set(RELATED_KINDS));
   const [filterOpen, setFilterOpen] = useState(false);
@@ -298,8 +304,8 @@ function RelatedConversations() {
   // One row projection carries relation, icon, run state, role (card 9);
   // the membership rule stays in sessionList.ts (§6).
   const rows = useMemo(
-    () => (app.sessionId ? relatedRowsFor(app.sessionId, app.sessions, scope) : []),
-    [app.sessions, app.sessionId, scope],
+    () => (conv.sessionId ? relatedRowsFor(conv.sessionId, app.sessions, scope) : []),
+    [app.sessions, conv.sessionId, scope],
   );
   const visible = useMemo(
     () => filterRelatedRows(rows, { kinds, query, titleOf: (s) => sessionTitle(s, app.sessionDisplayNames, app.sessions) }),
@@ -309,7 +315,7 @@ function RelatedConversations() {
   const countOf = (kind: RelatedKind) => rows.filter((row) => row.kind === kind).length;
   const presentKinds = RELATED_KINDS.filter((kind) => countOf(kind) > 0);
   const chain = visible.filter((row) => row.kind === null);
-  const ownFolder = app.sessions.find((s) => s.sessionId === app.sessionId)?.workspacePrimaryDir ?? null;
+  const ownFolder = app.sessions.find((s) => s.sessionId === conv.sessionId)?.workspacePrimaryDir ?? null;
 
   const toggleKind = (kind: RelatedKind) =>
     setKinds((prev) => {
@@ -363,14 +369,14 @@ function RelatedConversations() {
     const remove = () => app.requestConfirm({
       message: t("Delete this conversation?"),
       confirmLabel: t("Delete"),
-      onConfirm: () => app.deleteSelectedSession(child.sessionId),
+      onConfirm: () => main.deleteSession(child.sessionId),
     });
     const removeFamily = () => app.requestConfirm({
       message: t("Delete all {count} conversations in this family?", {
         count: String(familyCount),
       }),
       confirmLabel: t("Delete entire family"),
-      onConfirm: () => app.deleteSessionFamily(child.sessionId),
+      onConfirm: () => main.deleteSessionFamily(child.sessionId),
     });
     const exportMarkdown = () => void fetchSessionDetail(child.sessionId)
       .then((detail) => downloadMarkdown(
@@ -380,7 +386,7 @@ function RelatedConversations() {
       .catch((error) => window.alert(error instanceof Error ? error.message : String(error)));
     return [
       ...(!isListMember(child) ? [{
-        label: t("Show in conversation list"), icon: "ph-list-plus", onSelect: () => void app.promoteRelatedSession(child.sessionId),
+        label: t("Show in conversation list"), icon: "ph-list-plus", onSelect: () => void main.promoteRelatedSession(child.sessionId),
       }] : []),
       ...(canTakeMainline(child, app.sessions) ? [{
         label: t("Make this the main conversation"), icon: "ph-crown-simple", onSelect: () => void promoteToMainline(child.sessionId)
@@ -389,9 +395,9 @@ function RelatedConversations() {
       }] : []),
       { label: t("Rename"), icon: "ph-pencil-simple", onSelect: () => {
         const next = window.prompt(t("Conversation name"), app.sessionDisplayNames[child.sessionId]?.alias || title);
-        if (next !== null) void app.renameSelectedSession(child.sessionId, next);
+        if (next !== null) void main.renameSession(child.sessionId, next);
       } },
-      { label: t("Duplicate"), icon: "ph-copy", onSelect: () => app.duplicateSession(child.sessionId) },
+      { label: t("Duplicate"), icon: "ph-copy", onSelect: () => main.duplicateSession(child.sessionId) },
       { label: t("Delete"), icon: "ph-trash", danger: true, onSelect: remove },
       { label: t("Delete entire family"), icon: "ph-tree-structure", danger: true, onSelect: removeFamily },
       { label: t("Export Markdown"), icon: "ph-download-simple", separator: true, onSelect: exportMarkdown },
@@ -475,7 +481,6 @@ function RelatedConversations() {
         <ChildConversation
           key={activeChildId}
           sessionId={activeChildId}
-          variant="panel"
           onClose={() => {
             app.setActiveRelatedSessionId(null);
             shell.closeSub();
@@ -491,17 +496,17 @@ function RelatedConversations() {
       <div className="rp-empty">
         <div>{t("No related conversations.")}</div>
         <div className="related-empty-actions">
-          {app.sessionId ? (
+          {conv.sessionId ? (
             <>
-              <button onClick={() => app.forkCurrentSession("fork")}>
+              <button onClick={() => main.forkCurrentSession("fork")}>
                 {t("Create branch")}
               </button>
-              <button onClick={() => app.forkCurrentSession("side")}>
+              <button onClick={() => main.forkCurrentSession("side")}>
                 {t("Start BTW")}
               </button>
             </>
           ) : null}
-          <button onClick={() => app.openHelper(undefined, Boolean(app.sessionId))}>
+          <button onClick={() => main.openHelper(undefined, Boolean(conv.sessionId))}>
             {t("Ask Helper")}
           </button>
         </div>

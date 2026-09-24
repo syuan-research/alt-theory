@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import { useConversationContext } from "@/context/ConversationContext";
+import { useMainView } from "@/context/MainView";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
 import { sessionTitle } from "@/lib/sessionList";
@@ -44,25 +46,26 @@ function labelFor(
 
 function SetupView() {
   const app = useApp();
+  const conv = useConversationContext();
   const shell = useShell();
 
   const role = labelFor(
-    app.selectors.rolePresetSlug,
+    conv.selectors.rolePresetSlug,
     app.discovery?.rolePresets,
     "None"
   );
   const knowledge = labelFor(
-    app.selectors.currentDomain === "__off__" ? null : app.selectors.currentDomain,
+    conv.selectors.currentDomain === "__off__" ? null : conv.selectors.currentDomain,
     app.discovery?.kbDomains,
     "None"
   );
-  const model = app.modelOverride
-    ? app.modelOverride.modelId
+  const model = conv.modelOverride
+    ? conv.modelOverride.modelId
     : app.localConfig?.activeModel
       ? t("Default · {model}", { model: app.localConfig.activeModel })
       : t("Default");
-  const study = app.studyTag
-    ? `${app.studyTag.studyId}${app.studyTag.batch ? ` · ${app.studyTag.batch}` : ""}`
+  const study = conv.studyTag
+    ? `${conv.studyTag.studyId}${conv.studyTag.batch ? ` · ${conv.studyTag.batch}` : ""}`
     : t("Daily use");
 
   return (
@@ -94,7 +97,7 @@ function SetupView() {
 
       <div className="wb-actions">
         <button
-          disabled={!app.sessionId}
+          disabled={!conv.sessionId}
           onClick={() => shell.openCompare()}
           data-tip={t("Branch the conversation into arms and compare their responses")}
         >
@@ -115,26 +118,26 @@ function SetupView() {
 }
 
 function StudyTagCard() {
-  const app = useApp();
-  const [studyId, setStudyId] = useState(app.studyTag?.studyId ?? "");
-  const [batch, setBatch] = useState(app.studyTag?.batch ?? "");
+  const conv = useConversationContext();
+  const [studyId, setStudyId] = useState(conv.studyTag?.studyId ?? "");
+  const [batch, setBatch] = useState(conv.studyTag?.batch ?? "");
 
   useEffect(() => {
-    setStudyId(app.studyTag?.studyId ?? "");
-    setBatch(app.studyTag?.batch ?? "");
-  }, [app.studyTag?.batch, app.studyTag?.studyId]);
+    setStudyId(conv.studyTag?.studyId ?? "");
+    setBatch(conv.studyTag?.batch ?? "");
+  }, [conv.studyTag?.batch, conv.studyTag?.studyId]);
 
   const dirty =
-    studyId.trim() !== (app.studyTag?.studyId ?? "") ||
-    batch.trim() !== (app.studyTag?.batch ?? "");
+    studyId.trim() !== (conv.studyTag?.studyId ?? "") ||
+    batch.trim() !== (conv.studyTag?.batch ?? "");
 
   const apply = () => {
     const id = studyId.trim();
     if (!id) {
-      app.setStudyTag(null);
+      conv.setStudyTag(null);
       return;
     }
-    app.setStudyTag({ studyId: id, ...(batch.trim() ? { batch: batch.trim() } : {}) });
+    conv.setStudyTag({ studyId: id, ...(batch.trim() ? { batch: batch.trim() } : {}) });
   };
 
   return (
@@ -146,7 +149,7 @@ function StudyTagCard() {
         placeholder={t("Study id (blank = daily use)")}
         value={studyId}
         onChange={(e) => setStudyId(e.target.value)}
-        disabled={!app.sessionReady}
+        disabled={!conv.sessionReady}
       />
       <input
         type="text"
@@ -154,11 +157,11 @@ function StudyTagCard() {
         placeholder={t("Batch (optional)")}
         value={batch}
         onChange={(e) => setBatch(e.target.value)}
-        disabled={!app.sessionReady}
+        disabled={!conv.sessionReady}
       />
       <button
         className="wb-apply"
-        disabled={!app.sessionReady || !dirty}
+        disabled={!conv.sessionReady || !dirty}
         onClick={apply}
       >
         {t("Apply tag")}
@@ -169,6 +172,7 @@ function StudyTagCard() {
 
 function SessionsView() {
   const app = useApp();
+  const main = useMainView();
   const shell = useShell();
   const tagged = useMemo(
     () => app.sessions.filter((s) => s.studyTag),
@@ -187,11 +191,11 @@ function SessionsView() {
               key={s.sessionId}
               data-find-attention="center"
               className={`wb-sess${
-                app.selectedCatalogSessionId === s.sessionId ? " active" : ""
+                main.selectedCatalogSessionId === s.sessionId ? " active" : ""
               }`}
               onClick={() => {
                 shell.openApp();
-                app.openCatalogSession(s.sessionId);
+                main.openCatalogSession(s.sessionId);
               }}
             >
               <span className="s-title">

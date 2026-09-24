@@ -1,0 +1,686 @@
+/**
+ * One conversation's client state and its only transition function (M1,
+ * state-architecture plan 2026-09-24).
+ *
+ * Owned here, by lifetime:
+ * - server mirror: the latest snapshot, kept whole. Run state, recovery,
+ *   queue and pending switches are read from it and nothing else;
+ * - the transcript rows and the in-flight turn, handed over in one step when
+ *   the turn ends (the terminal event carries the settled rows);
+ * - requests of this client in flight (request receipts): busy and the
+ *   optimistic user bubble derive from them; nothing is cleared by hand;
+ * - the staged attachments and the text handed back to the editor.
+ *
+ * Nothing here knows where the conversation is displayed. Pure: types only
+ * (relative imports, so the backend replay tests import it as-is), no i18n —
+ * labels live in lib/runState.ts.
+ */
+import type {
+  ActiveToolState,
+  ApprovalRequestPayload,
+  AltMode,
+  AssemblyManifest,
+  ClientMessageBody,
+  Failure,
+  PendingChanges,
+  ServerMessage,
+  SessionDraftSnapshot,
+  SessionMetrics,
+  SessionModelOverride,
+  SessionSelectors,
+  SessionSnapshot,
+  StreamPart,
+  StudyTag,
+  TranscriptMessage,
+} from "../api/types";
+
+export type SocketStatus = "connecting" | "open" | "closed" | "error";
+
+type RunPhasePayload = Extract<ServerMessage, { type: "run_phase" }>["payload"];
+
+/** What the in-flight turn is doing, for the one-line detail label. */
+export type TurnActivity =
+  | { kind: "phase"; phase: RunPhasePayload["phase"]; retry?: RunPhasePayload["retry"] }
+  | { kind: "tool"; tool: ActiveToolState }
+  | null;
+
+/** The streaming turn: parts in arrival order, tools still running, detail. */
+export interface LiveTurn {
+  parts: StreamPart[];
+  tools: Record<string, ActiveToolState>;
+  activity: TurnActivity;
+}
+
+/**
+ * The request table: every client message kind and whether it holds the
+ * conversation busy until answered. Adding a request kind is one entry here
+ * (the compiler asks for it); nothing ever clears a busy flag by hand.
+ */
+export const REQUEST_BUSY: Record<ClientMessageBody["type"], boolean> = {
+  prompt: true,
+  invoke_skill: true,
+  continue_latest: true,
+  retry_latest: true,
+  revise_latest: true,
+  branch_revision: true,
+  prepare_branch_revision: true,
+  compact: true,
+  send_queued_now: true,
+  abort: true,
+  open_session: true,
+  new_session: true,
+  fork_session: true,
+  create_related_session: true,
+  create_helper_session: true,
+  switch_role_preset: true,
+  switch_soul: true,
+  switch_instruction: true,
+  switch_kb: false,
+  switch_visibility: false,
+  switch_mode: false,
+  set_full_access: false,
+  set_study_tag: false,
+  set_session_model: false,
+  set_draft_workspace: false,
+  delete_latest: false,
+  respond_approval: false,
+  get_session_metadata: false,
+  get_session_metrics: false,
+};
+
+export interface PendingRequest {
+  id: string;
+  message: ClientMessageBody;
+  /** The conversation it was sent from (null = the new-conversation draft). */
+  from: string | null;
+  /** sent → answer pending; accepted → only its bubble waits for the rows;
+   *  unknown → the socket dropped before the answer. */
+  status: "sent" | "accepted" | "unknown";
+  /** The text as sent: matched against rows and queue if the answer is lost. */
+  sentText?: string;
+  /** Show the sent text as an optimistic user bubble until its row lands. */
+  bubble?: boolean;
+  /** What goes back to the editor if the send is refused or lost. */
+  draftText?: string;
+  attachments?: string[];
+  /** A re-open after reconnect, not a user navigation. */
+  restore?: boolean;
+}
+
+/** Transient message for the composer area; the UI turns it into words. */
+export type NoticeBody =
+  | { kind: "text"; text: string; icon?: "warning" | "bookmark" | "eject"; warn?: boolean }
+  | { kind: "run-failed"; failure: Failure; interrupted: boolean }
+  | { kind: "refused"; failure: Failure; code?: string }
+  | { kind: "extension"; message: string; level: "info" | "warning" | "error"; failure?: Failure }
+  | { kind: "unsent" };
+
+export interface Notice {
+  id: number;
+  body: NoticeBody;
+  /** 0 = stays until replaced. */
+  ttlMs: number;
+}
+
+/** Text (and paths) handed back to the editor: Stop's unsent queue, a refused or lost send. */
+export interface Returned {
+  id: number;
+  text: string;
+}
+
+export interface ConversationState {
+  /** The conversation this socket follows; null = the new-conversation draft. */
+  sessionId: string | null;
+  snapshot: SessionSnapshot | null;
+  /** The server's new-conversation settings (M1: still server-held). */
+  draft: SessionDraftSnapshot | null;
+  manifest: AssemblyManifest | null;
+  metrics: SessionMetrics | null;
+  warnings: string[];
+  messages: TranscriptMessage[];
+  turn: LiveTurn;
+  /** Every pending approval this window may see (connection-wide registry). */
+  approvals: ApprovalRequestPayload[];
+  requests: PendingRequest[];
+  socket: SocketStatus;
+  notice: Notice | null;
+  returned: Returned | null;
+  attachments: string[];
+  /** Bumps whenever a run ends — completed, failed, or stopped. */
+  settledRuns: number;
+  seq: number;
+}
+
+export type ConversationInput =
+  | { type: "server"; message: ServerMessage }
+  | { type: "socket"; status: SocketStatus }
+  | { type: "request"; request: Omit<PendingRequest, "status"> }
+  | { type: "notice"; body: NoticeBody; ttlMs?: number }
+  | { type: "dismiss_notice"; id: number }
+  | { type: "returned_taken"; id: number }
+  | { type: "stage"; paths: string[] }
+  | { type: "unstage"; paths: string[] };
+
+const EMPTY_TURN: LiveTurn = { parts: [], tools: {}, activity: null };
+
+export function initialConversationState(): ConversationState {
+  return {
+    sessionId: null,
+    snapshot: null,
+    draft: null,
+    manifest: null,
+    metrics: null,
+    warnings: [],
+    messages: [],
+    turn: EMPTY_TURN,
+    approvals: [],
+    requests: [],
+    socket: "connecting",
+    notice: null,
+    returned: null,
+    attachments: [],
+    settledRuns: 0,
+    seq: 0,
+  };
+}
+
+const NOTICE_TTL = 4500;
+
+function withNotice(state: ConversationState, body: NoticeBody | null, ttlMs = NOTICE_TTL): ConversationState {
+  if (!body) return state.notice ? { ...state, notice: null } : state;
+  const seq = state.seq + 1;
+  return { ...state, seq, notice: { id: seq, body, ttlMs } };
+}
+
+function withReturned(state: ConversationState, text: string, paths: string[] = []): ConversationState {
+  const seq = state.seq + 1;
+  const joined = [text, state.returned?.text ?? ""].filter((part) => part.trim()).join("\n");
+  return {
+    ...state,
+    seq,
+    returned: joined ? { id: seq, text: joined } : state.returned,
+    attachments: stageAll(state.attachments, paths),
+  };
+}
+
+function stageAll(current: string[], paths: string[]): string[] {
+  const added = paths.filter((path) => path && !current.includes(path));
+  return added.length ? [...current, ...added] : current;
+}
+
+function appendText(parts: StreamPart[], kind: "thinking" | "text", delta: string): StreamPart[] {
+  const last = parts.at(-1);
+  return last?.kind === kind
+    ? [...parts.slice(0, -1), { kind, text: last.text + delta }]
+    : [...parts, { kind, text: delta }];
+}
+
+function upsertTool(parts: StreamPart[], tool: ActiveToolState): StreamPart[] {
+  const index = parts.findIndex((part) => part.kind === "tool" && part.tool.callId === tool.callId);
+  return index === -1
+    ? [...parts, { kind: "tool", tool }]
+    : parts.map((part, item) => (item === index ? { kind: "tool" as const, tool } : part));
+}
+
+/** Rows of a transcript that a pending bubble can be matched against. */
+function recentUserTexts(messages: TranscriptMessage[], count = 3): string[] {
+  const texts: string[] = [];
+  for (let index = messages.length - 1; index >= 0 && texts.length < count; index -= 1) {
+    if (messages[index].role === "user") texts.push(messages[index].text.trim());
+  }
+  return texts;
+}
+
+/**
+ * New rows arrived for this conversation. Accepted bubbles they now carry go;
+ * a terminal hand-over (`final`) ends every accepted bubble — the turn is
+ * over and the rows are the truth. Sends lost with the socket are settled:
+ * in the rows → sent; otherwise → back to the editor with a notice.
+ */
+function withRows(state: ConversationState, messages: TranscriptMessage[], final: boolean): ConversationState {
+  const users = recentUserTexts(messages);
+  const queued = queuedTexts(state);
+  let next: ConversationState = { ...state, messages };
+  let lost = false;
+  const requests: PendingRequest[] = [];
+  for (const request of state.requests) {
+    if (request.from !== state.sessionId || request.sentText === undefined || request.status === "sent") {
+      requests.push(request);
+      continue;
+    }
+    const text = request.sentText.trim();
+    const landed = users.includes(text) || queued.includes(request.sentText);
+    if (request.status === "accepted" && (final || landed)) continue;
+    if (request.status === "unknown") {
+      if (!landed) {
+        next = withReturned(next, request.draftText ?? "", request.attachments);
+        lost = true;
+      }
+      continue;
+    }
+    requests.push(request);
+  }
+  next = { ...next, requests };
+  return lost ? withNotice(next, { kind: "unsent" }, 0) : next;
+}
+
+/** Leave the current conversation: its rows, turn and staged files go. */
+function switchedTo(state: ConversationState, sessionId: string | null): ConversationState {
+  return {
+    ...state,
+    sessionId,
+    messages: [],
+    turn: EMPTY_TURN,
+    manifest: null,
+    metrics: null,
+    warnings: [],
+    attachments: [],
+    returned: null,
+    notice: null,
+  };
+}
+
+function removeRequest(state: ConversationState, id: string): ConversationState {
+  return { ...state, requests: state.requests.filter((request) => request.id !== id) };
+}
+
+function onServer(state: ConversationState, message: ServerMessage): ConversationState {
+  switch (message.type) {
+    case "session_draft": {
+      const leaving = state.requests.some(
+        (request) => request.status === "sent" && request.message.type === "new_session",
+      );
+      // A reconnect greets with the draft before the re-open answers; that
+      // greeting does not detach a conversation the user is in.
+      if (state.sessionId !== null && !leaving) return { ...state, draft: message.payload };
+      let next: ConversationState = state.sessionId === null ? state : switchedTo(state, null);
+      next = { ...next, draft: message.payload, snapshot: null };
+      if (message.payload.resetComposer) next = { ...next, attachments: [] };
+      // Draft sends lost with the socket never reached a conversation.
+      return withRows(next, [], false);
+    }
+
+    case "session_opened": {
+      const opened = message.payload.sessionId;
+      let next = state;
+      if (state.sessionId !== opened) {
+        const openTarget = state.requests.some(
+          (request) =>
+            request.message.type === "open_session" && request.message.payload.sessionId === opened,
+        );
+        const materialized = state.sessionId === null && !openTarget;
+        next = switchedTo(state, opened);
+        if (materialized) {
+          // The draft's first send created this conversation: its requests
+          // (and bubble, and anything handed back) now belong to it.
+          next = {
+            ...next,
+            returned: state.returned,
+            requests: state.requests.map((request) =>
+              request.from === null ? { ...request, from: opened } : request,
+            ),
+          };
+        }
+      }
+      return {
+        ...next,
+        snapshot: message.payload,
+        warnings: message.payload.resumeWarnings ?? [],
+        turn: state.sessionId === opened ? next.turn : EMPTY_TURN,
+      };
+    }
+
+    case "session_updated":
+      return message.payload.sessionId === state.sessionId ? { ...state, snapshot: message.payload } : state;
+
+    case "session_metadata":
+      return { ...state, manifest: message.payload };
+
+    case "session_metrics":
+      return { ...state, metrics: message.payload };
+
+    case "session_transcript":
+      return withRows({ ...state, turn: EMPTY_TURN }, message.payload.messages, false);
+
+    case "run_completed":
+      return {
+        ...withRows(
+          { ...state, snapshot: message.payload.snapshot, turn: EMPTY_TURN, notice: null },
+          message.payload.messages,
+          true,
+        ),
+        settledRuns: state.settledRuns + 1,
+      };
+
+    case "run_failed": {
+      const recovery = message.payload.snapshot.recovery;
+      const next = {
+        ...withRows(
+          { ...state, snapshot: message.payload.snapshot, turn: EMPTY_TURN },
+          message.payload.messages,
+          true,
+        ),
+        settledRuns: state.settledRuns + 1,
+      };
+      // The user's own Stop needs no words; anything else says what happened.
+      if (recovery?.interruptionCause === "user_abort") return withNotice(next, null);
+      const authRefresh = message.payload.failure.kind === "auth-refresh";
+      return withNotice(
+        next,
+        { kind: "run-failed", failure: message.payload.failure, interrupted: recovery?.outcome === "interrupted" },
+        authRefresh ? 0 : NOTICE_TTL,
+      );
+    }
+
+    case "user_steered":
+      return {
+        ...state,
+        messages: [
+          ...state.messages,
+          { role: "user", text: message.payload.text, timestamp: null, rowId: `steered:${state.messages.length}` },
+        ],
+      };
+
+    case "queue_updated": {
+      const { steering, followUp, restored, restoredAttachments } = message.payload;
+      const next = state.snapshot ? { ...state, snapshot: { ...state.snapshot, queue: { steering, followUp } } } : state;
+      return restored?.length ? withReturned(next, restored.join("\n"), restoredAttachments) : next;
+    }
+
+    case "assistant_delta":
+      return {
+        ...state,
+        turn: { ...state.turn, activity: null, parts: appendText(state.turn.parts, "text", message.payload.text) },
+      };
+
+    case "thinking_delta":
+      return { ...state, turn: { ...state.turn, parts: appendText(state.turn.parts, "thinking", message.payload.text) } };
+
+    case "tool_started": {
+      const { toolName, callId, path, detail } = message.payload;
+      const tool: ActiveToolState = { callId, toolName, path, detail, status: "running" };
+      return {
+        ...state,
+        turn: {
+          parts: upsertTool(state.turn.parts, tool),
+          tools: { ...state.turn.tools, [callId]: tool },
+          activity: { kind: "tool", tool },
+        },
+      };
+    }
+
+    case "tool_updated": {
+      const current = state.turn.tools[message.payload.callId];
+      if (!current) return state;
+      const tool = { ...current, progressText: message.payload.text };
+      return {
+        ...state,
+        turn: {
+          parts: upsertTool(state.turn.parts, tool),
+          tools: { ...state.turn.tools, [tool.callId]: tool },
+          activity: message.payload.text ? { kind: "tool", tool } : state.turn.activity,
+        },
+      };
+    }
+
+    case "tool_finished": {
+      const current = state.turn.tools[message.payload.callId];
+      const tools = { ...state.turn.tools };
+      delete tools[message.payload.callId];
+      const parts = current
+        ? upsertTool(state.turn.parts, {
+            ...current,
+            status: message.payload.success ? "finished" : "failed",
+            success: message.payload.success,
+            progressText: undefined,
+          })
+        : state.turn.parts;
+      return {
+        ...state,
+        turn: {
+          parts,
+          tools,
+          activity: Object.keys(tools).length === 0 ? { kind: "phase", phase: "processing" } : state.turn.activity,
+        },
+      };
+    }
+
+    case "run_phase": {
+      const { phase, retry } = message.payload;
+      let parts = state.turn.parts;
+      // Only the server knows whether the dropped attempt produced text (it
+      // reads Pi's state before the retry drops the message); without that
+      // fact the parts above are just as likely completed steps.
+      if (phase === "retrying" && retry?.droppedPartialText && parts.length > 0 && parts.at(-1)?.kind !== "notice") {
+        parts = [...parts, { kind: "notice", notice: "retry-dropped" }];
+      }
+      const activity: TurnActivity = phase === "idle" || phase === "error" ? null : { kind: "phase", phase, retry };
+      return { ...state, turn: { ...state.turn, parts, activity } };
+    }
+
+    case "approval_snapshot":
+      return { ...state, approvals: message.payload };
+
+    case "approval_requested":
+      return state.approvals.some((entry) => entry.approvalId === message.payload.approvalId)
+        ? state
+        : { ...state, approvals: [...state.approvals, message.payload] };
+
+    case "approval_resolved":
+      return {
+        ...state,
+        approvals: state.approvals.filter((entry) => entry.approvalId !== message.payload.approvalId),
+      };
+
+    case "extension_notice":
+      return withNotice(state, {
+        kind: "extension",
+        message: message.payload.message,
+        level: message.payload.level,
+        failure: message.payload.failure,
+      });
+
+    case "request_done": {
+      const request = state.requests.find((entry) => entry.id === message.payload.requestId);
+      if (!request) return state;
+      if (request.bubble && request.status !== "accepted") {
+        return {
+          ...state,
+          requests: state.requests.map((entry) =>
+            entry.id === request.id ? { ...entry, status: "accepted" as const } : entry,
+          ),
+        };
+      }
+      return removeRequest(state, request.id);
+    }
+
+    case "error": {
+      const { failure, code, requestId } = message.payload;
+      const request = requestId ? state.requests.find((entry) => entry.id === requestId) : undefined;
+      let next = request ? removeRequest(state, request.id) : state;
+      if (request?.draftText !== undefined || request?.attachments?.length) {
+        next = withReturned(next, request.draftText ?? "", request.attachments);
+      }
+      // A conversation that cannot be re-opened after a reconnect is gone
+      // from this window: fall back to the new-conversation draft.
+      if (request?.restore) next = { ...switchedTo(next, null), snapshot: null };
+      return withNotice(next, { kind: "refused", failure, code });
+    }
+
+    case "related_session_created":
+    case "branch_created":
+      // Navigation for the display layer; its request answer follows.
+      return state;
+
+    default: {
+      const unhandled: never = message;
+      return unhandled;
+    }
+  }
+}
+
+/** The one transition. Exhaustive over server messages (see `never` above). */
+export function reduce(state: ConversationState, input: ConversationInput): ConversationState {
+  switch (input.type) {
+    case "server":
+      return onServer(state, input.message);
+
+    case "socket": {
+      if (input.status === "open" || input.status === "connecting") return { ...state, socket: input.status };
+      // Answers can no longer arrive: every pending send's fate is unknown
+      // until the re-open's rows say. Stream and approvals are replayed on
+      // reconnect, so the local copies go.
+      return {
+        ...state,
+        socket: input.status,
+        turn: EMPTY_TURN,
+        approvals: [],
+        requests: state.requests.flatMap((request) =>
+          request.status !== "sent"
+            ? [request]
+            : request.sentText !== undefined
+              ? [{ ...request, status: "unknown" as const }]
+              : [],
+        ),
+      };
+    }
+
+    case "request":
+      return {
+        ...state,
+        requests: [...state.requests, { ...input.request, status: "sent" }],
+        attachments: input.request.attachments?.length
+          ? state.attachments.filter((path) => !input.request.attachments?.includes(path))
+          : state.attachments,
+        notice: input.request.sentText !== undefined ? null : state.notice,
+      };
+
+    case "notice":
+      return withNotice(state, input.body, input.ttlMs);
+
+    case "dismiss_notice":
+      return state.notice?.id === input.id ? { ...state, notice: null } : state;
+
+    case "returned_taken":
+      return state.returned?.id === input.id ? { ...state, returned: null } : state;
+
+    case "stage":
+      return { ...state, attachments: stageAll(state.attachments, input.paths) };
+
+    case "unstage": {
+      const remove = new Set(input.paths);
+      return { ...state, attachments: state.attachments.filter((path) => !remove.has(path)) };
+    }
+
+    default: {
+      const unhandled: never = input;
+      return unhandled;
+    }
+  }
+}
+
+// ---------------------------------------------------------------- selectors
+
+/** The server says a run owns the conversation (anything but idle). */
+export function isRunning(state: ConversationState): boolean {
+  return Boolean(state.snapshot && state.snapshot.status !== "idle");
+}
+
+/** Requests of this conversation still waiting for their answer. */
+export function busyRequests(state: ConversationState): PendingRequest[] {
+  return state.requests.filter((request) => request.status === "sent" && REQUEST_BUSY[request.message.type]);
+}
+
+/** Where a user open (not a reconnect's re-open) is heading, while in flight. */
+export function openingTarget(state: ConversationState): string | null {
+  for (let index = state.requests.length - 1; index >= 0; index -= 1) {
+    const { message, status, restore } = state.requests[index];
+    if (status === "sent" && !restore && message.type === "open_session") return message.payload.sessionId;
+  }
+  return null;
+}
+
+export function isBusy(state: ConversationState): boolean {
+  return busyRequests(state).length > 0;
+}
+
+/** Continue/retry eligibility: from the snapshot, and only when nothing is under way. */
+export function recoveryOf(state: ConversationState) {
+  if (isRunning(state) || isBusy(state)) return null;
+  return state.snapshot?.recovery ?? null;
+}
+
+export function queuedTexts(state: ConversationState): string[] {
+  const queue = state.snapshot?.queue;
+  return [...(queue?.steering ?? []), ...(queue?.followUp ?? [])];
+}
+
+/** Switches accepted mid-run; the controls show them as chosen + pending. */
+export function pendingChanges(state: ConversationState): PendingChanges {
+  return state.snapshot?.pending ?? {};
+}
+
+/**
+ * Ready to take input: connected, no open in flight, and something to show.
+ * An open in flight blocks input so a send cannot land in the conversation
+ * being left — or, for a side pane, on the connection's draft greeting.
+ */
+export function isReady(state: ConversationState): boolean {
+  if (state.socket !== "open") return false;
+  if (state.requests.some((request) => request.message.type === "open_session" && request.status === "sent")) {
+    return false;
+  }
+  return state.sessionId ? state.snapshot !== null : state.draft !== null;
+}
+
+/** Transcript rows plus this conversation's bubbles still waiting for their row. */
+export type DisplayMessage = TranscriptMessage & { pending?: boolean };
+
+export function displayMessages(state: ConversationState): DisplayMessage[] {
+  const bubbles = state.requests.filter((request) => request.bubble && request.from === state.sessionId);
+  if (!bubbles.length) return state.messages;
+  return [
+    ...state.messages,
+    ...bubbles.map((request) => ({
+      role: "user" as const,
+      text: request.sentText ?? "",
+      timestamp: null,
+      rowId: `local:${request.id}`,
+      pending: request.status !== "accepted",
+    })),
+  ];
+}
+
+/**
+ * The effective session settings — "pending first, else current" for a
+ * switch accepted mid-run — from the snapshot, or the draft when detached.
+ */
+export interface EffectiveSettings {
+  selectors: SessionSelectors;
+  mode: AltMode;
+  fullAccess: boolean;
+  modelOverride: SessionModelOverride | null;
+  studyTag: StudyTag | null;
+  workspacePrimaryDir: string | null;
+}
+
+export function effectiveSettings(state: ConversationState): EffectiveSettings {
+  const source = state.sessionId ? state.snapshot : state.draft;
+  const pending = state.sessionId ? (state.snapshot?.pending ?? {}) : {};
+  const pick = <T,>(chosen: T | undefined, current: T): T => (chosen !== undefined ? chosen : current);
+  return {
+    selectors: {
+      currentDomain: pick(pending.kbDomain, source?.currentDomain || "ep-core"),
+      rolePresetSlug: pick(pending.rolePresetSlug, source?.rolePresetSlug ?? null),
+      soulSlug: pick(pending.soulSlug, source?.soulSlug ?? null),
+      customInstructionRef: pick(pending.customInstructionRef, source?.customInstructionRef ?? null),
+      visibility: pick(pending.visibility?.visibility, source?.visibility ?? "research"),
+      branchId: (state.snapshot && state.sessionId ? state.snapshot.branchId : undefined) || "main",
+    },
+    mode: pick(pending.mode, source?.mode ?? "understand"),
+    fullAccess: pick(pending.fullAccess, source?.fullAccess ?? false),
+    modelOverride: pick(pending.model, source?.modelOverride ?? null),
+    studyTag: source?.studyTag ?? null,
+    workspacePrimaryDir: source?.workspacePrimaryDir ?? null,
+  };
+}

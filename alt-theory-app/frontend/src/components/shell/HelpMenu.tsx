@@ -1,4 +1,4 @@
-import { useApp } from "@/context/AppProvider";
+import { useMainView } from "@/context/MainView";
 import { useShell } from "@/context/ShellContext";
 import { t } from "@/i18n";
 
@@ -9,7 +9,7 @@ export function HelpMenu({
   compact?: boolean;
   attachToCenter?: boolean;
 }) {
-  const app = useApp();
+  const main = useMainView();
   const shell = useShell();
   const close = (target: HTMLElement) =>
     target.closest("details")?.removeAttribute("open");
@@ -30,7 +30,7 @@ export function HelpMenu({
           onClick={(event) => {
             close(event.currentTarget);
             shell.openApp();
-            app.openHelper(undefined, attachToCenter);
+            main.openHelper(undefined, attachToCenter);
           }}
         >
           <i className="ph ph-chats-circle" />

@@ -57,6 +57,7 @@ import {
   type AppUpdateStatus,
   ZOOM_STOPS,
 } from "@/lib/native";
+import { useMainView } from "@/context/MainView";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
 import { t } from "@/i18n";
@@ -1968,7 +1969,7 @@ function AboutPanel() {
 }
 
 function FeaturesPanel() {
-  const app = useApp();
+  const main = useMainView();
   const shell = useShell();
   return (
     <div className="set-panel">
@@ -1980,7 +1981,7 @@ function FeaturesPanel() {
         className="add-btn help-ask"
         onClick={() => {
           shell.openApp();
-          app.openHelper(undefined, false);
+          main.openHelper(undefined, false);
         }}
       >
         <i className="ph ph-chats-circle" />
@@ -2130,7 +2131,7 @@ function WorkingFoldersPanel() {
         confirmLabel: t("Move"),
         onConfirm: () => {
           void app
-            .repointProject(project.id, path, project.primaryDir)
+            .repointProject(project.id, path)
             .then(() => getWorkingFolders().then((value) => setFolders(value)))
             .catch((err) => setNotice(err instanceof Error ? err.message : t("Could not save.")));
         },

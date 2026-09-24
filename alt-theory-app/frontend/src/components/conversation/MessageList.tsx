@@ -3,16 +3,19 @@ import type {
   ActiveToolState,
   StreamPart,
   ToolDetail,
-  TranscriptMessage,
 } from "@/api/types";
-import { useApp, useStreamParts } from "@/context/AppProvider";
+import { useApp } from "@/context/AppProvider";
+import { useConversationContext, useTurnParts } from "@/context/ConversationContext";
+import { useMainView } from "@/context/MainView";
+import { PendingMark } from "@/components/ui/PendingMark";
+import type { DisplayMessage } from "@/lib/conversation";
 import { useShell } from "@/context/ShellContext";
 import { MarkdownBody } from "@/components/conversation/MarkdownBody";
 import { fileName, toolLabel } from "@/lib/tools";
 import { cn } from "@/lib/cn";
 import { hasNativeBridge, pickDirectory, revealPath } from "@/lib/native";
 import { shouldToggleCollapseOnClick } from "@/lib/collapseAnywhere";
-import { replyStopLine } from "@/lib/replyStop";
+import { replyStopLine, retryDroppedLine } from "@/lib/replyStop";
 import { toolOutcome, type ToolOutcome } from "@/lib/toolOutcome";
 import { t } from "@/i18n";
 import { autosizeTextarea } from "@/lib/autosizeTextarea";
@@ -23,33 +26,36 @@ import { useFindTarget } from "@/lib/find";
 
 export function MessageList() {
   const app = useApp();
-  const streamParts = useStreamParts();
+  const main = useMainView();
+  const conv = useConversationContext();
+  const streamParts = useTurnParts();
+  const messages = conv.messages;
   const {
     containerRef,
     stickRef: stickToBottomRef,
     onScroll,
-  } = useStickToBottom([app.messages, streamParts]);
+  } = useStickToBottom([messages, streamParts]);
   useFindTarget(containerRef, {});
   const railRef = useRef<HTMLDivElement>(null);
   const [scrubbing, setScrubbing] = useState(false);
   const developer = app.transcriptView === "developer";
 
   const latestUserIndex = useMemo(() => {
-    for (let i = app.messages.length - 1; i >= 0; i -= 1) {
-      if (app.messages[i]?.role === "user") return i;
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      if (messages[i]?.role === "user") return i;
     }
     return -1;
-  }, [app.messages]);
+  }, [messages]);
   const latestAssistantIndex = useMemo(() => {
-    for (let i = app.messages.length - 1; i >= 0; i -= 1) {
-      if (app.messages[i]?.role === "assistant") return i;
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      if (messages[i]?.role === "assistant") return i;
     }
     return -1;
-  }, [app.messages]);
+  }, [messages]);
 
   const userMessageCount = useMemo(
-    () => app.messages.filter((message) => message.role === "user").length,
-    [app.messages],
+    () => messages.filter((message) => message.role === "user").length,
+    [messages],
   );
 
   // Map a pointer position on the rail to a user message and scroll to it.
@@ -78,34 +84,28 @@ export function MessageList() {
   const actions: TranscriptActions = useMemo(
     () => ({
       onEdit: (text, entryId) =>
-        entryId && app.recovery?.userEntryId === entryId
-          ? app.reviseLatestInPlace(text, entryId)
-          : app.branchRevision(text, entryId ?? undefined),
+        entryId && conv.recovery?.userEntryId === entryId
+          ? Boolean(text.trim()) && !conv.isRunning && conv.reviseLatest(text, entryId)
+          : main.branchRevision(text, entryId ?? undefined),
       onPrepareCompare: (text, entryId) =>
-        entryId ? app.prepareBranchRevision(text, entryId) : false,
-      onRetry: app.retryLatest,
+        entryId ? main.prepareBranchRevision(text, entryId) : false,
+      onRetry: () => Boolean(conv.sessionId) && !conv.isRunning && conv.retryLatest(),
       isReplacementEdit: (entryId) =>
-        Boolean(entryId && app.recovery?.userEntryId === entryId),
+        Boolean(entryId && conv.recovery?.userEntryId === entryId),
     }),
-    [
-      app.branchRevision,
-      app.prepareBranchRevision,
-      app.recovery,
-      app.retryLatest,
-      app.reviseLatestInPlace,
-    ],
+    [conv, main],
   );
 
   return (
     <div className="msgs-wrap">
     <div className="msgs" ref={containerRef} onScroll={onScroll}>
-      {app.sessionId && !app.selectors.soulSlug ? (
+      {conv.sessionId && !conv.selectors.soulSlug ? (
         <SysLine>
           <i className="ph ph-warning" />
           {t("Soul not loaded — this conversation runs without Alt's persona.")}
         </SysLine>
       ) : null}
-      {app.sessionWarnings.map((warning) =>
+      {conv.sessionWarnings.map((warning) =>
         // ponytail: the dead-folder notice is matched by its distinctive phrase
         // (backend session-service pushes it verbatim). Keep the strings in sync.
         /main folder .* no longer exists/.test(warning) ? (
@@ -118,11 +118,11 @@ export function MessageList() {
         ),
       )}
       <SettledMessages
-        messages={app.messages}
+        messages={messages}
         developer={developer}
         latestUserIndex={latestUserIndex}
         latestAssistantIndex={latestAssistantIndex}
-        isRunning={app.isRunning}
+        isRunning={conv.isRunning}
         actions={actions}
       />
 
@@ -169,7 +169,7 @@ export const SettledMessages = memo(function SettledMessages({
   isRunning,
   actions,
 }: {
-  messages: TranscriptMessage[];
+  messages: DisplayMessage[];
   developer: boolean;
   latestUserIndex: number;
   latestAssistantIndex: number;
@@ -226,7 +226,10 @@ export const SettledMessages = memo(function SettledMessages({
     if (message.role === "user") userOrdinal += 1;
     return (
       <TranscriptEntry
-        key={`${index}-${message.timestamp ?? message.text.slice(0, 12)}`}
+        // The server's stable row id (one entry can make several rows); a
+        // pending bubble keys by its request, so the swap to the settled row
+        // is one replacement, not a reshuffle.
+        key={message.rowId ?? `${index}-${message.timestamp ?? message.text.slice(0, 12)}`}
         message={message}
         developer={developer}
         isLatestUser={index === latestUserIndex}
@@ -241,7 +244,10 @@ export const SettledMessages = memo(function SettledMessages({
   return segments.map((segment) => {
     if (segment.kind === "solo") return entryAt(segment.index);
     return (
-      <div key={`range-${segment.indexes[0]}`} className={`reply-range ${segment.cause}`}>
+      <div
+        key={`range-${messages[segment.indexes[0]].rowId ?? segment.indexes[0]}`}
+        className={`reply-range ${segment.cause}`}
+      >
         {segment.indexes.map(entryAt)}
         <div className="reply-range-line" data-find-skip="">{replyStopLine(segment.cause)}</div>
       </div>
@@ -272,7 +278,7 @@ export function StreamPartsView({
       );
     }
     if (part.kind === "notice") {
-      return <div key={`sp-${index}`} className="reply-stop" data-find-skip="">{part.text}</div>;
+      return <div key={`sp-${index}`} className="reply-stop" data-find-skip="">{retryDroppedLine()}</div>;
     }
     return <ToolLine key={part.tool.callId} tool={part.tool} />;
   });
@@ -287,14 +293,14 @@ export function StreamPartsView({
  * Imported history carries no tool log, so nothing renders there.
  */
 function TurnChangesCard() {
-  const app = useApp();
+  const conv = useConversationContext();
   const shell = useShell();
   const menu = useContextMenu();
 
   const files = useMemo(() => {
     const totals = new Map<string, { added: number; removed: number }>();
-    for (let i = app.messages.length - 1; i >= 0; i -= 1) {
-      const message = app.messages[i];
+    for (let i = conv.messages.length - 1; i >= 0; i -= 1) {
+      const message = conv.messages[i];
       if (message.role === "user") break;
       if (message.role !== "tool" || !message.toolPath) continue;
       if (message.success === false) continue;
@@ -317,9 +323,9 @@ function TurnChangesCard() {
       totals.set(message.toolPath, entry);
     }
     return [...totals.entries()].map(([path, counts]) => ({ path, ...counts }));
-  }, [app.messages]);
+  }, [conv.messages]);
 
-  if (app.isRunning || files.length === 0) return null;
+  if (conv.isRunning || files.length === 0) return null;
 
   return (
     <div className="turn-changes" data-find-skip="">
@@ -332,13 +338,13 @@ function TurnChangesCard() {
           key={file.path}
           className="tc-file"
           onContextMenu={(event) => {
-            const path = absoluteOrWorkspacePath(file.path, app.workspacePrimaryDir);
+            const path = absoluteOrWorkspacePath(file.path, conv.workspacePrimaryDir);
             menu.open(event, fileContextItems(path, shell));
           }}
           onKeyDown={(event) => {
             if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
             event.preventDefault();
-            const path = absoluteOrWorkspacePath(file.path, app.workspacePrimaryDir);
+            const path = absoluteOrWorkspacePath(file.path, conv.workspacePrimaryDir);
             const rect = event.currentTarget.getBoundingClientRect();
             menu.openAt(rect.left + 18, rect.bottom, fileContextItems(path, shell), event.currentTarget);
           }}
@@ -498,7 +504,7 @@ export function TranscriptEntry({
   isRunning,
   actions,
 }: {
-  message: TranscriptMessage;
+  message: DisplayMessage;
   developer: boolean;
   isLatestUser: boolean;
   isLatestAssistant?: boolean;
@@ -516,6 +522,7 @@ export function TranscriptEntry({
     return (
       <UserBubble
         text={message.text}
+        pending={Boolean(message.pending)}
         entryId={message.entryId ?? null}
         isLatest={isLatestUser}
         isRunning={isRunning}
@@ -609,6 +616,7 @@ export function TranscriptEntry({
 
 function UserBubble({
   text,
+  pending,
   entryId,
   isLatest,
   isRunning,
@@ -619,6 +627,8 @@ function UserBubble({
   userIndex,
 }: {
   text: string;
+  /** Sent, not yet confirmed by the server (placeholder mark; design TBD). */
+  pending: boolean;
   entryId: string | null;
   isLatest: boolean;
   isRunning: boolean;
@@ -643,7 +653,10 @@ function UserBubble({
   const canEdit = isLatest || Boolean(entryId);
   return (
     <div className="msg user" data-uidx={userIndex}>
-      <div className="who" data-find-skip="">{t("You")}</div>
+      <div className="who" data-find-skip="">
+        {t("You")}
+        <PendingMark when={pending} />
+      </div>
       <div
         ref={bubbleRef}
         className="bubble"
@@ -777,16 +790,17 @@ export function AssistantBubble({
 // continue without one — instead of a passive notice.
 function StaleWorkspaceNotice({ warning }: { warning: string }) {
   const app = useApp();
+  const { sessionId } = useConversationContext();
   const [dismissed, setDismissed] = useState(false);
   if (dismissed) return null;
 
   const choose = () => {
-    if (!app.sessionId) return;
+    if (!sessionId) return;
     void pickDirectory(
       t("Full path of the main folder for this conversation:"),
     ).then((path) => {
-      if (!path || !app.sessionId) return;
-      void app.repointSession(app.sessionId, path).catch((error) => {
+      if (!path) return;
+      void app.repointSession(sessionId, path).catch((error) => {
         window.alert(error instanceof Error ? error.message : String(error));
       });
     });

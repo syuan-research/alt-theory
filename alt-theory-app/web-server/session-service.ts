@@ -716,6 +716,17 @@ export class SessionService implements AgentTeamBridge {
     return current;
   }
 
+  /**
+   * A setting changed (applied now or pending until the turn ends): every
+   * window of the conversation gets the snapshot — clients read settings
+   * and pending marks from snapshots only (M1).
+   */
+  private publish(managed: ManagedSession): SessionSnapshot {
+    const snapshot = this.snapshot(managed);
+    this.emit(managed, { type: "session_updated", payload: snapshot });
+    return snapshot;
+  }
+
   /** A run owns the session from here; the client hears it at once. */
   private beginRun(managed: ManagedSession): void {
     managed.runState.begin();
@@ -986,13 +997,9 @@ export class SessionService implements AgentTeamBridge {
     });
     if (replacement) {
       // Every window of this conversation hears the new selectors.
-      this.emit(this.requireSession(sessionId), {
-        type: "session_updated",
-        payload: replacement,
-      });
-      return { deferred: false, snapshot: replacement };
+      return { deferred: false, snapshot: this.publish(this.requireSession(sessionId)) };
     }
-    return { deferred: true, snapshot: this.snapshot(managed) };
+    return { deferred: true, snapshot: this.publish(managed) };
   }
 
   /**
@@ -1006,7 +1013,7 @@ export class SessionService implements AgentTeamBridge {
   ): Promise<SessionSnapshot> {
     const managed = this.requireSession(sessionId);
     await managed.runState.applyOrDefer({ mode }, () => this.applyMode(managed, mode));
-    return this.snapshot(managed);
+    return this.publish(managed);
   }
 
   private async applyMode(managed: ManagedSession, mode: AltMode): Promise<void> {
@@ -1052,7 +1059,7 @@ export class SessionService implements AgentTeamBridge {
         managed.setFullAccess(true),
       );
     }
-    return this.snapshot(managed);
+    return this.publish(managed);
   }
 
   /** Apply app-wide behavior settings to every open session. */
@@ -1326,7 +1333,7 @@ export class SessionService implements AgentTeamBridge {
     await managed.runState.applyOrDefer({ kbDomain: domain }, () =>
       this.applyKbDomain(managed, domain),
     );
-    return this.snapshot(managed);
+    return this.publish(managed);
   }
 
   private applyKbDomain(managed: ManagedSession, domain: string): void {
@@ -1772,7 +1779,11 @@ export class SessionService implements AgentTeamBridge {
         activeLeafEntryId,
       },
     });
-    return this.snapshot(managed);
+    this.emit(managed, {
+      type: "session_transcript",
+      payload: { messages: this.visibleTranscript(managed) },
+    });
+    return this.publish(managed);
   }
 
   async forkSession(
@@ -2760,7 +2771,7 @@ export class SessionService implements AgentTeamBridge {
       { visibility: { visibility, consentSnapshot } },
       () => this.applyVisibility(managed, visibility, consentSnapshot),
     );
-    return this.snapshot(managed);
+    return this.publish(managed);
   }
 
   private applyVisibility(
@@ -2819,7 +2830,7 @@ export class SessionService implements AgentTeamBridge {
       type: "study_tag_changed",
       details: { studyTag },
     });
-    return this.snapshot(managed);
+    return this.publish(managed);
   }
 
   /**
@@ -2836,7 +2847,7 @@ export class SessionService implements AgentTeamBridge {
     await managed.runState.applyOrDefer({ model: override }, () =>
       this.applyModel(managed, override),
     );
-    return this.snapshot(managed);
+    return this.publish(managed);
   }
 
   private async applyModel(
@@ -4716,6 +4727,7 @@ export class SessionService implements AgentTeamBridge {
         : undefined,
       studyTag: header?.studyTag ?? null,
       workspace: managed.getWorkspace(),
+      workspacePrimaryDir: header?.workspace?.primaryDir ?? null,
       openedFrom: managed.openedFrom,
       resumeWarnings: managed.resumeWarnings,
       messageCount: managed.counters.messageCount,

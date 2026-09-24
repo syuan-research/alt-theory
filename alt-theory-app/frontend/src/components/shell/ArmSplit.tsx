@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import type { AbComparisonRecord } from "@/api/types";
 import { chooseAbCandidate, fetchSessionDetail } from "@/api/sessions";
+import { useConversationContext } from "@/context/ConversationContext";
+import { useMainView } from "@/context/MainView";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
 import { shortId } from "@/lib/format";
@@ -13,6 +15,8 @@ import { t } from "@/i18n";
  */
 export function ArmSplit() {
   const app = useApp();
+  const conv = useConversationContext();
+  const main = useMainView();
   const shell = useShell();
   const comparisonId = shell.armsComparisonId;
   const [record, setRecord] = useState<AbComparisonRecord | null>(null);
@@ -20,9 +24,9 @@ export function ArmSplit() {
   const [choosing, setChoosing] = useState(false);
 
   useEffect(() => {
-    if (!app.sessionId || !comparisonId) return;
+    if (!conv.sessionId || !comparisonId) return;
     let cancelled = false;
-    fetchSessionDetail(app.sessionId)
+    fetchSessionDetail(conv.sessionId)
       .then((detail) => {
         if (cancelled) return;
         const found = (detail.abComparisons ?? []).find(
@@ -35,16 +39,16 @@ export function ArmSplit() {
     return () => {
       cancelled = true;
     };
-  }, [app.sessionId, comparisonId]);
+  }, [conv.sessionId, comparisonId]);
 
   const choose = async (candidateId: string) => {
-    if (!app.sessionId || !record) return;
+    if (!conv.sessionId || !record) return;
     setChoosing(true);
     try {
-      await chooseAbCandidate(app.sessionId, record.comparisonId, candidateId);
+      await chooseAbCandidate(conv.sessionId, record.comparisonId, candidateId);
       await app.refreshSessions();
       shell.closeArms();
-      app.openCatalogSession(candidateId);
+      main.openCatalogSession(candidateId);
     } catch (e) {
       setError(e instanceof Error ? e.message : t("Failed to choose"));
       setChoosing(false);

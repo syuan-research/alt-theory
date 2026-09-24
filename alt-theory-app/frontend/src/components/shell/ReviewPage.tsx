@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import type { AbComparisonRecord } from "@/api/types";
-import { useApp } from "@/context/AppProvider";
+import { useMainView } from "@/context/MainView";
 import { useShell } from "@/context/ShellContext";
 import { fmtTime, shortId } from "@/lib/format";
 import { t } from "@/i18n";
@@ -11,11 +11,11 @@ import { t } from "@/i18n";
  * backend addition (see researcher-console.md).
  */
 export function ReviewPage() {
-  const app = useApp();
+  const main = useMainView();
   const shell = useShell();
   const comparisons = useMemo<AbComparisonRecord[]>(
-    () => app.selectedSessionDetail?.abComparisons ?? [],
-    [app.selectedSessionDetail]
+    () => main.selectedSessionDetail?.abComparisons ?? [],
+    [main.selectedSessionDetail]
   );
 
   const chosenLabel = (rec: AbComparisonRecord): string | null => {

@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Shell } from "@/components/shell/Shell";
 import { AppProvider } from "@/context/AppProvider";
 import { ShellProvider } from "@/context/ShellContext";
+import { MainViewProvider } from "@/context/MainView";
 import { TooltipRoot } from "@/components/ui/Tooltip";
 
 export default function App() {
@@ -14,7 +15,9 @@ export default function App() {
           element={
             <AppProvider>
               <ShellProvider>
-                <Shell />
+                <MainViewProvider>
+                  <Shell />
+                </MainViewProvider>
               </ShellProvider>
             </AppProvider>
           }

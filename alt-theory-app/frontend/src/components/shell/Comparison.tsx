@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { generateAbComparison, type AbArmConfig } from "@/api/sessions";
+import { useConversationContext } from "@/context/ConversationContext";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
 import { MenuSelect } from "@/components/ui/MenuSelect";
@@ -44,26 +45,27 @@ function toArmConfig(arm: ArmDraft): AbArmConfig {
  */
 export function Comparison() {
   const app = useApp();
+  const conv = useConversationContext();
   const shell = useShell();
   const [prompt, setPrompt] = useState("");
   const [arms, setArms] = useState<ArmDraft[]>([emptyArm("A"), emptyArm("B")]);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const busy = generating || app.isRunning;
+  const busy = generating || conv.isRunning;
   const canGenerate =
-    app.sessionReady && !busy && prompt.trim().length > 0 && arms.length >= 2;
+    conv.sessionReady && !busy && prompt.trim().length > 0 && arms.length >= 2;
 
   const updateArm = (i: number, patch: Partial<ArmDraft>) =>
     setArms((prev) => prev.map((a, idx) => (idx === i ? { ...a, ...patch } : a)));
 
   const generate = async () => {
-    if (!app.sessionId) return;
+    if (!conv.sessionId) return;
     setGenerating(true);
     setError(null);
     try {
       const record = await generateAbComparison(
-        app.sessionId,
+        conv.sessionId,
         prompt,
         arms.map(toArmConfig)
       );

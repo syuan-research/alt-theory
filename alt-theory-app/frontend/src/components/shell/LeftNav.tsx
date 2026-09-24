@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { SessionSummary } from "@/api/types";
+import { useConversationContext } from "@/context/ConversationContext";
+import { useMainView } from "@/context/MainView";
 import { useApp, type SessionAlert } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
 import { t } from "@/i18n";
@@ -153,6 +155,7 @@ function unanchorMenu(details: HTMLDetailsElement) {
 
 export function LeftNav({ hidden = false }: { hidden?: boolean }) {
   const app = useApp();
+  const main = useMainView();
   const shell = useShell();
 
   // Settings surface: same persistent rail instance, content swapped for the
@@ -186,7 +189,7 @@ export function LeftNav({ hidden = false }: { hidden?: boolean }) {
           data-tip={t("New conversation")}
           onClick={() => {
             shell.openApp();
-            app.startNewSession();
+            main.startNewSession();
           }}
         >
           <i className="ph ph-note-pencil" />
@@ -467,6 +470,8 @@ function SessionRootList({
 
 function UserNav({ onImport }: { onImport: () => void }) {
   const app = useApp();
+  const conv = useConversationContext();
+  const main = useMainView();
   const shell = useShell();
   const navRef = useRef<HTMLDivElement>(null);
   // Ctrl+F with the list last touched opens and focuses this filter.
@@ -525,15 +530,15 @@ function UserNav({ onImport }: { onImport: () => void }) {
 
   useEffect(() => {
     if (!pendingRelated) return;
-    if (app.sessionId === pendingRelated.centerId) {
+    if (conv.sessionId === pendingRelated.centerId) {
       app.setActiveRelatedSessionId(pendingRelated.childId);
       setPendingRelated(null);
-    } else if (app.selectedCatalogSessionId !== pendingRelated.centerId) {
+    } else if (main.selectedCatalogSessionId !== pendingRelated.centerId) {
       // The user opened something else: never pop this child in later.
       // ponytail: a server-refused open keeps it until the next selection.
       setPendingRelated(null);
     }
-  }, [app.sessionId, app.selectedCatalogSessionId, app.setActiveRelatedSessionId, pendingRelated]);
+  }, [conv.sessionId, main.selectedCatalogSessionId, app.setActiveRelatedSessionId, pendingRelated]);
 
   useEffect(() => {
     if (!local) return;
@@ -670,7 +675,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
 
   const openSession = (id: string) => {
     shell.openApp();
-    app.openCatalogSession(id);
+    main.openCatalogSession(id);
   };
 
   const openContentHit = (session: SessionSummary) => {
@@ -686,16 +691,16 @@ function UserNav({ onImport }: { onImport: () => void }) {
       return;
     }
     shell.openApp();
-    if (app.sessionId === ancestor.sessionId) app.setActiveRelatedSessionId(session.sessionId);
-    else if (app.openCatalogSession(ancestor.sessionId)) {
+    if (conv.sessionId === ancestor.sessionId) app.setActiveRelatedSessionId(session.sessionId);
+    else if (main.openCatalogSession(ancestor.sessionId)) {
       setPendingRelated({ centerId: ancestor.sessionId, childId: session.sessionId });
     }
   };
 
   const startConversationIn = (dir: string | null) => {
-    app.setDraftWorkspace(dir);
+    conv.setDraftWorkspace(dir);
     shell.openApp();
-    app.startNewSession();
+    main.startNewSession();
   };
 
   // Header folder selector. With a conversation open this must MOVE that
@@ -704,11 +709,11 @@ function UserNav({ onImport }: { onImport: () => void }) {
   // session never got. Without a session it stays the draft picker for the
   // next conversation.
   const chooseFolder = (dir: string | null) => {
-    if (!app.sessionId) {
-      app.setDraftWorkspace(dir);
+    if (!conv.sessionId) {
+      conv.setDraftWorkspace(dir);
       return;
     }
-    if ((dir ?? "") === (app.workspacePrimaryDir ?? "")) return;
+    if ((dir ?? "") === (conv.workspacePrimaryDir ?? "")) return;
     const label = dir ? folderLabel(dir) : t("Independent conversations");
     app.requestConfirm({
       message: t("Move this conversation to work in \"{label}\"?", { label }),
@@ -720,7 +725,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
       confirmLabel: t("Move"),
       onConfirm: () => {
         void app
-          .repointSession(app.sessionId as string, dir)
+          .repointSession(conv.sessionId as string, dir)
           .catch((error) =>
             window.alert(error instanceof Error ? error.message : String(error)),
           );
@@ -759,7 +764,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
 
   const removeFolder = (dir: string, sessionIds: string[]) => {
     const finish = async () => {
-      if (app.workspacePrimaryDir === dir) app.setDraftWorkspace(null);
+      if (conv.workspacePrimaryDir === dir) conv.setDraftWorkspace(null);
       await app.removeKnownWorkspace(dir);
     };
     const run = async () => {
@@ -862,12 +867,12 @@ function UserNav({ onImport }: { onImport: () => void }) {
             <div className="split-new">
               <details className="list-more ws-pick">
                 <summary
-                  data-tip={app.workspacePrimaryDir ?? t("Independent conversations")}
+                  data-tip={conv.workspacePrimaryDir ?? t("Independent conversations")}
                 >
-                  <i className={`ph ${app.workspacePrimaryDir ? "ph-folder" : "ph-note"}`} />
+                  <i className={`ph ${conv.workspacePrimaryDir ? "ph-folder" : "ph-note"}`} />
                   <span className="ws-label">
-                    {app.workspacePrimaryDir
-                      ? folderLabel(app.workspacePrimaryDir)
+                    {conv.workspacePrimaryDir
+                      ? folderLabel(conv.workspacePrimaryDir)
                       : t("Independent conversations")}
                   </span>
                   <i className="ph ph-caret-down caret" />
@@ -891,7 +896,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                   >
                     <i className="ph ph-note" />
                     {t("Independent conversations")}
-                    {!app.workspacePrimaryDir ? (
+                    {!conv.workspacePrimaryDir ? (
                       <i className="ph ph-check check" />
                     ) : null}
                   </button>
@@ -908,7 +913,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                     >
                       <i className="ph ph-folder" />
                       {folderLabel(dir)}
-                      {app.workspacePrimaryDir === dir ? (
+                      {conv.workspacePrimaryDir === dir ? (
                         <i className="ph ph-check check" />
                       ) : null}
                     </button>
@@ -929,7 +934,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                 className="btn-new split-plus"
                 data-tip={t("New conversation")}
                 onClick={() =>
-                  startConversationIn(app.workspacePrimaryDir || null)
+                  startConversationIn(conv.workspacePrimaryDir || null)
                 }
               >
                 <i className="ph ph-note-pencil" />
@@ -1350,19 +1355,21 @@ function SessionNode({
   onToggleFamily: (id: string) => void;
 }) {
   const app = useApp();
+  const conv = useConversationContext();
+  const main = useMainView();
   const menu = useContextMenu();
   const [renaming, setRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState("");
-  const active = app.selectedCatalogSessionId === session.sessionId;
+  const active = main.selectedCatalogSessionId === session.sessionId;
   const children = (childrenByParent.get(session.sessionId) ?? []).filter(
     (child) => visibleIds === null || visibleIds.has(child.sessionId),
   );
   // The active session's own run state is live in the app, ahead of the poll.
   const runStatus =
-    app.sessionId === session.sessionId && app.isRunning
+    conv.sessionId === session.sessionId && conv.isRunning
       ? "running"
       : session.runStatus;
-  const state = sessionRowState(runStatus, app.sessionAlerts[session.sessionId]);
+  const state = sessionRowState(runStatus, main.sessionAlerts[session.sessionId]);
   const title = sessionTitle(session, app.sessionDisplayNames, app.sessions);
   const folded = visibleIds === null && foldedFamilies.has(session.sessionId);
   const familyCount = familyMembersOf(session, app.sessions).filter(
@@ -1408,21 +1415,21 @@ function SessionNode({
   const remove = () => app.requestConfirm({
     message: t("Delete this conversation?"),
     confirmLabel: t("Delete"),
-    onConfirm: () => app.deleteSelectedSession(session.sessionId),
+    onConfirm: () => main.deleteSession(session.sessionId),
   });
   const removeFamily = () => app.requestConfirm({
     message: t("Delete all {count} conversations in this family?", {
       count: String(familyCount),
     }),
     confirmLabel: t("Delete entire family"),
-    onConfirm: () => app.deleteSessionFamily(session.sessionId),
+    onConfirm: () => main.deleteSessionFamily(session.sessionId),
   });
   const contextItems = (): ContextMenuItem[] => [
     ...(canTakeMainline(session, app.sessions) ? [{
       label: t("Make this the main conversation"), icon: "ph-crown-simple", onSelect: promote,
     }] : []),
     { label: t("Rename"), icon: "ph-pencil-simple", onSelect: rename },
-    { label: t("Duplicate"), icon: "ph-copy", onSelect: () => app.duplicateSession(session.sessionId) },
+    { label: t("Duplicate"), icon: "ph-copy", onSelect: () => main.duplicateSession(session.sessionId) },
     { label: t("Delete"), icon: "ph-trash", danger: true, onSelect: remove },
     { label: t("Delete entire family"), icon: "ph-tree-structure", danger: true, onSelect: removeFamily },
     { label: t("Export Markdown"), icon: "ph-download-simple", separator: true, onSelect: () => void exportMarkdown() },
@@ -1453,7 +1460,7 @@ function SessionNode({
             style={indent ? { marginLeft: 10 + indent * 16 } : undefined}
             onSubmit={(event) => {
               event.preventDefault();
-              void app.renameSelectedSession(session.sessionId, renameValue).then((saved) =>
+              void main.renameSession(session.sessionId, renameValue).then((saved) =>
                 saved && setRenaming(false),
               );
             }}
@@ -1571,7 +1578,7 @@ function SessionNode({
             <button
               onClick={(e) => {
                 closeMenu(e);
-                app.duplicateSession(session.sessionId);
+                main.duplicateSession(session.sessionId);
               }}
             >
               <i className="ph ph-copy" />

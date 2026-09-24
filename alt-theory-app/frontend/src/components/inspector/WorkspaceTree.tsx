@@ -14,6 +14,7 @@ import {
   uploadWorkspaceFile,
 } from "@/api/session-files";
 import { t } from "@/i18n";
+import { useConversationContext } from "@/context/ConversationContext";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
 import { hasNativeBridge, revealPath as nativeRevealPath } from "@/lib/native";
@@ -33,6 +34,7 @@ type ManagedTreeEntry = WorkspaceFileEntry | { path: string; isDirectory: true }
 
 export function WorkspaceTree() {
   const app = useApp();
+  const conv = useConversationContext();
   const shell = useShell();
   const [entries, setEntries] = useState<WorkspaceFileEntry[] | null>(null);
   const [workingFolders, setWorkingFolders] = useState<WorkingFolderDescriptor[]>([]);
@@ -52,8 +54,8 @@ export function WorkspaceTree() {
     },
   });
 
-  const sessionId = app.sessionId;
-  const runCount = app.runSettledCount;
+  const sessionId = conv.sessionId;
+  const runCount = conv.runSettledCount;
   // View state that outlives the pane (the tree unmounts on every collapse
   // or rail switch): the open file is the shell's `ws:` / `working:` sub;
   // the view mode and filter live in pane memory.
@@ -74,7 +76,7 @@ export function WorkspaceTree() {
   const understandMode =
     app.runtimeMode === "alt-theory" &&
     (sessionId
-      ? app.sessionMode === "understand"
+      ? conv.sessionMode === "understand"
       : shell.newMode === "understand");
 
   // Draft pane: before the first message there is no session to read folders
@@ -84,8 +86,8 @@ export function WorkspaceTree() {
   // and settings-time, not re-checked while the pane sits open; live
   // re-checking arrives with the session's own fetch.
   const draftFolders = useMemo<WorkingFolderDescriptor[]>(() => {
-    if (sessionId || !app.workspacePrimaryDir) return [];
-    const dir = app.workspacePrimaryDir;
+    if (sessionId || !conv.workspacePrimaryDir) return [];
+    const dir = conv.workspacePrimaryDir;
     const project = app.projects.find(
       (entry) => entry.primaryDir.toLowerCase() === dir.toLowerCase(),
     );
@@ -106,7 +108,7 @@ export function WorkspaceTree() {
         available: true,
       })),
     ];
-  }, [sessionId, app.workspacePrimaryDir, app.projects, app.globalFolders]);
+  }, [sessionId, conv.workspacePrimaryDir, app.projects, app.globalFolders]);
   const folders = sessionId ? workingFolders : draftFolders;
 
   useEffect(() => {
@@ -213,7 +215,7 @@ export function WorkspaceTree() {
     try {
       const result = await uploadWorkspaceFile(sessionId, file);
       const stagePath = stagePathAfterUpload(result);
-      if (stagePath) app.stageWorkspacePath(stagePath);
+      if (stagePath) conv.stage(stagePath);
       const refreshed = await listWorkspaceFiles(sessionId);
       setEntries(refreshed.entries ?? refreshed.files);
       setWorkingFolders(refreshed.workingFolders ?? []);
@@ -231,7 +233,7 @@ export function WorkspaceTree() {
   };
 
   if (preview) {
-    const staged = app.stagedWorkspacePaths.includes(preview.path);
+    const staged = conv.stagedWorkspacePaths.includes(preview.path);
     return (
       <FilePreview
         sessionId={sessionId}
@@ -256,8 +258,8 @@ export function WorkspaceTree() {
               className="wb-apply"
               onClick={() =>
                 staged
-                  ? app.unstageWorkspacePaths([preview.path])
-                  : app.stageWorkspacePath(preview.path)
+                  ? conv.unstage([preview.path])
+                  : conv.stage(preview.path)
               }
             >
               {staged ? t("Remove from message") : t("Attach to message")}

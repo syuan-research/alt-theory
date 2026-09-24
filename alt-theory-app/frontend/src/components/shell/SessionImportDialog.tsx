@@ -10,6 +10,7 @@ import {
 } from "@/api/session-import";
 import { Button } from "@/components/ui/Button";
 import { MenuSelect } from "@/components/ui/MenuSelect";
+import { useMainView } from "@/context/MainView";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
 import { folderLabel } from "@/lib/sessionList";
@@ -43,6 +44,7 @@ export function SessionImportDialog({
   onClose: () => void;
 }) {
   const app = useApp();
+  const main = useMainView();
   const shell = useShell();
   const [harness, setHarness] = useState<ImportableHarness>("opencode");
   const [harnessOptions, setHarnessOptions] = useState<ImportHarnessInfo[]>([]);
@@ -149,7 +151,7 @@ export function SessionImportDialog({
       setResult(next);
       if (!preflightOnly && next.sessionId) {
         await app.refreshSessions();
-        app.openCatalogSession(next.sessionId);
+        main.openCatalogSession(next.sessionId);
         onClose();
       }
     } catch (reason) {
@@ -360,7 +362,7 @@ export function SessionImportDialog({
             <Button
               variant="primary"
               onClick={() => {
-                app.openCatalogSession(String(result.sessionId));
+                main.openCatalogSession(String(result.sessionId));
                 onClose();
               }}
             >

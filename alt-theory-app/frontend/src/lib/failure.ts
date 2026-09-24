@@ -22,11 +22,3 @@ export function failureText(failure: Failure): string {
   if (failure.kind === "busy" || failure.kind === "auth-refresh") return wording;
   return failure.message ? `${wording} ${failure.message}` : wording;
 }
-
-/**
- * A refusal because the turn is still running is not a run outcome: the run
- * goes on and the client must not flip to not-running (cards 1 and 2).
- */
-export function isBusyRefusal(failure: Failure): boolean {
-  return failure.kind === "busy";
-}

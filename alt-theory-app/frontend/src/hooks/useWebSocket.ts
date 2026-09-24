@@ -12,7 +12,6 @@ const WS_RECONNECT_MAX_MS = 10_000;
 
 export interface UseWebSocketOptions {
   enabled: boolean;
-  reconnectSessionId: string | null;
   onMessage: (message: ServerMessage) => void;
   onStatus: (
     status: WsConnStatus,
@@ -20,9 +19,9 @@ export interface UseWebSocketOptions {
   ) => void;
 }
 
+/** One socket with reconnect backoff; what to re-open is the caller's business. */
 export function useWebSocket({
   enabled,
-  reconnectSessionId,
   onMessage,
   onStatus,
 }: UseWebSocketOptions) {
@@ -31,12 +30,10 @@ export function useWebSocket({
   const reconnectTimerRef = useRef<number | null>(null);
   const reconnectAllowedRef = useRef(false);
   const enabledRef = useRef(enabled);
-  const reconnectSessionIdRef = useRef(reconnectSessionId);
   const onMessageRef = useRef(onMessage);
   const onStatusRef = useRef(onStatus);
 
   enabledRef.current = enabled;
-  reconnectSessionIdRef.current = reconnectSessionId;
   onMessageRef.current = onMessage;
   onStatusRef.current = onStatus;
 
@@ -80,17 +77,7 @@ export function useWebSocket({
             window.clearTimeout(reconnectTimerRef.current);
             reconnectTimerRef.current = null;
           }
-          const resuming = reconnectSessionIdRef.current;
-          onStatusRef.current("open", {
-            label: resuming ? "Reconnected" : "Connected",
-            connected: true,
-          });
-          if (resuming) {
-            sendClientMessage(ws, {
-              type: "open_session",
-              payload: { sessionId: resuming },
-            });
-          }
+          onStatusRef.current("open", { label: "Connected", connected: true });
         } else if (status === "closed") {
           if (!reconnectAllowedRef.current || !enabledRef.current) return;
           onStatusRef.current("closed", {
