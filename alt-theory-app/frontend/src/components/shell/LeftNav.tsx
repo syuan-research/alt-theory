@@ -48,6 +48,7 @@ import {
 } from "@/lib/sessionMarkdown";
 import { copyText } from "@/lib/clipboard";
 import { useFindTarget } from "@/lib/find";
+import { usePaneMemory } from "@/lib/paneMemory";
 import { isPathQuery, quickFindScore, quickFindTerms } from "../../../../shared/quick-find";
 
 /**
@@ -491,8 +492,10 @@ function UserNav({ onImport }: { onImport: () => void }) {
   });
   // In-place filter (proto E): the magnifier reveals a borderless field;
   // typing narrows folders and conversations right here.
-  const [railQuery, setRailQuery] = useState("");
-  const [searchScope, setSearchScope] = useState<"names" | "content">("names");
+  // Pane memory, not useState: Settings swaps this nav out (SettingsRail),
+  // and the open search box (ShellContext) came back without its text.
+  const [railQuery, setRailQuery] = usePaneMemory("rail:search:query", "");
+  const [searchScope, setSearchScope] = usePaneMemory<"names" | "content">("rail:search:scope", "names");
   const [contentResult, setContentResult] = useState<{ query: string; ids: string[] } | null>(null);
   const [contentSearchError, setContentSearchError] = useState("");
   const [pendingRelated, setPendingRelated] = useState<{ centerId: string; childId: string } | null>(null);
