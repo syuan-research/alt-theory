@@ -913,12 +913,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           // The mid-run switch ack also answers the optimistic asset switch:
           // release the busy state so waiting for the turn to end never
           // locks the composer.
-          if (
-            pendingAssetSwitchRef.current &&
-            (pending.rolePresetSlug !== undefined ||
-              pending.soulSlug !== undefined ||
-              pending.customInstructionRef !== undefined)
-          ) {
+          if (pendingAssetSwitchRef.current) {
             pendingAssetSwitchRef.current = false;
             setRequestBusy(false);
             setToolStatus("");

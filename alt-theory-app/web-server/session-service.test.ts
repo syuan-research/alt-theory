@@ -2374,18 +2374,11 @@ test("mid-run role/soul/kb choices defer and apply together at run end", async (
         resolvePrompt = resolve;
       });
 
-    // One "window" following this conversation; on session_replaced it
-    // re-attaches exactly like the WS layer, so run-end events must still
-    // arrive after the instance swap.
+    // One "window" following this conversation, attached once: the run-end
+    // events must still arrive after the instance swap at settle.
     const events: string[] = [];
-    let detachListener = service.attach(snapshot.sessionId, (event) => {
+    const detachListener = service.attach(snapshot.sessionId, (event) => {
       events.push(event.type);
-      if (event.type === "session_replaced") {
-        detachListener();
-        detachListener = service.attach(event.payload.sessionId, (e) =>
-          events.push(e.type),
-        );
-      }
     });
 
     const run = service.runPrompt(snapshot.sessionId, "prompt");
@@ -2409,11 +2402,7 @@ test("mid-run role/soul/kb choices defer and apply together at run end", async (
     resolvePrompt();
     await run.completion;
 
-    assert.ok(events.includes("session_replaced"));
     assert.ok(events.includes("run_completed"));
-    assert.ok(
-      events.indexOf("session_replaced") < events.indexOf("run_completed"),
-    );
     const finalSnapshot = service.getSnapshot(snapshot.sessionId);
     assert.equal(finalSnapshot.sessionId, snapshot.sessionId);
     assert.equal(finalSnapshot.rolePresetSlug, "alternate");
@@ -4246,21 +4235,7 @@ test("SessionService workspace re-point carries fork children and live listeners
     soulSlug: "soul-latest",
   });
   const folder = mkdtempSync(join(tmpdir(), "alt-theory-ws-family-"));
-  const sessions = (
-    service as unknown as {
-      sessions: Map<
-        string,
-        {
-          listeners: Set<unknown>;
-          session: {
-            prompt(text: string): Promise<void>;
-            sessionManager: { appendMessage(message: unknown): string };
-          };
-        }
-      >;
-    }
-  ).sessions;
-  const managed = sessions.get(created.sessionId)!;
+  const managed = (service as any).sessions.get(created.sessionId);
   managed.session.prompt = async (text: string) => {
     managed.session.sessionManager.appendMessage({
       role: "user",
@@ -4277,8 +4252,8 @@ test("SessionService workspace re-point carries fork children and live listeners
   try {
     await service.runPrompt(created.sessionId, "hello").completion;
     const forked = await service.forkSession(created.sessionId, "fork");
-    const listener = () => {};
-    const detach = service.attach(created.sessionId, listener);
+    const events: SessionServiceEvent[] = [];
+    const detach = service.attach(created.sessionId, (event) => events.push(event));
 
     await service.setSessionWorkspace(created.sessionId, folder);
 
@@ -4288,12 +4263,17 @@ test("SessionService workspace re-point carries fork children and live listeners
     );
     assert.equal(childHeader?.workspace?.primaryDir, resolve(folder));
 
-    // The WebSocket subscription survived the dispose+reopen, and the old
-    // unsubscribe closure still detaches from the replacement session.
-    const replacement = sessions.get(created.sessionId)!;
-    assert.equal(replacement.listeners.has(listener), true);
+    // The subscription follows the conversation through the dispose+reopen:
+    // the replacement's snapshot arrives, and so do its later events.
+    assert.ok(events.some((event) => event.type === "session_updated"));
+    events.length = 0;
+    await service.abort(created.sessionId, "after-repoint");
+    assert.ok(events.length > 0, "the replacement's events reach the window");
     detach();
-    assert.equal(replacement.listeners.has(listener), false);
+    events.length = 0;
+    await service.abort(created.sessionId, "after-detach");
+    assert.equal(events.length, 0);
+    assert.equal(service.isOpen(created.sessionId), false);
   } finally {
     await service.disposeAll();
   }

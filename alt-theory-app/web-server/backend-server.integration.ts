@@ -2231,6 +2231,88 @@ test("WebSocket open_session and Helper placement preserve the intended center s
   }
 });
 
+test("every socket on a conversation keeps its events after an idle instance swap", async () => {
+  const root = mkdtempSync(join(tmpdir(), "alt-theory-ws-two-sockets-"));
+  const rolePresets = join(root, "role-presets");
+  const kb = join(root, "kb");
+  const appContextPath = join(root, "ALTTHEORY.md");
+  const soulPath = join(root, "soul-latest.md");
+  mkdirSync(join(kb, "ep-core"), { recursive: true });
+  mkdirSync(rolePresets, { recursive: true });
+  writeFileSync(appContextPath, "Two sockets app context", "utf-8");
+  writeFileSync(soulPath, "Two sockets soul", "utf-8");
+  writeFileSync(join(rolePresets, "role-conceptual-theory-companion-latest.md"), "Role", "utf-8");
+  writeFileSync(join(rolePresets, "alternate.md"), "Alternate role", "utf-8");
+  const instance = createAltTheoryServer({
+    dataDir: join(root, "data"),
+    appContextPath,
+    soulPath,
+    rolePresetsDir: rolePresets,
+    kbDir: kb,
+    understandReadOnly: true,
+  });
+  await new Promise<void>((resolveListen) => {
+    instance.httpServer.listen(0, "127.0.0.1", resolveListen);
+  });
+  const address = instance.httpServer.address();
+  assert.ok(address && typeof address === "object");
+
+  function waitFor(ws: WebSocket, match: (message: any) => boolean): Promise<any> {
+    return new Promise((resolveMessage, reject) => {
+      const timer = setTimeout(() => reject(new Error("Timed out")), 10_000);
+      const listener = (data: WebSocket.RawData) => {
+        const message = JSON.parse(data.toString());
+        if (match(message)) {
+          clearTimeout(timer);
+          ws.off("message", listener);
+          resolveMessage(message);
+        }
+      };
+      ws.on("message", listener);
+    });
+  }
+
+  const ws1 = new WebSocket(`ws://127.0.0.1:${address.port}`);
+  const ws2 = new WebSocket(`ws://127.0.0.1:${address.port}`);
+  try {
+    await Promise.all([
+      waitFor(ws1, (m) => m.type === "session_draft"),
+      waitFor(ws2, (m) => m.type === "session_draft"),
+    ]);
+    // A root Helper materializes a conversation without a model run.
+    const created = waitFor(ws1, (m) => m.type === "session_opened");
+    ws1.send(JSON.stringify({ type: "create_helper_session", payload: {} }));
+    const sessionId = (await created).payload.sessionId;
+    const opened2 = waitFor(ws2, (m) => m.type === "session_opened");
+    ws2.send(JSON.stringify({ type: "open_session", payload: { sessionId } }));
+    await opened2;
+
+    // The idle switch replaces the instance; the other socket hears it
+    // without re-attaching (D6: it used to stay on the disposed instance).
+    const switched2 = waitFor(
+      ws2,
+      (m) => m.type === "session_updated" && m.payload.rolePresetSlug === "alternate",
+    );
+    ws1.send(
+      JSON.stringify({ type: "switch_role_preset", payload: { rolePresetSlug: "alternate" } }),
+    );
+    await switched2;
+    // Later events of the replacement reach both sockets as well.
+    const running1 = waitFor(ws1, (m) => m.type === "session_updated" && m.payload.status === "running");
+    const running2 = waitFor(ws2, (m) => m.type === "session_updated" && m.payload.status === "running");
+    ws2.send(JSON.stringify({ type: "compact" }));
+    await Promise.all([running1, running2]);
+  } finally {
+    ws1.close();
+    ws2.close();
+    await new Promise<void>((resolveClose) => {
+      instance.wss.close(() => {
+        instance.httpServer.close(() => resolveClose());
+      });
+    });
+  }
+});
+
 test("WebSocket participant first send creates an owned role-conditioned session", async () => {
   const root = mkdtempSync(join(tmpdir(), "alt-theory-ws-auth-owned-"));
   const dataDir = join(root, "data");

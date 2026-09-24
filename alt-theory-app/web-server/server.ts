@@ -2566,15 +2566,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         if (event.type === "approval_requested" || event.type === "approval_resolved") {
           return;
         }
-        // A deferred role/soul/instruction switch replaced the instance
-        // under this conversation at settle: re-attach so the run-end events
-        // emitted right after still reach this window. Clients never see it.
-        if (event.type === "session_replaced") {
-          if (!closed && attachedSessionId === event.payload.sessionId) {
-            attachToSession(event.payload.sessionId);
-          }
-          return;
-        }
         forwardServiceEvent(send, event);
       });
       send({ type: "session_opened", payload: sessionService.getSnapshot(sessionId), });
@@ -2583,15 +2574,17 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     };
 
     // Busy-refusal cure (2026-09-13): a mid-run role/soul/instruction
-    // choice is acked as pending (chip + clock mark) instead of refused; an
-    // idle switch re-attaches to the replacement exactly as before.
+    // choice is acked as pending (chip + clock mark) instead of refused. An
+    // idle switch swaps the instance inside the service; its snapshot reaches
+    // every window of the conversation, and only the manifest is resent here.
     const switchAsset = async (
       patch: Parameters<SessionService["switchAssetSelectors"]>[1],
     ) => {
       if (!attachedSessionId) return;
-      const result = await sessionService.switchAssetSelectors(attachedSessionId, patch);
+      const sessionId = attachedSessionId;
+      const result = await sessionService.switchAssetSelectors(sessionId, patch);
       if (!result.deferred) {
-        if (!closed) attachToSession(result.snapshot.sessionId);
+        send({ type: "session_metadata", payload: sessionService.getManifest(sessionId) });
       } else {
         send({ type: "session_updated", payload: result.snapshot });
       }

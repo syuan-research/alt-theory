@@ -296,12 +296,6 @@ export type SessionServiceEvent =
   | { type: "tool_finished"; payload: { callId: string; success: boolean } }
   | { type: "run_completed"; payload: SessionSnapshot }
   | { type: "session_updated"; payload: SessionSnapshot }
-  /**
-   * The managed instance behind this conversation was swapped (deferred
-   * role/soul/instruction switch applied at settle). Service-internal: the WS
-   * layer re-attaches on it; clients never see it.
-   */
-  | { type: "session_replaced"; payload: { sessionId: string } }
   | {
       type: "run_failed";
       payload: { failure: Failure; canRetry?: boolean; recovery?: TurnRecovery | null };
@@ -367,7 +361,6 @@ interface ManagedSession {
   transcript: TranscriptMessage[];
   /** mtime fingerprint of the files the transcript projection reads; null = re-read. */
   transcriptStamp: string | null;
-  listeners: Set<(event: SessionServiceEvent) => void>;
   internalUnsubscribe: () => void;
   /** Phase + deferred switches + Pi queue mirror (card 1 / card 11). */
   runState: RunState;
@@ -456,6 +449,15 @@ function isUserQueueText(text: string): boolean {
 
 export class SessionService implements AgentTeamBridge {
   private readonly sessions = new Map<string, ManagedSession>();
+  /**
+   * Subscribers per logical conversation id, not per managed instance: an
+   * instance swap (asset switch, deferred switch at settle, folder re-point)
+   * is internal, so every window keeps receiving without re-attaching.
+   */
+  private readonly listeners = new Map<
+    string,
+    Set<(event: SessionServiceEvent) => void>
+  >();
   private readonly approvalListeners = new Set<
     (event: Extract<SessionServiceEvent, { type: "approval_requested" | "approval_resolved" }>) => void
   >();
@@ -480,7 +482,8 @@ export class SessionService implements AgentTeamBridge {
     const managed = this.sessions.get(sessionId);
     return Boolean(
       managed &&
-        (managed.listeners.size > 0 || !managed.runState.isIdle()),
+        ((this.listeners.get(sessionId)?.size ?? 0) > 0 ||
+          !managed.runState.isIdle()),
     );
   }
 
@@ -640,10 +643,8 @@ export class SessionService implements AgentTeamBridge {
   private async settle(managed: ManagedSession): Promise<ManagedSession> {
     const drained = managed.runState.settle();
     // Assembly switches chosen mid-run apply by instance replacement, first
-    // so the other deferred changes land on the replacement. Live
-    // connections sit on the old instance; `session_replaced` tells the WS
-    // layer to re-attach, keeping the idle/completion events below flowing
-    // to the windows that already follow this conversation.
+    // so the other deferred changes land on the replacement. Subscribers
+    // follow the conversation id, so the events below reach every window.
     let current = managed;
     const assetPatch: Partial<SessionSelectors> = {};
     if (drained.rolePresetSlug !== undefined) {
@@ -663,27 +664,16 @@ export class SessionService implements AgentTeamBridge {
           "asset_selector_switch",
         );
         current = this.requireSession(replacement.sessionId);
-        this.emit(managed, {
-          type: "session_replaced",
-          payload: { sessionId: replacement.sessionId },
-        });
       } catch (error) {
-        const failure = describeFailure(error, "asset_selector_switch");
-        this.emit(managed, {
-          type: "extension_notice",
-          payload: { message: failure.message, level: "error", failure },
-        });
         // A partially-completed swap (instance registered, then the config
         // event write failed) already owns the session id; follow the map so
         // the events below flow from whichever instance is live.
-        const liveNow = this.sessions.get(managed.manifest.sessionId);
-        if (liveNow && liveNow !== managed) {
-          current = liveNow;
-          this.emit(managed, {
-            type: "session_replaced",
-            payload: { sessionId: liveNow.manifest.sessionId },
-          });
-        }
+        current = this.sessions.get(managed.manifest.sessionId) ?? managed;
+        const failure = describeFailure(error, "asset_selector_switch");
+        this.emit(current, {
+          type: "extension_notice",
+          payload: { message: failure.message, level: "error", failure },
+        });
       }
     }
     const steps: Array<[keyof PendingChanges, () => Promise<void> | void]> = [
@@ -989,7 +979,14 @@ export class SessionService implements AgentTeamBridge {
         "asset_selector_switch",
       );
     });
-    if (replacement) return { deferred: false, snapshot: replacement };
+    if (replacement) {
+      // Every window of this conversation hears the new selectors.
+      this.emit(this.requireSession(sessionId), {
+        type: "session_updated",
+        payload: replacement,
+      });
+      return { deferred: false, snapshot: replacement };
+    }
     return { deferred: true, snapshot: this.snapshot(managed) };
   }
 
@@ -1245,15 +1242,13 @@ export class SessionService implements AgentTeamBridge {
         },
       });
       replacement = await this.createManagedFromExisting(sessionId, selectors);
-      replacement.listeners = live.listeners;
       this.sessions.set(sessionId, replacement);
       throw error;
     }
-    // Reuse the old Set (not a copy): existing unsubscribe closures captured
-    // it, so WebSocket subscriptions survive the reopen and still detach.
-    replacement.listeners = live.listeners;
     this.sessions.set(sessionId, replacement);
-    return this.snapshot(replacement);
+    const snapshot = this.snapshot(replacement);
+    this.emit(replacement, { type: "session_updated", payload: snapshot });
+    return snapshot;
   }
 
   /**
@@ -2615,10 +2610,15 @@ export class SessionService implements AgentTeamBridge {
     sessionId: string,
     listener: (event: SessionServiceEvent) => void,
   ): () => void {
-    const managed = this.requireSession(sessionId);
-    managed.listeners.add(listener);
+    this.requireSession(sessionId);
+    let set = this.listeners.get(sessionId);
+    if (!set) this.listeners.set(sessionId, (set = new Set()));
+    set.add(listener);
     return () => {
-      managed.listeners.delete(listener);
+      set.delete(listener);
+      if (set.size === 0 && this.listeners.get(sessionId) === set) {
+        this.listeners.delete(sessionId);
+      }
     };
   }
 
@@ -4162,7 +4162,6 @@ export class SessionService implements AgentTeamBridge {
       retractingQueue: false,
       queuedAttachments: new Map(),
       pendingInterruptSendText: null,
-      listeners: new Set(),
       internalUnsubscribe: () => {},
       runState: new RunState(),
       thinking: { level: args.session.thinkingLevel, source: "model-default" },
@@ -4657,7 +4656,11 @@ export class SessionService implements AgentTeamBridge {
     } else if (managed.liveRun) {
       appendLiveRunEvent(managed.liveRun, event);
     }
-    for (const listener of managed.listeners) {
+    // Only the instance that owns the conversation now speaks for it; a
+    // replaced instance's trailing events are dropped.
+    const sessionId = managed.manifest.sessionId;
+    if (this.sessions.get(sessionId) !== managed) return;
+    for (const listener of this.listeners.get(sessionId) ?? []) {
       listener(event);
     }
   }
