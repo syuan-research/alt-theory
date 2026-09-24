@@ -247,8 +247,15 @@ test("working-folder browsing follows the persisted external workspace", () => {
   );
   assert.equal(file.content, "# Actual work\n");
   const search = searchWorkingFolder(dataDir, sessionId, "primary", "IDEA");
-  assert.deepEqual(search.entries.map((entry) => entry.path), ["notes", "notes/idea.md"]);
+  assert.deepEqual(search.entries.map((entry) => entry.path), ["notes/idea.md"]);
   assert.equal(search.truncated, false);
+  for (let index = 0; index < 205; index += 1) {
+    writeFileSync(join(external, "flat", `a-${String(index).padStart(3, "0")}-needle.txt`), "x");
+  }
+  writeFileSync(join(external, "flat", "needle"), "x");
+  const ranked = searchWorkingFolder(dataDir, sessionId, "primary", "needle", 1);
+  assert.deepEqual(ranked.entries.map((entry) => entry.path), ["flat/needle"]);
+  assert.equal(ranked.truncated, true);
   assert.equal(
     searchWorkingFolder(dataDir, sessionId, "primary", ".txt", 1).truncated,
     true,

@@ -172,7 +172,8 @@ walks that stopped at deleted middles; do not reintroduce them.
   members the default view keeps out — sibling and cousin branches.
   There is no wider scope. The kind filter (Branches / Subagents / BTW /
   Helpers, counts from the current scope) and the search intersect; the
-  ancestor chain ignores the kind filter and obeys the search. Rows are
+  ancestor chain ignores the kind filter and obeys the unordered-word Quick
+  Find search. Rows are
   grouped by kind under collapsible heads; a member whose working folder
   differs from the open conversation's shows a folder line.
 - The FULL ancestor chain shows first, root → direct parent (owner

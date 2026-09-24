@@ -5,6 +5,7 @@ import type { SessionSummary } from "@/api/types";
 import { t } from "@/i18n";
 import { shortId } from "@/lib/format";
 import { isListMember } from "@/lib/listMember";
+import { quickFindScore, quickFindTerms } from "../../../shared/quick-find";
 
 export { isListMember };
 
@@ -348,12 +349,15 @@ export function filterRelatedRows(
   rows: RelatedRow[],
   filter: { kinds: Set<RelatedKind>; query: string; titleOf: (s: SessionSummary) => string },
 ): RelatedRow[] {
-  const query = filter.query.trim().toLowerCase();
+  const query = filter.query.trim();
   return rows.filter(
     (row) =>
       (row.kind === null || filter.kinds.has(row.kind)) &&
       matchesQuery(row.session, query, filter.titleOf(row.session)),
-  );
+  ).sort((a, b) => query
+    ? sessionQueryScore(b.session, query, filter.titleOf(b.session)) -
+      sessionQueryScore(a.session, query, filter.titleOf(a.session))
+    : 0);
 }
 
 /**
@@ -365,7 +369,7 @@ export function railMatchIds(
   query: string,
   displayNames: DisplayNames,
 ): Set<string> | null {
-  const q = query.trim().toLowerCase();
+  const q = query.trim();
   if (!q) return null;
   const byId = new Map(sessions.map((s) => [s.sessionId, s]));
   const ids = new Set<string>();
@@ -405,18 +409,31 @@ export function matchesQuery(
   title: string
 ): boolean {
   if (!query) return true;
-  const haystack = [
-    title,
-    session.rolePresetSlug,
-    session.kbDomain,
-    session.provider,
-    session.model,
-    session.workspacePrimaryDir ? folderLabel(session.workspacePrimaryDir) : null,
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-  return haystack.includes(query);
+  return sessionQueryScore(session, query, title) > 0;
+}
+
+export function contentRailMatchIds(sessions: SessionSummary[], matches: Set<string>): Set<string> {
+  const byId = new Map(sessions.map((session) => [session.sessionId, session]));
+  const ids = new Set<string>();
+  for (const id of matches) {
+    const session = byId.get(id);
+    if (!session || session.deletedAt) continue;
+    if (isListMember(session)) ids.add(id);
+    for (const ancestorId of lineagePathOf(session, byId)) ids.add(ancestorId);
+  }
+  return ids;
+}
+
+export function sessionQueryScore(session: SessionSummary, query: string, title: string): number {
+  return quickFindScore(quickFindTerms(query), [
+    { text: title, weight: 10 },
+    { text: session.workspacePrimaryDir ? folderLabel(session.workspacePrimaryDir) : null, weight: 6 },
+    { text: session.workspacePrimaryDir, weight: 3 },
+    { text: session.rolePresetSlug, weight: 2 },
+    { text: session.kbDomain, weight: 2 },
+    { text: session.provider, weight: 1 },
+    { text: session.model, weight: 1 },
+  ]);
 }
 
 /**
@@ -550,27 +567,39 @@ export function buildWorkspaceTree(
   knownWorkspaces: string[],
   sort: SessionListSort = { folders: "name", conversations: "modified" },
   displayNames: DisplayNames = {},
+  searchQuery = "",
 ): WorkspaceTree {
   const members = sessions.filter(isListMember).sort(compareByRecency);
   const { roots, childrenByParent } = buildEdges(members);
   const byId = new Map(sessions.map((session) => [session.sessionId, session]));
   const familyActivity = new Map<string, number>();
+  const scores = new Map<string, number>();
+  const familyScores = new Map<string, number>();
   for (const session of sessions) {
     const key = familyKeyOf(session, byId);
+    if (searchQuery) {
+      const score = sessionQueryScore(session, searchQuery, sessionTitle(session, displayNames, sessions));
+      scores.set(session.sessionId, score);
+      familyScores.set(key, Math.max(familyScores.get(key) ?? 0, score));
+    }
     const time = new Date(
       session.lastPromptAcceptedAt || session.createdAt || 0,
     ).getTime();
     familyActivity.set(key, Math.max(familyActivity.get(key) ?? 0, time));
   }
   const ownComparator = (a: SessionSummary, b: SessionSummary) =>
-    sort.conversations === "name"
+    searchQuery && (scores.get(a.sessionId) ?? 0) !== (scores.get(b.sessionId) ?? 0)
+      ? (scores.get(b.sessionId) ?? 0) - (scores.get(a.sessionId) ?? 0)
+      : sort.conversations === "name"
       ? sessionTitle(a, displayNames, sessions).localeCompare(
           sessionTitle(b, displayNames, sessions),
         ) || a.sessionId.localeCompare(b.sessionId)
       : compareByRecency(a, b);
   for (const children of childrenByParent.values()) children.sort(ownComparator);
   const familyComparator = (a: SessionSummary, b: SessionSummary) =>
-    sort.conversations === "name"
+    searchQuery && (familyScores.get(familyKeyOf(a, byId)) ?? 0) !== (familyScores.get(familyKeyOf(b, byId)) ?? 0)
+      ? (familyScores.get(familyKeyOf(b, byId)) ?? 0) - (familyScores.get(familyKeyOf(a, byId)) ?? 0)
+      : sort.conversations === "name"
       ? ownComparator(a, b)
       : (familyActivity.get(familyKeyOf(b, byId)) ?? 0) -
           (familyActivity.get(familyKeyOf(a, byId)) ?? 0) ||

@@ -179,7 +179,7 @@ workspace. `describeWorkingFolders()` gives it the session's main folder (or
 managed workspace), the matching project's current companions, and the global
 folder list — the same readable set supplied by the root policy. It skips
 hidden and common dependency/cache directories, lists one directory at a
-time, bounds search results, and rechecks containment for each listing,
+time, scores all searched paths before bounding results, and rechecks containment for each listing,
 preview, and user edit through the same path verdict — realpath on both sides,
 so a symlink inside a listed folder cannot make the preview return a file the
 listing refuses, and credential paths are refused in browsing as everywhere

@@ -1300,6 +1300,9 @@ test("session catalog and detail expose complete and incomplete sessions", async
       listJson.sessions.find((session: any) => session.sessionId === "session-complete")?.snippet,
       "catalog preview text",
     );
+    const searchResponse = await fetch(`${baseUrl}/api/sessions/search-content?query=preview%20catalog`);
+    assert.equal(searchResponse.status, 200);
+    assert.ok((await searchResponse.json()).sessionIds.includes("session-complete"));
 
     const detailResponse = await fetch(
       `${baseUrl}/api/sessions/session-complete`,
@@ -1770,6 +1773,8 @@ test("session routes preserve hosted isolation and local access", async () => {
   try {
     const anonymousList = await fetch(`${baseUrl}/api/sessions`);
     assert.equal(anonymousList.status, 401);
+    const anonymousSearch = await fetch(`${baseUrl}/api/sessions/search-content?query=private`);
+    assert.equal(anonymousSearch.status, 401);
 
     const participantCookie = await loginCookie("p01", "p01-code");
     const participantList = await fetch(`${baseUrl}/api/sessions`, {
@@ -1780,6 +1785,11 @@ test("session routes preserve hosted isolation and local access", async () => {
       participantListJson.sessions.map((session: any) => session.sessionId),
       [p01PrivateSession.sessionId, p01Session.sessionId],
     );
+    const contentSearch = await fetch(`${baseUrl}/api/sessions/search-content?query=private`, {
+      headers: { Cookie: participantCookie },
+    });
+    assert.equal(contentSearch.status, 200);
+    assert.deepEqual((await contentSearch.json()).sessionIds, []);
     assert.equal(
       participantListJson.sessions[0].roleCondition,
       "conceptual-theory",

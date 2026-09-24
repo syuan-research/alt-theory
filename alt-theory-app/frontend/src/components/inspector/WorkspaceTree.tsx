@@ -25,6 +25,7 @@ import { guardLeave } from "@/lib/fileEditGuard";
 import { usePaneMemory } from "@/lib/paneMemory";
 import { copyText } from "@/lib/clipboard";
 import { useContextMenu, type ContextMenuItem } from "@/components/shell/ContextMenu";
+import { quickFindScore, quickFindTerms } from "../../../../shared/quick-find";
 
 export function WorkspaceTree() {
   const app = useApp();
@@ -121,10 +122,17 @@ export function WorkspaceTree() {
     shell.clearWorkspaceRevealPath();
   }, [shell.workspaceRevealPath, shell.clearWorkspaceRevealPath, setQuery]);
 
-  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const normalizedQuery = query.trim();
+  const terms = quickFindTerms(normalizedQuery);
   const filterEntries = <T extends { path: string }>(items: T[]) =>
     normalizedQuery
-      ? items.filter((entry) => entry.path.toLocaleLowerCase().includes(normalizedQuery))
+      ? items.map((entry) => ({ entry, score: quickFindScore(terms, [
+          { text: entry.path.split(/[\\/]/).at(-1), weight: 10 },
+          { text: entry.path, weight: 3 },
+        ]) }))
+          .filter(({ score }) => score > 0)
+          .sort((a, b) => b.score - a.score || a.entry.path.localeCompare(b.entry.path))
+          .map(({ entry }) => entry)
       : items;
 
 
@@ -386,8 +394,7 @@ function WorkingTree({
     () => new Map<string, WorkingTreeEntry[]>(),
   );
   const [resolvedExpandSignal, setResolvedExpandSignal] = useState(0);
-  const [searchResult, setSearchResult] = useState<WorkingTreeEntry[] | null>(null);
-  const [searchTruncated, setSearchTruncated] = useState(false);
+  const [searchResult, setSearchResult] = useState<{ query: string; entries: WorkingTreeEntry[]; truncated: boolean } | null>(null);
   const childrenRef = useRef(childrenByPath);
   const loadingPaths = useRef(new Set<string>());
   const previousRefreshSignal = useRef(refreshSignal);
@@ -438,17 +445,15 @@ function WorkingTree({
     const search = query.trim();
     if (!search) {
       setSearchResult(null);
-      setSearchTruncated(false);
       return;
     }
     let cancelled = false;
     const timer = window.setTimeout(() => {
       void searchWorkingDirectory(sessionId, folderId, search).then((response) => {
         if (cancelled) return;
-        setSearchResult(response.entries);
-        setSearchTruncated(Boolean(response.truncated));
+        setSearchResult({ query: search, entries: response.entries, truncated: Boolean(response.truncated) });
       }).catch(() => {
-        if (!cancelled) setSearchResult([]);
+        if (!cancelled) setSearchResult({ query: search, entries: [], truncated: false });
       });
     }, 180);
     return () => {
@@ -487,11 +492,12 @@ function WorkingTree({
     };
   }, [expandSignal, loadDirectory]);
 
+  const activeResult = searchResult?.query === query.trim() ? searchResult : null;
   const entries = useMemo(
-    () => query.trim() ? (searchResult ?? []) : [...childrenByPath.values()].flat(),
-    [childrenByPath, query, searchResult],
+    () => query.trim() ? (activeResult?.entries ?? []) : [...childrenByPath.values()].flat(),
+    [childrenByPath, query, activeResult],
   );
-  if (query.trim() && searchResult === null) {
+  if (query.trim() && activeResult === null) {
     return <div className="wb-note">{t("Searching files…")}</div>;
   }
   if (entries.length === 0) return query.trim()
@@ -514,7 +520,7 @@ function WorkingTree({
         filterActive={Boolean(query.trim())}
         memoryKey={memoryKey}
       />
-      {searchTruncated ? <div className="wb-note">{t("Showing the first 200 matches.")}</div> : null}
+      {activeResult?.truncated ? <div className="wb-note">{t("Showing the most relevant matches. Refine your search for more.")}</div> : null}
     </div>
   );
 }
@@ -550,7 +556,7 @@ function FileTree<T extends { path: string; isDirectory?: boolean }>({
   memoryKey: string;
 }) {
   const menu = useContextMenu();
-  const model = useMemo(() => buildFileTreeModel(entries, basePath), [basePath, entries]);
+  const model = useMemo(() => buildFileTreeModel(entries, basePath, filterActive), [basePath, entries, filterActive]);
   const [expandedItems, setExpandedItems] = usePaneMemory<string[]>(
     `${memoryKey}:expanded`,
     () => (initiallyExpanded ? model.folderIds : []),

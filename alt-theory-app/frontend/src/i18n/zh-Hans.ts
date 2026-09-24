@@ -884,7 +884,16 @@ const catalog: Record<string, string> = {
   "You": "你",
   "You can message a subagent directly while it runs — it sees you at its next step.": "你可以在子代理运行期间直接给它发消息——它会在下一步看到你。",
   "You got Alt outside a study, so there is nothing to share and no label to set. Conversations stay on this machine.": "你在研究外获得 Alt，因此没有可共享的内容，也无需设置标签。对话保留在此计算机上。",
-  "Your data folder": "您的数据文件夹"
+  "Your data folder": "您的数据文件夹",
+  "Names": "名称",
+  "Content": "正文",
+  "Search in": "搜索范围",
+  "Search conversation text…": "搜索对话正文…",
+  "Searching conversations…": "正在搜索对话…",
+  "No matching conversations.": "没有匹配的对话。",
+  "Related matches": "相关对话匹配",
+  "From {title}": "来自 {title}",
+  "Showing the most relevant matches. Refine your search for more.": "显示最相关的匹配项。缩小搜索范围可查看更多。"
 };
 
 export default catalog;

@@ -28,6 +28,7 @@ function fullPath(basePath: string, relativePath: string): string {
 export function buildFileTreeModel<T extends { path: string; isDirectory?: boolean }>(
   entries: T[],
   basePath: string,
+  preserveOrder = false,
 ): FileTreeModel<T> {
   const rootId = "root";
   const nodes = new Map<string, FileTreeNode<T>>([
@@ -36,9 +37,13 @@ export function buildFileTreeModel<T extends { path: string; isDirectory?: boole
 
   for (const entry of entries) {
     const parts = entry.path.split(/[\\/]/).filter(Boolean);
+    const compact = preserveOrder && parts.length > 4;
+    const labels = compact ? [...parts.slice(0, 3), parts.slice(3).join(" / ")] : parts;
     let parent = nodes.get(rootId)!;
-    parts.forEach((name, index) => {
-      const path = parts.slice(0, index + 1).join("/");
+    labels.forEach((name, index) => {
+      const path = compact && index === 3
+        ? parts.join("/")
+        : parts.slice(0, index + 1).join("/");
       const id = `node:${path}`;
       let node = nodes.get(id);
       if (!node) {
@@ -48,12 +53,12 @@ export function buildFileTreeModel<T extends { path: string; isDirectory?: boole
           path,
           fullPath: fullPath(basePath, path),
           children: [],
-          isFolder: index < parts.length - 1 || entry.isDirectory === true,
+          isFolder: index < labels.length - 1 || entry.isDirectory === true,
         };
         nodes.set(id, node);
         parent.children.push(id);
       }
-      if (index === parts.length - 1) {
+      if (index === labels.length - 1) {
         node.entry = entry;
         node.isFolder = entry.isDirectory === true || node.children.length > 0;
       } else {
@@ -63,7 +68,7 @@ export function buildFileTreeModel<T extends { path: string; isDirectory?: boole
     });
   }
 
-  for (const node of nodes.values()) {
+  for (const node of preserveOrder ? [] : nodes.values()) {
     node.children.sort((leftId, rightId) => {
       const left = nodes.get(leftId)!;
       const right = nodes.get(rightId)!;

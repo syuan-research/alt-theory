@@ -6,9 +6,12 @@ import { t } from "@/i18n";
 import {
   buildWorkspaceTree,
   canTakeMainline,
+  contentRailMatchIds,
   familyMembersOf,
   folderLabel,
   isFamilyHead,
+  isListMember,
+  lineagePathOf,
   listedOriginLabel,
   purposeIcon,
   railMatchIds,
@@ -19,7 +22,7 @@ import { Workbench } from "@/components/shell/Workbench";
 import { SessionImportDialog } from "@/components/shell/SessionImportDialog";
 import { HelpMenu } from "@/components/shell/HelpMenu";
 import { scrollAffectsAnchor, useContextMenu, type ContextMenuItem } from "@/components/shell/ContextMenu";
-import { promoteToMainline as promoteToMainlineRequest } from "@/api/sessions";
+import { promoteToMainline as promoteToMainlineRequest, searchSessionContent } from "@/api/sessions";
 import { getWorkingFolders, saveWorkingFolders, type ProjectFolder } from "@/api/config";
 import {
   dismissUpdate,
@@ -44,6 +47,7 @@ import {
   sessionTranscriptToMarkdown,
 } from "@/lib/sessionMarkdown";
 import { copyText } from "@/lib/clipboard";
+import { quickFindScore, quickFindTerms } from "../../../../shared/quick-find";
 
 /**
  * What a conversation row says about itself when you are not in it (alpha.3).
@@ -476,11 +480,39 @@ function UserNav({ onImport }: { onImport: () => void }) {
   // In-place filter (proto E): the magnifier reveals a borderless field;
   // typing narrows folders and conversations right here.
   const [railQuery, setRailQuery] = useState("");
+  const [searchScope, setSearchScope] = useState<"names" | "content">("names");
+  const [contentResult, setContentResult] = useState<{ query: string; ids: string[] } | null>(null);
+  const [contentSearchError, setContentSearchError] = useState("");
+  const [pendingRelated, setPendingRelated] = useState<{ centerId: string; childId: string } | null>(null);
   useEffect(() => {
     if (!shell.searchOpen) setRailQuery("");
   }, [shell.searchOpen]);
   const local = app.appMode === "local";
   const GROUP_CAP = 4;
+
+  useEffect(() => {
+    const query = railQuery.trim();
+    if (searchScope !== "content" || !query || !shell.searchOpen) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      void searchSessionContent(query, controller.signal)
+        .then((ids) => setContentResult({ query, ids }))
+        .catch((error) => {
+          if (controller.signal.aborted) return;
+          setContentSearchError(error instanceof Error ? error.message : String(error));
+        });
+    }, 240);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [railQuery, searchScope, shell.searchOpen]);
+
+  useEffect(() => {
+    if (!pendingRelated || app.sessionId !== pendingRelated.centerId) return;
+    app.setActiveRelatedSessionId(pendingRelated.childId);
+    setPendingRelated(null);
+  }, [app.sessionId, app.setActiveRelatedSessionId, pendingRelated]);
 
   useEffect(() => {
     if (!local) return;
@@ -537,8 +569,9 @@ function UserNav({ onImport }: { onImport: () => void }) {
         local ? app.knownWorkspaces : [],
         listSort,
         app.sessionDisplayNames,
+        searchScope === "names" ? railQuery.trim() : "",
       ),
-    [app.sessions, app.knownWorkspaces, app.sessionDisplayNames, listSort, local],
+    [app.sessions, app.knownWorkspaces, app.sessionDisplayNames, listSort, local, railQuery, searchScope],
   );
 
   // Projects (v1.5.1): the group's label is the project's name (defaults to
@@ -566,10 +599,17 @@ function UserNav({ onImport }: { onImport: () => void }) {
     [groups],
   );
 
-  const visibleIds = useMemo(
-    () => railMatchIds(app.sessions, railQuery, app.sessionDisplayNames),
-    [app.sessions, railQuery, app.sessionDisplayNames],
+  const contentIds = searchScope === "content" && contentResult?.query === railQuery.trim()
+    ? new Set(contentResult.ids) : null;
+  const visibleIds = useMemo(() =>
+    searchScope === "content" && railQuery.trim()
+      ? contentRailMatchIds(app.sessions, contentIds ?? new Set())
+      : railMatchIds(app.sessions, railQuery, app.sessionDisplayNames),
+    [app.sessions, railQuery, app.sessionDisplayNames, searchScope, contentResult],
   );
+  const unlistedHits = contentIds
+    ? app.sessions.filter((session) => contentIds.has(session.sessionId) && !isListMember(session) && !session.deletedAt)
+    : [];
 
   const chooseSort = (next: SessionListSort) => {
     setListSort(next);
@@ -609,6 +649,28 @@ function UserNav({ onImport }: { onImport: () => void }) {
   const openSession = (id: string) => {
     shell.openApp();
     app.openCatalogSession(id);
+  };
+
+  const openContentHit = (session: SessionSummary) => {
+    if (session.forkedFrom?.purpose === "ab-arm") {
+      openSession(session.sessionId);
+      return;
+    }
+    const byId = new Map(app.sessions.map((item) => [item.sessionId, item]));
+    const ancestor = lineagePathOf(session, byId).reverse()
+      .map((id) => byId.get(id))
+      .find((item) => item && isListMember(item) && item.hasSessionFile && !item.deletedAt &&
+        (local || item.visibility !== "private" || item.ownerAccountId === app.auth.accountId));
+    if (!ancestor) {
+      openSession(session.sessionId);
+      return;
+    }
+    shell.openApp();
+    if (app.sessionId === ancestor.sessionId) app.setActiveRelatedSessionId(session.sessionId);
+    else {
+      setPendingRelated({ centerId: ancestor.sessionId, childId: session.sessionId });
+      app.openCatalogSession(ancestor.sessionId);
+    }
   };
 
   const startConversationIn = (dir: string | null) => {
@@ -881,18 +943,22 @@ function UserNav({ onImport }: { onImport: () => void }) {
             <i className="ph ph-magnifying-glass" aria-hidden="true" />
             <input
               autoFocus
-              placeholder={t("Filter folders and conversations…")}
+              placeholder={searchScope === "content" ? t("Search conversation text…") : t("Filter folders and conversations…")}
               value={railQuery}
-              onChange={(event) => setRailQuery(event.target.value)}
+              onChange={(event) => { setRailQuery(event.target.value); setContentResult(null); setContentSearchError(""); }}
               onKeyDown={(event) => {
                 if (event.key === "Escape") shell.setSearchOpen(false);
               }}
             />
             {railQuery ? (
-              <button type="button" className="clear" aria-label={t("Clear")} onClick={() => setRailQuery("")}>
+              <button type="button" className="clear" aria-label={t("Clear")} onClick={() => { setRailQuery(""); setContentResult(null); }}>
                 <i className="ph ph-x" aria-hidden="true" />
               </button>
             ) : null}
+            <select aria-label={t("Search in")} value={searchScope} onChange={(event) => { setSearchScope(event.target.value as "names" | "content"); setContentResult(null); setContentSearchError(""); }}>
+              <option value="names">{t("Names")}</option>
+              <option value="content">{t("Content")}</option>
+            </select>
           </div>
         ) : null}
         <RunningCount sessions={app.sessions} />
@@ -975,18 +1041,22 @@ function UserNav({ onImport }: { onImport: () => void }) {
           <i className="ph ph-magnifying-glass" aria-hidden="true" />
           <input
             autoFocus
-            placeholder={t("Filter folders and conversations…")}
+            placeholder={searchScope === "content" ? t("Search conversation text…") : t("Filter folders and conversations…")}
             value={railQuery}
-            onChange={(event) => setRailQuery(event.target.value)}
+            onChange={(event) => { setRailQuery(event.target.value); setContentResult(null); setContentSearchError(""); }}
             onKeyDown={(event) => {
               if (event.key === "Escape") shell.setSearchOpen(false);
             }}
           />
           {railQuery ? (
-            <button type="button" className="clear" aria-label={t("Clear")} onClick={() => setRailQuery("")}>
+            <button type="button" className="clear" aria-label={t("Clear")} onClick={() => { setRailQuery(""); setContentResult(null); }}>
               <i className="ph ph-x" aria-hidden="true" />
             </button>
           ) : null}
+          <select aria-label={t("Search in")} value={searchScope} onChange={(event) => { setSearchScope(event.target.value as "names" | "content"); setContentResult(null); setContentSearchError(""); }}>
+            <option value="names">{t("Names")}</option>
+            <option value="content">{t("Content")}</option>
+          </select>
         </div>
       ) : null}
       <div className="sessions">
@@ -996,8 +1066,8 @@ function UserNav({ onImport }: { onImport: () => void }) {
           <div className="rp-empty">{app.sessionsError}</div>
         ) : (
           <>
-            {!projectsCollapsed && projectGroups.map((group) => {
-            const closed = closedGroups.has(group.dir);
+            {(!projectsCollapsed || visibleIds !== null) && projectGroups.map((group) => {
+            const closed = closedGroups.has(group.dir) && visibleIds === null;
             const project = projectByDir.get(group.dir);
             const companions = project?.secondaryDirs ?? [];
             const folderTip = [
@@ -1010,8 +1080,12 @@ function UserNav({ onImport }: { onImport: () => void }) {
                     ? [`[[${t("Project name")}]]`, project.name]
                     : []),
                 ].join("\n");
-            const folderHit =
-              visibleIds !== null && group.label.toLowerCase().includes(railQuery.trim().toLowerCase());
+            const folderHit = searchScope === "names" && visibleIds !== null &&
+              quickFindScore(quickFindTerms(railQuery), [
+                { text: group.label, weight: 10 },
+                { text: group.dir, weight: 3 },
+                { text: companions.join(" "), weight: 2 },
+              ]) > 0;
             const roots =
               visibleIds === null || folderHit
                 ? group.roots
@@ -1156,9 +1230,8 @@ function UserNav({ onImport }: { onImport: () => void }) {
           })}
             {(() => {
               const looseLabel = t("Independent conversations");
-              const folderHit =
-                visibleIds !== null &&
-                looseLabel.toLowerCase().includes(railQuery.trim().toLowerCase());
+              const folderHit = searchScope === "names" && visibleIds !== null &&
+                quickFindScore(quickFindTerms(railQuery), [{ text: looseLabel, weight: 10 }]) > 0;
               const looseRoots = looseGroup?.roots ?? [];
               const roots =
                 visibleIds === null || folderHit
@@ -1206,7 +1279,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                       </button>
                     </div>
                   </div>
-                  {looseCollapsed ? null : (
+                  {looseCollapsed && visibleIds === null ? null : (
                   <SessionRootList
                     roots={roots}
                     tree={tree}
@@ -1231,6 +1304,26 @@ function UserNav({ onImport }: { onImport: () => void }) {
                 </div>
               );
             })()}
+            {unlistedHits.length ? (
+              <div className="search-related-hits">
+                <div className="files-section-title">{t("Related matches")}</div>
+                {unlistedHits.map((session) => {
+                  const byId = new Map(app.sessions.map((item) => [item.sessionId, item]));
+                  const ancestor = lineagePathOf(session, byId).reverse().map((id) => byId.get(id)).find(Boolean);
+                  return (
+                    <button key={session.sessionId} type="button" className="sess search-related-hit" onClick={() => openContentHit(session)}>
+                      <i className={`ph ${purposeIcon(session)}`} aria-hidden="true" />
+                      <span><span className="s-title">{sessionTitle(session, app.sessionDisplayNames, app.sessions)}</span>
+                        {ancestor ? <small>{t("From {title}", { title: sessionTitle(ancestor, app.sessionDisplayNames, app.sessions) })}</small> : null}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
+            {searchScope === "content" && railQuery.trim() && !contentIds && !contentSearchError ? <div className="rp-empty">{t("Searching conversations…")}</div> : null}
+            {contentSearchError ? <div className="rp-empty">{contentSearchError}</div> : null}
+            {visibleIds !== null && visibleIds.size === 0 && unlistedHits.length === 0 && (searchScope !== "content" || contentIds) && !contentSearchError ? <div className="rp-empty">{t("No matching conversations.")}</div> : null}
           </>
         )}
       </div>
@@ -1273,7 +1366,7 @@ function SessionNode({
       : session.runStatus;
   const state = sessionRowState(runStatus, app.sessionAlerts[session.sessionId]);
   const title = sessionTitle(session, app.sessionDisplayNames, app.sessions);
-  const folded = foldedFamilies.has(session.sessionId);
+  const folded = visibleIds === null && foldedFamilies.has(session.sessionId);
   const familyCount = familyMembersOf(session, app.sessions).filter(
     (member) => !member.deletedAt,
   ).length;

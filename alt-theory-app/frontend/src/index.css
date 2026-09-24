@@ -1156,6 +1156,11 @@
      in-place filter (proto E); lives under the new-row since 2026-09-18. */
   .inline-search { display: flex; align-items: center; gap: var(--space-tight); margin: var(--space-tight) 0 0; padding: var(--space-tight) var(--space-control); color: var(--text-3); }
   .inline-search .clear { border: 0; background: none; color: var(--text-3); cursor: pointer; padding: 0 var(--space-hair); font-size: 0.8rem; }
+  .inline-search select { max-width: 88px; border: 0; background: transparent; color: var(--text-2); font: inherit; font-size: var(--fs-micro); cursor: pointer; }
+  .search-related-hit { width: 100%; border: 0; background: transparent; padding-left: var(--space-control); }
+  .search-related-hit:hover, .search-related-hit:focus-visible { background: var(--row-active); }
+  .search-related-hit > span { min-width: 0; display: grid; }
+  .search-related-hit small { overflow: hidden; text-overflow: ellipsis; color: var(--text-3); font-size: var(--fs-micro); }
   .sc-item { background: var(--canvas); border: none; border-radius: var(--r-md); padding: var(--space-control) var(--space-control); margin-bottom: var(--space-tight); cursor: pointer; width: 100%; text-align: left; display: block; }
   .sc-item:hover { background: var(--hover); }
   .sc-item .t { font-size: var(--fs-primary); font-weight: 500; display: flex; align-items: center; gap: var(--space-tight); color: var(--ink-soft); }

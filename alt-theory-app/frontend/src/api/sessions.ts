@@ -75,6 +75,14 @@ export async function fetchSessionList(): Promise<SessionSummary[]> {
   return Array.isArray(data.sessions) ? data.sessions : [];
 }
 
+export async function searchSessionContent(query: string, signal: AbortSignal): Promise<string[]> {
+  const params = new URLSearchParams({ query });
+  const res = await fetch(`/api/sessions/search-content?${params}`, { signal });
+  if (!res.ok) throw new Error(`Conversation search failed (${res.status})`);
+  const data = (await res.json()) as { sessionIds?: string[] };
+  return Array.isArray(data.sessionIds) ? data.sessionIds : [];
+}
+
 export async function fetchSessionDetail(
   sessionId: string
 ): Promise<SessionDetailResponse> {

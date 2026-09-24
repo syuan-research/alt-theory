@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { SessionSummary } from "../api/types.ts";
-import { buildWorkspaceTree, canTakeMainline, familyMembersOf, filterRelatedRows, isFamilyHead, isListMember, railMatchIds, relatedRowsFor, sessionTitle } from "./sessionList.ts";
+import { buildWorkspaceTree, canTakeMainline, contentRailMatchIds, familyMembersOf, filterRelatedRows, isFamilyHead, isListMember, railMatchIds, relatedRowsFor, sessionTitle } from "./sessionList.ts";
 
 function child(
   sessionId: string,
@@ -395,4 +395,26 @@ test("name sorting uses displayed conversation names", () => {
     },
   );
   assert.deepEqual(tree.groups[0].roots.map((root) => root.sessionId), ["z", "a"]);
+});
+
+test("content search reveals a hidden hit's listed ancestor without listing the child", () => {
+  const root = { ...child("root", "unused", "fork", "2026-07-01"), forkedFrom: null } as SessionSummary;
+  const hidden = child("side", "root", "side", "2026-07-02");
+  assert.deepEqual([...contentRailMatchIds([root, hidden], new Set(["side"]))], ["root"]);
+});
+
+test("Quick Find ranks title hits before project path hits", () => {
+  const titleHit = { ...child("title", "unused", "fork", "2026-07-01"), forkedFrom: null } as SessionSummary;
+  const pathHit = { ...child("path", "unused", "fork", "2026-07-02"), forkedFrom: null, workspacePrimaryDir: "C:/notes" } as SessionSummary;
+  const tree = buildWorkspaceTree([pathHit, titleHit], [],
+    { folders: "name", conversations: "modified" },
+    { title: { alias: "notes", snippet: "" }, path: { alias: "other", snippet: "" } },
+    "notes");
+  assert.deepEqual(tree.groups.flatMap((group) => group.roots).map((root) => root.sessionId), ["path", "title"]);
+  // Folder groups retain their chosen order; relevance orders conversations within each group.
+  const sameFolder = buildWorkspaceTree([{ ...pathHit, workspacePrimaryDir: null }, titleHit], [],
+    { folders: "name", conversations: "modified" },
+    { title: { alias: "notes", snippet: "" }, path: { alias: "other", snippet: "" } },
+    "notes");
+  assert.deepEqual(sameFolder.groups[0].roots.map((root) => root.sessionId), ["title", "path"]);
 });

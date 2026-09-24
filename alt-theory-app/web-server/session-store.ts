@@ -322,6 +322,21 @@ export function readSessionDetail(
   return readSessionDetailWithParts(dataDir, sessionId)?.detail ?? null;
 }
 
+/** Search only text rows that the current conversation projection displays. */
+export function visibleTranscriptMatches(
+  transcript: TranscriptMessage[],
+  terms: string[],
+): boolean {
+  const remaining = new Set(terms);
+  for (const message of transcript) {
+    if (message.role !== "user" && message.role !== "assistant") continue;
+    const text = message.text.toLocaleLowerCase();
+    for (const term of remaining) if (text.includes(term)) remaining.delete(term);
+    if (remaining.size === 0) return true;
+  }
+  return false;
+}
+
 /** Detail plus the parts it already parsed — the changes route reuses them. */
 export function readSessionDetailWithParts(
   dataDir: string,

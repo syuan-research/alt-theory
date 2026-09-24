@@ -10,6 +10,7 @@ import {
   writeFileSync,
 } from "fs";
 import { basename, extname, isAbsolute, join, relative, resolve } from "path";
+import { quickFindScore, quickFindTerms } from "../shared/quick-find.js";
 import { resolveSessionRoot, resolveSessionsRoot } from "../core/data-dir.js";
 import { samePath, verdict } from "../core/path-verdict.js";
 import type { Root } from "../core/root-policy.js";
@@ -529,52 +530,42 @@ export function searchWorkingFolder(
 ): { folderId: string; path: string; entries: WorkingTreeEntry[]; truncated: boolean } {
   const folder = describeWorkingFolders(dataDir, sessionId).find((item) => item.id === folderId);
   if (!folder?.available) throw new Error("This folder is not available");
-  const query = rawQuery.trim().toLocaleLowerCase();
-  if (!query) return { folderId, path: "", entries: [], truncated: false };
+  const terms = quickFindTerms(rawQuery);
+  if (!terms.length) return { folderId, path: "", entries: [], truncated: false };
 
-  const entries = new Map<string, WorkingTreeEntry>();
-  let matches = 0;
-  let truncated = false;
-  const addDirectory = (path: string) => entries.set(path, {
-    folderId, path, isDirectory: true, size: null, updatedAt: null, previewable: false,
-  });
-  const addAncestors = (path: string) => {
-    const parts = path.split("/");
-    for (let index = 1; index < parts.length; index += 1) {
-      addDirectory(parts.slice(0, index).join("/"));
-    }
-  };
-  const visit = (absoluteDir: string, relativeDir: string): boolean => {
+  const entries: WorkingTreeEntry[] = [];
+  const matches: Array<{ path: string; absolutePath: string; isDirectory: boolean; score: number }> = [];
+  // ponytail: O(paths) on each query; use an async walk or a cache if large folders make search visibly stall.
+  const visit = (absoluteDir: string, relativeDir: string): void => {
     for (const entry of readdirSync(absoluteDir, { withFileTypes: true })) {
       if (entry.name.startsWith(".") || WORKING_TREE_SKIP_DIRS.has(entry.name)) continue;
       if (!entry.isDirectory() && !entry.isFile()) continue;
       const path = (relativeDir ? `${relativeDir}/${entry.name}` : entry.name).replace(/\\/g, "/");
-      if (path.toLocaleLowerCase().includes(query)) {
-        matches += 1;
-        if (matches > limit) {
-          truncated = true;
-          return false;
-        }
-        addAncestors(path);
-        if (entry.isDirectory()) addDirectory(path);
-        else {
-          const stats = statSync(join(absoluteDir, entry.name));
-          entries.set(path, {
-            folderId,
-            path,
-            isDirectory: false,
-            size: stats.size,
-            updatedAt: stats.mtime.toISOString(),
-            previewable: stats.size <= MAX_TEXT_VIEW_BYTES,
-          });
-        }
-      }
-      if (entry.isDirectory() && !visit(join(absoluteDir, entry.name), path)) return false;
+      const score = quickFindScore(terms, [
+        { text: entry.name, weight: 10 },
+        { text: path, weight: 3 },
+      ]);
+      if (score) matches.push({ path, absolutePath: join(absoluteDir, entry.name), isDirectory: entry.isDirectory(), score });
+      if (entry.isDirectory()) visit(join(absoluteDir, entry.name), path);
     }
-    return true;
   };
   visit(realpathSync(folder.path), "");
-  return { folderId, path: "", entries: [...entries.values()], truncated };
+  matches.sort((a, b) => b.score - a.score || a.path.localeCompare(b.path));
+  for (const match of matches.slice(0, limit)) {
+    if (match.isDirectory) entries.push({
+      folderId, path: match.path, isDirectory: true,
+      size: null, updatedAt: null, previewable: false,
+    });
+    else {
+      const stats = statSync(match.absolutePath);
+      entries.push({
+        folderId, path: match.path, isDirectory: false,
+        size: stats.size, updatedAt: stats.mtime.toISOString(),
+        previewable: stats.size <= MAX_TEXT_VIEW_BYTES,
+      });
+    }
+  }
+  return { folderId, path: "", entries, truncated: matches.length > limit };
 }
 
 export function readWorkingFolderTextFile(

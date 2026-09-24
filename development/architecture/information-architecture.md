@@ -149,6 +149,16 @@ surfaces remain designation-gated and absent for everyone else.
     conversations section alike. These controls do not change
     conversation-family folding or the Independent conversations section's own
     collapse state.
+  - The search field switches between **Names** (title, project path and
+    summary metadata, with unordered word matching) and **Content**. Content
+    searches non-Trash conversations across projects on demand, subject to
+    both summary and content access checks. It matches only current visible
+    user and assistant text, excluding thinking and tool rows, and filters the
+    existing list without snippets or message jumps. A matching attached
+    conversation that is not normally listed appears temporarily under
+    Related matches with its family context. Opening it places the nearest
+    available listed ancestor in the center and the match in the right pane;
+    clearing search leaves its list identity unchanged.
   - A family head may collapse or expand its descendants without changing their
     list membership. Session identifiers and local session-folder paths remain
     available on demand through the row actions rather than default labels.

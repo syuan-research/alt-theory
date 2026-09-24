@@ -54,6 +54,7 @@ import {
   healFamilyInvariants,
   readSessionAccessSummary,
   readSessionDetail,
+  visibleTranscriptMatches,
   readSessionDetailWithParts,
   readSessionChanges,
   type SessionSummary,
@@ -1285,6 +1286,39 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         runStatus: activity.get(session.sessionId) ?? "idle",
       })),
     });
+  });
+  app.get("/api/sessions/search-content", async (req, res) => {
+    const auth = resolveSessionRestAuth(req, res);
+    if (!auth) return;
+    const query = typeof req.query.query === "string" ? req.query.query.trim() : "";
+    if (query.length > 256) {
+      res.status(400).json({ error: "Search query is too long" });
+      return;
+    }
+    const terms = query.toLocaleLowerCase().split(/\s+/).filter(Boolean);
+    if (!terms.length) {
+      res.json({ sessionIds: [] });
+      return;
+    }
+    const sessionIds: string[] = [];
+    for (const summary of listSessionSummaries(dataDir).sessions) {
+      if (res.destroyed) return;
+      if (!canAccessSessionSummary(auth, summary) || !canAccessSessionContent(auth, summary)) continue;
+      try {
+        const detail = readSessionDetail(dataDir, summary.sessionId);
+        if (detail && !detail.session.deletedAt &&
+            canAccessSessionSummary(auth, detail.session) &&
+            canAccessSessionContent(auth, detail.session) &&
+            visibleTranscriptMatches(detail.transcript, terms)) {
+          sessionIds.push(summary.sessionId);
+        }
+      } catch {
+        // One damaged conversation must not hide the rest of the results.
+      }
+      // Keep the server responsive while scanning conversations on demand.
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+    if (!res.destroyed) res.json({ sessionIds });
   });
   app.get("/api/sessions/trash", (req, res) => {
     const auth = resolveSessionRestAuth(req, res);

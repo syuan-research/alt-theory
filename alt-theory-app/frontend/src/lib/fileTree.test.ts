@@ -44,3 +44,14 @@ test("file tree ignores stale items while replacing filtered results", () => {
   assert.equal(getFileTreeNode(first, "node:first.md")?.name, "first.md");
   assert.equal(getFileTreeNode(second, "node:first.md"), null);
 });
+
+test("search tree keeps ranked order and compresses paths after three folders", () => {
+  const model = buildFileTreeModel([
+    { path: "z/one/two/three/four/best.md" },
+    { path: "a/other.md" },
+  ], "D:\\research", true);
+  assert.deepEqual(model.nodes.get(model.rootId)?.children, ["node:z", "node:a"]);
+  const deep = model.nodes.get("node:z/one/two/three/four/best.md");
+  assert.equal(deep?.name, "three / four / best.md");
+  assert.equal(deep?.fullPath, "D:\\research\\z\\one\\two\\three\\four\\best.md");
+});
