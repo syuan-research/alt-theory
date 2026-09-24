@@ -356,7 +356,11 @@ Pi's own transient provider retry is represented as a `retrying` run phase. Alt
 Theory does not wrap it in a second retry loop. A successful or failed terminal
 outcome is finalized only after pending run work has settled; the run state
 settles in the same `finally`, which keeps the phase, run record, and recovery
-projection aligned.
+projection aligned. `finishRun()` builds the `run_failed` payload after
+`settle()`, so its `recovery` and `canRetry` are the values the next snapshot
+reports; read before settle, the recovery projection is still null
+(`session-service.test.ts` "a failed run's run_failed carries the recovery
+Continue needs").
 
 ## Compaction and live-run state
 

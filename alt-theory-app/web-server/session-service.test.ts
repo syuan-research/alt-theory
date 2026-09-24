@@ -1064,6 +1064,48 @@ test("SessionService preserves imported history after an interrupted first run",
   }
 });
 
+test("a failed run's run_failed carries the recovery Continue needs", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const created = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const managed = (service as any).sessions.get(created.sessionId);
+  const internal = service as any;
+  const events: SessionServiceEvent[] = [];
+  const detach = service.attach(created.sessionId, (event) => events.push(event));
+  // Pi gave up after its own retries: the run ends failed, not stopped.
+  managed.session.prompt = async (text: string) => {
+    managed.session.sessionManager.appendMessage({
+      role: "user",
+      content: [{ type: "text", text }],
+      timestamp: Date.now(),
+    });
+    managed.session.state.errorMessage = "fetch failed: ECONNRESET";
+    internal.handleAgentEvent(managed, { type: "agent_end" });
+  };
+
+  try {
+    const run = service.runPrompt(created.sessionId, "hello");
+    await assert.rejects(run.completion);
+    const failed = events.find((event) => event.type === "run_failed");
+    assert.ok(failed && failed.type === "run_failed");
+    // The event must agree with the snapshot: the recovery was read after
+    // settle, not while the run still owned the session (null).
+    assert.equal(failed.payload.recovery?.canContinue, true);
+    assert.equal(failed.payload.canRetry, true);
+    assert.deepEqual(
+      failed.payload.recovery,
+      service.getSnapshot(created.sessionId).recovery,
+    );
+  } finally {
+    detach();
+    await service.disposeAll();
+  }
+});
+
 test("SessionService records user Stop as interrupted with a user_abort cause", async () => {
   const fixture = setupFixture();
   const service = createTestService(fixture);

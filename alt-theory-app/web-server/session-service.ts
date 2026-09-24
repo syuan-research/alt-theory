@@ -345,11 +345,8 @@ export type SessionServiceEvent =
       payload: { sessionId: string; purpose: "subagent" };
     };
 
-/** What a run reports after settle(): nothing (interrupted), done, or its failure event. */
-type RunOutcomeEvent =
-  | null
-  | "completed"
-  | Extract<SessionServiceEvent, { type: "run_failed" }>;
+/** What a run reports after settle(): nothing (interrupted), done, or its failure. */
+type RunOutcomeEvent = null | "completed" | { failure: Failure };
 
 interface ManagedSession {
   session: AgentSession;
@@ -753,7 +750,17 @@ export class SessionService implements AgentTeamBridge {
       this.emit(current, { type: "session_metrics", payload: this.persistMetrics(current) });
       return;
     }
-    this.emit(current, outcome);
+    // Recovery is read here, after settle: while the run still owns the
+    // session latestRecoveryState() answers null, and Continue would vanish.
+    const recovery = this.latestRecoveryState(current);
+    this.emit(current, {
+      type: "run_failed",
+      payload: {
+        failure: outcome.failure,
+        canRetry: recovery?.canRetryFromStart ?? false,
+        recovery,
+      },
+    });
   }
 
   private persistManifestModel(managed: ManagedSession): void {
@@ -1595,17 +1602,11 @@ export class SessionService implements AgentTeamBridge {
         completedAt: new Date().toISOString(),
       });
       if (failed) {
-        const recovery = this.latestRecoveryState(managed);
         outcome = {
-          type: "run_failed",
-          payload: {
-            failure: describeFailure(
-              retryError ?? finalError ?? pendingError ?? "Continue failed",
-              "run",
-            ),
-            canRetry: recovery?.canRetryFromStart ?? false,
-            recovery,
-          },
+          failure: describeFailure(
+            retryError ?? finalError ?? pendingError ?? "Continue failed",
+            "run",
+          ),
         };
         throw (
           retryError ??
@@ -2241,17 +2242,11 @@ export class SessionService implements AgentTeamBridge {
           acceptedAt,
           completedAt: new Date().toISOString(),
         });
-        const recovery = this.latestRecoveryState(managed);
         outcome = {
-          type: "run_failed",
-          payload: {
-            failure: describeFailure(
-              finalError ?? promptError ?? pendingError ?? "Run failed",
-              "run",
-            ),
-            canRetry: recovery?.canRetryFromStart ?? false,
-            recovery,
-          },
+          failure: describeFailure(
+            finalError ?? promptError ?? pendingError ?? "Run failed",
+            "run",
+          ),
         };
         if (options.notifyParent && managed.subagentParentId) {
           const outcome = describeChildOutcome(
