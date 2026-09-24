@@ -18,7 +18,7 @@ import { useConversationContext } from "@/context/ConversationContext";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
 import { hasNativeBridge, revealPath as nativeRevealPath } from "@/lib/native";
-import { stageInDraft } from "@/lib/draft";
+import { NEW_DRAFT, stageInDraft, unstageInDraft, useDraft } from "@/lib/draft";
 import { stagePathAfterUpload, WORKSPACE_PATH_MIME } from "@/lib/workspace";
 import { FilePreview } from "@/components/inspector/FilePreview";
 import { FolderHead, ListTools } from "@/components/inspector/FolderList";
@@ -58,9 +58,13 @@ export function WorkspaceTree() {
   const sessionId = conv.sessionId;
   const runCount = conv.runSettledCount;
   // View state that outlives the pane (the tree unmounts on every collapse
-  // or rail switch): the open file is the shell's `ws:` / `working:` sub;
-  // the view mode and filter live in pane memory.
-  const [previewView, setPreviewView] = usePaneMemory<PreviewMode>(`${sessionId}:files:mode`, "rendered");
+  // or rail switch): the open file is the view's file target — drawn against
+  // the conversation it belongs to, even after the center moved on; the view
+  // mode and filter live in pane memory.
+  const fileTarget = shell.target?.kind === "file" ? shell.target : null;
+  const owner = fileTarget?.sessionId ?? sessionId;
+  const ownerAttachments = useDraft(owner ?? NEW_DRAFT).draft.attachments;
+  const [previewView, setPreviewView] = usePaneMemory<PreviewMode>(`${owner}:files:mode`, "rendered");
   const [query, setQuery] = usePaneMemory(`${sessionId}:files:query`, "");
   const [browsing, setBrowsing] = usePaneMemory<{ folderId: string; path: string } | null>(`${sessionId}:files:browsing`, null);
   const resultScroll = useRef({ outer: 0, inner: 0, folderId: "" });
@@ -68,12 +72,9 @@ export function WorkspaceTree() {
   const folderClosed = (id: string) => (!query.trim() || browsing !== null) && closedFolders.includes(id);
   const toggleFolder = (id: string) =>
     setClosedFolders((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
-  const subKey = shell.rightSub?.key ?? "";
-  const preview: { path: string; source: "managed" | "working" } | null = subKey.startsWith("ws:")
-    ? { path: subKey.slice("ws:".length), source: "managed" }
-    : subKey.startsWith("working:")
-      ? { path: subKey.slice("working:".length), source: "working" }
-      : null;
+  const preview: { path: string; source: "managed" | "working" } | null = fileTarget
+    ? { path: fileTarget.path, source: fileTarget.root === "working" ? "working" : "managed" }
+    : null;
   const understandMode = app.runtimeMode === "alt-theory" && conv.sessionMode === "understand";
 
   // Draft pane: before the first message there is no session to read folders
@@ -197,13 +198,15 @@ export function WorkspaceTree() {
     if ("isDirectory" in entry && entry.isDirectory) return;
     if (!sessionId || !("kind" in entry) || entry.kind === "binary-original") return;
     setPreviewView("rendered");
-    void guardLeave(() => shell.openSub({ key: `ws:${entry.path}`, title: entry.path }));
+    void guardLeave(() => shell.openTarget({ kind: "file", sessionId, root: "workspace", path: entry.path }));
   };
 
   const openWorkingFile = (entry: WorkingTreeEntry) => {
     if (!sessionId || !entry.previewable) return;
     setPreviewView("rendered");
-    void guardLeave(() => shell.openSub({ key: `working:${entry.folderId}/${entry.path}`, title: entry.path }));
+    void guardLeave(() =>
+      shell.openTarget({ kind: "file", sessionId, root: "working", path: `${entry.folderId}/${entry.path}` }),
+    );
   };
 
   const importFile = async (file: File) => {
@@ -231,11 +234,12 @@ export function WorkspaceTree() {
     }
   };
 
-  if (preview) {
-    const staged = conv.stagedWorkspacePaths.includes(preview.path);
+  if (fileTarget && preview) {
+    // Attaching goes to the message of the conversation the file belongs to.
+    const staged = ownerAttachments.includes(preview.path);
     return (
       <FilePreview
-        sessionId={sessionId}
+        sessionId={fileTarget.sessionId}
         path={preview.path}
         fileRef={{ root: preview.source === "working" ? "working" : "workspace", path: preview.path }}
         mode={previewView}
@@ -243,13 +247,7 @@ export function WorkspaceTree() {
         onSaved={(saved) => {
           // A conflict copy saved to a sibling: follow it there.
           if (saved.path === preview.path) return;
-          const title = preview.source === "working"
-            ? saved.path.slice(saved.path.indexOf("/") + 1)
-            : saved.path;
-          shell.openSub({
-            key: preview.source === "working" ? `working:${saved.path}` : `ws:${saved.path}`,
-            title,
-          });
+          shell.openTarget({ ...fileTarget, path: saved.path });
         }}
         footer={
           preview.source === "managed" ? (
@@ -257,8 +255,8 @@ export function WorkspaceTree() {
               className="wb-apply"
               onClick={() =>
                 staged
-                  ? conv.unstage([preview.path])
-                  : conv.stage(preview.path)
+                  ? unstageInDraft(fileTarget.sessionId, [preview.path])
+                  : stageInDraft(fileTarget.sessionId, [preview.path])
               }
             >
               {staged ? t("Remove from message") : t("Attach to message")}

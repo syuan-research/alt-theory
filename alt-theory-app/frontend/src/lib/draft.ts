@@ -106,6 +106,14 @@ export function stageInDraft(key: string, paths: string[]): void {
   });
 }
 
+export function unstageInDraft(key: string, paths: string[]): void {
+  updateDraft(key, (draft) =>
+    draft.attachments.some((path) => paths.includes(path))
+      ? { ...draft, attachments: draft.attachments.filter((path) => !paths.includes(path)) }
+      : draft,
+  );
+}
+
 /** Write every pending draft now (page hide, scope change). */
 export function flushDrafts(): void {
   for (const key of [...timers.keys()]) write(key);

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ServerMessage } from "@/api/types";
 import { promoteToMainline as promoteToMainlineRequest } from "@/api/sessions";
 import { useApp } from "@/context/AppProvider";
+import { useShell } from "@/context/ShellContext";
 import { ConversationScope, useConversationContext, useTurnParts } from "@/context/ConversationContext";
 import { useMainView } from "@/context/MainView";
 import { useConversation } from "@/hooks/useConversation";
@@ -33,20 +34,21 @@ export function ChildConversation({
   onClose: () => void;
 }) {
   const app = useApp();
+  const shell = useShell();
   const { conversation, parts } = useConversation({
     sessionId,
     enabled: true,
     onMessage: (message: ServerMessage) => {
       switch (message.type) {
         case "branch_created":
-          app.setActiveRelatedSessionId(message.payload.sessionId, { size: "half" });
+          shell.openTarget({ kind: "conversation", sessionId: message.payload.sessionId }, { size: "half" });
           void app.refreshSessions();
           break;
         case "related_session_created":
           // A subagent spawned from this pane never opens the rail; its
           // Related row is the feedback. btw/helper keep taking over.
           if (message.payload.purpose !== "subagent") {
-            app.setActiveRelatedSessionId(message.payload.sessionId, { size: "default" });
+            shell.openTarget({ kind: "conversation", sessionId: message.payload.sessionId }, { size: "default" });
           }
           void app.refreshSessions();
           break;

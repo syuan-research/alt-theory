@@ -13,7 +13,7 @@ export function ApprovalNotice() {
   const request = conv.approvals.find(
     ({ sessionId }) =>
       shell.surface !== "app" ||
-      (sessionId !== conv.sessionId && sessionId !== app.activeRelatedSessionId),
+      (sessionId !== conv.sessionId && sessionId !== shell.openConversationId),
   );
   if (!request) return null;
 
@@ -25,7 +25,7 @@ export function ApprovalNotice() {
     shell.openApp();
     main.openCatalogSession(target.center);
     if (target.related) {
-      app.setActiveRelatedSessionId(target.related, { size: "default" });
+      shell.openTarget({ kind: "conversation", sessionId: target.related }, { size: "default" });
     }
   };
 

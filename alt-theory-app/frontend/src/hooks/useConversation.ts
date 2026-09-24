@@ -34,6 +34,7 @@ import {
   NEW_DRAFT,
   readDraft,
   stageInDraft,
+  unstageInDraft,
   updateDraft,
   useDraft,
   type Draft,
@@ -386,11 +387,7 @@ export function useConversation({ sessionId, enabled, onMessage }: ConversationO
           attachments: draft.attachments.filter((path) => !sent.includes(path)),
         })),
       stage: (...paths: string[]) => stageInDraft(key(), paths),
-      unstage: (paths: string[]) =>
-        updateDraft(key(), (draft) => ({
-          ...draft,
-          attachments: draft.attachments.filter((path) => !paths.includes(path)),
-        })),
+      unstage: (paths: string[]) => unstageInDraft(key(), paths),
       notify: (body: NoticeBody, ttlMs?: number) => dispatch({ type: "notice", body, ttlMs }),
     };
   }, [send]);

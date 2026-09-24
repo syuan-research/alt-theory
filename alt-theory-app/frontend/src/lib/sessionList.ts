@@ -293,6 +293,11 @@ export type RelatedScope = "conversation" | "family";
  * cousin branches §6 keeps out of the default view. One row shape carries
  * everything the rail renders, filters and groups on (card 9).
  */
+/** How wide a side conversation opens: a branch/edit ≈ half, anything else the default. */
+export function relatedPaneSize(session: SessionSummary): "half" | "default" {
+  return session.forkedFrom?.purpose === "fork" ? "half" : "default";
+}
+
 export function relatedRowsFor(
   sessionId: string,
   sessions: SessionSummary[],
@@ -322,7 +327,7 @@ export function relatedRowsFor(
       runStatus: s.runStatus,
       role: s.agentType ?? null,
       createdAt: s.createdAt,
-      paneSize: s.forkedFrom?.purpose === "fork" ? "half" : "default",
+      paneSize: relatedPaneSize(s),
     });
   };
   const kindOf = (s: SessionSummary): RelatedKind | null => {

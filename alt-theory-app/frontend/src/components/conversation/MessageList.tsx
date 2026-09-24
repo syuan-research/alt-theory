@@ -349,8 +349,10 @@ function TurnChangesCard() {
             menu.openAt(rect.left + 18, rect.bottom, fileContextItems(path, shell), event.currentTarget);
           }}
           onClick={() => {
-            shell.openRail("changes");
-            shell.openSub({ key: `changes:${file.path}`, title: file.path });
+            // The change of the conversation drawn here (center or side).
+            if (conv.sessionId) {
+              shell.openTarget({ kind: "change", sessionId: conv.sessionId, path: file.path, title: file.path });
+            }
           }}
         >
           <span className="tc-name">{fileName(file.path)}</span>

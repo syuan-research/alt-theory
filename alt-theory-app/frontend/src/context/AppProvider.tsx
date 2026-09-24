@@ -101,16 +101,6 @@ export interface AppContextValue {
   sessionsLoading: boolean;
   sessionsError: string | null;
   refreshSessions: () => Promise<void>;
-  activeRelatedSessionId: string | null;
-  /**
-   * Preferred right-rail width when this related conversation is opened:
-   * half ≈ branch/edit comparison; default ≈ btw/helper/subagent.
-   */
-  relatedPaneSize: "half" | "default" | null;
-  setActiveRelatedSessionId: (
-    sessionId: string | null,
-    opts?: { size?: "half" | "default" },
-  ) => void;
 
   /** Explicitly added working folders (may be empty of sessions). */
   knownWorkspaces: string[];
@@ -175,20 +165,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [transcriptView, setTranscriptView] = useState<TranscriptView>("user");
 
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
-  const [activeRelatedSessionId, setActiveRelatedSessionIdState] = useState<
-    string | null
-  >(null);
-  const [relatedPaneSize, setRelatedPaneSize] = useState<
-    "half" | "default" | null
-  >(null);
-  const setActiveRelatedSessionId = useCallback(
-    (sessionId: string | null, opts?: { size?: "half" | "default" }) => {
-      setActiveRelatedSessionIdState(sessionId);
-      if (!sessionId) setRelatedPaneSize(null);
-      else if (opts?.size) setRelatedPaneSize(opts.size);
-    },
-    [],
-  );
   const [sessionDisplayNames, setSessionDisplayNames] = useState<
     Record<string, { alias: string; snippet: string }>
   >({});
@@ -544,9 +520,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       sessionsLoading,
       sessionsError,
       refreshSessions,
-      activeRelatedSessionId,
-      relatedPaneSize,
-      setActiveRelatedSessionId,
       knownWorkspaces,
       projects,
       globalFolders,
@@ -587,9 +560,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       sessionsLoading,
       sessionsError,
       refreshSessions,
-      activeRelatedSessionId,
-      relatedPaneSize,
-      setActiveRelatedSessionId,
       knownWorkspaces,
       projects,
       globalFolders,

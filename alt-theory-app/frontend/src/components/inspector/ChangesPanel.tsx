@@ -10,6 +10,7 @@ import { useContextMenu, type ContextMenuItem } from "@/components/shell/Context
 import { copyText } from "@/lib/clipboard";
 import { hasNativeBridge, revealPath } from "@/lib/native";
 import { usePaneMemory } from "@/lib/paneMemory";
+import { targetKey } from "@/lib/viewTarget";
 import { useFindTarget } from "@/lib/find";
 import type { PreviewMode } from "@/lib/fileContent";
 import { fileQueryScore, parseFileQuery } from "../../../../shared/quick-find";
@@ -25,11 +26,16 @@ export function ChangesPanel() {
   const shell = useShell();
   const menu = useContextMenu();
 
-  const sessionId = conv.sessionId;
+  // An open change is drawn against the conversation it belongs to, even
+  // after the center moved on; the list is the center conversation's.
+  const changeTarget = shell.target?.kind === "change" ? shell.target : null;
+  const sessionId = changeTarget?.sessionId ?? conv.sessionId;
   const runCount = conv.runSettledCount;
-  const key = shell.rightSub?.key;
   const [closed, setClosed] = usePaneMemory<string[]>(`${sessionId}:changes:closed`, []);
-  const [mode, setMode] = usePaneMemory<PreviewMode>(`${sessionId}:changes:${key ?? ""}:mode`, "rendered");
+  const [mode, setMode] = usePaneMemory<PreviewMode>(
+    `${sessionId}:changes:${changeTarget ? targetKey(changeTarget) : ""}:mode`,
+    "rendered",
+  );
   const [groups, setGroups] = usePaneMemory<ChangeGroup[] | null>(`${sessionId}:changes:groups`, null);
   const [error, setError] = usePaneMemory<string | null>(`${sessionId}:changes:error`, null);
   // The same always-visible filter as Files (owner 2026-09-24: lists of
@@ -58,13 +64,14 @@ export function ChangesPanel() {
     };
   }, [sessionId, runCount]);
 
-  // The open file is the pane's `changes:<resolvedPath>` sub — set here, by
-  // the turn-end card in the conversation, or restored by the shell after a
-  // collapse — so the drill-in survives a remount.
-  const selected =
-    key?.startsWith("changes:")
-      ? groups?.flatMap((group) => group.files).find((file) => file.resolvedPath === key.slice("changes:".length) || file.path === key.slice("changes:".length)) ?? null
-      : null;
+  // The open file is the view's change target — set here, by the turn-end
+  // card in the conversation, or restored by the shell after a collapse —
+  // so the drill-in survives a remount.
+  const selected = changeTarget
+    ? (groups
+        ?.flatMap((group) => group.files)
+        .find((file) => file.resolvedPath === changeTarget.path || file.path === changeTarget.path) ?? null)
+    : null;
 
   if (selected) {
     return (
@@ -151,7 +158,8 @@ export function ChangesPanel() {
                       menu.openAt(rect.left + 18, rect.bottom, fileItems(file), event.currentTarget);
                     }}
                     onClick={() => {
-                      shell.openSub({ key: `changes:${file.resolvedPath}`, title: file.displayPath });
+                      if (!sessionId) return;
+                      shell.openTarget({ kind: "change", sessionId, path: file.resolvedPath, title: file.displayPath });
                     }}
                   >
                     <i className="ph ph-file-text" />

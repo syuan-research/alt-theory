@@ -4,31 +4,17 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useRef,
+  useReducer,
   useState,
   type ReactNode,
 } from "react";
 import { syncTitlebarTheme } from "@/lib/native";
+import { INITIAL_PANE, navigate, type RailKey, type ViewTarget } from "@/lib/viewTarget";
+
+export type { RailKey, ViewTarget };
 
 /** Full-screen surface. `app` is the 3-pane shell; the others take over. */
 export type Surface = "app" | "settings" | "review";
-
-/** Right-rail tabs. The three `adv` ones only appear in researcher mode. */
-export type RailKey =
-  | "chats"
-  | "changes"
-  | "workspace"
-  | "records"
-  | "provenance"
-  | "runtime";
-
-export interface RightSub {
-  /** Which drill-in view is open, e.g. a side chat, a file diff, a preview. */
-  key: string;
-  /** Header label. Omitted for related conversations — the panel says what
-   *  it is in its own words instead of repeating the child's name. */
-  title?: string;
-}
 
 /** How wide the right rail should open for a related conversation. */
 export type RelatedPaneSize = "half" | "default";
@@ -51,26 +37,24 @@ export interface ShellContextValue {
   searchOpen: boolean;
   setSearchOpen: (open: boolean) => void;
 
+  /** The side view's navigation — its one owner (lib/viewTarget). */
   rightPanel: RailKey | null;
   toggleRail: (key: RailKey) => void;
   openRail: (key: RailKey) => void;
   closeRight: () => void;
+  /** What the open rail shows beyond its list; drawn against its own conversation. */
+  target: ViewTarget | null;
+  /** Open a target on its rail; a conversation also sizes the pane (branch ≈ half). */
+  openTarget: (target: ViewTarget, options?: { size?: RelatedPaneSize }) => void;
+  /** Back: to where the user came from, else to the rail's list. */
+  closeTarget: () => void;
+  /** The side conversation shown, if the view shows one. */
+  openConversationId: string | null;
 
   /** Right panel width in px (branch/edit ≈ 50%; btw/helper ≈ 480 default). */
   rightWidth: number;
   /** Clamp + optionally persist. Used by the resizer and related open sizing. */
   setRightPaneWidth: (width: number, persist?: boolean) => void;
-  /**
-   * Size the right rail for a related conversation open:
-   * - half ≈ 50% of center+right work area (not the full window)
-   * - default = stored preference or 480 (btw / helper / side)
-   * Does not rewrite localStorage (user drag still does).
-   */
-  setRightPaneForRelated: (size: RelatedPaneSize) => void;
-
-  rightSub: RightSub | null;
-  openSub: (sub: RightSub) => void;
-  closeSub: () => void;
 
   workspaceRevealPath: string | null;
   revealWorkspacePath: (path: string) => void;
@@ -221,19 +205,10 @@ export function ShellProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("resize", onResize);
   }, []);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [rightPanel, setRightPanel] = useState<RailKey | null>(null);
-  const [rightSub, setRightSub] = useState<RightSub | null>(null);
-  // Right-pane memory (Owner 2026-09-03): what each rail showed last, so a
-  // collapse or a rail switch does not forget the open file or child; and
-  // where the user was before a related child took the pane over, so leaving
-  // it goes back there.
-  const rightRef = useRef<{ panel: RailKey | null; sub: RightSub | null }>({ panel: null, sub: null });
-  rightRef.current = { panel: rightPanel, sub: rightSub };
-  const lastSubByPanel = useRef<Partial<Record<RailKey, RightSub | null>>>({});
-  useEffect(() => {
-    if (rightPanel) lastSubByPanel.current[rightPanel] = rightSub;
-  }, [rightPanel, rightSub]);
-  const returnTo = useRef<{ panel: RailKey; sub: RightSub | null } | null>(null);
+  // Right-pane memory (Owner 2026-09-03) — what each rail showed last, and
+  // where the user was before a target on another rail took over — lives in
+  // the one navigation state (lib/viewTarget).
+  const [pane, dispatchPane] = useReducer(navigate, INITIAL_PANE);
   const [workspaceRevealPath, setWorkspaceRevealPath] = useState<string | null>(null);
   const [rightWidth, setRightWidthState] = useState(() => readStoredRightWidth());
   const [participantTabEnabled, setParticipantTabState] = useState(() =>
@@ -289,39 +264,13 @@ export function ShellProvider({ children }: { children: ReactNode }) {
     syncTitlebarTheme(theme);
   }, [darkMode]);
 
-  const toggleRail = useCallback((key: RailKey) => {
-    returnTo.current = null;
-    const opening = rightRef.current.panel !== key;
-    setRightPanel(opening ? key : null);
-    setRightSub(opening ? (lastSubByPanel.current[key] ?? null) : null);
-  }, []);
-  const openRail = useCallback((key: RailKey) => {
-    const { panel, sub } = rightRef.current;
-    if (panel && panel !== key) returnTo.current = { panel, sub };
-    setRightSub(null);
-    setRightPanel(key);
-  }, []);
-  const closeRight = useCallback(() => {
-    returnTo.current = null;
-    setRightPanel(null);
-    setRightSub(null);
-  }, []);
-
-  const openSub = useCallback((sub: RightSub) => setRightSub(sub), []);
-  const closeSub = useCallback(() => {
-    const back = returnTo.current;
-    returnTo.current = null;
-    if (back) {
-      setRightPanel(back.panel);
-      setRightSub(back.sub);
-      return;
-    }
-    setRightSub(null);
-  }, []);
+  const toggleRail = useCallback((rail: RailKey) => dispatchPane({ type: "toggle", rail }), []);
+  const openRail = useCallback((rail: RailKey) => dispatchPane({ type: "rail", rail }), []);
+  const closeRight = useCallback(() => dispatchPane({ type: "collapse" }), []);
+  const closeTarget = useCallback(() => dispatchPane({ type: "back" }), []);
   const revealWorkspacePath = useCallback((path: string) => {
     setSurface("app");
-    setRightSub(null);
-    setRightPanel("workspace");
+    dispatchPane({ type: "show", rail: "workspace" });
     setWorkspaceRevealPath(path);
   }, []);
   const clearWorkspaceRevealPath = useCallback(() => setWorkspaceRevealPath(null), []);
@@ -332,17 +281,22 @@ export function ShellProvider({ children }: { children: ReactNode }) {
     if (persist) saveStoredRightWidth(next);
   }, []);
 
-  const setRightPaneForRelated = useCallback(
-    (size: RelatedPaneSize) => {
-      if (size === "half") {
-        // Branch / retry only: ~half of center+right. Subagent/btw/helper use default.
-        setRightPaneWidth(halfCenterRightWorkArea(), false);
-      } else {
-        setRightPaneWidth(readStoredRightWidth(), false);
+  // A side conversation sizes the pane as it opens: a branch/edit ≈ half of
+  // center+right, BTW/Helper/subagent the stored preference (≈480). The
+  // stored preference is not rewritten (a user drag still does).
+  const openTarget = useCallback(
+    (target: ViewTarget, options?: { size?: RelatedPaneSize }) => {
+      if (target.kind === "conversation") {
+        setRightPaneWidth(
+          options?.size === "half" ? halfCenterRightWorkArea() : readStoredRightWidth(),
+          false,
+        );
       }
+      dispatchPane({ type: "open", target });
     },
     [setRightPaneWidth],
   );
+  const openConversationId = pane.target?.kind === "conversation" ? pane.target.sessionId : null;
 
   const openCompare = useCallback(() => setCompareOpen(true), []);
   const closeCompare = useCallback(() => setCompareOpen(false), []);
@@ -367,16 +321,16 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       setLeftCollapsed,
       searchOpen,
       setSearchOpen,
-      rightPanel,
+      rightPanel: pane.rail,
       toggleRail,
       openRail,
       closeRight,
+      target: pane.target,
+      openTarget,
+      closeTarget,
+      openConversationId,
       rightWidth,
       setRightPaneWidth,
-      setRightPaneForRelated,
-      rightSub,
-      openSub,
-      closeSub,
       workspaceRevealPath,
       revealWorkspacePath,
       clearWorkspaceRevealPath,
@@ -410,16 +364,15 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       setLeftCollapsed,
       narrow,
       searchOpen,
-      rightPanel,
+      pane,
       toggleRail,
       openRail,
       closeRight,
+      openTarget,
+      closeTarget,
+      openConversationId,
       rightWidth,
       setRightPaneWidth,
-      setRightPaneForRelated,
-      rightSub,
-      openSub,
-      closeSub,
       workspaceRevealPath,
       revealWorkspacePath,
       clearWorkspaceRevealPath,

@@ -17,6 +17,7 @@ import {
   nearestAncestor,
   purposeIcon,
   railMatchIds,
+  relatedPaneSize,
   sessionTitle,
   type WorkspaceTree,
 } from "@/lib/sessionList";
@@ -505,6 +506,13 @@ function UserNav({ onImport }: { onImport: () => void }) {
   const [contentResult, setContentResult] = useState<{ query: string; ids: string[] } | null>(null);
   const [contentSearchError, setContentSearchError] = useState("");
   const [pendingRelated, setPendingRelated] = useState<{ centerId: string; childId: string } | null>(null);
+  const openRelated = (childId: string) => {
+    const child = app.sessions.find((item) => item.sessionId === childId);
+    shell.openTarget(
+      { kind: "conversation", sessionId: childId },
+      { size: child ? relatedPaneSize(child) : "default" },
+    );
+  };
   useEffect(() => {
     if (!shell.searchOpen) setRailQuery("");
   }, [shell.searchOpen]);
@@ -532,14 +540,15 @@ function UserNav({ onImport }: { onImport: () => void }) {
   useEffect(() => {
     if (!pendingRelated) return;
     if (conv.sessionId === pendingRelated.centerId) {
-      app.setActiveRelatedSessionId(pendingRelated.childId);
+      openRelated(pendingRelated.childId);
       setPendingRelated(null);
     } else if (main.selectedCatalogSessionId !== pendingRelated.centerId) {
       // The user opened something else: never pop this child in later.
       // ponytail: a server-refused open keeps it until the next selection.
       setPendingRelated(null);
     }
-  }, [conv.sessionId, main.selectedCatalogSessionId, app.setActiveRelatedSessionId, pendingRelated]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conv.sessionId, main.selectedCatalogSessionId, pendingRelated]);
 
   useEffect(() => {
     if (!local) return;
@@ -692,7 +701,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
       return;
     }
     shell.openApp();
-    if (conv.sessionId === ancestor.sessionId) app.setActiveRelatedSessionId(session.sessionId);
+    if (conv.sessionId === ancestor.sessionId) openRelated(session.sessionId);
     else if (main.openCatalogSession(ancestor.sessionId)) {
       setPendingRelated({ centerId: ancestor.sessionId, childId: session.sessionId });
     }

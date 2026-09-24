@@ -4,7 +4,7 @@ import { useMainView } from "@/context/MainView";
 import { useApp } from "@/context/AppProvider";
 import { useShell, type RailKey } from "@/context/ShellContext";
 import { t } from "@/i18n";
-import { shouldClearRelatedOnSubChange } from "@/lib/relatedOpen";
+import { targetKey, targetTitle } from "@/lib/viewTarget";
 import {
   RELATED_KINDS,
   canTakeMainline,
@@ -67,63 +67,12 @@ export function InspectorPanel() {
     [app.sessions, conv.sessionId]
   );
 
-  const title = shell.rightSub?.title ?? (active ? RAIL_META[active].title : "");
-
-  // Opening a child panel is a one-shot per child id. It used to depend on
-  // `app.sessions`, so every refreshSessions() (one per subagent output) re-ran
-  // it and slammed the panel back open on whatever child was last active.
-  const openedChildRef = useRef<string | null>(null);
-  useEffect(() => {
-    const childId = app.activeRelatedSessionId;
-    if (!childId) {
-      openedChildRef.current = null;
-      return;
-    }
-    if (openedChildRef.current === childId) return;
-    openedChildRef.current = childId;
-
-    // Width depends on conversation kind (branch/edit ≈ 50%; btw/helper default).
-    // Prefer the explicit hint from branch_created / related_session_created;
-    // when the user picks from the switcher, fall back to purpose on the summary.
-    let size = app.relatedPaneSize;
-    if (!size) {
-      const child = app.sessions.find((s) => s.sessionId === childId);
-      const purpose = child?.forkedFrom?.purpose;
-      // Branch/edit only: half work area. Subagent / btw / helper: default ~480.
-      size = purpose === "fork" ? "half" : "default";
-    }
-    shell.setRightPaneForRelated(size);
-    shell.openRail("chats");
-    shell.openSub({ key: `related:${childId}` });
-  }, [
-    app.activeRelatedSessionId,
-    app.relatedPaneSize,
-    app.sessions,
-    shell.openRail,
-    shell.openSub,
-    shell.setRightPaneForRelated,
-  ]);
-
-  // Back / closeRight / openRail only clear rightSub. When we *leave* a related
-  // sub (transition related:* → not), clear app.activeRelatedSessionId too so
-  // re-clicking the same child re-runs open (setState same id is a no-op and
-  // openedChildRef would early-return). Transition-only: do not clear on open.
-  const prevRightSubRef = useRef(shell.rightSub);
-  useEffect(() => {
-    const prev = prevRightSubRef.current;
-    prevRightSubRef.current = shell.rightSub;
-    if (!shouldClearRelatedOnSubChange(prev?.key, shell.rightSub?.key)) return;
-    openedChildRef.current = null;
-    if (app.activeRelatedSessionId) app.setActiveRelatedSessionId(null);
-  }, [shell.rightSub, app.activeRelatedSessionId, app.setActiveRelatedSessionId]);
+  const title = (shell.target && targetTitle(shell.target)) ?? (active ? RAIL_META[active].title : "");
 
   const leaveRelated = () => {
     // Leaving with an unsaved draft bounces once into the red bar (the
     // guard saves and proceeds on a second click) — owner ruling 2026-09-15.
-    void guardLeave(() => {
-      app.setActiveRelatedSessionId(null);
-      shell.closeSub();
-    });
+    void guardLeave(shell.closeTarget);
   };
 
   // Scroll memory per (conversation, rail, sub): saved on scroll, restored
@@ -134,7 +83,7 @@ export function InspectorPanel() {
   // changes (images loading). Both stop once the position lands; scrolling
   // updates the saved value, so a restore during active reading is a no-op.
   const bodyRef = useRef<HTMLDivElement>(null);
-  const scrollKey = `${conv.sessionId}:${active}:${shell.rightSub?.key ?? ""}:scroll`;
+  const scrollKey = `${conv.sessionId}:${active}:${shell.target ? targetKey(shell.target) : ""}:scroll`;
   useLayoutEffect(() => {
     const el = bodyRef.current;
     const saved = paneMemory.get<number>(scrollKey) ?? 0;
@@ -178,17 +127,12 @@ export function InspectorPanel() {
     <aside className={`right${open ? " open" : ""}`}>
       <div className="rpanel">
         {active ? (
-          <div className={`head${shell.rightSub ? " sub" : ""}`}>
+          <div className={`head${shell.target ? " sub" : ""}`}>
             {/* Collapse sits on the inner edge: on a narrow window the outer
                 edge is the first thing to go off-screen. */}
             <button
               className="rp-close"
-              onClick={() => {
-                void guardLeave(() => {
-                  app.setActiveRelatedSessionId(null);
-                  shell.closeRight();
-                });
-              }}
+              onClick={() => void guardLeave(shell.closeRight)}
               data-tip={t("Collapse")}
             >
               <i className="ph ph-sidebar-simple" style={{ transform: "scaleX(-1)" }} />
@@ -275,9 +219,7 @@ function RelatedConversations() {
   const main = useMainView();
   const shell = useShell();
   const menu = useContextMenu();
-  const activeChildId = shell.rightSub?.key.startsWith("related:")
-    ? shell.rightSub.key.slice("related:".length)
-    : null;
+  const activeChildId = shell.openConversationId;
 
   // Filter state outlives the pane (proto E; pane memory per conversation).
   const memoryKey = `${conv.sessionId}:related`;
@@ -340,16 +282,13 @@ function RelatedConversations() {
       ? t("All types")
       : presentKinds.filter((kind) => kinds.has(kind)).map(relatedKindLabel).join(" · ") || t("No types");
 
-  // Switcher click: setActiveRelatedSessionId only; openSub + width are owned
-  // by the one-shot effect on activeRelatedSessionId. Do NOT dual-write openSub.
-  //
   // parentRow ("Where this branch started — go back anytime") is intentionally
   // gone. Branch/edit comparisons open the child in this Related rail via
-  // branch_created → activeRelatedSessionId (not center compare). Center
-  // session is chosen only from the left list.
+  // branch_created (not center compare). Center session is chosen only from
+  // the left list.
   const openRow = (row: RelatedRow) => {
     shell.openApp();
-    app.setActiveRelatedSessionId(row.session.sessionId, { size: row.paneSize });
+    shell.openTarget({ kind: "conversation", sessionId: row.session.sessionId }, { size: row.paneSize });
   };
 
   const sessionMenuItems = (child: RelatedRow["session"]): ContextMenuItem[] => {
@@ -456,12 +395,8 @@ function RelatedConversations() {
             onKeyDown={(event) => openMenuFromKey(event, row.session)}
             onClick={() => {
               shell.openApp();
-              if (row.session.sessionId === activeChildId) {
-                app.setActiveRelatedSessionId(null);
-                shell.closeSub();
-              } else {
-                app.setActiveRelatedSessionId(row.session.sessionId, { size: row.paneSize });
-              }
+              if (row.session.sessionId === activeChildId) shell.closeTarget();
+              else openRow(row);
             }}
           >
             <i className={`ph ${row.icon}`} />
@@ -481,10 +416,7 @@ function RelatedConversations() {
         <ChildConversation
           key={activeChildId}
           sessionId={activeChildId}
-          onClose={() => {
-            app.setActiveRelatedSessionId(null);
-            shell.closeSub();
-          }}
+          onClose={shell.closeTarget}
         />
         {menu.element}
       </>

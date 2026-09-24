@@ -19,6 +19,7 @@ import {
 import type { ServerMessage, SessionDetailResponse } from "@/api/types";
 import { useApp, type SessionAlert } from "@/context/AppProvider";
 import { ConversationScope } from "@/context/ConversationContext";
+import { useShell } from "@/context/ShellContext";
 import { useConversation, type Conversation } from "@/hooks/useConversation";
 import { t } from "@/i18n";
 import { notifyBackground } from "@/lib/notify";
@@ -62,6 +63,9 @@ const MainViewContext = createContext<MainViewValue | null>(null);
 
 export function MainViewProvider({ children }: { children: ReactNode }) {
   const app = useApp();
+  // Conversation events that open a side conversation go straight to the
+  // navigation owner (ShellProvider is outside this provider).
+  const shell = useShell();
   const [childSeed, setChildSeed] = useState<MainViewValue["childSeed"]>(null);
   /** A root Helper opened in the center with a question: ask it once open. */
   const [rootSeed, setRootSeed] = useState<{ sessionId: string; text: string } | null>(null);
@@ -164,7 +168,7 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
         // A spawned subagent never opens the rail (owner 2026-09-18); the
         // Related row is its feedback, and seeds belong to user creations.
         if (message.payload.purpose !== "subagent") {
-          app.setActiveRelatedSessionId(message.payload.sessionId, { size: "default" });
+          shell.openTarget({ kind: "conversation", sessionId: message.payload.sessionId }, { size: "default" });
           const seed = creatingSeed();
           if (seed) setChildSeed({ sessionId: message.payload.sessionId, ...seed });
         }
@@ -173,7 +177,7 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
       case "branch_created":
         // Main conversation stays in the center. Branched edit work opens in
         // the right Related rail at ~50% width.
-        app.setActiveRelatedSessionId(message.payload.sessionId, { size: "half" });
+        shell.openTarget({ kind: "conversation", sessionId: message.payload.sessionId }, { size: "half" });
         {
           const seed = creatingSeed();
           if (seed) setChildSeed({ sessionId: message.payload.sessionId, ...seed });
@@ -311,7 +315,6 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
     async (target: string) => {
       await promoteRelatedSessionRequest(target);
       await app.refreshSessions();
-      app.setActiveRelatedSessionId(null);
       openCatalogSession(target);
     },
     [app, openCatalogSession],
@@ -345,9 +348,8 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
         // A deleted conversation takes its draft with it.
         deletedIds.forEach(discardDraft);
         if (sessionId && deletedIds.includes(sessionId)) conv.startNew();
-        if (app.activeRelatedSessionId && deletedIds.includes(app.activeRelatedSessionId)) {
-          app.setActiveRelatedSessionId(null);
-        }
+        // A deleted side conversation leaves the view.
+        if (shell.openConversationId && deletedIds.includes(shell.openConversationId)) shell.closeTarget();
         await app.refreshSessions();
       } catch (err) {
         conv.notify({
