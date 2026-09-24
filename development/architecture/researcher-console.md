@@ -92,6 +92,7 @@ buttons or records.
 - `alt-theory-app/frontend/src/components/shell/Shell.tsx`
 - `alt-theory-app/frontend/src/components/shell/Workbench.tsx`
 - `alt-theory-app/frontend/src/components/shell/ReviewPage.tsx`
-- `alt-theory-app/frontend/src/context/AppProvider.tsx`
+- `alt-theory-app/frontend/src/context/MainView.tsx` (list selection, selected
+  session detail, opening a conversation)
 - `development/architecture/information-architecture.md`
 - `development/architecture/research-identity-visibility-privacy-and-retention.md`

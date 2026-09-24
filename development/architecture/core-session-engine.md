@@ -258,6 +258,8 @@ The most relevant durable decisions are:
   queued user turn.
 - [`ADR 0007 — user file edits versus agent write permission`](adr/0007-separate-user-file-edits-from-agent-write-permission.md)
   — local user editing has its own authority and optimistic conflict boundary.
+- [`ADR 0008 — per-conversation client state and request receipts`](adr/0008-per-conversation-client-state-and-request-receipts.md)
+  — one pure client transition per conversation; every request answered once.
 
 These ADRs explain selected durable “why” choices. They do not replace the
 current-behavior documents linked above.

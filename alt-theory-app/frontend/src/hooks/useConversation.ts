@@ -30,6 +30,15 @@ import { runStateView } from "@/lib/runState";
 import { buildOutgoingPrompt } from "@/lib/workspace";
 
 let requestCounter = 0;
+const RUN_REQUESTS = new Set<ClientMessageBody["type"]>([
+  "prompt",
+  "invoke_skill",
+  "continue_latest",
+  "retry_latest",
+  "revise_latest",
+  "compact",
+  "send_queued_now",
+]);
 const requestPrefix = Math.random().toString(36).slice(2, 8);
 
 export interface ConversationOptions {
@@ -108,33 +117,43 @@ export function useConversation({ sessionId, enabled, onMessage }: ConversationO
 
   const commands = useMemo(() => {
     const current = () => stateRef.current;
+    // A run request still unanswered counts as running for how the next
+    // message goes: a second send in those milliseconds is queued by the
+    // server, so it must not show as an ordinary bubble.
+    const runningNow = () =>
+      isRunning(current()) ||
+      current().requests.some(
+        (request) => request.status === "sent" && RUN_REQUESTS.has(request.message.type),
+      );
     return {
       send,
       /** A user message: runs now, or joins Pi's queue while a turn runs. */
       prompt(text: string, attachments: string[] = [], draftText = text): boolean {
         const outgoing = buildOutgoingPrompt(text.trim(), attachments);
         if (!outgoing) return false;
+        const queued = runningNow();
         const body: ClientMessageBody = {
           type: "prompt",
           payload: outgoing,
           ...(attachments.length ? { attachments } : {}),
-          ...(isRunning(current()) ? { deliverAs: "steer" as const } : {}),
+          ...(queued ? { deliverAs: "steer" as const } : {}),
         };
         return send(body, {
           sentText: outgoing,
           // Pi owns the queue (card 11): a queued text shows as a card and
           // becomes a bubble when Pi delivers it (user_steered).
-          bubble: !isRunning(current()),
+          bubble: !queued,
           draftText,
           attachments,
         });
       },
-      invokeSkill(skillName: string, userText?: string): boolean {
-        if (!skillName || isRunning(current())) return false;
+      /** `draftText` is what the editor gets back if refused (the typed text). */
+      invokeSkill(skillName: string, userText?: string, draftText = userText?.trim() ?? ""): boolean {
+        if (!skillName || runningNow()) return false;
         const text = userText?.trim() ?? "";
         return send(
           { type: "invoke_skill", payload: { skillName, ...(text ? { userText: text } : {}) } },
-          { sentText: text || t("Invoke {skillName}", { skillName }), bubble: true, draftText: text },
+          { sentText: text || t("Invoke {skillName}", { skillName }), bubble: true, draftText },
         );
       },
       continueLatest: () => send({ type: "continue_latest" }),
@@ -143,8 +162,9 @@ export function useConversation({ sessionId, enabled, onMessage }: ConversationO
         send({ type: "revise_latest", payload: { text: text.trim(), entryId } }),
       branchRevision: (text: string, entryId?: string) =>
         send({ type: "branch_revision", payload: entryId ? { text: text.trim(), entryId } : { text: text.trim() } }),
-      prepareBranchRevision: (entryId: string) =>
-        send({ type: "prepare_branch_revision", payload: { entryId } }),
+      /** A compare branch; `seed` waits in its editor. */
+      prepareBranchRevision: (entryId: string, seed?: PendingRequest["seed"]) =>
+        send({ type: "prepare_branch_revision", payload: { entryId } }, { seed }),
       compact: () => send({ type: "compact" }),
       abort: () => send({ type: "abort" }),
       sendQueuedNow: (text: string) => send({ type: "send_queued_now", payload: { text } }),
@@ -171,14 +191,18 @@ export function useConversation({ sessionId, enabled, onMessage }: ConversationO
         send({ type: "set_draft_workspace", payload: { primaryDir } }),
       open: (target: string) => send({ type: "open_session", payload: { sessionId: target } }),
       startNew: () => send({ type: "new_session" }),
-      fork: (purpose: "fork" | "side" | "helper" | "ab-arm") =>
+      /** Branch / BTW / Helper off this conversation; `seed` is what the child starts with. */
+      fork: (purpose: "fork" | "side" | "helper" | "ab-arm", seed?: PendingRequest["seed"]) =>
         purpose === "side" || purpose === "helper"
-          ? send({ type: "create_related_session", payload: { purpose } })
-          : send({ type: "fork_session", payload: { purpose } }),
+          ? send({ type: "create_related_session", payload: { purpose } }, { seed })
+          : send({ type: "fork_session", payload: { purpose } }, { seed }),
       duplicate: (sourceSessionId: string) =>
         send({ type: "fork_session", payload: { purpose: "fork", sourceSessionId } }),
-      createHelper: (parentSessionId?: string) =>
-        send({ type: "create_helper_session", payload: parentSessionId ? { parentSessionId } : {} }),
+      createHelper: (parentSessionId?: string, seed?: PendingRequest["seed"]) =>
+        send(
+          { type: "create_helper_session", payload: parentSessionId ? { parentSessionId } : {} },
+          { seed },
+        ),
       requestMetadata: () => send({ type: "get_session_metadata" }),
       requestMetrics: () => send({ type: "get_session_metrics" }),
       stage: (...paths: string[]) => dispatch({ type: "stage", paths }),
@@ -214,6 +238,8 @@ function useConversationView(state: ConversationState) {
       /** The server's run fact alone. */
       serverRunning: running,
       busy: isBusy(state),
+      /** This client's requests still waiting (or bubbles waiting for rows). */
+      requests: state.requests,
       /** The conversation a user open is heading to, while it is in flight. */
       opening: openingTarget(state),
       runState,

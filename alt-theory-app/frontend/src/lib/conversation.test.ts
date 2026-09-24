@@ -210,3 +210,38 @@ test("a retry that dropped text appends the attempt line; one without text claim
   assert.equal(retry(undefined).turn.parts.length, 1);
   assert.equal(retry(true).turn.activity?.kind, "phase");
 });
+
+test("a new run clears a turn the previous one left streaming; leaving drops accepted bubbles", () => {
+  const stale = play([
+    ...openedS1,
+    server({ type: "session_updated", payload: snap({ status: "running" }) }),
+    server({ type: "assistant_delta", payload: { text: "orphan" } }),
+    server({ type: "session_updated", payload: snap() }),
+  ]);
+  assert.equal(stale.turn.parts.length, 1, "an idle snapshot alone does not touch the stream");
+  const next = play([server({ type: "session_updated", payload: snap({ status: "running" }) })], stale);
+  assert.deepEqual(next.turn.parts, []);
+
+  const left = play([
+    ...openedS1,
+    prompt("r1", "sent here"),
+    server({ type: "request_done", payload: { requestId: "r1" } }),
+    request("r2", { type: "open_session", payload: { sessionId: "s2" } }),
+    server({ type: "session_opened", payload: snap({ sessionId: "s2" }) }),
+  ]);
+  assert.deepEqual(left.requests.map((entry) => entry.id), ["r2"]);
+});
+
+test("a lost send with nothing to hand back is dropped without a notice", () => {
+  const state = play([
+    ...openedS1,
+    request("r1", { type: "invoke_skill", payload: { skillName: "x" } }, { sentText: "Invoke x", bubble: true, draftText: "" }),
+    { type: "socket", status: "closed" },
+    { type: "socket", status: "open" },
+    server({ type: "session_opened", payload: snap() }),
+    server({ type: "session_transcript", payload: { messages: rows(["user", "hi"]) } }),
+  ]);
+  assert.deepEqual(state.requests, []);
+  assert.equal(state.notice, null);
+  assert.equal(state.returned, null);
+});

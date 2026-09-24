@@ -320,6 +320,36 @@ test("replay: idle and deferred asset switches reach both windows of the convers
   }
 });
 
+test("replay: Stop with a pending role switch still ends the turn in the window", async () => {
+  const { service, sessionId, managed, internal } = await setup();
+  const window = new Window(service);
+  try {
+    window.open(sessionId);
+    const release = holdTurn(managed);
+    await window.prompt("long turn", () => service.runPrompt(sessionId, "long turn"));
+    internal.handleAgentEvent(managed, {
+      type: "message_update",
+      assistantMessageEvent: { type: "text_delta", delta: "partial" },
+    });
+    await window.ask({ type: "switch_role_preset", payload: { rolePresetSlug: "alternate" } }, () =>
+      service.switchAssetSelectors(sessionId, { rolePresetSlug: "alternate" }),
+    );
+    // Pi's order: Stop settles (and replaces the instance) before the run's
+    // own finally reaches finishRun.
+    managed.session.abort = async () => {};
+    await window.ask({ type: "abort" }, () => service.abort(sessionId, "user_stop", "user_abort"));
+    assert.notEqual((service as any).sessions.get(sessionId), managed, "replaced at Stop's settle");
+    release();
+    await managed.runSettlement;
+    assert.equal(window.state.settledRuns, 1, "run_failed reached the window through the live instance");
+    assert.deepEqual(window.state.turn.parts, []);
+    assert.equal(window.state.snapshot?.rolePresetSlug, "alternate");
+    assert.equal(recoveryOf(window.state)?.outcome, "interrupted");
+  } finally {
+    await service.disposeAll();
+  }
+});
+
 test("replay: a window that joins mid-run sees the live turn, then the settled rows", async () => {
   const { service, sessionId, managed, internal } = await setup();
   const first = new Window(service);

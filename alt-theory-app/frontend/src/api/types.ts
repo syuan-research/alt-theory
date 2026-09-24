@@ -805,7 +805,8 @@ export type ServerMessage =
     }
   | {
       type: "extension_notice";
-      payload: { message: string; level: "info" | "warning" | "error"; failure?: Failure };
+      /** `code` names a notice the client words itself (in the UI language). */
+      payload: { message: string; level: "info" | "warning" | "error"; failure?: Failure; code?: "compacted" };
     }
   /** The request with this id was accepted (see ClientMessage). */
   | { type: "request_done"; payload: { requestId: string } }

@@ -316,6 +316,7 @@ export type SessionServiceEvent =
     }
   | { type: "session_transcript"; payload: { messages: TranscriptMessage[] } }
   | { type: "session_metrics"; payload: SessionMetrics }
+  | { type: "session_metadata"; payload: AssemblyManifest }
   | {
       type: "approval_requested";
       payload: ApprovalRequest & { sessionId: string };
@@ -667,6 +668,7 @@ export class SessionService implements AgentTeamBridge {
           "asset_selector_switch",
         );
         current = this.requireSession(replacement.sessionId);
+        this.emit(current, { type: "session_metadata", payload: current.manifest });
       } catch (error) {
         // A partially-completed swap (instance registered, then the config
         // event write failed) already owns the session id; follow the map so
@@ -727,6 +729,12 @@ export class SessionService implements AgentTeamBridge {
     return snapshot;
   }
 
+  /** A new instance owns the conversation: its manifest and snapshot go out. */
+  private publishReplacement(managed: ManagedSession): SessionSnapshot {
+    this.emit(managed, { type: "session_metadata", payload: managed.manifest });
+    return this.publish(managed);
+  }
+
   /** A run owns the session from here; the client hears it at once. */
   private beginRun(managed: ManagedSession): void {
     managed.runState.begin();
@@ -742,7 +750,11 @@ export class SessionService implements AgentTeamBridge {
    * conversation (a deferred asset switch replaces it).
    */
   private async finishRun(managed: ManagedSession, outcome: RunOutcomeEvent): Promise<void> {
-    const current = await this.settle(managed);
+    const settled = await this.settle(managed);
+    // Stop (and interrupt-and-send) settle on their own first, which may
+    // already have replaced the instance; the outcome goes out through
+    // whichever instance owns the conversation now, or no window hears it.
+    const current = this.sessions.get(managed.manifest.sessionId) ?? settled;
     current.pendingInterruptionCause = null;
     managed.pendingInterruptSendText = null;
     current.pendingInterruptSendText = null;
@@ -752,7 +764,11 @@ export class SessionService implements AgentTeamBridge {
     // live-run bubble is over: it must not be appended to the durable rows.
     managed.liveRun = null;
     current.liveRun = null;
-    const messages = this.getTranscript(current.manifest.sessionId);
+    // Read only when a window follows the conversation (background runs
+    // skip the full detail read).
+    const messages = this.listeners.get(current.manifest.sessionId)?.size
+      ? this.getTranscript(current.manifest.sessionId)
+      : [];
     if (outcome === "completed") {
       this.emit(current, {
         type: "run_completed",
@@ -997,7 +1013,7 @@ export class SessionService implements AgentTeamBridge {
     });
     if (replacement) {
       // Every window of this conversation hears the new selectors.
-      return { deferred: false, snapshot: this.publish(this.requireSession(sessionId)) };
+      return { deferred: false, snapshot: this.publishReplacement(this.requireSession(sessionId)) };
     }
     return { deferred: true, snapshot: this.publish(managed) };
   }
@@ -1258,9 +1274,7 @@ export class SessionService implements AgentTeamBridge {
       throw error;
     }
     this.sessions.set(sessionId, replacement);
-    const snapshot = this.snapshot(replacement);
-    this.emit(replacement, { type: "session_updated", payload: snapshot });
-    return snapshot;
+    return this.publishReplacement(replacement);
   }
 
   /**

@@ -8,7 +8,7 @@ import { ApprovalDock } from "@/components/conversation/ApprovalDock";
 import { ModelChip } from "@/components/conversation/ModelChip";
 import { ContextRing } from "@/components/conversation/ContextRing";
 import { QueuedCards } from "@/components/conversation/QueuedCards";
-import { ContinueButton, NoticeLine, RunStatusSlot } from "@/components/conversation/RunNotes";
+import { ContinueButton, hasRunNotes, NoticeLine, RunStatusSlot } from "@/components/conversation/RunNotes";
 import { RunTips } from "@/components/conversation/RunTips";
 import { SlashPalette, useSlashCommands, useSlashPalette } from "@/components/conversation/SlashPalette";
 import { DEFAULT_KB_DOMAIN, KB_OFF_VALUE } from "@/lib/constants";
@@ -181,7 +181,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
     // wrapper text, which names the skill.
     const sent =
       pending?.invoke && attachments.length === 0 && !conv.isRunning
-        ? conv.invokeSkill(pending.invoke, text)
+        ? conv.invokeSkill(pending.invoke, text, typed)
         : conv.prompt(text, attachments, typed);
     if (sent) app.presetSent(conv.sessionId);
     return sent;
@@ -279,8 +279,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
           />
         ) : null}
 
-        {conv.isRunning ||
-        conv.notice ||
+        {hasRunNotes(conv) ||
         conv.stoppedByUser ||
         conv.recovery ||
         cardHint ||

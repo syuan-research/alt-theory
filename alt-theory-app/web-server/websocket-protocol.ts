@@ -54,6 +54,8 @@ export function toServerMessage(event: SessionServiceEvent): ServerMessage {
       return { type: "session_transcript", payload: event.payload };
     case "session_metrics":
       return { type: "session_metrics", payload: event.payload };
+    case "session_metadata":
+      return { type: "session_metadata", payload: event.payload };
     case "approval_requested":
       return { type: "approval_requested", payload: event.payload };
     case "approval_resolved":

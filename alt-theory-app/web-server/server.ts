@@ -2528,11 +2528,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       patch: Parameters<SessionService["switchAssetSelectors"]>[1],
     ) => {
       if (!attachedSessionId) return;
-      const sessionId = attachedSessionId;
-      const result = await sessionService.switchAssetSelectors(sessionId, patch);
-      if (!result.deferred) {
-        send({ type: "session_metadata", payload: sessionService.getManifest(sessionId) });
-      }
+      await sessionService.switchAssetSelectors(attachedSessionId, patch);
     };
 
     // SessionService owns the one displayable transcript projection, including
@@ -2721,7 +2717,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               await compaction;
               send({
                 type: "extension_notice",
-                payload: { message: t("Conversation compacted."), level: "info" },
+                payload: { message: "Conversation compacted.", level: "info", code: "compacted" },
               });
             } catch (error) {
               send({
@@ -3283,6 +3279,10 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             });
             break;
         }
+      } catch (error) {
+        // An unexpected throw outside a case's own handling is a refusal,
+        // never an acceptance.
+        fail(error);
       } finally {
         done();
       }

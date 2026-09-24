@@ -62,7 +62,8 @@ export const REQUEST_BUSY: Record<ClientMessageBody["type"], boolean> = {
   continue_latest: true,
   retry_latest: true,
   revise_latest: true,
-  branch_revision: true,
+  // The run happens in the new branch, not here.
+  branch_revision: false,
   prepare_branch_revision: true,
   compact: true,
   send_queued_now: true,
@@ -100,6 +101,8 @@ export interface PendingRequest {
   sentText?: string;
   /** Show the sent text as an optimistic user bubble until its row lands. */
   bubble?: boolean;
+  /** Text the conversation this request creates starts with (a child seed). */
+  seed?: { text: string; autoSend: boolean };
   /** What goes back to the editor if the send is refused or lost. */
   draftText?: string;
   attachments?: string[];
@@ -112,7 +115,13 @@ export type NoticeBody =
   | { kind: "text"; text: string; icon?: "warning" | "bookmark" | "eject"; warn?: boolean }
   | { kind: "run-failed"; failure: Failure; interrupted: boolean }
   | { kind: "refused"; failure: Failure; code?: string }
-  | { kind: "extension"; message: string; level: "info" | "warning" | "error"; failure?: Failure }
+  | {
+      kind: "extension";
+      message: string;
+      level: "info" | "warning" | "error";
+      failure?: Failure;
+      code?: "compacted";
+    }
   | { kind: "unsent" };
 
 export interface Notice {
@@ -252,7 +261,7 @@ function withRows(state: ConversationState, messages: TranscriptMessage[], final
     const landed = users.includes(text) || queued.includes(request.sentText);
     if (request.status === "accepted" && (final || landed)) continue;
     if (request.status === "unknown") {
-      if (!landed) {
+      if (!landed && (request.draftText?.trim() || request.attachments?.length)) {
         next = withReturned(next, request.draftText ?? "", request.attachments);
         lost = true;
       }
@@ -268,6 +277,10 @@ function withRows(state: ConversationState, messages: TranscriptMessage[], final
 function switchedTo(state: ConversationState, sessionId: string | null): ConversationState {
   return {
     ...state,
+    // The server holds what it accepted; their bubbles stay with the rows.
+    requests: state.requests.filter(
+      (request) => !(request.status === "accepted" && request.from === state.sessionId),
+    ),
     sessionId,
     messages: [],
     turn: EMPTY_TURN,
@@ -330,11 +343,22 @@ function onServer(state: ConversationState, message: ServerMessage): Conversatio
       };
     }
 
-    case "session_updated":
-      return message.payload.sessionId === state.sessionId ? { ...state, snapshot: message.payload } : state;
+    case "session_updated": {
+      if (message.payload.sessionId !== state.sessionId) return state;
+      // A new run begins: whatever the previous turn left streaming is over.
+      const begins = message.payload.status !== "idle" && (state.snapshot?.status ?? "idle") === "idle";
+      return {
+        ...state,
+        snapshot: message.payload,
+        warnings: message.payload.resumeWarnings ?? state.warnings,
+        turn: begins ? EMPTY_TURN : state.turn,
+      };
+    }
 
     case "session_metadata":
-      return { ...state, manifest: message.payload };
+      return !message.payload.sessionId || message.payload.sessionId === state.sessionId
+        ? { ...state, manifest: message.payload }
+        : state;
 
     case "session_metrics":
       return { ...state, metrics: message.payload };
@@ -478,6 +502,7 @@ function onServer(state: ConversationState, message: ServerMessage): Conversatio
         message: message.payload.message,
         level: message.payload.level,
         failure: message.payload.failure,
+        code: message.payload.code,
       });
 
     case "request_done": {

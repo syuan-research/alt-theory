@@ -61,9 +61,9 @@ const MainViewContext = createContext<MainViewValue | null>(null);
 
 export function MainViewProvider({ children }: { children: ReactNode }) {
   const app = useApp();
-  const pendingChildSeedRef = useRef<{ text: string; autoSend: boolean } | null>(null);
-  const pendingHelperSeedRef = useRef<string | null>(null);
   const [childSeed, setChildSeed] = useState<MainViewValue["childSeed"]>(null);
+  /** A root Helper opened in the center with a question: ask it once open. */
+  const [rootSeed, setRootSeed] = useState<{ sessionId: string; text: string } | null>(null);
   const [selectedSessionDetail, setSelectedSessionDetail] =
     useState<SessionDetailResponse | null>(null);
   const [sessionAlerts, setSessionAlerts] = useState<Record<string, SessionAlert>>({});
@@ -105,43 +105,67 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
   // Conversation allowances belong to the conversation they were granted in.
   useEffect(() => setApprovalMarkers([]), [sessionId]);
 
+  // The seed of a created conversation rides on the request that creates
+  // it; a refused or lost request takes its seed with it.
+  const creatingSeed = () =>
+    conv.requests.find(
+      (request) =>
+        request.status === "sent" &&
+        request.seed &&
+        (request.message.type === "fork_session" ||
+          request.message.type === "create_related_session" ||
+          request.message.type === "create_helper_session" ||
+          request.message.type === "prepare_branch_revision"),
+    )?.seed;
+
+  useEffect(() => {
+    if (!rootSeed || rootSeed.sessionId !== sessionId || !conv.sessionReady) return;
+    setRootSeed(null);
+    conv.prompt(rootSeed.text);
+  }, [conv, rootSeed, sessionId]);
+
   onMessageRef.current = (message) => {
     switch (message.type) {
-      case "session_opened":
+      case "session_opened": {
         void app.refreshSessions();
         if (selectedCatalogSessionId === message.payload.sessionId) {
           void refreshSessionDetail(message.payload.sessionId);
         }
-        if (pendingHelperSeedRef.current) {
-          const seed = pendingHelperSeedRef.current;
-          pendingHelperSeedRef.current = null;
-          window.setTimeout(() => conv.prompt(seed), 0);
+        const seed = creatingSeed();
+        if (seed && conv.requests.some((r) => r.status === "sent" && r.message.type === "create_helper_session")) {
+          setRootSeed({ sessionId: message.payload.sessionId, text: seed.text });
         }
         break;
+      }
       case "session_draft":
       case "run_completed":
       case "run_failed":
         void app.refreshSessions();
         break;
-      case "session_updated":
-        if (message.payload.status !== "idle") void app.refreshSessions();
+      case "session_updated": {
+        // The list shows run state, tag and role: refresh when they moved.
+        const row = app.sessions.find((item) => item.sessionId === message.payload.sessionId);
+        if (
+          message.payload.status !== "idle" ||
+          (row &&
+            (row.rolePresetSlug !== message.payload.rolePresetSlug ||
+              JSON.stringify(row.studyTag ?? null) !== JSON.stringify(message.payload.studyTag ?? null)))
+        ) {
+          void app.refreshSessions();
+        }
         if (selectedCatalogSessionId === message.payload.sessionId) {
           void refreshSessionDetail(message.payload.sessionId);
         }
         break;
+      }
       case "related_session_created":
         // btw / helper: keep the original compact default (~480), not 50%.
         // A spawned subagent never opens the rail (owner 2026-09-18); the
         // Related row is its feedback, and seeds belong to user creations.
         if (message.payload.purpose !== "subagent") {
           app.setActiveRelatedSessionId(message.payload.sessionId, { size: "default" });
-          const seed = pendingChildSeedRef.current ??
-            (pendingHelperSeedRef.current
-              ? { text: pendingHelperSeedRef.current, autoSend: true }
-              : null);
+          const seed = creatingSeed();
           if (seed) setChildSeed({ sessionId: message.payload.sessionId, ...seed });
-          pendingChildSeedRef.current = null;
-          pendingHelperSeedRef.current = null;
         }
         void app.refreshSessions();
         break;
@@ -149,14 +173,13 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
         // Main conversation stays in the center. Branched edit work opens in
         // the right Related rail at ~50% width.
         app.setActiveRelatedSessionId(message.payload.sessionId, { size: "half" });
-        if (pendingChildSeedRef.current) {
-          setChildSeed({ sessionId: message.payload.sessionId, ...pendingChildSeedRef.current });
-          pendingChildSeedRef.current = null;
+        {
+          const seed = creatingSeed();
+          if (seed) setChildSeed({ sessionId: message.payload.sessionId, ...seed });
         }
         void app.refreshSessions();
         break;
       case "error":
-        pendingHelperSeedRef.current = null;
         if (message.payload.code === "auth_required") app.requireLogin();
         break;
       default:
@@ -233,21 +256,18 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
       if (!sessionId || conv.isRunning) return;
       // The child asks the question the user already typed, instead of
       // opening with "what can I help with?".
-      pendingChildSeedRef.current = seedPrompt?.trim()
-        ? { text: seedPrompt.trim(), autoSend: true }
-        : null;
-      if (!conv.fork(purpose)) pendingChildSeedRef.current = null;
+      conv.fork(purpose, seedPrompt?.trim() ? { text: seedPrompt.trim(), autoSend: true } : undefined);
     },
     [conv, sessionId],
   );
 
   const openHelper = useCallback(
     (question?: string, attachToCenter = true) => {
-      pendingHelperSeedRef.current = question?.trim() || null;
+      const text = question?.trim();
       const current = app.sessions.find((item) => item.sessionId === sessionId);
       const currentIsHelper = current?.helper || current?.forkedFrom?.purpose === "helper";
       const parent = attachToCenter && sessionId && !currentIsHelper ? sessionId : undefined;
-      if (!conv.createHelper(parent)) pendingHelperSeedRef.current = null;
+      conv.createHelper(parent, text ? { text, autoSend: true } : undefined);
     },
     [app.sessions, conv, sessionId],
   );
@@ -279,12 +299,7 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
     (text: string, entryId: string) => {
       const trimmed = text.trim();
       if (!trimmed || !entryId || conv.isRunning || !sessionId) return false;
-      pendingChildSeedRef.current = { text: trimmed, autoSend: false };
-      if (!conv.prepareBranchRevision(entryId)) {
-        pendingChildSeedRef.current = null;
-        return false;
-      }
-      return true;
+      return conv.prepareBranchRevision(entryId, { text: trimmed, autoSend: false });
     },
     [conv, sessionId],
   );

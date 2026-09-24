@@ -116,7 +116,12 @@ no window re-attaches, the idle switch publishes the replacement's
 `session_updated` snapshot to every window (the requester also gets the new
 manifest), and a working-folder re-point (`repointOne`, dispose and reopen)
 publishes its snapshot the same way. A replacement does not change the visible
-rows, so it carries no transcript; clients keep theirs.
+rows, so it carries no transcript; clients keep theirs. Every replacement
+(idle switch, deferred switch at settle, re-point) also publishes the new
+instance's manifest (`session_metadata`), and a snapshot's `resumeWarnings`
+refresh the window's warnings. A turn's terminal event goes out through
+whichever instance owns the conversation after its settle — Stop settles
+first and may already have replaced the instance.
 
 The four current assembly paths all retain the same session-service lifecycle
 shape: new materialization (`createManagedFromDirs`), ordinary reopen
@@ -201,11 +206,16 @@ synchronously and returns the run's outcome, so its receipt means the run
 began. A refusal before a run starts (busy, no model) is an `error` reply,
 not a `run_failed`. A sent message shows as a user bubble with a pending mark
 until its receipt; accepted, it stays until the rows carry it (the turn's end
-retires it). A refused send's text and staged files go back to the editor of
-the conversation it was sent from. When the socket drops before the receipt,
-the send is unknown: the re-open's rows (or the snapshot's queue) settle it —
-there, it was sent; missing, it goes back to the editor with a one-line
-notice. There is no outbox and nothing is re-sent
+retires it). A refused send's text and staged files go back to the editor
+of the conversation the window shows when the refusal arrives. When the
+socket drops before the receipt, the send is unknown: the re-open's rows (or
+the snapshot's queue) settle it — there, it was sent; missing, it goes back
+to the editor with a one-line notice (a send with nothing to hand back is
+dropped silently). A first send from the new-conversation page is not
+settled this way: if the socket dropped before the conversation was
+announced, nothing re-opens it, so the text comes back as unsent even if the
+server created and started the conversation. There is no outbox and nothing
+is re-sent
 (`backend-server.integration.ts` "every socket on a conversation keeps its
 events …", `conversation-replay.test.ts`).
 

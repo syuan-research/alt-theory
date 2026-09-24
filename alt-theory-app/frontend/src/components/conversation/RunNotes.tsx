@@ -9,6 +9,14 @@ import { noticeText, noticeWarns } from "@/lib/runState";
  */
 export function RunStatusSlot() {
   const conversation = useConversationContext();
+  const { phase, label } = conversation.runState;
+  if (phase === "disconnected" || phase === "error") {
+    return (
+      <span className="run-phase-slot">
+        <span>{label}</span>
+      </span>
+    );
+  }
   if (!conversation.isRunning) return null;
   return (
     <span className="run-phase-slot">
@@ -61,7 +69,12 @@ export function ContinueButton() {
 
 /** Whether any of the rows above has something to show. */
 export function hasRunNotes(conversation: ReturnType<typeof useConversationContext>): boolean {
+  const { phase } = conversation.runState;
   return Boolean(
-    conversation.isRunning || conversation.notice || conversation.recovery?.canContinue,
+    conversation.isRunning ||
+      phase === "disconnected" ||
+      phase === "error" ||
+      conversation.notice ||
+      conversation.recovery?.canContinue,
   );
 }

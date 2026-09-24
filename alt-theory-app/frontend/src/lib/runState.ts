@@ -148,6 +148,7 @@ export function noticeText(body: NoticeBody): string {
     case "refused":
       return body.code === "auth_required" ? t("Please sign in to continue.") : failureText(body.failure);
     case "extension":
+      if (body.code === "compacted") return t("Conversation compacted.");
       return body.failure ? failureText(body.failure) : body.message;
     case "unsent":
       return t("That message may not have reached Alt, so it is back in the box.");

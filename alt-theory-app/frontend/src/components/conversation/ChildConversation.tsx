@@ -15,7 +15,7 @@ import { ApprovalDock } from "@/components/conversation/ApprovalDock";
 import { SettledMessages, StreamPartsView } from "@/components/conversation/MessageList";
 import { ModelChip } from "@/components/conversation/ModelChip";
 import { QueuedCards } from "@/components/conversation/QueuedCards";
-import { ContinueButton, NoticeLine, RunStatusSlot } from "@/components/conversation/RunNotes";
+import { ContinueButton, hasRunNotes, NoticeLine, RunStatusSlot } from "@/components/conversation/RunNotes";
 import { SlashPalette, useSlashCommands, useSlashPalette } from "@/components/conversation/SlashPalette";
 import { PendingMark } from "@/components/ui/PendingMark";
 
@@ -147,6 +147,9 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
   }, [conversation, main, seed, sessionId]);
 
   const send = () => {
+    // Nothing goes out before this conversation is open (or re-opened after
+    // a reconnect): the socket would be on its draft and create a new one.
+    if (!conversation.sessionReady) return;
     const text = draft.trim();
     // While a turn runs the text joins Pi's steer queue (card 11): delivered
     // at the next API call, a bubble when Pi hands it to the model.
@@ -260,7 +263,7 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
         <ModelChip open={menu === "model"} onToggle={() => setMenu(menu === "model" ? null : "model")} />
       </div>
       <SlashPalette palette={palette} className="slash-palette child-slash-palette" />
-      {running || conversation.notice || conversation.recovery?.canContinue ? (
+      {hasRunNotes(conversation) ? (
         <div className="composer-notes">
           <RunStatusSlot />
           <NoticeLine />
@@ -271,7 +274,8 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
         <textarea
           rows={1}
           value={draft}
-          placeholder={t("Reply here")}
+          disabled={!conversation.sessionReady}
+          placeholder={conversation.sessionReady ? t("Reply here") : t("Connecting…")}
           onChange={(event) => {
             setDraft(event.target.value);
             palette.reset();
@@ -294,7 +298,7 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
         <div className="row">
           <button
             className="send"
-            disabled={!draft.trim()}
+            disabled={!draft.trim() || !conversation.sessionReady}
             onClick={send}
             data-tip={running ? runPhaseLabels().queued : t("Send")}
           >
