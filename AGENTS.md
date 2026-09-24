@@ -111,6 +111,11 @@ agents mistake them for in-progress work.
 ### Current branch status
 
 - `main` — active product line.
+- `archive/wp-conversation-core` — merged into main (state-architecture
+  M1: subscriptions by conversation id, snapshot semantics, request
+  receipts, one per-conversation client transition shared by every pane,
+  one-step turn-end hand-over with stable row ids); archived after the
+  reviewed merge.
 - `archive/wp-small-items` — merged into main (v1.5.1 WP-B: role on
   spawn, update check, changes-pane local fixes, Copilot intersect,
   collapse-anywhere, family lineage index); archived right after the
