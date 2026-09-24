@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { useApp } from "@/context/AppProvider";
 import { RIGHT_PANE, useShell } from "@/context/ShellContext";
 import { t } from "@/i18n";
@@ -49,10 +49,8 @@ export function Shell() {
   const app = useApp();
   const shell = useShell();
   const [leftWidth, setLeftWidth] = useState(() => readLeftWidth());
-  // Reopening by drag or keyboard goes through toggleRail on a closed pane,
-  // so it restores that rail's last open file/child like a rail click does.
-  const lastRightPanel = useRef(shell.rightPanel ?? "workspace");
-  if (shell.rightPanel) lastRightPanel.current = shell.rightPanel;
+  // Reopening by drag or keyboard reopens the rail open last with its last
+  // target, like its button would (the navigation state remembers both).
 
   const setLeftPaneWidth = (value: number, persist = false) => {
     const width = Math.min(LEFT_PANE.max, Math.max(LEFT_PANE.min, value));
@@ -82,7 +80,7 @@ export function Shell() {
       if (nextCollapsed !== collapsed) {
         if (side === "left") shell.setLeftCollapsed(nextCollapsed);
         else if (nextCollapsed) shell.closeRight();
-        else shell.toggleRail(lastRightPanel.current);
+        else shell.reopenRight();
         collapsed = nextCollapsed;
       }
       if (!collapsed) {
@@ -110,7 +108,7 @@ export function Shell() {
       return;
     }
     if (side === "right" && !shell.rightPanel) {
-      if (key === "ArrowLeft") shell.toggleRail(lastRightPanel.current);
+      if (key === "ArrowLeft") shell.reopenRight();
       return;
     }
     // Left handle: ArrowRight grows left. Right handle sits on the panel's left

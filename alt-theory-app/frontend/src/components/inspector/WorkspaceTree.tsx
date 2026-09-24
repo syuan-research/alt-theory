@@ -72,9 +72,6 @@ export function WorkspaceTree() {
   const folderClosed = (id: string) => (!query.trim() || browsing !== null) && closedFolders.includes(id);
   const toggleFolder = (id: string) =>
     setClosedFolders((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
-  const preview: { path: string; source: "managed" | "working" } | null = fileTarget
-    ? { path: fileTarget.path, source: fileTarget.root === "working" ? "working" : "managed" }
-    : null;
   const understandMode = app.runtimeMode === "alt-theory" && conv.sessionMode === "understand";
 
   // Draft pane: before the first message there is no session to read folders
@@ -234,29 +231,29 @@ export function WorkspaceTree() {
     }
   };
 
-  if (fileTarget && preview) {
+  if (fileTarget) {
     // Attaching goes to the message of the conversation the file belongs to.
-    const staged = ownerAttachments.includes(preview.path);
+    const staged = ownerAttachments.includes(fileTarget.path);
     return (
       <FilePreview
         sessionId={fileTarget.sessionId}
-        path={preview.path}
-        fileRef={{ root: preview.source === "working" ? "working" : "workspace", path: preview.path }}
+        path={fileTarget.path}
+        fileRef={{ root: fileTarget.root, path: fileTarget.path }}
         mode={previewView}
         onModeChange={setPreviewView}
         onSaved={(saved) => {
           // A conflict copy saved to a sibling: follow it there.
-          if (saved.path === preview.path) return;
+          if (saved.path === fileTarget.path) return;
           shell.openTarget({ ...fileTarget, path: saved.path });
         }}
         footer={
-          preview.source === "managed" ? (
+          fileTarget.root === "workspace" ? (
             <button
               className="wb-apply"
               onClick={() =>
                 staged
-                  ? unstageInDraft(fileTarget.sessionId, [preview.path])
-                  : stageInDraft(fileTarget.sessionId, [preview.path])
+                  ? unstageInDraft(fileTarget.sessionId, [fileTarget.path])
+                  : stageInDraft(fileTarget.sessionId, [fileTarget.path])
               }
             >
               {staged ? t("Remove from message") : t("Attach to message")}

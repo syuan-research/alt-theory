@@ -43,6 +43,7 @@ detail lives in commit history and `development/`.
   file when you switch to another conversation in the middle; attaching it
   adds it to its own conversation's message. A changed file opened from a
   side conversation shows that conversation's change.
+- Deleting a conversation that is open in the right pane closes it there.
 
 ## v1.7.0-beta.1 — 2026-09-24
 

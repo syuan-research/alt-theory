@@ -19,7 +19,9 @@ export type ViewTarget =
    *  (`path` = "<folderId>/<path in folder>"). */
   | { kind: "file"; sessionId: string; root: "workspace" | "working"; path: string }
   /** A file a conversation changed; `title` is its display path. */
-  | { kind: "change"; sessionId: string; path: string; title: string };
+  | { kind: "change"; sessionId: string; path: string; title: string }
+  /** A record of a conversation (researcher Records rail). */
+  | { kind: "record"; sessionId: string; root: "records" | "workspace"; path: string };
 
 /** The rail a target opens on. */
 export function railOf(target: ViewTarget): RailKey {
@@ -30,6 +32,8 @@ export function railOf(target: ViewTarget): RailKey {
       return "workspace";
     case "change":
       return "changes";
+    case "record":
+      return "records";
     default: {
       const unhandled: never = target;
       return unhandled;
@@ -46,6 +50,8 @@ export function targetTitle(target: ViewTarget): string | undefined {
       return target.root === "working" ? target.path.slice(target.path.indexOf("/") + 1) : target.path;
     case "change":
       return target.title;
+    case "record":
+      return target.path;
     default: {
       const unhandled: never = target;
       return unhandled;
@@ -62,6 +68,8 @@ export function targetKey(target: ViewTarget): string {
       return `file:${target.sessionId}:${target.root}:${target.path}`;
     case "change":
       return `change:${target.sessionId}:${target.path}`;
+    case "record":
+      return `record:${target.sessionId}:${target.root}:${target.path}`;
     default: {
       const unhandled: never = target;
       return unhandled;
@@ -78,6 +86,8 @@ export interface PaneState {
   lastByRail: Partial<Record<RailKey, ViewTarget | null>>;
   /** Where the user was before a target on another rail took over; Back returns there. */
   returnTo: { rail: RailKey; target: ViewTarget | null } | null;
+  /** The rail open last: dragging or keying the collapsed pane open reopens it. */
+  lastRail: RailKey;
 }
 
 export type PaneAction =
@@ -89,10 +99,20 @@ export type PaneAction =
   /** A rail button: open it with what it showed last, or collapse it. */
   | { type: "toggle"; rail: RailKey }
   | { type: "collapse" }
+  /** Open the collapsed pane on the rail open last, as its button would. */
+  | { type: "reopen" }
   /** Show a rail's list without a way back (reveal in the file tree). */
-  | { type: "show"; rail: RailKey };
+  | { type: "show"; rail: RailKey }
+  /** These conversations are gone: nothing of theirs stays on show or comes back. */
+  | { type: "forget"; sessionIds: string[] };
 
-export const INITIAL_PANE: PaneState = { rail: null, target: null, lastByRail: {}, returnTo: null };
+export const INITIAL_PANE: PaneState = {
+  rail: null,
+  target: null,
+  lastByRail: {},
+  returnTo: null,
+  lastRail: "workspace",
+};
 
 function place(state: PaneState, rail: RailKey | null, target: ViewTarget | null, returnTo: PaneState["returnTo"]): PaneState {
   return {
@@ -100,6 +120,7 @@ function place(state: PaneState, rail: RailKey | null, target: ViewTarget | null
     target,
     returnTo,
     lastByRail: rail ? { ...state.lastByRail, [rail]: target } : state.lastByRail,
+    lastRail: rail ?? state.lastRail,
   };
 }
 
@@ -108,6 +129,7 @@ export function navigate(state: PaneState, action: PaneAction): PaneState {
   switch (action.type) {
     case "open": {
       const rail = railOf(action.target);
+      if (state.rail === rail && state.target && targetKey(state.target) === targetKey(action.target)) return state;
       const leaving = state.rail && state.rail !== rail ? { rail: state.rail, target: state.target } : state.returnTo;
       return place(state, rail, action.target, leaving);
     }
@@ -125,8 +147,23 @@ export function navigate(state: PaneState, action: PaneAction): PaneState {
         : place(state, action.rail, state.lastByRail[action.rail] ?? null, null);
     case "collapse":
       return place(state, null, null, null);
+    case "reopen":
+      return state.rail ? state : place(state, state.lastRail, state.lastByRail[state.lastRail] ?? null, null);
     case "show":
       return place(state, action.rail, null, state.returnTo);
+    case "forget": {
+      const gone = (target: ViewTarget | null | undefined) =>
+        Boolean(target && action.sessionIds.includes(target.sessionId));
+      const lastByRail = Object.fromEntries(
+        Object.entries(state.lastByRail).map(([rail, target]) => [rail, gone(target) ? null : target]),
+      ) as PaneState["lastByRail"];
+      return {
+        ...state,
+        target: gone(state.target) ? null : state.target,
+        lastByRail,
+        returnTo: state.returnTo && gone(state.returnTo.target) ? { ...state.returnTo, target: null } : state.returnTo,
+      };
+    }
     default: {
       const unhandled: never = action;
       return unhandled;

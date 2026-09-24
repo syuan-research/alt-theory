@@ -83,7 +83,11 @@ export function InspectorPanel() {
   // changes (images loading). Both stop once the position lands; scrolling
   // updates the saved value, so a restore during active reading is a no-op.
   const bodyRef = useRef<HTMLDivElement>(null);
-  const scrollKey = `${conv.sessionId}:${active}:${shell.target ? targetKey(shell.target) : ""}:scroll`;
+  // An open target keeps its own scroll whatever the center shows; a list's
+  // scroll is the center conversation's.
+  const scrollKey = shell.target
+    ? `${active}:${targetKey(shell.target)}:scroll`
+    : `${conv.sessionId}:${active}::scroll`;
   useLayoutEffect(() => {
     const el = bodyRef.current;
     const saved = paneMemory.get<number>(scrollKey) ?? 0;

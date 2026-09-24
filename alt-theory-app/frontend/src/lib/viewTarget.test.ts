@@ -45,3 +45,34 @@ test("a rail button forgets the way back; reveal keeps it", () => {
   assert.deepEqual([revealed.rail, revealed.target], ["workspace", null]);
   assert.deepEqual(revealed.returnTo, over.returnTo);
 });
+
+test("a rail's list remembers the way back; the same rail keeps it; opening what is shown changes nothing", () => {
+  const listed = play([{ type: "open", target: file }, { type: "rail", rail: "changes" }]);
+  assert.deepEqual([listed.rail, listed.target], ["changes", null]);
+  assert.deepEqual(listed.returnTo, { rail: "workspace", target: file });
+  assert.deepEqual(navigate(listed, { type: "rail", rail: "changes" }).returnTo, listed.returnTo);
+  const change: ViewTarget = { kind: "change", sessionId: "a", path: "/p/x.md", title: "x.md" };
+  assert.deepEqual(navigate(listed, { type: "open", target: change }).returnTo, listed.returnTo);
+  const shown = navigate(listed, { type: "open", target: change });
+  assert.equal(navigate(shown, { type: "open", target: { ...change } }), shown);
+});
+
+test("a deleted conversation's targets leave the view, the rail memory and the way back", () => {
+  const record: ViewTarget = { kind: "record", sessionId: "c1", root: "records", path: "run.json" };
+  assert.equal(railOf(record), "records");
+  const state = play([{ type: "open", target: file }, { type: "open", target: child }, { type: "toggle", rail: "chats" }]);
+  const forgot = navigate(navigate(state, { type: "toggle", rail: "chats" }), { type: "forget", sessionIds: ["c1", "a"] });
+  assert.equal(forgot.target, null, "the side conversation on show goes to the rail's list");
+  assert.equal(forgot.lastByRail.workspace ?? null, null, "and does not come back on its rail");
+  // The way back keeps its rail, without the gone file.
+  const back = navigate({ ...forgot, returnTo: { rail: "workspace", target: file } }, { type: "forget", sessionIds: ["a"] });
+  assert.deepEqual(back.returnTo, { rail: "workspace", target: null });
+});
+
+test("reopening the collapsed pane opens the rail open last, with its target", () => {
+  const collapsed = play([{ type: "open", target: child }, { type: "collapse" }]);
+  const reopened = navigate(collapsed, { type: "reopen" });
+  assert.deepEqual([reopened.rail, reopened.target], ["chats", child]);
+  assert.equal(navigate(reopened, { type: "reopen" }), reopened, "an open pane stays as it is");
+  assert.equal(INITIAL_PANE.lastRail, "workspace");
+});

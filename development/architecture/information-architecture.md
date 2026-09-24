@@ -193,23 +193,29 @@ surfaces remain designation-gated and absent for everyone else.
   - Holds files/changes and one selected related conversation (Branch, BTW,
     Helper, or subagent). What it shows beyond a rail's list is a typed
     target (`lib/viewTarget.ts`): a conversation, a file (managed workspace or
-    working folder) or a changed file. Every target names the conversation it
-    belongs to and is drawn against it: switching the center conversation
-    leaves the rail as it was — an open file is still that conversation's
-    file, and attaching it adds it to that conversation's message. The rail is
-    one global view for now (Owner 2026-09-24); the target type does not name
-    it, so a tab or a split could show the same targets.
+    working folder), a changed file, or a record. Every target names the
+    conversation it belongs to and is drawn against it: switching the center
+    conversation leaves an open target as it was, scroll position included —
+    an open file is still that conversation's file, and attaching it adds it to
+    that conversation's message. A rail's list (Files, Changes, Related,
+    Records), the Related switcher strip, and the Provenance and Runtime rails
+    show the center conversation. The rail is one global view for now (Owner
+    2026-09-24); the target type does not name it, so a tab or a split could
+    show the same targets.
   - **Branch / edited comparisons (purpose `fork`)** open the child in this rail at roughly
     **half of the center+right work area** (not half the browser window).
   - **BTW, Helper, and subagents** open at the ordinary default rail width
     (~480 or the user’s last dragged width).
   - Navigation has one owner, `ShellContext`, which changes one state only
     through `navigate` (`lib/viewTarget.ts`): open a target (on its own rail),
-    Back, open a rail, a rail button, collapse, and reveal-in-files. Side
-    conversations open from the conversation module's events (a branch, BTW or
-    Helper created), the Related list and switcher, search hits and the
-    approval notice — each calls `openTarget`, which also sizes the pane.
-    Deleting the side conversation on show closes it.
+    Back, open a rail, a rail button, collapse, reopen the collapsed pane (drag
+    or keyboard, on the rail open last), reveal-in-files, and forget deleted
+    conversations. Side conversations open from the conversation module's
+    events (a branch, BTW or Helper created), the Related list and switcher,
+    search hits and the approval notice — each calls `openTarget`, which also
+    sizes the pane (opening what is already on show keeps a dragged width).
+    Deleting conversations drops their targets from the view (it shows the
+    rail's list), from each rail's memory and from the way back.
   - A Related conversation uses the same history, live thinking/tool rendering,
     approvals, skills, and slash commands as the center. It exposes model and
     role; mode chrome is omitted only because the rail is narrow.

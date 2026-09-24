@@ -282,6 +282,11 @@ export interface RelatedRow {
 
 export type RelatedScope = "conversation" | "family";
 
+/** How wide a side conversation opens: a branch/edit ≈ half, anything else the default. */
+export function relatedPaneSize(session: SessionSummary): "half" | "default" {
+  return session.forkedFrom?.purpose === "fork" ? "half" : "default";
+}
+
 /**
  * What the Related rail lists for an open conversation (owner 2026-08-07;
  * branch-family doc §6): the FULL ancestor chain first (root → direct parent,
@@ -293,11 +298,6 @@ export type RelatedScope = "conversation" | "family";
  * cousin branches §6 keeps out of the default view. One row shape carries
  * everything the rail renders, filters and groups on (card 9).
  */
-/** How wide a side conversation opens: a branch/edit ≈ half, anything else the default. */
-export function relatedPaneSize(session: SessionSummary): "half" | "default" {
-  return session.forkedFrom?.purpose === "fork" ? "half" : "default";
-}
-
 export function relatedRowsFor(
   sessionId: string,
   sessions: SessionSummary[],

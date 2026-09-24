@@ -26,8 +26,8 @@ export function ChangesPanel() {
   const shell = useShell();
   const menu = useContextMenu();
 
-  // An open change is drawn against the conversation it belongs to, even
-  // after the center moved on; the list is the center conversation's.
+  // While a change is open the panel is its conversation's (the center may
+  // have moved on); otherwise the center conversation's list.
   const changeTarget = shell.target?.kind === "change" ? shell.target : null;
   const sessionId = changeTarget?.sessionId ?? conv.sessionId;
   const runCount = conv.runSettledCount;

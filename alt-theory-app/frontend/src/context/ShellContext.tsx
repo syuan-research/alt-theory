@@ -5,11 +5,12 @@ import {
   useEffect,
   useMemo,
   useReducer,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import { syncTitlebarTheme } from "@/lib/native";
-import { INITIAL_PANE, navigate, type RailKey, type ViewTarget } from "@/lib/viewTarget";
+import { INITIAL_PANE, navigate, targetKey, type RailKey, type ViewTarget } from "@/lib/viewTarget";
 
 export type { RailKey, ViewTarget };
 
@@ -50,6 +51,10 @@ export interface ShellContextValue {
   closeTarget: () => void;
   /** The side conversation shown, if the view shows one. */
   openConversationId: string | null;
+  /** Conversations that are gone (deleted): none of their targets stays or returns. */
+  forgetConversations: (sessionIds: string[]) => void;
+  /** Open the collapsed pane on the rail open last (drag, keyboard). */
+  reopenRight: () => void;
 
   /** Right panel width in px (branch/edit ≈ 50%; btw/helper ≈ 480 default). */
   rightWidth: number;
@@ -209,6 +214,8 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   // where the user was before a target on another rail took over — lives in
   // the one navigation state (lib/viewTarget).
   const [pane, dispatchPane] = useReducer(navigate, INITIAL_PANE);
+  const paneRef = useRef(pane);
+  paneRef.current = pane;
   const [workspaceRevealPath, setWorkspaceRevealPath] = useState<string | null>(null);
   const [rightWidth, setRightWidthState] = useState(() => readStoredRightWidth());
   const [participantTabEnabled, setParticipantTabState] = useState(() =>
@@ -268,6 +275,11 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   const openRail = useCallback((rail: RailKey) => dispatchPane({ type: "rail", rail }), []);
   const closeRight = useCallback(() => dispatchPane({ type: "collapse" }), []);
   const closeTarget = useCallback(() => dispatchPane({ type: "back" }), []);
+  const forgetConversations = useCallback(
+    (sessionIds: string[]) => dispatchPane({ type: "forget", sessionIds }),
+    [],
+  );
+  const reopenRight = useCallback(() => dispatchPane({ type: "reopen" }), []);
   const revealWorkspacePath = useCallback((path: string) => {
     setSurface("app");
     dispatchPane({ type: "show", rail: "workspace" });
@@ -286,7 +298,10 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   // stored preference is not rewritten (a user drag still does).
   const openTarget = useCallback(
     (target: ViewTarget, options?: { size?: RelatedPaneSize }) => {
-      if (target.kind === "conversation") {
+      const shown = paneRef.current.target;
+      const already = shown !== null && targetKey(shown) === targetKey(target);
+      // Opening what is already on show keeps a width the user dragged.
+      if (target.kind === "conversation" && !already) {
         setRightPaneWidth(
           options?.size === "half" ? halfCenterRightWorkArea() : readStoredRightWidth(),
           false,
@@ -329,6 +344,8 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       openTarget,
       closeTarget,
       openConversationId,
+      forgetConversations,
+      reopenRight,
       rightWidth,
       setRightPaneWidth,
       workspaceRevealPath,
@@ -371,6 +388,8 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       openTarget,
       closeTarget,
       openConversationId,
+      forgetConversations,
+      reopenRight,
       rightWidth,
       setRightPaneWidth,
       workspaceRevealPath,

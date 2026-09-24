@@ -348,8 +348,8 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
         // A deleted conversation takes its draft with it.
         deletedIds.forEach(discardDraft);
         if (sessionId && deletedIds.includes(sessionId)) conv.startNew();
-        // A deleted side conversation leaves the view.
-        if (shell.openConversationId && deletedIds.includes(shell.openConversationId)) shell.closeTarget();
+        // Nothing of a deleted conversation stays on show or comes back.
+        shell.forgetConversations(deletedIds);
         await app.refreshSessions();
       } catch (err) {
         conv.notify({
@@ -359,7 +359,7 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
         });
       }
     },
-    [app, conv, sessionId],
+    [app, conv, sessionId, shell.forgetConversations],
   );
 
   const addApprovalMarker = useCallback((text: string) => {

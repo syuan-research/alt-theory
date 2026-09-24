@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { listSessionFiles } from "@/api/session-files";
 import type { SessionTextFile } from "@/api/types";
 import { t } from "@/i18n";
@@ -9,6 +9,7 @@ import { cn } from "@/lib/cn";
 import type { PreviewMode } from "@/lib/fileContent";
 import { guardLeave } from "@/lib/fileEditGuard";
 import { usePaneMemory } from "@/lib/paneMemory";
+import { useShell } from "@/context/ShellContext";
 
 interface RecordsPanelProps {
   sessionId: string | null;
@@ -17,12 +18,23 @@ interface RecordsPanelProps {
 }
 
 export function RecordsPanel({
-  sessionId,
+  sessionId: centerId,
   sessionReady,
   tabActive = false,
 }: RecordsPanelProps) {
+  // The open record is the view's record target: while one is open the panel
+  // is its conversation's (the center may have moved on); otherwise the
+  // center conversation's list.
+  const shell = useShell();
+  const selected = shell.target?.kind === "record" ? shell.target : null;
+  const sessionId = selected?.sessionId ?? centerId;
+  const selectedRef = useRef(selected);
+  selectedRef.current = selected;
+  const select = (file: SessionTextFile) => {
+    if (!sessionId) return;
+    shell.openTarget({ kind: "record", sessionId, root: file.root as "records" | "workspace", path: file.path });
+  };
   const [files, setFiles] = useState<SessionTextFile[]>([]);
-  const [selected, setSelected] = usePaneMemory<SessionTextFile | null>(`${sessionId}:records:selected`, null);
   const [mode, setMode] = usePaneMemory<PreviewMode>(`${sessionId}:records:mode`, "edit");
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
@@ -40,18 +52,18 @@ export function RecordsPanel({
       const nextFiles = Array.isArray(data.files) ? data.files : [];
       setFiles(nextFiles);
       setStatus(nextFiles.length ? "" : t("No records."));
-      setSelected((current) =>
-        current && !nextFiles.some((file) => file.root === current.root && file.path === current.path)
-          ? null
-          : current,
-      );
+      // A record that is gone closes.
+      const current = selectedRef.current;
+      if (current && !nextFiles.some((file) => file.root === current.root && file.path === current.path)) {
+        shell.closeTarget();
+      }
     } catch {
       setFiles([]);
       setStatus(t("Could not load records."));
     } finally {
       setLoading(false);
     }
-  }, [sessionId, setSelected]);
+  }, [sessionId, shell.closeTarget]);
 
   useEffect(() => {
     void refresh();
@@ -94,7 +106,7 @@ export function RecordsPanel({
                     ? "border-ink-soft bg-selected"
                     : "border-hairline bg-surface hover:bg-hover"
                 )}
-                onClick={() => void guardLeave(() => setSelected(file))}
+                onClick={() => void guardLeave(() => select(file))}
               >
                 <span className="truncate">{file.path}</span>
                 <span className="shrink-0 text-[length:var(--fs-secondary)] text-text-muted">
@@ -110,19 +122,13 @@ export function RecordsPanel({
         <FilePreview
           sessionId={sessionId}
           path={selected.path}
-          fileRef={{ root: selected.root as "records" | "workspace", path: selected.path }}
+          fileRef={{ root: selected.root, path: selected.path }}
           mode={mode}
           onModeChange={setMode}
           onSaved={(saved) => {
             void refresh();
             // A conflict copy saved to a sibling: follow it there.
-            if (saved.path !== selected.path) {
-              setSelected((current) =>
-                current && current.root === (selected.root as "records" | "workspace") && current.path === selected.path
-                  ? { root: current.root, path: saved.path, size: saved.size ?? 0, updatedAt: saved.updatedAt }
-                  : current
-              );
-            }
+            if (saved.path !== selected.path) shell.openTarget({ ...selected, path: saved.path });
           }}
         />
       ) : null}
