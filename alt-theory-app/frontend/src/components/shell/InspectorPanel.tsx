@@ -497,7 +497,19 @@ function RelatedConversations() {
   );
 
   return (
-    <>
+    <div
+      onKeyDown={(event) => {
+        // Escape closes the search from anywhere in the list — the filter
+        // cards above take the click focus, so the input's own handler is
+        // not enough.
+        if (!searchOpen || event.key !== "Escape" || event.nativeEvent.isComposing) return;
+        const target = event.target instanceof HTMLElement ? event.target : null;
+        if (target?.closest("input, textarea, select") && !target.closest(".fsearch")) return;
+        event.preventDefault();
+        event.stopPropagation();
+        closeSearch();
+      }}
+    >
       {switcher}
       <div className="frow" ref={filterRowRef}>
         <span className="flabel">{t("Filter")}</span>
@@ -558,9 +570,6 @@ function RelatedConversations() {
             placeholder={t("Search…")}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Escape") closeSearch();
-            }}
           />
         </div>
       ) : null}
@@ -586,6 +595,6 @@ function RelatedConversations() {
         <div className="rp-empty">{t("No matching related conversations.")}</div>
       ) : null}
       {menu.element}
-    </>
+    </div>
   );
 }

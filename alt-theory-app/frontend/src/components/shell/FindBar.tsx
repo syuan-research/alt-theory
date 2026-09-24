@@ -46,6 +46,7 @@ export function FindBar() {
   const composing = useRef(false);
   const [, relayout] = useReducer((n: number) => n + 1, 0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const barRef = useRef<HTMLDivElement>(null);
   const rangesRef = useRef<Range[]>([]);
   const moreRef = useRef(false);
   const indexRef = useRef(0);
@@ -71,7 +72,10 @@ export function FindBar() {
   const close = useCallback(() => {
     const back = returnFocus.current;
     returnFocus.current = null;
-    if (back instanceof HTMLElement && back.isConnected && document.activeElement === inputRef.current) {
+    const active = document.activeElement;
+    // Return the pre-open focus when the user is still inside the bar — the
+    // input, but also a step button that took the click focus.
+    if (back instanceof HTMLElement && back.isConnected && (active === inputRef.current || !!barRef.current?.contains(active))) {
       back.focus();
     }
     rangesRef.current = [];
@@ -96,6 +100,30 @@ export function FindBar() {
     }, 0);
   }, [close]);
   useHotkey("find", onFind);
+
+  // Escape closes the bar wherever focus now is: the step buttons take the
+  // click focus, and clicking the content parks it on the body. Another
+  // surface's editable keeps its own Escape meaning (the composer aborts a
+  // running turn); a modal dialog wins.
+  useEffect(() => {
+    if (!host) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.isComposing) return;
+      if (document.querySelector('[aria-modal="true"]')) return;
+      const active = document.activeElement;
+      if (
+        active instanceof HTMLElement &&
+        !barRef.current?.contains(active) &&
+        active.closest("input, textarea, select, [contenteditable]")
+      ) {
+        return;
+      }
+      event.preventDefault();
+      close();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [host, close]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -157,6 +185,7 @@ export function FindBar() {
   const rect = (scrollerOf(host.el) ?? host.el).getBoundingClientRect();
   return createPortal(
     <div
+      ref={barRef}
       className="find-bar"
       role="search"
       style={{ top: rect.top + 8, right: Math.max(8, window.innerWidth - rect.right + 16) }}
@@ -176,10 +205,7 @@ export function FindBar() {
         }}
         onKeyDown={(event) => {
           if (event.nativeEvent.isComposing) return;
-          if (event.key === "Escape") {
-            event.preventDefault();
-            close();
-          } else if (event.key === "Enter") {
+          if (event.key === "Enter") {
             event.preventDefault();
             // Enter before the pause searches now (the effect jumps to the first).
             if (needleRef.current !== query) setNeedle(query);

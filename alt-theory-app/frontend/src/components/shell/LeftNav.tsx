@@ -871,6 +871,18 @@ function UserNav({ onImport }: { onImport: () => void }) {
       ref={navRef}
       className="user-nav"
       style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0, }}
+      onKeyDown={(event) => {
+        // Escape closes the rail search from anywhere in the rail — the
+        // clear button and the scope select take the click focus, so the
+        // input's own handler is not enough.
+        if (!shell.searchOpen || event.key !== "Escape" || event.nativeEvent.isComposing) return;
+        if (navRef.current?.querySelector("details.list-more[open], details.help-menu[open]")) return;
+        const target = event.target instanceof HTMLElement ? event.target : null;
+        if (target?.closest("input, textarea, select") && !target.closest(".inline-search")) return;
+        event.preventDefault();
+        event.stopPropagation();
+        shell.setSearchOpen(false);
+      }}
     >
       <div className="pad">
         <div className="new-row">
