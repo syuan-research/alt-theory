@@ -83,6 +83,11 @@ export interface DiscoveryLists {
   }>;
 }
 
+/**
+ * The server's new-conversation defaults (M2: the draft itself lives in the
+ * client). `thinking` is the resolver's answer for `modelOverride`, or for
+ * the default model when that is null (local mode only).
+ */
 export interface SessionDraftSnapshot {
   status: "draft";
   visibility: SessionVisibility;
@@ -91,14 +96,26 @@ export interface SessionDraftSnapshot {
   soulSlug: string | null;
   customInstructionRef?: string | null;
   mode: AltMode;
-  /** Full Access (v1.4.8): a draft has no runtime, so always absent/false. */
-  fullAccess?: boolean;
   modelOverride?: SessionModelOverride | null;
-  /** Resolver answer for the draft's model (local mode only). */
   thinking?: ResolvedThinking;
+}
+
+/**
+ * What a new conversation is created with: the new-conversation draft's
+ * settings, carried by the request that creates it (M2). Absent fields take
+ * the server defaults; the server checks every present one.
+ */
+export interface NewConversationSettings {
+  kbDomain?: string;
+  rolePresetSlug?: string | null;
+  soulSlug?: string | null;
+  customInstructionRef?: string | null;
+  visibility?: SessionVisibility;
+  mode?: AltMode;
+  modelOverride?: SessionModelOverride | null;
   studyTag?: StudyTag | null;
   workspacePrimaryDir?: string | null;
-  resetComposer?: boolean;
+  fullAccess?: boolean;
 }
 
 export type ThinkingLevel =
@@ -653,6 +670,8 @@ export type ClientMessageBody =
       attachments?: string[];
       /** While a turn runs: steer = next API call (default), followUp = after the turn. */
       deliverAs?: "steer" | "followUp";
+      /** From the new-conversation draft: the conversation this creates. */
+      create?: NewConversationSettings;
     }
   | { type: "abort" }
   /** Interrupt-and-send: stop the current answer, send this queued message next. */
@@ -670,6 +689,7 @@ export type ClientMessageBody =
   | {
       type: "invoke_skill";
       payload: { skillName: string; userText?: string };
+      create?: NewConversationSettings;
     }
   | { type: "revise_latest"; payload: { text: string; entryId?: string } }
   | { type: "branch_revision"; payload: { text: string; entryId?: string } }
@@ -698,14 +718,14 @@ export type ClientMessageBody =
       type: "set_session_model";
       payload: { override: SessionModelOverride | null };
     }
-  | {
-      type: "set_draft_workspace";
-      payload: { primaryDir: string | null };
-    }
   | { type: "new_session" }
+  /** The defaults again, with the thinking level for the draft's model. */
+  | { type: "describe_draft"; payload: { modelOverride: SessionModelOverride | null } }
   | {
       type: "create_helper_session";
       payload: { parentSessionId?: string; question?: string };
+      /** A root Helper from the new-conversation draft takes its settings. */
+      create?: NewConversationSettings;
     }
   | { type: "open_session"; payload: { sessionId: string } }
   | { type: "get_session_metadata" }

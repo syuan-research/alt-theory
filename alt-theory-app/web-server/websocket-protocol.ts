@@ -13,6 +13,7 @@ export type {
   ServerMessage,
   SessionSnapshot,
   SessionDraftSnapshot,
+  NewConversationSettings,
   SessionMetrics,
   TurnRecovery,
   TranscriptMessage,

@@ -873,12 +873,16 @@ export class SessionService implements AgentTeamBridge {
       soulSlug: selectors.soulSlug,
       modelId: runtimeModelConfig.modelId,
     });
-    const managed = await this.createManagedFromDirs(
-      createSessionDirs(this.config.dataDir, sessionId),
-      selectors,
-      metadata,
-      runtimeModelConfig,
-    );
+    const dirs = createSessionDirs(this.config.dataDir, sessionId);
+    let managed: ManagedSession;
+    try {
+      managed = await this.createManagedFromDirs(dirs, selectors, metadata, runtimeModelConfig);
+    } catch (error) {
+      // A refused creation (unknown role/soul/model, missing folder) leaves
+      // no half-made conversation behind.
+      rmSync(dirs.sessionRoot, { recursive: true, force: true });
+      throw error;
+    }
     this.sessions.set(managed.manifest.sessionId, managed);
     appendConfigEvent(managed.manifest.recordsDir, {
       sessionId: managed.manifest.sessionId,

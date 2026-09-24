@@ -2505,18 +2505,9 @@ test("WebSocket participant first send creates an owned role-conditioned session
     );
     assert.equal(draft.payload.visibility, "research");
 
-    const privateDraftPromise = waitForType(ws, "session_draft");
-    ws.send(
-      JSON.stringify({
-        type: "switch_visibility",
-        payload: { visibility: "private" },
-      }),
-    );
-    const privateDraft = await privateDraftPromise;
-    assert.equal(privateDraft.payload.visibility, "private");
-
+    // The draft's choice travels with the request that creates the conversation.
     const openedPromise = waitForType(ws, "session_opened");
-    ws.send(JSON.stringify({ type: "prompt", payload: "hello" }));
+    ws.send(JSON.stringify({ type: "prompt", payload: "hello", create: { visibility: "private" } }));
     const opened = await openedPromise;
     const sessionJson = JSON.parse(
       readFileSync(
@@ -2700,93 +2691,29 @@ test("REST discovery and WebSocket sessions are connection-local", async () => {
     assert.equal(draft1.payload.customInstructionRef, "default.md");
     assert.equal(existsSync(join(root, "data", "sessions")), false);
 
-    const roleDraft0Promise = waitForType(ws1, "session_draft");
+    // M2: a connection holds no draft. A setting sent before a conversation
+    // exists is refused (the client keeps its draft and sends it with the
+    // first message), and neither connection's defaults move.
+    const refusedPromise = waitForType(ws1, "error");
     ws1.send(
       JSON.stringify({
         type: "switch_role_preset",
         payload: { rolePresetSlug: "alternate" },
       }),
     );
-    assert.equal((await roleDraft0Promise).payload.rolePresetSlug, "alternate");
-    const soulDraft0Promise = waitForType(ws1, "session_draft");
-    ws1.send(
-      JSON.stringify({ type: "switch_soul", payload: { soulSlug: "soul-test" } }),
-    );
-    assert.equal((await soulDraft0Promise).payload.soulSlug, "soul-test");
-    const instructionDraft0Promise = waitForType(ws1, "session_draft");
-    ws1.send(
-      JSON.stringify({
-        type: "switch_instruction",
-        payload: { customInstructionRef: "study.rules" },
-      }),
-    );
-    assert.equal(
-      (await instructionDraft0Promise).payload.customInstructionRef,
-      "study.rules",
-    );
-    assert.equal(existsSync(join(root, "data", "sessions")), false);
-
-    const kbDraftPromise = waitForType(ws1, "session_draft");
-    ws1.send(
-      JSON.stringify({ type: "switch_kb", payload: { domain: "all" } })
-    );
-    const kbDraft = await kbDraftPromise;
-    assert.equal(kbDraft.payload.currentDomain, "all");
-
-    const kbOffDraftPromise = waitForType(ws1, "session_draft");
-    ws1.send(
-      JSON.stringify({ type: "switch_kb", payload: { domain: "none" } }),
-    );
-    const kbOffDraft = await kbOffDraftPromise;
-    assert.equal(kbOffDraft.payload.currentDomain, "none");
-
-    const soulDraftPromise = waitForType(ws1, "session_draft");
-    ws1.send(
-      JSON.stringify({
-        type: "switch_soul",
-        payload: { soulSlug: null },
-      }),
-    );
-    const soulDraft = await soulDraftPromise;
-    assert.equal(soulDraft.payload.currentDomain, "none");
-    assert.equal(soulDraft.payload.rolePresetSlug, "alternate");
-    assert.equal(soulDraft.payload.soulSlug, null);
-
-    const roleDraftPromise = waitForType(ws1, "session_draft");
-    ws1.send(
-      JSON.stringify({
-        type: "switch_role_preset",
-        payload: { rolePresetSlug: "alternate" },
-      }),
-    );
-    const roleDraft = await roleDraftPromise;
-    assert.equal(roleDraft.payload.currentDomain, "none");
-    assert.equal(roleDraft.payload.rolePresetSlug, "alternate");
-    assert.equal(roleDraft.payload.soulSlug, null);
-
-    const ws2DraftPromise = waitForType(ws2, "session_draft");
-    ws2.send(JSON.stringify({ type: "get_session_metadata" }));
-    const ws2Draft = await ws2DraftPromise;
-    assert.equal(ws2Draft.payload.currentDomain, "ep-core");
-    assert.equal(ws2Draft.payload.rolePresetSlug, "role-conceptual-theory-companion-latest",);
-    assert.equal(ws2Draft.payload.soulSlug, "soul-latest");
-    assert.equal(ws2Draft.payload.customInstructionRef, "default.md");
-
+    assert.match((await refusedPromise).payload.failure.message, /materialized session is required/);
     const reopened1Promise = waitForType(ws1, "session_draft");
     ws1.send(JSON.stringify({ type: "new_session" }));
     const reopened1 = await reopened1Promise;
-
-    const reopened2Promise = waitForType(ws2, "session_draft");
-    ws2.send(JSON.stringify({ type: "new_session" }));
-    const reopened2 = await reopened2Promise;
-
-    assert.equal(reopened1.payload.currentDomain, "none");
-    assert.equal(reopened1.payload.rolePresetSlug, "alternate");
-    assert.equal(reopened1.payload.soulSlug, null);
-    assert.equal(reopened2.payload.currentDomain, "ep-core");
-    assert.equal(reopened2.payload.rolePresetSlug, "role-conceptual-theory-companion-latest",);
-    assert.equal(reopened2.payload.soulSlug, "soul-latest");
-    assert.equal(reopened2.payload.customInstructionRef, "default.md");
+    const ws2DraftPromise = waitForType(ws2, "session_draft");
+    ws2.send(JSON.stringify({ type: "get_session_metadata" }));
+    const ws2Draft = await ws2DraftPromise;
+    for (const draft of [reopened1, ws2Draft]) {
+      assert.equal(draft.payload.currentDomain, "ep-core");
+      assert.equal(draft.payload.rolePresetSlug, "role-conceptual-theory-companion-latest");
+      assert.equal(draft.payload.soulSlug, "soul-latest");
+      assert.equal(draft.payload.customInstructionRef, "default.md");
+    }
     assert.equal(existsSync(join(root, "data", "sessions")), false);
   } finally {
     ws1.close();
@@ -2932,22 +2859,35 @@ test("dev-debug composes configured Alt Theory skills with Pi discovery", async 
   }
 });
 
-test("WebSocket draft state retains model, mode, and study tag before materialization", async () => {
-  const root = mkdtempSync(join(tmpdir(), "alt-theory-ws-draft-model-"));
+test("a new conversation is created from the draft settings its first request carries", async () => {
+  const root = mkdtempSync(join(tmpdir(), "alt-theory-ws-draft-create-"));
   const dataDir = join(root, "data");
+  const agentDir = join(root, "pi-agent");
   const rolePresets = join(root, "role-presets");
+  const souls = join(root, "soul");
   const kb = join(root, "kb");
+  const folder = join(root, "project");
   const appContextPath = join(root, "ALTTHEORY.md");
-  const soulPath = join(root, "soul-latest.md");
   mkdirSync(join(kb, "ep-core"), { recursive: true });
+  mkdirSync(agentDir, { recursive: true });
   mkdirSync(rolePresets, { recursive: true });
-  writeFileSync(appContextPath, "Draft model app context", "utf-8");
-  writeFileSync(soulPath, "Draft model soul", "utf-8");
+  mkdirSync(souls, { recursive: true });
+  mkdirSync(folder, { recursive: true });
+  writeFileSync(appContextPath, "Draft create app context", "utf-8");
+  writeFileSync(join(rolePresets, "role-conceptual-theory-companion-latest.md"), "Conceptual theory role", "utf-8");
+  writeFileSync(join(rolePresets, "tutor.md"), "Tutor role", "utf-8");
+  writeFileSync(join(souls, "soul-latest.md"), "Latest soul", "utf-8");
 
+  // Local mode with no model: the first prompt creates the conversation,
+  // then its run is refused — enough to read what it was created with.
+  const previousMode = process.env.ALT_THEORY_MODE;
+  const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+  process.env.ALT_THEORY_MODE = "local";
+  process.env.PI_CODING_AGENT_DIR = agentDir;
   const instance = createAltTheoryServer({
     dataDir,
     appContextPath,
-    soulPath,
+    soulDir: souls,
     rolePresetsDir: rolePresets,
     kbDir: kb,
     understandReadOnly: true,
@@ -2958,75 +2898,106 @@ test("WebSocket draft state retains model, mode, and study tag before materializ
   const address = instance.httpServer.address();
   assert.ok(address && typeof address === "object");
 
-  function waitForType(ws: WebSocket, type: string): Promise<any> {
-    return new Promise((resolveMessage, reject) => {
-      const timer = setTimeout(
-        () => reject(new Error(`Timed out waiting for ${type}`)),
-        10_000,
-      );
-      const listener = (data: WebSocket.RawData) => {
-        const message = JSON.parse(data.toString());
-        if (message.type === type) {
-          clearTimeout(timer);
-          ws.off("message", listener);
-          resolveMessage(message);
-        }
-      };
-      ws.on("message", listener);
-    });
-  }
-
   const ws = new WebSocket(`ws://127.0.0.1:${(address as any).port}`);
+  const inbox: any[] = [];
+  const waiters: Array<{ match: (message: any) => boolean; resolve: (message: any) => void }> = [];
+  ws.on("message", (data) => {
+    const message = JSON.parse(data.toString());
+    inbox.push(message);
+    for (const waiter of [...waiters]) {
+      if (waiter.match(message)) {
+        waiters.splice(waiters.indexOf(waiter), 1);
+        waiter.resolve(message);
+      }
+    }
+  });
+  const next = (match: (message: any) => boolean) =>
+    new Promise<any>((resolveMessage, reject) => {
+      const timer = setTimeout(() => reject(new Error("Timed out")), 10_000);
+      waiters.push({ match, resolve: (message) => { clearTimeout(timer); resolveMessage(message); } });
+    });
+  const answer = (requestId: string) =>
+    next((message) => message.payload?.requestId === requestId);
+  const sessionDirs = () =>
+    existsSync(join(dataDir, "sessions")) ? readdirSync(join(dataDir, "sessions")).length : 0;
+
   try {
-    const draft = await waitForType(ws, "session_draft");
-    assert.equal(draft.payload.modelOverride ?? null, null);
-    assert.equal(draft.payload.mode, "understand");
-    assert.equal(draft.payload.resetComposer, true);
+    // The greeting is the defaults only; nothing about a draft is held here.
+    const greeting = await next((message) => message.type === "session_draft");
+    assert.equal(greeting.payload.mode, "understand");
+    assert.equal(greeting.payload.visibility, "no-export");
+    assert.equal("fullAccess" in greeting.payload, false);
 
-    const updatedPromise = waitForType(ws, "session_draft");
-    ws.send(
-      JSON.stringify({
-        type: "set_session_model",
-        payload: { override: { provider: "test", modelId: "test-model", thinkingLevel: "high", }, },
-      }),
-    );
-    const updated = await updatedPromise;
-    assert.deepEqual(updated.payload.modelOverride, {
-      provider: "test",
-      modelId: "test-model",
-      thinkingLevel: "high",
+    // describe_draft answers the thinking level for the draft's model.
+    const described = next((message) => message.type === "session_draft");
+    ws.send(JSON.stringify({
+      type: "describe_draft",
+      requestId: "describe",
+      payload: { modelOverride: { provider: "test", modelId: "test-model", thinkingLevel: "high" } },
+    }));
+    assert.deepEqual((await described).payload.modelOverride, {
+      provider: "test", modelId: "test-model", thinkingLevel: "high",
     });
-    assert.equal(updated.payload.resetComposer, false);
 
-    const modePromise = waitForType(ws, "session_draft");
-    ws.send(
-      JSON.stringify({
-        type: "switch_mode",
-        payload: { mode: "work" },
-      }),
-    );
-    const modeUpdated = await modePromise;
-    assert.equal(modeUpdated.payload.mode, "work");
-    assert.deepEqual(modeUpdated.payload.modelOverride, updated.payload.modelOverride);
+    // Each invalid setting is refused and leaves no conversation behind.
+    for (const [requestId, create, pattern] of [
+      ["bad-visibility", { visibility: "private" }, /Invalid visibility/],
+      ["bad-role", { rolePresetSlug: "no-such-role" }, /Unknown role preset/],
+      ["bad-kb", { kbDomain: "no-such-kb" }, /Unknown KB domain/],
+      ["bad-folder", { workspacePrimaryDir: join(root, "missing") }, /Main folder does not exist/],
+    ] as const) {
+      const refused = answer(requestId);
+      ws.send(JSON.stringify({ type: "prompt", requestId, payload: "hello", create }));
+      const reply = await refused;
+      assert.equal(reply.type, "error", requestId);
+      assert.match(reply.payload.failure.message, pattern);
+      assert.equal(sessionDirs(), 0, `${requestId} left nothing behind`);
+    }
+    assert.equal(inbox.some((message) => message.type === "session_opened"), false);
 
-    const studyPromise = waitForType(ws, "session_draft");
-    ws.send(
-      JSON.stringify({
-        type: "set_study_tag",
-        payload: { studyTag: { studyId: "draft-study", batch: "a" } },
-      }),
-    );
-    const studyUpdated = await studyPromise;
-    assert.deepEqual(studyUpdated.payload.studyTag, {
-      studyId: "draft-study",
-      batch: "a",
-    });
-    assert.equal(studyUpdated.payload.mode, "work");
-    assert.deepEqual(studyUpdated.payload.modelOverride, updated.payload.modelOverride);
+    // A valid draft: the conversation starts with every setting it carries.
+    const opened = next((message) => message.type === "session_opened");
+    const refusedRun = answer("create");
+    ws.send(JSON.stringify({
+      type: "prompt",
+      requestId: "create",
+      payload: "hello",
+      create: {
+        mode: "work",
+        fullAccess: true,
+        rolePresetSlug: "tutor",
+        kbDomain: "none",
+        visibility: "exportable",
+        studyTag: { studyId: "draft-study", batch: "a" },
+        workspacePrimaryDir: folder,
+      },
+    }));
+    const snapshot = (await opened).payload;
+    assert.equal(snapshot.mode, "work");
+    assert.equal(snapshot.fullAccess, true);
+    assert.equal(snapshot.rolePresetSlug, "tutor");
+    assert.equal(snapshot.currentDomain, "none");
+    assert.equal(snapshot.visibility, "exportable");
+    assert.deepEqual(snapshot.studyTag, { studyId: "draft-study", batch: "a" });
+    assert.equal(snapshot.workspacePrimaryDir, folder);
+    assert.match((await refusedRun).payload.failure.message, /No model is selected/);
+
+    // The next draft starts from the defaults again: nothing carried over.
+    const fresh = answer("new");
+    const defaults = next((message) => message.type === "session_draft");
+    ws.send(JSON.stringify({ type: "new_session", requestId: "new" }));
+    assert.equal((await defaults).payload.mode, "understand");
+    assert.equal((await fresh).type, "request_done");
   } finally {
     ws.close();
+    if (previousMode === undefined) delete process.env.ALT_THEORY_MODE;
+    else process.env.ALT_THEORY_MODE = previousMode;
+    if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
     await new Promise<void>((resolveClose) => {
-      instance.httpServer.close(() => resolveClose());
+      instance.wss.close(() => {
+        instance.httpServer.close(() => resolveClose());
+      });
     });
   }
 });

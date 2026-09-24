@@ -156,6 +156,29 @@ function resolveWorkspaceRelativePath(
   return rel;
 }
 
+/**
+ * Staged attachments that are gone (M2: a restored draft drops them). An
+ * absolute path is checked as-is (local form only — the route gates it); a
+ * relative one inside the conversation's workspace, and counts as gone
+ * without one or when it would leave it.
+ */
+export function missingAttachmentPaths(
+  dataDir: string,
+  sessionId: string | null,
+  paths: string[]
+): string[] {
+  const workspaceDir = sessionId ? workspaceRoot(dataDir, sessionId) : null;
+  return paths.filter((path) => {
+    if (isAbsolute(path)) return !existsSync(path);
+    if (!workspaceDir) return true;
+    try {
+      return !existsSync(join(workspaceDir, resolveWorkspaceRelativePath(workspaceDir, path)));
+    } catch {
+      return true;
+    }
+  });
+}
+
 function dirByteSize(dir: string): number {
   if (!existsSync(dir)) return 0;
   let total = 0;

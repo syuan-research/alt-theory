@@ -10,6 +10,7 @@ import {
   getAccountStorageUsage,
   getSessionWorkspaceUsage,
   listWorkspaceFiles,
+  missingAttachmentPaths,
   describeWorkingFolders,
   listWorkingFolderChildren,
   readWorkingFolderTextFile,
@@ -339,4 +340,26 @@ test("working-folder listing and preview refuse a symlink out of the folder", ()
     "primary/notes/idea.md"
   );
   assert.equal(file.content, "# Actual work\n");
+});
+
+test("a restored draft learns which staged attachments are gone", () => {
+  const root = mkdtempSync(join(tmpdir(), "alt-missing-attachments-"));
+  const dataDir = join(root, "data");
+  const dirs = createSessionDirs(dataDir, "session-attachments");
+  mkdirSync(join(dirs.sessionCwd, "uploads"), { recursive: true });
+  writeFileSync(join(dirs.sessionCwd, "uploads", "kept.md"), "kept", "utf-8");
+  const outside = join(root, "outside.txt");
+  writeFileSync(outside, "outside", "utf-8");
+  assert.deepEqual(
+    missingAttachmentPaths(dataDir, "session-attachments", [
+      "uploads/kept.md",
+      "uploads/gone.md",
+      "../../outside.txt",
+      outside,
+      join(root, "gone.txt"),
+    ]),
+    ["uploads/gone.md", "../../outside.txt", join(root, "gone.txt")],
+  );
+  // The new-conversation draft has no workspace: only absolute paths hold.
+  assert.deepEqual(missingAttachmentPaths(dataDir, null, ["uploads/kept.md", outside]), ["uploads/kept.md"]);
 });
