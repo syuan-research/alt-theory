@@ -50,7 +50,6 @@ const anonymousAuth: AuthContext = {
 /** Why a conversation in the list is asking for attention (alpha.3). */
 export type SessionAlert = "done" | "failed" | "approval";
 
-export type { ActivityChange };
 
 export interface ConfirmRequest {
   message: string;
@@ -322,23 +321,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const activityRef = useRef(activity);
   const sessionsRef = useRef(sessions);
   sessionsRef.current = sessions;
+  const refreshTimer = useRef<number | null>(null);
+  const refreshSoon = useCallback(() => {
+    if (refreshTimer.current !== null) return;
+    refreshTimer.current = window.setTimeout(() => {
+      refreshTimer.current = null;
+      void refreshSessions();
+    }, 150);
+  }, [refreshSessions]);
   const applyActivity = useCallback(
     (message: ActivityMessage): ActivityChange[] => {
       const { next, changes } = stepActivity(activityRef.current, message);
       activityRef.current = next;
       setActivity(next);
-      // The rows' other facts (title, message count, openable) move when a
-      // turn ends, and with the list itself: re-read the list then. The run
-      // state itself never comes from that read.
-      const listed =
+      // The rows' other facts (order, snippet, message count, openable) move
+      // with the activity and with the list itself: re-read the list then,
+      // once for a burst. The run state itself never comes from that read.
+      const listMoved =
         message.type === "session_activity" &&
         (message.payload.listChanged ||
           !sessionsRef.current.some((row) => row.sessionId === message.payload.sessionId));
-      const turnEnded = changes.some((change) => change.now === "idle" || change.now === "failed");
-      if (listed || turnEnded) void refreshSessions();
+      if (listMoved || changes.length > 0) refreshSoon();
       return changes;
     },
-    [refreshSessions],
+    [refreshSoon],
   );
   const listed = useMemo(
     () =>

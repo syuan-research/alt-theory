@@ -59,14 +59,22 @@ test("the list hears a conversation start, wait for approval, go on, and end", a
   }
 });
 
-test("a failed turn shows in the list until the next run starts", async () => {
-  const service = createTestService(setupFixture());
+test("a failed turn shows in the list, also when the conversation is opened again after a restart", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
   const heard: ActivityEvent[] = [];
   try {
     const created = await service.createSession(selectors);
     const id = created.sessionId;
     service.attachActivity((event) => heard.push(event));
     const managed = (service as any).sessions.get(id);
+    // One good exchange first, so Pi has written the session file.
+    managed.session.prompt = async (text: string) => {
+      managed.session.sessionManager.appendMessage({ role: "user", content: [{ type: "text", text }], timestamp: Date.now() });
+      managed.session.sessionManager.appendMessage({ role: "assistant", content: [{ type: "text", text: "ok" }], timestamp: Date.now() });
+    };
+    await service.runPrompt(id, "first").completion;
+    heard.length = 0;
     managed.session.prompt = async (text: string) => {
       managed.session.sessionManager.appendMessage({ role: "user", content: [{ type: "text", text }], timestamp: Date.now() });
       managed.session.state.errorMessage = "401 invalid api key";
@@ -77,6 +85,40 @@ test("a failed turn shows in the list until the next run starts", async () => {
     const settled = service.sessionActivity().get(id) ?? "idle";
     assert.deepEqual(heard.map((event) => event.status), ["running", settled]);
     assert.equal(settled, "failed");
+
+    // After a restart the conversation is not managed (not in the list's
+    // activity); opening it makes it so, and the lists hear it then — not
+    // later as a false change.
+    await service.disposeAll();
+    const restarted = createTestService(fixture);
+    const after: ActivityEvent[] = [];
+    restarted.attachActivity((event) => after.push(event));
+    await restarted.openSession(id, selectors);
+    assert.deepEqual(after, [{ sessionId: id, status: "failed" }]);
+    await restarted.setStudyTag(id, { studyId: "s", batch: "b" });
+    assert.equal(after.length, 1, "a later publish is no change");
+    await restarted.disposeAll();
+  } finally {
+    await service.disposeAll();
+  }
+});
+
+test("Stop during a turn: running, then idle", async () => {
+  const service = createTestService(setupFixture());
+  const heard: ActivityEvent[] = [];
+  try {
+    const created = await service.createSession(selectors);
+    const id = created.sessionId;
+    service.attachActivity((event) => heard.push(event));
+    const managed = (service as any).sessions.get(id);
+    let release!: () => void;
+    managed.session.prompt = () => new Promise<void>((resolve) => (release = resolve));
+    managed.session.abort = async () => release();
+    const run = service.runPrompt(id, "hello");
+    await new Promise((resolve) => setImmediate(resolve));
+    await service.abort(id, "user_stop", "user_abort");
+    await run.completion.catch(() => {});
+    assert.deepEqual(heard.map((event) => event.status), ["running", "idle"]);
   } finally {
     await service.disposeAll();
   }

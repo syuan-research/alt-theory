@@ -2424,6 +2424,21 @@ test("WebSocket participant first send creates an owned role-conditioned session
         createdAt: now,
         updatedAt: now,
       },
+      {
+        schemaVersion: 1,
+        accountId: "p02",
+        displayLabel: "Participant 02",
+        role: "participant",
+        status: "active",
+        loginCodeHash: hashLoginCode("p02-code", "p02-ws-salt"),
+        defaultRoleCondition: "conceptual-theory",
+        defaultConsent: {
+          researcherReadable: true,
+          quoteAfterAnonymization: false,
+        },
+        createdAt: now,
+        updatedAt: now,
+      },
     ],
   });
 
@@ -2510,7 +2525,26 @@ test("WebSocket participant first send creates an owned role-conditioned session
     });
     sockets.push(ws);
     const activitySnapshot = waitForType(ws, "activity_snapshot");
-    const draft = await waitForType(ws, "session_draft");
+    const draftPromise = waitForType(ws, "session_draft");
+    // A second participant's window: the list's summary-level rule keeps
+    // p01's conversations out of it.
+    const login2 = await fetch(`${baseUrl}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ accountId: "p02", loginCode: "p02-code" }),
+    });
+    assert.equal(login2.status, 200);
+    const otherWs = new WebSocket(`ws://127.0.0.1:${address.port}`, {
+      headers: { Cookie: login2.headers.get("set-cookie")?.split(";")[0] ?? "" },
+    });
+    sockets.push(otherWs);
+    const otherActivity: any[] = [];
+    otherWs.on("message", (data) => {
+      const message = JSON.parse(data.toString());
+      if (message.type === "session_activity") otherActivity.push(message);
+    });
+    await waitForType(otherWs, "activity_snapshot");
+    const draft = await draftPromise;
     assert.equal(
       draft.payload.rolePresetSlug,
       "role-conceptual-theory-companion-latest",
@@ -2536,6 +2570,7 @@ test("WebSocket participant first send creates an owned role-conditioned session
       "an anonymous window hears nothing of a participant's list",
     );
     assert.deepEqual(anonymousActivity[0].payload, { activity: {} });
+    assert.deepEqual(otherActivity, [], "another participant's window hears nothing of p01's list");
     anonymousWs.close();
     const sessionJson = JSON.parse(
       readFileSync(

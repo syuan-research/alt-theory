@@ -167,21 +167,28 @@ Where a status fact lives (v1.5.1):
   sessions-list projection (`sessionActivity()`) reads the run record's
   outcome for "failed", never Pi's raw error text.
 - **What the conversation list shows** (running, awaiting approval, failed,
-  idle) is that projection, pushed (WP-4, 2026-09-24): `SessionService`
+  idle) is that projection, pushed (WP-4, 2026-09-24). `SessionService`
   recomputes a conversation's list activity in `emit()` on the events that
-  can move it (snapshot, run end, approval requested or resolved) and tells
-  its activity subscribers only when it changed; creation (new and forked)
-  and the REST delete, family delete, restore and permanent delete send a
-  list change. Every WS connection gets `activity_snapshot` on (re)connect,
-  then `session_activity` changes, filtered by the list's own access rule
-  (GET /api/sessions: none for an anonymous window where accounts exist,
-  else summary level). The client's list rows, the running count and the
+  can move it (`session_updated`/snapshot — run start and settle — run end,
+  approval requested or resolved) and when a conversation enters the managed
+  map (`openSession`), and tells its activity subscribers only when it
+  changed. A list change goes out on creation (new and forked), the REST
+  delete (one for a family delete), restore and permanent delete, promotion
+  (to the list or to mainline), a rename (the `ui-alias` record) and an
+  automatic title. Every WS connection gets `activity_snapshot` on
+  (re)connect, then `session_activity` changes, filtered by the list's own
+  rule (GET /api/sessions: everything in local mode; none for an anonymous
+  window where accounts exist; else summary level — over a wider set that
+  includes the trash and conversations not yet on disk, so deletes and
+  first runs are heard). The client's list rows, the running count and the
   Related rows read that one source (`AppProvider.applyActivity`,
-  `lib/listActivity.ts`); a list change, or activity for a conversation the
-  list lacks, re-reads the list. Nothing polls. The "done / failed / needs
-  you" marks come from the pushed transitions (`MainView`); whether the
-  user has looked is the client's own fact (opening a conversation clears
-  its mark).
+  `lib/listActivity.ts`). The list re-reads the rows' other facts (order,
+  snippet, message count, whether it can be opened) once per burst when
+  activity moves, on a list change, or on activity for a conversation it
+  lacks; the run state never comes from that read. Nothing polls. The
+  "done / failed / needs you" marks come from the pushed transitions
+  (`alertsFor`, raised in `MainView`); whether the user has looked is the
+  client's own fact (opening a conversation clears its mark).
 - **What happened** is a pure function of the session file
   (`buildTranscriptFromEntries`), the same function live and on reload.
   A row-level fact (stop line, tool outcome, compaction divider) is set

@@ -17,7 +17,8 @@ import {
   saveSessionAlias,
 } from "@/api/sessions";
 import type { ServerMessage, SessionDetailResponse } from "@/api/types";
-import { useApp, type ActivityChange, type SessionAlert } from "@/context/AppProvider";
+import { useApp, type SessionAlert } from "@/context/AppProvider";
+import { alertsFor, type ActivityChange } from "@/lib/listActivity";
 import { ConversationScope } from "@/context/ConversationContext";
 import { useShell } from "@/context/ShellContext";
 import { useConversation, type Conversation } from "@/hooks/useConversation";
@@ -199,20 +200,12 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
   // or stopped for an approval while you were elsewhere leaves a mark that
   // survives until it is opened. From the pushed activity's transitions (WP-4).
   const raiseAlerts = (changes: ActivityChange[]) => {
-    const raised: Record<string, SessionAlert> = {};
-    for (const { sessionId: id, before, now } of changes) {
-      if (id === sessionId) continue;
+    const raised: Record<string, SessionAlert> = alertsFor(changes, sessionId);
+    for (const [id, alert] of Object.entries(raised)) {
       const name = app.sessionDisplayNames[id]?.alias || t("A conversation");
-      if (before === "running" && now === "idle") {
-        raised[id] = "done";
-        notifyBackground(t("Work finished"), t("{name} finished its turn.", { name }));
-      } else if (now === "failed") {
-        raised[id] = "failed";
-        notifyBackground(t("Work stopped"), t("{name} ran into an error.", { name }));
-      } else if (now === "awaiting-approval") {
-        raised[id] = "approval";
-        notifyBackground(t("Waiting for you"), t("{name} needs your approval.", { name }));
-      }
+      if (alert === "done") notifyBackground(t("Work finished"), t("{name} finished its turn.", { name }));
+      else if (alert === "failed") notifyBackground(t("Work stopped"), t("{name} ran into an error.", { name }));
+      else notifyBackground(t("Waiting for you"), t("{name} needs your approval.", { name }));
     }
     if (Object.keys(raised).length > 0) setSessionAlerts((prev) => ({ ...prev, ...raised }));
   };

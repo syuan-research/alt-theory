@@ -1443,7 +1443,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         }
       }
       const deletedSessionIds = softDeleteSessionFamily(dataDir, sessionId);
-      for (const id of deletedSessionIds) sessionService.listChanged(id);
+      // One list change for the family: each window re-reads the list once.
+      sessionService.listChanged(sessionId);
       res.json({ deletedSessionIds });
     } catch (error) {
       res.status(409).json({
@@ -1506,6 +1507,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     if (!requireSessionRestContentAccess(req, res, sessionId)) return;
     try {
       const snapshot = sessionService.promoteRelatedSession(sessionId);
+      sessionService.listChanged(sessionId);
       res.json({ sessionId, snapshot });
     } catch (error) {
       res.status(409).json({
@@ -1519,7 +1521,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     const sessionId = req.params.sessionId;
     if (!requireSessionRestContentAccess(req, res, sessionId)) return;
     try {
-      res.json({ sessionId, ...sessionService.promoteToMainline(sessionId) });
+      const promoted = sessionService.promoteToMainline(sessionId);
+      sessionService.listChanged(sessionId);
+      res.json({ sessionId, ...promoted });
     } catch (error) {
       res.status(409).json({
         error: error instanceof Error ? error.message : String(error),
@@ -1929,16 +1933,17 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         );
         return;
       }
-      res.json(
-        writeSessionTextFile(
-          dataDir,
-          sessionId,
-          body.root,
-          body.path,
-          body.content,
-          options,
-        ),
+      const written = writeSessionTextFile(
+        dataDir,
+        sessionId,
+        body.root,
+        body.path,
+        body.content,
+        options,
       );
+      // A rename is the ui-alias record: the list shows it.
+      if (body.root === "records" && body.path === "ui-alias.json") sessionService.listChanged(sessionId);
+      res.json(written);
     } catch (error) {
       if (error instanceof FileConflictError) {
         res.status(409).json({
@@ -2556,7 +2561,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     // The list's access rule (GET /api/sessions): no list for an anonymous
     // window where accounts exist, else summary level, trash included.
     const canSeeInList = (sessionId: string): boolean => {
-      if (!localMode && auth.role === "anonymous" && hasConfiguredAccounts()) return false;
+      // Local: one user, every conversation is in the list (no summary read).
+      if (localMode) return true;
+      if (auth.role === "anonymous" && hasConfiguredAccounts()) return false;
       const summary = readSessionAccessSummary(dataDir, sessionId);
       return Boolean(summary && canAccessSessionSummary(auth, summary));
     };

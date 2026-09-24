@@ -262,7 +262,7 @@ export type ListActivity = "running" | "awaiting-approval" | "failed" | "idle";
 
 /**
  * A change to what the list shows (WP-4): a conversation's activity moved,
- * or the list itself changed (created, deleted, restored, imported).
+ * or the list itself changed (created, deleted, restored, renamed, promoted).
  */
 export interface ActivityEvent {
   sessionId: string;
@@ -886,6 +886,8 @@ export class SessionService implements AgentTeamBridge {
         alias: title,
         updatedAt: new Date().toISOString(),
       });
+      // The title lands after the turn ended: the lists hear it on its own.
+      this.listChanged(managed.manifest.sessionId);
     } catch {
       // Best-effort; never disturb the run.
     }
@@ -950,6 +952,9 @@ export class SessionService implements AgentTeamBridge {
       }
     }
     this.sessions.set(managed.manifest.sessionId, managed);
+    // Entering the managed map can itself change what the list shows (a
+    // conversation whose last turn failed): tell the lists.
+    this.noteActivity(managed);
     // Agent mail that arrived while this session was closed: inject it into
     // context (no turn — the user is present) and surface it in the
     // transcript as agent-team lines. Durable inbox -> nothing was lost.
@@ -2774,14 +2779,14 @@ export class SessionService implements AgentTeamBridge {
     return () => this.activityListeners.delete(listener);
   }
 
-  /** The list itself changed for this conversation (created, deleted, restored, imported). */
+  /** The list itself changed for this conversation (created, deleted, restored, renamed, promoted). */
   listChanged(sessionId: string): void {
     const managed = this.sessions.get(sessionId);
-    const event: ActivityEvent = {
-      sessionId,
-      status: managed ? this.activityOf(managed) : "idle",
-      listChanged: true,
-    };
+    const status = managed ? this.activityOf(managed) : "idle";
+    // What the lists are told is the baseline the next change compares with.
+    if (status === "idle") this.lastActivity.delete(sessionId);
+    else this.lastActivity.set(sessionId, status);
+    const event: ActivityEvent = { sessionId, status, listChanged: true };
     for (const listener of this.activityListeners) listener(event);
   }
 

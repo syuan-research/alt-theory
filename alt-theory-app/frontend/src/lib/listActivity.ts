@@ -14,6 +14,25 @@ export interface ActivityChange {
   now: ListActivity;
 }
 
+/** A mark a list row keeps until its conversation is opened. */
+export type ListAlert = "done" | "failed" | "approval";
+
+/**
+ * The marks these changes leave (the open conversation's own changes leave
+ * none): a turn that ended from running is done, a failure is failed, a
+ * wait for approval is approval.
+ */
+export function alertsFor(changes: ActivityChange[], openId: string | null): Record<string, ListAlert> {
+  const raised: Record<string, ListAlert> = {};
+  for (const { sessionId, before, now } of changes) {
+    if (sessionId === openId) continue;
+    if (before === "running" && now === "idle") raised[sessionId] = "done";
+    else if (now === "failed") raised[sessionId] = "failed";
+    else if (now === "awaiting-approval") raised[sessionId] = "approval";
+  }
+  return raised;
+}
+
 /** Non-idle conversations only; null until the first picture arrives. */
 export type ActivityMap = Record<string, ListActivity> | null;
 
