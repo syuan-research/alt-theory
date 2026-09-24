@@ -10,7 +10,9 @@
   --color-surface: #ffffff;
   --color-card: #f4f4f5;
   --color-card-2: #f2f2f3;
-  --color-hairline: #e7e7e9;
+  /* one step darker than #e7e7e9: that sat ~4/255 from --color-panel, so
+     dividers on the gray columns were invisible */
+  --color-hairline: #d9d9dc;
   --color-hover: #eeedef;
   --color-selected: #e8e7e8;
   --color-success: #3f7d52;
