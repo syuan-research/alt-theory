@@ -225,7 +225,9 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
     (target: string): boolean => {
       if (!target || target === sessionId) return false;
       const summary = app.sessions.find((item) => item.sessionId === target);
-      if (summary && !summary.hasSessionFile) {
+      // A conversation still in its first turn has no file yet but is live
+      // on the server, so it opens; an idle one without a file does not.
+      if (summary && !summary.hasSessionFile && (summary.runStatus ?? "idle") === "idle") {
         conv.notify({ kind: "text", text: t("Conversation cannot be opened.") });
         return false;
       }
