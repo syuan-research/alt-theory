@@ -45,6 +45,13 @@ detail lives in commit history and `development/`.
   side conversation shows that conversation's change.
 - Deleting a conversation that is open in the right pane closes it there.
 
+### Conversation list
+
+- The list shows what every conversation is doing as it happens: a
+  conversation in the background starting, finishing, stopping on an error,
+  or waiting for your approval shows at once, without the list checking
+  every few seconds; it is complete again right after a reconnect.
+
 ## v1.7.0-beta.1 — 2026-09-24
 
 Finding earlier conversations and files is easier, including work outside the ordinary conversation list. You can also edit text in working folders and keep more control over a conversation while an agent is running.

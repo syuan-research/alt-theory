@@ -543,6 +543,11 @@ function onServer(state: ConversationState, message: ServerMessage): Conversatio
       // Navigation for the display layer; its request answer follows.
       return state;
 
+    case "activity_snapshot":
+    case "session_activity":
+      // The conversation list's (app level), not this conversation's.
+      return state;
+
     default: {
       const unhandled: never = message;
       return unhandled;

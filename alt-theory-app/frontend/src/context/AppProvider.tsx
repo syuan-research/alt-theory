@@ -37,6 +37,7 @@ import {
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { defaultTranscriptView, viewModeForRole } from "@/lib/viewMode";
 import { pruneDrafts, setDraftScope } from "@/lib/draft";
+import { stepActivity, type ActivityChange, type ActivityMap, type ActivityMessage } from "@/lib/listActivity";
 
 const anonymousAuth: AuthContext = {
   accountId: null,
@@ -48,6 +49,8 @@ const anonymousAuth: AuthContext = {
 
 /** Why a conversation in the list is asking for attention (alpha.3). */
 export type SessionAlert = "done" | "failed" | "approval";
+
+export type { ActivityChange };
 
 export interface ConfirmRequest {
   message: string;
@@ -95,7 +98,14 @@ export interface AppContextValue {
   /** Re-fetch local provider/default status after Settings changes. */
   refreshLocalConfig: () => Promise<void>;
 
+  /** The conversation list; each row's runStatus is the pushed activity (WP-4). */
   sessions: SessionSummary[];
+  /**
+   * Take a pushed activity picture or change; returns what moved (none for
+   * the first picture, which is the baseline). A list change, or activity
+   * for a conversation the list lacks, re-reads the list.
+   */
+  applyActivity: (message: ActivityMessage) => ActivityChange[];
   sessionDisplayNames: Record<string, { alias: string; snippet: string }>;
   setSessionDisplayName: (sessionId: string, alias: string) => void;
   sessionsLoading: boolean;
@@ -306,18 +316,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [loading, loginRequired, refreshSessions]);
 
-  useEffect(() => {
-    if (
-      !sessions.some(
-        (session) =>
-          session.runStatus === "running" ||
-          session.runStatus === "awaiting-approval",
-      )
-    )
-      return;
-    const timer = window.setInterval(() => void refreshSessions(), 1500);
-    return () => window.clearInterval(timer);
-  }, [refreshSessions, sessions]);
+  // List activity is pushed (WP-4): the socket brings the whole picture on
+  // (re)connect and every change after it; nothing polls.
+  const [activity, setActivity] = useState<ActivityMap>(null);
+  const activityRef = useRef(activity);
+  const sessionsRef = useRef(sessions);
+  sessionsRef.current = sessions;
+  const applyActivity = useCallback(
+    (message: ActivityMessage): ActivityChange[] => {
+      const { next, changes } = stepActivity(activityRef.current, message);
+      activityRef.current = next;
+      setActivity(next);
+      if (
+        message.type === "session_activity" &&
+        (message.payload.listChanged ||
+          !sessionsRef.current.some((row) => row.sessionId === message.payload.sessionId))
+      ) {
+        void refreshSessions();
+      }
+      return changes;
+    },
+    [refreshSessions],
+  );
+  const listed = useMemo(
+    () =>
+      activity
+        ? sessions.map((row) => ({ ...row, runStatus: activity[row.sessionId] ?? "idle" }))
+        : sessions,
+    [activity, sessions],
+  );
 
   const refreshWorkingFolders = useCallback(async () => {
     try {
@@ -514,7 +541,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       refreshDiscovery,
       localConfig,
       refreshLocalConfig,
-      sessions,
+      sessions: listed,
+      applyActivity,
       sessionDisplayNames,
       setSessionDisplayName,
       sessionsLoading,
@@ -554,7 +582,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       refreshDiscovery,
       localConfig,
       refreshLocalConfig,
-      sessions,
+      listed,
+      applyActivity,
       sessionDisplayNames,
       setSessionDisplayName,
       sessionsLoading,

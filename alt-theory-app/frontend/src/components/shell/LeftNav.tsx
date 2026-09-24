@@ -1366,7 +1366,6 @@ function SessionNode({
   onToggleFamily: (id: string) => void;
 }) {
   const app = useApp();
-  const conv = useConversationContext();
   const main = useMainView();
   const menu = useContextMenu();
   const [renaming, setRenaming] = useState(false);
@@ -1375,12 +1374,8 @@ function SessionNode({
   const children = (childrenByParent.get(session.sessionId) ?? []).filter(
     (child) => visibleIds === null || visibleIds.has(child.sessionId),
   );
-  // The active session's own run state is live in the app, ahead of the poll.
-  const runStatus =
-    conv.sessionId === session.sessionId && conv.isRunning
-      ? "running"
-      : session.runStatus;
-  const state = sessionRowState(runStatus, main.sessionAlerts[session.sessionId]);
+  // One source for every row, the open one included: the pushed activity.
+  const state = sessionRowState(session.runStatus, main.sessionAlerts[session.sessionId]);
   const title = sessionTitle(session, app.sessionDisplayNames, app.sessions);
   const folded = visibleIds === null && foldedFamilies.has(session.sessionId);
   const familyCount = familyMembersOf(session, app.sessions).filter(

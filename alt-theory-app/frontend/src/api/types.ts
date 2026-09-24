@@ -288,6 +288,9 @@ export interface TranscriptMessage {
   stopReason?: "aborted" | "error" | "length";
 }
 
+/** What the conversation list shows for a conversation (server: sessionActivity). */
+export type ListActivity = "idle" | "running" | "awaiting-approval" | "failed";
+
 export interface SessionSummary {
   sessionId: string;
   alias?: string;
@@ -306,7 +309,8 @@ export interface SessionSummary {
   /** The session that took the spot (set with delisted). */
   delistedFor?: string;
   status: "available" | "incomplete" | "error";
-  runStatus?: "idle" | "running" | "awaiting-approval" | "failed";
+  /** What the list shows; the client reads it from the pushed activity (WP-4). */
+  runStatus?: ListActivity;
   rolePresetSlug: string | null;
   kbDomain: string | null;
   provider: string | null;
@@ -816,6 +820,10 @@ export type ServerMessage =
       };
     }
   | { type: "approval_snapshot"; payload: ApprovalRequestPayload[] }
+  /** Every conversation the list may show that is not idle, on (re)connect. */
+  | { type: "activity_snapshot"; payload: { activity: Record<string, ListActivity> } }
+  /** One conversation's list activity moved, or the list itself changed. */
+  | { type: "session_activity"; payload: { sessionId: string; status: ListActivity; listChanged?: true } }
   | { type: "approval_requested"; payload: ApprovalRequestPayload }
   | {
       type: "approval_resolved";

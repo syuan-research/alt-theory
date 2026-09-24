@@ -17,7 +17,7 @@ import {
   saveSessionAlias,
 } from "@/api/sessions";
 import type { ServerMessage, SessionDetailResponse } from "@/api/types";
-import { useApp, type SessionAlert } from "@/context/AppProvider";
+import { useApp, type ActivityChange, type SessionAlert } from "@/context/AppProvider";
 import { ConversationScope } from "@/context/ConversationContext";
 import { useShell } from "@/context/ShellContext";
 import { useConversation, type Conversation } from "@/hooks/useConversation";
@@ -73,7 +73,6 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
     useState<SessionDetailResponse | null>(null);
   const [sessionAlerts, setSessionAlerts] = useState<Record<string, SessionAlert>>({});
   const [approvalMarkers, setApprovalMarkers] = useState<string[]>([]);
-  const sessionRunStatusRef = useRef<Record<string, string>>({});
   const detailRequestRef = useRef(0);
 
   const onMessageRef = useRef<(message: ServerMessage) => void>(() => {});
@@ -147,14 +146,18 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
       case "run_failed":
         void app.refreshSessions();
         break;
+      case "activity_snapshot":
+      case "session_activity":
+        raiseAlerts(app.applyActivity(message));
+        break;
       case "session_updated": {
-        // The list shows run state, tag and role: refresh when they moved.
+        // The list shows tag and role (its run state is pushed): refresh
+        // when they moved.
         const row = app.sessions.find((item) => item.sessionId === message.payload.sessionId);
         if (
-          message.payload.status !== "idle" ||
-          (row &&
-            (row.rolePresetSlug !== message.payload.rolePresetSlug ||
-              JSON.stringify(row.studyTag ?? null) !== JSON.stringify(message.payload.studyTag ?? null)))
+          row &&
+          (row.rolePresetSlug !== message.payload.rolePresetSlug ||
+            JSON.stringify(row.studyTag ?? null) !== JSON.stringify(message.payload.studyTag ?? null))
         ) {
           void app.refreshSessions();
         }
@@ -194,17 +197,11 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
 
   // Background visibility (alpha.3). A conversation that finished, failed,
   // or stopped for an approval while you were elsewhere leaves a mark that
-  // survives until it is opened. Transitions of the polled list.
-  useEffect(() => {
-    const previous = sessionRunStatusRef.current;
-    const next: Record<string, string> = {};
+  // survives until it is opened. From the pushed activity's transitions (WP-4).
+  const raiseAlerts = (changes: ActivityChange[]) => {
     const raised: Record<string, SessionAlert> = {};
-    for (const session of app.sessions) {
-      const id = session.sessionId;
-      const now = session.runStatus ?? "idle";
-      next[id] = now;
-      const before = previous[id];
-      if (before === undefined || id === sessionId || now === before) continue;
+    for (const { sessionId: id, before, now } of changes) {
+      if (id === sessionId) continue;
       const name = app.sessionDisplayNames[id]?.alias || t("A conversation");
       if (before === "running" && now === "idle") {
         raised[id] = "done";
@@ -217,11 +214,8 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
         notifyBackground(t("Waiting for you"), t("{name} needs your approval.", { name }));
       }
     }
-    sessionRunStatusRef.current = next;
-    if (Object.keys(raised).length > 0) {
-      setSessionAlerts((prev) => ({ ...prev, ...raised }));
-    }
-  }, [app.sessions, app.sessionDisplayNames, sessionId]);
+    if (Object.keys(raised).length > 0) setSessionAlerts((prev) => ({ ...prev, ...raised }));
+  };
 
   // Opening a conversation is reading it.
   useEffect(() => {

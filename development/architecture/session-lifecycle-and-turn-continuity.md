@@ -166,6 +166,22 @@ Where a status fact lives (v1.5.1):
   resolves and `settle()` ran, where `run_failed` goes out too. The
   sessions-list projection (`sessionActivity()`) reads the run record's
   outcome for "failed", never Pi's raw error text.
+- **What the conversation list shows** (running, awaiting approval, failed,
+  idle) is that projection, pushed (WP-4, 2026-09-24): `SessionService`
+  recomputes a conversation's list activity in `emit()` on the events that
+  can move it (snapshot, run end, approval requested or resolved) and tells
+  its activity subscribers only when it changed; creation (new and forked)
+  and the REST delete, family delete, restore and permanent delete send a
+  list change. Every WS connection gets `activity_snapshot` on (re)connect,
+  then `session_activity` changes, filtered by the list's own access rule
+  (GET /api/sessions: none for an anonymous window where accounts exist,
+  else summary level). The client's list rows, the running count and the
+  Related rows read that one source (`AppProvider.applyActivity`,
+  `lib/listActivity.ts`); a list change, or activity for a conversation the
+  list lacks, re-reads the list. Nothing polls. The "done / failed / needs
+  you" marks come from the pushed transitions (`MainView`); whether the
+  user has looked is the client's own fact (opening a conversation clears
+  its mark).
 - **What happened** is a pure function of the session file
   (`buildTranscriptFromEntries`), the same function live and on reload.
   A row-level fact (stop line, tool outcome, compaction divider) is set
