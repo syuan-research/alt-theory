@@ -143,6 +143,9 @@ surfaces remain designation-gated and absent for everyone else.
     (default: the main folder's). Its tooltip lists the main and companion
     paths; companions are not separate rail rows. The group menu offers Add
     folder and Manage folders actions.
+  - The highlighted row is the conversation the user opened or created, and
+    nothing else: a fresh app launch or a new-conversation draft highlights
+    no row (Owner 2026-09-24); a list refresh never picks one.
   - The Projects header owns project-only collapse all, expand all, add, and
     sorting. Search sits in the new-conversation row's control group, left of
     the new-conversation button, and filters projects and the Independent

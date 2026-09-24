@@ -45,7 +45,7 @@ export function runStateView(input: {
   socket: WsConnStatus;
   /** The server's run fact (snapshot / run events), or the optimistic send. */
   running: boolean;
-  /** A request of this client in flight (open, fork, compact, asset switch). */
+  /** A request of this client in flight (open, new, fork, asset switch). */
   busy: boolean;
   phaseLabel: string;
   toolStatus: string;

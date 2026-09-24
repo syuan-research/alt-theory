@@ -53,7 +53,7 @@ export function WorkspaceTree() {
   });
 
   const sessionId = app.sessionId;
-  const runCount = app.runCompletedCount;
+  const runCount = app.runSettledCount;
   // View state that outlives the pane (the tree unmounts on every collapse
   // or rail switch): the open file is the shell's `ws:` / `working:` sub;
   // the view mode and filter live in pane memory.

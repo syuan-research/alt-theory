@@ -13,7 +13,6 @@ import {
   detectAccountsConfigured,
   fetchAuthMe,
   login as loginRequest,
-  logout as logoutRequest,
 } from "@/api/auth";
 import { fetchDiscovery } from "@/api/discovery";
 import type { ProjectFolder } from "@/api/config";
@@ -70,11 +69,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { DEFAULT_KB_DOMAIN } from "@/lib/constants";
 import { notifyBackground } from "@/lib/notify";
 import { buildOutgoingPrompt } from "@/lib/workspace";
-import {
-  defaultTranscriptView,
-  researcherDoorOpen,
-  viewModeForRole,
-} from "@/lib/viewMode";
+import { defaultTranscriptView, viewModeForRole } from "@/lib/viewMode";
 
 const anonymousAuth: AuthContext = {
   accountId: null,
@@ -119,15 +114,12 @@ export interface AppContextValue {
   auth: AuthContext;
   appMode: "local" | "hosted";
   runtimeMode: RuntimeMode;
-  accountsConfigured: boolean;
   loginRequired: boolean;
   loading: boolean;
   authError: string | null;
   login: (accountId: string, loginCode: string) => Promise<void>;
-  logout: () => Promise<void>;
 
   viewMode: ViewMode;
-  canSwitchMode: boolean;
   toggleViewMode: () => void;
   participant: ParticipantInfo | null;
   transcriptView: TranscriptView;
@@ -141,8 +133,6 @@ export interface AppContextValue {
   refreshLocalConfig: () => Promise<void>;
 
   sessions: SessionSummary[];
-  sessionSearch: string;
-  setSessionSearch: (value: string) => void;
   selectedCatalogSessionId: string | null;
   selectedSessionDetail: SessionDetailResponse | null;
   sessionDisplayNames: Record<string, { alias: string; snippet: string }>;
@@ -179,23 +169,17 @@ export interface AppContextValue {
 
   sessionId: string | null;
   sessionReady: boolean;
-  /** True only when the current session was just created in this pane (not
-   * opened from the list, reconnected, or rebuilt by an asset switch). */
-  sessionCreatedHere: boolean;
   /** Resume warnings from the backend, e.g. an asset fallback on reopen. */
   sessionWarnings: string[];
   /** Server run phase or a request of this client in flight (one projection, runState). */
   isRunning: boolean;
   /** The one run-state projection for render sites (card 1). */
   runState: RunStateView;
-  wsError: string | null;
   wsConnected: boolean;
 
   selectors: SessionSelectors;
   switchKb: (domain: string) => void;
-  switchSoul: (soulSlug: string | null) => void;
   switchRolePreset: (rolePresetSlug: string | null) => void;
-  switchInstruction: (customInstructionRef: string | null) => void;
   switchVisibility: (visibility: SessionVisibility) => void;
 
   /** Working folder for the draft/current conversation; null = none. */
@@ -255,18 +239,17 @@ export interface AppContextValue {
 
   messages: TranscriptMessage[];
   toolStatus: string;
-  /** Live run-phase label (e.g. "Thinking…") shown while no tool is active. */
-  runPhaseLabel: string;
   composerNotice: ComposerNotice | null;
   runHint: string | null;
   recovery: TurnRecovery | null;
 
   stagedWorkspacePaths: string[];
-  toggleWorkspaceStage: (path: string, staged: boolean) => void;
   stageWorkspacePath: (path: string) => void;
   unstageWorkspacePaths: (paths: string[]) => void;
 
-  runCompletedCount: number;
+  /** Bumps whenever a run ends — completed, failed, or stopped. A stopped
+   *  Work turn may have written files too, so file views refetch on it. */
+  runSettledCount: number;
   requestConfirm: (request: ConfirmRequest) => void;
 
   approvals: ApprovalRequestPayload[];
@@ -301,7 +284,6 @@ export interface AppContextValue {
   reviseLatestInPlace: (text: string, entryId: string) => boolean;
   prepareBranchRevision: (text: string, entryId: string) => boolean;
   retryLatest: () => boolean;
-  deleteLatest: () => void;
   requestMetadata: () => void;
   requestMetrics: () => void;
 }
@@ -345,14 +327,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [auth, setAuth] = useState<AuthContext>(anonymousAuth);
   const [appMode, setAppMode] = useState<"local" | "hosted">("hosted");
   const [runtimeMode, setRuntimeMode] = useState<RuntimeMode>("alt-theory");
-  const [accountsConfigured, setAccountsConfigured] = useState(false);
   const [loginRequired, setLoginRequired] = useState(false);
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
   const [discovery, setDiscovery] = useState<DiscoveryLists | null>(null);
   const [localConfig, setLocalConfig] = useState<ConfigStatus | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("user");
-  const [canSwitchMode, setCanSwitchMode] = useState(false);
   const [participant, setParticipant] = useState<ParticipantInfo | null>(null);
   const [transcriptView, setTranscriptView] = useState<TranscriptView>("user");
 
@@ -376,7 +356,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [childSeed, setChildSeed] = useState<
     { sessionId: string; text: string; autoSend: boolean } | null
   >(null);
-  const [sessionSearch, setSessionSearch] = useState("");
   const [selectedCatalogSessionId, setSelectedCatalogSessionId] = useState<
     string | null
   >(null);
@@ -390,17 +369,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionReady, setSessionReady] = useState(false);
-  const [sessionCreatedHere, setSessionCreatedHere] = useState(false);
   const [sessionWarnings, setSessionWarnings] = useState<string[]>([]);
   const startPromptRef = useRef<
     (text: string, attachments: string[]) => boolean
   >(() => false);
   // The socket's own state, set only by the socket (v1.5.1 M1 rule 3).
   const [socket, setSocket] = useState<WsConnStatus>("connecting");
-  // A request of this client in flight (open, fork, compact, asset switch):
-  // the client's fact, set by the request layer, never by a run event.
+  // A request of this client in flight (open, new, fork, asset switch). Each
+  // one must be answered by a message that clears it; compact is not one of
+  // them — the server runs it as a run, so the run state already says busy.
   const [requestBusy, setRequestBusy] = useState(false);
-  const [wsError, setWsError] = useState<string | null>(null);
   const [wsConnected, setWsConnected] = useState(false);
   const [selectors, setSelectors] = useState<SessionSelectors>(defaultSelectors);
   const [sessionMode, setSessionMode] = useState<AltMode>("understand");
@@ -433,7 +411,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     null,
   );
   const [stagedWorkspacePaths, setStagedWorkspacePaths] = useState<string[]>([],);
-  const [runCompletedCount, setRunCompletedCount] = useState(0);
+  const [runSettledCount, setRunSettledCount] = useState(0);
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(
     null,
   );
@@ -448,10 +426,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const reconnectSessionIdRef = useRef<string | null>(null);
   const pendingOpenSessionIdRef = useRef("");
-  // While a new-conversation draft is open, selection is null on purpose; the
-  // session list's "select the most recent" fallback must not resurrect the
-  // previous conversation's highlight (owner 2026-09-18).
-  const newDraftOpenRef = useRef(false);
   const pendingAssetSwitchRef = useRef(false);
   const pendingCompactRef = useRef(false);
   const composerNoticeTimerRef = useRef<number | null>(null);
@@ -479,7 +453,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setComposerNotice(null);
       setCurrentSessionModel(payload.currentModel ?? null);
       setToolStatus("");
-      setRunCompletedCount((count) => count + 1);
+      setRunSettledCount((count) => count + 1);
       // Keep the composer's context ring honest without polling.
       sendMessage({ type: "get_session_metrics" });
       if (payload.sessionId) {
@@ -490,6 +464,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     },
     onRunFailed: (payload) => {
       if (sessionId) void engine.refreshTranscript(sessionId);
+      setRunSettledCount((count) => count + 1);
       // Interruption is a recorded outcome, never a guess from error text.
       const interrupted = payload.recovery?.outcome === "interrupted";
       setToolStatus("");
@@ -540,13 +515,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setStagedWorkspacePaths([]);
   }, []);
 
-  const toggleWorkspaceStage = useCallback((path: string, staged: boolean) => {
-    setStagedWorkspacePaths((prev) => {
-      if (staged) return prev.includes(path) ? prev : [...prev, path];
-      return prev.filter((item) => item !== path);
-    });
-  }, []);
-
   const stageWorkspacePath = useCallback((path: string) => {
     setStagedWorkspacePaths((prev) =>
       prev.includes(path) ? prev : [...prev, path],
@@ -590,15 +558,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const role = me.auth?.role ?? "anonymous";
       const required = role === "anonymous" && accounts;
       const nextViewMode = viewModeForRole(role, mode);
-      const nextCanSwitchMode = researcherDoorOpen(role, mode);
 
       setAuth(me.auth ?? anonymousAuth);
       setAppMode(mode);
       setRuntimeMode(me.app?.runtimeMode ?? "alt-theory");
-      setAccountsConfigured(accounts);
       setLoginRequired(required);
       setViewMode(nextViewMode);
-      setCanSwitchMode(nextCanSwitchMode);
       setParticipant(me.participant ?? null);
       setLocalConfig(me.localConfig ?? null);
       setTranscriptView(defaultTranscriptView(nextViewMode));
@@ -613,7 +578,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setAuth(anonymousAuth);
       setAppMode("hosted");
       setRuntimeMode("alt-theory");
-      setAccountsConfigured(false);
       setLoginRequired(false);
       setDiscovery(null);
       setAuthError(err instanceof Error ? err.message : t("Auth check failed"));
@@ -633,15 +597,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (accountId: string, loginCode: string) => {
     await loginRequest(accountId, loginCode);
-    window.location.reload();
-  }, []);
-
-  const logout = useCallback(async () => {
-    try {
-      await logoutRequest();
-    } catch {
-      /* reload anyway */
-    }
     window.location.reload();
   }, []);
 
@@ -696,14 +651,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           ]),
         ),
       );
-      setSelectedCatalogSessionId((current) =>
-        current && list.some((item) => item.sessionId === current)
-          ? current
-          : newDraftOpenRef.current
-            ? null
-            : ( list[0]?.sessionId ?? null
-      ),
-      );
+      // The highlight follows what the user opened or created, nothing else:
+      // a fresh app shows no conversation highlighted (owner 2026-09-24).
     } catch (err) {
       if (requestId === sessionListRequestRef.current) {
         setSessionsError(
@@ -779,7 +728,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }
           setSessionId(null);
           setSessionReady(true);
-          setSessionCreatedHere(false);
           setSessionWarnings([]);
           setIsRunning(false);
           setRequestBusy(false);
@@ -805,7 +753,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setStreamParts([]);
           activeToolsMapRef.current = {};
           setRunPhaseLabel("");
-          setWsError(null);
           pendingAssetSwitchRef.current = false;
           pendingOpenSessionIdRef.current = "";
           if (message.payload.resetComposer) clearStagedWorkspace();
@@ -821,27 +768,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
             !pendingOpenSessionIdRef.current &&
             !pendingAssetSwitchRef.current &&
             message.payload.sessionId !== reconnectSessionIdRef.current;
-          setSessionCreatedHere(createdHere);
+          // The user moved to another conversation (list open) — as opposed
+          // to a reconnect or an asset switch re-attaching the same one.
+          const openedHere =
+            Boolean(pendingOpenSessionIdRef.current) &&
+            message.payload.sessionId === pendingOpenSessionIdRef.current;
           if (createdHere) {
             // The born conversation takes the rail highlight immediately
             // (owner 2026-09-18); nothing else ever selects a new session.
-            newDraftOpenRef.current = false;
             setSelectedCatalogSessionId(message.payload.sessionId);
           }
           setSessionWarnings(message.payload.resumeWarnings ?? []);
-          if (
-            pendingOpenSessionIdRef.current &&
-            message.payload.sessionId === pendingOpenSessionIdRef.current
-          ) {
+          if (openedHere) {
             setMessages([]);
             setStreamParts([]);
             pendingOpenSessionIdRef.current = "";
           }
-          if (pendingAssetSwitchRef.current) {
-            setMessages([]);
-            setStreamParts([]);
-            pendingAssetSwitchRef.current = false;
-          }
+          // An asset switch keeps the conversation (same id, same history)
+          // and the server sends no transcript with it: keep the rows.
+          pendingAssetSwitchRef.current = false;
           if (message.payload.sessionId !== reconnectSessionIdRef.current) {
             setApprovalMarkers([]);
           }
@@ -909,12 +854,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setSessionReady(true);
           engine.applySnapshot(message.payload);
           setRequestBusy(false);
-          setWsError(null);
           setToolStatus("");
           setRunPhaseLabel(
             message.payload.status !== "idle" ? t("Processing…") : "",
           );
-          clearStagedWorkspace();
+          // Staged files belong to the conversation they were picked for:
+          // reconnects and instance swaps (asset switch, deferred switch at
+          // settle) re-send session_opened for the same one and keep them.
+          if (openedHere || createdHere) clearStagedWorkspace();
           void refreshSessions();
           if (selectedCatalogSessionId === message.payload.sessionId) {
             void refreshSessionDetail(message.payload.sessionId);
@@ -1157,12 +1104,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const beginNewSession = useCallback(() => {
     reconnectSessionIdRef.current = null;
-    newDraftOpenRef.current = true;
     setSelectedCatalogSessionId(null);
     setQueuedTexts([]);
     setMessages([]);
     setStreamParts([]);
-    setWsError(null);
     setRecovery(null);
     setRunPhaseLabel("");
     clearStagedWorkspace();
@@ -1179,8 +1124,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const compactCurrentSession = useCallback(() => {
     if (!sessionId || isRunning) return;
     if (sendMessage({ type: "compact" })) {
+      // No requestBusy: the server runs compaction as a run (beginRun →
+      // settle), so the run state says busy and idle; nothing answers a
+      // compact the way session_opened answers an open, so a request flag
+      // set here was never cleared (the composer stayed "running").
       pendingCompactRef.current = true;
-      setRequestBusy(true);
       setToolStatus("");
       setRunPhaseLabel(t("Compacting conversation…"));
     }
@@ -1195,7 +1143,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return false;
       }
       setQueuedTexts([]);
-      newDraftOpenRef.current = false;
       setSelectedCatalogSessionId(targetSessionId);
       pendingOpenSessionIdRef.current = targetSessionId;
       if (
@@ -1435,7 +1382,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       engine.beginLocalPrompt(outgoing);
       setStreamParts([]);
-      setWsError(null);
       setToolStatus("");
       setRunPhaseLabel(t("Connecting…"));
       return true;
@@ -1747,12 +1693,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [isRunning, sendMessage, sessionId],
   );
 
-  const deleteLatest = useCallback(() => {
-    if (!sendMessage({ type: "delete_latest" })) return;
-    setToolStatus(t("Deleting latest turn..."));
-  }, [sendMessage]);
-
-
   const setDraftWorkspace = useCallback(
     (primaryDir: string | null) => {
       if (sendMessage({ type: "set_draft_workspace", payload: { primaryDir } })) {
@@ -1846,20 +1786,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [sendMessage],
   );
 
-  const switchSoul = useCallback(
-    (soulSlug: string | null) => {
-      if (
-        requestAssetSwitch(
-          { type: "switch_soul", payload: { soulSlug } },
-          "Switching soul...",
-        )
-      ) {
-        setSelectors((prev) => ({ ...prev, soulSlug }));
-      }
-    },
-    [requestAssetSwitch],
-  );
-
   const switchRolePreset = useCallback(
     (rolePresetSlug: string | null) => {
       if (
@@ -1869,20 +1795,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         )
       ) {
         setSelectors((prev) => ({ ...prev, rolePresetSlug }));
-      }
-    },
-    [requestAssetSwitch],
-  );
-
-  const switchInstruction = useCallback(
-    (customInstructionRef: string | null) => {
-      if (
-        requestAssetSwitch(
-          { type: "switch_instruction", payload: { customInstructionRef } },
-          "Switching instruction...",
-        )
-      ) {
-        setSelectors((prev) => ({ ...prev, customInstructionRef }));
       }
     },
     [requestAssetSwitch],
@@ -1989,14 +1901,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       auth,
       appMode,
       runtimeMode,
-      accountsConfigured,
       loginRequired,
       loading,
       authError,
       login,
-      logout,
       viewMode,
-      canSwitchMode,
       toggleViewMode,
       participant,
       transcriptView,
@@ -2005,8 +1914,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       localConfig,
       refreshLocalConfig,
       sessions,
-      sessionSearch,
-      setSessionSearch,
       selectedCatalogSessionId,
       selectedSessionDetail,
       sessionDisplayNames,
@@ -2029,17 +1936,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       deleteSessionFamily,
       sessionId,
       sessionReady,
-      sessionCreatedHere,
       sessionWarnings,
       isRunning: runState.phase === "running",
       runState,
-      wsError,
       wsConnected,
       selectors,
       switchKb,
-      switchSoul,
       switchRolePreset,
-      switchInstruction,
       switchVisibility,
       presetButtons,
       setPresetButtons,
@@ -2070,15 +1973,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setStudyTag,
       messages,
       toolStatus,
-      runPhaseLabel,
       composerNotice,
       runHint,
       recovery,
       stagedWorkspacePaths,
-      toggleWorkspaceStage,
       stageWorkspacePath,
       unstageWorkspacePaths,
-      runCompletedCount,
+      runSettledCount,
       requestConfirm,
       approvals,
       respondApproval,
@@ -2101,7 +2002,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       reviseLatestInPlace,
       prepareBranchRevision,
       retryLatest,
-      deleteLatest,
       requestMetadata,
       requestMetrics,
     }),
@@ -2109,14 +2009,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       auth,
       appMode,
       runtimeMode,
-      accountsConfigured,
       loginRequired,
       loading,
       authError,
       login,
-      logout,
       viewMode,
-      canSwitchMode,
       toggleViewMode,
       participant,
       transcriptView,
@@ -2125,7 +2022,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       localConfig,
       refreshLocalConfig,
       sessions,
-      sessionSearch,
       selectedCatalogSessionId,
       selectedSessionDetail,
       sessionDisplayNames,
@@ -2148,17 +2044,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       deleteSessionFamily,
       sessionId,
       sessionReady,
-      sessionCreatedHere,
       sessionWarnings,
       isRunning,
       runState,
-      wsError,
       wsConnected,
       selectors,
       switchKb,
-      switchSoul,
       switchRolePreset,
-      switchInstruction,
       switchVisibility,
       presetButtons,
       setPresetButtons,
@@ -2189,15 +2081,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setStudyTag,
       messages,
       toolStatus,
-      runPhaseLabel,
       composerNotice,
       runHint,
       recovery,
       stagedWorkspacePaths,
-      toggleWorkspaceStage,
       stageWorkspacePath,
       unstageWorkspacePaths,
-      runCompletedCount,
+      runSettledCount,
       requestConfirm,
       approvals,
       respondApproval,
@@ -2220,7 +2110,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       reviseLatestInPlace,
       prepareBranchRevision,
       retryLatest,
-      deleteLatest,
       requestMetadata,
       requestMetrics,
     ],

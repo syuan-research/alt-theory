@@ -154,7 +154,10 @@ Where a status fact lives (v1.5.1):
   (`frontend/src/lib/runState.ts`) is the one combination point: the
   socket's own state (set by the socket only), the server's run fact
   (`engine.applySnapshot` and run events), and a request of this client in
-  flight (`requestBusy`, set by the request layer). `app.isRunning` is its
+  flight (`requestBusy`: opening, starting, or forking a conversation, or an
+  asset switch — each cleared by the message that answers it; a manual
+  compaction is a server run and shows busy through the run fact instead).
+  `app.isRunning` is its
   phase; no pane keeps its own status string or reads `payload.status` to
   decide "running" (`runState.test.ts`; `session-service.test.ts` "agent_end
   does not end the turn"). A failed run shows its failure envelope and
@@ -162,8 +165,8 @@ Where a status fact lives (v1.5.1):
   `useConversationEngine` also applies queue and recovery from every session
   snapshot and queue event for both panes. A running snapshot makes an older
   turn's recovery unavailable; the center's stop-edit hint is derived from
-  idle recovery rather than stored separately. The right pane receives this
-  recovery fact but does not yet expose a Continue control. Both panes call
+  idle recovery rather than stored separately. The right pane renders the
+  same idle Continue from this recovery fact over its own socket. Both panes call
   the same `beginLocalPrompt` for their immediate, optimistic idle-send bubble;
   this is not yet an explicit `sending`/`sent` visual distinction.
 

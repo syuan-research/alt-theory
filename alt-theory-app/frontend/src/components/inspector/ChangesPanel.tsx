@@ -26,7 +26,7 @@ export function ChangesPanel() {
   const menu = useContextMenu();
 
   const sessionId = app.sessionId;
-  const runCount = app.runCompletedCount;
+  const runCount = app.runSettledCount;
   const key = shell.rightSub?.key;
   const [closed, setClosed] = usePaneMemory<string[]>(`${sessionId}:changes:closed`, []);
   const [mode, setMode] = usePaneMemory<PreviewMode>(`${sessionId}:changes:${key ?? ""}:mode`, "rendered");
