@@ -2243,6 +2243,10 @@ test("every socket on a conversation keeps its events after an idle instance swa
   writeFileSync(soulPath, "Two sockets soul", "utf-8");
   writeFileSync(join(rolePresets, "role-conceptual-theory-companion-latest.md"), "Role", "utf-8");
   writeFileSync(join(rolePresets, "alternate.md"), "Alternate role", "utf-8");
+  // Hermetic: no model configured, nothing read from the machine's Pi agent dir.
+  const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+  process.env.PI_CODING_AGENT_DIR = join(root, "pi-agent");
+  mkdirSync(join(root, "pi-agent"), { recursive: true });
   const instance = createAltTheoryServer({
     dataDir: join(root, "data"),
     appContextPath,
@@ -2300,9 +2304,45 @@ test("every socket on a conversation keeps its events after an idle instance swa
     // Later events of the replacement reach both sockets as well.
     const running1 = waitFor(ws1, (m) => m.type === "session_updated" && m.payload.status === "running");
     const running2 = waitFor(ws2, (m) => m.type === "session_updated" && m.payload.status === "running");
+    const compacted = waitFor(ws2, (m) => m.type === "extension_notice");
     ws2.send(JSON.stringify({ type: "compact" }));
-    await Promise.all([running1, running2]);
+    await Promise.all([running1, running2, compacted]);
+
+    // Request receipts: each id is answered exactly once, accepted or refused.
+    const answers: any[] = [];
+    ws1.on("message", (data) => {
+      const message = JSON.parse(data.toString());
+      const id = message.payload?.requestId;
+      if (typeof id === "string" && id.startsWith("r-")) answers.push(message);
+    });
+    const sendRequest = (id: string, body: object) =>
+      ws1.send(JSON.stringify({ ...body, requestId: id }));
+    const openedAgain = waitFor(ws1, (m) => m.type === "request_done" && m.payload.requestId === "r-open");
+    sendRequest("r-open", { type: "open_session", payload: { sessionId } });
+    await openedAgain;
+    sendRequest("r-missing", { type: "open_session", payload: { sessionId: "missing" } });
+    sendRequest("r-role", { type: "switch_role_preset", payload: { rolePresetSlug: null } });
+    const compactEnded = waitFor(ws1, (m) => m.type === "extension_notice");
+    sendRequest("r-compact", { type: "compact" });
+    await compactEnded;
+    // Nothing to retry: refused before a run starts.
+    sendRequest("r-retry", { type: "retry_latest" });
+    await waitFor(ws1, (m) => m.payload?.requestId === "r-retry");
+    await new Promise((settleDelay) => setTimeout(settleDelay, 300));
+    const byId = new Map<string, string[]>();
+    for (const answer of answers) {
+      byId.set(answer.payload.requestId, [...(byId.get(answer.payload.requestId) ?? []), answer.type]);
+    }
+    assert.deepEqual(Object.fromEntries(byId), {
+      "r-open": ["request_done"],
+      "r-missing": ["error"],
+      "r-role": ["request_done"],
+      "r-compact": ["request_done"],
+      "r-retry": ["error"],
+    });
   } finally {
+    if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
     ws1.close();
     ws2.close();
     await new Promise<void>((resolveClose) => {

@@ -632,7 +632,14 @@ export interface AssemblyManifest {
   piAdapter?: { promptTemplatesDir?: string | null };
 }
 
-export type ClientMessage =
+/**
+ * A client request. Any message may carry a requestId; the server then
+ * answers it exactly once: `request_done` when accepted, or an `error` that
+ * carries the same id (M1 request receipts).
+ */
+export type ClientMessage = ClientMessageBody & { requestId?: string };
+
+export type ClientMessageBody =
   | {
       type: "prompt";
       payload: string;
@@ -789,7 +796,9 @@ export type ServerMessage =
       type: "extension_notice";
       payload: { message: string; level: "info" | "warning" | "error"; failure?: Failure };
     }
-  | { type: "error"; payload: { failure: Failure; code?: string } };
+  /** The request with this id was accepted (see ClientMessage). */
+  | { type: "request_done"; payload: { requestId: string } }
+  | { type: "error"; payload: { failure: Failure; code?: string; requestId?: string } };
 
 export interface ActiveToolState {
   callId: string;

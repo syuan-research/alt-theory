@@ -2565,10 +2565,19 @@ export class SessionService implements AgentTeamBridge {
     });
   }
 
-  async compact(sessionId: string): Promise<SessionSnapshot> {
+  /**
+   * Manual compaction as a run. The refusal (busy, unknown session) throws
+   * synchronously; once the run has begun the returned promise carries the
+   * outcome — so a caller can acknowledge the start before the end.
+   */
+  compact(sessionId: string): Promise<SessionSnapshot> {
     const managed = this.requireSession(sessionId);
     this.assertIdle(managed);
     this.beginRun(managed);
+    return this.runCompaction(managed);
+  }
+
+  private async runCompaction(managed: ManagedSession): Promise<SessionSnapshot> {
     const leafBeforeCompact = managed.session.sessionManager.getLeafId();
     this.emitRunPhase(managed, "compacting");
     try {

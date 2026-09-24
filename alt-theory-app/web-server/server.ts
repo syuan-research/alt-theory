@@ -2344,12 +2344,14 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     error: unknown,
     code?: string,
     operation = "request",
+    requestId?: string,
   ): void {
     send({
       type: "error",
       payload: {
         failure: describeFailure(error, operation),
         ...(code ? { code } : {}),
+        ...(requestId ? { requestId } : {}),
       },
     });
   }
@@ -2633,231 +2635,279 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         sendError(send, new Error("Invalid JSON"), undefined, "message");
         return;
       }
-      const fail = (error: unknown, code?: string) =>
-        sendError(send, error, code, msg.type);
-      if (
-        readAppSettings(dataDir).runtimeMode === "native-pi" &&
-        ["switch_kb", "switch_role_preset", "switch_soul", "switch_mode"].includes(
-          msg.type,
-        )
-      ) {
-        fail(new Error("This Alt Theory control is inactive while Native Pi is on"),
-        );
-        return;
-      }
-      if (
-        attachedSessionId &&
-        msg.type !== "new_session" &&
-        msg.type !== "create_helper_session"
-      ) {
-        try {
-          requireSessionWsContentAccess(attachedSessionId);
-        } catch (error) {
-          detach();
-          detach = () => {};
-          attachedSessionId = null;
-          fail(error);
+      // Request receipt (M1): a message that carries a requestId is answered
+      // exactly once — request_done when accepted (a run started or queued, a
+      // navigation attached, a switch's snapshot sent) or an error that names
+      // it. The finally below answers any path that returned without either.
+      const requestId =
+        typeof msg.requestId === "string" && msg.requestId ? msg.requestId : undefined;
+      let answered = false;
+      const done = () => {
+        if (answered) return;
+        answered = true;
+        if (requestId) send({ type: "request_done", payload: { requestId } });
+      };
+      const fail = (error: unknown, code?: string) => {
+        const first = !answered;
+        answered = true;
+        sendError(send, error, code, msg.type, first ? requestId : undefined);
+      };
+      try {
+        if (
+          readAppSettings(dataDir).runtimeMode === "native-pi" &&
+          ["switch_kb", "switch_role_preset", "switch_soul", "switch_mode"].includes(
+            msg.type,
+          )
+        ) {
+          fail(new Error("This Alt Theory control is inactive while Native Pi is on"),
+          );
           return;
         }
-      }
-
-      switch (msg.type) {
-        case "prompt": {
+        if (
+          attachedSessionId &&
+          msg.type !== "new_session" &&
+          msg.type !== "create_helper_session"
+        ) {
           try {
-            if (!attachedSessionId) {
-              if (!canMaterializeSession(auth)) {
-                fail(new Error("Authentication required"),
-                  "auth_required",
+            requireSessionWsContentAccess(attachedSessionId);
+          } catch (error) {
+            detach();
+            detach = () => {};
+            attachedSessionId = null;
+            fail(error);
+            return;
+          }
+        }
+
+        switch (msg.type) {
+          case "prompt": {
+            try {
+              if (!attachedSessionId) {
+                if (!canMaterializeSession(auth)) {
+                  fail(new Error("Authentication required"),
+                    "auth_required",
+                  );
+                  break;
+                }
+                const initial = await sessionService.createSession(
+                  draftSelectors,
+                  {
+                    ...sessionCreationMetadataForAuth(auth, draftVisibility),
+                    mode: draftMode,
+                    fullAccess: draftFullAccess,
+                    modelOverride: draftModelOverride,
+                    studyTag: draftStudyTag,
+                    workspace: draftWorkspace
+                      ? { primaryDir: draftWorkspace }
+                      : null,
+                  },
+                );
+                // The draft choice covered only this conversation; the next
+                // draft starts from Ask again.
+                draftFullAccess = false;
+                if (closed) return;
+                attachToSession(initial.sessionId);
+              }
+              const currentSessionId = attachedSessionId;
+              if (sessionService.isRunning(currentSessionId)) {
+                // Pi owns the queue (card 11): a message during a turn joins
+                // Pi's steer queue — "queued = next API call" — unless the
+                // composer asked for a follow-up after the turn.
+                await sessionService.queuePrompt(
+                  currentSessionId,
+                  msg.payload,
+                  msg.attachments,
+                  msg.deliverAs ?? "steer",
                 );
                 break;
               }
-              const initial = await sessionService.createSession(
-                draftSelectors,
-                {
-                  ...sessionCreationMetadataForAuth(auth, draftVisibility),
-                  mode: draftMode,
-                  fullAccess: draftFullAccess,
-                  modelOverride: draftModelOverride,
-                  studyTag: draftStudyTag,
-                  workspace: draftWorkspace
-                    ? { primaryDir: draftWorkspace }
-                    : null,
-                },
-              );
-              // The draft choice covered only this conversation; the next
-              // draft starts from Ask again.
-              draftFullAccess = false;
-              if (closed) return;
-              attachToSession(initial.sessionId);
+              // A refusal before the run starts (busy, no model) is an error
+              // reply; once started, finishRun reports the outcome to every
+              // window.
+              sessionService.runPrompt(currentSessionId, msg.payload, msg.attachments);
+            } catch (error) {
+              fail(error);
             }
-            const currentSessionId = attachedSessionId;
-            if (sessionService.isRunning(currentSessionId)) {
-              // Pi owns the queue (card 11): a message during a turn joins
-              // Pi's steer queue — "queued = next API call" — unless the
-              // composer asked for a follow-up after the turn.
-              await sessionService.queuePrompt(
-                currentSessionId,
-                msg.payload,
-                msg.attachments,
-                msg.deliverAs ?? "steer",
-              );
+            break;
+          }
+          case "abort":
+            if (!attachedSessionId) {
+              sendCurrentDraft();
               break;
             }
-            // A refusal before the run starts (busy, no model) is an error
-            // reply; once started, finishRun reports the outcome to every
-            // window.
-            sessionService.runPrompt(currentSessionId, msg.payload, msg.attachments);
-          } catch (error) {
-            fail(error);
-          }
-          break;
-        }
-        case "abort":
-          if (!attachedSessionId) {
-            sendCurrentDraft();
-            break;
-          }
-          try {
-            await sessionService.abort(attachedSessionId, "user_stop", "user_abort");
-          } catch (error) {
-            fail(error);
-          }
-          break;
-        case "send_queued_now": {
-          if (!attachedSessionId) {
-            sendCurrentDraft();
-            break;
-          }
-          // Interrupt-and-send: the outcome arrives as events (the stopped
-          // run's failure, the new run, the re-queued cards). A selection
-          // already taken into the turn is a silent no-op by design.
-          try {
-            await sessionService.interruptAndSend(
-              attachedSessionId,
-              msg.payload.text,
-            );
-          } catch (error) {
-            fail(error);
-          }
-          break;
-        }
-        case "compact":
-          if (!attachedSessionId) {
-            fail(new Error("Open a conversation before compacting it"),
-            );
-            break;
-          }
-          try {
-            await sessionService.compact(attachedSessionId);
-            send({
-              type: "extension_notice",
-              payload: { message: "Conversation compacted", level: "info" },
-            });
-          } catch (error) {
-            send({
-              type: "extension_notice",
-              payload: {
-                message: `Compaction failed: ${
-                  error instanceof Error ? error.message : String(error)
-                }`,
-                level: "warning",
-              },
-            });
-          }
-          break;
-        case "switch_kb":
-          if (!attachedSessionId) {
-            if (
-              msg.payload.domain !== KB_DISABLED_DOMAIN &&
-              !isKnownKbDomain(kbDir, msg.payload.domain)
-            ) {
-              fail(new Error(`Unknown KB domain: ${msg.payload.domain}`),);
-              break;
-            }
-            draftSelectors = { ...draftSelectors, kbDomain: msg.payload.domain, };
-            sendCurrentDraft();
-            break;
-          }
-          try {
-            const snapshot = await sessionService.setKbDomain(
-              attachedSessionId,
-              msg.payload.domain,
-            );
-            // A mid-run choice is acked as pending (chip + clock mark)
-            // instead of refused; an idle switch stays silent as today.
-            if (snapshot.pending?.kbDomain !== undefined) {
-              send({ type: "session_updated", payload: snapshot });
-            }
-          } catch (error) {
-            fail(error);
-          }
-          break;
-        case "switch_role_preset": {
-          const rolePresetSlug = optionalSlug(msg.payload.rolePresetSlug);
-          if (!attachedSessionId) {
-            draftSelectors = { ...draftSelectors, rolePresetSlug };
-            sendCurrentDraft();
-            break;
-          }
-          try {
-            await switchAsset({ rolePresetSlug });
-          } catch (error) {
-            fail(error);
-          }
-          break;
-        }
-        case "switch_soul": {
-          const soulSlug = optionalSlug(msg.payload.soulSlug);
-          if (!attachedSessionId) {
-            draftSelectors = { ...draftSelectors, soulSlug };
-            sendCurrentDraft();
-            break;
-          }
-          try {
-            await switchAsset({ soulSlug });
-          } catch (error) {
-            fail(error);
-          }
-          break;
-        }
-        case "switch_instruction": {
-          const customInstructionRef = optionalSlug(
-            msg.payload.customInstructionRef,
-          );
-          if (!attachedSessionId) {
-            draftSelectors = { ...draftSelectors, customInstructionRef };
-            sendCurrentDraft();
-            break;
-          }
-          try {
-            await switchAsset({ customInstructionRef });
-          } catch (error) {
-            fail(error);
-          }
-          break;
-        }
-        case "switch_visibility": {
-          // The guard that keeps the deployments apart: a local install can
-          // never write "private" (the only retention-bearing value), and a
-          // hosted one can never write the local export markers.
-          if (!isVisibilityForMode(msg.payload.visibility, localMode)) {
-            fail(new Error("Invalid visibility"));
-            break;
-          }
-          if (attachedSessionId) {
             try {
-              const metadata = sessionCreationMetadataForAuth(
-                auth,
-                msg.payload.visibility,
+              await sessionService.abort(attachedSessionId, "user_stop", "user_abort");
+            } catch (error) {
+              fail(error);
+            }
+            break;
+          case "send_queued_now": {
+            if (!attachedSessionId) {
+              sendCurrentDraft();
+              break;
+            }
+            // Interrupt-and-send: the outcome arrives as events (the stopped
+            // run's failure, the new run, the re-queued cards). A selection
+            // already taken into the turn is a silent no-op by design.
+            try {
+              await sessionService.interruptAndSend(
+                attachedSessionId,
+                msg.payload.text,
               );
-              // Idle applies now; mid-run the same snapshot carries the
-              // pending choice (no more busy refusal).
+            } catch (error) {
+              fail(error);
+            }
+            break;
+          }
+          case "compact": {
+            if (!attachedSessionId) {
+              fail(new Error("Open a conversation before compacting it"),
+              );
+              break;
+            }
+            let compaction: Promise<unknown>;
+            try {
+              compaction = sessionService.compact(attachedSessionId);
+            } catch (error) {
+              fail(error);
+              break;
+            }
+            done();
+            try {
+              await compaction;
+              send({
+                type: "extension_notice",
+                payload: { message: "Conversation compacted", level: "info" },
+              });
+            } catch (error) {
+              send({
+                type: "extension_notice",
+                payload: {
+                  message: `Compaction failed: ${
+                    error instanceof Error ? error.message : String(error)
+                  }`,
+                  level: "warning",
+                },
+              });
+            }
+            break;
+          }
+          case "switch_kb":
+            if (!attachedSessionId) {
+              if (
+                msg.payload.domain !== KB_DISABLED_DOMAIN &&
+                !isKnownKbDomain(kbDir, msg.payload.domain)
+              ) {
+                fail(new Error(`Unknown KB domain: ${msg.payload.domain}`),);
+                break;
+              }
+              draftSelectors = { ...draftSelectors, kbDomain: msg.payload.domain, };
+              sendCurrentDraft();
+              break;
+            }
+            try {
+              const snapshot = await sessionService.setKbDomain(
+                attachedSessionId,
+                msg.payload.domain,
+              );
+              // A mid-run choice is acked as pending (chip + clock mark)
+              // instead of refused; an idle switch stays silent as today.
+              if (snapshot.pending?.kbDomain !== undefined) {
+                send({ type: "session_updated", payload: snapshot });
+              }
+            } catch (error) {
+              fail(error);
+            }
+            break;
+          case "switch_role_preset": {
+            const rolePresetSlug = optionalSlug(msg.payload.rolePresetSlug);
+            if (!attachedSessionId) {
+              draftSelectors = { ...draftSelectors, rolePresetSlug };
+              sendCurrentDraft();
+              break;
+            }
+            try {
+              await switchAsset({ rolePresetSlug });
+            } catch (error) {
+              fail(error);
+            }
+            break;
+          }
+          case "switch_soul": {
+            const soulSlug = optionalSlug(msg.payload.soulSlug);
+            if (!attachedSessionId) {
+              draftSelectors = { ...draftSelectors, soulSlug };
+              sendCurrentDraft();
+              break;
+            }
+            try {
+              await switchAsset({ soulSlug });
+            } catch (error) {
+              fail(error);
+            }
+            break;
+          }
+          case "switch_instruction": {
+            const customInstructionRef = optionalSlug(
+              msg.payload.customInstructionRef,
+            );
+            if (!attachedSessionId) {
+              draftSelectors = { ...draftSelectors, customInstructionRef };
+              sendCurrentDraft();
+              break;
+            }
+            try {
+              await switchAsset({ customInstructionRef });
+            } catch (error) {
+              fail(error);
+            }
+            break;
+          }
+          case "switch_visibility": {
+            // The guard that keeps the deployments apart: a local install can
+            // never write "private" (the only retention-bearing value), and a
+            // hosted one can never write the local export markers.
+            if (!isVisibilityForMode(msg.payload.visibility, localMode)) {
+              fail(new Error("Invalid visibility"));
+              break;
+            }
+            if (attachedSessionId) {
+              try {
+                const metadata = sessionCreationMetadataForAuth(
+                  auth,
+                  msg.payload.visibility,
+                );
+                // Idle applies now; mid-run the same snapshot carries the
+                // pending choice (no more busy refusal).
+                send({
+                  type: "session_updated",
+                  payload: await sessionService.setVisibility(
+                    attachedSessionId,
+                    msg.payload.visibility,
+                    metadata.consentSnapshot,
+                  ),
+                });
+              } catch (error) {
+                fail(error);
+              }
+              break;
+            }
+            draftVisibility = msg.payload.visibility;
+            sendCurrentDraft();
+            break;
+          }
+          case "set_study_tag": {
+            if (!attachedSessionId) {
+              draftStudyTag = msg.payload.studyTag ?? null;
+              sendCurrentDraft();
+              break;
+            }
+            try {
               send({
                 type: "session_updated",
-                payload: await sessionService.setVisibility(
+                payload: sessionService.setStudyTag(
                   attachedSessionId,
-                  msg.payload.visibility,
-                  metadata.consentSnapshot,
+                  msg.payload.studyTag ?? null,
                 ),
               });
             } catch (error) {
@@ -2865,486 +2915,466 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             }
             break;
           }
-          draftVisibility = msg.payload.visibility;
-          sendCurrentDraft();
-          break;
-        }
-        case "set_study_tag": {
-          if (!attachedSessionId) {
-            draftStudyTag = msg.payload.studyTag ?? null;
-            sendCurrentDraft();
-            break;
-          }
-          try {
-            send({
-              type: "session_updated",
-              payload: sessionService.setStudyTag(
-                attachedSessionId,
-                msg.payload.studyTag ?? null,
-              ),
-            });
-          } catch (error) {
-            fail(error);
-          }
-          break;
-        }
-        case "set_draft_workspace": {
-          if (!localMode) {
-            fail(new Error("Workspaces are local-mode only"));
-            break;
-          }
-          const raw = msg.payload.primaryDir;
-          if (raw) {
-            const resolved = resolve(raw);
-            const stat = statSync(resolved, { throwIfNoEntry: false });
-            if (!stat?.isDirectory()) {
-              fail(new Error(`Main folder does not exist:${resolved}`),
-              );
+          case "set_draft_workspace": {
+            if (!localMode) {
+              fail(new Error("Workspaces are local-mode only"));
               break;
             }
-            draftWorkspace = resolved;
-          } else {
-            draftWorkspace = null;
-          }
-          // The selector chooses where the NEXT conversation goes (sticky
-          // draft); re-pointing an existing session goes through the HTTP
-          // route instead. No echo needed while attached — a session_draft
-          // here would reset the client's live-session state.
-          if (!attachedSessionId) {
-            sendCurrentDraft();
-          }
-          break;
-        }
-        case "set_session_model": {
-          if (!attachedSessionId) {
-            // Draft state: remember the choice and apply it on materialization.
-            draftModelOverride = msg.payload.override ?? null;
-            sendCurrentDraft();
-            break;
-          }
-          try {
-            send({
-              type: "session_updated",
-              payload: await sessionService.setSessionModel(
-                attachedSessionId,
-                msg.payload.override ?? null,
-              ),
-            });
-          } catch (error) {
-            fail(error);
-          }
-          break;
-        }
-        case "invoke_skill": {
-          try {
-            if (!attachedSessionId) {
-              if (!canMaterializeSession(auth)) {
-                fail(new Error("Authentication required"),
-                  "auth_required",
+            const raw = msg.payload.primaryDir;
+            if (raw) {
+              const resolved = resolve(raw);
+              const stat = statSync(resolved, { throwIfNoEntry: false });
+              if (!stat?.isDirectory()) {
+                fail(new Error(`Main folder does not exist:${resolved}`),
                 );
                 break;
               }
-              const initial = await sessionService.createSession(
-                draftSelectors,
-                {
-                  ...sessionCreationMetadataForAuth(auth, draftVisibility),
-                  mode: draftMode,
-                  fullAccess: draftFullAccess,
-                  modelOverride: draftModelOverride,
-                  studyTag: draftStudyTag,
-                  workspace: draftWorkspace
-                    ? { primaryDir: draftWorkspace }
-                    : null,
-                },
-              );
-              // The draft choice covered only this conversation; the next
-              // draft starts from Ask again.
-              draftFullAccess = false;
-              if (closed) return;
-              attachToSession(initial.sessionId);
-            }
-            sessionService.invokeSkill(
-              attachedSessionId,
-              msg.payload.skillName,
-              msg.payload.userText,
-            );
-          } catch (error) {
-            fail(error);
-          }
-          break;
-        }
-        case "revise_latest": {
-          if (!attachedSessionId) {
-            fail(new Error("A materialized session is required"));
-            break;
-          }
-          try {
-            if (msg.payload.entryId) {
-              sessionService.reviseAt(attachedSessionId, msg.payload.entryId, msg.payload.text);
+              draftWorkspace = resolved;
             } else {
-              sessionService.reviseLatest(attachedSessionId, msg.payload.text);
+              draftWorkspace = null;
             }
-          } catch (error) {
-            fail(error);
-          }
-          break;
-        }
-        case "branch_revision": {
-          if (!attachedSessionId) {
-            fail(new Error("A materialized session is required"));
-            break;
-          }
-          try {
-            const sourceSessionId = attachedSessionId;
-            const targetEntryId =
-              msg.payload.entryId ??
-              sessionService
-                .getTranscript(sourceSessionId)
-                .filter((message) => message.role === "user")
-                .at(-1)?.entryId;
-            if (!targetEntryId) {
-              throw new Error("No user prompt is available to edit");
+            // The selector chooses where the NEXT conversation goes (sticky
+            // draft); re-pointing an existing session goes through the HTTP
+            // route instead. No echo needed while attached — a session_draft
+            // here would reset the client's live-session state.
+            if (!attachedSessionId) {
+              sendCurrentDraft();
             }
-            const forked = await sessionService.forkSession(
-              sourceSessionId,
-              "fork",
-            );
-            if (closed) break;
-            // The branch is a comparison, not a destination: this connection
-            // stays on the source conversation and the client opens the fork
-            // in its own pane (own socket). Re-attaching here is what used to
-            // swallow the typed text and glue the new answer under the old.
-            send({
-              type: "branch_created",
-              payload: {
-                sessionId: forked.sessionId,
-                sourceSessionId,
-              },
-            });
-            sessionService.reviseAt(forked.sessionId, targetEntryId, msg.payload.text);
-          } catch (error) {
-            fail(error);
-          }
-          break;
-        }
-        case "prepare_branch_revision": {
-          if (!attachedSessionId) {
-            fail(new Error("A materialized session is required"));
             break;
           }
-          try {
-            const sourceSessionId = attachedSessionId;
-            const forked = await sessionService.prepareRevisionBranch(
-              sourceSessionId,
-              msg.payload.entryId,
-            );
-            if (closed) break;
-            send({
-              type: "branch_created",
-              payload: { sessionId: forked.sessionId, sourceSessionId },
-            });
-          } catch (error) {
-            fail(error);
-          }
-          break;
-        }
-        case "retry_latest": {
-          if (!attachedSessionId) {
-            fail(new Error("A materialized session is required"));
-            break;
-          }
-          try {
-            sessionService.retryLatestFromStart(attachedSessionId);
-          } catch (error) {
-            fail(error);
-          }
-          break;
-        }
-        case "continue_latest": {
-          if (!attachedSessionId) {
-            fail(new Error("A materialized session is required"));
-            break;
-          }
-          try {
-            sessionService.continueLatestFromBreakpoint(attachedSessionId);
-          } catch (error) {
-            fail(error);
-          }
-          break;
-        }
-        case "delete_latest": {
-          if (!attachedSessionId) {
-            fail(new Error("A materialized session is required"));
-            break;
-          }
-          try {
-            const snapshot = sessionService.deleteLatest(attachedSessionId);
-            send({ type: "session_updated", payload: snapshot });
-            send({
-              type: "session_transcript",
-              payload: {
-                messages: sessionService.getTranscript(attachedSessionId),
-              },
-            });
-          } catch (error) {
-            fail(error);
-          }
-          break;
-        }
-        case "switch_mode": {
-          if (msg.payload.mode !== "understand" && msg.payload.mode !== "work") {
-            fail(new Error("Unknown mode"));
-            break;
-          }
-          if (!attachedSessionId) {
-            draftMode = msg.payload.mode;
-            sendCurrentDraft();
-            break;
-          }
-          try {
-            const snapshot = await sessionService.switchMode(
-              attachedSessionId,
-              msg.payload.mode,
-            );
-            send({ type: "session_updated", payload: snapshot });
-          } catch (error) {
-            fail(error);
-          }
-          break;
-        }
-        case "set_full_access": {
-          if (typeof msg.payload?.enabled !== "boolean") {
-            fail(new Error("enabled must be a boolean"));
-            break;
-          }
-          // Full Access is a local-only control (v1.4.8); the mode check
-          // (local Work / Native Pi) lives in the session runtime itself.
-          if (!localMode) {
-            fail(new Error("Full access is not enabled on this server"),
-            );
-            break;
-          }
-          if (!attachedSessionId) {
-            // Draft: remember the choice; it applies when the first message
-            // materializes the conversation, then resets.
-            if (
-              msg.payload.enabled &&
-              draftMode !== "work" &&
-              readAppSettings(dataDir).runtimeMode !== "native-pi"
-            ) {
-              fail(new Error(
-                  "Full access can only be enabled in local Work or Native Pi mode.",
+          case "set_session_model": {
+            if (!attachedSessionId) {
+              // Draft state: remember the choice and apply it on materialization.
+              draftModelOverride = msg.payload.override ?? null;
+              sendCurrentDraft();
+              break;
+            }
+            try {
+              send({
+                type: "session_updated",
+                payload: await sessionService.setSessionModel(
+                  attachedSessionId,
+                  msg.payload.override ?? null,
                 ),
+              });
+            } catch (error) {
+              fail(error);
+            }
+            break;
+          }
+          case "invoke_skill": {
+            try {
+              if (!attachedSessionId) {
+                if (!canMaterializeSession(auth)) {
+                  fail(new Error("Authentication required"),
+                    "auth_required",
+                  );
+                  break;
+                }
+                const initial = await sessionService.createSession(
+                  draftSelectors,
+                  {
+                    ...sessionCreationMetadataForAuth(auth, draftVisibility),
+                    mode: draftMode,
+                    fullAccess: draftFullAccess,
+                    modelOverride: draftModelOverride,
+                    studyTag: draftStudyTag,
+                    workspace: draftWorkspace
+                      ? { primaryDir: draftWorkspace }
+                      : null,
+                  },
+                );
+                // The draft choice covered only this conversation; the next
+                // draft starts from Ask again.
+                draftFullAccess = false;
+                if (closed) return;
+                attachToSession(initial.sessionId);
+              }
+              sessionService.invokeSkill(
+                attachedSessionId,
+                msg.payload.skillName,
+                msg.payload.userText,
+              );
+            } catch (error) {
+              fail(error);
+            }
+            break;
+          }
+          case "revise_latest": {
+            if (!attachedSessionId) {
+              fail(new Error("A materialized session is required"));
+              break;
+            }
+            try {
+              if (msg.payload.entryId) {
+                sessionService.reviseAt(attachedSessionId, msg.payload.entryId, msg.payload.text);
+              } else {
+                sessionService.reviseLatest(attachedSessionId, msg.payload.text);
+              }
+            } catch (error) {
+              fail(error);
+            }
+            break;
+          }
+          case "branch_revision": {
+            if (!attachedSessionId) {
+              fail(new Error("A materialized session is required"));
+              break;
+            }
+            try {
+              const sourceSessionId = attachedSessionId;
+              const targetEntryId =
+                msg.payload.entryId ??
+                sessionService
+                  .getTranscript(sourceSessionId)
+                  .filter((message) => message.role === "user")
+                  .at(-1)?.entryId;
+              if (!targetEntryId) {
+                throw new Error("No user prompt is available to edit");
+              }
+              const forked = await sessionService.forkSession(
+                sourceSessionId,
+                "fork",
+              );
+              if (closed) break;
+              // The branch is a comparison, not a destination: this connection
+              // stays on the source conversation and the client opens the fork
+              // in its own pane (own socket). Re-attaching here is what used to
+              // swallow the typed text and glue the new answer under the old.
+              send({
+                type: "branch_created",
+                payload: {
+                  sessionId: forked.sessionId,
+                  sourceSessionId,
+                },
+              });
+              sessionService.reviseAt(forked.sessionId, targetEntryId, msg.payload.text);
+            } catch (error) {
+              fail(error);
+            }
+            break;
+          }
+          case "prepare_branch_revision": {
+            if (!attachedSessionId) {
+              fail(new Error("A materialized session is required"));
+              break;
+            }
+            try {
+              const sourceSessionId = attachedSessionId;
+              const forked = await sessionService.prepareRevisionBranch(
+                sourceSessionId,
+                msg.payload.entryId,
+              );
+              if (closed) break;
+              send({
+                type: "branch_created",
+                payload: { sessionId: forked.sessionId, sourceSessionId },
+              });
+            } catch (error) {
+              fail(error);
+            }
+            break;
+          }
+          case "retry_latest": {
+            if (!attachedSessionId) {
+              fail(new Error("A materialized session is required"));
+              break;
+            }
+            try {
+              sessionService.retryLatestFromStart(attachedSessionId);
+            } catch (error) {
+              fail(error);
+            }
+            break;
+          }
+          case "continue_latest": {
+            if (!attachedSessionId) {
+              fail(new Error("A materialized session is required"));
+              break;
+            }
+            try {
+              sessionService.continueLatestFromBreakpoint(attachedSessionId);
+            } catch (error) {
+              fail(error);
+            }
+            break;
+          }
+          case "delete_latest": {
+            if (!attachedSessionId) {
+              fail(new Error("A materialized session is required"));
+              break;
+            }
+            try {
+              const snapshot = sessionService.deleteLatest(attachedSessionId);
+              send({ type: "session_updated", payload: snapshot });
+              send({
+                type: "session_transcript",
+                payload: {
+                  messages: sessionService.getTranscript(attachedSessionId),
+                },
+              });
+            } catch (error) {
+              fail(error);
+            }
+            break;
+          }
+          case "switch_mode": {
+            if (msg.payload.mode !== "understand" && msg.payload.mode !== "work") {
+              fail(new Error("Unknown mode"));
+              break;
+            }
+            if (!attachedSessionId) {
+              draftMode = msg.payload.mode;
+              sendCurrentDraft();
+              break;
+            }
+            try {
+              const snapshot = await sessionService.switchMode(
+                attachedSessionId,
+                msg.payload.mode,
+              );
+              send({ type: "session_updated", payload: snapshot });
+            } catch (error) {
+              fail(error);
+            }
+            break;
+          }
+          case "set_full_access": {
+            if (typeof msg.payload?.enabled !== "boolean") {
+              fail(new Error("enabled must be a boolean"));
+              break;
+            }
+            // Full Access is a local-only control (v1.4.8); the mode check
+            // (local Work / Native Pi) lives in the session runtime itself.
+            if (!localMode) {
+              fail(new Error("Full access is not enabled on this server"),
               );
               break;
             }
-            draftFullAccess = msg.payload.enabled;
-            sendCurrentDraft();
+            if (!attachedSessionId) {
+              // Draft: remember the choice; it applies when the first message
+              // materializes the conversation, then resets.
+              if (
+                msg.payload.enabled &&
+                draftMode !== "work" &&
+                readAppSettings(dataDir).runtimeMode !== "native-pi"
+              ) {
+                fail(new Error(
+                    "Full access can only be enabled in local Work or Native Pi mode.",
+                  ),
+                );
+                break;
+              }
+              draftFullAccess = msg.payload.enabled;
+              sendCurrentDraft();
+              break;
+            }
+            try {
+              const snapshot = await sessionService.setFullAccess(
+                attachedSessionId,
+                msg.payload.enabled,
+              );
+              send({ type: "session_updated", payload: snapshot });
+            } catch (error) {
+              fail(error);
+            }
             break;
           }
-          try {
-            const snapshot = await sessionService.setFullAccess(
-              attachedSessionId,
-              msg.payload.enabled,
-            );
-            send({ type: "session_updated", payload: snapshot });
-          } catch (error) {
-            fail(error);
-          }
-          break;
-        }
-        case "respond_approval": {
-          if (!attachedSessionId) {
-            fail(new Error("A materialized session is required"));
+          case "respond_approval": {
+            if (!attachedSessionId) {
+              fail(new Error("A materialized session is required"));
+              break;
+            }
+            if (typeof msg.payload?.approvalId !== "string") {
+              fail(new Error("An approvalId is required"));
+              break;
+            }
+            try {
+              const { approvalId, accept, choice, text } = msg.payload;
+              const responded = sessionService.respondApproval(attachedSessionId, approvalId, {
+                accept,
+                choice,
+                text,
+              });
+              if (!responded) throw new Error("Approval is no longer pending");
+            } catch (error) {
+              fail(error);
+            }
             break;
           }
-          if (typeof msg.payload?.approvalId !== "string") {
-            fail(new Error("An approvalId is required"));
+          case "fork_session": {
+            const forkSource = msg.payload.sourceSessionId ?? attachedSessionId;
+            if (!forkSource) {
+              fail(new Error("A materialized session is required"));
+              break;
+            }
+            try {
+              requireSessionWsContentAccess(forkSource);
+              const forked = await sessionService.forkSession(
+                forkSource,
+                msg.payload.purpose,
+                msg.payload.forkPointEntryId,
+              );
+              if (!closed) {
+                if (msg.payload.sourceSessionId) {
+                  // Session-list Duplicate intentionally follows its copy.
+                  attachToSession(forked.sessionId);
+                  send({
+                    type: "session_transcript",
+                    payload: {
+                      messages: sessionService.getTranscript(forked.sessionId),
+                    },
+                  });
+                } else {
+                  // `/branch` is an idle Related conversation; keep this socket
+                  // attached to its source just like edit comparison.
+                  send({
+                    type: "branch_created",
+                    payload: { sessionId: forked.sessionId, sourceSessionId: forkSource },
+                  });
+                }
+              }
+            } catch (error) {
+              fail(error);
+            }
             break;
           }
-          try {
-            const { approvalId, accept, choice, text } = msg.payload;
-            const responded = sessionService.respondApproval(attachedSessionId, approvalId, {
-              accept,
-              choice,
-              text,
-            });
-            if (!responded) throw new Error("Approval is no longer pending");
-          } catch (error) {
-            fail(error);
-          }
-          break;
-        }
-        case "fork_session": {
-          const forkSource = msg.payload.sourceSessionId ?? attachedSessionId;
-          if (!forkSource) {
-            fail(new Error("A materialized session is required"));
-            break;
-          }
-          try {
-            requireSessionWsContentAccess(forkSource);
-            const forked = await sessionService.forkSession(
-              forkSource,
-              msg.payload.purpose,
-              msg.payload.forkPointEntryId,
-            );
-            if (!closed) {
-              if (msg.payload.sourceSessionId) {
-                // Session-list Duplicate intentionally follows its copy.
-                attachToSession(forked.sessionId);
+          case "create_related_session": {
+            if (!attachedSessionId) {
+              fail(new Error("A materialized session is required"));
+              break;
+            }
+            try {
+              const related = await sessionService.createRelatedSession(
+                attachedSessionId,
+                msg.payload.purpose,
+                msg.payload.forkPointEntryId,
+              );
+              if (!closed) {
                 send({
-                  type: "session_transcript",
+                  type: "related_session_created",
                   payload: {
-                    messages: sessionService.getTranscript(forked.sessionId),
+                    sessionId: related.sessionId,
+                    purpose: msg.payload.purpose,
                   },
                 });
-              } else {
-                // `/branch` is an idle Related conversation; keep this socket
-                // attached to its source just like edit comparison.
-                send({
-                  type: "branch_created",
-                  payload: { sessionId: forked.sessionId, sourceSessionId: forkSource },
-                });
               }
+            } catch (error) {
+              fail(error);
             }
-          } catch (error) {
-            fail(error);
-          }
-          break;
-        }
-        case "create_related_session": {
-          if (!attachedSessionId) {
-            fail(new Error("A materialized session is required"));
             break;
           }
-          try {
-            const related = await sessionService.createRelatedSession(
-              attachedSessionId,
-              msg.payload.purpose,
-              msg.payload.forkPointEntryId,
-            );
-            if (!closed) {
-              send({
-                type: "related_session_created",
-                payload: {
-                  sessionId: related.sessionId,
-                  purpose: msg.payload.purpose,
-                },
-              });
+          case "create_helper_session": {
+            if (!canMaterializeSession(auth)) {
+              fail(new Error("Authentication required"), "auth_required");
+              break;
             }
-          } catch (error) {
-            fail(error);
-          }
-          break;
-        }
-        case "create_helper_session": {
-          if (!canMaterializeSession(auth)) {
-            fail(new Error("Authentication required"), "auth_required");
-            break;
-          }
-          const parentSessionId = msg.payload.parentSessionId;
-          let rootSelectors = draftSelectors;
-          let rootMode = draftMode;
-          let rootModelOverride = draftModelOverride;
-          let rootWorkspace = draftWorkspace;
-          try {
-            if (parentSessionId) {
-              try {
-                const parent = requireSessionWsContentAccess(parentSessionId);
-                rootSelectors = sessionService.getSelectors(parentSessionId);
-                const parentSnapshot = sessionService.getSnapshot(parentSessionId);
-                rootMode = parentSnapshot.mode;
-                rootModelOverride = parentSnapshot.modelOverride ?? null;
-                rootWorkspace = parent.workspacePrimaryDir ?? null;
-                const parentIsHelper =
-                  parent.helper || parent.forkedFrom?.purpose === "helper";
-                if (!parentIsHelper) {
-                  const related = await sessionService.createRelatedSession(
-                    parentSessionId,
-                    "helper",
-                  );
-                  if (!closed) {
-                    send({
-                      type: "related_session_created",
-                      payload: { sessionId: related.sessionId, purpose: "helper" },
-                    });
+            const parentSessionId = msg.payload.parentSessionId;
+            let rootSelectors = draftSelectors;
+            let rootMode = draftMode;
+            let rootModelOverride = draftModelOverride;
+            let rootWorkspace = draftWorkspace;
+            try {
+              if (parentSessionId) {
+                try {
+                  const parent = requireSessionWsContentAccess(parentSessionId);
+                  rootSelectors = sessionService.getSelectors(parentSessionId);
+                  const parentSnapshot = sessionService.getSnapshot(parentSessionId);
+                  rootMode = parentSnapshot.mode;
+                  rootModelOverride = parentSnapshot.modelOverride ?? null;
+                  rootWorkspace = parent.workspacePrimaryDir ?? null;
+                  const parentIsHelper =
+                    parent.helper || parent.forkedFrom?.purpose === "helper";
+                  if (!parentIsHelper) {
+                    const related = await sessionService.createRelatedSession(
+                      parentSessionId,
+                      "helper",
+                    );
+                    if (!closed) {
+                      send({
+                        type: "related_session_created",
+                        payload: { sessionId: related.sessionId, purpose: "helper" },
+                      });
+                    }
+                    break;
                   }
-                  break;
+                } catch {
+                  // A stale, busy, trashed, or otherwise unusable parent must not
+                  // make Help disappear. The root Helper below is the fallback.
                 }
-              } catch {
-                // A stale, busy, trashed, or otherwise unusable parent must not
-                // make Help disappear. The root Helper below is the fallback.
               }
+              const root = await sessionService.createSession(rootSelectors, {
+                ...sessionCreationMetadataForAuth(auth, draftVisibility),
+                helper: true,
+                mode: rootMode,
+                modelOverride: rootModelOverride,
+                studyTag: draftStudyTag,
+                workspace: rootWorkspace ? { primaryDir: rootWorkspace } : null,
+              });
+              if (!closed) attachToSession(root.sessionId);
+            } catch (error) {
+              fail(error);
             }
-            const root = await sessionService.createSession(rootSelectors, {
-              ...sessionCreationMetadataForAuth(auth, draftVisibility),
-              helper: true,
-              mode: rootMode,
-              modelOverride: rootModelOverride,
-              studyTag: draftStudyTag,
-              workspace: rootWorkspace ? { primaryDir: rootWorkspace } : null,
+            break;
+          }
+          case "new_session": {
+            if (attachedSessionId) {
+              draftSelectors = sessionService.getSelectors(attachedSessionId);
+            }
+            detach();
+            detach = () => {};
+            attachedSessionId = null;
+            draftVisibility = defaultDraftVisibility();
+            // Model override is a per-conversation choice; workspace stays
+            // sticky for the next conversation.
+            draftMode =
+              readAppSettings(dataDir).defaultAltMode ?? "understand";
+            draftModelOverride = null;
+            draftStudyTag = null;
+            sendCurrentDraft(true);
+            break;
+          }
+          case "open_session": {
+            const selectors = attachedSessionId
+              ? sessionService.getSelectors(attachedSessionId)
+              : draftSelectors;
+            try {
+              requireSessionWsContentAccess(msg.payload.sessionId);
+              const opened = await sessionService.openSession(
+                msg.payload.sessionId,
+                selectors,
+              );
+              if (closed) return;
+              attachToSession(opened.sessionId);
+              sendTranscriptWithLiveReplay(opened.sessionId);
+            } catch (error) {
+              fail(error);
+            }
+            break;
+          }
+          case "get_session_metadata":
+            if (!attachedSessionId) {
+              sendCurrentDraft();
+              break;
+            }
+            send({
+              type: "session_metadata",
+              payload: sessionService.getManifest(attachedSessionId),
             });
-            if (!closed) attachToSession(root.sessionId);
-          } catch (error) {
-            fail(error);
-          }
-          break;
-        }
-        case "new_session": {
-          if (attachedSessionId) {
-            draftSelectors = sessionService.getSelectors(attachedSessionId);
-          }
-          detach();
-          detach = () => {};
-          attachedSessionId = null;
-          draftVisibility = defaultDraftVisibility();
-          // Model override is a per-conversation choice; workspace stays
-          // sticky for the next conversation.
-          draftMode =
-            readAppSettings(dataDir).defaultAltMode ?? "understand";
-          draftModelOverride = null;
-          draftStudyTag = null;
-          sendCurrentDraft(true);
-          break;
-        }
-        case "open_session": {
-          const selectors = attachedSessionId
-            ? sessionService.getSelectors(attachedSessionId)
-            : draftSelectors;
-          try {
-            requireSessionWsContentAccess(msg.payload.sessionId);
-            const opened = await sessionService.openSession(
-              msg.payload.sessionId,
-              selectors,
-            );
-            if (closed) return;
-            attachToSession(opened.sessionId);
-            sendTranscriptWithLiveReplay(opened.sessionId);
-          } catch (error) {
-            fail(error);
-          }
-          break;
-        }
-        case "get_session_metadata":
-          if (!attachedSessionId) {
-            sendCurrentDraft();
             break;
-          }
-          send({
-            type: "session_metadata",
-            payload: sessionService.getManifest(attachedSessionId),
-          });
-          break;
-        case "get_session_metrics":
-          if (!attachedSessionId) {
-            sendCurrentDraft();
+          case "get_session_metrics":
+            if (!attachedSessionId) {
+              sendCurrentDraft();
+              break;
+            }
+            send({
+              type: "session_metrics",
+              payload: sessionService.getMetrics(attachedSessionId),
+            });
             break;
-          }
-          send({
-            type: "session_metrics",
-            payload: sessionService.getMetrics(attachedSessionId),
-          });
-          break;
+        }
+      } finally {
+        done();
       }
     });
   });
