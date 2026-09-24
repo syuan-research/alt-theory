@@ -534,7 +534,6 @@ const catalog: Record<string, string> = {
   "Only relevant if you take part in a study. If you are not in a study, you can leave this hidden.": "僅在你參與研究時相關。如果你不參與研究，可以將其隱藏。",
   "Open conversation": "打開對話",
   "Open download page": "開啟下載頁面",
-  "Open folder": "打開資料夾",
   "Open Helper from Help or Related — it answers from the current documentation, in its own conversation.": "從“幫助”或“相關”打開幫手——幫手會在自己的對話中根據當前文檔回答。",
   "Open imported conversation": "打開匯入的對話",
   "Open in browser": "在瀏覽器中打開",

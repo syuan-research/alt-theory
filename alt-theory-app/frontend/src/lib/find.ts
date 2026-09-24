@@ -63,34 +63,31 @@ const SKIP = "button, textarea, input, select, script, style, [data-find-skip]";
 /** A text run never continues across these (no "end of one para + next"). */
 const BLOCK = "p, li, pre, td, th, h1, h2, h3, h4, h5, h6, blockquote, summary, dt, dd, tr, div";
 
-function collectText(host: HTMLElement, only?: string): { nodes: (Text | null)[]; texts: string[] } {
+function collectText(host: HTMLElement): { nodes: (Text | null)[]; texts: string[] } {
   const nodes: (Text | null)[] = [];
   const texts: string[] = [];
-  const roots = only ? Array.from(host.querySelectorAll<HTMLElement>(only)) : [host];
   let lastBlock: Element | null = null;
-  for (const root of roots) {
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-      const parent = node.parentElement;
-      if (!parent || !node.nodeValue || parent.closest(SKIP)) continue;
-      // Collapsed thinking / tool detail stays searchable (the jump opens
-      // it); anything hidden another way (mermaid's parked source) is not.
-      if (!parent.closest("details:not([open])") && !parent.checkVisibility()) continue;
-      const block = parent.closest(BLOCK);
-      if (block !== lastBlock) {
-        nodes.push(null);
-        texts.push("\n");
-        lastBlock = block;
-      }
-      nodes.push(node as Text);
-      texts.push(node.nodeValue);
+  const walker = document.createTreeWalker(host, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const parent = node.parentElement;
+    if (!parent || !node.nodeValue || parent.closest(SKIP)) continue;
+    // Collapsed thinking / tool detail stays searchable (the jump opens
+    // it); anything hidden another way (mermaid's parked source) is not.
+    if (!parent.closest("details:not([open])") && !parent.checkVisibility()) continue;
+    const block = parent.closest(BLOCK);
+    if (block !== lastBlock) {
+      nodes.push(null);
+      texts.push("\n");
+      lastBlock = block;
     }
+    nodes.push(node as Text);
+    texts.push(node.nodeValue);
   }
   return { nodes, texts };
 }
 
-export function findRanges(host: HTMLElement, query: string, only?: string): Range[] {
-  const { nodes, texts } = collectText(host, only);
+export function findRanges(host: HTMLElement, query: string): Range[] {
+  const { nodes, texts } = collectText(host);
   return findSpans(texts, query).map(([a, ao, b, bo]) => {
     const range = document.createRange();
     range.setStart(nodes[a]!, ao);
@@ -131,9 +128,10 @@ export function revealRange(range: Range): void {
 
 // ---- targets --------------------------------------------------------------
 
-/** Text: search inside the element (optionally only `only` descendants).
- *  Focus: the pane already has a filter box — open and focus it. */
-export type FindSpec = { only?: string } | { focus: () => void };
+/** Two kinds (owner 2026-09-24): inside an opened conversation or file,
+ *  full-text find in the floating bar (`{}`); in a pane that lists things
+ *  to open (conversations, files, changes), its own filter box (`focus`). */
+export type FindSpec = { focus?: () => void };
 export type FindTarget = FindSpec & { el: HTMLElement };
 
 interface Entry {

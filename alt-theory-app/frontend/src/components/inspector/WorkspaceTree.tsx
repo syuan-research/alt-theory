@@ -19,6 +19,7 @@ import { useShell } from "@/context/ShellContext";
 import { hasNativeBridge, revealPath } from "@/lib/native";
 import { stagePathAfterUpload, WORKSPACE_PATH_MIME } from "@/lib/workspace";
 import { FilePreview } from "@/components/inspector/FilePreview";
+import { FolderHead, ListTools } from "@/components/inspector/FolderList";
 import { buildFileTreeModel, getFileTreeNode, type FileTreeNode } from "@/lib/fileTree";
 import type { PreviewMode } from "@/lib/fileContent";
 import { guardLeave } from "@/lib/fileEditGuard";
@@ -56,6 +57,10 @@ export function WorkspaceTree() {
   // the view mode and filter live in pane memory.
   const [previewView, setPreviewView] = usePaneMemory<PreviewMode>(`${sessionId}:files:mode`, "rendered");
   const [query, setQuery] = usePaneMemory(`${sessionId}:files:query`, "");
+  const [closedFolders, setClosedFolders] = usePaneMemory<string[]>(`${sessionId}:files:closedFolders`, []);
+  const folderClosed = (id: string) => !query.trim() && closedFolders.includes(id);
+  const toggleFolder = (id: string) =>
+    setClosedFolders((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
   const subKey = shell.rightSub?.key ?? "";
   const preview: { path: string; source: "managed" | "working" } | null = subKey.startsWith("ws:")
     ? { path: subKey.slice("ws:".length), source: "managed" }
@@ -235,59 +240,46 @@ export function WorkspaceTree() {
 
   return (
     <>
-      <label className="files-search" ref={filterRef}>
-        <i className="ph ph-magnifying-glass" aria-hidden="true" />
-        <input
-          type="search"
-          value={query}
-          placeholder={t("Filter files")}
-          aria-label={t("Filter files")}
-          onChange={(event) => setQuery(event.target.value)}
-        />
-      </label>
-      {(workingFolders.some((folder) => folder.available && !folder.managed) || (entries?.length ?? 0) > 0) ? (
-        <div className="files-tree-toolbar">
-          <button className="flat" onClick={() => setExpandSignal((value) => value + 1)}>
-            <i className="ph ph-arrows-out-line-vertical" aria-hidden="true" />
-            {t("Expand all")}
-          </button>
-          <button className="flat" onClick={() => setCollapseSignal((value) => value + 1)}>
-            <i className="ph ph-arrows-in-line-vertical" aria-hidden="true" />
-            {t("Collapse all")}
-          </button>
-        </div>
-      ) : null}
+      <ListTools
+        filterRef={filterRef}
+        query={query}
+        onQuery={setQuery}
+        placeholder={t("Filter files")}
+        {...(workingFolders.some((folder) => folder.available && !folder.managed) || (entries?.length ?? 0) > 0
+          ? {
+              onExpandAll: () => {
+                setClosedFolders([]);
+                setExpandSignal((value) => value + 1);
+              },
+              onCollapseAll: () => {
+                setClosedFolders(folders.map((folder) => folder.id));
+                setCollapseSignal((value) => value + 1);
+              },
+            }
+          : {})}
+      />
       {folders.length > 0 ? (
         <div className="working-folders">
           {folders.map((folder) => (
             <div className="working-folder-group" key={folder.id}>
-              <div className="working-folder">
-                <i className="ph ph-folder-open" />
-                <div>
-                      <div className="working-folder-role">
-                        {folder.role === "primary"
-                          ? t("Main folder")
-                          : folder.role === "global"
-                            ? t("Global folder")
-                            : t("Companion folder")}
-                        {folder.managed ? ` · ${t("conversation folder")}` : ""}
-                      </div>
-                  <div className="working-folder-path" data-tip={folder.path}>{folder.path}</div>
-                  {folder.available && hasNativeBridge() ? (
-                    <button
-                      className="working-folder-open"
-                      onClick={() => void revealPath(folder.path)}
-                    >
-                      <i className="ph ph-arrow-square-out" />
-                      {t("Open folder")}
-                    </button>
-                  ) : null}
-                  {!folder.available ? (
-                    <div className="working-folder-missing">{t("Folder is not available on this device.")}</div>
-                  ) : null}
-                </div>
-              </div>
+              <FolderHead
+                path={folder.path}
+                role={`${folder.role === "primary"
+                  ? t("Main folder")
+                  : folder.role === "global"
+                    ? t("Global folder")
+                    : t("Companion folder")}${folder.managed ? ` · ${t("conversation folder")}` : ""}`}
+                available={folder.available}
+                closed={folderClosed(folder.id)}
+                onToggle={folder.available && !folder.managed && sessionId ? () => toggleFolder(folder.id) : undefined}
+              />
+              {!folder.available ? (
+                <div className="working-folder-missing">{t("Folder is not available on this device.")}</div>
+              ) : null}
               {folder.available && !folder.managed && sessionId ? (
+                // Folded with `hidden`, not unmounted: the loaded levels and
+                // expansion stay. A filter shows matches even when folded.
+                <div hidden={folderClosed(folder.id)}>
                 <WorkingTree
                   key={`${sessionId}:${folder.id}`}
                   sessionId={sessionId!}
@@ -300,6 +292,7 @@ export function WorkspaceTree() {
                   query={query}
                   memoryKey={`${sessionId}:files:${folder.id}`}
                 />
+                </div>
               ) : null}
             </div>
           ))}

@@ -72,7 +72,7 @@ export function FindBar() {
   const onFind = useCallback(() => {
     const target = resolveFindTarget();
     if (!target) return;
-    if ("focus" in target) {
+    if (target.focus) {
       if (hostRef.current) close();
       target.focus();
       return;
@@ -89,7 +89,7 @@ export function FindBar() {
   // New query or new host: jump to the first match from the current view down.
   useEffect(() => {
     if (!host) return;
-    rangesRef.current = findRanges(host.el, query, "only" in host ? host.only : undefined);
+    rangesRef.current = findRanges(host.el, query);
     const top = scrollerOf(host.el)?.getBoundingClientRect().top ?? 0;
     const first = rangesRef.current.findIndex((range) => range.getBoundingClientRect().bottom >= top);
     show(Math.max(0, first), true);
@@ -108,7 +108,7 @@ export function FindBar() {
           close();
           return;
         }
-        rangesRef.current = findRanges(host.el, queryRef.current, "only" in host ? host.only : undefined);
+        rangesRef.current = findRanges(host.el, queryRef.current);
         show(Math.min(indexRef.current, rangesRef.current.length - 1), false);
       }, 150);
     });

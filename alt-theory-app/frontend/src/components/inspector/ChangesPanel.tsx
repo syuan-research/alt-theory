@@ -5,12 +5,14 @@ import { t } from "@/i18n";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
 import { FilePreview } from "@/components/inspector/FilePreview";
+import { FolderHead, ListTools } from "@/components/inspector/FolderList";
 import { useContextMenu, type ContextMenuItem } from "@/components/shell/ContextMenu";
 import { copyText } from "@/lib/clipboard";
 import { hasNativeBridge, revealPath } from "@/lib/native";
 import { usePaneMemory } from "@/lib/paneMemory";
 import { useFindTarget } from "@/lib/find";
 import type { PreviewMode } from "@/lib/fileContent";
+import { quickFindScore, quickFindTerms } from "../../../../shared/quick-find";
 
 /**
  * Files the conversation family changed (M7 §2; card 7), grouped the way
@@ -30,9 +32,17 @@ export function ChangesPanel() {
   const [mode, setMode] = usePaneMemory<PreviewMode>(`${sessionId}:changes:${key ?? ""}:mode`, "rendered");
   const [groups, setGroups] = usePaneMemory<ChangeGroup[] | null>(`${sessionId}:changes:groups`, null);
   const [error, setError] = usePaneMemory<string | null>(`${sessionId}:changes:error`, null);
-  // Ctrl+F on the list matches file names only (owner 2026-09-24).
-  const listRef = useRef<HTMLDivElement>(null);
-  useFindTarget(listRef, { only: ".s-title" });
+  // The same always-visible filter as Files (owner 2026-09-24: lists of
+  // things to open filter; opened content gets the Ctrl+F find bar).
+  const [query, setQuery] = usePaneMemory(`${sessionId}:changes:query`, "");
+  const filterRef = useRef<HTMLLabelElement>(null);
+  useFindTarget(filterRef, {
+    focus: () => {
+      const input = filterRef.current?.querySelector("input");
+      input?.focus();
+      input?.select();
+    },
+  });
 
   useEffect(() => {
     if (!sessionId) {
@@ -82,36 +92,46 @@ export function ChangesPanel() {
   ];
   const roleText = (group: ChangeGroup) =>
     group.role === "primary" ? t("Main folder") : group.role === "companion" ? t("Companion folder") : t("Outside");
-  const titleOf = (group: ChangeGroup) => group.title.split(/[\\/]/).filter(Boolean).at(-1) ?? group.title;
+  const normalizedQuery = query.trim();
+  const terms = quickFindTerms(normalizedQuery);
+  const shown = normalizedQuery
+    ? groups
+        .map((group) => ({
+          ...group,
+          files: group.files.filter((file) => quickFindScore(terms, [
+            { text: file.displayPath.split(/[\\/]/).at(-1), weight: 10 },
+            { text: file.displayPath, weight: 3 },
+          ]) > 0),
+        }))
+        .filter((group) => group.files.length > 0)
+    : groups;
   const toggle = (path: string) =>
     setClosed((prev) => (prev.includes(path) ? prev.filter((item) => item !== path) : [...prev, path]));
 
   return (
     <>
-      <div ref={listRef}>
-      {groups.map((group) => {
-        const isClosed = closed.includes(group.path);
+      <ListTools
+        filterRef={filterRef}
+        query={query}
+        onQuery={setQuery}
+        placeholder={t("Filter files")}
+        onExpandAll={() => setClosed([])}
+        onCollapseAll={() => setClosed(groups.map((group) => group.path))}
+      />
+      {normalizedQuery && shown.length === 0 ? (
+        <div className="rp-empty">{t("No matching files.")}</div>
+      ) : null}
+      {shown.map((group) => {
+        // Filtering shows matches even inside a collapsed group.
+        const isClosed = !normalizedQuery && closed.includes(group.path);
         return (
           <div key={`${group.role}:${group.path}`} className="changes-group">
-            <button type="button" className={`group-label changes-group-head${isClosed ? " closed" : ""}`} data-tip={group.title} onClick={() => toggle(group.path)}>
-              <i className="ph ph-folder" />
-              <span className="group-name">{titleOf(group)}</span>
-              <span className="changes-group-role">{roleText(group)}</span>
-              {group.role === "outside" && hasNativeBridge() ? (
-                <span
-                  role="button"
-                  className="changes-group-open"
-                  data-tip={t("Show in file manager")}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    void revealPath(group.title);
-                  }}
-                >
-                  <i className="ph ph-arrow-square-out" />
-                </span>
-              ) : null}
-              <i className="ph ph-caret-down tw" />
-            </button>
+            <FolderHead
+              path={group.title}
+              role={roleText(group)}
+              closed={isClosed}
+              onToggle={() => toggle(group.path)}
+            />
             {isClosed
               ? null
               : group.files.map((file) => (
@@ -144,7 +164,6 @@ export function ChangesPanel() {
           </div>
         );
       })}
-      </div>
       {menu.element}
     </>
   );

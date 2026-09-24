@@ -232,9 +232,15 @@ surfaces remain designation-gated and absent for everyone else.
     containing folder with a depth cap of three levels below home or the
     drive root (`session-store.ts` `groupChanges`,
     `CHANGE_GROUP_DEPTH_CAP`). Every group is titled by the deepest common
-    ancestor of its files; rows show paths relative to that title; the role
-    (Main folder / Companion folder / Outside) is quiet grey text, and a group
+    ancestor of its files; rows show paths relative to that title, and a group
     that absorbed deeper folders says so in one muted line.
+  - Changes and Files share one folder chrome (Owner 2026-09-24): an
+    always-visible filter and Expand all / Collapse all on top, and one folder
+    header — folder name plus its role (Main / Companion / Global folder,
+    Outside) as quiet grey text on the first line, which folds the folder, and
+    the full path on the second, which reveals it in the file manager in the
+    desktop app. While a filter is active, matches show even in folded
+    folders. The Changes filter matches file names.
   - Right-pane view state outlives the pane (Owner 2026-09-03). The shell
     remembers, per rail, the last open sub (file, changed file, related
     child) and restores it when that rail reopens after a collapse or
@@ -248,8 +254,14 @@ surfaces remain designation-gated and absent for everyone else.
   - Files has one inline filter above the existing tree. It keeps matches and
     their ancestors in that tree, expands those ancestors while filtering, and
     restores the prior expansion when cleared. File-change rows may reveal the
-    same path here; path copying and file-manager reveal live in contextual
-    actions rather than permanent labels.
+    same path here; for files, path copying and file-manager reveal live in
+    contextual actions rather than permanent labels.
+  - Ctrl+F acts on the column the user last touched (Owner 2026-09-24). A
+    list of things to open (the conversation list, Files, Changes, Related)
+    focuses its own filter; opened content (a conversation, a related child, a
+    file preview) gets a floating find bar with a count and next/previous.
+    Clicking a conversation row counts as touching the center. Nothing happens
+    in Settings or Review, while a modal dialog is open, or in the file editor.
   - Contextual menus stay open while unrelated panes receive output or scroll;
     scrolling the menu's own anchor pane still dismisses them.
 - **Settings**

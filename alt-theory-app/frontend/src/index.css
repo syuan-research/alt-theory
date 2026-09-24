@@ -1197,12 +1197,7 @@
   .files-section-title { margin: var(--space-tight) var(--space-hair) var(--space-tight); color: var(--text-3); font-size: var(--fs-micro); font-weight: 600; }
   .working-folders { margin-bottom: var(--space-control); padding: 0; }
   .working-folder-group + .working-folder-group { border-top: 1px solid var(--hairline); padding-top: var(--space-tight); }
-  .working-folder { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: var(--space-tight); padding: var(--space-control) var(--space-tight) var(--space-tight); border-radius: var(--r-sm); background: transparent; color: var(--ink-soft); }
-  .working-folder-role { font-size: var(--fs-primary); font-weight: 500; }
-  .working-folder-path { margin-top: var(--space-hair); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3); font-family: var(--mono); font-size: var(--fs-secondary); }
-  .working-folder-open { display: inline-flex; align-items: center; gap: var(--space-tight); margin-top: var(--space-tight); padding: 0; border: 0; background: none; color: var(--ink); font: inherit; font-size: var(--fs-secondary); cursor: pointer; }
-  .working-folder-open:hover { text-decoration: underline; }
-  .working-folder-missing { margin-top: var(--space-hair); color: var(--danger); font-size: var(--fs-secondary); }
+  .working-folder-missing { margin: 0 var(--space-hair) var(--space-tight) 28px; color: var(--danger); font-size: var(--fs-secondary); }
   .working-tree { max-height: 62vh; overflow: auto; margin: 0 0 var(--space-tight) 20px; border-left: 1px solid var(--hairline); padding-left: var(--space-hair); }
   .working-tree .ti { display: flex; align-items: center; gap: var(--space-tight); width: 100%; border: none; background: transparent; color: var(--ink-soft); padding: var(--space-hair) var(--space-tight); text-align: left; font: inherit; font-size: var(--fs-primary); cursor: pointer; }
   .working-tree .ti span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1226,11 +1221,18 @@
   /* changes grouped by folder (proto D): folder names normal case, a little
      more present than the rail's labels; the role is quiet grey text */
   .changes-group { margin-bottom: var(--space-tight); }
-  .changes-group-head { width: 100%; border: 0; background: none; font-size: var(--fs-primary); font-weight: 600; color: var(--text-3); padding: var(--space-tight) var(--space-hair) var(--space-hair); }
-  .changes-group-head .group-name { color: var(--ink-soft); }
-  .changes-group-role { flex: 0 0 auto; font-size: var(--fs-micro); font-weight: 400; color: var(--text-3); }
-  .changes-group-open { flex: 0 0 auto; color: var(--text-3); cursor: pointer; }
-  .changes-group-open:hover { color: var(--ink); }
+  /* One folder header for Changes and Files (owner 2026-09-24): name + quiet
+     role (click folds), then the full path (click reveals). The path indent
+     lines up under the name (4px pad + 16px icon + 8px gap). */
+  .folder-head-title { width: 100%; border: 0; background: none; font-size: var(--fs-primary); font-weight: 600; color: var(--text-3); padding: var(--space-tight) var(--space-hair) 0; }
+  div.folder-head-title { cursor: default; }
+  .folder-head-title .group-name { color: var(--ink-soft); }
+  .folder-head-title .tw { margin-left: auto; transition: transform 0.12s; }
+  .folder-head-title.closed .tw { transform: rotate(-90deg); }
+  .folder-head-role { flex: 0 0 auto; font-size: var(--fs-micro); font-weight: 400; color: var(--text-3); }
+  .folder-head-path { display: block; max-width: calc(100% - 28px); margin: 0 0 var(--space-tight) 28px; padding: 0; border: 0; background: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; color: var(--text-3); font-family: var(--mono); font-size: var(--fs-micro); }
+  button.folder-head-path { cursor: pointer; }
+  button.folder-head-path:hover { color: var(--ink); text-decoration: underline; }
   .file-edit { width: 100%; min-height: 14rem; border: 0; outline: 0; resize: vertical; background: transparent; color: var(--ink); font-family: var(--mono); font-size: var(--fs-secondary); line-height: 1.45; }
   .file-edit-actions { display: flex; align-items: center; justify-content: space-between; gap: var(--space-tight); margin: var(--space-tight) 0; }
   .file-edit-actions .grow { flex: 1; min-width: 0; }
