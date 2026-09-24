@@ -2098,7 +2098,10 @@ export function buildTranscriptFromEntries(
       orderedEntries.splice(adjustedTarget + 1, 0, entry);
     }
   }
-  for (const entry of orderedEntries) {
+  // One entry's rows. Every row gets a stable id — the entry id plus its
+  // block ordinal — because one assistant entry projects to several rows that
+  // share an entryId, and system/compaction rows have none (M1: display key).
+  const projectEntry = (entry: unknown): void => {
     const value = entry as {
       id?: string;
       type?: string;
@@ -2128,7 +2131,7 @@ export function buildTranscriptFromEntries(
         text: agentMailDisplayText(value.content),
         timestamp: normalizeTimestamp(value.timestamp),
       });
-      continue;
+      return;
     }
     if (
       value.type === "custom_message" &&
@@ -2143,7 +2146,7 @@ export function buildTranscriptFromEntries(
         text: value.content,
         timestamp: normalizeTimestamp(value.timestamp),
       });
-      continue;
+      return;
     }
     if (value.type === "compaction") {
       transcript.push({
@@ -2157,10 +2160,10 @@ export function buildTranscriptFromEntries(
             : "Earlier conversation was compressed here to keep the context small. Alt keeps a summary of it.",
         timestamp: normalizeTimestamp(value.timestamp),
       });
-      continue;
+      return;
     }
-    if (value.type !== "message" || !value.message) continue;
-    if (value.id && inactiveEntryIds.has(value.id)) continue;
+    if (value.type !== "message" || !value.message) return;
+    if (value.id && inactiveEntryIds.has(value.id)) return;
 
     const role = normalizeRole(value.message.role);
     const timestamp = normalizeTimestamp(value.message.timestamp ?? value.timestamp);
@@ -2177,10 +2180,10 @@ export function buildTranscriptFromEntries(
           text: agentMailDisplayText(text),
           timestamp,
         });
-        continue;
+        return;
       }
       if (text) transcript.push({ role: "user", text, timestamp, entryId: value.id ?? null });
-      continue;
+      return;
     }
     if (role === "assistant") {
       const rows = assistantContentToTranscript(
@@ -2201,7 +2204,7 @@ export function buildTranscriptFromEntries(
         if (last) last.stopReason = "length";
       }
       transcript.push(...rows);
-      continue;
+      return;
     }
     if (role === "tool" || value.message.role === "toolResult") {
       const text = extractText(value.message.content).trim();
@@ -2230,7 +2233,7 @@ export function buildTranscriptFromEntries(
           text: text || transcript[callIndex].text,
           success,
         };
-        continue;
+        return;
       }
       transcript.push({
         role: "tool",
@@ -2242,6 +2245,15 @@ export function buildTranscriptFromEntries(
         truncated: false,
         timestamp,
       });
+    }
+  };
+  for (const entry of orderedEntries) {
+    const start = transcript.length;
+    projectEntry(entry);
+    const id = (entry as { id?: unknown }).id;
+    const base = typeof id === "string" && id ? id : `row-${start}`;
+    for (let index = start; index < transcript.length; index++) {
+      transcript[index].rowId = `${base}:${index - start}`;
     }
   }
   return transcript;

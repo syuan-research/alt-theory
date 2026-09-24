@@ -129,6 +129,40 @@ test("persisted tool results keep call order and failure state", () => {
       },
     ],
   );
+  // The three rows share one entryId; each has its own stable row id, the
+  // same on every projection (the display key, M1).
+  assert.deepEqual(
+    transcript.map((row) => [row.entryId, row.rowId]),
+    [
+      ["assistant-tool", "assistant-tool:0"],
+      ["assistant-tool", "assistant-tool:1"],
+      ["assistant-tool", "assistant-tool:2"],
+    ],
+  );
+});
+
+test("every projected row has a unique stable id, compaction rows included", () => {
+  const entries = [
+    { type: "message", id: "u1", message: { role: "user", content: "hi" } },
+    {
+      type: "message",
+      id: "a1",
+      message: {
+        role: "assistant",
+        content: [
+          { type: "text", text: "one" },
+          { type: "toolCall", id: "c1", name: "read", arguments: {} },
+          { type: "text", text: "two" },
+        ],
+      },
+    },
+    { type: "compaction", id: "k1", summary: "compressed" },
+  ];
+  const first = buildTranscriptFromEntries(entries);
+  const ids = first.map((row) => row.rowId);
+  assert.deepEqual(ids, ["u1:0", "a1:0", "a1:1", "a1:2", "k1:0"]);
+  assert.equal(new Set(ids).size, ids.length);
+  assert.deepEqual(buildTranscriptFromEntries(entries).map((row) => row.rowId), ids);
 });
 import { writeFoundationRecords } from "./session-records.js";
 import {

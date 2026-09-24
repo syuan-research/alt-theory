@@ -335,9 +335,22 @@ test("SessionService records ordinary run trajectory and Pi entry mappings", asy
       timestamp: Date.now(),
     });
   };
+  const events: SessionServiceEvent[] = [];
+  const detach = service.attach(created.sessionId, (event) => events.push(event));
   try {
     const run = service.runPrompt(created.sessionId, "question");
     await run.completion;
+    detach();
+    // The turn's end carries the settled rows (no live-run echo of the
+    // prompt) with the post-settle snapshot, in one event.
+    const completed = events.find((event) => event.type === "run_completed");
+    assert.ok(completed && completed.type === "run_completed");
+    assert.equal(completed.payload.snapshot.status, "idle");
+    assert.deepEqual(
+      completed.payload.messages.map((row) => [row.role, row.text]),
+      [["user", "question"], ["assistant", "answer"]],
+    );
+    assert.ok(completed.payload.messages.every((row) => row.rowId));
     assert.equal(promptText, "question");
     assert.doesNotMatch(promptText, /\[Context:/);
     assert.doesNotMatch(promptText, /Search in/);
@@ -1101,6 +1114,9 @@ test("a failed run's run_failed carries the recovery Continue needs", async () =
       failed.payload.snapshot.recovery,
       service.getSnapshot(created.sessionId).recovery,
     );
+    // The settled rows travel with the outcome: the durable projection, with
+    // no live-run echo of the prompt appended.
+    assert.deepEqual(failed.payload.messages, service.getTranscript(created.sessionId));
   } finally {
     detach();
     await service.disposeAll();
@@ -5196,7 +5212,7 @@ test("v1.5.1 M1: agent_end does not end the turn; idle and run_completed follow 
     assert.ok(idleAt >= 0 && completedAt > idleAt && metricsAt > completedAt, types.join(","));
     const completedEvent = events[completedAt];
     assert.equal(
-      completedEvent?.type === "run_completed" ? completedEvent.payload.status : null,
+      completedEvent?.type === "run_completed" ? completedEvent.payload.snapshot.status : null,
       "idle",
     );
   } finally {

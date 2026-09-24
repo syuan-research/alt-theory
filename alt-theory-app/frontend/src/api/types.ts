@@ -245,6 +245,11 @@ export interface TranscriptMessage {
   text: string;
   timestamp: string | null;
   entryId?: string | null;
+  /**
+   * Stable display-row id from the server projection: entry id + block
+   * ordinal (one entry can project to several rows sharing an entryId).
+   */
+  rowId?: string;
   thinking?: string;
   toolType?: "call" | "result";
   toolCallId?: string;
@@ -766,9 +771,13 @@ export type ServerMessage =
   | { type: "tool_started"; payload: { toolName: string; callId: string; path?: string | null; detail?: ToolDetail } }
   | { type: "tool_updated"; payload: { callId: string; text?: string; progress?: number } }
   | { type: "tool_finished"; payload: { callId: string; success: boolean; output?: unknown } }
-  | { type: "run_completed"; payload: SessionSnapshot }
+  /** The turn ended: the post-settle snapshot and the settled rows, applied together. */
+  | { type: "run_completed"; payload: { snapshot: SessionSnapshot; messages: TranscriptMessage[] } }
   /** The run ended failed or stopped; the snapshot (read after settle) carries its recovery. */
-  | { type: "run_failed"; payload: { failure: Failure; snapshot: SessionSnapshot } }
+  | {
+      type: "run_failed";
+      payload: { failure: Failure; snapshot: SessionSnapshot; messages: TranscriptMessage[] };
+    }
   /** A message steered into the running turn — broadcast so every pane
    *  (sender and late joiners) renders the bubble exactly once. */
   | { type: "user_steered"; payload: { text: string } }

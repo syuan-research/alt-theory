@@ -294,9 +294,15 @@ export type SessionServiceEvent =
     }
   | { type: "tool_updated"; payload: { callId: string; text?: string } }
   | { type: "tool_finished"; payload: { callId: string; success: boolean } }
-  | { type: "run_completed"; payload: SessionSnapshot }
+  | {
+      type: "run_completed";
+      payload: { snapshot: SessionSnapshot; messages: TranscriptMessage[] };
+    }
   | { type: "session_updated"; payload: SessionSnapshot }
-  | { type: "run_failed"; payload: { failure: Failure; snapshot: SessionSnapshot } }
+  | {
+      type: "run_failed";
+      payload: { failure: Failure; snapshot: SessionSnapshot; messages: TranscriptMessage[] };
+    }
   | { type: "user_steered"; payload: { text: string } }
   /** Pi's prompt queue changed (card 11); `restored` (+ its staged paths) = what Stop handed back. */
   | {
@@ -730,8 +736,17 @@ export class SessionService implements AgentTeamBridge {
     managed.pendingInterruptSendText = null;
     current.pendingInterruptSendText = null;
     if (outcome === null) return;
+    // The turn's end carries its settled rows, so a window swaps the stream
+    // for them in one step instead of blanking and fetching (M1, D3). The
+    // live-run bubble is over: it must not be appended to the durable rows.
+    managed.liveRun = null;
+    current.liveRun = null;
+    const messages = this.getTranscript(current.manifest.sessionId);
     if (outcome === "completed") {
-      this.emit(current, { type: "run_completed", payload: this.snapshot(current) });
+      this.emit(current, {
+        type: "run_completed",
+        payload: { snapshot: this.snapshot(current), messages },
+      });
       this.emit(current, { type: "session_metrics", payload: this.persistMetrics(current) });
       return;
     }
@@ -739,7 +754,7 @@ export class SessionService implements AgentTeamBridge {
     // session its recovery is null, and Continue would vanish.
     this.emit(current, {
       type: "run_failed",
-      payload: { failure: outcome.failure, snapshot: this.snapshot(current) },
+      payload: { failure: outcome.failure, snapshot: this.snapshot(current), messages },
     });
   }
 
@@ -2700,7 +2715,12 @@ export class SessionService implements AgentTeamBridge {
       pendingUserText &&
       !(last?.role === "user" && last.text === pendingUserText)
     ) {
-      messages.push({ role: "user", text: pendingUserText, timestamp: null });
+      messages.push({
+        role: "user",
+        text: pendingUserText,
+        timestamp: null,
+        rowId: "live-user",
+      });
     }
     return messages;
   }

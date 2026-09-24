@@ -127,14 +127,15 @@ export function useConversationEngine(options?: ConversationEngineOptions) {
           optionsRef.current?.onTranscript?.(message.payload.messages);
           return true;
         case "run_completed":
-          applySnapshot(message.payload);
+          applySnapshot(message.payload.snapshot);
+          setMessages(message.payload.messages);
           clearStream();
           setPhaseLabel("");
-          optionsRef.current?.onRunCompleted?.(message.payload);
+          optionsRef.current?.onRunCompleted?.(message.payload.snapshot);
           return true;
         case "run_failed":
           applySnapshot(message.payload.snapshot);
-          messageRevisionRef.current++;
+          setMessages(message.payload.messages);
           clearStream();
           setPhaseLabel("");
           optionsRef.current?.onRunFailed?.(message.payload);
