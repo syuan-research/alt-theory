@@ -4,13 +4,14 @@ slug: session-lifecycle-and-turn-continuity
 scope: Alt Theory session materialization, managed runtime lifecycle, and turn continuity
 summary: Materializes sessions, owns their live runtime, records runs, and preserves recoverable turn state across retry, continue, compaction, and reconnect
 status: current
-last_reviewed: 2026-09-17
+last_reviewed: 2026-09-24
 tags: [core, backend, session, continuity]
 depends_on:
   - branch-family-semantics.md
   - adr/0002-mediated-child-session-substrate.md
   - adr/0004-prompt-cache-safety.md
   - adr/0006-pi-owned-queued-prompt-lifecycle.md
+  - adr/0008-per-conversation-client-state-and-request-receipts.md
 ---
 
 # Architecture: Session Lifecycle and Turn Continuity
@@ -77,9 +78,13 @@ The materialized session has two related authorities:
   records. They do not duplicate the conversation body.
 
 `ManagedSession` keeps the live `AgentSession`, selectors and manifest-derived
-state, counters, listeners, a process-local mutation guard, recovery state, and
-the current live-run buffer. `SessionService` forwards one internal Pi event
-subscription to all attached WebSocket listeners.
+state, counters, a process-local mutation guard, recovery state, and the
+current live-run buffer. Subscribers are kept by `SessionService` per logical
+session id, not per instance: `attach(sessionId, listener)` registers on the
+id, and `emit()` forwards only events of the instance that owns the id now —
+a replaced instance's trailing events are dropped. `isOpen()` reads the same
+map. The WebSocket layer maps each event with `toServerMessage()`
+(`web-server/websocket-protocol.ts`).
 
 ## Open, reopen, and runtime replacement
 
@@ -106,7 +111,12 @@ runtime. The same choices made while a turn runs are deferred; `settle()` folds
 the three pending selectors into one replacement after the complete run. A
 replacement therefore creates a new in-memory assembly while preserving the
 session identity and conversation evidence; it is not a second logical
-conversation.
+conversation. Because subscriptions follow the id, a replacement is internal:
+no window re-attaches, the idle switch publishes the replacement's
+`session_updated` snapshot to every window (the requester also gets the new
+manifest), and a working-folder re-point (`repointOne`, dispose and reopen)
+publishes its snapshot the same way. A replacement does not change the visible
+rows, so it carries no transcript; clients keep theirs.
 
 The four current assembly paths all retain the same session-service lifecycle
 shape: new materialization (`createManagedFromDirs`), ordinary reopen
@@ -124,8 +134,15 @@ through `assertIdle()`; `busy || isStreaming` is no longer restated. A run
 calls the service's `beginRun()` at its start, which pushes a `session_updated`
 snapshot, and `settle()` at its end, which is the only idle transition and
 the only `run_phase: idle` the client hears: the run's `finally` (through
-`finishRun()`), `abort()`, and `compact()`. The snapshot's `status` is the
-run phase itself (`idle | running | stopping | queued`).
+`finishRun()`), `abort()`, and `compact()`. `settle()` always publishes a
+snapshot, deferred switches applied or not. Every setting change —
+applied now or accepted as pending mid-run (`publish()`: mode, Full Access,
+model, knowledge, visibility, study tag, Role/Soul/instruction, latest-turn
+delete) — publishes a snapshot to every window of the conversation; the
+WebSocket layer no longer echoes its own copy to the requester. The
+snapshot's `status` is the run phase itself (`idle | running | stopping |
+queued`); it also carries the header's `workspacePrimaryDir` (null =
+independent).
 
 Where a status fact lives (v1.5.1):
 
@@ -150,38 +167,60 @@ Where a status fact lives (v1.5.1):
   finished / failed / pending) for every tool. A running command's row
   shows the last line of Pi's partial result (`tool_updated.text`,
   bash only), dropped when the tool finishes.
-- **The client renders, it does not derive.** `runStateView`
-  (`frontend/src/lib/runState.ts`) is the one combination point: the
-  socket's own state (set by the socket only), the server's run fact
-  (`engine.applySnapshot` and run events), and a request of this client in
-  flight (`requestBusy`: opening, starting, or forking a conversation, or an
-  asset switch — each cleared by the message that answers it; a manual
-  compaction is a server run and shows busy through the run fact instead).
-  `app.isRunning` is its
-  phase; no pane keeps its own status string or reads `payload.status` to
-  decide "running" (`runState.test.ts`; `session-service.test.ts` "agent_end
-  does not end the turn"). A failed run shows its failure envelope and
-  recovery; the phase is idle, not "error". The shared
-  `useConversationEngine` also applies queue and recovery from every session
-  snapshot and queue event for both panes. A running snapshot makes an older
-  turn's recovery unavailable; the center's stop-edit hint is derived from
-  idle recovery rather than stored separately. The right pane renders the
-  same idle Continue from this recovery fact over its own socket. Both panes call
-  the same `beginLocalPrompt` for their immediate, optimistic idle-send bubble;
-  this is not yet an explicit `sending`/`sent` visual distinction.
+- **The client reads facts from the snapshot and derives only what is its
+  own** ([ADR 0008](adr/0008-per-conversation-client-state-and-request-receipts.md)).
+  One pure transition, `reduce()` in `frontend/src/lib/conversation.ts`,
+  holds a conversation's client state: the latest snapshot kept whole,
+  the rows and the in-flight turn, the socket's own status, this client's
+  requests in flight, the staged files and the text handed back to the
+  editor. Running, recovery, the queue and pending switches are read from
+  the latest snapshot only; `run_phase` feeds only the detail label
+  ("Thinking…", a tool). What the client derives itself is what it alone
+  knows: busy is "a request of this client still unanswered" (the request
+  table `REQUEST_BUSY`), never a hand-cleared flag. `runStateView`
+  (`frontend/src/lib/runState.ts`) combines socket, run fact and busy into
+  the one phase, with the label tables. `hooks/useConversation.ts` wraps the
+  transition with `useReducer`, the socket and the commands; the main view
+  (`context/MainView.tsx`) and the right pane (`ChildConversation`) both use
+  it, and shared pieces (queue cards, status line, Continue, notice, slash
+  palette, model chip) read the nearest conversation. A failed run shows its
+  failure envelope and recovery; the phase is idle, not "error". A recovery
+  is hidden while the run owns the conversation or a request is in flight;
+  the stop-edit hint is derived from idle recovery. The switch is exhaustive
+  over `ServerMessage` (`conversation.test.ts`, `runState.test.ts`,
+  `conversation-replay.test.ts`; `session-service.test.ts` "agent_end does
+  not end the turn").
+
+**Request receipts.** Any client message may carry a `requestId`; the
+WebSocket handler answers it exactly once — `request_done` when accepted, an
+`error` carrying the id when refused — and a `finally` answers any path that
+returned without either. Accepted means: a run request's run has begun or its
+text entered Pi's queue (not that the run ended); a navigation's attach
+messages were sent; a switch's snapshot was sent. `compact()` refuses
+synchronously and returns the run's outcome, so its receipt means the run
+began. A refusal before a run starts (busy, no model) is an `error` reply,
+not a `run_failed`. A sent message shows as a user bubble with a pending mark
+until its receipt; accepted, it stays until the rows carry it (the turn's end
+retires it). A refused send's text and staged files go back to the editor of
+the conversation it was sent from. When the socket drops before the receipt,
+the send is unknown: the re-open's rows (or the snapshot's queue) settle it —
+there, it was sent; missing, it goes back to the editor with a one-line
+notice. There is no outbox and nothing is re-sent
+(`backend-server.integration.ts` "every socket on a conversation keeps its
+events …", `conversation-replay.test.ts`).
 
 A model/thinking, mode, Full Access on, app runtime-mode, Role, Soul, Custom
 Instruction, knowledge-base, or visibility switch during a run is accepted,
 not refused: `RunState.applyOrDefer()` applies it now when idle or records the
 last choice for that key as pending. Turning Full Access off still applies
 immediately, because the guard reads it per tool call. At `settle()`, Role,
-Soul, and Custom Instruction are combined into one instance replacement first;
-the internal `session_replaced` event reattaches existing WebSocket listeners,
-then mode, Full Access, model, knowledge, visibility, and runtime changes run
+Soul, and Custom Instruction are combined into one instance replacement first
+(subscribers follow the id, so the events after it reach every window), then
+mode, Full Access, model, knowledge, visibility, and runtime changes run
 through their ordinary appliers on the live instance. A null Role, Soul, or
 instruction means clear. A failed drain keeps the unaffected current value and
-emits an error-level `extension_notice`; successful in-place work is followed
-by a `session_updated` snapshot.
+emits an error-level `extension_notice`; the settle snapshot follows either
+way.
 
 The snapshot exposes `pending` (the deferred values), `thinking` (the
 resolver's answer, see the provider/model document), and `queue` (Pi's steering
@@ -359,11 +398,13 @@ Pi's own transient provider retry is represented as a `retrying` run phase. Alt
 Theory does not wrap it in a second retry loop. A successful or failed terminal
 outcome is finalized only after pending run work has settled; the run state
 settles in the same `finally`, which keeps the phase, run record, and recovery
-projection aligned. `finishRun()` builds the `run_failed` payload after
-`settle()`, so its `recovery` and `canRetry` are the values the next snapshot
-reports; read before settle, the recovery projection is still null
-(`session-service.test.ts` "a failed run's run_failed carries the recovery
-Continue needs").
+projection aligned. `finishRun()` builds the terminal payload after
+`settle()`: `run_completed` is `{ snapshot, messages }` and `run_failed`
+`{ failure, snapshot, messages }` — the post-settle snapshot (its recovery is
+what Continue reads; read before settle it is still null) and the durable
+transcript projection, read after the live-run bubble is cleared so the
+prompt is not echoed (`session-service.test.ts` "a failed run's run_failed
+carries the recovery Continue needs").
 
 ## Compaction and live-run state
 
@@ -387,9 +428,14 @@ on `run_completed` or `run_failed`; `getLiveRun()` returns it only while the
 run state is not idle.
 Thus a pane attaching mid-run receives the persisted transcript plus the current
 prompt and buffered deltas/tool/phase events, while a terminal run has no stale
-live replay. A REST transcript refresh started for a prior run is applied by
-`useConversationEngine` only if its session and message revision are still
-current, so a late response cannot replace a newer live user bubble.
+live replay. The turn's end needs no REST fetch: the client replaces the
+streaming parts with the terminal event's rows in one transition, so there is
+no frame between the stream vanishing and the rows arriving. Every projected
+row carries a stable `rowId` — the entry id plus the row's ordinal within its
+entry, because one assistant entry projects to several rows sharing an
+`entryId` and compaction/system rows have none; `MessageList` keys by it
+(`backend-server.integration.ts` "every projected row has a unique stable
+id").
 
 A stopped or failed attempt is filtered from the model's context as a whole
 message: the installed Pi provider transform (`pi-ai` `transform-messages`)
@@ -406,7 +452,7 @@ a single line at its end (`frontend/src/lib/replyStop.ts`,
 `droppedPartialText` — read from Pi's still-present trailing assistant before
 the retry removes it — and the client shows a lost-output line only when that
 is true (`transcript-stop-reason.test.ts`, `replyStop.test.ts`,
-`conversationStream.test.ts`).
+`conversation.test.ts`).
 
 Run phases currently include `connecting`, `processing`, `thinking`, `tool`,
 `compacting`, `retrying`, `awaiting-user`, `idle`, and `error`. Attached panes
@@ -434,5 +480,10 @@ boundaries are already enforced in code.
   `alt-theory-app/web-server/run-state.test.ts` and the v1.5 cases at the end
   of `session-service.test.ts`.
 - Failure envelope: `alt-theory-app/core/failure.test.ts`.
+- Client transition and replay of real service sequences through it:
+  `alt-theory-app/frontend/src/lib/conversation.test.ts`,
+  `alt-theory-app/web-server/conversation-replay.test.ts`; request receipts
+  and two sockets on one conversation over real WebSockets:
+  `backend-server.integration.ts`.
 - Child outcome, cause, and status words:
   `alt-theory-app/web-server/child-outcome.test.ts`, `agent-team.test.ts`.

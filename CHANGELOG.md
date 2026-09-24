@@ -6,6 +6,21 @@ detail lives in commit history and `development/`.
 
 ---
 
+## Unreleased
+
+### Conversation status
+
+- The end of a reply no longer flickers: the finished answer replaces the
+  streaming one in a single step, instead of the reply vanishing for a
+  moment and coming back.
+- Continue and the running state are more reliable. A message you send shows
+  a small clock until Alt has received it; if it was refused, or the
+  connection dropped before it arrived, the text and attached files come
+  back to the message box with a note instead of being lost.
+- Changing the role, knowledge, mode, or model now shows the same way in
+  every window of the conversation, including a switch waiting for the turn
+  to end.
+
 ## v1.7.0-beta.1 — 2026-09-24
 
 Finding earlier conversations and files is easier, including work outside the ordinary conversation list. You can also edit text in working folders and keep more control over a conversation while an agent is running.
