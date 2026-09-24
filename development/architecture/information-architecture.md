@@ -191,13 +191,25 @@ surfaces remain designation-gated and absent for everyone else.
     overwrite `ui-alias` to a bare token like `branch1`.
 - **Right rail**
   - Holds files/changes and one selected related conversation (Branch, BTW,
-    Helper, or subagent).
+    Helper, or subagent). What it shows beyond a rail's list is a typed
+    target (`lib/viewTarget.ts`): a conversation, a file (managed workspace or
+    working folder) or a changed file. Every target names the conversation it
+    belongs to and is drawn against it: switching the center conversation
+    leaves the rail as it was — an open file is still that conversation's
+    file, and attaching it adds it to that conversation's message. The rail is
+    one global view for now (Owner 2026-09-24); the target type does not name
+    it, so a tab or a split could show the same targets.
   - **Branch / edited comparisons (purpose `fork`)** open the child in this rail at roughly
     **half of the center+right work area** (not half the browser window).
   - **BTW, Helper, and subagents** open at the ordinary default rail width
     (~480 or the user’s last dragged width).
-  - Leaving a related child (Back, collapse rail, switch rail tab) clears the
-    active related session so re-selecting the same child opens it again.
+  - Navigation has one owner, `ShellContext`, which changes one state only
+    through `navigate` (`lib/viewTarget.ts`): open a target (on its own rail),
+    Back, open a rail, a rail button, collapse, and reveal-in-files. Side
+    conversations open from the conversation module's events (a branch, BTW or
+    Helper created), the Related list and switcher, search hits and the
+    approval notice — each calls `openTarget`, which also sizes the pane.
+    Deleting the side conversation on show closes it.
   - A Related conversation uses the same history, live thinking/tool rendering,
     approvals, skills, and slash commands as the center. It exposes model and
     role; mode chrome is omitted only because the rail is narrow.
@@ -250,16 +262,18 @@ surfaces remain designation-gated and absent for everyone else.
     default; a query containing `/` or `\` instead matches consecutive path
     segments ending at that item. A matching folder is a result in its own
     right, without making all descendants matches.
-  - Right-pane view state outlives the pane (Owner 2026-09-03). The shell
-    remembers, per rail, the last open sub (file, changed file, related
-    child) and restores it when that rail reopens after a collapse or
-    switch; when a related child takes the pane over from another rail,
-    leaving it returns to that rail and its sub. Tree expansion, filter
-    text, view mode, related-pane filters and per-view scroll position
-    live in `lib/paneMemory.ts` (`usePaneMemory`, an app-lifetime map keyed
-    per conversation and surface). Nothing of this persists across a
-    restart. Pane memory is the only home for such state: view state that
-    must survive an unmount lives there, not in a component or a context.
+  - Right-pane view state outlives the pane (Owner 2026-09-03). The
+    navigation state remembers, per rail, the last open target and restores
+    it when that rail reopens after a collapse or switch; when a target on
+    another rail takes the pane over, Back returns to that rail and its
+    target. View state that must survive an unmount has four homes, each for
+    its own kind: the navigation state above (what is open, and the way
+    back); `lib/paneMemory.ts` (`usePaneMemory`, an app-lifetime map keyed
+    per conversation and surface: tree expansion, filter text, view mode,
+    related-pane filters, per-view scroll position, the Records selection);
+    `lib/fileDrafts.ts` (unsaved file edits); and `lib/find.ts` (which column
+    Ctrl+F serves). None of these persists across a restart; composer drafts
+    are the conversation's own (see Conversation drafts).
   - Files has one inline filter above the existing tree. It keeps matches and
     their ancestors in that tree, expands those ancestors while filtering, and
     restores the prior expansion when cleared. Selecting a matching folder

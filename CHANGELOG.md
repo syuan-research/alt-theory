@@ -37,6 +37,13 @@ detail lives in commit history and `development/`.
   restart the app, until you turn it off. Branches, side conversations,
   Helpers and subagents still start without it.
 
+### Right pane
+
+- A file or changed file open in the right pane stays that conversation's
+  file when you switch to another conversation in the middle; attaching it
+  adds it to its own conversation's message. A changed file opened from a
+  side conversation shows that conversation's change.
+
 ## v1.7.0-beta.1 — 2026-09-24
 
 Finding earlier conversations and files is easier, including work outside the ordinary conversation list. You can also edit text in working folders and keep more control over a conversation while an agent is running.
