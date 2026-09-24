@@ -1094,10 +1094,11 @@ test("a failed run's run_failed carries the recovery Continue needs", async () =
     assert.ok(failed && failed.type === "run_failed");
     // The event must agree with the snapshot: the recovery was read after
     // settle, not while the run still owned the session (null).
-    assert.equal(failed.payload.recovery?.canContinue, true);
-    assert.equal(failed.payload.canRetry, true);
+    assert.equal(failed.payload.snapshot.recovery?.canContinue, true);
+    assert.equal(failed.payload.snapshot.recovery?.canRetryFromStart, true);
+    assert.equal(failed.payload.snapshot.status, "idle");
     assert.deepEqual(
-      failed.payload.recovery,
+      failed.payload.snapshot.recovery,
       service.getSnapshot(created.sessionId).recovery,
     );
   } finally {

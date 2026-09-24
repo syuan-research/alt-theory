@@ -2797,9 +2797,10 @@ test("local mode stays usable without a model and refuses only the prompt", asyn
     );
     assert.deepEqual(localSkill?.enabled, { understand: false, work: true });
     await draft;
-    const failed = waitForType(ws, "run_failed");
+    // Refused before a run starts: an error reply, not a run outcome.
+    const refused = waitForType(ws, "error");
     ws.send(JSON.stringify({ type: "prompt", payload: "hello" }));
-    const message = await failed;
+    const message = await refused;
     assert.match(message.payload.failure.message, /No model is selected/);
     assert.equal(existsSync(join(dataDir, "sessions")), true);
   } finally {

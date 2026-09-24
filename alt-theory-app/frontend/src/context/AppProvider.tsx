@@ -466,9 +466,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (sessionId) void engine.refreshTranscript(sessionId);
       setRunSettledCount((count) => count + 1);
       // Interruption is a recorded outcome, never a guess from error text.
-      const interrupted = payload.recovery?.outcome === "interrupted";
+      const recovery = payload.snapshot.recovery;
+      const interrupted = recovery?.outcome === "interrupted";
       setToolStatus("");
-      const userStopped = payload.recovery?.interruptionCause === "user_abort";
+      const userStopped = recovery?.interruptionCause === "user_abort";
       if (userStopped) {
         setComposerNotice(null);
       } else {

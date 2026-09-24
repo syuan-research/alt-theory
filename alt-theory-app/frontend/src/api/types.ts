@@ -760,10 +760,8 @@ export type ServerMessage =
   | { type: "tool_updated"; payload: { callId: string; text?: string; progress?: number } }
   | { type: "tool_finished"; payload: { callId: string; success: boolean; output?: unknown } }
   | { type: "run_completed"; payload: SessionSnapshot }
-  | {
-      type: "run_failed";
-      payload: { failure: Failure; canRetry?: boolean; recovery?: TurnRecovery | null };
-    }
+  /** The run ended failed or stopped; the snapshot (read after settle) carries its recovery. */
+  | { type: "run_failed"; payload: { failure: Failure; snapshot: SessionSnapshot } }
   /** A message steered into the running turn — broadcast so every pane
    *  (sender and late joiners) renders the bubble exactly once. */
   | { type: "user_steered"; payload: { text: string } }

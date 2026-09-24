@@ -16,11 +16,7 @@ import { conversationSnapshotView } from "@/lib/runState";
 export interface ConversationEngineOptions {
   /** Center/child extras after the shared core handling (queue flush, refreshes …). */
   onRunCompleted?: (payload: SessionSnapshot) => void;
-  onRunFailed?: (payload: {
-    failure: Failure;
-    canRetry?: boolean;
-    recovery?: TurnRecovery | null;
-  }) => void;
+  onRunFailed?: (payload: { failure: Failure; snapshot: SessionSnapshot }) => void;
   onTranscript?: (messages: TranscriptMessage[]) => void;
   onQueueRestored?: (payload: Extract<ServerMessage, { type: "queue_updated" }>["payload"]) => void;
 }
@@ -137,9 +133,7 @@ export function useConversationEngine(options?: ConversationEngineOptions) {
           optionsRef.current?.onRunCompleted?.(message.payload);
           return true;
         case "run_failed":
-          runningRef.current = false;
-          setRunning(false);
-          setRecovery(message.payload.recovery ?? null);
+          applySnapshot(message.payload.snapshot);
           messageRevisionRef.current++;
           clearStream();
           setPhaseLabel("");

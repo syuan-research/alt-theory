@@ -296,10 +296,7 @@ export type SessionServiceEvent =
   | { type: "tool_finished"; payload: { callId: string; success: boolean } }
   | { type: "run_completed"; payload: SessionSnapshot }
   | { type: "session_updated"; payload: SessionSnapshot }
-  | {
-      type: "run_failed";
-      payload: { failure: Failure; canRetry?: boolean; recovery?: TurnRecovery | null };
-    }
+  | { type: "run_failed"; payload: { failure: Failure; snapshot: SessionSnapshot } }
   | { type: "user_steered"; payload: { text: string } }
   /** Pi's prompt queue changed (card 11); `restored` (+ its staged paths) = what Stop handed back. */
   | {
@@ -692,12 +689,10 @@ export class SessionService implements AgentTeamBridge {
       ],
       ["runtime", () => this.applyRuntime(current, drained.runtime!)],
     ];
-    let applied = false;
     for (const [key, apply] of steps) {
       if (drained[key] === undefined) continue;
       try {
         await apply();
-        applied = true;
       } catch (error) {
         const failure = describeFailure(error, key);
         this.emit(current, {
@@ -707,11 +702,11 @@ export class SessionService implements AgentTeamBridge {
       }
     }
     // The only idle transition is also the only "idle" the client hears
-    // (v1.5.1 M1): nothing else hand-builds a done signal.
+    // (v1.5.1 M1): nothing else hand-builds a done signal. The snapshot goes
+    // out every time, applied switches or not — clients read run state from
+    // snapshots only.
     this.emitRunPhase(current, "idle");
-    if (applied) {
-      this.emit(current, { type: "session_updated", payload: this.snapshot(current) });
-    }
+    this.emit(current, { type: "session_updated", payload: this.snapshot(current) });
     return current;
   }
 
@@ -740,16 +735,11 @@ export class SessionService implements AgentTeamBridge {
       this.emit(current, { type: "session_metrics", payload: this.persistMetrics(current) });
       return;
     }
-    // Recovery is read here, after settle: while the run still owns the
-    // session latestRecoveryState() answers null, and Continue would vanish.
-    const recovery = this.latestRecoveryState(current);
+    // The snapshot is read here, after settle: while the run still owns the
+    // session its recovery is null, and Continue would vanish.
     this.emit(current, {
       type: "run_failed",
-      payload: {
-        failure: outcome.failure,
-        canRetry: recovery?.canRetryFromStart ?? false,
-        recovery,
-      },
+      payload: { failure: outcome.failure, snapshot: this.snapshot(current) },
     });
   }
 
@@ -2599,10 +2589,6 @@ export class SessionService implements AgentTeamBridge {
       throw error;
     } finally {
       await this.settle(managed);
-      this.emit(managed, {
-        type: "session_updated",
-        payload: this.snapshot(managed),
-      });
     }
   }
 

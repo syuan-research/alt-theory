@@ -72,9 +72,9 @@ export function ChildConversation({
       void engine.refreshTranscript(sessionId);
       void app.refreshSessions();
     },
-    onRunFailed: ({ failure, recovery }) => {
+    onRunFailed: ({ failure, snapshot }) => {
       void engine.refreshTranscript(sessionId);
-      const interrupted = recovery?.outcome === "interrupted";
+      const interrupted = snapshot.recovery?.outcome === "interrupted";
       if (!interrupted) setError(failureText(failure));
     },
     onQueueRestored: (payload) => {

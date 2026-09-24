@@ -82,7 +82,6 @@ import {
   type AbComparisonScore,
 } from "./ab-records.js";
 import {
-  SessionBusyError,
   SessionService,
   type SessionModelOverride,
   type SessionSelectors,
@@ -2704,32 +2703,12 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               );
               break;
             }
-            const run = sessionService.runPrompt(
-              currentSessionId,
-              msg.payload,
-              msg.attachments,
-            );
-            await run.completion;
+            // A refusal before the run starts (busy, no model) is an error
+            // reply; once started, finishRun reports the outcome to every
+            // window.
+            sessionService.runPrompt(currentSessionId, msg.payload, msg.attachments);
           } catch (error) {
-            if (error instanceof SessionBusyError) {
-              fail(error);
-              break;
-            }
-            const recovery = attachedSessionId
-              ? sessionService.getSnapshot(attachedSessionId).recovery
-              : null;
-            // Recoverable run failures were already broadcast after their
-            // terminal mapping. Preflight/recordless failures still need one.
-            if (!recovery) {
-              send({
-                type: "run_failed",
-                payload: {
-                  failure: describeFailure(error, "run"),
-                  canRetry: false,
-                  recovery: null,
-                },
-              });
-            }
+            fail(error);
           }
           break;
         }
@@ -2984,12 +2963,11 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               if (closed) return;
               attachToSession(initial.sessionId);
             }
-            const run = sessionService.invokeSkill(
+            sessionService.invokeSkill(
               attachedSessionId,
               msg.payload.skillName,
               msg.payload.userText,
             );
-            await run.completion;
           } catch (error) {
             fail(error);
           }
@@ -3001,17 +2979,11 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             break;
           }
           try {
-            const run = msg.payload.entryId
-              ? sessionService.reviseAt(
-                  attachedSessionId,
-                  msg.payload.entryId,
-                  msg.payload.text,
-                )
-              : sessionService.reviseLatest(
-                  attachedSessionId,
-                  msg.payload.text,
-                );
-            await run.completion;
+            if (msg.payload.entryId) {
+              sessionService.reviseAt(attachedSessionId, msg.payload.entryId, msg.payload.text);
+            } else {
+              sessionService.reviseLatest(attachedSessionId, msg.payload.text);
+            }
           } catch (error) {
             fail(error);
           }
@@ -3049,12 +3021,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
                 sourceSessionId,
               },
             });
-            const run = sessionService.reviseAt(
-              forked.sessionId,
-              targetEntryId,
-              msg.payload.text,
-            );
-            await run.completion;
+            sessionService.reviseAt(forked.sessionId, targetEntryId, msg.payload.text);
           } catch (error) {
             fail(error);
           }
@@ -3087,8 +3054,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             break;
           }
           try {
-            const run = sessionService.retryLatestFromStart(attachedSessionId);
-            await run.completion;
+            sessionService.retryLatestFromStart(attachedSessionId);
           } catch (error) {
             fail(error);
           }
@@ -3100,10 +3066,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             break;
           }
           try {
-            const run = sessionService.continueLatestFromBreakpoint(
-              attachedSessionId,
-            );
-            await run.completion;
+            sessionService.continueLatestFromBreakpoint(attachedSessionId);
           } catch (error) {
             fail(error);
           }
