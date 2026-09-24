@@ -19,7 +19,7 @@ below that you read most easily.
 
 ### macOS: download and launch
 
-1. Download `AltTheory-1.4.5-mac.zip`.
+1. Download `AltTheory-1.7.0-mac.zip`.
 2. Unpack the complete `AltTheory` folder in Downloads. It contains
    `AltTheory.app` and `Fix-Open.command`.
 3. Right-click `Fix-Open.command`, choose **Open**, then confirm **Open**.
@@ -38,7 +38,7 @@ ZIP. Apple Silicon only. Node.js and npm are not required.
 
 ### macOS：下载与启动
 
-1. 下载 `AltTheory-1.4.5-mac.zip`。
+1. 下载 `AltTheory-1.7.0-mac.zip`。
 2. 在「下载」中完整解压 `AltTheory` 文件夹；里面有 `AltTheory.app` 和
    `Fix-Open.command`。
 3. 右键 `Fix-Open.command`，选择 **打开（Open）**，再确认一次。
@@ -57,7 +57,7 @@ Silicon。使用打包应用不需要 Node.js 或 npm。SHA-256 见
 
 ### macOS：下載與啟動
 
-1. 下載 `AltTheory-1.4.5-mac.zip`。
+1. 下載 `AltTheory-1.7.0-mac.zip`。
 2. 在「下載」中完整解壓縮 `AltTheory` 資料夾；裡面有 `AltTheory.app` 和
    `Fix-Open.command`。
 3. 右鍵 `Fix-Open.command`，選擇 **開啟（Open）**，再確認一次。

@@ -6,6 +6,29 @@ detail lives in commit history and `development/`.
 
 ---
 
+## v1.7.0-beta.1 — 2026-09-24
+
+Finding earlier conversations and files is easier, including work outside the ordinary conversation list. You can also edit text in working folders and keep more control over a conversation while an agent is running.
+
+### Find earlier work
+
+- Search conversation names with words in any order, or switch to conversation text to find an earlier discussion without opening every candidate. Related conversations can appear in search results without changing where they normally live.
+- Files and Changes filter by each item's own name; add a slash to search a path. Matching folders can be opened in the ordinary file tree and returned to the results. Ctrl+F focuses a list's filter or finds and steps through matches in an open conversation or file.
+
+### Bring in and work with files
+
+- The conversation importer is easier to search by name, folder, source ID, or opening conversation text; its preview includes more of the first exchanges when available.
+- Edit text files in working folders directly in the app. Unsaved edits stay available while you navigate, and a conflicting save is surfaced before it can replace a newer file.
+
+### Keep conversations on track
+
+- Messages sent while an agent is working appear when they are actually delivered. Interrupt-and-send keeps the visible conversation, queue, and active run in step; after a failed run, Continue remains available when the conversation can resume.
+- Changes to role, knowledge, instructions, or visibility selected during a run wait until the turn ends. Newly spawned subagents appear promptly in Related conversations.
+
+### Other new and fixed
+
+- File previews keep their scroll position when you switch panels, and changed Markdown opens in its rendered view. Search text remains in the left rail when you visit Settings.
+
 ## v1.6.0-beta.1 — 2026-09-10
 
 Projects and global folders make read/write permission control more
