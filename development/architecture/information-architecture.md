@@ -313,9 +313,9 @@ surfaces remain designation-gated and absent for everyone else.
     checks stay silent and do not advance the last-checked time. Download links
     open only on GitHub.
   - Opening Settings or Review hides the mounted conversation instead of
-    unmounting it, so an in-progress composer draft, browser undo history, and
-    DOM editing state survive the round trip (v1.4.7). Draft persistence across
-    app restart or arbitrary conversation switching is not added.
+    unmounting it, so browser undo history and DOM editing state survive the
+    round trip (v1.4.7). The composer draft itself belongs to its conversation
+    and is kept on this device (see Conversation drafts below).
 - **Researcher-only surfaces**
   - Inspector, comparison, provenance, and study controls are
     designation-gated and have zero presence otherwise.
@@ -480,12 +480,57 @@ the normal or advanced product UI.
   choosing the current effort remains a conversation action.
 - No model switch, fallback, or reset may be silent.
 
+### Conversation drafts
+
+Every conversation has its own draft — the composer text and the staged
+files — and so does the new-conversation screen (M2, 2026-09-24). A draft
+belongs to the conversation, not to where it is shown: the center composer and
+a side-pane child show the draft of the conversation they display, so
+switching conversations shows each one's own draft, and closing and reopening
+a side conversation finds its draft again. The drafts live in
+`lib/draft.ts`, one per conversation key (a session id, or `new`).
+
+- **Kept on this device.** Switching, opening Settings or Review, reconnecting
+  and restarting the app keep every draft (localStorage, per account — the
+  browser already keeps it per server). Nothing is synced between devices.
+- **Written shortly after a change** (and at once when the page is hidden). A
+  write that fails is said in the composer ("could not be saved on this
+  device"); it is never treated as saved. There is no eviction: unsent text is
+  never dropped to make room.
+- **Ends** when it is sent, when its conversation is deleted or no longer in
+  the conversation list (a draft opened in this run is never taken that way),
+  or on sign-out.
+- **Sending** clears the text and files at once; if the send is refused or
+  lost (the socket dropped and the re-opened rows do not have it), the text
+  and files go back into the draft of the conversation they were sent from,
+  with a one-line notice — not into whichever composer is on screen. Stop's
+  unsent queue and a queued message taken back to edit go to their own
+  conversation's draft the same way.
+- **Restored staged files are checked** once per app run: files that are gone
+  are taken out of the draft with a notice (local form only).
+- The file editor's unsaved edits are a separate, memory-only draft store
+  (`lib/fileDrafts.ts`, see the file preview above).
+
 ### Draft-to-live continuity
 
 Before the first message, model/effort, role, knowledge, mode, visibility,
-workspace, study tag, and attachments are one coherent draft. A selector echo
-must preserve the other draft fields. The first send materializes that exact
-state; it must not create a default session and repair it afterward.
+workspace, study tag, Full Access, and attachments are one coherent draft —
+the new-conversation draft above, held in the client, restored after a
+restart. Changing one of them changes only the draft; nothing about it is held
+on the server connection. The first send (a prompt, a skill, or a root Helper)
+carries the draft's settings, the server checks each one (knowledge domain,
+mode, visibility for the deployment, Full Access local-only, folder exists;
+the assembly checks role, soul, instruction and model) and creates the
+conversation from exactly that state in one step; a refused creation leaves
+nothing behind and the text goes back to the draft. The server still resolves
+the model chip's thinking level for the draft's model (`describe_draft`).
+
+Once the draft has become a conversation its settings start over, except the
+mode and folder, which carry to the next new conversation; Full Access starts
+from Ask again. **New** pressed in a conversation lets the draft take that
+conversation's knowledge, role, soul and instruction, under the choices the
+user already made in the draft. Changing Settings > General > "New
+conversations start in" also sets the draft's mode.
 
 Actions that require an existing parent conversation, such as branching and
 side conversations, are not shown as active draft actions. Helper does have a

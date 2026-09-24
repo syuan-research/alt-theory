@@ -63,12 +63,18 @@ Prompt-cache behavior for copied session history is constrained by
 
 ## Materialization and managed runtime
 
-A WebSocket connection begins with selector state only. The first prompt calls
+A WebSocket connection holds no draft: it greets with the new-conversation
+defaults (`session_draft`), and the draft itself — text, files and settings —
+lives in the client (`lib/draft.ts`, see the information architecture). The
+first prompt, skill invocation or root Helper carries the draft's settings in
+`create`; the server checks them (`creationFrom` in `server.ts`) and calls
 `SessionService.createSession()` in `alt-theory-app/web-server/session-service.ts`,
-allocates the readable session ID, creates the session directories, assembles an
-Alt Theory/Pi runtime, writes foundation records, and registers a
-`ManagedSession`. Merely connecting, opening the composer, or calling
-`new_session` does not create a persisted zero-turn conversation.
+which allocates the readable session ID, creates the session directories,
+assembles an Alt Theory/Pi runtime, writes foundation records, and registers a
+`ManagedSession`. A creation refused at assembly (unknown role, soul, model,
+missing folder) removes the directories it made. Merely connecting, opening
+the composer, or calling `new_session` does not create a persisted zero-turn
+conversation; a setting sent before a conversation exists is refused.
 
 The materialized session has two related authorities:
 

@@ -21,6 +21,22 @@ detail lives in commit history and `development/`.
   every window of the conversation, including a switch waiting for the turn
   to end.
 
+### Drafts and Full Access follow the conversation
+
+- Every conversation keeps its own unsent message and attached files. Switch
+  to another conversation, open Settings, or close a side conversation, and
+  the text is still there when you come back — also after restarting the
+  app, on the same computer.
+- The new-conversation screen keeps its text and every choice you made there
+  (folder, mode, model and effort, role, knowledge, sharing, Full Access)
+  until you send; the first message creates the conversation with exactly
+  those choices.
+- Text returned by Stop, or by a message that was refused or didn't arrive,
+  goes back to the conversation it came from, even if you have moved on.
+- Full Access now stays on for its conversation when you reopen it or
+  restart the app, until you turn it off. Branches, side conversations,
+  Helpers and subagents still start without it.
+
 ## v1.7.0-beta.1 — 2026-09-24
 
 Finding earlier conversations and files is easier, including work outside the ordinary conversation list. You can also edit text in working folders and keep more control over a conversation while an agent is running.

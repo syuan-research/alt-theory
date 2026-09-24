@@ -16,6 +16,11 @@ import type { NewConversationSettings } from "../api/types";
 
 export const NEW_DRAFT = "new";
 
+/**
+ * Everything here lives as long as the draft: per conversation, on this
+ * device. A new field of that lifetime is declared here and nowhere else —
+ * loading, emptiness and persistence treat fields alike.
+ */
 export interface Draft {
   text: string;
   attachments: string[];
@@ -45,12 +50,14 @@ function notify(): void {
   for (const listener of listeners) listener();
 }
 
-function hasKeys(value: object | undefined): boolean {
-  return Boolean(value && Object.keys(value).length);
+function isBlank(value: unknown): boolean {
+  if (value === undefined || value === null || value === "") return true;
+  if (Array.isArray(value)) return value.length === 0;
+  return typeof value === "object" && Object.keys(value).length === 0;
 }
 
 function isEmpty(draft: Draft): boolean {
-  return !draft.text && !draft.attachments.length && !hasKeys(draft.settings) && !hasKeys(draft.inherited);
+  return Object.values(draft).every(isBlank);
 }
 
 function load(key: string): Draft {
@@ -58,13 +65,14 @@ function load(key: string): Draft {
     const raw = localStorage.getItem(storageKey(key));
     if (!raw) return EMPTY;
     const parsed = JSON.parse(raw) as Partial<Draft>;
+    if (!parsed || typeof parsed !== "object") return EMPTY;
+    // The two fields every editor reads are made safe; the rest is as saved.
     return {
+      ...parsed,
       text: typeof parsed.text === "string" ? parsed.text : "",
       attachments: Array.isArray(parsed.attachments)
         ? parsed.attachments.filter((path): path is string => typeof path === "string")
         : [],
-      ...(parsed.settings && typeof parsed.settings === "object" ? { settings: parsed.settings } : {}),
-      ...(parsed.inherited && typeof parsed.inherited === "object" ? { inherited: parsed.inherited } : {}),
     };
   } catch {
     return EMPTY;

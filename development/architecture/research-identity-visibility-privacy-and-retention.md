@@ -108,7 +108,9 @@ participant's account consent defaults are copied into the session's
 `consentSnapshot`; selecting a withheld value forces researcher readability and
 quoting consent off and sets `privateOverride`.
 
-Before materialization, visibility is draft state. After materialization,
+Before materialization, visibility is part of the client's new-conversation
+draft; the request that creates the conversation carries it and the server
+checks it against the deployment vocabulary. After materialization,
 `switch_visibility` validates the deployment vocabulary and updates the session
 record through the session service. The same session-level switch therefore
 does not change account designation or the meaning of the deployment mode.
