@@ -257,6 +257,29 @@ export interface RunHandle {
   abort(): Promise<void>;
 }
 
+/** What the conversation list shows for one conversation (sessionActivity). */
+export type ListActivity = "running" | "awaiting-approval" | "failed" | "idle";
+
+/**
+ * A change to what the list shows (WP-4): a conversation's activity moved,
+ * or the list itself changed (created, deleted, restored, imported).
+ */
+export interface ActivityEvent {
+  sessionId: string;
+  status: ListActivity;
+  listChanged?: true;
+}
+
+/** Events that can move a conversation's list activity. */
+const ACTIVITY_EVENTS = new Set<SessionServiceEvent["type"]>([
+  "snapshot",
+  "session_updated",
+  "run_completed",
+  "run_failed",
+  "approval_requested",
+  "approval_resolved",
+]);
+
 export type SessionServiceEvent =
   | { type: "snapshot"; payload: SessionSnapshot }
   | { type: "assistant_delta"; payload: { text: string } }
@@ -464,6 +487,9 @@ export class SessionService implements AgentTeamBridge {
     string,
     Set<(event: SessionServiceEvent) => void>
   >();
+  private readonly activityListeners = new Set<(event: ActivityEvent) => void>();
+  /** The non-idle activity last told to the lists, per conversation. */
+  private readonly lastActivity = new Map<string, Exclude<ListActivity, "idle">>();
   private readonly approvalListeners = new Set<
     (event: Extract<SessionServiceEvent, { type: "approval_requested" | "approval_resolved" }>) => void
   >();
@@ -894,6 +920,7 @@ export class SessionService implements AgentTeamBridge {
       changedFields: [],
       warnings: [],
     });
+    this.listChanged(managed.manifest.sessionId);
     return this.snapshot(managed);
   }
 
@@ -2060,6 +2087,7 @@ export class SessionService implements AgentTeamBridge {
       });
       // List labels: display-layer prefix only (e.g. "Branch 1 · …") — do not
       // rewrite ui-alias to a bare number token; that is a rename, not a prefix.
+      this.listChanged(forkSessionId);
       return this.snapshot(result);
     } catch (error) {
       if (!activated && existsSync(forkDirs.sessionRoot)) {
@@ -2720,19 +2748,51 @@ export class SessionService implements AgentTeamBridge {
    * you are not looking at used to signal nothing but a badge; a session that
    * stops for an approval, or fails, needs to be visible from anywhere.
    */
-  sessionActivity(): Map<string, "running" | "awaiting-approval" | "failed"> {
-    const activity = new Map<string, "running" | "awaiting-approval" | "failed">();
+  sessionActivity(): Map<string, Exclude<ListActivity, "idle">> {
+    const activity = new Map<string, Exclude<ListActivity, "idle">>();
     for (const [sessionId, managed] of this.sessions) {
-      const running = !managed.runState.isIdle();
-      if (running && managed.approvalBridge.listPending().length > 0) {
-        activity.set(sessionId, "awaiting-approval");
-      } else if (running) {
-        activity.set(sessionId, "running");
-      } else if (this.latestRecoveryState(managed)?.outcome === "failed") {
-        activity.set(sessionId, "failed");
-      }
+      const status = this.activityOf(managed);
+      if (status !== "idle") activity.set(sessionId, status);
     }
     return activity;
+  }
+
+  private activityOf(managed: ManagedSession): ListActivity {
+    const running = !managed.runState.isIdle();
+    if (running && managed.approvalBridge.listPending().length > 0) return "awaiting-approval";
+    if (running) return "running";
+    return this.latestRecoveryState(managed)?.outcome === "failed" ? "failed" : "idle";
+  }
+
+  /**
+   * Every window's conversation list hears activity changes (WP-4): no
+   * polling. The WS layer filters by the same summary-level access as
+   * GET /api/sessions.
+   */
+  attachActivity(listener: (event: ActivityEvent) => void): () => void {
+    this.activityListeners.add(listener);
+    return () => this.activityListeners.delete(listener);
+  }
+
+  /** The list itself changed for this conversation (created, deleted, restored, imported). */
+  listChanged(sessionId: string): void {
+    const managed = this.sessions.get(sessionId);
+    const event: ActivityEvent = {
+      sessionId,
+      status: managed ? this.activityOf(managed) : "idle",
+      listChanged: true,
+    };
+    for (const listener of this.activityListeners) listener(event);
+  }
+
+  /** Tell the lists when a conversation's activity moved; silent otherwise. */
+  private noteActivity(managed: ManagedSession): void {
+    const sessionId = managed.manifest.sessionId;
+    const status = this.activityOf(managed);
+    if ((this.lastActivity.get(sessionId) ?? "idle") === status) return;
+    if (status === "idle") this.lastActivity.delete(sessionId);
+    else this.lastActivity.set(sessionId, status);
+    for (const listener of this.activityListeners) listener({ sessionId, status });
   }
 
   getManifest(sessionId: string): AssemblyManifest {
@@ -4757,6 +4817,7 @@ export class SessionService implements AgentTeamBridge {
     for (const listener of this.listeners.get(sessionId) ?? []) {
       listener(event);
     }
+    if (ACTIVITY_EVENTS.has(event.type)) this.noteActivity(managed);
   }
 
   /** The in-flight turn's prompt + buffered stream, for attach replay. */

@@ -2478,15 +2478,25 @@ test("WebSocket participant first send creates an owned role-conditioned session
     });
   }
 
+  const sockets: WebSocket[] = [];
   try {
     const anonymousWs = new WebSocket(`ws://127.0.0.1:${address.port}`);
+    sockets.push(anonymousWs);
+    // List activity (WP-4): every connection gets the picture it may see,
+    // then changes — filtered like GET /api/sessions.
+    const anonymousActivity: any[] = [];
+    anonymousWs.on("message", (data) => {
+      const message = JSON.parse(data.toString());
+      if (message.type === "activity_snapshot" || message.type === "session_activity") {
+        anonymousActivity.push(message);
+      }
+    });
     await waitForType(anonymousWs, "session_draft");
     const authRequiredPromise = waitForType(anonymousWs, "error");
     anonymousWs.send(JSON.stringify({ type: "prompt", payload: "hello" }));
     const authRequired = await authRequiredPromise;
     assert.equal(authRequired.payload.failure.message, "Authentication required");
     assert.equal(authRequired.payload.code, "auth_required");
-    anonymousWs.close();
 
     const login = await fetch(`${baseUrl}/api/auth/login`, {
       method: "POST",
@@ -2498,17 +2508,35 @@ test("WebSocket participant first send creates an owned role-conditioned session
     const ws = new WebSocket(`ws://127.0.0.1:${address.port}`, {
       headers: { Cookie: cookie },
     });
+    sockets.push(ws);
+    const activitySnapshot = waitForType(ws, "activity_snapshot");
     const draft = await waitForType(ws, "session_draft");
     assert.equal(
       draft.payload.rolePresetSlug,
       "role-conceptual-theory-companion-latest",
     );
     assert.equal(draft.payload.visibility, "research");
+    assert.deepEqual((await activitySnapshot).payload, { activity: {} });
+    const listChanged = waitForType(ws, "session_activity");
 
     // The draft's choice travels with the request that creates the conversation.
     const openedPromise = waitForType(ws, "session_opened");
     ws.send(JSON.stringify({ type: "prompt", payload: "hello", create: { visibility: "private" } }));
     const opened = await openedPromise;
+    // The owner's list hears the new conversation; an anonymous window does not.
+    assert.deepEqual((await listChanged).payload, {
+      sessionId: opened.payload.sessionId,
+      status: "idle",
+      listChanged: true,
+    });
+    await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+    assert.deepEqual(
+      anonymousActivity.map((message) => message.type),
+      ["activity_snapshot"],
+      "an anonymous window hears nothing of a participant's list",
+    );
+    assert.deepEqual(anonymousActivity[0].payload, { activity: {} });
+    anonymousWs.close();
     const sessionJson = JSON.parse(
       readFileSync(
         join(dataDir, "sessions", opened.payload.sessionId, "records", "session.json",),
@@ -2549,6 +2577,7 @@ test("WebSocket participant first send creates an owned role-conditioned session
     });
     ws.close();
   } finally {
+    for (const socket of sockets) socket.close();
     restoreMode();
     SessionService.prototype.runPrompt = originalRunPrompt;
     await new Promise<void>((resolveClose) => {

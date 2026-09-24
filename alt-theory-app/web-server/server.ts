@@ -1421,7 +1421,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           await sessionService.abort(attached, "session_deleted");
         }
       }
-      res.json({ deleted: softDeleteSession(dataDir, sessionId) });
+      const deleted = softDeleteSession(dataDir, sessionId);
+      sessionService.listChanged(sessionId);
+      res.json({ deleted });
     } catch (error) {
       res.status(409).json({
         error: error instanceof Error ? error.message : String(error),
@@ -1440,7 +1442,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           await sessionService.abort(memberId, "session_deleted");
         }
       }
-      res.json({ deletedSessionIds: softDeleteSessionFamily(dataDir, sessionId) });
+      const deletedSessionIds = softDeleteSessionFamily(dataDir, sessionId);
+      for (const id of deletedSessionIds) sessionService.listChanged(id);
+      res.json({ deletedSessionIds });
     } catch (error) {
       res.status(409).json({
         error: error instanceof Error ? error.message : String(error),
@@ -1451,7 +1455,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     const sessionId = req.params.sessionId;
     if (!requireSessionRestContentAccess(req, res, sessionId)) return;
     try {
-      res.json({ restored: restoreDeletedSession(dataDir, sessionId) });
+      const restored = restoreDeletedSession(dataDir, sessionId);
+      sessionService.listChanged(sessionId);
+      res.json({ restored });
     } catch (error) {
       res.status(409).json({
         error: error instanceof Error ? error.message : String(error),
@@ -1462,13 +1468,14 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     const sessionId = req.params.sessionId;
     if (!requireSessionRestContentAccess(req, res, sessionId)) return;
     try {
-      res.json({
-        deleted: permanentlyDeleteSession(
-          dataDir,
-          sessionId,
-          (id) => sessionService.isOpen(id),
-        ),
-      });
+      const deleted = permanentlyDeleteSession(
+        dataDir,
+        sessionId,
+        (id) => sessionService.isOpen(id),
+      );
+      // Its summary is gone, so only windows that can still read one hear it.
+      sessionService.listChanged(sessionId);
+      res.json({ deleted });
     } catch (error) {
       res.status(409).json({
         error: error instanceof Error ? error.message : String(error),
@@ -2460,6 +2467,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     let attachedSessionId: string | null = null;
     let detach = () => {};
     let detachApprovals = () => {};
+    let detachActivity = () => {};
     let closed = false;
     let initialError: unknown = null;
     try {
@@ -2545,6 +2553,14 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       return summary;
     };
 
+    // The list's access rule (GET /api/sessions): no list for an anonymous
+    // window where accounts exist, else summary level, trash included.
+    const canSeeInList = (sessionId: string): boolean => {
+      if (!localMode && auth.role === "anonymous" && hasConfiguredAccounts()) return false;
+      const summary = readSessionAccessSummary(dataDir, sessionId);
+      return Boolean(summary && canAccessSessionSummary(auth, summary));
+    };
+
     const canReceiveApproval = (sessionId: string): boolean => {
       const summary = readSessionAccessSummary(dataDir, sessionId);
       return Boolean(
@@ -2595,8 +2611,10 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       closed = true;
       detach();
       detachApprovals();
+      detachActivity();
       detach = () => {};
       detachApprovals = () => {};
+      detachActivity = () => {};
       attachedSessionId = null;
     });
 
@@ -2614,6 +2632,19 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       payload: sessionService
         .listPendingApprovals()
         .filter((request) => canReceiveApproval(request.sessionId)),
+    });
+    // List activity (WP-4): the whole picture now, then every change —
+    // the list no longer polls.
+    detachActivity = sessionService.attachActivity((event) => {
+      if (canSeeInList(event.sessionId)) send({ type: "session_activity", payload: event });
+    });
+    send({
+      type: "activity_snapshot",
+      payload: {
+        activity: Object.fromEntries(
+          [...sessionService.sessionActivity()].filter(([sessionId]) => canSeeInList(sessionId)),
+        ),
+      },
     });
 
     ws.on("message", async (data) => {
