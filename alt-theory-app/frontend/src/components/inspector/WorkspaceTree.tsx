@@ -16,18 +16,20 @@ import {
 import { t } from "@/i18n";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
-import { hasNativeBridge, revealPath } from "@/lib/native";
+import { hasNativeBridge, revealPath as nativeRevealPath } from "@/lib/native";
 import { stagePathAfterUpload, WORKSPACE_PATH_MIME } from "@/lib/workspace";
 import { FilePreview } from "@/components/inspector/FilePreview";
 import { FolderHead, ListTools } from "@/components/inspector/FolderList";
-import { buildFileTreeModel, getFileTreeNode, type FileTreeNode } from "@/lib/fileTree";
+import { buildFileTreeModel, getFileTreeNode, withFolderEntries, type FileTreeNode } from "@/lib/fileTree";
 import type { PreviewMode } from "@/lib/fileContent";
 import { guardLeave } from "@/lib/fileEditGuard";
 import { usePaneMemory } from "@/lib/paneMemory";
 import { useFindTarget } from "@/lib/find";
 import { copyText } from "@/lib/clipboard";
 import { useContextMenu, type ContextMenuItem } from "@/components/shell/ContextMenu";
-import { quickFindScore, quickFindTerms } from "../../../../shared/quick-find";
+import { fileQueryScore, parseFileQuery } from "../../../../shared/quick-find";
+
+type ManagedTreeEntry = WorkspaceFileEntry | { path: string; isDirectory: true };
 
 export function WorkspaceTree() {
   const app = useApp();
@@ -41,7 +43,7 @@ export function WorkspaceTree() {
   const uploadInput = useRef<HTMLInputElement>(null);
   // Ctrl+F on the tree focuses the existing filter (an open file registers
   // its own preview instead).
-  const filterRef = useRef<HTMLLabelElement>(null);
+  const filterRef = useRef<HTMLDivElement>(null);
   useFindTarget(filterRef, {
     focus: () => {
       const input = filterRef.current?.querySelector("input");
@@ -57,8 +59,10 @@ export function WorkspaceTree() {
   // the view mode and filter live in pane memory.
   const [previewView, setPreviewView] = usePaneMemory<PreviewMode>(`${sessionId}:files:mode`, "rendered");
   const [query, setQuery] = usePaneMemory(`${sessionId}:files:query`, "");
+  const [browsing, setBrowsing] = usePaneMemory<{ folderId: string; path: string } | null>(`${sessionId}:files:browsing`, null);
+  const resultScroll = useRef({ outer: 0, inner: 0, folderId: "" });
   const [closedFolders, setClosedFolders] = usePaneMemory<string[]>(`${sessionId}:files:closedFolders`, []);
-  const folderClosed = (id: string) => !query.trim() && closedFolders.includes(id);
+  const folderClosed = (id: string) => (!query.trim() || browsing !== null) && closedFolders.includes(id);
   const toggleFolder = (id: string) =>
     setClosedFolders((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
   const subKey = shell.rightSub?.key ?? "";
@@ -138,14 +142,16 @@ export function WorkspaceTree() {
     shell.clearWorkspaceRevealPath();
   }, [shell.workspaceRevealPath, shell.clearWorkspaceRevealPath, setQuery]);
 
-  const normalizedQuery = query.trim();
-  const terms = quickFindTerms(normalizedQuery);
-  const filterEntries = <T extends { path: string }>(items: T[]) =>
+  const normalizedQuery = browsing ? "" : query.trim();
+  const fileQuery = parseFileQuery(normalizedQuery);
+  const managedFolderPath = workingFolders.find((folder) => folder.managed)?.path ?? "";
+  const filterEntries = (items: WorkspaceFileEntry[]): ManagedTreeEntry[] =>
     normalizedQuery
-      ? items.map((entry) => ({ entry, score: quickFindScore(terms, [
-          { text: entry.path.split(/[\\/]/).at(-1), weight: 10 },
-          { text: entry.path, weight: 3 },
-        ]) }))
+      ? withFolderEntries(items).map((entry) => ({ entry, score: fileQueryScore(
+          fileQuery,
+          entry.path.split(/[\\/]/).at(-1) ?? "",
+          `${managedFolderPath}/${entry.path}`,
+        ) }))
           .filter(({ score }) => score > 0)
           .sort((a, b) => b.score - a.score || a.entry.path.localeCompare(b.entry.path))
           .map(({ entry }) => entry)
@@ -154,19 +160,43 @@ export function WorkspaceTree() {
 
   const referenceEntries = useMemo(
     () => filterEntries((entries ?? []).filter((entry) => /^(uploads|extracted)\//.test(entry.path))),
-    [entries, normalizedQuery]
+    [entries, normalizedQuery, managedFolderPath]
   );
   const conversationFolderEntries = useMemo(
     () => filterEntries((entries ?? []).filter((entry) => !/^(uploads|extracted)\//.test(entry.path))),
-    [entries, normalizedQuery]
+    [entries, normalizedQuery, managedFolderPath]
   );
-  const managedFolderPath = workingFolders.find((folder) => folder.managed)?.path ?? "";
+  const openFolderResult = (folderId: string, path: string) => {
+    const group = [...(filterRef.current?.closest(".body")?.querySelectorAll<HTMLElement>("[data-folder-id]") ?? [])]
+      .find((element) => element.dataset.folderId === folderId);
+    resultScroll.current = {
+      outer: filterRef.current?.closest(".body")?.scrollTop ?? 0,
+      inner: group?.querySelector<HTMLElement>(".working-tree")?.scrollTop ?? 0,
+      folderId,
+    };
+    setClosedFolders((current) => current.filter((id) => id !== folderId));
+    setBrowsing({ folderId, path });
+  };
+  const backToResults = () => {
+    setBrowsing(null);
+    requestAnimationFrame(() => {
+      const body = filterRef.current?.closest(".body");
+      filterRef.current?.querySelector("input")?.focus({ preventScroll: true });
+      if (body) body.scrollTop = resultScroll.current.outer;
+      const group = [...(body?.querySelectorAll<HTMLElement>("[data-folder-id]") ?? [])]
+        .find((element) => element.dataset.folderId === resultScroll.current.folderId);
+      const tree = group?.querySelector<HTMLElement>(".working-tree");
+      if (tree) tree.scrollTop = resultScroll.current.inner;
+    });
+  };
+  const clearSearch = () => { setQuery(""); setBrowsing(null); };
 
   // Opening another file is a leave from a dirty editor: the guard bounces
   // the first attempt into the red bar and saves-and-proceeds on the next
   // (owner ruling 2026-09-15).
-  const openFile = (entry: WorkspaceFileEntry) => {
-    if (!sessionId || entry.kind === "binary-original") return;
+  const openFile = (entry: ManagedTreeEntry) => {
+    if ("isDirectory" in entry && entry.isDirectory) return;
+    if (!sessionId || !("kind" in entry) || entry.kind === "binary-original") return;
     setPreviewView("rendered");
     void guardLeave(() => shell.openSub({ key: `ws:${entry.path}`, title: entry.path }));
   };
@@ -239,11 +269,19 @@ export function WorkspaceTree() {
   }
 
   return (
-    <>
+    <div onKeyDown={(event) => {
+      if (event.key !== "Escape" || event.nativeEvent.isComposing || !query.trim()) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (browsing) backToResults(); else clearSearch();
+    }}>
       <ListTools
         filterRef={filterRef}
         query={query}
-        onQuery={setQuery}
+        onQuery={(value) => { setBrowsing(null); setQuery(value); }}
+        onEscape={browsing ? backToResults : clearSearch}
+        onBack={browsing ? backToResults : undefined}
+        onClear={clearSearch}
         placeholder={t("Filter files")}
         {...(workingFolders.some((folder) => folder.available && !folder.managed) || (entries?.length ?? 0) > 0
           ? {
@@ -261,7 +299,7 @@ export function WorkspaceTree() {
       {folders.length > 0 ? (
         <div className="working-folders">
           {folders.map((folder) => (
-            <div className="working-folder-group" key={folder.id}>
+            <div className="working-folder-group" key={folder.id} data-folder-id={folder.id}>
               <FolderHead
                 path={folder.path}
                 role={`${folder.role === "primary"
@@ -290,6 +328,9 @@ export function WorkspaceTree() {
                   expandSignal={expandSignal}
                   collapseSignal={collapseSignal}
                   query={query}
+                  browseMode={browsing !== null}
+                  browsePath={browsing?.folderId === folder.id ? browsing.path : undefined}
+                  onOpenFolder={(path) => openFolderResult(folder.id, path)}
                   memoryKey={`${sessionId}:files:${folder.id}`}
                 />
                 </div>
@@ -344,6 +385,8 @@ export function WorkspaceTree() {
                   collapseSignal={collapseSignal}
                   label={t("References")}
                   filterActive={Boolean(normalizedQuery)}
+                  onOpenFolder={(entry) => openFolderResult("references", entry.path)}
+                  revealPath={browsing?.folderId === "references" ? browsing.path : undefined}
                   memoryKey={`${sessionId}:files:references`}
                 />
               </div>
@@ -362,6 +405,8 @@ export function WorkspaceTree() {
                   collapseSignal={collapseSignal}
                   label={t("Conversation folder")}
                   filterActive={Boolean(normalizedQuery)}
+                  onOpenFolder={(entry) => openFolderResult("conversation", entry.path)}
+                  revealPath={browsing?.folderId === "conversation" ? browsing.path : undefined}
                   memoryKey={`${sessionId}:files:conversation`}
                 />
               </div>
@@ -369,7 +414,7 @@ export function WorkspaceTree() {
           ) : null}
         </>
       )}
-    </>
+    </div>
   );
 }
 
@@ -382,6 +427,9 @@ function WorkingTree({
   expandSignal,
   collapseSignal,
   query,
+  browseMode,
+  browsePath,
+  onOpenFolder,
   memoryKey,
 }: {
   sessionId: string;
@@ -392,6 +440,9 @@ function WorkingTree({
   expandSignal: number;
   collapseSignal: number;
   query: string;
+  browseMode: boolean;
+  browsePath?: string;
+  onOpenFolder: (path: string) => void;
   memoryKey: string;
 }) {
   const [childrenByPath, setChildrenByPath] = useState(
@@ -453,6 +504,7 @@ function WorkingTree({
       searchToken.current = null;
       return;
     }
+    if (browseMode) return;
     // One token per search: refining the query reuses the server's walk.
     searchToken.current ??= `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const controller = new AbortController();
@@ -470,7 +522,20 @@ function WorkingTree({
       controller.abort();
       window.clearTimeout(timer);
     };
-  }, [folderId, query, sessionId]);
+  }, [browseMode, folderId, query, sessionId]);
+
+  useEffect(() => {
+    if (browsePath === undefined) return;
+    let cancelled = false;
+    const reveal = async () => {
+      const parts = browsePath.split("/").filter(Boolean);
+      for (let i = 0; i < parts.length && !cancelled; i += 1) {
+        await loadDirectory(parts.slice(0, i).join("/"));
+      }
+    };
+    void reveal();
+    return () => { cancelled = true; };
+  }, [browsePath, loadDirectory]);
 
   useEffect(() => {
     if (refreshSignal === previousRefreshSignal.current) return;
@@ -503,15 +568,16 @@ function WorkingTree({
     };
   }, [expandSignal, loadDirectory]);
 
+  const searching = Boolean(query.trim() && !browseMode);
   const activeResult = searchResult?.query === query.trim() ? searchResult : null;
   const entries = useMemo(
-    () => query.trim() ? (activeResult?.entries ?? []) : [...childrenByPath.values()].flat(),
-    [childrenByPath, query, activeResult],
+    () => searching ? (activeResult?.entries ?? []) : [...childrenByPath.values()].flat(),
+    [childrenByPath, searching, activeResult],
   );
-  if (query.trim() && activeResult === null) {
+  if (searching && activeResult === null) {
     return <div className="wb-note">{t("Searching files…")}</div>;
   }
-  if (entries.length === 0) return query.trim()
+  if (entries.length === 0) return searching
     ? <div className="wb-note">{t("No matching files.")}</div>
     : null;
   return (
@@ -528,10 +594,12 @@ function WorkingTree({
         expandSignal={resolvedExpandSignal}
         collapseSignal={collapseSignal}
         label={basePath}
-        filterActive={Boolean(query.trim())}
+        filterActive={searching}
+        onOpenFolder={(entry) => onOpenFolder(entry.path)}
+        revealPath={browsePath}
         memoryKey={memoryKey}
       />
-      {activeResult?.truncated ? <div className="wb-note">{t("Showing the most relevant matches. Refine your search for more.")}</div> : null}
+      {searching && activeResult?.truncated ? <div className="wb-note">{t("Showing the most relevant matches. Refine your search for more.")}</div> : null}
     </div>
   );
 }
@@ -542,6 +610,7 @@ function FileTree<T extends { path: string; isDirectory?: boolean }>({
   basePath,
   canOpen = () => true,
   onExpandFolder,
+  onOpenFolder,
   initiallyExpanded = true,
   expandNewFolders = true,
   dragPath,
@@ -549,6 +618,7 @@ function FileTree<T extends { path: string; isDirectory?: boolean }>({
   collapseSignal,
   label,
   filterActive = false,
+  revealPath,
   memoryKey,
 }: {
   entries: T[];
@@ -556,6 +626,7 @@ function FileTree<T extends { path: string; isDirectory?: boolean }>({
   basePath: string;
   canOpen?: (entry: T) => boolean;
   onExpandFolder?: (entry: T) => void;
+  onOpenFolder?: (entry: T) => void;
   initiallyExpanded?: boolean;
   expandNewFolders?: boolean;
   dragPath?: (treePath: string) => string;
@@ -563,6 +634,7 @@ function FileTree<T extends { path: string; isDirectory?: boolean }>({
   collapseSignal: number;
   label: string;
   filterActive?: boolean;
+  revealPath?: string;
   /** Pane-memory key: which folders were open survives a remount. */
   memoryKey: string;
 }) {
@@ -579,6 +651,8 @@ function FileTree<T extends { path: string; isDirectory?: boolean }>({
   const requestedFolderIds = useRef(new Set<string>());
   const expansionBeforeFilter = useRef<string[] | null>(null);
   const copyResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const lastReveal = useRef("");
   const tree = useTree<FileTreeNode<T>>({
     rootItemId: model.rootId,
     state: { expandedItems },
@@ -591,7 +665,9 @@ function FileTree<T extends { path: string; isDirectory?: boolean }>({
     },
     onPrimaryAction: (item) => {
       const entry = item.getItemData().entry;
-      if (entry && canOpen(entry)) onOpenFile(entry);
+      if (!entry) return;
+      if (filterActive && entry.isDirectory && onOpenFolder) onOpenFolder(entry);
+      else if (!entry.isDirectory && canOpen(entry)) onOpenFile(entry);
     },
     features: [syncDataLoaderFeature, hotkeysCoreFeature, expandAllFeature],
   });
@@ -642,12 +718,30 @@ function FileTree<T extends { path: string; isDirectory?: boolean }>({
     tree.collapseAll();
   }, [collapseSignal, tree]);
 
+  useEffect(() => {
+    if (!revealPath) { lastReveal.current = ""; return; }
+    const target = model.nodes.get(`node:${revealPath}`);
+    if (!target || lastReveal.current === revealPath) return;
+    lastReveal.current = revealPath;
+    const parts = revealPath.split("/");
+    setExpandedItems((current) => [...new Set([
+      ...current,
+      ...parts.map((_, index) => `node:${parts.slice(0, index + 1).join("/")}`),
+    ])]);
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const row = [...(containerRef.current?.querySelectorAll<HTMLElement>("[data-tree-path]") ?? [])]
+        .find((element) => element.dataset.treePath === revealPath);
+      row?.scrollIntoView({ block: "center" });
+      row?.focus({ preventScroll: true });
+    }));
+  }, [model, revealPath, setExpandedItems]);
+
   useEffect(() => () => {
     if (copyResetTimer.current) clearTimeout(copyResetTimer.current);
   }, []);
 
   return (
-    <div {...tree.getContainerProps(label)}>
+    <div ref={containerRef}><div {...tree.getContainerProps(label)}>
       {tree.getItems().map((item) => {
         const node = getFileTreeNode(model, item.getId());
         if (!node) return null;
@@ -657,13 +751,20 @@ function FileTree<T extends { path: string; isDirectory?: boolean }>({
         const copyLabel = t(pathWasCopied ? "Path copied" : "Copy path");
         const contextItems: ContextMenuItem[] = [
           { label: t("Copy path"), icon: "ph-copy", onSelect: () => void copyText(node.fullPath) },
-          ...(hasNativeBridge() ? [{ label: t("Show in file manager"), icon: "ph-folder-open", onSelect: () => void revealPath(node.fullPath) }] : []),
+          ...(hasNativeBridge() ? [{ label: t("Show in file manager"), icon: "ph-folder-open", onSelect: () => void nativeRevealPath(node.fullPath) }] : []),
         ];
         return (
           <div
             {...item.getProps()}
             key={item.getKey()}
             className="ti"
+            data-tree-path={node.path}
+            onClickCapture={filterActive && node.entry?.isDirectory && onOpenFolder ? (event) => {
+              if ((event.target as HTMLElement).closest("button")) return;
+              event.preventDefault();
+              event.stopPropagation();
+              onOpenFolder(node.entry!);
+            } : undefined}
             style={{ paddingLeft: 8 + item.getItemMeta().level * 20 }}
             aria-disabled={!canOpenItem || undefined}
             data-tip={!canOpenItem ? "Too large to preview" : node.fullPath}
@@ -704,6 +805,6 @@ function FileTree<T extends { path: string; isDirectory?: boolean }>({
         );
       })}
       {menu.element}
-    </div>
+    </div></div>
   );
 }

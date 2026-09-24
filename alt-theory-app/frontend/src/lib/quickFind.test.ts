@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { quickFindScore, quickFindTerms } from "../../../shared/quick-find.ts";
+import { fileQueryScore, parseFileQuery, quickFindScore, quickFindTerms } from "../../../shared/quick-find.ts";
 
 test("Quick Find matches unordered words, Chinese, and either path separator", () => {
   const fields = [{ text: "项目/采访/田野笔记.md", weight: 10 }];
@@ -33,4 +33,14 @@ test("a filename outranks the same term only in a directory", () => {
     { text: "draft.md", weight: 10 }, { text: "notes/draft.md", weight: 3 },
   ]);
   assert.ok(file > directory);
+});
+
+test("file search keeps ordinary words in one name and path queries at the target", () => {
+  const path = "D:/research/20260825-ppt-skill-test/test-a-deepseek/output/deck.pptx";
+  assert.equal(fileQueryScore(parseFileQuery("deepseek 2026"), "deck.pptx", path), 0);
+  assert.ok(fileQueryScore(parseFileQuery("deepseek 2026"), "deepseek-2026.pptx", path));
+  assert.ok(fileQueryScore(parseFileQuery("deepseek/output/deck"), "deck.pptx", path));
+  assert.equal(fileQueryScore(parseFileQuery("2026/deepseek"), "deck.pptx", path), 0);
+  assert.ok(fileQueryScore(parseFileQuery("2026/deepseek"), "test-a-deepseek", "D:/research/20260825-ppt-skill-test/test-a-deepseek"));
+  assert.ok(fileQueryScore(parseFileQuery('"D:\\research\\20260825-ppt-skill-test\\test-a-deepseek\\output\\deck.pptx"'), "deck.pptx", path));
 });

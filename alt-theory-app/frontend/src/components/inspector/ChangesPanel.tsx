@@ -12,7 +12,7 @@ import { hasNativeBridge, revealPath } from "@/lib/native";
 import { usePaneMemory } from "@/lib/paneMemory";
 import { useFindTarget } from "@/lib/find";
 import type { PreviewMode } from "@/lib/fileContent";
-import { quickFindScore, quickFindTerms } from "../../../../shared/quick-find";
+import { fileQueryScore, parseFileQuery } from "../../../../shared/quick-find";
 
 /**
  * Files the conversation family changed (M7 §2; card 7), grouped the way
@@ -35,7 +35,7 @@ export function ChangesPanel() {
   // The same always-visible filter as Files (owner 2026-09-24: lists of
   // things to open filter; opened content gets the Ctrl+F find bar).
   const [query, setQuery] = usePaneMemory(`${sessionId}:changes:query`, "");
-  const filterRef = useRef<HTMLLabelElement>(null);
+  const filterRef = useRef<HTMLDivElement>(null);
   useFindTarget(filterRef, {
     focus: () => {
       const input = filterRef.current?.querySelector("input");
@@ -93,15 +93,14 @@ export function ChangesPanel() {
   const roleText = (group: ChangeGroup) =>
     group.role === "primary" ? t("Main folder") : group.role === "companion" ? t("Companion folder") : t("Outside");
   const normalizedQuery = query.trim();
-  const terms = quickFindTerms(normalizedQuery);
+  const fileQuery = parseFileQuery(normalizedQuery);
   const shown = normalizedQuery
     ? groups
         .map((group) => ({
           ...group,
-          files: group.files.filter((file) => quickFindScore(terms, [
-            { text: file.displayPath.split(/[\\/]/).at(-1), weight: 10 },
-            { text: file.displayPath, weight: 3 },
-          ]) > 0),
+          files: group.files.filter((file) => fileQueryScore(
+            fileQuery, file.displayPath.split(/[\\/]/).at(-1) ?? "", file.resolvedPath,
+          ) > 0),
         }))
         .filter((group) => group.files.length > 0)
     : groups;
@@ -109,11 +108,17 @@ export function ChangesPanel() {
     setClosed((prev) => (prev.includes(path) ? prev.filter((item) => item !== path) : [...prev, path]));
 
   return (
-    <>
+    <div onKeyDown={(event) => {
+      if (event.key !== "Escape" || event.nativeEvent.isComposing || !query.trim()) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setQuery("");
+    }}>
       <ListTools
         filterRef={filterRef}
         query={query}
         onQuery={setQuery}
+        onEscape={() => setQuery("")}
         placeholder={t("Filter files")}
         onExpandAll={() => setClosed([])}
         onCollapseAll={() => setClosed(groups.map((group) => group.path))}
@@ -165,6 +170,6 @@ export function ChangesPanel() {
         );
       })}
       {menu.element}
-    </>
+    </div>
   );
 }

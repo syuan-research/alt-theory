@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildFileTreeModel, getFileTreeNode } from "./fileTree.ts";
+import { buildFileTreeModel, getFileTreeNode, withFolderEntries } from "./fileTree.ts";
+
+test("managed files expose their folders as independent search candidates", () => {
+  const entries = withFolderEntries([{ path: "a/deepseek/output/deck.pptx" }]);
+  assert.deepEqual(entries.filter((entry) => "isDirectory" in entry), [
+    { path: "a", isDirectory: true },
+    { path: "a/deepseek", isDirectory: true },
+    { path: "a/deepseek/output", isDirectory: true },
+  ]);
+});
 
 test("file tree groups folders first and resolves Windows full paths", () => {
   const model = buildFileTreeModel(

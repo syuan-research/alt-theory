@@ -346,6 +346,7 @@ const catalog: Record<string, string> = {
   "Files over 1 MiB are view-only.": "超过 1 MiB 的文件仅可查看。",
   "Filter": "筛选",
   "Filter files": "筛选文件",
+  "Back to search results": "返回搜索结果",
   "Filter folders and conversations…": "筛选文件夹和对话…",
   "Filter models": "筛选模型",
   "Find": "查找",

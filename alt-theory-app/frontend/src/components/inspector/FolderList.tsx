@@ -13,13 +13,19 @@ export function ListTools({
   filterRef,
   query,
   onQuery,
+  onEscape,
+  onBack,
+  onClear,
   placeholder,
   onExpandAll,
   onCollapseAll,
 }: {
-  filterRef: RefObject<HTMLLabelElement | null>;
+  filterRef: RefObject<HTMLDivElement | null>;
   query: string;
   onQuery: (query: string) => void;
+  onEscape?: () => void;
+  onBack?: () => void;
+  onClear?: () => void;
   placeholder: string;
   /** Omitted when there is nothing to fold. */
   onExpandAll?: () => void;
@@ -27,16 +33,25 @@ export function ListTools({
 }) {
   return (
     <>
-      <label className="files-search" ref={filterRef}>
+      <div className={`files-search${onBack ? " browsing" : ""}`} ref={filterRef}>
         <i className="ph ph-magnifying-glass" aria-hidden="true" />
         <input
           type="search"
           value={query}
           placeholder={placeholder}
           aria-label={placeholder}
+          onFocus={() => onBack?.()}
           onChange={(event) => onQuery(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key !== "Escape" || event.nativeEvent.isComposing) return;
+            event.preventDefault();
+            event.stopPropagation();
+            onEscape?.();
+          }}
         />
-      </label>
+        {onBack ? <button type="button" className="files-search-action" aria-label={t("Back to search results")} data-tip={t("Back to search results")} onClick={onBack}><i className="ph ph-arrow-left" aria-hidden="true" /></button> : null}
+        {query ? <button type="button" className="files-search-action" aria-label={t("Clear")} data-tip={t("Clear")} onClick={() => onClear ? onClear() : onQuery("")}><i className="ph ph-x" aria-hidden="true" /></button> : null}
+      </div>
       {onExpandAll && onCollapseAll ? (
         <div className="files-tree-toolbar">
           <button className="flat" onClick={onExpandAll}>

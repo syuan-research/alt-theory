@@ -243,7 +243,10 @@ surfaces remain designation-gated and absent for everyone else.
     Outside) as quiet grey text on the first line, which folds the folder, and
     the full path on the second, which reveals it in the file manager in the
     desktop app. While a filter is active, matches show even in folded
-    folders. The Changes filter matches file names.
+    folders. Changes and Files match each file's or folder's own name by
+    default; a query containing `/` or `\` instead matches consecutive path
+    segments ending at that item. A matching folder is a result in its own
+    right, without making all descendants matches.
   - Right-pane view state outlives the pane (Owner 2026-09-03). The shell
     remembers, per rail, the last open sub (file, changed file, related
     child) and restores it when that rail reopens after a collapse or
@@ -256,7 +259,12 @@ surfaces remain designation-gated and absent for everyone else.
     must survive an unmount lives there, not in a component or a context.
   - Files has one inline filter above the existing tree. It keeps matches and
     their ancestors in that tree, expands those ancestors while filtering, and
-    restores the prior expansion when cleared. File-change rows may reveal the
+    restores the prior expansion when cleared. Selecting a matching folder
+    temporarily shows the ordinary tree with that folder expanded and in view;
+    the query remains visible but inactive. The in-field Back returns to the
+    results, while Clear leaves the ordinary tree. Escape returns from the
+    folder to results first, then exits search; in other file lists it exits
+    search at once. File-change rows may reveal the
     same path here; for files, path copying and file-manager reveal live in
     contextual actions rather than permanent labels.
   - Ctrl+F acts on the column the user last touched (Owner 2026-09-24). A

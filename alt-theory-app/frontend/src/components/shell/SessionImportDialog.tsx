@@ -214,6 +214,12 @@ export function SessionImportDialog({
             value={query}
             disabled={busy}
             onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== "Escape" || event.nativeEvent.isComposing) return;
+              event.preventDefault();
+              event.stopPropagation();
+              setQuery("");
+            }}
           />
         </label>
 

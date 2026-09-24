@@ -11,7 +11,7 @@ import {
 } from "fs";
 import { readdir } from "fs/promises";
 import { basename, extname, isAbsolute, join, relative, resolve } from "path";
-import { quickFindScore, quickFindTerms } from "../shared/quick-find.js";
+import { fileQueryScore, parseFileQuery } from "../shared/quick-find.js";
 import { resolveSessionRoot, resolveSessionsRoot } from "../core/data-dir.js";
 import { samePath, verdict } from "../core/path-verdict.js";
 import type { Root } from "../core/root-policy.js";
@@ -584,8 +584,8 @@ export async function searchWorkingFolder(
 ): Promise<{ folderId: string; path: string; entries: WorkingTreeEntry[]; truncated: boolean }> {
   const folder = describeWorkingFolders(dataDir, sessionId).find((item) => item.id === folderId);
   if (!folder?.available) throw new Error("This folder is not available");
-  const terms = quickFindTerms(rawQuery);
-  if (!terms.length) return { folderId, path: "", entries: [], truncated: false };
+  const query = parseFileQuery(rawQuery);
+  if (!query.terms.length) return { folderId, path: "", entries: [], truncated: false };
 
   const root = realpathSync(folder.path);
   const paths = options.token
@@ -594,10 +594,7 @@ export async function searchWorkingFolder(
   options.signal?.throwIfAborted();
   const entries: WorkingTreeEntry[] = [];
   const matches = paths
-    .map((item) => ({ ...item, score: quickFindScore(terms, [
-      { text: item.name, weight: 10 },
-      { text: item.path, weight: 3 },
-    ]) }))
+    .map((item) => ({ ...item, score: fileQueryScore(query, item.name, item.absolutePath) }))
     .filter((item) => item.score > 0);
   matches.sort((a, b) => b.score - a.score || a.path.localeCompare(b.path));
   for (const match of matches.slice(0, limit)) {

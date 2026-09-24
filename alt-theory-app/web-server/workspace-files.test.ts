@@ -249,6 +249,14 @@ test("working-folder browsing follows the persisted external workspace", async (
   const search = await searchWorkingFolder(dataDir, sessionId, "primary", "IDEA");
   assert.deepEqual(search.entries.map((entry) => entry.path), ["notes/idea.md"]);
   assert.equal(search.truncated, false);
+  assert.deepEqual(
+    (await searchWorkingFolder(dataDir, sessionId, "primary", "notes")).entries.map((entry) => entry.path),
+    ["notes"],
+  );
+  assert.deepEqual(
+    (await searchWorkingFolder(dataDir, sessionId, "primary", "notes/idea")).entries.map((entry) => entry.path),
+    ["notes/idea.md"],
+  );
   for (let index = 0; index < 205; index += 1) {
     writeFileSync(join(external, "flat", `a-${String(index).padStart(3, "0")}-needle.txt`), "x");
   }

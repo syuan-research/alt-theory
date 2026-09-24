@@ -18,6 +18,16 @@ export function getFileTreeNode<T>(model: FileTreeModel<T>, itemId: string) {
   return model.nodes.get(itemId) ?? null;
 }
 
+/** The managed-file catalog lists files only; make their folders findable too. */
+export function withFolderEntries<T extends { path: string }>(entries: T[]): Array<T | { path: string; isDirectory: true }> {
+  const folders = new Set<string>();
+  for (const entry of entries) {
+    const parts = entry.path.split(/[\\/]/).filter(Boolean);
+    for (let i = 1; i < parts.length; i += 1) folders.add(parts.slice(0, i).join("/"));
+  }
+  return [...entries, ...[...folders].map((path) => ({ path, isDirectory: true as const }))];
+}
+
 function fullPath(basePath: string, relativePath: string): string {
   if (!basePath) return relativePath;
   const separator = basePath.includes("\\") ? "\\" : "/";
