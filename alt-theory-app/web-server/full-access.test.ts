@@ -225,6 +225,24 @@ test("full access lifetime on the managed session", async () => {
   assert.equal(readV4SessionHeader(recordsDir)?.fullAccess, undefined, "header cleared");
   assert.deepEqual(fullAccessTrace(recordsDir), [true, false]);
 
+  // Mid-run, an enable waits for the turn's end; turning it off before
+  // then takes it back — it does not come true (or persist) at settle.
+  await service.switchMode(created.sessionId, "work");
+  const internal = service as unknown as {
+    sessions: Map<string, { runState: { begin(): void; pendingChanges(): object } }>;
+    settle(managed: unknown): Promise<unknown>;
+  };
+  const managed = internal.sessions.get(created.sessionId)!;
+  managed.runState.begin();
+  const waiting = await service.setFullAccess(created.sessionId, true);
+  assert.equal(waiting.pending?.fullAccess, true, "held for the turn's end");
+  const takenBack = await service.setFullAccess(created.sessionId, false);
+  assert.equal(takenBack.pending?.fullAccess, undefined, "the pending enable is gone");
+  await internal.settle(managed);
+  assert.equal(service.getSnapshot(created.sessionId).fullAccess, false, "still off after the turn");
+  assert.equal(readV4SessionHeader(recordsDir)?.fullAccess, undefined, "nothing persisted");
+  assert.deepEqual(fullAccessTrace(recordsDir), [true, false]);
+
   // A new conversation starts off.
   const fresh = await service.createSession(selectors, { mode: "work" });
   assert.equal(fresh.fullAccess, false, "fresh runtime starts off");

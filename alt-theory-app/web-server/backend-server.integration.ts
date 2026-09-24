@@ -2559,7 +2559,7 @@ test("WebSocket participant first send creates an owned role-conditioned session
   }
 });
 
-test("REST discovery and WebSocket sessions are connection-local", async () => {
+test("REST discovery lists assets; a connection holds no draft and greets with the defaults", async () => {
   const root = mkdtempSync(join(tmpdir(), "alt-theory-server-"));
   const rolePresets = join(root, "role-presets");
   const souls = join(root, "soul");

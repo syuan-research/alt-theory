@@ -811,6 +811,8 @@ export type ServerMessage =
         followUp: string[];
         restored?: string[];
         restoredAttachments?: string[];
+        /** One hand-back, however many windows show it: a draft takes it once. */
+        restoredId?: string;
       };
     }
   | { type: "approval_snapshot"; payload: ApprovalRequestPayload[] }

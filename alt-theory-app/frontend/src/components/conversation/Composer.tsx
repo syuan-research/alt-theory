@@ -180,11 +180,13 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
   };
 
   const handleSubmit = () => {
+    // A help question carries no files: staged ones stay for the next message.
+    const attachments = helpQuestionArmed ? [] : [...conv.stagedWorkspacePaths];
     const sent = helpQuestionArmed
       ? conv.invokeSkill("alt-theory-help", draft)
       : sendDraft();
     if (sent) {
-      conv.clearDraft();
+      conv.clearDraft(attachments);
       setHelpQuestionArmed(false);
     }
   };

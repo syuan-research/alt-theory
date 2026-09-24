@@ -312,6 +312,8 @@ export type SessionServiceEvent =
         followUp: string[];
         restored?: string[];
         restoredAttachments?: string[];
+        /** One hand-back, however many windows show it: a draft takes it once. */
+        restoredId?: string;
       };
     }
   | { type: "session_transcript"; payload: { messages: TranscriptMessage[] } }
@@ -1091,6 +1093,9 @@ export class SessionService implements AgentTeamBridge {
   ): Promise<SessionSnapshot> {
     const managed = this.requireSession(sessionId);
     if (!enabled) {
+      // Off is immediate, and takes back an enable still waiting for the
+      // turn to end — it must not come true (and persist) at settle.
+      managed.runState.drop("fullAccess");
       this.applyFullAccess(managed, false);
     } else {
       await managed.runState.applyOrDefer({ fullAccess: true }, () =>
@@ -2533,6 +2538,7 @@ export class SessionService implements AgentTeamBridge {
           followUp: [],
           restored,
           ...(restoredAttachments.length > 0 ? { restoredAttachments } : {}),
+          restoredId: randomUUID(),
         },
       });
     }
@@ -2609,6 +2615,7 @@ export class SessionService implements AgentTeamBridge {
           followUp: [],
           restored: [text, ...rest.map((item) => item.text)],
           ...(restoredAttachments.length > 0 ? { restoredAttachments } : {}),
+          restoredId: randomUUID(),
         },
       });
       throw error;

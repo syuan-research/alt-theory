@@ -228,6 +228,10 @@ test("replay: Stop hands the queued text back to the conversation it was typed i
     assert.equal(isRunning(window.state), false);
     assert.deepEqual(queuedTexts(window.state), []);
     assert.deepEqual(returned(window), [{ to: sessionId, text: "and this", attachments: ["a.md"] }]);
+    // The hand-back names itself, so two windows of the conversation give
+    // the one shared draft one copy (lib/draft takes an id once).
+    const op = window.state.draftOps.find((entry) => entry.kind === "return");
+    assert.ok(op?.kind === "return" && op.once, "the hand-back carries its id");
     assert.equal(window.state.notice, null, "the user's own Stop needs no words");
   } finally {
     await service.disposeAll();

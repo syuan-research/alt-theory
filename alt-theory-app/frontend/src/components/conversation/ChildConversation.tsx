@@ -143,9 +143,13 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
     // a reconnect): the socket would be on its draft and create a new one.
     if (!conversation.sessionReady) return;
     const text = draft.trim();
+    // Files handed back to this draft (Stop) go out with the text.
+    const attachments = [...conversation.stagedWorkspacePaths];
     // While a turn runs the text joins Pi's steer queue (card 11): delivered
     // at the next API call, a bubble when Pi hands it to the model.
-    if (text && conversation.prompt(text)) setDraft("");
+    if ((text || attachments.length) && conversation.prompt(text, attachments)) {
+      conversation.clearDraft(attachments);
+    }
   };
 
   const helper = useMemo(
@@ -290,7 +294,7 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
         <div className="row">
           <button
             className="send"
-            disabled={!draft.trim() || !conversation.sessionReady}
+            disabled={!(draft.trim() || conversation.stagedWorkspacePaths.length) || !conversation.sessionReady}
             onClick={send}
             data-tip={running ? runPhaseLabels().queued : t("Send")}
           >

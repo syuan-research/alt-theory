@@ -485,14 +485,18 @@ the normal or advanced product UI.
 Every conversation has its own draft — the composer text and the staged
 files — and so does the new-conversation screen (M2, 2026-09-24). A draft
 belongs to the conversation, not to where it is shown: the center composer and
-a side-pane child show the draft of the conversation they display, so
-switching conversations shows each one's own draft, and closing and reopening
-a side conversation finds its draft again. The drafts live in
-`lib/draft.ts`, one per conversation key (a session id, or `new`).
+a side-pane child show the draft of the conversation they display (a side
+pane takes input only once that conversation is open), so switching
+conversations shows each one's own draft, two places showing one
+conversation share one draft, and closing and reopening a side conversation
+finds its draft again. The drafts live in `lib/draft.ts`, one per
+conversation key (a session id, or `new`).
 
 - **Kept on this device.** Switching, opening Settings or Review, reconnecting
   and restarting the app keep every draft (localStorage, per account — the
-  browser already keeps it per server). Nothing is synced between devices.
+  browser already keeps it per server). Another window of the app on the same
+  device reads a draft again when this one saves it. Nothing is synced
+  between devices.
 - **Written shortly after a change** (and at once when the page is hidden). A
   write that fails is said in the composer ("could not be saved on this
   device"); it is never treated as saved. There is no eviction: unsent text is
@@ -500,14 +504,18 @@ a side conversation finds its draft again. The drafts live in
 - **Ends** when it is sent, when its conversation is deleted or no longer in
   the conversation list (a draft opened in this run is never taken that way),
   or on sign-out.
-- **Sending** clears the text and files at once; if the send is refused or
+- **Sending** clears the text and the files that went with it (a help
+  question carries none, so staged files stay); if the send is refused or
   lost (the socket dropped and the re-opened rows do not have it), the text
   and files go back into the draft of the conversation they were sent from,
   with a one-line notice — not into whichever composer is on screen. Stop's
   unsent queue and a queued message taken back to edit go to their own
-  conversation's draft the same way.
-- **Restored staged files are checked** once per app run: files that are gone
-  are taken out of the draft with a notice (local form only).
+  conversation's draft the same way; a Stop seen by two windows of the
+  conversation is taken once. A file imported into a conversation is staged
+  in that conversation's draft even if another one is open by then.
+- **Restored drafts are checked** once per app run: staged files that are
+  gone, and the new-conversation draft's folder if it is gone, are taken out
+  with a notice (local form only).
 - The file editor's unsaved edits are a separate, memory-only draft store
   (`lib/fileDrafts.ts`, see the file preview above).
 
@@ -520,17 +528,22 @@ restart. Changing one of them changes only the draft; nothing about it is held
 on the server connection. The first send (a prompt, a skill, or a root Helper)
 carries the draft's settings, the server checks each one (knowledge domain,
 mode, visibility for the deployment, Full Access local-only, folder exists;
-the assembly checks role, soul, instruction and model) and creates the
-conversation from exactly that state in one step; a refused creation leaves
-nothing behind and the text goes back to the draft. The server still resolves
-the model chip's thinking level for the draft's model (`describe_draft`).
+the assembly checks role, soul, instruction and model; under Native Pi the
+Alt selectors are recorded but inactive) and creates the conversation from
+exactly that state in one step; a refused creation leaves nothing behind and
+the text goes back to the draft. A root Helper whose draft settings no longer
+hold falls back to the defaults instead of failing. While the first send is
+creating the conversation, a second send waits; text typed meanwhile moves
+into the new conversation's draft. The server still resolves the model chip's
+thinking level for the draft's model (`describe_draft`).
 
 Once the draft has become a conversation its settings start over, except the
 mode and folder, which carry to the next new conversation; Full Access starts
 from Ask again. **New** pressed in a conversation lets the draft take that
-conversation's knowledge, role, soul and instruction, under the choices the
-user already made in the draft. Changing Settings > General > "New
-conversations start in" also sets the draft's mode.
+conversation's knowledge, role, soul and instruction for this run of the app
+(not kept on the device), under the choices the user already made in the
+draft. Changing Settings > General > "New conversations start in" also sets
+the draft's mode.
 
 Actions that require an existing parent conversation, such as branching and
 side conversations, are not shown as active draft actions. Helper does have a

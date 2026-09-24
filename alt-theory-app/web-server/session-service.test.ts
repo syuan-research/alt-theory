@@ -4663,7 +4663,9 @@ test("a message during a run joins Pi's steer queue; delivery shows the bubble; 
     const restored = events.find(
       (event) => event.type === "queue_updated" && event.payload.restored,
     );
-    assert.deepEqual(restored?.payload, { steering: [], followUp: [], restored: ["unsent"] });
+    const { restoredId, ...handedBack } = (restored?.payload ?? {}) as { restoredId?: string };
+    assert.deepEqual(handedBack, { steering: [], followUp: [], restored: ["unsent"] });
+    assert.equal(typeof restoredId, "string", "the hand-back names itself");
     assert.equal(
       events.filter((event) => event.type === "user_steered").length,
       1,
@@ -5032,7 +5034,8 @@ test("Stop hands unsent queued text and its staged paths back to the editor", as
     const restored = events.find(
       (event) => event.type === "queue_updated" && event.payload.restored,
     );
-    assert.deepEqual(restored?.payload, {
+    const { restoredId: _id, ...handedBack } = (restored?.payload ?? {}) as { restoredId?: string };
+    assert.deepEqual(handedBack, {
       steering: [],
       followUp: [],
       restored: ["unsent"],

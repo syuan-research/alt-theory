@@ -26,9 +26,6 @@ export interface Draft {
   attachments: string[];
   /** New-conversation draft only: what the user chose on that screen. */
   settings?: NewConversationSettings;
-  /** New-conversation draft only: the knowledge/role/soul/instruction of the
-   *  conversation New was pressed in; the user's own choices win. */
-  inherited?: NewConversationSettings;
 }
 
 const EMPTY: Draft = { text: "", attachments: [] };
@@ -41,6 +38,8 @@ const drafts = new Map<string, Draft>();
 const timers = new Map<string, ReturnType<typeof setTimeout>>();
 const failed = new Set<string>();
 const listeners = new Set<() => void>();
+/** Hand-backs already taken (two windows of one conversation get each one). */
+const taken = new Set<string>();
 
 function storageKey(key: string): string {
   return `${PREFIX}${scope}:${key}`;
@@ -51,7 +50,7 @@ function notify(): void {
 }
 
 function isBlank(value: unknown): boolean {
-  if (value === undefined || value === null || value === "") return true;
+  if (value === undefined || value === null || value === "" || value === false) return true;
   if (Array.isArray(value)) return value.length === 0;
   return typeof value === "object" && Object.keys(value).length === 0;
 }
@@ -99,12 +98,37 @@ function write(key: string): void {
   }
 }
 
+/** Paths join the staged ones of that conversation's draft. */
+export function stageInDraft(key: string, paths: string[]): void {
+  updateDraft(key, (draft) => {
+    const added = [...new Set(paths)].filter((path) => path && !draft.attachments.includes(path));
+    return added.length ? { ...draft, attachments: [...draft.attachments, ...added] } : draft;
+  });
+}
+
 /** Write every pending draft now (page hide, scope change). */
 export function flushDrafts(): void {
   for (const key of [...timers.keys()]) write(key);
 }
 
-if (typeof window !== "undefined") window.addEventListener("pagehide", flushDrafts);
+if (typeof window !== "undefined") {
+  window.addEventListener("pagehide", flushDrafts);
+  // Another window of this app on the device saved a draft: read it again,
+  // unless this window has a change of its own still to write.
+  window.addEventListener("storage", (event) => {
+    if (scope === null) return;
+    if (event.key === null) {
+      drafts.clear();
+    } else {
+      const prefix = `${PREFIX}${scope}:`;
+      if (!event.key.startsWith(prefix)) return;
+      const key = event.key.slice(prefix.length);
+      if (timers.has(key)) return;
+      drafts.delete(key);
+    }
+    notify();
+  });
+}
 
 /** The account the drafts belong to ("local" for the local form). */
 export function setDraftScope(next: string): void {
@@ -118,6 +142,10 @@ export function setDraftScope(next: string): void {
 
 export function draftsReady(): boolean {
   return scope !== null;
+}
+
+export function currentDraftScope(): string | null {
+  return scope;
 }
 
 export function readDraft(key: string): Draft {
@@ -152,10 +180,15 @@ export function appendToDraft(
   text: string,
   paths: string[] = [],
   place: "before" | "after" = "before",
+  once?: string,
 ): void {
+  if (once) {
+    if (taken.has(once)) return;
+    taken.add(once);
+  }
   updateDraft(key, (draft) => {
     const joined = place === "before" ? appendDraft(text, draft.text) : appendDraft(draft.text, text);
-    const added = paths.filter((path) => path && !draft.attachments.includes(path));
+    const added = [...new Set(paths)].filter((path) => path && !draft.attachments.includes(path));
     if (joined === draft.text && !added.length) return draft;
     return { ...draft, text: joined, attachments: [...draft.attachments, ...added] };
   });

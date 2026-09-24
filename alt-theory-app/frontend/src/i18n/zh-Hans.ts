@@ -744,6 +744,7 @@ const catalog: Record<string, string> = {
   "The controls above the composer choose role, knowledge, mode, model, and main folder for that conversation. The toolbox keeps file attachment, planning, folder browsing, and the full skill list close without putting every option on screen.": "输入框上方的控件可为该对话选择角色、知识、模式、模型和主文件夹。工具箱将文件附件、计划、文件夹浏览和完整技能列表放在手边，无需把每个选项都显示在屏幕上。",
   "The conversation is still running.": "对话仍在运行。",
   "The current file is not available.": "当前文件不可用。",
+  "The folder chosen for the new conversation is gone; it will start as an independent conversation.": "为新对话选的文件夹已不在，新对话将作为独立对话开始。",
   "The main conversation becomes active history. Preserved supporting records remain available when the agent needs to search them.": "主对话变为活跃历史。保存的支持记录在子代理需要搜索时仍可用。",
   "The name or code that identifies your data in the study. Set by your study when the app was installed.": "在研究标识您的数据的名称或代码。由您的研究在安装应用时设置。",
   "The original main folder is unavailable. Choose its current location to continue.": "原始主文件夹不可用。选择其当前位置以继续。",

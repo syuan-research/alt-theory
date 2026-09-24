@@ -30,8 +30,10 @@ import {
 } from "@/lib/conversation";
 import {
   appendToDraft,
+  currentDraftScope,
   NEW_DRAFT,
   readDraft,
+  stageInDraft,
   updateDraft,
   useDraft,
   type Draft,
@@ -50,13 +52,10 @@ const RUN_REQUESTS = new Set<ClientMessageBody["type"]>([
   "send_queued_now",
 ]);
 const requestPrefix = Math.random().toString(36).slice(2, 8);
-/** Drafts whose staged files were checked this run (restored ones are checked once). */
+/** Drafts (scope:key) whose staged files were checked this run: once each. */
 const checkedDrafts = new Set<string>();
-
-/** What the new-conversation draft creates a conversation with. */
-function creationSettings(draft: Draft): NewConversationSettings {
-  return { ...draft.inherited, ...draft.settings };
-}
+/** Requests that create a conversation from the new-conversation draft. */
+const CREATING = new Set<ClientMessageBody["type"]>(["prompt", "invoke_skill"]);
 
 /** Kept for the next new conversation once one was created: mode and folder. */
 function stickySettings(settings: NewConversationSettings | undefined): NewConversationSettings | undefined {
@@ -90,10 +89,19 @@ export function useConversation({ sessionId, enabled, onMessage }: ConversationO
   onMessageRef.current = onMessage;
   const targetRef = useRef(sessionId);
   targetRef.current = sessionId;
-  const draftKey = state.sessionId ?? NEW_DRAFT;
+  // The draft of the conversation this hook follows — a side pane's own
+  // even before its open has answered; only the center's detached state is
+  // the new-conversation draft.
+  const draftKey = state.sessionId ?? sessionId ?? NEW_DRAFT;
   const { draft, saveFailed, ready: draftsLoaded } = useDraft(draftKey);
   const newDraft = useDraft(NEW_DRAFT).draft;
   const [draftReturns, setDraftReturns] = useState(0);
+  // What New inherited from the conversation it was pressed in (knowledge,
+  // role, soul, instruction): this run only — not a user choice, so it is
+  // not kept on the device, and a restart starts from the defaults.
+  const [inherited, setInherited] = useState<NewConversationSettings | undefined>(undefined);
+  const inheritedRef = useRef(inherited);
+  inheritedRef.current = inherited;
 
   const socket = useWebSocket({
     enabled,
@@ -148,44 +156,61 @@ export function useConversation({ sessionId, enabled, onMessage }: ConversationO
       if (op.id <= appliedOpRef.current) continue;
       appliedOpRef.current = op.id;
       if (op.kind === "return") {
-        appendToDraft(op.to ?? NEW_DRAFT, op.text, op.attachments);
+        appendToDraft(op.to ?? NEW_DRAFT, op.text, op.attachments, "before", op.once);
         if (op.to === stateRef.current.sessionId) setDraftReturns((count) => count + 1);
       } else {
-        updateDraft(NEW_DRAFT, (current) => ({ ...current, settings: stickySettings(current.settings) }));
+        // The draft became this conversation: its settings start over (mode
+        // and folder carry), and anything typed while it was being created
+        // moves with the user into the new conversation.
+        const leftover = readDraft(NEW_DRAFT);
+        updateDraft(NEW_DRAFT, (current) => ({
+          ...current,
+          text: "",
+          attachments: [],
+          settings: stickySettings(current.settings),
+        }));
+        appendToDraft(op.sessionId, leftover.text, leftover.attachments, "after");
       }
     }
     dispatch({ type: "draft_ops_taken", upTo: ops[ops.length - 1].id });
   }, [state.draftOps]);
 
-  // A draft restored on this device drops staged files that are gone, once.
+  // A draft restored on this device drops what is gone, once per run: staged
+  // files, and the new-conversation draft's folder. Checked once the
+  // conversation it belongs to is the one open (relative paths need it).
+  const owned = (state.sessionId ?? NEW_DRAFT) === draftKey;
   useEffect(() => {
-    if (!draftsLoaded || state.socket !== "open" || checkedDrafts.has(draftKey)) return;
-    checkedDrafts.add(draftKey);
-    const paths = readDraft(draftKey).attachments;
+    const checkKey = `${currentDraftScope()}:${draftKey}`;
+    if (!draftsLoaded || !owned || state.socket !== "open" || checkedDrafts.has(checkKey)) return;
+    const restored = readDraft(draftKey);
+    const folder = draftKey === NEW_DRAFT ? restored.settings?.workspacePrimaryDir : null;
+    const paths = [...restored.attachments, ...(folder ? [folder] : [])];
+    checkedDrafts.add(checkKey);
     if (!paths.length) return;
     const owner = stateRef.current.sessionId;
+    const warn = (text: string) =>
+      dispatch({ type: "notice", body: { kind: "text", text, icon: "warning", warn: true } });
     missingAttachments(owner, paths)
       .then((missing) => {
-        if (!missing.length) return;
+        const files = restored.attachments.filter((path) => missing.includes(path));
+        const folderGone = Boolean(folder && missing.includes(folder));
+        if (!files.length && !folderGone) return;
         updateDraft(draftKey, (current) => ({
           ...current,
-          attachments: current.attachments.filter((path) => !missing.includes(path)),
+          attachments: current.attachments.filter((path) => !files.includes(path)),
+          ...(folderGone ? { settings: { ...current.settings, workspacePrimaryDir: null } } : {}),
         }));
         if (stateRef.current.sessionId !== owner) return;
-        dispatch({
-          type: "notice",
-          body: {
-            kind: "text",
-            text: t("Some attached files are no longer there and were taken out of the draft."),
-            icon: "warning",
-            warn: true,
-          },
-        });
+        if (files.length) warn(t("Some attached files are no longer there and were taken out of the draft."));
+        if (folderGone) {
+          warn(t("The folder chosen for the new conversation is gone; it will start as an independent conversation."));
+        }
       })
       .catch(() => {
-        /* hosted form or offline: nothing to check */
+        // Hosted form or offline: try again next time.
+        checkedDrafts.delete(checkKey);
       });
-  }, [draftKey, draftsLoaded, state.socket]);
+  }, [draftKey, draftsLoaded, owned, state.socket]);
 
   // The model chip's thinking level for the draft's model is the server's
   // answer: ask again whenever the draft names another model.
@@ -214,15 +239,24 @@ export function useConversation({ sessionId, enabled, onMessage }: ConversationO
 
   const commands = useMemo(() => {
     const current = () => stateRef.current;
-    const key = () => current().sessionId ?? NEW_DRAFT;
+    /** On the new-conversation draft: the center, detached, following nothing. */
+    const onNewDraft = () => !current().sessionId && !targetRef.current;
+    const key = () => current().sessionId ?? targetRef.current ?? NEW_DRAFT;
     /** A setting: sent to the conversation, or kept in the new-conversation draft. */
     const setting = (patch: NewConversationSettings, message: ClientMessageBody): boolean => {
-      if (current().sessionId) return send(message);
+      if (!onNewDraft()) return send(message);
       updateDraft(NEW_DRAFT, (draft) => ({ ...draft, settings: { ...draft.settings, ...patch } }));
       return true;
     };
     /** Creating requests from the new-conversation draft carry its settings. */
-    const create = () => (current().sessionId ? {} : { create: creationSettings(readDraft(NEW_DRAFT)) });
+    const create = () =>
+      onNewDraft() ? { create: { ...inheritedRef.current, ...readDraft(NEW_DRAFT).settings } } : {};
+    /** The draft's first send is still creating its conversation: one is enough. */
+    const creating = () =>
+      onNewDraft() &&
+      current().requests.some(
+        (request) => request.status === "sent" && request.from === null && CREATING.has(request.message.type),
+      );
     // A run request still unanswered counts as running for how the next
     // message goes: a second send in those milliseconds is queued by the
     // server, so it must not show as an ordinary bubble.
@@ -236,7 +270,7 @@ export function useConversation({ sessionId, enabled, onMessage }: ConversationO
       /** A user message: runs now, or joins Pi's queue while a turn runs. */
       prompt(text: string, attachments: string[] = [], draftText = text): boolean {
         const outgoing = buildOutgoingPrompt(text.trim(), attachments);
-        if (!outgoing) return false;
+        if (!outgoing || creating()) return false;
         const queued = runningNow();
         const body: ClientMessageBody = {
           type: "prompt",
@@ -256,7 +290,7 @@ export function useConversation({ sessionId, enabled, onMessage }: ConversationO
       },
       /** `draftText` is what the editor gets back if refused (the typed text). */
       invokeSkill(skillName: string, userText?: string, draftText = userText?.trim() ?? ""): boolean {
-        if (!skillName || runningNow()) return false;
+        if (!skillName || runningNow() || creating()) return false;
         const text = userText?.trim() ?? "";
         return send(
           { type: "invoke_skill", payload: { skillName, ...(text ? { userText: text } : {}) }, ...create() },
@@ -313,15 +347,12 @@ export function useConversation({ sessionId, enabled, onMessage }: ConversationO
         const from = current();
         if (from.sessionId && from.snapshot) {
           const { selectors } = effectiveSettings(from);
-          updateDraft(NEW_DRAFT, (draft) => ({
-            ...draft,
-            inherited: {
-              kbDomain: selectors.currentDomain,
-              rolePresetSlug: selectors.rolePresetSlug,
-              soulSlug: selectors.soulSlug,
-              customInstructionRef: selectors.customInstructionRef ?? null,
-            },
-          }));
+          setInherited({
+            kbDomain: selectors.currentDomain,
+            rolePresetSlug: selectors.rolePresetSlug,
+            soulSlug: selectors.soulSlug,
+            customInstructionRef: selectors.customInstructionRef ?? null,
+          });
         }
         return send({ type: "new_session" });
       },
@@ -339,22 +370,22 @@ export function useConversation({ sessionId, enabled, onMessage }: ConversationO
         ),
       requestMetadata: () => send({ type: "get_session_metadata" }),
       requestMetrics: () => send({ type: "get_session_metrics" }),
+      /** Change this conversation's draft (any field of its lifetime, lib/draft). */
+      editDraft: (change: (draft: Draft) => Draft) => updateDraft(key(), change),
       /** The editor's text (this conversation's draft). */
       setDraftText: (next: string | ((current: string) => string)) =>
         updateDraft(key(), (draft) => {
           const text = typeof next === "function" ? next(draft.text) : next;
           return text === draft.text ? draft : { ...draft, text };
         }),
-      /** After a send: the text and files went with it. */
-      clearDraft: () =>
-        updateDraft(key(), (draft) =>
-          draft.text || draft.attachments.length ? { ...draft, text: "", attachments: [] } : draft,
-        ),
-      stage: (...paths: string[]) =>
-        updateDraft(key(), (draft) => {
-          const added = paths.filter((path) => path && !draft.attachments.includes(path));
-          return added.length ? { ...draft, attachments: [...draft.attachments, ...added] } : draft;
-        }),
+      /** After a send: the text, and the files that went with it. */
+      clearDraft: (sent: string[] = []) =>
+        updateDraft(key(), (draft) => ({
+          ...draft,
+          text: "",
+          attachments: draft.attachments.filter((path) => !sent.includes(path)),
+        })),
+      stage: (...paths: string[]) => stageInDraft(key(), paths),
       unstage: (paths: string[]) =>
         updateDraft(key(), (draft) => ({
           ...draft,
@@ -364,7 +395,10 @@ export function useConversation({ sessionId, enabled, onMessage }: ConversationO
     };
   }, [send]);
 
-  const view = useConversationView(state, draft, newDraft, draftsLoaded, saveFailed, draftReturns);
+  // A side pane takes input only once the conversation it follows is open:
+  // before that (or after a refused open) it must not act as a draft.
+  const onTarget = sessionId === null || state.sessionId === sessionId;
+  const view = useConversationView(state, draft, newDraft, inherited, draftsLoaded && onTarget, saveFailed, draftReturns);
   const conversation = useMemo(() => ({ ...view, ...commands }), [view, commands]);
   // The streaming parts travel apart: a token must not re-render every
   // reader of the conversation, only the stream view (perf backlog item 3).
@@ -376,7 +410,8 @@ function useConversationView(
   state: ConversationState,
   draft: Draft,
   newDraft: Draft,
-  draftsLoaded: boolean,
+  inherited: NewConversationSettings | undefined,
+  inputReady: boolean,
   draftSaveFailed: boolean,
   draftReturns: number,
 ) {
@@ -386,19 +421,21 @@ function useConversationView(
     activity: turn.activity,
     draft,
     newDraft,
-    draftsLoaded,
+    inherited,
+    inputReady,
     draftSaveFailed,
     draftReturns,
   });
   return useMemo(() => {
-    const settings = effectiveSettings(state, newDraft);
+    const newSettings = { settings: newDraft.settings, inherited };
+    const settings = effectiveSettings(state, newSettings);
     const running = isRunning(state);
     const recovery = recoveryOf(state);
     const runState = runStateView(state);
     return {
       sessionId: state.sessionId,
-      /** Connected, opened, and this device's drafts loaded. */
-      sessionReady: isReady(state) && draftsLoaded,
+      /** Connected, opened (the followed conversation, for a side pane), drafts loaded. */
+      sessionReady: isReady(state) && inputReady,
       wsConnected: state.socket === "open",
       /** Server run or a request in flight (one projection, runState). */
       isRunning: runState.phase === "running",
@@ -418,7 +455,7 @@ function useConversationView(
       selectors: settings.selectors,
       sessionMode: settings.mode,
       /** The mode the new-conversation draft would create with (import uses it too). */
-      newConversationMode: effectiveSettings({ ...state, sessionId: null }, newDraft).mode,
+      newConversationMode: effectiveSettings({ ...state, sessionId: null }, newSettings).mode,
       fullAccess: settings.fullAccess,
       modelOverride: settings.modelOverride,
       studyTag: settings.studyTag,
@@ -432,7 +469,8 @@ function useConversationView(
       messages: displayMessages(state),
       approvals: state.approvals,
       notice: state.notice,
-      /** This conversation's draft (text, staged files), kept on this device. */
+      /** This conversation's draft, kept on this device (lib/draft). */
+      draft,
       draftText: draft.text,
       stagedWorkspacePaths: draft.attachments,
       draftSaveFailed,

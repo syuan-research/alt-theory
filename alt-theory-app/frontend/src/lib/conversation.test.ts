@@ -3,6 +3,7 @@ import { test } from "node:test";
 import type { ServerMessage, SessionDraftSnapshot, SessionSnapshot, TranscriptMessage } from "@/api/types";
 import {
   displayMessages,
+  effectiveSettings,
   initialConversationState,
   isBusy,
   queuedTexts,
@@ -276,4 +277,32 @@ test("a lost send with nothing to hand back is dropped without a notice", () => 
   assert.deepEqual(state.requests, []);
   assert.equal(state.notice, null);
   assert.deepEqual(state.draftOps, []);
+});
+
+test("the new-conversation screen shows the user's choices, over what New inherited, over the defaults", () => {
+  const detached = play([{ type: "socket", status: "open" }, server({ type: "session_draft", payload: draft })]);
+  assert.equal(effectiveSettings(detached).selectors.currentDomain, "ep-core");
+  const inherited = { kbDomain: "all", rolePresetSlug: "tutor", soulSlug: null };
+  const both = effectiveSettings(detached, { inherited, settings: { kbDomain: "none", mode: "work", fullAccess: true } });
+  assert.equal(both.selectors.currentDomain, "none", "the user's choice wins");
+  assert.equal(both.selectors.rolePresetSlug, "tutor", "inherited over the default");
+  assert.equal(both.selectors.soulSlug, null, "an inherited null is a choice too");
+  assert.equal(both.mode, "work");
+  assert.equal(both.fullAccess, true);
+  assert.equal(both.selectors.visibility, "no-export", "the default where nothing was chosen");
+  // Attached, the snapshot is the truth and the draft plays no part.
+  const attached = play([...openedS1]);
+  assert.equal(effectiveSettings(attached, { settings: { kbDomain: "none" } }).selectors.currentDomain, "ep-core");
+});
+
+test("Stop's hand-back carries the server's id, so a draft shown twice takes it once", () => {
+  const stopped = play([
+    ...openedS1,
+    server({
+      type: "queue_updated",
+      payload: { steering: [], followUp: [], restored: ["later"], restoredId: "h1" },
+    }),
+  ]);
+  const op = stopped.draftOps[0];
+  assert.equal(op.kind === "return" && op.once, "h1");
 });

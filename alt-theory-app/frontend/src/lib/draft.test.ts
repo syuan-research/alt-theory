@@ -29,6 +29,7 @@ const {
   pruneDrafts,
   readDraft,
   setDraftScope,
+  stageInDraft,
   updateDraft,
 } = await import("./draft.ts");
 
@@ -104,4 +105,18 @@ test("an empty or blank side contributes no line", () => {
   assert.equal(appendDraft("", "second"), "second");
   assert.equal(appendDraft("   ", "second"), "second");
   assert.equal(appendDraft("first", ""), "first");
+});
+
+test("a hand-back seen by two windows lands once; staging names its conversation; false is empty", () => {
+  setDraftScope("local");
+  appendToDraft("s5", "later", [], "before", "h1");
+  appendToDraft("s5", "later", [], "before", "h1");
+  assert.equal(readDraft("s5").text, "later");
+  stageInDraft("s6", ["a.md", "a.md", "b.md"]);
+  assert.deepEqual(readDraft("s6").attachments, ["a.md", "b.md"]);
+  assert.equal(readDraft("s5").attachments.length, 0);
+  updateDraft("s7", (draft) => ({ ...draft, settings: { fullAccess: false } }));
+  updateDraft("s7", () => ({ text: "", attachments: [], settings: {} }));
+  flushDrafts();
+  assert.equal(store.has("alt-theory:draft:local:s7"), false);
 });

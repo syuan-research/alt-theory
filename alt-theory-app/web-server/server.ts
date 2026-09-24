@@ -1527,7 +1527,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       res.status(403).json({ error: "Attachments are local-mode only" });
       return;
     }
-    const body = req.body as { sessionId?: unknown; paths?: unknown };
+    const body = (req.body ?? {}) as { sessionId?: unknown; paths?: unknown };
     const paths = Array.isArray(body.paths)
       ? body.paths.filter((path): path is string => typeof path === "string")
       : [];
@@ -2463,6 +2463,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     let closed = false;
     let initialError: unknown = null;
     try {
+      // Called for its throw: an account whose defaults cannot be built is
+      // served as anonymous (the draft defaults are rebuilt on each use).
       createDraftSelectorsForAuth(auth);
     } catch (error) {
       auth = anonymousAuthContext();
@@ -2481,26 +2483,24 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
      * connection holds nothing about a draft.
      */
     const creationFrom = (draft: NewConversationSettings = {}) => {
-      const appSettings = readAppSettings(dataDir);
       const selectors = createDraftSelectorsForAuth(auth);
-      let mode: AltMode = appSettings.defaultAltMode ?? "understand";
-      // Under Native Pi these Alt controls are inactive: the defaults stand.
-      if (appSettings.runtimeMode !== "native-pi") {
-        if (draft.kbDomain !== undefined) {
-          if (draft.kbDomain !== KB_DISABLED_DOMAIN && !isKnownKbDomain(kbDir, draft.kbDomain)) {
-            throw new Error(`Unknown KB domain: ${draft.kbDomain}`);
-          }
-          selectors.kbDomain = draft.kbDomain;
+      let mode: AltMode = readAppSettings(dataDir).defaultAltMode ?? "understand";
+      // Under Native Pi the Alt selectors are inactive but still recorded, so
+      // the conversation has them once Native Pi is turned off.
+      if (draft.kbDomain !== undefined) {
+        if (draft.kbDomain !== KB_DISABLED_DOMAIN && !isKnownKbDomain(kbDir, draft.kbDomain)) {
+          throw new Error(`Unknown KB domain: ${draft.kbDomain}`);
         }
-        if (draft.rolePresetSlug !== undefined) selectors.rolePresetSlug = optionalSlug(draft.rolePresetSlug);
-        if (draft.soulSlug !== undefined) selectors.soulSlug = optionalSlug(draft.soulSlug);
-        if (draft.mode !== undefined) {
-          if (draft.mode !== "understand" && draft.mode !== "work") throw new Error("Unknown mode");
-          mode = draft.mode;
-        }
+        selectors.kbDomain = draft.kbDomain;
       }
+      if (draft.rolePresetSlug !== undefined) selectors.rolePresetSlug = optionalSlug(draft.rolePresetSlug);
+      if (draft.soulSlug !== undefined) selectors.soulSlug = optionalSlug(draft.soulSlug);
       if (draft.customInstructionRef !== undefined) {
         selectors.customInstructionRef = optionalSlug(draft.customInstructionRef);
+      }
+      if (draft.mode !== undefined) {
+        if (draft.mode !== "understand" && draft.mode !== "work") throw new Error("Unknown mode");
+        mode = draft.mode;
       }
       // The guard that keeps the deployments apart (see switch_visibility).
       const visibility = draft.visibility ?? defaultDraftVisibility();
@@ -3137,8 +3137,14 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             try {
               // A root Helper takes the draft's settings (from the new-
               // conversation screen), or its parent's when there is one.
-              // Full Access is never carried into a Helper.
-              const creation = creationFrom(msg.create);
+              // Full Access is never carried into a Helper. A draft setting
+              // that no longer holds must not make Help disappear: defaults.
+              let creation: ReturnType<typeof creationFrom>;
+              try {
+                creation = creationFrom(msg.create);
+              } catch {
+                creation = creationFrom();
+              }
               let rootSelectors = creation.selectors;
               let rootMode = creation.metadata.mode;
               let rootModelOverride = creation.metadata.modelOverride;

@@ -18,6 +18,7 @@ import { useConversationContext } from "@/context/ConversationContext";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
 import { hasNativeBridge, revealPath as nativeRevealPath } from "@/lib/native";
+import { stageInDraft } from "@/lib/draft";
 import { stagePathAfterUpload, WORKSPACE_PATH_MIME } from "@/lib/workspace";
 import { FilePreview } from "@/components/inspector/FilePreview";
 import { FolderHead, ListTools } from "@/components/inspector/FolderList";
@@ -211,7 +212,9 @@ export function WorkspaceTree() {
     try {
       const result = await uploadWorkspaceFile(sessionId, file);
       const stagePath = stagePathAfterUpload(result);
-      if (stagePath) conv.stage(stagePath);
+      // Into the draft of the conversation it was uploaded to, even if
+      // another one is open by now.
+      if (stagePath) stageInDraft(sessionId, [stagePath]);
       const refreshed = await listWorkspaceFiles(sessionId);
       setEntries(refreshed.entries ?? refreshed.files);
       setWorkingFolders(refreshed.workingFolders ?? []);

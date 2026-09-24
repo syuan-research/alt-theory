@@ -90,6 +90,11 @@ export class RunState {
     return "deferred";
   }
 
+  /** Forget a pending change (a choice taken back before the turn ended). */
+  drop(key: keyof PendingChanges): void {
+    delete this.pending[key];
+  }
+
   /** The only idle transition. Returns what was deferred, for the caller to apply. */
   settle(): PendingChanges {
     this.phase = "idle";

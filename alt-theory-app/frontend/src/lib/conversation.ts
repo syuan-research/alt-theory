@@ -143,7 +143,7 @@ export interface Notice {
  * new-conversation draft became this conversation, so its settings are used.
  */
 export type DraftOp =
-  | { id: number; kind: "return"; to: string | null; text: string; attachments: string[] }
+  | { id: number; kind: "return"; to: string | null; text: string; attachments: string[]; once?: string }
   | { id: number; kind: "created"; sessionId: string };
 
 export interface ConversationState {
@@ -212,10 +212,12 @@ function withReturned(
   to: string | null,
   text: string,
   attachments: string[] = [],
+  once?: string,
 ): ConversationState {
   if (!text.trim() && !attachments.length) return state;
   const seq = state.seq + 1;
-  return { ...state, seq, draftOps: [...state.draftOps, { id: seq, kind: "return", to, text, attachments }] };
+  const op: DraftOp = { id: seq, kind: "return", to, text, attachments, ...(once ? { once } : {}) };
+  return { ...state, seq, draftOps: [...state.draftOps, op] };
 }
 
 function appendText(parts: StreamPart[], kind: "thinking" | "text", delta: string): StreamPart[] {
@@ -410,10 +412,10 @@ function onServer(state: ConversationState, message: ServerMessage): Conversatio
       };
 
     case "queue_updated": {
-      const { steering, followUp, restored, restoredAttachments } = message.payload;
+      const { steering, followUp, restored, restoredAttachments, restoredId } = message.payload;
       const next = state.snapshot ? { ...state, snapshot: { ...state.snapshot, queue: { steering, followUp } } } : state;
       return restored?.length
-        ? withReturned(next, state.sessionId, restored.join("\n"), restoredAttachments)
+        ? withReturned(next, state.sessionId, restored.join("\n"), restoredAttachments, restoredId)
         : next;
     }
 
