@@ -1186,6 +1186,7 @@
   .files-tree-toolbar { display: flex; justify-content: flex-end; gap: var(--space-hair); margin: 0 var(--space-hair) var(--space-hair); }
   .files-tree-toolbar .flat { display: inline-flex; align-items: center; gap: var(--space-tight); font-size: var(--fs-micro); }
   .files-search { display: flex; align-items: center; gap: var(--space-tight); margin: var(--space-hair) var(--space-tight) var(--space-tight); padding: var(--space-tight) var(--space-control); border: 1px solid var(--hairline); border-radius: var(--r-sm); background: var(--surface); color: var(--text-3); }
+  .files-search.browsing { position: sticky; top: 0; z-index: 1; }
   .files-search:focus-within { border-color: var(--text-3); }
   .files-search input { min-width: 0; width: 100%; border: 0; outline: 0; background: transparent; color: var(--ink); font: inherit; font-size: var(--fs-primary); }
   .files-search input::-webkit-search-cancel-button { display: none; }
