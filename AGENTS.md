@@ -111,6 +111,9 @@ agents mistake them for in-progress work.
 ### Current branch status
 
 - `main` — active product line.
+- `archive/wp-right-pane-targets` — merged into main (state-architecture
+  WP-3: typed view targets owned by their conversation, one navigation
+  owner, behavior otherwise unchanged); archived after the reviewed merge.
 - `archive/wp-conversation-drafts` — merged into main (state-architecture
   M2: per-conversation drafts kept on this device, new conversations
   created from the draft the first request carries, Full Access follows the
