@@ -683,7 +683,7 @@ export class SessionService implements AgentTeamBridge {
     }
     const steps: Array<[keyof PendingChanges, () => Promise<void> | void]> = [
       ["mode", () => this.applyMode(current, drained.mode!)],
-      ["fullAccess", () => current.setFullAccess(drained.fullAccess!)],
+      ["fullAccess", () => this.applyFullAccess(current, drained.fullAccess!)],
       ["model", () => this.applyModel(current, drained.model!)],
       ["kbDomain", () => this.applyKbDomain(current, drained.kbDomain!)],
       [
@@ -967,13 +967,30 @@ export class SessionService implements AgentTeamBridge {
       throw new Error(`Invalid session id: ${previous.manifest.sessionId}`);
     }
 
+    // No history yet: the runtime is assembled afresh, from what the header
+    // says this conversation is (it used to fall back to defaults and lose
+    // mode, folder, visibility, parent and Full Access).
+    const header = readV4SessionHeader(dirs.recordsDir);
     const replacement = this.hasSessionHistory(previous)
       ? await this.createManagedFromExistingWithSelectors(
           previous.manifest.sessionId,
           selectors,
           previous,
         )
-      : await this.createManagedFromDirs(dirs, selectors);
+      : await this.createManagedFromDirs(dirs, selectors, {
+          ownerAccountId: header?.ownerAccountId ?? null,
+          roleCondition: header?.roleCondition ?? null,
+          visibility: header?.visibility,
+          consentSnapshot: header?.consentSnapshot,
+          helper: header?.helper,
+          mode: previous.getAltMode(),
+          workspace: header?.workspace ?? null,
+          forkedFrom: header?.forkedFrom ?? null,
+          studyTag: header?.studyTag ?? null,
+          modelOverride: header?.modelOverride ?? null,
+          subagentExecution: header?.subagentExecution ?? null,
+          fullAccess: header?.fullAccess,
+        });
     this.sessions.set(replacement.manifest.sessionId, replacement);
     await this.disposeManaged(previous);
     appendConfigEvent(replacement.manifest.recordsDir, {
@@ -1057,7 +1074,8 @@ export class SessionService implements AgentTeamBridge {
   }
 
   /**
-   * Full Access (v1.4.8): in-memory, session-lifetime permission bypass.
+   * Full Access (v1.4.8; follows the conversation since M2): the permission
+   * bypass lives in the session header, so reopening or restarting keeps it.
    * Enabling is validated in the core setter (work-capable mode) and deferred
    * while a turn runs; the WS layer separately rejects non-local servers.
    * Disabling is immediate and allowed during a run — the guard predicate is
@@ -1069,13 +1087,32 @@ export class SessionService implements AgentTeamBridge {
   ): Promise<SessionSnapshot> {
     const managed = this.requireSession(sessionId);
     if (!enabled) {
-      managed.setFullAccess(false);
+      this.applyFullAccess(managed, false);
     } else {
       await managed.runState.applyOrDefer({ fullAccess: true }, () =>
-        managed.setFullAccess(true),
+        this.applyFullAccess(managed, true),
       );
     }
     return this.publish(managed);
+  }
+
+  /** Runtime, header and trace move together; a no-op leaves no trace. */
+  private applyFullAccess(managed: ManagedSession, enabled: boolean): void {
+    if (managed.getFullAccess() === enabled) return;
+    managed.setFullAccess(enabled);
+    const { recordsDir, sessionId } = managed.manifest;
+    const header = readV4SessionHeader(recordsDir);
+    if (header) {
+      const next = { ...header };
+      if (enabled) next.fullAccess = true;
+      else delete next.fullAccess;
+      writeSessionHeader(recordsDir, next);
+    }
+    appendSessionEvent(recordsDir, {
+      sessionId,
+      type: "full_access_changed",
+      details: { enabled },
+    });
   }
 
   /** Apply app-wide behavior settings to every open session. */
@@ -2937,6 +2974,8 @@ export class SessionService implements AgentTeamBridge {
     modelArgs: RuntimeModelConfig & { thinkingLevel?: ThinkingLevel };
     altMode: AltMode;
     forkPurpose: ForkPurpose | null | undefined;
+    /** The header's Full Access; absent (fork, child) = off. */
+    fullAccess?: boolean;
   }) {
     const appSettings = readAppSettings(this.config.dataDir);
     const subagentConfig = readSubagentConfig(this.config.dataDir).config;
@@ -2963,6 +3002,7 @@ export class SessionService implements AgentTeamBridge {
       piPromptTemplatesDir: this.config.assetPaths.piPromptTemplatesDir,
       ...input.modelArgs,
       altMode: input.altMode,
+      fullAccess: input.fullAccess === true,
       runtimeMode: appSettings.runtimeMode ?? "alt-theory",
       trimmedPiBasePrompt: appSettings.experimentTrimmedPiPrompt === true,
       modelHooks: appSettings.modelHooks !== false,
@@ -3032,6 +3072,9 @@ export class SessionService implements AgentTeamBridge {
     if (primaryDir && !statSync(primaryDir, { throwIfNoEntry: false })?.isDirectory()) {
       throw new Error(`Main folder does not exist:${primaryDir}`,);
     }
+    if (metadata.fullAccess && this.config.localMode === false) {
+      throw new Error("Full access is not enabled on this server");
+    }
     const appSettings = readAppSettings(this.config.dataDir);
     const subagentConfig = readSubagentConfig(this.config.dataDir).config;
     const result = await createAltTheorySession({
@@ -3054,6 +3097,7 @@ export class SessionService implements AgentTeamBridge {
         },
         altMode: metadata.mode ?? appSettings.defaultAltMode ?? "understand",
         forkPurpose: metadata.forkedFrom?.purpose ?? null,
+        fullAccess: metadata.fullAccess,
       }),
     });
     const visibility = metadata.visibility ?? this.fallbackVisibility;
@@ -3085,6 +3129,7 @@ export class SessionService implements AgentTeamBridge {
       helper: metadata.helper,
       studyTag: metadata.studyTag ?? null,
       modelOverride: metadata.modelOverride ?? null,
+      fullAccess: metadata.fullAccess,
       subagentExecution: metadata.subagentExecution ?? null,
     });
 
@@ -3097,11 +3142,6 @@ export class SessionService implements AgentTeamBridge {
       counters: { messageCount: 0, toolCallCount: 0, turnCount: 0 },
       transcript: [],
     });
-    // Draft Full Access (v1.4.8): the core setter rejects non-work-capable
-    // assemblies, which is the contract the WS draft layer relies on.
-    if (metadata.fullAccess) {
-      managed.setFullAccess(true);
-    }
     appendSessionEvent(managed.manifest.recordsDir, {
       sessionId: managed.manifest.sessionId,
       type: "session_created",
@@ -3112,6 +3152,7 @@ export class SessionService implements AgentTeamBridge {
         visibility,
         model: managed.manifest.model,
         provider: managed.manifest.provider,
+        fullAccess: metadata.fullAccess === true,
       },
     });
     return managed;
@@ -3882,6 +3923,7 @@ export class SessionService implements AgentTeamBridge {
         modelArgs: this.modelArgsFor(persistedHeader?.modelOverride),
         altMode: persistedMode,
         forkPurpose: persistedHeader?.forkedFrom?.purpose ?? null,
+        fullAccess: persistedHeader?.fullAccess,
       }),
     };
     // Model-on-resume recovery (v1.2.1 item 2): a per-session model override can
@@ -4050,6 +4092,7 @@ export class SessionService implements AgentTeamBridge {
         modelArgs: this.modelArgsFor(replacedHeader?.modelOverride),
         altMode: persistedMode,
         forkPurpose: replacedHeader?.forkedFrom?.purpose ?? null,
+        fullAccess: replacedHeader?.fullAccess,
       }),
       overrideSessionCwd: true,
     });

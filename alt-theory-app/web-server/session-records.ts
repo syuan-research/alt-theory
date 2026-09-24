@@ -132,6 +132,9 @@ export interface V4SessionHeader extends RecordEnvelope {
   };
   studyTag?: StudyTag;
   modelOverride?: SessionModelOverride;
+  /** Full Access (M2, 2026-09-24): present only while on. Never copied to a
+   *  child — branches, BTW, Helpers and subagents start without it. */
+  fullAccess?: true;
   /** Spawn-time preset snapshot; each fallback keeps its own thinking level. */
   subagentExecution?: {
     agentType: string;
@@ -172,6 +175,7 @@ export function writeFoundationRecords(args: {
   } | null;
   studyTag?: StudyTag | null;
   modelOverride?: SessionModelOverride | null;
+  fullAccess?: boolean;
   subagentExecution?: {
     agentType: string;
     modelChain: SessionModelOverride[];
@@ -198,6 +202,7 @@ export function writeFoundationRecords(args: {
     ...(args.forkedFrom ? { forkedFrom: { ...args.forkedFrom } } : {}),
     ...(args.studyTag ? { studyTag: { ...args.studyTag } } : {}),
     ...(args.modelOverride ? { modelOverride: { ...args.modelOverride } } : {}),
+    ...(args.fullAccess ? { fullAccess: true as const } : {}),
     ...(args.subagentExecution
       ? {
           subagentExecution: {

@@ -183,6 +183,11 @@ export interface AltTheoryConfig extends SessionDirectories {
   altMode?: AltMode;
   /** Native Pi keeps Pi discovery; this only adds Alt Theory's bundled skills. */
   nativePiScanAltSkills?: boolean;
+  /**
+   * Full Access this conversation holds (its header). Taken as-is, without
+   * the enable check: in a mode that cannot use it the value is dormant.
+   */
+  fullAccess?: boolean;
   resourceDiscovery?: ResourceDiscoveryMode;
   skillsDir?: string;
   /** Read-only product/agent resource roots that should not prompt. */
@@ -421,9 +426,9 @@ async function createAltTheorySessionWithManager(
     runtimeMode: config.runtimeMode ?? ("alt-theory" as RuntimeMode),
     altMode: config.altMode ?? ("understand" as AltMode),
     nativePiScanAltSkills: config.nativePiScanAltSkills !== false,
-    // Full Access (v1.4.8): in-memory only, session lifetime. Never persisted
-    // to a session header, manifest, database, or settings.
-    fullAccess: false,
+    // Full Access follows the conversation (M2, 2026-09-24): the session
+    // service persists it in the header and hands it back on every assembly.
+    fullAccess: config.fullAccess === true,
   };
   const resourceDiscovery = config.resourceDiscovery ?? "dev-debug";
   const resolvedSkillsDir = config.skillsDir ? resolve(config.skillsDir) : null;

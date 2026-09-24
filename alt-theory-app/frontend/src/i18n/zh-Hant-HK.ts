@@ -89,7 +89,7 @@ const catalog: Record<string, string> = {
   "App default": "應用預設",
   "App language. Auto follows your system language. Conversations always follow the language you write in.": "應用語言。自動跟隨系統語言。對話始終跟隨您使用的書寫語言。",
   "Applies after this turn": "本輪之後生效",
-  "Applies to this conversation only; reopening it or restarting the app turns it off": "僅對目前對話生效；重開對話或重新啟動應用程式後恢復關閉",
+  "Applies to this conversation only and stays on after reopening it or restarting the app; branches and side conversations start without it": "僅對目前對話生效，重開對話或重新啟動應用程式後仍保持開啟；分支和旁側對話不會繼承",
   "Applies to this conversation. Set the pickers above the composer.": "適用於此對話。在編輯器上方設定選擇器。",
   "Apply tag": "應用標籤",
   "Approval prompts and writable-folder checks for external reads and writes are skipped": "外部讀寫的批准與可寫目錄檢查一併跳過",

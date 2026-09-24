@@ -245,28 +245,35 @@ and [`ADR 0001`](adr/0001-session-scoped-security-extension.md).
 
 ### Full Access
 
-Full Access (v1.4.8) is a per-conversation, in-memory bypass of the agent-tool
-mediation above. The composer's permission-mode control (shield, immediately
-right of Toolbox) offers **Ask for approval** — the default posture described
-on this page — and **Full access**. Full access appears only in local Work and local
-Native Pi — on a live session, and on the new-conversation screen, where the
-choice applies when the first message creates the session and the next draft
-starts from Ask again. Enabling it asks for confirmation; disabling is
-immediate and allowed mid-run.
+Full Access (v1.4.8) is a per-conversation bypass of the agent-tool
+mediation above, and it follows the conversation (M2, 2026-09-24). The
+composer's permission-mode control (shield, immediately right of Toolbox)
+offers **Ask for approval** — the default posture described on this page —
+and **Full access**. Full access appears only in local Work and local Native
+Pi — on a live session, and on the new-conversation screen, where the choice
+is kept in that screen's draft (on this device, with its other settings), is
+sent with the first message that creates the conversation, and the next draft
+starts from Ask again. Enabling it asks for confirmation; enabling mid-run is
+held until the turn ends; disabling is immediate and allowed mid-run.
 
 While effective, the security extension's shared `tool_call` handler returns
 before any mediation, the guarded write tool skips only the writable-root
 assertion (the filesystem operation itself is unchanged), and the bypassed
-decisions produce no security-audit entries. The value lives solely in the
-assembled session runtime — never in a session header, manifest, database, or
-settings — so disposing or reopening the session, or restarting the app,
-restores default mediation; a temporary switch to Understand hides it dormant
-rather than clearing it. The server rejects enabling attempts that are not
-local or not work-capable. Application-level boundaries outside agent-tool
-mediation (account/session visibility, REST file ownership, trash and
-recoverable delete) are unaffected. See
+decisions produce no security-audit entries. The value is written to the
+session header (`fullAccess: true`, absent when off) and every change is
+traced as a `full_access_changed` session event (creation records it in
+`session_created`); every assembly of the conversation — reopen, app restart,
+and the instance swap of a role/soul/instruction switch — takes it back from
+the header. A switch to Understand keeps it dormant rather than clearing it; a
+conversation created from a draft whose mode went back to Understand holds it
+dormant the same way. Children never inherit it: branches, BTW, Helpers and
+subagents are written without the field. The server rejects enabling attempts
+that are not local or not work-capable. Application-level boundaries outside
+agent-tool mediation (account/session visibility, REST file ownership, trash
+and recoverable delete) are unaffected. See
 [`security-extension.ts`](../../alt-theory-app/core/security-extension.ts),
 [`alt-theory-core.ts`](../../alt-theory-app/core/alt-theory-core.ts),
+[`session-service.ts`](../../alt-theory-app/web-server/session-service.ts),
 and [`full-access.test.ts`](../../alt-theory-app/web-server/full-access.test.ts).
 
 ## Approval and audit interfaces

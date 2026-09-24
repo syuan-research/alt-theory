@@ -746,7 +746,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                           t("Approval prompts and writable-folder checks for external reads and writes are skipped"),
                           t("Network access limits are skipped"),
                           t("These decisions are no longer written to the security audit log"),
-                          t("Applies to this conversation only; reopening it or restarting the app turns it off"),
+                          t("Applies to this conversation only and stays on after reopening it or restarting the app; branches and side conversations start without it"),
                         ],
                         confirmLabel: t("Enable full access"),
                         onConfirm: () => conv.setFullAccess(true),

@@ -4,10 +4,12 @@
  * Covers the plan's focused proof: mediation preserved when off, bypassed
  * when effective, restored when turned back off; enable rejected outside
  * work-capable modes; value retained-but-dormant across mode switches;
- * never persisted; fresh sessions start off; Native Pi can enable.
+ * fresh sessions start off; Native Pi can enable. Since M2 (2026-09-24) the
+ * value follows the conversation: header + session-event trace, restored on
+ * reopen and instance swap, never inherited by a child.
  */
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "fs";
 import { homedir, tmpdir } from "os";
 import { join, resolve } from "path";
 import test from "node:test";
@@ -74,6 +76,28 @@ function createTestService(
       authPath: fixture.authPath,
     }),
   });
+}
+
+/** One user + assistant exchange written straight to Pi (no provider). */
+async function answerOnce(service: SessionService, sessionId: string): Promise<void> {
+  const managed = (service as unknown as {
+    sessions: Map<string, { session: { prompt: (text: string) => Promise<void>; sessionManager: { appendMessage(message: unknown): string } } }>;
+  }).sessions.get(sessionId)!;
+  managed.session.prompt = async (text: string) => {
+    managed.session.sessionManager.appendMessage({ role: "user", content: [{ type: "text", text }], timestamp: Date.now() });
+    managed.session.sessionManager.appendMessage({ role: "assistant", content: [{ type: "text", text: "ok" }], timestamp: Date.now() });
+  };
+  await service.runPrompt(sessionId, "hello").completion;
+}
+
+/** The Full Access trace in session-events.jsonl, in order. */
+function fullAccessTrace(recordsDir: string): boolean[] {
+  return readFileSync(join(recordsDir, "session-events.jsonl"), "utf-8")
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line) as { type: string; details?: { enabled?: boolean } })
+    .filter((event) => event.type === "full_access_changed")
+    .map((event) => event.details?.enabled === true);
 }
 
 const selectors = {
@@ -182,22 +206,10 @@ test("full access lifetime on the managed session", async () => {
   const on = await service.setFullAccess(created.sessionId, true);
   assert.equal(on.fullAccess, true);
 
-  // The value is never persisted anywhere in the session records.
+  // The header holds it, and the change is traced.
   const recordsDir = join(fixture.dataDir, "sessions", created.sessionId, "records");
-  const header = readV4SessionHeader(recordsDir);
-  assert.equal(
-    header && "fullAccess" in header,
-    false,
-    "session header carries no fullAccess field",
-  );
-  const recordFiles = readdirSync(recordsDir);
-  for (const file of recordFiles) {
-    const content = readFileSync(join(recordsDir, file), "utf-8");
-    assert.ok(
-      !content.includes("fullAccess"),
-      `fullAccess leaked into records file ${file}`,
-    );
-  }
+  assert.equal(readV4SessionHeader(recordsDir)?.fullAccess, true, "header holds it");
+  assert.deepEqual(fullAccessTrace(recordsDir), [true]);
 
   // Understand keeps the value stored (dormant), not cleared…
   const dormant = await service.switchMode(created.sessionId, "understand");
@@ -206,14 +218,50 @@ test("full access lifetime on the managed session", async () => {
   const restored = await service.switchMode(created.sessionId, "work");
   assert.equal(restored.fullAccess, true);
 
-  // Disabling is immediate, even from Understand.
+  // Disabling is immediate, even from Understand, and leaves the header.
   await service.switchMode(created.sessionId, "understand");
   const off = await service.setFullAccess(created.sessionId, false);
   assert.equal(off.fullAccess, false);
+  assert.equal(readV4SessionHeader(recordsDir)?.fullAccess, undefined, "header cleared");
+  assert.deepEqual(fullAccessTrace(recordsDir), [true, false]);
 
-  // A newly assembled session always starts off (dispose/reopen resets).
+  // A new conversation starts off.
   const fresh = await service.createSession(selectors, { mode: "work" });
   assert.equal(fresh.fullAccess, false, "fresh runtime starts off");
+});
+
+test("full access follows the conversation across restart and instance swap, never into a child", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const created = await service.createSession(selectors, { mode: "work" });
+  await service.setFullAccess(created.sessionId, true);
+
+  // An idle role switch assembles a new instance: it keeps the value.
+  mkdirSync(join(fixture.root, "role-presets"), { recursive: true });
+  writeFileSync(join(fixture.root, "role-presets", "tutor.md"), "# Tutor\n", "utf-8");
+  const swapped = await service.switchAssetSelectors(created.sessionId, { rolePresetSlug: "tutor" });
+  assert.equal(swapped.deferred, false);
+  assert.equal(swapped.snapshot.fullAccess, true, "kept across the instance swap");
+  assert.equal(swapped.snapshot.mode, "work", "an empty conversation keeps its mode too");
+
+  // With history, a swap reopens the Pi file: still on.
+  await answerOnce(service, created.sessionId);
+  const again = await service.switchAssetSelectors(created.sessionId, { rolePresetSlug: null });
+  assert.equal(again.snapshot.fullAccess, true, "kept across a swap with history");
+
+  // A restart (a new service over the same data) reopens it on.
+  await service.disposeAll();
+  const restarted = createTestService(fixture);
+  const reopened = await restarted.openSession(created.sessionId, selectors);
+  assert.equal(reopened.fullAccess, true, "restored from the header");
+
+  // Children start without it — the header field is never copied.
+  const child = await restarted.forkSession(created.sessionId, "fork");
+  assert.equal(child.fullAccess, false, "a branch does not inherit");
+  const childRecords = join(fixture.dataDir, "sessions", child.sessionId, "records");
+  assert.equal(readV4SessionHeader(childRecords)?.fullAccess, undefined);
+  const side = await restarted.createRelatedSession(created.sessionId, "side");
+  assert.equal(side.fullAccess, false, "BTW does not inherit");
 });
 
 test("native pi can enable full access", async () => {
@@ -239,11 +287,14 @@ test("draft full access applies when the conversation materializes", async () =>
     fullAccess: true,
   });
   assert.equal(created.fullAccess, true);
-  // Non-work-capable assembly with full access is rejected, not silently off.
-  await assert.rejects(
-    service.createSession(selectors, { mode: "understand", fullAccess: true }),
-    /Full access can only be enabled/,
-  );
+  const records = join(fixture.dataDir, "sessions", created.sessionId, "records");
+  assert.equal(readV4SessionHeader(records)?.fullAccess, true, "created into the header");
+  // A draft that went back to Understand keeps the choice dormant (the same
+  // rule as a live switch), instead of failing the first message.
+  const dormant = await service.createSession(selectors, { mode: "understand", fullAccess: true });
+  assert.equal(dormant.fullAccess, true, "held");
+  const back = await service.switchMode(dormant.sessionId, "work");
+  assert.equal(back.fullAccess, true, "effective once in Work");
 });
 
 test("full access is dormant in Understand, effective again back in Work", async () => {
