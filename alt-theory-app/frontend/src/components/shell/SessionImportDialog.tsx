@@ -14,6 +14,7 @@ import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
 import { folderLabel } from "@/lib/sessionList";
 import { t } from "@/i18n";
+import { quickFindScore, quickFindTerms } from "../../../../shared/quick-find";
 
 // Literals keep the i18n key extraction working; the served list decides
 // which entries appear.
@@ -90,20 +91,14 @@ export function SessionImportDialog({
   }, [open, harness]);
 
   const visibleSessions = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    if (!needle) return sessions;
-    return sessions.filter((session) =>
-      [
-        session.name,
-        session.preview,
-        session.cwd,
-        session.sourceSessionId
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase()
-        .includes(needle),
-    );
+    const terms = quickFindTerms(query);
+    if (!terms.length) return sessions;
+    return sessions.filter((session) => quickFindScore(terms, [
+      { text: session.name, weight: 1 },
+      { text: session.preview, weight: 1 },
+      { text: session.cwd, weight: 1 },
+      { text: session.sourceSessionId, weight: 1 },
+    ]) > 0);
   }, [query, sessions]);
 
   const workspaceGroups = useMemo(() => {

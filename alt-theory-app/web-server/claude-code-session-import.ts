@@ -17,6 +17,7 @@ import {
   assistantMessage as sharedAssistantMessage,
   parseJsonl as sharedParseJsonl,
 } from "./session-import-shared.js";
+import { openingPreview } from "./import-preview.js";
 
 type Row = Record<string, any>;
 type IndexedRow = Row & { sourceIndex: number };
@@ -157,6 +158,9 @@ export function discoverClaudeCodeSessions(
           // Keep malformed sessions discoverable so selected preflight can
           // return the concrete chain refusal instead of hiding the session.
         }
+        const preview = openingPreview(countRows
+          .filter((row) => row.isSidechain !== true && row.isMeta !== true && row.isCompactSummary !== true)
+          .map((row) => ({ role: String(row.type ?? ""), text: messageText(row.message?.content) })));
         result.push({
           sourceId: `claude-code:${sessionId}`,
           sourceSessionId: sessionId,
@@ -171,11 +175,8 @@ export function discoverClaudeCodeSessions(
             Math.max(timestamps.at(-1) ?? 0, stat.mtimeMs)
           ).toISOString(),
           messageCount: discoveryMessageCount(countRows),
-          preview: (
-            typeof index?.firstPrompt === "string"
-              ? index.firstPrompt
-              : messageText(firstUser?.message?.content)
-          ).slice(0, 240),
+          preview: `${String(index?.firstPrompt ?? "").slice(0, 240)} ${preview}`.trim().slice(0, 960)
+            || messageText(firstUser?.message?.content).slice(0, 240),
         });
       } catch {
         // Discovery is best-effort. Strict diagnostics belong to selected

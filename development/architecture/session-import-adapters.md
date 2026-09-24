@@ -220,6 +220,12 @@ detection, and is not replayed as an independent main conversation.
 The shared React dialog lists harnesses served by
 `GET /api/session-import/harnesses` (Pi, OpenCode, Codex, Grok Build, and
 Claude Code) and requires dry preflight for every harness, Pi included.
-The dialog searches source title/folder/conversation, keeps recent activity
-first, folds technical details, and opens the resulting normal catalog
-session.
+The dialog matches unordered words across source title, opening preview,
+folder, and source ID, keeps recent activity first within each folder group,
+folds technical details, and opens the resulting normal catalog session.
+The preview is bounded discovery text, not a full-history search: Codex, Grok,
+and Claude Code take up to three opening user turns with replies from records
+already read for discovery (Codex has a 512 KiB head limit); OpenCode takes the
+first six text parts in its list query; Pi takes the first 960 characters of
+Pi's flattened user/assistant text. Selected preflight still reads and checks
+the complete source.

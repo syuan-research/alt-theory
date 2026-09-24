@@ -65,6 +65,7 @@ test("Pi discovery and managed registration preserve history and workspace", asy
   });
   assert.ok(source);
   assert.equal(source.sourceSessionId, "pi-source-session");
+  assert.match(source.preview, /preserved answer/);
   assert.equal(source.cwdAvailable, true);
   assert.equal(source.repeat, "new");
 
@@ -290,6 +291,9 @@ test("Grok preflight preserves current history and raw source, and refuses unmat
   });
   assert.ok(source);
   assert.equal(source.sourceSessionId, "grok-supported");
+  assert.match(source.preview, /Keep that fact for the next turn/);
+  assert.match(source.preview, /I will use the recorded read/);
+  assert.doesNotMatch(source.preview, /GROK_REMINDER_MARKER|GROK_TOOL_RESULT_MARKER/);
   assert.equal(source.repeat, "new");
   const preflight = grokAdapter.preflight(source);
   assert.equal(grokAdapter.preflight(source).piSessionJsonl, preflight.piSessionJsonl);
@@ -475,6 +479,8 @@ test("Codex preflight maps supported rollout history and refuses unmatched tool 
   });
   assert.ok(source);
   assert.equal(source.sourceSessionId, "codex-supported");
+  assert.match(source.preview, /I will read the recorded file/);
+  assert.doesNotMatch(source.preview, /CODEX_DEVELOPER_MARKER|HISTORY_RESULT_MARKER/);
   assert.equal(source.repeat, "new");
   const preflight = codexAdapter.preflight(source);
   assert.match(preflight.piSessionJsonl, /CODEX_BASE_MARKER/);
@@ -709,6 +715,9 @@ test("OpenCode preflight registers complete supported history and refuses unsupp
   });
   assert.ok(source);
   assert.equal(source.sourceSessionId, "ses_supported");
+  assert.match(source.preview, /OPENCODE_PRE_COMPACTION_ASSISTANT/);
+  assert.match(source.preview, /Use the imported read result/);
+  assert.doesNotMatch(source.preview, /OPENCODE_COMPACTION_SUMMARY/);
   const preflight = openCodeAdapter.preflight(source);
   assert.match(preflight.piSessionJsonl, /IMPORTED_HISTORY_MARKER/);
   assert.ok(preflight.transformations.some((item) => item.includes("Reasoning")));
@@ -1793,6 +1802,8 @@ test("Claude Code discovery falls back from a stale index and imports one integr
   assert.ok(source);
   assert.equal(extra, undefined);
   assert.equal(source.name, "Claude integrated fixture");
+  assert.match(source.preview, /CLAUDE_FINAL_MARKER/);
+  assert.doesNotMatch(source.preview, /CLAUDE_ABANDONED_BRANCH|CLAUDE_TOOL_RESULT_MARKER/);
   assert.equal(source.messageCount, 3);
   const preflight = claudeCodeAdapter.preflight(source);
   const entries = preflight.piSessionJsonl.trim().split(/\r?\n/).map(JSON.parse);

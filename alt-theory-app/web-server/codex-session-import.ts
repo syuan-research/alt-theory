@@ -23,6 +23,7 @@ import {
   parseDataImage,
   parseJsonl as sharedParseJsonl,
 } from "./session-import-shared.js";
+import { openingPreview } from "./import-preview.js";
 
 type Row = Record<string, any>;
 
@@ -104,18 +105,9 @@ function discoverCodexFromStateDb(root: string): CodexDiscoveredSession[] | null
         const stat = statSync(path);
         const head = parseJsonl(readHead(path));
         const meta = head.find((record) => record.type === "session_meta")?.payload;
-        const firstUser = head.find(
-          (record) =>
-            record.type === "response_item" &&
-            record.payload?.type === "message" &&
-            record.payload?.role === "user"
-        );
         const createdAt = timestamp(row.created_at, meta?.timestamp, stat.birthtimeMs);
         const updatedAt = timestamp(row.updated_at, null, stat.mtimeMs);
-        const preview = String(
-          row.preview ??
-          messageText(firstUser?.payload?.content ?? [])
-        ).slice(0, 240);
+        const preview = `${String(row.preview ?? "").slice(0, 240)} ${codexOpeningPreview(head)}`.trim().slice(0, 960);
         return [{
           sourceId: `codex:${String(row.id)}`,
           sourceSessionId: String(row.id),
@@ -155,7 +147,6 @@ function discoverCodexFromRollouts(root: string): CodexDiscoveredSession[] {
         const messages = records.filter(
           (record) => record.type === "response_item" && record.payload?.type === "message"
         );
-        const firstUser = messages.find((record) => record.payload.role === "user");
         return [{
           sourceId: `codex:${id}`,
           sourceSessionId: id,
@@ -166,13 +157,22 @@ function discoverCodexFromRollouts(root: string): CodexDiscoveredSession[] {
           createdAt: new Date(meta.timestamp).toISOString(),
           updatedAt: stat.mtime.toISOString(),
           messageCount: messages.length,
-          preview: messageText(firstUser?.payload?.content ?? []).slice(0, 240),
+          preview: codexOpeningPreview(messages),
         }];
       } catch {
         return [];
       }
     })
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+function codexOpeningPreview(records: Row[]): string {
+  return openingPreview(records
+    .filter((record) => record.type === "response_item" && record.payload?.type === "message")
+    .map((record) => ({
+      role: String(record.payload?.role ?? ""),
+      text: messageText(record.payload?.content ?? []),
+    })));
 }
 
 function timestamp(primary: unknown, fallback: unknown, finalMs: number): string {

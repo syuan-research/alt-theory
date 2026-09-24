@@ -20,6 +20,7 @@ import {
   parseDataImage,
   parseJsonl as sharedParseJsonl,
 } from "./session-import-shared.js";
+import { openingPreview } from "./import-preview.js";
 
 type Row = Record<string, any>;
 
@@ -78,9 +79,12 @@ export function discoverGrokSessions(
         readFileSync(join(sourceStore, "chat_history.jsonl"), "utf-8"),
         false
       );
-      const firstUser = history.find(
-        (item) => item.type === "user" && item.synthetic_reason == null
-      );
+      const preview = openingPreview(history
+        .filter((item) => item.synthetic_reason == null)
+        .map((item) => ({
+          role: String(item.type ?? ""),
+          text: typeof item.content === "string" ? item.content : contentText(item.content),
+        })));
       return [{
         sourceId: `grok-build:${id}`,
         sourceSessionId: id,
@@ -94,7 +98,7 @@ export function discoverGrokSessions(
         createdAt,
         updatedAt,
         messageCount: Number(summary.num_chat_messages ?? history.length),
-        preview: contentText(firstUser?.content).slice(0, 240),
+        preview,
       }];
     } catch {
       return [];

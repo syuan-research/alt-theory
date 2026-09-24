@@ -221,7 +221,8 @@ const piImportAdapter: ImportAdapter = {
       createdAt: info.created.toISOString(),
       updatedAt: info.modified.toISOString(),
       messageCount: info.messageCount,
-      preview: info.firstMessage.slice(0, 240),
+      // ponytail: Pi flattens message boundaries; opening chars avoid a second file read.
+      preview: info.allMessagesText.slice(0, 960) || info.firstMessage.slice(0, 240),
     }));
   },
   matchesPrior(record, source) {

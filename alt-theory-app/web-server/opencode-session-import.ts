@@ -66,16 +66,20 @@ export function discoverOpenCodeSessions(
         s.time_created,
         s.time_updated,
         (SELECT COUNT(*) FROM message m WHERE m.session_id = s.id) AS message_count,
+        -- ponytail: six text parts approximate three exchanges in one discovery query.
         COALESCE((
-          SELECT json_extract(p.data, '$.text')
-          FROM part p
-          JOIN message m ON m.id = p.message_id
-          WHERE m.session_id = s.id
-            AND json_extract(m.data, '$.role') = 'user'
-            AND json_extract(p.data, '$.type') = 'text'
-            AND COALESCE(json_extract(p.data, '$.ignored'), 0) = 0
-          ORDER BY m.time_created, m.id, p.id
-          LIMIT 1
+          SELECT group_concat(text, ' ') FROM (
+            SELECT substr(json_extract(p.data, '$.text'), 1, 240) AS text
+            FROM part p
+            JOIN message m ON m.id = p.message_id
+            WHERE m.session_id = s.id
+              AND json_extract(m.data, '$.role') IN ('user', 'assistant')
+              AND COALESCE(json_extract(m.data, '$.summary'), 0) = 0
+              AND json_extract(p.data, '$.type') = 'text'
+              AND COALESCE(json_extract(p.data, '$.ignored'), 0) = 0
+            ORDER BY m.time_created, m.id, p.id
+            LIMIT 6
+          )
         ), '') AS preview
       FROM session s
       ${filters.length ? `WHERE ${filters.join(" AND ")}` : ""}
@@ -91,7 +95,7 @@ export function discoverOpenCodeSessions(
       createdAt: new Date(Number(row.time_created)).toISOString(),
       updatedAt: new Date(Number(row.time_updated)).toISOString(),
       messageCount: Number(row.message_count),
-      preview: String(row.preview ?? "").slice(0, 240),
+      preview: String(row.preview ?? "").slice(0, 960),
     }));
   } finally {
     db.close();
