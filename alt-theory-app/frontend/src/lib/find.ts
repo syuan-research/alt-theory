@@ -26,8 +26,12 @@ function fold(text: string): string {
   return out;
 }
 
-/** Case-insensitive literal matches of `query` across the joined segments. */
-export function findSpans(segments: string[], query: string): Span[] {
+/** Most matches the bar counts, paints, and steps through; more shows "1000+". */
+export const FIND_LIMIT = 1000;
+
+/** Case-insensitive literal matches of `query` across the joined segments,
+ *  at most `limit` of them in document order. */
+export function findSpans(segments: string[], query: string, limit = Infinity): Span[] {
   const needle = fold(query);
   if (!needle) return [];
   const starts: number[] = [];
@@ -48,7 +52,7 @@ export function findSpans(segments: string[], query: string): Span[] {
     return [lo, pos - starts[lo]];
   };
   const spans: Span[] = [];
-  for (let i = hay.indexOf(needle); i >= 0; i = hay.indexOf(needle, i + needle.length)) {
+  for (let i = hay.indexOf(needle); i >= 0 && spans.length < limit; i = hay.indexOf(needle, i + needle.length)) {
     const [a, ao] = at(i);
     const [b, bo] = at(i + needle.length - 1);
     spans.push([a, ao, b, bo + 1]);
@@ -86,14 +90,16 @@ function collectText(host: HTMLElement): { nodes: (Text | null)[]; texts: string
   return { nodes, texts };
 }
 
-export function findRanges(host: HTMLElement, query: string): Range[] {
+export function findRanges(host: HTMLElement, query: string): { ranges: Range[]; more: boolean } {
   const { nodes, texts } = collectText(host);
-  return findSpans(texts, query).map(([a, ao, b, bo]) => {
+  const spans = findSpans(texts, query, FIND_LIMIT + 1);
+  const ranges = spans.slice(0, FIND_LIMIT).map(([a, ao, b, bo]) => {
     const range = document.createRange();
     range.setStart(nodes[a]!, ao);
     range.setEnd(nodes[b]!, bo);
     return range;
   });
+  return { ranges, more: spans.length > FIND_LIMIT };
 }
 
 /** The element that scrolls for `el` (itself included). `overflowing`

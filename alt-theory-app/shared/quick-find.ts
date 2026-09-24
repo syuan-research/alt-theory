@@ -3,10 +3,22 @@ export interface QuickFindField {
   weight: number;
 }
 
+const isAbsolutePath = (text: string) => /^[a-z]:\//.test(text) || text.startsWith("/");
+const lastSegment = (path: string) => path.split("/").filter(Boolean).at(-1) ?? "";
+
 export function quickFindTerms(query: string): string[] {
-  return query.trim().toLocaleLowerCase().replace(/\\/g, "/").split(/\s+/)
-    .map((term) => /^[a-z]:\//.test(term) || term.startsWith("/") ? term.split("/").filter(Boolean).at(-1) ?? "" : term)
+  // Explorer's "Copy as path" wraps the path in quotes.
+  const text = query.trim().replace(/^"(.*)"$/s, "$1").trim().toLocaleLowerCase().replace(/\\/g, "/");
+  // A whole pasted path may contain spaces ("OneDrive - Org", "My Notes").
+  if (isAbsolutePath(text)) return [lastSegment(text)].filter(Boolean);
+  return text.split(/\s+/)
+    .map((term) => isAbsolutePath(term) ? lastSegment(term) : term)
     .filter(Boolean);
+}
+
+/** The query names a path, so full folder paths may match (not just labels). */
+export function isPathQuery(query: string): boolean {
+  return /[\\/]/.test(query);
 }
 
 /** All words must occur, in any order and across any supplied fields. */

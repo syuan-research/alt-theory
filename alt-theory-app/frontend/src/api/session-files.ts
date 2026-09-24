@@ -143,7 +143,9 @@ export async function searchWorkingDirectory(
   sessionId: string,
   folderId: string,
   search: string,
+  options: { searchToken: string; signal: AbortSignal },
 ): Promise<WorkingDirectoryResponse> {
-  const qs = new URLSearchParams({ root: "working", folderId, search });
-  return fetchJson<WorkingDirectoryResponse>(`${sessionFilesBase(sessionId)}?${qs}`);
+  // The token lets the server reuse one folder walk while this search lasts.
+  const qs = new URLSearchParams({ root: "working", folderId, search, searchToken: options.searchToken });
+  return fetchJson<WorkingDirectoryResponse>(`${sessionFilesBase(sessionId)}?${qs}`, { signal: options.signal });
 }

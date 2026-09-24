@@ -54,6 +54,7 @@ import {
   healFamilyInvariants,
   readSessionAccessSummary,
   readSessionDetail,
+  readVisibleTranscript,
   visibleTranscriptMatches,
   readSessionDetailWithParts,
   readSessionChanges,
@@ -1305,11 +1306,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       if (res.destroyed) return;
       if (!canAccessSessionSummary(auth, summary) || !canAccessSessionContent(auth, summary)) continue;
       try {
-        const detail = readSessionDetail(dataDir, summary.sessionId);
-        if (detail && !detail.session.deletedAt &&
-            canAccessSessionSummary(auth, detail.session) &&
-            canAccessSessionContent(auth, detail.session) &&
-            visibleTranscriptMatches(detail.transcript, terms)) {
+        if (visibleTranscriptMatches(readVisibleTranscript(dataDir, summary.sessionId), terms)) {
           sessionIds.push(summary.sessionId);
         }
       } catch {
@@ -1735,7 +1732,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       }
     },
   );
-  app.get("/api/sessions/:sessionId/files", (req, res) => {
+  app.get("/api/sessions/:sessionId/files", async (req, res) => {
     const sessionId = req.params.sessionId;
     const rootName =
       typeof req.query.root === "string" ? req.query.root : undefined;
@@ -1770,15 +1767,24 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         }
         const path = typeof req.query.path === "string" ? req.query.path : "";
         const search = typeof req.query.search === "string" ? req.query.search : "";
-        res.json(
-          search
-            ? searchWorkingFolder(dataDir, sessionId, folderId, search)
-            : listWorkingFolderChildren(dataDir, sessionId, folderId, path),
-        );
+        if (!search) {
+          res.json(listWorkingFolderChildren(dataDir, sessionId, folderId, path));
+          return;
+        }
+        // A newer keystroke closes this request; stop working for it.
+        const closed = new AbortController();
+        res.on("close", () => closed.abort());
+        const token = typeof req.query.searchToken === "string" ? req.query.searchToken : undefined;
+        const result = await searchWorkingFolder(dataDir, sessionId, folderId, search, 200, {
+          token,
+          signal: closed.signal,
+        });
+        res.json(result);
         return;
       }
       res.json(listSessionTextFiles(dataDir, sessionId, rootName));
     } catch (error) {
+      if (res.destroyed) return;
       sendFileApiError(res, error);
     }
   });

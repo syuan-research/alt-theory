@@ -225,7 +225,10 @@ folder, and source ID, keeps recent activity first within each folder group,
 folds technical details, and opens the resulting normal catalog session.
 The preview is bounded discovery text, not a full-history search: Codex, Grok,
 and Claude Code take up to three opening user turns with replies from records
-already read for discovery (Codex has a 512 KiB head limit); OpenCode takes the
-first six text parts in its list query; Pi takes the first 960 characters of
-Pi's flattened user/assistant text. Selected preflight still reads and checks
-the complete source.
+already read for discovery (Codex has a 512 KiB head limit). Only turns a
+person typed count: Claude Code tool-result rows and Codex's injected
+`<environment_context>` / instruction messages are skipped. OpenCode takes the
+first six user/assistant text parts in its list query, excluding assistant
+compaction summaries and synthetic attachment text; Pi takes the first 960
+characters of Pi's flattened user/assistant text. Selected preflight still
+reads and checks the complete source.

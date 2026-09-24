@@ -107,7 +107,7 @@ function discoverCodexFromStateDb(root: string): CodexDiscoveredSession[] | null
         const meta = head.find((record) => record.type === "session_meta")?.payload;
         const createdAt = timestamp(row.created_at, meta?.timestamp, stat.birthtimeMs);
         const updatedAt = timestamp(row.updated_at, null, stat.mtimeMs);
-        const preview = `${String(row.preview ?? "").slice(0, 240)} ${codexOpeningPreview(head)}`.trim().slice(0, 960);
+        const preview = codexOpeningPreview(head) || String(row.preview ?? "").slice(0, 240);
         return [{
           sourceId: `codex:${String(row.id)}`,
           sourceSessionId: String(row.id),
@@ -166,13 +166,17 @@ function discoverCodexFromRollouts(root: string): CodexDiscoveredSession[] {
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
+// Codex records its injected context as user-role messages.
+const CODEX_INJECTED_USER_TEXT = /^\s*(<environment_context>|<user_instructions>|# AGENTS\.md instructions)/;
+
 function codexOpeningPreview(records: Row[]): string {
   return openingPreview(records
     .filter((record) => record.type === "response_item" && record.payload?.type === "message")
     .map((record) => ({
       role: String(record.payload?.role ?? ""),
       text: messageText(record.payload?.content ?? []),
-    })));
+    }))
+    .filter((message) => !(message.role === "user" && CODEX_INJECTED_USER_TEXT.test(message.text))));
 }
 
 function timestamp(primary: unknown, fallback: unknown, finalMs: number): string {

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { SessionSummary } from "../api/types.ts";
-import { buildWorkspaceTree, canTakeMainline, contentRailMatchIds, familyMembersOf, filterRelatedRows, isFamilyHead, isListMember, railMatchIds, relatedRowsFor, sessionTitle } from "./sessionList.ts";
+import { buildWorkspaceTree, canTakeMainline, contentRailMatchIds, familyKeyOf, familyMembersOf, filterRelatedRows, isFamilyHead, isListMember, nearestAncestor, railMatchIds, relatedRowsFor, sessionQueryScore, sessionTitle } from "./sessionList.ts";
 
 function child(
   sessionId: string,
@@ -403,7 +403,7 @@ test("content search reveals a hidden hit's listed ancestor without listing the 
   assert.deepEqual([...contentRailMatchIds([root, hidden], new Set(["side"]))], ["root"]);
 });
 
-test("Quick Find ranks title hits before project path hits", () => {
+test("Quick Find orders by relevance within a folder group while groups keep their order", () => {
   const titleHit = { ...child("title", "unused", "fork", "2026-07-01"), forkedFrom: null } as SessionSummary;
   const pathHit = { ...child("path", "unused", "fork", "2026-07-02"), forkedFrom: null, workspacePrimaryDir: "C:/notes" } as SessionSummary;
   const tree = buildWorkspaceTree([pathHit, titleHit], [],
@@ -417,4 +417,36 @@ test("Quick Find ranks title hits before project path hits", () => {
     { title: { alias: "notes", snippet: "" }, path: { alias: "other", snippet: "" } },
     "notes");
   assert.deepEqual(sameFolder.groups[0].roots.map((root) => root.sessionId), ["title", "path"]);
+});
+
+test("finding the nearest ancestor never reorders the shared lineage path", () => {
+  const root = { ...child("root", "unused", "fork", "2026-07-01"), forkedFrom: null, lineagePath: [] } as SessionSummary;
+  const branch = { ...child("branch", "root", "fork", "2026-07-02"), lineagePath: ["root"] } as SessionSummary;
+  const btw = { ...child("btw", "branch", "side", "2026-07-03"), lineagePath: ["root", "branch"] } as SessionSummary;
+  const byId = new Map([root, branch, btw].map((session) => [session.sessionId, session]));
+  for (let render = 0; render < 3; render += 1) {
+    assert.equal(nearestAncestor(btw, byId)?.sessionId, "branch");
+    assert.equal(nearestAncestor(btw, byId, (session) => !session.forkedFrom)?.sessionId, "root");
+  }
+  assert.deepEqual(btw.lineagePath, ["root", "branch"]);
+  assert.equal(familyKeyOf(btw, byId), "root");
+});
+
+test("Names search ignores parent folders the rail never shows unless the query is a path", () => {
+  const session = { ...child("s", "unused", "fork", "2026-07-01"), forkedFrom: null, workspacePrimaryDir: "D:/OneDrive/0-vibe-coding/thesis" } as SessionSummary;
+  assert.equal(sessionQueryScore(session, "coding", "Interview plan"), 0);
+  assert.ok(sessionQueryScore(session, "thesis", "Interview plan"));
+  assert.ok(sessionQueryScore(session, "vibe-coding/thesis", "Interview plan"));
+});
+
+test("Related search keeps the ancestor chain in root-to-parent order", () => {
+  const root = { ...child("root", "unused", "fork", "2026-07-01"), forkedFrom: null } as SessionSummary;
+  const mid = child("mid", "root", "fork", "2026-07-02");
+  const self = child("self", "mid", "fork", "2026-07-03");
+  const side = child("side", "self", "side", "2026-07-04");
+  const titles: Record<string, string> = { root: "old notes", mid: "notes", self: "self", side: "notes" };
+  const rows = relatedRowsFor("self", [root, mid, self, side], "family");
+  const titleOf = (session: SessionSummary) => titles[session.sessionId];
+  const visible = filterRelatedRows(rows, { kinds: new Set(["side"]), query: "notes", titleOf });
+  assert.deepEqual(visible.map((row) => row.session.sessionId), ["root", "mid", "side"]);
 });

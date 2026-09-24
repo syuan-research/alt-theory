@@ -1,4 +1,9 @@
-/** Searchable opening text from at most three user turns and their replies. */
+/**
+ * Searchable opening text from at most three user turns and their replies.
+ * Contract: callers pass only turns a person typed as "user" (not tool
+ * results, injected context, or meta rows) and visible assistant text; any
+ * other "user" row would use up one of the three turns.
+ */
 export function openingPreview(messages: Iterable<{ role: string; text: string }>): string {
   const parts: string[] = [];
   let userTurns = 0;

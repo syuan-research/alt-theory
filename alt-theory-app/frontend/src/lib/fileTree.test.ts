@@ -45,6 +45,20 @@ test("file tree ignores stale items while replacing filtered results", () => {
   assert.equal(getFileTreeNode(second, "node:first.md"), null);
 });
 
+test("a matched folder in search results holds its matched files", () => {
+  const model = buildFileTreeModel([
+    { path: "a/b/c/interviews", isDirectory: true },
+    { path: "a/b/c/interviews/p01.md" },
+    { path: "a/b/c/d/interviews", isDirectory: true },
+    { path: "a/b/c/d/interviews/p02.md" },
+  ], "/r", true);
+  assert.deepEqual(model.nodes.get("node:a/b/c/interviews")?.children, ["node:a/b/c/interviews/p01.md"]);
+  assert.equal(model.nodes.get("node:a/b/c/interviews/p01.md")?.name, "p01.md");
+  assert.equal(model.nodes.get("node:a/b/c/d/interviews")?.name, "d / interviews");
+  assert.deepEqual(model.nodes.get("node:a/b/c/d/interviews")?.children, ["node:a/b/c/d/interviews/p02.md"]);
+  assert.deepEqual(model.nodes.get("node:a/b/c")?.children, ["node:a/b/c/interviews", "node:a/b/c/d/interviews"]);
+});
+
 test("search tree keeps ranked order and compresses paths after three folders", () => {
   const model = buildFileTreeModel([
     { path: "z/one/two/three/four/best.md" },

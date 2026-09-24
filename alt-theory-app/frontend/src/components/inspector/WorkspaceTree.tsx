@@ -399,6 +399,7 @@ function WorkingTree({
   );
   const [resolvedExpandSignal, setResolvedExpandSignal] = useState(0);
   const [searchResult, setSearchResult] = useState<{ query: string; entries: WorkingTreeEntry[]; truncated: boolean } | null>(null);
+  const searchToken = useRef<string | null>(null);
   const childrenRef = useRef(childrenByPath);
   const loadingPaths = useRef(new Set<string>());
   const previousRefreshSignal = useRef(refreshSignal);
@@ -449,19 +450,24 @@ function WorkingTree({
     const search = query.trim();
     if (!search) {
       setSearchResult(null);
+      searchToken.current = null;
       return;
     }
-    let cancelled = false;
+    // One token per search: refining the query reuses the server's walk.
+    searchToken.current ??= `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const controller = new AbortController();
     const timer = window.setTimeout(() => {
-      void searchWorkingDirectory(sessionId, folderId, search).then((response) => {
-        if (cancelled) return;
+      void searchWorkingDirectory(sessionId, folderId, search, {
+        searchToken: searchToken.current!,
+        signal: controller.signal,
+      }).then((response) => {
         setSearchResult({ query: search, entries: response.entries, truncated: Boolean(response.truncated) });
       }).catch(() => {
-        if (!cancelled) setSearchResult({ query: search, entries: [], truncated: false });
+        if (!controller.signal.aborted) setSearchResult({ query: search, entries: [], truncated: false });
       });
     }, 180);
     return () => {
-      cancelled = true;
+      controller.abort();
       window.clearTimeout(timer);
     };
   }, [folderId, query, sessionId]);
@@ -469,6 +475,7 @@ function WorkingTree({
   useEffect(() => {
     if (refreshSignal === previousRefreshSignal.current) return;
     previousRefreshSignal.current = refreshSignal;
+    searchToken.current = null; // files changed: the next search walks again
     const loadedPaths = [...childrenRef.current.keys()];
     void Promise.all(
       (loadedPaths.length ? loadedPaths : [""]).map((path) =>

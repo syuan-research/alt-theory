@@ -1487,6 +1487,40 @@ function hasDurableLifecycleEvent(parts: SessionParts): boolean {
   );
 }
 
+/** The transcript the conversation view shows: active leaf, current branch
+ *  (all entries for imported history), deleted/superseded runs removed. */
+function openVisibleTranscript(
+  sessionFile: string,
+  historyDir: string,
+  latestRuns: RunRecord[],
+  includeDetachedHistory: boolean,
+) {
+  const sessionManager = SessionManager.open(sessionFile, historyDir);
+  alignSessionManagerLeaf(sessionManager, latestActiveLeafEntryId(latestRuns));
+  const entries = sessionManager.getEntries();
+  const transcript = buildTranscriptFromEntries(
+    includeDetachedHistory ? entries : sessionManager.getBranch(),
+    inactiveTranscriptEntryIds(latestRuns)
+  );
+  return { sessionManager, entries, transcript };
+}
+
+/**
+ * Content search reads only this: the same visible transcript as the detail
+ * view, without events, config, run history, or A/B records. An empty file
+ * is skipped because opening it would write a fresh session header.
+ */
+export function readVisibleTranscript(dataDir: string, sessionId: string): TranscriptMessage[] {
+  const parts = readSessionParts(dataDir, sessionId);
+  if (!parts?.sessionFile || statSync(parts.sessionFile).size === 0) return [];
+  return openVisibleTranscript(
+    parts.sessionFile,
+    parts.historyDir,
+    latestRunSnapshots(parts.recordsDir),
+    existsSync(join(parts.recordsDir, "session-import-source.json")),
+  ).transcript;
+}
+
 function readPiInfo(
   sessionFile: string | null,
   historyDir: string,
@@ -1510,16 +1544,14 @@ function readPiInfo(
   }
 
   try {
-    const sessionManager = SessionManager.open(sessionFile, historyDir);
-    alignSessionManagerLeaf(sessionManager, latestActiveLeafEntryId(latestRuns));
-    const entries = sessionManager.getEntries();
-    const branchEntries = sessionManager.getBranch();
+    const { sessionManager, entries, transcript } = openVisibleTranscript(
+      sessionFile,
+      historyDir,
+      latestRuns,
+      includeDetachedHistory,
+    );
     const context = sessionManager.buildSessionContext();
     const messages = Array.isArray(context.messages) ? context.messages : [];
-    const transcript = buildTranscriptFromEntries(
-      includeDetachedHistory ? entries : branchEntries,
-      inactiveTranscriptEntryIds(latestRuns)
-    );
     return {
       info: {
         sessionFile,

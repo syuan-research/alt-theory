@@ -11,8 +11,8 @@ import {
   folderLabel,
   isFamilyHead,
   isListMember,
-  lineagePathOf,
   listedOriginLabel,
+  nearestAncestor,
   purposeIcon,
   railMatchIds,
   sessionTitle,
@@ -48,7 +48,7 @@ import {
 } from "@/lib/sessionMarkdown";
 import { copyText } from "@/lib/clipboard";
 import { useFindTarget } from "@/lib/find";
-import { quickFindScore, quickFindTerms } from "../../../../shared/quick-find";
+import { isPathQuery, quickFindScore, quickFindTerms } from "../../../../shared/quick-find";
 
 /**
  * What a conversation row says about itself when you are not in it (alpha.3).
@@ -521,10 +521,16 @@ function UserNav({ onImport }: { onImport: () => void }) {
   }, [railQuery, searchScope, shell.searchOpen]);
 
   useEffect(() => {
-    if (!pendingRelated || app.sessionId !== pendingRelated.centerId) return;
-    app.setActiveRelatedSessionId(pendingRelated.childId);
-    setPendingRelated(null);
-  }, [app.sessionId, app.setActiveRelatedSessionId, pendingRelated]);
+    if (!pendingRelated) return;
+    if (app.sessionId === pendingRelated.centerId) {
+      app.setActiveRelatedSessionId(pendingRelated.childId);
+      setPendingRelated(null);
+    } else if (app.selectedCatalogSessionId !== pendingRelated.centerId) {
+      // The user opened something else: never pop this child in later.
+      // ponytail: a server-refused open keeps it until the next selection.
+      setPendingRelated(null);
+    }
+  }, [app.sessionId, app.selectedCatalogSessionId, app.setActiveRelatedSessionId, pendingRelated]);
 
   useEffect(() => {
     if (!local) return;
@@ -622,6 +628,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
   const unlistedHits = contentIds
     ? app.sessions.filter((session) => contentIds.has(session.sessionId) && !isListMember(session) && !session.deletedAt)
     : [];
+  const sessionsById = new Map(app.sessions.map((session) => [session.sessionId, session]));
 
   const chooseSort = (next: SessionListSort) => {
     setListSort(next);
@@ -668,20 +675,17 @@ function UserNav({ onImport }: { onImport: () => void }) {
       openSession(session.sessionId);
       return;
     }
-    const byId = new Map(app.sessions.map((item) => [item.sessionId, item]));
-    const ancestor = lineagePathOf(session, byId).reverse()
-      .map((id) => byId.get(id))
-      .find((item) => item && isListMember(item) && item.hasSessionFile && !item.deletedAt &&
-        (local || item.visibility !== "private" || item.ownerAccountId === app.auth.accountId));
+    const ancestor = nearestAncestor(session, sessionsById, (item) =>
+      isListMember(item) && item.hasSessionFile && !item.deletedAt &&
+      (local || item.visibility !== "private" || item.ownerAccountId === app.auth.accountId));
     if (!ancestor) {
       openSession(session.sessionId);
       return;
     }
     shell.openApp();
     if (app.sessionId === ancestor.sessionId) app.setActiveRelatedSessionId(session.sessionId);
-    else {
+    else if (app.openCatalogSession(ancestor.sessionId)) {
       setPendingRelated({ centerId: ancestor.sessionId, childId: session.sessionId });
-      app.openCatalogSession(ancestor.sessionId);
     }
   };
 
@@ -1069,11 +1073,14 @@ function UserNav({ onImport }: { onImport: () => void }) {
                     ? [`[[${t("Project name")}]]`, project.name]
                     : []),
                 ].join("\n");
+            // Full paths only for a path-like query: parent folders the rail
+            // never shows would otherwise match whole projects.
+            const pathQuery = isPathQuery(railQuery);
             const folderHit = searchScope === "names" && visibleIds !== null &&
               quickFindScore(quickFindTerms(railQuery), [
                 { text: group.label, weight: 10 },
-                { text: group.dir, weight: 3 },
-                { text: companions.join(" "), weight: 2 },
+                { text: pathQuery ? group.dir : null, weight: 3 },
+                { text: (pathQuery ? companions : companions.map(folderLabel)).join(" "), weight: 2 },
               ]) > 0;
             const roots =
               visibleIds === null || folderHit
@@ -1297,8 +1304,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
               <div className="search-related-hits">
                 <div className="files-section-title">{t("Related matches")}</div>
                 {unlistedHits.map((session) => {
-                  const byId = new Map(app.sessions.map((item) => [item.sessionId, item]));
-                  const ancestor = lineagePathOf(session, byId).reverse().map((id) => byId.get(id)).find(Boolean);
+                  const ancestor = nearestAncestor(session, sessionsById);
                   return (
                     <button key={session.sessionId} type="button" className="sess search-related-hit" data-find-attention="center" onClick={() => openContentHit(session)}>
                       <i className={`ph ${purposeIcon(session)}`} aria-hidden="true" />

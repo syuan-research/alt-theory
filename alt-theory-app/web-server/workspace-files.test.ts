@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -182,7 +182,7 @@ test("describeWorkingFolders lists the global list after the project folders", (
   assert.deepEqual(sharedEntries.map((entry) => entry.path), ["refs"]);
 });
 
-test("working-folder browsing follows the persisted external workspace", () => {
+test("working-folder browsing follows the persisted external workspace", async () => {
   const root = mkdtempSync(join(tmpdir(), "alt-theory-working-folder-"));
   const dataDir = join(root, "data");
   const external = join(root, "user-project");
@@ -246,23 +246,41 @@ test("working-folder browsing follows the persisted external workspace", () => {
     "primary/notes/idea.md"
   );
   assert.equal(file.content, "# Actual work\n");
-  const search = searchWorkingFolder(dataDir, sessionId, "primary", "IDEA");
+  const search = await searchWorkingFolder(dataDir, sessionId, "primary", "IDEA");
   assert.deepEqual(search.entries.map((entry) => entry.path), ["notes/idea.md"]);
   assert.equal(search.truncated, false);
   for (let index = 0; index < 205; index += 1) {
     writeFileSync(join(external, "flat", `a-${String(index).padStart(3, "0")}-needle.txt`), "x");
   }
   writeFileSync(join(external, "flat", "needle"), "x");
-  const ranked = searchWorkingFolder(dataDir, sessionId, "primary", "needle", 1);
+  const ranked = await searchWorkingFolder(dataDir, sessionId, "primary", "needle", 1);
   assert.deepEqual(ranked.entries.map((entry) => entry.path), ["flat/needle"]);
   assert.equal(ranked.truncated, true);
   assert.equal(
-    searchWorkingFolder(dataDir, sessionId, "primary", ".txt", 1).truncated,
+    (await searchWorkingFolder(dataDir, sessionId, "primary", ".txt", 1)).truncated,
     true,
   );
   assert.deepEqual(
-    searchWorkingFolder(dataDir, sessionId, "primary", "x.js").entries,
+    (await searchWorkingFolder(dataDir, sessionId, "primary", "x.js")).entries,
     [],
+  );
+
+  // One search token reuses its folder walk; a new token walks again.
+  const tokenSearch = (query: string, token: string) =>
+    searchWorkingFolder(dataDir, sessionId, "primary", query, 200, { token });
+  assert.deepEqual((await tokenSearch("later", "t1")).entries, []);
+  writeFileSync(join(external, "notes", "later.md"), "x");
+  assert.deepEqual((await tokenSearch("later", "t1")).entries, []);
+  assert.deepEqual((await tokenSearch("later", "t2")).entries.map((entry) => entry.path), ["notes/later.md"]);
+  // A cached path deleted since the walk is skipped, not an error.
+  unlinkSync(join(external, "notes", "later.md"));
+  assert.deepEqual((await tokenSearch("later", "t2")).entries, []);
+
+  const closed = new AbortController();
+  closed.abort();
+  await assert.rejects(
+    searchWorkingFolder(dataDir, sessionId, "primary", "needle", 200, { signal: closed.signal }),
+    { name: "AbortError" },
   );
 });
 

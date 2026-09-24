@@ -5,7 +5,7 @@ import type { SessionSummary } from "@/api/types";
 import { t } from "@/i18n";
 import { shortId } from "@/lib/format";
 import { isListMember } from "@/lib/listMember";
-import { quickFindScore, quickFindTerms } from "../../../shared/quick-find";
+import { isPathQuery, quickFindScore, quickFindTerms } from "../../../shared/quick-find";
 
 export { isListMember };
 
@@ -25,7 +25,8 @@ const LINEAGE_TOKEN: Record<RelatedPurpose, string> = {
 /**
  * Ancestor ids, root (or its purged anchor) first. Server-derived
  * `lineagePath` walks through Trash; the fallback walks what the client can
- * see, for legacy payloads and tests.
+ * see, for legacy payloads and tests. The returned array may be the
+ * summary's own `lineagePath`: never mutate it (use `nearestAncestor`).
  */
 export function lineagePathOf(
   session: SessionSummary,
@@ -43,6 +44,20 @@ export function lineagePathOf(
     cursorId = parent.forkedFrom?.sessionId;
   }
   return path;
+}
+
+/** Closest loaded ancestor (direct parent first) that passes `accept`. */
+export function nearestAncestor(
+  session: SessionSummary,
+  byId: Map<string, SessionSummary>,
+  accept: (ancestor: SessionSummary) => boolean = () => true,
+): SessionSummary | undefined {
+  const path = lineagePathOf(session, byId);
+  for (let index = path.length - 1; index >= 0; index -= 1) {
+    const ancestor = byId.get(path[index]);
+    if (ancestor && accept(ancestor)) return ancestor;
+  }
+  return undefined;
 }
 
 /** Family identity: the structural root's id (a purged root's id still
@@ -350,14 +365,18 @@ export function filterRelatedRows(
   filter: { kinds: Set<RelatedKind>; query: string; titleOf: (s: SessionSummary) => string },
 ): RelatedRow[] {
   const query = filter.query.trim();
-  return rows.filter(
+  const visible = rows.filter(
     (row) =>
       (row.kind === null || filter.kinds.has(row.kind)) &&
       matchesQuery(row.session, query, filter.titleOf(row.session)),
-  ).sort((a, b) => query
-    ? sessionQueryScore(b.session, query, filter.titleOf(b.session)) -
-      sessionQueryScore(a.session, query, filter.titleOf(a.session))
-    : 0);
+  );
+  if (!query) return visible;
+  // The chain keeps root → parent order; only the kind rows rank by relevance.
+  const score = (row: RelatedRow) => sessionQueryScore(row.session, query, filter.titleOf(row.session));
+  return [
+    ...visible.filter((row) => row.kind === null),
+    ...visible.filter((row) => row.kind !== null).sort((a, b) => score(b) - score(a)),
+  ];
 }
 
 /**
@@ -428,7 +447,8 @@ export function sessionQueryScore(session: SessionSummary, query: string, title:
   return quickFindScore(quickFindTerms(query), [
     { text: title, weight: 10 },
     { text: session.workspacePrimaryDir ? folderLabel(session.workspacePrimaryDir) : null, weight: 6 },
-    { text: session.workspacePrimaryDir, weight: 3 },
+    // Parent folders the rail never shows match only when the query is a path.
+    { text: isPathQuery(query) ? session.workspacePrimaryDir : null, weight: 3 },
     { text: session.rolePresetSlug, weight: 2 },
     { text: session.kbDomain, weight: 2 },
     { text: session.provider, weight: 1 },

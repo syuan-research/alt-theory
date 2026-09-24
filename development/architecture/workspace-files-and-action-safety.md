@@ -179,8 +179,12 @@ workspace. `describeWorkingFolders()` gives it the session's main folder (or
 managed workspace), the matching project's current companions, and the global
 folder list — the same readable set supplied by the root policy. It skips
 hidden and common dependency/cache directories, lists one directory at a
-time, scores all searched paths before bounding results, and rechecks containment for each listing,
-preview, and user edit through the same path verdict — realpath on both sides,
+time, and scores all searched paths before bounding results. The search walk
+is asynchronous, so a large folder does not block the server (the desktop
+app's main process); the client's per-search token lets the path list be
+reused while the user refines one search, and a new search or a refresh walks
+again. Every listing, preview, and user edit rechecks containment
+through the same path verdict — realpath on both sides,
 so a symlink inside a listed folder cannot make the preview return a file the
 listing refuses, and credential paths are refused in browsing as everywhere
 else. It is a browsing surface plus a local-only *user* write

@@ -688,7 +688,6 @@ const catalog: Record<string, string> = {
   "Show less": "显示较少",
   "Show the Participant mode settings. Only turn this on if you take part in a study; it stays hidden otherwise.": "显示参与者模式设置。仅当您参与研究时开启此选项；否则保持隐藏。",
   "Show thinking": "显示思考",
-  "Showing the first 200 matches.": "显示前 200 个匹配项。",
   "Side conversation · {count} messages": "侧边对话 · {count}条消息",
   "Sign in": "登录",
   "Sign in again": "重新登录",

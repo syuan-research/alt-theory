@@ -149,7 +149,8 @@ export interface AppContextValue {
   sessionsLoading: boolean;
   sessionsError: string | null;
   refreshSessions: () => Promise<void>;
-  openCatalogSession: (sessionId: string) => void;
+  /** False when nothing was sent (same session, cannot open, socket down). */
+  openCatalogSession: (sessionId: string) => boolean;
   forkCurrentSession: (
     purpose: "fork" | "side" | "helper" | "ab-arm",
     seedPrompt?: string,
@@ -1186,12 +1187,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [isRunning, sendMessage, sessionId]);
 
   const openCatalogSession = useCallback(
-    (targetSessionId: string) => {
-      if (!targetSessionId || targetSessionId === sessionId) return;
+    (targetSessionId: string): boolean => {
+      if (!targetSessionId || targetSessionId === sessionId) return false;
       const summary = sessions.find((item) => item.sessionId === targetSessionId,);
       if (summary && !summary.hasSessionFile) {
         setToolStatus(t("Conversation cannot be opened."));
-        return;
+        return false;
       }
       setQueuedTexts([]);
       newDraftOpenRef.current = false;
@@ -1206,9 +1207,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setRequestBusy(true);
         setToolStatus("");
         setRunPhaseLabel(t("Opening conversation…"));
-      } else {
-        pendingOpenSessionIdRef.current = "";
+        return true;
       }
+      pendingOpenSessionIdRef.current = "";
+      return false;
     },
     [sendMessage, sessionId, sessions],
   );

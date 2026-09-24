@@ -35,15 +35,28 @@ export function buildFileTreeModel<T extends { path: string; isDirectory?: boole
     [rootId, { id: rootId, name: "", path: "", fullPath: basePath, children: [], isFolder: true }],
   ]);
 
+  const partsOf = (path: string) => path.split(/[\\/]/).filter(Boolean);
+  // Search results: a matched folder stays its own node, so matched files
+  // below it nest under it instead of beside it.
+  const matchedFolders = new Set(
+    preserveOrder ? entries.filter((entry) => entry.isDirectory).map((entry) => partsOf(entry.path).join("/")) : [],
+  );
   for (const entry of entries) {
-    const parts = entry.path.split(/[\\/]/).filter(Boolean);
-    const compact = preserveOrder && parts.length > 4;
-    const labels = compact ? [...parts.slice(0, 3), parts.slice(3).join(" / ")] : parts;
+    const parts = partsOf(entry.path);
+    // Index of the last path part each node covers. Search results show three
+    // folder levels, then compact "d / e / file" labels split at matched folders.
+    const ends = parts.map((_, index) => index);
+    if (preserveOrder && parts.length > 4) {
+      ends.splice(3);
+      for (let index = 3; index < parts.length - 1; index += 1) {
+        if (matchedFolders.has(parts.slice(0, index + 1).join("/"))) ends.push(index);
+      }
+      ends.push(parts.length - 1);
+    }
+    const labels = ends.map((end, index) => parts.slice(index ? ends[index - 1] + 1 : 0, end + 1).join(" / "));
     let parent = nodes.get(rootId)!;
     labels.forEach((name, index) => {
-      const path = compact && index === 3
-        ? parts.join("/")
-        : parts.slice(0, index + 1).join("/");
+      const path = parts.slice(0, ends[index] + 1).join("/");
       const id = `node:${path}`;
       let node = nodes.get(id);
       if (!node) {

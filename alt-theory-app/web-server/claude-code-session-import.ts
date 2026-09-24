@@ -159,8 +159,8 @@ export function discoverClaudeCodeSessions(
           // return the concrete chain refusal instead of hiding the session.
         }
         const preview = openingPreview(countRows
-          .filter((row) => row.isSidechain !== true && row.isMeta !== true && row.isCompactSummary !== true)
-          .map((row) => ({ role: String(row.type ?? ""), text: messageText(row.message?.content) })));
+          .filter((row) => row.type === "user" ? isHumanTurn(row) : row.type === "assistant" && row.isSidechain !== true)
+          .map((row) => ({ role: String(row.type), text: messageText(row.message?.content) })));
         result.push({
           sourceId: `claude-code:${sessionId}`,
           sourceSessionId: sessionId,
@@ -175,8 +175,9 @@ export function discoverClaudeCodeSessions(
             Math.max(timestamps.at(-1) ?? 0, stat.mtimeMs)
           ).toISOString(),
           messageCount: discoveryMessageCount(countRows),
-          preview: `${String(index?.firstPrompt ?? "").slice(0, 240)} ${preview}`.trim().slice(0, 960)
-            || messageText(firstUser?.message?.content).slice(0, 240),
+          preview: preview ||
+            String(index?.firstPrompt ?? "").slice(0, 240) ||
+            messageText(firstUser?.message?.content).slice(0, 240),
         });
       } catch {
         // Discovery is best-effort. Strict diagnostics belong to selected
@@ -914,20 +915,23 @@ function discoveryMessageCount(rows: Row[]): number {
       .map((row) => String(row.message?.id ?? row.uuid ?? ""))
       .filter(Boolean)
   ).size;
-  const humanTurns = rows.filter((row) => {
-    if (
-      row.type !== "user" ||
-      row.isSidechain === true ||
-      row.isMeta === true ||
-      row.isCompactSummary === true
-    ) {
-      return false;
-    }
-    const content = row.message?.content;
-    return typeof content === "string" ||
-      (Array.isArray(content) && content.some((block) => block?.type !== "tool_result"));
-  }).length;
+  const humanTurns = rows.filter(isHumanTurn).length;
   return assistantTurns + humanTurns;
+}
+
+/** A user row the person typed: not a tool-result carrier, meta, or summary. */
+function isHumanTurn(row: Row): boolean {
+  if (
+    row.type !== "user" ||
+    row.isSidechain === true ||
+    row.isMeta === true ||
+    row.isCompactSummary === true
+  ) {
+    return false;
+  }
+  const content = row.message?.content;
+  return typeof content === "string" ||
+    (Array.isArray(content) && content.some((block) => block?.type !== "tool_result"));
 }
 
 function validTimestamp(value: unknown): string {

@@ -9,6 +9,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from "fs";
+import { readdir } from "fs/promises";
 import { basename, extname, isAbsolute, join, relative, resolve } from "path";
 import { quickFindScore, quickFindTerms } from "../shared/quick-find.js";
 import { resolveSessionRoot, resolveSessionsRoot } from "../core/data-dir.js";
@@ -521,35 +522,83 @@ export function listWorkingFolderChildren(
   return { folderId, path: normalized, entries };
 }
 
-export function searchWorkingFolder(
+export interface SearchablePath {
+  name: string;
+  path: string;
+  absolutePath: string;
+  isDirectory: boolean;
+}
+
+/** Every path a folder search scores, walked asynchronously so a large
+ *  folder never blocks the server (in the desktop app, its main process). */
+export async function listSearchablePaths(root: string, signal?: AbortSignal): Promise<SearchablePath[]> {
+  const paths: SearchablePath[] = [];
+  let sinceYield = 0;
+  const visit = async (absoluteDir: string, relativeDir: string): Promise<void> => {
+    for (const entry of await readdir(absoluteDir, { withFileTypes: true })) {
+      signal?.throwIfAborted();
+      if (entry.name.startsWith(".") || WORKING_TREE_SKIP_DIRS.has(entry.name)) continue;
+      if (!entry.isDirectory() && !entry.isFile()) continue;
+      const path = relativeDir ? `${relativeDir}/${entry.name}` : entry.name;
+      const absolutePath = join(absoluteDir, entry.name);
+      paths.push({ name: entry.name, path, absolutePath, isDirectory: entry.isDirectory() });
+      if (entry.isDirectory()) await visit(absolutePath, path);
+      if (++sinceYield >= 500) {
+        sinceYield = 0;
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      }
+    }
+  };
+  await visit(root, "");
+  return paths;
+}
+
+// One path list per folder root, reused while the client's search token
+// lasts (typing refines a query); a new search or a refresh brings a new
+// token and a fresh walk. The walk is shared, so one keystroke's request
+// giving up does not stop it for the next.
+// ponytail: files created mid-search appear only on the next search; keeps the last token per root.
+const searchablePathCache = new Map<string, { token: string; controller: AbortController; paths: Promise<SearchablePath[]> }>();
+
+function cachedSearchablePaths(root: string, token: string): Promise<SearchablePath[]> {
+  const cached = searchablePathCache.get(root);
+  if (cached?.token === token) return cached.paths;
+  cached?.controller.abort();
+  const controller = new AbortController();
+  const paths = listSearchablePaths(root, controller.signal);
+  const entry = { token, controller, paths };
+  searchablePathCache.set(root, entry);
+  paths.catch(() => {
+    if (searchablePathCache.get(root) === entry) searchablePathCache.delete(root);
+  });
+  return paths;
+}
+
+export async function searchWorkingFolder(
   dataDir: string,
   sessionId: string,
   folderId: string,
   rawQuery: string,
   limit = 200,
-): { folderId: string; path: string; entries: WorkingTreeEntry[]; truncated: boolean } {
+  options: { token?: string; signal?: AbortSignal } = {},
+): Promise<{ folderId: string; path: string; entries: WorkingTreeEntry[]; truncated: boolean }> {
   const folder = describeWorkingFolders(dataDir, sessionId).find((item) => item.id === folderId);
   if (!folder?.available) throw new Error("This folder is not available");
   const terms = quickFindTerms(rawQuery);
   if (!terms.length) return { folderId, path: "", entries: [], truncated: false };
 
+  const root = realpathSync(folder.path);
+  const paths = options.token
+    ? await cachedSearchablePaths(root, options.token)
+    : await listSearchablePaths(root, options.signal);
+  options.signal?.throwIfAborted();
   const entries: WorkingTreeEntry[] = [];
-  const matches: Array<{ path: string; absolutePath: string; isDirectory: boolean; score: number }> = [];
-  // ponytail: O(paths) on each query; use an async walk or a cache if large folders make search visibly stall.
-  const visit = (absoluteDir: string, relativeDir: string): void => {
-    for (const entry of readdirSync(absoluteDir, { withFileTypes: true })) {
-      if (entry.name.startsWith(".") || WORKING_TREE_SKIP_DIRS.has(entry.name)) continue;
-      if (!entry.isDirectory() && !entry.isFile()) continue;
-      const path = (relativeDir ? `${relativeDir}/${entry.name}` : entry.name).replace(/\\/g, "/");
-      const score = quickFindScore(terms, [
-        { text: entry.name, weight: 10 },
-        { text: path, weight: 3 },
-      ]);
-      if (score) matches.push({ path, absolutePath: join(absoluteDir, entry.name), isDirectory: entry.isDirectory(), score });
-      if (entry.isDirectory()) visit(join(absoluteDir, entry.name), path);
-    }
-  };
-  visit(realpathSync(folder.path), "");
+  const matches = paths
+    .map((item) => ({ ...item, score: quickFindScore(terms, [
+      { text: item.name, weight: 10 },
+      { text: item.path, weight: 3 },
+    ]) }))
+    .filter((item) => item.score > 0);
   matches.sort((a, b) => b.score - a.score || a.path.localeCompare(b.path));
   for (const match of matches.slice(0, limit)) {
     if (match.isDirectory) entries.push({
@@ -557,7 +606,9 @@ export function searchWorkingFolder(
       size: null, updatedAt: null, previewable: false,
     });
     else {
-      const stats = statSync(match.absolutePath);
+      // A cached list may name a file deleted since the walk.
+      const stats = statSync(match.absolutePath, { throwIfNoEntry: false });
+      if (!stats) continue;
       entries.push({
         folderId, path: match.path, isDirectory: false,
         size: stats.size, updatedAt: stats.mtime.toISOString(),

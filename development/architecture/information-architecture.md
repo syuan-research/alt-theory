@@ -149,8 +149,11 @@ surfaces remain designation-gated and absent for everyone else.
     conversations section alike. These controls do not change
     conversation-family folding or the Independent conversations section's own
     collapse state.
-  - The search field switches between **Names** (title, project path and
-    summary metadata, with unordered word matching) and **Content**. Content
+  - The search field switches between **Names** (title, project folder name
+    and summary metadata, with unordered word matching; a query containing
+    `/` or `\` also matches full folder paths, and a pasted absolute path —
+    quoted or containing spaces — matches by its last segment) and
+    **Content**. Content
     searches non-Trash conversations across projects on demand, subject to
     both summary and content access checks. It matches only current visible
     user and assistant text, excluding thinking and tool rows, and filters the
@@ -260,6 +263,8 @@ surfaces remain designation-gated and absent for everyone else.
     list of things to open (the conversation list, Files, Changes, Related)
     focuses its own filter; opened content (a conversation, a related child, a
     file preview) gets a floating find bar with a count and next/previous.
+    It searches once typing pauses (never mid IME composition) and steps
+    through at most 1000 matches; beyond that the count reads "1000+".
     Clicking a conversation row counts as touching the center. Nothing happens
     in Settings or Review, while a modal dialog is open, or in the file editor.
   - Contextual menus stay open while unrelated panes receive output or scroll;

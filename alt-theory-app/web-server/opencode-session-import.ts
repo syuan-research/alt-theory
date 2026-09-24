@@ -74,9 +74,14 @@ export function discoverOpenCodeSessions(
             JOIN message m ON m.id = p.message_id
             WHERE m.session_id = s.id
               AND json_extract(m.data, '$.role') IN ('user', 'assistant')
-              AND COALESCE(json_extract(m.data, '$.summary'), 0) = 0
+              -- Only an assistant compaction summary is summary=true; user
+              -- messages carry a summary object ({ diffs }) on every prompt.
+              AND NOT (json_extract(m.data, '$.role') = 'assistant'
+                AND COALESCE(json_extract(m.data, '$.summary'), 0) = 1)
               AND json_extract(p.data, '$.type') = 'text'
               AND COALESCE(json_extract(p.data, '$.ignored'), 0) = 0
+              -- Attached file / MCP resource contents, not conversation text.
+              AND COALESCE(json_extract(p.data, '$.synthetic'), 0) = 0
             ORDER BY m.time_created, m.id, p.id
             LIMIT 6
           )
