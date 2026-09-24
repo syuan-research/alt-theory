@@ -8,8 +8,6 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { AltMode } from "@/api/types";
-import { getDefaultAltMode } from "@/api/config";
 import { syncTitlebarTheme } from "@/lib/native";
 
 /** Full-screen surface. `app` is the 3-pane shell; the others take over. */
@@ -107,10 +105,6 @@ export interface ShellContextValue {
   armsComparisonId: string | null;
   openArms: (comparisonId: string) => void;
   closeArms: () => void;
-
-  /** Chosen Alt mode for the next new conversation (Understand/Work). */
-  newMode: AltMode;
-  setNewMode: (mode: AltMode) => void;
 }
 
 const ShellContext = createContext<ShellContextValue | null>(null);
@@ -123,7 +117,6 @@ const LEFT_COLLAPSED_KEY = "alt-theory-left-collapsed";
 const LEFT_COLLAPSE_AT = 800;
 const SHOW_THINKING_KEY = "alt-theory-show-thinking";
 const THINKING_EXPANDED_KEY = "alt-theory-thinking-expanded";
-const NEW_MODE_KEY = "alt-theory-new-mode";
 const DARK_MODE_KEY = "alt-theory-dark-mode";
 const RIGHT_WIDTH_KEY = "alt-theory-right-width";
 
@@ -256,37 +249,6 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   const [importOpen, setImportOpen] = useState(false);
   const [armsComparisonId, setArmsComparisonId] = useState<string | null>(null);
   const [compareOpen, setCompareOpen] = useState(false);
-  // Persisted: a user who prefers Work should not reset to Understand on
-  // every launch (settings review 2026-07-23).
-  const [newMode, setNewModeState] = useState<AltMode>(() => {
-    try {
-      return localStorage.getItem(NEW_MODE_KEY) === "work" ? "work" : "understand";
-    } catch {
-      return "understand";
-    }
-  });
-  // An explicit Settings > General default wins at launch over the sticky
-  // last-used mode, but never over a choice the user already made this run.
-  const userPickedModeRef = useRef(false);
-  const setNewMode = useCallback((mode: AltMode) => {
-    userPickedModeRef.current = true;
-    setNewModeState(mode);
-    try {
-      localStorage.setItem(NEW_MODE_KEY, mode);
-    } catch {
-      /* ignore */
-    }
-  }, []);
-  useEffect(() => {
-    getDefaultAltMode()
-      .then(({ mode }) => {
-        if (mode && !userPickedModeRef.current) setNewModeState(mode);
-      })
-      .catch(() => {
-        /* hosted mode or offline: keep the sticky default */
-      });
-  }, []);
-
   const openApp = useCallback(() => setSurface("app"), []);
   const openSettings = useCallback((panel?: string) => {
     if (panel) setSettingsPanel(panel);
@@ -434,8 +396,6 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       armsComparisonId,
       openArms,
       closeArms,
-      newMode,
-      setNewMode,
     }),
     [
       surface,
@@ -479,7 +439,6 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       armsComparisonId,
       openArms,
       closeArms,
-      newMode,
     ]
   );
 

@@ -4,19 +4,15 @@ import { t } from "@/i18n";
 /**
  * Pi's queue for the conversation drawn here (card 11): texts waiting for the
  * next API call. Edit and delete both take the message out of the queue; only
- * edit hands it back (text and staged paths) to `onEdit`. The card goes when
- * the server's queue says so.
+ * edit puts it back (text and staged paths) in that conversation's draft,
+ * then calls `onEdit`. The card goes when the server's queue says so.
  */
-export function QueuedCards({
-  onEdit,
-}: {
-  onEdit: (retracted: { text: string; attachments: string[] }) => void;
-}) {
+export function QueuedCards({ onEdit }: { onEdit?: () => void }) {
   const conversation = useConversationContext();
   if (conversation.queuedTexts.length === 0) return null;
   const recall = async (text: string, toEditor: boolean) => {
-    const retracted = await conversation.retractQueued(text);
-    if (toEditor && retracted !== null) onEdit(retracted);
+    const retracted = await conversation.retractQueued(text, toEditor);
+    if (toEditor && retracted !== null) onEdit?.();
   };
   return (
     <div className="queued-prompts" aria-label={t("Queued messages")}>

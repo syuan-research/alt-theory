@@ -42,6 +42,11 @@ const prompt = (id: string, text: string, extra: Partial<PendingRequest> = {}) =
   request(id, { type: "prompt", payload: text }, { sentText: text, bubble: true, draftText: text, ...extra });
 const play = (inputs: ConversationInput[], start: ConversationState = initialConversationState()) =>
   inputs.reduce(reduce, start);
+/** The text handed back, by the draft it goes to. */
+const returns = (state: ConversationState) =>
+  state.draftOps.flatMap((op) =>
+    op.kind === "return" ? [{ to: op.to, text: op.text, attachments: op.attachments }] : [],
+  );
 const openedS1: ConversationInput[] = [
   { type: "socket", status: "open" },
   server({ type: "session_opened", payload: snap() }),
@@ -77,10 +82,9 @@ test("a send shows a pending bubble; accepted it stays; the turn's end swaps it 
   assert.equal(state.settledRuns, 1);
 });
 
-test("a refused send takes its bubble back and hands the text and files to the editor", () => {
+test("a refused send takes its bubble back and hands the text and files to its conversation's draft", () => {
   const state = play([
     ...openedS1,
-    { type: "stage", paths: ["a.md"] },
     prompt("r1", "hello\n\n(Attachments: a.md)", { draftText: "hello", attachments: ["a.md"] }),
     server({
       type: "error",
@@ -91,8 +95,7 @@ test("a refused send takes its bubble back and hands the text and files to the e
     }),
   ]);
   assert.equal(displayMessages(state).length, 2);
-  assert.equal(state.returned?.text, "hello");
-  assert.deepEqual(state.attachments, ["a.md"]);
+  assert.deepEqual(returns(state), [{ to: "s1", text: "hello", attachments: ["a.md"] }]);
   assert.equal(state.notice?.body.kind, "refused");
   assert.equal(isBusy(state), false);
 });
@@ -115,7 +118,7 @@ test("a send lost with the socket is settled by the re-opened rows: there → se
   );
   assert.equal(back.sessionId, "s1", "the reconnect greeting does not detach the conversation");
   assert.deepEqual(back.requests, []);
-  assert.equal(back.returned?.text, "vanished");
+  assert.deepEqual(returns(back), [{ to: "s1", text: "vanished", attachments: [] }]);
   assert.equal(back.notice?.body.kind, "unsent");
 });
 
@@ -135,30 +138,59 @@ test("Stop hands the unsent queue back with its staged paths; the queue shown is
     state,
   );
   assert.deepEqual(queuedTexts(stopped), []);
-  assert.equal(stopped.returned?.text, "later");
-  assert.deepEqual(stopped.attachments, ["b.md"]);
+  assert.deepEqual(returns(stopped), [{ to: "s1", text: "later", attachments: ["b.md"] }]);
+});
+
+test("what comes back goes to the conversation it came from, not the one on screen", () => {
+  const state = play([
+    ...openedS1,
+    prompt("r1", "from s1"),
+    request("r2", { type: "open_session", payload: { sessionId: "s2" } }),
+    server({ type: "session_opened", payload: snap({ sessionId: "s2" }) }),
+    server({
+      type: "error",
+      payload: {
+        requestId: "r1",
+        failure: { operation: "prompt", kind: "unknown", message: "Busy", retryable: false },
+      },
+    }),
+  ]);
+  assert.equal(state.sessionId, "s2");
+  assert.deepEqual(returns(state), [{ to: "s1", text: "from s1", attachments: [] }]);
+  // The drafts took it: the operations are acknowledged and gone.
+  const taken = reduce(state, { type: "draft_ops_taken", upTo: state.draftOps.at(-1)!.id });
+  assert.deepEqual(taken.draftOps, []);
 });
 
 test("the draft's first send becomes the new conversation's; opening another one clears the view", () => {
   const created = play([
     { type: "socket", status: "open" },
     server({ type: "session_draft", payload: draft }),
-    prompt("r1", "first", { from: null }),
+    request("r1", { type: "prompt", payload: "first", create: { mode: "work" } }, {
+      from: null,
+      sentText: "first",
+      bubble: true,
+      draftText: "first",
+    }),
     server({ type: "session_opened", payload: snap({ sessionId: "new1", status: "running" }) }),
   ]);
   assert.equal(created.sessionId, "new1");
   assert.equal(created.requests[0].from, "new1");
   assert.equal(displayMessages(created).at(-1)?.text, "first");
+  // The new-conversation draft's settings were used.
+  assert.deepEqual(
+    created.draftOps.map((op) => (op.kind === "created" ? op.sessionId : op.kind)),
+    ["new1"],
+  );
 
   const switched = play([
     ...openedS1,
-    { type: "stage", paths: ["x.md"] },
     request("r2", { type: "open_session", payload: { sessionId: "s2" } }),
     server({ type: "session_opened", payload: snap({ sessionId: "s2" }) }),
   ]);
   assert.equal(switched.sessionId, "s2");
   assert.deepEqual(switched.messages, []);
-  assert.deepEqual(switched.attachments, []);
+  assert.deepEqual(switched.draftOps, [], "opening a conversation uses no draft");
 });
 
 test("Continue comes from the snapshot only, and hides while a request or run is under way", () => {
@@ -243,5 +275,5 @@ test("a lost send with nothing to hand back is dropped without a notice", () => 
   ]);
   assert.deepEqual(state.requests, []);
   assert.equal(state.notice, null);
-  assert.equal(state.returned, null);
+  assert.deepEqual(state.draftOps, []);
 });

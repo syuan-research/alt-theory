@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { useConversationContext } from "@/context/ConversationContext";
 import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
@@ -13,24 +12,6 @@ export function ConversationPanel() {
   const conv = useConversationContext();
   const shell = useShell();
   const live = Boolean(conv.sessionId);
-
-  // Draft mode must reach the server before the first prompt materializes.
-  // Reopened conversations bypass this path and retain their persisted mode.
-  useEffect(() => {
-    if (
-      !conv.sessionId &&
-      conv.sessionReady &&
-      conv.sessionMode !== shell.newMode
-    ) {
-      conv.switchMode(shell.newMode);
-    }
-  }, [
-    conv.sessionId,
-    conv.sessionMode,
-    conv.sessionReady,
-    conv.switchMode,
-    shell.newMode,
-  ]);
 
   return (
     <main className="center">
@@ -55,6 +36,7 @@ export function ConversationPanel() {
 function EmptyState() {
   const app = useApp();
   const shell = useShell();
+  const conv = useConversationContext();
   return (
     <div className="empty-state">
       <div className="empty-intro">
@@ -66,9 +48,9 @@ function EmptyState() {
         ) : (
           <div className="mode-pick">
             <button
-              className={`mode-card understand${shell.newMode === "understand" ? " on" : ""}`}
-              onClick={() => shell.setNewMode("understand")}
-              aria-pressed={shell.newMode === "understand"}
+              className={`mode-card understand${conv.sessionMode === "understand" ? " on" : ""}`}
+              onClick={() => conv.switchMode("understand")}
+              aria-pressed={conv.sessionMode === "understand"}
               data-tip={t("For clarifying questions, comparing explanations, and developing ideas with your materials.")}
             >
               <div className="t">
@@ -82,9 +64,9 @@ function EmptyState() {
               </ul>
             </button>
             <button
-              className={`mode-card work${shell.newMode === "work" ? " on" : ""}`}
-              onClick={() => shell.setNewMode("work")}
-              aria-pressed={shell.newMode === "work"}
+              className={`mode-card work${conv.sessionMode === "work" ? " on" : ""}`}
+              onClick={() => conv.switchMode("work")}
+              aria-pressed={conv.sessionMode === "work"}
               data-tip={t("For the same careful thinking plus research, data analysis, and direct work across files.")}
             >
               <div className="t">

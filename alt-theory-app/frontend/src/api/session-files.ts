@@ -149,3 +149,16 @@ export async function searchWorkingDirectory(
   const qs = new URLSearchParams({ root: "working", folderId, search, searchToken: options.searchToken });
   return fetchJson<WorkingDirectoryResponse>(`${sessionFilesBase(sessionId)}?${qs}`, { signal: options.signal });
 }
+
+/** Which staged attachments of a restored draft are gone (local form only). */
+export async function missingAttachments(
+  sessionId: string | null,
+  paths: string[]
+): Promise<string[]> {
+  const result = await fetchJson<{ missing: string[] }>("/api/attachments/missing", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sessionId, paths }),
+  });
+  return result.missing;
+}

@@ -9,7 +9,11 @@
  *   the turn ends (the terminal event carries the settled rows);
  * - requests of this client in flight (request receipts): busy and the
  *   optimistic user bubble derive from them; nothing is cleared by hand;
- * - the staged attachments and the text handed back to the editor.
+ * - what the drafts must take in (M2): text and files handed back by Stop, a
+ *   refused or lost send — addressed to the conversation they came from —
+ *   and "the new-conversation draft was used". The drafts themselves live in
+ *   lib/draft.ts (one per conversation, on this device); the hook applies
+ *   these operations there.
  *
  * Nothing here knows where the conversation is displayed. Pure: types only
  * (relative imports, so the backend replay tests import it as-is), no i18n —
@@ -23,6 +27,7 @@ import type {
   ClientMessageBody,
   Failure,
   PendingChanges,
+  NewConversationSettings,
   ServerMessage,
   SessionDraftSnapshot,
   SessionMetrics,
@@ -82,7 +87,7 @@ export const REQUEST_BUSY: Record<ClientMessageBody["type"], boolean> = {
   set_full_access: false,
   set_study_tag: false,
   set_session_model: false,
-  set_draft_workspace: false,
+  describe_draft: false,
   delete_latest: false,
   respond_approval: false,
   get_session_metadata: false,
@@ -131,17 +136,21 @@ export interface Notice {
   ttlMs: number;
 }
 
-/** Text (and paths) handed back to the editor: Stop's unsent queue, a refused or lost send. */
-export interface Returned {
-  id: number;
-  text: string;
-}
+/**
+ * What a draft must take in. `return`: text and paths handed back (Stop's
+ * unsent queue, a refused or lost send) to the draft of the conversation
+ * they came from — null is the new-conversation draft. `created`: the
+ * new-conversation draft became this conversation, so its settings are used.
+ */
+export type DraftOp =
+  | { id: number; kind: "return"; to: string | null; text: string; attachments: string[] }
+  | { id: number; kind: "created"; sessionId: string };
 
 export interface ConversationState {
   /** The conversation this socket follows; null = the new-conversation draft. */
   sessionId: string | null;
   snapshot: SessionSnapshot | null;
-  /** The server's new-conversation settings (M1: still server-held). */
+  /** The server's new-conversation defaults (the draft itself is lib/draft). */
   draft: SessionDraftSnapshot | null;
   manifest: AssemblyManifest | null;
   metrics: SessionMetrics | null;
@@ -153,8 +162,8 @@ export interface ConversationState {
   requests: PendingRequest[];
   socket: SocketStatus;
   notice: Notice | null;
-  returned: Returned | null;
-  attachments: string[];
+  /** For the drafts, oldest first; the hook applies and acknowledges them. */
+  draftOps: DraftOp[];
   /** Bumps whenever a run ends — completed, failed, or stopped. */
   settledRuns: number;
   seq: number;
@@ -166,9 +175,7 @@ export type ConversationInput =
   | { type: "request"; request: Omit<PendingRequest, "status"> }
   | { type: "notice"; body: NoticeBody; ttlMs?: number }
   | { type: "dismiss_notice"; id: number }
-  | { type: "returned_taken"; id: number }
-  | { type: "stage"; paths: string[] }
-  | { type: "unstage"; paths: string[] };
+  | { type: "draft_ops_taken"; upTo: number };
 
 const EMPTY_TURN: LiveTurn = { parts: [], tools: {}, activity: null };
 
@@ -186,8 +193,7 @@ export function initialConversationState(): ConversationState {
     requests: [],
     socket: "connecting",
     notice: null,
-    returned: null,
-    attachments: [],
+    draftOps: [],
     settledRuns: 0,
     seq: 0,
   };
@@ -201,20 +207,15 @@ function withNotice(state: ConversationState, body: NoticeBody | null, ttlMs = N
   return { ...state, seq, notice: { id: seq, body, ttlMs } };
 }
 
-function withReturned(state: ConversationState, text: string, paths: string[] = []): ConversationState {
+function withReturned(
+  state: ConversationState,
+  to: string | null,
+  text: string,
+  attachments: string[] = [],
+): ConversationState {
+  if (!text.trim() && !attachments.length) return state;
   const seq = state.seq + 1;
-  const joined = [text, state.returned?.text ?? ""].filter((part) => part.trim()).join("\n");
-  return {
-    ...state,
-    seq,
-    returned: joined ? { id: seq, text: joined } : state.returned,
-    attachments: stageAll(state.attachments, paths),
-  };
-}
-
-function stageAll(current: string[], paths: string[]): string[] {
-  const added = paths.filter((path) => path && !current.includes(path));
-  return added.length ? [...current, ...added] : current;
+  return { ...state, seq, draftOps: [...state.draftOps, { id: seq, kind: "return", to, text, attachments }] };
 }
 
 function appendText(parts: StreamPart[], kind: "thinking" | "text", delta: string): StreamPart[] {
@@ -262,7 +263,7 @@ function withRows(state: ConversationState, messages: TranscriptMessage[], final
     if (request.status === "accepted" && (final || landed)) continue;
     if (request.status === "unknown") {
       if (!landed && (request.draftText?.trim() || request.attachments?.length)) {
-        next = withReturned(next, request.draftText ?? "", request.attachments);
+        next = withReturned(next, state.sessionId, request.draftText ?? "", request.attachments);
         lost = true;
       }
       continue;
@@ -273,7 +274,7 @@ function withRows(state: ConversationState, messages: TranscriptMessage[], final
   return lost ? withNotice(next, { kind: "unsent" }, 0) : next;
 }
 
-/** Leave the current conversation: its rows, turn and staged files go. */
+/** Leave the current conversation: its rows and turn go (its draft stays in lib/draft). */
 function switchedTo(state: ConversationState, sessionId: string | null): ConversationState {
   return {
     ...state,
@@ -287,8 +288,6 @@ function switchedTo(state: ConversationState, sessionId: string | null): Convers
     manifest: null,
     metrics: null,
     warnings: [],
-    attachments: [],
-    returned: null,
     notice: null,
   };
 }
@@ -308,7 +307,6 @@ function onServer(state: ConversationState, message: ServerMessage): Conversatio
       if (state.sessionId !== null && !leaving) return { ...state, draft: message.payload };
       let next: ConversationState = state.sessionId === null ? state : switchedTo(state, null);
       next = { ...next, draft: message.payload, snapshot: null };
-      if (message.payload.resetComposer) next = { ...next, attachments: [] };
       // Draft sends lost with the socket never reached a conversation.
       return withRows(next, [], false);
     }
@@ -325,10 +323,16 @@ function onServer(state: ConversationState, message: ServerMessage): Conversatio
         next = switchedTo(state, opened);
         if (materialized) {
           // The draft's first send created this conversation: its requests
-          // (and bubble, and anything handed back) now belong to it.
+          // (and bubble) now belong to it, and — unless it was a root Helper
+          // — the new-conversation draft's settings were used.
+          const used = state.requests.some(
+            (request) => request.from === null && request.message.type !== "create_helper_session" && "create" in request.message,
+          );
+          const seq = next.seq + 1;
           next = {
             ...next,
-            returned: state.returned,
+            seq,
+            draftOps: used ? [...next.draftOps, { id: seq, kind: "created", sessionId: opened }] : next.draftOps,
             requests: state.requests.map((request) =>
               request.from === null ? { ...request, from: opened } : request,
             ),
@@ -408,7 +412,9 @@ function onServer(state: ConversationState, message: ServerMessage): Conversatio
     case "queue_updated": {
       const { steering, followUp, restored, restoredAttachments } = message.payload;
       const next = state.snapshot ? { ...state, snapshot: { ...state.snapshot, queue: { steering, followUp } } } : state;
-      return restored?.length ? withReturned(next, restored.join("\n"), restoredAttachments) : next;
+      return restored?.length
+        ? withReturned(next, state.sessionId, restored.join("\n"), restoredAttachments)
+        : next;
     }
 
     case "assistant_delta":
@@ -523,9 +529,7 @@ function onServer(state: ConversationState, message: ServerMessage): Conversatio
       const { failure, code, requestId } = message.payload;
       const request = requestId ? state.requests.find((entry) => entry.id === requestId) : undefined;
       let next = request ? removeRequest(state, request.id) : state;
-      if (request?.draftText !== undefined || request?.attachments?.length) {
-        next = withReturned(next, request.draftText ?? "", request.attachments);
-      }
+      if (request) next = withReturned(next, request.from, request.draftText ?? "", request.attachments);
       // A conversation that cannot be re-opened after a reconnect is gone
       // from this window: fall back to the new-conversation draft.
       if (request?.restore) next = { ...switchedTo(next, null), snapshot: null };
@@ -574,9 +578,6 @@ export function reduce(state: ConversationState, input: ConversationInput): Conv
       return {
         ...state,
         requests: [...state.requests, { ...input.request, status: "sent" }],
-        attachments: input.request.attachments?.length
-          ? state.attachments.filter((path) => !input.request.attachments?.includes(path))
-          : state.attachments,
         notice: input.request.sentText !== undefined ? null : state.notice,
       };
 
@@ -586,16 +587,10 @@ export function reduce(state: ConversationState, input: ConversationInput): Conv
     case "dismiss_notice":
       return state.notice?.id === input.id ? { ...state, notice: null } : state;
 
-    case "returned_taken":
-      return state.returned?.id === input.id ? { ...state, returned: null } : state;
-
-    case "stage":
-      return { ...state, attachments: stageAll(state.attachments, input.paths) };
-
-    case "unstage": {
-      const remove = new Set(input.paths);
-      return { ...state, attachments: state.attachments.filter((path) => !remove.has(path)) };
-    }
+    case "draft_ops_taken":
+      return state.draftOps.some((op) => op.id <= input.upTo)
+        ? { ...state, draftOps: state.draftOps.filter((op) => op.id > input.upTo) }
+        : state;
 
     default: {
       const unhandled: never = input;
@@ -678,7 +673,8 @@ export function displayMessages(state: ConversationState): DisplayMessage[] {
 
 /**
  * The effective session settings — "pending first, else current" for a
- * switch accepted mid-run — from the snapshot, or the draft when detached.
+ * switch accepted mid-run — from the snapshot; when detached, the new-
+ * conversation draft's choices over what it inherited over the defaults.
  */
 export interface EffectiveSettings {
   selectors: SessionSelectors;
@@ -689,8 +685,11 @@ export interface EffectiveSettings {
   workspacePrimaryDir: string | null;
 }
 
-export function effectiveSettings(state: ConversationState): EffectiveSettings {
-  const source = state.sessionId ? state.snapshot : state.draft;
+export function effectiveSettings(
+  state: ConversationState,
+  newDraft?: { settings?: NewConversationSettings; inherited?: NewConversationSettings },
+): EffectiveSettings {
+  const source = state.sessionId ? state.snapshot : draftSource(state.draft, newDraft);
   const pending = state.sessionId ? (state.snapshot?.pending ?? {}) : {};
   const pick = <T,>(chosen: T | undefined, current: T): T => (chosen !== undefined ? chosen : current);
   return {
@@ -707,5 +706,29 @@ export function effectiveSettings(state: ConversationState): EffectiveSettings {
     modelOverride: pick(pending.model, source?.modelOverride ?? null),
     studyTag: source?.studyTag ?? null,
     workspacePrimaryDir: source?.workspacePrimaryDir ?? null,
+  };
+}
+
+/** The new-conversation draft read as a snapshot: its choices, then what it inherited, then the defaults. */
+function draftSource(
+  defaults: SessionDraftSnapshot | null,
+  newDraft: { settings?: NewConversationSettings; inherited?: NewConversationSettings } | undefined,
+) {
+  const chosen = { ...newDraft?.inherited, ...newDraft?.settings };
+  const pick = <K extends keyof NewConversationSettings>(key: K) => (key in chosen ? chosen[key] : undefined);
+  return {
+    currentDomain: pick("kbDomain") ?? defaults?.currentDomain ?? "",
+    rolePresetSlug: pick("rolePresetSlug") !== undefined ? (pick("rolePresetSlug") ?? null) : (defaults?.rolePresetSlug ?? null),
+    soulSlug: pick("soulSlug") !== undefined ? (pick("soulSlug") ?? null) : (defaults?.soulSlug ?? null),
+    customInstructionRef:
+      pick("customInstructionRef") !== undefined
+        ? (pick("customInstructionRef") ?? null)
+        : (defaults?.customInstructionRef ?? null),
+    visibility: pick("visibility") ?? defaults?.visibility,
+    mode: pick("mode") ?? defaults?.mode,
+    fullAccess: pick("fullAccess") ?? false,
+    modelOverride: pick("modelOverride") ?? null,
+    studyTag: pick("studyTag") ?? null,
+    workspacePrimaryDir: pick("workspacePrimaryDir") ?? null,
   };
 }

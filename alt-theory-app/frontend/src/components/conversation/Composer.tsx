@@ -18,7 +18,6 @@ import { isWithheld, type SessionVisibility } from "@/api/types";
 import { fmtTime } from "@/lib/format";
 import { t } from "@/i18n";
 import { autosizeTextarea } from "@/lib/autosizeTextarea";
-import { appendDraft } from "@/lib/draft";
 import { runPhaseLabels } from "@/lib/runState";
 
 type MenuKey = "plus" | "model" | "role" | "kb" | "presetcfg" | "perm" | null;
@@ -30,7 +29,9 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
   const main = useMainView();
   const conv = useConversationContext();
   const shell = useShell();
-  const [draft, setDraft] = useState("");
+  // The editor shows this conversation's draft (lib/draft, kept on this device).
+  const draft = conv.draftText;
+  const setDraft = conv.setDraftText;
   const [menu, setMenu] = useState<MenuKey>(null);
   // Preset toolbar (v1.4 round 1): open state survives reloads; the active
   // press/lock state lives in AppProvider so it survives pane switches.
@@ -100,7 +101,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
     return () => document.removeEventListener("keydown", onEscape);
   }, [menu]);
 
-  const slashMode = variant === "empty" ? shell.newMode : conv.sessionMode;
+  const slashMode = conv.sessionMode;
   const helper = useMemo(
     () => ({
       name: "helper",
@@ -119,16 +120,11 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
   };
   const palette = useSlashPalette({ draft, commands: slashCommands, setDraft, onArm: armCommand });
 
-  // Text handed back to the editor — Stop's unsent queue (card 11), a
-  // refused or lost send — joins what is typed; its paths are re-staged by
-  // the conversation.
-  const returned = conv.returned;
+  // Text handed back — Stop's unsent queue (card 11), a refused or lost
+  // send — is already in this conversation's draft; the editor takes focus.
   useEffect(() => {
-    if (!returned) return;
-    setDraft((current) => [returned.text, current].filter((part) => part.trim()).join("\n"));
-    conv.takeReturned(returned.id);
-    window.setTimeout(() => textareaRef.current?.focus(), 0);
-  }, [conv, returned]);
+    if (conv.draftReturns) window.setTimeout(() => textareaRef.current?.focus(), 0);
+  }, [conv.draftReturns]);
 
   const interactive = conv.sessionReady;
   const hasText = draft.trim().length > 0;
@@ -154,11 +150,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
       ? fmtTime(conv.retentionDueAt)
       : null;
   const altControlsDisabled = app.runtimeMode === "native-pi";
-  const understandMode =
-    !altControlsDisabled &&
-    (variant === "empty"
-      ? shell.newMode === "understand"
-      : conv.sessionMode === "understand");
+  const understandMode = !altControlsDisabled && conv.sessionMode === "understand";
   // First-level paperclip: Understand only. Work keeps attach in the toolbox.
   const attachFirstLevel = canAttach && understandMode;
 
@@ -192,7 +184,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
       ? conv.invokeSkill("alt-theory-help", draft)
       : sendDraft();
     if (sent) {
-      setDraft("");
+      conv.clearDraft();
       setHelpQuestionArmed(false);
     }
   };
@@ -201,7 +193,6 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
   );
 
   const stageHelpQuestion = (question: string) => {
-    shell.setNewMode("understand");
     conv.switchMode("understand");
     setHelpQuestionArmed(true);
     setDraft((current) =>
@@ -212,7 +203,6 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
 
   const applyGeneralKnowledgeWork = () => {
     if (app.runtimeMode !== "alt-theory") return;
-    shell.setNewMode("work");
     conv.switchMode("work");
     conv.switchRolePreset(null);
     conv.switchKb(KB_OFF_VALUE);
@@ -336,14 +326,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
           </div>
         ) : null}
 
-        <QueuedCards
-          onEdit={(retracted) => {
-            // Edit puts the text and its staged paths back in the editor.
-            setDraft((current) => appendDraft(current, retracted.text));
-            conv.stage(...retracted.attachments);
-            window.setTimeout(() => textareaRef.current?.focus(), 0);
-          }}
-        />
+        <QueuedCards onEdit={() => window.setTimeout(() => textareaRef.current?.focus(), 0)} />
 
         <div className="ctx-line">
           {/* Owner design: the Steer bar REPLACES the role/KB controls while

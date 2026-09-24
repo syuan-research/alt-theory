@@ -12,7 +12,6 @@ import { Button } from "@/components/ui/Button";
 import { MenuSelect } from "@/components/ui/MenuSelect";
 import { useMainView } from "@/context/MainView";
 import { useApp } from "@/context/AppProvider";
-import { useShell } from "@/context/ShellContext";
 import { folderLabel } from "@/lib/sessionList";
 import { t } from "@/i18n";
 import { quickFindScore, quickFindTerms } from "../../../../shared/quick-find";
@@ -45,21 +44,21 @@ export function SessionImportDialog({
 }) {
   const app = useApp();
   const main = useMainView();
-  const shell = useShell();
   const [harness, setHarness] = useState<ImportableHarness>("opencode");
   const [harnessOptions, setHarnessOptions] = useState<ImportHarnessInfo[]>([]);
   const [sessions, setSessions] = useState<ImportSourceSession[]>([]);
   const [sourceId, setSourceId] = useState("");
   const [query, setQuery] = useState("");
   const [workspaceOverride, setWorkspaceOverride] = useState("");
-  const [mode, setMode] = useState<"understand" | "work">(shell.newMode);
+  const newMode = main.conversation.newConversationMode;
+  const [mode, setMode] = useState<"understand" | "work">(newMode);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     if (!open) return;
-    setMode(shell.newMode);
+    setMode(newMode);
     setQuery("");
     setWorkspaceOverride("");
     void fetchImportHarnesses()
@@ -72,7 +71,7 @@ export function SessionImportDialog({
         );
       })
       .catch(() => setHarnessOptions([]));
-  }, [open, shell.newMode]);
+  }, [open, newMode]);
 
   useEffect(() => {
     if (!open) return;

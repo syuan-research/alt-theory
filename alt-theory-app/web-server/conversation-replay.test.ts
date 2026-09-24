@@ -98,6 +98,13 @@ class Window {
   }
 }
 
+/** What the window handed back to the drafts, and to which conversation's (M2). */
+function returned(window: Window) {
+  return window.state.draftOps.flatMap((op) =>
+    op.kind === "return" ? [{ to: op.to, text: op.text, attachments: op.attachments }] : [],
+  );
+}
+
 /** A Pi prompt that appends the turn's messages when released. */
 function holdTurn(managed: any, answer = "answer") {
   let release!: () => void;
@@ -167,7 +174,7 @@ test("replay: a refused send (no model selected) puts the text back and shows wh
     assert.equal(isRunning(window.state), false);
     assert.equal(isBusy(window.state), false);
     assert.equal(displayMessages(window.state).length, 0);
-    assert.equal(window.state.returned?.text, "hello");
+    assert.deepEqual(returned(window), [{ to: sessionId, text: "hello", attachments: [] }]);
     assert.equal(window.state.notice?.body.kind, "refused");
   } finally {
     await service.disposeAll();
@@ -220,8 +227,7 @@ test("replay: Stop hands the queued text back to the conversation it was typed i
     await managed.runSettlement;
     assert.equal(isRunning(window.state), false);
     assert.deepEqual(queuedTexts(window.state), []);
-    assert.equal(window.state.returned?.text, "and this");
-    assert.deepEqual(window.state.attachments, ["a.md"]);
+    assert.deepEqual(returned(window), [{ to: sessionId, text: "and this", attachments: ["a.md"] }]);
     assert.equal(window.state.notice, null, "the user's own Stop needs no words");
   } finally {
     await service.disposeAll();
@@ -431,7 +437,7 @@ test("replay: a send whose answer is lost with the socket is settled by the reop
     window.apply({ type: "socket", status: "open" });
     window.open(sessionId);
     assert.deepEqual(window.state.requests, []);
-    assert.equal(window.state.returned?.text, "never sent");
+    assert.deepEqual(returned(window).map((entry) => entry.text), ["never sent"]);
     assert.equal(window.state.notice?.body.kind, "unsent");
     assert.deepEqual(
       displayMessages(window.state).map((row) => row.text),

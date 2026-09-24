@@ -68,6 +68,7 @@ import {
   type SessionDisplayName,
 } from "@/api/sessions";
 import { folderLabel, sessionTitle } from "@/lib/sessionList";
+import { NEW_DRAFT, updateDraft } from "@/lib/draft";
 import { GENERAL_TIPS, productTipText } from "@/config/productTips";
 
 // Panel keys for the validity fallback below. The nav rows themselves render
@@ -1312,7 +1313,6 @@ function LanguageCard() {
 }
 
 function DefaultModeCard() {
-  const shell = useShell();
   const [mode, setMode] = useState<"understand" | "work" | null>(null);
   const [loaded, setLoaded] = useState(false);
 
@@ -1333,7 +1333,8 @@ function DefaultModeCard() {
 
   const persist = (next: "understand" | "work") => {
     setMode(next);
-    shell.setNewMode(next);
+    // The new-conversation draft starts in the new default too.
+    updateDraft(NEW_DRAFT, (draft) => ({ ...draft, settings: { ...draft.settings, mode: next } }));
     void saveDefaultAltMode(next).catch(() => {});
   };
 
@@ -1348,7 +1349,7 @@ function DefaultModeCard() {
         </div>
         <MenuSelect
           ariaLabel={t("New conversations start in")}
-          value={mode ?? shell.newMode}
+          value={mode ?? "understand"}
           disabled={!loaded}
           options={[
             { value: "understand", label: t("Understand") },

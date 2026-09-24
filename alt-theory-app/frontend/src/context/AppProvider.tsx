@@ -36,6 +36,7 @@ import {
 } from "@/api/workspaces";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { defaultTranscriptView, viewModeForRole } from "@/lib/viewMode";
+import { pruneDrafts, setDraftScope } from "@/lib/draft";
 
 const anonymousAuth: AuthContext = {
   accountId: null,
@@ -225,6 +226,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       setAuth(me.auth ?? anonymousAuth);
       setAppMode(mode);
+      // Drafts on this device belong to the account (the browser keeps them
+      // per server already); the editors open once this is known.
+      setDraftScope(mode === "local" ? "local" : `account:${me.auth?.accountId ?? "anonymous"}`);
       setRuntimeMode(me.app?.runtimeMode ?? "alt-theory");
       setLoginRequired(required);
       setViewMode(nextViewMode);
@@ -241,6 +245,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       setAuth(anonymousAuth);
       setAppMode("hosted");
+      setDraftScope("account:anonymous");
       setRuntimeMode("alt-theory");
       setLoginRequired(false);
       setDiscovery(null);
@@ -289,6 +294,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const list = await fetchSessionList();
       if (requestId !== sessionListRequestRef.current) return;
       setSessions(list);
+      // Drafts of conversations that are gone go too (never one open this run).
+      pruneDrafts(new Set(list.map((session) => session.sessionId)));
       setSessionDisplayNames(
         Object.fromEntries(
           list.map((session) => [

@@ -49,6 +49,7 @@ import {
   sessionTranscriptToMarkdown,
 } from "@/lib/sessionMarkdown";
 import { copyText } from "@/lib/clipboard";
+import { NEW_DRAFT, readDraft } from "@/lib/draft";
 import { useFindTarget } from "@/lib/find";
 import { usePaneMemory } from "@/lib/paneMemory";
 import { isPathQuery, quickFindScore, quickFindTerms } from "../../../../shared/quick-find";
@@ -764,7 +765,8 @@ function UserNav({ onImport }: { onImport: () => void }) {
 
   const removeFolder = (dir: string, sessionIds: string[]) => {
     const finish = async () => {
-      if (conv.workspacePrimaryDir === dir) conv.setDraftWorkspace(null);
+      // The new-conversation draft no longer goes to a folder that is removed.
+      if (readDraft(NEW_DRAFT).settings?.workspacePrimaryDir === dir) conv.setDraftWorkspace(null);
       await app.removeKnownWorkspace(dir);
     };
     const run = async () => {

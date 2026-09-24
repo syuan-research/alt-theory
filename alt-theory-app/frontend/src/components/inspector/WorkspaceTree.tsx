@@ -73,11 +73,7 @@ export function WorkspaceTree() {
     : subKey.startsWith("working:")
       ? { path: subKey.slice("working:".length), source: "working" }
       : null;
-  const understandMode =
-    app.runtimeMode === "alt-theory" &&
-    (sessionId
-      ? conv.sessionMode === "understand"
-      : shell.newMode === "understand");
+  const understandMode = app.runtimeMode === "alt-theory" && conv.sessionMode === "understand";
 
   // Draft pane: before the first message there is no session to read folders
   // from, so show the ones this conversation will get — the picker's folder,

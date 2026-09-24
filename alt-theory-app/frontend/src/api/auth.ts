@@ -1,3 +1,4 @@
+import { clearDraftScope } from "@/lib/draft";
 import { fetchJson, fetchVoid } from "./http";
 import type { AuthMeResponse } from "./types";
 
@@ -30,4 +31,6 @@ export async function login(
 
 export async function logout(): Promise<void> {
   await fetchVoid("/api/auth/logout", { method: "POST" });
+  // Signing out takes the account's drafts off this device.
+  clearDraftScope();
 }

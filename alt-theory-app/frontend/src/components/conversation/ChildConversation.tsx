@@ -7,7 +7,6 @@ import { useMainView } from "@/context/MainView";
 import { useConversation } from "@/hooks/useConversation";
 import { useStickToBottom } from "@/hooks/useStickToBottom";
 import { useFindTarget } from "@/lib/find";
-import { appendDraft } from "@/lib/draft";
 import { runPhaseLabels } from "@/lib/runState";
 import { canTakeMainline, isListMember } from "@/lib/sessionList";
 import { t } from "@/i18n";
@@ -71,7 +70,9 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
   const main = useMainView();
   const conversation = useConversationContext();
   const parts = useTurnParts();
-  const [draft, setDraft] = useState("");
+  // This child's own draft (lib/draft): closing and reopening keeps it.
+  const draft = conversation.draftText;
+  const setDraft = conversation.setDraftText;
   const [menu, setMenu] = useState<"role" | "model" | null>(null);
   const ctxLineRef = useRef<HTMLDivElement>(null);
   const developer = app.transcriptView === "developer";
@@ -83,15 +84,6 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
   const approval = conversation.approvals.find((request) => request.sessionId === sessionId);
   const { containerRef: messagesRef, onScroll } = useStickToBottom([messages, parts]);
   useFindTarget(messagesRef, {});
-
-  // Text handed back (Stop's unsent queue, a refused or lost send) joins
-  // what is typed.
-  const returned = conversation.returned;
-  useEffect(() => {
-    if (!returned) return;
-    setDraft((current) => [returned.text, current].filter((part) => part.trim()).join("\n"));
-    conversation.takeReturned(returned.id);
-  }, [conversation, returned]);
 
   // Role/model menus close on any click outside the context line (same
   // pattern as the main Composer).
@@ -236,7 +228,7 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
         />
       ) : null}
 
-      <QueuedCards onEdit={(retracted) => setDraft((current) => appendDraft(current, retracted.text))} />
+      <QueuedCards />
 
       <div className="ctx-line child-ctx-line" ref={ctxLineRef}>
         <div className="ctx-picker">

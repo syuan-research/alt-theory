@@ -22,6 +22,7 @@ import { ConversationScope } from "@/context/ConversationContext";
 import { useConversation, type Conversation } from "@/hooks/useConversation";
 import { t } from "@/i18n";
 import { notifyBackground } from "@/lib/notify";
+import { discardDraft } from "@/lib/draft";
 
 /**
  * The main view: which conversation the center shows, and what follows from
@@ -341,6 +342,8 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
         const deletedIds = wholeFamily
           ? await deleteSessionFamilyRequest(target)
           : (await deleteSessionRequest(target), [target]);
+        // A deleted conversation takes its draft with it.
+        deletedIds.forEach(discardDraft);
         if (sessionId && deletedIds.includes(sessionId)) conv.startNew();
         if (app.activeRelatedSessionId && deletedIds.includes(app.activeRelatedSessionId)) {
           app.setActiveRelatedSessionId(null);

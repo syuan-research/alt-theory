@@ -34,13 +34,24 @@ export function RunStatusSlot() {
   );
 }
 
-/** The conversation's latest notice (run outcome, refusal, extension, UI). */
+/**
+ * The conversation's latest notice (run outcome, refusal, extension, UI) —
+ * and, while it lasts, that its draft could not be saved on this device.
+ */
 export function NoticeLine() {
-  const { notice } = useConversationContext();
-  if (!notice) return null;
+  const { notice, draftSaveFailed } = useConversationContext();
+  const unsaved = draftSaveFailed ? (
+    <span className="run-tip">
+      <i className="ph ph-warning" aria-hidden="true" />
+      {t("This draft could not be saved on this device; it is kept only until the app closes.")}
+    </span>
+  ) : null;
+  if (!notice) return unsaved;
   const { body } = notice;
   const icon = body.kind === "text" ? body.icon : noticeWarns(body) ? "warning" : undefined;
   return (
+    <>
+    {unsaved}
     <span className="run-tip">
       {icon ? (
         <i
@@ -52,6 +63,7 @@ export function NoticeLine() {
       ) : null}
       {noticeText(body)}
     </span>
+    </>
   );
 }
 
@@ -75,6 +87,7 @@ export function hasRunNotes(conversation: ReturnType<typeof useConversationConte
       phase === "disconnected" ||
       phase === "error" ||
       conversation.notice ||
+      conversation.draftSaveFailed ||
       conversation.recovery?.canContinue,
   );
 }
