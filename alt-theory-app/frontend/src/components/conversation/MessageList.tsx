@@ -19,6 +19,7 @@ import { autosizeTextarea } from "@/lib/autosizeTextarea";
 import { useStickToBottom } from "@/hooks/useStickToBottom";
 import { useContextMenu, type ContextMenuItem } from "@/components/shell/ContextMenu";
 import { copyText } from "@/lib/clipboard";
+import { useFindTarget } from "@/lib/find";
 
 export function MessageList() {
   const app = useApp();
@@ -28,6 +29,7 @@ export function MessageList() {
     stickRef: stickToBottomRef,
     onScroll,
   } = useStickToBottom([app.messages, streamParts]);
+  useFindTarget(containerRef, {});
   const railRef = useRef<HTMLDivElement>(null);
   const [scrubbing, setScrubbing] = useState(false);
   const developer = app.transcriptView === "developer";
@@ -241,7 +243,7 @@ export const SettledMessages = memo(function SettledMessages({
     return (
       <div key={`range-${segment.indexes[0]}`} className={`reply-range ${segment.cause}`}>
         {segment.indexes.map(entryAt)}
-        <div className="reply-range-line">{replyStopLine(segment.cause)}</div>
+        <div className="reply-range-line" data-find-skip="">{replyStopLine(segment.cause)}</div>
       </div>
     );
   });
@@ -270,7 +272,7 @@ export function StreamPartsView({
       );
     }
     if (part.kind === "notice") {
-      return <div key={`sp-${index}`} className="reply-stop">{part.text}</div>;
+      return <div key={`sp-${index}`} className="reply-stop" data-find-skip="">{part.text}</div>;
     }
     return <ToolLine key={part.tool.callId} tool={part.tool} />;
   });
@@ -320,7 +322,7 @@ function TurnChangesCard() {
   if (app.isRunning || files.length === 0) return null;
 
   return (
-    <div className="turn-changes">
+    <div className="turn-changes" data-find-skip="">
       <span className="tc-head">
         <i className="ph ph-pencil-simple-line" aria-hidden="true" />
         {files.length === 1 ? t("1 file changed") : t("{count} files changed", { count: files.length })}
@@ -391,7 +393,7 @@ const TOOL_TONE: Record<ToolOutcome, "danger" | "ok" | "running" | "pending"> = 
 function ToolLine({ tool }: { tool: ActiveToolState }) {
   const outcome = toolOutcome({ running: tool.status === "running", success: tool.success });
   return (
-    <SysLine detail={outcome === "running" ? null : tool.detail} tone={TOOL_TONE[outcome]}>
+    <SysLine tool detail={outcome === "running" ? null : tool.detail} tone={TOOL_TONE[outcome]}>
       <i className={TOOL_ICON[outcome]} />
       {toolLabel(tool.toolName, tool.path, tool.detail, outcome)}
       {tool.progressText ? ` — ${tool.progressText}` : ""}
@@ -404,17 +406,21 @@ function CollapseAnywhereDetails({
   summary,
   children,
   defaultOpen = false,
+  findSkip = false,
 }: {
   className?: string;
   summary: ReactNode;
   children: ReactNode;
   defaultOpen?: boolean;
+  /** Keep this block out of Ctrl+F (a thinking stream still growing). */
+  findSkip?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const down = useRef<{ x: number; y: number } | null>(null);
   return (
     <details
       className={className}
+      data-find-skip={findSkip ? "" : undefined}
       open={open}
       onToggle={(event) => setOpen(event.currentTarget.open)}
       onMouseDown={(event) => {
@@ -459,6 +465,7 @@ function ThinkingBlock({
     <CollapseAnywhereDetails
       className={complete ? "think-block think-done" : "think-block"}
       defaultOpen={defaultOpen}
+      findSkip={!complete}
       summary={
         <>
           <i className="ph ph-brain" aria-hidden="true" />{" "}
@@ -535,7 +542,7 @@ export function TranscriptEntry({
           />
         ) : null}
         <AssistantBubble text={message.text} />
-        {stopLine ? <div className="reply-stop">{stopLine}</div> : null}
+        {stopLine ? <div className="reply-stop" data-find-skip="">{stopLine}</div> : null}
       </>
     );
   }
@@ -544,7 +551,7 @@ export function TranscriptEntry({
     if (isDuplicateToolCall) return null;
     const outcome = toolOutcome({ success: message.success });
     return (
-      <SysLine tone={TOOL_TONE[outcome]} detail={message.toolDetail}>
+      <SysLine tool tone={TOOL_TONE[outcome]} detail={message.toolDetail}>
         <i className={TOOL_ICON[outcome]} />
         {toolLabel(
           message.toolName || message.text || "tool",
@@ -636,7 +643,7 @@ function UserBubble({
   const canEdit = isLatest || Boolean(entryId);
   return (
     <div className="msg user" data-uidx={userIndex}>
-      <div className="who">{t("You")}</div>
+      <div className="who" data-find-skip="">{t("You")}</div>
       <div
         ref={bubbleRef}
         className="bubble"
@@ -739,8 +746,9 @@ export function AssistantBubble({
   if (streaming ? !raw : !trimmed) return null;
   const body = streaming ? raw : trimmed;
   return (
-    <div className="msg assistant">
-      <div className="who">{streaming ? t("Alt · typing…") : t("Alt")}</div>
+    // A reply still streaming is not searchable yet; it counts once settled.
+    <div className="msg assistant" data-find-skip={streaming ? "" : undefined}>
+      <div className="who" data-find-skip="">{streaming ? t("Alt · typing…") : t("Alt")}</div>
       <div className="bubble">
         <MarkdownBody
           text={body}
@@ -802,11 +810,15 @@ function SysLine({
   children,
   tone,
   detail,
+  tool = false,
 }: {
   children: React.ReactNode;
   tone?: "danger" | "ok" | "running" | "pending";
   /** When present the line becomes expandable — see ToolDetailBody. */
   detail?: ToolDetail | null;
+  /** Tool rows are searchable with Ctrl+F; system lines (warnings,
+   *  notices) are chrome and stay out (owner 2026-09-24). */
+  tool?: boolean;
 }) {
   const className = cn(
     "sys-line",
@@ -816,10 +828,10 @@ function SysLine({
     tone === "pending" && "sys-pending",
   );
   if (!detail || detail.kind === "skill") {
-    return <div className={className}>{children}</div>;
+    return <div className={className} data-find-skip={tool ? undefined : ""}>{children}</div>;
   }
   return (
-    <CollapseAnywhereDetails className={cn(className, "sys-detail")} summary={children}>
+    <CollapseAnywhereDetails className={cn(className, "sys-detail")} summary={children} findSkip={!tool}>
       <ToolDetailBody detail={detail} />
     </CollapseAnywhereDetails>
   );

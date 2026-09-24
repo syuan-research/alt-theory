@@ -12,6 +12,7 @@ import { ReviewPage } from "@/components/shell/ReviewPage";
 import { LoginOverlay } from "@/components/auth/LoginOverlay";
 import { ExternalAiSetupDialog } from "@/components/shell/ExternalAiSetupDialog";
 import { ApprovalNotice } from "@/components/shell/ApprovalNotice";
+import { FindBar } from "@/components/shell/FindBar";
 
 type PaneSide = "left" | "right";
 
@@ -154,6 +155,7 @@ export function Shell() {
     >
 
       <ExternalAiSetupDialog />
+      <FindBar />
       {shell.surface === "app" ? null : <ApprovalNotice />}
       {/* One persistent left rail shared by the app and settings surfaces;
           review stays full width this round (hidden, not unmounted). */}

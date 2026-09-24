@@ -23,6 +23,7 @@ import { buildFileTreeModel, getFileTreeNode, type FileTreeNode } from "@/lib/fi
 import type { PreviewMode } from "@/lib/fileContent";
 import { guardLeave } from "@/lib/fileEditGuard";
 import { usePaneMemory } from "@/lib/paneMemory";
+import { useFindTarget } from "@/lib/find";
 import { copyText } from "@/lib/clipboard";
 import { useContextMenu, type ContextMenuItem } from "@/components/shell/ContextMenu";
 import { quickFindScore, quickFindTerms } from "../../../../shared/quick-find";
@@ -37,6 +38,16 @@ export function WorkspaceTree() {
   const [expandSignal, setExpandSignal] = useState(0);
   const [collapseSignal, setCollapseSignal] = useState(0);
   const uploadInput = useRef<HTMLInputElement>(null);
+  // Ctrl+F on the tree focuses the existing filter (an open file registers
+  // its own preview instead).
+  const filterRef = useRef<HTMLLabelElement>(null);
+  useFindTarget(filterRef, {
+    focus: () => {
+      const input = filterRef.current?.querySelector("input");
+      input?.focus();
+      input?.select();
+    },
+  });
 
   const sessionId = app.sessionId;
   const runCount = app.runCompletedCount;
@@ -224,7 +235,7 @@ export function WorkspaceTree() {
 
   return (
     <>
-      <label className="files-search">
+      <label className="files-search" ref={filterRef}>
         <i className="ph ph-magnifying-glass" aria-hidden="true" />
         <input
           type="search"

@@ -1145,6 +1145,16 @@
   .fsearch-btn:hover { background: var(--hover); color: var(--ink); }
   .fsearch-btn.on { color: var(--ink); }
   .fsearch { padding: 0 var(--space-hair) var(--space-tight); }
+  /* Ctrl+F (WP 2026-09-24): one floating bar over the searched pane; hits are
+     painted with the CSS Custom Highlight API (no DOM wrapping). */
+  .find-bar { position: fixed; z-index: 40; display: flex; align-items: center; gap: var(--space-hair); padding: var(--space-hair) var(--space-tight); border: 1px solid var(--hairline); border-radius: var(--r-md); background: var(--canvas); box-shadow: var(--shadow-popup); }
+  .find-bar input { width: 180px; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--ink); font: inherit; font-size: var(--fs-primary); }
+  .find-bar .n { min-width: 3.5em; text-align: right; color: var(--text-3); font-size: var(--fs-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .find-bar button { display: inline-flex; padding: 2px; border: 0; border-radius: var(--r-sm); background: none; color: var(--text-2); cursor: pointer; }
+  .find-bar button:hover:not(:disabled) { background: var(--hover); }
+  .find-bar button:disabled { opacity: 0.4; cursor: default; }
+  ::highlight(find) { background-color: color-mix(in srgb, var(--color-warning) 28%, transparent); }
+  ::highlight(find-current) { background-color: color-mix(in srgb, var(--color-warning) 70%, transparent); color: var(--ink); }
   .fsearch input, .inline-search input { width: 100%; min-width: 0; border: 0; border-bottom: 1px solid transparent; outline: 0; background: transparent; color: var(--ink); font: inherit; font-size: var(--fs-primary); padding: var(--space-hair) var(--space-hair); }
   .fsearch input:focus, .inline-search input:focus { border-bottom-color: var(--hairline); }
   .sect-head { display: flex; align-items: center; gap: var(--space-tight); width: 100%; border: 0; background: none; padding: var(--space-tight) var(--space-hair) var(--space-hair); font: inherit; font-size: var(--fs-micro); cursor: pointer; text-align: left; }

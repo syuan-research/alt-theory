@@ -8,6 +8,7 @@ import { useApp } from "@/context/AppProvider";
 import { useWebSocket, type WsConnStatus } from "@/hooks/useWebSocket";
 import { useConversationEngine } from "@/hooks/useConversationEngine";
 import { useStickToBottom } from "@/hooks/useStickToBottom";
+import { useFindTarget } from "@/lib/find";
 import { appendDraft } from "@/lib/draft";
 import { failureText } from "@/lib/failure";
 import { runPhaseLabels, runStateView } from "@/lib/runState";
@@ -95,6 +96,7 @@ export function ChildConversation({
     messages,
     streamParts,
   ]);
+  useFindTarget(messagesRef, {});
 
   // Role/model menus close on any click outside the context line (same
   // pattern as the main Composer).

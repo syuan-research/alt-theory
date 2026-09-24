@@ -185,6 +185,7 @@ function SessionsView() {
           tagged.map((s) => (
             <button
               key={s.sessionId}
+              data-find-attention="center"
               className={`wb-sess${
                 app.selectedCatalogSessionId === s.sessionId ? " active" : ""
               }`}

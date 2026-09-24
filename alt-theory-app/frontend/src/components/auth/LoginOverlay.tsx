@@ -28,7 +28,11 @@ export function LoginOverlay({ onLogin, error }: LoginOverlayProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-canvas/90 p-4">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-canvas/90 p-4"
+      role="dialog"
+      aria-modal="true"
+    >
       <form
         onSubmit={handleSubmit}
         className="ui-dialog w-full max-w-sm space-y-4 p-5"

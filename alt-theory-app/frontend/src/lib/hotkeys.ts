@@ -14,6 +14,7 @@ const IS_MAC =
 
 export const HOTKEYS = {
   save: { combo: "mod+s" },
+  find: { combo: "mod+f" },
 } as const;
 
 export type HotkeyName = keyof typeof HOTKEYS;
@@ -24,8 +25,11 @@ const handlers = new Map<HotkeyName, Set<Handler>>();
 function dispatch(event: KeyboardEvent): void {
   for (const [name, spec] of Object.entries(HOTKEYS) as [HotkeyName, { combo: string }][]) {
     const [mod, key] = spec.combo.split("+");
+    // Exact combo: Shift/Alt variants are other shortcuts, not this one.
     const modActive =
-      mod === "mod" ? (IS_MAC ? event.metaKey : event.ctrlKey) : false;
+      mod === "mod" && !event.shiftKey && !event.altKey
+        ? (IS_MAC ? event.metaKey : event.ctrlKey)
+        : false;
     if (!modActive || event.key.toLowerCase() !== key) continue;
     const set = handlers.get(name);
     if (!set || set.size === 0) continue;

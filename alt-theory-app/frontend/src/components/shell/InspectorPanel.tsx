@@ -30,6 +30,7 @@ import { hasNativeBridge, revealPath } from "@/lib/native";
 import { paneMemory, usePaneMemory } from "@/lib/paneMemory";
 import { downloadMarkdown, markdownFileName, sessionTranscriptToMarkdown } from "@/lib/sessionMarkdown";
 import { guardLeave } from "@/lib/fileEditGuard";
+import { useFindTarget } from "@/lib/find";
 
 const RAIL_META: Record<RailKey, { title: string; icon: string; adv?: boolean }> = {
   chats: { title: t("Related conversations"), icon: "ph-arrows-split" },
@@ -137,8 +138,17 @@ export function InspectorPanel() {
     el.scrollTop = saved;
     if (!saved) return;
     let resize: ResizeObserver | null = null;
+    let lastSet = el.scrollTop;
     const restore = () => {
+      // Someone else moved the view (the user, a Ctrl+F jump): their
+      // position wins, stop restoring.
+      if (el.scrollTop !== lastSet) {
+        mutations.disconnect();
+        resize?.disconnect();
+        return;
+      }
       el.scrollTop = saved;
+      lastSet = el.scrollTop;
       if (Math.abs(el.scrollTop - saved) <= 1) {
         mutations.disconnect();
         resize?.disconnect();
@@ -271,6 +281,17 @@ function RelatedConversations() {
   const [searchOpen, setSearchOpen] = usePaneMemory(`${memoryKey}:searchOpen`, false);
   const [query, setQuery] = usePaneMemory(`${memoryKey}:query`, "");
   const [closedKinds, setClosedKinds] = usePaneMemory<Set<RelatedKind>>(`${memoryKey}:closed`, () => new Set());
+  const filterRowRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  useFindTarget(filterRowRef, {
+    focus: () => {
+      setSearchOpen(true);
+      window.setTimeout(() => {
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+      }, 0);
+    },
+  });
 
   const titleOf = (s: (typeof app.sessions)[number]) =>
     sessionTitle(s, app.sessionDisplayNames, app.sessions);
@@ -537,7 +558,7 @@ function RelatedConversations() {
   return (
     <>
       {switcher}
-      <div className="frow">
+      <div className="frow" ref={filterRowRef}>
         <span className="flabel">{t("Filter")}</span>
         <span
           className={`fexp${filterOpen ? " open" : ""}`}
@@ -591,6 +612,7 @@ function RelatedConversations() {
       {searchOpen ? (
         <div className="fsearch">
           <input
+            ref={searchInputRef}
             autoFocus
             placeholder={t("Search…")}
             value={query}

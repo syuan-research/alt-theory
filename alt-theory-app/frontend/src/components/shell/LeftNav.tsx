@@ -47,6 +47,7 @@ import {
   sessionTranscriptToMarkdown,
 } from "@/lib/sessionMarkdown";
 import { copyText } from "@/lib/clipboard";
+import { useFindTarget } from "@/lib/find";
 import { quickFindScore, quickFindTerms } from "../../../../shared/quick-find";
 
 /**
@@ -467,6 +468,17 @@ function UserNav({ onImport }: { onImport: () => void }) {
   const app = useApp();
   const shell = useShell();
   const navRef = useRef<HTMLDivElement>(null);
+  // Ctrl+F with the list last touched opens and focuses this filter.
+  useFindTarget(navRef, {
+    focus: () => {
+      shell.setSearchOpen(true);
+      window.setTimeout(() => {
+        const input = navRef.current?.querySelector<HTMLInputElement>(".inline-search input");
+        input?.focus();
+        input?.select();
+      }, 0);
+    },
+  });
   const [closedGroups, setClosedGroups] = useState<Set<string>>(new Set());
   const [projectsCollapsed, setProjectsCollapsed] = useState(false);
   const [looseCollapsed, setLooseCollapsed] = useState(false);
@@ -1036,29 +1048,6 @@ function UserNav({ onImport }: { onImport: () => void }) {
           </details>
         </div>
       </div>
-      {shell.searchOpen ? (
-        <div className="inline-search">
-          <i className="ph ph-magnifying-glass" aria-hidden="true" />
-          <input
-            autoFocus
-            placeholder={searchScope === "content" ? t("Search conversation text…") : t("Filter folders and conversations…")}
-            value={railQuery}
-            onChange={(event) => { setRailQuery(event.target.value); setContentResult(null); setContentSearchError(""); }}
-            onKeyDown={(event) => {
-              if (event.key === "Escape") shell.setSearchOpen(false);
-            }}
-          />
-          {railQuery ? (
-            <button type="button" className="clear" aria-label={t("Clear")} onClick={() => { setRailQuery(""); setContentResult(null); }}>
-              <i className="ph ph-x" aria-hidden="true" />
-            </button>
-          ) : null}
-          <select aria-label={t("Search in")} value={searchScope} onChange={(event) => { setSearchScope(event.target.value as "names" | "content"); setContentResult(null); setContentSearchError(""); }}>
-            <option value="names">{t("Names")}</option>
-            <option value="content">{t("Content")}</option>
-          </select>
-        </div>
-      ) : null}
       <div className="sessions">
         {app.sessionsLoading && app.sessions.length === 0 ? (
           <div className="rp-empty">{t("Loading conversations…")}</div>
@@ -1311,7 +1300,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                   const byId = new Map(app.sessions.map((item) => [item.sessionId, item]));
                   const ancestor = lineagePathOf(session, byId).reverse().map((id) => byId.get(id)).find(Boolean);
                   return (
-                    <button key={session.sessionId} type="button" className="sess search-related-hit" onClick={() => openContentHit(session)}>
+                    <button key={session.sessionId} type="button" className="sess search-related-hit" data-find-attention="center" onClick={() => openContentHit(session)}>
                       <i className={`ph ${purposeIcon(session)}`} aria-hidden="true" />
                       <span><span className="s-title">{sessionTitle(session, app.sessionDisplayNames, app.sessions)}</span>
                         {ancestor ? <small>{t("From {title}", { title: sessionTitle(ancestor, app.sessionDisplayNames, app.sessions) })}</small> : null}
@@ -1480,6 +1469,7 @@ function SessionNode({
           <button
             className={`sess${active ? " active" : ""}`}
             data-session-id={session.sessionId}
+            data-find-attention="center"
             style={{ paddingLeft: 28 + indent * 16 }}
             onClick={() => onOpen(session.sessionId)}
             onContextMenu={(event) => menu.open(event, contextItems())}

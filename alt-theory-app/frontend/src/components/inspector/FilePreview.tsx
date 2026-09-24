@@ -12,6 +12,7 @@ import {
   type PreviewMode,
 } from "@/lib/fileContent";
 import { useHotkey } from "@/lib/hotkeys";
+import { useFindTarget } from "@/lib/find";
 import {
   clearDraft,
   draftKey,
@@ -250,6 +251,14 @@ export function FilePreview({
     return <pre>{file.content}</pre>;
   };
 
+  // Ctrl+F searches what is shown as text; Edit (a textarea) and rendered
+  // HTML (a sandboxed iframe) are not searchable, so the bar closes there.
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const searchable =
+    active === "diff" ||
+    (active !== "edit" && file !== null && !(active === "rendered" && /\.html?$/i.test(path)));
+  useFindTarget(bodyRef, searchable ? {} : null);
+
   const tooLargeToEdit = file !== null && fileRef !== null && isEditable(fileRef) && !file.editable;
 
   const actionsBar = () => {
@@ -311,7 +320,7 @@ export function FilePreview({
           </span>
         ) : null}
       </div>
-      <div className="change-preview-body expanded">{body()}</div>
+      <div className="change-preview-body expanded" ref={bodyRef}>{body()}</div>
       {actionsBar()}
       {footer}
     </div>

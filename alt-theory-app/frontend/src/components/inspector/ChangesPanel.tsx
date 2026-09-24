@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import type { ChangeGroup, FileChange } from "@/api/types";
 import { fetchSessionChanges } from "@/api/session-files";
 import { t } from "@/i18n";
@@ -9,6 +9,7 @@ import { useContextMenu, type ContextMenuItem } from "@/components/shell/Context
 import { copyText } from "@/lib/clipboard";
 import { hasNativeBridge, revealPath } from "@/lib/native";
 import { usePaneMemory } from "@/lib/paneMemory";
+import { useFindTarget } from "@/lib/find";
 import type { PreviewMode } from "@/lib/fileContent";
 
 /**
@@ -29,6 +30,9 @@ export function ChangesPanel() {
   const [mode, setMode] = usePaneMemory<PreviewMode>(`${sessionId}:changes:${key ?? ""}:mode`, "rendered");
   const [groups, setGroups] = usePaneMemory<ChangeGroup[] | null>(`${sessionId}:changes:groups`, null);
   const [error, setError] = usePaneMemory<string | null>(`${sessionId}:changes:error`, null);
+  // Ctrl+F on the list matches file names only (owner 2026-09-24).
+  const listRef = useRef<HTMLDivElement>(null);
+  useFindTarget(listRef, { only: ".s-title" });
 
   useEffect(() => {
     if (!sessionId) {
@@ -84,6 +88,7 @@ export function ChangesPanel() {
 
   return (
     <>
+      <div ref={listRef}>
       {groups.map((group) => {
         const isClosed = closed.includes(group.path);
         return (
@@ -139,6 +144,7 @@ export function ChangesPanel() {
           </div>
         );
       })}
+      </div>
       {menu.element}
     </>
   );
