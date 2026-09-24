@@ -111,6 +111,10 @@ agents mistake them for in-progress work.
 ### Current branch status
 
 - `main` — active product line.
+- `archive/wp-conversation-drafts` — merged into main (state-architecture
+  M2: per-conversation drafts kept on this device, new conversations
+  created from the draft the first request carries, Full Access follows the
+  conversation); archived after the reviewed merge.
 - `archive/wp-conversation-core` — merged into main (state-architecture
   M1: subscriptions by conversation id, snapshot semantics, request
   receipts, one per-conversation client transition shared by every pane,
