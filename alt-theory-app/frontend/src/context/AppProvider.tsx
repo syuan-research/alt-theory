@@ -327,13 +327,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const { next, changes } = stepActivity(activityRef.current, message);
       activityRef.current = next;
       setActivity(next);
-      if (
+      // The rows' other facts (title, message count, openable) move when a
+      // turn ends, and with the list itself: re-read the list then. The run
+      // state itself never comes from that read.
+      const listed =
         message.type === "session_activity" &&
         (message.payload.listChanged ||
-          !sessionsRef.current.some((row) => row.sessionId === message.payload.sessionId))
-      ) {
-        void refreshSessions();
-      }
+          !sessionsRef.current.some((row) => row.sessionId === message.payload.sessionId));
+      const turnEnded = changes.some((change) => change.now === "idle" || change.now === "failed");
+      if (listed || turnEnded) void refreshSessions();
       return changes;
     },
     [refreshSessions],

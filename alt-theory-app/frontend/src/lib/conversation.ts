@@ -648,13 +648,16 @@ export function pendingChanges(state: ConversationState): PendingChanges {
 }
 
 /**
- * Ready to take input: connected, no open in flight, and something to show.
- * An open in flight blocks input so a send cannot land in the conversation
- * being left — or, for a side pane, on the connection's draft greeting.
+ * Ready to take input: connected, no open or New in flight, and something to
+ * show. Leaving a conversation (open another, or New) blocks input until the
+ * server answers, so a send cannot land in the conversation being left — or,
+ * for a side pane, on the connection's draft greeting.
  */
+const LEAVING = new Set<ClientMessageBody["type"]>(["open_session", "new_session"]);
+
 export function isReady(state: ConversationState): boolean {
   if (state.socket !== "open") return false;
-  if (state.requests.some((request) => request.message.type === "open_session" && request.status === "sent")) {
+  if (state.requests.some((request) => LEAVING.has(request.message.type) && request.status === "sent")) {
     return false;
   }
   return state.sessionId ? state.snapshot !== null : state.draft !== null;

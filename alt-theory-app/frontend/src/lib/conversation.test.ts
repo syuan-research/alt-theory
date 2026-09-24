@@ -5,6 +5,7 @@ import {
   displayMessages,
   effectiveSettings,
   initialConversationState,
+  isReady,
   isBusy,
   queuedTexts,
   recoveryOf,
@@ -305,4 +306,13 @@ test("Stop's hand-back carries the server's id, so a draft shown twice takes it 
   ]);
   const op = stopped.draftOps[0];
   assert.equal(op.kind === "return" && op.once, "h1");
+});
+
+test("pressing New holds input until the server has left the conversation", () => {
+  const leaving = play([...openedS1, request("r1", { type: "new_session" })]);
+  assert.equal(isReady(leaving), false, "a send now would land in the conversation being left");
+  const left = play([server({ type: "session_draft", payload: draft })], leaving);
+  assert.equal(left.sessionId, null);
+  const answered = play([server({ type: "request_done", payload: { requestId: "r1" } })], left);
+  assert.equal(isReady(answered), true);
 });
