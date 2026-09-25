@@ -145,6 +145,11 @@ export interface V4SessionHeader extends RecordEnvelope {
   delisted?: boolean;
   /** The session that took the spot — makes the display inversion deterministic. */
   delistedFor?: string;
+  /** List label fallback: the visible branch's first user message, cut to
+   *  32 characters. Derived; valid while `snippetLeafId` still names the
+   *  branch leaf the transcript uses ("" = no run moved it yet). */
+  snippet?: string;
+  snippetLeafId?: string;
 }
 
 export function writeFoundationRecords(args: {
@@ -246,6 +251,19 @@ export function writeSessionHeader(
   session: V4SessionHeader
 ): void {
   writeJsonAtomic(join(recordsDir, "session.json"), session);
+}
+
+/** Stores the derived snippet on the header file as it is on disk, without
+ *  the read-time normalization of readV4SessionHeader. */
+export function writeSessionSnippet(
+  recordsDir: string,
+  snippet: string,
+  leafId: string,
+): void {
+  const path = join(recordsDir, "session.json");
+  const raw = readJson<Record<string, unknown>>(path);
+  if (raw?.recordType !== "session") return;
+  writeJsonAtomic(path, { ...raw, snippet, snippetLeafId: leafId });
 }
 
 function readJson<T>(path: string): T | null {

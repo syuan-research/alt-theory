@@ -48,6 +48,7 @@ import { t } from "./i18n.js";
 import {
   readV4SessionHeader,
   writeSessionHeader,
+  writeSessionSnippet,
   type ForkPurpose,
   type SessionVisibility,
   type V4SessionHeader,
@@ -1382,16 +1383,26 @@ function readSessionDisplayName(parts: SessionParts): {
     // Optional metadata; fall back to the first user message.
   }
   if (!parts.sessionFile) return { alias: "", snippet: "" };
+  // The snippet is kept on the v4 header, keyed by the leaf the transcript
+  // uses, so list and guard reads parse the Pi JSONL only after the branch
+  // moved — not on every read (perf plan WP 1.1).
+  const latestRuns = latestRunSnapshots(parts.recordsDir);
+  const leafId = latestActiveLeafEntryId(latestRuns) ?? "";
+  const header = parts.v4Session;
+  if (typeof header?.snippet === "string" && header.snippetLeafId === leafId) {
+    return { alias: "", snippet: header.snippet };
+  }
   try {
-    const manager = SessionManager.open(parts.sessionFile, parts.historyDir);
-    const first = buildTranscriptFromEntries(manager.getBranch()).find(
-      (message) => message.role === "user",
-    );
+    const first = openVisibleTranscript(
+      parts.sessionFile,
+      parts.historyDir,
+      latestRuns,
+      existsSync(join(parts.recordsDir, "session-import-source.json")),
+    ).transcript.find((message) => message.role === "user");
     const text = String(first?.text ?? "").trim().replace(/\s+/g, " ");
-    return {
-      alias: "",
-      snippet: text.length > 32 ? `${text.slice(0, 32)}...` : text,
-    };
+    const snippet = text.length > 32 ? `${text.slice(0, 32)}...` : text;
+    if (header) writeSessionSnippet(parts.recordsDir, snippet, leafId);
+    return { alias: "", snippet };
   } catch {
     return { alias: "", snippet: "" };
   }

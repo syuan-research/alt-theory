@@ -880,8 +880,10 @@ export class SessionService implements AgentTeamBridge {
       const settings = readAppSettings(this.config.dataDir);
       if (settings.autoTitle?.enabled === false) return;
 
+      // The current branch, not file order: a revised first turn names the
+      // conversation by its new text.
       const firstUser = firstUserMessageText(
-        managed.session.sessionManager.getEntries(),
+        managed.session.sessionManager.getBranch(),
       );
       if (!firstUser) return;
 
