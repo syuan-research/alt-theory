@@ -101,7 +101,7 @@ Situational controls such as future buttons should be interpreted in this
 frame. They express a current need inside the existing problem, not a new
 identity, permanent mode, or mechanical response macro.
 
-## 5. Runtime and mode differences
+## 5. Runtime and permission
 
 The application has one runtime choice:
 
@@ -109,12 +109,13 @@ The application has one runtime choice:
 Application runtime
 ├─ Native Pi
 └─ Alt Theory
-   └─ each session: Understand | Work
+   └─ each session: permission (Read-only | Ask for approval | Full access)
 ```
 
 ### Native Pi
 
 Native Pi is the subtractive form. It retains the application infrastructure,
+the conversation's permission,
 the Pi harness behavior, full working capability, and explicit Custom
 Instruction. It omits Alt Theory application invariants, Soul, Role, and the
 Alt knowledge declaration.
@@ -126,23 +127,23 @@ turn that scan off.
 ### Alt Theory
 
 Alt Theory adds the behavior composition described above. Every Alt Theory
-session preserves its own Understand or Work selection and its selected
-assets.
+session assembles the same composition — application context, Soul, Role,
+skills, and the project's context — whatever its permission. The permission
+changes what the agent may do on its own, not its personality: Read-only
+removes the shell, asks before every file write or edit, and adds a short
+permission note to the prompt (mechanics in
+[`workspace-files-and-action-safety.md`](workspace-files-and-action-safety.md#permission)).
+The former Understand and Work modes, which also switched the prompt, skills,
+and project context, were retired on 2026-09-25.
 
-Understand and Work are capability contexts, not different personalities:
-
-- **Understand** intentionally narrows action so inquiry and interpretation
-  remain central.
-- **Work** supplies normal coding and workspace capability while retaining the
-  same Alt Theory behavior.
-
-Switching the application to Native Pi does not rewrite those session choices.
-It temporarily makes them inactive. Switching back restores them.
+Switching the application to Native Pi does not rewrite a session's Alt
+selections; it makes the Alt behavior inactive, and switching back restores
+it.
 
 ## 6. Role selection for managed subagents
 
 `spawn_agent` may name an existing Role independently of its agent execution
-preset, model override, and Understand/Work mode. Omitting `role` inherits the
+preset, model override, and permission. Omitting `role` inherits the
 parent conversation's Role. A named Role is validated before the child session
 is allocated; an unknown Role returns the shared `not_found` failure envelope
 and creates no partial child. A known Role enters the ordinary session-selector
@@ -155,7 +156,7 @@ model chain. Selecting one does not redefine the other or create a new Role.
 
 ## 7. Persistence and research interpretation
 
-Session records preserve the selected Alt mode and asset references. Assembly
+Session records preserve the permission (mode and Full Access) and asset references. Assembly
 records preserve enough provenance to interpret which assets and current facts
 formed a run. A managed subagent additionally records its execution preset and
 model chain separately from those selectors. The application-wide runtime is a

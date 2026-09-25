@@ -22,7 +22,7 @@ reach other paths.
 
 ## Workspace ownership and selection
 
-A work-capable session persists at most one main folder. That folder is Pi's
+A session persists at most one main folder. That folder is Pi's
 session `cwd`; when none is selected, the session uses its data-directory
 `workspace/`. A user-selected main folder stays in place rather than being
 copied into the data directory. The v0.4 session header stores only
@@ -67,7 +67,7 @@ external primary path; it is not copied into the data directory. See
 
 ## Roots available to the agent
 
-The core derives mode-aware roots for each managed session through the one
+The core derives the roots for each managed session through the one
 root-policy module, `core/root-policy.ts` (`sessionRoots`). Each root carries
 a reason, so every check can state why a path is reachable, not just that it
 is (the assembly manifest persists the writable root paths; reasons live in
@@ -75,30 +75,26 @@ the runtime policy layer):
 
 - `session-write` and `asset` — Alt Theory's own writable roots: the session
   write directory and the configured writable asset directory (defaulting to
-  `runs/local-assets`); present in every mode.
-- `cwd` — the primary workspace directory; writable in Work and Native Pi,
-  readable in every mode.
+  `runs/local-assets`).
+- `cwd` — the primary workspace directory; readable and writable.
 - `approved` — a folder explicitly approved during the session.
 - `kb`, `trusted`, `skills` — read-only roots: the selected KB root,
   configured trusted-read roots, and the discovered Alt Theory skill root.
 - `global-list` — a folder on the Settings > Projects and global folders list
-  (v1.5 part 2): readable in every mode and every conversation; writable in
-  Work and Native Pi only when its Edit tick is on.
+  (v1.5 part 2): readable in every conversation; writable only when its
+  Edit tick is on.
 - `project-secondary` — a companion folder of the project whose main folder
   is the session's primary working folder (the same Settings page, v1.5.1:
-  the one folder mechanism); readable everywhere, writable in Work and
-  Native Pi.
+  the one folder mechanism); readable and writable.
 
 Both come from `app-settings.json` (`workingFolders`; `folderPolicyFor` in
 `web-server/app-settings.ts`) and are read live at every root check through
 `AltTheoryConfig.readFolderPolicy`, so a change on the page applies to open
 conversations at their next path check. The page is a list with one tick
-per row; there is no other scope. Understand does not receive the Work/Native workspace
-context or project skills. Its write capability is controlled by the
-deployment's `understandReadOnly` setting and, when enabled, remains bounded
-to the Alt Theory writable roots plus explicitly approved folders. Switching
-mode changes the active mediation policy; it does not change the persisted
-folder identity. The per-call wiring is in
+per row; there is no other scope. The roots are the same under every
+permission: Read-only changes how each write is mediated (see Permission
+below), not which folders exist, and changing the permission does not change
+the persisted folder identity. The per-call wiring is in
 [`alt-theory-core.ts`](../../alt-theory-app/core/alt-theory-core.ts)
 (`sessionRootsForMode`) and [`root-policy.ts`](../../alt-theory-app/core/root-policy.ts).
 
@@ -166,7 +162,20 @@ Session file routes are authorized through the session content-access check.
 They expose text and JSON records under a session's `records/` or managed
 `workspace/` roots; `resolveSessionTextFile` resolves each requested path
 through the shared path verdict, with an extension allowlist and size limits.
-Workspace upload
+Attached files (paperclip, a pasted file or image, and a drop under
+Read-only) go through `POST /api/attachments/stage` before any conversation
+needs to exist: the file is copied into
+`<dataDir>/attachment-staging/<uuid>/uploads/` and a DOCX/PDF/XLSX/PPTX is
+converted to text beside it under `extracted/` (a failed conversion attaches
+the copy and reports why). The message's send — in the WebSocket `prompt`
+handler, after the conversation exists — moves the named staged files into
+that conversation's managed `workspace/uploads/` and `workspace/extracted/`
+(a taken name gets ` (2)`, ` (3)`…) and rewrites their paths in the text and
+the attachment list to the absolute workspace paths, so the agent reads them
+whatever the conversation's `cwd` is. Unsent drafts leave their staged files
+behind. See
+[`attachment-staging.ts`](../../alt-theory-app/web-server/attachment-staging.ts).
+The per-session workspace upload route
 accepts the configured text types and DOCX/XLSX/PDF binaries, sanitizes the
 filename, applies per-file and per-session/account quotas, and stores binaries
 under `workspace/uploads/`; supported text extraction is written under
@@ -243,18 +252,63 @@ read. Writes and dangerous operations retain their checks. See
 [`security-extension.ts`](../../alt-theory-app/core/security-extension.ts)
 and [`ADR 0001`](adr/0001-session-scoped-security-extension.md).
 
+## Permission
+
+**Permission** is what a conversation's agent may do on its own; it is chosen
+per conversation and is independent of whether the conversation uses a
+project. It has three values:
+
+- **Read-only** — no shell; every agent write or edit asks first.
+- **Ask for approval** — the default posture described on this page.
+- **Full access** — no agent-tool mediation (below).
+
+It is stored as two existing per-session fields: the mode
+(`AltMode`, `"read-only" | "work"`) and Full Access (`fullAccess`); Ask is
+`work` without Full Access. The client reads them as one value
+(`permissionOf` in `frontend/src/lib/conversation.ts`) and a choice sends only
+the field that changes. Stored modes from before 2026-09-25 (`understand`, and
+the v1-alpha `pure`/`full`) read as `work` (`toAltMode`); the Understand and
+Work modes are retired. Every Alt Theory conversation assembles the same
+prompt, skills, and project context under every permission.
+
+Read-only removes `bash` from the active tools (read, ls, grep, find, edit,
+write remain), adds a short permission note to the system prompt, and does not
+list the bundled skills that need the shell (`web-search`, `page-fetch`,
+`doc-convert`). In the security extension, every `edit`/`write` whose path is
+not credential-sensitive asks **Allow once / Deny** — inside the writable
+roots or outside them; there is no conversation-wide allowance, and no
+approval UI fails closed. An Allow once for a path outside the roots lets
+exactly that write through the guarded write tool (the path and the folders
+created on the way to it), consumed by the write. Reads are mediated as under
+Ask.
+
+The composer's permission control (shield, right of Toolbox) offers the three
+values on a live conversation and on the new-conversation screen, where the
+choice is kept in that screen's draft and sent with the first message. A new
+conversation starts from Settings > General > "New conversations start with"
+(`defaultPermission` in `app-settings.json`, absent = Ask; choosing Full access
+there asks for confirmation once) and each new draft starts from it again. A
+mode change mid-run is held until the turn ends. Derived conversations —
+subagents, branches, BTW, Helpers, A/B arms — inherit the parent's mode at
+birth and never Full Access, so the inherited permission is at most Ask;
+`spawn_agent` may ask for a read-only child (`clampSubagentMode`), A/B arms
+are read-only, and a later change on the parent does not reach existing
+children. Imported conversations start from the default permission without
+Full Access. A hosted deployment runs every conversation read-only: the
+assembly forces the mode, and creation or a switch to `work` is refused. See
+[`alt-theory-core.ts`](../../alt-theory-app/core/alt-theory-core.ts),
+[`security-extension.ts`](../../alt-theory-app/core/security-extension.ts),
+[`app-settings.ts`](../../alt-theory-app/web-server/app-settings.ts)
+(`defaultSessionPermission`), and
+[`agent-team.ts`](../../alt-theory-app/web-server/agent-team.ts).
+
 ### Full Access
 
 Full Access (v1.4.8) is a per-conversation bypass of the agent-tool
-mediation above, and it follows the conversation (M2, 2026-09-24). The
-composer's permission-mode control (shield, immediately right of Toolbox)
-offers **Ask for approval** — the default posture described on this page —
-and **Full access**. Full access appears only in local Work and local Native
-Pi — on a live session, and on the new-conversation screen, where the choice
-is kept in that screen's draft (on this device, with its other settings), is
-sent with the first message that creates the conversation, and the next draft
-starts from Ask again. Enabling it asks for confirmation; enabling mid-run is
-held until the turn ends; disabling is immediate and allowed mid-run.
+mediation above, and it follows the conversation (M2, 2026-09-24). It is
+local only. Enabling it from the composer asks for confirmation; enabling
+mid-run is held until the turn ends; disabling is immediate and allowed
+mid-run.
 
 While effective, the security extension's shared `tool_call` handler returns
 before any mediation, the guarded write tool skips only the writable-root
@@ -264,11 +318,10 @@ session header (`fullAccess: true`, absent when off) and every change is
 traced as a `full_access_changed` session event (creation records it in
 `session_created`); every assembly of the conversation — reopen, app restart,
 and the instance swap of a role/soul/instruction switch — takes it back from
-the header. A switch to Understand keeps it dormant rather than clearing it; a
-conversation created from a draft whose mode went back to Understand holds it
-dormant the same way. Children never inherit it: branches, BTW, Helpers and
-subagents are written without the field. The server rejects enabling attempts
-that are not local or not work-capable. Application-level boundaries outside
+the header. Under Read-only a stored value is dormant rather than cleared
+(the composer's Read-only choice turns it off). Children never inherit it:
+branches, BTW, Helpers and subagents are written without the field. The
+server rejects enabling attempts that are not local. Application-level boundaries outside
 agent-tool mediation (account/session visibility, REST file ownership, trash
 and recoverable delete) are unaffected. See
 [`security-extension.ts`](../../alt-theory-app/core/security-extension.ts),
@@ -329,9 +382,14 @@ in
   write into a not-yet-existing granted folder, sensitive paths for every
   intent, a symlinked root, and the root-policy reason table.
 - [`alt-theory-core.test.ts`](../../alt-theory-app/core/alt-theory-core.test.ts)
-  covers mode-specific workspace context, live project/global folder policy,
-  guarded writes, security interception, outside-root reads, the session audit
-  file, and a symlinked workspace read escalating like the matching write.
+  covers the read-only tool set and prompt note, workspace context under
+  every permission, live project/global folder policy, guarded writes,
+  security interception, read-only Allow once (inside, outside once, denied,
+  credential paths), outside-root reads, the session audit file, and a
+  symlinked workspace read escalating like the matching write.
+- [`attachment-staging.test.ts`](../../alt-theory-app/web-server/attachment-staging.test.ts)
+  covers staging, conversion, a failed conversion, the move into the
+  conversation with rewritten paths, and name collisions.
 - [`workspace-files.test.ts`](../../alt-theory-app/web-server/workspace-files.test.ts)
   covers uploads, quotas, deletion, agent-authored text, account usage,
   persisted working-folder browsing, and listing/preview refusing a symlink

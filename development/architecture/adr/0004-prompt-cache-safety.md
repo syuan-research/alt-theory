@@ -198,6 +198,12 @@ semantic prompt. It does not apply when:
 - the current Alt Theory mode is Work;
 - the application runtime is Native Pi.
 
+> **Note, 2026-09-25.** The Understand and Work modes were retired; D3 now
+> applies to a Read-only conversation without a project (the same
+> condition that made the cwd incidental: no shell, session-owned cwd). The
+> decision is otherwise unchanged. See
+> [`workspace-files-and-action-safety.md`](../workspace-files-and-action-safety.md#permission).
+
 Those cases keep Pi's truthful cwd prompt.
 
 ### D4. Keep provider-neutral content equality

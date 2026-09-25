@@ -78,10 +78,15 @@ surfaces remain designation-gated and absent for everyone else.
     Electron applies whole-window zoom and persists the chosen stop; the web
     app has no native bridge or duplicate setting.
 - **Composer and empty state**
-  - Empty state presents the Understand/Work choice without forcing a modal.
-    Native Pi instead shows a short note about its normal work-capable tools;
-    it does not show mode choices that do not apply there.
-  - Live composer chrome carries mode, model and effective thinking effort,
+  - Empty state is the greeting and the composer; Native Pi adds a short note
+    about its normal tools.
+  - The composer's shield holds the conversation's **permission** (Read-only,
+    Ask for approval, Full access; local only). The first-level paperclip
+    adds a file by copy (into the conversation's folder, converted to text for
+    office/PDF files) in every conversation; a pasted file or image does the
+    same; a dropped file attaches a copy under Read-only and a path link
+    otherwise.
+  - Live composer chrome carries permission, model and effective thinking effort,
     role, knowledge, workspace context where applicable, and run controls.
   - The strip above the composer is a **switchable card slot**, one card at a
     time. Role/knowledge is the session-initial card: a traditional control
@@ -139,7 +144,9 @@ surfaces remain designation-gated and absent for everyone else.
 - **Conversation list**
   - Conversations with a project main folder are grouped under that project;
     folderless roots live in a separate collapsible **Independent
-    conversations** section. A project group carries the project's name
+    conversations** section, listed above the Projects header (Owner
+    2026-09-25) and capped like a project group (four rows, then Show all).
+    A project group carries the project's name
     (default: the main folder's). Its tooltip lists the main and companion
     paths; companions are not separate rail rows. The group menu offers Add
     folder and Manage folders actions.
@@ -218,7 +225,7 @@ surfaces remain designation-gated and absent for everyone else.
     rail's list), from each rail's memory and from the way back.
   - A Related conversation uses the same history, live thinking/tool rendering,
     approvals, skills, and slash commands as the center. It exposes model and
-    role; mode chrome is omitted only because the rail is narrow.
+    role; the permission control is omitted only because the rail is narrow.
   - A pending approval in another conversation produces one global notice on
     every surface, including Settings. The notice does not approve in place: it
     returns to the owner. Roots and Branches open in the center; BTW, Helper, and
@@ -419,11 +426,9 @@ Fetch.
   the conversation area.
 - Main and related composers stay **visually the same card height** when
   side-by-side. Related is a compact variant of the same conversation surface:
-  it keeps slash commands, skills, model, and role; only mode chrome is hidden
-  for space.
-- First-level attach control is **Understand-only**; Work keeps attach in the
-  toolbox.
-- Mode toggle is compact (~20% shorter than earlier chrome).
+  it keeps slash commands, skills, model, and role; the permission control is
+  hidden for space. Both composers grow with their text up to about eight
+  lines and re-measure when their width changes.
 - Local mode: left-foot avatar tooltip states local / no account.
 - v6 serve uses static `web-server/public-v6` — frontend source changes require
   `npm run build:frontend-v6` before they appear in `dev:web` / `dev:web:local`.
@@ -541,13 +546,14 @@ conversation key (a session id, or `new`).
 
 ### Draft-to-live continuity
 
-Before the first message, model/effort, role, knowledge, mode, visibility,
-workspace, study tag, Full Access, and attachments are one coherent draft —
+Before the first message, model/effort, role, knowledge, permission (mode and
+Full Access), visibility, workspace, study tag, and attachments are one coherent draft —
 the new-conversation draft above, held in the client, restored after a
 restart. Changing one of them changes only the draft; nothing about it is held
 on the server connection. The first send (a prompt, a skill, or a root Helper)
 carries the draft's settings, the server checks each one (knowledge domain,
-mode, visibility for the deployment, Full Access local-only, folder exists;
+mode (read-only only on a hosted deployment), visibility for the deployment,
+Full Access local-only, folder exists;
 the assembly checks role, soul, instruction and model; under Native Pi the
 Alt selectors are recorded but inactive) and creates the conversation from
 exactly that state in one step; a refused creation leaves nothing behind and
@@ -558,12 +564,12 @@ into the new conversation's draft. The server still resolves the model chip's
 thinking level for the draft's model (`describe_draft`).
 
 Once the draft has become a conversation its settings start over, except the
-mode and folder, which carry to the next new conversation; Full Access starts
-from Ask again. **New** pressed in a conversation lets the draft take that
+folder, which carries to the next new conversation; the permission starts from
+the Settings default again. **New** pressed in a conversation lets the draft take that
 conversation's knowledge, role, soul and instruction for this run of the app
 (not kept on the device), under the choices the user already made in the
-draft. Changing Settings > General > "New conversations start in" also sets
-the draft's mode.
+draft. Changing Settings > General > "New conversations start with" also sets
+the draft's permission.
 
 Actions that require an existing parent conversation, such as branching and
 side conversations, are not shown as active draft actions. Helper does have a

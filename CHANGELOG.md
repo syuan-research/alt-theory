@@ -8,6 +8,32 @@ detail lives in commit history and `development/`.
 
 ## Unreleased
 
+### Permissions instead of Understand and Work
+
+- Conversations no longer choose between Understand and Work. Every
+  conversation can think with you and work on your files; two separate
+  choices shape it instead: whether it uses a project, and its permission.
+- The shield next to the message box now has three permissions:
+  **Read-only** (Alt runs no commands and asks before every file it writes
+  or edits), **Ask for approval** (as before), and **Full access**.
+- Settings > General > "New conversations start with" picks the permission
+  every new conversation starts from (Ask for approval unless you change it;
+  choosing Full access asks you to confirm once).
+- Subagents, branches and side conversations start with the permission of
+  the conversation they came from, but never with Full access.
+- Conversations without a project are listed above your projects.
+
+### Adding files
+
+- The paperclip is always next to the message box. A file you add is copied
+  into the conversation's own folder, and Word, PDF, Excel and PowerPoint
+  files are converted to text so Alt can read them.
+- You can paste an image or a copied file straight into the message box.
+- In a Read-only conversation, dropping a file works like the paperclip;
+  otherwise a dropped file is linked where it is, as before.
+- The message box in the right-hand panel grows with what you type, like the
+  main one.
+
 ### Conversation status
 
 - The end of a reply no longer flickers: the finished answer replaces the
