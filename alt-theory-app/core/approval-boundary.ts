@@ -15,9 +15,10 @@
  * normal boundary. They do not defend against a deliberate attacker.
  */
 
-import { readdirSync } from "fs";
+import { existsSync, readdirSync } from "fs";
 import { homedir } from "os";
-import { basename, extname, join, parse, resolve } from "path";
+import { basename, extname, isAbsolute, join, parse, resolve } from "path";
+import { execFileSync } from "child_process";
 import { canonicalPathKey, isPathInside } from "./path-verdict.js";
 
 /**
@@ -200,7 +201,33 @@ function criticalHomeFolders(): string[] {
     ...folders,
     ...children(join(home, "Library", "CloudStorage"), () => true),
     ...children(home, (name) => /^onedrive/i.test(name)),
+    ...windowsOneDriveRoots(),
   ];
+}
+
+// ponytail: refresh after an app restart if OneDrive moves during a running session.
+let registeredOneDriveRoots: string[] | undefined;
+
+/** OneDrive can move its sync roots away from HOME; read each account's actual folder once. */
+function windowsOneDriveRoots(): string[] {
+  if (process.platform !== "win32") return [];
+  if (!registeredOneDriveRoots) {
+    try {
+      const output = execFileSync("powershell.exe", [
+        "-NoProfile", "-NonInteractive", "-Command",
+        "[Console]::OutputEncoding = [Text.Encoding]::UTF8; Get-ChildItem -LiteralPath 'HKCU:\\Software\\Microsoft\\OneDrive\\Accounts' -ErrorAction SilentlyContinue | ForEach-Object { (Get-ItemProperty -LiteralPath $_.PSPath -Name UserFolder -ErrorAction SilentlyContinue).UserFolder }",
+      ], { encoding: "utf8", timeout: 5_000, windowsHide: true, stdio: ["ignore", "pipe", "ignore"] });
+      registeredOneDriveRoots = output.split(/\r?\n/).map((path) => path.trim()).filter(Boolean);
+    } catch {
+      registeredOneDriveRoots = [];
+    }
+  }
+  return [
+    ...registeredOneDriveRoots,
+    process.env.OneDrive,
+    process.env.OneDriveConsumer,
+    process.env.OneDriveCommercial,
+  ].filter((path): path is string => !!path && isAbsolute(path) && existsSync(path));
 }
 
 /** Commands whose operands are deleted (or, for mv, moved away). */

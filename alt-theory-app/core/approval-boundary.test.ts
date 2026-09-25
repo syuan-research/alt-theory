@@ -161,6 +161,19 @@ test("Windows: a OneDrive-named folder under HOME is a critical deletion target"
   }
 });
 
+test("Windows: a configured OneDrive root outside HOME is a critical deletion target", { skip: process.platform !== "win32" }, () => {
+  const cloud = mkdtempSync(join(tmpdir(), "alt-boundary-relocated-cloud-"));
+  const original = process.env.OneDriveCommercial;
+  try {
+    process.env.OneDriveCommercial = cloud;
+    assert.equal(criticalDeletionTarget(`rmdir "${cloud}"`, project, [project], toolPath), cloud);
+    assert.equal(criticalDeletionTarget(`rm -rf "${join(cloud, "draft")}"`, project, [project], toolPath), null);
+  } finally {
+    if (original === undefined) delete process.env.OneDriveCommercial;
+    else process.env.OneDriveCommercial = original;
+  }
+});
+
 test("guardrail ②: work-discarding git and .git internals", () => {
   for (const command of [
     "git reset --hard HEAD~1",
