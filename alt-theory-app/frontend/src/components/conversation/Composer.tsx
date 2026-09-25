@@ -695,6 +695,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                   }}
                 >
                   <i className={`ph ${PERMISSION_ICON[conv.permission]}`} />
+                  <span>{PERMISSION_LABEL[conv.permission]()}</span>
                   <PendingMark
                     when={
                       conv.pendingChanges.fullAccess !== undefined ||
