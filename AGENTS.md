@@ -111,6 +111,10 @@ agents mistake them for in-progress work.
 ### Current branch status
 
 - `main` — active product line.
+- `archive/wp-permission-modes` — merged into main (permission modes:
+  Read-only / Ask / Full replace Understand / Work; default permission
+  setting; attached files copied and converted; Independent conversations
+  above Projects); archived after the reviewed merge.
 - `archive/wp-list-activity-push` — merged into main (state-architecture
   WP-4: list activity pushed over the socket, polling removed, one source
   for list rows / running count / marks); archived after the reviewed merge.
