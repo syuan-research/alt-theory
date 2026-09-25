@@ -238,8 +238,9 @@ export function assertAccountStorageQuota(
   }
 }
 
-function sanitizeUploadName(name: string): string {
-  const base = basename(name).replace(/[^\w.\- ()[\]]+/g, "_");
+export function sanitizeUploadName(name: string): string {
+  // Letters and digits of any script stay (a Chinese file name is a name).
+  const base = basename(name).replace(/[^\p{L}\p{N}_.\- ()[\]]+/gu, "_");
   if (!base || base === "." || base === "..") {
     throw new Error("Invalid upload file name");
   }

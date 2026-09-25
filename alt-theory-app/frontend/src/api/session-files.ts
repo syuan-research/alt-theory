@@ -76,22 +76,6 @@ export async function deleteSessionFileContent(
   );
 }
 
-export async function uploadWorkspaceFile(
-  sessionId: string,
-  file: File
-): Promise<UploadWorkspaceFileResult> {
-  const form = new FormData();
-  form.append("file", file);
-  const res = await fetch(`${sessionFilesBase(sessionId)}/upload`, {
-    method: "POST",
-    body: form,
-  });
-  if (!res.ok) {
-    throw new ApiError(await readErrorMessage(res), res.status);
-  }
-  return res.json() as Promise<UploadWorkspaceFileResult>;
-}
-
 export async function retryWorkspaceExtract(
   sessionId: string,
   path: string

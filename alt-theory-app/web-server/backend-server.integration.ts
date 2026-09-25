@@ -3009,7 +3009,8 @@ test("a new conversation is created from the draft settings its first request ca
       requestId: "create",
       payload: "hello",
       create: {
-        mode: "work",
+        // A draft saved before Understand was retired: reads as work.
+        mode: "understand",
         fullAccess: true,
         rolePresetSlug: "tutor",
         kbDomain: "none",

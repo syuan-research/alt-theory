@@ -168,12 +168,14 @@ needs to exist: the file is copied into
 `<dataDir>/attachment-staging/<uuid>/uploads/` and a DOCX/PDF/XLSX/PPTX is
 converted to text beside it under `extracted/` (a failed conversion attaches
 the copy and reports why). The message's send — in the WebSocket `prompt`
-handler, after the conversation exists — moves the named staged files into
+handler, after the conversation exists — copies the named staged files into
 that conversation's managed `workspace/uploads/` and `workspace/extracted/`
 (a taken name gets ` (2)`, ` (3)`…) and rewrites their paths in the text and
 the attachment list to the absolute workspace paths, so the agent reads them
-whatever the conversation's `cwd` is. Unsent drafts leave their staged files
-behind. See
+whatever the conversation's `cwd` is. The staged copy stays, so a send refused
+before its run hands back a draft whose files still exist; nothing sweeps the
+staging folder yet. Upload names keep letters of any script (multer reads
+them as UTF-8; `sanitizeUploadName`). See
 [`attachment-staging.ts`](../../alt-theory-app/web-server/attachment-staging.ts).
 The per-session workspace upload route
 accepts the configured text types and DOCX/XLSX/PDF binaries, sanitizes the
@@ -277,18 +279,24 @@ list the bundled skills that need the shell (`web-search`, `page-fetch`,
 `doc-convert`). In the security extension, every `edit`/`write` whose path is
 not credential-sensitive asks **Allow once / Deny** — inside the writable
 roots or outside them; there is no conversation-wide allowance, and no
-approval UI fails closed. An Allow once for a path outside the roots lets
-exactly that write through the guarded write tool (the path and the folders
-created on the way to it), consumed by the write. Reads are mediated as under
-Ask.
+approval UI fails closed. For a path outside the roots the dialog names the
+physical target (`canonicalPathKey`, so a symlinked parent cannot pass for a
+workspace path), and an Allow once on a `write` lets exactly that file through
+the guarded write tool (plus the folders created on the way to it), consumed
+by the write. Tool paths are checked as Pi's tools resolve them — `~`, a
+leading `@`, and `file://` included (`toolPath`) — under every permission.
+Reads are mediated as under Ask. The permission applies under Native Pi too.
 
 The composer's permission control (shield, right of Toolbox) offers the three
 values on a live conversation and on the new-conversation screen, where the
-choice is kept in that screen's draft and sent with the first message. A new
+choice is kept in that screen's draft and sent with the first message (a
+draft still saying `understand` reads as `work`). A new
 conversation starts from Settings > General > "New conversations start with"
 (`defaultPermission` in `app-settings.json`, absent = Ask; choosing Full access
 there asks for confirmation once) and each new draft starts from it again. A
-mode change mid-run is held until the turn ends. Derived conversations —
+mode change mid-run is held until the turn ends, except that a pending switch
+to Read-only mediates at once (`holdReadOnly`): shell calls are refused, each
+write asks, and Full Access is off; the tool set follows at the turn's end. Derived conversations —
 subagents, branches, BTW, Helpers, A/B arms — inherit the parent's mode at
 birth and never Full Access, so the inherited permission is at most Ask;
 `spawn_agent` may ask for a read-only child (`clampSubagentMode`), A/B arms

@@ -17,6 +17,7 @@ import { fileURLToPath } from "url";
 import WebSocket, { WebSocketServer } from "ws";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import {
+  toAltMode,
   type AltMode,
   type ResourceDiscoveryMode,
   type RuntimeMode,
@@ -349,6 +350,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
 
   const workspaceUpload = multer({
     storage: multer.memoryStorage(),
+    // Browsers send UTF-8 file names; multer's latin1 default mangles 论文.pdf.
+    defParamCharset: "utf8",
     limits: { fileSize: 20 * 1024 * 1024 },
   });
 
@@ -2508,10 +2511,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       if (draft.customInstructionRef !== undefined) {
         selectors.customInstructionRef = optionalSlug(draft.customInstructionRef);
       }
-      if (draft.mode !== undefined) {
-        if (draft.mode !== "read-only" && draft.mode !== "work") throw new Error("Unknown mode");
-        mode = draft.mode;
-      }
+      // A draft saved before 2026-09-25 may still say "understand": retired
+      // values read as work, like a stored header.
+      if (draft.mode !== undefined) mode = toAltMode(draft.mode);
       // The guard that keeps the deployments apart (see switch_visibility).
       const visibility = draft.visibility ?? defaultDraftVisibility();
       if (!isVisibilityForMode(visibility, localMode)) throw new Error("Invalid visibility");
@@ -2680,7 +2682,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       try {
         if (
           readAppSettings(dataDir).runtimeMode === "native-pi" &&
-          ["switch_kb", "switch_role_preset", "switch_soul", "switch_mode"].includes(
+          // The permission (switch_mode) applies under Native Pi too.
+          ["switch_kb", "switch_role_preset", "switch_soul"].includes(
             msg.type,
           )
         ) {

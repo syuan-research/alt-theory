@@ -33,14 +33,3 @@ export function pathsToUnstageOnDelete(
   }
   return [...toRemove];
 }
-
-export function stagePathAfterUpload(result: {
-  convertedPath: string | null;
-  entry?: WorkspaceFileEntry;
-  originalPath: string;
-}): string | null {
-  return (
-    result.convertedPath ||
-    (result.entry?.stageable ? result.originalPath : null)
-  );
-}

@@ -255,8 +255,14 @@ export function sentLanded(request: PendingRequest, users: string[], queued: str
   const text = request.sentText?.trim() ?? "";
   if (users.includes(text) || queued.includes(request.sentText ?? "")) return true;
   if (!request.attachments?.length) return false;
-  const bare = text.replace(ATTACHMENT_LINE, "");
-  return [...users, ...queued].some((row) => row.trim().replace(ATTACHMENT_LINE, "") === bare);
+  // Same text and the same file names (the folder part is what moved).
+  const key = (value: string) =>
+    `${value.replace(ATTACHMENT_LINE, "")}\u0000${(value.match(ATTACHMENT_LINE)?.[0] ?? "")
+      .split(",")
+      .map((path) => path.trim().replace(/\)$/, "").split(/[\\/]/).pop())
+      .join(",")}`;
+  const sentKey = key(text);
+  return [...users, ...queued].some((row) => key(row.trim()) === sentKey);
 }
 
 /**

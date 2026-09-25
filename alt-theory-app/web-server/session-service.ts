@@ -377,6 +377,7 @@ interface ManagedSession {
   manifest: AssemblyManifest;
   getAltMode: () => AltMode;
   setAltMode: (mode: AltMode) => Promise<void>;
+  holdReadOnly: (held: boolean) => void;
   getRuntimeMode: () => RuntimeMode;
   setRuntimeMode: (mode: RuntimeMode) => Promise<void>;
   setNativePiScanAltSkills: (enabled: boolean) => Promise<void>;
@@ -1087,6 +1088,7 @@ export class SessionService implements AgentTeamBridge {
       throw new Error("This server allows read-only conversations only");
     }
     const managed = this.requireSession(sessionId);
+    managed.holdReadOnly(mode === "read-only");
     await managed.runState.applyOrDefer({ mode }, () => this.applyMode(managed, mode));
     return this.publish(managed);
   }
@@ -4269,6 +4271,7 @@ export class SessionService implements AgentTeamBridge {
     manifest: AssemblyManifest;
     getAltMode: () => AltMode;
     setAltMode: (mode: AltMode) => Promise<void>;
+    holdReadOnly: (held: boolean) => void;
     getRuntimeMode: () => RuntimeMode;
     setRuntimeMode: (mode: RuntimeMode) => Promise<void>;
     setNativePiScanAltSkills: (enabled: boolean) => Promise<void>;

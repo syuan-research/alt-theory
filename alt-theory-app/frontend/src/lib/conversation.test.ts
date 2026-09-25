@@ -330,3 +330,11 @@ test("a sent message with staged files lands although the server moved them", ()
   // Without attachments the text must match exactly.
   assert.equal(sentLanded(sent("read this"), [moved], []), false);
 });
+
+test("the same text sent again with other files does not land on the first row", () => {
+  const sent = (text: string) =>
+    ({ sentText: text, attachments: ["x"], message: { type: "prompt", payload: text }, from: "s", status: "accepted" }) as PendingRequest;
+  const first = "see\n\n(Attachments: /data/sessions/s/workspace/uploads/a.png)";
+  assert.equal(sentLanded(sent("see\n\n(Attachments: /data/attachment-staging/u2/uploads/b.png)"), [first], []), false);
+  assert.equal(sentLanded(sent("see\n\n(Attachments: /data/attachment-staging/u2/uploads/a.png)"), [first], []), true);
+});

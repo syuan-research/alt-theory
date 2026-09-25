@@ -21,6 +21,8 @@ test("attached files are staged, converted, and moved into the conversation on s
     XLSX.write(book, { type: "buffer", bookType: "xlsx" }) as Buffer,
   );
   assert.match(sheet.path, /extracted[\\/]data\.csv$/);
+  // A name in any script stays readable.
+  assert.match((await stageAttachment(dataDir, "论文 草稿.md", Buffer.from("x"))).path, /论文 草稿\.md$/);
   // A broken office file still attaches, as the copy, with the reason.
   const broken = await stageAttachment(dataDir, "bad.docx", Buffer.from("not a docx"));
   assert.match(broken.path, /uploads[\\/]bad\.docx$/);
@@ -39,7 +41,8 @@ test("attached files are staged, converted, and moved into the conversation on s
   );
   assert.ok(existsSync(join(workspace, "uploads", "data.xlsx")), "the original moves too");
   assert.match(readFileSync(join(workspace, "extracted", "data.csv"), "utf-8"), /a,b/);
-  assert.equal(existsSync(note.path), false, "staging is emptied");
+  // The staged copy stays: a refused send hands back a draft still naming it.
+  assert.equal(existsSync(note.path), true);
 
   // A second file of the same name does not overwrite the first.
   const again = await stageAttachment(dataDir, "note.md", Buffer.from("second"));

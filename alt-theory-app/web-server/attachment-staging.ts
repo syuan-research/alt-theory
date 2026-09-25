@@ -3,36 +3,25 @@
  * drop or a pasted image — copies the file into the app and converts
  * docx/pdf/xlsx/pptx to text, like a web chatbot. The copy is staged here
  * until the message is sent (a new conversation has no folder yet); the
- * message's send moves it into that conversation's own folder and names it
+ * message's send copies it into that conversation's own folder and names it
  * there by absolute path, so the agent reads it wherever the conversation's
- * working folder is.
+ * working folder is. The staged copy stays: a send refused before its run
+ * (no model, busy) hands the draft back still naming it.
  *
- * ponytail: staged files of a draft that is never sent stay behind; sweep
- * `attachment-staging/` at startup if that ever adds up.
+ * ponytail: staged files are never removed; sweep `attachment-staging/`
+ * at startup if that ever adds up.
  */
 import { randomUUID } from "crypto";
-import {
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  renameSync,
-  rmSync,
-  writeFileSync,
-} from "fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, writeFileSync } from "fs";
 import { basename, extname, join, relative, resolve, sep } from "path";
 import { resolveSessionRoot } from "../core/data-dir.js";
 import { extractUploadedBinary } from "./workspace-extract.js";
+import { sanitizeUploadName } from "./workspace-files.js";
 
 const CONVERTED = new Set([".docx", ".pdf", ".xlsx", ".pptx"]);
 
 function stagingRoot(dataDir: string): string {
   return join(resolve(dataDir), "attachment-staging");
-}
-
-function safeName(name: string): string {
-  const base = basename(name).replace(/[^\w.\- ()[\]]+/g, "_");
-  if (!base || base === "." || base === "..") throw new Error("Invalid file name");
-  return base;
 }
 
 /**
@@ -46,7 +35,7 @@ export async function stageAttachment(
   originalName: string,
   buffer: Buffer,
 ): Promise<{ path: string; extractError?: string }> {
-  const name = safeName(originalName);
+  const name = sanitizeUploadName(originalName);
   const dir = join(stagingRoot(dataDir), randomUUID());
   const original = join(dir, "uploads", name);
   mkdirSync(join(dir, "uploads"), { recursive: true });
@@ -82,7 +71,7 @@ function freeName(dir: string, name: string): string {
 }
 
 /**
- * Move the staged files a message names into the conversation's folder
+ * Copy the staged files a message names into the conversation's folder
  * (`uploads/`, `extracted/`) and rewrite their paths in the text and the
  * attachment list. Paths that are not staged pass through unchanged.
  */
@@ -103,7 +92,8 @@ export function adoptStagedAttachments(
     // <root>/<stage id>/<uploads|extracted>/<name>
     const [stageId] = relative(root, resolve(path)).split(sep);
     const stageDir = join(root, stageId);
-    if (!existsSync(stageDir)) continue;
+    // One stage folder per file; a second attachment from it is done already.
+    if (!existsSync(stageDir) || [...moved.keys()].some((from) => from.startsWith(stageDir + sep))) continue;
     for (const kind of ["uploads", "extracted"]) {
       const from = join(stageDir, kind);
       if (!existsSync(from)) continue;
@@ -111,11 +101,10 @@ export function adoptStagedAttachments(
       mkdirSync(to, { recursive: true });
       for (const name of readdirSync(from)) {
         const target = join(to, freeName(to, name));
-        renameSync(join(from, name), target);
+        copyFileSync(join(from, name), target);
         moved.set(join(from, name), target);
       }
     }
-    rmSync(stageDir, { recursive: true, force: true });
   }
   const rewrite = (path: string) => moved.get(resolve(path)) ?? path;
   let nextText = text;

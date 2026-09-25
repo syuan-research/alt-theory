@@ -659,8 +659,9 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
             rows={1}
             onPaste={(e) => {
               // A pasted image (or copied file) has no path: attach a copy.
+              // Office copies carry the text plus a picture of it: keep the text.
               const files = [...e.clipboardData.files];
-              if (!canAttach || files.length === 0) return;
+              if (!canAttach || files.length === 0 || e.clipboardData.getData("text/plain")) return;
               e.preventDefault();
               attachCopies(files);
             }}

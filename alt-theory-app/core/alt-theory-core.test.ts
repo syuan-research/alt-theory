@@ -379,6 +379,16 @@ test("read-only asks once per write, inside or outside the roots", async () => {
     /outside Alt Theory writable roots/,
   );
 
+  // A symlinked parent inside the session folder cannot pass for a
+  // workspace path: the dialog names the physical target, and the pass is
+  // for that target only.
+  const elsewhere = join(root, "elsewhere");
+  symlinkSync(elsewhere, join(dirs.writeDir, "linked"));
+  assert.equal(await call("write", { path: join(dirs.writeDir, "linked", "c.md") }), undefined);
+  assert.match(asked.at(-1)?.title ?? "", /elsewhere[\\/]c\.md$/);
+  await writeTool().execute("ro-link", { path: join(dirs.writeDir, "linked", "c.md"), content: "via link" });
+  assert.equal(readFileSync(join(elsewhere, "c.md"), "utf-8"), "via link");
+
   // Denied: blocked with the user's choice as the reason.
   answer = "Deny";
   assert.match(
@@ -392,8 +402,46 @@ test("read-only asks once per write, inside or outside the roots", async () => {
     /credential path/,
   );
   assert.equal(asked.length, before);
+  // Pi's path spellings (~, @, file://) are checked as the file they open.
+  for (const spelled of ["~/.ssh/id_rsa", "@~/.ssh/id_rsa", `file://${join(homedir(), ".ssh", "id_rsa")}`]) {
+    assert.match((await call("read", { path: spelled }))?.reason ?? "", /credential path/, spelled);
+  }
 
   await session.dispose();
+});
+
+test("a switch to read-only mediates at once while the turn runs", async () => {
+  const root = mkdtempSync(join(tmpdir(), "alt-theory-core-held-"));
+  writeFileSync(join(root, "ALTTHEORY.md"), "Held context", "utf-8");
+  mkdirSync(join(root, "kb"), { recursive: true });
+  const dirs = createSessionDirs(join(root, "data"), "held-test");
+  const result = await createAltTheorySession({
+    ...dirs,
+    appContextPath: join(root, "ALTTHEORY.md"),
+    kbDir: join(root, "kb"),
+    kbDomain: "none",
+    altMode: "work",
+    fullAccess: true,
+    resourceDiscovery: "clean",
+  });
+  const agent = result.session.agent as unknown as {
+    beforeToolCall: (input: {
+      toolCall: { id: string; name: string; arguments: unknown };
+      args: Record<string, unknown>;
+    }) => Promise<{ block?: boolean; reason?: string } | undefined>;
+  };
+  const call = (name: string, args: Record<string, unknown>) =>
+    agent.beforeToolCall({ toolCall: { id: `held-${name}`, name, arguments: {} }, args });
+  assert.equal(await call("bash", { command: "rm -rf build" }), undefined, "Full access");
+  result.holdReadOnly(true);
+  assert.equal(result.isFullAccessEffective(), false);
+  assert.match((await call("bash", { command: "echo hi" }))?.reason ?? "", /read-only/);
+  // The switch lands at the turn's end and the hold ends with it.
+  await result.setAltMode("read-only");
+  assert.ok(!result.session.getActiveToolNames().includes("bash"));
+  await result.setAltMode("work");
+  assert.equal(result.isFullAccessEffective(), true);
+  await result.session.dispose();
 });
 
 test("a symlinked workspace read escalates like the matching write", async () => {

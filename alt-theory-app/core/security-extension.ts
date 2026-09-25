@@ -22,8 +22,10 @@ import type {
   ExtensionFactory,
   ToolCallEventResult,
 } from "@earendil-works/pi-coding-agent";
-import { dirname, resolve } from "path";
-import { verdict } from "./path-verdict.js";
+import { homedir } from "os";
+import { dirname, join, resolve } from "path";
+import { fileURLToPath } from "url";
+import { canonicalPathKey, verdict } from "./path-verdict.js";
 import type { Root } from "./root-policy.js";
 
 export interface SecurityAuditEntry {
@@ -165,6 +167,33 @@ const APPROVAL_OPTIONS = [
 /** An unattended approval fails closed after this long instead of hanging. */
 const APPROVAL_TIMEOUT_MS = 5 * 60_000;
 
+const UNICODE_SPACES = /[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g;
+
+/**
+ * The path a Pi file tool actually opens. Pi resolves tool paths through its
+ * resolveToCwd (unicode spaces, a leading "@", "~", file:// URLs, Windows
+ * shell drive paths), which the package does not export; a plain
+ * resolve(cwd, "~/.ssh/x") would check a harmless path inside cwd while the
+ * tool reads the home directory. ponytail: mirrors Pi 0.84 utils/paths.js —
+ * re-check it when Pi's resolver changes.
+ */
+export function toolPath(cwd: string, raw: string): string {
+  let path = raw.replace(UNICODE_SPACES, " ");
+  if (path.startsWith("@")) path = path.slice(1);
+  if (process.platform === "win32") {
+    const drive = path.match(/^\/(?:mnt\/|cygdrive\/)?([a-z])(?:\/(.*))?$/i);
+    if (drive && !path.startsWith("//") && !path.includes("\\")) {
+      path = `${drive[1].toUpperCase()}:\\${drive[2]?.replaceAll("/", "\\") ?? ""}`;
+    }
+  }
+  if (path === "~") return homedir();
+  if (path.startsWith("~/") || (process.platform === "win32" && path.startsWith("~\\"))) {
+    return join(homedir(), path.slice(2));
+  }
+  if (/^file:\/\//.test(path)) return fileURLToPath(path);
+  return resolve(cwd, path);
+}
+
 export function createSecurityExtension(
   options: SecurityExtensionOptions
 ): ExtensionFactory {
@@ -254,6 +283,11 @@ export function createSecurityExtension(
       };
 
       if (event.toolName === "bash") {
+        // Read-only has no shell; this catches a switch still waiting for
+        // the turn to end, while the tool is still in the active set.
+        if (isReadOnly?.()) {
+          return blocked("read_only_shell", "Blocked — this conversation is read-only, so commands are not available.");
+        }
         const command = String(event.input.command ?? "");
         if (!command.trim()) return undefined;
         if (hasUnicodeVariance(command)) {
@@ -312,7 +346,7 @@ export function createSecurityExtension(
 
       if (event.toolName === "edit" || event.toolName === "write") {
         if (!path) return undefined;
-        const resolved = resolve(sessionCwd, path);
+        const resolved = toolPath(sessionCwd, path);
         const check = verdict(resolved, "write", {
           writable: getWritableRoots(),
         });
@@ -323,7 +357,10 @@ export function createSecurityExtension(
           );
         }
         if (isReadOnly?.()) {
-          const title = `${event.toolName === "edit" ? "Edit" : "Write"} file: ${summarize(resolved)}`;
+          // Outside the roots, name the physical target (a symlinked parent
+          // cannot make it look like a workspace path) and pass exactly it.
+          const target = check.outcome === "outside" ? canonicalPathKey(resolved) : resolved;
+          const title = `${event.toolName === "edit" ? "Edit" : "Write"} file: ${summarize(target)}`;
           if (!ctx.hasUI) {
             return blocked("read_only_write", `${title} — requires user approval, and no approval dialog is available right now.`);
           }
@@ -335,7 +372,10 @@ export function createSecurityExtension(
           if (choice !== APPROVAL_ALLOW_ONCE) {
             return blocked("read_only_write", `${title} — not approved by the user`);
           }
-          if (check.outcome === "outside") allowWriteOnce?.(resolved);
+          // Only write is guarded by roots; an approved edit needs no pass.
+          if (check.outcome === "outside" && event.toolName === "write") {
+            allowWriteOnce?.(target);
+          }
           audit({
             toolName: event.toolName,
             toolCallId: event.toolCallId,
@@ -374,7 +414,7 @@ export function createSecurityExtension(
 
       if (["read", "grep", "find", "ls"].includes(event.toolName)) {
         if (!path) return undefined;
-        const resolved = resolve(sessionCwd, path);
+        const resolved = toolPath(sessionCwd, path);
         // Reads reaching outside the readable roots escalate to approval
         // (OpenCode external_directory convention). Reading is not itself the
         // security boundary — that is write, spec §5.3 — but reaching outside

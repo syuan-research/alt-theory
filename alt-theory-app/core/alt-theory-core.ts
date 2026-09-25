@@ -31,6 +31,7 @@ import { dirname, join, resolve, sep } from "path";
 import { createSecurityExtension } from "./security-extension.js";
 import {
   assertWritablePath,
+  canonicalPathKey,
   isPathInside,
 } from "./path-verdict.js";
 import {
@@ -440,6 +441,9 @@ async function createAltTheorySessionWithManager(
     // Full Access follows the conversation (M2, 2026-09-24): the session
     // service persists it in the header and hands it back on every assembly.
     fullAccess: config.fullAccess === true,
+    // A switch to read-only waiting for the turn to end already mediates
+    // like read-only (turning permissions down mid-run is always safe).
+    readOnlyHeld: false,
   };
   const resourceDiscovery = config.resourceDiscovery ?? "dev-debug";
   const resolvedSkillsDir = config.skillsDir ? resolve(config.skillsDir) : null;
@@ -507,9 +511,10 @@ async function createAltTheorySessionWithManager(
     sharedSections.push(section);
   }
   const isReadOnly = () => runtimeState.altMode === "read-only";
+  const mediatesReadOnly = () => isReadOnly() || runtimeState.readOnlyHeld;
   // Full Access stays stored across permission switches but is only
   // effective outside read-only; read-only keeps it dormant, not cleared.
-  const isFullAccessEffective = () => runtimeState.fullAccess && !isReadOnly();
+  const isFullAccessEffective = () => runtimeState.fullAccess && !mediatesReadOnly();
   // Writable/readable roots are computed by the one root-policy module,
   // evaluated per call: the Alt writable roots plus the workspace (primary +
   // the project's companion folders, both read live from the folder policy).
@@ -617,8 +622,8 @@ async function createAltTheorySessionWithManager(
         getWritableRoots: writableRootsForMode,
         getReadableRoots: () => sessionRootsForMode().readable,
         addWritableRoot: (root) => approvedWritableRoots.add(resolve(root)),
-        isReadOnly,
-        allowWriteOnce: (path) => onceWritablePaths.add(resolve(path)),
+        isReadOnly: mediatesReadOnly,
+        allowWriteOnce: (path) => onceWritablePaths.add(path),
         recordAudit: (entry) =>
           appendFileSync(
             join(resolvedRecordsDir, "security-audit.jsonl"),
@@ -878,6 +883,7 @@ async function createAltTheorySessionWithManager(
     resumeWarnings,
     getAltMode: () => runtimeState.altMode,
     setAltMode: async (next: AltMode): Promise<void> => {
+      runtimeState.readOnlyHeld = false;
       if (next === runtimeState.altMode) return;
       runtimeState.altMode = next;
       manifest.altMode = next;
@@ -895,6 +901,10 @@ async function createAltTheorySessionWithManager(
       if (enabled === runtimeState.nativePiScanAltSkills) return;
       runtimeState.nativePiScanAltSkills = enabled;
       await loader.reload();
+    },
+    /** A pending switch to read-only mediates at once (see readOnlyHeld). */
+    holdReadOnly: (held: boolean): void => {
+      runtimeState.readOnlyHeld = held;
     },
     getFullAccess: () => runtimeState.fullAccess,
     isFullAccessEffective,
@@ -957,29 +967,30 @@ function createGuardedWriteOperations(
   oncePaths?: Set<string>,
 ): WriteOperations {
   const roots = () => getWritableRoots();
-  // A read-only "Allow once" covers the approved file and the folders the
-  // write creates on the way to it; the file write consumes it.
-  const approvedOnce = (path: string) => {
-    const target = resolve(path);
+  // A read-only "Allow once" names one physical file (canonicalPathKey, so
+  // a symlinked parent cannot redirect it): the file write must be exactly
+  // it and consumes it; mkdir may create the folders on the way to it.
+  const approvedOnce = (path: string, folder: boolean) => {
+    const target = canonicalPathKey(path);
     for (const once of oncePaths ?? []) {
-      if (once === target || once.startsWith(target + sep)) return true;
+      if (once === target || (folder && once.startsWith(target + sep))) return true;
     }
     return false;
   };
   // Full Access skips only the writable-root assertion; the filesystem
   // operation itself is unchanged (v1.4.8).
-  const assertWritable = (path: string) => {
-    if (skipBoundaryCheck?.() || approvedOnce(path)) return;
+  const assertWritable = (path: string, folder: boolean) => {
+    if (skipBoundaryCheck?.() || approvedOnce(path, folder)) return;
     assertWritablePath(path, roots());
   };
   return {
     async mkdir(dir: string): Promise<void> {
-      await assertWritable(dir);
+      await assertWritable(dir, true);
       await mkdir(dir, { recursive: true });
     },
     async writeFile(path: string, content: string): Promise<void> {
-      await assertWritable(path);
-      oncePaths?.delete(resolve(path));
+      await assertWritable(path, false);
+      oncePaths?.delete(canonicalPathKey(path));
       await writeFile(path, content, "utf-8");
     },
   };
