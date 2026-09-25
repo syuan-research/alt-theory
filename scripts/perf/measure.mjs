@@ -44,11 +44,17 @@ const ELECTRON = repoRequire("electron");
 const QUICK = opts.quick;
 
 // Seeded data. Long conversations are built on disk by repeating a seeded
-// turn; every repeat carries a tool result and an answer of these sizes.
+// turn; every repeat carries a tool result and an answer of these sizes, and
+// every tenth result is larger than the 64 KiB row bound (WP 1.5).
 const CONVERSATIONS = 20;
 const LONG_TURNS = [60, 150, 300];
 const TOOL_RESULT_BYTES = 12_000;
+const LARGE_TOOL_RESULT_BYTES = 100_000;
 const ANSWER_BYTES = 2_000;
+// "[slow]" runs stream like a fast provider: bursts of tokens, each token its
+// own WebSocket message, about 160 tokens a second for roughly a minute.
+const BURST_TOKENS = 8;
+const BURST_GAP_MS = 50;
 const S1_IDLE_MS = QUICK ? 20_000 : 120_000;
 const S2_IDLE_SAMPLES_MIN = QUICK ? [0, 1] : [0, 5, 10, 15];
 
@@ -84,11 +90,11 @@ function startFakeModel() {
     const chunk = (choices, extra = {}) =>
       res.write(`data: ${JSON.stringify({ id: "perf", object: "chat.completion.chunk", created: 0, model: request.model, choices, ...extra })}\n\n`);
     const delta = (d, finish = null) => chunk([{ index: 0, delta: d, finish_reason: finish }]);
-    const n = answer ? (slow ? 400 : 40) : slow ? 600 : 30;
+    const n = answer ? (slow ? 3_200 : 40) : slow ? 4_800 : 30;
     for (let i = 0; i < n; i++) {
       const word = i % 3 === 0 ? "研究方法 " : "theory ";
       delta(answer ? { content: word } : { reasoning_content: word });
-      if (slow) await sleep(50);
+      if (slow && i % BURST_TOKENS === BURST_TOKENS - 1) await sleep(BURST_GAP_MS);
     }
     if (answer) delta({}, "stop");
     else {
@@ -327,11 +333,15 @@ function lengthen(root, sessionId, turns) {
       copy.parentId = parent;
       parent = copy.id;
       const role = copy.message.role;
+      // Each repeat is its own tool call: a shared id would merge every
+      // result into the first call row.
+      if (typeof copy.message.toolCallId === "string") copy.message.toolCallId += `-${k}`;
       if (role === "user") run.userEntryId = copy.id;
       if (role === "assistant") run.assistantEntryIds.push(copy.id);
       for (const block of Array.isArray(copy.message.content) ? copy.message.content : []) {
+        if (block.type === "toolCall" && typeof block.id === "string") block.id += `-${k}`;
         if (block.type !== "text") continue;
-        if (role === "toolResult") block.text = filler(TOOL_RESULT_BYTES, `turn ${k}`);
+        if (role === "toolResult") block.text = filler(k % 10 === 9 ? LARGE_TOOL_RESULT_BYTES : TOOL_RESULT_BYTES, `turn ${k}`);
         if (role === "assistant") block.text = filler(ANSWER_BYTES, `turn ${k}`);
       }
       out.push(copy);

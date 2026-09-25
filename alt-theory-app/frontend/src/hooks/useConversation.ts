@@ -147,6 +147,13 @@ export function useConversation({ sessionId, enabled, onMessage }: ConversationO
       deliver(message);
     },
     onStatus: (status) => {
+      // A dropped socket clears the live turn; a held delta must not
+      // repaint a fragment of it afterwards.
+      if (status !== "open") {
+        if (deltaFrameRef.current !== null) cancelAnimationFrame(deltaFrameRef.current);
+        deltaFrameRef.current = null;
+        pendingDeltaRef.current = null;
+      }
       dispatch({ type: "socket", status });
       if (status !== "open") return;
       // A (re)connect re-opens what this conversation follows, as a request
