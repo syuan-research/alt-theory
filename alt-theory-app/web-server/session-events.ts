@@ -14,6 +14,7 @@ export type SessionEventType =
   | "soul_selected"
   | "mode_selected"
   | "full_access_changed"
+  | "smart_approval_changed"
   /** Pre-v1.5.1 session-level additional dirs; the mechanism is gone, the
    *  events of old conversations stay readable. */
   | "workspace_dir_added"

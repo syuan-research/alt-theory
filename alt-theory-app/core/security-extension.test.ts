@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import type { ReviewRequest, ReviewVerdict } from "./approval-reviewer.js";
 import {
   APPROVAL_ALLOW_ONCE,
   APPROVAL_ALLOW_SESSION,
@@ -12,7 +13,13 @@ import {
 type Result = { block?: boolean; reason?: string } | undefined;
 
 /** The extension's tool_call handler over one project folder, with a scripted approver. */
-function harness(options: { full?: boolean; allowlist?: string[] } = {}) {
+function harness(
+  options: {
+    full?: boolean;
+    allowlist?: string[];
+    reviewer?: (request: ReviewRequest) => ReviewVerdict;
+  } = {},
+) {
   const root = mkdtempSync(join(tmpdir(), "alt-secext-"));
   const project = join(root, "project");
   const dataDir = join(root, "data");
@@ -23,7 +30,9 @@ function harness(options: { full?: boolean; allowlist?: string[] } = {}) {
     { path: workspace, reason: "session-write" as const },
     { path: project, reason: "cwd" as const },
   ];
-  let handler: ((event: unknown, ctx: unknown) => Promise<Result>) | null = null;
+  const handlers = new Map<string, (event: unknown, ctx: unknown) => Promise<unknown>>();
+  const oncePaths: string[] = [];
+  const reviewed: ReviewRequest[] = [];
   createSecurityExtension({
     sessionCwd: project,
     getWritableRoots: () => writable,
@@ -32,9 +41,15 @@ function harness(options: { full?: boolean; allowlist?: string[] } = {}) {
     isFullAccess: () => options.full === true,
     protectedDirs: [dataDir],
     getCommandAllowlist: () => options.allowlist ?? [],
+    allowWriteOnce: (path) => oncePaths.push(path),
+    isSmartApproval: () => options.reviewer !== undefined,
+    reviewAction: async (request) => {
+      reviewed.push(request);
+      return options.reviewer!(request);
+    },
   })({
-    on: (event: string, h: typeof handler) => {
-      if (event === "tool_call") handler = h;
+    on: (event: string, h: (event: unknown, ctx: unknown) => Promise<unknown>) => {
+      handlers.set(event, h);
     },
   } as never);
   const asked: Array<{ title: string; options: string[] }> = [];
@@ -42,6 +57,7 @@ function harness(options: { full?: boolean; allowlist?: string[] } = {}) {
   const ctx = {
     hasUI: true,
     signal: undefined,
+    sessionManager: { getBranch: () => [] },
     ui: {
       select: async (title: string, choices: string[]) => {
         asked.push({ title, options: choices });
@@ -54,11 +70,16 @@ function harness(options: { full?: boolean; allowlist?: string[] } = {}) {
     project,
     dataDir,
     asked,
+    reviewed,
+    oncePaths,
+    startRun: () => handlers.get("agent_start")!({}, ctx),
+    toolResult: (toolCallId: string, details?: unknown) =>
+      handlers.get("tool_result")!({ toolCallId, details }, ctx) as Promise<{ details?: unknown } | undefined>,
     answer: (value: string | undefined) => {
       answer = value;
     },
-    call: (toolName: string, input: Record<string, unknown>) =>
-      handler!({ toolName, toolCallId: "tc", input }, ctx),
+    call: (toolName: string, input: Record<string, unknown>, toolCallId = "tc") =>
+      handlers.get("tool_call")!({ toolName, toolCallId, input }, ctx) as Promise<Result>,
   };
 }
 
@@ -128,4 +149,61 @@ test("guardrails ① and ④ hold under Full; ② and ③ do not", async () => {
   assert.equal(await h.call("write", { path: join(h.project, "x.db") }), undefined);
   assert.equal(await h.call("bash", { command: "python cleanup.py" }), undefined);
   assert.equal(h.asked.length, 0);
+});
+
+test("smart approval: the reviewer answers instead of the user", async () => {
+  const h = harness({
+    reviewer: (request) =>
+      String(request.input.command ?? "").includes("rm")
+        ? { outcome: "deny", reason: "deletes data the user did not mention", model: "m" }
+        : { outcome: "allow", reason: "runs the analysis the user asked for", model: "m" },
+  });
+  // The fast pass never reaches the reviewer.
+  assert.equal(await h.call("bash", { command: "ls" }), undefined);
+  assert.equal(h.reviewed.length, 0);
+
+  assert.equal(await h.call("bash", { command: "python analyze.py" }, "c1"), undefined);
+  assert.equal(h.asked.length, 0, "no dialog");
+  // The verdict rides on the tool result so the row can show it.
+  const result = await h.toolResult("c1", { truncated: false });
+  assert.deepEqual(result?.details, {
+    truncated: false,
+    altApproval: { by: "smart", outcome: "allow", reason: "runs the analysis the user asked for", model: "m" },
+  });
+  // The exact same action is not reviewed twice.
+  await h.call("bash", { command: "python analyze.py" });
+  assert.equal(h.reviewed.length, 1);
+
+  const denied = await h.call("bash", { command: "rm -rf results" });
+  assert.equal(denied?.block, true);
+  assert.match(denied?.reason ?? "", /^Smart approval denied this action: deletes data/);
+  assert.doesNotMatch(denied?.reason ?? "", /stop trying/);
+});
+
+test("smart approval: three denials in a row tell the agent to stop and ask", async () => {
+  const h = harness({ reviewer: () => ({ outcome: "deny", reason: "no", model: "m" }) });
+  await h.call("bash", { command: "rm a" });
+  await h.call("bash", { command: "rm b" });
+  assert.match((await h.call("bash", { command: "rm c" }))?.reason ?? "", /stop trying other ways around this and ask the user/);
+  // A new run starts the count again.
+  await h.startRun();
+  assert.doesNotMatch((await h.call("bash", { command: "rm d" }))?.reason ?? "", /stop trying/);
+});
+
+test("smart approval: an unavailable reviewer hands the action to the user", async () => {
+  const h = harness({ reviewer: () => ({ outcome: "unavailable", reason: "rate limited" }) });
+  await h.call("bash", { command: "python analyze.py" });
+  assert.equal(h.asked.length, 1);
+  assert.equal(h.asked[0].title, "Smart approval unavailable: rate limited\nRun command: python analyze.py");
+});
+
+test("smart approval: an outside write passes that one file, not the folder", async () => {
+  const h = harness({ reviewer: () => ({ outcome: "allow", reason: "ok", model: "m" }) });
+  const target = join(tmpdir(), "alt-secext-outside", "report.md");
+  assert.equal(await h.call("write", { path: target }), undefined);
+  assert.equal(h.oncePaths.length, 1);
+  assert.match(h.oncePaths[0], /report\.md$/);
+  // Guardrails stay deterministic: .git is refused before any review.
+  assert.equal((await h.call("write", { path: join(h.project, ".git", "config") }))?.block, true);
+  assert.equal(h.reviewed.length, 1);
 });

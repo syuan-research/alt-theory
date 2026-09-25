@@ -28,7 +28,10 @@ import type { Model } from "@earendil-works/pi-ai/compat";
 import { appendFileSync, existsSync, readFileSync } from "fs";
 import { mkdir, writeFile } from "fs/promises";
 import { dirname, join, resolve, sep } from "path";
-import { createSecurityExtension } from "./security-extension.js";
+import {
+  createSecurityExtension,
+  type SecurityExtensionOptions,
+} from "./security-extension.js";
 import {
   assertWritablePath,
   canonicalPathKey,
@@ -198,6 +201,14 @@ export interface AltTheoryConfig extends SessionDirectories {
    * the enable check: in a mode that cannot use it the value is dormant.
    */
   fullAccess?: boolean;
+  /**
+   * Smart approval this conversation holds (its header): the reviewer model
+   * answers where Ask would ask the user. Effective only in work mode
+   * without Full Access.
+   */
+  smartApproval?: boolean;
+  /** The reviewer behind smart approval (session service: model chain, notices). */
+  reviewAction?: SecurityExtensionOptions["reviewAction"];
   resourceDiscovery?: ResourceDiscoveryMode;
   skillsDir?: string;
   /** Read-only product/agent resource roots that should not prompt. */
@@ -436,6 +447,7 @@ async function createAltTheorySessionWithManager(
     // Full Access follows the conversation (M2, 2026-09-24): the session
     // service persists it in the header and hands it back on every assembly.
     fullAccess: config.fullAccess === true,
+    smartApproval: config.smartApproval === true,
     // A switch to read-only waiting for the turn to end already mediates
     // like read-only (turning permissions down mid-run is always safe).
     readOnlyHeld: false,
@@ -509,6 +521,9 @@ async function createAltTheorySessionWithManager(
   // Full Access stays stored across permission switches but is only
   // effective outside read-only; read-only keeps it dormant, not cleared.
   const isFullAccessEffective = () => runtimeState.fullAccess && !mediatesReadOnly();
+  // Full wins when both are stored; read-only keeps both dormant.
+  const isSmartApprovalEffective = () =>
+    runtimeState.smartApproval && !runtimeState.fullAccess && !mediatesReadOnly();
   // Writable/readable roots are computed by the one root-policy module,
   // evaluated per call: the Alt writable roots plus the workspace (primary +
   // the project's companion folders, both read live from the folder policy).
@@ -630,6 +645,8 @@ async function createAltTheorySessionWithManager(
         isFullAccess: isFullAccessEffective,
         protectedDirs: config.dataDir ? [resolve(config.dataDir)] : [],
         getCommandAllowlist: config.readCommandAllowlist,
+        isSmartApproval: isSmartApprovalEffective,
+        reviewAction: config.reviewAction,
       }),
     ],
     noContextFiles: resourceDiscovery !== "dev-debug",
@@ -913,6 +930,10 @@ async function createAltTheorySessionWithManager(
       // dormant (isFullAccessEffective), so the order of the two switches
       // behind one permission choice does not matter.
       runtimeState.fullAccess = enabled;
+    },
+    getSmartApproval: () => runtimeState.smartApproval,
+    setSmartApproval: (enabled: boolean): void => {
+      runtimeState.smartApproval = enabled;
     },
     getWorkspace: () => ({
       primaryDir: cwd,

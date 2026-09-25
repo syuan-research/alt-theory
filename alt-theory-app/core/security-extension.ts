@@ -38,6 +38,7 @@ import {
   splitCommands,
   systemFolderOf,
 } from "./approval-boundary.js";
+import type { ReviewRequest, ReviewVerdict } from "./approval-reviewer.js";
 import { canonicalPathKey, isPathInside, verdict } from "./path-verdict.js";
 import type { Root } from "./root-policy.js";
 
@@ -49,7 +50,9 @@ export interface SecurityAuditEntry {
     | "blocked"
     | "approved-once"
     | "approved-session"
-    | "session-allowance";
+    | "session-allowance"
+    | "reviewer-allowed"
+    | "reviewer-denied";
   rule: string;
   detail: string;
 }
@@ -86,7 +89,28 @@ export interface SecurityExtensionOptions {
   protectedDirs?: string[];
   /** The user's command-prefix allowlist, read live (app settings). */
   getCommandAllowlist?: () => string[];
+  /** Smart approval: the reviewer model answers where Ask would ask the user. */
+  isSmartApproval?: () => boolean;
+  /**
+   * Run the reviewer (model chain and fallback notices live with the caller).
+   * "unavailable" hands this one action to the user instead.
+   */
+  reviewAction?: (
+    request: ReviewRequest,
+    context: { toolCallId: string; priorDenials: number; signal?: AbortSignal },
+  ) => Promise<ReviewVerdict>;
 }
+
+/** The reviewer's verdict as a tool row shows it (tool result details). */
+export interface ApprovalRecord {
+  by: "smart";
+  outcome: "allow" | "deny";
+  reason: string;
+  model: string;
+}
+
+/** Consecutive reviewer denials in one run before the agent is told to stop (ruling K). */
+const DENIAL_BRAKE = 3;
 
 /** Commands with no legitimate use inside an Alt Theory session: hard block. */
 const BLOCKED_COMMANDS = new Set([
@@ -208,12 +232,20 @@ export function createSecurityExtension(
     isFullAccess,
     protectedDirs = [],
     getCommandAllowlist,
+    isSmartApproval,
+    reviewAction,
   } = options;
   // Session-lifetime allowances (spec §5.2): "allow for this session" lasts
   // until the session ends, matching the OpenCode / Claude Code convention —
   // not a timer. Outlives loader reloads: the factory re-registers on reload,
   // the user's grants do not reset.
   const sessionAllowances = new Set<string>();
+  // Smart approval: exact actions the reviewer allowed in this conversation
+  // (tool + cwd + input), never across conversations, never on disk.
+  const reviewerAllowed = new Set<string>();
+  // Verdicts waiting for their tool result, so the row can show them.
+  const pendingRecords = new Map<string, ApprovalRecord>();
+  let consecutiveDenials = 0;
 
   const audit = (
     entry: Pick<SecurityAuditEntry, "toolName" | "toolCallId" | "action" | "rule" | "detail">
@@ -222,6 +254,19 @@ export function createSecurityExtension(
   };
 
   return (pi) => {
+    // Ruling K counts denials within one run.
+    pi.on("agent_start", async () => {
+      consecutiveDenials = 0;
+    });
+    // The verdict rides on the tool result's details: the row shows it, the
+    // model never sees it.
+    pi.on("tool_result", async (event) => {
+      const record = pendingRecords.get(event.toolCallId);
+      if (!record) return undefined;
+      pendingRecords.delete(event.toolCallId);
+      const details = event.details && typeof event.details === "object" ? event.details : {};
+      return { details: { ...details, altApproval: record } };
+    });
     pi.on("tool_call", async (event, ctx) => {
       const blocked = (rule: string, detail: string): ToolCallEventResult => {
         audit({
@@ -241,11 +286,63 @@ export function createSecurityExtension(
        * The approver for an action outside the fast pass. `key` names what
        * "Allow for this conversation" covers; null offers no such allowance.
        */
+      /**
+       * Smart approval's answer for this action, or the note the user's
+       * dialog carries when the reviewer could not answer.
+       */
+      const smartReview = async (
+        rule: string,
+        title: string
+      ): Promise<{ result: ToolCallEventResult | undefined } | { unavailable: string }> => {
+        const actionKey = JSON.stringify([event.toolName, sessionCwd, event.input]);
+        if (reviewerAllowed.has(actionKey)) return { result: undefined };
+        const answer = await reviewAction!(
+          {
+            toolName: event.toolName,
+            input: event.input as Record<string, unknown>,
+            cwd: sessionCwd,
+            title,
+            entries: ctx.sessionManager.getBranch(),
+            readableFile: (raw) => {
+              const target = toolPath(sessionCwd, raw);
+              return verdict(target, "read", { readable: getReadableRoots() }).outcome === "inside" ? target : null;
+            },
+          },
+          { toolCallId: event.toolCallId, priorDenials: consecutiveDenials, signal: ctx.signal },
+        );
+        if (answer.outcome === "unavailable") return { unavailable: answer.reason };
+        const record: ApprovalRecord = { by: "smart", ...answer };
+        audit({
+          toolName: event.toolName,
+          toolCallId: event.toolCallId,
+          action: answer.outcome === "allow" ? "reviewer-allowed" : "reviewer-denied",
+          rule,
+          detail: `${title} — ${answer.model}: ${answer.reason}`,
+        });
+        if (answer.outcome === "allow") {
+          consecutiveDenials = 0;
+          reviewerAllowed.add(actionKey);
+          pendingRecords.set(event.toolCallId, record);
+          return { result: undefined };
+        }
+        consecutiveDenials++;
+        const brake =
+          consecutiveDenials >= DENIAL_BRAKE
+            ? " Several actions in a row were denied: stop trying other ways around this and ask the user in the conversation."
+            : "";
+        return { result: { block: true, reason: `Smart approval denied this action: ${answer.reason}${brake}` } };
+      };
+
       const review = async (
         rule: string,
         key: string | null,
         title: string
       ): Promise<ToolCallEventResult | undefined> => {
+        if (isSmartApproval?.() && reviewAction) {
+          const smart = await smartReview(rule, title);
+          if ("result" in smart) return smart.result;
+          title = `Smart approval unavailable: ${smart.unavailable}\n${title}`;
+        }
         if (key && sessionAllowances.has(key)) {
           audit({
             toolName: event.toolName,
@@ -419,6 +516,14 @@ export function createSecurityExtension(
           if (check.outcome === "outside" && event.toolName === "write") {
             allowWriteOnce?.(target);
           }
+          return undefined;
+        }
+        if (check.outcome === "outside" && isSmartApproval?.() && reviewAction) {
+          // Smart approval passes this one write, not the folder.
+          const target = canonicalPathKey(resolved);
+          const outcome = await review("path_boundary", null, `${verb} file: ${summarize(target)}`);
+          if (outcome) return outcome;
+          if (event.toolName === "write") allowWriteOnce?.(target);
           return undefined;
         }
         if (check.outcome === "outside") {

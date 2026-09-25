@@ -80,6 +80,18 @@ export function clampSubagentMode(
     : "work";
 }
 
+/**
+ * Smart approval at a child's birth (inheritance cap, 2026-09-26): a work
+ * child of a parent on smart approval or Full starts on smart approval;
+ * Full itself is never inherited.
+ */
+export function inheritsSmartApproval(
+  parent: { getFullAccess: () => boolean; getSmartApproval: () => boolean },
+  childMode: AltMode,
+): boolean {
+  return childMode === "work" && (parent.getFullAccess() || parent.getSmartApproval());
+}
+
 // ---------------------------------------------------------------------------
 // System-prompt sections
 // ---------------------------------------------------------------------------

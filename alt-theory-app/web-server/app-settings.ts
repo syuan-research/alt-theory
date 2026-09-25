@@ -11,6 +11,9 @@ import { join } from "path";
 import { writeJsonAtomic } from "../core/data-dir.js";
 import { samePath } from "../core/path-verdict.js";
 import type { AltMode, RuntimeMode } from "../core/alt-theory-core.js";
+import { THINKING_LEVELS } from "./subagent-config.js";
+
+type ThinkingLevel = (typeof THINKING_LEVELS)[number];
 
 /**
  * Which skill wins when a bundled skill and a user-installed skill cover the
@@ -67,7 +70,9 @@ export interface AppSettings {
    */
   autoTitle?: {
     enabled: boolean;
-    model: { provider: string; modelId: string } | null;
+    model: { provider: string; modelId: string; thinkingLevel?: ThinkingLevel } | null;
+    /** Tried in order after the pinned model (subagent reference syntax). */
+    fallbackModels?: string[];
   };
   /**
    * Which permission a new conversation starts with (local only; hosted is
@@ -80,6 +85,15 @@ export interface AppSettings {
    * (exact, `prefix …`, or `prefix*`). Absent = none.
    */
   commandAllowlist?: string[];
+  /**
+   * Smart approval's reviewer (ruling I): a model and ordered fallbacks in
+   * the subagent reference syntax. Absent = auto (the conversation's model
+   * at low thinking). Either way the conversation's model at low is the
+   * last level.
+   */
+  approvalReviewer?: { model: string; fallbackModels: string[] };
+  /** The Composer's reviewer-setup hint was dismissed for good. */
+  smartApprovalHintDismissed?: boolean;
   /** App-wide behavior runtime. Absent = Alt Theory. */
   runtimeMode?: RuntimeMode;
   /** Native Pi may add Alt Theory's bundled skills to Pi's own discovery. */
@@ -259,8 +273,17 @@ export function readAppSettingsWithWarning(dataDir: string): {
                 parsed.autoTitle.model &&
                 typeof parsed.autoTitle.model.provider === "string" &&
                 typeof parsed.autoTitle.model.modelId === "string"
-                  ? parsed.autoTitle.model
+                  ? {
+                      provider: parsed.autoTitle.model.provider,
+                      modelId: parsed.autoTitle.model.modelId,
+                      ...(THINKING_LEVELS.includes(parsed.autoTitle.model.thinkingLevel as ThinkingLevel)
+                        ? { thinkingLevel: parsed.autoTitle.model.thinkingLevel }
+                        : {}),
+                    }
                   : null,
+              ...(modelReferences(parsed.autoTitle.fallbackModels)
+                ? { fallbackModels: modelReferences(parsed.autoTitle.fallbackModels)! }
+                : {}),
             },
           }
         : {}),
@@ -269,6 +292,12 @@ export function readAppSettingsWithWarning(dataDir: string): {
         : {}),
       ...(PERMISSIONS.includes(parsed.defaultPermission as Permission)
         ? { defaultPermission: parsed.defaultPermission }
+        : {}),
+      ...(normalizeModelChain(parsed.approvalReviewer)
+        ? { approvalReviewer: normalizeModelChain(parsed.approvalReviewer)! }
+        : {}),
+      ...(parsed.smartApprovalHintDismissed === true
+        ? { smartApprovalHintDismissed: true }
         : {}),
       ...(Array.isArray(parsed.commandAllowlist)
         ? { commandAllowlist: normalizeCommandAllowlist(parsed.commandAllowlist) }
@@ -385,8 +414,8 @@ export function resolveExternalSkillPaths(
 }
 
 /** The permission control's three choices (UI term; stored as mode + Full Access). */
-export type Permission = "read-only" | "ask" | "full";
-export const PERMISSIONS: Permission[] = ["read-only", "ask", "full"];
+export type Permission = "read-only" | "ask" | "smart" | "full";
+export const PERMISSIONS: Permission[] = ["read-only", "ask", "smart", "full"];
 
 /**
  * The settings a new conversation starts from. Hosted deployments are
@@ -395,12 +424,30 @@ export const PERMISSIONS: Permission[] = ["read-only", "ask", "full"];
 export function defaultSessionPermission(
   settings: AppSettings,
   localMode: boolean,
-): { mode: AltMode; fullAccess: boolean } {
+): { mode: AltMode; fullAccess: boolean; smartApproval: boolean } {
   const permission = localMode ? (settings.defaultPermission ?? "ask") : "read-only";
   return {
     mode: permission === "read-only" ? "read-only" : "work",
     fullAccess: permission === "full",
+    smartApproval: permission === "smart",
   };
+}
+
+/** Model references in the subagent syntax, or null when any is malformed. */
+function modelReferences(value: unknown): string[] | null {
+  if (!Array.isArray(value)) return null;
+  const refs = value.map((ref) => (typeof ref === "string" ? ref.trim() : ""));
+  return refs.every((ref) => ref !== "" && !/\s/.test(ref)) ? refs : null;
+}
+
+/** A model and its ordered fallbacks, or null when malformed. */
+export function normalizeModelChain(
+  value: unknown,
+): { model: string; fallbackModels: string[] } | null {
+  const chain = value as { model?: unknown; fallbackModels?: unknown } | null;
+  const [model] = modelReferences([chain?.model]) ?? [];
+  const fallbackModels = modelReferences(chain?.fallbackModels ?? []);
+  return model && fallbackModels ? { model, fallbackModels } : null;
 }
 
 /** Trimmed, non-empty, de-duplicated prefixes, in the user's order. */

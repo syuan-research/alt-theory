@@ -7,6 +7,13 @@ import type {
   ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { resolveCliModel } from "@earendil-works/pi-coding-agent";
+import {
+  parseReviewReply,
+  REVIEWER_SYSTEM_PROMPT,
+  reviewerMessage,
+  type ReviewRequest,
+  type ReviewVerdict,
+} from "../core/approval-reviewer.js";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { getSupportedThinkingLevels, type ImageContent, type Model } from "@earendil-works/pi-ai";
 import {
@@ -51,6 +58,7 @@ import { appendLiveRunEvent, type LiveRun } from "./live-run.js";
 import { describeFailure, throwFailure, type Failure } from "../core/failure.js";
 import { RunState, type PendingChanges } from "./run-state.js";
 import { resolveThinkingLevel, type ResolvedThinking } from "./thinking-level.js";
+import { t } from "./i18n.js";
 import {
   appendAbComparisonRecord,
   type AbComparisonRecord,
@@ -130,6 +138,7 @@ import {
 import { describeChildOutcome, type ChildOutcome } from "./child-outcome.js";
 import {
   clampSubagentMode,
+  inheritsSmartApproval,
   createAgentTeamTools,
   LEAD_DELEGATION_PROMPT_SECTION,
   SUBAGENT_PROMPT_SECTION,
@@ -242,9 +251,18 @@ export interface SessionCreationMetadata {
    * true. Only valid with a work-capable `mode`; rejected otherwise.
    */
   fullAccess?: boolean;
+  /** Smart approval at birth (inherited or chosen); dormant under read-only. */
+  smartApproval?: boolean;
 }
 
 export type { ForkPurpose, StudyTag, SessionModelOverride };
+
+/** One model an auxiliary task (smart approval, auto-title) can try. */
+interface AuxiliaryStep {
+  model: Model<any>;
+  thinkingLevel?: ThinkingLevel;
+  label: string;
+}
 
 export interface RunHandle {
   ids: {
@@ -383,6 +401,8 @@ interface ManagedSession {
   setNativePiScanAltSkills: (enabled: boolean) => Promise<void>;
   getFullAccess: () => boolean;
   setFullAccess: (enabled: boolean) => void;
+  getSmartApproval: () => boolean;
+  setSmartApproval: (enabled: boolean) => void;
   getWorkspace: () => { primaryDir: string };
   approvalBridge: ApprovalBridge;
   selectors: SessionSelectors;
@@ -848,8 +868,9 @@ export class SessionService implements AgentTeamBridge {
    * Auto-name a conversation after its first real turn (v1.2.1). Best-effort:
    * runs once (only when no ui-alias.json exists — imports seed one, manual
    * renames create one), fires-and-forgets, and swallows all errors so a failed
-   * title never disturbs the run. Model chain: pinned model (settings) →
-   * session model → no write (frontend keeps the first-words snippet).
+   * title never disturbs the run. Model chain: pinned model (settings) → its
+   * fallbacks → session model at low → no write (frontend keeps the
+   * first-words snippet). Each fallback is announced in the conversation.
    */
   private async maybeAutoTitle(managed: ManagedSession): Promise<void> {
     try {
@@ -864,21 +885,23 @@ export class SessionService implements AgentTeamBridge {
       );
       if (!firstUser) return;
 
-      const sessionModel = managed.session.model;
+      // Pinned model → its fallbacks → the conversation's model (ruling I).
       const pin = settings.autoTitle?.model ?? null;
-      const pinnedModel = pin
-        ? managed.session.modelRuntime.getModel(pin.provider, pin.modelId)
-        : null;
-
-      let title = await completeTitle(
-        managed.session.modelRuntime,
-        pinnedModel ?? sessionModel,
-        firstUser,
+      const steps = this.auxiliaryChain(
+        managed,
+        [
+          ...(pin ? [`${pin.provider}/${pin.modelId}${pin.thinkingLevel ? `:${pin.thinkingLevel}` : ""}`] : []),
+          ...(settings.autoTitle?.fallbackModels ?? []),
+        ],
+        "low",
       );
-      if (!title && pinnedModel && sessionModel && pinnedModel !== sessionModel) {
-        // Pinned model failed → fall back to the conversation model.
-        title = await completeTitle(managed.session.modelRuntime, sessionModel, firstUser);
-      }
+      const answer = await this.completeDownChain(
+        managed,
+        steps,
+        { message: titlePrompt(firstUser), timeoutMs: 60_000, task: t("Auto-name") },
+        cleanTitle,
+      );
+      const title = "value" in answer ? answer.value : null;
       if (!title) return; // leave the first-words snippet fallback in place
 
       // A manual rename may have landed while the model was thinking.
@@ -1030,6 +1053,7 @@ export class SessionService implements AgentTeamBridge {
           modelOverride: header?.modelOverride ?? null,
           subagentExecution: header?.subagentExecution ?? null,
           fullAccess: header?.fullAccess,
+          smartApproval: header?.smartApproval,
         });
     this.sessions.set(replacement.manifest.sessionId, replacement);
     await this.disposeManaged(previous);
@@ -1139,6 +1163,35 @@ export class SessionService implements AgentTeamBridge {
       await managed.runState.applyOrDefer({ fullAccess: true }, () =>
         this.applyFullAccess(managed, true),
       );
+    }
+    return this.publish(managed);
+  }
+
+  /**
+   * Smart approval (2026-09-26): lives in the header like Full Access.
+   * Applies at once in both directions — the reviewer only answers where
+   * the user would otherwise be asked, so a mid-run switch is safe.
+   */
+  async setSmartApproval(
+    sessionId: string,
+    enabled: boolean,
+  ): Promise<SessionSnapshot> {
+    const managed = this.requireSession(sessionId);
+    if (managed.getSmartApproval() !== enabled) {
+      managed.setSmartApproval(enabled);
+      const { recordsDir } = managed.manifest;
+      const header = readV4SessionHeader(recordsDir);
+      if (header) {
+        const next = { ...header };
+        if (enabled) next.smartApproval = true;
+        else delete next.smartApproval;
+        writeSessionHeader(recordsDir, next);
+      }
+      appendSessionEvent(recordsDir, {
+        sessionId,
+        type: "smart_approval_changed",
+        details: { enabled },
+      });
     }
     return this.publish(managed);
   }
@@ -2030,6 +2083,7 @@ export class SessionService implements AgentTeamBridge {
         overrideSessionCwd: !externalPrimary,
         activeLeafEntryId: leafId,
         mode: previous.getAltMode(),
+        smartApproval: inheritsSmartApproval(previous, previous.getAltMode()),
         ...(readV4SessionHeader(previous.manifest.recordsDir)?.workspace
           ? { workspace: previous.getWorkspace() }
           : {}),
@@ -2063,6 +2117,7 @@ export class SessionService implements AgentTeamBridge {
         forkedFrom: { sessionId, purpose },
         studyTag: sourceHeader?.studyTag ?? null,
         modelOverride: sourceHeader?.modelOverride ?? null,
+        smartApproval: inheritsSmartApproval(previous, previous.getAltMode()),
       });
       appendConfigEvent(result.manifest.recordsDir, {
         sessionId: result.manifest.sessionId,
@@ -3058,6 +3113,8 @@ export class SessionService implements AgentTeamBridge {
     forkPurpose: ForkPurpose | null | undefined;
     /** The header's Full Access; absent (fork, child) = off. */
     fullAccess?: boolean;
+    /** The header's smart approval; absent = off. */
+    smartApproval?: boolean;
   }) {
     const appSettings = readAppSettings(this.config.dataDir);
     const subagentConfig = readSubagentConfig(this.config.dataDir).config;
@@ -3086,6 +3143,12 @@ export class SessionService implements AgentTeamBridge {
       // Hosted deployments are read-only (owner 2026-09-25).
       altMode: this.config.localMode === false ? "read-only" : input.altMode,
       fullAccess: input.fullAccess === true,
+      smartApproval: input.smartApproval === true,
+      reviewAction: (
+        request: ReviewRequest,
+        context: { toolCallId: string; priorDenials: number; signal?: AbortSignal },
+      ) =>
+        this.reviewAction(input.sessionId, request, context),
       runtimeMode: appSettings.runtimeMode ?? "alt-theory",
       trimmedPiBasePrompt: appSettings.experimentTrimmedPiPrompt === true,
       modelHooks: appSettings.modelHooks !== false,
@@ -3185,6 +3248,7 @@ export class SessionService implements AgentTeamBridge {
           defaultSessionPermission(appSettings, this.config.localMode !== false).mode,
         forkPurpose: metadata.forkedFrom?.purpose ?? null,
         fullAccess: metadata.fullAccess,
+        smartApproval: metadata.smartApproval,
       }),
     });
     const visibility = metadata.visibility ?? this.fallbackVisibility;
@@ -3217,6 +3281,7 @@ export class SessionService implements AgentTeamBridge {
       studyTag: metadata.studyTag ?? null,
       modelOverride: metadata.modelOverride ?? null,
       fullAccess: metadata.fullAccess,
+      smartApproval: metadata.smartApproval,
       subagentExecution: metadata.subagentExecution ?? null,
     });
 
@@ -3268,6 +3333,7 @@ export class SessionService implements AgentTeamBridge {
       modelOverride: header?.modelOverride ?? null,
       forkedFrom: { sessionId, purpose },
       mode: parent.getAltMode(),
+      smartApproval: inheritsSmartApproval(parent, parent.getAltMode()),
     });
     appendSessionEvent(parent.manifest.recordsDir, {
       sessionId,
@@ -3344,6 +3410,162 @@ export class SessionService implements AgentTeamBridge {
   // messaging all come for free. This block adds only: spawn, addressed
   // envelopes (agent-mail.jsonl), and wake delivery.
   // -------------------------------------------------------------------------
+
+  /**
+   * An auxiliary task's model chain (smart-approval ruling I): the configured
+   * references in order, then — as the last level — the conversation's own
+   * model at `finalThinking` when it is not already in the chain.
+   * References use the subagent syntax (`inherit[:level]`,
+   * `provider/model[:level]`); one that no longer resolves is skipped.
+   */
+  private auxiliaryChain(
+    managed: ManagedSession,
+    references: string[],
+    finalThinking: ThinkingLevel | null,
+  ): AuxiliaryStep[] {
+    const steps: AuxiliaryStep[] = [];
+    const add = (override: SessionModelOverride | null) => {
+      if (!override) return;
+      const model = managed.session.modelRuntime.getModel(override.provider, override.modelId);
+      if (!model || isNoModelPlaceholder(model)) return;
+      if (steps.some((step) => step.model === model && step.thinkingLevel === override.thinkingLevel)) return;
+      steps.push({
+        model,
+        thinkingLevel: override.thinkingLevel,
+        label: `${model.provider}/${model.id}${override.thinkingLevel ? ` · ${override.thinkingLevel}` : ""}`,
+      });
+    };
+    for (const reference of references) {
+      try {
+        add(this.resolveSubagentModelReference(managed, reference));
+      } catch {
+        // Unresolvable (model removed from config): the chain moves on.
+      }
+    }
+    if (finalThinking) {
+      try {
+        add(this.resolveSubagentModelReference(managed, `inherit:${finalThinking}`));
+      } catch {
+        // No conversation model: nothing to add.
+      }
+    }
+    return steps;
+  }
+
+  /**
+   * Run one auxiliary completion down its chain. Every fallback is announced
+   * in the conversation (ruling I); the first answer `accept` takes wins.
+   */
+  private async completeDownChain<T>(
+    managed: ManagedSession,
+    steps: AuxiliaryStep[],
+    request: { systemPrompt?: string; message: string; timeoutMs: number; signal?: AbortSignal; task: string },
+    accept: (text: string) => T | null,
+  ): Promise<{ value: T; step: AuxiliaryStep } | { failure: string }> {
+    let failure = "no model is available";
+    for (const [index, step] of steps.entries()) {
+      if (index > 0) {
+        this.emit(managed, {
+          type: "extension_notice",
+          payload: {
+            message: t("{task}: {failed} did not answer ({reason}); trying {next}.", {
+              task: request.task,
+              failed: steps[index - 1].label,
+              reason: failure,
+              next: step.label,
+            }),
+            level: "warning",
+          },
+        });
+      }
+      try {
+        const reply = await managed.session.modelRuntime.completeSimple(
+          step.model,
+          {
+            ...(request.systemPrompt ? { systemPrompt: request.systemPrompt } : {}),
+            messages: [{ role: "user", content: request.message, timestamp: Date.now() }],
+          },
+          {
+            // "off" is the absence of a reasoning request.
+            ...(step.thinkingLevel && step.thinkingLevel !== "off" ? { reasoning: step.thinkingLevel } : {}),
+            maxTokens: 4096,
+            maxRetries: 0,
+            timeoutMs: request.timeoutMs,
+            ...(request.signal ? { signal: request.signal } : {}),
+          },
+        );
+        if (reply.stopReason === "error" || reply.stopReason === "aborted") {
+          throw new Error(reply.errorMessage || reply.stopReason);
+        }
+        const text = (reply.content ?? [])
+          .filter((part): part is { type: "text"; text: string } => part?.type === "text")
+          .map((part) => part.text)
+          .join("\n");
+        const value = accept(text);
+        if (value === null) throw new Error("the answer could not be read");
+        return { value, step };
+      } catch (error) {
+        if (request.signal?.aborted) return { failure: "the run was stopped" };
+        failure = error instanceof Error ? error.message.split("\n")[0].slice(0, 160) : String(error);
+      }
+    }
+    return { failure };
+  }
+
+  /** Smart approval's reviewer for one action (the security extension calls this). */
+  private async reviewAction(
+    sessionId: string,
+    request: ReviewRequest,
+    context: { toolCallId: string; priorDenials: number; signal?: AbortSignal },
+  ): Promise<ReviewVerdict> {
+    const managed = this.sessions.get(sessionId);
+    if (!managed) return { outcome: "unavailable", reason: "the conversation is not open" };
+    const reviewer = readAppSettings(this.config.dataDir).approvalReviewer;
+    const steps = this.auxiliaryChain(
+      managed,
+      reviewer ? [reviewer.model, ...reviewer.fallbackModels] : [],
+      "low",
+    );
+    const result = await this.completeDownChain(
+      managed,
+      steps,
+      {
+        systemPrompt: REVIEWER_SYSTEM_PROMPT,
+        message: reviewerMessage(request, {
+          leadRequest: this.leadUserRequest(managed),
+          priorDenials: context.priorDenials,
+        }),
+        timeoutMs: 60_000,
+        signal: context.signal,
+        task: t("Smart approval"),
+      },
+      parseReviewReply,
+    );
+    if ("failure" in result) return { outcome: "unavailable", reason: result.failure };
+    return { ...result.value, model: result.step.label };
+  }
+
+  /** A subagent's root conversation's latest user request (Codex worker-thread practice). */
+  private leadUserRequest(managed: ManagedSession): string | null {
+    let header = readV4SessionHeader(managed.manifest.recordsDir);
+    if (header?.forkedFrom?.purpose !== "subagent") return null;
+    let lead: ManagedSession | undefined;
+    for (let depth = 0; header?.forkedFrom && depth < 8; depth++) {
+      lead = this.sessions.get(header.forkedFrom.sessionId);
+      if (!lead) return null;
+      header = readV4SessionHeader(lead.manifest.recordsDir);
+      if (header?.forkedFrom?.purpose !== "subagent") break;
+    }
+    if (!lead) return null;
+    const entries = lead.session.sessionManager.getBranch();
+    for (const entry of [...entries].reverse()) {
+      const message = (entry as { type?: string; message?: { role?: string; content?: unknown } }).message;
+      if ((entry as { type?: string }).type !== "message" || message?.role !== "user") continue;
+      const text = contentToText(message.content).trim();
+      if (text) return text;
+    }
+    return null;
+  }
 
   private resolveSubagentModelReference(
     parent: ManagedSession,
@@ -3460,6 +3682,7 @@ export class SessionService implements AgentTeamBridge {
       subagentExecution: { agentType, modelChain },
       forkedFrom: { sessionId: parentSessionId, purpose: "subagent" },
       mode,
+      smartApproval: inheritsSmartApproval(parent, mode),
     });
     const childManaged = this.requireSession(child.sessionId);
     // Prefer a human name when given. Default is English "Subagent N" (space),
@@ -4011,6 +4234,7 @@ export class SessionService implements AgentTeamBridge {
         altMode: persistedMode,
         forkPurpose: persistedHeader?.forkedFrom?.purpose ?? null,
         fullAccess: persistedHeader?.fullAccess,
+        smartApproval: persistedHeader?.smartApproval,
       }),
     };
     // Model-on-resume recovery (v1.2.1 item 2): a per-session model override can
@@ -4180,6 +4404,7 @@ export class SessionService implements AgentTeamBridge {
         altMode: persistedMode,
         forkPurpose: replacedHeader?.forkedFrom?.purpose ?? null,
         fullAccess: replacedHeader?.fullAccess,
+        smartApproval: replacedHeader?.smartApproval,
       }),
       overrideSessionCwd: true,
     });
@@ -4222,6 +4447,7 @@ export class SessionService implements AgentTeamBridge {
     modelOverride?: SessionModelOverride | null;
     /** Fork flows call this before the child's header exists on disk. */
     forkPurpose?: ForkPurpose;
+    smartApproval?: boolean;
   }): Promise<ManagedSession> {
     const persistedHeader = readV4SessionHeader(args.sessionDirs.recordsDir);
     const persistedMode = args.mode ?? toAltMode(persistedHeader?.mode);
@@ -4246,6 +4472,7 @@ export class SessionService implements AgentTeamBridge {
         modelArgs: this.modelArgsFor(modelOverride),
         altMode: persistedMode,
         forkPurpose: args.forkPurpose ?? persistedHeader?.forkedFrom?.purpose ?? null,
+        smartApproval: args.smartApproval ?? persistedHeader?.smartApproval,
       }),
     });
     if ("activeLeafEntryId" in args) {
@@ -4280,6 +4507,8 @@ export class SessionService implements AgentTeamBridge {
     setNativePiScanAltSkills: (enabled: boolean) => Promise<void>;
     getFullAccess: () => boolean;
     setFullAccess: (enabled: boolean) => void;
+    getSmartApproval: () => boolean;
+    setSmartApproval: (enabled: boolean) => void;
     getWorkspace: () => { primaryDir: string };
     selectors: SessionSelectors;
     subagentConfig: SubagentConfig;
@@ -4864,6 +5093,7 @@ export class SessionService implements AgentTeamBridge {
       customInstructionRef: managed.selectors.customInstructionRef ?? null,
       mode: managed.getAltMode(),
       fullAccess: managed.getFullAccess(),
+      smartApproval: managed.getSmartApproval(),
       modelOverride: header?.modelOverride ?? null,
       currentModel: managed.session.model && !isNoModelPlaceholder(managed.session.model)
         ? {
@@ -5303,44 +5533,14 @@ export function isUnknownModelError(err: unknown): boolean {
 
 // --- Auto-title helpers (v1.2.1) -------------------------------------------
 
-/** A bare completion (no app system prompt, no tools) that returns a short
- *  title, or null on any failure. */
-async function completeTitle(
-  runtime: ModelRuntime,
-  model: Model<any> | undefined,
-  firstUser: string,
-): Promise<string | null> {
-  if (!model) return null;
-  try {
-    // Through the runtime, not the compat completeSimple: the runtime
-    // resolves auth per model (credential store, runtime key, models.json);
-    // the compat layer only knows standard provider env vars, so every title
-    // call went out unauthenticated and naming silently never happened.
-    const result = await runtime.completeSimple(model, {
-      messages: [
-        {
-          role: "user",
-          content:
-            "Give a short 5-8 word title for a conversation that begins with " +
-            "the message below. Reply in the same language as the message. " +
-            "Reply with only the title — no quotes, no trailing punctuation.\n\n" +
-            firstUser.slice(0, 2000),
-          timestamp: Date.now(),
-        },
-      ],
-    });
-    const text = (result.content ?? [])
-      .filter(
-        (part): part is { type: "text"; text: string } =>
-          !!part && (part as { type?: string }).type === "text",
-      )
-      .map((part) => part.text)
-      .join(" ");
-    return cleanTitle(text);
-  } catch (error) {
-    console.warn("[alt-theory] auto-title failed:", error);
-    return null;
-  }
+/** The auto-title request: a bare completion, no app system prompt, no tools. */
+function titlePrompt(firstUser: string): string {
+  return (
+    "Give a short 5-8 word title for a conversation that begins with " +
+    "the message below. Reply in the same language as the message. " +
+    "Reply with only the title — no quotes, no trailing punctuation.\n\n" +
+    firstUser.slice(0, 2000)
+  );
 }
 
 /** First genuine user message text; skill invocations strip to empty and are

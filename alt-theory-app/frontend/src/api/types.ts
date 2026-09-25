@@ -98,6 +98,8 @@ export interface SessionDraftSnapshot {
   mode: AltMode;
   /** The default permission's Full Access (local only). */
   fullAccess: boolean;
+  /** The default permission's smart approval (local only). */
+  smartApproval?: boolean;
   modelOverride?: SessionModelOverride | null;
   thinking?: ResolvedThinking;
 }
@@ -118,6 +120,7 @@ export interface NewConversationSettings {
   studyTag?: StudyTag | null;
   workspacePrimaryDir?: string | null;
   fullAccess?: boolean;
+  smartApproval?: boolean;
 }
 
 export type ThinkingLevel =
@@ -226,6 +229,8 @@ export interface SessionSnapshot {
   mode?: AltMode;
   /** Full Access (v1.4.8): in-memory session state; undefined = not reported. */
   fullAccess?: boolean;
+  /** Smart approval (2026-09-26): the reviewer model answers approvals. */
+  smartApproval?: boolean;
   modelOverride?: SessionModelOverride | null;
   currentModel?: { provider: string; modelId: string };
   studyTag?: StudyTag | null;
@@ -725,6 +730,7 @@ export type ClientMessageBody =
     }
   | { type: "switch_mode"; payload: { mode: AltMode } }
   | { type: "set_full_access"; payload: { enabled: boolean } }
+  | { type: "set_smart_approval"; payload: { enabled: boolean } }
   | { type: "set_study_tag"; payload: { studyTag: StudyTag | null } }
   | {
       type: "set_session_model";

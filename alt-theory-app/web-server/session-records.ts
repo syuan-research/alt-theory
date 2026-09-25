@@ -129,6 +129,9 @@ export interface V4SessionHeader extends RecordEnvelope {
   /** Full Access (M2, 2026-09-24): present only while on. Never copied to a
    *  child — branches, BTW, Helpers and subagents start without it. */
   fullAccess?: true;
+  /** Smart approval (2026-09-26): present only while on. Children inherit it
+   *  at birth when the parent had it or Full (the inheritance cap). */
+  smartApproval?: true;
   /** Spawn-time preset snapshot; each fallback keeps its own thinking level. */
   subagentExecution?: {
     agentType: string;
@@ -170,6 +173,7 @@ export function writeFoundationRecords(args: {
   studyTag?: StudyTag | null;
   modelOverride?: SessionModelOverride | null;
   fullAccess?: boolean;
+  smartApproval?: boolean;
   subagentExecution?: {
     agentType: string;
     modelChain: SessionModelOverride[];
@@ -197,6 +201,7 @@ export function writeFoundationRecords(args: {
     ...(args.studyTag ? { studyTag: { ...args.studyTag } } : {}),
     ...(args.modelOverride ? { modelOverride: { ...args.modelOverride } } : {}),
     ...(args.fullAccess ? { fullAccess: true as const } : {}),
+    ...(args.smartApproval ? { smartApproval: true as const } : {}),
     ...(args.subagentExecution
       ? {
           subagentExecution: {

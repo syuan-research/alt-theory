@@ -152,6 +152,7 @@ import {
   resolveExternalSkillPaths,
   defaultSessionPermission,
   normalizeCommandAllowlist,
+  normalizeModelChain,
   PERMISSIONS,
   type Permission,
   writeAppSettings,
@@ -166,6 +167,7 @@ import {
   readSubagentConfig,
   subagentConfigPath,
   subagentModelCandidates,
+  THINKING_LEVELS,
   writeSubagentConfig,
 } from "./subagent-config.js";
 import {
@@ -427,23 +429,71 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   app.get("/api/settings/auto-title", (_req, res) => {
     if (!requireLocalConfigMode(res)) return;
     const s = readAppSettings(dataDir).autoTitle;
-    res.json({ enabled: s?.enabled !== false, model: s?.model ?? null });
+    res.json({
+      enabled: s?.enabled !== false,
+      model: s?.model ?? null,
+      fallbackModels: s?.fallbackModels ?? [],
+    });
   });
   app.put("/api/settings/auto-title", (req, res) => {
     if (!requireLocalConfigMode(res)) return;
-    const body = req.body as { enabled?: unknown; model?: unknown };
-    const raw = body.model as { provider?: unknown; modelId?: unknown } | null;
+    const body = req.body as { enabled?: unknown; model?: unknown; fallbackModels?: unknown };
+    const raw = body.model as { provider?: unknown; modelId?: unknown; thinkingLevel?: unknown } | null;
     const model =
       raw && typeof raw.provider === "string" && typeof raw.modelId === "string"
-        ? { provider: raw.provider, modelId: raw.modelId }
+        ? {
+            provider: raw.provider,
+            modelId: raw.modelId,
+            ...(THINKING_LEVELS.includes(raw.thinkingLevel as (typeof THINKING_LEVELS)[number])
+              ? { thinkingLevel: raw.thinkingLevel as (typeof THINKING_LEVELS)[number] }
+              : {}),
+          }
         : null;
+    const fallbacks = normalizeModelChain({ model: "-", fallbackModels: body.fallbackModels ?? [] });
+    if (!fallbacks) {
+      res.status(400).json({ error: "Invalid fallback models" });
+      return;
+    }
     const current = readAppSettings(dataDir);
     const next = {
       ...current,
-      autoTitle: { enabled: body.enabled !== false, model },
+      autoTitle: {
+        enabled: body.enabled !== false,
+        model,
+        ...(fallbacks.fallbackModels.length ? { fallbackModels: fallbacks.fallbackModels } : {}),
+      },
     };
     writeAppSettings(dataDir, next);
     res.json({ ok: true, autoTitle: next.autoTitle });
+  });
+  // Smart approval's reviewer (2026-09-26): null = auto.
+  app.get("/api/settings/approval-reviewer", (_req, res) => {
+    if (!requireLocalConfigMode(res)) return;
+    const settings = readAppSettings(dataDir);
+    res.json({
+      reviewer: settings.approvalReviewer ?? null,
+      hintDismissed: settings.smartApprovalHintDismissed === true,
+    });
+  });
+  app.put("/api/settings/approval-reviewer", (req, res) => {
+    if (!requireLocalConfigMode(res)) return;
+    const body = req.body as { reviewer?: unknown; hintDismissed?: unknown };
+    const settings = readAppSettings(dataDir);
+    if ("reviewer" in body) {
+      const reviewer = body.reviewer === null ? null : normalizeModelChain(body.reviewer);
+      if (body.reviewer !== null && !reviewer) {
+        res.status(400).json({ error: "Invalid reviewer model chain" });
+        return;
+      }
+      if (reviewer) settings.approvalReviewer = reviewer;
+      else delete settings.approvalReviewer;
+    }
+    if (body.hintDismissed === true) settings.smartApprovalHintDismissed = true;
+    writeAppSettings(dataDir, settings);
+    res.json({
+      reviewer: settings.approvalReviewer ?? null,
+      hintDismissed: settings.smartApprovalHintDismissed === true,
+    });
   });
   // Separate from app/Pi settings so a broken optional agent preset file can
   // never prevent Alt Theory from opening with general/inherit.
@@ -2535,6 +2585,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       const visibility = draft.visibility ?? defaultDraftVisibility();
       if (!isVisibilityForMode(visibility, localMode)) throw new Error("Invalid visibility");
       if (draft.fullAccess && !localMode) throw new Error("Full access is not enabled on this server");
+      if (draft.smartApproval && !localMode) throw new Error("Smart approval is not enabled on this server");
       if (mode !== "read-only" && !localMode) throw new Error("This server allows read-only conversations only");
       let workspace: { primaryDir: string } | null = null;
       if (draft.workspacePrimaryDir) {
@@ -2554,6 +2605,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           mode,
           // Under read-only the value is held dormant.
           fullAccess: draft.fullAccess ?? defaults.fullAccess,
+          smartApproval: draft.smartApproval ?? defaults.smartApproval,
           modelOverride: draft.modelOverride ?? null,
           studyTag: draft.studyTag ?? null,
           workspace,
@@ -3102,6 +3154,26 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             }
             try {
               await sessionService.setFullAccess(attachedSessionId, msg.payload.enabled);
+            } catch (error) {
+              fail(error);
+            }
+            break;
+          }
+          case "set_smart_approval": {
+            if (typeof msg.payload?.enabled !== "boolean") {
+              fail(new Error("enabled must be a boolean"));
+              break;
+            }
+            if (!localMode) {
+              fail(new Error("Smart approval is not enabled on this server"));
+              break;
+            }
+            if (!attachedSessionId) {
+              fail(new Error("A materialized session is required"));
+              break;
+            }
+            try {
+              await sessionService.setSmartApproval(attachedSessionId, msg.payload.enabled);
             } catch (error) {
               fail(error);
             }
