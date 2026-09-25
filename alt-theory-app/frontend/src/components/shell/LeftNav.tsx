@@ -247,16 +247,11 @@ export function LeftNav({ hidden = false }: { hidden?: boolean }) {
             {t("Settings")}
           </button>
           <HelpMenu />
-          <div
-            className="avatar"
-            data-tip={
-              app.appMode === "local"
-                ? undefined
-                : (app.auth.displayLabel ?? t("Signed in"))
-            }
-          >
-            {avatarLetter}
-          </div>
+          {app.appMode === "local" ? null : (
+            <div className="avatar" data-tip={app.auth.displayLabel ?? t("Signed in")}>
+              {avatarLetter}
+            </div>
+          )}
         </div>
       </div>
       <SessionImportDialog
