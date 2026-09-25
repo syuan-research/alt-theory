@@ -1010,79 +1010,6 @@ function UserNav({ onImport }: { onImport: () => void }) {
         ) : null}
         <RunningCount sessions={app.sessions} />
       </div>
-      <div className="workspace-list-head">
-        <button
-          type="button"
-          className={`workspace-list-title${projectsCollapsed ? " closed" : ""}`}
-          aria-expanded={!projectsCollapsed}
-          onClick={() => setProjectsCollapsed((value) => !value)}
-        >
-          <i className="ph ph-caret-down tw" aria-hidden="true" />
-          {t("Projects")}
-        </button>
-        <div className="workspace-list-actions">
-          <button
-            type="button"
-            data-tip={t("Collapse all projects")}
-            aria-label={t("Collapse all projects")}
-            onClick={() => setClosedGroups(new Set(projectGroups.map((group) => group.dir)))}
-          >
-            <i className="ph ph-arrows-in-line-vertical" aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            data-tip={t("Expand all projects")}
-            aria-label={t("Expand all projects")}
-            onClick={() => setClosedGroups(new Set())}
-          >
-            <i className="ph ph-arrows-out-line-vertical" aria-hidden="true" />
-          </button>
-          {local ? (
-            <button
-              type="button"
-              data-tip={t("Add project…")}
-              aria-label={t("Add project…")}
-              onClick={() => void addFolder()}
-            >
-              <i className="ph ph-folder-plus" aria-hidden="true" />
-            </button>
-          ) : null}
-          <details className="list-more list-sort">
-            <summary data-tip={t("Sort conversations")}>
-              <i className="ph ph-sort-ascending" />
-            </summary>
-            <div className="list-menu">
-              <div className="list-menu-label">{t("Folders")}</div>
-              {(["name", "modified"] as const).map((value) => (
-                <button
-                  key={`folder-${value}`}
-                  onClick={(event) => {
-                    closeMenu(event);
-                    chooseSort({ ...listSort, folders: value });
-                  }}
-                >
-                  {t(value === "name" ? "Name" : "Modified")}
-                  {listSort.folders === value ? <i className="ph ph-check check" /> : null}
-                </button>
-              ))}
-              <div className="sep" />
-              <div className="list-menu-label">{t("Conversations")}</div>
-              {(["name", "modified"] as const).map((value) => (
-                <button
-                  key={`conversation-${value}`}
-                  onClick={(event) => {
-                    closeMenu(event);
-                    chooseSort({ ...listSort, conversations: value });
-                  }}
-                >
-                  {t(value === "name" ? "Name" : "Modified")}
-                  {listSort.conversations === value ? <i className="ph ph-check check" /> : null}
-                </button>
-              ))}
-            </div>
-          </details>
-        </div>
-      </div>
       <div className="sessions">
         {app.sessionsLoading && app.sessions.length === 0 ? (
           <div className="rp-empty">{t("Loading conversations…")}</div>
@@ -1090,6 +1017,156 @@ function UserNav({ onImport }: { onImport: () => void }) {
           <div className="rp-empty">{app.sessionsError}</div>
         ) : (
           <>
+            {(() => {
+              const looseLabel = t("Independent conversations");
+              const folderHit = searchScope === "names" && visibleIds !== null &&
+                quickFindScore(quickFindTerms(railQuery), [{ text: looseLabel, weight: 10 }]) > 0;
+              const looseRoots = looseGroup?.roots ?? [];
+              const roots =
+                visibleIds === null || folderHit
+                  ? looseRoots
+                  : looseRoots.filter((root) => visibleIds.has(root.sessionId));
+              if (visibleIds !== null && roots.length === 0) return null;
+              return (
+                <div
+                  key="independent"
+                  className={dropTarget === "" ? "drop-target" : undefined}
+                  onDragOver={
+                    local
+                      ? (e) => {
+                          e.preventDefault();
+                          setDropTarget("");
+                        }
+                      : undefined
+                  }
+                  onDragLeave={
+                    local
+                      ? () =>
+                          setDropTarget((prev) => (prev === "" ? null : prev))
+                      : undefined
+                  }
+                  onDrop={local ? (e) => dropSession("", e) : undefined}
+                >
+                  <div className="workspace-list-head">
+                    <button
+                      type="button"
+                      className={`workspace-list-title${looseCollapsed ? " closed" : ""}`}
+                      aria-expanded={!looseCollapsed}
+                      onClick={() => setLooseCollapsed((value) => !value)}
+                    >
+                      <i className="ph ph-caret-down tw" aria-hidden="true" />
+                      {looseLabel}
+                    </button>
+                    <div className="workspace-list-actions">
+                      <button
+                        type="button"
+                        data-tip={t("New conversation")}
+                        aria-label={t("New conversation")}
+                        onClick={() => startConversationIn(null)}
+                      >
+                        <i className="ph ph-note-pencil" aria-hidden="true" />
+                      </button>
+                    </div>
+                  </div>
+                  {looseCollapsed && visibleIds === null ? null : (
+                  <SessionRootList
+                    roots={roots}
+                    tree={tree}
+                    folderHit={folderHit}
+                    visibleIds={visibleIds}
+                    expanded={expandedGroups.has("")}
+                    onToggleExpanded={() =>
+                      setExpandedGroups((prev) => {
+                        const next = new Set(prev);
+                        if (next.has("")) next.delete("");
+                        else next.add("");
+                        return next;
+                      })
+                    }
+                    foldedFamilies={foldedFamilies}
+                    onToggleFamily={toggleFamily}
+                    onOpen={openSession}
+                    draggable={local}
+                    cap={GROUP_CAP}
+                  />
+                  )}
+                </div>
+              );
+            })()}
+            {/* Independent conversations come first (owner 2026-09-25). */}
+            <div className="workspace-list-head divided">
+              <button
+                type="button"
+                className={`workspace-list-title${projectsCollapsed ? " closed" : ""}`}
+                aria-expanded={!projectsCollapsed}
+                onClick={() => setProjectsCollapsed((value) => !value)}
+              >
+                <i className="ph ph-caret-down tw" aria-hidden="true" />
+                {t("Projects")}
+              </button>
+              <div className="workspace-list-actions">
+                <button
+                  type="button"
+                  data-tip={t("Collapse all projects")}
+                  aria-label={t("Collapse all projects")}
+                  onClick={() => setClosedGroups(new Set(projectGroups.map((group) => group.dir)))}
+                >
+                  <i className="ph ph-arrows-in-line-vertical" aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  data-tip={t("Expand all projects")}
+                  aria-label={t("Expand all projects")}
+                  onClick={() => setClosedGroups(new Set())}
+                >
+                  <i className="ph ph-arrows-out-line-vertical" aria-hidden="true" />
+                </button>
+                {local ? (
+                  <button
+                    type="button"
+                    data-tip={t("Add project…")}
+                    aria-label={t("Add project…")}
+                    onClick={() => void addFolder()}
+                  >
+                    <i className="ph ph-folder-plus" aria-hidden="true" />
+                  </button>
+                ) : null}
+                <details className="list-more list-sort">
+                  <summary data-tip={t("Sort conversations")}>
+                    <i className="ph ph-sort-ascending" />
+                  </summary>
+                  <div className="list-menu">
+                    <div className="list-menu-label">{t("Folders")}</div>
+                    {(["name", "modified"] as const).map((value) => (
+                      <button
+                        key={`folder-${value}`}
+                        onClick={(event) => {
+                          closeMenu(event);
+                          chooseSort({ ...listSort, folders: value });
+                        }}
+                      >
+                        {t(value === "name" ? "Name" : "Modified")}
+                        {listSort.folders === value ? <i className="ph ph-check check" /> : null}
+                      </button>
+                    ))}
+                    <div className="sep" />
+                    <div className="list-menu-label">{t("Conversations")}</div>
+                    {(["name", "modified"] as const).map((value) => (
+                      <button
+                        key={`conversation-${value}`}
+                        onClick={(event) => {
+                          closeMenu(event);
+                          chooseSort({ ...listSort, conversations: value });
+                        }}
+                      >
+                        {t(value === "name" ? "Name" : "Modified")}
+                        {listSort.conversations === value ? <i className="ph ph-check check" /> : null}
+                      </button>
+                    ))}
+                  </div>
+                </details>
+              </div>
+            </div>
             {(!projectsCollapsed || visibleIds !== null) && projectGroups.map((group) => {
             const closed = closedGroups.has(group.dir) && visibleIds === null;
             const project = projectByDir.get(group.dir);
@@ -1255,82 +1332,6 @@ function UserNav({ onImport }: { onImport: () => void }) {
               </div>
             );
           })}
-            {(() => {
-              const looseLabel = t("Independent conversations");
-              const folderHit = searchScope === "names" && visibleIds !== null &&
-                quickFindScore(quickFindTerms(railQuery), [{ text: looseLabel, weight: 10 }]) > 0;
-              const looseRoots = looseGroup?.roots ?? [];
-              const roots =
-                visibleIds === null || folderHit
-                  ? looseRoots
-                  : looseRoots.filter((root) => visibleIds.has(root.sessionId));
-              if (visibleIds !== null && roots.length === 0) return null;
-              return (
-                <div
-                  key="independent"
-                  className={dropTarget === "" ? "drop-target" : undefined}
-                  onDragOver={
-                    local
-                      ? (e) => {
-                          e.preventDefault();
-                          setDropTarget("");
-                        }
-                      : undefined
-                  }
-                  onDragLeave={
-                    local
-                      ? () =>
-                          setDropTarget((prev) => (prev === "" ? null : prev))
-                      : undefined
-                  }
-                  onDrop={local ? (e) => dropSession("", e) : undefined}
-                >
-                  <div className="workspace-list-head loose-head">
-                    <button
-                      type="button"
-                      className={`workspace-list-title${looseCollapsed ? " closed" : ""}`}
-                      aria-expanded={!looseCollapsed}
-                      onClick={() => setLooseCollapsed((value) => !value)}
-                    >
-                      <i className="ph ph-caret-down tw" aria-hidden="true" />
-                      {looseLabel}
-                    </button>
-                    <div className="workspace-list-actions">
-                      <button
-                        type="button"
-                        data-tip={t("New conversation")}
-                        aria-label={t("New conversation")}
-                        onClick={() => startConversationIn(null)}
-                      >
-                        <i className="ph ph-note-pencil" aria-hidden="true" />
-                      </button>
-                    </div>
-                  </div>
-                  {looseCollapsed && visibleIds === null ? null : (
-                  <SessionRootList
-                    roots={roots}
-                    tree={tree}
-                    folderHit={folderHit}
-                    visibleIds={visibleIds}
-                    expanded={expandedGroups.has("")}
-                    onToggleExpanded={() =>
-                      setExpandedGroups((prev) => {
-                        const next = new Set(prev);
-                        if (next.has("")) next.delete("");
-                        else next.add("");
-                        return next;
-                      })
-                    }
-                    foldedFamilies={foldedFamilies}
-                    onToggleFamily={toggleFamily}
-                    onOpen={openSession}
-                    draggable={local}
-                    cap={GROUP_CAP}
-                  />
-                  )}
-                </div>
-              );
-            })()}
             {unlistedHits.length ? (
               <div className="search-related-hits">
                 <div className="files-section-title">{t("Related matches")}</div>

@@ -11,7 +11,6 @@ import {
   listWorkingFolders,
   listWorkspaceFiles,
   searchWorkingDirectory,
-  uploadWorkspaceFile,
 } from "@/api/session-files";
 import { t } from "@/i18n";
 import { useConversationContext } from "@/context/ConversationContext";
@@ -19,7 +18,7 @@ import { useApp } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
 import { hasNativeBridge, revealPath as nativeRevealPath } from "@/lib/native";
 import { NEW_DRAFT, stageInDraft, unstageInDraft, useDraft } from "@/lib/draft";
-import { stagePathAfterUpload, WORKSPACE_PATH_MIME } from "@/lib/workspace";
+import { WORKSPACE_PATH_MIME } from "@/lib/workspace";
 import { FilePreview } from "@/components/inspector/FilePreview";
 import { FolderHead, ListTools } from "@/components/inspector/FolderList";
 import { buildFileTreeModel, getFileTreeNode, withFolderEntries, type FileTreeNode } from "@/lib/fileTree";
@@ -40,10 +39,8 @@ export function WorkspaceTree() {
   const [entries, setEntries] = useState<WorkspaceFileEntry[] | null>(null);
   const [workingFolders, setWorkingFolders] = useState<WorkingFolderDescriptor[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [uploadStatus, setUploadStatus] = useState("");
   const [expandSignal, setExpandSignal] = useState(0);
   const [collapseSignal, setCollapseSignal] = useState(0);
-  const uploadInput = useRef<HTMLInputElement>(null);
   // Ctrl+F on the tree focuses the existing filter (an open file registers
   // its own preview instead).
   const filterRef = useRef<HTMLDivElement>(null);
@@ -72,7 +69,6 @@ export function WorkspaceTree() {
   const folderClosed = (id: string) => (!query.trim() || browsing !== null) && closedFolders.includes(id);
   const toggleFolder = (id: string) =>
     setClosedFolders((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
-  const understandMode = app.runtimeMode === "alt-theory" && conv.sessionMode === "understand";
 
   // Draft pane: before the first message there is no session to read folders
   // from, so show the ones this conversation will get — the picker's folder,
@@ -107,7 +103,6 @@ export function WorkspaceTree() {
   const folders = sessionId ? workingFolders : draftFolders;
 
   useEffect(() => {
-    setUploadStatus("");
     if (!sessionId) {
       setEntries([]);
       return;
@@ -206,30 +201,6 @@ export function WorkspaceTree() {
     );
   };
 
-  const importFile = async (file: File) => {
-    if (!sessionId) return;
-    setUploadStatus("Importing…");
-    try {
-      const result = await uploadWorkspaceFile(sessionId, file);
-      const stagePath = stagePathAfterUpload(result);
-      // Into the draft of the conversation it was uploaded to, even if
-      // another one is open by now.
-      if (stagePath) stageInDraft(sessionId, [stagePath]);
-      const refreshed = await listWorkspaceFiles(sessionId);
-      setEntries(refreshed.entries ?? refreshed.files);
-      setWorkingFolders(refreshed.workingFolders ?? []);
-      setError(null);
-      setUploadStatus(
-        result.extractStatus === "failed"
-          ? result.extractError || "Could not read this file."
-          : `${file.name} attached to the next message.`
-      );
-    } catch (e) {
-      setUploadStatus(e instanceof Error ? e.message : "Import failed.");
-    } finally {
-      if (uploadInput.current) uploadInput.current.value = "";
-    }
-  };
 
   if (fileTarget) {
     // Attaching goes to the message of the conversation the file belongs to.
@@ -334,30 +305,8 @@ export function WorkspaceTree() {
             </div>
           ))}
           <div className="wb-note">
-            {t("Understand/Work changes what Alt may do, not where these files are stored.")}
+            {t("The permission changes what Alt may do, not where these files are stored.")}
           </div>
-        </div>
-      ) : null}
-      {understandMode ? (
-        <div className="pv-card">
-          <button
-            className="wb-apply"
-            disabled={!sessionId}
-            onClick={() => uploadInput.current?.click()}
-          >
-            {sessionId ? t("Add reference") : t("Add a reference after the first message")}
-          </button>
-          <input
-            ref={uploadInput}
-            type="file"
-            hidden
-            accept=".txt,.md,.csv,.tsv,.json,.html,.docx,.xlsx,.pdf"
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (file) void importFile(file);
-            }}
-          />
-          {uploadStatus ? <div className="wb-note">{uploadStatus}</div> : null}
         </div>
       ) : null}
       {error ? (

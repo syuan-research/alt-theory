@@ -162,3 +162,20 @@ export async function missingAttachments(
   });
   return result.missing;
 }
+
+/**
+ * Attach a file by copy (paperclip, read-only drop, pasted image): the
+ * server copies it, converts office/PDF files to text, and returns the path
+ * to attach; the send moves it into the conversation's folder.
+ */
+export async function stageAttachmentFile(
+  file: File,
+): Promise<{ path: string; extractError?: string }> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch("/api/attachments/stage", { method: "POST", body: form });
+  if (!res.ok) {
+    throw new ApiError(await readErrorMessage(res), res.status);
+  }
+  return res.json() as Promise<{ path: string; extractError?: string }>;
+}

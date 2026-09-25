@@ -27,7 +27,7 @@ import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { Model } from "@earendil-works/pi-ai/compat";
 import { appendFileSync, existsSync, readFileSync } from "fs";
 import { mkdir, writeFile } from "fs/promises";
-import { dirname, join, resolve } from "path";
+import { dirname, join, resolve, sep } from "path";
 import { createSecurityExtension } from "./security-extension.js";
 import {
   assertWritablePath,
@@ -138,7 +138,17 @@ export interface AssemblyManifest {
 
 export type ResourceDiscoveryMode = "clean" | "internal" | "dev-debug";
 export type RuntimeMode = "alt-theory" | "native-pi";
-export type AltMode = "understand" | "work";
+/**
+ * Per-session tool mode behind the permission control: "read-only" (no
+ * shell; every agent write or edit asks once) or "work". The UI's three
+ * permission modes are read-only / work (Ask) / work + Full Access.
+ */
+export type AltMode = "read-only" | "work";
+
+/** A stored mode as the runtime reads it: anything but "read-only" is work. */
+export function toAltMode(value: unknown): AltMode {
+  return value === "read-only" ? "read-only" : "work";
+}
 export const KB_DISABLED_DOMAIN = "none";
 
 export interface AltTheoryConfig extends SessionDirectories {
@@ -162,8 +172,6 @@ export interface AltTheoryConfig extends SessionDirectories {
   kbDomain?: string;
   /** Pi adapter prompt templates */
   piPromptTemplatesDir?: string;
-  /** Understand-only policy: omit even its bounded note-writing tool. */
-  understandReadOnly: boolean;
   /** Optional custom Pi models.json path */
   modelsPath?: string;
   /** Optional Pi auth.json path; paired with modelsPath in local mode. */
@@ -193,12 +201,12 @@ export interface AltTheoryConfig extends SessionDirectories {
   /** Read-only product/agent resource roots that should not prompt. */
   trustedReadRoots?: string[];
   /**
-   * User-enabled external skill paths (files or directories) per Alt mode
-   * mode, resolved by the app settings layer (spec §6.1). Snapshot at session
-   * open; settings changes apply on session reload. External skills are never
-   * silently enabled: absent lists mean Alt bundled skills only.
+   * User-enabled external skill paths (files or directories), resolved by the
+   * app settings layer (spec §6.1). Snapshot at session open; settings
+   * changes apply on session reload. External skills are never silently
+   * enabled: an absent list means Alt bundled skills only.
    */
-  externalSkillPaths?: { understand?: string[]; work?: string[] };
+  externalSkillPaths?: string[];
   /** App setting (§6.1) deciding bundled-vs-user skill precedence in the prompt. */
   skillPrecedence?: "prefer-bundled" | "prefer-user" | "ask";
   /**
@@ -309,12 +317,17 @@ export interface AltTheoryOpenExistingConfig extends AltTheoryConfig {
   overrideSessionCwd?: boolean;
 }
 
-/** Read-only tool allowlist (no write/edit/bash) */
-const READONLY_TOOLS = ["read", "ls", "grep", "find"];
-/** Conference-stage note mode: read/search plus write, without edit or bash. */
-const WRITE_ENABLED_TOOLS = [...READONLY_TOOLS, "write"];
+/** Read-only permission: search tools stand in for the shell; writes ask each time. */
+const READ_ONLY_TOOLS = ["read", "ls", "grep", "find", "edit", "write"];
 /** Pi's own default active toolset for Work and Native Pi. */
 const PI_DEFAULT_TOOLS = ["read", "bash", "edit", "write"];
+/** Bundled skills that need the shell, so read-only does not list them. */
+const SHELL_BUNDLED_SKILLS = new Set(["web-search", "page-fetch", "doc-convert"]);
+
+const READ_ONLY_PROMPT_SECTION = [
+  "## Permission: Read-only",
+  "The user chose read-only permission for this conversation. There is no shell. Every file write or edit asks the user for approval before it happens; a denied write is the user's choice, not an error to route around. Live web lookup is unavailable here; files the user attached are already converted to text you can read.",
+].join("\n");
 
 const NO_MODEL_PROVIDER = "__alt_theory_no_model__";
 const NO_MODEL_ID = "__no_model_selected__";
@@ -335,9 +348,8 @@ export function isNoModelPlaceholder(model: Model<any> | undefined): boolean {
   return model?.provider === NO_MODEL_PROVIDER && model.id === NO_MODEL_ID;
 }
 
-function activeToolsForMode(workCapable: boolean, understandReadOnly: boolean): string[] {
-  if (workCapable) return PI_DEFAULT_TOOLS;
-  return understandReadOnly ? READONLY_TOOLS : WRITE_ENABLED_TOOLS;
+function activeToolsForMode(readOnly: boolean): string[] {
+  return readOnly ? READ_ONLY_TOOLS : PI_DEFAULT_TOOLS;
 }
 
 // ---------------------------------------------------------------------------
@@ -391,7 +403,6 @@ async function createAltTheorySessionWithManager(
     recordsDir,
     writeDir,
     kbDir,
-    understandReadOnly,
   } = config;
 
   // Resolve paths
@@ -424,7 +435,7 @@ async function createAltTheorySessionWithManager(
       : (sessionHeader?.id ?? sessionId);
   const runtimeState = {
     runtimeMode: config.runtimeMode ?? ("alt-theory" as RuntimeMode),
-    altMode: config.altMode ?? ("understand" as AltMode),
+    altMode: config.altMode ?? ("work" as AltMode),
     nativePiScanAltSkills: config.nativePiScanAltSkills !== false,
     // Full Access follows the conversation (M2, 2026-09-24): the session
     // service persists it in the header and hands it back on every assembly.
@@ -495,56 +506,21 @@ async function createAltTheorySessionWithManager(
   for (const section of config.extraPromptSections ?? []) {
     sharedSections.push(section);
   }
-  const understandOnlySections: string[] = [];
-  understandOnlySections.push(
-    [
-      "## Alt Theory Tool Harness",
-      "Current mode: Understand. Live lookup, attached working folders, edit, and shell need Work mode; the user switches mode in the UI. Session-workspace notes may still be writable here.",
-      "You are operating inside the Pi harness as the tool runtime for Alt Theory.",
-      "This describes your tool environment, not your identity; do not describe yourself as Pi.",
-      "Available tools:",
-      "- read: read file contents",
-      "- ls: list directory contents",
-      "- grep: search file contents for patterns",
-      "- find: find files by glob pattern",
-      ...(understandReadOnly
-        ? []
-        : [
-            "- write: create or overwrite files only inside Alt Theory writable roots",
-          ]),
-    ].join("\n")
-  );
-  if (!understandReadOnly) {
-    const writableRoots = [resolvedWriteDir, resolvedWritableAssetDir];
-    understandOnlySections.push(
-      [
-        "## Write Policy",
-        "The write tool is hard-limited to these writable roots:",
-        ...writableRoots.map((root) => `- ${root}`),
-        "Treat the knowledge base, role presets, prompts, and system files as read-only.",
-      ].join("\n")
-    );
-  }
-  const altTheorySystemPrompt = [...altSections, ...sharedSections, ...understandOnlySections].join(
-    "\n\n"
-  );
-
-  const isWorkCapable = () =>
-    runtimeState.runtimeMode === "native-pi" || runtimeState.altMode === "work";
-  // Full Access stays stored across mode switches but is only effective in a
-  // work-capable mode; Understand keeps it dormant, not cleared.
-  const isFullAccessEffective = () =>
-    runtimeState.fullAccess && isWorkCapable();
-  const hasWriteCapability = () =>
-    isWorkCapable() || !understandReadOnly;
+  const isReadOnly = () => runtimeState.altMode === "read-only";
+  // Full Access stays stored across permission switches but is only
+  // effective outside read-only; read-only keeps it dormant, not cleared.
+  const isFullAccessEffective = () => runtimeState.fullAccess && !isReadOnly();
   // Writable/readable roots are computed by the one root-policy module,
-  // evaluated per call: Understand stays bounded to the Alt writable roots;
-  // Work and Native Pi additionally write within the workspace (primary +
+  // evaluated per call: the Alt writable roots plus the workspace (primary +
   // the project's companion folders, both read live from the folder policy).
-  // Shared by the guarded write tool, the security extension, and the
-  // assembly manifest.
+  // Read-only keeps the same roots; the security extension asks before every
+  // write there. Shared by the guarded write tool, the security extension,
+  // and the assembly manifest.
   const altWritableRoots = [resolvedWriteDir, resolvedWritableAssetDir];
   const approvedWritableRoots = new Set<string>();
+  // Read-only "Allow once" outside the roots: one path, consumed by the
+  // guarded write that follows the approval.
+  const onceWritablePaths = new Set<string>();
   const projectSecondaryDirs = () =>
     config.readFolderPolicy?.().projectSecondaryDirs ?? [];
   const sessionRootsForMode = (): { readable: Root[]; writable: Root[] } => {
@@ -557,7 +533,6 @@ async function createAltTheorySessionWithManager(
       kbDir: resolvedKbDir,
       trustedReadRoots: config.trustedReadRoots ?? [],
       skillsDir: resolvedSkillsDir,
-      workCapable: isWorkCapable(),
       globalFolders: folderPolicy?.globalFolders ?? [],
       projectSecondaryDirs: folderPolicy?.projectSecondaryDirs ?? [],
     });
@@ -573,34 +548,27 @@ async function createAltTheorySessionWithManager(
           source: "alt-theory",
         })
       : { skills: [], diagnostics: [] };
-  const WORK_ONLY_BUNDLED_SKILLS = new Set([
-    "web-search",
-    "page-fetch",
-    "doc-convert",
-  ]);
   const bundledSkillsForMode = () =>
-    runtimeState.altMode === "work"
-      ? altTheorySkills
-      : {
+    isReadOnly()
+      ? {
           skills: altTheorySkills.skills.filter(
-            (skill) => !WORK_ONLY_BUNDLED_SKILLS.has(skill.name)
+            (skill) => !SHELL_BUNDLED_SKILLS.has(skill.name)
           ),
           diagnostics: altTheorySkills.diagnostics,
-        };
-  // User-enabled external skills, snapshot per mode at session open (spec
-  // §6.1). Loaded through Pi's own resolver so files, directories, and skill
+        }
+      : altTheorySkills;
+  // User-enabled external skills, snapshot at session open (spec §6.1).
+  // Loaded through Pi's own resolver so files, directories, and skill
   // packages all behave exactly as they would in Pi.
-  const loadExternalSkills = (paths?: string[]) =>
-    resourceDiscovery !== "clean" && paths?.length
-      ? loadSkills({ cwd, agentDir, skillPaths: paths, includeDefaults: false })
+  const externalSkills =
+    resourceDiscovery !== "clean" && config.externalSkillPaths?.length
+      ? loadSkills({
+          cwd,
+          agentDir,
+          skillPaths: config.externalSkillPaths,
+          includeDefaults: false,
+        })
       : { skills: [], diagnostics: [] };
-  const externalSkillsByMode: Record<
-    AltMode,
-    ReturnType<typeof loadExternalSkills>
-  > = {
-    understand: loadExternalSkills(config.externalSkillPaths?.understand),
-    work: loadExternalSkills(config.externalSkillPaths?.work),
-  };
   // Project skills from the work-capable workspace (spec §5.1): the primary
   // directory and each of the project's companion folders contribute their
   // standard project skill locations. Re-read at every loader reload so
@@ -610,7 +578,7 @@ async function createAltTheorySessionWithManager(
       [".pi/skills", ".agents/skills"].map((sub) => join(dir, sub))
     );
   const loadWorkspaceSkills = () =>
-    resourceDiscovery !== "clean" && isWorkCapable()
+    resourceDiscovery !== "clean"
       ? workspaceSkillRoots()
           .filter((dir) => existsSync(dir))
           .map((dir) => loadSkillsFromDir({ dir, source: "workspace" }))
@@ -637,9 +605,11 @@ async function createAltTheorySessionWithManager(
       createTurnContinuityExtension(),
       createPromptCacheContinuityExtension(
         promptCacheFamilyId,
+        // ADR 0004 D3: without a project and without a shell, the copied
+        // session cwd is incidental, so parent and branch share the prefix.
         () =>
           runtimeState.runtimeMode === "alt-theory" &&
-          runtimeState.altMode === "understand" &&
+          isReadOnly() &&
           cwd === resolvedWriteDir,
       ),
       createSecurityExtension({
@@ -647,6 +617,8 @@ async function createAltTheorySessionWithManager(
         getWritableRoots: writableRootsForMode,
         getReadableRoots: () => sessionRootsForMode().readable,
         addWritableRoot: (root) => approvedWritableRoots.add(resolve(root)),
+        isReadOnly,
+        allowWriteOnce: (path) => onceWritablePaths.add(resolve(path)),
         recordAudit: (entry) =>
           appendFileSync(
             join(resolvedRecordsDir, "security-audit.jsonl"),
@@ -657,13 +629,9 @@ async function createAltTheorySessionWithManager(
     ],
     noContextFiles: resourceDiscovery !== "dev-debug",
     systemPromptOverride: (base) =>
-      runtimeState.runtimeMode !== "alt-theory"
-        ? base
-        : runtimeState.altMode === "understand"
-          ? altTheorySystemPrompt
-          : config.trimmedPiBasePrompt
-            ? trimPiBasePrompt(base)
-            : base,
+      runtimeState.runtimeMode === "alt-theory" && config.trimmedPiBasePrompt
+        ? trimPiBasePrompt(base)
+        : base,
     skillsOverride: (current) => {
       if (resourceDiscovery === "clean") {
         return { skills: [], diagnostics: [] };
@@ -674,25 +642,17 @@ async function createAltTheorySessionWithManager(
           : mergeSkills(current, altTheorySkills);
       }
       const selected = mergeSkills(
-        mergeSkills(
-          bundledSkillsForMode(),
-          externalSkillsByMode[runtimeState.altMode]
-        ),
+        mergeSkills(bundledSkillsForMode(), externalSkills),
         loadWorkspaceSkills()
       );
       return resourceDiscovery === "internal"
         ? selected
         : mergeSkills(current, selected);
     },
-    // Workspace context: Work and Native Pi get the primary directory and
-    // Pi's own discovery (global + ancestor AGENTS.md/CLAUDE.md chain); each
-    // of the project's companion folders contributes its own context file.
-    // Understand stays bounded to the session workspace and receives none of
-    // this.
+    // Workspace context: the primary directory and Pi's own discovery
+    // (global + ancestor AGENTS.md/CLAUDE.md chain); each of the project's
+    // companion folders contributes its own context file.
     agentsFilesOverride: (base) => {
-      if (!isWorkCapable()) {
-        return base;
-      }
       const files = [...base.agentsFiles];
       const seen = new Set(files.map((file) => file.path));
       const add = (file: { path: string; content: string } | undefined) => {
@@ -709,18 +669,17 @@ async function createAltTheorySessionWithManager(
       }
       return { agentsFiles: files };
     },
-    appendSystemPromptOverride: (base: string[]) =>
-      runtimeState.runtimeMode === "native-pi"
-        ? [...base, ...sharedSections]
-        : runtimeState.altMode === "understand"
-          ? []
-          : [...base, WORK_MODE_PREFACE, ...altSections, ...sharedSections],
+    appendSystemPromptOverride: (base: string[]) => [
+      ...base,
+      ...(runtimeState.runtimeMode === "native-pi"
+        ? sharedSections
+        : [WORK_MODE_PREFACE, ...altSections, ...sharedSections]),
+      ...(isReadOnly() ? [READ_ONLY_PROMPT_SECTION] : []),
+    ],
   });
   await loader.reload();
 
   // --- 3. Create session ---
-  // Understand may be read-only or allow bounded note writing. Work and Native
-  // Pi use the normal coding tools regardless of that Understand-only policy.
   const sessionOpts: Parameters<typeof createAgentSession>[0] = {
     cwd,
     resourceLoader: loader,
@@ -770,14 +729,13 @@ async function createAltTheorySessionWithManager(
   // in-session mode switch). The per-mode restriction is the ACTIVE tool set,
   // applied below via setActiveToolsByName. The guarded write tool is always
   // registered so it shadows Pi's builtin write in every mode.
-  if (hasWriteCapability()) {
-    await Promise.all(altWritableRoots.map((root) => mkdir(root, { recursive: true })));
-  }
+  await Promise.all(altWritableRoots.map((root) => mkdir(root, { recursive: true })));
   sessionOpts.customTools = [
     createWriteToolDefinition(cwd, {
       operations: createGuardedWriteOperations(
         writableRootsForMode,
         isFullAccessEffective,
+        onceWritablePaths,
       ),
     }),
     // Web-access tools ship DISABLED: registered here so the plumbing and
@@ -790,7 +748,7 @@ async function createAltTheorySessionWithManager(
   // Extra tools (agent team) are shared application infrastructure.
   const extraToolNames = (config.extraTools ?? []).map((tool) => tool.name);
   const activeTools = () => [
-    ...activeToolsForMode(isWorkCapable(), understandReadOnly),
+    ...activeToolsForMode(isReadOnly()),
     ...extraToolNames,
   ];
 
@@ -804,7 +762,7 @@ async function createAltTheorySessionWithManager(
   }
 
   const externalPaths = new Set(
-    externalSkillsByMode[runtimeState.altMode].skills.map((s) => resolve(s.filePath))
+    externalSkills.skills.map((s) => resolve(s.filePath))
   );
   const manifest: AssemblyManifest = {
     sessionId: config.sessionId,
@@ -879,10 +837,8 @@ async function createAltTheorySessionWithManager(
     piSessionDir: resolvedPiSessionDir,
     piSessionFile: session.sessionFile ?? null,
     recordsDir: resolvedRecordsDir,
-    writeDir: hasWriteCapability() ? resolvedWriteDir : null,
-    writableRoots: hasWriteCapability()
-      ? writableRootsForMode().map((root) => root.path)
-      : [],
+    writeDir: resolvedWriteDir,
+    writableRoots: writableRootsForMode().map((root) => root.path),
     model: isNoModelPlaceholder(session.model) ? null : (session.model?.id ?? null),
     provider: isNoModelPlaceholder(session.model)
       ? null
@@ -913,12 +869,6 @@ async function createAltTheorySessionWithManager(
     manifest.resumeWarnings = resumeWarnings;
   }
 
-  const syncManifestActionPolicy = () => {
-    manifest.writeDir = hasWriteCapability() ? resolvedWriteDir : null;
-    manifest.writableRoots = hasWriteCapability()
-      ? writableRootsForMode().map((root) => root.path)
-      : [];
-  };
 
   writeJsonAtomic(join(resolvedRecordsDir, openMode.manifestFileName), manifest);
 
@@ -933,7 +883,6 @@ async function createAltTheorySessionWithManager(
       manifest.altMode = next;
       await loader.reload();
       session.setActiveToolsByName(activeTools());
-      syncManifestActionPolicy();
     },
     getRuntimeMode: () => runtimeState.runtimeMode,
     setRuntimeMode: async (next: RuntimeMode): Promise<void> => {
@@ -941,7 +890,6 @@ async function createAltTheorySessionWithManager(
       runtimeState.runtimeMode = next;
       await loader.reload();
       session.setActiveToolsByName(activeTools());
-      syncManifestActionPolicy();
     },
     setNativePiScanAltSkills: async (enabled: boolean): Promise<void> => {
       if (enabled === runtimeState.nativePiScanAltSkills) return;
@@ -951,14 +899,9 @@ async function createAltTheorySessionWithManager(
     getFullAccess: () => runtimeState.fullAccess,
     isFullAccessEffective,
     setFullAccess: (enabled: boolean): void => {
-      if (enabled === runtimeState.fullAccess) return;
-      // Enabling requires a work-capable mode; the server additionally rejects
-      // non-local attempts. Disabling is always allowed.
-      if (enabled && !isWorkCapable()) {
-        throw new Error(
-          "Full access can only be enabled in local Work or Native Pi mode."
-        );
-      }
+      // The server rejects non-local enables. Under read-only the value is
+      // dormant (isFullAccessEffective), so the order of the two switches
+      // behind one permission choice does not matter.
       runtimeState.fullAccess = enabled;
     },
     getWorkspace: () => ({
@@ -1011,12 +954,22 @@ function summarizeOriginalManifest(
 function createGuardedWriteOperations(
   getWritableRoots: () => Root[],
   skipBoundaryCheck?: () => boolean,
+  oncePaths?: Set<string>,
 ): WriteOperations {
   const roots = () => getWritableRoots();
+  // A read-only "Allow once" covers the approved file and the folders the
+  // write creates on the way to it; the file write consumes it.
+  const approvedOnce = (path: string) => {
+    const target = resolve(path);
+    for (const once of oncePaths ?? []) {
+      if (once === target || once.startsWith(target + sep)) return true;
+    }
+    return false;
+  };
   // Full Access skips only the writable-root assertion; the filesystem
   // operation itself is unchanged (v1.4.8).
   const assertWritable = (path: string) => {
-    if (skipBoundaryCheck?.()) return;
+    if (skipBoundaryCheck?.() || approvedOnce(path)) return;
     assertWritablePath(path, roots());
   };
   return {
@@ -1026,6 +979,7 @@ function createGuardedWriteOperations(
     },
     async writeFile(path: string, content: string): Promise<void> {
       await assertWritable(path);
+      oncePaths?.delete(resolve(path));
       await writeFile(path, content, "utf-8");
     },
   };

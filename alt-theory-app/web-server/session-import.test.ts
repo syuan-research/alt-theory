@@ -73,7 +73,7 @@ test("Pi discovery and managed registration preserve history and workspace", asy
     dataDir,
     source,
     preflight: piAdapter.preflight(source),
-    mode: "understand",
+    mode: "read-only",
     rolePresetSlug: "role-conceptual-theory-companion",
     soulSlug: "soul-latest",
     visibility: "private",
@@ -150,7 +150,7 @@ test("Pi discovery and managed registration preserve history and workspace", asy
     dataDir,
     source: changed!,
     preflight: piAdapter.preflight(changed!),
-    mode: "understand",
+    mode: "read-only",
     rolePresetSlug: "role-conceptual-theory-companion",
     soulSlug: "soul-latest",
     visibility: "private",
@@ -1946,7 +1946,7 @@ test("Claude Code plaintext compaction preserves visible history and resumes fro
     dataDir,
     source,
     preflight,
-    mode: "understand",
+    mode: "read-only",
     visibility: "private",
   });
   const detail = readSessionDetail(dataDir, registered.sessionId);

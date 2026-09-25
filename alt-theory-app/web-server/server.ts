@@ -149,6 +149,9 @@ import {
   knownWorkspacesOf,
   readAppSettings,
   resolveExternalSkillPaths,
+  defaultSessionPermission,
+  PERMISSIONS,
+  type Permission,
   writeAppSettings,
   SKILL_PRECEDENCE_VALUES,
   type AppSettings,
@@ -156,6 +159,7 @@ import {
   type SkillPrecedence,
 } from "./app-settings.js";
 import { discoverSkillResources } from "./resource-discovery.js";
+import { adoptStagedAttachments, stageAttachment } from "./attachment-staging.js";
 import {
   readSubagentConfig,
   subagentConfigPath,
@@ -202,7 +206,6 @@ export interface AltTheoryServerOptions {
   rolePresetsDir?: string;
   piPromptTemplatesDir?: string;
   publicDir?: string;
-  understandReadOnly?: boolean;
   modelProvider?: string;
   modelId?: string;
   modelsPath?: string;
@@ -227,7 +230,7 @@ function parseResourceDiscoveryMode(
   }
   // internal = Alt bundled skills plus explicitly user-enabled externals.
   // dev-debug (ambient Pi merge + context files) is an explicit dev knob:
-  // external skills must never be silently enabled in Understand.
+  // external skills are only ever enabled explicitly.
   return "internal";
 }
 
@@ -269,7 +272,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   const soulDir = assetPaths.soulDir;
   const legacySoulPath = assetPaths.soulPath;
   const publicDir = resolve(options.publicDir ?? PUBLIC_DIR);
-  const understandReadOnly = options.understandReadOnly ?? false;
   const modelProvider =
     options.modelProvider ?? process.env.ALT_THEORY_MODEL_PROVIDER;
   const modelId = options.modelId ?? process.env.ALT_THEORY_MODEL_ID;
@@ -313,20 +315,14 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     const externalPaths = discovered.skills
       .filter((skill) => skill.source !== "alt-theory")
       .map((skill) => skill.path);
-    const enabled = resolveExternalSkillPaths(readAppSettings(dataDir), externalPaths);
-    const enabledUnderstand = new Set(enabled.understand);
-    const enabledWork = new Set(enabled.work);
+    const enabled = new Set(
+      resolveExternalSkillPaths(readAppSettings(dataDir), externalPaths),
+    );
     return {
       ...discovered,
       skills: discovered.skills.map((skill) => ({
         ...skill,
-        enabled:
-          skill.source === "alt-theory"
-            ? { understand: true, work: true }
-            : {
-                understand: enabledUnderstand.has(skill.path),
-                work: enabledWork.has(skill.path),
-              },
+        enabled: skill.source === "alt-theory" || enabled.has(skill.path),
       })),
     };
   };
@@ -384,7 +380,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     if (!requireLocalConfigMode(res)) return;
     res.json(await getVerifiedConfigStatus(agentConfigDir()));
   });
-  // --- Resource discovery + per-mode skill enablement (spec §6.1) ---
+  // --- Resource discovery + external skill enablement (spec §6.1) ---
   app.get("/api/resources", (_req, res) => {
     if (!requireLocalConfigMode(res)) return;
     const discovered = discoverConfiguredSkills();
@@ -396,10 +392,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   });
   app.put("/api/resources/skills", (req, res) => {
     if (!requireLocalConfigMode(res)) return;
-    const body = req.body as {
-      understand?: { enabledPaths?: unknown };
-      work?: { enabledPaths?: unknown };
-    };
+    const body = req.body as { enabledPaths?: unknown };
     const parseList = (value: unknown): string[] | null =>
       Array.isArray(value)
         ? value.filter((entry): entry is string => typeof entry === "string")
@@ -407,12 +400,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     const current = readAppSettings(dataDir);
     const next = {
       ...current,
-      skills: {
-        understand: {
-          enabledPaths: parseList(body.understand?.enabledPaths),
-        },
-        work: { enabledPaths: parseList(body.work?.enabledPaths) },
-      },
+      skills: { work: { enabledPaths: parseList(body.enabledPaths) } },
     };
     writeAppSettings(dataDir, next);
     res.json({ ok: true, settings: next });
@@ -684,26 +672,21 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     writeAppSettings(dataDir, settings);
     res.json({ ok: true, ...settings.sessionListSort });
   });
-  app.get("/api/settings/default-alt-mode", (_req, res) => {
+  app.get("/api/settings/default-permission", (_req, res) => {
     if (!requireLocalConfigMode(res)) return;
-    res.json({ mode: readAppSettings(dataDir).defaultAltMode ?? null });
+    res.json({ permission: readAppSettings(dataDir).defaultPermission ?? "ask" });
   });
-  app.put("/api/settings/default-alt-mode", (req, res) => {
+  app.put("/api/settings/default-permission", (req, res) => {
     if (!requireLocalConfigMode(res)) return;
-    const mode = (req.body as { mode?: unknown }).mode as
-      | "understand"
-      | "work"
-      | null
-      | undefined;
-    if (mode !== "understand" && mode !== "work" && mode !== null) {
-      res.status(400).json({ error: "Unknown mode" });
+    const permission = (req.body as { permission?: unknown }).permission as Permission;
+    if (!PERMISSIONS.includes(permission)) {
+      res.status(400).json({ error: "Unknown permission" });
       return;
     }
     const settings = readAppSettings(dataDir);
-    if (mode === null) delete settings.defaultAltMode;
-    else settings.defaultAltMode = mode;
+    settings.defaultPermission = permission;
     writeAppSettings(dataDir, settings);
-    res.json({ ok: true, mode });
+    res.json({ ok: true, permission });
   });
   app.get("/api/settings/model-hooks", (_req, res) => {
     if (!requireLocalConfigMode(res)) return;
@@ -1131,21 +1114,17 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     const body = (req.body ?? {}) as {
       selection?: unknown;
       sourceIds?: unknown;
-      mode?: unknown;
       changedSourcePolicy?: unknown;
       workspaceOverrides?: unknown;
       visibility?: unknown;
       preflightOnly?: unknown;
     };
     const selection = body.selection ?? "selected";
-    const mode = body.mode ?? "understand";
+    // Imported conversations start from the default permission, never Full.
+    const { mode } = defaultSessionPermission(readAppSettings(dataDir), localMode);
     const changedSourcePolicy = body.changedSourcePolicy ?? "skip";
     if (selection !== "all" && selection !== "selected") {
       res.status(400).json({ error: "selection must be 'all' or 'selected'" });
-      return;
-    }
-    if (mode !== "understand" && mode !== "work") {
-      res.status(400).json({ error: "mode must be 'understand' or 'work'" });
       return;
     }
     if (changedSourcePolicy !== "skip" && changedSourcePolicy !== "copy") {
@@ -1853,6 +1832,24 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       }
     },
   );
+  // Attached files (paperclip, read-only drop, pasted image): copied and
+  // converted before any conversation exists; the send moves them into it.
+  app.post("/api/attachments/stage", workspaceUpload.single("file"), async (req, res) => {
+    const auth = authSessions.resolveRequest(req);
+    if (!auth.accountId && !localMode) {
+      res.status(403).json({ error: "Attaching requires an authenticated owner" });
+      return;
+    }
+    if (!req.file) {
+      res.status(400).json({ error: "file is required" });
+      return;
+    }
+    try {
+      res.json(await stageAttachment(dataDir, req.file.originalname, req.file.buffer));
+    } catch (error) {
+      sendFileApiError(res, error);
+    }
+  });
   app.post("/api/sessions/:sessionId/files/retry-extract", async (req, res) => {
     const sessionId = req.params.sessionId;
     if (!requireSessionRestContentAccess(req, res, sessionId)) return;
@@ -2118,7 +2115,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     rolePresetsDir,
     soulDir,
     legacySoulPath,
-    understandReadOnly,
     localMode,
     modelProvider,
     modelId,
@@ -2439,7 +2435,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         rolePresetSlug: selectors.rolePresetSlug,
         soulSlug: selectors.soulSlug,
         customInstructionRef: selectors.customInstructionRef ?? null,
-        mode: readAppSettings(dataDir).defaultAltMode ?? "understand",
+        ...defaultSessionPermission(readAppSettings(dataDir), localMode),
         modelOverride,
         thinking: draftThinking(modelOverride),
       },
@@ -2497,7 +2493,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
      */
     const creationFrom = (draft: NewConversationSettings = {}) => {
       const selectors = createDraftSelectorsForAuth(auth);
-      let mode: AltMode = readAppSettings(dataDir).defaultAltMode ?? "understand";
+      const defaults = defaultSessionPermission(readAppSettings(dataDir), localMode);
+      let mode: AltMode = defaults.mode;
       // Under Native Pi the Alt selectors are inactive but still recorded, so
       // the conversation has them once Native Pi is turned off.
       if (draft.kbDomain !== undefined) {
@@ -2512,13 +2509,14 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         selectors.customInstructionRef = optionalSlug(draft.customInstructionRef);
       }
       if (draft.mode !== undefined) {
-        if (draft.mode !== "understand" && draft.mode !== "work") throw new Error("Unknown mode");
+        if (draft.mode !== "read-only" && draft.mode !== "work") throw new Error("Unknown mode");
         mode = draft.mode;
       }
       // The guard that keeps the deployments apart (see switch_visibility).
       const visibility = draft.visibility ?? defaultDraftVisibility();
       if (!isVisibilityForMode(visibility, localMode)) throw new Error("Invalid visibility");
       if (draft.fullAccess && !localMode) throw new Error("Full access is not enabled on this server");
+      if (mode !== "read-only" && !localMode) throw new Error("This server allows read-only conversations only");
       let workspace: { primaryDir: string } | null = null;
       if (draft.workspacePrimaryDir) {
         if (!localMode) throw new Error("Workspaces are local-mode only");
@@ -2535,8 +2533,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         metadata: {
           ...sessionCreationMetadataForAuth(auth, visibility),
           mode,
-          // In a mode that cannot use it the value is held dormant.
-          fullAccess: draft.fullAccess === true,
+          // Under read-only the value is held dormant.
+          fullAccess: draft.fullAccess ?? defaults.fullAccess,
           modelOverride: draft.modelOverride ?? null,
           studyTag: draft.studyTag ?? null,
           workspace,
@@ -2722,14 +2720,21 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
                 attachToSession(initial.sessionId);
               }
               const currentSessionId = attachedSessionId;
+              // Staged attached files move into this conversation's folder.
+              const { text, attachments } = adoptStagedAttachments(
+                dataDir,
+                currentSessionId,
+                msg.payload,
+                msg.attachments,
+              );
               if (sessionService.isRunning(currentSessionId)) {
                 // Pi owns the queue (card 11): a message during a turn joins
                 // Pi's steer queue — "queued = next API call" — unless the
                 // composer asked for a follow-up after the turn.
                 await sessionService.queuePrompt(
                   currentSessionId,
-                  msg.payload,
-                  msg.attachments,
+                  text,
+                  attachments,
                   msg.deliverAs ?? "steer",
                 );
                 break;
@@ -2737,7 +2742,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               // A refusal before the run starts (busy, no model) is an error
               // reply; once started, finishRun reports the outcome to every
               // window.
-              sessionService.runPrompt(currentSessionId, msg.payload, msg.attachments);
+              sessionService.runPrompt(currentSessionId, text, attachments);
             } catch (error) {
               fail(error);
             }
@@ -3044,7 +3049,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             break;
           }
           case "switch_mode": {
-            if (msg.payload.mode !== "understand" && msg.payload.mode !== "work") {
+            if (msg.payload.mode !== "read-only" && msg.payload.mode !== "work") {
               fail(new Error("Unknown mode"));
               break;
             }
@@ -3064,8 +3069,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               fail(new Error("enabled must be a boolean"));
               break;
             }
-            // Full Access is a local-only control (v1.4.8); the mode check
-            // (local Work / Native Pi) lives in the session runtime itself.
+            // Full Access is a local-only control (v1.4.8); under read-only
+            // the session runtime holds it dormant.
             if (!localMode) {
               fail(new Error("Full access is not enabled on this server"),
               );
@@ -3299,7 +3304,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       rolePresetsDir,
       soulDir,
       publicDir,
-      understandReadOnly,
       modelProvider,
       modelId,
       modelsPath,

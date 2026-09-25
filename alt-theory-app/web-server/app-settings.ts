@@ -32,10 +32,10 @@ export interface AppSettings {
   skillPrecedence?: SkillPrecedence;
   skills: {
     /**
-     * User-enabled external skill paths per Alt mode. null = default policy:
-     * Understand enables none; Work enables every discovered external skill.
+     * User-enabled external skill paths. null = default policy: every
+     * discovered external skill. (The key predates the retirement of the
+     * Understand/Work modes; one list now serves every conversation.)
      */
-    understand: { enabledPaths: string[] | null };
     work: { enabledPaths: string[] | null };
   };
   /**
@@ -70,10 +70,11 @@ export interface AppSettings {
     model: { provider: string; modelId: string } | null;
   };
   /**
-   * Which Alt Theory mode a new conversation starts in. The per-conversation
-   * toggle is unaffected — this only seeds new drafts.
+   * Which permission a new conversation starts with (local only; hosted is
+   * always read-only). Absent = Ask. The per-conversation control is
+   * unaffected — this only seeds new drafts.
    */
-  defaultAltMode?: AltMode;
+  defaultPermission?: Permission;
   /** App-wide behavior runtime. Absent = Alt Theory. */
   runtimeMode?: RuntimeMode;
   /** Native Pi may add Alt Theory's bundled skills to Pi's own discovery. */
@@ -166,7 +167,6 @@ export function folderPolicyFor(
 const DEFAULT_SETTINGS: AppSettings = {
   schemaVersion: 1,
   skills: {
-    understand: { enabledPaths: null },
     work: { enabledPaths: null },
   },
 };
@@ -223,9 +223,6 @@ export function readAppSettingsWithWarning(dataDir: string): {
   const settings: AppSettings = {
       schemaVersion: 1,
       skills: {
-        understand: {
-          enabledPaths: normalizePaths(parsed.skills?.understand?.enabledPaths),
-        },
         work: { enabledPaths: normalizePaths(parsed.skills?.work?.enabledPaths) },
       },
       ...(parsed.participant
@@ -265,8 +262,8 @@ export function readAppSettingsWithWarning(dataDir: string): {
       ...(SKILL_PRECEDENCE_VALUES.includes(parsed.skillPrecedence as SkillPrecedence)
         ? { skillPrecedence: parsed.skillPrecedence }
         : {}),
-      ...(parsed.defaultAltMode === "understand" || parsed.defaultAltMode === "work"
-        ? { defaultAltMode: parsed.defaultAltMode }
+      ...(PERMISSIONS.includes(parsed.defaultPermission as Permission)
+        ? { defaultPermission: parsed.defaultPermission }
         : {}),
       ...(parsed.runtimeMode === "alt-theory" || parsed.runtimeMode === "native-pi"
         ? { runtimeMode: parsed.runtimeMode }
@@ -369,16 +366,32 @@ export function writeAppSettings(dataDir: string, settings: AppSettings): void {
 }
 
 /**
- * Resolve the per-mode external skill path lists a new session should load,
- * applying the null-means-default policy against the discovered externals.
+ * Resolve the external skill paths a new session should load, applying the
+ * null-means-default policy against the discovered externals.
  */
 export function resolveExternalSkillPaths(
   settings: AppSettings,
   discoveredExternalPaths: string[]
-): { understand: string[]; work: string[] } {
+): string[] {
+  return settings.skills.work.enabledPaths ?? [...discoveredExternalPaths];
+}
+
+/** The permission control's three choices (UI term; stored as mode + Full Access). */
+export type Permission = "read-only" | "ask" | "full";
+export const PERMISSIONS: Permission[] = ["read-only", "ask", "full"];
+
+/**
+ * The settings a new conversation starts from. Hosted deployments are
+ * read-only regardless of the setting (owner 2026-09-25).
+ */
+export function defaultSessionPermission(
+  settings: AppSettings,
+  localMode: boolean,
+): { mode: AltMode; fullAccess: boolean } {
+  const permission = localMode ? (settings.defaultPermission ?? "ask") : "read-only";
   return {
-    understand: settings.skills.understand.enabledPaths ?? [],
-    work: settings.skills.work.enabledPaths ?? [...discoveredExternalPaths],
+    mode: permission === "read-only" ? "read-only" : "work",
+    fullAccess: permission === "full",
   };
 }
 

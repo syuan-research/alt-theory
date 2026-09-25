@@ -14,6 +14,7 @@ import {
   isNoModelPlaceholder,
   KB_DISABLED_DOMAIN,
   openAltTheorySession,
+  toAltMode,
   type AssemblyManifest,
   type AltMode,
   type ResourceDiscoveryMode,
@@ -70,6 +71,7 @@ import {
   stripSkillWrapper,
 } from "./session-store.js";
 import {
+  defaultSessionPermission,
   folderPolicyFor,
   readAppSettings,
   writeAppSettings,
@@ -158,7 +160,6 @@ export interface SessionServiceConfig {
   rolePresetsDir: string;
   soulDir: string;
   legacySoulPath: string | null;
-  understandReadOnly: boolean;
   /**
    * Absent = local (the safe default). Retention — the only thing that ever
    * deletes a conversation — exists ONLY on hosted deployments; see
@@ -184,7 +185,7 @@ export interface SessionServiceConfig {
    * session open so settings changes apply on reload without touching
    * running sessions.
    */
-  resolveExternalSkillPaths?: () => { understand: string[]; work: string[] };
+  resolveExternalSkillPaths?: () => string[];
   /**
    * Inline Pi extension factories loaded into every session (M4 policy
    * layer, tests). The only extension entry point — ambient discovery
@@ -1082,6 +1083,9 @@ export class SessionService implements AgentTeamBridge {
     sessionId: string,
     mode: AltMode,
   ): Promise<SessionSnapshot> {
+    if (mode !== "read-only" && this.config.localMode === false) {
+      throw new Error("This server allows read-only conversations only");
+    }
     const managed = this.requireSession(sessionId);
     await managed.runState.applyOrDefer({ mode }, () => this.applyMode(managed, mode));
     return this.publish(managed);
@@ -1114,8 +1118,8 @@ export class SessionService implements AgentTeamBridge {
   /**
    * Full Access (v1.4.8; follows the conversation since M2): the permission
    * bypass lives in the session header, so reopening or restarting keeps it.
-   * Enabling is validated in the core setter (work-capable mode) and deferred
-   * while a turn runs; the WS layer separately rejects non-local servers.
+   * Enabling is deferred while a turn runs (dormant under read-only); the WS
+   * layer rejects non-local servers.
    * Disabling is immediate and allowed during a run — the guard predicate is
    * live per tool call, and turning permissions down mid-run is always safe.
    */
@@ -2187,7 +2191,7 @@ export class SessionService implements AgentTeamBridge {
         undefined,
         arm.selectorOverrides,
       );
-      await this.switchMode(forked.sessionId, "understand");
+      await this.switchMode(forked.sessionId, "read-only");
       armSnapshots.push(forked);
     }
     await Promise.all(
@@ -3077,7 +3081,8 @@ export class SessionService implements AgentTeamBridge {
       kbDomain: input.selectors.kbDomain,
       piPromptTemplatesDir: this.config.assetPaths.piPromptTemplatesDir,
       ...input.modelArgs,
-      altMode: input.altMode,
+      // Hosted deployments are read-only (owner 2026-09-25).
+      altMode: this.config.localMode === false ? "read-only" : input.altMode,
       fullAccess: input.fullAccess === true,
       runtimeMode: appSettings.runtimeMode ?? "alt-theory",
       trimmedPiBasePrompt: appSettings.experimentTrimmedPiPrompt === true,
@@ -3088,7 +3093,6 @@ export class SessionService implements AgentTeamBridge {
       trustedReadRoots: this.config.trustedReadRoots,
       runLabel: this.config.runLabel,
       testBatch: this.config.testBatch,
-      understandReadOnly: this.config.understandReadOnly,
       externalSkillPaths: this.config.resolveExternalSkillPaths?.(),
       skillPrecedence: appSettings.skillPrecedence,
       extensionFactories: this.config.extensionFactories,
@@ -3171,7 +3175,9 @@ export class SessionService implements AgentTeamBridge {
           thinkingLevel:
             metadata.modelOverride?.thinkingLevel ?? this.config.thinkingLevel,
         },
-        altMode: metadata.mode ?? appSettings.defaultAltMode ?? "understand",
+        altMode:
+          metadata.mode ??
+          defaultSessionPermission(appSettings, this.config.localMode !== false).mode,
         forkPurpose: metadata.forkedFrom?.purpose ?? null,
         fullAccess: metadata.fullAccess,
       }),
@@ -3376,7 +3382,7 @@ export class SessionService implements AgentTeamBridge {
   ): Promise<{ report: string; sessionId: string }> {
     const parent = this.requireSession(parentSessionId);
     const header = readV4SessionHeader(parent.manifest.recordsDir);
-    const mode = clampSubagentMode(parent.getAltMode(), options.mode);
+    const mode = clampSubagentMode(parent.getAltMode(), options.permission);
     const requestedRole = options.role?.trim() || undefined;
     if (
       requestedRole &&
@@ -3488,7 +3494,7 @@ export class SessionService implements AgentTeamBridge {
       payload: { sessionId: child.sessionId, purpose: "subagent" },
     });
     const report = [
-      `Spawned subagent "${label}" (session ${child.sessionId}, ${agentType}, ${mode === "understand" ? "understand" : "work"} mode, ${modelOverride ? `model ${modelOverride.provider}/${modelOverride.modelId}${modelOverride.thinkingLevel ? `:${modelOverride.thinkingLevel}` : ""}` : "no model selected"}).`,
+      `Spawned subagent "${label}" (session ${child.sessionId}, ${agentType}, ${mode === "read-only" ? "read-only" : "ask"} permission, ${modelOverride ? `model ${modelOverride.provider}/${modelOverride.modelId}${modelOverride.thinkingLevel ? `:${modelOverride.thinkingLevel}` : ""}` : "no model selected"}).`,
       started === "queued"
         ? `It is queued behind ${SUBAGENT_CONCURRENCY} running subagents and starts automatically.`
         : "It is working in the background.",
@@ -3959,7 +3965,7 @@ export class SessionService implements AgentTeamBridge {
       fallbackSelectors.customInstructionRef,
     );
     const persistedHeader = readV4SessionHeader(sessionDirs.recordsDir);
-    const persistedMode = persistedHeader?.mode ?? "understand";
+    const persistedMode = toAltMode(persistedHeader?.mode);
     const subagentConfig = readSubagentConfig(this.config.dataDir).config;
 
     // Stale-workspace recovery (v1.2.1): the recorded working folder can vanish
@@ -4213,7 +4219,7 @@ export class SessionService implements AgentTeamBridge {
     forkPurpose?: ForkPurpose;
   }): Promise<ManagedSession> {
     const persistedHeader = readV4SessionHeader(args.sessionDirs.recordsDir);
-    const persistedMode = args.mode ?? persistedHeader?.mode ?? "understand";
+    const persistedMode = args.mode ?? toAltMode(persistedHeader?.mode);
     const subagentConfig = readSubagentConfig(this.config.dataDir).config;
     const persistedWorkspace = args.workspace ?? persistedHeader?.workspace;
     const modelOverride = args.modelOverride ?? persistedHeader?.modelOverride;

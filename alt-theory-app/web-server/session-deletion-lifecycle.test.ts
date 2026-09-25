@@ -53,7 +53,6 @@ function createSession(
     kb: { dir: "", domain: "ep-core" },
     kbDir: "",
     kbDomain: "ep-core",
-    altMode: "understand",
     resourceDiscovery: { mode: "clean" },
     readonly: true,
     writableRoots: [],

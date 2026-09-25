@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "r
 import type {
   AltMode,
   ClientMessageBody,
+  Permission,
   NewConversationSettings,
   ServerMessage,
   SessionModelOverride,
@@ -21,6 +22,7 @@ import {
   isRunning,
   openingTarget,
   pendingChanges,
+  permissionOf,
   queuedTexts,
   recoveryOf,
   reduce,
@@ -58,14 +60,14 @@ const checkedDrafts = new Set<string>();
 /** Requests that create a conversation from the new-conversation draft. */
 const CREATING = new Set<ClientMessageBody["type"]>(["prompt", "invoke_skill"]);
 
-/** Kept for the next new conversation once one was created: mode and folder. */
+/**
+ * Kept for the next new conversation once one was created: the folder. The
+ * permission starts from the Settings default again (owner 2026-09-25).
+ */
 function stickySettings(settings: NewConversationSettings | undefined): NewConversationSettings | undefined {
-  if (!settings) return undefined;
-  const { mode, workspacePrimaryDir } = settings;
-  return {
-    ...(mode !== undefined ? { mode } : {}),
-    ...(workspacePrimaryDir ? { workspacePrimaryDir } : {}),
-  };
+  return settings?.workspacePrimaryDir
+    ? { workspacePrimaryDir: settings.workspacePrimaryDir }
+    : undefined;
 }
 
 export interface ConversationOptions {
@@ -160,8 +162,8 @@ export function useConversation({ sessionId, enabled, onMessage }: ConversationO
         appendToDraft(op.to ?? NEW_DRAFT, op.text, op.attachments, "before", op.once);
         if (op.to === stateRef.current.sessionId) setDraftReturns((count) => count + 1);
       } else {
-        // The draft became this conversation: its settings start over (mode
-        // and folder carry), and anything typed while it was being created
+        // The draft became this conversation: its settings start over (the
+        // folder carries), and anything typed while it was being created
         // moves with the user into the new conversation.
         const leftover = readDraft(NEW_DRAFT);
         updateDraft(NEW_DRAFT, (current) => ({
@@ -328,9 +330,19 @@ export function useConversation({ sessionId, enabled, onMessage }: ConversationO
         setting({ rolePresetSlug }, { type: "switch_role_preset", payload: { rolePresetSlug } }),
       switchVisibility: (visibility: SessionVisibility) =>
         setting({ visibility }, { type: "switch_visibility", payload: { visibility } }),
-      switchMode: (mode: AltMode) => setting({ mode }, { type: "switch_mode", payload: { mode } }),
-      setFullAccess: (enabled: boolean) =>
-        setting({ fullAccess: enabled }, { type: "set_full_access", payload: { enabled } }),
+      /** One permission choice = the stored mode and Full Access, each sent only when it changes. */
+      setPermission(permission: Permission) {
+        const now = effectiveSettings(current(), {
+          settings: readDraft(NEW_DRAFT).settings,
+          inherited: inheritedRef.current,
+        });
+        const mode: AltMode = permission === "read-only" ? "read-only" : "work";
+        const fullAccess = permission === "full";
+        if (mode !== now.mode) setting({ mode }, { type: "switch_mode", payload: { mode } });
+        if (fullAccess !== now.fullAccess) {
+          setting({ fullAccess }, { type: "set_full_access", payload: { enabled: fullAccess } });
+        }
+      },
       setSessionModel: (override: SessionModelOverride | null) =>
         setting({ modelOverride: override }, { type: "set_session_model", payload: { override } }),
       setStudyTag: (studyTag: StudyTag | null) =>
@@ -451,8 +463,7 @@ function useConversationView(
       pendingChanges: pendingChanges(state),
       selectors: settings.selectors,
       sessionMode: settings.mode,
-      /** The mode the new-conversation draft would create with (import uses it too). */
-      newConversationMode: effectiveSettings({ ...state, sessionId: null }, newSettings).mode,
+      permission: permissionOf(settings),
       fullAccess: settings.fullAccess,
       modelOverride: settings.modelOverride,
       studyTag: settings.studyTag,

@@ -9,6 +9,7 @@ import { useConversation } from "@/hooks/useConversation";
 import { useStickToBottom } from "@/hooks/useStickToBottom";
 import { useFindTarget } from "@/lib/find";
 import { runPhaseLabels } from "@/lib/runState";
+import { useAutosizeTextarea } from "@/lib/autosizeTextarea";
 import { canTakeMainline, isListMember } from "@/lib/sessionList";
 import { t } from "@/i18n";
 import { ApprovalDock } from "@/components/conversation/ApprovalDock";
@@ -75,6 +76,9 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
   // This child's own draft (lib/draft): closing and reopening keeps it.
   const draft = conversation.draftText;
   const setDraft = conversation.setDraftText;
+  // Grow with content like the main composer (CSS max-height caps it).
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  useAutosizeTextarea(textareaRef, draft);
   const [menu, setMenu] = useState<"role" | "model" | null>(null);
   const ctxLineRef = useRef<HTMLDivElement>(null);
   const developer = app.transcriptView === "developer";
@@ -163,7 +167,7 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
     }),
     [main],
   );
-  const commands = useSlashCommands({ live: true, mode: conversation.sessionMode, helper });
+  const commands = useSlashCommands({ live: true, helper });
   const palette = useSlashPalette({ draft, commands, setDraft });
 
   const latestUserIndex = useMemo(() => {
@@ -270,6 +274,7 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
       ) : null}
       <div className="composer child-composer">
         <textarea
+          ref={textareaRef}
           rows={1}
           value={draft}
           disabled={!conversation.sessionReady}

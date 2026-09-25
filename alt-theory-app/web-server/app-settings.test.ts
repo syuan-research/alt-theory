@@ -9,41 +9,44 @@ import {
   readAppSettings,
   readAppSettingsWithWarning,
   resolveExternalSkillPaths,
+  defaultSessionPermission,
   writeAppSettings,
 } from "./app-settings.js";
 import { discoverSkillResources } from "./resource-discovery.js";
 
-test("app settings default policy: Understand gets no external skills, Work gets all", () => {
+test("app settings default policy: every discovered external skill; default permission Ask", () => {
   const dataDir = mkdtempSync(join(tmpdir(), "alt-theory-settings-"));
   const settings = readAppSettings(dataDir);
   const resolved = resolveExternalSkillPaths(settings, ["/x/skill-a", "/x/skill-b"]);
-  assert.deepEqual(resolved.understand, []);
-  assert.deepEqual(resolved.work, ["/x/skill-a", "/x/skill-b"]);
+  assert.deepEqual(resolved, ["/x/skill-a", "/x/skill-b"]);
+  assert.deepEqual(defaultSessionPermission(settings, true), { mode: "work", fullAccess: false });
+  settings.defaultPermission = "full";
+  assert.deepEqual(defaultSessionPermission(settings, true), { mode: "work", fullAccess: true });
+  settings.defaultPermission = "read-only";
+  assert.deepEqual(defaultSessionPermission(settings, true), { mode: "read-only", fullAccess: false });
+  // Hosted is read-only whatever the setting says.
+  settings.defaultPermission = "full";
+  assert.deepEqual(defaultSessionPermission(settings, false), { mode: "read-only", fullAccess: false });
 });
 
 test("app settings persist immediately and round-trip explicit selections", () => {
   const dataDir = mkdtempSync(join(tmpdir(), "alt-theory-settings-"));
   writeAppSettings(dataDir, {
     schemaVersion: 1,
-    skills: {
-      understand: { enabledPaths: ["/x/skill-a"] },
-      work: { enabledPaths: [] },
-    },
+    skills: { work: { enabledPaths: ["/x/skill-a"] } },
+    defaultPermission: "read-only",
   });
   const settings = readAppSettings(dataDir);
   const resolved = resolveExternalSkillPaths(settings, ["/x/skill-a", "/x/skill-b"]);
-  assert.deepEqual(resolved.understand, ["/x/skill-a"]);
-  assert.deepEqual(resolved.work, []);
+  assert.deepEqual(resolved, ["/x/skill-a"]);
+  assert.equal(settings.defaultPermission, "read-only");
 });
 
 test("app settings keep a cached update check across a later write", () => {
   const dataDir = mkdtempSync(join(tmpdir(), "alt-theory-settings-update-"));
   writeAppSettings(dataDir, {
     schemaVersion: 1,
-    skills: {
-      understand: { enabledPaths: null },
-      work: { enabledPaths: null },
-    },
+    skills: { work: { enabledPaths: null } },
     updateCheck: {
       lastCheckedAt: "2026-09-05T00:00:00.000Z",
       latestVersion: "1.5.1",
@@ -157,7 +160,7 @@ test("unreadable settings keep the last good copy instead of resetting to defaul
   const dataDir = mkdtempSync(join(tmpdir(), "alt-theory-settings-"));
   writeAppSettings(dataDir, {
     schemaVersion: 1,
-    skills: { understand: { enabledPaths: null }, work: { enabledPaths: null } },
+    skills: { work: { enabledPaths: null } },
     lang: "zh-Hans",
   });
   const path = join(dataDir, "app-settings.json");
@@ -171,7 +174,7 @@ test("settings with an unknown schema version keep the last good copy", () => {
   const dataDir = mkdtempSync(join(tmpdir(), "alt-theory-settings-"));
   writeAppSettings(dataDir, {
     schemaVersion: 1,
-    skills: { understand: { enabledPaths: ["/x/a"] }, work: { enabledPaths: null } },
+    skills: { work: { enabledPaths: ["/x/a"] } },
   });
   writeFileSync(
     join(dataDir, "app-settings.json"),
@@ -179,7 +182,7 @@ test("settings with an unknown schema version keep the last good copy", () => {
     "utf-8",
   );
   const { settings, warning } = readAppSettingsWithWarning(dataDir);
-  assert.deepEqual(settings.skills.understand.enabledPaths, ["/x/a"]);
+  assert.deepEqual(settings.skills.work.enabledPaths, ["/x/a"]);
   assert.ok(warning && warning.includes("schema version 99"));
 });
 
@@ -191,7 +194,7 @@ test("writing never overwrites an unreadable settings file", () => {
     () =>
       writeAppSettings(dataDir, {
         schemaVersion: 1,
-        skills: { understand: { enabledPaths: null }, work: { enabledPaths: null } },
+        skills: { work: { enabledPaths: null } },
       }),
     /Refusing to overwrite unreadable app settings/,
   );
@@ -202,7 +205,7 @@ test("a corrupt file with no last good copy falls back to defaults with a warnin
   const dataDir = mkdtempSync(join(tmpdir(), "alt-theory-settings-"));
   writeFileSync(join(dataDir, "app-settings.json"), "{ not json", "utf-8");
   const { settings, warning } = readAppSettingsWithWarning(dataDir);
-  assert.deepEqual(settings.skills.understand.enabledPaths, null);
+  assert.deepEqual(settings.skills.work.enabledPaths, null);
   assert.ok(warning && warning.includes("Could not read app settings"));
 });
 
@@ -235,7 +238,7 @@ test("app settings migrate in place: projects gain ids and names, legacy known f
     join(dataDir, "app-settings.json"),
     JSON.stringify({
       schemaVersion: 1,
-      skills: { understand: { enabledPaths: null }, work: { enabledPaths: null } },
+      skills: { work: { enabledPaths: null } },
       knownWorkspaces: [join(dataDir, "papers")],
       workingFolders: {
         global: [],

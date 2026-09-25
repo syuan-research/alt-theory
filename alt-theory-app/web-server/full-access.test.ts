@@ -42,9 +42,10 @@ function setupFixture() {
 
 function createTestService(
   fixture: ReturnType<typeof setupFixture>,
+  localMode = true,
 ): SessionService {
   return new SessionService({
-    localMode: true,
+    localMode,
     dataDir: fixture.dataDir,
     assetPaths: {
       rootDir: fixture.root,
@@ -62,8 +63,6 @@ function createTestService(
     rolePresetsDir: join(fixture.root, "role-presets"),
     soulDir: join(fixture.root, "soul"),
     legacySoulPath: join(fixture.root, "soul", "soul-latest.md"),
-    understandReadOnly: true,
-    altMode: "understand",
     resourceDiscovery: "clean",
     skillsDir: join(fixture.root, "skills"),
     instructionsDir: join(fixture.root, "instructions"),
@@ -195,14 +194,7 @@ test("full access lifetime on the managed session", async () => {
   const created = await service.createSession(selectors);
   assert.equal(created.fullAccess, false, "starts off");
 
-  // Enabling outside a work-capable mode is rejected by the server path.
-  await assert.rejects(
-    service.setFullAccess(created.sessionId, true),
-    /Full access can only be enabled/,
-  );
-
-  // Work mode: enabling works and is projected in the snapshot.
-  await service.switchMode(created.sessionId, "work");
+  // Ask (the default): enabling works and is projected in the snapshot.
   const on = await service.setFullAccess(created.sessionId, true);
   assert.equal(on.fullAccess, true);
 
@@ -211,15 +203,15 @@ test("full access lifetime on the managed session", async () => {
   assert.equal(readV4SessionHeader(recordsDir)?.fullAccess, true, "header holds it");
   assert.deepEqual(fullAccessTrace(recordsDir), [true]);
 
-  // Understand keeps the value stored (dormant), not cleared…
-  const dormant = await service.switchMode(created.sessionId, "understand");
-  assert.equal(dormant.fullAccess, true, "retained while hidden in Understand");
+  // read-only keeps the value stored (dormant), not cleared…
+  const dormant = await service.switchMode(created.sessionId, "read-only");
+  assert.equal(dormant.fullAccess, true, "retained while hidden in read-only");
   // …and Work restores it.
   const restored = await service.switchMode(created.sessionId, "work");
   assert.equal(restored.fullAccess, true);
 
-  // Disabling is immediate, even from Understand, and leaves the header.
-  await service.switchMode(created.sessionId, "understand");
+  // Disabling is immediate, even from read-only, and leaves the header.
+  await service.switchMode(created.sessionId, "read-only");
   const off = await service.setFullAccess(created.sessionId, false);
   assert.equal(off.fullAccess, false);
   assert.equal(readV4SessionHeader(recordsDir)?.fullAccess, undefined, "header cleared");
@@ -307,15 +299,15 @@ test("draft full access applies when the conversation materializes", async () =>
   assert.equal(created.fullAccess, true);
   const records = join(fixture.dataDir, "sessions", created.sessionId, "records");
   assert.equal(readV4SessionHeader(records)?.fullAccess, true, "created into the header");
-  // A draft that went back to Understand keeps the choice dormant (the same
+  // A draft that went back to read-only keeps the choice dormant (the same
   // rule as a live switch), instead of failing the first message.
-  const dormant = await service.createSession(selectors, { mode: "understand", fullAccess: true });
+  const dormant = await service.createSession(selectors, { mode: "read-only", fullAccess: true });
   assert.equal(dormant.fullAccess, true, "held");
   const back = await service.switchMode(dormant.sessionId, "work");
   assert.equal(back.fullAccess, true, "effective once in Work");
 });
 
-test("full access is dormant in Understand, effective again back in Work", async () => {
+test("full access is dormant in read-only, effective again back in Work", async () => {
   const root = mkdtempSync(join(tmpdir(), "alt-full-access-core-"));
   const kbDir = join(root, "kb");
   mkdirSync(kbDir, { recursive: true });
@@ -325,19 +317,18 @@ test("full access is dormant in Understand, effective again back in Work", async
     appContextPath: join(root, "ALTTHEORY.md"),
     kbDir,
     kbDomain: "none",
-    understandReadOnly: true,
     altMode: "work",
     resourceDiscovery: "clean",
   });
   assert.equal(runtime.isFullAccessEffective(), false, "off by default");
   runtime.setFullAccess(true);
   assert.equal(runtime.isFullAccessEffective(), true, "effective in Work");
-  await runtime.setAltMode("understand");
+  await runtime.setAltMode("read-only");
   assert.equal(runtime.getFullAccess(), true, "value retained");
   assert.equal(
     runtime.isFullAccessEffective(),
     false,
-    "dormant while in Understand",
+    "dormant while in read-only",
   );
   await runtime.setAltMode("work");
   assert.equal(
@@ -345,4 +336,16 @@ test("full access is dormant in Understand, effective again back in Work", async
     true,
     "effective again back in Work",
   );
+});
+
+test("a hosted deployment runs every conversation read-only", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture, false);
+  const created = await service.createSession(selectors, { mode: "work" });
+  assert.equal(created.mode, "read-only", "work is refused at assembly");
+  await assert.rejects(
+    service.switchMode(created.sessionId, "work"),
+    /read-only conversations only/,
+  );
+  await service.disposeAll();
 });

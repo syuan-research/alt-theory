@@ -36,51 +36,15 @@ export function ConversationPanel() {
 function EmptyState() {
   const app = useApp();
   const shell = useShell();
-  const conv = useConversationContext();
   return (
     <div className="empty-state">
       <div className="empty-intro">
         <div className="greet">{t("Where shall we begin?")}</div>
         {app.runtimeMode === "native-pi" ? (
           <div className="native-pi-empty-note">
-            {t("Native Pi uses its normal work-capable tools and project and global folder access.")}
+            {t("Native Pi uses its normal tools and project and global folder access.")}
           </div>
-        ) : (
-          <div className="mode-pick">
-            <button
-              className={`mode-card understand${conv.sessionMode === "understand" ? " on" : ""}`}
-              onClick={() => conv.switchMode("understand")}
-              aria-pressed={conv.sessionMode === "understand"}
-              data-tip={t("For clarifying questions, comparing explanations, and developing ideas with your materials.")}
-            >
-              <div className="t">
-                <i className="ph ph-book-open" />
-                {t("Understand")}
-              </div>
-              <ul>
-                <li>{t("Clarify questions, compare explanations, and develop ideas.")}</li>
-                <li>{t("Read and discuss your materials and selected knowledge.")}</li>
-                <li>{t("Create notes or drafts while keeping understanding at the center.")}</li>
-              </ul>
-            </button>
-            <button
-              className={`mode-card work${conv.sessionMode === "work" ? " on" : ""}`}
-              onClick={() => conv.switchMode("work")}
-              aria-pressed={conv.sessionMode === "work"}
-              data-tip={t("For the same careful thinking plus research, data analysis, and direct work across files.")}
-            >
-              <div className="t">
-                <i className="ph ph-hammer" />
-                {t("Work")}
-              </div>
-              <ul>
-                <li>{t("Keep the same careful thinking while advancing a concrete task.")}</li>
-                <li>{t("Research and verify information, analyze data, and work across documents.")}</li>
-                <li>{t("Create or update documents, spreadsheets, presentations, and other files in your project and global folders.")}</li>
-              </ul>
-            </button>
-          </div>
-        )}
+        ) : null}
         {app.appMode === "local" ? (
           <button
             className="import-link"

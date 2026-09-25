@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
-import type { AltMode } from "@/api/types";
 import { useApp } from "@/context/AppProvider";
 import { useConversationContext } from "@/context/ConversationContext";
 import { useMainView } from "@/context/MainView";
@@ -23,13 +22,10 @@ export interface SlashCommand {
  */
 export function useSlashCommands({
   live,
-  mode,
   helper,
 }: {
   /** A materialized conversation (the new-conversation page has no branch/compact). */
   live: boolean;
-  /** Skills offered for this mode. */
-  mode: AltMode;
   helper: SlashCommand;
 }): SlashCommand[] {
   const app = useApp();
@@ -68,14 +64,14 @@ export function useSlashCommands({
         immediate: true,
       },
       ...(app.discovery?.skills ?? [])
-        .filter((skill) => skill.enabled?.[mode] !== false)
+        .filter((skill) => skill.enabled !== false)
         .map((skill) => ({
           name: skill.name,
           description: skill.description || t("Alt Theory skill"),
           run: (args: string) => void conversation.invokeSkill(skill.name, args),
         })),
     ];
-  }, [app.discovery, conversation, helper, live, main, mode]);
+  }, [app.discovery, conversation, helper, live, main]);
 }
 
 /** Palette state over the editor text: matches, selection, run, keys. */

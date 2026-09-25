@@ -90,8 +90,6 @@ function createTestService(fixture: ReturnType<typeof setupFixture>) {
     rolePresetsDir: fixture.rolePresetsDir,
     soulDir: fixture.soulDir,
     legacySoulPath: join(fixture.soulDir, "soul-latest.md"),
-    understandReadOnly: true,
-    altMode: "understand",
     resourceDiscovery: "clean",
     skillsDir: fixture.skillsDir,
     instructionsDir: fixture.instructionsDir,
@@ -161,12 +159,11 @@ async function waitFor(predicate: () => boolean, ms = 4000): Promise<void> {
 // Stateless helpers
 // ---------------------------------------------------------------------------
 
-test("clampSubagentMode: children inherit the parent's Alt mode, clamped to it", () => {
-  assert.equal(clampSubagentMode("understand", "work"), "understand");
-  assert.equal(clampSubagentMode("understand", undefined), "understand");
-  assert.equal(clampSubagentMode("work", "work"), "work");
+test("clampSubagentMode: children inherit the parent's permission, capped at Ask", () => {
+  assert.equal(clampSubagentMode("read-only", undefined), "read-only");
+  assert.equal(clampSubagentMode("read-only", "read-only"), "read-only");
   assert.equal(clampSubagentMode("work", undefined), "work");
-  assert.equal(clampSubagentMode("work", "understand"), "understand");
+  assert.equal(clampSubagentMode("work", "read-only"), "read-only");
 });
 
 test("createAgentTeamTools lets spawned agents delegate and message their parent", () => {
@@ -235,7 +232,7 @@ test("agent mail roundtrips, marks delivered, and parses fragments", () => {
 // Service integration
 // ---------------------------------------------------------------------------
 
-test("spawnSubagent creates a subagent child with clamped mode, alias, and spawned mail", async () => {
+test("spawnSubagent creates a subagent child with its permission, alias, and spawned mail", async () => {
   const fixture = setupFixture();
   const service = createTestService(fixture);
   try {
@@ -244,10 +241,10 @@ test("spawnSubagent creates a subagent child with clamped mode, alias, and spawn
     const spawned = await service.spawnSubagent(parent.sessionId, {
       message: "summarize the docs",
       name: "docs-subagent",
-      mode: "work",
+      permission: "read-only",
     });
     assert.match(spawned.report, /Spawned subagent "docs-subagent"/);
-    assert.match(spawned.report, /understand mode/); // Understand clamps Work
+    assert.match(spawned.report, /read-only permission/);
 
     const child = managedOf(service, spawned.sessionId);
     assert.equal(child.subagentParentId, parent.sessionId);

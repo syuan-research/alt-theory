@@ -1,7 +1,11 @@
 import { existsSync, readFileSync } from "fs";
 import { join, resolve } from "path";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
-import type { AssemblyManifest } from "../core/alt-theory-core.js";
+import {
+  toAltMode,
+  type AltMode,
+  type AssemblyManifest,
+} from "../core/alt-theory-core.js";
 import { writeJsonAtomic } from "../core/data-dir.js";
 
 export const V4_SCHEMA_VERSION = 1;
@@ -17,16 +21,6 @@ export type ForkPurpose = "fork" | "side" | "helper" | "ab-arm" | "subagent";
 const LEGACY_FORK_PURPOSE: Record<string, ForkPurpose> = {
   collaboration: "side",
   comparison: "ab-arm",
-};
-
-/**
- * v1-alpha records named the capability mode pure/full. The runtime indexes
- * per-mode maps by this value, so an un-normalized "pure" reopened as
- * `undefined` and took the whole session open down with it.
- */
-const LEGACY_MODE: Record<string, "understand" | "work"> = {
-  pure: "understand",
-  full: "work",
 };
 
 /** Study designation, session level (M7 decision doc §3); absent = daily use. */
@@ -111,8 +105,8 @@ export interface V4SessionHeader extends RecordEnvelope {
   retentionDueAt?: string | null;
   /** Root Helper launch. Child Helpers use forkedFrom.purpose instead. */
   helper?: true;
-  /** Per-session Alt Theory behavior mode. */
-  mode?: "understand" | "work";
+  /** Per-session tool mode behind the permission control. */
+  mode?: AltMode;
   /** Work/Native workspace (spec §5.1); absent = default session workspace only.
    *  v1.5.1: companion folders belong to the project in app settings; headers
    *  from before v1.5.1 may still carry a legacy `additionalDirs` field. */
@@ -165,7 +159,7 @@ export function writeFoundationRecords(args: {
   lastActivityAt?: string;
   retentionDueAt?: string | null;
   helper?: boolean;
-  mode?: "understand" | "work";
+  mode?: AltMode;
   workspace?: {
     primaryDir: string;
   } | null;
@@ -235,9 +229,8 @@ export function readV4SessionHeader(recordsDir: string): V4SessionHeader | null 
         LEGACY_FORK_PURPOSE[header.forkedFrom.purpose] ??
         header.forkedFrom.purpose;
     }
-    if (header.mode) {
-      header.mode = LEGACY_MODE[header.mode] ?? header.mode;
-    }
+    // Retired values (pure/full, understand) read as work (owner 2026-09-25).
+    if (header.mode) header.mode = toAltMode(header.mode);
     return header;
   }
   return null;

@@ -147,7 +147,7 @@ test("isPathInside is containment with Windows case-insensitivity", () => {
   assert.equal(isPathInside("C:\\A\\B", "c:\\a\\b\\c.txt"), process.platform === "win32");
 });
 
-test("Working folders page: a listed folder reads everywhere, the Edit tick writes only while work-capable, project companions join the workspace", () => {
+test("Working folders page: a listed folder reads everywhere, the Edit tick makes it writable, project companions join the workspace", () => {
   const base = mkdtempSync(join(tmpdir(), "alt-theory-roots-global-"));
   try {
     const input = {
@@ -158,7 +158,6 @@ test("Working folders page: a listed folder reads everywhere, the Edit tick writ
       kbDir: join(base, "kb"),
       trustedReadRoots: [],
       skillsDir: null,
-      workCapable: true,
       globalFolders: [
         { path: join(base, "vault"), writable: false },
         { path: join(base, "papers"), writable: true },
@@ -180,12 +179,6 @@ test("Working folders page: a listed folder reads everywhere, the Edit tick writ
       [...new Set(work.readable.filter((r) => r.reason === "global-list").map((r) => r.path))],
       [join(base, "papers"), join(base, "vault")],
     );
-    const understand = sessionRoots({ ...input, workCapable: false });
-    assert.deepEqual(understand.writable.map((r) => r.reason), ["session-write", "asset"]);
-    assert.deepEqual(
-      understand.readable.map((r) => r.reason),
-      ["session-write", "asset", "cwd", "project-secondary", "global-list", "global-list", "kb"],
-    );
   } finally {
     rmSync(base, { recursive: true, force: true });
   }
@@ -202,7 +195,6 @@ test("sessionRoots lists every root with its reason", () => {
       kbDir: join(base, "kb"),
       trustedReadRoots: [join(base, "trusted")],
       skillsDir: join(base, "skills"),
-      workCapable: true,
     };
     const { readable, writable } = sessionRoots(input);
     assert.deepEqual(
@@ -224,18 +216,8 @@ test("sessionRoots lists every root with its reason", () => {
       ]
     );
 
-    // Not work-capable: the workspace folders drop out of the
-    // writable set but the primary cwd stays readable.
-    const bounded = sessionRoots({ ...input, workCapable: false });
-    assert.deepEqual(
-      bounded.writable.map((r) => r.reason),
-      ["session-write", "asset", "approved"]
-    );
-    assert.ok(
-      bounded.readable.some((r) => r.path === input.cwd && r.reason === "cwd")
-    );
-    // Reserved 1.5.x reasons are not produced.
-    const allReasons = [...bounded.readable, ...bounded.writable].map((r) => r.reason);
+    // Reserved 1.5.x reasons are not produced without their inputs.
+    const allReasons = [...readable, ...writable].map((r) => r.reason);
     assert.ok(!allReasons.includes("global-list" as never));
     assert.ok(!allReasons.includes("project-secondary" as never));
   } finally {

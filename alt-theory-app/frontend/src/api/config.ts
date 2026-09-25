@@ -3,6 +3,7 @@ import type {
   ConfigStatus,
   FetchModelsDraftInput,
   FetchedModel,
+  Permission,
   ProviderAuthFlow,
   ProviderAuthId,
   ProviderView,
@@ -205,21 +206,17 @@ export async function uploadRolePreset(
   });
 }
 
-export async function getDefaultAltMode(): Promise<{
-  mode: "understand" | "work" | null;
-}> {
-  return fetchJson<{ mode: "understand" | "work" | null }>(
-    "/api/settings/default-alt-mode",
-  );
+export async function getDefaultPermission(): Promise<{ permission: Permission }> {
+  return fetchJson<{ permission: Permission }>("/api/settings/default-permission");
 }
 
-export async function saveDefaultAltMode(
-  mode: "understand" | "work" | null,
-): Promise<{ ok: true; mode: "understand" | "work" | null }> {
-  return fetchJson("/api/settings/default-alt-mode", {
+export async function saveDefaultPermission(
+  permission: Permission,
+): Promise<{ ok: true; permission: Permission }> {
+  return fetchJson("/api/settings/default-permission", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ mode }),
+    body: JSON.stringify({ permission }),
   });
 }
 

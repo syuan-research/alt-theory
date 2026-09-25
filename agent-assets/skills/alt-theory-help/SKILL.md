@@ -9,9 +9,9 @@ Help with Alt Theory itself, not with the user's substantive research question.
 
 ## Stable truths
 
-- A conversation can use Understand or Work capabilities.
-- Understand is safety-first; Work can act in the conversation's configured
-  working folders. Changing mode does not move those folders.
+- A conversation works in a project or without one, and has a permission:
+  Read-only (no commands; every file change asks first), Ask for approval,
+  or Full access. Changing the permission does not move any folders.
 - Branch is a normal related conversation for another direction. BTW is a
   side conversation. Helper starts with fresh context and stays visible in the
   conversation list.
@@ -38,7 +38,7 @@ trouble is help too — "how do I add a provider", "my key isn't working",
 "install what this skill needs", "I already have this provider in Pi, can I
 reuse it". Answer from the documentation map's setup pages, which name the
 real paths and files. When the user wants setup actually performed — and the
-conversation can act (Work mode) — follow
+conversation can act (not Read-only) — follow
 `references/setup-procedure.md` instead of improvising commands. For uncertain
 model image support, follow `references/model-image-procedure.md`.
 

@@ -23,6 +23,7 @@ import type {
   ActiveToolState,
   ApprovalRequestPayload,
   AltMode,
+  Permission,
   AssemblyManifest,
   ClientMessageBody,
   Failure,
@@ -243,6 +244,21 @@ function recentUserTexts(messages: TranscriptMessage[], count = 3): string[] {
   return texts;
 }
 
+const ATTACHMENT_LINE = /\s*\(Attachments: [^\n]*\)$/;
+
+/**
+ * Whether a sent text is in the rows or Pi's queue. The server moves staged
+ * attached files into the conversation's folder and rewrites their paths,
+ * so a message with files is matched without its attachment line.
+ */
+export function sentLanded(request: PendingRequest, users: string[], queued: string[]): boolean {
+  const text = request.sentText?.trim() ?? "";
+  if (users.includes(text) || queued.includes(request.sentText ?? "")) return true;
+  if (!request.attachments?.length) return false;
+  const bare = text.replace(ATTACHMENT_LINE, "");
+  return [...users, ...queued].some((row) => row.trim().replace(ATTACHMENT_LINE, "") === bare);
+}
+
 /**
  * New rows arrived for this conversation. Accepted bubbles they now carry go;
  * a terminal hand-over (`final`) ends every accepted bubble — the turn is
@@ -260,8 +276,7 @@ function withRows(state: ConversationState, messages: TranscriptMessage[], final
       requests.push(request);
       continue;
     }
-    const text = request.sentText.trim();
-    const landed = users.includes(text) || queued.includes(request.sentText);
+    const landed = sentLanded(request, users, queued);
     if (request.status === "accepted" && (final || landed)) continue;
     if (request.status === "unknown") {
       if (!landed && (request.draftText?.trim() || request.attachments?.length)) {
@@ -695,6 +710,12 @@ export interface EffectiveSettings {
   workspacePrimaryDir: string | null;
 }
 
+/** The permission control's reading of a conversation's two stored fields. */
+export function permissionOf(settings: { mode: AltMode; fullAccess: boolean }): Permission {
+  if (settings.mode === "read-only") return "read-only";
+  return settings.fullAccess ? "full" : "ask";
+}
+
 export function effectiveSettings(
   state: ConversationState,
   newDraft?: { settings?: NewConversationSettings; inherited?: NewConversationSettings },
@@ -711,7 +732,7 @@ export function effectiveSettings(
       visibility: pick(pending.visibility?.visibility, source?.visibility ?? "research"),
       branchId: (state.snapshot && state.sessionId ? state.snapshot.branchId : undefined) || "main",
     },
-    mode: pick(pending.mode, source?.mode ?? "understand"),
+    mode: pick(pending.mode, source?.mode ?? "work"),
     fullAccess: pick(pending.fullAccess, source?.fullAccess ?? false),
     modelOverride: pick(pending.model, source?.modelOverride ?? null),
     studyTag: source?.studyTag ?? null,
@@ -736,7 +757,7 @@ function draftSource(
         : (defaults?.customInstructionRef ?? null),
     visibility: pick("visibility") ?? defaults?.visibility,
     mode: pick("mode") ?? defaults?.mode,
-    fullAccess: pick("fullAccess") ?? false,
+    fullAccess: pick("fullAccess") ?? defaults?.fullAccess ?? false,
     modelOverride: pick("modelOverride") ?? null,
     studyTag: pick("studyTag") ?? null,
     workspacePrimaryDir: pick("workspacePrimaryDir") ?? null,

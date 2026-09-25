@@ -110,7 +110,6 @@ export function createTestService(
     rolePresetsDir: fixture.rolePresetsDir,
     soulDir: fixture.soulDir,
     legacySoulPath: join(fixture.soulDir, "soul-latest.md"),
-    understandReadOnly: true,
     resourceDiscovery,
     skillsDir: fixture.skillsDir,
     instructionsDir: fixture.instructionsDir,

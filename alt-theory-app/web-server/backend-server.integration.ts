@@ -768,7 +768,6 @@ test("core records resource discovery mode in the assembly manifest", async () =
     rolePresetSlug: "role-conceptual-theory-companion-latest",
     kbDir: kb,
     kbDomain: "ep-core",
-    understandReadOnly: true,
     resourceDiscovery: "internal",
     skillsDir,
     customInstructionPath: instructionPath,
@@ -800,7 +799,7 @@ test("core records resource discovery mode in the assembly manifest", async () =
   }
 });
 
-test("Understand replaces Pi base system prompt", async () => {
+test("read-only keeps the Work prompt, adds its permission note, and drops the shell", async () => {
   const root = mkdtempSync(join(tmpdir(), "alt-theory-prompt-mode-"));
   const dirs = createSessionDirs(root);
   const appContextPath = join(root, "ALTTHEORY.md");
@@ -821,8 +820,7 @@ test("Understand replaces Pi base system prompt", async () => {
     rolePresetSlug: "role-conceptual-theory-companion-latest",
     kbDir: kb,
     kbDomain: "ep-core",
-    understandReadOnly: true,
-    altMode: "understand",
+    altMode: "read-only",
     resourceDiscovery: "clean",
   });
 
@@ -832,13 +830,16 @@ test("Understand replaces Pi base system prompt", async () => {
     assert.match(prompt, /Test app context/);
     assert.match(prompt, /Soul/);
     assert.match(prompt, /Role/);
-    assert.match(prompt, /operating inside the Pi harness/);
-    assert.match(prompt, /do not describe yourself as Pi/);
-    assert.match(prompt, /read: read file contents/);
-    assert.doesNotMatch(prompt, /expert coding assistant operating inside pi/i);
-    assert.doesNotMatch(prompt, /Pi documentation/i);
-    assert.doesNotMatch(prompt, /Available skills/i);
-    assert.equal(result.manifest.altMode, "understand");
+    assert.match(prompt, /Alt Theory governs from here/);
+    assert.match(prompt, /Permission: Read-only/);
+    assert.deepEqual(
+      result.session.getActiveToolNames().filter((name) => ["bash", "edit", "write"].includes(name)).sort(),
+      ["edit", "write"],
+    );
+    assert.equal(result.manifest.altMode, "read-only");
+    await result.setAltMode("work");
+    assert.ok(result.session.getActiveToolNames().includes("bash"));
+    assert.doesNotMatch(result.session.agent.state.systemPrompt, /Permission: Read-only/);
   } finally {
     result.session.dispose();
   }
@@ -861,8 +862,6 @@ test("core allows no soul and no role prompt layers", async () => {
     rolePresetSlug: null,
     kbDir: kb,
     kbDomain: "ep-core",
-    understandReadOnly: true,
-    altMode: "understand",
     resourceDiscovery: "clean",
   });
 
@@ -937,7 +936,6 @@ test("openAltTheorySession opens existing JSONL and reports runtime drift", asyn
     modelProvider: "test-provider",
     modelId: "test-model",
     runtimeApiKey: "runtime-only-test-key",
-    understandReadOnly: true,
   });
 
   const sessionFile = fresh.session.sessionFile;
@@ -989,7 +987,6 @@ test("openAltTheorySession opens existing JSONL and reports runtime drift", asyn
     modelProvider: "test-provider",
     modelId: "test-model",
     runtimeApiKey: "runtime-only-test-key",
-    understandReadOnly: true,
   });
 
   try {
@@ -1150,7 +1147,6 @@ test("session catalog and detail expose complete and incomplete sessions", async
     modelProvider: "test-provider",
     modelId: "test-model",
     runtimeApiKey: "runtime-only-test-key",
-    understandReadOnly: true,
   });
   try {
     complete.session.sessionManager.appendMessage({
@@ -1214,7 +1210,6 @@ test("session catalog and detail expose complete and incomplete sessions", async
     modelProvider: "test-provider",
     modelId: "test-model",
     runtimeApiKey: "runtime-only-test-key",
-    understandReadOnly: true,
   });
   try {
     writeFoundationRecords({
@@ -1312,7 +1307,6 @@ test("session catalog and detail expose complete and incomplete sessions", async
     soulPath,
     rolePresetsDir: rolePresets,
     kbDir: kb,
-    understandReadOnly: true,
   });
   await new Promise<void>((resolveListen) => {
     instance.httpServer.listen(0, "127.0.0.1", resolveListen);
@@ -1483,7 +1477,6 @@ test("auth routes support cookie round trip without leaking account secrets", as
   const restoreMode = useHostedMode();
   const instance = createAltTheoryServer({
     dataDir,
-    understandReadOnly: true,
   });
   await new Promise<void>((resolveListen) => {
     instance.httpServer.listen(0, "127.0.0.1", resolveListen);
@@ -1671,8 +1664,6 @@ test("session routes preserve hosted isolation and local access", async () => {
     rolePresetsDir: rolePresets,
     soulDir: souls,
     legacySoulPath: join(souls, "soul-latest.md"),
-    understandReadOnly: true,
-    altMode: "understand",
     resourceDiscovery: "clean",
     instructionsDir: join(root, "instructions"),
     runLabel: null,
@@ -1767,7 +1758,6 @@ test("session routes preserve hosted isolation and local access", async () => {
     soulDir: souls,
     rolePresetsDir: rolePresets,
     kbDir: kb,
-    understandReadOnly: true,
   });
   await new Promise<void>((resolveListen) => {
     instance.httpServer.listen(0, "127.0.0.1", resolveListen);
@@ -1958,7 +1948,6 @@ test("session routes preserve hosted isolation and local access", async () => {
     soulDir: souls,
     rolePresetsDir: rolePresets,
     kbDir: kb,
-    understandReadOnly: true,
   });
   await new Promise<void>((resolveListen) => {
     localInstance.httpServer.listen(0, "127.0.0.1", resolveListen);
@@ -2011,7 +2000,6 @@ test("WebSocket open_session and Helper placement preserve the intended center s
     rolePresetSlug: "role-conceptual-theory-companion-latest",
     kbDir: kb,
     kbDomain: "ep-core",
-    understandReadOnly: true,
   });
   try {
     existing.session.sessionManager.appendMessage({
@@ -2079,7 +2067,6 @@ test("WebSocket open_session and Helper placement preserve the intended center s
     soulPath,
     rolePresetsDir: rolePresets,
     kbDir: kb,
-    understandReadOnly: true,
   });
   await new Promise<void>((resolveListen) => {
     instance.httpServer.listen(0, "127.0.0.1", resolveListen);
@@ -2287,7 +2274,6 @@ test("every socket on a conversation keeps its events after an idle instance swa
     soulPath,
     rolePresetsDir: rolePresets,
     kbDir: kb,
-    understandReadOnly: true,
   });
   await new Promise<void>((resolveListen) => {
     instance.httpServer.listen(0, "127.0.0.1", resolveListen);
@@ -2466,7 +2452,6 @@ test("WebSocket participant first send creates an owned role-conditioned session
     soulDir: souls,
     rolePresetsDir: rolePresets,
     kbDir: kb,
-    understandReadOnly: true,
   });
   await new Promise<void>((resolveListen) => {
     instance.httpServer.listen(0, "127.0.0.1", resolveListen);
@@ -2666,7 +2651,6 @@ test("REST discovery lists assets; a connection holds no draft and greets with t
     instructionsDir: instructions,
     skillsDir: skills,
     resourceDiscovery: "internal",
-    understandReadOnly: true,
   });
 
   await new Promise<void>((resolveListen) => {
@@ -2743,7 +2727,7 @@ test("REST discovery lists assets; a connection holds no draft and greets with t
       (skill: { name: string; source: string }) =>
         skill.name === "conversation-summary" && skill.source === "alt-theory",
     );
-    assert.deepEqual(bundledSkill?.enabled, { understand: true, work: true });
+    assert.equal(bundledSkill?.enabled, true);
     const [draft1, draft2] = await Promise.all([
       draft1Promise,
       draft2Promise
@@ -2823,7 +2807,6 @@ test("local mode stays usable without a model and refuses only the prompt", asyn
     soulDir: souls,
     rolePresetsDir: rolePresets,
     kbDir: kb,
-    understandReadOnly: true,
   });
 
   await new Promise<void>((resolveListen) => {
@@ -2860,7 +2843,7 @@ test("local mode stays usable without a model and refuses only the prompt", asyn
     const localSkill = skillsJson.skills.find(
       (skill: { name: string }) => skill.name === "local-test",
     );
-    assert.deepEqual(localSkill?.enabled, { understand: false, work: true });
+    assert.equal(localSkill?.enabled, true);
     await draft;
     // Refused before a run starts: an error reply, not a run outcome.
     const refused = waitForType(ws, "error");
@@ -2908,7 +2891,6 @@ test("dev-debug composes configured Alt Theory skills with Pi discovery", async 
     appContextPath,
     kbDir: kb,
     kbDomain: "ep-core",
-    understandReadOnly: true,
     resourceDiscovery: "dev-debug",
     skillsDir,
   });
@@ -2954,7 +2936,6 @@ test("a new conversation is created from the draft settings its first request ca
     soulDir: souls,
     rolePresetsDir: rolePresets,
     kbDir: kb,
-    understandReadOnly: true,
   });
   await new Promise<void>((resolveListen) => {
     instance.httpServer.listen(0, "127.0.0.1", resolveListen);
@@ -2988,9 +2969,10 @@ test("a new conversation is created from the draft settings its first request ca
   try {
     // The greeting is the defaults only; nothing about a draft is held here.
     const greeting = await next((message) => message.type === "session_draft");
-    assert.equal(greeting.payload.mode, "understand");
+    // Default permission (Ask): work without Full Access.
+    assert.equal(greeting.payload.mode, "work");
     assert.equal(greeting.payload.visibility, "no-export");
-    assert.equal("fullAccess" in greeting.payload, false);
+    assert.equal(greeting.payload.fullAccess, false);
 
     // describe_draft answers the thinking level for the draft's model.
     const described = next((message) => message.type === "session_draft");
@@ -3050,7 +3032,7 @@ test("a new conversation is created from the draft settings its first request ca
     const fresh = answer("new");
     const defaults = next((message) => message.type === "session_draft");
     ws.send(JSON.stringify({ type: "new_session", requestId: "new" }));
-    assert.equal((await defaults).payload.mode, "understand");
+    assert.equal((await defaults).payload.mode, "work");
     assert.equal((await fresh).type, "request_done");
   } finally {
     ws.close();

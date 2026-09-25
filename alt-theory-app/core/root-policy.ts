@@ -33,17 +33,17 @@ export interface SessionRootsInput {
   kbDir: string;
   trustedReadRoots: string[];
   skillsDir: string | null;
-  workCapable: boolean;
-  /** Working folders page (v1.5 part 2): readable everywhere, writable while work-capable when ticked. */
+  /** Working folders page (v1.5 part 2): readable everywhere, writable when ticked. */
   globalFolders?: Array<{ path: string; writable: boolean }>;
   /** The project's companion folders for this session's main folder (v1.5.1: the one folder mechanism). */
   projectSecondaryDirs?: string[];
 }
 
 /**
- * The session's readable and writable roots. Writable: the Alt roots always,
- * plus the workspace (primary + project companions) and approved folders only
- * while work-capable. Readable: everything writable, plus the primary cwd in
+ * The session's readable and writable roots. Writable: the Alt roots, the
+ * workspace (primary + project companions), ticked global folders, and
+ * approved folders. Read-only permission keeps these roots and asks before
+ * each write instead (security extension). Readable: everything writable, plus the primary cwd in
  * every mode, the KB (which legitimately lives outside cwd), trusted-read
  * roots, and the skills root (bundled skills are runtime-read assets like the
  * KB; without them every skill invocation would prompt "read outside your
@@ -79,15 +79,13 @@ export function sessionRoots(input: SessionRootsInput): {
     root: { path: resolve(folder.path), reason: "global-list" as const },
     writable: folder.writable,
   }));
-  const writable: Root[] = input.workCapable
-    ? [
-        ...altWritable,
-        cwdRoot,
-        ...projectSecondary,
-        ...global.filter((folder) => folder.writable).map((folder) => folder.root),
-        ...approved,
-      ]
-    : [...altWritable, ...approved];
+  const writable: Root[] = [
+    ...altWritable,
+    cwdRoot,
+    ...projectSecondary,
+    ...global.filter((folder) => folder.writable).map((folder) => folder.root),
+    ...approved,
+  ];
   const readable: Root[] = [
     ...writable,
     cwdRoot,

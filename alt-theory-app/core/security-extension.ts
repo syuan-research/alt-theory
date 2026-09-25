@@ -44,6 +44,13 @@ export interface SecurityExtensionOptions {
   getReadableRoots: () => Root[];
   /** Add an explicitly approved external folder for this session. */
   addWritableRoot?: (root: string) => void;
+  /**
+   * Read-only permission: every edit/write asks "Allow once / Deny"; there is
+   * no conversation-wide allowance.
+   */
+  isReadOnly?: () => boolean;
+  /** Let the guarded write pass one approved path outside the writable roots. */
+  allowWriteOnce?: (path: string) => void;
   /** Session-scoped audit sink (session records, never a machine-global log). */
   recordAudit?: (entry: SecurityAuditEntry) => void;
   /**
@@ -166,6 +173,8 @@ export function createSecurityExtension(
     getWritableRoots,
     getReadableRoots,
     addWritableRoot,
+    isReadOnly,
+    allowWriteOnce,
     recordAudit,
     isFullAccess,
   } =
@@ -312,6 +321,29 @@ export function createSecurityExtension(
             "sensitive_path",
             `Access to credential path denied: ${check.sensitiveRoot}`
           );
+        }
+        if (isReadOnly?.()) {
+          const title = `${event.toolName === "edit" ? "Edit" : "Write"} file: ${summarize(resolved)}`;
+          if (!ctx.hasUI) {
+            return blocked("read_only_write", `${title} — requires user approval, and no approval dialog is available right now.`);
+          }
+          const choice = await ctx.ui.select(
+            title,
+            [APPROVAL_ALLOW_ONCE, APPROVAL_DENY],
+            { signal: ctx.signal, timeout: APPROVAL_TIMEOUT_MS },
+          );
+          if (choice !== APPROVAL_ALLOW_ONCE) {
+            return blocked("read_only_write", `${title} — not approved by the user`);
+          }
+          if (check.outcome === "outside") allowWriteOnce?.(resolved);
+          audit({
+            toolName: event.toolName,
+            toolCallId: event.toolCallId,
+            action: "approved-once",
+            rule: "read_only_write",
+            detail: title,
+          });
+          return undefined;
         }
         if (check.outcome === "outside") {
           const root = dirname(resolved);

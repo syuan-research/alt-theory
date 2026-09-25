@@ -27,7 +27,8 @@ export interface SpawnSubagentOptions {
   /** Existing role id (role-preset slug). Omit to inherit the parent's role. */
   role?: string;
   model?: string;
-  mode?: "understand" | "work";
+  /** "read-only" narrows the child; omitted = inherit (never above Ask). */
+  permission?: "read-only";
 }
 
 export interface AgentTeamBridge {
@@ -65,17 +66,18 @@ export interface AgentTeamBridge {
 // ---------------------------------------------------------------------------
 
 /**
- * A child's Alt mode INHERITS the parent's and is clamped to it (owner
- * 2026-08-07: an Understand parent spawns only Understand children; a
- * Work parent's children are Work unless the spawn asks for less —
- * predictable inheritance over per-spawn model discretion).
+ * A child's permission is inherited at birth and capped at Ask (owner
+ * 2026-09-25): a read-only parent spawns read-only children; any other
+ * parent's children are Ask (Full Access is never inherited) unless the
+ * spawn asks for read-only.
  */
 export function clampSubagentMode(
   parentMode: AltMode,
-  requested: "understand" | "work" | undefined,
+  requested: "read-only" | undefined,
 ): AltMode {
-  if (parentMode === "understand") return "understand";
-  return requested === "understand" ? "understand" : "work";
+  return parentMode === "read-only" || requested === "read-only"
+    ? "read-only"
+    : "work";
 }
 
 // ---------------------------------------------------------------------------
@@ -140,10 +142,10 @@ function spawnSchema(availableRoles: string[]) {
           "Exact user-requested model override from the configured candidate list, in provider/model[:thinking] format. Normally omit this and use the agent type's model chain.",
       }),
     ),
-    mode: Type.Optional(
-      Type.Union([Type.Literal("understand"), Type.Literal("work")], {
+    permission: Type.Optional(
+      Type.Literal("read-only", {
         description:
-          "Subagent Alt mode. Defaults to this conversation's mode (inherited); pass 'understand' to spawn a read-only child from a Work conversation. Never exceeds this conversation's mode.",
+          "Pass 'read-only' to spawn a child without a shell whose every file write asks the user. Omit to inherit this conversation's permission; a child never starts with full access.",
       }),
     ),
   });
@@ -173,7 +175,7 @@ export function createAgentTeamTools(
         agentType: params.agent_type,
         role: params.role,
         model: params.model,
-        mode: params.mode,
+        permission: params.permission,
       });
       return text(spawned.report);
     },

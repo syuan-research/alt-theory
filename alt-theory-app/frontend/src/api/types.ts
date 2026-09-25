@@ -79,7 +79,7 @@ export interface DiscoveryLists {
     description?: string;
     /** "alt-theory" = bundled skill; anything else is user/external. */
     source?: string;
-    enabled?: { understand: boolean; work: boolean };
+    enabled?: boolean;
   }>;
 }
 
@@ -96,6 +96,8 @@ export interface SessionDraftSnapshot {
   soulSlug: string | null;
   customInstructionRef?: string | null;
   mode: AltMode;
+  /** The default permission's Full Access (local only). */
+  fullAccess: boolean;
   modelOverride?: SessionModelOverride | null;
   thinking?: ResolvedThinking;
 }
@@ -140,7 +142,13 @@ export interface SessionModelOverride {
   thinkingLevel?: ThinkingLevel;
 }
 
-export type AltMode = "understand" | "work";
+/**
+ * Stored per conversation behind the permission control: "read-only", or
+ * "work" (Ask, or Full with Full Access on).
+ */
+export type AltMode = "read-only" | "work";
+/** The permission control's three choices. */
+export type Permission = "read-only" | "ask" | "full";
 export type RuntimeMode = "alt-theory" | "native-pi";
 
 export type InterruptionCause =

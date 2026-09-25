@@ -3,8 +3,8 @@ import { fetchJson } from "@/api/http";
 import {
   cancelProviderAuth,
   getAutoTitleSettings,
-  getDefaultAltMode,
-  saveDefaultAltMode,
+  getDefaultPermission,
+  saveDefaultPermission,
   getRuntimeSettings,
   saveRuntimeSettings,
   getLangSetting,
@@ -36,10 +36,12 @@ import {
   type WorkingFoldersSettings,
 } from "@/api/config";
 import type {
+  Permission,
   ProviderAuthFlow,
   ProviderAuthId,
   SessionSummary,
 } from "@/api/types";
+import { PERMISSIONS, PERMISSION_LABEL, fullAccessConsequences } from "@/lib/permission";
 import { ModelConfigPage } from "@/pages/ModelConfigPage";
 import { authConnectEntryStep } from "@/lib/authConnect";
 import { MenuSelect } from "@/components/ui/MenuSelect";
@@ -1232,7 +1234,7 @@ function GeneralPanel() {
         </div>
       </div>
       <RuntimeCard />
-      <DefaultModeCard />
+      <DefaultPermissionCard />
       <AutoTitleCard />
       <ModelHooksCard />
       <NativePiSkillsCard />
@@ -1312,50 +1314,64 @@ function LanguageCard() {
   );
 }
 
-function DefaultModeCard() {
-  const [mode, setMode] = useState<"understand" | "work" | null>(null);
-  const [loaded, setLoaded] = useState(false);
+function DefaultPermissionCard() {
+  const app = useApp();
+  const [permission, setPermission] = useState<Permission | null>(null);
 
   useEffect(() => {
     let alive = true;
-    getDefaultAltMode()
-      .then(({ mode: value }) => {
-        if (alive) setMode(value);
+    getDefaultPermission()
+      .then(({ permission: value }) => {
+        if (alive) setPermission(value);
       })
-      .catch(() => {})
-      .finally(() => {
-        if (alive) setLoaded(true);
-      });
+      .catch(() => {});
     return () => {
       alive = false;
     };
   }, []);
 
-  const persist = (next: "understand" | "work") => {
-    setMode(next);
-    // The new-conversation draft starts in the new default too.
-    updateDraft(NEW_DRAFT, (draft) => ({ ...draft, settings: { ...draft.settings, mode: next } }));
-    void saveDefaultAltMode(next).catch(() => {});
+  const persist = (next: Permission) => {
+    setPermission(next);
+    // The new-conversation draft starts with the new default too.
+    updateDraft(NEW_DRAFT, (draft) => ({
+      ...draft,
+      settings: {
+        ...draft.settings,
+        mode: next === "read-only" ? "read-only" : "work",
+        fullAccess: next === "full",
+      },
+    }));
+    void saveDefaultPermission(next).catch(() => {});
   };
 
   return (
     <div className="set-card">
       <div className="row2">
         <div>
-          <h4>{t("New conversations start in")}</h4>
+          <h4>{t("New conversations start with")}</h4>
           <p>
-            {t("Understand talks things through without changing files; Work can act in your project and global folders. Each conversation can still switch its own mode.")}
+            {t("The permission a new conversation starts with. Each conversation can still change its own from the shield next to the message box.")}
           </p>
         </div>
         <MenuSelect
-          ariaLabel={t("New conversations start in")}
-          value={mode ?? "understand"}
-          disabled={!loaded}
-          options={[
-            { value: "understand", label: t("Understand") },
-            { value: "work", label: t("Work") },
-          ]}
-          onChange={(value) => persist(value as "understand" | "work")}
+          ariaLabel={t("New conversations start with")}
+          value={permission ?? "ask"}
+          disabled={permission === null}
+          options={PERMISSIONS.map((value) => ({ value, label: PERMISSION_LABEL[value]() }))}
+          onChange={(value) => {
+            const next = value as Permission;
+            if (next !== "full") {
+              persist(next);
+              return;
+            }
+            // Full as the default is confirmed once, here (owner 2026-09-25).
+            app.requestConfirm({
+              message: t("Start every new conversation with full access?"),
+              details: fullAccessConsequences(),
+              confirmLabel: t("Use full access by default"),
+              onConfirm: () => persist("full"),
+            });
+          }}
         />
       </div>
     </div>
@@ -1991,13 +2007,13 @@ function FeaturesPanel() {
       <div className="set-card">
         <h4>{t("Think through research questions with you")}</h4>
         <p>
-          {t("In ")} <strong>{t("Understand")}</strong>, {t("Alt works only with what you bring into the conversation. It separates what it found from what it inferred, marks uncertainty instead of papering over it, and moves in steps you can steer — built for research design, framing, and interpretation, where being agreeably wrong is worse than being slower.")}
+          {t("Alt separates what it found from what it inferred, marks uncertainty instead of papering over it, and moves in steps you can steer — built for research design, framing, and interpretation, where being agreeably wrong is worse than being slower. Leave a conversation without a project when you want to think from the question itself rather than from a project's files.")}
         </p>
       </div>
       <div className="set-card">
         <h4>{t("Do concrete work on your materials")}</h4>
         <p>
-          {t("In ")} <strong>{t("Work")}</strong>, {t("the same conversation can read and produce documents, work through the files in your project and global folders, and search the web and literature. Actions that cross a boundary ask for your approval first. Switching modes never moves or changes your folders.")}
+          {t("The same conversation can read and produce documents, work through the files in your project and global folders, and search the web and literature. The permission next to the message box decides how much it may do on its own: Read-only asks before every file change, Ask for approval asks before risky actions, Full access asks nothing.")}
         </p>
       </div>
       <div className="set-card">
@@ -2009,7 +2025,7 @@ function FeaturesPanel() {
       <div className="set-card">
         <h4>{t("Delegate parts of a task")}</h4>
         <p>
-          {t("On larger Work tasks, Alt can hand a bounded piece to a subagent and keep going. Subagents appear in the right panel like any related conversation — you can watch them, message them directly, or stop them at any point.")}
+          {t("On larger tasks, Alt can hand a bounded piece to a subagent and keep going. Subagents appear in the right panel like any related conversation — you can watch them, message them directly, or stop them at any point.")}
         </p>
       </div>
       <div className="set-card">
@@ -2304,7 +2320,7 @@ function WorkingFoldersPanel() {
         ))}
         {folders && folders.global.length === 0 ? <p className="fine">{t("No folders on the list yet.")}</p> : null}
         {folders && folders.global.length > 0 ? (
-          <p className="fine">{t("Editing is limited to Work mode.")}</p>
+          <p className="fine">{t("In a read-only conversation, every change still asks first.")}</p>
         ) : null}
       </div>
     </div>

@@ -34,18 +34,18 @@ test("a switch while running is deferred and drains at settle", async () => {
     "deferred",
   );
   // A later change to the same key replaces the earlier one.
-  await state.applyOrDefer({ mode: "understand" }, () => {
+  await state.applyOrDefer({ mode: "read-only" }, () => {
     applied++;
   });
   assert.equal(applied, 0);
   assert.deepEqual(state.pendingChanges(), {
-    mode: "understand",
+    mode: "read-only",
     model: { provider: "p", modelId: "m", thinkingLevel: "low" },
   });
   const drained = state.settle();
   assert.equal(state.state(), "idle");
   assert.deepEqual(drained, {
-    mode: "understand",
+    mode: "read-only",
     model: { provider: "p", modelId: "m", thinkingLevel: "low" },
   });
   assert.deepEqual(state.pendingChanges(), {});

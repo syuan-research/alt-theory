@@ -567,12 +567,8 @@ function registerPreparedImport(
       piSessionFile: importedPath,
       recordsDir: dirs.recordsDir,
       writeDir: dirs.writeDir,
-      // Understand can write only inside the managed session workspace. Work
-      // roots are rebuilt by the normal reopen path from workspace metadata.
-      writableRoots:
-        args.mode === "understand"
-          ? [dirs.writeDir]
-          : [dirs.writeDir, workspacePrimaryDir],
+      // The normal reopen path rebuilds the roots from workspace metadata.
+      writableRoots: [dirs.writeDir, workspacePrimaryDir],
       model: null,
       provider: null,
       altMode: args.mode,

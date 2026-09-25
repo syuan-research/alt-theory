@@ -7,8 +7,11 @@ product tokens marked "keep" stay in English everywhere.
 | --- | --- | --- |
 | conversation | 对话 | ordinary user-facing term |
 | session | 会话 | technical term (storage/runtime) |
-| Understand (mode) | 理解 | capability mode name |
-| Work (mode) | 工作 | capability mode name |
+| permission | 权限 | the read-only / ask / full choice (Understand/Work retired 2026-09-25) |
+| Read-only (permission) | 只读 | |
+| Ask for approval (permission) | 向我请求批准 | |
+| Full access (permission) | 完全访问 | |
+| Independent conversations | 独立对话 | conversations without a project |
 | mode | 模式 | |
 | Branch | 分支 | related conversation for another direction |
 | BTW | BTW | keep — product name for a side conversation |

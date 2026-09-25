@@ -1463,7 +1463,7 @@ test("forkSession applies per-arm selector overrides (A/B substrate)", async () 
   }
 });
 
-test("generateAbComparison runs Understand-pinned arms and records candidates on the parent", async () => {
+test("generateAbComparison runs read-only-pinned arms and records candidates on the parent", async () => {
   const fixture = setupFixture();
   const service = createTestService(fixture);
   const created = await service.createSession({
@@ -1520,7 +1520,7 @@ test("generateAbComparison runs Understand-pinned arms and records candidates on
     for (const candidate of record.candidates) {
       assert.equal(candidate.outputText, `arm:${candidate.candidateId}`);
       const armManaged = (service as any).sessions.get(candidate.candidateId);
-      assert.equal(armManaged.getAltMode(), "understand");
+      assert.equal(armManaged.getAltMode(), "read-only");
     }
     assert.equal(record.candidates[0].role, "role-conceptual-theory-companion");
     // The record lands on the PARENT's records dir and the parent is untouched.
@@ -2146,8 +2146,6 @@ test("SessionService records resume_fallback config event when original assets a
     kbDir: fixture.kbDir,
     kbDomain: "ep-core",
     piPromptTemplatesDir: fixture.piPromptTemplatesDir,
-    understandReadOnly: true,
-    altMode: "understand",
     resourceDiscovery: "clean",
   });
 
@@ -2770,8 +2768,6 @@ test("SessionService keeps run completion and busy state open until fallback con
     rolePresetsDir: fixture.rolePresetsDir,
     soulDir: fixture.soulDir,
     legacySoulPath: join(fixture.soulDir, "soul-latest.md"),
-    understandReadOnly: true,
-    altMode: "understand",
     resourceDiscovery: "clean",
     instructionsDir: fixture.instructionsDir,
     runLabel: null,
@@ -2934,8 +2930,6 @@ test("SessionService surfaces fallback continuation failure through run completi
     rolePresetsDir: fixture.rolePresetsDir,
     soulDir: fixture.soulDir,
     legacySoulPath: join(fixture.soulDir, "soul-latest.md"),
-    understandReadOnly: true,
-    altMode: "understand",
     resourceDiscovery: "clean",
     instructionsDir: fixture.instructionsDir,
     runLabel: null,
@@ -3041,8 +3035,6 @@ test("session store marks sessions without v0.4 records as legacy projection", a
     kbDir: fixture.kbDir,
     kbDomain: "ep-core",
     piPromptTemplatesDir: fixture.piPromptTemplatesDir,
-    understandReadOnly: true,
-    altMode: "understand",
     resourceDiscovery: "clean",
   });
 
@@ -3080,7 +3072,7 @@ test("SessionService switches Alt mode in-session and restores it on reopen", as
     rolePresetSlug: "role-conceptual-theory-companion",
     kbDomain: "ep-core",
     soulSlug: "soul-latest",
-  });
+  }, { mode: "read-only" });
 
   const managed = (
     service as unknown as {
@@ -3109,7 +3101,7 @@ test("SessionService switches Alt mode in-session and restores it on reopen", as
   };
 
   try {
-    assert.equal(created.mode, "understand");
+    assert.equal(created.mode, "read-only");
     const run = service.runPrompt(created.sessionId, "hello");
     await run.completion;
 
@@ -3386,8 +3378,6 @@ test("approval bridge routes extension confirm dialogs through the service", asy
     rolePresetsDir: fixture.rolePresetsDir,
     soulDir: fixture.soulDir,
     legacySoulPath: join(fixture.soulDir, "soul-latest.md"),
-    understandReadOnly: true,
-    altMode: "understand",
     resourceDiscovery: "clean",
     instructionsDir: fixture.instructionsDir,
     runLabel: null,
@@ -4415,7 +4405,7 @@ test("switches during a run are deferred and apply when the turn settles", async
     rolePresetSlug: "role-conceptual-theory-companion",
     kbDomain: "ep-core",
     soulSlug: "soul-latest",
-  });
+  }, { mode: "read-only" });
   const events: SessionServiceEvent[] = [];
   const detach = service.attach(created.sessionId, (event) => events.push(event));
   const managed = (service as any).sessions.get(created.sessionId);
@@ -4425,7 +4415,7 @@ test("switches during a run are deferred and apply when the turn settles", async
     assert.equal(service.getSnapshot(created.sessionId).status, "running");
 
     const modeSnapshot = await service.switchMode(created.sessionId, "work");
-    assert.equal(modeSnapshot.mode, "understand");
+    assert.equal(modeSnapshot.mode, "read-only");
     assert.equal(modeSnapshot.pending?.mode, "work");
 
     const fullSnapshot = await service.setFullAccess(created.sessionId, true);
@@ -4437,7 +4427,7 @@ test("switches during a run are deferred and apply when the turn settles", async
     assert.deepEqual(modelSnapshot.pending?.model, override);
     assert.equal(modelSnapshot.modelOverride, null);
     // Nothing touched the session yet.
-    assert.equal(managed.getAltMode(), "understand");
+    assert.equal(managed.getAltMode(), "read-only");
     assert.equal(managed.getFullAccess(), false);
 
     release();
@@ -4482,13 +4472,13 @@ test("stop applies the pending switch; Full Access off is live during a run", as
     assert.equal(off.fullAccess, false, "turning permissions down is immediate");
     assert.deepEqual(off.pending, {});
 
-    await service.switchMode(created.sessionId, "understand");
-    assert.equal(service.getSnapshot(created.sessionId).pending?.mode, "understand");
+    await service.switchMode(created.sessionId, "read-only");
+    assert.equal(service.getSnapshot(created.sessionId).pending?.mode, "read-only");
     await service.abort(created.sessionId, "user_stop", "user_abort");
     await run.completion.catch(() => {});
     const stopped = service.getSnapshot(created.sessionId);
     assert.equal(stopped.status, "idle");
-    assert.equal(stopped.mode, "understand");
+    assert.equal(stopped.mode, "read-only");
     assert.deepEqual(stopped.pending, {});
   } finally {
     await service.disposeAll();

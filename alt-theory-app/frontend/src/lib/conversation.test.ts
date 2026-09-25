@@ -13,6 +13,7 @@ import {
   type ConversationInput,
   type ConversationState,
   type PendingRequest,
+  sentLanded,
 } from "./conversation.ts";
 
 const snap = (patch: Partial<SessionSnapshot> = {}): SessionSnapshot => ({
@@ -30,7 +31,8 @@ const draft: SessionDraftSnapshot = {
   currentDomain: "ep-core",
   rolePresetSlug: null,
   soulSlug: null,
-  mode: "understand",
+  mode: "work",
+  fullAccess: false,
 };
 const rows = (...texts: Array<[TranscriptMessage["role"], string]>): TranscriptMessage[] =>
   texts.map(([role, text], index) => ({ role, text, timestamp: null, rowId: `e${index}:0` }));
@@ -315,4 +317,16 @@ test("pressing New holds input until the server has left the conversation", () =
   assert.equal(left.sessionId, null);
   const answered = play([server({ type: "request_done", payload: { requestId: "r1" } })], left);
   assert.equal(isReady(answered), true);
+});
+
+test("a sent message with staged files lands although the server moved them", () => {
+  const sent = (text: string, attachments?: string[]) =>
+    ({ sentText: text, attachments, message: { type: "prompt", payload: text }, from: "s", status: "accepted" }) as PendingRequest;
+  const staged = "read this\n\n(Attachments: /data/attachment-staging/u1/extracted/a.txt)";
+  const moved = "read this\n\n(Attachments: /data/sessions/s/workspace/extracted/a.txt)";
+  assert.equal(sentLanded(sent(staged, ["/data/attachment-staging/u1/extracted/a.txt"]), [moved], []), true);
+  assert.equal(sentLanded(sent(staged, ["/data/attachment-staging/u1/extracted/a.txt"]), ["other"], [moved]), true);
+  assert.equal(sentLanded(sent(staged, ["/data/attachment-staging/u1/extracted/a.txt"]), ["read that"], []), false);
+  // Without attachments the text must match exactly.
+  assert.equal(sentLanded(sent("read this"), [moved], []), false);
 });

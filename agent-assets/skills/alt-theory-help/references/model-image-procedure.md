@@ -10,7 +10,7 @@ needs correcting.
    text-only or `["text", "image"]` when image input is supported.
 4. Locate the live file from current runtime/docs rather than assuming a fixed
    path. The app stores it as `<agentDir>/models.json`.
-5. In Work, make the approved edit when the file is reachable. Otherwise show
+5. When the conversation can edit files, make the approved edit when it is reachable. Otherwise show
    the exact change for the user to make.
 
 Unknown support never blocks sending; a text-only model can simply say it

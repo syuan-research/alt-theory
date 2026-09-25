@@ -12,13 +12,21 @@ import { ContinueButton, hasRunNotes, NoticeLine, RunStatusSlot } from "@/compon
 import { RunTips } from "@/components/conversation/RunTips";
 import { SlashPalette, useSlashCommands, useSlashPalette } from "@/components/conversation/SlashPalette";
 import { DEFAULT_KB_DOMAIN, KB_OFF_VALUE } from "@/lib/constants";
-import { hasNativeBridge, pathsFromDroppedFiles, pickFiles } from "@/lib/native";
+import { hasNativeBridge, pathsFromDroppedFiles } from "@/lib/native";
+import { stageAttachmentFile } from "@/api/session-files";
 import { WORKSPACE_PATH_MIME } from "@/lib/workspace";
 import { isWithheld, type SessionVisibility } from "@/api/types";
 import { fmtTime } from "@/lib/format";
 import { t } from "@/i18n";
-import { autosizeTextarea } from "@/lib/autosizeTextarea";
+import { useAutosizeTextarea } from "@/lib/autosizeTextarea";
 import { runPhaseLabels } from "@/lib/runState";
+import {
+  PERMISSIONS,
+  PERMISSION_DETAIL,
+  PERMISSION_ICON,
+  PERMISSION_LABEL,
+  fullAccessConsequences,
+} from "@/lib/permission";
 
 type MenuKey = "plus" | "model" | "role" | "kb" | "presetcfg" | "perm" | null;
 const SHOW_HELP_STARTERS = false;
@@ -77,9 +85,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
   };
 
   // Grow with content up to the CSS max-height (~8 lines), then scroll.
-  useEffect(() => {
-    autosizeTextarea(textareaRef.current);
-  }, [draft]);
+  useAutosizeTextarea(textareaRef, draft);
 
   // Close menus on outside click (mirrors the prototype's body-click close).
   useEffect(() => {
@@ -101,7 +107,6 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
     return () => document.removeEventListener("keydown", onEscape);
   }, [menu]);
 
-  const slashMode = conv.sessionMode;
   const helper = useMemo(
     () => ({
       name: "helper",
@@ -110,7 +115,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
     }),
     [main, variant],
   );
-  const slashCommands = useSlashCommands({ live: variant === "live", mode: slashMode, helper });
+  const slashCommands = useSlashCommands({ live: variant === "live", helper });
 
   /** Put `/name ` in the box, focused, waiting for the user's actual request. */
   const armCommand = (name: string) => {
@@ -129,12 +134,29 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
   const interactive = conv.sessionReady;
   const hasText = draft.trim().length > 0;
   const canAttach = app.appMode === "local" && interactive;
-  // Full Access (v1.4.8): local-only and work-capable modes. On the draft
-  // (new conversation) screen the choice applies once the first message
-  // materializes the session.
-  const fullAccessVisible =
-    app.appMode === "local" &&
-    (app.runtimeMode === "native-pi" || conv.sessionMode === "work");
+  // Paperclip, pasted files, and a read-only drop attach a copy (converted
+  // to text when it is an office/PDF file); other drops attach a link.
+  const fileInput = useRef<HTMLInputElement>(null);
+  const attachCopies = (files: File[]) => {
+    for (const file of files) {
+      void stageAttachmentFile(file)
+        .then(({ path, extractError }) => {
+          conv.stage(path);
+          if (extractError) {
+            window.alert(t("{name} was attached, but its text could not be read: {error}", { name: file.name, error: extractError }));
+          }
+        })
+        .catch((error) => window.alert(error instanceof Error ? error.message : String(error)));
+    }
+  };
+  const dropsCopy = conv.permission === "read-only";
+  const acceptsFiles = (types: string[]) =>
+    types.includes("Files") && (dropsCopy || hasNativeBridge());
+  // Permission (owner 2026-09-25): read-only / Ask / Full, local only —
+  // a hosted deployment is always read-only. On the draft screen the choice
+  // applies once the first message materializes the session.
+  const permissionVisible = app.appMode === "local";
+  const altControlsDisabled = app.runtimeMode === "native-pi";
   const canSend =
     interactive &&
     (hasText || conv.stagedWorkspacePaths.length > 0);
@@ -149,10 +171,6 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
     hostedStudy && withheld && conv.retentionDueAt
       ? fmtTime(conv.retentionDueAt)
       : null;
-  const altControlsDisabled = app.runtimeMode === "native-pi";
-  const understandMode = !altControlsDisabled && conv.sessionMode === "understand";
-  // First-level paperclip: Understand only. Work keeps attach in the toolbox.
-  const attachFirstLevel = canAttach && understandMode;
 
   /**
    * Send what is typed plus the staged files. An armed Steer preset of this
@@ -195,7 +213,6 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
   );
 
   const stageHelpQuestion = (question: string) => {
-    conv.switchMode("understand");
     setHelpQuestionArmed(true);
     setDraft((current) =>
       current.trim() ? current.trimEnd() + "\n\n" + question : question,
@@ -205,7 +222,6 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
 
   const applyGeneralKnowledgeWork = () => {
     if (app.runtimeMode !== "alt-theory") return;
-    conv.switchMode("work");
     conv.switchRolePreset(null);
     conv.switchKb(KB_OFF_VALUE);
     window.setTimeout(() => textareaRef.current?.focus(), 0);
@@ -395,7 +411,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                   // tentative): steer semantics are written for them; most
                   // users don't author their own skills yet.
                   .filter((skill) => skill.source === "alt-theory")
-                  .filter((skill) => skill.enabled?.[slashMode] !== false)
+                  .filter((skill) => skill.enabled !== false)
                   .map((skill) => {
                     const picked = app.presetButtons.includes(skill.name);
                     return (
@@ -555,7 +571,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
             <div className="starter-grid">
               {[
                 t("Help me connect a model or API provider."),
-                t("What can Alt Theory do, and when should I use Understand or Work?"),
+                t("What can Alt Theory do, and which permission should I choose?"),
                 t("What Skills are available, and what words trigger them?"),
                 t("What are subagents, and when will Alt use one?"),
                 ...(moreHelpStarters
@@ -600,17 +616,14 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               setFileDragOver(true);
               return;
             }
-            if (!hasNativeBridge() || !types.includes("Files")) return;
+            if (!acceptsFiles(types)) return;
             e.preventDefault();
             setFileDragOver(true);
           }}
           onDragOver={(e) => {
             if (!canAttach) return;
             const types = [...e.dataTransfer.types];
-            if (
-              !types.includes(WORKSPACE_PATH_MIME) &&
-              (!hasNativeBridge() || !types.includes("Files"))
-            ) {
+            if (!types.includes(WORKSPACE_PATH_MIME) && !acceptsFiles(types)) {
               return;
             }
             e.preventDefault();
@@ -630,6 +643,11 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               conv.stage(internal);
               return;
             }
+            if (dropsCopy) {
+              e.preventDefault();
+              attachCopies([...e.dataTransfer.files]);
+              return;
+            }
             if (!hasNativeBridge()) return;
             e.preventDefault();
             const paths = pathsFromDroppedFiles(e.dataTransfer.files);
@@ -639,6 +657,13 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
           <textarea
             ref={textareaRef}
             rows={1}
+            onPaste={(e) => {
+              // A pasted image (or copied file) has no path: attach a copy.
+              const files = [...e.clipboardData.files];
+              if (!canAttach || files.length === 0) return;
+              e.preventDefault();
+              attachCopies(files);
+            }}
             value={draft}
             onChange={(e) => {
               setDraft(e.target.value);
@@ -675,80 +700,61 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               <i className="ph ph-toolbox" />
               {!toolboxSeen ? <span className="badge-dot" /> : null}
             </button>
-            {fullAccessVisible ? (
+            {permissionVisible ? (
               <span className="perm-anchor">
                 <button
-                  className={`flat${conv.fullAccess ? " perm-on" : ""}`}
-                  data-tip={
-                    conv.fullAccess
-                      ? t("Permission mode: full access")
-                      : t("Permission mode: ask for approval")
-                  }
+                  className={`flat${conv.permission === "full" ? " perm-on" : ""}`}
+                  data-tip={t("Permission: {name}", { name: PERMISSION_LABEL[conv.permission]() })}
                   onClick={(e) => {
                     e.stopPropagation();
                     toggle("perm");
                   }}
                 >
-                  <i
-                    className={`ph ${conv.fullAccess ? "ph-shield-warning" : "ph-shield"}`}
+                  <i className={`ph ${PERMISSION_ICON[conv.permission]}`} />
+                  <PendingMark
+                    when={
+                      conv.pendingChanges.fullAccess !== undefined ||
+                      conv.pendingChanges.mode !== undefined
+                    }
                   />
-                  <PendingMark when={conv.pendingChanges.fullAccess !== undefined} />
                 </button>
                 <div
                   className={`menu${menu === "perm" ? " on" : ""}`}
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <div
-                    className="mi"
-                    onClick={() => {
-                      setMenu(null);
-                      // Disabling is immediate; no confirmation.
-                      if (conv.fullAccess) conv.setFullAccess(false);
-                    }}
-                  >
-                    <i className="ph ph-shield-check" />
-                    <span>
-                      {t("Ask for approval")}
-                      <span className="d">
-                        {t("Tool calls need per-action approval; the default mode")}
+                  {PERMISSIONS.map((permission) => (
+                    <div
+                      key={permission}
+                      className="mi"
+                      onClick={() => {
+                        setMenu(null);
+                        if (permission === conv.permission) return;
+                        // Full goes through the standard confirm window;
+                        // lowering is immediate, no confirmation.
+                        if (permission !== "full") {
+                          conv.setPermission(permission);
+                          return;
+                        }
+                        app.requestConfirm({
+                          message: t("Enable full access?"),
+                          details: fullAccessConsequences(),
+                          confirmLabel: t("Enable full access"),
+                          onConfirm: () => conv.setPermission("full"),
+                        });
+                      }}
+                    >
+                      <i
+                        className={`ph ${PERMISSION_ICON[permission]}${permission === "full" ? " perm-warn-icon" : ""}`}
+                      />
+                      <span>
+                        {PERMISSION_LABEL[permission]()}
+                        <span className="d">{PERMISSION_DETAIL[permission]()}</span>
                       </span>
-                    </span>
-                    {!conv.fullAccess ? (
-                      <i className="ph ph-check check" />
-                    ) : null}
-                  </div>
-                  <div
-                    className="mi"
-                    onClick={() => {
-                      setMenu(null);
-                      if (conv.fullAccess) return;
-                      // Enabling goes through the standard confirm window.
-                      app.requestConfirm({
-                        message: t("Enable full access?"),
-                        details: [
-                          t("Bypasses the security extension's command blocks and approvals"),
-                          t("Bypasses credential-path access limits"),
-                          t("Approval prompts and writable-folder checks for external reads and writes are skipped"),
-                          t("Network access limits are skipped"),
-                          t("These decisions are no longer written to the security audit log"),
-                          t("Applies to this conversation only and stays on after reopening it or restarting the app; branches and side conversations start without it"),
-                        ],
-                        confirmLabel: t("Enable full access"),
-                        onConfirm: () => conv.setFullAccess(true),
-                      });
-                    }}
-                  >
-                    <i className="ph ph-shield-warning perm-warn-icon" />
-                    <span>
-                      {t("Full access")}
-                      <span className="d">
-                        {t("Tools run without approval prompts this conversation")}
-                      </span>
-                    </span>
-                    {conv.fullAccess ? (
-                      <i className="ph ph-check check" />
-                    ) : null}
-                  </div>
+                      {conv.permission === permission ? (
+                        <i className="ph ph-check check" />
+                      ) : null}
+                    </div>
+                  ))}
                 </div>
               </span>
             ) : null}
@@ -757,20 +763,6 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               style={{ left: 0 }}
               onClick={(e) => e.stopPropagation()}
             >
-              {canAttach ? (
-                <div
-                  className="mi"
-                  onClick={() => {
-                    setMenu(null);
-                    void pickFiles(t("Full path of the file to attach:")).then(
-                      (paths) => paths.forEach((p) => conv.stage(p)),
-                    );
-                  }}
-                >
-                  <i className="ph ph-paperclip" />
-                  {t("Attach a file")}
-                </div>
-              ) : null}
               <div
                 className="mi"
                 onClick={() => armCommand("adaptive-planning")}
@@ -779,7 +771,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                 {t("Adaptive planning")}
               </div>
               <div className="sep" />
-              {understandMode && conv.sessionId ? (
+              {conv.sessionId ? (
                 <div
                   className="mi"
                   onClick={() => (shell.openRail("workspace"), setMenu(null))}
@@ -797,56 +789,28 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               </div>
             </div>
 
-            {/* First-level attach: Understand only (Work uses toolbox). */}
-            {attachFirstLevel ? (
-              <button
-                className="flat"
-                data-tip={t("Attach a file")}
-                aria-label={t("Attach a file")}
-                onClick={() => {
-                  void pickFiles(t("Full path of the file to attach:")).then(
-                    (paths) => paths.forEach((p) => conv.stage(p)),
-                  );
-                }}
-              >
-                <i className="ph ph-paperclip" />
-              </button>
-            ) : null}
-
-            {/* morph mode switch (live only; empty state uses the cards) */}
-            {variant === "live" ? (
-              <button
-                className="flat mode-switch"
-                role="switch"
-                aria-checked={conv.sessionMode === "work"}
-                disabled={altControlsDisabled}
-                data-tip={
-                  altControlsDisabled
-                    ? t("Understand and Work are preserved but inactive while Native Pi is on.")
-                    : conv.sessionMode === "work"
-                    ? t("Work mode: research, analyze data, and create or update files while keeping the same careful thinking. Switch to Understand.")
-                    : t("Understand mode: clarify questions, compare explanations, and develop ideas with your materials. Switch to Work.")
-                }
-                onClick={() =>
-                  conv.switchMode(conv.sessionMode === "work" ? "understand" : "work")
-                }
-              >
-                <i
-                  className={
-                    conv.sessionMode === "work"
-                      ? "ph ph-hammer"
-                      : "ph ph-book-open"
-                  }
+            {/* First-level attach, in every conversation. */}
+            {canAttach ? (
+              <>
+                <button
+                  className="flat"
+                  data-tip={t("Add a file: copied into this conversation's folder and converted to text")}
+                  aria-label={t("Add a file")}
+                  onClick={() => fileInput.current?.click()}
+                >
+                  <i className="ph ph-paperclip" />
+                </button>
+                <input
+                  ref={fileInput}
+                  type="file"
+                  multiple
+                  hidden
+                  onChange={(event) => {
+                    attachCopies([...(event.target.files ?? [])]);
+                    event.target.value = "";
+                  }}
                 />
-                {conv.sessionMode === "work" ? t("Work") : t("Understand")}
-                <span
-                  className={`toggle mode-toggle${
-                    conv.sessionMode === "work" ? " on" : ""
-                  }`}
-                  aria-hidden="true"
-                />
-                <PendingMark when={conv.pendingChanges.mode !== undefined} />
-              </button>
+              </>
             ) : null}
 
             <ModelChip

@@ -29,13 +29,14 @@ test("readV4SessionHeader normalizes legacy fork purposes", () => {
   }
 });
 
-test("readV4SessionHeader normalizes the v1-alpha capability mode", () => {
-  // An un-normalized "pure"/"full" indexed the per-mode skill map as undefined
-  // and every pre-alpha.6 conversation failed to reopen.
+test("readV4SessionHeader reads retired modes as work", () => {
+  // Retired values (v1-alpha pure/full, Understand) open as work; only
+  // read-only stays read-only (owner 2026-09-25).
   const cases: Array<[string, string]> = [
-    ["pure", "understand"],
+    ["pure", "work"],
     ["full", "work"],
-    ["understand", "understand"],
+    ["understand", "work"],
+    ["read-only", "read-only"],
     ["work", "work"],
   ];
   for (const [stored, expected] of cases) {

@@ -40,11 +40,6 @@
     "message": "Argument of type '\"session-ws-open\"' is not assignable to parameter of type '`${string}-${string}-${string}-${string}-${string}`'."
   },
   {
-    "file": "alt-theory-app/web-server/backend-server.integration.ts",
-    "code": "TS2353",
-    "message": "Object literal may only specify known properties, and 'altMode' does not exist in type 'SessionServiceConfig'."
-  },
-  {
     "file": "alt-theory-app/web-server/claude-code-session-import.ts",
     "code": "TS2339",
     "message": "Property 'isSidechain' does not exist on type '{ sourceIndex: number; }'."

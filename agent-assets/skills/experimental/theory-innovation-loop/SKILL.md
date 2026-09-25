@@ -296,10 +296,10 @@ skill.)
   card, and the current verifier standards all live in the plan
   record, not only in chat — that is what makes deferral durable and
   hands off cleanly.
-- **search-policy** (and **web-search** in Work mode, the product mode
-  with live tools): the deductive matching and related-studies steps
+- **search-policy** (and **web-search** when the conversation has live
+  tools): the deductive matching and related-studies steps
   follow the provenance rule — found now / memory / inferred — on
-  every match claim. In Understand mode (no live lookup), matching is
+  every match claim. Without live lookup (read-only), matching is
   internal-knowledge and must be marked as such (P-verify).
 - **conversation-summary**: an unconverged loop that stops mid-way is
   handed off with open questions kept open, not converted into

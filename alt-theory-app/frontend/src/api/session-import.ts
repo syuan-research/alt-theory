@@ -80,7 +80,6 @@ export async function fetchImportSessions(
 export async function submitSessionImport(args: {
   harness: ImportableHarness;
   sourceId: string;
-  mode: "understand" | "work";
   preflightOnly: boolean;
   workspaceOverride?: string;
 }): Promise<ImportResult> {
@@ -90,7 +89,6 @@ export async function submitSessionImport(args: {
     body: JSON.stringify({
       selection: "selected",
       sourceIds: [args.sourceId],
-      mode: args.mode,
       preflightOnly: args.preflightOnly,
       changedSourcePolicy: "copy",
       ...(args.workspaceOverride

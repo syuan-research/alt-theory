@@ -50,15 +50,12 @@ export function SessionImportDialog({
   const [sourceId, setSourceId] = useState("");
   const [query, setQuery] = useState("");
   const [workspaceOverride, setWorkspaceOverride] = useState("");
-  const newMode = main.conversation.newConversationMode;
-  const [mode, setMode] = useState<"understand" | "work">(newMode);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     if (!open) return;
-    setMode(newMode);
     setQuery("");
     setWorkspaceOverride("");
     void fetchImportHarnesses()
@@ -71,7 +68,7 @@ export function SessionImportDialog({
         );
       })
       .catch(() => setHarnessOptions([]));
-  }, [open, newMode]);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -143,7 +140,6 @@ export function SessionImportDialog({
       const next = await submitSessionImport({
         harness,
         sourceId,
-        mode,
         preflightOnly,
         workspaceOverride: workspaceOverride || undefined,
       });
@@ -303,19 +299,6 @@ export function SessionImportDialog({
           </p>
         ) : null}
 
-        <fieldset className="mt-4">
-          <legend className="text-sm font-medium text-ink">{t("Continue in")}</legend>
-          <div className="mt-2 flex gap-5 text-sm">
-            <label className="flex items-center gap-2">
-              <input type="radio" checked={mode === "work"} disabled={app.runtimeMode === "native-pi"} onChange={() => setMode("work")} />
-              {t("Work (tools and project and global folders)")}
-            </label>
-            <label className="flex items-center gap-2">
-              <input type="radio" checked={mode === "understand"} disabled={app.runtimeMode === "native-pi"} onChange={() => setMode("understand")} />
-              {t("Understand (conversation only)")}
-            </label>
-          </div>
-        </fieldset>
 
         {result?.status === "ready" ? (
           <div className="mt-4 rounded-md border border-hairline bg-canvas p-3 text-sm">
