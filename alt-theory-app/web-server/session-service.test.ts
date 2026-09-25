@@ -5193,3 +5193,39 @@ test("auto_retry_start reports whether the dropped attempt had visible text", as
     await service.disposeAll();
   }
 });
+
+test("thinking deltas send run_phase once per phase change, not per token", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const snapshot = await service.createSession({
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  });
+  const managed = (service as any).sessions.get(snapshot.sessionId);
+  const events: SessionServiceEvent[] = [];
+  service.attach(snapshot.sessionId, (event) => events.push(event));
+  const thinking = () =>
+    (service as any).handleAgentEvent(managed, {
+      type: "message_update",
+      assistantMessageEvent: { type: "thinking_delta", delta: "t" },
+    });
+  try {
+    thinking();
+    thinking();
+    thinking();
+    (service as any).handleAgentEvent(managed, { type: "tool_execution_start", toolName: "read", toolCallId: "c1", args: {} });
+    thinking();
+    // Text in between clears the client's activity: thinking is said again.
+    (service as any).handleAgentEvent(managed, {
+      type: "message_update",
+      assistantMessageEvent: { type: "text_delta", delta: "x" },
+    });
+    thinking();
+    const phases = events.filter((e) => e.type === "run_phase").map((e: any) => e.payload.phase);
+    assert.deepEqual(phases, ["thinking", "tool", "thinking", "thinking"]);
+    assert.equal(events.filter((e) => e.type === "thinking_delta").length, 5);
+  } finally {
+    await service.disposeAll();
+  }
+});

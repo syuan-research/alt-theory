@@ -421,6 +421,8 @@ interface ManagedSession {
    * run's final events (run_failed) land before the next message starts.
    */
   runSettlement: Promise<void> | null;
+  /** Last run_phase sent, cleared by any other event but a thinking delta. */
+  lastRunPhase?: string;
   /** The thinking resolver's answer for the current model (card 3). */
   thinking: ResolvedThinking;
   nextTurnIndex: number;
@@ -5045,6 +5047,11 @@ export class SessionService implements AgentTeamBridge {
       droppedPartialText?: boolean;
     },
   ): void {
+    // Thinking deltas would otherwise send one per token (perf plan WP 1.4).
+    // Only a repeat with nothing but thinking in between is dropped: other
+    // events move the client's activity (text, tools, transcript resets).
+    if (!retry && managed.lastRunPhase === phase) return;
+    managed.lastRunPhase = phase;
     this.emit(managed, {
       type: "run_phase",
       payload: retry ? { phase, retry } : { phase },
@@ -5052,6 +5059,9 @@ export class SessionService implements AgentTeamBridge {
   }
 
   private emit(managed: ManagedSession, event: SessionServiceEvent): void {
+    if (event.type !== "run_phase" && event.type !== "thinking_delta") {
+      managed.lastRunPhase = undefined;
+    }
     // Late-joiner replay: every event of the in-flight turn passes through
     // here, so this one intercept keeps the buffer complete by construction.
     if (event.type === "run_completed" || event.type === "run_failed") {
