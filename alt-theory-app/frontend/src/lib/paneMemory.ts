@@ -37,4 +37,13 @@ export const paneMemory = {
   set: (key: string, value: unknown): void => {
     memory.set(key, value);
   },
+  delete: (key: string): void => {
+    memory.delete(key);
+  },
+  /** Deleted conversations take their view state with them. */
+  forgetSessions: (sessionIds: string[]): void => {
+    for (const key of memory.keys()) {
+      if (sessionIds.some((id) => key.startsWith(`${id}:`))) memory.delete(key);
+    }
+  },
 };

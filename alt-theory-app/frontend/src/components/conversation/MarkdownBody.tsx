@@ -14,6 +14,9 @@ function loadMermaid() {
       module.default.initialize({
         startOnLoad: false,
         securityLevel: "strict",
+        // A broken diagram throws instead of drawing mermaid's error graphic;
+        // the fenced source stays visible (perf plan WP 1.7).
+        suppressErrorRendering: true,
         theme: document.documentElement.dataset.theme === "dark" ? "dark" : "default",
       });
       return module.default;
@@ -108,8 +111,9 @@ export function MarkdownBody({
         if (cancelled) return;
         const source = decodeEntities(block.textContent ?? "");
         const target = block.parentElement ?? block;
+        const id = `d${(diagramSeq += 1)}`;
         try {
-          const { svg } = await mermaid.render(`d${(diagramSeq += 1)}`, source);
+          const { svg } = await mermaid.render(id, source);
           if (cancelled) return;
           const figure = document.createElement("div");
           figure.className = "mermaid-figure";
@@ -136,6 +140,9 @@ export function MarkdownBody({
           target.replaceWith(wrap);
         } catch {
           // Leave the source visible — a broken diagram is still readable text.
+          // Mermaid's scratch nodes for a failed render can stay in <body>.
+          document.getElementById(id)?.remove();
+          document.getElementById(`d${id}`)?.remove();
         }
       }
       if (!cancelled) {

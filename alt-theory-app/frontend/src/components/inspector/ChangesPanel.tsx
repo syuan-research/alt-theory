@@ -9,7 +9,8 @@ import { FolderHead, ListTools } from "@/components/inspector/FolderList";
 import { useContextMenu, type ContextMenuItem } from "@/components/shell/ContextMenu";
 import { copyText } from "@/lib/clipboard";
 import { hasNativeBridge, revealPath } from "@/lib/native";
-import { usePaneMemory } from "@/lib/paneMemory";
+import { CHANGES_KEPT_MAX } from "@/lib/limits";
+import { paneMemory, usePaneMemory } from "@/lib/paneMemory";
 import { targetKey } from "@/lib/viewTarget";
 import { useFindTarget } from "@/lib/find";
 import type { PreviewMode } from "@/lib/fileContent";
@@ -21,6 +22,18 @@ import { fileQueryScore, parseFileQuery } from "../../../../shared/quick-find";
  * outside groups by containing folder under the depth cap. A new file opens
  * in Rendered when available; the viewer control follows the file type.
  */
+/** Conversations holding loaded diffs, oldest first: a remount shows its
+ *  last list at once (the fetch refreshes it), and diffs can be large. */
+const changesKept: string[] = [];
+function keepChanges(sessionId: string) {
+  const at = changesKept.indexOf(sessionId);
+  if (at >= 0) changesKept.splice(at, 1);
+  changesKept.push(sessionId);
+  while (changesKept.length > CHANGES_KEPT_MAX) {
+    paneMemory.delete(`${changesKept.shift()}:changes:groups`);
+  }
+}
+
 export function ChangesPanel() {
   const conv = useConversationContext();
   const shell = useShell();
@@ -57,7 +70,12 @@ export function ChangesPanel() {
     }
     let cancelled = false;
     fetchSessionChanges(sessionId)
-      .then((res) => !cancelled && (setGroups(res.groups), setError(null)))
+      .then((res) => {
+        if (cancelled) return;
+        setGroups(res.groups);
+        setError(null);
+        keepChanges(sessionId);
+      })
       .catch((e) => !cancelled && setError(e?.message ?? "Failed to load changes"));
     return () => {
       cancelled = true;

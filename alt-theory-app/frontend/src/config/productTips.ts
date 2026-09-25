@@ -1,7 +1,4 @@
-import type { Lang } from "@/i18n";
-import { currentLang } from "@/i18n";
-import zhHans from "@/i18n/zh-Hans";
-import zhHant from "@/i18n/zh-Hant-HK";
+import { t } from "@/i18n";
 
 export type TipCondition =
   | { kind: "general" }
@@ -10,14 +7,13 @@ export type TipCondition =
 export interface ProductTip {
   id: string;
   condition: TipCondition;
-  text: Record<Lang, string>;
+  /** English source; translated through the loaded catalog when shown, so
+   *  the other languages' catalogs stay out of the bundle (perf plan WP 1.7). */
+  text: string;
 }
 
-const localized = (en: string): Record<Lang, string> => ({
-  en,
-  "zh-Hans": zhHans[en] ?? en,
-  "zh-Hant-HK": zhHant[en] ?? en,
-});
+/** Marks a tip's English source for scripts/i18n-sync.mjs. */
+const localized = (en: string): string => en;
 
 const general: ProductTip[] = [
   { id: "repeat-question", condition: { kind: "general" }, text: localized("Ask the same question again to see what stays put and what was just one framing.") },
@@ -63,8 +59,8 @@ export const GENERAL_TIPS = PRODUCT_TIPS.filter(
   (tip) => tip.condition.kind === "general",
 );
 
-export function productTipText(tip: ProductTip, lang = currentLang()): string {
-  return tip.text[lang];
+export function productTipText(tip: ProductTip): string {
+  return t(tip.text);
 }
 
 export function actionTipText(action: "branch" | "retry"): string {

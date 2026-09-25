@@ -4,6 +4,8 @@ import { resolve } from "node:path";
 import test from "node:test";
 import { EXTERNAL_AI_SETUP } from "./externalAiSetup";
 import { PRODUCT_TIPS } from "./productTips";
+import zhHans from "../i18n/zh-Hans";
+import zhHant from "../i18n/zh-Hant-HK";
 
 function promptUnderHeading(markdown: string, heading: string): string {
   const start = markdown.indexOf(heading);
@@ -96,10 +98,10 @@ test("external-AI setup prompts vs docs: divergences are logged for adjudication
 test("every shipped run tip has stable id and all three locale texts", () => {
   assert.equal(new Set(PRODUCT_TIPS.map((tip) => tip.id)).size, PRODUCT_TIPS.length);
   for (const tip of PRODUCT_TIPS) {
-    assert.ok(tip.text.en);
-    assert.ok(tip.text["zh-Hans"]);
-    assert.ok(tip.text["zh-Hant-HK"]);
-    assert.notEqual(tip.text["zh-Hans"], tip.text.en);
-    assert.notEqual(tip.text["zh-Hant-HK"], tip.text.en);
+    assert.ok(tip.text);
+    assert.ok(zhHans[tip.text]);
+    assert.ok(zhHant[tip.text]);
+    assert.notEqual(zhHans[tip.text], tip.text);
+    assert.notEqual(zhHant[tip.text], tip.text);
   }
 });

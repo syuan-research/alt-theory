@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { syncTitlebarTheme } from "@/lib/native";
+import { paneMemory } from "@/lib/paneMemory";
 import { INITIAL_PANE, navigate, targetKey, type RailKey, type ViewTarget } from "@/lib/viewTarget";
 
 export type { RailKey, ViewTarget };
@@ -275,10 +276,10 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   const openRail = useCallback((rail: RailKey) => dispatchPane({ type: "rail", rail }), []);
   const closeRight = useCallback(() => dispatchPane({ type: "collapse" }), []);
   const closeTarget = useCallback(() => dispatchPane({ type: "back" }), []);
-  const forgetConversations = useCallback(
-    (sessionIds: string[]) => dispatchPane({ type: "forget", sessionIds }),
-    [],
-  );
+  const forgetConversations = useCallback((sessionIds: string[]) => {
+    paneMemory.forgetSessions(sessionIds);
+    dispatchPane({ type: "forget", sessionIds });
+  }, []);
   const reopenRight = useCallback(() => dispatchPane({ type: "reopen" }), []);
   const revealWorkspacePath = useCallback((path: string) => {
     setSurface("app");
