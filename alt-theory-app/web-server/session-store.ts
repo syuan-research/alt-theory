@@ -2227,11 +2227,15 @@ export function buildTranscriptFromEntries(
               message.toolCallId === toolCallId,
           )
         : -1;
+      // Smart approval's verdict rides on the result's details.
+      const approval = (value.message.details as { altApproval?: TranscriptMessage["approval"] } | undefined)
+        ?.altApproval;
       if (callIndex >= 0) {
         transcript[callIndex] = {
           ...transcript[callIndex],
           text: text || transcript[callIndex].text,
           success,
+          ...(approval ? { approval } : {}),
         };
         return;
       }

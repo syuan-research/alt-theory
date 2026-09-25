@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { fetchJson } from "@/api/http";
 import {
   cancelProviderAuth,
   getAutoTitleSettings,
+  getReviewerRecommendations,
   getCommandAllowlist,
   getDefaultPermission,
   saveCommandAllowlist,
@@ -29,6 +30,7 @@ import {
   uploadRolePreset,
   type AssetDirs,
   type AutoTitleSettings,
+  type ReviewerRecommendations,
   type SkillPrecedence,
   type SubagentConfig,
   type SubagentPreset,
@@ -44,6 +46,7 @@ import type {
   SessionSummary,
 } from "@/api/types";
 import { PERMISSIONS, PERMISSION_LABEL, fullAccessConsequences } from "@/lib/permission";
+import { setApprovalReviewer, useApprovalReviewer } from "@/lib/approvalReviewer";
 import { ModelConfigPage } from "@/pages/ModelConfigPage";
 import { authConnectEntryStep } from "@/lib/authConnect";
 import { MenuSelect } from "@/components/ui/MenuSelect";
@@ -479,10 +482,105 @@ function AgentModelFields({
  * whole chain even though the config persists the head as `model`. Promoting
  * the first fallback swaps it with the current model.
  */
-function promoteFirstFallback(item: SubagentPreset): SubagentPreset {
+function promoteFirstFallback<T extends { model: string; fallbackModels: string[] }>(item: T): T {
   const [first, ...rest] = item.fallbackModels;
   if (!first) return item;
   return { ...item, model: first, fallbackModels: [item.model, ...rest] };
+}
+
+/**
+ * A model and its ordered fallbacks, each with a thinking level: the
+ * subagent presets' control, shared with smart approval's reviewer and the
+ * auto-naming model (smart-approval ruling I).
+ */
+function ModelChainFields({
+  chain,
+  models,
+  onChange,
+  actions,
+}: {
+  chain: { model: string; fallbackModels: string[] };
+  models: Array<{ value: string; label: string }>;
+  onChange: (next: { model: string; fallbackModels: string[] }) => void;
+  actions?: ReactNode;
+}) {
+  const set = (update: (item: { model: string; fallbackModels: string[] }) => { model: string; fallbackModels: string[] }) =>
+    onChange(update({ model: chain.model, fallbackModels: chain.fallbackModels }));
+  return (
+    <div className="agent-preset-controls">
+      <div className="agent-fallback">
+        <div className="agent-fallback-heading">
+          <span>{t("Model")}</span>
+          <span>
+            <button className="agent-icon-btn" aria-label={t("Move model up")} disabled>
+              <i className="ph ph-arrow-up" />
+            </button>
+            <button
+              className="agent-icon-btn"
+              aria-label={t("Move model down")}
+              disabled={chain.fallbackModels.length === 0}
+              onClick={() => set(promoteFirstFallback)}
+            >
+              <i className="ph ph-arrow-down" />
+            </button>
+          </span>
+        </div>
+        <AgentModelFields
+          reference={chain.model}
+          models={models}
+          onChange={(model) => set((item) => ({ ...item, model }))}
+        />
+      </div>
+      {chain.fallbackModels.map((fallback, fallbackIndex) => (
+        <div className="agent-fallback" key={`${fallbackIndex}-${fallback}`}>
+          <div className="agent-fallback-heading">
+            <span>{t("Fallback {number}", { number: fallbackIndex + 1 })}</span>
+            <span>
+              <button
+                className="agent-icon-btn"
+                aria-label={t("Move fallback up")}
+                onClick={() => set((item) => {
+                  if (fallbackIndex === 0) return promoteFirstFallback(item);
+                  const next = [...item.fallbackModels];
+                  [next[fallbackIndex - 1], next[fallbackIndex]] = [next[fallbackIndex], next[fallbackIndex - 1]];
+                  return { ...item, fallbackModels: next };
+                })}
+              ><i className="ph ph-arrow-up" /></button>
+              <button
+                className="agent-icon-btn"
+                aria-label={t("Move fallback down")}
+                disabled={fallbackIndex === chain.fallbackModels.length - 1}
+                onClick={() => set((item) => {
+                  const next = [...item.fallbackModels];
+                  [next[fallbackIndex], next[fallbackIndex + 1]] = [next[fallbackIndex + 1], next[fallbackIndex]];
+                  return { ...item, fallbackModels: next };
+                })}
+              ><i className="ph ph-arrow-down" /></button>
+            </span>
+          </div>
+          <AgentModelFields
+            reference={fallback}
+            models={models}
+            onChange={(value) => set((item) => ({
+              ...item,
+              fallbackModels: item.fallbackModels.map((entry, i) => i === fallbackIndex ? value : entry),
+            }))}
+            onRemove={() => set((item) => ({
+              ...item,
+              fallbackModels: item.fallbackModels.filter((_, i) => i !== fallbackIndex),
+            }))}
+          />
+        </div>
+      ))}
+      <div className="agent-row-actions">
+        <button className="link-btn" onClick={() => set((item) => ({
+          ...item,
+          fallbackModels: [...item.fallbackModels, "inherit"],
+        }))}>{t("Add fallback")}</button>
+        {actions}
+      </div>
+    </div>
+  );
 }
 
 function AgentsPanel() {
@@ -586,85 +684,18 @@ function AgentsPanel() {
           />
         )}
       </div>
-      <div className="agent-preset-controls">
-        <div className="agent-fallback">
-          <div className="agent-fallback-heading">
-            <span>{t("Model")}</span>
-            <span>
-              <button className="agent-icon-btn" aria-label={t("Move model up")} disabled>
-                <i className="ph ph-arrow-up" />
-              </button>
-              <button
-                className="agent-icon-btn"
-                aria-label={t("Move model down")}
-                disabled={agent.fallbackModels.length === 0}
-                onClick={() => updateAgent(index, promoteFirstFallback)}
-              >
-                <i className="ph ph-arrow-down" />
-              </button>
-            </span>
-          </div>
-          <AgentModelFields
-            reference={agent.model}
-            models={models}
-            onChange={(model) => updateAgent(index, (item) => ({ ...item, model }))}
-          />
-        </div>
-        {agent.fallbackModels.map((fallback, fallbackIndex) => (
-          <div className="agent-fallback" key={`${fallbackIndex}-${fallback}`}>
-            <div className="agent-fallback-heading">
-              <span>{t("Fallback {number}", { number: fallbackIndex + 1 })}</span>
-              <span>
-                <button
-                  className="agent-icon-btn"
-                  aria-label={t("Move fallback up")}
-                  onClick={() => updateAgent(index, (item) => {
-                    if (fallbackIndex === 0) return promoteFirstFallback(item);
-                    const next = [...item.fallbackModels];
-                    [next[fallbackIndex - 1], next[fallbackIndex]] = [next[fallbackIndex], next[fallbackIndex - 1]];
-                    return { ...item, fallbackModels: next };
-                  })}
-                ><i className="ph ph-arrow-up" /></button>
-                <button
-                  className="agent-icon-btn"
-                  aria-label={t("Move fallback down")}
-                  disabled={fallbackIndex === agent.fallbackModels.length - 1}
-                  onClick={() => updateAgent(index, (item) => {
-                    const next = [...item.fallbackModels];
-                    [next[fallbackIndex], next[fallbackIndex + 1]] = [next[fallbackIndex + 1], next[fallbackIndex]];
-                    return { ...item, fallbackModels: next };
-                  })}
-                ><i className="ph ph-arrow-down" /></button>
-              </span>
-            </div>
-            <AgentModelFields
-              reference={fallback}
-              models={models}
-              onChange={(value) => updateAgent(index, (item) => ({
-                ...item,
-                fallbackModels: item.fallbackModels.map((entry, i) => i === fallbackIndex ? value : entry),
-              }))}
-              onRemove={() => updateAgent(index, (item) => ({
-                ...item,
-                fallbackModels: item.fallbackModels.filter((_, i) => i !== fallbackIndex),
-              }))}
-            />
-          </div>
-        ))}
-        <div className="agent-row-actions">
-          <button className="link-btn" onClick={() => updateAgent(index, (item) => ({
-            ...item,
-            fallbackModels: [...item.fallbackModels, "inherit"],
-          }))}>{t("Add fallback")}</button>
-          {!builtIn ? (
-            <button className="link-btn danger" onClick={() => edit({
-              ...config,
-              agents: config.agents.filter((_, i) => i !== index),
-              defaultAgent: config.defaultAgent === agent.id ? "general-medium" : config.defaultAgent,
-            })}>{t("Delete")}</button>
-          ) : null}
-        </div>
-      </div>
+      <ModelChainFields
+        chain={agent}
+        models={models}
+        onChange={(chain) => updateAgent(index, (item) => ({ ...item, ...chain }))}
+        actions={!builtIn ? (
+          <button className="link-btn danger" onClick={() => edit({
+            ...config,
+            agents: config.agents.filter((_, i) => i !== index),
+            defaultAgent: config.defaultAgent === agent.id ? "general-medium" : config.defaultAgent,
+          })}>{t("Delete")}</button>
+        ) : null}
+      />
     </div>
   );
 
@@ -1238,6 +1269,7 @@ function GeneralPanel() {
       <RuntimeCard />
       <DefaultPermissionCard />
       <CommandAllowlistCard />
+      <ApprovalReviewerCard />
       <AutoTitleCard />
       <ModelHooksCard />
       <NativePiSkillsCard />
@@ -1342,6 +1374,7 @@ function DefaultPermissionCard() {
         ...draft.settings,
         mode: next === "read-only" ? "read-only" : "work",
         fullAccess: next === "full",
+        smartApproval: next === "smart",
       },
     }));
     void saveDefaultPermission(next).catch(() => {});
@@ -1598,54 +1631,72 @@ function ModelHooksCard() {
   );
 }
 
+/** Configured models as chain-editor options, "inherit" first under its own label. */
+function useChainModelOptions(inheritLabel: () => string) {
+  const [models, setModels] = useState<Array<{ value: string; label: string }>>([]);
+  useEffect(() => {
+    let alive = true;
+    listConfigProviders()
+      .then((providers) => {
+        if (!alive) return;
+        setModels(
+          providers.providers.flatMap((provider) =>
+            provider.models.map((model) => ({
+              value: `${provider.name}/${model.id}`,
+              label: `${provider.name} / ${model.name || model.id}`,
+            })),
+          ),
+        );
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+  return useMemo(() => [{ value: "inherit", label: inheritLabel() }, ...models], [models, inheritLabel]);
+}
+
+const sameAsConversation = () => t("Same as conversation");
+
 function AutoTitleCard() {
-  const [enabled, setEnabled] = useState(true);
-  const [model, setModel] = useState<{ provider: string; modelId: string } | null>(
-    null
-  );
-  const [models, setModels] = useState<
-    { provider: string; modelId: string; label: string }[]
-  >([]);
+  const [settings, setSettings] = useState<AutoTitleSettings>({ enabled: true, model: null });
   const [loaded, setLoaded] = useState(false);
+  const models = useChainModelOptions(sameAsConversation);
 
   useEffect(() => {
     let alive = true;
-    void (async () => {
-      try {
-        const [s, p] = await Promise.all([
-          getAutoTitleSettings(),
-          listConfigProviders(),
-        ]);
-        if (!alive) return;
-        setEnabled(s.enabled);
-        setModel(s.model);
-        setModels(
-          p.providers.flatMap((prov) =>
-            prov.models.map((m) => ({
-              provider: prov.name,
-              modelId: m.id,
-              label: `${m.name || m.id} · ${prov.name}`,
-            }))
-          )
-        );
-      } catch {
-        // leave defaults; the picker just shows "Same as conversation"
-      } finally {
-        if (alive) setLoaded(true);
-      }
-    })();
+    getAutoTitleSettings()
+      .then((value) => alive && setSettings(value))
+      .catch(() => {})
+      .finally(() => alive && setLoaded(true));
     return () => {
       alive = false;
     };
   }, []);
 
   const persist = (next: AutoTitleSettings) => {
-    setEnabled(next.enabled);
-    setModel(next.model);
+    setSettings(next);
     void saveAutoTitleSettings(next).catch(() => {});
   };
 
-  const modelKey = model ? `${model.provider}::${model.modelId}` : "";
+  // The pinned model reads as the head of a chain; "inherit" = no pin.
+  const pin = settings.model;
+  const chain = {
+    model: pin ? joinAgentModelRef(`${pin.provider}/${pin.modelId}`, pin.thinkingLevel ?? "") : "inherit",
+    fallbackModels: settings.fallbackModels ?? [],
+  };
+  const fromChain = (next: { model: string; fallbackModels: string[] }): AutoTitleSettings => {
+    const [model, thinking] = splitAgentModelRef(next.model);
+    const slash = model.indexOf("/");
+    return {
+      enabled: settings.enabled,
+      model:
+        model === "inherit" || slash < 0
+          ? null
+          : { provider: model.slice(0, slash), modelId: model.slice(slash + 1), ...(thinking ? { thinkingLevel: thinking } : {}) },
+      fallbackModels: next.fallbackModels,
+    };
+  };
 
   return (
     <div className="set-card">
@@ -1657,38 +1708,102 @@ function AutoTitleCard() {
           </p>
         </div>
         <button
-          className={`toggle${enabled ? " on" : ""}`}
-          aria-pressed={enabled}
+          className={`toggle${settings.enabled ? " on" : ""}`}
+          aria-pressed={settings.enabled}
           disabled={!loaded}
-          onClick={() => persist({ enabled: !enabled, model })}
+          onClick={() => persist({ ...settings, enabled: !settings.enabled })}
         />
       </div>
-      {enabled ? (
-        <div className="row2" style={{ marginTop: "var(--space-control)" }}>
-          <div>
-            <h4>{t("Naming model")}</h4>
-            <p>{t("A small model is recommended — cheaper and faster.")}</p>
-          </div>
-          <MenuSelect
-            ariaLabel={t("Naming model")}
-            value={modelKey}
-            disabled={!loaded}
-            options={[
-              { value: "", label: t("Same as conversation") },
-              ...models.map((m) => ({
-                value: `${m.provider}::${m.modelId}`,
-                label: m.label,
-              })),
-            ]}
-            onChange={(v) => {
-              if (!v) return persist({ enabled, model: null });
-              const idx = v.indexOf("::");
-              persist({
-                enabled,
-                model: { provider: v.slice(0, idx), modelId: v.slice(idx + 2) },
-              });
-            }}
+      {settings.enabled && loaded ? (
+        <div style={{ marginTop: "var(--space-control)" }}>
+          <h4>{t("Naming model")}</h4>
+          <p>{t("A small model is recommended — cheaper and faster. If it fails, the fallbacks are tried in order, then the conversation's own model.")}</p>
+          <ModelChainFields chain={chain} models={models} onChange={(next) => persist(fromChain(next))} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+const conversationModel = () => t("This conversation's model");
+
+/** Smart approval's reviewer (rulings H and I): auto, or a model chain; recommendations with their date. */
+function ApprovalReviewerCard() {
+  const settings = useApprovalReviewer();
+  const models = useChainModelOptions(conversationModel);
+  const [recommendations, setRecommendations] = useState<ReviewerRecommendations | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    getReviewerRecommendations()
+      .then((value) => alive && setRecommendations(value))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  if (!settings) return null;
+  // A recommendation is offered when some configured provider has that model.
+  const offered = (recommendations?.models ?? []).map((entry) => {
+    const match = models.find((option) => option.value !== "inherit" && option.value.split("/").slice(1).join("/") === entry.modelId);
+    return { ...entry, ref: match ? `${match.value}:${entry.thinking}` : null, label: match?.label ?? entry.modelId };
+  });
+  const use = (ref: string) =>
+    void setApprovalReviewer({ model: ref, fallbackModels: settings.reviewer?.fallbackModels ?? [] }).catch(() => {});
+
+  return (
+    <div className="set-card" id="approval-reviewer">
+      <div className="row2">
+        <div>
+          <h4>{t("Smart approval reviewer")}</h4>
+          <p>
+            {t("The model that reviews actions under smart approval. Auto uses this conversation's model at low thinking. After the chain, the conversation's model at low thinking is tried last; if that fails too, you are asked.")}
+          </p>
+        </div>
+        <MenuSelect
+          ariaLabel={t("Smart approval reviewer")}
+          value={settings.reviewer ? "custom" : "auto"}
+          options={[
+            { value: "auto", label: t("Auto") },
+            { value: "custom", label: t("Choose models") },
+          ]}
+          onChange={(value) =>
+            void setApprovalReviewer(
+              value === "auto" ? null : { model: offered.find((entry) => entry.ref)?.ref ?? "inherit:low", fallbackModels: [] },
+            ).catch(() => {})
+          }
+        />
+      </div>
+      {settings.reviewer ? (
+        <div style={{ marginTop: "var(--space-control)" }}>
+          <ModelChainFields
+            chain={settings.reviewer}
+            models={models}
+            onChange={(next) => void setApprovalReviewer(next).catch(() => {})}
           />
+        </div>
+      ) : null}
+      {offered.length ? (
+        <div className="fine reviewer-recs">
+          <span>
+            {t("Recommended reviewers (list updated {date}):", { date: recommendations?.updatedAt ?? "" })}
+          </span>
+          {offered.map((entry) => (
+            <span key={`${entry.modelId}:${entry.thinking}`} className="reviewer-rec">
+              {entry.label} · {t(entry.thinking)}
+              {" "}({entry.tag === "preferred" ? t("preferred") : t("faster")})
+              {entry.ref ? (
+                settings.reviewer?.model === entry.ref ? (
+                  <i className="ph ph-check" aria-label={t("In use")} />
+                ) : (
+                  <button className="ghostbtn" onClick={() => use(entry.ref!)}>{t("Use")}</button>
+                )
+              ) : (
+                <em> — {t("not set up on this computer")}</em>
+              )}
+            </span>
+          ))}
         </div>
       ) : null}
     </div>

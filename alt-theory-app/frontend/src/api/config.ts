@@ -115,7 +115,44 @@ export function saveSubagentSettings(
 
 export interface AutoTitleSettings {
   enabled: boolean;
-  model: { provider: string; modelId: string } | null;
+  model: { provider: string; modelId: string; thinkingLevel?: string } | null;
+  /** Tried in order after the pinned model (subagent reference syntax). */
+  fallbackModels?: string[];
+}
+
+/** Smart approval's reviewer: a model and ordered fallbacks; null = auto. */
+export interface ModelChain {
+  model: string;
+  fallbackModels: string[];
+}
+
+export interface ApprovalReviewerSettings {
+  reviewer: ModelChain | null;
+  hintDismissed: boolean;
+}
+
+export async function getApprovalReviewer(): Promise<ApprovalReviewerSettings> {
+  return fetchJson<ApprovalReviewerSettings>("/api/settings/approval-reviewer");
+}
+
+export async function saveApprovalReviewer(
+  patch: { reviewer?: ModelChain | null; hintDismissed?: true },
+): Promise<ApprovalReviewerSettings> {
+  return fetchJson("/api/settings/approval-reviewer", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+}
+
+export interface ReviewerRecommendations {
+  updatedAt: string;
+  models: Array<{ modelId: string; thinking: string; tag: "preferred" | "faster" }>;
+  source: "online" | "bundled";
+}
+
+export async function getReviewerRecommendations(): Promise<ReviewerRecommendations> {
+  return fetchJson<ReviewerRecommendations>("/api/settings/reviewer-recommendations");
 }
 
 export async function getAutoTitleSettings(): Promise<AutoTitleSettings> {

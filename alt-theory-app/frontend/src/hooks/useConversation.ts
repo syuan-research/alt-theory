@@ -330,7 +330,7 @@ export function useConversation({ sessionId, enabled, onMessage }: ConversationO
         setting({ rolePresetSlug }, { type: "switch_role_preset", payload: { rolePresetSlug } }),
       switchVisibility: (visibility: SessionVisibility) =>
         setting({ visibility }, { type: "switch_visibility", payload: { visibility } }),
-      /** One permission choice = the stored mode and Full Access, each sent only when it changes. */
+      /** One permission choice = the stored mode, Full Access and smart approval, each sent only when it changes. */
       setPermission(permission: Permission) {
         const now = effectiveSettings(current(), {
           settings: readDraft(NEW_DRAFT).settings,
@@ -338,9 +338,13 @@ export function useConversation({ sessionId, enabled, onMessage }: ConversationO
         });
         const mode: AltMode = permission === "read-only" ? "read-only" : "work";
         const fullAccess = permission === "full";
+        const smartApproval = permission === "smart";
         if (mode !== now.mode) setting({ mode }, { type: "switch_mode", payload: { mode } });
         if (fullAccess !== now.fullAccess) {
           setting({ fullAccess }, { type: "set_full_access", payload: { enabled: fullAccess } });
+        }
+        if (smartApproval !== now.smartApproval) {
+          setting({ smartApproval }, { type: "set_smart_approval", payload: { enabled: smartApproval } });
         }
       },
       setSessionModel: (override: SessionModelOverride | null) =>

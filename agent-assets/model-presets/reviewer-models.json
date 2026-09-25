@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-09-26",
+  "note": "Reviewer models recommended for smart approval. The app reads this file from the public repository and falls back to the copy it ships with. A model is offered when any configured provider has a model with this id.",
+  "models": [
+    { "modelId": "gpt-6-luna", "thinking": "medium", "tag": "preferred" },
+    { "modelId": "gpt-6-luna", "thinking": "low", "tag": "faster" }
+  ]
+}

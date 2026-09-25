@@ -86,6 +86,7 @@ export const REQUEST_BUSY: Record<ClientMessageBody["type"], boolean> = {
   switch_visibility: false,
   switch_mode: false,
   set_full_access: false,
+  set_smart_approval: false,
   set_study_tag: false,
   set_session_model: false,
   describe_draft: false,
@@ -711,15 +712,17 @@ export interface EffectiveSettings {
   selectors: SessionSelectors;
   mode: AltMode;
   fullAccess: boolean;
+  smartApproval: boolean;
   modelOverride: SessionModelOverride | null;
   studyTag: StudyTag | null;
   workspacePrimaryDir: string | null;
 }
 
-/** The permission control's reading of a conversation's two stored fields. */
-export function permissionOf(settings: { mode: AltMode; fullAccess: boolean }): Permission {
+/** The permission control's reading of a conversation's stored fields (Full wins over smart). */
+export function permissionOf(settings: { mode: AltMode; fullAccess: boolean; smartApproval?: boolean }): Permission {
   if (settings.mode === "read-only") return "read-only";
-  return settings.fullAccess ? "full" : "ask";
+  if (settings.fullAccess) return "full";
+  return settings.smartApproval ? "smart" : "ask";
 }
 
 export function effectiveSettings(
@@ -740,6 +743,7 @@ export function effectiveSettings(
     },
     mode: pick(pending.mode, source?.mode ?? "work"),
     fullAccess: pick(pending.fullAccess, source?.fullAccess ?? false),
+    smartApproval: source?.smartApproval ?? false,
     modelOverride: pick(pending.model, source?.modelOverride ?? null),
     studyTag: source?.studyTag ?? null,
     workspacePrimaryDir: source?.workspacePrimaryDir ?? null,
@@ -764,6 +768,7 @@ function draftSource(
     visibility: pick("visibility") ?? defaults?.visibility,
     mode: pick("mode") ?? defaults?.mode,
     fullAccess: pick("fullAccess") ?? defaults?.fullAccess ?? false,
+    smartApproval: pick("smartApproval") ?? defaults?.smartApproval ?? false,
     modelOverride: pick("modelOverride") ?? null,
     studyTag: pick("studyTag") ?? null,
     workspacePrimaryDir: pick("workspacePrimaryDir") ?? null,

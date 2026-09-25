@@ -600,7 +600,8 @@
   .wb-sess .tag { margin-left: auto; font-size: var(--fs-micro); color: var(--text-3); font-family: var(--mono); flex-shrink: 0; }
 
   /* ------- center ------- */
-  .center { flex: 1; display: flex; flex-direction: column; min-width: 0; background: var(--canvas); position: relative; }
+  /* The center keeps a readable minimum (smart-approval M4); the right pane gives way first. */
+  .center { flex: 1; display: flex; flex-direction: column; min-width: min(400px, 100%); background: var(--canvas); position: relative; }
   .empty-state { flex: 1; display: flex; flex-direction: column; min-height: 0; padding-top: var(--space-column); overflow-y: auto; }
   .empty-intro { margin: auto var(--space-column); display: flex; flex-direction: column; align-items: center; }
   .greet { font-family: var(--brand); font-size: var(--fs-page); color: var(--ink-soft); margin-bottom: var(--space-column); text-align: center; }
@@ -906,11 +907,14 @@
   .ctx-item:hover { color: var(--ink); }
   .ctx-item i.caret { font-size: 0.7rem; color: var(--text-3); }
 
-  .approval-dock { background: var(--card); border: none; border-radius: var(--r-md); padding: var(--space-control) var(--space-control); margin-bottom: var(--space-tight); display: flex; align-items: center; gap: var(--space-control); font-size: var(--fs-primary); }
-  .approval-dock .what { flex: 1; min-width: 0; }
-  .approval-dock .what .l1 { color: var(--ink-soft); }
-  .approval-dock .what .l1 code { font-family: var(--mono); font-size: var(--fs-secondary); background: var(--card); border-radius: var(--r-sm); padding: 1px var(--space-tight); }
-  .approval-dock .what .l2 { color: var(--text-3); font-size: var(--fs-secondary); margin-top: var(--space-hair); }
+  .approval-note { margin-left: var(--space-tight); color: var(--text-3); font-size: var(--fs-secondary); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Approval dock (smart-approval M4): the command gets the width; the kind is a small head, buttons sit under it. */
+  .approval-dock { background: var(--card); border: none; border-radius: var(--r-md); padding: var(--space-control); margin-bottom: var(--space-tight); display: flex; flex-direction: column; gap: var(--space-tight); font-size: var(--fs-primary); min-width: 0; }
+  .approval-dock .dock-head { display: flex; align-items: center; gap: var(--space-tight); color: var(--text-2); font-size: var(--fs-secondary); }
+  .approval-dock .dock-note { color: var(--ink-soft); font-size: var(--fs-secondary); }
+  .approval-dock .dock-value { margin: 0; font-family: var(--mono); font-size: var(--fs-secondary); color: var(--ink); background: var(--surface); border-radius: var(--r-sm); padding: var(--space-tight) var(--space-control); white-space: pre-wrap; overflow-wrap: anywhere; max-height: min(40vh, 320px); overflow: auto; }
+  .approval-dock .l2 { color: var(--text-3); font-size: var(--fs-secondary); }
+  .approval-dock .dock-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-tight); }
   .approval-dock button { border-radius: var(--r-sm); padding: var(--space-tight) var(--space-control); font-size: var(--fs-primary); cursor: pointer; border: none; background: var(--surface); white-space: nowrap; }
   .approval-dock .primary { background: var(--ink); color: var(--on-ink); }
   .approval-dock .deny { color: var(--danger); }
@@ -960,9 +964,18 @@
     gap: 10px;
     margin-top: 4px;
     position: relative;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     min-width: 0;
   }
+  .composer .row > * { flex-shrink: 0; }
+  /* The model name gives way first: it ellipsizes, then folds to an icon. */
+  .composer .row > .model-chip { flex-shrink: 1; min-width: 0; }
+  .model-chip .chip-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .model-chip .chip-icon { display: none; }
+  .composer .row.narrow .perm-label { display: none; }
+  .composer .row.tiny .model-chip .chip-label { display: none; }
+  .composer .row.tiny .model-chip .chip-icon { display: inline; }
+  .composer .row.tiny .ctx-ring { font-size: 0; gap: 0; }
   .composer .row > .flat,
   .composer .row > .send,
   .flat { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-secondary); color: var(--text-2); cursor: pointer; background: none; border: none; padding: 2px 4px; border-radius: var(--r-sm); }
@@ -991,6 +1004,7 @@
   .menu .mi .think .levels span:hover { background: var(--hover); color: var(--ink); }
   .menu .mi .think .levels span.on { background: var(--selected); color: var(--ink); }
   .menu .mi .d { font-size: var(--fs-secondary); color: var(--text-3); display: block; margin-top: 1px; }
+  .menu .mi .exp-tag { font-size: var(--fs-micro); color: var(--text-2); border: 1px solid var(--hairline); border-radius: var(--r-sm); padding: 0 4px; margin-left: 6px; vertical-align: 1px; }
   /* Full Access (v1.4.8): warning-color shield states in the composer. */
   .flat.perm-on { color: var(--color-warning); }
   .menu .mi i.perm-warn-icon { color: var(--color-warning); }
@@ -1060,13 +1074,13 @@
   .arm-pane .af button:disabled { opacity: 0.5; cursor: default; }
 
   /* ------- right rail + panel ------- */
-  .right { flex-shrink: 0; display: flex; background: var(--panel); border-left: 1px solid var(--hairline); }
-  .rail { width: 48px; display: flex; flex-direction: column; align-items: center; padding-top: var(--space-control); gap: var(--space-hair); }
+  .right { flex-shrink: 1; min-width: 49px; display: flex; background: var(--panel); border-left: 1px solid var(--hairline); }
+  .rail { width: 48px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; padding-top: var(--space-control); gap: var(--space-hair); }
   .rail button { width: 36px; height: 36px; border: none; background: transparent; border-radius: var(--r-sm); color: var(--text-2); cursor: pointer; position: relative; font-size: 1.1rem; display: inline-flex; align-items: center; justify-content: center; }
   .rail button:hover { background: var(--hover); }
   .rail button.on { background: var(--selected); color: var(--ink); }
   .rail button .dot { position: absolute; top: 5px; right: 5px; width: 7px; height: 7px; border-radius: 50%; background: var(--ink); }
-  .rpanel { width: 0; overflow: hidden; transition: width 0.18s ease; display: flex; flex-direction: column; }
+  .rpanel { width: 0; min-width: 0; flex-shrink: 1; overflow: hidden; transition: width 0.18s ease; display: flex; flex-direction: column; }
   .right.open .rpanel { width: var(--right-width); }
   /* Tight on purpose: the left column keeps only ~4px under its brand row,
      so this header should not sit visibly airier than that. */
@@ -1282,7 +1296,7 @@
   .child-head button { display: inline-flex; align-items: center; gap: var(--space-hair); border: none; background: transparent; color: var(--text-2); cursor: pointer; font: inherit; font-size: var(--fs-secondary); padding: var(--space-hair) var(--space-hair); border-radius: var(--r-sm); }
   .child-head button:hover { background: var(--hover); }
   .child-conv .child-msgs { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: var(--space-tight); }
-  .child-conv .approval-dock { flex-wrap: wrap; margin: var(--space-tight) 0 0; }
+  .child-conv .approval-dock { margin: var(--space-tight) 0 0; }
   .related-error { color: var(--danger); font-size: var(--fs-secondary); padding: var(--space-tight) var(--space-hair) 0; }
   /* Same card geometry as main .composer (do not stretch with flex:1 — that
      made the child taller with empty air under "Reply here"). */
@@ -1398,6 +1412,8 @@
   .toggle.on { background: var(--toggle-track-on); }
   .toggle.on::after { left: 18px; }
   .set-card .set-lines { display: block; width: 100%; box-sizing: border-box; margin-top: var(--space-tight); border: 1px solid var(--hairline); border-radius: var(--r-sm); padding: var(--space-tight) var(--space-control); font-family: var(--mono); font-size: var(--fs-secondary); resize: vertical; outline: none; background: transparent; color: inherit; }
+  .reviewer-recs { display: flex; flex-direction: column; gap: var(--space-hair); }
+  .reviewer-rec { display: inline-flex; align-items: center; gap: var(--space-tight); flex-wrap: wrap; }
   .set-card .fine { font-size: var(--fs-secondary); color: var(--text-3); margin-top: var(--space-tight); line-height: 1.45; }
   /* Working folders page (proto D): quiet rows, one tick, no badges */
   .set-card .lead { color: var(--ink-soft); font-weight: 500; margin-bottom: var(--space-hair); }

@@ -23,24 +23,33 @@ function approvalOption(option: string): string {
   return option;
 }
 
-function approvalTitle(title: string): string {
-  const run = "Run command: ";
-  if (title.startsWith(run)) {
-    return t("Run command: {value}", { value: title.slice(run.length) });
+const TITLE_KINDS: Array<[prefix: string, label: () => string]> = [
+  ["Run command: ", () => t("Run command")],
+  ["Read outside your workspace: ", () => t("Read outside your project and global folders")],
+  ["Allow writes in this folder for this session: ", () => t("Allow writes in this folder for this session")],
+  ["Edit file: ", () => t("Edit file")],
+  ["Write file: ", () => t("Write file")],
+];
+const UNAVAILABLE = "Smart approval unavailable: ";
+
+/**
+ * The security extension's title read as its parts: a note (smart approval
+ * could not answer), what kind of action, and the command or path itself —
+ * which gets the room, since it is what the user has to judge.
+ */
+export function approvalParts(title: string): { note: string | null; label: string; value: string | null } {
+  let note: string | null = null;
+  let rest = title;
+  if (rest.startsWith(UNAVAILABLE)) {
+    const newline = rest.indexOf("\n");
+    const reason = rest.slice(UNAVAILABLE.length, newline < 0 ? undefined : newline);
+    note = t("Smart approval could not answer ({reason}), so this one is up to you.", { reason });
+    rest = newline < 0 ? "" : rest.slice(newline + 1);
   }
-  const read = "Read outside your workspace: ";
-  if (title.startsWith(read)) {
-    return t("Read outside your project and global folders: {value}", {
-      value: title.slice(read.length),
-    });
+  for (const [prefix, label] of TITLE_KINDS) {
+    if (rest.startsWith(prefix)) return { note, label: label(), value: rest.slice(prefix.length) };
   }
-  const write = "Allow writes in this folder for this session: ";
-  if (title.startsWith(write)) {
-    return t("Allow writes in this folder for this session: {value}", {
-      value: title.slice(write.length),
-    });
-  }
-  return title;
+  return { note, label: rest, value: null };
 }
 
 /**
@@ -60,63 +69,69 @@ export function ApprovalDock({ request, onRespond, onSessionAllow }: ApprovalDoc
     onRespond(request.approvalId, { choice: option });
   };
 
+  const parts = approvalParts(request.title);
+
   return (
     <div className="approval-dock">
-      <i className="ph ph-shield-check" style={{ color: "var(--text-2)" }} />
-      <div className="what">
-        <div className="l1">{approvalTitle(request.title)}</div>
-        {request.message ? <div className="l2">{request.message}</div> : null}
+      <div className="dock-head">
+        <i className="ph ph-shield-check" aria-hidden="true" />
+        <span className="dock-kind">{parts.label}</span>
       </div>
+      {parts.note ? <div className="dock-note">{parts.note}</div> : null}
+      {parts.value ? <pre className="dock-value">{parts.value}</pre> : null}
+      {request.message ? <div className="l2">{request.message}</div> : null}
 
-      {request.kind === "select" ? (
-        (request.options ?? []).map((option) => (
-          <button
-            key={option}
-            className={DENY_LABELS.has(option) ? "deny" : ""}
-            onClick={() => choose(option)}
-          >
-            {approvalOption(option)}
-          </button>
-        ))
-      ) : null}
+      <div className="dock-actions">
+        {request.kind === "select" ? (
+          (request.options ?? []).map((option) => (
+            <button
+              key={option}
+              className={DENY_LABELS.has(option) ? "deny" : ""}
+              onClick={() => choose(option)}
+            >
+              {approvalOption(option)}
+            </button>
+          ))
+        ) : null}
 
-      {request.kind === "confirm" ? (
-        <>
-          <button
-            className="primary"
-            onClick={() => onRespond(request.approvalId, { accept: true })}
-          >
-            {t("Allow")}
-          </button>
-          <button className="deny" onClick={deny}>
-            {t("Block")}
-          </button>
-        </>
-      ) : null}
+        {request.kind === "confirm" ? (
+          <>
+            <button
+              className="primary"
+              onClick={() => onRespond(request.approvalId, { accept: true })}
+            >
+              {t("Allow")}
+            </button>
+            <button className="deny" onClick={deny}>
+              {t("Block")}
+            </button>
+          </>
+        ) : null}
 
-      {request.kind === "input" ? (
-        <>
-          <input
-            autoFocus
-            className="dock-input"
-            value={text}
-            placeholder={request.placeholder ?? ""}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") onRespond(request.approvalId, { text });
-            }}
-          />
-          <button
-            className="primary"
-            onClick={() => onRespond(request.approvalId, { text })}
-          >
-            {t("Submit")}
-          </button>
-          <button className="deny" onClick={deny}>
-            {t("Cancel")}
-          </button>
-        </>
-      ) : null}
+        {request.kind === "input" ? (
+          <>
+            <input
+              autoFocus
+              className="dock-input"
+              value={text}
+              placeholder={request.placeholder ?? ""}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") onRespond(request.approvalId, { text });
+              }}
+            />
+            <button
+              className="primary"
+              onClick={() => onRespond(request.approvalId, { text })}
+            >
+              {t("Submit")}
+            </button>
+            <button className="deny" onClick={deny}>
+              {t("Cancel")}
+            </button>
+          </>
+        ) : null}
+      </div>
     </div>
   );
 }

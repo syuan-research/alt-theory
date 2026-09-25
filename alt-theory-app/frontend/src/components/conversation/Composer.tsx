@@ -19,6 +19,7 @@ import { isWithheld, type SessionVisibility } from "@/api/types";
 import { fmtTime } from "@/lib/format";
 import { t } from "@/i18n";
 import { useAutosizeTextarea } from "@/lib/autosizeTextarea";
+import { dismissApprovalHint, useApprovalReviewer } from "@/lib/approvalReviewer";
 import { runPhaseLabels } from "@/lib/runState";
 import {
   PERMISSIONS,
@@ -66,6 +67,16 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
   };
   const [fileDragOver, setFileDragOver] = useState(false);
   const rowRef = useRef<HTMLDivElement>(null);
+  // The toolbar never wraps (smart-approval M4): as the composer narrows the
+  // permission name, then the model name, fold into their icons.
+  const [rowWidth, setRowWidth] = useState(Infinity);
+  useEffect(() => {
+    const row = rowRef.current;
+    if (!row) return;
+    const observer = new ResizeObserver(([entry]) => setRowWidth(entry.contentRect.width));
+    observer.observe(row);
+    return () => observer.disconnect();
+  }, []);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Grow with content up to the CSS max-height (~8 lines), then scroll.
@@ -259,6 +270,11 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
     !app.localConfig.activeUsable &&
     !conv.modelOverride &&
     !conv.currentSessionModel;
+  // Smart approval on auto: say which model reviews, until the user picks
+  // one or turns the hint off for good (ruling G).
+  const reviewer = useApprovalReviewer();
+  const reviewerHint =
+    conv.permission === "smart" && reviewer !== null && reviewer.reviewer === null && !reviewer.hintDismissed;
 
   return (
     <div className="composer-wrap">
@@ -275,6 +291,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
         conv.stoppedByUser ||
         conv.recovery ||
         cardHint ||
+        reviewerHint ||
         needsModel ? (
           <div className="composer-notes">
             <RunStatusSlot />
@@ -302,6 +319,18 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                   onClick={shell.openExternalAiSetup}
                 >
                   {t("Ask another AI to help configure it")}
+                </button>
+              </span>
+            ) : null}
+            {reviewerHint ? (
+              <span>
+                {t("Smart approval is reviewing with this conversation's model, which can be slow or costly.")}{" "}
+                <button type="button" className="flat" onClick={() => shell.openSettings("general")}>
+                  {t("Choose a reviewer")}
+                </button>
+                {" · "}
+                <button type="button" className="flat" onClick={dismissApprovalHint}>
+                  {t("Don't show again")}
                 </button>
               </span>
             ) : null}
@@ -671,7 +700,10 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
               }
             }}
           />
-          <div className="row" ref={rowRef}>
+          <div
+            className={`row${rowWidth < 460 ? " narrow" : ""}${rowWidth < 360 ? " tiny" : ""}`}
+            ref={rowRef}
+          >
             {/* commands and skills: opens the / palette, same as typing / */}
             <button
               className="flat"
@@ -695,7 +727,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                   }}
                 >
                   <i className={`ph ${PERMISSION_ICON[conv.permission]}`} />
-                  <span>{PERMISSION_LABEL[conv.permission]()}</span>
+                  <span className="perm-label">{PERMISSION_LABEL[conv.permission]()}</span>
                   <PendingMark
                     when={
                       conv.pendingChanges.fullAccess !== undefined ||
@@ -733,7 +765,15 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                       />
                       <span>
                         {PERMISSION_LABEL[permission]()}
+                        {permission === "smart" ? <span className="exp-tag">{t("Experimental")}</span> : null}
                         <span className="d">{PERMISSION_DETAIL[permission]()}</span>
+                        {permission === "smart" ? (
+                          <span className="d">
+                            {reviewer?.reviewer
+                              ? t("Reviews with {model}", { model: reviewer.reviewer.model })
+                              : t("Reviews with this conversation's model at low thinking; each review is an extra call to it")}
+                          </span>
+                        ) : null}
                       </span>
                       {conv.permission === permission ? (
                         <i className="ph ph-check check" />

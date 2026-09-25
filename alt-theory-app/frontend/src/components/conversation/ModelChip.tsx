@@ -283,7 +283,7 @@ export function ModelChip({
   return (
     <>
       <button
-        className="flat"
+        className="flat model-chip"
         style={{ marginLeft: "auto" }}
         onClick={(event) => {
           event.stopPropagation();
@@ -292,7 +292,8 @@ export function ModelChip({
         disabled={!conversation.sessionReady}
         data-tip={title}
       >
-        {chipLabel}
+        <i className="ph ph-cube chip-icon" aria-hidden="true" />
+        <span className="chip-label">{chipLabel}</span>
         <PendingMark when={pendingModel} />
         <i className="ph ph-caret-down caret" />
       </button>

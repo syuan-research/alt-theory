@@ -151,7 +151,7 @@ export interface SessionModelOverride {
  */
 export type AltMode = "read-only" | "work";
 /** The permission control's three choices. */
-export type Permission = "read-only" | "ask" | "full";
+export type Permission = "read-only" | "ask" | "smart" | "full";
 export type RuntimeMode = "alt-theory" | "native-pi";
 
 export type InterruptionCause =
@@ -289,6 +289,8 @@ export interface TranscriptMessage {
   toolPath?: string | null;
   toolDetail?: ToolDetail;
   success?: boolean;
+  /** Smart approval's verdict on this tool call (the reviewer model's). */
+  approval?: { by: "smart"; outcome: "allow" | "deny"; reason: string; model: string };
   truncated?: boolean;
   /** Non-message boundary markers rendered specially (e.g. context compaction). */
   marker?: "compaction" | "imported-context" | "agent-team";

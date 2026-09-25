@@ -163,6 +163,7 @@ import {
 } from "./app-settings.js";
 import { discoverSkillResources } from "./resource-discovery.js";
 import { adoptStagedAttachments, stageAttachment } from "./attachment-staging.js";
+import { reviewerRecommendations } from "./reviewer-recommendations.js";
 import {
   readSubagentConfig,
   subagentConfigPath,
@@ -465,6 +466,10 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     };
     writeAppSettings(dataDir, next);
     res.json({ ok: true, autoTitle: next.autoTitle });
+  });
+  app.get("/api/settings/reviewer-recommendations", async (_req, res) => {
+    if (!requireLocalConfigMode(res)) return;
+    res.json(await reviewerRecommendations(join(assetPaths.rootDir, "model-presets")));
   });
   // Smart approval's reviewer (2026-09-26): null = auto.
   app.get("/api/settings/approval-reviewer", (_req, res) => {

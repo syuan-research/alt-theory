@@ -890,7 +890,7 @@ export class SessionService implements AgentTeamBridge {
       const steps = this.auxiliaryChain(
         managed,
         [
-          ...(pin ? [`${pin.provider}/${pin.modelId}${pin.thinkingLevel ? `:${pin.thinkingLevel}` : ""}`] : []),
+          pin ? `${pin.provider}/${pin.modelId}${pin.thinkingLevel ? `:${pin.thinkingLevel}` : ""}` : "inherit",
           ...(settings.autoTitle?.fallbackModels ?? []),
         ],
         "low",

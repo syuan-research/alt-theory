@@ -133,3 +133,24 @@ test("auto-title chain: a failing pin falls back with a notice", async () => {
   assert.equal(notices.length, 1);
   assert.match((notices[0] as any).payload.message, /^Auto-name: test\/second-model did not answer \(model unavailable\)/);
 });
+
+test("reviewer recommendations: online first, the shipped copy when offline", async () => {
+  const { reviewerRecommendations } = await import("./reviewer-recommendations.js");
+  const presets = join(process.cwd(), "agent-assets", "model-presets");
+  const offline = await reviewerRecommendations(presets, async () => {
+    throw new Error("offline");
+  });
+  assert.equal(offline.source, "bundled");
+  assert.equal(offline.models[0]?.modelId, "gpt-6-luna");
+  assert.equal(offline.models[0]?.tag, "preferred");
+  const online = await reviewerRecommendations(presets, async () => ({
+    schemaVersion: 1,
+    updatedAt: "2026-10-01",
+    models: [{ modelId: "next-model", thinking: "low", tag: "faster" }, { modelId: 3 }],
+  }));
+  assert.deepEqual(online, {
+    updatedAt: "2026-10-01",
+    models: [{ modelId: "next-model", thinking: "low", tag: "faster" }],
+    source: "online",
+  });
+});
