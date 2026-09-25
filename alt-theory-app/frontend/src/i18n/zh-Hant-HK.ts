@@ -868,6 +868,8 @@ const catalog: Record<string, string> = {
   "Add a file": "加入檔案",
   "The permission changes what Alt may do, not where these files are stored.": "權限只改變 Alt 可以做甚麼，不改變這些檔案存放的位置。",
   "Native Pi uses its normal tools and project and global folder access.": "Native Pi 使用它的常規工具，以及項目和全域資料夾存取。",
+  "Commands that run without asking": "無需批准即可執行的指令",
+  "One per line. A command that starts with one of these runs without an approval. Destructive git commands and database files are still asked about.": "每行一條。以其中任何一條開頭的指令無需批准即可執行。會捨棄改動的 git 指令和資料庫檔案仍會詢問。",
   "New conversations start with": "新對話預設權限",
   "The permission a new conversation starts with. Each conversation can still change its own from the shield next to the message box.": "新對話開始時使用的權限。每個對話仍可在輸入框旁的盾牌圖示單獨更改。",
   "Start every new conversation with full access?": "讓每個新對話都以完全存取開始？",

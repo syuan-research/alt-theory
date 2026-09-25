@@ -1397,6 +1397,7 @@
   .toggle::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: var(--toggle-knob); box-shadow: 0 1px 2px rgba(0,0,0,0.25); transition: left 0.15s; }
   .toggle.on { background: var(--toggle-track-on); }
   .toggle.on::after { left: 18px; }
+  .set-card .set-lines { display: block; width: 100%; box-sizing: border-box; margin-top: var(--space-tight); border: 1px solid var(--hairline); border-radius: var(--r-sm); padding: var(--space-tight) var(--space-control); font-family: var(--mono); font-size: var(--fs-secondary); resize: vertical; outline: none; background: transparent; color: inherit; }
   .set-card .fine { font-size: var(--fs-secondary); color: var(--text-3); margin-top: var(--space-tight); line-height: 1.45; }
   /* Working folders page (proto D): quiet rows, one tick, no badges */
   .set-card .lead { color: var(--ink-soft); font-weight: 500; margin-bottom: var(--space-hair); }

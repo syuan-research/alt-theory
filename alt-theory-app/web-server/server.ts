@@ -151,6 +151,7 @@ import {
   readAppSettings,
   resolveExternalSkillPaths,
   defaultSessionPermission,
+  normalizeCommandAllowlist,
   PERMISSIONS,
   type Permission,
   writeAppSettings,
@@ -690,6 +691,22 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     settings.defaultPermission = permission;
     writeAppSettings(dataDir, settings);
     res.json({ ok: true, permission });
+  });
+  app.get("/api/settings/command-allowlist", (_req, res) => {
+    if (!requireLocalConfigMode(res)) return;
+    res.json({ prefixes: readAppSettings(dataDir).commandAllowlist ?? [] });
+  });
+  app.put("/api/settings/command-allowlist", (req, res) => {
+    if (!requireLocalConfigMode(res)) return;
+    const prefixes = (req.body as { prefixes?: unknown }).prefixes;
+    if (!Array.isArray(prefixes)) {
+      res.status(400).json({ error: "prefixes must be a list" });
+      return;
+    }
+    const settings = readAppSettings(dataDir);
+    settings.commandAllowlist = normalizeCommandAllowlist(prefixes);
+    writeAppSettings(dataDir, settings);
+    res.json({ ok: true, prefixes: settings.commandAllowlist });
   });
   app.get("/api/settings/model-hooks", (_req, res) => {
     if (!requireLocalConfigMode(res)) return;

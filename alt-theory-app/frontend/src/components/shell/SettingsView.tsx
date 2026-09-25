@@ -3,7 +3,9 @@ import { fetchJson } from "@/api/http";
 import {
   cancelProviderAuth,
   getAutoTitleSettings,
+  getCommandAllowlist,
   getDefaultPermission,
+  saveCommandAllowlist,
   saveDefaultPermission,
   getRuntimeSettings,
   saveRuntimeSettings,
@@ -1235,6 +1237,7 @@ function GeneralPanel() {
       </div>
       <RuntimeCard />
       <DefaultPermissionCard />
+      <CommandAllowlistCard />
       <AutoTitleCard />
       <ModelHooksCard />
       <NativePiSkillsCard />
@@ -1374,6 +1377,48 @@ function DefaultPermissionCard() {
           }}
         />
       </div>
+    </div>
+  );
+}
+
+/** Command prefixes that skip approval (smart-approval plan, ruling A). */
+function CommandAllowlistCard() {
+  const [text, setText] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    getCommandAllowlist()
+      .then(({ prefixes }) => {
+        if (alive) setText(prefixes.join("\n"));
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // Hosted mode 404s the local-config route: no card.
+  if (text === null) return null;
+  return (
+    <div className="set-card">
+      <h4>{t("Commands that run without asking")}</h4>
+      <p>
+        {t("One per line. A command that starts with one of these runs without an approval. Destructive git commands and database files are still asked about.")}
+      </p>
+      <textarea
+        className="set-lines"
+        rows={4}
+        spellCheck={false}
+        placeholder={"npm test\npython scripts/"}
+        aria-label={t("Commands that run without asking")}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={() => {
+          void saveCommandAllowlist(text.split("\n"))
+            .then(({ prefixes }) => setText(prefixes.join("\n")))
+            .catch(() => {});
+        }}
+      />
     </div>
   );
 }

@@ -203,6 +203,13 @@ export interface AltTheoryConfig extends SessionDirectories {
   /** Read-only product/agent resource roots that should not prompt. */
   trustedReadRoots?: string[];
   /**
+   * Alt Theory's data folder. The agent writes only its own workspace
+   * there; other conversations and the app's records are refused.
+   */
+  dataDir?: string;
+  /** The user's command-prefix allowlist (app settings), read live. */
+  readCommandAllowlist?: () => string[];
+  /**
    * User-enabled external skill paths (files or directories), resolved by the
    * app settings layer (spec §6.1). Snapshot at session open; settings
    * changes apply on session reload. External skills are never silently
@@ -621,6 +628,8 @@ async function createAltTheorySessionWithManager(
             `${JSON.stringify(entry)}\n`
           ),
         isFullAccess: isFullAccessEffective,
+        protectedDirs: config.dataDir ? [resolve(config.dataDir)] : [],
+        getCommandAllowlist: config.readCommandAllowlist,
       }),
     ],
     noContextFiles: resourceDiscovery !== "dev-debug",

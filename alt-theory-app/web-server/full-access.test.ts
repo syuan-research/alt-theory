@@ -134,7 +134,7 @@ test("full access bypasses security-extension mediation; off restores it", async
   // Off (ask mode): each mediation class fires — command blocklist,
   // write outside roots, sensitive-path read, read outside the workspace,
   // custom-tool SSRF.
-  const sudoOff = (await call("bash", { command: "sudo rm -rf /" })) as
+  const sudoOff = (await call("bash", { command: "sudo rm -rf build" })) as
     | { block?: boolean }
     | undefined;
   assert.equal(sudoOff?.block, true, "sudo blocked while off");
@@ -162,7 +162,7 @@ test("full access bypasses security-extension mediation; off restores it", async
 
   // Full effective: the shared handler returns without mediating at all.
   full = true;
-  assert.equal(await call("bash", { command: "sudo rm -rf /" }), undefined);
+  assert.equal(await call("bash", { command: "sudo rm -rf build" }), undefined);
   assert.equal(
     await call("write", { path: join(root, "elsewhere", "x.txt"), content: "x" }),
     undefined,
@@ -182,7 +182,7 @@ test("full access bypasses security-extension mediation; off restores it", async
 
   // Back to ask: guards restored.
   full = false;
-  const sudoAgain = (await call("bash", { command: "sudo rm -rf /" })) as
+  const sudoAgain = (await call("bash", { command: "sudo rm -rf build" })) as
     | { block?: boolean }
     | undefined;
   assert.equal(sudoAgain?.block, true, "sudo blocked again after disabling");

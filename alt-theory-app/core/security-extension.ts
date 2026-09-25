@@ -25,14 +25,31 @@ import type {
 import { homedir } from "os";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
-import { canonicalPathKey, verdict } from "./path-verdict.js";
+import {
+  baseCommand,
+  builtinReadOnly,
+  commandWriteTargets,
+  criticalDeletionTarget,
+  destructiveGitCommand,
+  isDatabaseFile,
+  isGitInternal,
+  mentionsDatabaseFile,
+  passesWithoutReview,
+  splitCommands,
+  systemFolderOf,
+} from "./approval-boundary.js";
+import { canonicalPathKey, isPathInside, verdict } from "./path-verdict.js";
 import type { Root } from "./root-policy.js";
 
 export interface SecurityAuditEntry {
   timestamp: string;
   toolName: string;
   toolCallId: string;
-  action: "blocked" | "approved-once" | "approved-session" | "session-allowance";
+  action:
+    | "blocked"
+    | "approved-once"
+    | "approved-session"
+    | "session-allowance";
   rule: string;
   detail: string;
 }
@@ -56,11 +73,19 @@ export interface SecurityExtensionOptions {
   /** Session-scoped audit sink (session records, never a machine-global log). */
   recordAudit?: (entry: SecurityAuditEntry) => void;
   /**
-   * Full Access (v1.4.8): when effective, the whole tool_call handler returns
-   * without mediation — no command blocks, approvals, sensitive-path checks,
-   * external-read escalation, SSRF checks, or audit entries from them.
+   * Full Access (v1.4.8): when effective, no approvals and no other checks —
+   * except the two accident brakes that hold under every permission:
+   * deleting or moving a critical folder, and changing a system folder.
    */
   isFullAccess?: () => boolean;
+  /**
+   * Alt Theory's data folder: the agent may write only its own workspace
+   * there (the writable roots inside it), never other conversations or the
+   * app's records.
+   */
+  protectedDirs?: string[];
+  /** The user's command-prefix allowlist, read live (app settings). */
+  getCommandAllowlist?: () => string[];
 }
 
 /** Commands with no legitimate use inside an Alt Theory session: hard block. */
@@ -87,31 +112,6 @@ const BLOCKED_COMMANDS = new Set([
   // Filesystem control
   "mount",
   "umount",
-]);
-
-/** Legitimate-but-risky commands: escalate to the §5.2 approval path. */
-const APPROVAL_COMMANDS = new Set([
-  "rm",
-  "rmdir",
-  "kill",
-  "killall",
-  "pkill",
-  "chmod",
-  "chown",
-  "ssh",
-  "scp",
-  "sftp",
-  "rsync",
-  "nc",
-  "netcat",
-  "telnet",
-  "nmap",
-  "curl",
-  "wget",
-  "systemctl",
-  "service",
-  "launchctl",
-  "diskutil",
 ]);
 
 /**
@@ -206,8 +206,9 @@ export function createSecurityExtension(
     allowWriteOnce,
     recordAudit,
     isFullAccess,
-  } =
-    options;
+    protectedDirs = [],
+    getCommandAllowlist,
+  } = options;
   // Session-lifetime allowances (spec §5.2): "allow for this session" lasts
   // until the session ends, matching the OpenCode / Claude Code convention —
   // not a timer. Outlives loader reloads: the factory re-registers on reload,
@@ -222,10 +223,6 @@ export function createSecurityExtension(
 
   return (pi) => {
     pi.on("tool_call", async (event, ctx) => {
-      // Full Access: bypass every mediation this extension performs. Checked
-      // first and live per call so a mid-session toggle applies immediately.
-      if (isFullAccess?.()) return undefined;
-
       const blocked = (rule: string, detail: string): ToolCallEventResult => {
         audit({
           toolName: event.toolName,
@@ -240,12 +237,16 @@ export function createSecurityExtension(
         return { block: true, reason: detail };
       };
 
-      const approve = async (
+      /**
+       * The approver for an action outside the fast pass. `key` names what
+       * "Allow for this conversation" covers; null offers no such allowance.
+       */
+      const review = async (
         rule: string,
-        key: string,
+        key: string | null,
         title: string
       ): Promise<ToolCallEventResult | undefined> => {
-        if (sessionAllowances.has(key)) {
+        if (key && sessionAllowances.has(key)) {
           audit({
             toolName: event.toolName,
             toolCallId: event.toolCallId,
@@ -262,12 +263,13 @@ export function createSecurityExtension(
         }
         // Bounded + abortable so an unattended session fails closed instead of
         // hanging (the bridge arms timeout/abort only when these are passed).
-        const choice = await ctx.ui.select(title, APPROVAL_OPTIONS, {
-          signal: ctx.signal,
-          timeout: APPROVAL_TIMEOUT_MS,
-        });
-        if (choice === APPROVAL_ALLOW_ONCE || choice === APPROVAL_ALLOW_SESSION) {
-          if (choice === APPROVAL_ALLOW_SESSION) {
+        const choice = await ctx.ui.select(
+          title,
+          key ? APPROVAL_OPTIONS : [APPROVAL_ALLOW_ONCE, APPROVAL_DENY],
+          { signal: ctx.signal, timeout: APPROVAL_TIMEOUT_MS },
+        );
+        if (choice === APPROVAL_ALLOW_ONCE || (key && choice === APPROVAL_ALLOW_SESSION)) {
+          if (key && choice === APPROVAL_ALLOW_SESSION) {
             sessionAllowances.add(key);
           }
           audit({
@@ -282,23 +284,51 @@ export function createSecurityExtension(
         return blocked(rule, `${title} — not approved by the user`);
       };
 
+      const full = isFullAccess?.() === true;
+      const input = event.input as Record<string, unknown>;
+      const path = typeof input.path === "string" ? input.path : undefined;
+      const isWrite = event.toolName === "edit" || event.toolName === "write";
+      const inDataFolder = (target: string) =>
+        protectedDirs.some((dir) => isPathInside(dir, target)) &&
+        !getWritableRoots().some((root) => isPathInside(root.path, target));
+
       if (event.toolName === "bash") {
+        const command = String(input.command ?? "");
+        if (!command.trim()) return undefined;
+        // Scan the normalized, de-obfuscated form: a zero-width-spliced `sudo` scans as `sudo`.
+        const sanitized = command.normalize("NFKC").replace(INVISIBLE_CHARS, "");
+
+        // Guardrails ① and ④ hold under every permission, Full included.
+        const projectRoots = getWritableRoots()
+          .filter((root) => root.reason === "cwd" || root.reason === "project-secondary")
+          .map((root) => root.path);
+        const critical = criticalDeletionTarget(sanitized, sessionCwd, projectRoots, toolPath);
+        if (critical) {
+          return blocked(
+            "critical_path",
+            `Blocked — this would delete or move ${critical}, which holds far more than any task here needs. If it really should go, ask the user to do it themselves.`
+          );
+        }
+        const writes = commandWriteTargets(sanitized, sessionCwd, toolPath);
+        const system = writes.map(systemFolderOf).find(Boolean);
+        if (system) {
+          return blocked("system_folder", `Blocked — this would change the system folder ${system}, which the computer itself depends on.`);
+        }
+        // Full Access: no approvals and no other checks.
+        if (full) return undefined;
+
         // Read-only has no shell; this catches a switch still waiting for
         // the turn to end, while the tool is still in the active set.
         if (isReadOnly?.()) {
           return blocked("read_only_shell", "Blocked — this conversation is read-only, so commands are not available.");
         }
-        const command = String(event.input.command ?? "");
-        if (!command.trim()) return undefined;
         if (hasUnicodeVariance(command)) {
           return blocked(
             "command_sanitizer",
             "Blocked — this command hides characters that disguise what it actually does."
           );
         }
-        // Scan the normalized, de-obfuscated form: a zero-width-spliced `sudo` scans as `sudo`.
-        const sanitized = command.normalize("NFKC").replace(INVISIBLE_CHARS, "");
-        const bases = splitCommands(sanitized).map(baseCommand);
+        const bases = [...new Set(splitCommands(sanitized).map(baseCommand).filter(Boolean))];
         const hard = bases.find((base) => BLOCKED_COMMANDS.has(base));
         if (hard) {
           return blocked(
@@ -306,47 +336,60 @@ export function createSecurityExtension(
             `Blocked "${hard}" — this command can damage the system or erase data, so it is not allowed here.`
           );
         }
-        const escalations = new Set(
-          bases.filter((base) => APPROVAL_COMMANDS.has(base))
-        );
-        for (const token of SENSITIVE_COMMAND_TOKENS) {
-          if (sanitized.includes(token)) escalations.add(token);
-        }
-        if (escalations.size > 0) {
-          // Network commands key their allowance per destination host, so
-          // approving one host does not blanket-approve another.
-          const hosts = [...escalations].some((e) => NETWORK_COMMANDS.has(e))
-            ? extractHosts(sanitized)
-            : [];
-          // SSRF: hard-block cloud-metadata / internal hosts on the bash
-          // network path too, not only on custom-tool URL inputs.
-          const blockedHost = hosts.find((host) => isBlockedHost(host));
-          if (blockedHost) {
-            return blocked(
-              "ssrf_protection",
-              `Blocked network destination "${blockedHost}" — this is an internal or cloud-metadata address.`
-            );
-          }
-          const key = `bash:${[...escalations].sort().join(",")}${
-            hosts.length ? `@${hosts.sort().join(",")}` : ""
-          }`;
-          return approve(
-            "command_approval",
-            key,
-            `Run command: ${summarize(sanitized)}`
+        // Network commands key their allowance per destination host, so
+        // approving one host does not blanket-approve another.
+        const hosts = bases.some((base) => NETWORK_COMMANDS.has(base)) ? extractHosts(sanitized) : [];
+        // SSRF: hard-block cloud-metadata / internal hosts on the bash
+        // network path too, not only on custom-tool URL inputs.
+        const blockedHost = hosts.find((host) => isBlockedHost(host));
+        if (blockedHost) {
+          return blocked(
+            "ssrf_protection",
+            `Blocked network destination "${blockedHost}" — this is an internal or cloud-metadata address.`
           );
         }
-        return undefined;
+        const dataWrite = writes.find(inDataFolder);
+        if (dataWrite) {
+          return blocked("data_folder", `Blocked — ${dataWrite} belongs to Alt Theory's own records, outside this conversation's workspace.`);
+        }
+        const title = `Run command: ${summarize(sanitized)}`;
+        // Guardrail ②: work-discarding git is always looked at, one call at a time.
+        if (destructiveGitCommand(sanitized)) {
+          return review("git_destructive", null, title);
+        }
+        const sensitive = SENSITIVE_COMMAND_TOKENS.filter((token) => sanitized.includes(token));
+        const fastPass = {
+          command: sanitized,
+          cwd: sessionCwd,
+          allowlist: getCommandAllowlist?.() ?? [],
+          isReadable: (target: string) =>
+            verdict(target, "read", { readable: getReadableRoots() }).outcome === "inside",
+          isWritable: (target: string) =>
+            verdict(target, "write", { writable: getWritableRoots() }).outcome === "inside",
+          resolvePath: toolPath,
+        };
+        // Guardrail ③: a database file named in an allowlisted command is still looked at.
+        if (
+          sensitive.length === 0 &&
+          passesWithoutReview(fastPass) &&
+          (!mentionsDatabaseFile(sanitized) || builtinReadOnly(fastPass))
+        ) {
+          return undefined;
+        }
+        const key = `bash:${[...bases, ...sensitive].sort().join(",")}${
+          hosts.length ? `@${hosts.sort().join(",")}` : ""
+        }`;
+        return review("command_approval", key, title);
       }
 
-      const path =
-        typeof (event.input as { path?: unknown }).path === "string"
-          ? ((event.input as { path: string }).path)
-          : undefined;
-
-      if (event.toolName === "edit" || event.toolName === "write") {
+      if (isWrite) {
         if (!path) return undefined;
         const resolved = toolPath(sessionCwd, path);
+        const system = systemFolderOf(resolved);
+        if (system) {
+          return blocked("system_folder", `Blocked — ${system} is a system folder the computer itself depends on.`);
+        }
+        if (full) return undefined;
         const check = verdict(resolved, "write", {
           writable: getWritableRoots(),
         });
@@ -356,33 +399,26 @@ export function createSecurityExtension(
             `Access to credential path denied: ${check.sensitiveRoot}`
           );
         }
+        if (isGitInternal(resolved)) {
+          return blocked(
+            "git_internal",
+            "Blocked — files inside .git are git's own records; changing them directly can break the repository. Use git commands instead."
+          );
+        }
+        if (check.outcome === "outside" && inDataFolder(resolved)) {
+          return blocked("data_folder", `Blocked — ${summarize(resolved)} belongs to Alt Theory's own records, outside this conversation's workspace.`);
+        }
+        const verb = event.toolName === "edit" ? "Edit" : "Write";
         if (isReadOnly?.()) {
           // Outside the roots, name the physical target (a symlinked parent
           // cannot make it look like a workspace path) and pass exactly it.
           const target = check.outcome === "outside" ? canonicalPathKey(resolved) : resolved;
-          const title = `${event.toolName === "edit" ? "Edit" : "Write"} file: ${summarize(target)}`;
-          if (!ctx.hasUI) {
-            return blocked("read_only_write", `${title} — requires user approval, and no approval dialog is available right now.`);
-          }
-          const choice = await ctx.ui.select(
-            title,
-            [APPROVAL_ALLOW_ONCE, APPROVAL_DENY],
-            { signal: ctx.signal, timeout: APPROVAL_TIMEOUT_MS },
-          );
-          if (choice !== APPROVAL_ALLOW_ONCE) {
-            return blocked("read_only_write", `${title} — not approved by the user`);
-          }
+          const outcome = await review("read_only_write", null, `${verb} file: ${summarize(target)}`);
+          if (outcome) return outcome;
           // Only write is guarded by roots; an approved edit needs no pass.
           if (check.outcome === "outside" && event.toolName === "write") {
             allowWriteOnce?.(target);
           }
-          audit({
-            toolName: event.toolName,
-            toolCallId: event.toolCallId,
-            action: "approved-once",
-            rule: "read_only_write",
-            detail: title,
-          });
           return undefined;
         }
         if (check.outcome === "outside") {
@@ -409,8 +445,14 @@ export function createSecurityExtension(
           });
           return undefined;
         }
+        // Guardrail ③: a database file is looked at even inside the roots.
+        if (isDatabaseFile(resolved)) {
+          return review("database_file", `db:${canonicalPathKey(resolved)}`, `${verb} file: ${summarize(resolved)}`);
+        }
         return undefined;
       }
+
+      if (full) return undefined;
 
       if (["read", "grep", "find", "ls"].includes(event.toolName)) {
         if (!path) return undefined;
@@ -430,7 +472,7 @@ export function createSecurityExtension(
           );
         }
         if (check.outcome === "outside") {
-          return approve(
+          return review(
             "read_outside_workspace",
             `read:${dirname(resolved)}`,
             `Read outside your workspace: ${summarize(path)}`
@@ -440,7 +482,6 @@ export function createSecurityExtension(
       }
 
       // Custom tools: SSRF check on URL-shaped inputs.
-      const input = event.input as Record<string, unknown>;
       const url = [input.url, input.uri, input.endpoint].find(
         (value): value is string => typeof value === "string"
       );
@@ -461,45 +502,6 @@ export function createSecurityExtension(
       return undefined;
     });
   };
-}
-
-/**
- * Chain segments plus command-substitution bodies, each scanned as its own
- * command. ponytail: one substitution level; env-var indirection is out of
- * scope — these are guard rails, not a sandbox.
- */
-function splitCommands(command: string): string[] {
-  const parts = command.split(/&&|\|\||[;|\n\r]/g);
-  const substitutions = [
-    ...command.matchAll(/\$\(([^)]*)\)/g),
-    ...command.matchAll(/`([^`]*)`/g),
-  ].map((match) => match[1] ?? "");
-  return [...parts, ...substitutions]
-    .map((part) => part.trim())
-    .filter(Boolean);
-}
-
-/** Transparent wrappers: `FOO=1 nohup rm x` resolves to `rm`. */
-const COMMAND_WRAPPERS = new Set([
-  "command",
-  "builtin",
-  "nohup",
-  "time",
-  "env",
-  "xargs",
-  "nice",
-]);
-
-function baseCommand(subCommand: string): string {
-  for (const word of subCommand.split(/\s+/).filter(Boolean)) {
-    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(word) || word.startsWith("-")) {
-      continue;
-    }
-    const name = word.toLowerCase().split(/[\\/]/).pop() ?? "";
-    if (COMMAND_WRAPPERS.has(name)) continue;
-    return name;
-  }
-  return "";
 }
 
 /**

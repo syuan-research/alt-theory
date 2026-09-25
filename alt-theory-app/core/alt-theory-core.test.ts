@@ -262,7 +262,7 @@ test("security extension mediates tool calls at the policy boundary", async () =
 
   // Hard block, including via chain, wrapper, and zero-width obfuscation.
   // Reason is now plain prose; the rule slug lives only in the audit entry.
-  assert.match((await call("bash", { command: "sudo rm -rf /" }))?.reason ?? "", /can damage the system/);
+  assert.match((await call("bash", { command: "sudo rm -rf build" }))?.reason ?? "", /can damage the system/);
   assert.match((await call("bash", { command: "echo hi && nohup dd if=/dev/zero" }))?.reason ?? "", /can damage the system/);
   assert.match((await call("bash", { command: "su\u200bdo whoami" }))?.reason ?? "", /can damage the system/);
 

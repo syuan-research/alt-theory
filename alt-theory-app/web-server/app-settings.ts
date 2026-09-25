@@ -75,6 +75,11 @@ export interface AppSettings {
    * unaffected — this only seeds new drafts.
    */
   defaultPermission?: Permission;
+  /**
+   * Command prefixes that run without approval under Ask and smart approval
+   * (exact, `prefix …`, or `prefix*`). Absent = none.
+   */
+  commandAllowlist?: string[];
   /** App-wide behavior runtime. Absent = Alt Theory. */
   runtimeMode?: RuntimeMode;
   /** Native Pi may add Alt Theory's bundled skills to Pi's own discovery. */
@@ -265,6 +270,9 @@ export function readAppSettingsWithWarning(dataDir: string): {
       ...(PERMISSIONS.includes(parsed.defaultPermission as Permission)
         ? { defaultPermission: parsed.defaultPermission }
         : {}),
+      ...(Array.isArray(parsed.commandAllowlist)
+        ? { commandAllowlist: normalizeCommandAllowlist(parsed.commandAllowlist) }
+        : {}),
       ...(parsed.runtimeMode === "alt-theory" || parsed.runtimeMode === "native-pi"
         ? { runtimeMode: parsed.runtimeMode }
         : {}),
@@ -393,6 +401,18 @@ export function defaultSessionPermission(
     mode: permission === "read-only" ? "read-only" : "work",
     fullAccess: permission === "full",
   };
+}
+
+/** Trimmed, non-empty, de-duplicated prefixes, in the user's order. */
+export function normalizeCommandAllowlist(value: unknown[]): string[] {
+  return [
+    ...new Set(
+      value
+        .filter((entry): entry is string => typeof entry === "string")
+        .map((entry) => entry.replace(/\s+/g, " ").trim())
+        .filter(Boolean),
+    ),
+  ];
 }
 
 function normalizePaths(value: unknown): string[] | null {

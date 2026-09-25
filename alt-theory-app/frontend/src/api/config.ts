@@ -220,6 +220,20 @@ export async function saveDefaultPermission(
   });
 }
 
+export async function getCommandAllowlist(): Promise<{ prefixes: string[] }> {
+  return fetchJson<{ prefixes: string[] }>("/api/settings/command-allowlist");
+}
+
+export async function saveCommandAllowlist(
+  prefixes: string[],
+): Promise<{ ok: true; prefixes: string[] }> {
+  return fetchJson("/api/settings/command-allowlist", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prefixes }),
+  });
+}
+
 export interface SessionListSort {
   folders: "name" | "modified";
   conversations: "name" | "modified";

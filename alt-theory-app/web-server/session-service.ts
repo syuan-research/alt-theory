@@ -3093,6 +3093,9 @@ export class SessionService implements AgentTeamBridge {
       resourceDiscovery: this.config.resourceDiscovery,
       skillsDir: this.config.skillsDir,
       trustedReadRoots: this.config.trustedReadRoots,
+      dataDir: this.config.dataDir,
+      readCommandAllowlist: () =>
+        readAppSettings(this.config.dataDir).commandAllowlist ?? [],
       runLabel: this.config.runLabel,
       testBatch: this.config.testBatch,
       externalSkillPaths: this.config.resolveExternalSkillPaths?.(),
