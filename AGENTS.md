@@ -111,6 +111,11 @@ agents mistake them for in-progress work.
 ### Current branch status
 
 - `main` — active product line.
+- `archive/wp-perf-bounded-1` — merged into main (memory/performance plan
+  batch 1: snippet on the session header, summary-only REST guard, no
+  duplicate client reads, run_phase dedupe, bounded tool result rows,
+  compact models.dev with a shipped snapshot, small client leaks, per-frame
+  streaming; `scripts/perf/measure.mjs`); archived after the reviewed merge.
 - `archive/wp-smart-approval` — merged into main (smart approval as a
   fourth permission; one approval boundary for Ask and smart approval;
   accident guardrails; reviewer and auto-naming model chains; approval
