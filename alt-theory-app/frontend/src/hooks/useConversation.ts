@@ -70,7 +70,9 @@ function stickySettings(settings: NewConversationSettings | undefined): NewConve
     : undefined;
 }
 
-export interface ConversationOptions {
+export type StreamDelta = Extract<ServerMessage, { type: "assistant_delta" | "thinking_delta" }>;
+
+interface ConversationOptions {
   /** Follow this conversation from the start (a side pane); null = the draft. */
   sessionId: string | null;
   enabled: boolean;
@@ -106,11 +108,43 @@ export function useConversation({ sessionId, enabled, onMessage }: ConversationO
   const inheritedRef = useRef(inherited);
   inheritedRef.current = inherited;
 
+  // Streaming text arrives a token at a time; the view needs it once a
+  // frame (perf plan WP 1.9). Deltas of one kind merge until the next frame,
+  // and any other message flushes them first, so order holds and approvals,
+  // tool results and run ends are never held back.
+  const pendingDeltaRef = useRef<StreamDelta | null>(null);
+  const deltaFrameRef = useRef<number | null>(null);
+  const deliver = (message: ServerMessage) => {
+    dispatch({ type: "server", message });
+    onMessageRef.current?.(message);
+  };
+  const flushDelta = () => {
+    if (deltaFrameRef.current !== null) cancelAnimationFrame(deltaFrameRef.current);
+    deltaFrameRef.current = null;
+    const pending = pendingDeltaRef.current;
+    pendingDeltaRef.current = null;
+    if (pending) deliver(pending);
+  };
+  useEffect(() => () => {
+    if (deltaFrameRef.current !== null) cancelAnimationFrame(deltaFrameRef.current);
+  }, []);
+
   const socket = useWebSocket({
     enabled,
     onMessage: (message) => {
-      dispatch({ type: "server", message });
-      onMessageRef.current?.(message);
+      if (message.type === "assistant_delta" || message.type === "thinking_delta") {
+        const pending = pendingDeltaRef.current;
+        if (pending?.type === message.type) {
+          pendingDeltaRef.current = { ...pending, payload: { text: pending.payload.text + message.payload.text } };
+        } else {
+          flushDelta();
+          pendingDeltaRef.current = message;
+        }
+        deltaFrameRef.current ??= requestAnimationFrame(flushDelta);
+        return;
+      }
+      flushDelta();
+      deliver(message);
     },
     onStatus: (status) => {
       dispatch({ type: "socket", status });

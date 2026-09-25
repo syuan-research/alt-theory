@@ -81,19 +81,29 @@ export function MessageList() {
     }
   };
 
+  // The callbacks read the latest conversation through a ref, so the settled
+  // list's memo holds while the composer, run phase or queue move (perf plan
+  // WP 1.9); only what the rows render from is a dependency.
+  const latestRef = useRef({ conv, main });
+  latestRef.current = { conv, main };
+  const recoveryEntryId = conv.recovery?.userEntryId ?? null;
   const actions: TranscriptActions = useMemo(
     () => ({
-      onEdit: (text, entryId) =>
-        entryId && conv.recovery?.userEntryId === entryId
+      onEdit: (text, entryId) => {
+        const { conv, main } = latestRef.current;
+        return entryId && conv.recovery?.userEntryId === entryId
           ? Boolean(text.trim()) && !conv.isRunning && conv.reviseLatest(text, entryId)
-          : main.branchRevision(text, entryId ?? undefined),
+          : main.branchRevision(text, entryId ?? undefined);
+      },
       onPrepareCompare: (text, entryId) =>
-        entryId ? main.prepareBranchRevision(text, entryId) : false,
-      onRetry: () => Boolean(conv.sessionId) && !conv.isRunning && conv.retryLatest(),
-      isReplacementEdit: (entryId) =>
-        Boolean(entryId && conv.recovery?.userEntryId === entryId),
+        entryId ? latestRef.current.main.prepareBranchRevision(text, entryId) : false,
+      onRetry: () => {
+        const { conv } = latestRef.current;
+        return Boolean(conv.sessionId) && !conv.isRunning && conv.retryLatest();
+      },
+      isReplacementEdit: (entryId) => Boolean(entryId && recoveryEntryId === entryId),
     }),
-    [conv, main],
+    [recoveryEntryId],
   );
 
   return (
@@ -481,7 +491,7 @@ function ThinkingBlock({
         </>
       }
     >
-      <MarkdownBody className="think-body" text={text} renderMermaid={false} />
+      <MarkdownBody className="think-body" text={text} renderMermaid={false} streaming={!complete} />
     </CollapseAnywhereDetails>
   );
 }
