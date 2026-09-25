@@ -30,9 +30,10 @@ export function fmtTime(value: string | null | undefined): string {
 
 /**
  * Conversational last-edited label for session rows (owner 2026-09-25):
- * minutes/hours/days, then calendar-complete weeks (only ever 1-4), months
- * (1-12), years — mirroring how people speak; no 5-week or 13-month steps
- * because month and year boundaries use complete calendar units.
+ * coarse on purpose — anything under an hour is "just now"; then hours,
+ * days, calendar-complete weeks (only ever 1-4), months (1-12), years. No
+ * 5-week or 13-month steps because month and year boundaries use complete
+ * calendar units. Computed at render time only; no ticking refresh.
  */
 export function relativeTimeLabel(
   value: string | null | undefined,
@@ -42,10 +43,9 @@ export function relativeTimeLabel(
   const then = new Date(value).getTime();
   if (Number.isNaN(then)) return null;
   const ms = Math.max(now - then, 0);
-  const minutes = Math.floor(ms / 60_000);
-  if (minutes < 1) return t("Just now");
-  if (minutes < 60) return t("{count} minutes ago", { count: minutes });
-  if (minutes < 60 * 24) return t("{count} hours ago", { count: Math.floor(minutes / 60) });
+  const hours = Math.floor(ms / 3_600_000);
+  if (hours < 1) return t("Just now");
+  if (hours < 24) return t("{count} hours ago", { count: hours });
   const start = new Date(then);
   const end = new Date(now);
   const months = completeMonths(start, end);

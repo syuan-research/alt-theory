@@ -6,7 +6,6 @@ import { useApp, type SessionAlert } from "@/context/AppProvider";
 import { useShell } from "@/context/ShellContext";
 import { t } from "@/i18n";
 import { relativeTimeLabel } from "@/lib/format";
-import { useNow } from "@/hooks/useNow";
 import {
   buildWorkspaceTree,
   canTakeMainline,
@@ -1380,7 +1379,6 @@ function SessionNode({
   const menu = useContextMenu();
   const [renaming, setRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState("");
-  const now = useNow();
   const active = main.selectedCatalogSessionId === session.sessionId;
   const children = (childrenByParent.get(session.sessionId) ?? []).filter(
     (child) => visibleIds === null || visibleIds.has(child.sessionId),
@@ -1388,7 +1386,7 @@ function SessionNode({
   // One source for every row, the open one included: the pushed activity.
   const state = sessionRowState(session.runStatus, main.sessionAlerts[session.sessionId]);
   // The badge outranks the resident time label; idle rows carry the label.
-  const editedLabel = state ? null : relativeTimeLabel(session.updatedAt, now);
+  const editedLabel = state ? null : relativeTimeLabel(session.updatedAt);
   const title = sessionTitle(session, app.sessionDisplayNames, app.sessions);
   const folded = visibleIds === null && foldedFamilies.has(session.sessionId);
   const familyCount = familyMembersOf(session, app.sessions).filter(

@@ -885,7 +885,6 @@ const catalog: Record<string, string> = {
   "Tools run without approval prompts": "工具執行時不再請求批准",
   "Branches, side conversations and subagents start with Ask for approval instead": "分支、BTW 和子代理會改為以「向我請求批准」開始",
   "Just now": "剛剛",
-  "{count} minutes ago": "{count} 分鐘前",
   "{count} hours ago": "{count} 小時前",
   "{count} days ago": "{count} 日前",
   "{count} weeks ago": "{count} 週前",

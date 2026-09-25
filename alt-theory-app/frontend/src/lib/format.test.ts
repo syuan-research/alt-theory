@@ -9,7 +9,7 @@ const ago = (iso: string | null) => relativeTimeLabel(iso, NOW);
 test("relative ladder boundaries", () => {
   // English source keys pass through t() unchanged in the test locale.
   assert.equal(ago("2026-09-25T11:59:30"), t("Just now"));
-  assert.equal(ago("2026-09-25T11:01:00"), t("{count} minutes ago", { count: 59 }));
+  assert.equal(ago("2026-09-25T11:00:01"), t("Just now"));
   assert.equal(ago("2026-09-25T11:00:00"), t("{count} hours ago", { count: 1 }));
   assert.equal(ago("2026-09-24T12:00:01"), t("{count} hours ago", { count: 23 }));
   assert.equal(ago("2026-09-24T12:00:00"), t("{count} days ago", { count: 1 }));
