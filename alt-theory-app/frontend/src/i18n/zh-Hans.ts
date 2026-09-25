@@ -886,11 +886,11 @@ const catalog: Record<string, string> = {
   "Tools run without approval prompts": "工具运行时不再请求批准",
   "Branches, side conversations and subagents start with Ask for approval instead": "分支、BTW 和子代理会改为以「向我请求批准」开始",
   "Just now": "刚刚",
-  "{count} hours ago": "{count} 小时前",
-  "{count} days ago": "{count} 天前",
-  "{count} weeks ago": "{count} 周前",
-  "{count} months ago": "{count} 个月前",
-  "{count} years ago": "{count} 年前",
+  "{count} hours ago": "{count}小时前",
+  "{count} days ago": "{count}天前",
+  "{count} weeks ago": "{count}周前",
+  "{count} months ago": "{count}个月前",
+  "{count} years ago": "{count}年前",
 };
 
 export default catalog;

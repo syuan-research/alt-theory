@@ -798,7 +798,7 @@
   .session-row .reveal-layer { --reveal-fade: var(--row-active); }
   /* Resident last-edited label (owner 2026-09-25): the default state's right
      edge, same fade family as the reveal layer but inverted — visible at
-     rest, yields on hover/focus. One size down, the muted gray of the
+     rest, yields on hover/focus. Micro type, the muted gray of the
      project-folder labels. */
   .session-row .s-time {
     position: absolute; top: 0; bottom: 0; right: 0;
@@ -806,7 +806,7 @@
     padding: 0 var(--space-control) 0 30px;
     background: linear-gradient(90deg, transparent 0, var(--time-fade, var(--panel)) 30px);
     color: var(--text-3);
-    font-size: var(--fs-secondary);
+    font-size: var(--fs-micro);
     z-index: 2;
     pointer-events: none;
     transition: opacity 0.12s ease;
