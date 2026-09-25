@@ -7,6 +7,8 @@
  * runs the four acceptance scenarios, each in a fresh launch:
  *   1. list only, idle            3. one long conversation, scrolled to the top
  *   2. open 20 conversations, idle 15 min   4. two runs streaming in parallel
+ * plus 5: one run streaming inside the longest conversation, reporting the
+ * renderer's main-thread time (CDP Performance metrics) instead of memory.
  * Every sample records per-process working set + private bytes
  * (app.getAppMetrics; private bytes are Windows-only), main-process heapUsed,
  * and the renderer's DOM node count and JS heap.
@@ -29,7 +31,7 @@ import { parseArgs } from "node:util";
 const { values: opts } = parseArgs({
   options: {
     repo: { type: "string" },
-    scenarios: { type: "string", default: "1,2,3,4" },
+    scenarios: { type: "string", default: "1,2,3,4,5" },
     quick: { type: "boolean", default: false },
     out: { type: "string" },
     keep: { type: "boolean", default: false },
@@ -416,6 +418,34 @@ const SCENARIOS = {
     await sleep(5_000);
     rows.push(await sample(app, "both runs finished"));
     return rows;
+  },
+  async 5(app, seeded) {
+    await waitRows(app, CONVERSATIONS);
+    const longest = seeded.long.at(-1).sessionId;
+    await clickRow(app, longest);
+    await sleep(8_000);
+    await app.page.call("Performance.enable");
+    const metrics = async () =>
+      Object.fromEntries((await app.page.call("Performance.getMetrics")).metrics.map((m) => [m.name, m.value]));
+    const before = await metrics();
+    const started = Date.now();
+    await runTurn(app.port, longest, "[slow] stream into the long conversation");
+    const after = await metrics();
+    const d = (k) => after[k] - before[k];
+    const row = {
+      label: "stream in longest",
+      wallS: Math.round((Date.now() - started) / 1000),
+      taskS: +d("TaskDuration").toFixed(2),
+      scriptS: +d("ScriptDuration").toFixed(2),
+      layoutS: +d("LayoutDuration").toFixed(2),
+      recalcStyleS: +d("RecalcStyleDuration").toFixed(2),
+      layouts: d("LayoutCount"),
+      styleRecalcs: d("RecalcStyleCount"),
+    };
+    console.log(
+      `  ${row.label.padEnd(34)} ${row.wallS}s wall | renderer busy ${row.taskS}s (script ${row.scriptS}s, layout ${row.layoutS}s, style ${row.recalcStyleS}s) | ${row.layouts} layouts, ${row.styleRecalcs} style recalcs`,
+    );
+    return [row];
   },
 };
 
