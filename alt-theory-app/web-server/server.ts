@@ -112,7 +112,7 @@ import {
   type ApiType,
   type RuntimeModelConfig,
 } from "./config-store.js";
-import { refreshModelsDevMetadata } from "./models-dev-metadata.js";
+import { refreshModelsDevMetadata, setModelsDevSnapshotPath } from "./models-dev-metadata.js";
 import {
   AuthSessionManager,
   anonymousAuthContext,
@@ -253,6 +253,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     piPromptTemplatesDir: options.piPromptTemplatesDir,
     modelsPath: options.modelsPath,
   });
+  // models.dev baseline for a first launch or no network (perf plan WP 1.6).
+  setModelsDevSnapshotPath(join(assetPaths.rootDir, "model-presets", "models-dev-snapshot.json.gz"));
   const kbDir = assetPaths.kbDir;
   const rolePresetsDir = assetPaths.rolePresetsDir;
   // User-added asset locations (alpha.5, add-only): the data-dir upload

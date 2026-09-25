@@ -8,6 +8,7 @@ import {
 } from "fs";
 import { dirname, join } from "path";
 import { randomUUID } from "crypto";
+import { gunzipSync } from "zlib";
 
 export type CatalogThinkingLevel =
   | "off"
@@ -42,23 +43,56 @@ const SOURCE = "https://models.dev/api.json";
 const TTL_MS = 15 * 60 * 1000;
 const caches = new Map<string, ModelsDevCatalog>();
 const refreshes = new Map<string, Promise<void>>();
+/** Build-time snapshot shipped with the app (gzip JSON); set by the server. */
+let snapshotPath: string | null = null;
+
+export function setModelsDevSnapshotPath(path: string | null): void {
+  snapshotPath = path;
+}
 
 function cachePath(agentDir: string): string {
   return join(agentDir, "models-dev-cache.json");
 }
 
-function parseCatalog(value: unknown): ModelsDevCatalog | null {
+/**
+ * Keeps only what the lookups below read (SDK package, API URL, name,
+ * reasoning, modalities, limits, effort options): about 40% of the models.dev
+ * heap (perf plan WP 1.6). Every provider and model stays.
+ */
+export function compactCatalog(value: unknown): ModelsDevCatalog | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  return value as ModelsDevCatalog;
+  const catalog: ModelsDevCatalog = {};
+  for (const [id, raw] of Object.entries(value as Record<string, ModelsDevProvider>)) {
+    if (!raw || typeof raw !== "object") continue;
+    const models: Record<string, ModelsDevModel> = {};
+    for (const [modelId, m] of Object.entries(raw.models ?? {})) {
+      if (!m || typeof m !== "object") continue;
+      models[modelId] = {
+        ...(m.name ? { name: m.name } : {}),
+        ...(typeof m.reasoning === "boolean" ? { reasoning: m.reasoning } : {}),
+        ...(m.provider?.npm ? { provider: { npm: m.provider.npm } } : {}),
+        ...(m.modalities?.input !== undefined ? { modalities: { input: m.modalities.input } } : {}),
+        ...(m.limit ? { limit: { context: m.limit.context, output: m.limit.output } } : {}),
+        ...(Array.isArray(m.reasoning_options)
+          ? { reasoning_options: m.reasoning_options.map((o) => ({ type: o?.type, values: o?.values })) }
+          : {}),
+      };
+    }
+    catalog[id] = { ...(raw.api ? { api: raw.api } : {}), ...(raw.npm ? { npm: raw.npm } : {}), models };
+  }
+  return catalog;
 }
 
 function loadCache(agentDir: string): ModelsDevCatalog | null {
   const path = cachePath(agentDir);
   const memory = caches.get(path);
   if (memory) return memory;
-  if (!existsSync(path)) return null;
   try {
-    const parsed = parseCatalog(JSON.parse(readFileSync(path, "utf-8")));
+    const parsed = existsSync(path)
+      ? compactCatalog(JSON.parse(readFileSync(path, "utf-8")))
+      : snapshotPath && existsSync(snapshotPath)
+        ? compactCatalog(JSON.parse(gunzipSync(readFileSync(snapshotPath)).toString("utf-8")))
+        : null;
     if (parsed) caches.set(path, parsed);
     return parsed;
   } catch {
@@ -96,12 +130,13 @@ export async function refreshModelsDevMetadata(agentDir: string): Promise<void> 
         signal: AbortSignal.timeout(8_000),
       });
       if (!response.ok) throw new Error(`models.dev returned ${response.status}`);
-      const catalog = parseCatalog(await response.json());
+      const catalog = compactCatalog(await response.json());
       if (!catalog) throw new Error("models.dev returned invalid metadata");
       writeCache(agentDir, catalog);
     } catch {
-      // A stale cache remains useful. Pi's bundled metadata is the final
-      // offline fallback; provider/model setup must not fail with the network.
+      // A stale cache (or the shipped snapshot) remains useful. Pi's bundled
+      // metadata is the final offline fallback; provider/model setup must not
+      // fail with the network.
     } finally {
       refreshes.delete(path);
     }
