@@ -43,12 +43,12 @@ The bundled skills written for steering:
 
 - adaptive-aligning is the alignment interview before direction-setting
   work ([catalog](bundled-skills.md#adaptive-aligning)).
-- confirm-why confirms the understood reason behind a request, then
-  offers options based on that reason.
+- show-working-understanding shows which parts of the user's situation the
+  agent currently understands and which connections remain guesses.
+- clear-misunderstanding restarts communication in a few low-friction
+  turns after a clear misreading, then offers a small way forward.
 - guided-next-steps gives the next step after alignment and explains how
   it serves the goal, with later options.
-- clear-misunderstanding restarts communication in a few low-friction
-  turns when something feels stuck or misread.
 
 adaptive-aligning is the strongest of these: the moment it is activated
 or mentioned, the agent stops and discusses before doing any work. Some

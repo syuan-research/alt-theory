@@ -41,6 +41,7 @@ import {
 } from "./root-policy.js";
 import { createTurnContinuityExtension } from "./turn-continuity.js";
 import { createPromptCacheContinuityExtension } from "./prompt-cache-continuity.js";
+import { createModelRemindersExtension } from "./model-reminders.js";
 import { createWebAccessToolDefinitions } from "./web-access-tools.js";
 import {
   writeJsonAtomic,
@@ -239,30 +240,17 @@ export interface AltTheoryConfig extends SessionDirectories {
    * directive from Pi's base prompt, leaving its tool facts intact.
    */
   trimmedPiBasePrompt?: boolean;
-  /** Per-model reminder sections; absent = enabled. */
+/** Per-model reminder sections; absent = enabled. */
   modelHooks?: boolean;
 }
 
-/**
- * Per-model reminders (v1.4 round 1). Leading words only: they cite the
- * concepts ALTTHEORY.md defines (whole-problem continuity, half-step
- * advance) rather than restating them — single source of truth. Extending
- * to a new model = one row here; the app-settings toggle (modelHooks)
- * gates them all.
- */
+/** Static per-model reminder for non-GPT models. GPT reminders are per-turn. */
 const MODEL_HOOKS: Array<{ match: RegExp; section: string }> = [
-  {
-    match: /^gpt-5/i,
-    section: [
-      "## Model Reminder",
-      "WHOLE-PROBLEM CONTINUITY REMINDER — Apply whole-problem continuity and half-step advance, as defined in the Alt Theory Application Context, with one emphasis: do not stop at acknowledgement, apology, or analysis. Connect every reply to the user's nearer sub-goal and wider purpose, and unless the user asked a closed question, end with two or three concrete next-direction options, marking your recommendation. Passivity is the failure mode to avoid here — a grounded half-step forward is always available.",
-    ].join("\n"),
-  },
   {
     match: /deepseek-v4-flash/i,
     section: [
       "## Model Reminder",
-      "NON-COMMAND DISCIPLINE REMINDER — Apply whole-problem continuity and half-step advance, as defined in the Alt Theory Application Context, with one emphasis: never treat a non-command as a command. A correction, observation, judgement, or agreement is not an instruction. When uncertain whether the user instructed an action, treat it as not instructed: acknowledge briefly and reply with concrete next-step options rather than proactively proceeding.",
+      "NON-COMMAND DISCIPLINE REMINDER — A correction, observation, judgement, or agreement is not an instruction. Preserve the user's wider purpose and earlier decisions while you clarify the next small move. Do not treat a non-command as permission to choose a route and start broad work.",
     ].join("\n"),
   },
 ];
@@ -496,8 +484,7 @@ async function createAltTheorySessionWithManager(
   altSections.push(
     ["## Skill Precedence", skillPrecedenceGuidance(config.skillPrecedence)].join("\n")
   );
-  // ponytail: hook chosen at assembly; a mid-session model switch keeps the
-  // old hook until the session reopens. Re-derive per turn if that bites.
+  // Non-GPT hooks are currently chosen at assembly. GPT uses the live model.
   const modelHook =
     runtimeState.runtimeMode === "alt-theory" && config.modelHooks !== false
       ? modelHookSection(config.modelId)
@@ -604,6 +591,10 @@ async function createAltTheorySessionWithManager(
     noExtensions: true,
     extensionFactories: [
       ...(config.extensionFactories ?? []),
+      createModelRemindersExtension(
+        () => runtimeState.runtimeMode === "alt-theory",
+        config.modelHooks !== false,
+      ),
       // Strips orphaned toolCall blocks from errored/aborted partial
       // assistant messages so preserved break-point context never sends a
       // tool_use without its tool_result (alpha.5 M0 continuity repair).
