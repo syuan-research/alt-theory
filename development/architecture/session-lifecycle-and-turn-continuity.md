@@ -185,7 +185,10 @@ Where a status fact lives (v1.5.1):
   `lib/listActivity.ts`). The list re-reads the rows' other facts (order,
   snippet, message count, whether it can be opened) once per burst when
   activity moves, on a list change, or on activity for a conversation it
-  lacks; the run state never comes from that read. Nothing polls. The
+  lacks; the run state never comes from that read. The snippet (first
+  user message of the visible branch, for a row without a name) is kept on
+  the session header with the branch leaf it was read at, and is read from
+  the Pi history again only after that leaf moves. Nothing polls. The
   "done / failed / needs you" marks come from the pushed transitions
   (`alertsFor`, raised in `MainView`); whether the user has looked is the
   client's own fact (opening a conversation clears its mark).
@@ -200,7 +203,11 @@ Where a status fact lives (v1.5.1):
   through `toolOutcome`, and `toolLabel` speaks in that state (running /
   finished / failed / pending) for every tool. A running command's row
   shows the last line of Pi's partial result (`tool_updated.text`,
-  bash only), dropped when the tool finishes.
+  bash only), dropped when the tool finishes. A tool row carries at most
+  the first and last 32 KiB of its result (`truncated` when cut;
+  `web-server/limits.ts`); the Pi history keeps the whole. Smart
+  approval's verdict is the row's `approval`, read from the result's
+  details or, for a denial, from the blocked result's text.
 - **The client reads facts from the snapshot and derives only what is its
   own** ([ADR 0008](adr/0008-per-conversation-client-state-and-request-receipts.md)).
   One pure transition, `reduce()` in `frontend/src/lib/conversation.ts`,

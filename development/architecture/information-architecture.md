@@ -293,7 +293,9 @@ surfaces remain designation-gated and absent for everyone else.
     its own kind: the navigation state above (what is open, and the way
     back); `lib/paneMemory.ts` (`usePaneMemory`, an app-lifetime map keyed
     per conversation and surface: tree expansion, filter text, view mode,
-    related-pane filters, per-view scroll position, the Records selection);
+    related-pane filters, per-view scroll position, the Records selection;
+    a deleted conversation's entries are dropped, and loaded Changes diffs
+    are kept for the last 8 conversations);
     `lib/fileDrafts.ts` (unsaved file edits); and `lib/find.ts` (which column
     Ctrl+F serves). None of these persists across a restart; composer drafts
     are the conversation's own (see Conversation drafts).
