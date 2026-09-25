@@ -282,7 +282,7 @@ function SettingsRail({ hidden }: { hidden?: boolean }) {
     { key: "agents", label: t("Subagents"), icon: "ph-robot" },
     { key: "folders", label: t("Projects and global folders"), icon: "ph-folders" },
     { key: "rolekb", label: t("Role & Knowledge"), icon: "ph-book-open" },
-    { key: "skills", label: t("Skills"), icon: "ph-toolbox" },
+    { key: "skills", label: t("Skills"), icon: "ph-magic-wand" },
     ...(shell.participantTabEnabled
       ? [
           {
