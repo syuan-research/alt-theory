@@ -111,6 +111,10 @@ agents mistake them for in-progress work.
 ### Current branch status
 
 - `main` — active product line.
+- `archive/wp-smart-approval` — merged into main (smart approval as a
+  fourth permission; one approval boundary for Ask and smart approval;
+  accident guardrails; reviewer and auto-naming model chains; approval
+  dock and narrow composer); archived after the reviewed merge.
 - `archive/wp-permission-modes` — merged into main (permission modes:
   Read-only / Ask / Full replace Understand / Work; default permission
   setting; attached files copied and converted; Independent conversations
