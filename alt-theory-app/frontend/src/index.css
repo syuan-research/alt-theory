@@ -685,9 +685,6 @@
   .compact-summary summary::before, .compact-summary summary::after { content: ""; flex: 1; border-top: 1px solid var(--hairline); }
   .compact-summary-body { margin: var(--space-control) var(--space-column) 0; padding: var(--space-control) var(--space-control); border-radius: var(--r-md); background: var(--surface-2); color: var(--text-2); font-size: var(--fs-secondary); line-height: 1.55; white-space: pre-wrap; }
 
-  /* toolbox button: first-use badge + reserved featured-skill rows */
-  .toolbox-btn { position: relative; color: var(--ink-soft); }
-  .toolbox-btn .badge-dot { position: absolute; top: 2px; right: 2px; width: 8px; height: 8px; border-radius: 50%; background: var(--color-warning); box-shadow: 0 0 0 2px var(--surface); }
   .mi.disabled { opacity: 0.45; cursor: default; }
   .mi.disabled:hover { background: none; }
   .mi .mi-note { margin-left: auto; font-size: var(--fs-micro); color: var(--text-3); }

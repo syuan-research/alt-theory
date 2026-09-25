@@ -1655,7 +1655,7 @@ function SkillsPanel() {
     <div className="set-panel">
       <h2>{t("Skills")}</h2>
       <p className="sub">
-        {t("Skills are instruction files that carry a way of working. Alt Theory ships its own; you can add your own from the toolbox.")}
+        {t("Skills are instruction files that carry a way of working. Alt Theory ships its own; you can also add your own.")}
       </p>
       <SkillPrecedenceCard />
     </div>
@@ -2043,7 +2043,7 @@ function FeaturesPanel() {
       <div className="set-card">
         <h4>{t("Choose what each conversation can use")}</h4>
         <p>
-          {t("The controls above the composer choose role, knowledge, mode, model, and main folder for that conversation. The toolbox keeps file attachment, planning, folder browsing, and the full skill list close without putting every option on screen.")}
+          {t("The controls above the composer choose role, knowledge, model, and main folder for that conversation. Commands and skills, permission, and file attachment are the buttons beside it, keeping options close without putting every option on screen.")}
         </p>
       </div>
       <div className="set-card help-tip-catalog">

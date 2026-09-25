@@ -28,7 +28,7 @@ import {
   fullAccessConsequences,
 } from "@/lib/permission";
 
-type MenuKey = "plus" | "model" | "role" | "kb" | "presetcfg" | "perm" | null;
+type MenuKey = "model" | "role" | "kb" | "presetcfg" | "perm" | null;
 const SHOW_HELP_STARTERS = false;
 
 /** Composer variant: `empty` = new-conversation (mode via cards, no switch). */
@@ -67,22 +67,6 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
   const [fileDragOver, setFileDragOver] = useState(false);
   const rowRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const [toolboxSeen, setToolboxSeen] = useState(() => {
-    try {
-      return localStorage.getItem("alt-theory-toolbox-seen") === "1";
-    } catch {
-      return true;
-    }
-  });
-  const markToolboxSeen = () => {
-    if (toolboxSeen) return;
-    setToolboxSeen(true);
-    try {
-      localStorage.setItem("alt-theory-toolbox-seen", "1");
-    } catch {
-      /* ignore */
-    }
-  };
 
   // Grow with content up to the CSS max-height (~8 lines), then scroll.
   useAutosizeTextarea(textareaRef, draft);
@@ -688,18 +672,17 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
             }}
           />
           <div className="row" ref={rowRef}>
-            {/* toolbox: featured skills + actions */}
+            {/* commands and skills: opens the / palette, same as typing / */}
             <button
-              className="flat toolbox-btn"
-              data-tip={t("Toolbox")}
+              className="flat"
+              data-tip={t("Commands and skills…")}
               onClick={(e) => {
                 e.stopPropagation();
-                markToolboxSeen();
-                toggle("plus");
+                setMenu(null);
+                setDraft("/");
               }}
             >
-              <i className="ph ph-toolbox" />
-              {!toolboxSeen ? <span className="badge-dot" /> : null}
+              <i className="ph ph-magic-wand" />
             </button>
             {permissionVisible ? (
               <span className="perm-anchor">
@@ -759,37 +742,6 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                 </div>
               </span>
             ) : null}
-            <div
-              className={`menu${menu === "plus" ? " on" : ""}`}
-              style={{ left: 0 }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div
-                className="mi"
-                onClick={() => armCommand("adaptive-planning")}
-              >
-                <i className="ph ph-list-checks" />
-                {t("Adaptive planning")}
-              </div>
-              <div className="sep" />
-              {conv.sessionId ? (
-                <div
-                  className="mi"
-                  onClick={() => (shell.openRail("workspace"), setMenu(null))}
-                >
-                  <i className="ph ph-folder-open" />
-                  {t("Browse folders")}
-                </div>
-              ) : null}
-              <div
-                className="mi"
-                onClick={() => (setDraft("/"), setMenu(null))}
-              >
-                <i className="ph ph-slash-forward" />
-                {t("All skills…")}
-              </div>
-            </div>
-
             {/* First-level attach, in every conversation. */}
             {canAttach ? (
               <>
