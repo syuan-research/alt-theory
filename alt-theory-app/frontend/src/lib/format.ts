@@ -28,6 +28,55 @@ export function fmtTime(value: string | null | undefined): string {
   });
 }
 
+/**
+ * Conversational last-edited label for session rows (owner 2026-09-25):
+ * minutes/hours/days, then calendar-complete weeks (only ever 1-4), months
+ * (1-12), years — mirroring how people speak; no 5-week or 13-month steps
+ * because month and year boundaries use complete calendar units.
+ */
+export function relativeTimeLabel(
+  value: string | null | undefined,
+  now = Date.now(),
+): string | null {
+  if (!value) return null;
+  const then = new Date(value).getTime();
+  if (Number.isNaN(then)) return null;
+  const ms = Math.max(now - then, 0);
+  const minutes = Math.floor(ms / 60_000);
+  if (minutes < 1) return t("Just now");
+  if (minutes < 60) return t("{count} minutes ago", { count: minutes });
+  if (minutes < 60 * 24) return t("{count} hours ago", { count: Math.floor(minutes / 60) });
+  const start = new Date(then);
+  const end = new Date(now);
+  const months = completeMonths(start, end);
+  if (months < 1) {
+    const days = Math.floor(ms / 86_400_000);
+    if (days < 7) return t("{count} days ago", { count: days });
+    return t("{count} weeks ago", { count: Math.floor(days / 7) });
+  }
+  if (months < 12) return t("{count} months ago", { count: months });
+  return t("{count} years ago", { count: completeYears(start, end) });
+}
+
+/** Whole calendar months between start and end: the probe clamps overflows
+ * (Jan 31 + 1 month lands on Mar 1) back to the last fully elapsed month. */
+function completeMonths(start: Date, end: Date): number {
+  let months =
+    (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+  const probe = new Date(start);
+  probe.setMonth(start.getMonth() + months);
+  if (probe.getTime() > end.getTime()) months -= 1;
+  return Math.max(months, 0);
+}
+
+function completeYears(start: Date, end: Date): number {
+  let years = end.getFullYear() - start.getFullYear();
+  const probe = new Date(start);
+  probe.setFullYear(start.getFullYear() + years);
+  if (probe.getTime() > end.getTime()) years -= 1;
+  return Math.max(years, 0);
+}
+
 export function formatCountLabel(
   count: number | null | undefined,
   singular: string,

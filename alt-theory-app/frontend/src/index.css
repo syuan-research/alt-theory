@@ -796,6 +796,24 @@
   }
   .group-row .reveal-layer { --reveal-fade: var(--panel); }
   .session-row .reveal-layer { --reveal-fade: var(--row-active); }
+  /* Resident last-edited label (owner 2026-09-25): the default state's right
+     edge, same fade family as the reveal layer but inverted — visible at
+     rest, yields on hover/focus. One size down, the muted gray of the
+     project-folder labels. */
+  .session-row .s-time {
+    position: absolute; top: 0; bottom: 0; right: 0;
+    display: flex; align-items: center;
+    padding: 0 var(--space-control) 0 30px;
+    background: linear-gradient(90deg, transparent 0, var(--time-fade, var(--panel)) 30px);
+    color: var(--text-3);
+    font-size: var(--fs-secondary);
+    z-index: 2;
+    pointer-events: none;
+    transition: opacity 0.12s ease;
+  }
+  .session-row .sess.active ~ .s-time { --time-fade: var(--row-active); }
+  .session-row:hover .s-time,
+  .session-row:focus-within .s-time { opacity: 0; }
   /* right-edge affordances yield the stage while the controls are up */
   .badge-run { transition: opacity 0.12s ease; }
   .reveal-row:hover .badge-run,
