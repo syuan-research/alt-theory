@@ -13,15 +13,50 @@ detail lives in commit history and `development/`.
 - Conversations no longer choose between Understand and Work. Every
   conversation can think with you and work on your files; two separate
   choices shape it instead: whether it uses a project, and its permission.
-- The shield next to the message box now has three permissions:
+- The shield next to the message box now has four permissions:
   **Read-only** (Alt runs no commands and asks before every file it writes
-  or edits), **Ask for approval** (as before), and **Full access**.
+  or edits), **Ask for approval**, **Smart approval** (new, experimental),
+  and **Full access**.
 - Settings > General > "New conversations start with" picks the permission
   every new conversation starts from (Ask for approval unless you change it;
   choosing Full access asks you to confirm once).
 - Subagents, branches and side conversations start with the permission of
-  the conversation they came from, but never with Full access.
+  the conversation they came from, but never with Full access: under Full
+  access or smart approval they start with smart approval.
 - Conversations without a project are listed above your projects.
+
+### Approvals
+
+- **Ask for approval asks about more.** Simple read-only commands (listing
+  files, reading them, searching, `git status`) still run straight away, as
+  do file changes inside your folders. Other commands — running a script,
+  for example — now ask first; before, only a short list of risky commands
+  did. Settings > General > "Commands that run without asking" lets you add
+  commands you trust, such as `npm test`.
+- **Smart approval** (experimental) asks a model instead of you. When it
+  refuses, Alt gets the reason and adjusts or asks you in the conversation.
+  If the model cannot answer, the question comes to you as usual. Choose the
+  model, with backups, in Settings > General; it starts with this
+  conversation's own model, and recommended models are listed with the date
+  the list was last updated. Each decision and its reason shows on the tool
+  line in the conversation.
+- **Brakes against accidents.** Under every permission, including Full
+  access, Alt will not delete or move your home folder, Desktop, Documents,
+  Downloads and similar folders, a whole disk, or the project folder itself,
+  and will not change system folders. Outside Full access, it also won't edit
+  a repository's `.git` folder directly, always asks before git commands that
+  throw away work (such as `git reset --hard` or a forced push), asks before
+  changing database files, and cannot write into Alt Theory's own records.
+- The approval box above the message box gives a long command room to be
+  read, with the buttons underneath.
+- Auto-naming can have backup models too; when a model fails and a backup
+  takes over, the conversation tells you.
+
+### Layout
+
+- The middle column keeps a readable minimum width, and the buttons under
+  the message box no longer wrap onto two lines: in a narrow window the
+  permission and model names shrink to their icons.
 
 ### Adding files
 

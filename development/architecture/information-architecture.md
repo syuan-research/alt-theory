@@ -81,13 +81,23 @@ surfaces remain designation-gated and absent for everyone else.
   - Empty state is the greeting and the composer; Native Pi adds a short note
     about its normal tools.
   - The composer's shield holds the conversation's **permission** (Read-only,
-    Ask for approval, Full access; local only). The first-level paperclip
+    Ask for approval, Smart approval — marked experimental, naming which model
+    reviews — and Full access; local only). While a conversation is on smart
+    approval with the auto reviewer, a line above the composer says so, with
+    a way to Settings and "Don't show again". The first-level paperclip
     adds a file by copy (into the conversation's folder, converted to text for
     office/PDF files) in every conversation; a pasted file or image does the
     same; a dropped file attaches a copy under Read-only and a path link
     otherwise.
   - Live composer chrome carries permission, model and effective thinking effort,
     role, knowledge, workspace context where applicable, and run controls.
+    Its toolbar stays on one line: as the composer narrows, the permission
+    name and then the model name fold into their icons. The center column
+    keeps a 400px minimum; the right pane gives way first.
+  - An approval waiting on the user sits above the composer: a small head
+    naming the kind of action, the command or path itself in its own wrapped
+    block (scrolling when long), and the choices below it. Under smart
+    approval a tool row carries the reviewer's verdict and reason.
   - The strip above the composer is a **switchable card slot**, one card at a
     time. Role/knowledge is the session-initial card: a traditional control
     (functional view) tied to how the conversation was set up (session-
@@ -308,7 +318,10 @@ surfaces remain designation-gated and absent for everyone else.
   - Contextual menus stay open while unrelated panes receive output or scroll;
     scrolling the menu's own anchor pane still dismisses them.
 - **Settings**
-  - General: app behavior and ordinary preferences.
+  - General: app behavior and ordinary preferences, including the permission
+    cards — the default for new conversations, commands that run without
+    asking, and the smart approval reviewer (auto or a model chain, with the
+    dated recommendations) — and auto-naming's model chain.
   - Models: provider connection, model choice, and model capability correction.
   - Projects and global folders (v1.5.1): two cards. Projects — each its own entity
     with a generated id, an editable name (defaults to the main folder's

@@ -239,13 +239,48 @@ so it evaluates the final tool input after earlier handlers. The application
 owns the session-specific roots, approval state, and audit sink around that Pi
 hook. See [`alt-theory-core.ts`](../../alt-theory-app/core/alt-theory-core.ts).
 
-The current policy has three relevant outcomes:
+Every tool call ends in one of three outcomes (the shared approval boundary,
+2026-09-26):
 
-- destructive/system commands and selected credential access are blocked;
-- risky commands, external reads, external writes, and blocked network
-  destinations are checked by rule and either escalated or blocked;
-- an approved session allowance can permit a matching later action within the
-  same managed session. Network allowances are keyed by destination host.
+- **refused** — destructive/system commands (`sudo`, `dd`, `mkfs`, …),
+  credential paths, cloud-metadata network destinations, obfuscated
+  commands, the accident guardrails below, writes into `.git/`, and writes
+  into Alt Theory's data folder outside the conversation's own workspace;
+- **passes without review** — read-only tools inside the readable roots,
+  `edit`/`write` inside the writable roots, a narrow set of read-only shell
+  commands over readable paths (`ls`, `cat`, `grep`, `find` without
+  `-delete`/`-exec`, `git status`/`log`/`diff`/`show`, `mkdir` inside the
+  writable roots, and similar; plain pipes and `&&`/`;` chains of them), and
+  the user's command-prefix allowlist (`commandAllowlist`, Settings >
+  General). Output redirection, command substitution, and background jobs
+  never pass;
+- **reviewed** — everything else: scripts and other commands, reads and
+  writes outside the roots, work-discarding git commands (`reset --hard`,
+  `clean -f`, forced push, `branch -D`, discarding `checkout`/`restore`,
+  `stash clear|drop`), and database files (`.sqlite`, `.db`, `.duckdb`,
+  `.accdb`, …) even inside the roots or in an allowlisted command. Ask puts
+  the review to the user; smart approval to the reviewer model (below).
+
+"Allow for this conversation" lets a matching later command through within
+the same managed session, keyed by the command names (network commands also
+by destination host); work-discarding git offers only Allow once. The
+boundary is `core/approval-boundary.ts`; the fast pass follows
+pi-auto-approval's shape, widened to read-only file commands.
+
+**Accident guardrails.** Two checks hold under every permission, Full access
+included, and the refusal tells the agent to leave it to the user: deleting
+or moving (`rm`, `rmdir`, `unlink`, `trash`, `mv`, unfiltered `find
+-delete`, and the Windows delete commands, also through `sudo`) the
+filesystem or a drive root, the home folder or its major folders (Desktop,
+Documents, Downloads, Library, Pictures, Movies, Music, the iCloud and
+cloud-storage roots), the project's folders — or any folder containing one
+of those, `*` included; and changing a system folder (`/System`, `/usr`,
+`/bin`, `/sbin`, `/etc`, `/Library`, `/Applications`, and the Windows and
+Program Files folders) by `write`/`edit` or by a command's visible write
+targets. Both read the command heuristically: a spelling they cannot see
+through (a script, a variable, `cd` first) falls to the normal boundary.
+They guard against a well-meaning agent's accidents, not a deliberate
+attacker.
 
 Reads outside the readable roots are approval-gated, but reading is not the
 write security boundary. Fixed product/configuration roots have a read
@@ -258,17 +293,22 @@ and [`ADR 0001`](adr/0001-session-scoped-security-extension.md).
 
 **Permission** is what a conversation's agent may do on its own; it is chosen
 per conversation and is independent of whether the conversation uses a
-project. It has three values:
+project. It has four values:
 
 - **Read-only** — no shell; every agent write or edit asks first.
-- **Ask for approval** — the default posture described on this page.
-- **Full access** — no agent-tool mediation (below).
+- **Ask for approval** — the default posture described on this page; reviews
+  go to the user.
+- **Smart approval** (experimental) — the same boundary; reviews go to a
+  reviewer model (below).
+- **Full access** — no agent-tool mediation except the two accident
+  guardrails (below).
 
-It is stored as two existing per-session fields: the mode
-(`AltMode`, `"read-only" | "work"`) and Full Access (`fullAccess`); Ask is
-`work` without Full Access. The client reads them as one value
-(`permissionOf` in `frontend/src/lib/conversation.ts`) and a choice sends only
-the field that changes. Stored modes from before 2026-09-25 (`understand`, and
+It is stored as per-session fields: the mode (`AltMode`,
+`"read-only" | "work"`), Full Access (`fullAccess`), and smart approval
+(`smartApproval`); Ask is `work` with neither, and Full wins when both are
+stored. The client reads them as one value (`permissionOf` in
+`frontend/src/lib/conversation.ts`) and a choice sends only the fields that
+change. Stored modes from before 2026-09-25 (`understand`, and
 the v1-alpha `pure`/`full`) read as `work` (`toAltMode`); the Understand and
 Work modes are retired. Every Alt Theory conversation assembles the same
 prompt, skills, and project context under every permission.
@@ -287,7 +327,7 @@ by the write. Tool paths are checked as Pi's tools resolve them — `~`, a
 leading `@`, and `file://` included (`toolPath`) — under every permission.
 Reads are mediated as under Ask. The permission applies under Native Pi too.
 
-The composer's permission control (shield, right of Toolbox) offers the three
+The composer's permission control (shield, right of Toolbox) offers the four
 values on a live conversation and on the new-conversation screen, where the
 choice is kept in that screen's draft and sent with the first message (a
 draft still saying `understand` reads as `work`). A new
@@ -298,7 +338,9 @@ mode change mid-run is held until the turn ends, except that a pending switch
 to Read-only mediates at once (`holdReadOnly`): shell calls are refused, each
 write asks, and Full Access is off; the tool set follows at the turn's end. Derived conversations —
 subagents, branches, BTW, Helpers, A/B arms — inherit the parent's mode at
-birth and never Full Access, so the inherited permission is at most Ask;
+birth and never Full Access; a child of a smart-approval or Full parent
+starts on smart approval (`inheritsSmartApproval`), so the inherited
+permission is at most smart approval;
 `spawn_agent` may ask for a read-only child (`clampSubagentMode`), A/B arms
 are read-only, and a later change on the parent does not reach existing
 children. Imported conversations start from the default permission without
@@ -310,6 +352,51 @@ assembly forces the mode, and creation or a switch to `work` is refused. See
 (`defaultSessionPermission`), and
 [`agent-team.ts`](../../alt-theory-app/web-server/agent-team.ts).
 
+### Smart approval
+
+Smart approval (2026-09-26) is stored in the session header like Full Access
+(`smartApproval: true`, absent when off; traced as `smart_approval_changed`),
+local only, dormant under Read-only, and switched immediately in both
+directions — the reviewer only answers where the user would otherwise be
+asked. For each reviewed action the security extension calls the session
+service's reviewer once with everything attached up front
+(`core/approval-reviewer.ts`): the latest user request, the last 40 user
+messages and tool results (assistant prose left out), for a subagent its
+root conversation's latest user request, the pending action, and the
+contents of up to three script files the command names that lie inside the
+readable roots. The prompt treats all of it as untrusted evidence that only
+user messages can authorize, and asks for strict JSON `allow | deny` with a
+reason.
+
+- **Allow** — the action runs; the exact action (tool, cwd, input) is not
+  reviewed again in this conversation (in memory only). A write outside the
+  roots passes that one file (`allowWriteOnce`), not the folder. The verdict
+  rides on the tool result's `details.altApproval`, so the tool row shows
+  "Smart approval: allowed · reason"; the model never sees it.
+- **Deny** — the call is blocked with the reason, which the agent reads as
+  the tool result. The third denial in a row within one run adds an
+  instruction to stop working around it and ask the user.
+- **Unavailable** — every model failed, timed out (60 s each), or answered
+  unreadably: the action goes to the user's dialog, headed with the reason.
+
+The reviewer's model chain is `approvalReviewer` in `app-settings.json`: a
+model and ordered fallbacks in the subagent reference syntax
+(`provider/model[:thinking]`, `inherit[:thinking]`), absent = auto. The
+conversation's own model at low thinking is always the last level (the only
+one under auto). Each fallback is announced in the conversation. Auto-naming
+uses the same chain (`autoTitle.fallbackModels` after the pinned model, then
+the conversation's model at low). Settings > General edits both with the
+subagent presets' chain control, and lists recommended reviewers from
+`agent-assets/model-presets/reviewer-models.json`, read from the public
+repository once a day and from the shipped copy when offline, with the
+list's date. While a conversation is on smart approval with the auto
+reviewer, the composer shows a hint until the user picks a reviewer or turns
+it off (`smartApprovalHintDismissed`). See
+[`security-extension.ts`](../../alt-theory-app/core/security-extension.ts),
+[`session-service.ts`](../../alt-theory-app/web-server/session-service.ts)
+(`reviewAction`, `auxiliaryChain`, `completeDownChain`), and
+[`reviewer-recommendations.ts`](../../alt-theory-app/web-server/reviewer-recommendations.ts).
+
 ### Full Access
 
 Full Access (v1.4.8) is a per-conversation bypass of the agent-tool
@@ -318,17 +405,19 @@ local only. Enabling it from the composer asks for confirmation; enabling
 mid-run is held until the turn ends; disabling is immediate and allowed
 mid-run.
 
-While effective, the security extension's shared `tool_call` handler returns
-before any mediation, the guarded write tool skips only the writable-root
-assertion (the filesystem operation itself is unchanged), and the bypassed
-decisions produce no security-audit entries. The value is written to the
+While effective, the security extension's shared `tool_call` handler checks
+only the two accident guardrails (critical-folder deletion, system folders)
+and returns before any other mediation, the guarded write tool skips only
+the writable-root assertion (the filesystem operation itself is unchanged),
+and the bypassed decisions produce no security-audit entries. The value is written to the
 session header (`fullAccess: true`, absent when off) and every change is
 traced as a `full_access_changed` session event (creation records it in
 `session_created`); every assembly of the conversation — reopen, app restart,
 and the instance swap of a role/soul/instruction switch — takes it back from
 the header. Under Read-only a stored value is dormant rather than cleared
 (the composer's Read-only choice turns it off). Children never inherit it:
-branches, BTW, Helpers and subagents are written without the field. The
+branches, BTW, Helpers and subagents are written without the field and
+start on smart approval instead. The
 server rejects enabling attempts that are not local. Application-level boundaries outside
 agent-tool mediation (account/session visibility, REST file ownership, trash
 and recoverable delete) are unaffected. See
@@ -353,8 +442,9 @@ and [`server.ts`](../../alt-theory-app/web-server/server.ts).
 
 Security decisions append JSON entries to the managed session's
 `records/security-audit.jsonl`. Entries contain a timestamp, tool name and
-call ID, outcome (`blocked`, `approved-once`, `approved-session`, or
-`session-allowance`), rule, and detail. The audit sink is session-local, not a
+call ID, outcome (`blocked`, `approved-once`, `approved-session`,
+`session-allowance`, `reviewer-allowed`, or `reviewer-denied`), rule, and
+detail (for the reviewer: which model and its reason). The audit sink is session-local, not a
 machine-global security log. See [`security-extension.ts`](../../alt-theory-app/core/security-extension.ts)
 and [`alt-theory-core.ts`](../../alt-theory-app/core/alt-theory-core.ts).
 
@@ -395,6 +485,16 @@ in
   security interception, read-only Allow once (inside, outside once, denied,
   credential paths), outside-root reads, the session audit file, and a
   symlinked workspace read escalating like the matching write.
+- [`approval-boundary.test.ts`](../../alt-theory-app/core/approval-boundary.test.ts)
+  and [`security-extension.test.ts`](../../alt-theory-app/core/security-extension.test.ts)
+  cover the fast pass, the allowlist, the four guardrails (the two brakes
+  also under Full), the data folder, and smart approval's allow, deny,
+  three-denial brake, unavailable hand-over, and single outside write;
+  [`approval-reviewer.test.ts`](../../alt-theory-app/core/approval-reviewer.test.ts)
+  the reviewer's material and strict parse; and
+  [`smart-approval.test.ts`](../../alt-theory-app/web-server/smart-approval.test.ts)
+  the header, inheritance, the reviewer and auto-naming chains with their
+  notices, and the recommendations.
 - [`attachment-staging.test.ts`](../../alt-theory-app/web-server/attachment-staging.test.ts)
   covers staging, conversion, a failed conversion, the move into the
   conversation with rewritten paths, and name collisions.
