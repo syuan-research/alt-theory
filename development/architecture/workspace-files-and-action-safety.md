@@ -277,8 +277,10 @@ cloud-storage roots), the project's folders — or any folder containing one
 of those, `*` included; and changing a system folder (`/System`, `/usr`,
 `/bin`, `/sbin`, `/etc`, `/Library`, `/Applications`, and the Windows and
 Program Files folders) by `write`/`edit` or by a command's visible write
-targets. Both read the command heuristically: a spelling they cannot see
-through (a script, a variable, `cd` first) falls to the normal boundary.
+targets. Both read the command heuristically — they follow `cd` within a
+command and look inside `bash -c '…'` and command substitutions — and a
+spelling they cannot see through (a script, a variable) falls to the normal
+boundary.
 They guard against a well-meaning agent's accidents, not a deliberate
 attacker.
 
@@ -369,7 +371,9 @@ user messages can authorize, and asks for strict JSON `allow | deny` with a
 reason.
 
 - **Allow** — the action runs; the exact action (tool, cwd, input) is not
-  reviewed again in this conversation (in memory only). A write outside the
+  reviewed again in this conversation (in memory only), except
+  work-discarding git and writes outside the roots, which are reviewed
+  every time. A write outside the
   roots passes that one file (`allowWriteOnce`), not the folder. The verdict
   rides on the tool result's `details.altApproval`, so the tool row shows
   "Smart approval: allowed · reason"; the model never sees it.

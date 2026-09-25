@@ -137,7 +137,7 @@ export function reviewerMessage(
     `Why this needs review: ${request.title}`,
     "",
     "Pending action:",
-    JSON.stringify({ tool: request.toolName, input: request.input }, null, 2),
+    clip(JSON.stringify({ tool: request.toolName, input: request.input }, null, 2), MAX_SCRIPT_CHARS),
     ...scripts.flatMap((script) => ["", `Contents of ${script.path}:`, "```", script.content, "```"]),
     ...(extra.priorDenials ? ["", `Earlier actions denied in this turn: ${extra.priorDenials}.`] : []),
   ].join("\n");

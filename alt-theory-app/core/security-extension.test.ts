@@ -207,3 +207,38 @@ test("smart approval: an outside write passes that one file, not the folder", as
   assert.equal((await h.call("write", { path: join(h.project, ".git", "config") }))?.block, true);
   assert.equal(h.reviewed.length, 1);
 });
+
+test("smart approval: work-discarding git is reviewed every time, never from the cache", async () => {
+  const h = harness({ reviewer: () => ({ outcome: "allow", reason: "the user asked", model: "m" }) });
+  await h.call("bash", { command: "git checkout -- ." });
+  await h.call("bash", { command: "git checkout -- ." });
+  assert.equal(h.reviewed.length, 2);
+  // An ordinary allowed action is cached, and its row still gets the verdict.
+  await h.call("bash", { command: "python a.py" }, "p1");
+  await h.call("bash", { command: "python a.py" }, "p2");
+  assert.equal(h.reviewed.length, 3);
+  assert.equal(((await h.toolResult("p2"))?.details as { altApproval?: unknown })?.altApproval !== undefined, true);
+});
+
+test("data folder: a project containing the data folder does not open it up", async () => {
+  const root = mkdtempSync(join(tmpdir(), "alt-secext-home-"));
+  const dataDir = join(root, ".alt-theory");
+  const workspace = join(dataDir, "sessions", "me", "workspace");
+  mkdirSync(workspace, { recursive: true });
+  const writable = [
+    { path: workspace, reason: "session-write" as const },
+    { path: root, reason: "cwd" as const },
+  ];
+  let handler: ((event: unknown, ctx: unknown) => Promise<Result>) | null = null;
+  createSecurityExtension({
+    sessionCwd: root,
+    getWritableRoots: () => writable,
+    getReadableRoots: () => writable,
+    protectedDirs: [dataDir],
+  })({ on: (event: string, h: typeof handler) => event === "tool_call" && (handler = h) } as never);
+  const call = (toolName: string, input: Record<string, unknown>) =>
+    handler!({ toolName, toolCallId: "t", input }, { hasUI: false, ui: {}, signal: undefined });
+  assert.equal((await call("write", { path: join(dataDir, "app-settings.json") }))?.block, true);
+  assert.equal((await call("write", { path: join(workspace, "notes.md") })), undefined);
+  assert.equal((await call("write", { path: join(root, "notes.md") })), undefined);
+});

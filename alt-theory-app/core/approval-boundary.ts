@@ -26,14 +26,50 @@ import { isPathInside } from "./path-verdict.js";
  * scope — these are guard rails, not a sandbox.
  */
 export function splitCommands(command: string): string[] {
-  const parts = command.split(/&&|\|\||[;|\n\r]/g);
+  return commandSequences(command).flat();
+}
+
+/**
+ * The command as sequences of segments, each run in order: the top level,
+ * each substitution body, and each `bash -c '…'` body (read before the top
+ * level is split, so its own `;` stay inside it).
+ */
+function commandSequences(command: string): string[][] {
+  const split = (text: string) =>
+    text
+      .split(/&&|\|\||[;|\n\r]/g)
+      .map((part) => part.trim())
+      .filter(Boolean);
+  const inner = [...command.matchAll(/\b(?:bash|sh|zsh)\s+-\w*c\w*\s+(['"])([\s\S]*?)\1/g)].map((match) => match[2] ?? "");
   const substitutions = [
     ...command.matchAll(/\$\(([^)]*)\)/g),
     ...command.matchAll(/`([^`]*)`/g),
   ].map((match) => match[1] ?? "");
-  return [...parts, ...substitutions]
-    .map((part) => part.trim())
-    .filter(Boolean);
+  return [split(command), ...substitutions.map(split), ...inner.flatMap(commandSequences)].filter(
+    (sequence) => sequence.length > 0,
+  );
+}
+
+/** Each segment with the folder it runs in: `cd` moves the rest of its sequence. */
+function segmentsWithCwd(
+  command: string,
+  cwd: string,
+  resolvePath: (cwd: string, raw: string) => string,
+): Array<{ segment: string; cwd: string }> {
+  const out: Array<{ segment: string; cwd: string }> = [];
+  for (const sequence of commandSequences(command)) {
+    let here = cwd;
+    for (const segment of sequence) {
+      const [program, target] = commandWords(segment);
+      if (program === "cd" || program === "pushd") {
+        if (!target) here = homedir();
+        else if (target !== "-") here = resolveArg(here, target, resolvePath);
+        continue;
+      }
+      out.push({ segment, cwd: here });
+    }
+  }
+  return out;
 }
 
 /** Transparent wrappers: `FOO=1 nohup rm x` resolves to `rm`. */
@@ -165,8 +201,11 @@ function criticalHomeFolders(): string[] {
 /** Commands whose operands are deleted (or, for mv, moved away). */
 const DELETE_COMMANDS = new Set(["rm", "rmdir", "unlink", "trash", "rd", "del", "erase", "remove-item", "ri"]);
 
-/** find filters that narrow `-delete` to matching entries. */
-const FIND_FILTERS = new Set(["-name", "-iname", "-path", "-ipath", "-regex", "-iregex", "-wholename", "-iwholename"]);
+/** find tests that narrow `-delete` to matching entries. */
+const FIND_FILTERS = new Set([
+  "-name", "-iname", "-path", "-ipath", "-regex", "-iregex", "-wholename", "-iwholename",
+  "-empty", "-type", "-mtime", "-mmin", "-atime", "-amin", "-newer", "-size", "-user", "-perm",
+]);
 
 /**
  * The first operand of `command` that would delete or move away a critical
@@ -181,9 +220,11 @@ export function criticalDeletionTarget(
   resolvePath: (cwd: string, raw: string) => string,
 ): string | null {
   const critical = [homedir(), ...criticalHomeFolders(), ...projectRoots.map((root) => resolve(root))];
+  // macOS volumes are case-insensitive by default (win32 folds in isPathInside).
+  const fold = (path: string) => (process.platform === "darwin" ? path.toLowerCase() : path);
   const isCritical = (target: string) =>
-    parse(target).root === target || critical.some((path) => isPathInside(target, path));
-  for (const segment of splitCommands(command)) {
+    parse(target).root === target || critical.some((path) => isPathInside(fold(target), fold(path)));
+  for (const { segment, cwd: here } of segmentsWithCwd(command, cwd, resolvePath)) {
     const [program, ...args] = commandWords(segment);
     if (!program) continue;
     let operands: string[] = [];
@@ -199,8 +240,8 @@ export function criticalDeletionTarget(
     }
     for (const operand of operands) {
       const glob = /(^|[\\/])\*$/.test(operand);
-      const spelled = glob ? operand.replace(/[\\/]?\*$/, "") || "." : operand;
-      const target = resolveArg(cwd, spelled, resolvePath);
+      const spelled = glob ? operand.slice(0, -1) || "." : operand;
+      const target = resolveArg(here, spelled, resolvePath);
       if (isCritical(target)) return glob ? join(target, "*") : target;
     }
   }
@@ -259,17 +300,20 @@ export function commandWriteTargets(
     const word = (match[1] ?? "").replace(/^["']|["']$/g, "");
     if (word && !word.startsWith("&") && word !== "/dev/null") targets.push(word);
   }
-  for (const segment of splitCommands(command)) {
+  const resolved = targets.map((word) => resolveArg(cwd, word, resolvePath));
+  for (const { segment, cwd: here } of segmentsWithCwd(command, cwd, resolvePath)) {
     const [program, ...args] = commandWords(segment.replace(/\d?>{1,2}\s*\S+/g, ""));
     if (!program) continue;
     const operands = args.filter((word) => !isFlag(word));
-    if (MODIFY_ALL.has(program)) targets.push(...operands);
-    else if (MODIFY_LAST.has(program) && operands.length > 1) targets.push(operands.at(-1)!);
+    const found: string[] = [];
+    if (MODIFY_ALL.has(program)) found.push(...operands);
+    else if (MODIFY_LAST.has(program) && operands.length > 1) found.push(operands.at(-1)!);
     else if (program === "sed" && args.some((word) => /^-[a-zA-Z]*i/.test(word) || word.startsWith("--in-place"))) {
-      targets.push(...operands.slice(1));
+      found.push(...operands.slice(1));
     }
+    resolved.push(...found.map((word) => resolveArg(here, word, resolvePath)));
   }
-  return targets.map((word) => resolveArg(cwd, word, resolvePath));
+  return resolved;
 }
 
 // ---------------------------------------------------------------------------
@@ -318,8 +362,14 @@ export function destructiveGitCommand(command: string): string | null {
       (sub === "push" &&
         (shortFlag("f") || shortFlag("d") || has("--delete", "--mirror", "--prune") ||
           args.some((arg) => arg.startsWith("--force") || arg.startsWith("+") || /^:[^:]/.test(arg)))) ||
-      (sub === "branch" && (args.includes("-D") || ((shortFlag("d") || has("--delete")) && (shortFlag("f") || has("--force"))))) ||
-      (sub === "checkout" && (has("--", ".", "-f", "--force") || args.some((arg) => arg.startsWith("--theirs") || arg.startsWith("--ours")))) ||
+      (sub === "branch" && (args.includes("-D") || args.includes("-M") || shortFlag("f") || has("--force"))) ||
+      // `git checkout <ref> <path>` overwrites the path like `--` does.
+      (sub === "checkout" &&
+        (has("--", ".", "-f", "--force") ||
+          args.some((arg) => arg.startsWith("--theirs") || arg.startsWith("--ours")) ||
+          (!has("-b", "-B", "--orphan") && args.filter((arg) => !arg.startsWith("-")).length >= 2))) ||
+      (sub === "switch" && (shortFlag("f") || has("--force", "--discard-changes"))) ||
+      (sub === "worktree" && has("remove") && (shortFlag("f") || has("--force"))) ||
       (sub === "restore" && !(has("--staged", "-S") && !has("--worktree", "-W"))) ||
       (sub === "stash" && has("clear", "drop")) ||
       (sub === "update-ref" && has("-d")) ||
@@ -371,7 +421,9 @@ const SAFE_PROGRAMS = new Set([
 const UNSAFE_OPTIONS: Record<string, (arg: string) => boolean> = {
   find: (arg) => /^-(delete|exec|execdir|ok|okdir|fprint|fprint0|fprintf|fls)$/.test(arg),
   rg: (arg) => arg.startsWith("--pre"),
-  sort: (arg) => arg === "-o" || arg.startsWith("--output") || /^-[a-zA-Z]*o/.test(arg),
+  sort: (arg) => arg === "-o" || arg.startsWith("--output") || /^-[a-zA-Z]*o/.test(arg) || arg.startsWith("--compress-program"),
+  tree: (arg) => arg === "-o" || /^-[a-zA-Z]*o/.test(arg),
+  file: (arg) => arg === "-C" || arg === "--compile" || arg.startsWith("-m") || arg.startsWith("--magic-file"),
 };
 const SAFE_GIT = new Set(["status", "log", "diff", "show", "rev-parse", "ls-files", "blame"]);
 const SAFE_GIT_BRANCH_FLAGS = new Set(["--show-current", "--list", "--all", "--merged", "--no-merged", "-a", "-r", "-v", "-vv", "-l"]);

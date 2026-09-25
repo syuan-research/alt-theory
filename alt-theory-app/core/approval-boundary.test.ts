@@ -62,6 +62,9 @@ test("fast pass: narrow read-only shell over readable paths", () => {
     "git push",
     "mkdir /tmp/elsewhere",
     "wc -l < data.csv",
+    "tree -o out.txt",
+    "sort --compress-program=sh a.txt",
+    "file -C -m magic",
   ]) {
     assert.equal(passes(command), false, command);
   }
@@ -85,6 +88,7 @@ test("guardrail ①: deleting or moving a critical folder", () => {
     "rm -rf ~/",
     "rm -rf ~/Documents",
     "rm -r ~/Desktop/",
+    "rm -rf ~/documents",
     "rm -rf /",
     "rm -rf *",
     "rm -rf ./*",
@@ -95,6 +99,11 @@ test("guardrail ①: deleting or moving a critical folder", () => {
     "find ~ -delete",
     "cd src && rm -rf ~/Library",
     "sudo rm -rf /",
+    "cd ~ && rm -rf Documents",
+    "cd ~; rm -rf *",
+    "bash -c 'cd ~; rm -rf Desktop'",
+    "rm -rf /*",
+    "find ~ -maxdepth 1 -delete",
   ]) {
     assert.ok(critical(command), command);
   }
@@ -105,6 +114,8 @@ test("guardrail ①: deleting or moving a critical folder", () => {
     "find . -name '*.pyc' -delete",
     "mv notes.md archive/",
     "rm -rf node_modules dist",
+    "cd src && rm -rf build",
+    "find ~ -empty -delete",
   ]) {
     assert.equal(critical(command), null, command);
   }
@@ -117,6 +128,7 @@ test("guardrail ④ and the data folder: visible write targets", () => {
   assert.deepEqual(targets("cp /usr/share/dict/words ."), [project]);
   assert.deepEqual(targets("ls 2>/dev/null"), []);
   assert.deepEqual(targets("sed -i 's/a/b/' /etc/profile"), ["/etc/profile"]);
+  assert.deepEqual(targets("cd /usr/local && rm -rf lib"), ["/usr/local/lib"]);
   assert.equal(targets("rm -rf /System/Library/x").map(systemFolderOf).find(Boolean), "/System");
   if (process.platform !== "win32") {
     assert.equal(systemFolderOf("/Applications/Foo.app"), "/Applications");
@@ -141,6 +153,12 @@ test("guardrail ②: work-discarding git and .git internals", () => {
     "git -C repo reset --hard",
     "rm -rf .git",
     "git status && git reset --hard",
+    "git switch -f main",
+    "git switch --discard-changes main",
+    "git checkout HEAD~1 src/app.ts",
+    "git branch -f main HEAD~3",
+    "git worktree remove --force ../wt",
+    "bash -c 'git reset --hard'",
   ]) {
     assert.ok(destructiveGitCommand(command), command);
   }
@@ -149,6 +167,7 @@ test("guardrail ②: work-discarding git and .git internals", () => {
     "git reset HEAD file",
     "git checkout main",
     "git checkout -b feature",
+    "git checkout -b feature origin/main",
     "git restore --staged src/app.ts",
     "git push origin main",
     "git stash",

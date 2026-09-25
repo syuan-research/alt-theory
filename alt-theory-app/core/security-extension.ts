@@ -242,7 +242,7 @@ export function createSecurityExtension(
   const sessionAllowances = new Set<string>();
   // Smart approval: exact actions the reviewer allowed in this conversation
   // (tool + cwd + input), never across conversations, never on disk.
-  const reviewerAllowed = new Set<string>();
+  const reviewerAllowed = new Map<string, ApprovalRecord>();
   // Verdicts waiting for their tool result, so the row can show them.
   const pendingRecords = new Map<string, ApprovalRecord>();
   let consecutiveDenials = 0;
@@ -292,10 +292,17 @@ export function createSecurityExtension(
        */
       const smartReview = async (
         rule: string,
-        title: string
+        title: string,
+        cacheable: boolean
       ): Promise<{ result: ToolCallEventResult | undefined } | { unavailable: string }> => {
+        // Actions that offer no conversation-wide allowance (work-discarding
+        // git, outside writes) are reviewed every time.
         const actionKey = JSON.stringify([event.toolName, sessionCwd, event.input]);
-        if (reviewerAllowed.has(actionKey)) return { result: undefined };
+        const cached = cacheable ? reviewerAllowed.get(actionKey) : undefined;
+        if (cached) {
+          pendingRecords.set(event.toolCallId, cached);
+          return { result: undefined };
+        }
         const answer = await reviewAction!(
           {
             toolName: event.toolName,
@@ -321,7 +328,7 @@ export function createSecurityExtension(
         });
         if (answer.outcome === "allow") {
           consecutiveDenials = 0;
-          reviewerAllowed.add(actionKey);
+          if (cacheable) reviewerAllowed.set(actionKey, record);
           pendingRecords.set(event.toolCallId, record);
           return { result: undefined };
         }
@@ -339,7 +346,7 @@ export function createSecurityExtension(
         title: string
       ): Promise<ToolCallEventResult | undefined> => {
         if (isSmartApproval?.() && reviewAction) {
-          const smart = await smartReview(rule, title);
+          const smart = await smartReview(rule, title, key !== null);
           if ("result" in smart) return smart.result;
           title = `Smart approval unavailable: ${smart.unavailable}\n${title}`;
         }
@@ -385,9 +392,15 @@ export function createSecurityExtension(
       const input = event.input as Record<string, unknown>;
       const path = typeof input.path === "string" ? input.path : undefined;
       const isWrite = event.toolName === "edit" || event.toolName === "write";
+      // Only the writable roots that live inside the data folder (this
+      // conversation's workspace) are exempt: a project root that happens
+      // to contain the data folder does not open it up.
       const inDataFolder = (target: string) =>
         protectedDirs.some((dir) => isPathInside(dir, target)) &&
-        !getWritableRoots().some((root) => isPathInside(root.path, target));
+        !getWritableRoots().some(
+          (root) =>
+            protectedDirs.some((dir) => isPathInside(dir, root.path)) && isPathInside(root.path, target),
+        );
 
       if (event.toolName === "bash") {
         const command = String(input.command ?? "");
@@ -503,7 +516,7 @@ export function createSecurityExtension(
             "Blocked — files inside .git are git's own records; changing them directly can break the repository. Use git commands instead."
           );
         }
-        if (check.outcome === "outside" && inDataFolder(resolved)) {
+        if (inDataFolder(resolved)) {
           return blocked("data_folder", `Blocked — ${summarize(resolved)} belongs to Alt Theory's own records, outside this conversation's workspace.`);
         }
         const verb = event.toolName === "edit" ? "Edit" : "Write";

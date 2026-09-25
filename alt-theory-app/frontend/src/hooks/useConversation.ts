@@ -343,7 +343,10 @@ export function useConversation({ sessionId, enabled, onMessage }: ConversationO
         if (fullAccess !== now.fullAccess) {
           setting({ fullAccess }, { type: "set_full_access", payload: { enabled: fullAccess } });
         }
-        if (smartApproval !== now.smartApproval) {
+        // Going to Full mid-run, Full waits for the turn's end: keep smart
+        // approval stored meanwhile (Full wins once it applies) instead of
+        // dropping to Ask for the rest of the turn.
+        if (smartApproval !== now.smartApproval && !(fullAccess && now.smartApproval)) {
           setting({ smartApproval }, { type: "set_smart_approval", payload: { enabled: smartApproval } });
         }
       },

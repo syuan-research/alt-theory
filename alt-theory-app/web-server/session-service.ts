@@ -885,12 +885,13 @@ export class SessionService implements AgentTeamBridge {
       );
       if (!firstUser) return;
 
-      // Pinned model → its fallbacks → the conversation's model (ruling I).
+      // Pinned model → its fallbacks → the conversation's model at low
+      // (ruling I); unpinned, just the conversation's model at low.
       const pin = settings.autoTitle?.model ?? null;
       const steps = this.auxiliaryChain(
         managed,
         [
-          pin ? `${pin.provider}/${pin.modelId}${pin.thinkingLevel ? `:${pin.thinkingLevel}` : ""}` : "inherit",
+          ...(pin ? [`${pin.provider}/${pin.modelId}${pin.thinkingLevel ? `:${pin.thinkingLevel}` : ""}`] : []),
           ...(settings.autoTitle?.fallbackModels ?? []),
         ],
         "low",
