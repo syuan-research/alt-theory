@@ -3,6 +3,7 @@
  * one copy, every reader re-renders when Settings saves.
  */
 import { useSyncExternalStore } from "react";
+import { t } from "@/i18n";
 import {
   getApprovalReviewer,
   saveApprovalReviewer,
@@ -45,4 +46,11 @@ export function setApprovalReviewer(reviewer: ModelChain | null): Promise<void> 
 export function dismissApprovalHint(): void {
   if (current) publish({ ...current, hintDismissed: true });
   void saveApprovalReviewer({ hintDismissed: true }).then(publish).catch(() => {});
+}
+
+/** A chain reference as the user reads it: `inherit:low` → "this conversation's model · low". */
+export function modelReferenceLabel(reference: string): string {
+  const [model, thinking] = /^(.*?)(?::(off|minimal|low|medium|high|xhigh|max))?$/.exec(reference)!.slice(1);
+  const name = model === "inherit" ? t("this conversation's model") : model;
+  return thinking ? `${name} · ${thinking}` : name;
 }

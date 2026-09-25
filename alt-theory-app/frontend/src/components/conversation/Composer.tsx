@@ -19,7 +19,7 @@ import { isWithheld, type SessionVisibility } from "@/api/types";
 import { fmtTime } from "@/lib/format";
 import { t } from "@/i18n";
 import { useAutosizeTextarea } from "@/lib/autosizeTextarea";
-import { dismissApprovalHint, useApprovalReviewer } from "@/lib/approvalReviewer";
+import { dismissApprovalHint, modelReferenceLabel, useApprovalReviewer } from "@/lib/approvalReviewer";
 import { runPhaseLabels } from "@/lib/runState";
 import {
   PERMISSIONS,
@@ -325,7 +325,15 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
             {reviewerHint ? (
               <span>
                 {t("Smart approval is reviewing with this conversation's model, which can be slow or costly.")}{" "}
-                <button type="button" className="flat" onClick={() => shell.openSettings("general")}>
+                <button
+                  type="button"
+                  className="flat"
+                  onClick={() => {
+                    shell.openSettings("general");
+                    // The reviewer card sits below the fold of General.
+                    window.setTimeout(() => document.getElementById("approval-reviewer")?.scrollIntoView({ block: "center" }), 300);
+                  }}
+                >
                   {t("Choose a reviewer")}
                 </button>
                 {" · "}
@@ -770,7 +778,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
                         {permission === "smart" ? (
                           <span className="d">
                             {reviewer?.reviewer
-                              ? t("Reviews with {model}", { model: reviewer.reviewer.model })
+                              ? t("Reviews with {model}", { model: modelReferenceLabel(reviewer.reviewer.model) })
                               : t("Reviews with this conversation's model at low thinking; each review is an extra call to it")}
                           </span>
                         ) : null}

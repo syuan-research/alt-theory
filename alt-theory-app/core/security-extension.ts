@@ -449,7 +449,8 @@ export function createSecurityExtension(
         if (dataWrite) {
           return blocked("data_folder", `Blocked — ${dataWrite} belongs to Alt Theory's own records, outside this conversation's workspace.`);
         }
-        const title = `Run command: ${summarize(sanitized)}`;
+        // The dock gives the command its own block: show it whole (bounded).
+        const title = `Run command: ${sanitized.trim().slice(0, 4000)}`;
         // Guardrail ②: work-discarding git is always looked at, one call at a time.
         if (destructiveGitCommand(sanitized)) {
           return review("git_destructive", null, title);

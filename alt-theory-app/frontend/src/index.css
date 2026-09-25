@@ -1010,7 +1010,7 @@
   .menu .mi i.perm-warn-icon { color: var(--color-warning); }
   /* Anchors the permission menu under the shield control, not the row edge. */
   .perm-anchor { position: relative; display: inline-flex; }
-  .perm-anchor > .menu { left: 0; bottom: 40px; }
+  .perm-anchor > .menu { left: 0; bottom: 40px; width: min(340px, calc(100vw - 32px)); max-height: 460px; }
   .model-picker { min-width: 280px; }
   .model-provider-section + .model-provider-section { border-top: 1px solid var(--hairline); margin-top: var(--space-hair); padding-top: var(--space-hair); }
   .model-provider-label { padding: var(--space-hair) var(--space-control) var(--space-hair); }

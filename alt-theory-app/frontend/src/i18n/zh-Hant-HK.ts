@@ -918,6 +918,7 @@ const catalog: Record<string, string> = {
   "Branches, side conversations and subagents start with smart approval instead": "分支、BTW 和子代理會改為以「智能審批」開始",
   "Auto-name": "自動命名",
   "{task}: {failed} did not answer ({reason}); trying {next}.": "{task}：{failed} 沒有回應（{reason}），改用 {next}。",
+  "this conversation's model": "本對話的模型",
 };
 
 export default catalog;
