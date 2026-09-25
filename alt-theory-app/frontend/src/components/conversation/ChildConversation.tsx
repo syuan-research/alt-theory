@@ -53,9 +53,6 @@ export function ChildConversation({
           }
           void app.refreshSessions();
           break;
-        case "run_completed":
-          void app.refreshSessions();
-          break;
         default:
           break;
       }

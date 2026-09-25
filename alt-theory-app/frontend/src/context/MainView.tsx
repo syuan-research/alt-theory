@@ -11,12 +11,11 @@ import {
 import {
   deleteSession as deleteSessionRequest,
   deleteSessionFamily as deleteSessionFamilyRequest,
-  fetchSessionDetail,
   normalizeSessionAlias,
   promoteRelatedSession as promoteRelatedSessionRequest,
   saveSessionAlias,
 } from "@/api/sessions";
-import type { ServerMessage, SessionDetailResponse } from "@/api/types";
+import type { ServerMessage } from "@/api/types";
 import { useApp, type SessionAlert } from "@/context/AppProvider";
 import { alertsFor, type ActivityChange } from "@/lib/listActivity";
 import { ConversationScope } from "@/context/ConversationContext";
@@ -36,7 +35,6 @@ export interface MainViewValue {
   conversation: Conversation;
   /** The list highlight: the conversation being opened, else the one shown. */
   selectedCatalogSessionId: string | null;
-  selectedSessionDetail: SessionDetailResponse | null;
   /** Conversations that changed state while you were looking elsewhere. */
   sessionAlerts: Record<string, SessionAlert>;
   /** False when nothing was sent (same session, cannot open, socket down). */
@@ -70,11 +68,8 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
   const [childSeed, setChildSeed] = useState<MainViewValue["childSeed"]>(null);
   /** A root Helper opened in the center with a question: ask it once open. */
   const [rootSeed, setRootSeed] = useState<{ sessionId: string; text: string } | null>(null);
-  const [selectedSessionDetail, setSelectedSessionDetail] =
-    useState<SessionDetailResponse | null>(null);
   const [sessionAlerts, setSessionAlerts] = useState<Record<string, SessionAlert>>({});
   const [approvalMarkers, setApprovalMarkers] = useState<string[]>([]);
-  const detailRequestRef = useRef(0);
 
   const onMessageRef = useRef<(message: ServerMessage) => void>(() => {});
   const { conversation: conv, parts } = useConversation({
@@ -88,24 +83,6 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
   // else: a fresh app shows none (owner 2026-09-24); an open in flight shows
   // its target, a refused open falls back to what is shown.
   const selectedCatalogSessionId = conv.opening ?? sessionId;
-
-  const refreshSessionDetail = useCallback(async (target: string | null) => {
-    const requestId = ++detailRequestRef.current;
-    if (!target) {
-      setSelectedSessionDetail(null);
-      return;
-    }
-    try {
-      const detail = await fetchSessionDetail(target);
-      if (requestId === detailRequestRef.current) setSelectedSessionDetail(detail);
-    } catch {
-      if (requestId === detailRequestRef.current) setSelectedSessionDetail(null);
-    }
-  }, []);
-
-  useEffect(() => {
-    void refreshSessionDetail(selectedCatalogSessionId);
-  }, [refreshSessionDetail, selectedCatalogSessionId]);
 
   // Conversation allowances belong to the conversation they were granted in.
   useEffect(() => setApprovalMarkers([]), [sessionId]);
@@ -133,9 +110,6 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
     switch (message.type) {
       case "session_opened": {
         void app.refreshSessions();
-        if (selectedCatalogSessionId === message.payload.sessionId) {
-          void refreshSessionDetail(message.payload.sessionId);
-        }
         const seed = creatingSeed();
         if (seed && conv.requests.some((r) => r.status === "sent" && r.message.type === "create_helper_session")) {
           setRootSeed({ sessionId: message.payload.sessionId, text: seed.text });
@@ -143,8 +117,6 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
         break;
       }
       case "session_draft":
-      case "run_completed":
-      case "run_failed":
         void app.refreshSessions();
         break;
       case "activity_snapshot":
@@ -161,9 +133,6 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
             JSON.stringify(row.studyTag ?? null) !== JSON.stringify(message.payload.studyTag ?? null))
         ) {
           void app.refreshSessions();
-        }
-        if (selectedCatalogSessionId === message.payload.sessionId) {
-          void refreshSessionDetail(message.payload.sessionId);
         }
         break;
       }
@@ -359,7 +328,6 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
     () => ({
       conversation: conv,
       selectedCatalogSessionId,
-      selectedSessionDetail,
       sessionAlerts,
       openCatalogSession,
       startNewSession,
@@ -381,7 +349,6 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
     [
       conv,
       selectedCatalogSessionId,
-      selectedSessionDetail,
       sessionAlerts,
       openCatalogSession,
       startNewSession,

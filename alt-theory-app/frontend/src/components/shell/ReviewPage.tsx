@@ -1,4 +1,5 @@
-import { useMemo } from "react";
+import { useEffect, useState } from "react";
+import { fetchSessionDetail } from "@/api/sessions";
 import type { AbComparisonRecord } from "@/api/types";
 import { useMainView } from "@/context/MainView";
 import { useShell } from "@/context/ShellContext";
@@ -13,10 +14,23 @@ import { t } from "@/i18n";
 export function ReviewPage() {
   const main = useMainView();
   const shell = useShell();
-  const comparisons = useMemo<AbComparisonRecord[]>(
-    () => main.selectedSessionDetail?.abComparisons ?? [],
-    [main.selectedSessionDetail]
-  );
+  // Records are read when the page opens, not kept fresh behind every
+  // conversation event (perf plan WP 1.3).
+  const target = main.selectedCatalogSessionId;
+  const [comparisons, setComparisons] = useState<AbComparisonRecord[]>([]);
+  useEffect(() => {
+    let live = true;
+    setComparisons([]);
+    if (target) {
+      fetchSessionDetail(target).then(
+        (detail) => live && setComparisons(detail.abComparisons ?? []),
+        () => {},
+      );
+    }
+    return () => {
+      live = false;
+    };
+  }, [target]);
 
   const chosenLabel = (rec: AbComparisonRecord): string | null => {
     if (!rec.selectedCandidateId) return null;
