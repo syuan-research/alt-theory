@@ -383,7 +383,7 @@ test("read-only asks once per write, inside or outside the roots", async () => {
   // workspace path: the dialog names the physical target, and the pass is
   // for that target only.
   const elsewhere = join(root, "elsewhere");
-  symlinkSync(elsewhere, join(dirs.writeDir, "linked"));
+  symlinkSync(elsewhere, join(dirs.writeDir, "linked"), process.platform === "win32" ? "junction" : "dir");
   assert.equal(await call("write", { path: join(dirs.writeDir, "linked", "c.md") }), undefined);
   assert.match(asked.at(-1)?.title ?? "", /elsewhere[\\/]c\.md$/);
   await writeTool().execute("ro-link", { path: join(dirs.writeDir, "linked", "c.md"), content: "via link" });

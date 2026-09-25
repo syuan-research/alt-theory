@@ -18,7 +18,7 @@
 import { readdirSync } from "fs";
 import { homedir } from "os";
 import { basename, extname, join, parse, resolve } from "path";
-import { isPathInside } from "./path-verdict.js";
+import { canonicalPathKey, isPathInside } from "./path-verdict.js";
 
 /**
  * Chain segments plus command-substitution bodies, each scanned as its own
@@ -40,7 +40,12 @@ function commandSequences(command: string): string[][] {
       .split(/&&|\|\||[;|\n\r]/g)
       .map((part) => part.trim())
       .filter(Boolean);
-  const inner = [...command.matchAll(/\b(?:bash|sh|zsh)\s+-\w*c\w*\s+(['"])([\s\S]*?)\1/g)].map((match) => match[2] ?? "");
+  const inner = [
+    ...command.matchAll(/\b(?:bash|sh|zsh)\s+-\w*c\w*\s+(['"])([\s\S]*?)\1/g),
+    ...command.matchAll(/\b(?:powershell|pwsh)(?:\.exe)?\b[^\r\n]*?\s+-(?:command|c)\s+(['"])([\s\S]*?)\1/gi),
+  ].map((match) => match[2] ?? "");
+  inner.push(...[...command.matchAll(/\bcmd(?:\.exe)?\s+\/[ck]\s+([^\r\n]+)/gi)]
+    .map((match) => (match[1] ?? "").trim().replace(/^['"]|['"]$/g, "")));
   const substitutions = [
     ...command.matchAll(/\$\(([^)]*)\)/g),
     ...command.matchAll(/`([^`]*)`/g),
@@ -231,7 +236,7 @@ export function criticalDeletionTarget(
     if (DELETE_COMMANDS.has(program)) {
       // cmd.exe switches (`rd /s /q x`) are not paths.
       operands = args.filter((word) => !isFlag(word) && !/^\/[a-z?]$/i.test(word));
-    } else if (program === "mv") {
+    } else if (program === "mv" || program === "move-item") {
       operands = args.filter((word) => !isFlag(word)).slice(0, -1);
     } else if (program === "find" && args.includes("-delete") && !args.some((word) => FIND_FILTERS.has(word))) {
       const firstExpr = args.findIndex((word) => word.startsWith("-") || word === "(" || word === "!");
@@ -266,7 +271,8 @@ function systemFolders(): string[] {
 }
 
 export function systemFolderOf(path: string): string | null {
-  return systemFolders().find((folder) => isPathInside(folder, path)) ?? null;
+  const physical = canonicalPathKey(path);
+  return systemFolders().find((folder) => isPathInside(folder, path) || isPathInside(folder, physical)) ?? null;
 }
 
 /** Commands that change every path operand. */
@@ -284,6 +290,8 @@ const MODIFY_ALL = new Set([
 ]);
 /** Commands that change only their last operand (the destination). */
 const MODIFY_LAST = new Set(["cp", "ln", "install", "rsync"]);
+const POWERSHELL_WRITE = new Set(["set-content", "add-content", "clear-content", "out-file", "new-item"]);
+const REDIRECTION_TARGET = /(?:^|[^0-9&<>])\d?>{1,2}\s*("[^"]+"|'[^']+'|[^\s;&|<>]+)/g;
 
 /**
  * The paths a command visibly writes, deletes, or moves: operands of the
@@ -296,18 +304,23 @@ export function commandWriteTargets(
   resolvePath: (cwd: string, raw: string) => string,
 ): string[] {
   const targets: string[] = [];
-  for (const match of command.matchAll(/(?:^|[^0-9&<>])\d?>{1,2}\s*([^\s;&|<>]+)/g)) {
+  for (const match of command.matchAll(REDIRECTION_TARGET)) {
     const word = (match[1] ?? "").replace(/^["']|["']$/g, "");
     if (word && !word.startsWith("&") && word !== "/dev/null") targets.push(word);
   }
   const resolved = targets.map((word) => resolveArg(cwd, word, resolvePath));
   for (const { segment, cwd: here } of segmentsWithCwd(command, cwd, resolvePath)) {
-    const [program, ...args] = commandWords(segment.replace(/\d?>{1,2}\s*\S+/g, ""));
+    const [program, ...args] = commandWords(segment.replace(REDIRECTION_TARGET, ""));
     if (!program) continue;
     const operands = args.filter((word) => !isFlag(word));
     const found: string[] = [];
     if (MODIFY_ALL.has(program)) found.push(...operands);
     else if (MODIFY_LAST.has(program) && operands.length > 1) found.push(operands.at(-1)!);
+    else if (POWERSHELL_WRITE.has(program)) {
+      const named = args.findIndex((word) => /^-(?:path|literalpath|filepath)$/i.test(word));
+      const target = named >= 0 ? args[named + 1] : operands[0];
+      if (target) found.push(target);
+    }
     else if (program === "sed" && args.some((word) => /^-[a-zA-Z]*i/.test(word) || word.startsWith("--in-place"))) {
       found.push(...operands.slice(1));
     }

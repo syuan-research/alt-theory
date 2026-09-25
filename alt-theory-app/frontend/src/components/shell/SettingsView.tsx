@@ -1746,7 +1746,8 @@ function ApprovalReviewerCard() {
   if (!settings) return null;
   // A recommendation is offered when some configured provider has that model.
   const offered = (recommendations?.models ?? []).map((entry) => {
-    const match = models.find((option) => option.value !== "inherit" && option.value.split("/").slice(1).join("/") === entry.modelId);
+    const ids = [entry.modelId, ...(entry.aliases ?? [])].map((id) => id.toLowerCase());
+    const match = models.find((option) => option.value !== "inherit" && ids.includes(option.value.split("/").slice(1).join("/").toLowerCase()));
     return { ...entry, ref: match ? `${match.value}:${entry.thinking}` : null, label: match?.label ?? entry.modelId };
   });
   const use = (ref: string) =>

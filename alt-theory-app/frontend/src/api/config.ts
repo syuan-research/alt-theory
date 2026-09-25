@@ -147,7 +147,7 @@ export async function saveApprovalReviewer(
 
 export interface ReviewerRecommendations {
   updatedAt: string;
-  models: Array<{ modelId: string; thinking: string; tag: "preferred" | "faster" }>;
+  models: Array<{ modelId: string; aliases?: string[]; thinking: string; tag: "preferred" | "faster" }>;
   source: "online" | "bundled";
 }
 

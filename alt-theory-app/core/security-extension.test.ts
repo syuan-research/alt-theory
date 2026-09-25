@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -148,6 +148,26 @@ test("guardrails ① and ④ hold under Full; ② and ③ do not", async () => {
   assert.equal(await h.call("write", { path: join(h.project, ".git", "HEAD") }), undefined);
   assert.equal(await h.call("write", { path: join(h.project, "x.db") }), undefined);
   assert.equal(await h.call("bash", { command: "python cleanup.py" }), undefined);
+  assert.equal(h.asked.length, 0);
+});
+
+test("Windows: Full still blocks direct and visible shell writes to system folders", { skip: process.platform !== "win32" }, async () => {
+  const h = harness({ full: true });
+  const windows = "C:\\Windows\\alt-theory-test-never-create.txt";
+  const programFiles = "C:\\Program Files\\Alt Theory Test\\never-create.txt";
+  const junction = join(h.project, "windows-link");
+  symlinkSync(process.env.SystemRoot ?? "C:\\Windows", junction, "junction");
+  const throughJunction = join(junction, "alt-theory-test-never-create.txt");
+  for (const [tool, input] of [
+    ["write", { path: windows }],
+    ["edit", { path: programFiles }],
+    ["bash", { command: `echo x > "${programFiles}"` }],
+    ["bash", { command: `powershell -NoProfile -Command "Set-Content -Path ${windows} -Value x"` }],
+    ["write", { path: throughJunction }],
+    ["bash", { command: `echo x > "${throughJunction}"` }],
+  ] as const) {
+    assert.equal((await h.call(tool, input))?.block, true, `${tool}: ${JSON.stringify(input)}`);
+  }
   assert.equal(h.asked.length, 0);
 });
 

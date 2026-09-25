@@ -141,8 +141,10 @@ test("reviewer recommendations: online first, the shipped copy when offline", as
     throw new Error("offline");
   });
   assert.equal(offline.source, "bundled");
-  assert.equal(offline.models[0]?.modelId, "gpt-6-luna");
-  assert.equal(offline.models[0]?.tag, "preferred");
+  assert.deepEqual(offline.models, [
+    { modelId: "gpt-6-luna", thinking: "low", tag: "preferred" },
+    { modelId: "deepseek-flash", aliases: ["deepseek-v4-flash", "deepseek-v4-flash-vision-exp", "deepseek-v4.1-flash"], thinking: "low", tag: "preferred" },
+  ]);
   const online = await reviewerRecommendations(presets, async () => ({
     schemaVersion: 1,
     updatedAt: "2026-10-01",

@@ -9,7 +9,7 @@ import { join } from "path";
 
 export interface ReviewerRecommendations {
   updatedAt: string;
-  models: Array<{ modelId: string; thinking: string; tag: "preferred" | "faster" }>;
+  models: Array<{ modelId: string; aliases?: string[]; thinking: string; tag: "preferred" | "faster" }>;
   source: "online" | "bundled";
 }
 
@@ -26,6 +26,8 @@ export function parseRecommendations(
   const models = raw.models.filter(
     (entry): entry is ReviewerRecommendations["models"][number] =>
       typeof entry?.modelId === "string" &&
+      (entry?.aliases === undefined ||
+        (Array.isArray(entry.aliases) && entry.aliases.every((alias: unknown) => typeof alias === "string"))) &&
       typeof entry?.thinking === "string" &&
       (entry?.tag === "preferred" || entry?.tag === "faster"),
   );

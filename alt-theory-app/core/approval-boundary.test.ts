@@ -123,17 +123,41 @@ test("guardrail ①: deleting or moving a critical folder", () => {
 
 test("guardrail ④ and the data folder: visible write targets", () => {
   const targets = (command: string) => commandWriteTargets(command, project, toolPath);
-  assert.deepEqual(targets("echo x > /etc/hosts"), ["/etc/hosts"]);
-  assert.deepEqual(targets("cp a.txt /usr/local/bin/tool"), ["/usr/local/bin/tool"]);
-  assert.deepEqual(targets("cp /usr/share/dict/words ."), [project]);
   assert.deepEqual(targets("ls 2>/dev/null"), []);
-  assert.deepEqual(targets("sed -i 's/a/b/' /etc/profile"), ["/etc/profile"]);
-  assert.deepEqual(targets("cd /usr/local && rm -rf lib"), ["/usr/local/lib"]);
-  assert.equal(targets("rm -rf /System/Library/x").map(systemFolderOf).find(Boolean), "/System");
   if (process.platform !== "win32") {
+    assert.deepEqual(targets("echo x > /etc/hosts"), ["/etc/hosts"]);
+    assert.deepEqual(targets("cp a.txt /usr/local/bin/tool"), ["/usr/local/bin/tool"]);
+    assert.deepEqual(targets("cp /usr/share/dict/words ."), [project]);
+    assert.deepEqual(targets("sed -i 's/a/b/' /etc/profile"), ["/etc/profile"]);
+    assert.deepEqual(targets("cd /usr/local && rm -rf lib"), ["/usr/local/lib"]);
+    assert.equal(targets("rm -rf /System/Library/x").map(systemFolderOf).find(Boolean), "/System");
     assert.equal(systemFolderOf("/Applications/Foo.app"), "/Applications");
     assert.equal(systemFolderOf(join(homedir(), "Library", "x")), null);
     assert.equal(systemFolderOf("/usr/local/bin/x"), "/usr");
+  } else {
+    const windows = "C:\\Windows\\alt-theory-test-never-create.txt";
+    const programFiles = "C:\\Program Files\\Alt Theory Test\\never-create.txt";
+    assert.deepEqual(targets(`echo x > ${windows}`), [windows]);
+    assert.deepEqual(targets(`echo x > "${programFiles}"`), [programFiles]);
+    assert.deepEqual(targets(`powershell -NoProfile -Command "Set-Content -Path ${windows} -Value x"`), [windows]);
+    assert.ok(targets(`cmd /c "del ${windows}"`).includes(windows));
+    assert.equal(targets(`echo x > "${programFiles}"`).map(systemFolderOf).find(Boolean), process.env.ProgramFiles ?? "C:\\Program Files");
+  }
+});
+
+test("Windows: a OneDrive-named folder under HOME is a critical deletion target", { skip: process.platform !== "win32" }, () => {
+  const fakeHome = mkdtempSync(join(tmpdir(), "alt-boundary-home-"));
+  const cloud = join(fakeHome, "OneDrive - Example University");
+  mkdirSync(cloud);
+  const original = process.env.USERPROFILE;
+  try {
+    process.env.USERPROFILE = fakeHome;
+    assert.equal(criticalDeletionTarget(`rm -rf "${cloud}"`, project, [project], toolPath), cloud);
+    assert.equal(criticalDeletionTarget(`powershell -Command "Remove-Item -LiteralPath '${cloud}' -Recurse -Force"`, project, [project], toolPath), cloud);
+    assert.equal(criticalDeletionTarget('cmd /c "rmdir /s /q %USERPROFILE%\\Desktop"', project, [project], toolPath), join(fakeHome, "Desktop"));
+  } finally {
+    if (original === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = original;
   }
 });
 
