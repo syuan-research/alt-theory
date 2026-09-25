@@ -559,7 +559,7 @@ export function TranscriptEntry({
   if (message.role === "tool") {
     if (isDuplicateToolCall) return null;
     const outcome = toolOutcome({ success: message.success });
-    const approval = smartApprovalOf(message);
+    const approval = message.approval;
     return (
       <SysLine tool tone={TOOL_TONE[outcome]} detail={message.toolDetail}>
         <i className={TOOL_ICON[outcome]} />
@@ -828,17 +828,6 @@ function StaleWorkspaceNotice({ warning }: { warning: string }) {
       </button>
     </SysLine>
   );
-}
-
-const SMART_DENIAL = "Smart approval denied this action: ";
-
-/** The reviewer's verdict on a tool row: allowed rides on the result, a denial is the result. */
-function smartApprovalOf(message: DisplayMessage): { outcome: "allow" | "deny"; reason: string } | null {
-  if (message.approval) return message.approval;
-  if (message.success === false && message.text.startsWith(SMART_DENIAL)) {
-    return { outcome: "deny", reason: message.text.slice(SMART_DENIAL.length) };
-  }
-  return null;
 }
 
 function SysLine({

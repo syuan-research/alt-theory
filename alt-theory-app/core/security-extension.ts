@@ -42,6 +42,10 @@ import type { ReviewRequest, ReviewVerdict } from "./approval-reviewer.js";
 import { canonicalPathKey, isPathInside, verdict } from "./path-verdict.js";
 import type { Root } from "./root-policy.js";
 
+/** A blocked call's result is only this text plus the reason; the
+ *  conversation projection reads the verdict back from it. */
+export const SMART_DENIAL_PREFIX = "Smart approval denied this action: ";
+
 export interface SecurityAuditEntry {
   timestamp: string;
   toolName: string;
@@ -337,7 +341,7 @@ export function createSecurityExtension(
           consecutiveDenials >= DENIAL_BRAKE
             ? " Several actions in a row were denied: stop trying other ways around this and ask the user in the conversation."
             : "";
-        return { result: { block: true, reason: `Smart approval denied this action: ${answer.reason}${brake}` } };
+        return { result: { block: true, reason: `${SMART_DENIAL_PREFIX}${answer.reason}${brake}` } };
       };
 
       const review = async (

@@ -24,6 +24,8 @@ import {
   resolveSessionsRoot,
 } from "../core/data-dir.js";
 import { canonicalPathKey, isPathInside, verdict } from "../core/path-verdict.js";
+import { SMART_DENIAL_PREFIX } from "../core/security-extension.js";
+import { TOOL_RESULT_HEAD, TOOL_RESULT_TAIL } from "./limits.js";
 import type { Root } from "../core/root-policy.js";
 import { folderPolicyFor, readAppSettings } from "./app-settings.js";
 import {
@@ -2218,7 +2220,8 @@ export function buildTranscriptFromEntries(
       return;
     }
     if (role === "tool" || value.message.role === "toolResult") {
-      const text = extractText(value.message.content).trim();
+      const full = extractText(value.message.content).trim();
+      const { text, truncated } = boundToolResult(full);
       const toolName = String(
         (value.message as { toolName?: unknown }).toolName ?? "tool"
       );
@@ -2238,14 +2241,20 @@ export function buildTranscriptFromEntries(
               message.toolCallId === toolCallId,
           )
         : -1;
-      // Smart approval's verdict rides on the result's details.
-      const approval = (value.message.details as { altApproval?: TranscriptMessage["approval"] } | undefined)
-        ?.altApproval;
+      // Smart approval's verdict rides on the result's details; a denial
+      // blocks the call, and Pi's blocked result is only the reason text.
+      const approval =
+        (value.message.details as { altApproval?: TranscriptMessage["approval"] } | undefined)
+          ?.altApproval ??
+        (!success && full.startsWith(SMART_DENIAL_PREFIX)
+          ? { by: "smart" as const, outcome: "deny" as const, reason: full.slice(SMART_DENIAL_PREFIX.length), model: "" }
+          : undefined);
       if (callIndex >= 0) {
         transcript[callIndex] = {
           ...transcript[callIndex],
           text: text || transcript[callIndex].text,
           success,
+          ...(truncated ? { truncated } : {}),
           ...(approval ? { approval } : {}),
         };
         return;
@@ -2257,7 +2266,8 @@ export function buildTranscriptFromEntries(
         toolName,
         toolCallId,
         success,
-        truncated: false,
+        truncated,
+        ...(approval ? { approval } : {}),
         timestamp,
       });
     }
@@ -2427,6 +2437,16 @@ function normalizeRole(role: string | undefined): TranscriptMessage["role"] {
     return role;
   }
   return "other";
+}
+
+/** Head and tail of a long tool result; the Pi history keeps the whole. */
+function boundToolResult(full: string): { text: string; truncated: boolean } {
+  if (full.length <= TOOL_RESULT_HEAD + TOOL_RESULT_TAIL) return { text: full, truncated: false };
+  const omitted = full.length - TOOL_RESULT_HEAD - TOOL_RESULT_TAIL;
+  return {
+    text: `${full.slice(0, TOOL_RESULT_HEAD)}\n\n[… ${omitted} characters omitted …]\n\n${full.slice(-TOOL_RESULT_TAIL)}`,
+    truncated: true,
+  };
 }
 
 function extractText(content: unknown): string {
