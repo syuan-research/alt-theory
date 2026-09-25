@@ -2170,12 +2170,14 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     }
     const auth = resolveSessionRestAuth(req, res);
     if (!auth) return false;
-    const detail = readSessionDetail(dataDir, sessionId);
-    if (!detail || !canAccessSessionSummary(auth, detail.session)) {
+    // The summary is all the guard reads (same check as the WebSocket
+    // guard); routes that need the transcript read the detail themselves.
+    const session = readSessionAccessSummary(dataDir, sessionId);
+    if (!session || !canAccessSessionSummary(auth, session)) {
       res.status(404).json({ error: `Unknown session id: ${sessionId}` });
       return false;
     }
-    if (!canAccessSessionContent(auth, detail.session)) {
+    if (!canAccessSessionContent(auth, session)) {
       res.status(403).json({ error: "Session content is private" });
       return false;
     }
