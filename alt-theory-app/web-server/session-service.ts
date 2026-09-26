@@ -115,13 +115,7 @@ import type {
   TurnRecovery,
   TranscriptMessage,
 } from "./websocket-protocol.js";
-import {
-  continueAgentTurnAfterModelSwitch,
-  loadModelFallbackConfig,
-  ModelFallbackCoordinator,
-  type ModelRef,
-  resolveModelFallbackStatePath,
-} from "../core/model-fallback.js";
+import { continueAgentTurnAfterModelSwitch } from "../core/model-switch.js";
 import {
   AGENT_MAIL_TAG,
   appendAgentMail,
@@ -189,7 +183,6 @@ export interface SessionServiceConfig {
    * stays off (spec §3.4/§4.2).
    */
   extensionFactories?: ExtensionFactory[];
-  modelFallbackConfigPath?: string | null;
 }
 
 interface RuntimeModelConfig {
@@ -415,7 +408,6 @@ interface ManagedSession {
   nextRevisionIndex: number;
   nextRunIndex: number;
   branchId: string;
-  fallbackAttempts: number;
   pendingRunWork: Promise<void> | null;
   /** Set when this session is a subagent child: its lead conversation's id. */
   subagentParentId: string | null;
@@ -503,7 +495,6 @@ export class SessionService implements AgentTeamBridge {
   private readonly approvalListeners = new Set<
     (event: Extract<SessionServiceEvent, { type: "approval_requested" | "approval_resolved" }>) => void
   >();
-  private readonly modelFallback: ModelFallbackCoordinator | null;
   private runningSubagentRuns = 0;
   private readonly subagentQueue: Array<{ childId: string; start: () => void }> =
     [];
@@ -522,21 +513,7 @@ export class SessionService implements AgentTeamBridge {
     );
   }
 
-  constructor(private readonly config: SessionServiceConfig) {
-    const fallbackConfigPath = this.config.modelFallbackConfigPath;
-    if (fallbackConfigPath) {
-      const fallbackConfig = loadModelFallbackConfig(fallbackConfigPath);
-      this.modelFallback =
-        fallbackConfig && fallbackConfig.enabled
-          ? new ModelFallbackCoordinator(
-              fallbackConfig,
-              resolveModelFallbackStatePath(this.config.dataDir),
-            )
-          : null;
-    } else {
-      this.modelFallback = null;
-    }
-  }
+  constructor(private readonly config: SessionServiceConfig) {}
 
   private resolveRuntimeModelConfig(): RuntimeModelConfig {
     return (
@@ -550,28 +527,6 @@ export class SessionService implements AgentTeamBridge {
     );
   }
 
-  private resolveEffectiveRuntimeModelConfig(): RuntimeModelConfig {
-    const base = this.resolveRuntimeModelConfig();
-    const coordinator = this.modelFallback;
-    if (
-      !coordinator?.isEnabled() ||
-      !base.modelProvider ||
-      !base.modelId ||
-      base.modelProvider !== coordinator.provider
-    ) {
-      return base;
-    }
-    const usable = coordinator.resolveFirstUsableModel(base.modelId);
-    if (!usable) {
-      return base;
-    }
-    return {
-      ...base,
-      modelProvider: usable.provider,
-      modelId: usable.modelId,
-    };
-  }
-
   /**
    * Model args for opening a session: a persisted per-session override (M7
    * §5b) wins over the deployment-global config. Only an explicit thinking
@@ -583,10 +538,10 @@ export class SessionService implements AgentTeamBridge {
   ): RuntimeModelConfig & { thinkingLevel?: ThinkingLevel } {
     let base: RuntimeModelConfig = {};
     if (!override) {
-      base = this.resolveEffectiveRuntimeModelConfig();
+      base = this.resolveRuntimeModelConfig();
     } else {
       try {
-        base = this.resolveEffectiveRuntimeModelConfig();
+        base = this.resolveRuntimeModelConfig();
       } catch {
         // A valid conversation choice must not be blocked by a stale global
         // default. The override is resolved by the session's model runtime.
@@ -1637,7 +1592,6 @@ export class SessionService implements AgentTeamBridge {
     });
 
     this.beginRun(managed);
-    managed.fallbackAttempts = 0;
     managed.pendingInterruptionCause = null;
     const revisionId = formatCounter("rev", managed.nextRevisionIndex++);
     const runId = formatCounter("run", managed.nextRunIndex++);
@@ -1968,7 +1922,7 @@ export class SessionService implements AgentTeamBridge {
     ) {
       throw new Error("Fork point must be in the current Pi conversation");
     }
-    const runtimeModelConfig = this.resolveEffectiveRuntimeModelConfig();
+    const runtimeModelConfig = this.resolveRuntimeModelConfig();
     const forkSessionId = allocateReadableSessionId(this.config.dataDir, {
       rolePresetSlug: childSelectors.rolePresetSlug,
       soulSlug: childSelectors.soulSlug,
@@ -2263,8 +2217,6 @@ export class SessionService implements AgentTeamBridge {
         "No model is selected. Choose a conversation model or configure one in Settings → Models.",
       );
     }
-
-    managed.fallbackAttempts = 0;
     managed.pendingInterruptionCause = null;
     managed.liveRun = { userText: displayUserTextFromPrompt(text), events: [] };
     this.beginRun(managed);
@@ -2996,7 +2948,7 @@ export class SessionService implements AgentTeamBridge {
     if (!readV4SessionHeader(managed.manifest.recordsDir)) {
       throw new Error("v0.4 session header is required");
     }
-    const base = override ? null : this.resolveEffectiveRuntimeModelConfig();
+    const base = override ? null : this.resolveRuntimeModelConfig();
     const target = override
       ? { provider: override.provider, modelId: override.modelId }
       : base?.modelProvider && base.modelId
@@ -3151,7 +3103,7 @@ export class SessionService implements AgentTeamBridge {
     sessionDirs: SessionDirectories,
     selectors: SessionSelectors,
     metadata: SessionCreationMetadata = {},
-    runtimeModelConfig = this.resolveEffectiveRuntimeModelConfig(),
+    runtimeModelConfig = this.resolveRuntimeModelConfig(),
   ): Promise<ManagedSession> {
     const rolePresetPath = this.resolveOptionalRolePresetPath(
       selectors.rolePresetSlug,
@@ -4515,7 +4467,6 @@ export class SessionService implements AgentTeamBridge {
       nextRunIndex:
         maxCounter(persistedRuns.map((run) => run.runId), "run",) + 1,
       branchId: args.branchId ?? "main",
-      fallbackAttempts: 0,
       pendingRunWork: null,
       runSettlement: null,
     };
@@ -4615,91 +4566,15 @@ export class SessionService implements AgentTeamBridge {
     // so transcript refresh and recovery actions cannot race an accepted record.
   }
 
+  /** A failed turn recovers only through a subagent's preset model chain. */
   private async tryModelFallback(
     managed: ManagedSession,
     error: string,
   ): Promise<boolean> {
-    if (managed.subagentParentId && managed.subagentModelChain.length > 0) {
-      return this.trySubagentModelFallback(managed, error);
-    }
-    const coordinator = this.modelFallback;
-    if (!coordinator?.isEnabled()) {
+    if (!managed.subagentParentId || managed.subagentModelChain.length === 0) {
       return false;
     }
-
-    const currentModel = managed.session.model;
-    if (!currentModel) {
-      return false;
-    }
-    if (currentModel.provider !== coordinator.provider) {
-      return false;
-    }
-
-    const decision = coordinator.evaluate(describeFailure(error, "run"));
-    if (decision.action !== "exclude_and_fallback") {
-      return false;
-    }
-
-    managed.fallbackAttempts += 1;
-    if (managed.fallbackAttempts > coordinator.maxFallbacksPerRun) {
-      return false;
-    }
-
-    coordinator.exclude(
-      currentModel.provider,
-      currentModel.id,
-      decision.ruleId ?? "unknown",
-      error,
-    );
-
-    let chainCursor = currentModel.id;
-    let next: ModelRef | null = null;
-    let resolved = null;
-    const triedModelIds = new Set<string>();
-    while (true) {
-      next = coordinator.resolveNext(chainCursor);
-      if (!next || triedModelIds.has(next.modelId)) {
-        return false;
-      }
-      triedModelIds.add(next.modelId);
-      resolved = managed.session.modelRuntime.getModel(
-        next.provider,
-        next.modelId,
-      );
-      if (resolved) {
-        break;
-      }
-      chainCursor = next.modelId;
-    }
-
-    // Same rule as a user switch: the chosen level travels, the header
-    // override follows so the chip shows the model actually in use.
-    await this.switchLiveModel(managed, resolved, {
-      provider: next.provider,
-      modelId: next.modelId,
-      ...(managed.thinking.chosen ? { thinkingLevel: managed.thinking.chosen } : {}),
-    });
-
-    appendSessionEvent(managed.manifest.recordsDir, {
-      sessionId: managed.manifest.sessionId,
-      type: "model_fallback",
-      details: {
-        fromModel: currentModel.id,
-        toModel: next.modelId,
-        ruleId: decision.ruleId ?? "unknown",
-        error,
-      },
-    });
-    this.emit(managed, {
-      type: "extension_notice",
-      payload: {
-        message: `Switched from ${currentModel.provider}/${currentModel.id} to ${next.provider}/${next.modelId} after a model error.`,
-        level: "info",
-      },
-    });
-
-    await continueAgentTurnAfterModelSwitch(managed.session);
-    return true;
+    return this.trySubagentModelFallback(managed, error);
   }
 
   /**
@@ -4938,7 +4813,6 @@ export class SessionService implements AgentTeamBridge {
           managed.pendingRunWork = pending;
           void pending.catch(() => {});
         } else {
-          managed.fallbackAttempts = 0;
           this.syncManifestModelFromSession(managed);
           managed.counters.turnCount++;
           this.persistMetrics(managed);

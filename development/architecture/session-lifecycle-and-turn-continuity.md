@@ -279,8 +279,8 @@ deferred").
 Every failure the service reports — `run_failed`, a refused WebSocket request,
 an error-level notice — carries the one envelope from `core/failure.ts`:
 `{operation, kind, message, retryable}`. Kinds come from the error's type
-first (typed abort, busy) and from producer text only inside that module;
-the model-fallback rule table matches on the kind. Interruption is still
+first (typed abort, busy) and from producer text only inside that module.
+Interruption is still
 never inferred from text (`core/failure.test.ts`).
 
 ## Managed child-session lifecycle

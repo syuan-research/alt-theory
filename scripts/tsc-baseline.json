@@ -1,15 +1,5 @@
 [
   {
-    "file": "alt-theory-app/core/model-fallback.ts",
-    "code": "TS2322",
-    "message": "Type 'unknown' is not assignable to type 'number'."
-  },
-  {
-    "file": "alt-theory-app/core/model-fallback.ts",
-    "code": "TS2365",
-    "message": "Operator '<' cannot be applied to types 'unknown' and 'number'."
-  },
-  {
     "file": "alt-theory-app/web-server/backend-server.integration.ts",
     "code": "TS2339",
     "message": "Property 'content' does not exist on type 'AgentMessage'."

@@ -210,11 +210,7 @@ live Pi session state, assembly manifest, snapshot.thinking
 ```
 
 `SessionService.resolveRuntimeModelConfig()` obtains the deployment/global
-configuration through the configured resolver. When the interim model
-fallback path is enabled, `resolveEffectiveRuntimeModelConfig()` may select the
-first usable model in the configured same-provider fallback chain before a
-session is opened (`session-service.ts`). The chain is operational
-configuration, not part of the provider catalogue or the user model list.
+configuration through the configured resolver.
 
 `modelArgsFor()` applies a persisted session override over that deployment
 configuration. It carries the override's provider/model id and only an
@@ -260,7 +256,7 @@ run it is deferred through the session's run state and applied when the turn
 ends or is stopped, with the pending value in the snapshot (see the session
 lifecycle document). The applier, `applyModel()`, persists or clears the
 header field and, for a resolvable choice, switches the live Pi session
-through `switchLiveModel()` — the one path shared with both fallback chains:
+through `switchLiveModel()` — the one path shared with the subagent fallback:
 thinking resolved against the target model, Pi `setModel`, manifest and
 header updated. A choice absent from the current runtime registry is persisted
 and reported as applying on the next open; the running model keeps its level,
@@ -281,29 +277,15 @@ claim that the manifest is authoritative for future opens.
 
 ## 7. Runtime model fallback
 
-There are two distinct fallback mechanisms at this boundary:
-
-1. **Deployment interim fallback** — an optional
-   `ALT_THEORY_MODEL_FALLBACK_PATH` JSON chain can select a same-provider model
-   before opening a session. On a matching run error, the service can
-   exclude the failed model, switch the live Pi session to the next usable
-   chain entry through `switchLiveModel()` (which keeps the user's thinking
-   choice, re-resolved, and writes the header override so the chip shows the
-   model in use), append `model_fallback`, and continue the turn
-   (`core/model-fallback.ts`, `session-service.ts` `tryModelFallback`). Rules
-   match on the failure envelope's `kind` from `core/failure.ts` (the default
-   table fails on `auth`); `anyPattern` text rules remain for
-   deployment-specific wording.
-2. **Subagent preset fallback** — a child-session initial-spawn chain is
-   resolved against the parent's live `ModelRuntime` and is governed by the
-   agent-team mechanism. Its preset semantics belong with agent behavior and
-   session lifecycle; this document only records that it shares the runtime
-   model registry and is not a provider discovery source.
-
-The deployment fallback chain is operational pilot configuration: it has no
-normal settings editor, is same-provider only, and currently has no dedicated
-model-switch notification beyond the runtime notice. It should not be confused
-with the user's saved provider model list or with a per-session override.
+The one runtime fallback is the **subagent preset chain**: a child-session
+initial-spawn chain, resolved against the parent's live `ModelRuntime` and
+governed by the agent-team mechanism (`session-service.ts`
+`trySubagentModelFallback`, `core/model-switch.ts`). It applies only until the
+child first produces work. Its preset semantics belong with agent behavior and
+session lifecycle; this document only records that it shares the runtime model
+registry and is not a provider discovery source. (The deployment-level
+`ALT_THEORY_MODEL_FALLBACK_PATH` chain, which nothing set, was removed on
+2026-09-26.)
 
 ## 8. Interfaces and current coupling
 

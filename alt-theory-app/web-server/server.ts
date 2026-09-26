@@ -1995,8 +1995,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           .map((skill) => skill.path),
       );
     },
-    modelFallbackConfigPath:
-      process.env.ALT_THEORY_MODEL_FALLBACK_PATH ?? null,
   });
 
   const stopTrashSweep = sweepExpiredDeletedSessions(

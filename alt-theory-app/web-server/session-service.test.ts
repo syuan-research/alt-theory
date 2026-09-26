@@ -2501,50 +2501,9 @@ test("SessionService does not re-emit processing for every text delta", async ()
   }
 });
 
-test("SessionService keeps run completion and busy state open until fallback continuation finishes", async () => {
+test("SessionService keeps run completion and busy state open until a subagent's fallback continuation finishes", async () => {
   const fixture = setupFixture();
-  const fallbackConfigPath = join(fixture.root, "model-fallback.json");
-  writeFileSync(
-    fallbackConfigPath,
-    JSON.stringify({
-      enabled: true,
-      provider: "qwen-bailian-beijing",
-      chain: ["qwen3.7-max", "qwen3.7-plus"],
-      maxFallbacksPerRun: 2,
-      rules: [
-        {
-          id: "quota",
-          action: "exclude_and_fallback",
-          match: { anyPattern: ["quota has been exhausted"] },
-        },
-      ],
-    }),
-    "utf-8",
-  );
-  const service = new SessionService({
-    dataDir: fixture.dataDir,
-    assetPaths: {
-      rootDir: fixture.root,
-      appContextPath: fixture.appContextPath,
-      instructionsDir: fixture.instructionsDir,
-      skillsDir: fixture.skillsDir,
-      soulDir: fixture.soulDir,
-      soulPath: join(fixture.soulDir, "soul-latest.md"),
-      rolePresetsDir: fixture.rolePresetsDir,
-      kbDir: fixture.kbDir,
-      piPromptTemplatesDir: fixture.piPromptTemplatesDir,
-      modelsPath: null,
-    },
-    kbDir: fixture.kbDir,
-    rolePresetsDir: fixture.rolePresetsDir,
-    soulDir: fixture.soulDir,
-    legacySoulPath: join(fixture.soulDir, "soul-latest.md"),
-    resourceDiscovery: "clean",
-    instructionsDir: fixture.instructionsDir,
-    runLabel: null,
-    testBatch: null,
-    modelFallbackConfigPath: fallbackConfigPath,
-  });
+  const service = createTestService(fixture);
   const created = await service.createSession({
     rolePresetSlug: "role-conceptual-theory-companion",
     kbDomain: "ep-core",
@@ -2552,6 +2511,12 @@ test("SessionService keeps run completion and busy state open until fallback con
   });
   const internal = service as any;
   const managed = internal.sessions.get(created.sessionId);
+  // A subagent child that has produced nothing yet walks its preset chain.
+  managed.subagentParentId = "parent-session";
+  managed.subagentModelChain = [
+    { provider: "qwen-bailian-beijing", modelId: "qwen3.7-max" },
+    { provider: "qwen-bailian-beijing", modelId: "qwen3.7-plus" },
+  ];
   const events: SessionServiceEvent[] = [];
   const detachListener = service.attach(created.sessionId, (event) =>
     events.push(event),
@@ -2654,7 +2619,7 @@ test("SessionService keeps run completion and busy state open until fallback con
         (event) =>
           event.type === "extension_notice" &&
           event.payload.message ===
-            "Switched from qwen-bailian-beijing/qwen3.7-max to qwen-bailian-beijing/qwen3.7-plus after a model error.",
+            "Subagent fallback: qwen-bailian-beijing/qwen3.7-max → qwen-bailian-beijing/qwen3.7-plus.",
       ),
     );
   } finally {
@@ -2663,50 +2628,9 @@ test("SessionService keeps run completion and busy state open until fallback con
   }
 });
 
-test("SessionService surfaces fallback continuation failure through run completion", async () => {
+test("SessionService surfaces a subagent's fallback continuation failure through run completion", async () => {
   const fixture = setupFixture();
-  const fallbackConfigPath = join(fixture.root, "model-fallback.json");
-  writeFileSync(
-    fallbackConfigPath,
-    JSON.stringify({
-      enabled: true,
-      provider: "qwen-bailian-beijing",
-      chain: ["qwen3.7-max", "qwen3.7-plus"],
-      maxFallbacksPerRun: 1,
-      rules: [
-        {
-          id: "quota",
-          action: "exclude_and_fallback",
-          match: { anyPattern: ["quota has been exhausted"] },
-        },
-      ],
-    }),
-    "utf-8",
-  );
-  const service = new SessionService({
-    dataDir: fixture.dataDir,
-    assetPaths: {
-      rootDir: fixture.root,
-      appContextPath: fixture.appContextPath,
-      instructionsDir: fixture.instructionsDir,
-      skillsDir: fixture.skillsDir,
-      soulDir: fixture.soulDir,
-      soulPath: join(fixture.soulDir, "soul-latest.md"),
-      rolePresetsDir: fixture.rolePresetsDir,
-      kbDir: fixture.kbDir,
-      piPromptTemplatesDir: fixture.piPromptTemplatesDir,
-      modelsPath: null,
-    },
-    kbDir: fixture.kbDir,
-    rolePresetsDir: fixture.rolePresetsDir,
-    soulDir: fixture.soulDir,
-    legacySoulPath: join(fixture.soulDir, "soul-latest.md"),
-    resourceDiscovery: "clean",
-    instructionsDir: fixture.instructionsDir,
-    runLabel: null,
-    testBatch: null,
-    modelFallbackConfigPath: fallbackConfigPath,
-  });
+  const service = createTestService(fixture);
   const created = await service.createSession({
     rolePresetSlug: "role-conceptual-theory-companion",
     kbDomain: "ep-core",
@@ -2718,6 +2642,12 @@ test("SessionService surfaces fallback continuation failure through run completi
   });
   const internal = service as any;
   const managed = internal.sessions.get(created.sessionId);
+  // A subagent child that has produced nothing yet walks its preset chain.
+  managed.subagentParentId = "parent-session";
+  managed.subagentModelChain = [
+    { provider: "qwen-bailian-beijing", modelId: "qwen3.7-max" },
+    { provider: "qwen-bailian-beijing", modelId: "qwen3.7-plus" },
+  ];
 
   let currentModel = {
     provider: "qwen-bailian-beijing",

@@ -223,6 +223,10 @@ participants.
 
 ### 14. The model-fallback chain — ~733 lines behind an env var nothing sets
 
+**Done 2026-09-26** (owner decision): `core/model-fallback.ts` and its wiring
+were removed; the subagent preset chain and the mid-run model switch keep the
+shared continuation helper (`core/model-switch.ts`).
+
 `core/model-fallback.ts` (395) plus tests (218) plus service wiring (~120).
 Activation needs `ALT_THEORY_MODEL_FALLBACK_PATH`, which nothing in the repo
 ever sets. Inside it, `DEFAULT_RULES` hardcodes DashScope free-tier quota
