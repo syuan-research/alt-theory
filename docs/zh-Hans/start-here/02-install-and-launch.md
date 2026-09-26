@@ -18,12 +18,12 @@ Beta 尚未签名。Windows 选择「更多信息 → 仍要运行」。macOS �
 
 ## 从仓库构建 （需一定编程经验）
 
-完整源码公开。当前 Windows 构建使用 Node.js 24 与 npm 11 测试。
+完整源码公开。当前 Windows 构建使用 Node.js 24 与 npm 11 测试；根目录依赖用 pnpm 安装（由 `npx` 获取）。
 
 ```bash
 git clone https://github.com/syuan-research/alt-theory
 cd alt-theory
-npm ci
+npx pnpm@10.34.5 install --frozen-lockfile
 npm --prefix alt-theory-app/frontend ci
 npm run build:electron
 ```

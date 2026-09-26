@@ -41,6 +41,10 @@ workspace layout from this public file.
 
 ## Checks
 
+Install root dependencies with `npx pnpm@10.34.5 install --frozen-lockfile` and
+the frontend's with `npm --prefix alt-theory-app/frontend ci`; never run
+`npm install` at the root.
+
 The frontend is served from the gitignored build output `public-v6/`; rebuild it after any pull or checkout before running: `npm run build:frontend-v6`.
 
 For backend or shared runtime changes:
@@ -112,6 +116,10 @@ agents mistake them for in-progress work.
 ### Current branch status
 
 - `main` — active product line.
+- `archive/wp-pnpm-hoisted` — merged into main (root dependencies move from
+  npm to pnpm 10.34.5 with the hoisted linker, so Pi's shrinkwrap no longer
+  nests a second copy of pi-ai, pi-agent-core, typebox, and the provider SDKs;
+  `preinstall` guard against `npm install` at the root; frontend stays on npm).
 - `archive/wp-pi-upgrade-087` — merged into main (Pi packages 0.84.4 →
   0.87.1: the prompt now lives in the Pi history, Alt folds it into one head
   per request and keeps cache warming off; incidental-cwd trim for the new

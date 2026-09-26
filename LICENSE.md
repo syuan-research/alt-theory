@@ -13,7 +13,7 @@ is licensed under the MIT License:
 - `electron/`
 - `scripts/`
 - `start-v1-alpha-local.cmd`
-- `package.json`, `package-lock.json`, and `tsconfig.bundle.json`
+- `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, and `tsconfig.bundle.json`
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

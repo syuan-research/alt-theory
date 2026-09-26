@@ -169,17 +169,17 @@ A useful bug report includes what you did, what happened, what you expected, the
 
 ## Build from source
 
-This is the secondary path for developers and users who want to inspect or package the app themselves. Build desktop artifacts on the matching operating system. The current Windows build is tested with Node.js 24 and npm 11.
+This is the secondary path for developers and users who want to inspect or package the app themselves. Build desktop artifacts on the matching operating system. The current Windows build is tested with Node.js 24 and npm 11; root dependencies install with pnpm, fetched by `npx`.
 
 ```bash
 git clone https://github.com/syuan-research/alt-theory.git
 cd alt-theory
-npm ci
+npx pnpm@10.34.5 install --frozen-lockfile
 npm --prefix alt-theory-app/frontend ci
 npm run build:electron
 ```
 
-On Windows, the unpacked app is written to `dist/win-unpacked/`. For packaging, known compiler diagnostics, required output checks, and macOS commands, use the [canonical desktop bundle guide](development/releases/desktop-friend-bundle.md).
+On Windows, the unpacked app is written to `dist/win-unpacked/`. For packaging, known compiler diagnostics, required output checks, and macOS commands, use the [canonical desktop bundle guide](development/releases/release-standard.md).
 
 Useful development commands:
 

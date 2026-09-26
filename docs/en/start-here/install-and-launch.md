@@ -17,12 +17,12 @@ The Beta is not signed. On Windows, choose **More info → Run anyway**. On macO
 
 ## Building from the repository (some programming experience)
 
-The full source is public. The current Windows build is tested with Node.js 24 and npm 11.
+The full source is public. The current Windows build is tested with Node.js 24 and npm 11; root dependencies install with pnpm, fetched by `npx`.
 
 ```bash
 git clone https://github.com/syuan-research/alt-theory
 cd alt-theory
-npm ci
+npx pnpm@10.34.5 install --frozen-lockfile
 npm --prefix alt-theory-app/frontend ci
 npm run build:electron
 ```

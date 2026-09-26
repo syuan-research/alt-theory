@@ -147,17 +147,17 @@ Alt Theory 会直接进入对话。在第一次运行对话前，请在 **Settin
 
 ## 从源代码构建
 
-这是为希望检查或自行打包 App 的开发者与用户准备的次要路径。Desktop artifact（桌面产物）应在对应操作系统上构建。当前 Windows build（构建）使用 Node.js 24 与 npm 11 测试。
+这是为希望检查或自行打包 App 的开发者与用户准备的次要路径。Desktop artifact（桌面产物）应在对应操作系统上构建。当前 Windows build（构建）使用 Node.js 24 与 npm 11 测试；根目录依赖用 pnpm 安装（由 `npx` 获取）。
 
 ```bash
 git clone https://github.com/syuan-research/alt-theory.git
 cd alt-theory
-npm ci
+npx pnpm@10.34.5 install --frozen-lockfile
 npm --prefix alt-theory-app/frontend ci
 npm run build:electron
 ```
 
-Windows 的 unpacked app（未打包应用）位于 `dist/win-unpacked/`。打包步骤、已知编译诊断、必要产物检查与 macOS 命令见 [canonical desktop bundle guide（规范桌面 bundle 指南）](development/releases/desktop-friend-bundle.md)。
+Windows 的 unpacked app（未打包应用）位于 `dist/win-unpacked/`。打包步骤、已知编译诊断、必要产物检查与 macOS 命令见 [canonical desktop bundle guide（规范桌面 bundle 指南）](development/releases/release-standard.md)。
 
 ## Repository map（仓库地图）
 

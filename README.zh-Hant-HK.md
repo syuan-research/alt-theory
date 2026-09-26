@@ -147,17 +147,17 @@ Alt Theory 會直接進入對話。在第一次運行對話前，請在 **Settin
 
 ## 從源碼構建
 
-這是為希望檢查或自行封裝 App 的開發者與用戶準備的次要路徑。Desktop artifact（桌面產物）應在相應操作系統上構建。目前 Windows build（構建）使用 Node.js 24 與 npm 11 測試。
+這是為希望檢查或自行封裝 App 的開發者與用戶準備的次要路徑。Desktop artifact（桌面產物）應在相應操作系統上構建。目前 Windows build（構建）使用 Node.js 24 與 npm 11 測試；根目錄依賴用 pnpm 安裝（由 `npx` 獲取）。
 
 ```bash
 git clone https://github.com/syuan-research/alt-theory.git
 cd alt-theory
-npm ci
+npx pnpm@10.34.5 install --frozen-lockfile
 npm --prefix alt-theory-app/frontend ci
 npm run build:electron
 ```
 
-Windows 的 unpacked app（未封裝應用程式）位於 `dist/win-unpacked/`。封裝步驟、已知編譯診斷、必要產物檢查與 macOS 指令見 [canonical desktop bundle guide（規範桌面 bundle 指南）](development/releases/desktop-friend-bundle.md)。
+Windows 的 unpacked app（未封裝應用程式）位於 `dist/win-unpacked/`。封裝步驟、已知編譯診斷、必要產物檢查與 macOS 指令見 [canonical desktop bundle guide（規範桌面 bundle 指南）](development/releases/release-standard.md)。
 
 ## Repository map（儲存庫地圖）
 

@@ -12,8 +12,10 @@
   },
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@10.34.5",
   "main": "electron/main.cjs",
   "scripts": {
+    "preinstall": "node -e \"if(!/^pnpm\\//.test(process.env.npm_config_user_agent||'')){console.error('Root dependencies use pnpm: npx pnpm@10.34.5 install --frozen-lockfile');process.exit(1)}\"",
     "dev:web": "tsx alt-theory-app/web-server/server.ts",
     "dev:web:local": "cross-env ALT_THEORY_MODE=local tsx alt-theory-app/web-server/server.ts",
     "dev:frontend-v6": "npm --prefix alt-theory-app/frontend run dev",

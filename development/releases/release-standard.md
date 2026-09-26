@@ -152,8 +152,8 @@ bundle phase or waiting a few hours is not a reason to run it again.
 
 Do **not** rerun checks merely because release work has started. CHANGELOG or
 release-document edits, committing, tagging, pushing, restoring unchanged
-lockfiles with `npm ci`, building, staging, archiving, hashing, and launch
-verification do not invalidate existing test evidence.
+lockfiles, building, staging, archiving, hashing, and launch verification do
+not invalidate existing test evidence.
 
 Rerun only when relevant source, tests, or lockfiles changed after the passing
 result; the result was incomplete, failed, or cancelled; or its correspondence
@@ -169,8 +169,8 @@ Before building:
    builds also give `shortVersionWindows` the numeric Windows mapping (for
    example, Beta 1 uses `1.3.0.1`);
 3. close any Alt Theory process running from that checkout;
-4. restore both lockfiles with `npm ci` and
-   `npm --prefix alt-theory-app/frontend ci`;
+4. restore both lockfiles with `npx pnpm@10.34.5 install --frozen-lockfile`
+   (root) and `npm --prefix alt-theory-app/frontend ci`;
 5. do not change Pi, Electron, providers, ASAR, or distribution format as part
    of packaging.
 
@@ -213,10 +213,16 @@ mode resolves both from the checkout root. Do not point `process.cwd()` at
 Run on each platform:
 
 ```text
-npm ci
+npx pnpm@10.34.5 install --frozen-lockfile
 npm --prefix alt-theory-app/frontend ci
 npm run build:electron
 ```
+
+The root installs with pnpm (hoisted `node_modules`, settings in
+`pnpm-workspace.yaml`, version pinned by `packageManager`); the frontend stays
+on npm. `npm run` works on the pnpm tree. Do not run `npm install` at the root:
+it would rebuild a package-lock tree with nested Pi copies, and the root
+`preinstall` guard fails it.
 
 The command rebuilds the frontend, compiles the backend sidecar, and asks
 Electron Builder for the current platform's unpacked directory:
@@ -307,7 +313,9 @@ Automated content checks:
    backend, `public-v6`, `package.json`, and production dependencies;
 2. `resources/agent-assets/ALTTHEORY.md`, intended default assets, and packaged
    Help docs under `resources/docs/` exist as ordinary files;
-3. no archive entry contains `/@mistralai/`;
+3. no archive entry contains `/@mistralai/`, and no ASAR entry contains a nested
+   Pi copy (`node_modules/@earendil-works/*/node_modules/@earendil-works/`;
+   the Windows ASAR listing uses backslashes);
 4. no required real-path resource was accidentally left only inside ASAR;
 5. the archive has the required single top-level name;
 6. the executable ProductVersion, FileVersion, CompanyName, description, and
@@ -338,9 +346,12 @@ launch fails, diagnose startup; do not change archive format to hide it.
 - Bundle filenames are uniform (`AltTheory-{version}-{platform}.zip`); the
   mixed short-label and architecture-stamped names used by 1.3.0–1.4.0 are
   retired.
-- Alpha 6 removes Mistral first. Whole-tree npm deduplication is a Beta
-  dependency-hygiene direction, performed only with the intended Pi version
-  pinned and followed by runtime checks.
+- Alpha 6 removes Mistral first.
+- The root uses pnpm with the hoisted linker (Beta, Pi 0.87): Pi publishes an
+  `npm-shrinkwrap.json`, so npm nests a second copy of pi-ai, pi-agent-core,
+  typebox, and the provider SDKs under `pi-coding-agent`; pnpm ignores the
+  shrinkwrap and keeps one copy (ASAR about a quarter smaller). If Pi stops
+  shipping the shrinkwrap, npm becomes an option again.
 - After a Pi upgrade, confirm the packaged app still starts without Mistral and
   repeat the path-length check. Do not maintain a Mistral compatibility layer.
 
