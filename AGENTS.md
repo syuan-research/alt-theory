@@ -112,6 +112,12 @@ agents mistake them for in-progress work.
 ### Current branch status
 
 - `main` — active product line.
+- `archive/wp-perf-bounded-2` — merged into main (memory/performance plan
+  batch 2: idle conversation runtimes released and reopened silently,
+  conversation grants kept in records/approvals.json, transcript window
+  with pages and turn rows, scrub rail previews and jumps,
+  whole-conversation find, tool results shown with "View full");
+  archived after the reviewed merge.
 - `archive/wp-hosted-delete` — merged into main (hosted study mode,
   accounts, private retention and the deployment model-fallback chain
   removed; one access-policy seam); archived after the reviewed merge.
