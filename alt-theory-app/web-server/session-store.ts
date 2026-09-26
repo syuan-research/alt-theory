@@ -958,23 +958,14 @@ export function removeEmptyTombstoneFolders(dataDir: string): void {
   }
 }
 
-/** Remove a permanently deleted conversation's kept files (all, or some). */
-export function deleteKeptFiles(dataDir: string, sessionId: string, paths?: string[]): void {
+/** Remove a permanently deleted conversation's kept files — the whole folder. */
+export function deleteKeptFiles(dataDir: string, sessionId: string): void {
   const root = resolveSessionRoot(dataDir, sessionId);
   const tombstone = root ? readDeletedSessionRecord(join(root, "records")) : null;
   if (!root || !tombstone || isRecoverableDeletion(tombstone)) {
     throw new Error(`Not a permanently deleted conversation: ${sessionId}`);
   }
-  const workspaceDir = join(root, "workspace");
-  for (const path of paths ?? []) {
-    const target = resolve(workspaceDir, path);
-    if (!isPathInside(workspaceDir, target) || target === resolve(workspaceDir)) {
-      throw new Error("File path must stay inside workspace");
-    }
-    rmSync(target, { force: true });
-  }
-  if (!paths) rmSync(root, { recursive: true, force: true });
-  else removeFolderIfNothingKept(root);
+  rmSync(root, { recursive: true, force: true });
 }
 
 /**

@@ -9,7 +9,7 @@ import "dotenv/config";
 import express, { type Response } from "express";
 import multer from "multer";
 import { randomUUID } from "crypto";
-import { copyFileSync, existsSync, mkdirSync, statSync } from "fs";
+import { copyFileSync, existsSync, mkdirSync, realpathSync, statSync } from "fs";
 import { createServer } from "http";
 import { homedir } from "os";
 import { basename, join, resolve } from "path";
@@ -71,7 +71,7 @@ import {
   readToolResultText,
   writeSessionTextFile,
 } from "./session-store.js";
-import { listConversationFiles } from "./conversation-files.js";
+import { fileKind, listConversationFiles } from "./conversation-files.js";
 import {
   deleteWorkspaceFile,
   isWorkspaceDownloadAllowed,
@@ -1413,37 +1413,45 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   // permanently deleted ones included (their summaries are gone, so these
   // routes check the folder and the viewer, not a summary).
   app.get("/api/conversation-files", (req, res) => {
-    res.json({ groups: listConversationFiles(dataDir, (id) => access.canList(req, id)) });
+    res.json({
+      groups: listConversationFiles(dataDir, (id) => access.canList(req, id) && access.canReadContent(req, id)),
+    });
   });
   app.get("/api/conversation-files/:sessionId/raw", (req, res) => {
     const sessionId = req.params.sessionId;
     const root = resolveSessionRoot(dataDir, sessionId);
     const path = typeof req.query.path === "string" ? req.query.path : "";
-    if (!root || !access.canList(req, sessionId)) {
+    if (!root || !access.canList(req, sessionId) || !access.canReadContent(req, sessionId)) {
       res.status(404).json({ error: `Unknown session id: ${sessionId}` });
       return;
     }
-    const workspaceDir = join(root, "workspace");
-    const target = resolve(workspaceDir, path);
-    if (!path || !isPathInside(workspaceDir, target) || !existsSync(target)) {
+    // Compare real paths: an agent-made symlink must not lead out of the
+    // folder (e.g. out.png -> ~/.ssh/id_rsa).
+    let target: string;
+    try {
+      const workspaceDir = realpathSync(join(root, "workspace"));
+      target = realpathSync(resolve(workspaceDir, path));
+      if (!path || !isPathInside(workspaceDir, target) || !statSync(target).isFile()) throw new Error();
+    } catch {
       res.status(404).json({ error: "File not found" });
       return;
     }
+    // Agent-written files are untrusted: never run them on the app's origin.
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Content-Security-Policy", "sandbox");
+    const kind = fileKind(target);
+    if (kind === "doc") res.attachment(basename(target));
     res.sendFile(target, { dotfiles: "allow" });
   });
+  // Only a permanently deleted conversation's kept files, and only all of them.
   app.delete("/api/conversation-files/:sessionId", (req, res) => {
     const sessionId = req.params.sessionId;
-    if (!access.canList(req, sessionId)) {
+    if (!access.canList(req, sessionId) || !access.canReadContent(req, sessionId)) {
       res.status(404).json({ error: `Unknown session id: ${sessionId}` });
       return;
     }
-    const paths = (req.body as { paths?: unknown } | undefined)?.paths;
     try {
-      deleteKeptFiles(
-        dataDir,
-        sessionId,
-        Array.isArray(paths) ? paths.filter((item): item is string => typeof item === "string") : undefined,
-      );
+      deleteKeptFiles(dataDir, sessionId);
       res.json({ ok: true });
     } catch (error) {
       res.status(409).json({ error: error instanceof Error ? error.message : String(error) });

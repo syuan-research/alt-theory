@@ -184,7 +184,9 @@ function TrashPanel() {
   // there are any (owner 2026-09-26); unticked keeps them in Conversation
   // files. Without files it is the plain confirmation.
   const filesQuestion = async (ids: string[]) => {
-    const lists = await Promise.all(ids.map((id) => fetchPermanentDeletionFiles(id).catch(() => [])));
+    // A failed listing stops the delete: the box must never cover files the
+    // dialog did not show.
+    const lists = await Promise.all(ids.map((id) => fetchPermanentDeletionFiles(id)));
     const files = lists.flat();
     if (!files.length) return null;
     const names = files.map((file) => file.path.replace(/^uploads\//, ""));
@@ -201,7 +203,11 @@ function TrashPanel() {
   };
 
   const remove = async (sessionId: string) => {
-    const question = await filesQuestion([sessionId]);
+    const question = await filesQuestion([sessionId]).catch((reason) => {
+      setError(reason instanceof Error ? reason.message : String(reason));
+      return undefined;
+    });
+    if (question === undefined) return;
     app.requestConfirm({
       message: t("Permanently delete this conversation?"),
       details: [t("This cannot be undone."), ...(question?.details ?? [])],
@@ -269,7 +275,11 @@ function TrashPanel() {
 
   const confirmDeleteSelected = async () => {
     if (!selected.size) return;
-    const question = await filesQuestion([...selected]);
+    const question = await filesQuestion([...selected]).catch((reason) => {
+      setError(reason instanceof Error ? reason.message : String(reason));
+      return undefined;
+    });
+    if (question === undefined) return;
     app.requestConfirm({
       message: t("Permanently delete {count} selected conversations?", {
         count: selected.size,

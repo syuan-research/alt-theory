@@ -377,11 +377,7 @@ test("Permanent deletion: keep leaves files and a titled tombstone; delete or no
   const purged = listConversationFiles(dataDir);
   assert.deepEqual(purged.map((group) => [group.sessionId, group.state, group.title]), [["kept", "purged", "Field notes"]]);
 
-  // Removing some files keeps the folder; removing the last one removes it.
-  assert.throws(() => deleteKeptFiles(dataDir, "kept", ["../records/deleted.json"]), /inside workspace/);
-  deleteKeptFiles(dataDir, "kept", ["uploads/photo.png"]);
-  assert.equal(existsSync(kept.sessionRoot), true);
-  deleteKeptFiles(dataDir, "kept", ["attachment.txt"]);
+  deleteKeptFiles(dataDir, "kept");
   assert.equal(existsSync(kept.sessionRoot), false);
 });
 
@@ -396,6 +392,15 @@ test("The sweep clears old tombstone folders that hold nothing worth keeping", (
   writeFileSync(join(old.writeDir, "extracted", "y.md"), "y", "utf-8");
   removeEmptyTombstoneFolders(dataDir);
   assert.equal(existsSync(old.sessionRoot), false);
+
+  // A dotfile is something kept, not litter: the folder stays.
+  const dot = createSession(dataDir, "dot");
+  rmSync(join(dot.writeDir, "attachment.txt"));
+  writeFileSync(join(dot.writeDir, ".env"), "x", "utf-8");
+  softDeleteSession(dataDir, "dot");
+  permanentlyDeleteSession(dataDir, "dot");
+  removeEmptyTombstoneFolders(dataDir);
+  assert.equal(existsSync(join(dot.writeDir, ".env")), true);
 });
 
 test("A conversation emptied by private retention is not offered as recoverable", () => {

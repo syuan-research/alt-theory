@@ -35,13 +35,9 @@ export function conversationFileUrl(sessionId: string, path: string): string {
   return `/api/conversation-files/${encodeURIComponent(sessionId)}/raw?path=${encodeURIComponent(path)}`;
 }
 
-/** A permanently deleted conversation's kept files: all of them, or `paths`. */
-export async function deleteKeptFiles(sessionId: string, paths?: string[]): Promise<void> {
-  const res = await fetch(`/api/conversation-files/${encodeURIComponent(sessionId)}`, {
-    method: "DELETE",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(paths ? { paths } : {}),
-  });
+/** Delete a permanently deleted conversation's kept files (its whole folder). */
+export async function deleteKeptFiles(sessionId: string): Promise<void> {
+  const res = await fetch(`/api/conversation-files/${encodeURIComponent(sessionId)}`, { method: "DELETE" });
   if (!res.ok) throw await failure(res, "Delete failed");
 }
 

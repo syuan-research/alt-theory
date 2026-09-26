@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, rmSync, statSync, unlinkSync } from "fs";
+import { existsSync, lstatSync, readdirSync, readFileSync, rmSync, unlinkSync } from "fs";
 import { join } from "path";
 import { writeJsonAtomic } from "../core/data-dir.js";
 
@@ -97,7 +97,9 @@ export function listKeptFiles(workspaceDir: string): KeptFile[] {
   // to an async walker if someone keeps thousands of files in one.
   const visit = (dir: string, prefix: string) => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      if (entry.name.startsWith(".")) continue;
+      // Dotfiles and symlinks count too: a folder kept for them must show
+      // them, or the sweep would delete what nobody saw. Finder litter doesn't.
+      if (entry.name === ".DS_Store") continue;
       const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
       if (rel === "extracted") continue;
       const full = join(dir, entry.name);
@@ -105,8 +107,13 @@ export function listKeptFiles(workspaceDir: string): KeptFile[] {
         visit(full, rel);
         continue;
       }
-      if (!entry.isFile() || rel.endsWith(".extract-error.json")) continue;
-      const stats = statSync(full);
+      if (rel.endsWith(".extract-error.json")) continue;
+      let stats;
+      try {
+        stats = lstatSync(full);
+      } catch {
+        continue; // gone or unreadable mid-walk
+      }
       files.push({
         path: rel,
         section: rel.startsWith("uploads/") ? "attachment" : "product",
