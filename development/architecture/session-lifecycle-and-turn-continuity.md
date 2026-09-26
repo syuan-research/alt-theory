@@ -104,6 +104,30 @@ Undelivered addressed child-session mail is injected as a no-turn custom message
 during open. See `session-service.ts` (`openSession`,
 `createManagedFromExisting`, and `openManagedRuntime`).
 
+Concurrent cold opens of one id share one promise (`opening`), so they build
+one runtime.
+
+**Idle runtimes are released** (perf plan WP 2.1). One pure rule,
+`web-server/runtime-retention.ts` (`releasable`, `pickReclaims`), decides from
+a view `SessionService.reclaimIdleRuntimes()` builds per live instance: no
+window attached, `RunState` idle, `hold === 0` (awaits in flight on an idle
+instance — `settle()`'s appliers, a replacement's assembly, auto-title — are
+wrapped in `withHold`), no pending approval, not a subagent waiting for a
+concurrency slot, no running or queued subagent child (its completion wakes
+the lead), and Pi's history file on disk. A releasable runtime goes after
+`RUNTIME_IDLE_MS` (15 minutes) counted from `idleSince` (open, last detach,
+settle); above `RUNTIME_HIGH_WATER` live runtimes the longest-idle releasable
+ones go down to `RUNTIME_TARGET`, each after at least a minute
+(`web-server/limits.ts`). The sweep runs every minute from `server.ts`. A
+released conversation is disposed, leaves the map and is remembered with its
+selectors, `openedFrom`, resume warnings and counters; its list activity
+(a failed mark) stays what the lists last heard. Opening it again is a
+**silent reopen** (`reopenReclaimed`): the same assembly from the header and
+the remembered selectors, no session or config events, no
+`resume-manifest.json` write, the snapshot as before; undelivered agent mail
+is injected as on any open. Anything unusual since (a vanished folder, model
+or asset) falls back to the ordinary open with its warnings.
+
 Opening is recovery-oriented. Missing role, soul, or KB assets can produce a
 visible resume warning and use the current fallback selector. A missing
 per-session model override can fall back to the deployment model while retaining
@@ -171,7 +195,8 @@ Where a status fact lives (v1.5.1):
   recomputes a conversation's list activity in `emit()` on the events that
   can move it (`session_updated`/snapshot — run start and settle — run end,
   approval requested or resolved) and when a conversation enters the managed
-  map (`openSession`), and tells its activity subscribers only when it
+  map (`openSession`; a silent reopen of a released runtime is not
+  news), and tells its activity subscribers only when it
   changed. A list change goes out on creation (new and forked), the REST
   delete (one for a family delete), restore and permanent delete, promotion
   (to the list or to mainline), a rename (the `ui-alias` record) and an

@@ -68,8 +68,15 @@ export interface SecurityExtensionOptions {
   getWritableRoots: () => Root[];
   /** Mode-aware readable roots (workspace ∪ KB ∪ writable); reads outside escalate. */
   getReadableRoots: () => Root[];
-  /** Add an explicitly approved external folder for this session. */
+  /** Add an explicitly approved external folder for this conversation. */
   addWritableRoot?: (root: string) => void;
+  /**
+   * "Allow for this conversation" grants, owned by the caller (which keeps
+   * them across reopen and restart); omitted = this instance only.
+   */
+  sessionAllowances?: Set<string>;
+  /** A grant was added to `sessionAllowances`. */
+  onAllowance?: () => void;
   /**
    * Read-only permission: every edit/write asks "Allow once / Deny"; there is
    * no conversation-wide allowance.
@@ -238,12 +245,11 @@ export function createSecurityExtension(
     getCommandAllowlist,
     isSmartApproval,
     reviewAction,
+    sessionAllowances = new Set<string>(),
+    onAllowance,
   } = options;
-  // Session-lifetime allowances (spec §5.2): "allow for this session" lasts
-  // until the session ends, matching the OpenCode / Claude Code convention —
-  // not a timer. Outlives loader reloads: the factory re-registers on reload,
-  // the user's grants do not reset.
-  const sessionAllowances = new Set<string>();
+  // Conversation-lifetime allowances (spec §5.2; R1 2026-09-26): not a
+  // timer. The caller persists them, so they survive reopen and restart.
   // Smart approval: exact actions the reviewer allowed in this conversation
   // (tool + cwd + input), never across conversations, never on disk.
   const reviewerAllowed = new Map<string, ApprovalRecord>();
@@ -379,6 +385,7 @@ export function createSecurityExtension(
         if (choice === APPROVAL_ALLOW_ONCE || (key && choice === APPROVAL_ALLOW_SESSION)) {
           if (key && choice === APPROVAL_ALLOW_SESSION) {
             sessionAllowances.add(key);
+            onAllowance?.();
           }
           audit({
             toolName: event.toolName,

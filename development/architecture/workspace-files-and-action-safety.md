@@ -260,9 +260,17 @@ Every tool call ends in one of three outcomes (the shared approval boundary,
   `.accdb`, …) even inside the roots or in an allowlisted command. Ask puts
   the review to the user; smart approval to the reviewer model (below).
 
-"Allow for this conversation" lets a matching later command through within
-the same managed session, keyed by the command names (network commands also
-by destination host); work-discarding git offers only Allow once. The
+"Allow for this conversation" lets a matching later command through in the
+same conversation, keyed by the command names (network commands also by
+destination host); work-discarding git offers only Allow once. The grants
+(command keys, read-outside and database-file keys, and approved write
+folders) are persisted by the core in the conversation's
+`records/approvals.json` and reloaded by every assembly, so they survive a
+released runtime, a replacement and a restart (Owner ruling R1, 2026-09-26;
+the dialog says "also after restart"). Switching to read-only clears them
+all; moving the conversation to another main folder drops the path grants
+and keeps the command grants (`dropPathApprovals`). The extension only holds
+the set it is given and reports additions. The
 boundary is `core/approval-boundary.ts`; the fast pass follows
 pi-auto-approval's shape, widened to read-only file commands.
 

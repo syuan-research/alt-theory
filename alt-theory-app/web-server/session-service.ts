@@ -18,6 +18,7 @@ import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { getSupportedThinkingLevels, type ImageContent, type Model } from "@earendil-works/pi-ai";
 import {
   createAltTheorySession,
+  dropPathApprovals,
   isNoModelPlaceholder,
   KB_DISABLED_DOMAIN,
   openAltTheorySession,
@@ -57,6 +58,7 @@ import { appendSessionEvent } from "./session-events.js";
 import { appendLiveRunEvent, type LiveRun } from "./live-run.js";
 import { describeFailure, throwFailure, type Failure } from "../core/failure.js";
 import { RunState, type PendingChanges } from "./run-state.js";
+import { pickReclaims, type RuntimeView } from "./runtime-retention.js";
 import { resolveThinkingLevel, type ResolvedThinking } from "./thinking-level.js";
 import { t } from "./i18n.js";
 import {
@@ -436,6 +438,22 @@ interface ManagedSession {
   queuedAttachments: Map<string, string[]>;
   /** Direct prompt selected from Pi's queue; confirm its bubble at user message_start. */
   pendingInterruptSendText: string | null;
+  /**
+   * Awaits in flight on an idle instance (settle's appliers, a replacement's
+   * assembly, auto-title): the runtime must stay. Written only by withHold.
+   */
+  hold: number;
+  /** When it last became idle and unwatched: open, last detach, settle. */
+  idleSince: number;
+}
+
+/** What a reclaimed conversation's silent reopen restores as it was. */
+interface ReclaimedRuntime {
+  selectors: SessionSelectors;
+  openedFrom: "new" | "existing";
+  resumeWarnings: string[];
+  counters: SessionCounters;
+  branchId: string;
 }
 
 /** Background subagent runs allowed at once; further first-runs queue FIFO. */
@@ -499,6 +517,10 @@ export class SessionService implements AgentTeamBridge {
   private readonly subagentQueue: Array<{ childId: string; start: () => void }> =
     [];
   private readonly queuedSubagentIds = new Set<string>();
+  /** Cold opens in flight: concurrent opens of one id share one runtime. */
+  private readonly opening = new Map<string, Promise<ManagedSession>>();
+  /** Conversations whose runtime was released while idle (WP 2.1). */
+  private readonly reclaimed = new Map<string, ReclaimedRuntime>();
 
   /** A conversation without a recorded marker is withheld from export. */
   private readonly fallbackVisibility: SessionVisibility = "no-export";
@@ -632,6 +654,31 @@ export class SessionService implements AgentTeamBridge {
    */
   private async settle(managed: ManagedSession): Promise<ManagedSession> {
     const drained = managed.runState.settle();
+    // Idle from here, but the appliers below still need this runtime.
+    const current = await this.withHold(managed, () => this.applyDrained(managed, drained));
+    current.idleSince = Date.now();
+    // The only idle transition is also the only "idle" the client hears
+    // (v1.5.1 M1): nothing else hand-builds a done signal. The snapshot goes
+    // out every time, applied switches or not — clients read run state from
+    // snapshots only.
+    this.emitRunPhase(current, "idle");
+    this.emit(current, { type: "session_updated", payload: this.snapshot(current) });
+    return current;
+  }
+
+  private async withHold<T>(managed: ManagedSession, work: () => Promise<T>): Promise<T> {
+    managed.hold++;
+    try {
+      return await work();
+    } finally {
+      managed.hold--;
+    }
+  }
+
+  private async applyDrained(
+    managed: ManagedSession,
+    drained: PendingChanges,
+  ): Promise<ManagedSession> {
     // Assembly switches chosen mid-run apply by instance replacement, first
     // so the other deferred changes land on the replacement. Subscribers
     // follow the conversation id, so the events below reach every window.
@@ -695,12 +742,6 @@ export class SessionService implements AgentTeamBridge {
         });
       }
     }
-    // The only idle transition is also the only "idle" the client hears
-    // (v1.5.1 M1): nothing else hand-builds a done signal. The snapshot goes
-    // out every time, applied switches or not — clients read run state from
-    // snapshots only.
-    this.emitRunPhase(current, "idle");
-    this.emit(current, { type: "session_updated", payload: this.snapshot(current) });
     return current;
   }
 
@@ -902,14 +943,40 @@ export class SessionService implements AgentTeamBridge {
     if (live) {
       return this.snapshot(live);
     }
-    const managed = await this.createManagedFromExisting(
-      sessionId,
-      fallbackSelectors,
-    );
+    // Concurrent cold opens of one id share one runtime (two would both
+    // register, and the first would never be disposed).
+    let opening = this.opening.get(sessionId);
+    if (!opening) {
+      opening = this.openFromDisk(sessionId, fallbackSelectors).finally(() =>
+        this.opening.delete(sessionId),
+      );
+      this.opening.set(sessionId, opening);
+    }
+    return this.snapshot(await opening);
+  }
+
+  private async openFromDisk(
+    sessionId: string,
+    fallbackSelectors: SessionSelectors,
+  ): Promise<ManagedSession> {
+    const stash = this.reclaimed.get(sessionId);
+    let managed: ManagedSession | null = null;
+    if (stash) {
+      try {
+        managed = await this.reopenReclaimed(sessionId, stash);
+      } catch (error) {
+        // Anything unusual since the release (a vanished folder, model or
+        // asset) takes the ordinary open with its warnings.
+        console.warn(`Silent reopen of ${sessionId} fell back to a full open:`, error);
+      }
+    }
+    managed ??= await this.createManagedFromExisting(sessionId, fallbackSelectors);
+    this.reclaimed.delete(sessionId);
     this.sessions.set(managed.manifest.sessionId, managed);
     // Entering the managed map can itself change what the list shows (a
-    // conversation whose last turn failed): tell the lists.
-    this.noteActivity(managed);
+    // conversation whose last turn failed): tell the lists. A reclaimed one
+    // kept its list state while it was out.
+    if (!stash) this.noteActivity(managed);
     // Agent mail that arrived while this session was closed: inject it into
     // context (no turn — the user is present) and surface it in the
     // transcript as agent-team lines. Durable inbox -> nothing was lost.
@@ -931,7 +998,107 @@ export class SessionService implements AgentTeamBridge {
       }
       markAgentMailDelivered(managed.manifest.recordsDir);
     }
-    return this.snapshot(managed);
+    return managed;
+  }
+
+  /**
+   * Reopen a conversation whose idle runtime was released (WP 2.1): the same
+   * runtime again, not a resume — no session events, no config event, no
+   * manifest file, openedFrom / warnings / counters as they were. One
+   * projection read feeds both the transcript and its stamp.
+   */
+  private async reopenReclaimed(
+    sessionId: string,
+    stash: ReclaimedRuntime,
+  ): Promise<ManagedSession> {
+    const sessionDirs = getSessionDirs(this.config.dataDir, sessionId);
+    const detail = readSessionDetail(this.config.dataDir, sessionId);
+    if (!sessionDirs || !detail?.pi.sessionFile) {
+      throw new Error(`Session files are missing: ${sessionId}`);
+    }
+    const header = readV4SessionHeader(sessionDirs.recordsDir);
+    const primaryDir = header?.workspace?.primaryDir;
+    if (primaryDir && !statSync(primaryDir, { throwIfNoEntry: false })?.isDirectory()) {
+      throw new Error(`Main folder no longer exists: ${primaryDir}`);
+    }
+    const result = await openAltTheorySession({
+      ...sessionDirs,
+      ...(primaryDir ? { sessionCwd: primaryDir } : {}),
+      sessionFile: detail.pi.sessionFile,
+      originalManifest: detail.manifest,
+      writeManifest: false,
+      ...this.assemblyArgs({
+        sessionId,
+        selectors: stash.selectors,
+        workspace: header?.workspace,
+        modelArgs: this.modelArgsFor(header?.modelOverride),
+        altMode: toAltMode(header?.mode),
+        forkPurpose: header?.forkedFrom?.purpose ?? null,
+        fullAccess: header?.fullAccess,
+        smartApproval: header?.smartApproval,
+      }),
+    });
+    alignSessionManagerToLatestRun(
+      result.session.sessionManager,
+      latestRunSnapshots(result.manifest.recordsDir),
+      "latest active run",
+    );
+    resyncAgentContext(result.session);
+    result.manifest.openedFrom = stash.openedFrom;
+    const managed = await this.createManaged({
+      ...result,
+      selectors: stash.selectors,
+      subagentConfig: readSubagentConfig(this.config.dataDir).config,
+      openedFrom: stash.openedFrom,
+      resumeWarnings: stash.resumeWarnings,
+      counters: stash.counters,
+      transcript: detail.transcript,
+      branchId: stash.branchId,
+    });
+    managed.transcriptStamp = this.transcriptStamp(managed);
+    return managed;
+  }
+
+  /**
+   * Release the runtimes nothing depends on (runtime-retention.ts decides):
+   * dispose, leave the map, remember how to reopen silently. The list keeps
+   * what it showed (a failed mark stays).
+   */
+  async reclaimIdleRuntimes(now = Date.now()): Promise<string[]> {
+    const views: RuntimeView[] = [...this.sessions.values()].map((managed) => {
+      const sessionId = managed.manifest.sessionId;
+      return {
+        sessionId,
+        listeners: this.listeners.get(sessionId)?.size ?? 0,
+        idle: managed.runState.isIdle(),
+        hold: managed.hold,
+        pendingApprovals: managed.approvalBridge.listPending().length,
+        queuedSubagent: this.queuedSubagentIds.has(sessionId),
+        activeChildren: [...this.sessions.values()].some(
+          (child) =>
+            child.subagentParentId === sessionId &&
+            this.subagentIsActive(child.manifest.sessionId),
+        ),
+        idleSince: managed.idleSince,
+        onDisk: Boolean(managed.session.sessionFile && existsSync(managed.session.sessionFile)),
+      };
+    });
+    const picked = pickReclaims(views, now);
+    const released: ManagedSession[] = [];
+    for (const sessionId of picked) {
+      const managed = this.sessions.get(sessionId)!;
+      this.sessions.delete(sessionId);
+      this.reclaimed.set(sessionId, {
+        selectors: { ...managed.selectors },
+        openedFrom: managed.openedFrom,
+        resumeWarnings: managed.resumeWarnings,
+        counters: { ...managed.counters },
+        branchId: managed.branchId,
+      });
+      released.push(managed);
+    }
+    await Promise.all(released.map((managed) => this.disposeManaged(managed)));
+    return picked;
   }
 
   async replaceSession(
@@ -964,13 +1131,13 @@ export class SessionService implements AgentTeamBridge {
     // says this conversation is (it used to fall back to defaults and lose
     // mode, folder, visibility, parent and Full Access).
     const header = readV4SessionHeader(dirs.recordsDir);
-    const replacement = this.hasSessionHistory(previous)
-      ? await this.createManagedFromExistingWithSelectors(
+    const replacement = await this.withHold(previous, () => this.hasSessionHistory(previous)
+      ? this.createManagedFromExistingWithSelectors(
           previous.manifest.sessionId,
           selectors,
           previous,
         )
-      : await this.createManagedFromDirs(dirs, selectors, {
+      : this.createManagedFromDirs(dirs, selectors, {
           visibility: header?.visibility,
           consentSnapshot: header?.consentSnapshot,
           helper: header?.helper,
@@ -982,7 +1149,7 @@ export class SessionService implements AgentTeamBridge {
           subagentExecution: header?.subagentExecution ?? null,
           fullAccess: header?.fullAccess,
           smartApproval: header?.smartApproval,
-        });
+        }));
     this.sessions.set(replacement.manifest.sessionId, replacement);
     await this.disposeManaged(previous);
     appendConfigEvent(replacement.manifest.recordsDir, {
@@ -1312,6 +1479,7 @@ export class SessionService implements AgentTeamBridge {
       type: "workspace_repointed",
       details: { primaryDir: resolved },
     });
+    dropPathApprovals(recordsDir);
     if (!live) return null;
     const selectors = { ...live.selectors };
     this.sessions.delete(sessionId);
@@ -2376,7 +2544,7 @@ export class SessionService implements AgentTeamBridge {
       await this.finishRun(managed, outcome);
       if (outcome !== "completed") return;
       const live = this.sessions.get(managed.manifest.sessionId);
-      if (live) void this.maybeAutoTitle(live);
+      if (live) void this.withHold(live, () => this.maybeAutoTitle(live));
     });
     managed.runSettlement = completion.catch(() => {});
 
@@ -2704,6 +2872,8 @@ export class SessionService implements AgentTeamBridge {
       set.delete(listener);
       if (set.size === 0 && this.listeners.get(sessionId) === set) {
         this.listeners.delete(sessionId);
+        const managed = this.sessions.get(sessionId);
+        if (managed) managed.idleSince = Date.now();
       }
     };
   }
@@ -2729,6 +2899,11 @@ export class SessionService implements AgentTeamBridge {
       const status = this.activityOf(managed);
       if (status !== "idle") activity.set(sessionId, status);
     }
+    // A released runtime was idle; what the lists last heard (failed) stands.
+    for (const sessionId of this.reclaimed.keys()) {
+      const status = this.lastActivity.get(sessionId);
+      if (status) activity.set(sessionId, status);
+    }
     return activity;
   }
 
@@ -2752,7 +2927,9 @@ export class SessionService implements AgentTeamBridge {
   /** The list itself changed for this conversation (created, deleted, restored, renamed, promoted). */
   listChanged(sessionId: string): void {
     const managed = this.sessions.get(sessionId);
-    const status = managed ? this.activityOf(managed) : "idle";
+    const status = managed
+      ? this.activityOf(managed)
+      : (this.reclaimed.has(sessionId) && this.lastActivity.get(sessionId)) || "idle";
     // What the lists are told is the baseline the next change compares with.
     if (status === "idle") this.lastActivity.delete(sessionId);
     else this.lastActivity.set(sessionId, status);
@@ -4469,6 +4646,8 @@ export class SessionService implements AgentTeamBridge {
       branchId: args.branchId ?? "main",
       pendingRunWork: null,
       runSettlement: null,
+      hold: 0,
+      idleSince: Date.now(),
     };
     // Resolve the thinking level against the live model now that both exist.
     // Fork has no child header yet; use the caller-held override first (same

@@ -95,6 +95,7 @@ import {
 import { resolveThinkingLevel, type ResolvedThinking } from "./thinking-level.js";
 import { describeFailure } from "../core/failure.js";
 import { listInstructionAssets } from "./instruction-assets.js";
+import { sweepIdleRuntimes } from "./runtime-retention.js";
 import {
   agentConfigDir,
   ConfigValidationError,
@@ -2002,6 +2003,11 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     (sessionId) => sessionService.isOpen(sessionId),
   );
   httpServer.on("close", stopTrashSweep);
+  // Idle conversation runtimes are released and reopen silently (WP 2.1).
+  const stopRuntimeSweep = sweepIdleRuntimes(() => {
+    void sessionService.reclaimIdleRuntimes();
+  });
+  httpServer.on("close", stopRuntimeSweep);
 
   function resolveLocalRuntimeModelConfig(): RuntimeModelConfig {
     return getRuntimeModelConfig(agentConfigDir());

@@ -6,7 +6,9 @@
  * through a local fake model (no real store, key, network model or cost), and
  * runs the four acceptance scenarios, each in a fresh launch:
  *   1. list only, idle            3. one long conversation, scrolled to the top
- *   2. open 20 conversations, idle 15 min   4. two runs streaming in parallel
+ *   2. open 20 conversations, idle 17 min   4. two runs streaming in parallel
+ *      (past the 15-minute runtime reclaim plus one sweep), then time the
+ *      reopen of a long and a short conversation
  * plus 5: one run streaming inside the longest conversation, reporting the
  * renderer's main-thread time (CDP Performance metrics) instead of memory.
  * Every sample records per-process working set + private bytes
@@ -56,7 +58,7 @@ const ANSWER_BYTES = 2_000;
 const BURST_TOKENS = 8;
 const BURST_GAP_MS = 50;
 const S1_IDLE_MS = QUICK ? 20_000 : 120_000;
-const S2_IDLE_SAMPLES_MIN = QUICK ? [0, 1] : [0, 5, 10, 15];
+const S2_IDLE_SAMPLES_MIN = QUICK ? [0, 1] : [0, 5, 10, 17];
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const MB = (bytes) => (bytes == null ? null : Math.round(bytes / 1048576));
@@ -398,6 +400,21 @@ const SCENARIOS = {
       waited = min;
       rows.push(await sample(app, `20 opened, idle ${min} min`));
     }
+    // Reopen timing: open_session round trip on its own socket, the longest
+    // and the last short conversation opened (reclaimed by now when WP 2.1 is in).
+    const reopen = { label: "reopen after idle" };
+    for (const [key, id] of [["longMs", seeded.long.at(-1).sessionId], ["shortMs", seeded.ids.at(-2)]]) {
+      const ws = new WebSocket(`ws://127.0.0.1:${app.port}`);
+      await new Promise((resolve, reject) => ws.once("open", resolve).once("error", reject));
+      const started = performance.now();
+      const opened = new Promise((resolve) => ws.on("message", (d) => JSON.parse(d).type === "session_opened" && resolve()));
+      ws.send(JSON.stringify({ type: "open_session", payload: { sessionId: id } }));
+      await opened;
+      reopen[key] = Math.round(performance.now() - started);
+      ws.close();
+    }
+    console.log(`  ${reopen.label.padEnd(34)} long ${reopen.longMs} ms | short ${reopen.shortMs} ms`);
+    rows.push(reopen);
     return rows;
   },
   async 3(app, seeded) {

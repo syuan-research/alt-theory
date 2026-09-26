@@ -322,6 +322,8 @@ export interface AltTheoryOpenExistingConfig extends AltTheoryConfig {
   originalManifest?: AssemblyManifest | null;
   /** Override the Pi header cwd for a copied comparison workspace. */
   overrideSessionCwd?: boolean;
+  /** false: leave resume-manifest.json as it is (a silent reopen). */
+  writeManifest?: boolean;
 }
 
 /** Read-only permission: search tools stand in for the shell; writes ask each time. */
@@ -387,7 +389,8 @@ export async function openAltTheorySession(
   );
   return createAltTheorySessionWithManager(config, sessionManager, {
     openedFrom: "existing",
-    manifestFileName: "resume-manifest.json",
+    // A released runtime reopening is not a resume: nothing is written.
+    manifestFileName: config.writeManifest === false ? null : "resume-manifest.json",
     originalManifest: config.originalManifest ?? null,
     initialWarnings: [],
   });
@@ -398,7 +401,7 @@ async function createAltTheorySessionWithManager(
   sessionManager: SessionManager,
   openMode: {
     openedFrom: "new" | "existing";
-    manifestFileName: string;
+    manifestFileName: string | null;
     originalManifest: AssemblyManifest | null;
     initialWarnings: string[];
   }
@@ -531,7 +534,17 @@ async function createAltTheorySessionWithManager(
   // write there. Shared by the guarded write tool, the security extension,
   // and the assembly manifest.
   const altWritableRoots = [resolvedWriteDir, resolvedWritableAssetDir];
-  const approvedWritableRoots = new Set<string>();
+  // "Allow for this conversation" grants outlive the runtime (R1, perf plan
+  // WP 2.1): reclaim, replacement and restart reopen with them.
+  const approvals = readConversationApprovals(resolvedRecordsDir);
+  const sessionAllowances = new Set(approvals.keys);
+  const approvedWritableRoots = new Set(approvals.writableRoots);
+  const saveApprovals = () =>
+    writeJsonAtomic(join(resolvedRecordsDir, APPROVALS_FILE), {
+      schemaVersion: 1,
+      keys: [...sessionAllowances],
+      writableRoots: [...approvedWritableRoots],
+    });
   // Read-only "Allow once" outside the roots: one path, consumed by the
   // guarded write that follows the approval.
   const onceWritablePaths = new Set<string>();
@@ -634,7 +647,12 @@ async function createAltTheorySessionWithManager(
         sessionCwd: cwd,
         getWritableRoots: writableRootsForMode,
         getReadableRoots: () => sessionRootsForMode().readable,
-        addWritableRoot: (root) => approvedWritableRoots.add(resolve(root)),
+        addWritableRoot: (root) => {
+          approvedWritableRoots.add(resolve(root));
+          saveApprovals();
+        },
+        sessionAllowances,
+        onAllowance: saveApprovals,
         isReadOnly: mediatesReadOnly,
         allowWriteOnce: (path) => onceWritablePaths.add(path),
         recordAudit: (entry) =>
@@ -892,7 +910,9 @@ async function createAltTheorySessionWithManager(
   }
 
 
-  writeJsonAtomic(join(resolvedRecordsDir, openMode.manifestFileName), manifest);
+  if (openMode.manifestFileName) {
+    writeJsonAtomic(join(resolvedRecordsDir, openMode.manifestFileName), manifest);
+  }
 
   return {
     session,
@@ -902,6 +922,12 @@ async function createAltTheorySessionWithManager(
     setAltMode: async (next: AltMode): Promise<void> => {
       runtimeState.readOnlyHeld = false;
       if (next === runtimeState.altMode) return;
+      // Going read-only takes back every conversation-wide grant.
+      if (next === "read-only" && (sessionAllowances.size || approvedWritableRoots.size)) {
+        sessionAllowances.clear();
+        approvedWritableRoots.clear();
+        saveApprovals();
+      }
       runtimeState.altMode = next;
       manifest.altMode = next;
       await loader.reload();
@@ -939,6 +965,37 @@ async function createAltTheorySessionWithManager(
       primaryDir: cwd,
     }),
   };
+}
+
+const APPROVALS_FILE = "approvals.json";
+
+function readConversationApprovals(recordsDir: string): { keys: string[]; writableRoots: string[] } {
+  try {
+    const raw = JSON.parse(readFileSync(join(recordsDir, APPROVALS_FILE), "utf-8")) as {
+      keys?: unknown;
+      writableRoots?: unknown;
+    };
+    const strings = (value: unknown) =>
+      Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+    return { keys: strings(raw.keys), writableRoots: strings(raw.writableRoots) };
+  } catch {
+    return { keys: [], writableRoots: [] };
+  }
+}
+
+/**
+ * A conversation moved to another main folder: grants that name a path
+ * (folders it may write, reads outside, database files) do not follow it;
+ * command grants do.
+ */
+export function dropPathApprovals(recordsDir: string): void {
+  if (!existsSync(join(recordsDir, APPROVALS_FILE))) return;
+  const { keys } = readConversationApprovals(recordsDir);
+  writeJsonAtomic(join(recordsDir, APPROVALS_FILE), {
+    schemaVersion: 1,
+    keys: keys.filter((key) => !key.startsWith("read:") && !key.startsWith("db:")),
+    writableRoots: [],
+  });
 }
 
 /**
