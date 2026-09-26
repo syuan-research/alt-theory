@@ -112,6 +112,11 @@ agents mistake them for in-progress work.
 ### Current branch status
 
 - `main` — active product line.
+- `archive/wp-pi-upgrade-087` — merged into main (Pi packages 0.84.4 →
+  0.87.1: the prompt now lives in the Pi history, Alt folds it into one head
+  per request and keeps cache warming off; incidental-cwd trim for the new
+  `<cwd>` section; `refreshContext()` after leaf moves; real-request test
+  `web-server/pi-history.test.ts`); archived after the reviewed merge.
 - `archive/wp-conversation-files` — merged into main (Conversation files
   page listing every conversation folder with files, ask-once permanent
   delete that keeps or removes a conversation's files, titled tombstones,
