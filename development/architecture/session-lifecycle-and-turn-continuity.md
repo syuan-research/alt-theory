@@ -177,10 +177,9 @@ Where a status fact lives (v1.5.1):
   (to the list or to mainline), a rename (the `ui-alias` record) and an
   automatic title. Every WS connection gets `activity_snapshot` on
   (re)connect, then `session_activity` changes, filtered by the list's own
-  rule (GET /api/sessions: everything in local mode; none for an anonymous
-  window where accounts exist; else summary level — over a wider set that
-  includes the trash and conversations not yet on disk, so deletes and
-  first runs are heard). The client's list rows, the running count and the
+  rule (the access policy's `canList`, over a wider set than GET
+  /api/sessions that includes the trash and conversations not yet on disk,
+  so deletes and first runs are heard). The client's list rows, the running count and the
   Related rows read that one source (`AppProvider.applyActivity`,
   `lib/listActivity.ts`). The list re-reads the rows' other facts (order,
   snippet, message count, whether it can be opened) once per burst when

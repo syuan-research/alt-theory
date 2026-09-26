@@ -403,7 +403,6 @@ const catalog: Record<string, string> = {
   "Loading conversations…": "正在載入對話…",
   "Loading...": "載入中...",
   "Loading…": "加載中…",
-  "Local mode — no account": "本機模式 — 無帳號",
   "Locating files…": "正在定位檔案…",
   "Locating knowledge base files…": "正在定位知識庫檔案…",
   "Locked — click to release on your next message": "已鎖定——點擊可在下一條訊息時解除鎖定",

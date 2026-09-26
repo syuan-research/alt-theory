@@ -7,10 +7,9 @@ export type ViewMode = "user" | "researcher";
  */
 export type SessionVisibility = "exportable" | "no-export";
 
-/** True for the values that withhold a conversation from a research export
- *  (an old header's hosted `"private"` included). */
-export function isWithheld(visibility: string | undefined): boolean {
-  return visibility === "no-export" || visibility === "private";
+/** True for the value that withholds a conversation from a research export. */
+export function isWithheld(visibility: SessionVisibility | undefined): boolean {
+  return visibility === "no-export";
 }
 
 export type TranscriptView = "user" | "developer";

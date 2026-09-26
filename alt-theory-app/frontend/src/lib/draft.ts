@@ -6,8 +6,8 @@
  *
  * Lifetime: kept on this device across switching, reconnects and restarts
  * (localStorage — the browser already scopes it per server origin; the
- * account is part of the key here). A draft ends only by being sent, its
- * conversation being deleted or leaving the list, or signing out. There is
+ * scope is part of the key here). A draft ends only by being sent, or its
+ * conversation being deleted or leaving the list. There is
  * no eviction: unsent text is never dropped to make room — a failed write
  * is reported instead.
  */
@@ -32,7 +32,7 @@ const EMPTY: Draft = { text: "", attachments: [] };
 const PREFIX = "alt-theory:draft:";
 const WRITE_DELAY_MS = 400;
 
-/** null until the account is known: nothing is read or written before. */
+/** null until the app has loaded: nothing is read or written before. */
 let scope: string | null = null;
 const drafts = new Map<string, Draft>();
 const timers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -138,7 +138,7 @@ if (typeof window !== "undefined") {
   });
 }
 
-/** The account the drafts belong to ("local" for the local form). */
+/** The key prefix the drafts live under (the app sets "local"). */
 export function setDraftScope(next: string): void {
   if (next === scope) return;
   flushDrafts();
@@ -212,7 +212,7 @@ export function discardDraft(key: string): void {
 
 /**
  * Drop the drafts of conversations no longer in the list. `listed` must be
- * the complete list of this account's conversations. The new-conversation
+ * the complete list of conversations. The new-conversation
  * draft always stays, and so does any draft opened this run — a list read
  * just before a conversation was created must not take its draft.
  */

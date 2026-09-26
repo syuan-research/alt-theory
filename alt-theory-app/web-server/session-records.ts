@@ -46,7 +46,8 @@ export interface RecordEnvelope {
  * future export filter, nothing more. Nothing is hidden, uploaded, or
  * deleted. (The hosted study's `"research"` / `"private"` vocabulary and its
  * 7-day deletion of private conversations were removed on 2026-09-26; an old
- * header's `"private"` still reads as withheld.)
+ * header's values are read as the marker the app always showed for them —
+ * `"research"` as exportable, `"private"` as not for export.)
  */
 export type SessionVisibility = "exportable" | "no-export";
 
@@ -55,9 +56,14 @@ export function isSessionVisibility(value: unknown): value is SessionVisibility 
 }
 
 /** Whether this conversation is withheld from a research export. */
-export function withholdsFromResearch(visibility: string | undefined): boolean {
-  return visibility === "no-export" || visibility === "private";
+export function withholdsFromResearch(visibility: SessionVisibility | undefined): boolean {
+  return visibility === "no-export";
 }
+
+const LEGACY_VISIBILITY: Record<string, SessionVisibility> = {
+  research: "exportable",
+  private: "no-export",
+};
 
 export interface V4SessionHeader extends RecordEnvelope {
   recordType: "session";
@@ -204,6 +210,8 @@ export function readV4SessionHeader(recordsDir: string): V4SessionHeader | null 
     }
     // Retired values (pure/full, understand) read as work (owner 2026-09-25).
     if (header.mode) header.mode = toAltMode(header.mode);
+    const legacyVisibility = LEGACY_VISIBILITY[header.visibility as string];
+    if (legacyVisibility) header.visibility = legacyVisibility;
     return header;
   }
   return null;

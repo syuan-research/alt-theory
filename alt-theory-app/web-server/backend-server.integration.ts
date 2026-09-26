@@ -1482,6 +1482,8 @@ test("a local server serves every conversation, whatever an old header or accoun
     soulSlug: "soul-latest",
   });
   const recordsDir = service.getManifest(created.sessionId).recordsDir;
+  const workspacePath = service.getManifest(created.sessionId).sessionCwd;
+  writeFileSync(join(workspacePath, "note.md"), "workspace note", "utf-8");
   persistSessionMetrics(recordsDir, {
     turnCount: 1,
     toolCallCount: 0,
@@ -1504,6 +1506,7 @@ test("a local server serves every conversation, whatever an old header or accoun
   const address = instance.httpServer.address();
   assert.ok(address && typeof address === "object");
   const baseUrl = `http://127.0.0.1:${address.port}`;
+  let ws: WebSocket | null = null;
   try {
     const list = await (await fetch(`${baseUrl}/api/sessions`)).json();
     assert.ok(list.sessions.some((session: { sessionId: string }) => session.sessionId === created.sessionId));
@@ -1514,7 +1517,31 @@ test("a local server serves every conversation, whatever an old header or accoun
     assert.equal(uploaded.status, 200);
     // Nothing sweeps it: the old expiry means nothing any more.
     assert.ok(existsSync(headerPath));
+
+    // Workspace file routes: download, traversal refused, delete.
+    const download = await fetch(`${baseUrl}/api/sessions/${created.sessionId}/files/download?root=workspace&path=note.md`);
+    assert.equal(download.status, 200);
+    assert.equal(await download.text(), "workspace note");
+    const traversal = await fetch(`${baseUrl}/api/sessions/${created.sessionId}/files/download?root=workspace&path=../session.json`);
+    assert.equal(traversal.status, 400);
+    const removed = await fetch(`${baseUrl}/api/sessions/${created.sessionId}/files/content?root=workspace&path=note.md`, { method: "DELETE" });
+    assert.equal(removed.status, 200);
+    assert.equal(existsSync(join(workspacePath, "note.md")), false);
+
+    // A conversation in Trash cannot be opened over the socket.
+    assert.equal((await fetch(`${baseUrl}/api/sessions/${created.sessionId}`, { method: "DELETE" })).status, 200);
+    ws = new WebSocket(`ws://127.0.0.1:${address.port}`);
+    const refused = new Promise<any>((resolveMessage) => {
+      ws!.on("message", (data) => {
+        const message = JSON.parse(data.toString());
+        if (message.type === "error") resolveMessage(message);
+      });
+    });
+    await new Promise((resolveOpen) => ws!.once("open", resolveOpen));
+    ws.send(JSON.stringify({ type: "open_session", payload: { sessionId: created.sessionId } }));
+    assert.match((await refused).payload.failure.message, /Conversation is in Trash/);
   } finally {
+    ws?.close();
     await new Promise<void>((resolveClose) => {
       instance.wss.close(() => {
         instance.httpServer.close(() => resolveClose());

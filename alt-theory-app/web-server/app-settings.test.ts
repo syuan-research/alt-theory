@@ -129,32 +129,6 @@ test("skill discovery includes skills nested under agent-assets/skills", () => {
   );
 });
 
-test("listAltTheorySkills (/api/skills) includes nested skills", async () => {
-  const { listAltTheorySkills } = await import("./skill-assets.js");
-  const root = mkdtempSync(join(tmpdir(), "alt-theory-list-skills-"));
-  const agentAssets = join(root, "agent-assets");
-  const skillsDir = join(agentAssets, "skills");
-  const experimental = join(
-    skillsDir,
-    "experimental",
-    "theory-innovation-loop",
-  );
-  mkdirSync(skillsDir, { recursive: true });
-  mkdirSync(experimental, { recursive: true });
-  writeFileSync(
-    join(skillsDir, "bundled.md"),
-    "---\nname: bundled-skill\ndescription: Bundled\n---\nBody.",
-    "utf-8",
-  );
-  writeFileSync(
-    join(experimental, "SKILL.md"),
-    "---\nname: theory-innovation-loop\ndescription: Experimental loop\n---\nLoop body.",
-    "utf-8",
-  );
-  const listed = listAltTheorySkills(skillsDir).map((s) => s.name).sort();
-  assert.deepEqual(listed, ["bundled-skill", "theory-innovation-loop"]);
-});
-
 test("unreadable settings keep the last good copy instead of resetting to defaults", () => {
   const dataDir = mkdtempSync(join(tmpdir(), "alt-theory-settings-"));
   writeAppSettings(dataDir, {

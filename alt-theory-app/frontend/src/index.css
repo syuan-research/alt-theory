@@ -739,7 +739,6 @@
   .split-new .split-plus:hover, .split-new .split-search:hover { background: var(--hover); }
   .split-new .split-search:first-child { border-left: none; border-radius: var(--r-md) 0 0 var(--r-md); }
   .split-new .split-search.on { color: var(--ink); background: var(--hover); }
-  .split-new .split-new-text { flex: 1; min-width: 0; width: auto; border-radius: 0 var(--r-md) var(--r-md) 0; }
   .list-menu .check { margin-left: auto; }
   .list-menu .sep { height: 1px; background: var(--hairline); margin: var(--space-hair) var(--space-hair); }
   /* Menus opened inside the scrolling session list would be clipped by its

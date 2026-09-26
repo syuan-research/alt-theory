@@ -444,7 +444,6 @@ Fetch.
   it keeps slash commands, skills, model, and role; the permission control is
   hidden for space. Both composers grow with their text up to about eight
   lines and re-measure when their width changes.
-- Local mode: left-foot avatar tooltip states local / no account.
 - v6 serve uses static `web-server/public-v6` — frontend source changes require
   `npm run build:frontend-v6` before they appear in `dev:web` / `dev:web:local`.
 
@@ -533,8 +532,7 @@ finds its draft again. The drafts live in `lib/draft.ts`, one per
 conversation key (a session id, or `new`).
 
 - **Kept on this device.** Switching, opening Settings or Review, reconnecting
-  and restarting the app keep every draft (localStorage, per account — the
-  browser already keeps it per server). Another window of the app on the same
+  and restarting the app keep every draft (localStorage — the browser already keeps it per server). Another window of the app on the same
   device reads a draft again when this one saves it. Nothing is synced
   between devices.
 - **Written shortly after a change** (and at once when the page is hidden). A

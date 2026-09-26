@@ -179,7 +179,7 @@ them as UTF-8; `sanitizeUploadName`). See
 [`attachment-staging.ts`](../../alt-theory-app/web-server/attachment-staging.ts).
 The per-session workspace upload route
 accepts the configured text types and DOCX/XLSX/PDF binaries, sanitizes the
-filename, applies per-file and per-session/account quotas, and stores binaries
+filename, applies per-file and per-session quotas, and stores binaries
 under `workspace/uploads/`; supported text extraction is written under
 `workspace/extracted/`. Originals are not downloadable through the text
 download route. Workspace deletion removes the requested file and, for a
@@ -224,9 +224,8 @@ leave guard; a later attempt saves before leaving, while a save conflict keeps
 the current editor open for resolution.
 
 The REST routes for content, upload, download, retry-extract, and deletion
-remain subject to account/session visibility rules. Participant accounts are
-restricted to their own sessions, and private-session content is owner-only.
-Download and delete are intentionally workspace-only. See
+ask the access policy (`access-policy.ts`; locally the owner may read every
+conversation) after checking that the conversation exists. Download and delete are intentionally workspace-only. See
 [`server.ts`](../../alt-theory-app/web-server/server.ts) and the
 identity/access contract in
 [`research-identity-visibility-privacy-and-retention.md`](research-identity-visibility-privacy-and-retention.md).
@@ -420,10 +419,9 @@ and the instance swap of a role/soul/instruction switch — takes it back from
 the header. Under Read-only a stored value is dormant rather than cleared
 (the composer's Read-only choice turns it off). Children never inherit it:
 branches, BTW, Helpers and subagents are written without the field and
-start on smart approval instead. The
-server rejects enabling attempts that are not local. Application-level boundaries outside
-agent-tool mediation (account/session visibility, REST file ownership, trash
-and recoverable delete) are unaffected. See
+start on smart approval instead. Application-level boundaries outside
+agent-tool mediation (the access policy, REST file routes, trash and
+recoverable delete) are unaffected. See
 [`security-extension.ts`](../../alt-theory-app/core/security-extension.ts),
 [`alt-theory-core.ts`](../../alt-theory-app/core/alt-theory-core.ts),
 [`session-service.ts`](../../alt-theory-app/web-server/session-service.ts),
@@ -502,7 +500,7 @@ in
   covers staging, conversion, a failed conversion, the move into the
   conversation with rewritten paths, and name collisions.
 - [`workspace-files.test.ts`](../../alt-theory-app/web-server/workspace-files.test.ts)
-  covers uploads, quotas, deletion, agent-authored text, account usage,
+  covers uploads, quotas, deletion, agent-authored text,
   persisted working-folder browsing, and listing/preview refusing a symlink
   out of the folder.
 - [`text-file-edit.test.ts`](../../alt-theory-app/web-server/text-file-edit.test.ts)

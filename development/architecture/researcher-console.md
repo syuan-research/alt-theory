@@ -16,7 +16,7 @@ implements: []
 
 This is a current-fact document for researcher-facing frontend surfaces. It is
 not a high-level product module and does not define the unfinished researcher
-workflow. The identity, ownership, visibility, privacy, and retention contract
+workflow. The access, study-designation, export-marker, and deletion contract
 lives in
 [`research-identity-visibility-privacy-and-retention.md`](research-identity-visibility-privacy-and-retention.md).
 Surface placement remains governed by
@@ -46,8 +46,7 @@ Only **user** and **researcher** presentation modes exist. The old
 three-state debug model is not a current mode. The researcher door changes the
 shared shell's presentation mode; it does not create a second frontend app.
 
-Current designation/auth facts and the backend gate are documented in the
-research identity module. The frontend applies the researcher shell class from
+Current designation facts are documented in the research identity module. The frontend applies the researcher shell class from
 the current view mode (`frontend/src/components/shell/Shell.tsx`); this is a
 presentation fact, not an authorization claim.
 

@@ -4,7 +4,7 @@
  * Exposes a tiny, safe native bridge to the renderer (contextIsolation is on):
  * native file/folder pickers and "reveal in file manager". The web frontend
  * feature-detects `window.altElectron` and falls back to a path prompt when
- * running in a plain browser (dev / hosted).
+ * running in a plain browser (dev).
  */
 const { contextBridge, ipcRenderer, webUtils } = require("electron");
 

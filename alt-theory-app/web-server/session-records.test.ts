@@ -56,6 +56,30 @@ test("readV4SessionHeader reads retired modes as work", () => {
   }
 });
 
+test("readV4SessionHeader reads the hosted vocabulary as the marker the app showed", () => {
+  const cases: Array<[string, string]> = [
+    ["research", "exportable"],
+    ["private", "no-export"],
+    ["exportable", "exportable"],
+    ["no-export", "no-export"],
+  ];
+  for (const [stored, expected] of cases) {
+    const dir = mkdtempSync(join(tmpdir(), "records-"));
+    writeFileSync(
+      join(dir, "session.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        recordType: "session",
+        sessionId: "s-visibility",
+        createdAt: "2026-07-16T00:00:00.000Z",
+        recordModel: "v0.4",
+        visibility: stored,
+      })
+    );
+    assert.equal(readV4SessionHeader(dir)?.visibility, expected);
+  }
+});
+
 test("readV4SessionHeader passes studyTag and modelOverride through", () => {
   const dir = mkdtempSync(join(tmpdir(), "records-"));
   writeFileSync(

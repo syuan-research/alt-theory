@@ -43,7 +43,7 @@ may be uneven.
 | Agent behavior and prompt composition | [`agent-behavior-and-assets.md`](agent-behavior-and-assets.md) | Coherent mechanism; prompt assembly and runtime asset loading remain coupled. |
 | Provider/model configuration and selection | [`provider-model-configuration-and-selection.md`](provider-model-configuration-and-selection.md) | Coherent mechanism; persistence, UI, runtime resolution, and Pi are distributed. |
 | Workspace, files, and action safety | [`workspace-files-and-action-safety.md`](workspace-files-and-action-safety.md) | Coherent policy mechanism; roots, lifecycle, routes, and Pi interception are distributed. |
-| Research identity, visibility, privacy, and retention | [`research-identity-visibility-privacy-and-retention.md`](research-identity-visibility-privacy-and-retention.md) | Stable data contract with uneven feature maturity; researcher workflow remains provisional. |
+| Access policy, study designation, export marker, and deletion | [`research-identity-visibility-privacy-and-retention.md`](research-identity-visibility-privacy-and-retention.md) | One seam (`web-server/access-policy.ts`, local policy only); designation and marker are stable; researcher workflow remains provisional. |
 | External-session import | [`session-import-adapters.md`](session-import-adapters.md) | Relatively clear adapter boundary in front of the ordinary session path. |
 
 The maturity descriptions are honest descriptions of the current code, not
@@ -80,7 +80,9 @@ These are integration anchors, not a claim that one file owns every behavior:
 - `alt-theory-app/core/alt-theory-core.ts` — Pi runtime/resource loading,
   prompt/runtime assembly, tools, workspace roots, and interception binding.
 - `alt-theory-app/web-server/server.ts` — REST and WebSocket boundaries,
-  authentication context, draft creation, and surface protocol dispatch.
+  draft creation, and surface protocol dispatch.
+- `alt-theory-app/web-server/access-policy.ts` — who may list a conversation
+  and read or act on its content; every route asks it.
 - `alt-theory-app/web-server/session-store.ts` — persisted session discovery,
   detail/transcript projection, lineage derivation, and family-facing records.
 - `alt-theory-app/web-server/session-records.ts` — foundation record schemas and
@@ -135,7 +137,7 @@ selection and policy details belong elsewhere:
   [`workspace-files-and-action-safety.md`](workspace-files-and-action-safety.md);
 - lineage, family membership, and related-child semantics are owned by
   [`branch-family-semantics.md`](branch-family-semantics.md);
-- identity, visibility, access, and retention are owned by
+- access, study designation, the export marker, and deletion are owned by
   [`research-identity-visibility-privacy-and-retention.md`](research-identity-visibility-privacy-and-retention.md);
 - imported sessions enter the ordinary lifecycle after adapter preflight and
   projection, as described in [`session-import-adapters.md`](session-import-adapters.md).

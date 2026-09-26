@@ -33,11 +33,17 @@ the development opt-in for the `~/.alt-theory` store paths
 ## Access policy
 
 Every REST route and WebSocket action that lists a conversation or touches
-its content asks `web-server/access-policy.ts` (`AccessPolicy`:
-`canList(viewer, sessionId)`, `canReadContent(viewer, sessionId)`). The
-guards around it (`requireSessionRestContentAccess`, the WebSocket
+an existing conversation's content asks `web-server/access-policy.ts`
+(`AccessPolicy`: `canList(viewer, sessionId)`,
+`canReadContent(viewer, sessionId)`). The guards around it
+(`requireSessionRestContentAccess`, the WebSocket
 `requireSessionWsContentAccess`, the list and activity filters) only check
-that the conversation exists and is not in Trash. The one policy is
+that the conversation exists; the WebSocket guard also refuses a
+conversation in Trash (the REST guard cannot: restore and permanent delete go
+through it). Machine-level actions — creating conversations, projects and
+their main folders, model keys, app settings — belong to the machine owner
+and do not ask the policy; a multi-user deployment would have to gate them
+as well. The one policy is
 `localAccess`: the owner sees everything. A future multi-user deployment
 supplies its own policy at this seam — deciding from the request and what it
 keeps about each conversation — instead of adding inline rules to routes.
@@ -68,9 +74,10 @@ marker for a future export filter. It hides, uploads and deletes nothing.
 New conversations default to `exportable` on a designated install and to
 `no-export` otherwise. A `no-export` conversation carries a
 `consentSnapshot` with research readability and quoting off and
-`privateOverride` set. An old header's hosted `private` still reads as
-withheld; old `ownerAccountId`, `roleCondition` and `retentionDueAt` fields
-are ignored.
+`privateOverride` set. An old header's hosted value is read as the marker
+the app always showed for it (`research` as `exportable`, `private` as
+`no-export`, in `readV4SessionHeader`); old `ownerAccountId`,
+`roleCondition` and `retentionDueAt` fields are ignored.
 
 Before materialization the marker is part of the client's new-conversation
 draft; the creating request carries it and the server checks the vocabulary

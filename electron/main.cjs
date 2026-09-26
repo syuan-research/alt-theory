@@ -10,8 +10,8 @@
  * backend is compiled to plain ESM JS at build time (dist-bundle/) and run in
  * this same Electron main process via electron/bundle-server.cjs.
  *
- * No-login posture: loads http://127.0.0.1:PORT/ (anonymous local workbench).
- * No ?token= (v0.5 auth is cookie/account based; bundle runs with no accounts).
+ * No-login posture: loads http://127.0.0.1:PORT/ (the local app has no
+ * accounts).
  *
  * Model config: does NOT set ALT_THEORY_MODEL_* env. The config GUI writes
  * Pi-native models.json/auth.json/settings.json; Pi resolves them at launch when

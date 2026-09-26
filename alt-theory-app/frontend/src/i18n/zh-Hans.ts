@@ -404,7 +404,6 @@ const catalog: Record<string, string> = {
   "Loading conversations…": "正在加载对话…",
   "Loading...": "加载中...",
   "Loading…": "加载中…",
-  "Local mode — no account": "本地模式 — 无账号",
   "Locating files…": "正在定位文件…",
   "Locating knowledge base files…": "正在定位知识库文件…",
   "Locked — click to release on your next message": "已锁定——点击可在下一条消息时解除锁定",

@@ -10,21 +10,13 @@ npm run build:frontend-v6
 npm run dev:web:local
 ```
 
-Open `http://127.0.0.1:3000` — local mode, no pilot login, model config at `/config`.
-
-Hosted pilot test (uses accounts in `%APPDATA%\alt-theory`):
-
-```powershell
-npm run build:frontend-v6
-npm run dev:web
-```
-
-Login: `test-researcher` / `test` (local UAT accounts).
+Open `http://127.0.0.1:3000` — the local app with the `~/.alt-theory` store,
+model config at `/config`.
 
 ## Hot reload dev (two terminals)
 
 ```powershell
-npm run dev:web:local          # or dev:web for hosted
+npm run dev:web:local
 npm run dev:frontend-v6        # http://localhost:5173
 ```
 
