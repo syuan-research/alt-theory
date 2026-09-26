@@ -52,11 +52,11 @@ const END = ["run_completed", "run_failed", "run_aborted", "error"];
 
 function client(port: number) {
   const ws = new WebSocket(`ws://127.0.0.1:${port}`);
-  const waiters: Array<{ types: string[]; resolve: (m: any) => void }> = [];
+  const waiters: Array<{ types: string[]; match?: (m: any) => boolean; resolve: (m: any) => void }> = [];
   ws.on("message", (data) => {
     const message = JSON.parse(String(data));
     for (const waiter of [...waiters]) {
-      if (waiter.types.includes(message.type)) {
+      if (waiter.types.includes(message.type) && (waiter.match?.(message) ?? true)) {
         waiters.splice(waiters.indexOf(waiter), 1);
         waiter.resolve(message);
       }
@@ -64,10 +64,10 @@ function client(port: number) {
   });
   return {
     open: new Promise((r) => ws.once("open", r)),
-    wait: (types: string[]) =>
+    wait: (types: string[], match?: (m: any) => boolean) =>
       new Promise<any>((resolveWait, rejectWait) => {
         const timer = setTimeout(() => rejectWait(new Error(`timed out waiting for ${types.join("/")}`)), 20_000);
-        waiters.push({ types, resolve: (m) => (clearTimeout(timer), resolveWait(m)) });
+        waiters.push({ types, match, resolve: (m) => (clearTimeout(timer), resolveWait(m)) });
       }),
     send: (message: unknown) => ws.send(JSON.stringify(message)),
     close: () => ws.close(),
@@ -180,6 +180,35 @@ test("turn flows keep one prompt history that the model actually receives", asyn
       assert.ok(!afterUser.some((message) => message.role === "assistant"));
     } finally {
       f.close();
+    }
+
+    // Deleting the only turn leaves Pi's system message, so a role switch
+    // reopens the history instead of starting afresh; the model still gets
+    // one head with the new role and no trace of the deleted turn.
+    const d = client(serverPort);
+    await d.open;
+    try {
+      const onlyOpened = d.wait(["session_opened", "error"]);
+      const only = d.wait(END);
+      d.send({ type: "prompt", payload: "the only turn [notool]", create: {} });
+      assert.equal((await onlyOpened).type, "session_opened");
+      assert.equal((await only).type, "run_completed");
+      assert.match(JSON.stringify(requests.at(-1)!.messages[0]), /calm research companion/);
+      const deleted = d.wait(["session_transcript"], (m) => m.payload.messages.length === 0);
+      d.send({ type: "delete_latest", payload: {} });
+      await deleted;
+      const roleless = d.wait(["session_updated", "error"], (m) => m.type === "error" || m.payload.rolePresetSlug === null);
+      d.send({ type: "switch_role_preset", payload: { rolePresetSlug: null } });
+      assert.equal((await roleless).type, "session_updated");
+      const after = d.wait(END);
+      d.send({ type: "prompt", payload: "after the role switch [notool]" });
+      assert.equal((await after).type, "run_completed");
+      const sentAfter = requests.at(-1)!.messages;
+      assert.equal(sentAfter.filter((m) => m.role === "system").length, 1);
+      assert.doesNotMatch(JSON.stringify(sentAfter[0]), /calm research companion/);
+      assert.deepEqual(sentAfter.filter((m) => m.role === "user").map((m) => JSON.stringify(m.content).includes("after the role switch")), [true]);
+    } finally {
+      d.close();
     }
   } finally {
     c.close();
