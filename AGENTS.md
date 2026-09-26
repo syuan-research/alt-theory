@@ -112,6 +112,9 @@ agents mistake them for in-progress work.
 ### Current branch status
 
 - `main` — active product line.
+- `archive/wp-hosted-delete` — merged into main (hosted study mode,
+  accounts, private retention and the deployment model-fallback chain
+  removed; one access-policy seam); archived after the reviewed merge.
 - `archive/wp-perf-bounded-1` — merged into main (memory/performance plan
   batch 1: snippet on the session header, summary-only REST guard, no
   duplicate client reads, run_phase dedupe, bounded tool result rows,
