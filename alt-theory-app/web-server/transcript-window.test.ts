@@ -54,12 +54,18 @@ test("a long conversation opens with its tail, pages up to the start, and a turn
   assert.equal(completed.payload.after, full.at(-1)!.rowId);
   assert.deepEqual(completed.payload.rows.map((row) => row.text), ["one more", "answer:one more"]);
 
-  // A rewind sends every window back to the tail.
+  // A rewind sends every window back to the tail: delete latest, revise.
   service.deleteLatest(sessionId);
   const rewound = events.findLast((event) => event.type === "session_transcript");
   assert.ok(rewound?.type === "session_transcript");
   assert.equal(rewound.payload.hasMore, true);
   assert.deepEqual(rewound.payload.messages.at(-1), full.at(-1));
+  const count = events.length;
+  await service.reviseLatest(sessionId, "revised").completion;
+  const revised = events.slice(count).find((event) => event.type === "session_transcript");
+  assert.ok(revised?.type === "session_transcript");
+  assert.equal(revised.payload.hasMore, true);
+  assert.ok(revised.payload.messages.length < full.length);
   detach();
   await service.disposeAll();
 });
@@ -85,6 +91,19 @@ test("a tool row carries a bounded result; the whole result is read from the his
   assert.equal(row.truncated, true);
   assert.ok(row.text.length < big.length && !row.text.includes("MIDDLE"));
   assert.equal(readToolResultText(fixture.dataDir, sessionId, "call-1"), big);
+  // A provider reusing the id next turn: each row reads its own result.
+  const small = "second result";
+  managed.session.prompt = async (text: string) => {
+    const append = (message: unknown) => managed.session.sessionManager.appendMessage(message);
+    append({ role: "user", content: [{ type: "text", text }], timestamp: Date.now() });
+    append({ role: "assistant", content: [{ type: "toolCall", id: "call-1", name: "bash", arguments: { command: "cat small" } }], timestamp: Date.now() });
+    append({ role: "toolResult", toolCallId: "call-1", toolName: "bash", content: [{ type: "text", text: small }], isError: false, timestamp: Date.now() });
+    append({ role: "assistant", content: [{ type: "text", text: "done" }], timestamp: Date.now() });
+  };
+  await service.runPrompt(sessionId, "again").completion;
+  const second = service.getTranscript(sessionId).filter((message) => message.toolCallId === "call-1").at(-1)!;
+  assert.equal(readToolResultText(fixture.dataDir, sessionId, "call-1", second.entryId!), small);
+  assert.equal(readToolResultText(fixture.dataDir, sessionId, "call-1", row.entryId!), big);
   assert.equal(readToolResultText(fixture.dataDir, sessionId, "no-such-call"), null);
   await service.disposeAll();
 });

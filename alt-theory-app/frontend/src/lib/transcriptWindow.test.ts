@@ -95,3 +95,12 @@ test("a jump loads everything from its row down to the window; \"start\" loads i
   assert.equal(pageBefore(rows, before, 5, rows.at(-1)!.rowId), null);
   assert.equal(pageBefore(rows, before, 5, "live-user"), null);
 });
+
+test("a wake turn (agent mail, shown as a system line) is cut at its own line", () => {
+  const rows: TranscriptMessage[] = [
+    ...conversation(3),
+    { role: "system", marker: "agent-team", text: "Subagent 1 finished", timestamp: null, entryId: "m1", rowId: "m1:0" },
+    { role: "assistant", text: "noted", timestamp: null, entryId: "a9", rowId: "a9:0" },
+  ];
+  assert.deepEqual(turnRows(rows, "m1"), { rows: rows.slice(-2), after: "a2:1" });
+});

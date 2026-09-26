@@ -1654,7 +1654,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   app.get("/api/sessions/:sessionId/tool-result/:toolCallId", (req, res) => {
     const { sessionId, toolCallId } = req.params;
     if (!requireSessionRestContentAccess(req, res, sessionId)) return;
-    const text = readToolResultText(dataDir, sessionId, toolCallId);
+    const after = typeof req.query.after === "string" ? req.query.after : undefined;
+    const text = readToolResultText(dataDir, sessionId, toolCallId, after);
     if (text === null) {
       res.status(404).json({ error: `No result for tool call ${toolCallId}` });
       return;
@@ -2875,6 +2876,14 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             }
             try {
               requireSessionWsContentAccess(forkSource);
+              // A source not in memory (never opened this run, or its idle
+              // runtime released) is opened first, like open_session does.
+              await sessionService.openSession(
+                forkSource,
+                attachedSessionId
+                  ? sessionService.getSelectors(attachedSessionId)
+                  : createDraftSelectors(),
+              );
               const forked = await sessionService.forkSession(
                 forkSource,
                 msg.payload.purpose,
@@ -3019,10 +3028,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             if (!attachedSessionId) break;
             const before = msg.payload.before;
             if (!before) {
-              send({
-                type: "session_transcript",
-                payload: sessionService.getTranscriptWindow(attachedSessionId),
-              });
+              sendTranscriptWithLiveReplay(attachedSessionId);
               break;
             }
             const page = sessionService.getTranscriptPage(
@@ -3032,7 +3038,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               msg.payload.from,
             );
             if (!page) {
-              fail(new Error("That part of the conversation is no longer there"));
+              fail(new Error(t("That part of the conversation is no longer there")));
               break;
             }
             send({ type: "transcript_page", payload: page });

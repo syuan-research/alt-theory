@@ -35,7 +35,9 @@ export function useEarlierRows(
   useLayoutEffect(() => {
     const el = containerRef.current;
     const saved = anchor.current;
-    if (el && saved && messages[0]?.rowId !== saved.rowId) {
+    // Rows landed above only when the first marked row is another one now.
+    const first = el?.querySelector<HTMLElement>("[data-row]");
+    if (el && saved && first && first.dataset.row !== saved.rowId) {
       const row = el.querySelector<HTMLElement>(`[data-row="${CSS.escape(saved.rowId)}"]`);
       if (row) el.scrollTop = saved.scrollTop + (row.offsetTop - saved.top);
     }

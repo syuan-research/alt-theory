@@ -99,10 +99,16 @@ export function MessageList() {
   };
   // The jump's rows landed (after the anchor kept the view): go there. A
   // page already in flight when the jump was asked delays it one round.
+  // A jump the server refuses (the row is gone) is not asked again.
+  const jumpRetried = useRef(false);
   useLayoutEffect(() => {
-    if (!jumpTo) return;
+    if (!jumpTo) {
+      jumpRetried.current = false;
+      return;
+    }
     if (scrollToRow(jumpTo)) setJumpTo(null);
-    else if (!conv.loadingEarlier && !conv.loadEarlier(jumpTo)) setJumpTo(null);
+    else if (!conv.loadingEarlier && (jumpRetried.current || !conv.loadEarlier(jumpTo))) setJumpTo(null);
+    else if (!conv.loadingEarlier) jumpRetried.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jumpTo, messages, conv.loadingEarlier]);
 
@@ -620,7 +626,7 @@ export function TranscriptEntry({
         detail={message.toolDetail}
         result={
           resultText
-            ? { text: resultText, truncated: Boolean(message.truncated), toolCallId: message.toolCallId }
+            ? { text: resultText, truncated: Boolean(message.truncated), toolCallId: message.toolCallId, entryId: message.entryId }
             : undefined
         }
       >
@@ -904,7 +910,7 @@ function SysLine({
   /** When present the line becomes expandable — see ToolDetailBody. */
   detail?: ToolDetail | null;
   /** The call's result (B3): shown under the detail once expanded. */
-  result?: { text: string; truncated: boolean; toolCallId?: string };
+  result?: { text: string; truncated: boolean; toolCallId?: string; entryId?: string | null };
   /** Tool rows are searchable with Ctrl+F; system lines (warnings,
    *  notices) are chrome and stay out (owner 2026-09-24). */
   tool?: boolean;
@@ -936,7 +942,17 @@ function SysLine({
  * What the tool returned: the row's bounded head and tail, and the whole
  * text from the history on request (B3, following ZCode / PI-Desktop).
  */
-function ToolResultBody({ text, truncated, toolCallId }: { text: string; truncated: boolean; toolCallId?: string }) {
+function ToolResultBody({
+  text,
+  truncated,
+  toolCallId,
+  entryId,
+}: {
+  text: string;
+  truncated: boolean;
+  toolCallId?: string;
+  entryId?: string | null;
+}) {
   const { sessionId } = useConversationContext();
   const [full, setFull] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
@@ -947,7 +963,7 @@ function ToolResultBody({ text, truncated, toolCallId }: { text: string; truncat
         <button
           className="link-btn"
           onClick={() =>
-            void fetchToolResult(sessionId, toolCallId).then(setFull, () => setFailed(true))
+            void fetchToolResult(sessionId, toolCallId, entryId).then(setFull, () => setFailed(true))
           }
         >
           {failed ? t("Could not load the full result") : t("View full result")}

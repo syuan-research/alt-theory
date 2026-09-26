@@ -1331,8 +1331,10 @@ export class SessionService implements AgentTeamBridge {
     const runtime = { mode, nativePiScanAltSkills };
     await Promise.all(
       [...this.sessions.values()].map((managed) =>
-        managed.runState.applyOrDefer({ runtime }, () =>
-          this.applyRuntime(managed, runtime),
+        this.withHold(managed, () =>
+          managed.runState.applyOrDefer({ runtime }, () =>
+            this.applyRuntime(managed, runtime),
+          ),
         ),
       ),
     );

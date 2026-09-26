@@ -65,15 +65,13 @@ export function pageBefore(messages: readonly TranscriptMessage[], before: strin
 }
 
 /**
- * A finished turn's rows: from its user row (the entry Pi wrote for it) to
- * the end, and the row just before them (null = the conversation's start).
- * Without its user row (the prompt never landed) nothing new is shown and
- * the cut is the end.
+ * A finished turn's rows: from the row of the user entry Pi wrote for it (a
+ * user row, or the agent-team line of a wake turn) to the end, and the row
+ * just before them (null = the conversation's start). Without that row (the
+ * prompt never landed) nothing new is shown and the cut is the end.
  */
 export function turnRows(messages: readonly TranscriptMessage[], userEntryId: string | null) {
-  let start = userEntryId
-    ? messages.findIndex((message) => message.role === "user" && message.entryId === userEntryId)
-    : -1;
+  let start = userEntryId ? messages.findIndex((message) => message.entryId === userEntryId) : -1;
   if (start < 0) start = messages.length;
   return { rows: messages.slice(start), after: start > 0 ? (messages[start - 1].rowId ?? null) : null };
 }

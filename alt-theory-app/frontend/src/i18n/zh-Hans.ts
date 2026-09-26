@@ -902,6 +902,7 @@ const catalog: Record<string, string> = {
   "Could not load the full result": "无法读取完整结果",
   "Search whole conversation": "搜索整段对话",
   "Only the loaded part is searched; this loads the rest of the conversation": "目前只搜索已加载的部分；点这里加载整段对话再搜",
+  "That part of the conversation is no longer there": "对话里这一段已经不在了",
 };
 
 export default catalog;

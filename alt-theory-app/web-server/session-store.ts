@@ -1534,10 +1534,15 @@ export function readToolResultText(
   dataDir: string,
   sessionId: string,
   toolCallId: string,
+  /** The row's own entry (the call): the result is the first match after it —
+   *  some providers reuse short call ids across turns. */
+  afterEntryId?: string,
 ): string | null {
   const parts = readSessionParts(dataDir, sessionId);
   if (!parts?.sessionFile || statSync(parts.sessionFile).size === 0) return null;
-  const entries = SessionManager.open(parts.sessionFile, parts.historyDir).getEntries();
+  let entries = SessionManager.open(parts.sessionFile, parts.historyDir).getEntries();
+  const from = afterEntryId ? entries.findIndex((entry) => entry.id === afterEntryId) : -1;
+  if (from >= 0) entries = entries.slice(from + 1);
   for (const entry of entries) {
     const message = (entry as { type?: string; message?: { role?: string; toolCallId?: unknown; content?: unknown } }).message;
     if (entry.type === "message" && message?.role === "toolResult" && message.toolCallId === toolCallId) {
@@ -2205,6 +2210,8 @@ export function buildTranscriptFromEntries(
           marker: "agent-team",
           text: agentMailDisplayText(text),
           timestamp,
+          // A wake turn starts here: the turn cut finds it by entry.
+          entryId: value.id ?? null,
         });
         return;
       }

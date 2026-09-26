@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
 import { join } from "path";
 import test from "node:test";
 import { appendAgentMail, undeliveredAgentMail } from "./agent-mail.js";
+import { readAppSettings, writeAppSettings } from "./app-settings.js";
 import {
   RUNTIME_HIGH_WATER,
   RUNTIME_IDLE_MS,
@@ -97,8 +99,14 @@ function stubAnswers(service: SessionService, sessionId: string, fail = false) {
 }
 
 /** A conversation with one finished turn, reopened in a fresh service (a resume). */
-async function resumedConversation(fail = false) {
+async function resumedConversation(fail = false, reasoning = false) {
   const fixture = setupFixture();
+  if (reasoning) {
+    // A thinking-capable model: every assembly resolves and sets a level.
+    const models = JSON.parse(readFileSync(fixture.runtimeModelConfig.modelsPath, "utf-8"));
+    models.providers.test.models[0].reasoning = true;
+    writeFileSync(fixture.runtimeModelConfig.modelsPath, JSON.stringify(models));
+  }
   const first = createTestService(fixture);
   const created = await first.createSession(SELECTORS);
   stubAnswers(first, created.sessionId, fail);
@@ -108,13 +116,15 @@ async function resumedConversation(fail = false) {
   await service.openSession(created.sessionId, SELECTORS);
   const recordsDir = service.getManifest(created.sessionId).recordsDir;
   const piFile = internals(service).sessions.get(created.sessionId)!.session.sessionFile!;
-  return { service, sessionId: created.sessionId, recordsDir, piFile };
+  return { service, sessionId: created.sessionId, recordsDir, piFile, dataDir: fixture.dataDir };
 }
 
 const LATER = () => Date.now() + RUNTIME_IDLE_MS + 1;
 
-test("reopening a reclaimed conversation is silent and changes no file", async () => {
-  const { service, sessionId, recordsDir, piFile } = await resumedConversation();
+for (const reasoning of [false, true])
+test(`reopening a reclaimed conversation is silent and changes no file${reasoning ? " (thinking model)" : ""}`, async () => {
+  const { service, sessionId, recordsDir, piFile } = await resumedConversation(false, reasoning);
+  if (reasoning) assert.match(readFileSync(piFile, "utf-8"), /thinking_level_change/);
   const files = [
     piFile,
     join(recordsDir, "session-events.jsonl"),
@@ -289,4 +299,49 @@ test("moving a conversation to another folder drops path grants and keeps comman
   dropPathApprovals(dir);
   const after = JSON.parse(readFileSync(join(dir, "approvals.json"), "utf-8"));
   assert.deepEqual(after, { schemaVersion: 1, keys: ["bash:rm"], writableRoots: [] });
+});
+
+test("a lead whose subagent waits for a slot stays, and so does the subagent", async () => {
+  const { service, sessionId: leadId, dataDir } = await resumedConversation();
+  // Auto-naming (a model call) would hold the child on its own.
+  writeAppSettings(dataDir, { ...readAppSettings(dataDir), autoTitle: { enabled: false } });
+  const child = await service.createSession(SELECTORS);
+  stubAnswers(service, child.sessionId);
+  await service.runPrompt(child.sessionId, "sub task").completion;
+  const inner = service as unknown as {
+    sessions: Map<string, { subagentParentId: string | null }>;
+    queuedSubagentIds: Set<string>;
+  };
+  inner.sessions.get(child.sessionId)!.subagentParentId = leadId;
+  inner.queuedSubagentIds.add(child.sessionId);
+  assert.deepEqual(await service.reclaimIdleRuntimes(LATER()), []);
+  inner.queuedSubagentIds.delete(child.sessionId);
+  assert.deepEqual((await service.reclaimIdleRuntimes(LATER())).sort(), [leadId, child.sessionId].sort());
+  await service.disposeAll();
+});
+
+test("re-pointing a live conversation drops its path grants and keeps its command grants", async () => {
+  const fixture = setupFixture();
+  let service = createTestService(fixture);
+  const { sessionId } = await service.createSession(SELECTORS);
+  stubAnswers(service, sessionId);
+  await service.runPrompt(sessionId, "hello").completion;
+  const { recordsDir } = service.getManifest(sessionId);
+  await service.disposeAll();
+  const commandKey = "bash:rm";
+  writeFileSync(
+    join(recordsDir, "approvals.json"),
+    JSON.stringify({ schemaVersion: 1, keys: [commandKey, "read:/elsewhere"], writableRoots: ["/elsewhere"] }),
+  );
+  service = createTestService(fixture);
+  await service.openSession(sessionId, SELECTORS);
+  await service.setSessionWorkspace(sessionId, mkdtempSync(join(tmpdir(), "alt-theory-repoint-")));
+  assert.deepEqual(JSON.parse(readFileSync(join(recordsDir, "approvals.json"), "utf-8")), {
+    schemaVersion: 1,
+    keys: [commandKey],
+    writableRoots: [],
+  });
+  // The reopened runtime still honors the command grant.
+  assert.deepEqual(await askCommand(service, sessionId, "rp1"), { asked: false, result: undefined });
+  await service.disposeAll();
 });

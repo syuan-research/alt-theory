@@ -12,7 +12,8 @@
  * plus 5: one run streaming inside the longest conversation, reporting the
  * renderer's main-thread time (CDP Performance metrics) instead of memory.
  * Every sample records per-process working set + private bytes
- * (app.getAppMetrics; private bytes are Windows-only), main-process heapUsed,
+ * (app.getAppMetrics; private bytes are Windows-only), main-process heapUsed
+ * (and again after a forced GC, read last),
  * and the renderer's DOM node count and JS heap.
  *
  *   npm run build:frontend-v6 && npm run compile:bundle
@@ -262,9 +263,15 @@ async function sample(app, label) {
   row.byType = Object.fromEntries(
     Object.keys(reads[0].byType).map((t) => [t, { wsMB: median((r) => r.byType[t]?.wsMB), privMB: median((r) => r.byType[t]?.privMB) }]),
   );
+  // An idle process may not collect for minutes: released runtimes show in
+  // heapUsed only after a GC. Read after the readings above, so they stay
+  // comparable with runs that had no forced GC.
+  await app.main.call("HeapProfiler.enable");
+  await app.main.call("HeapProfiler.collectGarbage");
+  row.mainHeapAfterGcMB = MB(await app.main.eval(`process.memoryUsage().heapUsed`));
   const types = Object.entries(row.byType).map(([k, v]) => `${k} ${v.wsMB}`).join(", ");
   console.log(
-    `  ${label.padEnd(34)} total ws ${row.totalWsMB} MB${row.totalPrivMB == null ? "" : ` / private ${row.totalPrivMB} MB`} | ${types} | main heap ${row.mainHeapUsedMB} | renderer heap ${row.rendererHeapUsedMB} | DOM ${row.domNodes}`,
+    `  ${label.padEnd(34)} total ws ${row.totalWsMB} MB${row.totalPrivMB == null ? "" : ` / private ${row.totalPrivMB} MB`} | ${types} | main heap ${row.mainHeapUsedMB} (after GC ${row.mainHeapAfterGcMB}) | renderer heap ${row.rendererHeapUsedMB} | DOM ${row.domNodes}`,
   );
   return row;
 }
