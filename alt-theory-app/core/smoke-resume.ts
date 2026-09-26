@@ -102,7 +102,7 @@ async function main() {
     assert.equal(session.sessionFile, resolve(sessionFile));
     assert.equal(session.sessionManager.getCwd(), cwd);
     assert.ok(beforeContext.messages.length >= 6);
-    assert.match(session.agent.state.systemPrompt, new RegExp(marker));
+    assert.match(session.systemPrompt, new RegExp(marker));
 
     await session.prompt(
       "Run the resumed role-preset identity check now. Output only the required marker."
@@ -120,7 +120,7 @@ async function main() {
           previousMessageCount: beforeContext.messages.length,
           resumedMessageCount: afterContext.messages.length,
           resumedSystemPromptContainsMarker:
-            session.agent.state.systemPrompt.includes(marker),
+            session.systemPrompt.includes(marker),
           response: response.trim(),
           model: session.model?.id,
           provider: session.model?.provider,

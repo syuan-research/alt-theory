@@ -780,8 +780,8 @@ test("core records resource discovery mode in the assembly manifest", async () =
       result.manifest.skills.map((skill) => skill.name),
       ["summary-test"],
     );
-    assert.match(result.session.agent.state.systemPrompt, /Do not overextend/);
-    assert.match(result.session.agent.state.systemPrompt, /summary-test/);
+    assert.match(result.session.systemPrompt, /Do not overextend/);
+    assert.match(result.session.systemPrompt, /summary-test/);
     const manifest = JSON.parse(
       readFileSync(join(dirs.recordsDir, "assembly-manifest.json"), "utf-8"),
     );
@@ -820,7 +820,7 @@ test("read-only keeps the Work prompt, adds its permission note, and drops the s
   });
 
   try {
-    const prompt = result.session.agent.state.systemPrompt;
+    const prompt = result.session.systemPrompt;
     assert.match(prompt, /Alt Theory Application Context/);
     assert.match(prompt, /Test app context/);
     assert.match(prompt, /Soul/);
@@ -834,7 +834,7 @@ test("read-only keeps the Work prompt, adds its permission note, and drops the s
     assert.equal(result.manifest.altMode, "read-only");
     await result.setAltMode("work");
     assert.ok(result.session.getActiveToolNames().includes("bash"));
-    assert.doesNotMatch(result.session.agent.state.systemPrompt, /Permission: Read-only/);
+    assert.doesNotMatch(result.session.systemPrompt, /Permission: Read-only/);
   } finally {
     result.session.dispose();
   }
@@ -861,7 +861,7 @@ test("core allows no soul and no role prompt layers", async () => {
   });
 
   try {
-    const prompt = result.session.agent.state.systemPrompt;
+    const prompt = result.session.systemPrompt;
     assert.match(prompt, /Alt Theory Application Context/);
     assert.doesNotMatch(prompt, /## Soul/);
     assert.doesNotMatch(prompt, /## Role/);
@@ -2230,7 +2230,7 @@ test("dev-debug composes configured Alt Theory skills with Pi discovery", async 
       result.manifest.skills.map((skill) => skill.name),
       ["alt-summary"],
     );
-    assert.match(result.session.agent.state.systemPrompt, /alt-summary/);
+    assert.match(result.session.systemPrompt, /alt-summary/);
   } finally {
     result.session.dispose();
   }

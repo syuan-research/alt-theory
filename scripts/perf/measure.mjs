@@ -329,7 +329,9 @@ function lengthen(root, sessionId, turns) {
   const runsFile = path.join(sessionDir, "records", "runs.jsonl");
   const entries = fs.readFileSync(file, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
   const runs = fs.readFileSync(runsFile, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
-  const turn = entries.filter((e) => e.type === "message");
+  // Pi 0.87 stores the prompt as a system message on the first request; a
+  // turn is the user/assistant/tool entries after it.
+  const turn = entries.filter((e) => e.type === "message" && e.message.role !== "system");
   const out = [...entries];
   let parent = entries.at(-1).id;
   for (let k = 0; k < turns - 1; k++) {

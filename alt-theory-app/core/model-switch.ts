@@ -7,9 +7,10 @@ import type { AgentSession } from "@earendil-works/pi-coding-agent";
 
 export function stripLastErrorAssistantMessage(session: AgentSession): void {
   // A session that auto-retried and still failed carries a CHAIN of trailing
-  // errored assistant partials (Pi strips them from live state but keeps
-  // them in the file, so a reopen restores all of them). Strip every one;
-  // agent.continue() refuses an assistant-last context.
+  // errored assistant partials (kept in the file, so a reopen restores all of
+  // them). Strip every one from live state: agent.continue() refuses an
+  // assistant-last context. Since Pi 0.87 the request itself is built from
+  // the session file, where pi-ai already skips errored/aborted assistants.
   let messages = session.messages;
   while (messages.length > 0) {
     const last = messages[messages.length - 1];

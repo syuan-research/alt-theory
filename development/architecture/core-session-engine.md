@@ -70,6 +70,16 @@ flowchart LR
   LINEAGE[session-store.ts / lineage] --> SS
 ```
 
+Since Pi 0.86 the Pi JSONL history also carries the model-visible prompt and
+tool loadout: the first request stores one `system` message with every prompt
+section and tool declaration (about 64 KB for an Alt Theory conversation), and
+later changes (a permission switch, a working-folder change) store patch
+`system` messages. Pi builds each provider request from that history (0.87:
+the session file, not `agent.state.messages`, is canonical). Alt Theory's
+transcript projection, snippets, search, and export skip `system` messages,
+`context_edit`, and `usage` entries; after moving the Pi leaf, Alt calls
+`session.refreshContext()`.
+
 ### Shared implementation anchors
 
 These are integration anchors, not a claim that one file owns every behavior:

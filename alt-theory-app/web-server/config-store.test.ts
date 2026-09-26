@@ -234,7 +234,7 @@ test("Copilot OAuth model list follows the account, never the stale builtin", ()
       // 60s would be below Pi 0.84's refresh margin, but listProviders reads
       // the stored credential without resolving it, so no refresh happens.
       expires: Date.now() + 60_000,
-      availableModelIds: ["claude-sonnet-4.5", "brand-new-model-9"],
+      availableModelIds: ["claude-sonnet-4.6", "brand-new-model-9"],
     },
   }));
   const view = listProviders(agentDir).find(
@@ -246,9 +246,9 @@ test("Copilot OAuth model list follows the account, never the stale builtin", ()
   // ids the account lacks (e.g. claude-opus-4.8) stay out.
   assert.deepEqual(
     view.models.map((model) => model.id),
-    ["claude-sonnet-4.5", "brand-new-model-9"],
+    ["claude-sonnet-4.6", "brand-new-model-9"],
   );
-  const known = view.models.find((model) => model.id === "claude-sonnet-4.5");
+  const known = view.models.find((model) => model.id === "claude-sonnet-4.6");
   assert.ok(known?.name, "builtin metadata decorates a known id");
   const unknown = view.models.find((model) => model.id === "brand-new-model-9");
   assert.ok(unknown, "unknown ids still appear (fallback to bare id)");

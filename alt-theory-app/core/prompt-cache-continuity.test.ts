@@ -20,10 +20,15 @@ test("Responses forks keep the root prompt-cache family without enabling disable
   );
   const disabled = { model: "grok-4.5", prompt_cache_key: undefined };
   assert.equal(preservePromptCacheFamily(disabled, familyId), disabled);
+  // Pi 0.86+ renders the cwd as a section; a reminder may follow it.
+  assert.equal(
+    omitIncidentalCwd("Alt Theory prompt\n\n<cwd>\nC:/random/fork/workspace\n</cwd>"),
+    "Alt Theory prompt",
+  );
   assert.equal(
     omitIncidentalCwd(
-      "Alt Theory prompt\nCurrent working directory: C:/random/fork/workspace",
+      "Alt Theory prompt\n\n<cwd>\n/tmp/fork/workspace\n</cwd>\n\n## Model Reminder",
     ),
-    "Alt Theory prompt",
+    "Alt Theory prompt\n\n## Model Reminder",
   );
 });

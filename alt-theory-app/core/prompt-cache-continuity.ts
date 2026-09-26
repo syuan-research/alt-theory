@@ -24,10 +24,10 @@ export function preservePromptCacheFamily(
 }
 
 export function omitIncidentalCwd(systemPrompt: string): string {
-  // Pi 0.82 ended the prompt with the cwd line; Pi 0.84's custom-prompt
-  // branch appends a trailing newline after it. Tolerate both shapes so
-  // parent and fork keep byte-identical provider prompts.
-  return systemPrompt.replace(/\nCurrent working directory: [^\n]*\n?$/, "");
+  // Pi 0.86+ renders the working directory as its own `<cwd>` section, not
+  // necessarily last (a reminder section may follow it), so parent and fork
+  // keep byte-identical provider prompts wherever it sits.
+  return systemPrompt.replace(/\n*<cwd>\n[^\n]*\n<\/cwd>/, "");
 }
 
 export function createPromptCacheContinuityExtension(

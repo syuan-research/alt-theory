@@ -209,7 +209,7 @@ const UNICODE_SPACES = /[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g;
  * resolveToCwd (unicode spaces, a leading "@", "~", file:// URLs, Windows
  * shell drive paths), which the package does not export; a plain
  * resolve(cwd, "~/.ssh/x") would check a harmless path inside cwd while the
- * tool reads the home directory. ponytail: mirrors Pi 0.84 utils/paths.js —
+ * tool reads the home directory. ponytail: mirrors Pi utils/paths.js (identical 0.84.4 → 0.87.1) —
  * re-check it when Pi's resolver changes.
  */
 export function toolPath(cwd: string, raw: string): string {

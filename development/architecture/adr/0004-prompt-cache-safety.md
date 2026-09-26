@@ -184,8 +184,9 @@ disabled prompt caching.
 
 ### D3. Remove incidental cwd only for no-workspace Understand
 
-Before an Understand turn starts, Alt Theory omits Pi's final generated
-`Current working directory: ...` line only when the session cwd is the
+Before an Understand turn starts, Alt Theory omits Pi's generated working
+directory (the `<cwd>` prompt section since Pi 0.86; before that, the final
+`Current working directory: ...` line) only when the session cwd is the
 session-owned write directory.
 
 The actual cwd, Pi session, workspace copy, tools, and filesystem policy remain
@@ -259,8 +260,8 @@ The normal regression suite verifies:
 2. a nested or reopened branch retains that family;
 3. Responses payload rewriting changes an existing string key;
 4. an undefined key remains undefined, so disabled caching stays disabled;
-5. the incidental cwd line can be removed without changing the rest of the
-   Understand prompt;
+5. the incidental cwd section can be removed without changing the rest of the
+   Understand prompt, wherever it sits (a reminder section may follow it);
 6. the parent and copied no-workspace Understand branch have the same
    cacheable prompt after that normalization;
 7. explicit fork and A/B workspace-copy behavior remains intact.
