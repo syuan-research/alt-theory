@@ -112,6 +112,12 @@ agents mistake them for in-progress work.
 ### Current branch status
 
 - `main` — active product line.
+- `archive/wp-conversation-files` — merged into main (Conversation files
+  page listing every conversation folder with files, ask-once permanent
+  delete that keeps or removes a conversation's files, titled tombstones,
+  rail entry and collapsed-strip icons, double-click to expand a collapsed
+  side, right pane References renamed Attachments); archived after the
+  reviewed merge.
 - `archive/wp-perf-bounded-2` — merged into main (memory/performance plan
   batch 2: idle conversation runtimes released and reopened silently,
   conversation grants kept in records/approvals.json, transcript window
