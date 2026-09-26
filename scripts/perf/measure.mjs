@@ -10,9 +10,12 @@
  *      (past the 15-minute runtime reclaim plus one sweep), then time the
  *      reopen of a long and a short conversation
  * plus 5: one run streaming inside the longest conversation, reporting the
- * renderer's main-thread time (CDP Performance metrics) instead of memory.
+ * renderer's main-thread time (CDP Performance metrics) instead of memory,
+ * and 6: the first and second conversation opens right after launch.
+ * Every scenario also records launch-to-app-shell time.
  * Every sample records per-process working set + private bytes
- * (app.getAppMetrics; private bytes are Windows-only), main-process heapUsed
+ * (app.getAppMetrics; private bytes are Windows-only; macOS also reads the
+ * physical footprint, the Activity Monitor figure), main-process heapUsed
  * (and again after a forced GC, read last),
  * and the renderer's DOM node count and JS heap.
  *
@@ -22,7 +25,7 @@
  * --repo measures another checkout (it needs its own node_modules, public-v6
  * and dist-bundle built), so a baseline commit can be measured with this script.
  */
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
@@ -177,6 +180,7 @@ async function cdp(url) {
 
 async function launch(root) {
   const [port, inspect, rdp] = [await freePort(), await freePort(), await freePort()];
+  const launchedAt = performance.now();
   const child = spawn(
     ELECTRON,
     [`--inspect=127.0.0.1:${inspect}`, `--remote-debugging-port=${rdp}`, `--user-data-dir=${path.join(root, "userdata")}`, REPO],
@@ -200,10 +204,12 @@ async function launch(root) {
   );
   const page = await cdp(pageTarget.webSocketDebuggerUrl);
   await waitFor(() => page.eval(`document.readyState === "complete" && !!document.querySelector(".sessions")`), 60_000, "app shell");
+  const readyMs = Math.round(performance.now() - launchedAt);
   return {
     port,
     main,
     page,
+    readyMs,
     async close() {
       await main.eval(`process.mainModule.require("electron").app.quit()`).catch(() => {});
       main.close();
@@ -220,25 +226,46 @@ const MAIN_SAMPLE = `(() => {
   const { app } = process.mainModule.require("electron");
   const m = process.memoryUsage();
   return {
-    procs: app.getAppMetrics().map((p) => ({ type: p.type, ws: p.memory.workingSetSize * 1024, priv: p.memory.privateBytes == null ? null : p.memory.privateBytes * 1024 })),
+    procs: app.getAppMetrics().map((p) => ({ type: p.type === "Utility" ? "Utility:" + (p.name || p.serviceName) : p.type, pid: p.pid, ws: p.memory.workingSetSize * 1024, priv: p.memory.privateBytes == null ? null : p.memory.privateBytes * 1024 })),
     heapUsed: m.heapUsed,
     rss: m.rss,
   };
 })()`;
 
+/** macOS physical footprint per pid (Activity Monitor's "Memory"). The
+ * working set counts shared framework pages in every process, so it
+ * overstates a layout with more processes. */
+function footprintMB(pids) {
+  if (process.platform !== "darwin" || !pids.length) return {};
+  let out;
+  try {
+    out = execFileSync("footprint", pids.flatMap((p) => ["-p", String(p)]), { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+  } catch {
+    return {}; // a process ended between the two reads
+  }
+  const unit = { KB: 1 / 1024, MB: 1, GB: 1024 };
+  return Object.fromEntries(
+    [...out.matchAll(/\[(\d+)\]:.*?Footprint: ([\d.]+) (KB|MB|GB)/g)].map(([, pid, n, u]) => [pid, Number(n) * unit[u]]),
+  );
+}
+
 async function reading(app) {
   const m = await app.main.eval(MAIN_SAMPLE);
+  const fp = footprintMB(m.procs.map((p) => p.pid));
+  for (const proc of m.procs) proc.fp = fp[proc.pid] ?? null;
   const byType = {};
   for (const proc of m.procs) {
-    const t = (byType[proc.type] ??= { ws: 0, priv: proc.priv == null ? null : 0 });
+    const t = (byType[proc.type] ??= { ws: 0, priv: proc.priv == null ? null : 0, fp: proc.fp == null ? null : 0 });
     t.ws += proc.ws;
+    if (t.fp != null) t.fp += proc.fp ?? 0;
     if (t.priv != null) t.priv += proc.priv ?? 0;
   }
   const sum = (k) => (m.procs.some((x) => x[k] == null) ? null : m.procs.reduce((a, x) => a + x[k], 0));
   return {
     totalWsMB: MB(sum("ws")),
     totalPrivMB: MB(sum("priv")),
-    byType: Object.fromEntries(Object.entries(byType).map(([k, v]) => [k, { wsMB: MB(v.ws), privMB: MB(v.priv) }])),
+    totalFootprintMB: m.procs.some((x) => x.fp == null) ? null : Math.round(m.procs.reduce((a, x) => a + x.fp, 0)),
+    byType: Object.fromEntries(Object.entries(byType).map(([k, v]) => [k, { wsMB: MB(v.ws), privMB: MB(v.priv), fpMB: v.fp == null ? null : Math.round(v.fp) }])),
     mainHeapUsedMB: MB(m.heapUsed),
     mainRssMB: MB(m.rss),
     rendererHeapUsedMB: MB((await app.page.call("Runtime.getHeapUsage")).usedSize),
@@ -261,7 +288,7 @@ async function sample(app, label) {
   const row = { label };
   for (const k of Object.keys(reads[0])) if (k !== "byType") row[k] = median((r) => r[k]);
   row.byType = Object.fromEntries(
-    Object.keys(reads[0].byType).map((t) => [t, { wsMB: median((r) => r.byType[t]?.wsMB), privMB: median((r) => r.byType[t]?.privMB) }]),
+    Object.keys(reads[0].byType).map((t) => [t, { wsMB: median((r) => r.byType[t]?.wsMB), privMB: median((r) => r.byType[t]?.privMB), fpMB: median((r) => r.byType[t]?.fpMB) }]),
   );
   // An idle process may not collect for minutes: released runtimes show in
   // heapUsed only after a GC. Read after the readings above, so they stay
@@ -269,9 +296,9 @@ async function sample(app, label) {
   await app.main.call("HeapProfiler.enable");
   await app.main.call("HeapProfiler.collectGarbage");
   row.mainHeapAfterGcMB = MB(await app.main.eval(`process.memoryUsage().heapUsed`));
-  const types = Object.entries(row.byType).map(([k, v]) => `${k} ${v.wsMB}`).join(", ");
+  const types = Object.entries(row.byType).map(([k, v]) => `${k} ${v.wsMB}${v.fpMB == null ? "" : `/${v.fpMB}`}`).join(", ");
   console.log(
-    `  ${label.padEnd(34)} total ws ${row.totalWsMB} MB${row.totalPrivMB == null ? "" : ` / private ${row.totalPrivMB} MB`} | ${types} | main heap ${row.mainHeapUsedMB} (after GC ${row.mainHeapAfterGcMB}) | renderer heap ${row.rendererHeapUsedMB} | DOM ${row.domNodes}`,
+    `  ${label.padEnd(34)} total ws ${row.totalWsMB} MB${row.totalPrivMB == null ? "" : ` / private ${row.totalPrivMB} MB`}${row.totalFootprintMB == null ? "" : ` / footprint ${row.totalFootprintMB} MB`} | ${types} | main heap ${row.mainHeapUsedMB} (after GC ${row.mainHeapAfterGcMB}) | renderer heap ${row.rendererHeapUsedMB} | DOM ${row.domNodes}`,
   );
   return row;
 }
@@ -455,6 +482,25 @@ const SCENARIOS = {
     rows.push(await sample(app, "both runs finished"));
     return rows;
   },
+  // First open of a conversation right after launch, then a second one.
+  async 6(app, seeded) {
+    await waitRows(app, CONVERSATIONS);
+    const openMs = async (id) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${app.port}`);
+      await new Promise((resolve, reject) => ws.once("open", resolve).once("error", reject));
+      const started = performance.now();
+      const opened = new Promise((resolve) => ws.on("message", (d) => JSON.parse(d).type === "session_opened" && resolve()));
+      ws.send(JSON.stringify({ type: "open_session", payload: { sessionId: id } }));
+      await opened;
+      ws.close();
+      return Math.round(performance.now() - started);
+    };
+    const row = { label: "engine start" };
+    row.coldOpenMs = await openMs(seeded.ids.at(-3));
+    row.warmOpenMs = await openMs(seeded.ids.at(-4));
+    console.log(`  ${row.label.padEnd(34)} first open ${row.coldOpenMs} ms | second open ${row.warmOpenMs} ms`);
+    return [row];
+  },
   async 5(app, seeded) {
     await waitRows(app, CONVERSATIONS);
     const longest = seeded.long.at(-1).sessionId;
@@ -511,8 +557,9 @@ try {
     fs.cpSync(seedRoot, root, { recursive: true, filter: (src) => !src.includes(`${path.sep}userdata`) });
     console.log(`\nscenario ${n}`);
     const app = await launch(root);
+    console.log(`  launch to app shell ${app.readyMs} ms`);
     try {
-      report.scenarios[n] = await run(app, seeded);
+      report.scenarios[n] = [{ label: "launch", readyMs: app.readyMs }, ...(await run(app, seeded))];
     } finally {
       await app.close();
     }
