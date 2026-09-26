@@ -144,9 +144,12 @@ export async function restoreSession(sessionId: string): Promise<void> {
   }
 }
 
-export async function permanentlyDeleteSession(sessionId: string): Promise<void> {
+export async function permanentlyDeleteSession(
+  sessionId: string,
+  files: "keep" | "delete" = "keep",
+): Promise<void> {
   const res = await fetch(
-    `/api/sessions/${encodeURIComponent(sessionId)}/permanent`,
+    `/api/sessions/${encodeURIComponent(sessionId)}/permanent?files=${files}`,
     { method: "DELETE" },
   );
   if (!res.ok) {

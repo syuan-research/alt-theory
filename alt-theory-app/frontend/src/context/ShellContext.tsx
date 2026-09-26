@@ -16,7 +16,7 @@ import { INITIAL_PANE, navigate, targetKey, type RailKey, type ViewTarget } from
 export type { RailKey, ViewTarget };
 
 /** Full-screen surface. `app` is the 3-pane shell; the others take over. */
-export type Surface = "app" | "settings" | "review";
+export type Surface = "app" | "settings" | "review" | "files";
 
 /** How wide the right rail should open for a related conversation. */
 export type RelatedPaneSize = "half" | "default";
@@ -26,6 +26,8 @@ export interface ShellContextValue {
   openApp: () => void;
   openSettings: (panel?: string) => void;
   openReview: () => void;
+  /** The Conversation files page (every conversation folder's files). */
+  openFiles: () => void;
 
   settingsPanel: string;
   setSettingsPanel: (panel: string) => void;
@@ -238,6 +240,7 @@ export function ShellProvider({ children }: { children: ReactNode }) {
     setSurface("settings");
   }, []);
   const openReview = useCallback(() => setSurface("review"), []);
+  const openFiles = useCallback(() => setSurface("files"), []);
   const openExternalAiSetup = useCallback(() => setExternalAiSetupOpen(true), []);
   const closeExternalAiSetup = useCallback(() => setExternalAiSetupOpen(false), []);
 
@@ -328,6 +331,7 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       openApp,
       openSettings,
       openReview,
+      openFiles,
       settingsPanel,
       setSettingsPanel,
       externalAiSetupOpen,
@@ -374,6 +378,7 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       openApp,
       openSettings,
       openReview,
+      openFiles,
       settingsPanel,
       externalAiSetupOpen,
       openExternalAiSetup,

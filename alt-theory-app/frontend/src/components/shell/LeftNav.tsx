@@ -159,6 +159,7 @@ function unanchorMenu(details: HTMLDetailsElement) {
 export function LeftNav({ hidden = false }: { hidden?: boolean }) {
   const main = useMainView();
   const shell = useShell();
+  const conv = useConversationContext();
 
   // Settings surface: same persistent rail instance, content swapped for the
   // settings nav (foot is only "Back to app"; collapsed strip is logo + ←).
@@ -168,8 +169,13 @@ export function LeftNav({ hidden = false }: { hidden?: boolean }) {
 
   return (
     <aside className="left" hidden={hidden}>
-      {/* collapsed icon strip */}
-      <div className="mini">
+      {/* collapsed icon strip; double-clicking its empty space expands it */}
+      <div
+        className="mini"
+        onDoubleClick={(event) => {
+          if (!(event.target as HTMLElement).closest("button")) shell.setLeftCollapsed(false);
+        }}
+      >
         <button
           className="mono"
           data-tip={t("Expand")}
@@ -196,6 +202,27 @@ export function LeftNav({ hidden = false }: { hidden?: boolean }) {
           }}
         >
           <i className="ph ph-magnifying-glass" />
+        </button>
+        {/* The list, condensed: its current-folder icon expands the rail
+            back to the current conversation. */}
+        <button
+          className="mini-search"
+          data-tip={t("Conversation list")}
+          onClick={() => {
+            shell.setLeftCollapsed(false);
+            requestAnimationFrame(() =>
+              document.querySelector(".sessions .sess.active")?.scrollIntoView({ block: "center" }),
+            );
+          }}
+        >
+          <i className={`ph ${conv.workspacePrimaryDir ? "ph-folder" : "ph-note"}`} />
+        </button>
+        <button
+          className={`mini-search${shell.surface === "files" ? " on" : ""}`}
+          data-tip={t("Conversation files")}
+          onClick={() => shell.openFiles()}
+        >
+          <i className="ph ph-files" />
         </button>
         <div style={{ flex: 1 }} />
         <HelpMenu compact />
@@ -938,6 +965,17 @@ function UserNav({ onImport }: { onImport: () => void }) {
               <i className="ph ph-note-pencil" />
             </button>
           </div>
+        </div>
+        {/* Conversation files entry (owner 2026-09-26): a temporary place that
+            fits today's rail, not a settled one. */}
+        <div className="session-row files-entry">
+          <button
+            className={`sess${shell.surface === "files" ? " active" : ""}`}
+            onClick={() => shell.openFiles()}
+          >
+            <i className="ph ph-files" aria-hidden="true" />
+            <span className="s-title">{t("Conversation files")}</span>
+          </button>
         </div>
         {shell.searchOpen ? (
           <div className="inline-search">

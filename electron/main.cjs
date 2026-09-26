@@ -203,6 +203,18 @@ ipcMain.handle("alt:pickFiles", async () => {
 ipcMain.handle("alt:revealPath", (_event, target) => {
   if (typeof target === "string" && target) shell.showItemInFolder(target);
 });
+// Conversation files open in their default app — but only file types that
+// are documents or media. Agent-written files are untrusted: a .command or
+// .app would run on a click, so anything else is revealed instead.
+const OPENABLE_EXTENSIONS = new Set([
+  ".md", ".txt", ".csv", ".tsv", ".json", ".html", ".pdf", ".docx", ".xlsx", ".pptx", ".rtf", ".odt",
+  ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".avif", ".mp4", ".mov", ".webm", ".m4v",
+]);
+ipcMain.handle("alt:openPath", async (_event, target) => {
+  if (typeof target !== "string" || !target) return;
+  if (OPENABLE_EXTENSIONS.has(path.extname(target).toLowerCase())) await shell.openPath(target);
+  else shell.showItemInFolder(target);
+});
 
 // The OS overlay-button band must match the page behind it: the app shell
 // paints that strip with --color-panel (light #ebebec — the createWindow

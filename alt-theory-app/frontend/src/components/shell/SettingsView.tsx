@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { fetchJson } from "@/api/http";
+import { fetchPermanentDeletionFiles } from "@/api/conversation-files";
 import {
   cancelProviderAuth,
   getAutoTitleSettings,
@@ -179,17 +180,36 @@ function TrashPanel() {
     }
   };
 
-  const remove = (sessionId: string) => {
+  // Permanent delete asks about the conversation's own files every time
+  // there are any (owner 2026-09-26); unticked keeps them in Conversation
+  // files. Without files it is the plain confirmation.
+  const filesQuestion = async (ids: string[]) => {
+    const lists = await Promise.all(ids.map((id) => fetchPermanentDeletionFiles(id).catch(() => [])));
+    const files = lists.flat();
+    if (!files.length) return null;
+    const names = files.map((file) => file.path.replace(/^uploads\//, ""));
+    return {
+      details: [
+        ...names.slice(0, 5),
+        ...(names.length > 5 ? [t("…and {count} more", { count: names.length - 5 })] : []),
+        t("Unless you tick the box, the files are kept and stay in Conversation files."),
+      ],
+      label: ids.length === 1
+        ? t("Also delete its files ({count})", { count: files.length })
+        : t("Also delete their files ({count})", { count: files.length }),
+    };
+  };
+
+  const remove = async (sessionId: string) => {
+    const question = await filesQuestion([sessionId]);
     app.requestConfirm({
       message: t("Permanently delete this conversation?"),
-      details: [
-        t("This cannot be undone."),
-        t("Attachments and working files will be kept."),
-      ],
+      details: [t("This cannot be undone."), ...(question?.details ?? [])],
+      ...(question ? { checkbox: { label: question.label, danger: true } } : {}),
       confirmLabel: t("Delete permanently"),
       cancelLabel: t("Cancel"),
-      onConfirm: () => {
-        void permanentlyDeleteSession(sessionId)
+      onConfirm: (result) => {
+        void permanentlyDeleteSession(sessionId, result?.checkboxChecked ? "delete" : "keep")
           .then(() => {
             setSessions((current) =>
               current.filter((session) => session.sessionId !== sessionId),
@@ -208,7 +228,7 @@ function TrashPanel() {
     });
   };
 
-  const actOnSelected = async (action: "restore" | "delete") => {
+  const actOnSelected = async (action: "restore" | "delete", files: "keep" | "delete" = "keep") => {
     const ids = [...selected];
     if (!ids.length || mutating) return;
     setMutating(true);
@@ -216,7 +236,7 @@ function TrashPanel() {
     try {
       const results = await Promise.allSettled(
         ids.map((id) =>
-          action === "restore" ? restoreSession(id) : permanentlyDeleteSession(id),
+          action === "restore" ? restoreSession(id) : permanentlyDeleteSession(id, files),
         ),
       );
       const succeeded = ids.filter(
@@ -247,19 +267,18 @@ function TrashPanel() {
     }
   };
 
-  const confirmDeleteSelected = () => {
+  const confirmDeleteSelected = async () => {
     if (!selected.size) return;
+    const question = await filesQuestion([...selected]);
     app.requestConfirm({
       message: t("Permanently delete {count} selected conversations?", {
         count: selected.size,
       }),
-      details: [
-        t("This cannot be undone."),
-        t("Attachments and working files will be kept."),
-      ],
+      details: [t("This cannot be undone."), ...(question?.details ?? [])],
+      ...(question ? { checkbox: { label: question.label, danger: true } } : {}),
       confirmLabel: t("Delete selected permanently"),
       cancelLabel: t("Cancel"),
-      onConfirm: () => void actOnSelected("delete"),
+      onConfirm: (result) => void actOnSelected("delete", result?.checkboxChecked ? "delete" : "keep"),
     });
   };
 
@@ -296,7 +315,7 @@ function TrashPanel() {
           <button
             className="danger"
             disabled={!selected.size || mutating}
-            onClick={confirmDeleteSelected}
+            onClick={() => void confirmDeleteSelected()}
           >
             {t("Delete selected permanently")}
           </button>
@@ -342,7 +361,7 @@ function TrashPanel() {
                   <button onClick={() => void restore(session.sessionId)}>
                     {t("Restore")}
                   </button>
-                  <button className="danger" onClick={() => remove(session.sessionId)}>
+                  <button className="danger" onClick={() => void remove(session.sessionId)}>
                     {t("Delete permanently")}
                   </button>
                 </div>

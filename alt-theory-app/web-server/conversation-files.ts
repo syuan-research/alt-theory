@@ -28,7 +28,7 @@ export function fileKind(path: string): ConversationFileKind {
   return "doc";
 }
 
-/** Every conversation whose own folder holds files, newest first. */
+/** Every conversation whose own folder holds files, newest files first. */
 export function listConversationFiles(
   dataDir: string,
   canList: (sessionId: string) => boolean = () => true,
@@ -54,5 +54,7 @@ export function listConversationFiles(
         .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
     });
   }
-  return groups.sort((a, b) => (b.at ?? "").localeCompare(a.at ?? ""));
+  // Newest file first: one rule for every state (a permanent delete's own
+  // time would lift an old conversation to the top).
+  return groups.sort((a, b) => b.files[0].updatedAt.localeCompare(a.files[0].updatedAt));
 }

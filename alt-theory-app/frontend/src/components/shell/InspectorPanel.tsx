@@ -188,7 +188,13 @@ export function InspectorPanel() {
           ) : null}
         </div>
       </div>
-      <div className="rail">
+      <div
+        className="rail"
+        // Double-clicking the collapsed strip's empty space opens the pane.
+        onDoubleClick={(event) => {
+          if (!open && !(event.target as HTMLElement).closest("button")) shell.reopenRight();
+        }}
+      >
         {PRIMARY.map((key) => (
           <button
             key={key}

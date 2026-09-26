@@ -8,6 +8,7 @@ import { ConversationPanel } from "@/components/shell/ConversationPanel";
 import { InspectorPanel } from "@/components/shell/InspectorPanel";
 import { SettingsView } from "@/components/shell/SettingsView";
 import { ReviewPage } from "@/components/shell/ReviewPage";
+import { ConversationFilesPage } from "@/components/shell/ConversationFilesPage";
 
 import { ExternalAiSetupDialog } from "@/components/shell/ExternalAiSetupDialog";
 import { ApprovalNotice } from "@/components/shell/ApprovalNotice";
@@ -170,12 +171,15 @@ export function Shell() {
         aria-valuenow={shell.leftCollapsed ? 0 : leftWidth}
         tabIndex={0}
         onPointerDown={(event) => beginResize("left", event)}
+        onDoubleClick={() => shell.leftCollapsed && shell.setLeftCollapsed(false)}
         onKeyDown={(event) => resizeKey("left", event.key)}
       />
       {shell.surface === "settings" ? (
         <SettingsView />
       ) : shell.surface === "review" ? (
         <ReviewPage />
+      ) : shell.surface === "files" ? (
+        <ConversationFilesPage />
       ) : null}
       {/* The conversation subtree stays mounted while Settings/Review is
           open — hidden, not unmounted — so the composer draft, DOM editing
@@ -195,6 +199,7 @@ export function Shell() {
           aria-valuenow={shell.rightPanel ? shell.rightWidth : 0}
           tabIndex={0}
           onPointerDown={(event) => beginResize("right", event)}
+          onDoubleClick={() => !shell.rightPanel && shell.reopenRight()}
           onKeyDown={(event) => resizeKey("right", event.key)}
         />
         <InspectorPanel />

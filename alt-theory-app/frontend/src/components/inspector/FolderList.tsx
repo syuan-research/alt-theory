@@ -69,12 +69,15 @@ export function ListTools({
 }
 
 export function FolderHead({
+  name: nameOverride,
   path,
   role,
   closed = false,
   onToggle,
   available = true,
 }: {
+  /** Shown instead of the path's last segment (a conversation's title). */
+  name?: string;
   /** Full folder path; the name is its last segment. */
   path: string;
   role: string;
@@ -84,7 +87,7 @@ export function FolderHead({
   /** False = the folder is missing on this device: path shown, not revealable. */
   available?: boolean;
 }) {
-  const name = path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
+  const name = nameOverride ?? path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
   const head = (
     <>
       <i className="ph ph-folder" aria-hidden="true" />

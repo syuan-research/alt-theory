@@ -1643,3 +1643,15 @@
     .trash-batch-bar span { width: 100%; margin-left: 0; }
   }
 }
+
+/* Conversation files page (2026-09-26): the right pane's folder groups,
+   divided like Files' working folders; thumbnails are the one new element. */
+.conversation-files { max-width: 1040px; }
+.conversation-files .changes-group + .changes-group { border-top: 1px solid var(--hairline); padding-top: var(--space-tight); }
+.thumbs { display: flex; flex-wrap: wrap; gap: var(--space-tight); margin: 0 0 var(--space-tight) var(--space-hair); }
+.thumb { width: 128px; padding: var(--space-hair); border: 0; border-radius: var(--radius-sm); background: none; cursor: pointer; text-align: left; display: flex; flex-direction: column; gap: var(--space-hair); font: inherit; }
+.thumb:hover { background: var(--row-active); }
+.thumb img, .thumb video { display: block; width: 120px; height: 90px; object-fit: cover; border-radius: var(--radius-sm); background: var(--card); pointer-events: none; }
+.thumb .s-title { font-size: var(--fs-micro); color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mini button.on { background: var(--selected); color: var(--ink); }
+.files-entry .sess:not(.active) { color: var(--text-2); }

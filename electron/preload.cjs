@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld("altElectron", {
   pickDirectory: () => ipcRenderer.invoke("alt:pickDirectory"),
   pickFiles: () => ipcRenderer.invoke("alt:pickFiles"),
   revealPath: (target) => ipcRenderer.invoke("alt:revealPath", target),
+  openPath: (target) => ipcRenderer.invoke("alt:openPath", target),
   /** Absolute path for a File from a desktop drag-drop (not available in plain browsers). */
   getPathForFile: (file) => {
     try {

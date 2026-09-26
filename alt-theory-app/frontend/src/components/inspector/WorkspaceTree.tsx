@@ -312,12 +312,12 @@ export function WorkspaceTree() {
       ) : !entries ? (
         <div className="rp-empty">{t("Loading…")}</div>
       ) : entries.length === 0 ? (
-        <div className="rp-empty">{t("No references or conversation-folder files.")}</div>
+        <div className="rp-empty">{t("No attachments or conversation-folder files.")}</div>
       ) : (
         <>
           {referenceEntries.length > 0 ? (
             <>
-              <div className="files-section-title">{t("References")}</div>
+              <div className="files-section-title">{t("Attachments")}</div>
               <div className="tree">
                 <FileTree
                   entries={referenceEntries}
@@ -326,7 +326,7 @@ export function WorkspaceTree() {
                   dragPath={(path) => path}
                   expandSignal={expandSignal}
                   collapseSignal={collapseSignal}
-                  label={t("References")}
+                  label={t("Attachments")}
                   filterActive={Boolean(normalizedQuery)}
                   onOpenFolder={(entry) => openFolderResult("references", entry.path)}
                   revealPath={browsing?.folderId === "references" ? browsing.path : undefined}
