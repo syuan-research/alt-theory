@@ -74,7 +74,7 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
   const onMessageRef = useRef<(message: ServerMessage) => void>(() => {});
   const { conversation: conv, parts } = useConversation({
     sessionId: null,
-    enabled: !app.loading && !app.loginRequired,
+    enabled: !app.loading,
     onMessage: (message) => onMessageRef.current(message),
   });
   const sessionId = conv.sessionId;
@@ -156,9 +156,6 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
           if (seed) setChildSeed({ sessionId: message.payload.sessionId, ...seed });
         }
         void app.refreshSessions();
-        break;
-      case "error":
-        if (message.payload.code === "auth_required") app.requireLogin();
         break;
       default:
         break;

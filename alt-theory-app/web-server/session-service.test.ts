@@ -41,7 +41,6 @@ import { createTestService, setupFixture } from "./session-service.fixture.js";
 import { readAbComparisonRecords } from "./ab-records.js";
 import { readV4SessionHeader } from "./session-records.js";
 import { readAppSettings, writeAppSettings } from "./app-settings.js";
-import { hardDeleteExpiredPrivateSessions } from "./session-retention.js";
 import { readConfigEvents } from "./config-events.js";
 import {
   appendRunRecord,
@@ -93,7 +92,7 @@ test("an explicit conversation model runs without a configured default", async (
     }),
     "utf-8",
   );
-  const service = createTestService(fixture, "clean", true, {
+  const service = createTestService(fixture, "clean", {
     modelsPath,
     authPath,
   });
@@ -1582,7 +1581,7 @@ test("SessionService cleans unactivated comparison fork artifacts", async () => 
   }
 });
 
-test("SessionService creates owned sessions with role condition and consent snapshot", async () => {
+test("SessionService writes the export marker and consent snapshot on the header", async () => {
   const fixture = setupFixture();
   const service = createTestService(fixture);
   const snapshot = await service.createSession(
@@ -1592,9 +1591,7 @@ test("SessionService creates owned sessions with role condition and consent snap
       soulSlug: "soul-latest",
     },
     {
-      ownerAccountId: "p01",
-      roleCondition: "conceptual-theory",
-      visibility: "research",
+      visibility: "exportable",
       consentSnapshot: {
         researcherReadable: true,
         quoteAfterAnonymization: true,
@@ -1608,241 +1605,15 @@ test("SessionService creates owned sessions with role condition and consent snap
     const sessionRecord = JSON.parse(
       readFileSync(join(manifest.recordsDir, "session.json"), "utf-8"),
     );
-    assert.equal(sessionRecord.ownerAccountId, "p01");
-    assert.equal(sessionRecord.roleCondition, "conceptual-theory");
-    assert.equal(sessionRecord.visibility, "research");
+    assert.equal(sessionRecord.ownerAccountId, undefined);
+    assert.equal(sessionRecord.visibility, "exportable");
     assert.deepEqual(sessionRecord.consentSnapshot, {
       researcherReadable: true,
       quoteAfterAnonymization: true,
       privateOverride: false,
     });
     assert.match(sessionRecord.lastActivityAt, /^\d{4}-\d{2}-\d{2}T/);
-    assert.equal(sessionRecord.retentionDueAt, null);
-  } finally {
-    await service.disposeAll();
-  }
-});
-
-test("hosted: private sessions carry a retention date and prompts refresh it", async () => {
-  const fixture = setupFixture();
-  const service = createTestService(fixture, "clean", false);
-  const snapshot = await service.createSession(
-    {
-      rolePresetSlug: "role-conceptual-theory-companion",
-      kbDomain: "ep-core",
-      soulSlug: "soul-latest",
-    },
-    {
-      ownerAccountId: "p01",
-      roleCondition: "conceptual-theory",
-      visibility: "private",
-      consentSnapshot: {
-        researcherReadable: true,
-        quoteAfterAnonymization: true,
-        privateOverride: false,
-      },
-    },
-  );
-  const managed = (
-    service as unknown as {
-      sessions: Map<
-        string,
-        {
-          session: {
-            prompt(text: string): Promise<void>;
-            sessionManager: { appendMessage(message: unknown): string };
-          };
-        }
-      >;
-    }
-  ).sessions.get(snapshot.sessionId)!;
-  managed.session.prompt = async (text: string) => {
-    managed.session.sessionManager.appendMessage({
-      role: "user",
-      content: [{ type: "text", text }],
-      timestamp: Date.now(),
-    });
-  };
-
-  try {
-    const manifest = service.getManifest(snapshot.sessionId);
-    const sessionPath = join(manifest.recordsDir, "session.json");
-    const createdRecord = JSON.parse(readFileSync(sessionPath, "utf-8"));
-    assert.equal(createdRecord.visibility, "private");
-    assert.equal(createdRecord.consentSnapshot.privateOverride, true);
-    assert.match(createdRecord.retentionDueAt, /^\d{4}-\d{2}-\d{2}T/);
-
-    const stale = {
-      ...createdRecord,
-      lastActivityAt: "2026-06-01T00:00:00.000Z",
-      retentionDueAt: "2026-06-08T00:00:00.000Z",
-    };
-    writeFileSync(sessionPath, `${JSON.stringify(stale, null, 2)}\n`, "utf-8");
-    assert.equal(
-      readSessionDetail(fixture.dataDir, snapshot.sessionId)?.session
-        .visibility,
-      "private",
-    );
-    const afterDetailRead = JSON.parse(readFileSync(sessionPath, "utf-8"));
-    assert.equal(afterDetailRead.lastActivityAt, stale.lastActivityAt);
-    assert.equal(afterDetailRead.retentionDueAt, stale.retentionDueAt);
-
-    const run = service.runPrompt(snapshot.sessionId, "refresh private");
-    await run.completion;
-    const refreshed = JSON.parse(readFileSync(sessionPath, "utf-8"));
-    assert.equal(refreshed.visibility, "private");
-    assert.equal(refreshed.consentSnapshot.privateOverride, true);
-    assert.notEqual(refreshed.lastActivityAt, stale.lastActivityAt);
-    assert.notEqual(refreshed.retentionDueAt, stale.retentionDueAt);
-  } finally {
-    await service.disposeAll();
-  }
-});
-
-test("hosted retention protects attached or running sessions, not idle cache entries", async () => {
-  const fixture = setupFixture();
-  const service = createTestService(fixture, "clean", false);
-  const snapshot = await service.createSession(
-    {
-      rolePresetSlug: "role-conceptual-theory-companion",
-      kbDomain: "ep-core",
-      soulSlug: "soul-latest",
-    },
-    { visibility: "private" },
-  );
-  const manifest = service.getManifest(snapshot.sessionId);
-  const sessionPath = join(manifest.recordsDir, "session.json");
-  const stale = {
-    ...JSON.parse(readFileSync(sessionPath, "utf-8")),
-    lastActivityAt: "2026-06-01T00:00:00.000Z",
-    retentionDueAt: "2026-06-08T00:00:00.000Z",
-  };
-  writeFileSync(sessionPath, `${JSON.stringify(stale, null, 2)}\n`, "utf-8");
-  const now = new Date("2026-06-09T00:00:00.000Z");
-  const detach = service.attach(snapshot.sessionId, () => {});
-
-  try {
-    assert.deepEqual(
-      hardDeleteExpiredPrivateSessions(
-        fixture.dataDir,
-        now,
-        (id) => service.isOpen(id),
-      ).deleted.map((record) => record.sessionId),
-      [],
-    );
-    detach();
-    const managed = (service as any).sessions.get(snapshot.sessionId);
-    managed.runState.begin();
-    assert.deepEqual(
-      hardDeleteExpiredPrivateSessions(
-        fixture.dataDir,
-        now,
-        (id) => service.isOpen(id),
-      ).deleted.map((record) => record.sessionId),
-      [],
-    );
-    managed.runState.settle();
-    assert.deepEqual(
-      hardDeleteExpiredPrivateSessions(
-        fixture.dataDir,
-        now,
-        (id) => service.isOpen(id),
-      ).deleted.map((record) => record.sessionId),
-      [snapshot.sessionId],
-    );
-  } finally {
-    detach();
-    await service.disposeAll();
-  }
-});
-
-test("hosted private fork gets its own retention window", async () => {
-  const fixture = setupFixture();
-  const service = createTestService(fixture, "clean", false);
-  const parent = await service.createSession(
-    {
-      rolePresetSlug: "role-conceptual-theory-companion",
-      kbDomain: "ep-core",
-      soulSlug: "soul-latest",
-    },
-    { visibility: "private" },
-  );
-  const parentPath = join(
-    service.getManifest(parent.sessionId).recordsDir,
-    "session.json",
-  );
-  const parentHeader = JSON.parse(readFileSync(parentPath, "utf-8"));
-  writeFileSync(
-    parentPath,
-    `${JSON.stringify(
-      {
-        ...parentHeader,
-        lastActivityAt: "2026-06-01T00:00:00.000Z",
-        retentionDueAt: "2026-06-08T00:00:00.000Z",
-      },
-      null,
-      2,
-    )}\n`,
-    "utf-8",
-  );
-  const managed = (service as any).sessions.get(parent.sessionId);
-  managed.session.sessionManager.appendMessage({
-    role: "user",
-    content: [{ type: "text", text: "fork me" }],
-    timestamp: Date.now(),
-  });
-
-  try {
-    const fork = await service.forkSession(parent.sessionId, "side");
-    const child = readV4SessionHeader(
-      service.getManifest(fork.sessionId).recordsDir,
-    );
-    assert.equal(child?.visibility, "private");
-    assert.notEqual(child?.retentionDueAt, "2026-06-08T00:00:00.000Z");
-    assert.ok(
-      Date.parse(child?.retentionDueAt ?? "") >
-        Date.parse(child?.lastActivityAt ?? ""),
-    );
-  } finally {
-    await service.disposeAll();
-  }
-});
-
-/**
- * The regression this whole split exists to prevent: locally, marking a
- * conversation withheld must never give it an expiry. Before the fix, local
- * conversations defaulted to "private" AND "private" meant "delete after 7
- * inactive days" — so the safest-sounding default was the destructive one.
- */
-test("local: a withheld conversation never gets a retention date", async () => {
-  const fixture = setupFixture();
-  const service = createTestService(fixture);
-  const snapshot = await service.createSession(
-    {
-      rolePresetSlug: "role-conceptual-theory-companion",
-      kbDomain: "ep-core",
-      soulSlug: "soul-latest",
-    },
-    { visibility: "no-export" },
-  );
-  try {
-    const sessionPath = join(
-      service.getManifest(snapshot.sessionId).recordsDir,
-      "session.json",
-    );
-    const created = JSON.parse(readFileSync(sessionPath, "utf-8"));
-    assert.equal(created.visibility, "no-export");
-    // Withheld from a future export, but consent-wise identical to hosted
-    // private: never readable by a research team.
-    assert.equal(created.consentSnapshot.privateOverride, true);
-    assert.equal(created.retentionDueAt, null);
-
-    // Even switching the marker by hand cannot introduce one.
-    await service.setVisibility(snapshot.sessionId, "exportable");
-    await service.setVisibility(snapshot.sessionId, "no-export");
-    const after = JSON.parse(readFileSync(sessionPath, "utf-8"));
-    assert.equal(after.visibility, "no-export");
-    assert.equal(after.retentionDueAt, null);
+    assert.equal(sessionRecord.retentionDueAt, undefined);
   } finally {
     await service.disposeAll();
   }
@@ -4737,7 +4508,7 @@ test("a retract hands the queued attachments back and a re-queue keeps the other
       models: [{ id: "test-model", contextWindow: 16_000, maxTokens: 4_000, input: ["text", "image"] }],
     },
   } }), "utf-8");
-  const service = createTestService(fixture, "clean", true, {
+  const service = createTestService(fixture, "clean", {
     modelProvider: "test",
     modelId: "test-model",
     modelsPath: visionModelsPath,

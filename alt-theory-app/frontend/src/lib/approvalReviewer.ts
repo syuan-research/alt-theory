@@ -33,7 +33,7 @@ function subscribe(listener: () => void) {
   return () => listeners.delete(listener);
 }
 
-/** null until loaded (or in hosted mode, where the route is closed). */
+/** null until loaded (or when the route did not answer). */
 export function useApprovalReviewer(): ApprovalReviewerSettings | null {
   return useSyncExternalStore(subscribe, () => current);
 }

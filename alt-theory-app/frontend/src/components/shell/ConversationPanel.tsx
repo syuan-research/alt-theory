@@ -45,14 +45,12 @@ function EmptyState() {
             {t("Native Pi uses its normal tools and project and global folder access.")}
           </div>
         ) : null}
-        {app.appMode === "local" ? (
-          <button
-            className="import-link"
-            onClick={() => shell.setImportOpen(true)}
-          >
-            {t("Or continue a conversation from another app…")}
-          </button>
-        ) : null}
+        <button
+          className="import-link"
+          onClick={() => shell.setImportOpen(true)}
+        >
+          {t("Or continue a conversation from another app…")}
+        </button>
       </div>
       <div className="empty-composer">
         <Composer variant="empty" />

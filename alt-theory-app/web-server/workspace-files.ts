@@ -35,7 +35,6 @@ import {
 } from "./workspace-extract.js";
 
 export const SESSION_WORKSPACE_QUOTA_BYTES = 50 * 1024 * 1024;
-export const ACCOUNT_STORAGE_QUOTA_BYTES = 500 * 1024 * 1024;
 
 const TEXT_NATIVE_EXTENSIONS = new Set([
   ".txt",
@@ -73,8 +72,6 @@ const WORKING_TREE_SKIP_DIRS = new Set([
 export interface WorkspaceUsage {
   sessionBytes: number;
   sessionQuotaBytes: number;
-  accountBytes: number;
-  accountQuotaBytes: number;
 }
 
 export interface WorkspaceFileEntry {
@@ -200,22 +197,6 @@ export function getSessionWorkspaceUsage(
   return dirByteSize(workspaceRoot(dataDir, sessionId));
 }
 
-export function getAccountStorageUsage(
-  dataDir: string,
-  accountId: string
-): number {
-  const sessionsRoot = resolveSessionsRoot(dataDir);
-  if (!existsSync(sessionsRoot)) return 0;
-  let total = 0;
-  for (const entry of readdirSync(sessionsRoot, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
-    const header = readV4SessionHeader(join(sessionsRoot, entry.name, "records"));
-    if (header?.ownerAccountId !== accountId) continue;
-    total += getSessionWorkspaceUsage(dataDir, entry.name);
-  }
-  return total;
-}
-
 export function assertSessionWorkspaceQuota(
   dataDir: string,
   sessionId: string,
@@ -224,17 +205,6 @@ export function assertSessionWorkspaceQuota(
   const used = getSessionWorkspaceUsage(dataDir, sessionId);
   if (used + incomingBytes > SESSION_WORKSPACE_QUOTA_BYTES) {
     throw new Error("Session workspace storage quota exceeded");
-  }
-}
-
-export function assertAccountStorageQuota(
-  dataDir: string,
-  accountId: string,
-  incomingBytes: number
-): void {
-  const used = getAccountStorageUsage(dataDir, accountId);
-  if (used + incomingBytes > ACCOUNT_STORAGE_QUOTA_BYTES) {
-    throw new Error("Account storage quota exceeded");
   }
 }
 
@@ -331,7 +301,6 @@ function fileEntry(
 export function listWorkspaceFiles(
   dataDir: string,
   sessionId: string,
-  accountId: string | null
 ): WorkspaceFilesResponse {
   const workspaceDir = workspaceRoot(dataDir, sessionId);
   const entries: WorkspaceFileEntry[] = [];
@@ -432,8 +401,6 @@ export function listWorkspaceFiles(
     usage: {
       sessionBytes,
       sessionQuotaBytes: SESSION_WORKSPACE_QUOTA_BYTES,
-      accountBytes: accountId ? getAccountStorageUsage(dataDir, accountId) : sessionBytes,
-      accountQuotaBytes: ACCOUNT_STORAGE_QUOTA_BYTES,
     },
   };
 }
@@ -782,7 +749,6 @@ async function runExtraction(
 export async function uploadWorkspaceFile(
   dataDir: string,
   sessionId: string,
-  accountId: string,
   originalName: string,
   buffer: Buffer
 ): Promise<UploadWorkspaceFileResult> {
@@ -795,7 +761,6 @@ export async function uploadWorkspaceFile(
     throw new Error(`File exceeds size limit for ${ext}`);
   }
   assertSessionWorkspaceQuota(dataDir, sessionId, buffer.byteLength);
-  assertAccountStorageQuota(dataDir, accountId, buffer.byteLength);
 
   const workspaceDir = workspaceRoot(dataDir, sessionId);
   const uploadsDir = join(workspaceDir, "uploads");

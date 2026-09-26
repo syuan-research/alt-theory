@@ -251,7 +251,7 @@ export function useConversation({ sessionId, enabled, onMessage }: ConversationO
         }
       })
       .catch(() => {
-        // Hosted form or offline: try again next time.
+        // Offline: try again next time.
         checkedDrafts.delete(checkKey);
       });
   }, [draftKey, draftsLoaded, owned, state.socket]);
@@ -518,7 +518,6 @@ function useConversationView(
       workspacePrimaryDir: settings.workspacePrimaryDir,
       thinking: (state.sessionId ? state.snapshot?.thinking : state.draft?.thinking) ?? null,
       currentSessionModel: state.sessionId ? (state.snapshot?.currentModel ?? null) : null,
-      retentionDueAt: state.snapshot?.retentionDueAt ?? null,
       manifest: state.manifest,
       metrics: state.metrics,
       sessionWarnings: state.warnings,

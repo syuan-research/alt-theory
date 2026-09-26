@@ -58,7 +58,7 @@
 **压缩**，将长对话早先的轮次可见地凝缩为摘要，以便对话在模型上下文窗口内继续。
 [→ 对话与历史](../system-guide/01-conversations-and-history.md)
 
-**软删除**，删除对话会从列表中隐藏，但数据保留在磁盘上，可在清理前恢复。例外是托管的私密会话，在一段时间无活动后会被硬删除。
+**软删除**，删除对话会从列表中隐藏，但数据保留在磁盘上，可在清理前恢复。
 [→ 对话与历史](../system-guide/01-conversations-and-history.md)
 
 **导入**，把另一工具（Pi、Claude Code、Codex、OpenCode、Grok Build）中的对话带入 Alt Theory，作为普通的可续接对话，对损失部分明确标注，而非掩盖。

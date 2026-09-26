@@ -114,18 +114,16 @@ export function WorkspaceTree() {
         setEntries(res.entries ?? res.files);
         setWorkingFolders(res.workingFolders ?? []);
         setError(null);
-        if (app.appMode === "local") {
-          void listWorkingFolders(sessionId).then((working) => {
-            if (cancelled) return;
-            setWorkingFolders(working.folders);
-          }).catch(() => undefined);
-        }
+        void listWorkingFolders(sessionId).then((working) => {
+          if (cancelled) return;
+          setWorkingFolders(working.folders);
+        }).catch(() => undefined);
       })
       .catch((e) => !cancelled && setError(e?.message ?? "Failed to load files"));
     return () => {
       cancelled = true;
     };
-  }, [app.appMode, sessionId, runCount]);
+  }, [sessionId, runCount]);
 
   useEffect(() => {
     const target = shell.workspaceRevealPath;

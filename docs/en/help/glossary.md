@@ -91,9 +91,7 @@ context window.
 [→ Conversations and History](../system-guide/conversations-and-history.md)
 
 **Tombstone deletion**: deleting a conversation hides it from the list
-but keeps the data on disk, recoverable until cleanup. The exception is
-hosted private sessions, which are hard-deleted after a period of
-inactivity.
+but keeps the data on disk, recoverable until cleanup.
 [→ Conversations and History](../system-guide/conversations-and-history.md)
 
 **Import**: bringing a conversation from another harness (Pi, Claude

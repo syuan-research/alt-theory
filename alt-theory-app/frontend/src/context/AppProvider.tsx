@@ -9,17 +9,11 @@ import {
   type ReactNode,
 } from "react";
 import { t } from "@/i18n";
-import {
-  detectAccountsConfigured,
-  fetchAuthMe,
-  login as loginRequest,
-} from "@/api/auth";
 import { fetchDiscovery } from "@/api/discovery";
 import type { ProjectFolder } from "@/api/config";
-import { getWorkingFolders } from "@/api/config";
+import { fetchAppInfo, getWorkingFolders } from "@/api/config";
 import { fetchSessionList } from "@/api/sessions";
 import type {
-  AuthContext,
   DiscoveryLists,
   SessionSummary,
   TranscriptView,
@@ -35,17 +29,9 @@ import {
   setSessionWorkspace as setSessionWorkspaceRequest,
 } from "@/api/workspaces";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import { defaultTranscriptView, viewModeForRole } from "@/lib/viewMode";
+import { defaultTranscriptView } from "@/lib/viewMode";
 import { pruneDrafts, setDraftScope } from "@/lib/draft";
 import { stepActivity, type ActivityChange, type ActivityMap, type ActivityMessage } from "@/lib/listActivity";
-
-const anonymousAuth: AuthContext = {
-  accountId: null,
-  role: "anonymous",
-  displayLabel: null,
-  defaultRoleCondition: null,
-  defaultConsent: null,
-};
 
 /** Why a conversation in the list is asking for attention (alpha.3). */
 export type SessionAlert = "done" | "failed" | "approval";
@@ -68,21 +54,14 @@ export interface PendingPreset {
 }
 
 /**
- * App-level state only: who is signed in, what exists (assets, conversations,
+ * App-level state only: what exists (assets, conversations,
  * folders), app dialogs, the view mode, and the Steer preset experiment.
  * A conversation's own state lives in its conversation module
  * (hooks/useConversation); what the main view shows lives in MainView.
  */
 export interface AppContextValue {
-  auth: AuthContext;
-  appMode: "local" | "hosted";
   runtimeMode: RuntimeMode;
-  loginRequired: boolean;
-  /** The server refused for lack of a sign-in: show the login overlay. */
-  requireLogin: () => void;
   loading: boolean;
-  authError: string | null;
-  login: (accountId: string, loginCode: string) => Promise<void>;
 
   viewMode: ViewMode;
   toggleViewMode: () => void;
@@ -161,12 +140,8 @@ const DEFAULT_PRESET_BUTTONS = [
 ];
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [auth, setAuth] = useState<AuthContext>(anonymousAuth);
-  const [appMode, setAppMode] = useState<"local" | "hosted">("hosted");
   const [runtimeMode, setRuntimeMode] = useState<RuntimeMode>("alt-theory");
-  const [loginRequired, setLoginRequired] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [authError, setAuthError] = useState<string | null>(null);
   const [discovery, setDiscovery] = useState<DiscoveryLists | null>(null);
   const [localConfig, setLocalConfig] = useState<ConfigStatus | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("user");
@@ -196,63 +171,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setConfirmRequest(request);
   }, []);
 
-  const requireLogin = useCallback(() => setLoginRequired(true), []);
-
-  const refreshAuth = useCallback(async () => {
+  const loadApp = useCallback(async () => {
     setLoading(true);
-    setAuthError(null);
+    // Drafts on this device: one scope, the editors open once it is set.
+    setDraftScope("local");
     try {
-      const me = await fetchAuthMe();
-      const mode = me.app?.mode === "local" ? "local" : "hosted";
-      const accounts = await detectAccountsConfigured(mode);
-      const role = me.auth?.role ?? "anonymous";
-      const required = role === "anonymous" && accounts;
-      const nextViewMode = viewModeForRole(role, mode);
-
-      setAuth(me.auth ?? anonymousAuth);
-      setAppMode(mode);
-      // Drafts on this device belong to the account (the browser keeps them
-      // per server already); the editors open once this is known.
-      setDraftScope(mode === "local" ? "local" : `account:${me.auth?.accountId ?? "anonymous"}`);
-      setRuntimeMode(me.app?.runtimeMode ?? "alt-theory");
-      setLoginRequired(required);
-      setViewMode(nextViewMode);
-      setParticipant(me.participant ?? null);
-      setLocalConfig(me.localConfig ?? null);
-      setTranscriptView(defaultTranscriptView(nextViewMode));
-
-      if (!required) {
-        const lists = await fetchDiscovery();
-        setDiscovery(lists);
-      } else {
-        setDiscovery(null);
-      }
-    } catch (err) {
-      setAuth(anonymousAuth);
-      setAppMode("hosted");
-      setDraftScope("account:anonymous");
-      setRuntimeMode("alt-theory");
-      setLoginRequired(false);
+      const info = await fetchAppInfo();
+      setRuntimeMode(info.app?.runtimeMode ?? "alt-theory");
+      setParticipant(info.participant ?? null);
+      setLocalConfig(info.localConfig ?? null);
+      setDiscovery(await fetchDiscovery());
+    } catch {
       setDiscovery(null);
-      setAuthError(err instanceof Error ? err.message : t("Auth check failed"));
     } finally {
       setLoading(false);
     }
   }, []);
 
   const refreshLocalConfig = useCallback(async () => {
-    const me = await fetchAuthMe();
-    setLocalConfig(me.localConfig ?? null);
+    const info = await fetchAppInfo();
+    setLocalConfig(info.localConfig ?? null);
   }, []);
 
   useEffect(() => {
-    void refreshAuth();
-  }, [refreshAuth]);
-
-  const login = useCallback(async (accountId: string, loginCode: string) => {
-    await loginRequest(accountId, loginCode);
-    window.location.reload();
-  }, []);
+    void loadApp();
+  }, [loadApp]);
 
   const toggleViewMode = useCallback(() => {
     setViewMode((prev) => {
@@ -271,7 +214,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refreshSessions = useCallback(async () => {
-    if (loginRequired) return;
     const requestId = ++sessionListRequestRef.current;
     setSessionsLoading(true);
     setSessionsError(null);
@@ -300,7 +242,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setSessionsLoading(false);
       }
     }
-  }, [loginRequired]);
+  }, []);
 
   const setSessionDisplayName = useCallback((sessionId: string, alias: string) => {
     setSessionDisplayNames((prev) => ({
@@ -310,10 +252,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!loading && !loginRequired) {
-      void refreshSessions();
-    }
-  }, [loading, loginRequired, refreshSessions]);
+    if (!loading) void refreshSessions();
+  }, [loading, refreshSessions]);
 
   // List activity is pushed (WP-4): the socket brings the whole picture on
   // (re)connect and every change after it; nothing polls.
@@ -362,7 +302,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setGlobalFolders(folders.global);
       setWorkingFoldersLoaded(true);
     } catch {
-      /* hosted or endpoint unavailable */
+      /* endpoint unavailable */
     }
   }, []);
 
@@ -402,9 +342,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
-    if (appMode !== "local") return;
     void refreshWorkingFolders();
-  }, [appMode, refreshWorkingFolders]);
+  }, [refreshWorkingFolders]);
 
   // --- Situational preset buttons (v1.4 round 1 experiment) ---
   // ponytail: config in localStorage, active state in memory only — promote
@@ -539,14 +478,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<AppContextValue>(
     () => ({
-      auth,
-      appMode,
       runtimeMode,
-      loginRequired,
-      requireLogin,
       loading,
-      authError,
-      login,
       viewMode,
       toggleViewMode,
       participant,
@@ -580,14 +513,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       requestConfirm,
     }),
     [
-      auth,
-      appMode,
       runtimeMode,
-      loginRequired,
-      requireLogin,
       loading,
-      authError,
-      login,
       viewMode,
       toggleViewMode,
       participant,

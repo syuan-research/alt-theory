@@ -97,11 +97,6 @@ import {
   type StudyTag,
 } from "./session-records.js";
 import {
-  calculateRetentionDueAt,
-  refreshRetention,
-  refreshSessionRetention,
-} from "./session-retention.js";
-import {
   appendConfigEvent,
   buildEffectiveConfig
 } from "./config-events.js";
@@ -169,13 +164,6 @@ export interface SessionServiceConfig {
   rolePresetsDir: string;
   soulDir: string;
   legacySoulPath: string | null;
-  /**
-   * Absent = local (the safe default). Retention — the only thing that ever
-   * deletes a conversation — exists ONLY on hosted deployments; see
-   * `SessionVisibility` in session-records.ts for why the two deployments use
-   * disjoint visibility vocabularies.
-   */
-  localMode?: boolean;
   modelProvider?: string;
   modelId?: string;
   modelsPath?: string;
@@ -221,8 +209,6 @@ export interface SessionSelectors {
 
 export interface SessionCreationMetadata {
   helper?: boolean;
-  ownerAccountId?: string | null;
-  roleCondition?: string | null;
   visibility?: SessionVisibility;
   consentSnapshot?: {
     researcherReadable: boolean;
@@ -523,17 +509,10 @@ export class SessionService implements AgentTeamBridge {
     [];
   private readonly queuedSubagentIds = new Set<string>();
 
-  /** Retention is hosted-only; absent config means local, the safe default. */
-  private get retentionEnabled(): boolean {
-    return this.config.localMode === false;
-  }
+  /** A conversation without a recorded marker is withheld from export. */
+  private readonly fallbackVisibility: SessionVisibility = "no-export";
 
-  /** Deployment's withheld-by-default value, in that deployment's vocabulary. */
-  private get fallbackVisibility(): SessionVisibility {
-    return this.retentionEnabled ? "research" : "no-export";
-  }
-
-  /** Retention sweep guard — never delete a conversation that is open. */
+  /** Trash sweep guard — never delete a conversation that is open. */
   isOpen(sessionId: string): boolean {
     const managed = this.sessions.get(sessionId);
     return Boolean(
@@ -972,15 +951,6 @@ export class SessionService implements AgentTeamBridge {
       sessionId,
       fallbackSelectors,
     );
-    // Hosted only: reopening a private conversation counts as activity, so a
-    // conversation the participant still returns to never expires out from
-    // under them. Local conversations have no expiry at all.
-    if (this.retentionEnabled) {
-      const header = readV4SessionHeader(managed.manifest.recordsDir);
-      if (header?.visibility === "private") {
-        refreshSessionRetention(managed.manifest.recordsDir);
-      }
-    }
     this.sessions.set(managed.manifest.sessionId, managed);
     // Entering the managed map can itself change what the list shows (a
     // conversation whose last turn failed): tell the lists.
@@ -1046,8 +1016,6 @@ export class SessionService implements AgentTeamBridge {
           previous,
         )
       : await this.createManagedFromDirs(dirs, selectors, {
-          ownerAccountId: header?.ownerAccountId ?? null,
-          roleCondition: header?.roleCondition ?? null,
           visibility: header?.visibility,
           consentSnapshot: header?.consentSnapshot,
           helper: header?.helper,
@@ -1113,9 +1081,6 @@ export class SessionService implements AgentTeamBridge {
     sessionId: string,
     mode: AltMode,
   ): Promise<SessionSnapshot> {
-    if (mode !== "read-only" && this.config.localMode === false) {
-      throw new Error("This server allows read-only conversations only");
-    }
     const managed = this.requireSession(sessionId);
     managed.holdReadOnly(mode === "read-only");
     await managed.runState.applyOrDefer({ mode }, () => this.applyMode(managed, mode));
@@ -1677,9 +1642,6 @@ export class SessionService implements AgentTeamBridge {
     const revisionId = formatCounter("rev", managed.nextRevisionIndex++);
     const runId = formatCounter("run", managed.nextRunIndex++);
     const acceptedAt = new Date().toISOString();
-    if (this.retentionEnabled) {
-      refreshSessionRetention(managed.manifest.recordsDir, new Date(acceptedAt));
-    }
     const beforeEntryIds = new Set(
       managed.session.sessionManager.getEntries().map((entry) => entry.id),
     );
@@ -2106,15 +2068,8 @@ export class SessionService implements AgentTeamBridge {
         sessionRoot: forkDirs.sessionRoot,
         recordsDir: forkDirs.recordsDir,
         manifest: result.manifest,
-        ownerAccountId: sourceHeader?.ownerAccountId ?? null,
-        roleCondition: sourceHeader?.roleCondition ?? null,
         visibility,
         consentSnapshot: sourceHeader?.consentSnapshot ?? null,
-        lastActivityAt: result.manifest.createdAt,
-        retentionDueAt:
-          this.retentionEnabled && visibility === "private"
-            ? calculateRetentionDueAt(result.manifest.createdAt)
-            : null,
         mode: previous.getAltMode(),
         workspace: sourceHeader?.workspace
           ? result.manifest.workspace
@@ -2319,9 +2274,6 @@ export class SessionService implements AgentTeamBridge {
     const revisionId = formatCounter("rev", managed.nextRevisionIndex++);
     const runId = formatCounter("run", managed.nextRunIndex++);
     const acceptedAt = new Date().toISOString();
-    if (this.retentionEnabled) {
-      refreshSessionRetention(managed.manifest.recordsDir, new Date(acceptedAt));
-    }
     const beforeEntryIds = new Set(
       managed.session.sessionManager.getEntries().map((entry) => entry.id),
     );
@@ -2978,7 +2930,7 @@ export class SessionService implements AgentTeamBridge {
     if (header.visibility === visibility) {
       return;
     }
-    const nextBase = {
+    const next = {
       ...header,
       visibility,
       consentSnapshot:
@@ -2994,13 +2946,6 @@ export class SessionService implements AgentTeamBridge {
               ? { ...header.consentSnapshot, privateOverride: false }
               : undefined,
     };
-    const next =
-      this.retentionEnabled && visibility === "private"
-        ? refreshRetention(nextBase, new Date())
-        : {
-            ...nextBase,
-            retentionDueAt: null,
-          };
     writeSessionHeader(managed.manifest.recordsDir, next);
     appendSessionEvent(managed.manifest.recordsDir, {
       sessionId,
@@ -3145,8 +3090,7 @@ export class SessionService implements AgentTeamBridge {
       kbDomain: input.selectors.kbDomain,
       piPromptTemplatesDir: this.config.assetPaths.piPromptTemplatesDir,
       ...input.modelArgs,
-      // Hosted deployments are read-only (owner 2026-09-25).
-      altMode: this.config.localMode === false ? "read-only" : input.altMode,
+      altMode: input.altMode,
       fullAccess: input.fullAccess === true,
       smartApproval: input.smartApproval === true,
       reviewAction: (
@@ -3225,9 +3169,6 @@ export class SessionService implements AgentTeamBridge {
     if (primaryDir && !statSync(primaryDir, { throwIfNoEntry: false })?.isDirectory()) {
       throw new Error(`Main folder does not exist:${primaryDir}`,);
     }
-    if (metadata.fullAccess && this.config.localMode === false) {
-      throw new Error("Full access is not enabled on this server");
-    }
     const appSettings = readAppSettings(this.config.dataDir);
     const subagentConfig = readSubagentConfig(this.config.dataDir).config;
     const result = await createAltTheorySession({
@@ -3250,7 +3191,7 @@ export class SessionService implements AgentTeamBridge {
         },
         altMode:
           metadata.mode ??
-          defaultSessionPermission(appSettings, this.config.localMode !== false).mode,
+          defaultSessionPermission(appSettings).mode,
         forkPurpose: metadata.forkedFrom?.purpose ?? null,
         fullAccess: metadata.fullAccess,
         smartApproval: metadata.smartApproval,
@@ -3270,15 +3211,8 @@ export class SessionService implements AgentTeamBridge {
       sessionRoot: sessionDirs.sessionRoot,
       recordsDir: sessionDirs.recordsDir,
       manifest: result.manifest,
-      ownerAccountId: metadata.ownerAccountId ?? null,
-      roleCondition: metadata.roleCondition ?? null,
       visibility,
       consentSnapshot,
-      lastActivityAt: result.manifest.createdAt,
-      retentionDueAt:
-        this.retentionEnabled && visibility === "private"
-          ? calculateRetentionDueAt(result.manifest.createdAt)
-          : null,
       mode: result.getAltMode(),
       workspace: metadata.workspace ? result.manifest.workspace : null,
       forkedFrom: metadata.forkedFrom ?? null,
@@ -3329,8 +3263,6 @@ export class SessionService implements AgentTeamBridge {
     // clone or mutate the live Pi path, so it remains available during a run.
     const header = readV4SessionHeader(parent.manifest.recordsDir);
     const child = await this.createSession(parent.selectors, {
-      ownerAccountId: header?.ownerAccountId ?? null,
-      roleCondition: header?.roleCondition ?? null,
       visibility: header?.visibility ?? this.fallbackVisibility,
       consentSnapshot: header?.consentSnapshot ?? null,
       workspace: header?.workspace ?? null,
@@ -3677,8 +3609,6 @@ export class SessionService implements AgentTeamBridge {
     }
 
     const child = await this.createSession(selectors, {
-      ownerAccountId: header?.ownerAccountId ?? null,
-      roleCondition: header?.roleCondition ?? null,
       visibility: header?.visibility ?? this.fallbackVisibility,
       consentSnapshot: header?.consentSnapshot ?? null,
       workspace: header?.workspace ?? null,
@@ -5095,7 +5025,6 @@ export class SessionService implements AgentTeamBridge {
     return {
       sessionId: managed.manifest.sessionId,
       visibility: header?.visibility ?? this.fallbackVisibility,
-      retentionDueAt: header?.retentionDueAt ?? null,
       status: managed.runState.state(),
       pending: managed.runState.pendingChanges(),
       thinking: managed.thinking,

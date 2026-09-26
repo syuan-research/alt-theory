@@ -77,8 +77,9 @@ and launch checks.
 - Keep generated dependencies, build/cache output, and local runtime data
   ignored.
 - Use placeholders or environment variables in examples.
-- Preserve append-only session evidence and account isolation when changing
-  persistence, import, or hosted-mode behavior.
+- Preserve append-only session evidence when changing persistence or import.
+  Access to conversations goes through `web-server/access-policy.ts`; never
+  add an inline access rule to a route.
 - Do not weaken approval, workspace, or path guards to make a test pass.
 
 ## Change Discipline

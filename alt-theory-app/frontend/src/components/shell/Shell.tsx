@@ -9,7 +9,6 @@ import { InspectorPanel } from "@/components/shell/InspectorPanel";
 import { SettingsView } from "@/components/shell/SettingsView";
 import { ReviewPage } from "@/components/shell/ReviewPage";
 
-import { LoginOverlay } from "@/components/auth/LoginOverlay";
 import { ExternalAiSetupDialog } from "@/components/shell/ExternalAiSetupDialog";
 import { ApprovalNotice } from "@/components/shell/ApprovalNotice";
 import { FindBar } from "@/components/shell/FindBar";
@@ -200,9 +199,6 @@ export function Shell() {
         />
         <InspectorPanel />
       </div>
-      {app.loginRequired ? (
-        <LoginOverlay onLogin={app.login} error={app.authError} />
-      ) : null}
     </div>
   );
 }

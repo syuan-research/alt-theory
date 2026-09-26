@@ -83,11 +83,7 @@ export interface SessionSummary {
   sessionId: string;
   alias?: string;
   snippet?: string;
-  ownerAccountId: string | null;
-  roleCondition: string | null;
   visibility: SessionVisibility;
-  /** Hosted-only expiry for a "private" conversation; null everywhere else. */
-  retentionDueAt: string | null;
   helper?: true;
   createdAt: string | null;
   /** Product recency: newest prompt accepted for execution, never read/open mtime. */
@@ -892,9 +888,8 @@ export function permanentlyDeleteSession(
  * Trash holds what the user deleted, and nothing else. This is an allowlist
  * rather than a list of the endings we happen to know about, because the
  * subtracting form files every future deletion kind into Trash by default:
- * a conversation emptied by private retention is already gone, so listing it
- * as recoverable both breaks the retention promise made to its participant and
- * offers a Restore that can only hand back a blank conversation.
+ * a permanently deleted conversation is already gone, so listing it as
+ * recoverable offers a Restore that can only hand back a blank conversation.
  */
 function isRecoverableDeletion(deleted: DeletedSessionRecord): boolean {
   // v1.3-alpha.6 wrote no reason at all; those are user deletions.
@@ -1313,10 +1308,7 @@ function buildSummary(sessionId: string, parts: SessionParts): SessionSummary {
     sessionId,
     alias,
     snippet,
-    ownerAccountId: parts.v4Session?.ownerAccountId ?? null,
-    roleCondition: parts.v4Session?.roleCondition ?? null,
-    visibility: parts.v4Session?.visibility ?? "research",
-    retentionDueAt: parts.v4Session?.retentionDueAt ?? null,
+    visibility: parts.v4Session?.visibility ?? "no-export",
     ...(parts.v4Session?.helper ? { helper: true } : {}),
     createdAt: parts.manifest?.createdAt ?? parts.v4Session?.createdAt ?? null,
     lastPromptAcceptedAt:

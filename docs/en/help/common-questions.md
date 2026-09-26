@@ -62,8 +62,8 @@ Everything is stored locally. What leaves the machine is exactly what
 goes to the configured model provider, plus search traffic in Work mode.
 The short data statement is on the
 [install page](../start-here/install-and-launch.md). For research users
-working under a data-use agreement, local storage is the default; the
-hosted mode is opt-in and requires an explicit environment variable.
+working under a data-use agreement, everything stays on this machine;
+there is no hosted mode.
 
 ## How is this different from a general assistant?
 

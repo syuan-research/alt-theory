@@ -42,10 +42,8 @@ function setupFixture() {
 
 function createTestService(
   fixture: ReturnType<typeof setupFixture>,
-  localMode = true,
 ): SessionService {
   return new SessionService({
-    localMode,
     dataDir: fixture.dataDir,
     assetPaths: {
       rootDir: fixture.root,
@@ -338,14 +336,3 @@ test("full access is dormant in read-only, effective again back in Work", async 
   );
 });
 
-test("a hosted deployment runs every conversation read-only", async () => {
-  const fixture = setupFixture();
-  const service = createTestService(fixture, false);
-  const created = await service.createSession(selectors, { mode: "work" });
-  assert.equal(created.mode, "read-only", "work is refused at assembly");
-  await assert.rejects(
-    service.switchMode(created.sessionId, "work"),
-    /read-only conversations only/,
-  );
-  await service.disposeAll();
-});

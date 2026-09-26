@@ -1,10 +1,10 @@
 ---
 doc_type: architecture
 slug: research-identity-visibility-privacy-and-retention
-scope: Account and install designation, session ownership and visibility, hosted/local privacy meaning, retention, and researcher access
-summary: The current identity, access, privacy, and retention contract for research-designated Alt Theory use
+scope: Access policy, install designation, the export marker, and what deletes a conversation
+summary: The current access, study-designation and export-marker contract of the local app; the hosted study mode was removed on 2026-09-26
 status: current
-last_reviewed: 2026-09-15
+last_reviewed: 2026-09-26
 tags: [research, identity, privacy, retention, access]
 depends_on: [core-session-engine]
 implements: []
@@ -12,155 +12,91 @@ implements: []
 
 # Architecture: Research Identity, Visibility, Privacy, and Retention
 
-This document records the current product/data contract for research identity
-and access. It does not define the larger researcher-console workflow, study
-design, comparison protocol, or Review-page product meaning. Those surfaces are
-implemented unevenly and remain provisional; see
+This document records the current access and research-designation contract.
+It does not define the researcher-console workflow, study design, comparison
+protocol, or Review-page product meaning; see
 [`researcher-console.md`](researcher-console.md).
 
-The contract below is implemented, but its boundary is not perfectly isolated
-in code. Account/auth, session records, REST authorization, WebSocket session
-creation, and the frontend designation gate are separate code paths. They must
-preserve the same meanings.
+## One deployment: the local app
 
-## Deployment modes
+Alt Theory runs on the user's own machine, for one owner. There are no
+accounts, no sign-in, and nothing deletes content the user did not delete.
+The hosted
+study mode (`ALT_THEORY_MODE=hosted`: accounts with participant / researcher
+/ admin roles, per-owner session filtering, `research` / `private`
+visibility, and hard deletion of private conversations after 7 inactive
+days) was removed on 2026-09-26. The VPS study deployment that used it runs
+an older release and is unaffected. `ALT_THEORY_MODE=local` survives only as
+the development opt-in for the `~/.alt-theory` store paths
+(`local-mode-paths.ts`).
 
-`ALT_THEORY_MODE` selects the deployment. It defaults to `local`; `hosted` must
-be selected explicitly. The Electron bundle and local development scripts set
-local mode. The hosted mode is the VPS study deployment.
+## Access policy
 
-The two modes deliberately use different visibility vocabularies:
+Every REST route and WebSocket action that lists a conversation or touches
+its content asks `web-server/access-policy.ts` (`AccessPolicy`:
+`canList(viewer, sessionId)`, `canReadContent(viewer, sessionId)`). The
+guards around it (`requireSessionRestContentAccess`, the WebSocket
+`requireSessionWsContentAccess`, the list and activity filters) only check
+that the conversation exists and is not in Trash. The one policy is
+`localAccess`: the owner sees everything. A future multi-user deployment
+supplies its own policy at this seam — deciding from the request and what it
+keeps about each conversation — instead of adding inline rules to routes.
+Routes that manage the machine's own model keys or write the user's own
+folders are marked in `server.ts` as never to be exposed to other users.
 
-| Deployment | Session values | Default | Meaning of the withheld value |
-|---|---|---|---|
-| Hosted | `research` / `private` | `research` | The participant's content is withheld from ordinary researcher/admin content access and receives hosted private retention. |
-| Local | `exportable` / `no-export` | `exportable` when the install is designated, otherwise `no-export` | A marker for a future/manual export decision. It does not hide, upload, or delete local content. |
+## Study designation
 
-`isVisibilityForMode()` rejects a value from the other vocabulary. The local
-`no-export` marker and hosted `private` value both indicate that content is
-withheld from research use, but only hosted `private` carries deletion
-semantics.
-
-Code: `alt-theory-app/web-server/server.ts` (`appMode`, `localMode`, and draft
-visibility), `alt-theory-app/web-server/session-records.ts`
-(`SessionVisibility`, `isVisibilityForMode`, `withholdsFromResearch`).
-
-## Identity and designation
-
-Hosted accounts are data-directory records with one of three roles:
-`participant`, `researcher`, or `admin`. Login codes are stored as scrypt hashes;
-the browser receives an HttpOnly process-local session cookie. Disabled or
-missing accounts invalidate the browser session. There is no self-registration
-or global admin UI in this contract.
-
-Local installs have no account identity. An install-level participant
-designation is stored in `app-settings.json` as
-`participant { designated, label }`; absent means the ordinary GitHub-download
-posture. When accounts are configured, `/api/auth/me` derives designation from
-the authenticated participant role; otherwise local mode reads the install
-flag. The designation controls whether researcher-only study surfaces render
-and seeds the local sharing default. It is not a claim that the local install
-can upload data.
+An install-level participant designation is stored in `app-settings.json`
+as `participant { designated, label }`; absent means the ordinary
+GitHub-download posture. `GET /api/app` returns it. The designation controls
+whether study surfaces render and seeds the export marker's default. It is
+not a claim that the install can upload data.
 
 The session-level research identifier is optional `studyTag { studyId, batch? }`.
 Absent means ordinary daily use. When present, it identifies the session for
-the current researcher workbench and record/review surfaces; it does not itself
-grant access or change privacy.
+the researcher workbench and record/review surfaces; it does not grant access
+or change privacy.
 
-Code: `alt-theory-app/web-server/auth-accounts.ts`,
-`alt-theory-app/web-server/auth-session.ts`, `alt-theory-app/web-server/app-settings.ts`,
-`alt-theory-app/web-server/server.ts` (`/api/auth/me` and designation/default
-helpers), and `alt-theory-app/web-server/session-records.ts` (`StudyTag`).
+Code: `alt-theory-app/web-server/app-settings.ts`,
+`alt-theory-app/web-server/server.ts` (`/api/app`, `defaultDraftVisibility`),
+`alt-theory-app/web-server/session-records.ts` (`StudyTag`).
 
-## Ownership and content access
+## The export marker
 
-On hosted participant creation, `ownerAccountId`, role condition, visibility,
-consent snapshot, and activity/retention fields are written to
-`records/session.json`. Participant session summaries are filtered to the
-authenticated owner. A researcher or admin can inspect ownerless researcher
-sessions and participant-owned sessions when content is not private.
+`visibility` on `records/session.json` is `exportable` or `no-export`: a
+marker for a future export filter. It hides, uploads and deletes nothing.
+New conversations default to `exportable` on a designated install and to
+`no-export` otherwise. A `no-export` conversation carries a
+`consentSnapshot` with research readability and quoting off and
+`privateOverride` set. An old header's hosted `private` still reads as
+withheld; old `ownerAccountId`, `roleCondition` and `retentionDueAt` fields
+are ignored.
 
-Participant drafts inherit the account's `defaultRoleCondition` when it
-resolves; researcher, admin, anonymous, and ordinary local drafts start without
-a role preset unless one is selected explicitly.
+Before materialization the marker is part of the client's new-conversation
+draft; the creating request carries it and the server checks the vocabulary
+(`isSessionVisibility`). After materialization `switch_visibility` updates
+the header through the session service; a switch during a run is accepted as
+pending and applied at settle with the consent snapshot captured at
+selection time (see
+[`session-lifecycle-and-turn-continuity.md`](session-lifecycle-and-turn-continuity.md)).
 
-Hosted private content is owner-only: normal researcher/admin detail,
-transcript, change, and file routes reject it. A participant can access only
-their own session content. Local mode intentionally short-circuits these hosted
-account/content gates because the data is on the user's machine and is not
-served as a multi-user research deployment. When no account store is configured,
-anonymous local/workbench compatibility remains available.
+## What deletes a conversation
 
-Frontend hiding is only a presentation gate. Backend REST and WebSocket checks
-remain the authority for session summaries, detail, content, and visibility
-changes.
-
-Code: `alt-theory-app/web-server/server.ts`
-(`canAccessSessionSummary`, `canAccessSessionContent`,
-`requireSessionRestContentAccess`, and `sessionCreationMetadataForAuth`),
-`alt-theory-app/web-server/session-store.ts`, and
-`alt-theory-app/web-server/session-records.ts` (`V4SessionHeader`).
-
-## Visibility and consent changes
-
-The first draft receives a deployment-appropriate visibility default. A
-participant's account consent defaults are copied into the session's
-`consentSnapshot`; selecting a withheld value forces researcher readability and
-quoting consent off and sets `privateOverride`.
-
-Before materialization, visibility is part of the client's new-conversation
-draft; the request that creates the conversation carries it and the server
-checks it against the deployment vocabulary. After materialization,
-`switch_visibility` validates the deployment vocabulary and updates the session
-record through the session service. The same session-level switch therefore
-does not change account designation or the meaning of the deployment mode.
-
-If the user changes visibility while a run is active, the switch is accepted as
-pending rather than refused. Settle applies the chosen visibility together with
-the `consentSnapshot` captured at selection time, in place on the session
-record. The pending timing is part of the ordinary selector lifecycle; it does
-not alter the account-level consent or deployment rules above. See
-[`session-lifecycle-and-turn-continuity.md`](session-lifecycle-and-turn-continuity.md).
-
-The hosted/local distinction is a privacy promise, not encryption or
-end-to-end secrecy. Local mode has no automatic upload path in this contract;
-the marker becomes relevant only if a later export flow consumes it.
-
-## Hosted private retention
-
-Only hosted sessions with `visibility: private` receive retention. Their due
-time is `lastActivityAt + 7 days`. A meaningful prompt and reopening refresh
-activity; catalog/detail reads do not. The hosted server runs the sweep at boot
-and daily, and does not delete a currently open session.
-
-Expiry hard-deletes the session's history, workspace, branches, and records,
-then leaves `records/deleted.json` as a tombstone. Local sessions never receive
-`retentionDueAt` and never run this sweep. Changing the visibility away from
-hosted `private` clears retention metadata.
-
-Code: `alt-theory-app/web-server/session-retention.ts`,
-`alt-theory-app/web-server/server.ts` (hosted-only sweep), and
-`alt-theory-app/web-server/session-service.ts` (activity/visibility updates).
-Tests: `alt-theory-app/web-server/session-retention.test.ts` and the relevant
-session-service/session-store access tests.
+Only the user does: Delete moves a conversation to Trash, and the Trash sweep
+purges it 30 days later (`sweepExpiredDeletedSessions`), never while it is
+open. Permanent deletion leaves `records/deleted.json` as a tombstone.
 
 ## Researcher-facing boundary
 
-The researcher console consumes this contract; it does not redefine it. Its
-currently implemented workbench can show setup and study-tagged sessions, and
-its Review route reads persisted comparison records. The product meaning of
-study setup, cross-study review, A/B protocol, export, and any future participant
-journey remains provisional and is not architecture fact here.
-
-Changes to account roles, designation defaults, visibility meaning, ownership
-access, or retention are product/data and ethical changes. They require owner
-discussion before implementation. Mechanical updates that merely follow the
-existing contract may update this document with verified code evidence.
+The researcher console consumes this contract; it does not redefine it.
+Changes to designation defaults, the marker's meaning, or what deletes a
+conversation are product/data and ethical changes and need owner discussion
+before implementation.
 
 ## Verification anchors
 
-- `alt-theory-app/web-server/auth-accounts.test.ts`
 - `alt-theory-app/web-server/session-records.test.ts`
-- `alt-theory-app/web-server/session-retention.test.ts`
-- `alt-theory-app/web-server/backend-server.integration.ts`
+- `alt-theory-app/web-server/session-deletion-lifecycle.test.ts`
+- `alt-theory-app/web-server/backend-server.integration.ts` ("a local server
+  serves every conversation, whatever an old header or account file says")
 - [`researcher-console.md`](researcher-console.md) for current researcher-facing surfaces

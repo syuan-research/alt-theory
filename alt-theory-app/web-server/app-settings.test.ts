@@ -19,16 +19,13 @@ test("app settings default policy: every discovered external skill; default perm
   const settings = readAppSettings(dataDir);
   const resolved = resolveExternalSkillPaths(settings, ["/x/skill-a", "/x/skill-b"]);
   assert.deepEqual(resolved, ["/x/skill-a", "/x/skill-b"]);
-  assert.deepEqual(defaultSessionPermission(settings, true), { mode: "work", fullAccess: false, smartApproval: false });
+  assert.deepEqual(defaultSessionPermission(settings), { mode: "work", fullAccess: false, smartApproval: false });
   settings.defaultPermission = "full";
-  assert.deepEqual(defaultSessionPermission(settings, true), { mode: "work", fullAccess: true, smartApproval: false });
+  assert.deepEqual(defaultSessionPermission(settings), { mode: "work", fullAccess: true, smartApproval: false });
   settings.defaultPermission = "smart";
-  assert.deepEqual(defaultSessionPermission(settings, true), { mode: "work", fullAccess: false, smartApproval: true });
+  assert.deepEqual(defaultSessionPermission(settings), { mode: "work", fullAccess: false, smartApproval: true });
   settings.defaultPermission = "read-only";
-  assert.deepEqual(defaultSessionPermission(settings, true), { mode: "read-only", fullAccess: false, smartApproval: false });
-  // Hosted is read-only whatever the setting says.
-  settings.defaultPermission = "full";
-  assert.deepEqual(defaultSessionPermission(settings, false), { mode: "read-only", fullAccess: false, smartApproval: false });
+  assert.deepEqual(defaultSessionPermission(settings), { mode: "read-only", fullAccess: false, smartApproval: false });
 });
 
 test("app settings persist immediately and round-trip explicit selections", () => {

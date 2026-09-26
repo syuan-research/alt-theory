@@ -36,7 +36,7 @@ companion folders; `folderPolicyFor()` joins them to every conversation whose
 main folder matches that project. Global folders join every conversation.
 Both are read live from `app-settings.json`, so changes apply to an open
 conversation at its next path check and on its next loader reload (context file
-and project skills). Hosted mode rejects machine-local workspace paths.
+and project skills).
 
 Reopen restores the persisted main folder when it still exists. If it is
 unavailable, reopen uses no working folder and exposes a warning; the old
@@ -346,8 +346,7 @@ permission is at most smart approval;
 `spawn_agent` may ask for a read-only child (`clampSubagentMode`), A/B arms
 are read-only, and a later change on the parent does not reach existing
 children. Imported conversations start from the default permission without
-Full Access. A hosted deployment runs every conversation read-only: the
-assembly forces the mode, and creation or a switch to `work` is refused. See
+Full Access. See
 [`alt-theory-core.ts`](../../alt-theory-app/core/alt-theory-core.ts),
 [`security-extension.ts`](../../alt-theory-app/core/security-extension.ts),
 [`app-settings.ts`](../../alt-theory-app/web-server/app-settings.ts)

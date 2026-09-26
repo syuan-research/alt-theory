@@ -11,9 +11,7 @@ function child(
 ): SessionSummary {
   return {
     sessionId,
-    ownerAccountId: null,
-    roleCondition: null,
-    visibility: "research",
+    visibility: "no-export",
     createdAt,
     updatedAt: createdAt,
     deletedAt: null,

@@ -43,7 +43,7 @@ table and the frontend `IMPORTABLE_HARNESSES` union agree.
 The local API exposes the ready harnesses through
 `GET /api/session-import/harnesses`, discovery through
 `GET /api/session-import/:harness/sessions`, and preflight/import through
-`POST /api/session-import/:harness`. Hosted mode does not expose these routes.
+`POST /api/session-import/:harness`.
 
 ## Three representations
 

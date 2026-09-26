@@ -157,7 +157,6 @@ function unanchorMenu(details: HTMLDetailsElement) {
 }
 
 export function LeftNav({ hidden = false }: { hidden?: boolean }) {
-  const app = useApp();
   const main = useMainView();
   const shell = useShell();
 
@@ -166,15 +165,6 @@ export function LeftNav({ hidden = false }: { hidden?: boolean }) {
   if (shell.surface === "settings") {
     return <SettingsRail hidden={hidden} />;
   }
-
-  const avatarLetter = (
-    app.auth.displayLabel ||
-    app.auth.accountId ||
-    "A"
-  )
-    .trim()
-    .charAt(0)
-    .toUpperCase();
 
   return (
     <aside className="left" hidden={hidden}>
@@ -248,11 +238,6 @@ export function LeftNav({ hidden = false }: { hidden?: boolean }) {
             {t("Settings")}
           </button>
           <HelpMenu />
-          {app.appMode === "local" ? null : (
-            <div className="avatar" data-tip={app.auth.displayLabel ?? t("Signed in")}>
-              {avatarLetter}
-            </div>
-          )}
         </div>
       </div>
       <SessionImportDialog
@@ -512,7 +497,6 @@ function UserNav({ onImport }: { onImport: () => void }) {
   useEffect(() => {
     if (!shell.searchOpen) setRailQuery("");
   }, [shell.searchOpen]);
-  const local = app.appMode === "local";
   const GROUP_CAP = 4;
 
   useEffect(() => {
@@ -547,9 +531,8 @@ function UserNav({ onImport }: { onImport: () => void }) {
   }, [conv.sessionId, main.selectedCatalogSessionId, pendingRelated]);
 
   useEffect(() => {
-    if (!local) return;
     void getSessionListSort().then(setListSort);
-  }, [local]);
+  }, []);
 
   useEffect(() => {
     const closeOpenMenus = (event: PointerEvent) => {
@@ -598,12 +581,12 @@ function UserNav({ onImport }: { onImport: () => void }) {
     () =>
       buildWorkspaceTree(
         app.sessions,
-        local ? app.knownWorkspaces : [],
+        app.knownWorkspaces,
         listSort,
         app.sessionDisplayNames,
         searchScope === "names" ? railQuery.trim() : "",
       ),
-    [app.sessions, app.knownWorkspaces, app.sessionDisplayNames, listSort, local, railQuery, searchScope],
+    [app.sessions, app.knownWorkspaces, app.sessionDisplayNames, listSort, railQuery, searchScope],
   );
 
   // Projects (v1.5.1): the group's label is the project's name (defaults to
@@ -646,11 +629,9 @@ function UserNav({ onImport }: { onImport: () => void }) {
 
   const chooseSort = (next: SessionListSort) => {
     setListSort(next);
-    if (local) {
-      void saveSessionListSort(next).catch((error) =>
-        window.alert(error instanceof Error ? error.message : String(error)),
-      );
-    }
+    void saveSessionListSort(next).catch((error) =>
+      window.alert(error instanceof Error ? error.message : String(error)),
+    );
   };
 
   const workspaceDirs = useMemo(() => {
@@ -690,8 +671,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
       return;
     }
     const ancestor = nearestAncestor(session, sessionsById, (item) =>
-      isListMember(item) && item.hasSessionFile && !item.deletedAt &&
-      (local || item.visibility !== "private" || item.ownerAccountId === app.auth.accountId));
+      isListMember(item) && item.hasSessionFile && !item.deletedAt);
     if (!ancestor) {
       openSession(session.sessionId);
       return;
@@ -882,104 +862,82 @@ function UserNav({ onImport }: { onImport: () => void }) {
     >
       <div className="pad">
         <div className="new-row">
-          {local ? (
-            <div className="split-new">
-              <details className="list-more ws-pick">
-                <summary
-                  data-tip={conv.workspacePrimaryDir ?? t("Independent conversations")}
+          <div className="split-new">
+            <details className="list-more ws-pick">
+              <summary
+                data-tip={conv.workspacePrimaryDir ?? t("Independent conversations")}
+              >
+                <i className={`ph ${conv.workspacePrimaryDir ? "ph-folder" : "ph-note"}`} />
+                <span className="ws-label">
+                  {conv.workspacePrimaryDir
+                    ? folderLabel(conv.workspacePrimaryDir)
+                    : t("Independent conversations")}
+                </span>
+                <i className="ph ph-caret-down caret" />
+              </summary>
+              <div className="list-menu">
+                <button
+                  onClick={(e) => {
+                    closeMenu(e);
+                    onImport();
+                  }}
                 >
-                  <i className={`ph ${conv.workspacePrimaryDir ? "ph-folder" : "ph-note"}`} />
-                  <span className="ws-label">
-                    {conv.workspacePrimaryDir
-                      ? folderLabel(conv.workspacePrimaryDir)
-                      : t("Independent conversations")}
-                  </span>
-                  <i className="ph ph-caret-down caret" />
-                </summary>
-                <div className="list-menu">
+                  <i className="ph ph-download-simple" />
+                  {t("Import conversations…")}
+                </button>
+                <div className="sep" />
+                <button
+                  onClick={(e) => {
+                    e.currentTarget.closest("details")?.removeAttribute("open");
+                    chooseFolder(null);
+                  }}
+                >
+                  <i className="ph ph-note" />
+                  {t("Independent conversations")}
+                  {!conv.workspacePrimaryDir ? (
+                    <i className="ph ph-check check" />
+                  ) : null}
+                </button>
+                {workspaceDirs.map((dir) => (
                   <button
+                    key={dir}
+                    data-tip={dir}
                     onClick={(e) => {
-                      closeMenu(e);
-                      onImport();
+                      e.currentTarget
+                        .closest("details")
+                        ?.removeAttribute("open");
+                      chooseFolder(dir);
                     }}
                   >
-                    <i className="ph ph-download-simple" />
-                    {t("Import conversations…")}
-                  </button>
-                  <div className="sep" />
-                  <button
-                    onClick={(e) => {
-                      e.currentTarget.closest("details")?.removeAttribute("open");
-                      chooseFolder(null);
-                    }}
-                  >
-                    <i className="ph ph-note" />
-                    {t("Independent conversations")}
-                    {!conv.workspacePrimaryDir ? (
+                    <i className="ph ph-folder" />
+                    {folderLabel(dir)}
+                    {conv.workspacePrimaryDir === dir ? (
                       <i className="ph ph-check check" />
                     ) : null}
                   </button>
-                  {workspaceDirs.map((dir) => (
-                    <button
-                      key={dir}
-                      data-tip={dir}
-                      onClick={(e) => {
-                        e.currentTarget
-                          .closest("details")
-                          ?.removeAttribute("open");
-                        chooseFolder(dir);
-                      }}
-                    >
-                      <i className="ph ph-folder" />
-                      {folderLabel(dir)}
-                      {conv.workspacePrimaryDir === dir ? (
-                        <i className="ph ph-check check" />
-                      ) : null}
-                    </button>
-                  ))}
-                </div>
-              </details>
-              <button
-                type="button"
-                className={`btn-new split-search${shell.searchOpen ? " on" : ""}`}
-                data-tip={t("Search")}
-                aria-label={t("Search")}
-                aria-expanded={shell.searchOpen}
-                onClick={() => shell.setSearchOpen(!shell.searchOpen)}
-              >
-                <i className="ph ph-magnifying-glass" aria-hidden="true" />
-              </button>
-              <button
-                className="btn-new split-plus"
-                data-tip={t("New conversation")}
-                onClick={() =>
-                  startConversationIn(conv.workspacePrimaryDir || null)
-                }
-              >
-                <i className="ph ph-note-pencil" />
-              </button>
-            </div>
-          ) : (
-            <div className="split-new">
-              <button
-                type="button"
-                className={`btn-new split-search${shell.searchOpen ? " on" : ""}`}
-                data-tip={t("Search")}
-                aria-label={t("Search")}
-                aria-expanded={shell.searchOpen}
-                onClick={() => shell.setSearchOpen(!shell.searchOpen)}
-              >
-                <i className="ph ph-magnifying-glass" aria-hidden="true" />
-              </button>
-              <button
-                className="btn-new split-new-text"
-                onClick={() => startConversationIn(null)}
-              >
-                <i className="ph ph-note-pencil" />
-                {t("New conversation")}
-              </button>
-            </div>
-          )}
+                ))}
+              </div>
+            </details>
+            <button
+              type="button"
+              className={`btn-new split-search${shell.searchOpen ? " on" : ""}`}
+              data-tip={t("Search")}
+              aria-label={t("Search")}
+              aria-expanded={shell.searchOpen}
+              onClick={() => shell.setSearchOpen(!shell.searchOpen)}
+            >
+              <i className="ph ph-magnifying-glass" aria-hidden="true" />
+            </button>
+            <button
+              className="btn-new split-plus"
+              data-tip={t("New conversation")}
+              onClick={() =>
+                startConversationIn(conv.workspacePrimaryDir || null)
+              }
+            >
+              <i className="ph ph-note-pencil" />
+            </button>
+          </div>
         </div>
         {shell.searchOpen ? (
           <div className="inline-search">
@@ -1028,20 +986,16 @@ function UserNav({ onImport }: { onImport: () => void }) {
                   key="independent"
                   className={dropTarget === "" ? "drop-target" : undefined}
                   onDragOver={
-                    local
-                      ? (e) => {
+                    (e) => {
                           e.preventDefault();
                           setDropTarget("");
                         }
-                      : undefined
                   }
                   onDragLeave={
-                    local
-                      ? () =>
+                    () =>
                           setDropTarget((prev) => (prev === "" ? null : prev))
-                      : undefined
                   }
-                  onDrop={local ? (e) => dropSession("", e) : undefined}
+                  onDrop={(e) => dropSession("", e)}
                 >
                   <div className="workspace-list-head">
                     <button
@@ -1082,7 +1036,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                     foldedFamilies={foldedFamilies}
                     onToggleFamily={toggleFamily}
                     onOpen={openSession}
-                    draggable={local}
+                    draggable
                     cap={GROUP_CAP}
                   />
                   )}
@@ -1117,16 +1071,14 @@ function UserNav({ onImport }: { onImport: () => void }) {
                 >
                   <i className="ph ph-arrows-out-line-vertical" aria-hidden="true" />
                 </button>
-                {local ? (
-                  <button
-                    type="button"
-                    data-tip={t("Add project…")}
-                    aria-label={t("Add project…")}
-                    onClick={() => void addFolder()}
-                  >
-                    <i className="ph ph-folder-plus" aria-hidden="true" />
-                  </button>
-                ) : null}
+                <button
+                  type="button"
+                  data-tip={t("Add project…")}
+                  aria-label={t("Add project…")}
+                  onClick={() => void addFolder()}
+                >
+                  <i className="ph ph-folder-plus" aria-hidden="true" />
+                </button>
                 <details className="list-more list-sort">
                   <summary data-tip={t("Sort conversations")}>
                     <i className="ph ph-sort-ascending" />
@@ -1196,22 +1148,18 @@ function UserNav({ onImport }: { onImport: () => void }) {
                 key={group.dir}
                 className={dropTarget === group.dir ? "drop-target" : undefined}
                 onDragOver={
-                  local
-                    ? (e) => {
+                  (e) => {
                         e.preventDefault();
                         setDropTarget(group.dir);
                       }
-                    : undefined
                 }
                 onDragLeave={
-                  local
-                    ? () =>
+                  () =>
                         setDropTarget((prev) =>
                           prev === group.dir ? null : prev,
                         )
-                    : undefined
                 }
-                onDrop={local ? (e) => dropSession(group.dir, e) : undefined}
+                onDrop={(e) => dropSession(group.dir, e)}
               >
                 <div className="group-row reveal-row">
                   <button
@@ -1222,86 +1170,84 @@ function UserNav({ onImport }: { onImport: () => void }) {
                     <i className="ph ph-folder" />
                     <span className="group-name">{group.label}</span>
                   </button>
-                  {local ? (
-                    <div className="reveal-layer -fade">
-                        <details
-                          className="list-more group-folder-more"
-                          onToggle={(event) => {
-                            const details = event.currentTarget;
-                            if (details.open) anchorMenuToSummary(details);
-                            else unanchorMenu(details);
-                          }}
-                        >
-                          <summary data-tip={t("Project actions")}>
-                            <i className="ph ph-dots-three" />
-                          </summary>
-                          <div className="list-menu">
-                            {hasNativeBridge() ? (
-                              <button
-                                onClick={(event) => {
-                                  closeMenu(event);
-                                  void revealPath(group.dir);
-                                }}
-                              >
-                                <i className="ph ph-folder-open" />
-                                {t("Show in file manager")}
-                              </button>
-                            ) : null}
-                            <button
-                              onClick={(event) => {
-                                closeMenu(event);
-                                void navigator.clipboard?.writeText(group.dir);
-                              }}
-                            >
-                              <i className="ph ph-copy" />
-                              {t("Copy folder path")}
-                            </button>
-                            <div className="sep" />
-                            {project ? (
-                              <button
-                                onClick={(event) => {
-                                  closeMenu(event);
-                                  void addProjectFolder(project);
-                                }}
-                              >
-                                <i className="ph ph-folder-plus" />
-                                {t("Add a folder to this project")}
-                              </button>
-                            ) : null}
-                            {project ? (
-                              <button
-                                onClick={(event) => {
-                                  closeMenu(event);
-                                  shell.openSettings("folders");
-                                }}
-                              >
-                                <i className="ph ph-folders" />
-                                {t("Manage folders in this project")}
-                              </button>
-                            ) : null}
-                            <button
-                              onClick={(event) => {
-                                closeMenu(event);
-                                removeFolder(
-                                  group.dir,
-                                  group.roots.map((root) => root.sessionId),
-                                );
-                              }}
-                            >
-                              <i className="ph ph-minus-circle" />
-                              {t("Remove this project from the list")}
-                            </button>
-                          </div>
-                        </details>
-                      <button
-                        className="group-add"
-                        data-tip={t("New conversation in {label}", { label: group.label })}
-                        onClick={() => startConversationIn(group.dir)}
+                  <div className="reveal-layer -fade">
+                      <details
+                        className="list-more group-folder-more"
+                        onToggle={(event) => {
+                          const details = event.currentTarget;
+                          if (details.open) anchorMenuToSummary(details);
+                          else unanchorMenu(details);
+                        }}
                       >
-                        <i className="ph ph-note-pencil" />
-                      </button>
-                    </div>
-                  ) : null}
+                        <summary data-tip={t("Project actions")}>
+                          <i className="ph ph-dots-three" />
+                        </summary>
+                        <div className="list-menu">
+                          {hasNativeBridge() ? (
+                            <button
+                              onClick={(event) => {
+                                closeMenu(event);
+                                void revealPath(group.dir);
+                              }}
+                            >
+                              <i className="ph ph-folder-open" />
+                              {t("Show in file manager")}
+                            </button>
+                          ) : null}
+                          <button
+                            onClick={(event) => {
+                              closeMenu(event);
+                              void navigator.clipboard?.writeText(group.dir);
+                            }}
+                          >
+                            <i className="ph ph-copy" />
+                            {t("Copy folder path")}
+                          </button>
+                          <div className="sep" />
+                          {project ? (
+                            <button
+                              onClick={(event) => {
+                                closeMenu(event);
+                                void addProjectFolder(project);
+                              }}
+                            >
+                              <i className="ph ph-folder-plus" />
+                              {t("Add a folder to this project")}
+                            </button>
+                          ) : null}
+                          {project ? (
+                            <button
+                              onClick={(event) => {
+                                closeMenu(event);
+                                shell.openSettings("folders");
+                              }}
+                            >
+                              <i className="ph ph-folders" />
+                              {t("Manage folders in this project")}
+                            </button>
+                          ) : null}
+                          <button
+                            onClick={(event) => {
+                              closeMenu(event);
+                              removeFolder(
+                                group.dir,
+                                group.roots.map((root) => root.sessionId),
+                              );
+                            }}
+                          >
+                            <i className="ph ph-minus-circle" />
+                            {t("Remove this project from the list")}
+                          </button>
+                        </div>
+                      </details>
+                    <button
+                      className="group-add"
+                      data-tip={t("New conversation in {label}", { label: group.label })}
+                      onClick={() => startConversationIn(group.dir)}
+                    >
+                      <i className="ph ph-note-pencil" />
+                    </button>
+                  </div>
                 </div>
                 {!closed ? (
                   <SessionRootList
@@ -1321,7 +1267,7 @@ function UserNav({ onImport }: { onImport: () => void }) {
                     foldedFamilies={foldedFamilies}
                     onToggleFamily={toggleFamily}
                     onOpen={openSession}
-                    draggable={local}
+                    draggable
                     cap={GROUP_CAP}
                   />
                 ) : null}
@@ -1451,10 +1397,8 @@ function SessionNode({
     { label: t("Delete entire family"), icon: "ph-tree-structure", danger: true, onSelect: removeFamily },
     { label: t("Export Markdown"), icon: "ph-download-simple", separator: true, onSelect: () => void exportMarkdown() },
     { label: t("Copy Session ID"), icon: "ph-identification-card", onSelect: () => void copyText(session.sessionId) },
-    ...(app.appMode === "local" ? [
-      { label: t("Copy session folder path"), icon: "ph-copy", onSelect: copySessionFolder },
-      ...(hasNativeBridge() ? [{ label: t("Open session folder"), icon: "ph-folder-open", onSelect: openSessionFolder }] : []),
-    ] : []),
+    { label: t("Copy session folder path"), icon: "ph-copy", onSelect: copySessionFolder },
+    ...(hasNativeBridge() ? [{ label: t("Open session folder"), icon: "ph-folder-open", onSelect: openSessionFolder }] : []),
   ];
 
   return (
@@ -1630,19 +1574,15 @@ function SessionNode({
               <i className="ph ph-identification-card" />
               {t("Copy Session ID")}
             </button>
-            {app.appMode === "local" ? (
-              <>
-                <button onClick={(event) => { closeMenu(event); copySessionFolder(); }}>
-                  <i className="ph ph-copy" />
-                  {t("Copy session folder path")}
-                </button>
-                {hasNativeBridge() ? (
-                  <button onClick={(event) => { closeMenu(event); openSessionFolder(); }}>
-                    <i className="ph ph-folder-open" />
-                    {t("Open session folder")}
-                  </button>
-                ) : null}
-              </>
+            <button onClick={(event) => { closeMenu(event); copySessionFolder(); }}>
+              <i className="ph ph-copy" />
+              {t("Copy session folder path")}
+            </button>
+            {hasNativeBridge() ? (
+              <button onClick={(event) => { closeMenu(event); openSessionFolder(); }}>
+                <i className="ph ph-folder-open" />
+                {t("Open session folder")}
+              </button>
             ) : null}
           </div>
         </details>

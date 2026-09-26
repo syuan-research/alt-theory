@@ -76,7 +76,7 @@ test("Pi discovery and managed registration preserve history and workspace", asy
     mode: "read-only",
     rolePresetSlug: "role-conceptual-theory-companion",
     soulSlug: "soul-latest",
-    visibility: "private",
+    visibility: "no-export",
   });
   const list = listSessionSummaries(dataDir);
   assert.equal(list.sessions.length, 1);
@@ -85,7 +85,7 @@ test("Pi discovery and managed registration preserve history and workspace", asy
 
   const detail = readSessionDetail(dataDir, registered.sessionId);
   assert.ok(detail);
-  assert.equal(detail.session.visibility, "private");
+  assert.equal(detail.session.visibility, "no-export");
   assert.equal(detail.session.recordModel, "v0.4");
   assert.equal(detail.transcript[0]?.text, "history that must survive import");
   assert.equal(detail.manifest?.workspace.primaryDir, sourceCwd);
@@ -153,7 +153,7 @@ test("Pi discovery and managed registration preserve history and workspace", asy
     mode: "read-only",
     rolePresetSlug: "role-conceptual-theory-companion",
     soulSlug: "soul-latest",
-    visibility: "private",
+    visibility: "no-export",
   });
   const alias = JSON.parse(readFileSync(
     join(dataDir, "sessions", reimported.sessionId, "records", "ui-alias.json"),
@@ -337,7 +337,7 @@ test("Grok preflight preserves current history and raw source, and refuses unmat
     source,
     preflight,
     mode: "work",
-    visibility: "private",
+    visibility: "no-export",
   });
   const snapshot = join(
     dataDir,
@@ -495,7 +495,7 @@ test("Codex preflight maps supported rollout history and refuses unmatched tool 
     source,
     preflight,
     mode: "work",
-    visibility: "private",
+    visibility: "no-export",
   });
   const detail = readSessionDetail(dataDir, registered.sessionId);
   assert.ok(detail);
@@ -771,7 +771,7 @@ test("OpenCode preflight registers complete supported history and refuses unsupp
     source,
     preflight,
     mode: "work",
-    visibility: "private",
+    visibility: "no-export",
   });
   const detail = readSessionDetail(dataDir, registered.sessionId);
   assert.ok(detail);
@@ -1081,7 +1081,7 @@ test("Codex preflight separates visible history from active context after compac
     source,
     preflight,
     mode: "work",
-    visibility: "private",
+    visibility: "no-export",
   });
   const detail = readSessionDetail(dataDir, registered.sessionId);
   assert.ok(detail);
@@ -1508,7 +1508,7 @@ test("OpenCode lists roots and archives child sessions beside the imported root"
     mode: "work",
     rolePresetSlug: "role-conceptual-theory-companion",
     soulSlug: "soul-latest",
-    visibility: "private",
+    visibility: "no-export",
   });
   const contextDir = join(
     dataDir,
@@ -1842,7 +1842,7 @@ test("Claude Code discovery falls back from a stale index and imports one integr
     source,
     preflight,
     mode: "work",
-    visibility: "private",
+    visibility: "no-export",
   });
   assert.match(
     readFileSync(
@@ -1947,7 +1947,7 @@ test("Claude Code plaintext compaction preserves visible history and resumes fro
     source,
     preflight,
     mode: "read-only",
-    visibility: "private",
+    visibility: "no-export",
   });
   const detail = readSessionDetail(dataDir, registered.sessionId);
   assert.ok(detail);

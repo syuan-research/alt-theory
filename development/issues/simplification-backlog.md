@@ -201,6 +201,11 @@ the product could do, so they need your answer, not mine.
 
 ### 13. The hosted / study apparatus — ~1,190 lines **[perf-adjacent]**
 
+**Done 2026-09-26** (owner decision): the hosted mode, accounts, private
+retention and the login overlay were removed; access goes through one policy
+seam (`web-server/access-policy.ts`). The local export marker, install
+designation and study tags stay. The VPS pilot runs an older release.
+
 `electron/main.cjs` sets `ALT_THEORY_MODE = "local"` unconditionally, so in
 every shipped build the hosted branches never execute: `session-retention.ts`
 (371 lines, the 7-day private-conversation expiry), `auth-accounts.ts` (292),

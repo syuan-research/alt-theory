@@ -738,7 +738,7 @@ export function effectiveSettings(
       rolePresetSlug: pick(pending.rolePresetSlug, source?.rolePresetSlug ?? null),
       soulSlug: pick(pending.soulSlug, source?.soulSlug ?? null),
       customInstructionRef: pick(pending.customInstructionRef, source?.customInstructionRef ?? null),
-      visibility: pick(pending.visibility?.visibility, source?.visibility ?? "research"),
+      visibility: pick(pending.visibility?.visibility, source?.visibility ?? "no-export"),
       branchId: (state.snapshot && state.sessionId ? state.snapshot.branchId : undefined) || "main",
     },
     mode: pick(pending.mode, source?.mode ?? "work"),

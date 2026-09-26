@@ -75,8 +75,7 @@ export interface AppSettings {
     fallbackModels?: string[];
   };
   /**
-   * Which permission a new conversation starts with (local only; hosted is
-   * always read-only). Absent = Ask. The per-conversation control is
+   * Which permission a new conversation starts with. Absent = Ask. The per-conversation control is
    * unaffected — this only seeds new drafts.
    */
   defaultPermission?: Permission;
@@ -417,15 +416,11 @@ export function resolveExternalSkillPaths(
 export type Permission = "read-only" | "ask" | "smart" | "full";
 export const PERMISSIONS: Permission[] = ["read-only", "ask", "smart", "full"];
 
-/**
- * The settings a new conversation starts from. Hosted deployments are
- * read-only regardless of the setting (owner 2026-09-25).
- */
+/** The settings a new conversation starts from. */
 export function defaultSessionPermission(
   settings: AppSettings,
-  localMode: boolean,
 ): { mode: AltMode; fullAccess: boolean; smartApproval: boolean } {
-  const permission = localMode ? (settings.defaultPermission ?? "ask") : "read-only";
+  const permission = settings.defaultPermission ?? "ask";
   return {
     mode: permission === "read-only" ? "read-only" : "work",
     fullAccess: permission === "full",

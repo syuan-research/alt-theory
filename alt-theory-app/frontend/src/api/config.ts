@@ -1,5 +1,6 @@
 import { fetchJson } from "./http";
 import type {
+  AppInfoResponse,
   ConfigStatus,
   FetchModelsDraftInput,
   FetchedModel,
@@ -9,6 +10,11 @@ import type {
   ProviderView,
   UpsertProviderInput,
 } from "./types";
+
+/** The install's own facts: runtime mode, study designation, model config. */
+export async function fetchAppInfo(): Promise<AppInfoResponse> {
+  return fetchJson<AppInfoResponse>("/api/app");
+}
 
 export async function getDocsRoot(): Promise<{ docsRoot: string | null }> {
   return fetchJson("/api/config/docs-root");

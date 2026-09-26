@@ -166,11 +166,6 @@ test("every projected row has a unique stable id, compaction rows included", () 
 });
 import { writeFoundationRecords } from "./session-records.js";
 import {
-  hashLoginCode,
-  writeAccountStore,
-  type AccountRecord,
-} from "./auth-accounts.js";
-import {
   getConfigStatus,
   getVerifiedConfigStatus,
   getRuntimeModelConfig,
@@ -1441,211 +1436,23 @@ test("session catalog and detail expose complete and incomplete sessions", async
   }
 });
 
-test("auth routes support cookie round trip without leaking account secrets", async () => {
-  const root = mkdtempSync(join(tmpdir(), "alt-theory-auth-routes-"));
-  const dataDir = join(root, "data");
-  const now = "2026-06-16T00:00:00.000Z";
-  const participant: AccountRecord = {
-    schemaVersion: 1,
-    accountId: "p01",
-    displayLabel: "Participant 01",
-    role: "participant",
-    status: "active",
-    loginCodeHash: hashLoginCode("code-123", "route-salt"),
-    defaultRoleCondition: "conceptual-theory",
-    defaultConsent: {
-      researcherReadable: true,
-      quoteAfterAnonymization: true,
-    },
-    createdAt: now,
-    updatedAt: now,
-  };
-  writeAccountStore(dataDir, {
-    schemaVersion: 1,
-    accounts: [
-      participant,
-      {
-        ...participant,
-        accountId: "p02",
-        displayLabel: "Participant 02",
-        status: "disabled",
-        loginCodeHash: hashLoginCode("disabled-code", "disabled-route-salt"),
-      },
-    ],
-  });
-
-  const restoreMode = useHostedMode();
-  const instance = createAltTheoryServer({
-    dataDir,
-  });
-  await new Promise<void>((resolveListen) => {
-    instance.httpServer.listen(0, "127.0.0.1", resolveListen);
-  });
-  const address = instance.httpServer.address();
-  assert.ok(address && typeof address === "object");
-  const baseUrl = `http://127.0.0.1:${address.port}`;
-
-  try {
-    const anonymous = await fetch(`${baseUrl}/api/auth/me`);
-    assert.deepEqual(await anonymous.json(), {
-      auth: {
-        accountId: null,
-        role: "anonymous",
-        displayLabel: null,
-        defaultRoleCondition: null,
-        defaultConsent: null,
-      },
-      app: {
-        mode: "hosted",
-        runtimeMode: "alt-theory",
-        nativePiScanAltSkills: true,
-      },
-      participant: null,
-      localConfig: null,
-    });
-
-    const wrong = await fetch(`${baseUrl}/api/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ accountId: "missing", loginCode: "wrong" }),
-    });
-    assert.equal(wrong.status, 401);
-    assert.deepEqual(await wrong.json(), { error: "Invalid account or code" });
-
-    const disabled = await fetch(`${baseUrl}/api/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ accountId: "p02", loginCode: "disabled-code" }),
-    });
-    assert.equal(disabled.status, 403);
-
-    const login = await fetch(`${baseUrl}/api/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ accountId: "p01", loginCode: "code-123" }),
-    });
-    assert.equal(login.status, 200);
-    const loginCookie = login.headers.get("set-cookie");
-    assert.match(loginCookie ?? "", /alt_theory_auth=/);
-    assert.match(loginCookie ?? "", /HttpOnly/);
-    const loginJson = await login.json();
-    assert.equal(loginJson.account.accountId, "p01");
-    assert.equal(loginJson.account.defaultRoleCondition, "conceptual-theory");
-    assert.equal(JSON.stringify(loginJson).includes("loginCodeHash"), false);
-
-    const cookie = loginCookie?.split(";")[0] ?? "";
-    const me = await fetch(`${baseUrl}/api/auth/me`, {
-      headers: { Cookie: cookie },
-    });
-    assert.deepEqual(await me.json(), {
-      auth: {
-        accountId: "p01",
-        role: "participant",
-        displayLabel: "Participant 01",
-        defaultRoleCondition: "conceptual-theory",
-        defaultConsent: {
-          researcherReadable: true,
-          quoteAfterAnonymization: true,
-        },
-      },
-      app: {
-        mode: "hosted",
-        runtimeMode: "alt-theory",
-        nativePiScanAltSkills: true,
-      },
-      participant: { designated: true, label: null },
-      localConfig: null,
-    });
-
-    const logout = await fetch(`${baseUrl}/api/auth/logout`, {
-      method: "POST",
-      headers: { Cookie: cookie },
-    });
-    assert.equal(logout.status, 200);
-    assert.match(logout.headers.get("set-cookie") ?? "", /Max-Age=0/);
-
-    const afterLogout = await fetch(`${baseUrl}/api/auth/me`, {
-      headers: { Cookie: cookie },
-    });
-    const afterLogoutJson = await afterLogout.json();
-    assert.equal(afterLogoutJson.auth.role, "anonymous");
-  } finally {
-    restoreMode();
-    await new Promise<void>((resolveClose) => {
-      instance.wss.close(() => {
-        instance.httpServer.close(() => resolveClose());
-      });
-    });
-  }
-});
-
-/**
- * Hosted deployments must opt in explicitly: ALT_THEORY_MODE now defaults to
- * local so a mis-launched server never applies study semantics (private =>
- * deleted after 7 inactive days) to someone's own machine.
- */
-function useHostedMode(): () => void {
-  const previous = process.env.ALT_THEORY_MODE;
-  process.env.ALT_THEORY_MODE = "hosted";
-  return () => {
-    if (previous === undefined) delete process.env.ALT_THEORY_MODE;
-    else process.env.ALT_THEORY_MODE = previous;
-  };
-}
-
-test("session routes preserve hosted isolation and local access", async () => {
-  const root = mkdtempSync(join(tmpdir(), "alt-theory-auth-filter-"));
+test("a local server serves every conversation, whatever an old header or account file says", async () => {
+  const root = mkdtempSync(join(tmpdir(), "alt-theory-local-access-"));
   const dataDir = join(root, "data");
   const rolePresets = join(root, "role-presets");
   const souls = join(root, "soul");
   const kb = join(root, "kb");
   const appContextPath = join(root, "ALTTHEORY.md");
-  const piPromptTemplatesDir = resolve("agent-assets", "prompts", "pi");
-  const now = "2026-06-16T00:00:00.000Z";
-
   mkdirSync(rolePresets, { recursive: true });
   mkdirSync(souls, { recursive: true });
   mkdirSync(join(kb, "ep-core"), { recursive: true });
-  writeFileSync(appContextPath, "Auth filter app context", "utf-8");
-  writeFileSync(join(rolePresets, "role-conceptual-theory-companion-latest.md"), "Conceptual theory role", "utf-8",);
+  writeFileSync(appContextPath, "Local access app context", "utf-8");
+  writeFileSync(join(rolePresets, "role-conceptual-theory-companion-latest.md"), "Conceptual theory role", "utf-8");
   writeFileSync(join(souls, "soul-latest.md"), "Latest soul", "utf-8");
-
-  writeAccountStore(dataDir, {
-    schemaVersion: 1,
-    accounts: [
-      {
-        schemaVersion: 1,
-        accountId: "p01",
-        displayLabel: "Participant 01",
-        role: "participant",
-        status: "active",
-        loginCodeHash: hashLoginCode("p01-code", "p01-filter-salt"),
-        defaultRoleCondition: "conceptual-theory",
-        defaultConsent: {
-          researcherReadable: true,
-          quoteAfterAnonymization: true,
-        },
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        schemaVersion: 1,
-        accountId: "researcher",
-        displayLabel: "Researcher",
-        role: "researcher",
-        status: "active",
-        loginCodeHash: hashLoginCode("research-code", "research-filter-salt"),
-        defaultRoleCondition: null,
-        defaultConsent: {
-          researcherReadable: true,
-          quoteAfterAnonymization: true,
-        },
-        createdAt: now,
-        updatedAt: now,
-      },
-    ],
-  });
-
+  // A data folder once used by the hosted study: an account store and a
+  // header owned by someone else, marked private with a past expiry.
+  mkdirSync(join(dataDir, "accounts"), { recursive: true });
+  writeFileSync(join(dataDir, "accounts", "accounts.json"), JSON.stringify({ schemaVersion: 1, accounts: [] }));
   const service = new SessionService({
     dataDir,
     assetPaths: {
@@ -1657,7 +1464,7 @@ test("session routes preserve hosted isolation and local access", async () => {
       soulPath: join(souls, "soul-latest.md"),
       rolePresetsDir: rolePresets,
       kbDir: kb,
-      piPromptTemplatesDir,
+      piPromptTemplatesDir: resolve("agent-assets", "prompts", "pi"),
       modelsPath: null,
     },
     kbDir: kb,
@@ -1669,309 +1476,48 @@ test("session routes preserve hosted isolation and local access", async () => {
     runLabel: null,
     testBatch: null,
   });
-
-  const p01Session = await service.createSession(
-    { rolePresetSlug: "role-conceptual-theory-companion-latest", kbDomain: "ep-core", soulSlug: "soul-latest", },
-    {
-      ownerAccountId: "p01",
-      roleCondition: "conceptual-theory",
-      consentSnapshot: {
-        researcherReadable: true,
-        quoteAfterAnonymization: true,
-        privateOverride: false,
-      },
-    },
-  );
-  const p01PrivateSession = await service.createSession(
-    { rolePresetSlug: "role-conceptual-theory-companion-latest", kbDomain: "ep-core", soulSlug: "soul-latest", },
-    {
-      ownerAccountId: "p01",
-      roleCondition: "conceptual-theory",
-      visibility: "private",
-      consentSnapshot: {
-        researcherReadable: true,
-        quoteAfterAnonymization: true,
-        privateOverride: false,
-      },
-    },
-  );
-  const p01PrivateWorkspacePath =
-    service.getManifest(p01PrivateSession.sessionId,).sessionCwd;
-  writeFileSync(
-    join(p01PrivateWorkspacePath, "private-note.md"),
-    "private workspace note",
-    "utf-8",
-  );
-  const p02Session = await service.createSession(
-    { rolePresetSlug: "role-conceptual-theory-companion-latest", kbDomain: "ep-core", soulSlug: "soul-latest", },
-    {
-      ownerAccountId: "p02",
-      roleCondition: "metatheory-oriented",
-      consentSnapshot: {
-        researcherReadable: true,
-        quoteAfterAnonymization: false,
-        privateOverride: false,
-      },
-    },
-  );
-  const ownerlessSession = await service.createSession({
+  const created = await service.createSession({
     rolePresetSlug: "role-conceptual-theory-companion-latest",
     kbDomain: "ep-core",
     soulSlug: "soul-latest",
   });
-  const ownerlessPrivateSession = await service.createSession(
-    {
-      rolePresetSlug: "role-conceptual-theory-companion-latest",
-      kbDomain: "ep-core",
-      soulSlug: "soul-latest",
-    },
-    { visibility: "private" },
-  );
-  for (const sessionId of [
-    p01Session.sessionId,
-    p01PrivateSession.sessionId,
-    p02Session.sessionId,
-    ownerlessSession.sessionId,
-    ownerlessPrivateSession.sessionId,
-  ]) {
-    persistSessionMetrics(service.getManifest(sessionId).recordsDir, {
-      turnCount: 1,
-      toolCallCount: 0,
-      messageCount: 1,
-      tokens: {
-        input: 0,
-        output: 0,
-        cacheRead: 0,
-        cacheWrite: 0,
-        total: 0,
-      },
-      cost: 0,
-      contextUsage: null,
-    });
-  }
+  const recordsDir = service.getManifest(created.sessionId).recordsDir;
+  persistSessionMetrics(recordsDir, {
+    turnCount: 1,
+    toolCallCount: 0,
+    messageCount: 1,
+    tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    cost: 0,
+    contextUsage: null,
+  });
   await service.disposeAll();
+  const headerPath = join(recordsDir, "session.json");
+  writeFileSync(headerPath, JSON.stringify({
+    ...JSON.parse(readFileSync(headerPath, "utf-8")),
+    ownerAccountId: "p02",
+    visibility: "private",
+    retentionDueAt: "2026-01-01T00:00:00.000Z",
+  }));
 
-  const restoreMode = useHostedMode();
-  const instance = createAltTheoryServer({
-    dataDir,
-    appContextPath,
-    soulDir: souls,
-    rolePresetsDir: rolePresets,
-    kbDir: kb,
-  });
-  await new Promise<void>((resolveListen) => {
-    instance.httpServer.listen(0, "127.0.0.1", resolveListen);
-  });
+  const instance = createAltTheoryServer({ dataDir, appContextPath, soulDir: souls, rolePresetsDir: rolePresets, kbDir: kb });
+  await new Promise<void>((resolveListen) => instance.httpServer.listen(0, "127.0.0.1", resolveListen));
   const address = instance.httpServer.address();
   assert.ok(address && typeof address === "object");
   const baseUrl = `http://127.0.0.1:${address.port}`;
-
-  async function loginCookie(accountId: string, loginCode: string,): Promise<string> {
-    const response = await fetch(`${baseUrl}/api/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ accountId, loginCode }),
-    });
-    assert.equal(response.status, 200);
-    return response.headers.get("set-cookie")?.split(";")[0] ?? "";
-  }
-
-  function waitForWsType(ws: WebSocket, type: string): Promise<any> {
-    return new Promise((resolveMessage, reject) => {
-      const timer = setTimeout(
-        () => reject(new Error(`Timed out waiting for ${type}`)),
-        10_000,
-      );
-      const listener = (data: WebSocket.RawData) => {
-        const message = JSON.parse(data.toString());
-        if (message.type !== type) return;
-        clearTimeout(timer);
-        ws.off("message", listener);
-        resolveMessage(message);
-      };
-      ws.on("message", listener);
-    });
-  }
-
-  let participantWs: WebSocket | null = null;
   try {
-    const anonymousList = await fetch(`${baseUrl}/api/sessions`);
-    assert.equal(anonymousList.status, 401);
-    const anonymousSearch = await fetch(`${baseUrl}/api/sessions/search-content?query=private`);
-    assert.equal(anonymousSearch.status, 401);
-
-    const participantCookie = await loginCookie("p01", "p01-code");
-    const participantList = await fetch(`${baseUrl}/api/sessions`, {
-      headers: { Cookie: participantCookie },
-    });
-    const participantListJson = await participantList.json();
-    assert.deepEqual(
-      participantListJson.sessions.map((session: any) => session.sessionId),
-      [p01PrivateSession.sessionId, p01Session.sessionId],
-    );
-    const contentSearch = await fetch(`${baseUrl}/api/sessions/search-content?query=private`, {
-      headers: { Cookie: participantCookie },
-    });
-    assert.equal(contentSearch.status, 200);
-    assert.deepEqual((await contentSearch.json()).sessionIds, []);
-    assert.equal(
-      participantListJson.sessions[0].roleCondition,
-      "conceptual-theory",
-    );
-
-    const ownDetail = await fetch(
-      `${baseUrl}/api/sessions/${p01Session.sessionId}`,
-      { headers: { Cookie: participantCookie } },
-    );
-    assert.equal(ownDetail.status, 200);
-    const ownPrivateDetail = await fetch(
-      `${baseUrl}/api/sessions/${p01PrivateSession.sessionId}`,
-      { headers: { Cookie: participantCookie } },
-    );
-    assert.equal(ownPrivateDetail.status, 200);
-    const privateDownload = await fetch(
-      `${baseUrl}/api/sessions/${p01PrivateSession.sessionId}/files/download?root=workspace&path=private-note.md`,
-      { headers: { Cookie: participantCookie } },
-    );
-    assert.equal(privateDownload.status, 200);
-    assert.equal(await privateDownload.text(), "private workspace note");
-    const privateTraversal = await fetch(
-      `${baseUrl}/api/sessions/${p01PrivateSession.sessionId}/files/download?root=workspace&path=../session.json`,
-      { headers: { Cookie: participantCookie } },
-    );
-    assert.equal(privateTraversal.status, 400);
-    const privateDelete = await fetch(
-      `${baseUrl}/api/sessions/${p01PrivateSession.sessionId}/files/content?root=workspace&path=private-note.md`,
-      {
-        method: "DELETE",
-        headers: { Cookie: participantCookie },
-      },
-    );
-    assert.equal(privateDelete.status, 200);
-    assert.equal(
-      existsSync(
-        join(p01PrivateWorkspacePath, "private-note.md")
-      ),
-      false,
-    );
-    const otherDetail = await fetch(
-      `${baseUrl}/api/sessions/${p02Session.sessionId}`,
-      { headers: { Cookie: participantCookie } },
-    );
-    assert.equal(otherDetail.status, 404);
-    const ownerlessDetail = await fetch(
-      `${baseUrl}/api/sessions/${ownerlessSession.sessionId}`,
-      { headers: { Cookie: participantCookie } },
-    );
-    assert.equal(ownerlessDetail.status, 404);
-    participantWs = new WebSocket(`ws://127.0.0.1:${address.port}`, {
-      headers: { Cookie: participantCookie },
-    });
-    await waitForWsType(participantWs, "session_draft");
-    let wsErrorPromise = waitForWsType(participantWs, "error");
-    participantWs.send(JSON.stringify({
-      type: "open_session",
-      payload: { sessionId: p02Session.sessionId },
-    }));
-    assert.match((await wsErrorPromise).payload.failure.message, /Unknown session id/);
-    wsErrorPromise = waitForWsType(participantWs, "error");
-    participantWs.send(JSON.stringify({
-      type: "fork_session",
-      payload: { sourceSessionId: p02Session.sessionId, purpose: "fork" },
-    }));
-    assert.match((await wsErrorPromise).payload.failure.message, /Unknown session id/);
-
-    const researcherCookie = await loginCookie("researcher", "research-code");
-    const researcherList = await fetch(`${baseUrl}/api/sessions`, {
-      headers: { Cookie: researcherCookie },
-    });
-    const researcherListJson = await researcherList.json();
-    assert.equal(researcherListJson.sessions.length, 5);
-    assert.ok(
-      researcherListJson.sessions.some(
-        (session: any) => session.sessionId === ownerlessSession.sessionId,
-      ),
-    );
-    assert.ok(
-      researcherListJson.sessions.some(
-        (session: any) =>
-          session.sessionId === p01PrivateSession.sessionId &&
-          session.visibility === "private",
-      ),
-    );
-    const researcherPrivateDetail = await fetch(
-      `${baseUrl}/api/sessions/${p01PrivateSession.sessionId}`,
-      { headers: { Cookie: researcherCookie } },
-    );
-    assert.equal(researcherPrivateDetail.status, 403);
-    const researcherPrivateFile = await fetch(
-      `${baseUrl}/api/sessions/${p01PrivateSession.sessionId}/files/content?root=workspace&path=private-note.md`,
-      { headers: { Cookie: researcherCookie } },
-    );
-    assert.equal(researcherPrivateFile.status, 403);
-    const researcherOwnerlessDetail = await fetch(
-      `${baseUrl}/api/sessions/${ownerlessSession.sessionId}`,
-      { headers: { Cookie: researcherCookie } },
-    );
-    assert.equal(researcherOwnerlessDetail.status, 200);
-    const researcherOwnerlessPrivateDetail = await fetch(
-      `${baseUrl}/api/sessions/${ownerlessPrivateSession.sessionId}`,
-      { headers: { Cookie: researcherCookie } },
-    );
-    assert.equal(researcherOwnerlessPrivateDetail.status, 403);
-    const deleteOwn = await fetch(
-      `${baseUrl}/api/sessions/${p01Session.sessionId}`,
-      { method: "DELETE", headers: { Cookie: participantCookie } },
-    );
-    assert.equal(deleteOwn.status, 200);
-    wsErrorPromise = waitForWsType(participantWs, "error");
-    participantWs.send(JSON.stringify({
-      type: "open_session",
-      payload: { sessionId: p01Session.sessionId },
-    }));
-    assert.match((await wsErrorPromise).payload.failure.message, /Conversation is in Trash/);
+    const list = await (await fetch(`${baseUrl}/api/sessions`)).json();
+    assert.ok(list.sessions.some((session: { sessionId: string }) => session.sessionId === created.sessionId));
+    assert.equal((await fetch(`${baseUrl}/api/sessions/${created.sessionId}`)).status, 200);
+    const upload = new FormData();
+    upload.append("file", new Blob(["local reference"], { type: "text/plain" }), "reference.txt");
+    const uploaded = await fetch(`${baseUrl}/api/sessions/${created.sessionId}/files/upload`, { method: "POST", body: upload });
+    assert.equal(uploaded.status, 200);
+    // Nothing sweeps it: the old expiry means nothing any more.
+    assert.ok(existsSync(headerPath));
   } finally {
-    participantWs?.close();
-    restoreMode();
     await new Promise<void>((resolveClose) => {
       instance.wss.close(() => {
         instance.httpServer.close(() => resolveClose());
-      });
-    });
-  }
-
-  const previousMode = process.env.ALT_THEORY_MODE;
-  process.env.ALT_THEORY_MODE = "local";
-  const localInstance = createAltTheoryServer({
-    dataDir,
-    appContextPath,
-    soulDir: souls,
-    rolePresetsDir: rolePresets,
-    kbDir: kb,
-  });
-  await new Promise<void>((resolveListen) => {
-    localInstance.httpServer.listen(0, "127.0.0.1", resolveListen);
-  });
-  const localAddress = localInstance.httpServer.address();
-  assert.ok(localAddress && typeof localAddress === "object");
-  try {
-    const localPrivateDetail = await fetch(
-      `http://127.0.0.1:${localAddress.port}/api/sessions/${ownerlessPrivateSession.sessionId}`,
-    );
-    assert.equal(localPrivateDetail.status, 200);
-    const upload = new FormData();
-    upload.append("file", new Blob(["local reference"], { type: "text/plain" }), "reference.txt",);
-    const localUpload = await fetch(
-      `http://127.0.0.1:${localAddress.port}/api/sessions/${ownerlessPrivateSession.sessionId}/files/upload`,
-      { method: "POST", body: upload },
-    );
-    assert.equal(localUpload.status, 200);
-  } finally {
-    if (previousMode === undefined) delete process.env.ALT_THEORY_MODE;
-    else process.env.ALT_THEORY_MODE = previousMode;
-    await new Promise<void>((resolveClose) => {
-      localInstance.wss.close(() => {
-        localInstance.httpServer.close(() => resolveClose());
       });
     });
   }
@@ -2373,241 +1919,6 @@ test("every socket on a conversation keeps its events after an idle instance swa
   }
 });
 
-test("WebSocket participant first send creates an owned role-conditioned session", async () => {
-  const root = mkdtempSync(join(tmpdir(), "alt-theory-ws-auth-owned-"));
-  const dataDir = join(root, "data");
-  const rolePresets = join(root, "role-presets");
-  const souls = join(root, "soul");
-  const kb = join(root, "kb");
-  const appContextPath = join(root, "ALTTHEORY.md");
-  const now = "2026-06-16T00:00:00.000Z";
-
-  mkdirSync(rolePresets, { recursive: true });
-  mkdirSync(souls, { recursive: true });
-  mkdirSync(join(kb, "ep-core"), { recursive: true });
-  writeFileSync(appContextPath, "WS auth app context", "utf-8");
-  writeFileSync(
-    join(rolePresets, "role-conceptual-theory-companion-latest.md"),
-    "Conceptual theory role",
-    "utf-8",
-  );
-  writeFileSync(join(souls, "soul-latest.md"), "Latest soul", "utf-8");
-  writeAccountStore(dataDir, {
-    schemaVersion: 1,
-    accounts: [
-      {
-        schemaVersion: 1,
-        accountId: "p01",
-        displayLabel: "Participant 01",
-        role: "participant",
-        status: "active",
-        loginCodeHash: hashLoginCode("p01-code", "p01-ws-salt"),
-        defaultRoleCondition: "conceptual-theory",
-        defaultConsent: {
-          researcherReadable: true,
-          quoteAfterAnonymization: false,
-        },
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        schemaVersion: 1,
-        accountId: "p02",
-        displayLabel: "Participant 02",
-        role: "participant",
-        status: "active",
-        loginCodeHash: hashLoginCode("p02-code", "p02-ws-salt"),
-        defaultRoleCondition: "conceptual-theory",
-        defaultConsent: {
-          researcherReadable: true,
-          quoteAfterAnonymization: false,
-        },
-        createdAt: now,
-        updatedAt: now,
-      },
-    ],
-  });
-
-  const originalRunPrompt = SessionService.prototype.runPrompt;
-  (SessionService.prototype as any).runPrompt = function (
-    sessionId: string
-  ) {
-    return {
-      ids: {
-        sessionId,
-        branchId: "main",
-        turnId: "turn-test",
-        revisionId: "rev-test",
-        runId: "run-test",
-      },
-      completion: Promise.resolve(),
-      abort: async () => {},
-    };
-  };
-
-  const restoreMode = useHostedMode();
-  const instance = createAltTheoryServer({
-    dataDir,
-    appContextPath,
-    soulDir: souls,
-    rolePresetsDir: rolePresets,
-    kbDir: kb,
-  });
-  await new Promise<void>((resolveListen) => {
-    instance.httpServer.listen(0, "127.0.0.1", resolveListen);
-  });
-  const address = instance.httpServer.address();
-  assert.ok(address && typeof address === "object");
-  const baseUrl = `http://127.0.0.1:${address.port}`;
-
-  function waitForType(ws: WebSocket, type: string): Promise<any> {
-    return new Promise((resolveMessage, reject) => {
-      const timer = setTimeout(
-        () => reject(new Error(`Timed out waiting for ${type}`)),
-        10_000,
-      );
-      const listener = (data: WebSocket.RawData) => {
-        const message = JSON.parse(data.toString());
-        if (message.type === type) {
-          clearTimeout(timer);
-          ws.off("message", listener);
-          resolveMessage(message);
-        }
-      };
-      ws.on("message", listener);
-    });
-  }
-
-  const sockets: WebSocket[] = [];
-  try {
-    const anonymousWs = new WebSocket(`ws://127.0.0.1:${address.port}`);
-    sockets.push(anonymousWs);
-    // List activity (WP-4): every connection gets the picture it may see,
-    // then changes — filtered like GET /api/sessions.
-    const anonymousActivity: any[] = [];
-    anonymousWs.on("message", (data) => {
-      const message = JSON.parse(data.toString());
-      if (message.type === "activity_snapshot" || message.type === "session_activity") {
-        anonymousActivity.push(message);
-      }
-    });
-    await waitForType(anonymousWs, "session_draft");
-    const authRequiredPromise = waitForType(anonymousWs, "error");
-    anonymousWs.send(JSON.stringify({ type: "prompt", payload: "hello" }));
-    const authRequired = await authRequiredPromise;
-    assert.equal(authRequired.payload.failure.message, "Authentication required");
-    assert.equal(authRequired.payload.code, "auth_required");
-
-    const login = await fetch(`${baseUrl}/api/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ accountId: "p01", loginCode: "p01-code" }),
-    });
-    assert.equal(login.status, 200);
-    const cookie = login.headers.get("set-cookie")?.split(";")[0] ?? "";
-    const ws = new WebSocket(`ws://127.0.0.1:${address.port}`, {
-      headers: { Cookie: cookie },
-    });
-    sockets.push(ws);
-    const activitySnapshot = waitForType(ws, "activity_snapshot");
-    const draftPromise = waitForType(ws, "session_draft");
-    // A second participant's window: the list's summary-level rule keeps
-    // p01's conversations out of it.
-    const login2 = await fetch(`${baseUrl}/api/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ accountId: "p02", loginCode: "p02-code" }),
-    });
-    assert.equal(login2.status, 200);
-    const otherWs = new WebSocket(`ws://127.0.0.1:${address.port}`, {
-      headers: { Cookie: login2.headers.get("set-cookie")?.split(";")[0] ?? "" },
-    });
-    sockets.push(otherWs);
-    const otherActivity: any[] = [];
-    otherWs.on("message", (data) => {
-      const message = JSON.parse(data.toString());
-      if (message.type === "session_activity") otherActivity.push(message);
-    });
-    await waitForType(otherWs, "activity_snapshot");
-    const draft = await draftPromise;
-    assert.equal(
-      draft.payload.rolePresetSlug,
-      "role-conceptual-theory-companion-latest",
-    );
-    assert.equal(draft.payload.visibility, "research");
-    assert.deepEqual((await activitySnapshot).payload, { activity: {} });
-    const listChanged = waitForType(ws, "session_activity");
-
-    // The draft's choice travels with the request that creates the conversation.
-    const openedPromise = waitForType(ws, "session_opened");
-    ws.send(JSON.stringify({ type: "prompt", payload: "hello", create: { visibility: "private" } }));
-    const opened = await openedPromise;
-    // The owner's list hears the new conversation; an anonymous window does not.
-    assert.deepEqual((await listChanged).payload, {
-      sessionId: opened.payload.sessionId,
-      status: "idle",
-      listChanged: true,
-    });
-    await new Promise((resolveWait) => setTimeout(resolveWait, 100));
-    assert.deepEqual(
-      anonymousActivity.map((message) => message.type),
-      ["activity_snapshot"],
-      "an anonymous window hears nothing of a participant's list",
-    );
-    assert.deepEqual(anonymousActivity[0].payload, { activity: {} });
-    assert.deepEqual(otherActivity, [], "another participant's window hears nothing of p01's list");
-    anonymousWs.close();
-    const sessionJson = JSON.parse(
-      readFileSync(
-        join(dataDir, "sessions", opened.payload.sessionId, "records", "session.json",),
-        "utf-8",
-      ),
-    );
-    assert.equal(sessionJson.ownerAccountId, "p01");
-    assert.equal(sessionJson.roleCondition, "conceptual-theory");
-    assert.equal(sessionJson.visibility, "private");
-    assert.match(sessionJson.retentionDueAt, /^\d{4}-\d{2}-\d{2}T/);
-    assert.deepEqual(sessionJson.consentSnapshot, {
-      researcherReadable: false,
-      quoteAfterAnonymization: false,
-      privateOverride: true,
-    });
-
-    const researchUpdatePromise = waitForType(ws, "session_updated");
-    ws.send(
-      JSON.stringify({
-        type: "switch_visibility",
-        payload: { visibility: "research" },
-      }),
-    );
-    const researchUpdate = await researchUpdatePromise;
-    assert.equal(researchUpdate.payload.visibility, "research");
-    const researchSessionJson = JSON.parse(
-      readFileSync(
-        join(dataDir, "sessions", opened.payload.sessionId, "records", "session.json",),
-        "utf-8",
-      ),
-    );
-    assert.equal(researchSessionJson.visibility, "research");
-    assert.equal(researchSessionJson.retentionDueAt, null);
-    assert.deepEqual(researchSessionJson.consentSnapshot, {
-      researcherReadable: true,
-      quoteAfterAnonymization: false,
-      privateOverride: false,
-    });
-    ws.close();
-  } finally {
-    for (const socket of sockets) socket.close();
-    restoreMode();
-    SessionService.prototype.runPrompt = originalRunPrompt;
-    await new Promise<void>((resolveClose) => {
-      instance.wss.close(() => {
-        instance.httpServer.close(() => resolveClose());
-      });
-    });
-  }
-});
-
 test("REST discovery lists assets; a connection holds no draft and greets with the defaults", async () => {
   const root = mkdtempSync(join(tmpdir(), "alt-theory-server-"));
   const rolePresets = join(root, "role-presets");
@@ -2796,9 +2107,7 @@ test("local mode stays usable without a model and refuses only the prompt", asyn
     "utf-8",
   );
 
-  const previousMode = process.env.ALT_THEORY_MODE;
   const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
-  process.env.ALT_THEORY_MODE = "local";
   process.env.PI_CODING_AGENT_DIR = agentDir;
 
   const instance = createAltTheoryServer({
@@ -2853,11 +2162,6 @@ test("local mode stays usable without a model and refuses only the prompt", asyn
     assert.equal(existsSync(join(dataDir, "sessions")), true);
   } finally {
     ws.close();
-    if (previousMode === undefined) {
-      delete process.env.ALT_THEORY_MODE;
-    } else {
-      process.env.ALT_THEORY_MODE = previousMode;
-    }
     if (previousAgentDir === undefined) {
       delete process.env.PI_CODING_AGENT_DIR;
     } else {
@@ -2926,9 +2230,7 @@ test("a new conversation is created from the draft settings its first request ca
 
   // Local mode with no model: the first prompt creates the conversation,
   // then its run is refused — enough to read what it was created with.
-  const previousMode = process.env.ALT_THEORY_MODE;
   const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
-  process.env.ALT_THEORY_MODE = "local";
   process.env.PI_CODING_AGENT_DIR = agentDir;
   const instance = createAltTheoryServer({
     dataDir,
@@ -3037,8 +2339,6 @@ test("a new conversation is created from the draft settings its first request ca
     assert.equal((await fresh).type, "request_done");
   } finally {
     ws.close();
-    if (previousMode === undefined) delete process.env.ALT_THEORY_MODE;
-    else process.env.ALT_THEORY_MODE = previousMode;
     if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
     else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
     await new Promise<void>((resolveClose) => {

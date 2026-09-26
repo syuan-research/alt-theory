@@ -345,10 +345,8 @@ function RelatedConversations() {
       { label: t("Delete entire family"), icon: "ph-tree-structure", danger: true, onSelect: removeFamily },
       { label: t("Export Markdown"), icon: "ph-download-simple", separator: true, onSelect: exportMarkdown },
       { label: t("Copy Session ID"), icon: "ph-identification-card", onSelect: () => void copyText(child.sessionId) },
-      ...(app.appMode === "local" ? [
-        { label: t("Copy session folder path"), icon: "ph-copy", onSelect: copyFolder },
-        ...(hasNativeBridge() ? [{ label: t("Open session folder"), icon: "ph-folder-open", onSelect: openFolder }] : []),
-      ] : []),
+      { label: t("Copy session folder path"), icon: "ph-copy", onSelect: copyFolder },
+      ...(hasNativeBridge() ? [{ label: t("Open session folder"), icon: "ph-folder-open", onSelect: openFolder }] : []),
     ];
   };
 

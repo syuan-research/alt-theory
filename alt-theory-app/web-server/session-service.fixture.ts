@@ -83,7 +83,6 @@ export function setupFixture() {
 export function createTestService(
   fixture: ReturnType<typeof setupFixture>,
   resourceDiscovery: "clean" | "internal" = "clean",
-  localMode = true,
   runtimeModelConfig?: {
     modelProvider?: string;
     modelId?: string;
@@ -92,7 +91,6 @@ export function createTestService(
   },
 ) {
   return new SessionService({
-    localMode,
     dataDir: fixture.dataDir,
     assetPaths: {
       rootDir: fixture.root,

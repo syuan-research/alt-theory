@@ -51,9 +51,7 @@ never compact.
 Deleting a conversation hides it from the list. The data is not erased
 immediately: it stays on disk as a tombstone record and is recoverable
 until cleanup. If you delete by mistake, the conversation can be recovered
-from the data directory before cleanup removes it. (On a hosted study
-deployment, conversations marked private are the exception: they are
-hard-deleted after seven inactive days.)
+from the data directory before cleanup removes it.
 
 ## Conversation families
 

@@ -95,7 +95,6 @@ import {
 import { resolveThinkingLevel, type ResolvedThinking } from "./thinking-level.js";
 import { describeFailure } from "../core/failure.js";
 import { listInstructionAssets } from "./instruction-assets.js";
-import { listAltTheorySkills } from "./skill-assets.js";
 import {
   agentConfigDir,
   ConfigValidationError,
@@ -113,21 +112,13 @@ import {
   type RuntimeModelConfig,
 } from "./config-store.js";
 import { refreshModelsDevMetadata, setModelsDevSnapshotPath } from "./models-dev-metadata.js";
-import {
-  AuthSessionManager,
-  anonymousAuthContext,
-  clearAuthCookie,
-  setAuthCookie,
-} from "./auth-session.js";
-import { readAccountStore } from "./auth-accounts.js";
-import type { AuthContext } from "./auth-session.js";
+import { localAccess } from "./access-policy.js";
 import { ensureLocalModeDefaults } from "./local-mode-paths.js";
 import {
-  isVisibilityForMode,
+  isSessionVisibility,
   withholdsFromResearch,
   type SessionVisibility,
 } from "./session-records.js";
-import { sweepExpiredPrivateSessions } from "./session-retention.js";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import {
   cancelProviderAuth,
@@ -188,10 +179,6 @@ const PUBLIC_DIR = resolve(
     resolve(RESOURCE_ROOT, "alt-theory-app/web-server/public-v6"),
 );
 
-const DEFAULT_ROLE_CONDITION_PRESETS: Record<string, string> = {
-  "conceptual-theory": "role-conceptual-theory-companion-latest",
-  "metatheory-oriented": "role-metatheory-oriented",
-};
 // Points at the MUTABLE -latest asset by convention (agent-assets/README.md):
 // the name is stable while its content evolves, so this constant never needs
 // to change again — no config indirection required.
@@ -300,19 +287,10 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     options.runLabel ?? process.env.ALT_THEORY_RUN_LABEL ?? null;
   const testBatch =
     options.testBatch ?? process.env.ALT_THEORY_TEST_BATCH ?? null;
-  /**
-   * DEFAULT IS LOCAL — the downloadable app must never inherit study
-   * semantics. A hosted deployment MUST set `ALT_THEORY_MODE=hosted`
-   * explicitly.
-   *
-   * !! WHEN THE VPS PILOT MOVES TO 1.x, SET `ALT_THEORY_MODE=hosted` ON THE
-   * SERVER FIRST. !! Without it a multi-user deployment silently loses
-   * participant/researcher access control, and conversations a participant
-   * marked "private" stop being deleted — both promises broken quietly.
-   * Deployment-mode notes: development/architecture/core-session-engine.md.
-   */
-  const appMode = process.env.ALT_THEORY_MODE === "hosted" ? "hosted" : "local";
-  const localMode = appMode === "local";
+  // One owner on one machine sees everything (access-policy.ts). The hosted
+  // study deployment's accounts, private content and retention were removed
+  // on 2026-09-26; a multi-user deployment adapts at the policy.
+  const access = localAccess;
 
   const discoverConfiguredSkills = () => {
     const discovered = discoverSkillResources({
@@ -337,7 +315,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   const app = express();
   const httpServer = createServer(app);
   const wss = new WebSocketServer({ server: httpServer });
-  const authSessions = new AuthSessionManager(dataDir);
   const heartbeatInterval = setInterval(() => {
     for (const client of wss.clients) {
       const socket = client as WebSocket & { isAlive?: boolean };
@@ -379,19 +356,16 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     }),
   );
   // --- Config GUI (Pi-native model/key management) ---
-  // Local-mode only. Hosted/online deployments must not expose server-side
-  // model/key management through this UI or REST surface.
+  // These routes manage this machine's own model keys: a multi-user
+  // deployment must never expose them.
   app.get("/config", (_req, res) => {
-    if (!requireLocalConfigMode(res)) return;
     res.sendFile(resolve(publicDir, "index.html"));
   });
   app.get("/api/config/status", async (_req, res) => {
-    if (!requireLocalConfigMode(res)) return;
     res.json(await getVerifiedConfigStatus(agentConfigDir()));
   });
   // --- Resource discovery + external skill enablement (spec §6.1) ---
   app.get("/api/resources", (_req, res) => {
-    if (!requireLocalConfigMode(res)) return;
     const discovered = discoverConfiguredSkills();
     res.json({
       skills: discovered.skills,
@@ -400,7 +374,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     });
   });
   app.put("/api/resources/skills", (req, res) => {
-    if (!requireLocalConfigMode(res)) return;
     const body = req.body as { enabledPaths?: unknown };
     const parseList = (value: unknown): string[] | null =>
       Array.isArray(value)
@@ -416,21 +389,18 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   });
   // Data folder location, for "reveal in file manager" (local mode; v1.2.1 #5).
   app.get("/api/local/data-folder", (_req, res) => {
-    if (!requireLocalConfigMode(res)) return;
     res.json({ dataDir });
   });
 
-  // Docs location for the external-AI setup prompt (local installs ship docs;
-  // hosted deployments have no on-machine docs, so the prompt omits the line).
+  // Docs location for the external-AI setup prompt (null when the install
+  // ships no docs, and the prompt omits the line).
   app.get("/api/config/docs-root", (_req, res) => {
-    if (!requireLocalConfigMode(res)) return;
     const docsRoot = join(RESOURCE_ROOT, "docs");
     res.json({ docsRoot: existsSync(docsRoot) ? docsRoot : null });
   });
 
   // --- Auto-naming of conversations (v1.2.1) ---
   app.get("/api/settings/auto-title", (_req, res) => {
-    if (!requireLocalConfigMode(res)) return;
     const s = readAppSettings(dataDir).autoTitle;
     res.json({
       enabled: s?.enabled !== false,
@@ -439,7 +409,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     });
   });
   app.put("/api/settings/auto-title", (req, res) => {
-    if (!requireLocalConfigMode(res)) return;
     const body = req.body as { enabled?: unknown; model?: unknown; fallbackModels?: unknown };
     const raw = body.model as { provider?: unknown; modelId?: unknown; thinkingLevel?: unknown } | null;
     const model =
@@ -470,12 +439,10 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     res.json({ ok: true, autoTitle: next.autoTitle });
   });
   app.get("/api/settings/reviewer-recommendations", async (_req, res) => {
-    if (!requireLocalConfigMode(res)) return;
     res.json(await reviewerRecommendations(join(assetPaths.rootDir, "model-presets")));
   });
   // Smart approval's reviewer (2026-09-26): null = auto.
   app.get("/api/settings/approval-reviewer", (_req, res) => {
-    if (!requireLocalConfigMode(res)) return;
     const settings = readAppSettings(dataDir);
     res.json({
       reviewer: settings.approvalReviewer ?? null,
@@ -483,7 +450,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     });
   });
   app.put("/api/settings/approval-reviewer", (req, res) => {
-    if (!requireLocalConfigMode(res)) return;
     const body = req.body as { reviewer?: unknown; hintDismissed?: unknown };
     const settings = readAppSettings(dataDir);
     if ("reviewer" in body) {
@@ -505,7 +471,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   // Separate from app/Pi settings so a broken optional agent preset file can
   // never prevent Alt Theory from opening with general/inherit.
   app.get("/api/settings/subagents", (_req, res) => {
-    if (!requireLocalConfigMode(res)) return;
     const loaded = readSubagentConfig(dataDir);
     res.json({
       ...loaded,
@@ -514,7 +479,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     });
   });
   app.put("/api/settings/subagents", (req, res) => {
-    if (!requireLocalConfigMode(res)) return;
     try {
       const config = writeSubagentConfig(dataDir, req.body);
       res.json({
@@ -531,13 +495,11 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   });
   // --- Bundled-vs-user skill precedence (v1.3.0-alpha.3) ---
   app.get("/api/settings/skill-precedence", (_req, res) => {
-    if (!requireLocalConfigMode(res)) return;
     res.json({
       precedence: readAppSettings(dataDir).skillPrecedence ?? "prefer-bundled",
     });
   });
   app.put("/api/settings/skill-precedence", (req, res) => {
-    if (!requireLocalConfigMode(res)) return;
     const value = (req.body as { precedence?: unknown }).precedence;
     if (!SKILL_PRECEDENCE_VALUES.includes(value as SkillPrecedence)) {
       res.status(400).json({ error: "Unknown skill precedence" });
@@ -552,7 +514,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
 
   // --- User-added role/KB locations (v1.3.0-alpha.5, add-only) ---
   app.get("/api/settings/asset-dirs", (_req, res) => {
-    if (!requireLocalConfigMode(res)) return;
     const settings = readAppSettings(dataDir);
     res.json({
       userRolePresetsDir,
@@ -561,7 +522,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     });
   });
   app.put("/api/settings/asset-dirs", (req, res) => {
-    if (!requireLocalConfigMode(res)) return;
     const body = req.body as { roleDirs?: unknown; kbDirs?: unknown };
     const clean = (value: unknown): string[] | null =>
       Array.isArray(value)
@@ -607,11 +567,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     projects: projectRows(settings.workingFolders?.projects ?? []),
   });
   app.get("/api/settings/working-folders", (_req, res) => {
-    if (!requireLocalConfigMode(res)) return;
     res.json(workingFoldersResponse(readAppSettings(dataDir)));
   });
   app.put("/api/settings/working-folders", (req, res) => {
-    if (!requireLocalConfigMode(res)) return;
     const body = req.body as {
       global?: unknown;
       projects?: Array<{
@@ -678,7 +636,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   // Copy a picked .md file into the user's role folder — never touches the
   // bundled role-presets directory.
   app.post("/api/role-presets/upload", (req, res) => {
-    if (!requireLocalConfigMode(res)) return;
     const source = (req.body as { path?: unknown }).path;
     if (typeof source !== "string" || !source.trim()) {
       res.status(400).json({ error: "path is required" });
@@ -707,7 +664,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
 
   // --- Behavior settings ---
   app.get("/api/settings/session-list", (_req, res) => {
-    if (!requireLocalConfigMode(res)) return;
     res.json(
       readAppSettings(dataDir).sessionListSort ?? {
         folders: "name",
@@ -716,7 +672,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     );
   });
   app.put("/api/settings/session-list", (req, res) => {
-    if (!requireLocalConfigMode(res)) return;
     const body = req.body as { folders?: unknown; conversations?: unknown };
     if (
       (body.folders !== "name" && body.folders !== "modified") ||
@@ -734,11 +689,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     res.json({ ok: true, ...settings.sessionListSort });
   });
   app.get("/api/settings/default-permission", (_req, res) => {
-    if (!requireLocalConfigMode(res)) return;
     res.json({ permission: readAppSettings(dataDir).defaultPermission ?? "ask" });
   });
   app.put("/api/settings/default-permission", (req, res) => {
-    if (!requireLocalConfigMode(res)) return;
     const permission = (req.body as { permission?: unknown }).permission as Permission;
     if (!PERMISSIONS.includes(permission)) {
       res.status(400).json({ error: "Unknown permission" });
@@ -750,11 +703,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     res.json({ ok: true, permission });
   });
   app.get("/api/settings/command-allowlist", (_req, res) => {
-    if (!requireLocalConfigMode(res)) return;
     res.json({ prefixes: readAppSettings(dataDir).commandAllowlist ?? [] });
   });
   app.put("/api/settings/command-allowlist", (req, res) => {
-    if (!requireLocalConfigMode(res)) return;
     const prefixes = (req.body as { prefixes?: unknown }).prefixes;
     if (!Array.isArray(prefixes)) {
       res.status(400).json({ error: "prefixes must be a list" });
@@ -766,11 +717,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     res.json({ ok: true, prefixes: settings.commandAllowlist });
   });
   app.get("/api/settings/model-hooks", (_req, res) => {
-    if (!requireLocalConfigMode(res)) return;
     res.json({ enabled: readAppSettings(dataDir).modelHooks !== false });
   });
   app.put("/api/settings/model-hooks", (req, res) => {
-    if (!requireLocalConfigMode(res)) return;
     const enabled = (req.body as { enabled?: unknown }).enabled;
     if (typeof enabled !== "boolean") {
       res.status(400).json({ error: "enabled must be a boolean" });
@@ -783,7 +732,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     res.json({ ok: true, enabled });
   });
   app.get("/api/settings/runtime", (_req, res) => {
-    if (!requireLocalConfigMode(res)) return;
     const settings = readAppSettings(dataDir);
     res.json({
       mode: settings.runtimeMode ?? "alt-theory",
@@ -791,7 +739,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     });
   });
   app.put("/api/settings/runtime", async (req, res) => {
-    if (!requireLocalConfigMode(res)) return;
     const body = req.body as {
       mode?: unknown;
       nativePiScanAltSkills?: unknown;
@@ -821,11 +768,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
 
   // --- App language (v1.3.0-alpha.6) ---
   app.get("/api/settings/lang", (_req, res) => {
-    if (!requireLocalConfigMode(res)) return;
     res.json({ lang: readAppSettings(dataDir).lang ?? null });
   });
   app.put("/api/settings/lang", (req, res) => {
-    if (!requireLocalConfigMode(res)) return;
     const lang = (req.body as { lang?: unknown }).lang as
       | "auto"
       | "en"
@@ -852,7 +797,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   });
 
   app.get("/api/config/providers", (_req, res) => {
-    if (!requireLocalConfigMode(res)) return;
     // Answer from what is on disk and let models.dev catch up in the
     // background: awaiting a third-party host here made opening the model
     // settings page wait seconds on a stale cache or a slow network.
@@ -860,11 +804,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     res.json({ providers: listProviders(agentConfigDir()) });
   });
   app.get("/api/config/auth/providers", (_req, res) => {
-    if (!requireLocalConfigMode(res)) return;
     res.json({ providers: listProviderAuthStatus(agentConfigDir()) });
   });
   app.post("/api/config/auth/providers/:provider/login", (req, res) => {
-    if (!requireLocalConfigMode(res)) return;
     if (!isProviderAuthId(req.params.provider)) {
       res.status(400).json({ error: "Unsupported OAuth provider" });
       return;
@@ -874,7 +816,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       .json(startProviderAuth(agentConfigDir(), req.params.provider));
   });
   app.post("/api/config/auth/providers/:provider/logout", async (req, res) => {
-    if (!requireLocalConfigMode(res)) return;
     if (!isProviderAuthId(req.params.provider)) {
       res.status(400).json({ error: "Unsupported OAuth provider" });
       return;
@@ -889,7 +830,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     }
   });
   app.get("/api/config/auth/flows/:flowId", (req, res) => {
-    if (!requireLocalConfigMode(res)) return;
     const flow = getProviderAuthFlow(req.params.flowId);
     if (!flow) {
       res.status(404).json({ error: "Unknown auth flow" });
@@ -898,7 +838,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     res.json(flow);
   });
   app.post("/api/config/auth/flows/:flowId/respond", (req, res) => {
-    if (!requireLocalConfigMode(res)) return;
     const body = req.body as { promptId?: unknown; value?: unknown };
     if (typeof body.promptId !== "string" || typeof body.value !== "string") {
       res.status(400).json({ error: "promptId and value are required" });
@@ -916,7 +855,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     res.json(flow);
   });
   app.delete("/api/config/auth/flows/:flowId", (req, res) => {
-    if (!requireLocalConfigMode(res)) return;
     const flow = cancelProviderAuth(req.params.flowId);
     if (!flow) {
       res.status(404).json({ error: "Unknown auth flow" });
@@ -925,7 +863,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     res.json(flow);
   });
   app.post("/api/config/fetch-models", async (req, res) => {
-    if (!requireLocalConfigMode(res)) return;
     const body = req.body as {
       provider?: unknown;
       baseUrl?: unknown;
@@ -949,7 +886,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     }
   });
   app.post("/api/config/test-connection", async (req, res) => {
-    if (!requireLocalConfigMode(res)) return;
     const body = req.body as {
       provider?: unknown;
       baseUrl?: unknown;
@@ -980,7 +916,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     }
   });
   app.post("/api/config/providers/:provider/fetch-models", async (req, res) => {
-    if (!requireLocalConfigMode(res)) return;
     try {
       res.json({
         models: await fetchProviderModels(agentConfigDir(), req.params.provider,),
@@ -993,7 +928,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     }
   });
   app.put("/api/config/providers/:provider", async (req, res) => {
-    if (!requireLocalConfigMode(res)) return;
     const provider = req.params.provider;
     const body = req.body as {
       baseUrl?: unknown;
@@ -1041,7 +975,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     }
   });
   app.delete("/api/config/providers/:provider", async (req, res) => {
-    if (!requireLocalConfigMode(res)) return;
     try {
       await
       deleteProvider(agentConfigDir(), req.params.provider);
@@ -1054,7 +987,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     }
   });
   app.put("/api/config/active", async (req, res) => {
-    if (!requireLocalConfigMode(res)) return;
     const body = req.body as { provider?: unknown; model?: unknown };
     if (typeof body.provider !== "string" || typeof body.model !== "string") {
       res.status(400).json({ error: "provider and model are required" });
@@ -1093,60 +1025,23 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   });
   app.get("/api/skills", (_req, res) => {
     res.json({
-      skills: localMode
-        ? discoverConfiguredSkills().skills
-        : resourceDiscovery === "clean" || !skillsDir
-          ? []
-          : listAltTheorySkills(skillsDir),
+      skills: discoverConfiguredSkills().skills,
     });
   });
-  app.post("/api/auth/login", (req, res) => {
-    const body = req.body as { accountId?: unknown; loginCode?: unknown };
-    if (typeof body?.accountId !== "string" || typeof body.loginCode !== "string") {
-      res.status(400).json({ error: "accountId and loginCode are required" });
-      return;
-    }
-    const login = authSessions.login(body.accountId, body.loginCode);
-    if (!login.ok) {
-      res.status(login.status).json({ error: login.error });
-      return;
-    }
-    setAuthCookie(res, login.token);
-    res.json({ account: login.account });
-  });
-  app.post("/api/auth/logout", (req, res) => {
-    authSessions.logoutFromRequest(req);
-    clearAuthCookie(res);
-    res.json({ ok: true });
-  });
-  app.get("/api/auth/me", async (req, res) => {
-    const auth = authSessions.resolveRequest(req);
-    // Study designation (M7 §3): hosted = the account role; local = the
-    // install-level flag. Non-designated users get zero study surfaces.
-    const participant = hasConfiguredAccounts()
-      ? auth.role === "participant"
-        ? { designated: true, label: null }
-        : null
-      : (readAppSettings(dataDir).participant ?? null);
+  app.get("/api/app", async (_req, res) => {
     const settings = readAppSettings(dataDir);
     res.json({
-      auth,
       app: {
-        mode: appMode,
         runtimeMode: settings.runtimeMode ?? "alt-theory",
         nativePiScanAltSkills: settings.nativePiScanAltSkills !== false,
       },
-      participant,
-      localConfig: localMode
-        ? await getVerifiedConfigStatus(agentConfigDir())
-        : null,
+      // Study designation (M7 §3): the install-level flag. Non-designated
+      // installs get zero study surfaces.
+      participant: settings.participant ?? null,
+      localConfig: await getVerifiedConfigStatus(agentConfigDir()),
     });
   });
   app.get("/api/session-import/harnesses", (_req, res) => {
-    if (!localMode) {
-      res.status(404).json({ error: "Session import is available only in local mode" });
-      return;
-    }
     res.json({
       harnesses: IMPORT_HARNESSES.map((harness) => ({
         harness,
@@ -1155,10 +1050,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     });
   });
   app.get("/api/session-import/:harness/sessions", async (req, res) => {
-    if (!localMode) {
-      res.status(404).json({ error: "Session import is available only in local mode" });
-      return;
-    }
     const harness = req.params.harness;
     if (!isImportHarness(harness)) {
       res.status(400).json({ error: `Unknown import harness: ${harness}` });
@@ -1177,12 +1068,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     }
   });
   app.post("/api/session-import/:harness", async (req, res) => {
-    if (!localMode) {
-      res.status(404).json({ error: "Session import is available only in local mode" });
-      return;
-    }
-    const auth = resolveSessionRestAuth(req, res);
-    if (!auth) return;
     const harness = req.params.harness;
     if (!isImportHarness(harness)) {
       res.status(400).json({ error: `Unknown import harness: ${harness}` });
@@ -1198,7 +1083,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     };
     const selection = body.selection ?? "selected";
     // Imported conversations start from the default permission, never Full.
-    const { mode } = defaultSessionPermission(readAppSettings(dataDir), localMode);
+    const { mode } = defaultSessionPermission(readAppSettings(dataDir));
     const changedSourcePolicy = body.changedSourcePolicy ?? "skip";
     if (selection !== "all" && selection !== "selected") {
       res.status(400).json({ error: "selection must be 'all' or 'selected'" });
@@ -1247,8 +1132,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         });
         return;
       }
-      const metadata = sessionCreationMetadataForAuth(auth, visibility);
-      const importSelectors = createDraftSelectorsForAuth(auth);
+      const metadata = sessionCreationMetadata(visibility);
+      const importSelectors = createDraftSelectors();
       const results = selected.map((source) => {
         if (source.repeat === "unchanged" && changedSourcePolicy !== "copy") {
           return {
@@ -1332,14 +1217,12 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     }
   });
   app.get("/api/sessions", (req, res) => {
-    const auth = resolveSessionRestAuth(req, res);
-    if (!auth) return;
     const list = listSessionSummaries(dataDir);
     const activity = sessionService.sessionActivity();
     res.json({
       ...list,
       sessions: list.sessions.filter((session) =>
-        canAccessSessionSummary(auth, session),
+        access.canList(req, session.sessionId),
       ).map((session) => ({
         ...session,
         runStatus: activity.get(session.sessionId) ?? "idle",
@@ -1347,8 +1230,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     });
   });
   app.get("/api/sessions/search-content", async (req, res) => {
-    const auth = resolveSessionRestAuth(req, res);
-    if (!auth) return;
     const query = typeof req.query.query === "string" ? req.query.query.trim() : "";
     if (query.length > 256) {
       res.status(400).json({ error: "Search query is too long" });
@@ -1362,7 +1243,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     const sessionIds: string[] = [];
     for (const summary of listSessionSummaries(dataDir).sessions) {
       if (res.destroyed) return;
-      if (!canAccessSessionSummary(auth, summary) || !canAccessSessionContent(auth, summary)) continue;
+      if (!access.canList(req, summary.sessionId) || !access.canReadContent(req, summary.sessionId)) continue;
       try {
         if (visibleTranscriptMatches(readVisibleTranscript(dataDir, summary.sessionId), terms)) {
           sessionIds.push(summary.sessionId);
@@ -1376,13 +1257,11 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     if (!res.destroyed) res.json({ sessionIds });
   });
   app.get("/api/sessions/trash", (req, res) => {
-    const auth = resolveSessionRestAuth(req, res);
-    if (!auth) return;
     const list = listDeletedSessionSummaries(dataDir);
     res.json({
       ...list,
       sessions: list.sessions.filter((session) =>
-        canAccessSessionSummary(auth, session),
+        access.canList(req, session.sessionId),
       ),
     });
   });
@@ -1398,22 +1277,20 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       return;
     }
 
-    const auth = resolveSessionRestAuth(req, res);
-    if (!auth) return;
     const detail = readSessionDetail(dataDir, sessionId);
     if (!detail) {
       res.status(404).json({ error: `Unknown session id: ${sessionId}` });
       return;
     }
-    if (!canAccessSessionSummary(auth, detail.session)) {
+    if (!access.canList(req, detail.session.sessionId)) {
       res.status(404).json({ error: `Unknown session id: ${sessionId}` });
       return;
     }
-    if (!canAccessSessionContent(auth, detail.session)) {
+    if (!access.canReadContent(req, detail.session.sessionId)) {
       res.status(403).json({ error: "Session content is private" });
       return;
     }
-    res.json(localMode ? { ...detail, sessionRoot: root.sessionRoot } : detail);
+    res.json({ ...detail, sessionRoot: root.sessionRoot });
   });
   app.get("/api/sessions/:sessionId/changes", (req, res) => {
     const sessionId = req.params.sessionId;
@@ -1426,14 +1303,12 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       res.status(404).json({ error: `Unknown session id: ${sessionId}` });
       return;
     }
-    const auth = resolveSessionRestAuth(req, res);
-    if (!auth) return;
     const loaded = readSessionDetailWithParts(dataDir, sessionId);
-    if (!loaded || !canAccessSessionSummary(auth, loaded.detail.session)) {
+    if (!loaded || !access.canList(req, loaded.detail.session.sessionId)) {
       res.status(404).json({ error: `Unknown session id: ${sessionId}` });
       return;
     }
-    if (!canAccessSessionContent(auth, loaded.detail.session)) {
+    if (!access.canReadContent(req, loaded.detail.session.sessionId)) {
       res.status(403).json({ error: "Session content is private" });
       return;
     }
@@ -1455,14 +1330,12 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       res.status(404).json({ error: `Unknown session id: ${sessionId}` });
       return;
     }
-    const auth = resolveSessionRestAuth(req, res);
-    if (!auth) return;
     const detail = readSessionDetail(dataDir, sessionId);
-    if (!detail || !canAccessSessionSummary(auth, detail.session)) {
+    if (!detail || !access.canList(req, detail.session.sessionId)) {
       res.status(404).json({ error: `Unknown session id: ${sessionId}` });
       return;
     }
-    if (!canAccessSessionContent(auth, detail.session)) {
+    if (!access.canReadContent(req, detail.session.sessionId)) {
       res.status(403).json({ error: "Session content is private" });
       return;
     }
@@ -1590,10 +1463,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   // Attachments are a local-form feature, so absolute paths are checked only
   // there; relative ones need the conversation's content access.
   app.post("/api/attachments/missing", (req, res) => {
-    if (!localMode) {
-      res.status(403).json({ error: "Attachments are local-mode only" });
-      return;
-    }
     const body = (req.body ?? {}) as { sessionId?: unknown; paths?: unknown };
     const paths = Array.isArray(body.paths)
       ? body.paths.filter((path): path is string => typeof path === "string")
@@ -1610,10 +1479,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   // M4: re-point a session's working folder (local form only).
   // primaryDir null = back to the managed default.
   app.put("/api/sessions/:sessionId/workspace", async (req, res) => {
-    if (!localMode) {
-      res.status(403).json({ error: "Workspace changes are local-mode only" });
-      return;
-    }
     const sessionId = req.params.sessionId;
     if (!requireSessionRestContentAccess(req, res, sessionId)) return;
     const body = req.body as { primaryDir?: unknown };
@@ -1638,19 +1503,11 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   // the project list — every project's main folder. POST creates a project
   // (a folder with no companions yet); DELETE removes the project.
   app.get("/api/workspaces", (_req, res) => {
-    if (!localMode) {
-      res.json({ workspaces: [] });
-      return;
-    }
     res.json({
       workspaces: knownWorkspacesOf(readAppSettings(dataDir)),
     });
   });
   app.post("/api/workspaces", (req, res) => {
-    if (!localMode) {
-      res.status(403).json({ error: "Workspaces are local-mode only" });
-      return;
-    }
     const body = req.body as { path?: unknown };
     const raw = typeof body.path === "string" ? body.path.trim() : "";
     if (!raw) {
@@ -1684,10 +1541,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     res.json({ workspaces: knownWorkspacesOf(readAppSettings(dataDir)) });
   });
   app.delete("/api/workspaces", (req, res) => {
-    if (!localMode) {
-      res.status(403).json({ error: "Workspaces are local-mode only" });
-      return;
-    }
     const body = req.body as { path?: unknown };
     const raw = typeof body.path === "string" ? body.path.trim() : "";
     if (!raw) {
@@ -1712,10 +1565,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   // project moves through the ordinary re-point path; all must be idle or
   // nothing is written. Local form only, like the per-conversation move.
   app.put("/api/projects/:projectId/main-folder", async (req, res) => {
-    if (!localMode) {
-      res.status(403).json({ error: "Workspace changes are local-mode only" });
-      return;
-    }
     const body = req.body as { primaryDir?: unknown };
     const primaryDir =
       typeof body.primaryDir === "string" && body.primaryDir.trim()
@@ -1829,12 +1678,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     if (!requireSessionRestContentAccess(req, res, sessionId)) return;
     try {
       if (rootName === "workspace") {
-        const auth = authSessions.resolveRequest(req);
-        const workspace = listWorkspaceFiles(
-          dataDir,
-          sessionId,
-          auth.accountId,
-        );
+        const workspace = listWorkspaceFiles(dataDir, sessionId);
         const legacy = listSessionTextFiles(dataDir, sessionId, "workspace");
         res.json({
           files: legacy.files,
@@ -1845,10 +1689,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         return;
       }
       if (rootName === "working") {
-        if (!localMode) {
-          res.status(403).json({ error: "Folder browsing is local-only" });
-          return;
-        }
         const folderId =
           typeof req.query.folderId === "string" ? req.query.folderId : null;
         if (!folderId) {
@@ -1884,12 +1724,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     async (req, res) => {
       const sessionId = req.params.sessionId;
       if (!requireSessionRestContentAccess(req, res, sessionId)) return;
-      const auth = authSessions.resolveRequest(req);
-      const uploadOwner = auth.accountId ?? (localMode ? "__local__" : null);
-      if (!uploadOwner) {
-        res.status(403).json({ error: "Upload requires an authenticated owner" });
-        return;
-      }
       const file = req.file;
       if (!file) {
         res.status(400).json({ error: "file is required" });
@@ -1899,7 +1733,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         const result = await uploadWorkspaceFile(
           dataDir,
           sessionId,
-          uploadOwner,
           file.originalname,
           file.buffer,
         );
@@ -1912,11 +1745,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   // Attached files (paperclip, read-only drop, pasted image): copied and
   // converted before any conversation exists; the send moves them into it.
   app.post("/api/attachments/stage", workspaceUpload.single("file"), async (req, res) => {
-    const auth = authSessions.resolveRequest(req);
-    if (!auth.accountId && !localMode) {
-      res.status(403).json({ error: "Attaching requires an authenticated owner" });
-      return;
-    }
     if (!req.file) {
       res.status(400).json({ error: "file is required" });
       return;
@@ -1954,10 +1782,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     if (!requireSessionRestContentAccess(req, res, sessionId)) return;
     try {
       if (rootName === "working") {
-        if (!localMode) {
-          res.status(403).json({ error: "Folder browsing is local-only" });
-          return;
-        }
         res.json(readWorkingFolderTextFile(dataDir, sessionId, requestedPath));
         return;
       }
@@ -1996,12 +1820,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     if (!requireSessionRestContentAccess(req, res, sessionId)) return;
     try {
       if (body.root === "working") {
-        // Same local-only gate as the working GET: a hosted client must not
-        // reach this branch, or it would write the server's own disk.
-        if (!localMode) {
-          res.status(403).json({ error: "Folder editing is local-only" });
-          return;
-        }
+        // Writes the user's own folder on this machine; a multi-user
+        // deployment must never reach this branch.
         res.json(
           writeWorkingFolderTextFile(dataDir, sessionId, body.path, body.content, options),
         );
@@ -2106,56 +1926,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     return value && value.trim() ? value : null;
   }
 
-  function resolveSessionRestAuth(
-    req: express.Request,
-    res: Response,
-  ): AuthContext | null {
-    const auth = authSessions.resolveRequest(req);
-    if (!localMode && auth.role === "anonymous" && hasConfiguredAccounts()) {
-      res.status(401).json({ error: "Authentication required" });
-      return null;
-    }
-    return auth;
-  }
-
-  function requireLocalConfigMode(res: Response): boolean {
-    if (localMode) return true;
-    res.status(404).json({ error: "Not found" });
-    return false;
-  }
-
-  function hasConfiguredAccounts(): boolean {
-    return readAccountStore(dataDir).accounts.length > 0;
-  }
-
-  function canAccessSessionSummary(
-    auth: AuthContext,
-    session: SessionSummary,
-  ): boolean {
-    if (localMode) return true;
-    if (auth.role === "participant") {
-      return ( Boolean(auth.accountId) && session.ownerAccountId === auth.accountId
-      );
-    }
-    return true;
-  }
-
-  function canAccessSessionContent(
-    auth: AuthContext,
-    session: SessionSummary,
-  ): boolean {
-    if (localMode) return true;
-    if (session.visibility === "private") {
-      return ( Boolean(auth.accountId) && session.ownerAccountId === auth.accountId
-      );
-    }
-    if (auth.role === "participant") {
-      return ( Boolean(auth.accountId) && session.ownerAccountId === auth.accountId
-      );
-    }
-    return true;
-  }
-
   function requireSessionRestContentAccess(
     req: express.Request,
     res: Response,
@@ -2170,16 +1940,14 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       res.status(404).json({ error: `Unknown session id: ${sessionId}` });
       return false;
     }
-    const auth = resolveSessionRestAuth(req, res);
-    if (!auth) return false;
     // The summary is all the guard reads (same check as the WebSocket
     // guard); routes that need the transcript read the detail themselves.
     const session = readSessionAccessSummary(dataDir, sessionId);
-    if (!session || !canAccessSessionSummary(auth, session)) {
+    if (!session || !access.canList(req, sessionId)) {
       res.status(404).json({ error: `Unknown session id: ${sessionId}` });
       return false;
     }
-    if (!canAccessSessionContent(auth, session)) {
+    if (!access.canReadContent(req, sessionId)) {
       res.status(403).json({ error: "Session content is private" });
       return false;
     }
@@ -2194,7 +1962,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     rolePresetsDir,
     soulDir,
     legacySoulPath,
-    localMode,
     modelProvider,
     modelId,
     modelsPath: modelsPath ?? undefined,
@@ -2204,58 +1971,34 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     thinkingLevel: options.thinkingLevel,
     resourceDiscovery,
     skillsDir,
-    trustedReadRoots: localMode
-      ? [
-          RESOURCE_ROOT,
-          assetPaths.rootDir,
-          agentConfigDir(),
-          getAgentDir(),
-          join(homedir(), ".agents"),
-          join(homedir(), ".pi", "agent"),
-        ]
-      : [RESOURCE_ROOT, assetPaths.rootDir],
+    trustedReadRoots: [
+      RESOURCE_ROOT,
+      assetPaths.rootDir,
+      agentConfigDir(),
+      getAgentDir(),
+      join(homedir(), ".agents"),
+      join(homedir(), ".pi", "agent"),
+    ],
     instructionsDir,
     runLabel,
     testBatch,
-    resolveRuntimeModelConfig: localMode
-      ? () => resolveLocalRuntimeModelConfig()
-      : undefined,
-
-    // Discovery of machine-local resources is a local-app capability; hosted
-    // deployments never read the server's ~/.pi or ~/.agents directories.
-    resolveExternalSkillPaths: localMode
-      ? () => {
-          const discovered = discoverSkillResources({
-            altSkillsDir: skillsDir,
-            agentDir: getAgentDir(),
-          });
-          return resolveExternalSkillPaths(
-            readAppSettings(dataDir),
-            discovered.skills
-              .filter((skill) => skill.source !== "alt-theory")
-              .map((skill) => skill.path),
-          );
-        }
-      : undefined,
+    resolveRuntimeModelConfig: () => resolveLocalRuntimeModelConfig(),
+    resolveExternalSkillPaths: () => {
+      const discovered = discoverSkillResources({
+        altSkillsDir: skillsDir,
+        agentDir: getAgentDir(),
+      });
+      return resolveExternalSkillPaths(
+        readAppSettings(dataDir),
+        discovered.skills
+          .filter((skill) => skill.source !== "alt-theory")
+          .map((skill) => skill.path),
+      );
+    },
     modelFallbackConfigPath:
       process.env.ALT_THEORY_MODEL_FALLBACK_PATH ?? null,
   });
 
-  // Hosted only. A participant marking a conversation "private" means "don't
-  // keep this"; deleting it after 7 inactive days is how that is kept. Local
-  // installs never reach this — they cannot produce a "private" conversation.
-  if (!localMode) {
-    const stopRetentionSweep = sweepExpiredPrivateSessions(
-      dataDir,
-      (sessionId) => sessionService.isOpen(sessionId),
-      (result) => {
-        console.log(
-          `Private retention: deleted ${result.deleted.length} expired conversation(s).`,
-        );
-      },
-    );
-    httpServer.on("close", stopRetentionSweep);
-  }
   const stopTrashSweep = sweepExpiredDeletedSessions(
     dataDir,
     (sessionId) => sessionService.isOpen(sessionId),
@@ -2421,74 +2164,27 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     };
   }
 
-  function createDraftSelectorsForAuth(auth: AuthContext): SessionSelectors {
-    const selectors = createDraftSelectors();
-    if (auth.role !== "participant" || !auth.defaultRoleCondition) {
-      return selectors;
-    }
+  /** A new conversation's marker; a withheld one records that no consent
+   *  to research use was given. */
+  function sessionCreationMetadata(visibility: SessionVisibility) {
     return {
-      ...selectors,
-      rolePresetSlug: rolePresetSlugForCondition(auth.defaultRoleCondition),
-    };
-  }
-
-  function rolePresetSlugForCondition(conditionId: string): string {
-    const rolePresetSlug =
-      DEFAULT_ROLE_CONDITION_PRESETS[conditionId] ?? conditionId;
-    if (!resolveRolePresetSlug(rolePresetsDir, rolePresetSlug)) {
-      throw new Error(
-        `Role condition '${conditionId}' maps to missing role preset: ${rolePresetSlug}`,
-      );
-    }
-    return rolePresetSlug;
-  }
-
-  function sessionCreationMetadataForAuth(
-    auth: AuthContext,
-    visibility: SessionVisibility,
-  ) {
-    const withheld = withholdsFromResearch(visibility);
-    if (auth.role !== "participant" || !auth.accountId) {
-      return {
-        visibility,
-        consentSnapshot: withheld
-          ? {
-              researcherReadable: false,
-              quoteAfterAnonymization: false,
-              privateOverride: true,
-            }
-          : null,
-      };
-    }
-    return {
-      ownerAccountId: auth.accountId,
-      roleCondition: auth.defaultRoleCondition,
       visibility,
-      consentSnapshot: {
-        researcherReadable: withheld
-          ? false
-          : Boolean(auth.defaultConsent?.researcherReadable),
-        quoteAfterAnonymization: withheld
-          ? false
-          : Boolean(auth.defaultConsent?.quoteAfterAnonymization),
-        privateOverride: withheld,
-      },
+      consentSnapshot: withholdsFromResearch(visibility)
+        ? {
+            researcherReadable: false,
+            quoteAfterAnonymization: false,
+            privateOverride: true,
+          }
+        : null,
     };
-  }
-
-  function canMaterializeSession(auth: AuthContext): boolean {
-    return auth.role !== "anonymous" || !hasConfiguredAccounts();
   }
 
   /**
-   * Sharing default follows study designation (M7 §4), stated in the
-   * deployment's own vocabulary. Hosted keeps the pre-existing default
-   * (participants consented). A local install withholds by default unless it
-   * was designated at handout — and locally that is a marker for a future
+   * Sharing default follows study designation (M7 §4): an install withholds
+   * by default unless it was designated at handout — a marker for a future
    * export filter, never an expiry.
    */
   function defaultDraftVisibility(): SessionVisibility {
-    if (!localMode) return "research";
     return readAppSettings(dataDir).participant?.designated
       ? "exportable"
       : "no-export";
@@ -2501,10 +2197,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
    */
   function sendDraftDefaults(
     send: (msg: ServerMessage) => void,
-    auth: AuthContext,
     modelOverride: SessionModelOverride | null = null,
   ): void {
-    const selectors = createDraftSelectorsForAuth(auth);
+    const selectors = createDraftSelectors();
     send({
       type: "session_draft",
       payload: {
@@ -2514,7 +2209,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         rolePresetSlug: selectors.rolePresetSlug,
         soulSlug: selectors.soulSlug,
         customInstructionRef: selectors.customInstructionRef ?? null,
-        ...defaultSessionPermission(readAppSettings(dataDir), localMode),
+        ...defaultSessionPermission(readAppSettings(dataDir)),
         modelOverride,
         thinking: draftThinking(modelOverride),
       },
@@ -2525,7 +2220,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
   function draftThinking(
     modelOverride: SessionModelOverride | null,
   ): ResolvedThinking | undefined {
-    if (!localMode) return undefined;
     const runtime = modelOverride
       ? { modelProvider: modelOverride.provider, modelId: modelOverride.modelId }
       : resolveLocalRuntimeModelConfig();
@@ -2543,21 +2237,11 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       heartbeatSocket.isAlive = true;
     });
 
-    let auth = authSessions.resolveRequest(req);
     let attachedSessionId: string | null = null;
     let detach = () => {};
     let detachApprovals = () => {};
     let detachActivity = () => {};
     let closed = false;
-    let initialError: unknown = null;
-    try {
-      // Called for its throw: an account whose defaults cannot be built is
-      // served as anonymous (the draft defaults are rebuilt on each use).
-      createDraftSelectorsForAuth(auth);
-    } catch (error) {
-      auth = anonymousAuthContext();
-      initialError = error;
-    }
 
     const send = (msg: ServerMessage) => {
       if (ws.readyState === WebSocket.OPEN) {
@@ -2571,8 +2255,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
      * connection holds nothing about a draft.
      */
     const creationFrom = (draft: NewConversationSettings = {}) => {
-      const selectors = createDraftSelectorsForAuth(auth);
-      const defaults = defaultSessionPermission(readAppSettings(dataDir), localMode);
+      const selectors = createDraftSelectors();
+      const defaults = defaultSessionPermission(readAppSettings(dataDir));
       let mode: AltMode = defaults.mode;
       // Under Native Pi the Alt selectors are inactive but still recorded, so
       // the conversation has them once Native Pi is turned off.
@@ -2590,15 +2274,10 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       // A draft saved before 2026-09-25 may still say "understand": retired
       // values read as work, like a stored header.
       if (draft.mode !== undefined) mode = toAltMode(draft.mode);
-      // The guard that keeps the deployments apart (see switch_visibility).
       const visibility = draft.visibility ?? defaultDraftVisibility();
-      if (!isVisibilityForMode(visibility, localMode)) throw new Error("Invalid visibility");
-      if (draft.fullAccess && !localMode) throw new Error("Full access is not enabled on this server");
-      if (draft.smartApproval && !localMode) throw new Error("Smart approval is not enabled on this server");
-      if (mode !== "read-only" && !localMode) throw new Error("This server allows read-only conversations only");
+      if (!isSessionVisibility(visibility)) throw new Error("Invalid visibility");
       let workspace: { primaryDir: string } | null = null;
       if (draft.workspacePrimaryDir) {
-        if (!localMode) throw new Error("Workspaces are local-mode only");
         const primaryDir = resolve(draft.workspacePrimaryDir);
         if (!statSync(primaryDir, { throwIfNoEntry: false })?.isDirectory()) {
           throw new Error(`Main folder does not exist:${primaryDir}`);
@@ -2610,7 +2289,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       return {
         selectors,
         metadata: {
-          ...sessionCreationMetadataForAuth(auth, visibility),
+          ...sessionCreationMetadata(visibility),
           mode,
           // Under read-only the value is held dormant.
           fullAccess: draft.fullAccess ?? defaults.fullAccess,
@@ -2624,10 +2303,10 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
 
     const requireSessionWsContentAccess = (sessionId: string): SessionSummary => {
       const summary = readSessionAccessSummary(dataDir, sessionId);
-      if (!summary || !canAccessSessionSummary(auth, summary)) {
+      if (!summary || !access.canList(req, summary.sessionId)) {
         throw new Error(`Unknown session id: ${sessionId}`);
       }
-      if (!canAccessSessionContent(auth, summary)) {
+      if (!access.canReadContent(req, summary.sessionId)) {
         throw new Error("Session content is private");
       }
       if (summary.deletedAt) {
@@ -2636,23 +2315,17 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       return summary;
     };
 
-    // The list's access rule (GET /api/sessions): no list for an anonymous
-    // window where accounts exist, else summary level, trash included.
-    const canSeeInList = (sessionId: string): boolean => {
-      // Local: one user, every conversation is in the list (no summary read).
-      if (localMode) return true;
-      if (auth.role === "anonymous" && hasConfiguredAccounts()) return false;
-      const summary = readSessionAccessSummary(dataDir, sessionId);
-      return Boolean(summary && canAccessSessionSummary(auth, summary));
-    };
+    // The list's access rule (GET /api/sessions), over a wider set: trash
+    // and conversations not yet on disk, so deletes and first runs are heard.
+    const canSeeInList = (sessionId: string): boolean => access.canList(req, sessionId);
 
     const canReceiveApproval = (sessionId: string): boolean => {
       const summary = readSessionAccessSummary(dataDir, sessionId);
       return Boolean(
         summary &&
           !summary.deletedAt &&
-          canAccessSessionSummary(auth, summary) &&
-          canAccessSessionContent(auth, summary),
+          access.canList(req, summary.sessionId) &&
+          access.canReadContent(req, summary.sessionId),
       );
     };
 
@@ -2703,10 +2376,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       attachedSessionId = null;
     });
 
-    if (initialError) {
-      sendError(send, initialError, undefined, "attach");
-    }
-    sendDraftDefaults(send, auth);
+    sendDraftDefaults(send);
     detachApprovals = sessionService.attachApprovals((event) => {
       if (canReceiveApproval(event.payload.sessionId)) {
         forwardServiceEvent(send, event);
@@ -2789,12 +2459,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           case "prompt": {
             try {
               if (!attachedSessionId) {
-                if (!canMaterializeSession(auth)) {
-                  fail(new Error("Authentication required"),
-                    "auth_required",
-                  );
-                  break;
-                }
                 const creation = creationFrom(msg.create);
                 const initial = await sessionService.createSession(creation.selectors, creation.metadata);
                 if (closed) return;
@@ -2941,10 +2605,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             break;
           }
           case "switch_visibility": {
-            // The guard that keeps the deployments apart: a local install can
-            // never write "private" (the only retention-bearing value), and a
-            // hosted one can never write the local export markers.
-            if (!isVisibilityForMode(msg.payload.visibility, localMode)) {
+            if (!isSessionVisibility(msg.payload.visibility)) {
               fail(new Error("Invalid visibility"));
               break;
             }
@@ -2953,10 +2614,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               break;
             }
             try {
-              const metadata = sessionCreationMetadataForAuth(
-                auth,
-                msg.payload.visibility,
-              );
+              const metadata = sessionCreationMetadata(msg.payload.visibility);
               // Idle applies now; mid-run the published snapshot carries
               // the pending choice (no more busy refusal).
               await sessionService.setVisibility(
@@ -2996,12 +2654,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           case "invoke_skill": {
             try {
               if (!attachedSessionId) {
-                if (!canMaterializeSession(auth)) {
-                  fail(new Error("Authentication required"),
-                    "auth_required",
-                  );
-                  break;
-                }
                 const creation = creationFrom(msg.create);
                 const initial = await sessionService.createSession(creation.selectors, creation.metadata);
                 if (closed) return;
@@ -3152,11 +2804,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             }
             // Full Access is a local-only control (v1.4.8); under read-only
             // the session runtime holds it dormant.
-            if (!localMode) {
-              fail(new Error("Full access is not enabled on this server"),
-              );
-              break;
-            }
             if (!attachedSessionId) {
               fail(new Error("A materialized session is required"));
               break;
@@ -3171,10 +2818,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           case "set_smart_approval": {
             if (typeof msg.payload?.enabled !== "boolean") {
               fail(new Error("enabled must be a boolean"));
-              break;
-            }
-            if (!localMode) {
-              fail(new Error("Smart approval is not enabled on this server"));
               break;
             }
             if (!attachedSessionId) {
@@ -3273,10 +2916,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             break;
           }
           case "create_helper_session": {
-            if (!canMaterializeSession(auth)) {
-              fail(new Error("Authentication required"), "auth_required");
-              break;
-            }
             const parentSessionId = msg.payload.parentSessionId;
             try {
               // A root Helper takes the draft's settings (from the new-
@@ -3340,16 +2979,16 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             detach();
             detach = () => {};
             attachedSessionId = null;
-            sendDraftDefaults(send, auth);
+            sendDraftDefaults(send);
             break;
           case "describe_draft":
             // The model chip's thinking level for the draft's model.
-            sendDraftDefaults(send, auth, msg.payload.modelOverride ?? null);
+            sendDraftDefaults(send, msg.payload.modelOverride ?? null);
             break;
           case "open_session": {
             const selectors = attachedSessionId
               ? sessionService.getSelectors(attachedSessionId)
-              : createDraftSelectorsForAuth(auth);
+              : createDraftSelectors();
             try {
               requireSessionWsContentAccess(msg.payload.sessionId);
               const opened = await sessionService.openSession(
@@ -3366,7 +3005,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
           }
           case "get_session_metadata":
             if (!attachedSessionId) {
-              sendDraftDefaults(send, auth);
+              sendDraftDefaults(send);
               break;
             }
             send({
@@ -3376,7 +3015,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             break;
           case "get_session_metrics":
             if (!attachedSessionId) {
-              sendDraftDefaults(send, auth);
+              sendDraftDefaults(send);
               break;
             }
             send({
@@ -3413,7 +3052,6 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       instructionsDir,
       runLabel,
       testBatch,
-      appMode,
     },
   };
 }

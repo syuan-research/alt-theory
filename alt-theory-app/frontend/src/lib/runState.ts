@@ -146,7 +146,7 @@ export function noticeText(body: NoticeBody): string {
       if (body.failure.kind === "auth-refresh") return failureText(body.failure);
       return `${body.interrupted ? t("Run interrupted: ") : t("Run failed: ")}${failureText(body.failure)}`;
     case "refused":
-      return body.code === "auth_required" ? t("Please sign in to continue.") : failureText(body.failure);
+      return failureText(body.failure);
     case "extension":
       if (body.code === "compacted") return t("Conversation compacted.");
       return body.failure ? failureText(body.failure) : body.message;

@@ -567,8 +567,7 @@ the new-conversation draft above, held in the client, restored after a
 restart. Changing one of them changes only the draft; nothing about it is held
 on the server connection. The first send (a prompt, a skill, or a root Helper)
 carries the draft's settings, the server checks each one (knowledge domain,
-mode (read-only only on a hosted deployment), visibility for the deployment,
-Full Access local-only, folder exists;
+mode, export marker, folder exists;
 the assembly checks role, soul, instruction and model; under Native Pi the
 Alt selectors are recorded but inactive) and creates the conversation from
 exactly that state in one step; a refused creation leaves nothing behind and

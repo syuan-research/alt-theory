@@ -1,5 +1,5 @@
 // Native bridge exposed by the Electron preload (window.altElectron). In a
-// plain browser (dev / hosted) it's absent, so each call falls back to a path
+// plain browser (dev) it's absent, so each call falls back to a path
 // prompt — the existing behavior — and reveal is simply unavailable.
 
 export interface AppUpdateStatus {

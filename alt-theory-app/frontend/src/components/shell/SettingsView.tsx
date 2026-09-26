@@ -116,7 +116,7 @@ export function SettingsView() {
           {shell.settingsPanel === "rolekb" ? <RoleKbPanel /> : null}
           {shell.settingsPanel === "skills" ? <SkillsPanel /> : null}
           {shell.settingsPanel === "participant" ? (
-            <ParticipantPanel designated={app.participant?.designated ?? false} label={app.participant?.label ?? null} local={app.appMode === "local"} />
+            <ParticipantPanel designated={app.participant?.designated ?? false} label={app.participant?.label ?? null} />
           ) : null}
           {shell.settingsPanel === "features" ? <FeaturesPanel /> : null}
           {shell.settingsPanel === "trash" ? <TrashPanel /> : null}
@@ -357,7 +357,6 @@ function TrashPanel() {
 
 function ModelsPanel() {
   const app = useApp();
-  const local = app.appMode === "local";
   const [configVersion, setConfigVersion] = useState(0);
   const [reconnectRequest, setReconnectRequest] = useState<{
     provider: ProviderAuthId;
@@ -370,27 +369,21 @@ function ModelsPanel() {
 
   return (
     <div className="set-panel models-panel">
-      {local ? (
-        <ModelConfigPage
-          embedded
-          key={configVersion}
-          onConfigChanged={app.refreshLocalConfig}
-          onReconnectOAuth={(provider) =>
-            setReconnectRequest({ provider: provider as ProviderAuthId, id: Date.now() })
-          }
-          addProviderTop={
-            <AuthConnectCard
-              onChanged={refreshConfig}
-              openRequest={reconnectRequest}
-              onOpenRequestHandled={() => setReconnectRequest(null)}
-            />
-          }
-        />
-      ) : (
-        <div className="set-card">
-          <p>{t("Model configuration is managed by this deployment.")}</p>
-        </div>
-      )}
+      <ModelConfigPage
+        embedded
+        key={configVersion}
+        onConfigChanged={app.refreshLocalConfig}
+        onReconnectOAuth={(provider) =>
+          setReconnectRequest({ provider: provider as ProviderAuthId, id: Date.now() })
+        }
+        addProviderTop={
+          <AuthConnectCard
+            onChanged={refreshConfig}
+            openRequest={reconnectRequest}
+            onOpenRequestHandled={() => setReconnectRequest(null)}
+          />
+        }
+      />
     </div>
   );
 }
@@ -584,7 +577,6 @@ function ModelChainFields({
 }
 
 function AgentsPanel() {
-  const app = useApp();
   const [config, setConfig] = useState<SubagentConfig | null>(null);
   const [models, setModels] = useState<Array<{ value: string; label: string }>>([
     { value: "inherit", label: t("Inherit current model") },
@@ -594,7 +586,6 @@ function AgentsPanel() {
   const saveTimer = useRef<number | undefined>(undefined);
 
   useEffect(() => {
-    if (app.appMode !== "local") return;
     let alive = true;
     void Promise.all([getSubagentSettings(), listConfigProviders()])
       .then(([settings, providers]) => {
@@ -614,11 +605,8 @@ function AgentsPanel() {
       })
       .catch((error) => alive && setStatus(error instanceof Error ? error.message : String(error)));
     return () => { alive = false; };
-  }, [app.appMode]);
+  }, []);
 
-  if (app.appMode !== "local") {
-    return <div className="set-panel"><div className="set-card"><p>{t("Subagent configuration is managed by this deployment.")}</p></div></div>;
-  }
   if (!config) {
     return <div className="set-panel agents-panel"><p className="sub">{status || t("Loading…")}</p></div>;
   }
@@ -1430,7 +1418,7 @@ function CommandAllowlistCard() {
     };
   }, []);
 
-  // Hosted mode 404s the local-config route: no card.
+  // The route did not answer: no card.
   if (text === null) return null;
   return (
     <div className="set-card">
@@ -1494,7 +1482,7 @@ function RuntimeCard() {
       .catch(() => {});
   };
 
-  // Hosted mode 404s the local-config route (opus F1, same as ModelHooksCard).
+  // The route did not answer (opus F1, same as ModelHooksCard).
   if (loaded && !available) return null;
 
   return (
@@ -1608,8 +1596,8 @@ function ModelHooksCard() {
       body: JSON.stringify({ enabled: next }),
     }).catch(() => {});
   };
-  // Hosted mode 404s the local-config route; showing a toggle that cannot
-  // save would lie (opus F1).
+  // The route did not answer; showing a toggle that cannot save would lie
+  // (opus F1).
   if (loaded && !available) return null;
   return (
     <div className="set-card">
@@ -2014,11 +2002,9 @@ function RoleKbPanel() {
 function ParticipantPanel({
   designated,
   label,
-  local,
 }: {
   designated: boolean;
   label: string | null;
-  local: boolean;
 }) {
   return (
     <div className="set-panel">
@@ -2043,14 +2029,10 @@ function ParticipantPanel({
           <div className="set-card">
             <h4>{t("Sharing conversations with the research team")}</h4>
             <p>
-              {local
-                ? t("This install is designated as a study participant, so new conversations are marked as exportable by default. You can mark any single conversation with the control next to the composer.")
-                : t("This install is designated as a study participant, so new conversations are shared with the research team by default. You can make any single conversation private with the Shared/Private control next to the composer.")}
+              {t("This install is designated as a study participant, so new conversations are marked as exportable by default. You can mark any single conversation with the control next to the composer.")}
             </p>
             <div className="fine">
-              {local
-                ? t("On this local install the label only MARKS a conversation: nothing is hidden, uploaded, or deleted. You send an export to the research team yourself later.")
-                : t("On the hosted (account) version, shared conversations reach the research team automatically, and a private conversation is deleted 7 days after you last use it.")}{" "}
+              {t("On this local install the label only MARKS a conversation: nothing is hidden, uploaded, or deleted. You send an export to the research team yourself later.")}{" "}
               {t("Installs obtained outside a study never share anything.")}
             </div>
           </div>

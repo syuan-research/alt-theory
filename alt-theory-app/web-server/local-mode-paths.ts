@@ -8,9 +8,12 @@ import { join } from "path";
  *   ~/.alt-theory/pi-agent  → Pi models/auth/settings (PI_CODING_AGENT_DIR)
  *
  * Electron main.cjs sets the same defaults before starting the backend.
- * Dev scripts only set ALT_THEORY_MODE=local, so without this helper the
- * web server would fall back to Pi's shared ~/.pi/agent and Windows
- * %APPDATA%/alt-theory data dir — a different store than the bundle.
+ * `ALT_THEORY_MODE=local` (set by `npm run dev:web:local` and the bundle) is
+ * the opt-in: without this helper the web server would fall back to Pi's
+ * shared ~/.pi/agent and Windows %APPDATA%/alt-theory data dir — a different
+ * store than the bundle. Tests leave it unset so they never touch the real
+ * store. (It no longer selects a deployment: the hosted mode was removed on
+ * 2026-09-26.)
  *
  * Explicit env overrides are always respected.
  */

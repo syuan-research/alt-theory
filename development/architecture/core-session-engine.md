@@ -113,7 +113,8 @@ The owning documents explain which record is authoritative for each mechanism:
   runtime resolution — [`provider-model-configuration-and-selection.md`](provider-model-configuration-and-selection.md);
 - workspace roots, file routes, approvals, guarded actions, and audit —
   [`workspace-files-and-action-safety.md`](workspace-files-and-action-safety.md);
-- identity, ownership, visibility, and hosted retention —
+- access policy, study designation, the export marker, and what deletes a
+  conversation —
   [`research-identity-visibility-privacy-and-retention.md`](research-identity-visibility-privacy-and-retention.md);
 - source provenance and imported-session records —
   [`session-import-adapters.md`](session-import-adapters.md).

@@ -1,50 +1,28 @@
-export type AccountRole =
-  | "participant"
-  | "researcher"
-  | "admin"
-  | "debug";
-
 export type ViewMode = "user" | "researcher";
 
 /**
- * What happens to a conversation beyond this machine. Two disjoint
- * vocabularies, one per deployment (backend: `session-records.ts`):
- * hosted uses `research` / `private` — where `private` really is deleted
- * after 7 inactive days, because that is how "don't keep this" is kept —
- * and local uses `exportable` / `no-export`, a marker for a future export
- * filter that never hides, uploads, or deletes anything.
+ * What may happen to a conversation beyond this machine (backend:
+ * `session-records.ts`): a marker for a future export filter that never
+ * hides, uploads, or deletes anything.
  */
-export type SessionVisibility =
-  | "research"
-  | "private"
-  | "exportable"
-  | "no-export";
+export type SessionVisibility = "exportable" | "no-export";
 
-/** True for the values that withhold a conversation from the research team. */
-export function isWithheld(visibility: SessionVisibility | undefined): boolean {
-  return visibility === "private" || visibility === "no-export";
+/** True for the values that withhold a conversation from a research export
+ *  (an old header's hosted `"private"` included). */
+export function isWithheld(visibility: string | undefined): boolean {
+  return visibility === "no-export" || visibility === "private";
 }
 
 export type TranscriptView = "user" | "developer";
 
-export interface AuthContext {
-  accountId: string | null;
-  role: "anonymous" | AccountRole;
-  displayLabel: string | null;
-  defaultRoleCondition: string | null;
-  defaultConsent: Record<string, unknown> | null;
-}
-
-/** Install/account study designation — the only signal for study surfaces. */
+/** Install study designation — the only signal for study surfaces. */
 export interface ParticipantInfo {
   designated: boolean;
   label: string | null;
 }
 
-export interface AuthMeResponse {
-  auth: AuthContext;
+export interface AppInfoResponse {
   app: {
-    mode: "local" | "hosted";
     runtimeMode: RuntimeMode;
     nativePiScanAltSkills: boolean;
   };
@@ -220,8 +198,6 @@ export interface SessionSnapshot {
   /** Pi's prompt queue for this session (steer = next API call). */
   queue?: { steering: string[]; followUp: string[] };
   visibility?: SessionVisibility;
-  /** Hosted-only expiry for a "private" conversation; null everywhere else. */
-  retentionDueAt?: string | null;
   currentDomain: string;
   rolePresetSlug: string | null;
   soulSlug: string | null;
@@ -310,8 +286,6 @@ export interface SessionSummary {
   sessionId: string;
   alias?: string;
   snippet?: string;
-  ownerAccountId: string | null;
-  roleCondition: string | null;
   visibility: SessionVisibility;
   createdAt: string | null;
   lastPromptAcceptedAt?: string | null;
@@ -580,8 +554,6 @@ export interface WorkspaceFileEntry {
 export interface WorkspaceUsage {
   sessionBytes: number;
   sessionQuotaBytes: number;
-  accountBytes?: number;
-  accountQuotaBytes?: number;
 }
 
 export interface SessionFilesResponse {

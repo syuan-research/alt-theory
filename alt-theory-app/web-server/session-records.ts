@@ -42,50 +42,21 @@ export interface RecordEnvelope {
 }
 
 /**
- * What happens to a conversation beyond this machine. TWO DISJOINT
- * VOCABULARIES, one per deployment — never mix them:
- *
- * - **hosted** (`ALT_THEORY_MODE=hosted`, the VPS study): `"research"` |
- *   `"private"`. `"private"` is the participant saying "don't keep this":
- *   researchers cannot read it, it is not exported, and it is hard-deleted
- *   after 7 inactive days. Deletion is HOW that promise is kept, not a side
- *   effect — a study account is not long-lived, so a private conversation
- *   that outlives the study would break the promise.
- * - **local** (the downloadable app): `"exportable"` | `"no-export"`. A
- *   marker for a future export filter, nothing more. Nothing is hidden,
- *   uploaded, or deleted, ever.
- *
- * A local install can never write `"private"`, so the retention sweeper
- * (`session-retention.ts`, hosted-only) can never match locally created
- * data. That is the fix for the defect where "local conversations default to
- * private" also meant "local conversations default to queued for deletion":
- * the safest-sounding default was the destructive one.
+ * What may happen to a conversation beyond this machine: a marker for a
+ * future export filter, nothing more. Nothing is hidden, uploaded, or
+ * deleted. (The hosted study's `"research"` / `"private"` vocabulary and its
+ * 7-day deletion of private conversations were removed on 2026-09-26; an old
+ * header's `"private"` still reads as withheld.)
  */
-export type SessionVisibility =
-  | "research"
-  | "private"
-  | "exportable"
-  | "no-export";
+export type SessionVisibility = "exportable" | "no-export";
 
-/** Vocabulary check — the guard that keeps the two deployments apart. */
-export function isVisibilityForMode(
-  visibility: string,
-  localMode: boolean,
-): visibility is SessionVisibility {
-  return localMode
-    ? visibility === "exportable" || visibility === "no-export"
-    : visibility === "research" || visibility === "private";
+export function isSessionVisibility(value: unknown): value is SessionVisibility {
+  return value === "exportable" || value === "no-export";
 }
 
-/**
- * Whether this conversation is withheld from the research team. True for the
- * hosted `"private"` and the local `"no-export"`. Distinct from retention:
- * only `"private"` is ever deleted.
- */
-export function withholdsFromResearch(
-  visibility: SessionVisibility | undefined,
-): boolean {
-  return visibility === "private" || visibility === "no-export";
+/** Whether this conversation is withheld from a research export. */
+export function withholdsFromResearch(visibility: string | undefined): boolean {
+  return visibility === "no-export" || visibility === "private";
 }
 
 export interface V4SessionHeader extends RecordEnvelope {
@@ -93,16 +64,14 @@ export interface V4SessionHeader extends RecordEnvelope {
   sessionId: string;
   createdAt: string;
   recordModel: "v0.4";
-  ownerAccountId?: string | null;
-  roleCondition?: string | null;
   visibility?: SessionVisibility;
   consentSnapshot?: {
     researcherReadable: boolean;
     quoteAfterAnonymization: boolean;
     privateOverride: boolean;
   };
+  /** Recency before any prompt: creation, or an imported source's last update. */
   lastActivityAt?: string;
-  retentionDueAt?: string | null;
   /** Root Helper launch. Child Helpers use forkedFrom.purpose instead. */
   helper?: true;
   /** Per-session tool mode behind the permission control. */
@@ -156,8 +125,6 @@ export function writeFoundationRecords(args: {
   sessionRoot: string;
   recordsDir: string;
   manifest: AssemblyManifest;
-  ownerAccountId?: string | null;
-  roleCondition?: string | null;
   visibility?: SessionVisibility;
   consentSnapshot?: {
     researcherReadable: boolean;
@@ -165,7 +132,6 @@ export function writeFoundationRecords(args: {
     privateOverride: boolean;
   } | null;
   lastActivityAt?: string;
-  retentionDueAt?: string | null;
   helper?: boolean;
   mode?: AltMode;
   workspace?: {
@@ -191,14 +157,11 @@ export function writeFoundationRecords(args: {
     sessionId: args.manifest.sessionId,
     createdAt,
     recordModel: "v0.4",
-    ownerAccountId: args.ownerAccountId ?? null,
-    roleCondition: args.roleCondition ?? null,
-    visibility: args.visibility ?? "research",
+    visibility: args.visibility ?? "no-export",
     ...(args.consentSnapshot
       ? { consentSnapshot: { ...args.consentSnapshot } }
       : {}),
     lastActivityAt: args.lastActivityAt ?? createdAt,
-    retentionDueAt: args.retentionDueAt ?? null,
     ...(args.helper ? { helper: true } : {}),
     ...(args.mode ? { mode: args.mode } : {}),
     ...(args.workspace ? { workspace: { ...args.workspace } } : {}),

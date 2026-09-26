@@ -556,7 +556,6 @@
   .left-foot { border-top: 1px solid var(--hairline); padding: var(--space-control) var(--space-control); display: flex; align-items: center; gap: var(--space-control); }
   .left-foot .gear { display: flex; align-items: center; gap: var(--space-tight); color: var(--ink-soft); cursor: pointer; padding: var(--space-tight) var(--space-control); border-radius: var(--r-sm); font-size: var(--fs-primary); background: none; border: none; }
   .left-foot .gear:hover { background: var(--hover); }
-  .avatar { width: 26px; height: 26px; border-radius: 50%; background: var(--card); border: 1px solid var(--hairline); display: flex; align-items: center; justify-content: center; font-size: var(--fs-secondary); font-weight: 600; color: var(--text-2); margin-left: auto; }
   .help-menu { position: relative; }
   .help-menu > summary { list-style: none; display: flex; align-items: center; gap: var(--space-tight); color: var(--ink-soft); cursor: pointer; padding: var(--space-tight) var(--space-control); border-radius: var(--r-sm); font-size: var(--fs-primary); }
   .help-menu > summary::-webkit-details-marker { display: none; }

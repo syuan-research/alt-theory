@@ -29,7 +29,7 @@ export interface PendingChanges {
   soulSlug?: string | null;
   customInstructionRef?: string | null;
   kbDomain?: string;
-  /** Hosted visibility switch; the consent snapshot travels with the choice. */
+  /** Export-marker switch; the consent snapshot travels with the choice. */
   visibility?: {
     visibility: SessionVisibility;
     consentSnapshot?: SessionCreationMetadata["consentSnapshot"];

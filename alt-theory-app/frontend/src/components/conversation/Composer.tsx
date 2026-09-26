@@ -16,7 +16,6 @@ import { hasNativeBridge, pathsFromDroppedFiles } from "@/lib/native";
 import { stageAttachmentFile } from "@/api/session-files";
 import { WORKSPACE_PATH_MIME } from "@/lib/workspace";
 import { isWithheld, type SessionVisibility } from "@/api/types";
-import { fmtTime } from "@/lib/format";
 import { t } from "@/i18n";
 import { useAutosizeTextarea } from "@/lib/autosizeTextarea";
 import { dismissApprovalHint, modelReferenceLabel, useApprovalReviewer } from "@/lib/approvalReviewer";
@@ -128,7 +127,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
 
   const interactive = conv.sessionReady;
   const hasText = draft.trim().length > 0;
-  const canAttach = app.appMode === "local" && interactive;
+  const canAttach = interactive;
   // Paperclip, pasted files, and a read-only drop attach a copy (converted
   // to text when it is an office/PDF file); other drops attach a link.
   const fileInput = useRef<HTMLInputElement>(null);
@@ -147,25 +146,16 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
   const dropsCopy = conv.permission === "read-only";
   const acceptsFiles = (types: string[]) =>
     types.includes("Files") && (dropsCopy || hasNativeBridge());
-  // Permission (owner 2026-09-25): read-only / Ask / Full, local only —
-  // a hosted deployment is always read-only. On the draft screen the choice
-  // applies once the first message materializes the session.
-  const permissionVisible = app.appMode === "local";
+  // Permission (owner 2026-09-25): read-only / Ask / Full. On the draft
+  // screen the choice applies once the first message materializes the
+  // session.
   const altControlsDisabled = app.runtimeMode === "native-pi";
   const canSend =
     interactive &&
     (hasText || conv.stagedWorkspacePaths.length > 0);
   const showVisibility =
     app.participant?.designated === true || app.viewMode === "researcher";
-  // Only a hosted study deployment has a research team to withhold from — and
-  // only there does "private" mean the conversation is eventually deleted.
-  const hostedStudy = app.appMode === "hosted";
   const withheld = isWithheld(conv.selectors.visibility);
-  // The expiry is only real on hosted; say WHEN, not just "in 7 days".
-  const expiresOn =
-    hostedStudy && withheld && conv.retentionDueAt
-      ? fmtTime(conv.retentionDueAt)
-      : null;
 
   /**
    * Send what is typed plus the staged files. An armed Steer preset of this
@@ -243,17 +233,10 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
         (k) => k.slug === kbDomain,
       )?.displayName ?? "Knowledge base");
 
-  // Hosted "private" is the one value that really deletes — say so, and say
-  // when. Local markers change nothing about what is kept.
+  // The marker changes nothing about what is kept.
   const switchVisibility = (visibility: SessionVisibility) => {
     if (!conv.switchVisibility(visibility)) return;
-    if (visibility === "private") {
-      conv.notify({
-        kind: "text",
-        icon: "eject",
-        text: t("Private conversations and their files are deleted 7 days after you last use them. Download anything you want to keep."),
-      });
-    } else if (visibility === "no-export") {
+    if (visibility === "no-export") {
       conv.notify({
         kind: "text",
         icon: "bookmark",
@@ -265,7 +248,6 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
   const toggle = (key: MenuKey) =>
     setMenu((prev) => (prev === key ? null : key));
   const needsModel =
-    app.appMode === "local" &&
     app.localConfig !== null &&
     !app.localConfig.activeUsable &&
     !conv.modelOverride &&
@@ -538,36 +520,14 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
             <button
               className="ctx-item"
               onClick={() =>
-                switchVisibility(
-                  withheld
-                    ? hostedStudy
-                      ? "research"
-                      : "exportable"
-                    : hostedStudy
-                      ? "private"
-                      : "no-export",
-                )
+                switchVisibility(withheld ? "exportable" : "no-export")
               }
-              data-tip={
-                hostedStudy
-                  ? expiresOn
-                    ? t("Kept from the research team. Unless you use it again, this conversation and its files are deleted on {date}.", { date: expiresOn })
-                    : t("Private conversations are kept from the research team and deleted 7 days after you last use them.")
-                  : t("A marker only: nothing here is hidden, sent anywhere, or deleted. It sets whether a future export includes this conversation.")
-              }
+              data-tip={t("A marker only: nothing here is hidden, sent anywhere, or deleted. It sets whether a future export includes this conversation.")}
             >
               <i
                 className={withheld ? "ph ph-lock-simple" : "ph ph-share-network"}
               />
-              {hostedStudy
-                ? withheld
-                  ? expiresOn
-                    ? t("Private · until {date}", { date: expiresOn })
-                    : t("Private")
-                  : t("Shared")
-                : withheld
-                  ? t("Not for export")
-                  : t("Exportable")}
+              {withheld ? t("Not for export") : t("Exportable")}
               <PendingMark when={conv.pendingChanges.visibility !== undefined} />
             </button>
           ) : null}
@@ -724,73 +684,71 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
             >
               <i className="ph ph-magic-wand" />
             </button>
-            {permissionVisible ? (
-              <span className="perm-anchor">
-                <button
-                  className={`flat${conv.permission === "full" ? " perm-on" : ""}`}
-                  data-tip={t("Permission: {name}", { name: PERMISSION_LABEL[conv.permission]() })}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggle("perm");
-                  }}
-                >
-                  <i className={`ph ${PERMISSION_ICON[conv.permission]}`} />
-                  <span className="perm-label">{PERMISSION_LABEL[conv.permission]()}</span>
-                  <PendingMark
-                    when={
-                      conv.pendingChanges.fullAccess !== undefined ||
-                      conv.pendingChanges.mode !== undefined
-                    }
-                  />
-                </button>
-                <div
-                  className={`menu${menu === "perm" ? " on" : ""}`}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {PERMISSIONS.map((permission) => (
-                    <div
-                      key={permission}
-                      className="mi"
-                      onClick={() => {
-                        setMenu(null);
-                        if (permission === conv.permission) return;
-                        // Full goes through the standard confirm window;
-                        // lowering is immediate, no confirmation.
-                        if (permission !== "full") {
-                          conv.setPermission(permission);
-                          return;
-                        }
-                        app.requestConfirm({
-                          message: t("Enable full access?"),
-                          details: fullAccessConsequences(),
-                          confirmLabel: t("Enable full access"),
-                          onConfirm: () => conv.setPermission("full"),
-                        });
-                      }}
-                    >
-                      <i
-                        className={`ph ${PERMISSION_ICON[permission]}${permission === "full" ? " perm-warn-icon" : ""}`}
-                      />
-                      <span>
-                        {PERMISSION_LABEL[permission]()}
-                        {permission === "smart" ? <span className="exp-tag">{t("Experimental")}</span> : null}
-                        <span className="d">{PERMISSION_DETAIL[permission]()}</span>
-                        {permission === "smart" ? (
-                          <span className="d">
-                            {reviewer?.reviewer
-                              ? t("Reviews with {model}", { model: modelReferenceLabel(reviewer.reviewer.model) })
-                              : t("Reviews with this conversation's model at low thinking; each review is an extra call to it")}
-                          </span>
-                        ) : null}
-                      </span>
-                      {conv.permission === permission ? (
-                        <i className="ph ph-check check" />
+            <span className="perm-anchor">
+              <button
+                className={`flat${conv.permission === "full" ? " perm-on" : ""}`}
+                data-tip={t("Permission: {name}", { name: PERMISSION_LABEL[conv.permission]() })}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggle("perm");
+                }}
+              >
+                <i className={`ph ${PERMISSION_ICON[conv.permission]}`} />
+                <span className="perm-label">{PERMISSION_LABEL[conv.permission]()}</span>
+                <PendingMark
+                  when={
+                    conv.pendingChanges.fullAccess !== undefined ||
+                    conv.pendingChanges.mode !== undefined
+                  }
+                />
+              </button>
+              <div
+                className={`menu${menu === "perm" ? " on" : ""}`}
+                onClick={(e) => e.stopPropagation()}
+              >
+                {PERMISSIONS.map((permission) => (
+                  <div
+                    key={permission}
+                    className="mi"
+                    onClick={() => {
+                      setMenu(null);
+                      if (permission === conv.permission) return;
+                      // Full goes through the standard confirm window;
+                      // lowering is immediate, no confirmation.
+                      if (permission !== "full") {
+                        conv.setPermission(permission);
+                        return;
+                      }
+                      app.requestConfirm({
+                        message: t("Enable full access?"),
+                        details: fullAccessConsequences(),
+                        confirmLabel: t("Enable full access"),
+                        onConfirm: () => conv.setPermission("full"),
+                      });
+                    }}
+                  >
+                    <i
+                      className={`ph ${PERMISSION_ICON[permission]}${permission === "full" ? " perm-warn-icon" : ""}`}
+                    />
+                    <span>
+                      {PERMISSION_LABEL[permission]()}
+                      {permission === "smart" ? <span className="exp-tag">{t("Experimental")}</span> : null}
+                      <span className="d">{PERMISSION_DETAIL[permission]()}</span>
+                      {permission === "smart" ? (
+                        <span className="d">
+                          {reviewer?.reviewer
+                            ? t("Reviews with {model}", { model: modelReferenceLabel(reviewer.reviewer.model) })
+                            : t("Reviews with this conversation's model at low thinking; each review is an extra call to it")}
+                        </span>
                       ) : null}
-                    </div>
-                  ))}
-                </div>
-              </span>
-            ) : null}
+                    </span>
+                    {conv.permission === permission ? (
+                      <i className="ph ph-check check" />
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </span>
             {/* First-level attach, in every conversation. */}
             {canAttach ? (
               <>

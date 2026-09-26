@@ -121,8 +121,6 @@ interface ImportRegistrationCore {
   source: ImportSourceSession;
   mode: AltMode;
   workspacePrimaryDir?: string;
-  ownerAccountId?: string | null;
-  roleCondition?: string | null;
   rolePresetSlug?: string | null;
   soulSlug?: string | null;
   visibility?: SessionVisibility;
@@ -581,8 +579,6 @@ function registerPreparedImport(
       sessionRoot: dirs.sessionRoot,
       recordsDir: dirs.recordsDir,
       manifest,
-      ownerAccountId: args.ownerAccountId,
-      roleCondition: args.roleCondition,
       visibility: args.visibility,
       consentSnapshot: args.consentSnapshot,
       lastActivityAt: args.source.updatedAt,

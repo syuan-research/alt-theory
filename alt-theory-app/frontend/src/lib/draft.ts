@@ -233,27 +233,6 @@ export function pruneDrafts(listed: ReadonlySet<string>): void {
   for (const key of gone) discardDraft(key);
 }
 
-/** Signing out: every draft of the account goes. */
-export function clearDraftScope(): void {
-  if (scope === null) return;
-  const prefix = `${PREFIX}${scope}:`;
-  try {
-    const names: string[] = [];
-    for (let index = 0; index < localStorage.length; index += 1) {
-      const name = localStorage.key(index);
-      if (name?.startsWith(prefix)) names.push(name);
-    }
-    for (const name of names) localStorage.removeItem(name);
-  } catch {
-    /* nothing more to do */
-  }
-  for (const timer of timers.values()) clearTimeout(timer);
-  timers.clear();
-  drafts.clear();
-  failed.clear();
-  notify();
-}
-
 /** The last write of this draft failed (it lives only in memory). */
 export function draftUnsaved(key: string): boolean {
   return failed.has(key);

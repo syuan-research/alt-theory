@@ -10,11 +10,6 @@
     "message": "Operator '<' cannot be applied to types 'unknown' and 'number'."
   },
   {
-    "file": "alt-theory-app/web-server/auth-session.ts",
-    "code": "TS2339",
-    "message": "Property 'reason' does not exist on type 'AccountAuthResult'."
-  },
-  {
     "file": "alt-theory-app/web-server/backend-server.integration.ts",
     "code": "TS2339",
     "message": "Property 'content' does not exist on type 'AgentMessage'."
@@ -157,17 +152,7 @@
   {
     "file": "alt-theory-app/web-server/server.ts",
     "code": "TS2339",
-    "message": "Property 'error' does not exist on type 'LoginResult'."
-  },
-  {
-    "file": "alt-theory-app/web-server/server.ts",
-    "code": "TS2339",
     "message": "Property 'sessionRoot' does not exist on type '{ status: \"ok\"; sessionRoot: string; } | { status: \"missing\" | \"invalid\"; }'."
-  },
-  {
-    "file": "alt-theory-app/web-server/server.ts",
-    "code": "TS2339",
-    "message": "Property 'status' does not exist on type 'LoginResult'."
   },
   {
     "file": "alt-theory-app/web-server/server.ts",

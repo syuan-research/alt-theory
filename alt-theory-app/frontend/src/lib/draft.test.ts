@@ -21,7 +21,6 @@ let full = false;
 const {
   appendDraft,
   appendToDraft,
-  clearDraftScope,
   discardDraft,
   draftUnsaved,
   flushDrafts,
@@ -90,11 +89,6 @@ test("drafts of conversations gone from the list go; one opened this run and the
 
   discardDraft("kept");
   assert.equal(store.has("alt-theory:draft:account:p02:kept"), false);
-
-  // Signing out clears the account's drafts, no one else's.
-  clearDraftScope();
-  assert.equal([...store.keys()].some((name) => name.startsWith("alt-theory:draft:account:p02:")), false);
-  assert.equal(store.has(`alt-theory:draft:local:${NEW_DRAFT}`), true);
 });
 
 test("recalled text lands on its own line after the draft", () => {
