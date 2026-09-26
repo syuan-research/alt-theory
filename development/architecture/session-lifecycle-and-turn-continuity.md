@@ -469,12 +469,33 @@ Theory does not wrap it in a second retry loop. A successful or failed terminal
 outcome is finalized only after pending run work has settled; the run state
 settles in the same `finally`, which keeps the phase, run record, and recovery
 projection aligned. `finishRun()` builds the terminal payload after
-`settle()`: `run_completed` is `{ snapshot, messages }` and `run_failed`
-`{ failure, snapshot, messages }` — the post-settle snapshot (its recovery is
-what Continue reads; read before settle it is still null) and the durable
-transcript projection, read after the live-run bubble is cleared so the
-prompt is not echoed (`session-service.test.ts` "a failed run's run_failed
-carries the recovery Continue needs").
+`settle()`: `run_completed` is `{ snapshot, rows, after }` and `run_failed`
+`{ failure, snapshot, rows, after }` — the post-settle snapshot (its recovery
+is what Continue reads; read before settle it is still null) and the turn's
+own rows of the durable transcript projection, read after the live-run bubble
+is cleared so the prompt is not echoed (`session-service.test.ts` "a failed
+run's run_failed carries the recovery Continue needs").
+
+**The transcript window** (perf plan WP 2.2). A window never holds the whole
+transcript unless it asks for it. Every place that sends rows goes through
+`frontend/src/lib/transcriptWindow.ts` (pure; the server imports it):
+`session_transcript` — on open, rewind (revise, delete latest, retry),
+compaction, duplicate — is `{ messages, hasMore, userRows }`: the tail of at
+least `TRANSCRIPT_TAIL_ROWS` rows, moved up to a user row and holding at least
+three user rows (the lost-send check in `lib/conversation.ts` reads the last
+three, ADR 0008), plus every user row's id and first 80 characters for the
+scrub rail. A turn's end carries `rows` from the run's user row (the Pi entry
+it wrote) and `after`, the row before them (null = the start); the client
+replaces what follows `after`, and when its window does not hold `after` it
+asks for the tail again. Older rows come with `transcript_page { before,
+limit }`, answered with rows above `before` (a stable `${entryId}:${ordinal}`
+id only — positional, live, steered and local ids are never a cursor), each
+page started at a user row and capped at `TRANSCRIPT_PAGE_MAX`. A rewind sends
+every window back to the tail. The projection itself is still the whole
+branch, cut after; the window bounds what travels and what the renderer
+holds. The panes ask for the next page while a screen and a half is still
+loaded above the view and keep the formerly first row in place when it lands
+(`hooks/useEarlierRows.ts`; the transcript has `overflow-anchor: none`).
 
 ## Compaction and live-run state
 

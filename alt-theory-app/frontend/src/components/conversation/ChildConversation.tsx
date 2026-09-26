@@ -7,6 +7,7 @@ import { ConversationScope, useConversationContext, useTurnParts } from "@/conte
 import { useMainView } from "@/context/MainView";
 import { useConversation } from "@/hooks/useConversation";
 import { useStickToBottom } from "@/hooks/useStickToBottom";
+import { useEarlierRows } from "@/hooks/useEarlierRows";
 import { useFindTarget } from "@/lib/find";
 import { runPhaseLabels } from "@/lib/runState";
 import { useAutosizeTextarea } from "@/lib/autosizeTextarea";
@@ -86,6 +87,7 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
   const pendingChildRole = conversation.pendingChanges.rolePresetSlug !== undefined;
   const approval = conversation.approvals.find((request) => request.sessionId === sessionId);
   const { containerRef: messagesRef, onScroll } = useStickToBottom([messages, parts]);
+  const onScrollEarlier = useEarlierRows(messagesRef, messages, conversation);
   useFindTarget(messagesRef, {});
 
   // Role/model menus close on any click outside the context line (same
@@ -216,7 +218,14 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
         )}
       </div>
 
-      <div className="msgs child-msgs" ref={messagesRef} onScroll={onScroll}>
+      <div
+        className="msgs child-msgs"
+        ref={messagesRef}
+        onScroll={(event) => {
+          onScroll(event);
+          onScrollEarlier();
+        }}
+      >
         <SettledMessages
           messages={messages}
           developer={developer}

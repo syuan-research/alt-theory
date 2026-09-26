@@ -116,7 +116,15 @@ import type {
   SessionSnapshot,
   TurnRecovery,
   TranscriptMessage,
+  TranscriptWindow,
+  TurnRows,
 } from "./websocket-protocol.js";
+import {
+  pageBefore,
+  transcriptWindow,
+  turnRows,
+} from "../frontend/src/lib/transcriptWindow.js";
+import { TRANSCRIPT_PAGE_MAX, TRANSCRIPT_TAIL_ROWS } from "./limits.js";
 import { continueAgentTurnAfterModelSwitch } from "../core/model-switch.js";
 import {
   AGENT_MAIL_TAG,
@@ -319,12 +327,12 @@ export type SessionServiceEvent =
   | { type: "tool_finished"; payload: { callId: string; success: boolean } }
   | {
       type: "run_completed";
-      payload: { snapshot: SessionSnapshot; messages: TranscriptMessage[] };
+      payload: { snapshot: SessionSnapshot } & TurnRows;
     }
   | { type: "session_updated"; payload: SessionSnapshot }
   | {
       type: "run_failed";
-      payload: { failure: Failure; snapshot: SessionSnapshot; messages: TranscriptMessage[] };
+      payload: { failure: Failure; snapshot: SessionSnapshot } & TurnRows;
     }
   | { type: "user_steered"; payload: { text: string } }
   /** Pi's prompt queue changed (card 11); `restored` (+ its staged paths) = what Stop handed back. */
@@ -339,7 +347,7 @@ export type SessionServiceEvent =
         restoredId?: string;
       };
     }
-  | { type: "session_transcript"; payload: { messages: TranscriptMessage[] } }
+  | { type: "session_transcript"; payload: TranscriptWindow }
   | { type: "session_metrics"; payload: SessionMetrics }
   | { type: "session_metadata"; payload: AssemblyManifest }
   | {
@@ -776,7 +784,11 @@ export class SessionService implements AgentTeamBridge {
    * events go through whatever instance settle() left owning the
    * conversation (a deferred asset switch replaces it).
    */
-  private async finishRun(managed: ManagedSession, outcome: RunOutcomeEvent): Promise<void> {
+  private async finishRun(
+    managed: ManagedSession,
+    outcome: RunOutcomeEvent,
+    userEntryId: string | null,
+  ): Promise<void> {
     const settled = await this.settle(managed);
     // Stop (and interrupt-and-send) settle on their own first, which may
     // already have replaced the instance; the outcome goes out through
@@ -792,14 +804,18 @@ export class SessionService implements AgentTeamBridge {
     managed.liveRun = null;
     current.liveRun = null;
     // Read only when a window follows the conversation (background runs
-    // skip the full detail read).
-    const messages = this.listeners.get(current.manifest.sessionId)?.size
-      ? this.getTranscript(current.manifest.sessionId)
-      : [];
+    // skip the full detail read). The turn's own rows go: a window keeps
+    // what it has above them (WP 2.2).
+    const turn = turnRows(
+      this.listeners.get(current.manifest.sessionId)?.size
+        ? this.getTranscript(current.manifest.sessionId)
+        : [],
+      userEntryId,
+    );
     if (outcome === "completed") {
       this.emit(current, {
         type: "run_completed",
-        payload: { snapshot: this.snapshot(current), messages },
+        payload: { snapshot: this.snapshot(current), ...turn },
       });
       this.emit(current, { type: "session_metrics", payload: this.persistMetrics(current) });
       return;
@@ -808,7 +824,7 @@ export class SessionService implements AgentTeamBridge {
     // session its recovery is null, and Continue would vanish.
     this.emit(current, {
       type: "run_failed",
-      payload: { failure: outcome.failure, snapshot: this.snapshot(current), messages },
+      payload: { failure: outcome.failure, snapshot: this.snapshot(current), ...turn },
     });
   }
 
@@ -1862,7 +1878,7 @@ export class SessionService implements AgentTeamBridge {
         );
       }
       if (!interrupted) outcome = "completed";
-    })().finally(() => this.finishRun(managed, outcome));
+    })().finally(() => this.finishRun(managed, outcome, run.userEntryId));
     managed.runSettlement = completion.catch(() => {});
 
     return {
@@ -2021,7 +2037,7 @@ export class SessionService implements AgentTeamBridge {
     });
     this.emit(managed, {
       type: "session_transcript",
-      payload: { messages: this.visibleTranscript(managed) },
+      payload: transcriptWindow(this.visibleTranscript(managed), TRANSCRIPT_TAIL_ROWS),
     });
     return this.publish(managed);
   }
@@ -2416,6 +2432,7 @@ export class SessionService implements AgentTeamBridge {
     this.emitRunPhase(managed, "connecting");
 
     let outcome: RunOutcomeEvent = null;
+    let userEntryId: string | null = null;
     const completion = (async () => {
       let promptError: unknown = null;
       let pendingError: unknown = null;
@@ -2439,7 +2456,7 @@ export class SessionService implements AgentTeamBridge {
       const entries = managed.session.sessionManager
         .getEntries()
         .filter((entry) => !beforeEntryIds.has(entry.id));
-      const userEntryId =
+      userEntryId =
         entries.find(
           (entry) =>
             entry.type === "message" &&
@@ -2541,7 +2558,7 @@ export class SessionService implements AgentTeamBridge {
       // finishRun, and the old instance's model runtime would die mid-call.
       outcome = "completed";
     })().finally(async () => {
-      await this.finishRun(managed, outcome);
+      await this.finishRun(managed, outcome, userEntryId);
       if (outcome !== "completed") return;
       const live = this.sessions.get(managed.manifest.sessionId);
       if (live) void this.withHold(live, () => this.maybeAutoTitle(live));
@@ -2816,7 +2833,7 @@ export class SessionService implements AgentTeamBridge {
     );
     this.emit(managed, {
       type: "session_transcript",
-      payload: { messages: [...managed.transcript] },
+      payload: transcriptWindow(managed.transcript, TRANSCRIPT_TAIL_ROWS),
     });
     this.emit(managed, {
       type: "session_metrics",
@@ -2967,6 +2984,20 @@ export class SessionService implements AgentTeamBridge {
     return this.visibleTranscript(managed);
   }
 
+  /** What a window opens with: the tail of the displayable rows (WP 2.2). */
+  getTranscriptWindow(sessionId: string): TranscriptWindow {
+    return transcriptWindow(this.getTranscript(sessionId), TRANSCRIPT_TAIL_ROWS);
+  }
+
+  /** Rows above the stable row `before`, or null when it is not one of them. */
+  getTranscriptPage(sessionId: string, before: string, limit = TRANSCRIPT_PAGE_MAX) {
+    return pageBefore(
+      this.getTranscript(sessionId),
+      before,
+      Math.max(1, Math.min(limit, TRANSCRIPT_PAGE_MAX)),
+    );
+  }
+
   /**
    * Fingerprint of the two files the transcript projection is derived from
    * (perf backlog item 2): the full re-read now happens only when one of
@@ -3020,7 +3051,10 @@ export class SessionService implements AgentTeamBridge {
       buildTranscriptFromEntries(managed.session.sessionManager.getBranch());
     this.emit(managed, {
       type: "session_transcript",
-      payload: { messages: this.visibleTranscript(managed, pendingUserText) },
+      payload: transcriptWindow(
+        this.visibleTranscript(managed, pendingUserText),
+        TRANSCRIPT_TAIL_ROWS,
+      ),
     });
   }
 

@@ -18,3 +18,9 @@ export const RUNTIME_HIGH_WATER = 12;
 export const RUNTIME_TARGET = 6;
 export const RUNTIME_LRU_MIN_IDLE_MS = 60_000;
 export const RUNTIME_SWEEP_MS = 60_000;
+
+/** A conversation opens with at least this many rows of its tail (moved up
+ *  to a user row, three user rows at least); older rows come in pages of at
+ *  most TRANSCRIPT_PAGE_MAX (perf plan WP 2.2). */
+export const TRANSCRIPT_TAIL_ROWS = 60;
+export const TRANSCRIPT_PAGE_MAX = 200;

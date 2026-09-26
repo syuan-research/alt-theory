@@ -20,6 +20,7 @@ import { toolOutcome, type ToolOutcome } from "@/lib/toolOutcome";
 import { t } from "@/i18n";
 import { autosizeTextarea } from "@/lib/autosizeTextarea";
 import { useStickToBottom } from "@/hooks/useStickToBottom";
+import { useEarlierRows } from "@/hooks/useEarlierRows";
 import { useContextMenu, type ContextMenuItem } from "@/components/shell/ContextMenu";
 import { copyText } from "@/lib/clipboard";
 import { useFindTarget } from "@/lib/find";
@@ -35,6 +36,7 @@ export function MessageList() {
     stickRef: stickToBottomRef,
     onScroll,
   } = useStickToBottom([messages, streamParts]);
+  const onScrollEarlier = useEarlierRows(containerRef, messages, conv);
   useFindTarget(containerRef, {});
   const railRef = useRef<HTMLDivElement>(null);
   const [scrubbing, setScrubbing] = useState(false);
@@ -108,7 +110,14 @@ export function MessageList() {
 
   return (
     <div className="msgs-wrap">
-    <div className="msgs" ref={containerRef} onScroll={onScroll}>
+    <div
+      className="msgs"
+      ref={containerRef}
+      onScroll={(event) => {
+        onScroll(event);
+        onScrollEarlier();
+      }}
+    >
       {conv.sessionId && !conv.selectors.soulSlug ? (
         <SysLine>
           <i className="ph ph-warning" />
@@ -533,6 +542,7 @@ export function TranscriptEntry({
     const replacementEdit = actions?.isReplacementEdit(message.entryId ?? null) ?? false;
     return (
       <UserBubble
+        rowId={message.rowId}
         text={message.text}
         pending={Boolean(message.pending)}
         entryId={message.entryId ?? null}
@@ -635,6 +645,7 @@ export function TranscriptEntry({
 }
 
 function UserBubble({
+  rowId,
   text,
   pending,
   entryId,
@@ -646,6 +657,7 @@ function UserBubble({
   replacementEdit,
   userIndex,
 }: {
+  rowId?: string;
   text: string;
   /** Sent, not yet confirmed by the server (placeholder mark; design TBD). */
   pending: boolean;
@@ -672,7 +684,7 @@ function UserBubble({
   if (!trimmed) return null;
   const canEdit = isLatest || Boolean(entryId);
   return (
-    <div className="msg user" data-uidx={userIndex}>
+    <div className="msg user" data-uidx={userIndex} data-row={rowId}>
       <div className="who" data-find-skip="">
         {t("You")}
         <PendingMark when={pending} />

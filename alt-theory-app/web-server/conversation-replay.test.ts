@@ -56,7 +56,7 @@ class Window {
     this.apply({ type: "server", message: { type: "session_opened", payload: this.service.getSnapshot(sessionId) } });
     this.apply({
       type: "server",
-      message: { type: "session_transcript", payload: { messages: this.service.getTranscript(sessionId) } },
+      message: { type: "session_transcript", payload: this.service.getTranscriptWindow(sessionId) },
     });
     for (const event of this.service.getLiveRun(sessionId)?.events ?? []) {
       this.apply({ type: "server", message: toServerMessage(event) });

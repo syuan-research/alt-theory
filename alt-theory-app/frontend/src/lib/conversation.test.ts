@@ -15,6 +15,7 @@ import {
   type PendingRequest,
   sentLanded,
 } from "./conversation.ts";
+import { userRowsOf } from "./transcriptWindow.ts";
 
 const snap = (patch: Partial<SessionSnapshot> = {}): SessionSnapshot => ({
   sessionId: "s1",
@@ -37,6 +38,8 @@ const draft: SessionDraftSnapshot = {
 const rows = (...texts: Array<[TranscriptMessage["role"], string]>): TranscriptMessage[] =>
   texts.map(([role, text], index) => ({ role, text, timestamp: null, rowId: `e${index}:0` }));
 const server = (message: ServerMessage): ConversationInput => ({ type: "server", message });
+/** A whole transcript as its opening window (short: nothing above). */
+const win = (messages: TranscriptMessage[]) => ({ messages, hasMore: false, userRows: userRowsOf(messages) });
 const request = (
   id: string,
   message: PendingRequest["message"],
@@ -54,7 +57,7 @@ const returns = (state: ConversationState) =>
 const openedS1: ConversationInput[] = [
   { type: "socket", status: "open" },
   server({ type: "session_opened", payload: snap() }),
-  server({ type: "session_transcript", payload: { messages: rows(["user", "hi"], ["assistant", "hello"]) } }),
+  server({ type: "session_transcript", payload: win(rows(["user", "hi"], ["assistant", "hello"])) }),
 ];
 
 test("a send shows a pending bubble; accepted it stays; the turn's end swaps it for the rows in one step", () => {
@@ -79,7 +82,7 @@ test("a send shows a pending bubble; accepted it stays; the turn's end swaps it 
   assert.equal(displayMessages(state).at(-1)?.pending, false);
   assert.equal(state.turn.parts.length, 1);
   const settled = rows(["user", "hi"], ["assistant", "hello"], ["user", "next"], ["assistant", "stream"]);
-  state = play([server({ type: "run_completed", payload: { snapshot: snap(), messages: settled } })], state);
+  state = play([server({ type: "run_completed", payload: { snapshot: snap(), rows: settled.slice(2), after: "e1:0" } })], state);
   // One transition: no state in which the stream is gone and the rows not yet in.
   assert.deepEqual(state.turn.parts, []);
   assert.deepEqual(displayMessages(state), settled);
@@ -115,7 +118,7 @@ test("a send lost with the socket is settled by the re-opened rows: there → se
       server({ type: "session_opened", payload: snap() }),
       server({
         type: "session_transcript",
-        payload: { messages: rows(["user", "hi"], ["assistant", "hello"], ["user", "landed"]) },
+        payload: win(rows(["user", "hi"], ["assistant", "hello"], ["user", "landed"])),
       }),
     ],
     lost,
@@ -211,7 +214,8 @@ test("Continue comes from the snapshot only, and hides while a request or run is
       payload: {
         failure: { operation: "run", kind: "network", message: "ECONNRESET", retryable: true },
         snapshot: snap({ recovery }),
-        messages: rows(["user", "hi"]),
+        rows: rows(["user", "hi"]),
+        after: null,
       },
     }),
   ]);
@@ -227,7 +231,8 @@ test("Continue comes from the snapshot only, and hides while a request or run is
       payload: {
         failure: { operation: "run", kind: "aborted", message: "aborted", retryable: false },
         snapshot: snap({ recovery: { ...recovery, outcome: "interrupted", interruptionCause: "user_abort" } }),
-        messages: rows(["user", "hi"]),
+        rows: rows(["user", "hi"]),
+        after: null,
       },
     }),
   ]);
@@ -275,7 +280,7 @@ test("a lost send with nothing to hand back is dropped without a notice", () => 
     { type: "socket", status: "closed" },
     { type: "socket", status: "open" },
     server({ type: "session_opened", payload: snap() }),
-    server({ type: "session_transcript", payload: { messages: rows(["user", "hi"]) } }),
+    server({ type: "session_transcript", payload: win(rows(["user", "hi"])) }),
   ]);
   assert.deepEqual(state.requests, []);
   assert.equal(state.notice, null);

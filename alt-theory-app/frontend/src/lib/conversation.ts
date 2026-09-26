@@ -38,7 +38,16 @@ import type {
   StreamPart,
   StudyTag,
   TranscriptMessage,
+  TranscriptUserRow,
 } from "../api/types";
+import {
+  firstStableRowId,
+  openedWindow,
+  prependPage,
+  replaceFrom,
+  userRowsOf,
+  type WindowState,
+} from "./transcriptWindow";
 
 export type SocketStatus = "connecting" | "open" | "closed" | "error";
 
@@ -75,6 +84,7 @@ export const REQUEST_BUSY: Record<ClientMessageBody["type"], boolean> = {
   send_queued_now: true,
   abort: true,
   open_session: true,
+  transcript_page: false,
   new_session: true,
   fork_session: true,
   create_related_session: true,
@@ -157,7 +167,12 @@ export interface ConversationState {
   manifest: AssemblyManifest | null;
   metrics: SessionMetrics | null;
   warnings: string[];
+  /** The loaded window of the transcript (WP 2.2): the tail and pages above. */
   messages: TranscriptMessage[];
+  hasMore: boolean;
+  olderUserRows: TranscriptUserRow[];
+  /** The window stopped lining up with the server: the hook fetches the tail. */
+  stale: boolean;
   turn: LiveTurn;
   /** Every pending approval this window may see (connection-wide registry). */
   approvals: ApprovalRequestPayload[];
@@ -180,6 +195,7 @@ export type ConversationInput =
   | { type: "draft_ops_taken"; upTo: number };
 
 const EMPTY_TURN: LiveTurn = { parts: [], tools: {}, activity: null };
+const EMPTY_WINDOW: WindowState = { messages: [], hasMore: false, olderUserRows: [], stale: false };
 
 export function initialConversationState(): ConversationState {
   return {
@@ -190,6 +206,9 @@ export function initialConversationState(): ConversationState {
     metrics: null,
     warnings: [],
     messages: [],
+    hasMore: false,
+    olderUserRows: [],
+    stale: false,
     turn: EMPTY_TURN,
     approvals: [],
     requests: [],
@@ -272,10 +291,10 @@ export function sentLanded(request: PendingRequest, users: string[], queued: str
  * over and the rows are the truth. Sends lost with the socket are settled:
  * in the rows → sent; otherwise → back to the editor with a notice.
  */
-function withRows(state: ConversationState, messages: TranscriptMessage[], final: boolean): ConversationState {
-  const users = recentUserTexts(messages);
+function withRows(state: ConversationState, window: WindowState, final: boolean): ConversationState {
+  const users = recentUserTexts(window.messages);
   const queued = queuedTexts(state);
-  let next: ConversationState = { ...state, messages };
+  let next: ConversationState = { ...state, ...window };
   let lost = false;
   const requests: PendingRequest[] = [];
   for (const request of state.requests) {
@@ -308,6 +327,9 @@ function switchedTo(state: ConversationState, sessionId: string | null): Convers
     ),
     sessionId,
     messages: [],
+    hasMore: false,
+    olderUserRows: [],
+    stale: false,
     turn: EMPTY_TURN,
     manifest: null,
     metrics: null,
@@ -332,7 +354,7 @@ function onServer(state: ConversationState, message: ServerMessage): Conversatio
       let next: ConversationState = state.sessionId === null ? state : switchedTo(state, null);
       next = { ...next, draft: message.payload, snapshot: null };
       // Draft sends lost with the socket never reached a conversation.
-      return withRows(next, [], false);
+      return withRows(next, EMPTY_WINDOW, false);
     }
 
     case "session_opened": {
@@ -392,13 +414,16 @@ function onServer(state: ConversationState, message: ServerMessage): Conversatio
       return { ...state, metrics: message.payload };
 
     case "session_transcript":
-      return withRows({ ...state, turn: EMPTY_TURN }, message.payload.messages, false);
+      return withRows({ ...state, turn: EMPTY_TURN }, openedWindow(message.payload), false);
+
+    case "transcript_page":
+      return { ...state, ...prependPage(state, message.payload) };
 
     case "run_completed":
       return {
         ...withRows(
           { ...state, snapshot: message.payload.snapshot, turn: EMPTY_TURN, notice: null },
-          message.payload.messages,
+          replaceFrom(state, message.payload.after, message.payload.rows),
           true,
         ),
         settledRuns: state.settledRuns + 1,
@@ -409,7 +434,7 @@ function onServer(state: ConversationState, message: ServerMessage): Conversatio
       const next = {
         ...withRows(
           { ...state, snapshot: message.payload.snapshot, turn: EMPTY_TURN },
-          message.payload.messages,
+          replaceFrom(state, message.payload.after, message.payload.rows),
           true,
         ),
         settledRuns: state.settledRuns + 1,
@@ -683,6 +708,23 @@ export function isReady(state: ConversationState): boolean {
     return false;
   }
   return state.sessionId ? state.snapshot !== null : state.draft !== null;
+}
+
+/** Every user row of the conversation, loaded or not, for the scrub rail. */
+export function allUserRows(state: ConversationState): TranscriptUserRow[] {
+  return [...state.olderUserRows, ...userRowsOf(state.messages)];
+}
+
+/** The next page up is asked for (one at a time). */
+export function loadingEarlier(state: ConversationState): boolean {
+  return state.requests.some(
+    (request) => request.status === "sent" && request.message.type === "transcript_page",
+  );
+}
+
+/** Where the next page up ends, when there is one to ask for. */
+export function earlierCursor(state: ConversationState): string | null {
+  return state.hasMore && !loadingEarlier(state) ? firstStableRowId(state.messages) : null;
 }
 
 /** Transcript rows plus this conversation's bubbles still waiting for their row. */

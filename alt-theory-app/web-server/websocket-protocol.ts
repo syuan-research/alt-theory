@@ -17,6 +17,8 @@ export type {
   SessionMetrics,
   TurnRecovery,
   TranscriptMessage,
+  TranscriptWindow,
+  TurnRows,
 } from "../frontend/src/api/types.js";
 
 export type { ToolDetail, ToolDetailKind } from "./tool-detail.js";

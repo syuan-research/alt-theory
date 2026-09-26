@@ -234,10 +234,12 @@ test("SessionService records ordinary run trajectory and Pi entry mappings", asy
     assert.ok(completed && completed.type === "run_completed");
     assert.equal(completed.payload.snapshot.status, "idle");
     assert.deepEqual(
-      completed.payload.messages.map((row) => [row.role, row.text]),
+      completed.payload.rows.map((row) => [row.role, row.text]),
       [["user", "question"], ["assistant", "answer"]],
     );
-    assert.ok(completed.payload.messages.every((row) => row.rowId));
+    // The first turn: nothing before its rows.
+    assert.equal(completed.payload.after, null);
+    assert.ok(completed.payload.rows.every((row) => row.rowId));
     assert.equal(promptText, "question");
     assert.doesNotMatch(promptText, /\[Context:/);
     assert.doesNotMatch(promptText, /Search in/);
@@ -1003,7 +1005,8 @@ test("a failed run's run_failed carries the recovery Continue needs", async () =
     );
     // The settled rows travel with the outcome: the durable projection, with
     // no live-run echo of the prompt appended.
-    assert.deepEqual(failed.payload.messages, service.getTranscript(created.sessionId));
+    assert.deepEqual(failed.payload.rows, service.getTranscript(created.sessionId));
+    assert.equal(failed.payload.after, null);
   } finally {
     detach();
     await service.disposeAll();

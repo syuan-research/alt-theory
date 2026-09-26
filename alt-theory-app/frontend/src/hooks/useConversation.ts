@@ -14,12 +14,15 @@ import { missingAttachments } from "@/api/session-files";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { t } from "@/i18n";
 import {
+  allUserRows,
   displayMessages,
+  earlierCursor,
   effectiveSettings,
   initialConversationState,
   isBusy,
   isReady,
   isRunning,
+  loadingEarlier,
   openingTarget,
   pendingChanges,
   permissionOf,
@@ -43,6 +46,7 @@ import {
 } from "@/lib/draft";
 import { runStateView } from "@/lib/runState";
 import { buildOutgoingPrompt } from "@/lib/workspace";
+import { TRANSCRIPT_PAGE_ROWS } from "@/lib/limits";
 
 let requestCounter = 0;
 const RUN_REQUESTS = new Set<ClientMessageBody["type"]>([
@@ -273,6 +277,14 @@ export function useConversation({ sessionId, enabled, onMessage }: ConversationO
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftModelKey, state.socket, state.draft]);
 
+  // A turn's rows that did not line up with the window: take the tail again.
+  useEffect(() => {
+    if (state.stale && state.socket === "open" && state.sessionId) {
+      sendRequest({ type: "transcript_page", payload: {} });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.stale, state.socket]);
+
   // Timed notices clear themselves; a newer one replaces the timer.
   useEffect(() => {
     const notice = state.notice;
@@ -429,6 +441,11 @@ export function useConversation({ sessionId, enabled, onMessage }: ConversationO
           { type: "create_helper_session", payload: parentSessionId ? { parentSessionId } : {}, ...create() },
           { seed },
         ),
+      /** The next page above the loaded rows; false when there is none to ask for. */
+      loadEarlier: () => {
+        const before = earlierCursor(current());
+        return before ? send({ type: "transcript_page", payload: { before, limit: TRANSCRIPT_PAGE_ROWS } }) : false;
+      },
       requestMetadata: () => send({ type: "get_session_metadata" }),
       requestMetrics: () => send({ type: "get_session_metrics" }),
       /** Change this conversation's draft (any field of its lifetime, lib/draft). */
@@ -522,6 +539,11 @@ function useConversationView(
       metrics: state.metrics,
       sessionWarnings: state.warnings,
       messages: displayMessages(state),
+      /** Older rows exist above the loaded ones. */
+      hasEarlier: state.hasMore,
+      loadingEarlier: loadingEarlier(state),
+      /** Every user row, loaded or not (scrub rail). */
+      userRows: allUserRows(state),
       approvals: state.approvals,
       notice: state.notice,
       /** This conversation's draft, kept on this device (lib/draft). */

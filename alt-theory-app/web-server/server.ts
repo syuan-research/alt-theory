@@ -2361,9 +2361,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     // SessionService owns the one displayable transcript projection, including
     // the in-flight user bubble. This layer only replays buffered stream events.
     const sendTranscriptWithLiveReplay = (sessionId: string) => {
-      const messages = sessionService.getTranscript(sessionId);
       const live = sessionService.getLiveRun(sessionId);
-      send({ type: "session_transcript", payload: { messages } });
+      send({ type: "session_transcript", payload: sessionService.getTranscriptWindow(sessionId) });
       for (const event of live?.events ?? []) {
         forwardServiceEvent(send, event);
       }
@@ -2876,9 +2875,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
                   attachToSession(forked.sessionId);
                   send({
                     type: "session_transcript",
-                    payload: {
-                      messages: sessionService.getTranscript(forked.sessionId),
-                    },
+                    payload: sessionService.getTranscriptWindow(forked.sessionId),
                   });
                 } else {
                   // `/branch` is an idle Related conversation; keep this socket
@@ -3005,6 +3002,24 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             } catch (error) {
               fail(error);
             }
+            break;
+          }
+          case "transcript_page": {
+            if (!attachedSessionId) break;
+            const before = msg.payload.before;
+            if (!before) {
+              send({
+                type: "session_transcript",
+                payload: sessionService.getTranscriptWindow(attachedSessionId),
+              });
+              break;
+            }
+            const page = sessionService.getTranscriptPage(attachedSessionId, before, msg.payload.limit);
+            if (!page) {
+              fail(new Error("That part of the conversation is no longer there"));
+              break;
+            }
+            send({ type: "transcript_page", payload: page });
             break;
           }
           case "get_session_metadata":

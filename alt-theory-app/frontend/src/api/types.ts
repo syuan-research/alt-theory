@@ -278,6 +278,25 @@ export interface TranscriptMessage {
   stopReason?: "aborted" | "error" | "length";
 }
 
+/** A user row as the scrub rail shows it, loaded or not (WP 2.2). */
+export interface TranscriptUserRow {
+  rowId: string;
+  preview: string;
+}
+
+/** A conversation's opening rows: its tail, whether older rows exist, every user row. */
+export interface TranscriptWindow {
+  messages: TranscriptMessage[];
+  hasMore: boolean;
+  userRows: TranscriptUserRow[];
+}
+
+/** A finished turn's rows and the row just before them (null = the start). */
+export interface TurnRows {
+  rows: TranscriptMessage[];
+  after: string | null;
+}
+
 /** What the conversation list shows for a conversation (server: sessionActivity). */
 export type ListActivity = "idle" | "running" | "awaiting-approval" | "failed";
 
@@ -719,6 +738,8 @@ export type ClientMessageBody =
       create?: NewConversationSettings;
     }
   | { type: "open_session"; payload: { sessionId: string } }
+  /** Rows above the stable row `before`; without it, the tail again (a session_transcript). */
+  | { type: "transcript_page"; payload: { before?: string; limit?: number } }
   | { type: "get_session_metadata" }
   | { type: "get_session_metrics" }
   | {
@@ -748,7 +769,10 @@ export type ServerMessage =
   | { type: "session_updated"; payload: SessionSnapshot }
   | { type: "session_metadata"; payload: AssemblyManifest }
   | { type: "session_metrics"; payload: SessionMetrics }
-  | { type: "session_transcript"; payload: { messages: TranscriptMessage[] } }
+  /** The rows changed from the start (open, rewind, compaction): the tail window. */
+  | { type: "session_transcript"; payload: TranscriptWindow }
+  /** Older rows, answering transcript_page. */
+  | { type: "transcript_page"; payload: { before: string; messages: TranscriptMessage[]; hasMore: boolean } }
   | {
       type: "related_session_created";
       payload: { sessionId: string; purpose: "side" | "helper" | "subagent" };
@@ -785,11 +809,11 @@ export type ServerMessage =
   | { type: "tool_updated"; payload: { callId: string; text?: string; progress?: number } }
   | { type: "tool_finished"; payload: { callId: string; success: boolean; output?: unknown } }
   /** The turn ended: the post-settle snapshot and the settled rows, applied together. */
-  | { type: "run_completed"; payload: { snapshot: SessionSnapshot; messages: TranscriptMessage[] } }
+  | { type: "run_completed"; payload: { snapshot: SessionSnapshot } & TurnRows }
   /** The run ended failed or stopped; the snapshot (read after settle) carries its recovery. */
   | {
       type: "run_failed";
-      payload: { failure: Failure; snapshot: SessionSnapshot; messages: TranscriptMessage[] };
+      payload: { failure: Failure; snapshot: SessionSnapshot } & TurnRows;
     }
   /** A message steered into the running turn — broadcast so every pane
    *  (sender and late joiners) renders the bubble exactly once. */
