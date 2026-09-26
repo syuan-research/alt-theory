@@ -73,8 +73,10 @@ import {
 } from "./ab-records.js";
 import {
   deletedSessionDueAt,
+  listKeptFiles,
   readDeletedSessionRecord,
   removeDeletedSessionRecord,
+  removeFolderIfNothingKept,
   writeDeletedSessionRecord,
   type DeletedSessionRecord,
 } from "./session-deletion.js";
@@ -847,7 +849,40 @@ export function permanentlyDeleteSession(
   reason: "user_permanently_deleted" | "trash_retention_expired" =
     "user_permanently_deleted",
   now: Date = new Date(),
+  files: "keep" | "delete" = "keep",
 ): string[] {
+  const targets = permanentDeletionTargets(dataDir, sessionId);
+  const open = targets.find(isOpen);
+  if (open) throw new Error(`Close the conversation before permanent deletion: ${open}`);
+  for (const targetId of targets) {
+    const root = resolveSessionRoot(dataDir, targetId);
+    if (!root) continue;
+    if (files === "delete") {
+      rmSync(root, { recursive: true, force: true });
+      continue;
+    }
+    const summary = readSessionAccessSummary(dataDir, targetId);
+    const title = summary?.alias || summary?.snippet || "";
+    const recordsDir = join(root, "records");
+    rmSync(join(root, "history"), { recursive: true, force: true });
+    rmSync(join(root, "branches"), { recursive: true, force: true });
+    for (const entry of readdirSync(recordsDir, { withFileTypes: true })) {
+      if (entry.name === "deleted.json") continue;
+      rmSync(join(recordsDir, entry.name), { recursive: true, force: true });
+    }
+    removeDeletedSessionRecord(recordsDir);
+    writeDeletedSessionRecord(recordsDir, targetId, {
+      deletedAt: now.toISOString(),
+      reason,
+      ...(title ? { title } : {}),
+    });
+    removeFolderIfNothingKept(root);
+  }
+  return targets;
+}
+
+/** Every conversation one Trash item's permanent delete removes. */
+function permanentDeletionTargets(dataDir: string, sessionId: string): string[] {
   assertDirectTrashEntry(dataDir, sessionId);
   const targets = listSessionDirIds(dataDir).filter((dirId) => {
     if (dirId === sessionId) return true;
@@ -863,25 +898,83 @@ export function permanentlyDeleteSession(
   if (!targets.includes(sessionId)) {
     throw new Error(`Session is not in Trash: ${sessionId}`);
   }
-  const open = targets.find(isOpen);
-  if (open) throw new Error(`Close the conversation before permanent deletion: ${open}`);
-  for (const targetId of targets) {
-    const root = resolveSessionRoot(dataDir, targetId);
-    if (!root) continue;
-    const recordsDir = join(root, "records");
-    rmSync(join(root, "history"), { recursive: true, force: true });
-    rmSync(join(root, "branches"), { recursive: true, force: true });
-    for (const entry of readdirSync(recordsDir, { withFileTypes: true })) {
-      if (entry.name === "deleted.json") continue;
-      rmSync(join(recordsDir, entry.name), { recursive: true, force: true });
-    }
-    removeDeletedSessionRecord(recordsDir);
-    writeDeletedSessionRecord(recordsDir, targetId, {
-      deletedAt: now.toISOString(),
-      reason,
-    });
-  }
   return targets;
+}
+
+/** The kept files one Trash item's permanent delete would ask about. */
+export function permanentDeletionFiles(
+  dataDir: string,
+  sessionId: string,
+): { sessionId: string; path: string; section: "product" | "attachment" }[] {
+  return permanentDeletionTargets(dataDir, sessionId).flatMap((targetId) => {
+    const root = resolveSessionRoot(dataDir, targetId);
+    return root
+      ? listKeptFiles(join(root, "workspace")).map((file) => ({
+          sessionId: targetId,
+          path: file.path,
+          section: file.section,
+        }))
+      : [];
+  });
+}
+
+/**
+ * Who a session folder belongs to, for the Conversation files page: a live or
+ * Trash conversation (its summary), or a permanently deleted one (its
+ * tombstone). Null for a folder that is not a conversation.
+ */
+export function readFolderOwner(
+  dataDir: string,
+  sessionId: string,
+): {
+  state: "live" | "trash" | "purged";
+  title: string;
+  workspacePrimaryDir: string | null;
+  at: string | null;
+} | null {
+  const root = resolveSessionRoot(dataDir, sessionId);
+  if (!root) return null;
+  const tombstone = readDeletedSessionRecord(join(root, "records"));
+  if (tombstone && !isRecoverableDeletion(tombstone)) {
+    return { state: "purged", title: tombstone.title ?? "", workspacePrimaryDir: null, at: tombstone.deletedAt };
+  }
+  const summary = readSessionAccessSummary(dataDir, sessionId);
+  if (!summary) return null;
+  return {
+    state: tombstone ? "trash" : "live",
+    title: summary.alias || summary.snippet || "",
+    workspacePrimaryDir: summary.workspacePrimaryDir ?? null,
+    at: summary.lastPromptAcceptedAt ?? summary.updatedAt ?? summary.createdAt ?? null,
+  };
+}
+
+/** Folders left by earlier permanent deletes that hold nothing worth keeping. */
+export function removeEmptyTombstoneFolders(dataDir: string): void {
+  for (const dirId of listSessionDirIds(dataDir)) {
+    const root = resolveSessionRoot(dataDir, dirId);
+    if (!root) continue;
+    const tombstone = readDeletedSessionRecord(join(root, "records"));
+    if (tombstone && !isRecoverableDeletion(tombstone)) removeFolderIfNothingKept(root);
+  }
+}
+
+/** Remove a permanently deleted conversation's kept files (all, or some). */
+export function deleteKeptFiles(dataDir: string, sessionId: string, paths?: string[]): void {
+  const root = resolveSessionRoot(dataDir, sessionId);
+  const tombstone = root ? readDeletedSessionRecord(join(root, "records")) : null;
+  if (!root || !tombstone || isRecoverableDeletion(tombstone)) {
+    throw new Error(`Not a permanently deleted conversation: ${sessionId}`);
+  }
+  const workspaceDir = join(root, "workspace");
+  for (const path of paths ?? []) {
+    const target = resolve(workspaceDir, path);
+    if (!isPathInside(workspaceDir, target) || target === resolve(workspaceDir)) {
+      throw new Error("File path must stay inside workspace");
+    }
+    rmSync(target, { force: true });
+  }
+  if (!paths) rmSync(root, { recursive: true, force: true });
+  else removeFolderIfNothingKept(root);
 }
 
 /**
@@ -951,6 +1044,7 @@ export function sweepExpiredDeletedSessions(
   const run = () => {
     try {
       purgeExpiredDeletedSessions(dataDir, new Date(), isOpen);
+      removeEmptyTombstoneFolders(dataDir);
     } catch (error) {
       console.error("Trash retention sweep failed:", error);
     }

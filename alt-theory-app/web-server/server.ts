@@ -23,8 +23,8 @@ import {
   type RuntimeMode,
   KB_DISABLED_DOMAIN,
 } from "../core/alt-theory-core.js";
-import { resolveDataDir } from "../core/data-dir.js";
-import { samePath } from "../core/path-verdict.js";
+import { resolveDataDir, resolveSessionRoot } from "../core/data-dir.js";
+import { isPathInside, samePath } from "../core/path-verdict.js";
 import {
   resolveAgentAssetPaths,
   type AgentAssetPaths,
@@ -51,6 +51,8 @@ import {
   listDeletedSessionSummaries,
   listSessionTextFiles,
   listSessionSummaries,
+  deleteKeptFiles,
+  permanentDeletionFiles,
   permanentlyDeleteSession,
   restoreDeletedSession,
   readSessionTextFile,
@@ -69,6 +71,7 @@ import {
   readToolResultText,
   writeSessionTextFile,
 } from "./session-store.js";
+import { listConversationFiles } from "./conversation-files.js";
 import {
   deleteWorkspaceFile,
   isWorkspaceDownloadAllowed,
@@ -1396,6 +1399,56 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       });
     }
   });
+  // What a permanent delete would ask about: the Trash item's kept files.
+  app.get("/api/sessions/:sessionId/permanent/files", (req, res) => {
+    const sessionId = req.params.sessionId;
+    if (!requireSessionRestContentAccess(req, res, sessionId)) return;
+    try {
+      res.json({ files: permanentDeletionFiles(dataDir, sessionId) });
+    } catch (error) {
+      res.status(409).json({ error: error instanceof Error ? error.message : String(error) });
+    }
+  });
+  // Conversation files page: every conversation folder that holds files,
+  // permanently deleted ones included (their summaries are gone, so these
+  // routes check the folder and the viewer, not a summary).
+  app.get("/api/conversation-files", (req, res) => {
+    res.json({ groups: listConversationFiles(dataDir, (id) => access.canList(req, id)) });
+  });
+  app.get("/api/conversation-files/:sessionId/raw", (req, res) => {
+    const sessionId = req.params.sessionId;
+    const root = resolveSessionRoot(dataDir, sessionId);
+    const path = typeof req.query.path === "string" ? req.query.path : "";
+    if (!root || !access.canList(req, sessionId)) {
+      res.status(404).json({ error: `Unknown session id: ${sessionId}` });
+      return;
+    }
+    const workspaceDir = join(root, "workspace");
+    const target = resolve(workspaceDir, path);
+    if (!path || !isPathInside(workspaceDir, target) || !existsSync(target)) {
+      res.status(404).json({ error: "File not found" });
+      return;
+    }
+    res.sendFile(target, { dotfiles: "allow" });
+  });
+  app.delete("/api/conversation-files/:sessionId", (req, res) => {
+    const sessionId = req.params.sessionId;
+    if (!access.canList(req, sessionId)) {
+      res.status(404).json({ error: `Unknown session id: ${sessionId}` });
+      return;
+    }
+    const paths = (req.body as { paths?: unknown } | undefined)?.paths;
+    try {
+      deleteKeptFiles(
+        dataDir,
+        sessionId,
+        Array.isArray(paths) ? paths.filter((item): item is string => typeof item === "string") : undefined,
+      );
+      res.json({ ok: true });
+    } catch (error) {
+      res.status(409).json({ error: error instanceof Error ? error.message : String(error) });
+    }
+  });
   app.delete("/api/sessions/:sessionId/permanent", (req, res) => {
     const sessionId = req.params.sessionId;
     if (!requireSessionRestContentAccess(req, res, sessionId)) return;
@@ -1404,6 +1457,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         dataDir,
         sessionId,
         (id) => sessionService.isOpen(id),
+        "user_permanently_deleted",
+        new Date(),
+        req.query.files === "delete" ? "delete" : "keep",
       );
       // Its summary is gone, so only windows that can still read one hear it.
       sessionService.listChanged(sessionId);

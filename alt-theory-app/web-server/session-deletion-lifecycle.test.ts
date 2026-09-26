@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "fs";
 import { mkdtempSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -16,8 +16,11 @@ import {
   healFamilyInvariants,
   listDeletedSessionSummaries,
   listSessionSummaries,
+  deleteKeptFiles,
+  permanentDeletionFiles,
   permanentlyDeleteSession,
   promoteToMainlineRecords,
+  removeEmptyTombstoneFolders,
   purgeExpiredDeletedSessions,
   restoreDeletedSession,
   sessionsAttachedToDeletion,
@@ -337,6 +340,62 @@ test("Permanent deletion removes conversation records but keeps workspace files"
   assert.equal(existsSync(join(dirs.recordsDir, "source-rollout.jsonl")), false);
   assert.equal(existsSync(join(dirs.writeDir, "attachment.txt")), true);
   assert.equal(listDeletedSessionSummaries(dataDir).sessions.length, 0);
+});
+
+test("Permanent deletion: keep leaves files and a titled tombstone; delete or nothing-kept removes the folder", async () => {
+  const { listConversationFiles } = await import("./conversation-files.js");
+  const dataDir = mkdtempSync(join(tmpdir(), "alt-theory-conversation-files-"));
+  const kept = createSession(dataDir, "kept");
+  mkdirSync(join(kept.writeDir, "uploads"), { recursive: true });
+  mkdirSync(join(kept.writeDir, "extracted"), { recursive: true });
+  writeFileSync(join(kept.writeDir, "uploads", "photo.png"), "png", "utf-8");
+  writeFileSync(join(kept.writeDir, "extracted", "x_converted_from_binary.md"), "x", "utf-8");
+  writeFileSync(join(kept.recordsDir, "ui-alias.json"), JSON.stringify({ alias: "Field notes" }), "utf-8");
+  const gone = createSession(dataDir, "gone");
+  const empty = createSession(dataDir, "empty");
+  rmSync(join(empty.writeDir, "attachment.txt"));
+
+  for (const id of ["kept", "gone", "empty"]) softDeleteSession(dataDir, id);
+  assert.deepEqual(
+    permanentDeletionFiles(dataDir, "kept").map((file) => [file.path, file.section]).sort(),
+    [["attachment.txt", "product"], ["uploads/photo.png", "attachment"]],
+  );
+  // In Trash: listed with its files, extracted/ never.
+  const inTrash = listConversationFiles(dataDir).find((group) => group.sessionId === "kept");
+  assert.equal(inTrash?.state, "trash");
+  assert.equal(inTrash?.title, "Field notes");
+  assert.deepEqual(inTrash?.files.map((file) => file.kind).sort(), ["doc", "image"]);
+
+  permanentlyDeleteSession(dataDir, "kept");
+  permanentlyDeleteSession(dataDir, "gone", () => false, "user_permanently_deleted", new Date(), "delete");
+  permanentlyDeleteSession(dataDir, "empty");
+
+  assert.equal(existsSync(join(kept.writeDir, "uploads", "photo.png")), true);
+  assert.equal(existsSync(join(kept.writeDir, "extracted")), false);
+  assert.equal(existsSync(gone.sessionRoot), false);
+  assert.equal(existsSync(empty.sessionRoot), false);
+  const purged = listConversationFiles(dataDir);
+  assert.deepEqual(purged.map((group) => [group.sessionId, group.state, group.title]), [["kept", "purged", "Field notes"]]);
+
+  // Removing some files keeps the folder; removing the last one removes it.
+  assert.throws(() => deleteKeptFiles(dataDir, "kept", ["../records/deleted.json"]), /inside workspace/);
+  deleteKeptFiles(dataDir, "kept", ["uploads/photo.png"]);
+  assert.equal(existsSync(kept.sessionRoot), true);
+  deleteKeptFiles(dataDir, "kept", ["attachment.txt"]);
+  assert.equal(existsSync(kept.sessionRoot), false);
+});
+
+test("The sweep clears old tombstone folders that hold nothing worth keeping", () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "alt-theory-tombstone-sweep-"));
+  const old = createSession(dataDir, "old");
+  softDeleteSession(dataDir, "old");
+  permanentlyDeleteSession(dataDir, "old");
+  // An earlier release left the folder with only derived text in it.
+  rmSync(join(old.writeDir, "attachment.txt"));
+  mkdirSync(join(old.writeDir, "extracted"), { recursive: true });
+  writeFileSync(join(old.writeDir, "extracted", "y.md"), "y", "utf-8");
+  removeEmptyTombstoneFolders(dataDir);
+  assert.equal(existsSync(old.sessionRoot), false);
 });
 
 test("A conversation emptied by private retention is not offered as recoverable", () => {
