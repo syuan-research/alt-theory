@@ -738,8 +738,12 @@ export type ClientMessageBody =
       create?: NewConversationSettings;
     }
   | { type: "open_session"; payload: { sessionId: string } }
-  /** Rows above the stable row `before`; without it, the tail again (a session_transcript). */
-  | { type: "transcript_page"; payload: { before?: string; limit?: number } }
+  /**
+   * Rows above the stable row `before`: a page of `limit`, or everything from
+   * the row `from` ("start" = the first row) — a jump loads all of it (R2 a).
+   * Without `before`, the tail again (a session_transcript).
+   */
+  | { type: "transcript_page"; payload: { before?: string; limit?: number; from?: string } }
   | { type: "get_session_metadata" }
   | { type: "get_session_metrics" }
   | {

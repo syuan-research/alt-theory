@@ -496,6 +496,17 @@ branch, cut after; the window bounds what travels and what the renderer
 holds. The panes ask for the next page while a screen and a half is still
 loaded above the view and keep the formerly first row in place when it lands
 (`hooks/useEarlierRows.ts`; the transcript has `overflow-anchor: none`).
+A jump asks for everything from a row down to the window at once
+(`transcript_page { before, from }`, `from = "start"` for all): the scrub rail
+draws a tick per user row from `userRows`, shows the row's preview while
+dragging, scrolls to a loaded row at once and loads down to an unloaded one on
+release. Ctrl+F finds in the loaded rows; while older rows exist its bar
+offers "Search whole conversation", which loads them all and searches the
+same DOM (collapsed blocks stay searchable). Tool rows carry a bounded head
+and tail of their result (WP 1.5); expanding the row shows it — rendered only
+while open — and "View full result" reads the whole text from the Pi history
+through `GET /api/sessions/:id/tool-result/:toolCallId`
+(`readToolResultText`, behind the REST content guard).
 
 ## Compaction and live-run state
 

@@ -48,13 +48,18 @@ export function transcriptWindow(messages: readonly TranscriptMessage[], rows: n
   return { messages: messages.slice(start), hasMore: start > 0, userRows: userRowsOf(messages) };
 }
 
-/** Up to `limit` rows before the stable row `before`, started at a user row;
- *  null when `before` is not a stable row of this transcript. */
-export function pageBefore(messages: readonly TranscriptMessage[], before: string, limit: number) {
+/** Up to `limit` rows before the stable row `before` — or all from the row
+ *  `from` ("start" = the first) — started at a user row; null when `before`
+ *  (or `from`) is not a stable row above it in this transcript. */
+export function pageBefore(messages: readonly TranscriptMessage[], before: string, limit: number, from?: string) {
   if (!isStableRowId(before)) return null;
   const end = messages.findIndex((message) => message.rowId === before);
   if (end < 0) return null;
   let start = Math.max(0, end - limit);
+  if (from !== undefined) {
+    start = from === "start" ? 0 : isStableRowId(from) ? messages.findIndex((message) => message.rowId === from) : -1;
+    if (start < 0 || start > end) return null;
+  }
   while (start > 0 && messages[start].role !== "user") start -= 1;
   return { before, messages: messages.slice(start, end), hasMore: start > 0 };
 }

@@ -618,6 +618,10 @@
   .scrub-rail { position: absolute; right: 18px; top: 36px; bottom: 36px; width: 16px; display: flex; flex-direction: column; justify-content: space-between; align-items: center; opacity: 0.3; transition: opacity 0.15s; cursor: pointer; z-index: 30; touch-action: none; }
   .scrub-rail:hover, .scrub-rail.dragging { opacity: 1; }
   .scrub-rail .tick { width: 9px; height: 1px; border-radius: 1px; background: var(--text-3); pointer-events: none; }
+  /* the user message under the pointer while dragging the rail (WP 2.2 ii) */
+  .scrub-tip { position: absolute; right: 44px; max-width: 320px; transform: translateY(-50%); padding: var(--space-tight) var(--space-control); background: var(--card-2); border: 1px solid var(--hairline); border-radius: var(--r-md); font-size: var(--fs-secondary); color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; z-index: 31; }
+  .tool-result { margin-top: var(--space-tight); }
+  .find-bar .find-more { white-space: nowrap; font-size: var(--fs-secondary); }
   .msg { max-width: 660px; margin: 0 auto var(--space-column); padding: 0 var(--space-column); display: flex; flex-direction: column; }
   .msg .who { font-size: var(--fs-secondary); color: var(--text-3); margin-bottom: var(--space-hair); }
   .msg.user { align-items: flex-end; }

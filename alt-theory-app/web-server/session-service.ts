@@ -2990,11 +2990,12 @@ export class SessionService implements AgentTeamBridge {
   }
 
   /** Rows above the stable row `before`, or null when it is not one of them. */
-  getTranscriptPage(sessionId: string, before: string, limit = TRANSCRIPT_PAGE_MAX) {
+  getTranscriptPage(sessionId: string, before: string, limit = TRANSCRIPT_PAGE_MAX, from?: string) {
     return pageBefore(
       this.getTranscript(sessionId),
       before,
       Math.max(1, Math.min(limit, TRANSCRIPT_PAGE_MAX)),
+      from,
     );
   }
 

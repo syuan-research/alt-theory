@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
 import type { TranscriptMessage } from "@/api/types";
+import type { FindSpec } from "@/lib/find";
 
 /**
  * Older rows without a "load more" stop (perf plan WP 2.2): the next page is
@@ -13,8 +14,17 @@ import type { TranscriptMessage } from "@/api/types";
 export function useEarlierRows(
   containerRef: RefObject<HTMLDivElement | null>,
   messages: readonly TranscriptMessage[],
-  earlier: { hasEarlier: boolean; loadEarlier: () => boolean },
-) {
+  earlier: { hasEarlier: boolean; loadEarlier: (from?: string) => boolean },
+): { onScroll: () => void; findSpec: FindSpec } {
+  const latest = useRef(earlier);
+  latest.current = earlier;
+  // Ctrl+F finds in the loaded rows; its bar offers the rest (loads it all).
+  const findSpec = useRef<FindSpec>({
+    unloaded: {
+      has: () => latest.current.hasEarlier,
+      load: () => latest.current.loadEarlier("start"),
+    },
+  }).current;
   const anchor = useRef<{ rowId: string; top: number; scrollTop: number } | null>(null);
   const record = () => {
     const el = containerRef.current;
@@ -43,8 +53,11 @@ export function useEarlierRows(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages, earlier.hasEarlier]);
 
-  return () => {
-    record();
-    if (earlier.hasEarlier && nearTop()) earlier.loadEarlier();
+  return {
+    findSpec,
+    onScroll: () => {
+      record();
+      if (earlier.hasEarlier && nearTop()) earlier.loadEarlier();
+    },
   };
 }

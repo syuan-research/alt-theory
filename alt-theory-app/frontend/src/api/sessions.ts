@@ -83,6 +83,15 @@ export async function searchSessionContent(query: string, signal: AbortSignal): 
   return Array.isArray(data.sessionIds) ? data.sessionIds : [];
 }
 
+/** A tool call's whole result, read from the history on demand. */
+export async function fetchToolResult(sessionId: string, toolCallId: string): Promise<string> {
+  const res = await fetch(
+    `/api/sessions/${encodeURIComponent(sessionId)}/tool-result/${encodeURIComponent(toolCallId)}`,
+  );
+  if (!res.ok) throw new Error(`Tool result failed (${res.status})`);
+  return ((await res.json()) as { text: string }).text;
+}
+
 export async function fetchSessionDetail(
   sessionId: string
 ): Promise<SessionDetailResponse> {

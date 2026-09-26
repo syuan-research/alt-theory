@@ -441,10 +441,13 @@ export function useConversation({ sessionId, enabled, onMessage }: ConversationO
           { type: "create_helper_session", payload: parentSessionId ? { parentSessionId } : {}, ...create() },
           { seed },
         ),
-      /** The next page above the loaded rows; false when there is none to ask for. */
-      loadEarlier: () => {
+      /** The next page above the loaded rows — or everything from the row
+       *  `from` ("start" = all); false when there is none to ask for. */
+      loadEarlier: (from?: string) => {
         const before = earlierCursor(current());
-        return before ? send({ type: "transcript_page", payload: { before, limit: TRANSCRIPT_PAGE_ROWS } }) : false;
+        return before
+          ? send({ type: "transcript_page", payload: from ? { before, from } : { before, limit: TRANSCRIPT_PAGE_ROWS } })
+          : false;
       },
       requestMetadata: () => send({ type: "get_session_metadata" }),
       requestMetrics: () => send({ type: "get_session_metrics" }),

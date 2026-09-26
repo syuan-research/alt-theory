@@ -87,8 +87,8 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
   const pendingChildRole = conversation.pendingChanges.rolePresetSlug !== undefined;
   const approval = conversation.approvals.find((request) => request.sessionId === sessionId);
   const { containerRef: messagesRef, onScroll } = useStickToBottom([messages, parts]);
-  const onScrollEarlier = useEarlierRows(messagesRef, messages, conversation);
-  useFindTarget(messagesRef, {});
+  const earlier = useEarlierRows(messagesRef, messages, conversation);
+  useFindTarget(messagesRef, earlier.findSpec);
 
   // Role/model menus close on any click outside the context line (same
   // pattern as the main Composer).
@@ -223,7 +223,7 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
         ref={messagesRef}
         onScroll={(event) => {
           onScroll(event);
-          onScrollEarlier();
+          earlier.onScroll();
         }}
       >
         <SettledMessages

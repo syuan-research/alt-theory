@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type {
   ActiveToolState,
   StreamPart,
@@ -11,7 +11,8 @@ import { PendingMark } from "@/components/ui/PendingMark";
 import type { DisplayMessage } from "@/lib/conversation";
 import { useShell } from "@/context/ShellContext";
 import { MarkdownBody } from "@/components/conversation/MarkdownBody";
-import { fileName, toolLabel } from "@/lib/tools";
+import { fileName, toolLabel, toolResultText } from "@/lib/tools";
+import { fetchToolResult } from "@/api/sessions";
 import { cn } from "@/lib/cn";
 import { hasNativeBridge, pickDirectory, revealPath } from "@/lib/native";
 import { shouldToggleCollapseOnClick } from "@/lib/collapseAnywhere";
@@ -36,10 +37,14 @@ export function MessageList() {
     stickRef: stickToBottomRef,
     onScroll,
   } = useStickToBottom([messages, streamParts]);
-  const onScrollEarlier = useEarlierRows(containerRef, messages, conv);
-  useFindTarget(containerRef, {});
+  const earlier = useEarlierRows(containerRef, messages, conv);
+  useFindTarget(containerRef, earlier.findSpec);
   const railRef = useRef<HTMLDivElement>(null);
   const [scrubbing, setScrubbing] = useState(false);
+  /** The user row under the pointer while dragging the rail: its preview shows at `y`. */
+  const [scrubTip, setScrubTip] = useState<{ rowId: string; preview: string; y: number } | null>(null);
+  /** A released rail jump to a row not loaded yet: loads down to it, then scrolls. */
+  const [jumpTo, setJumpTo] = useState<string | null>(null);
   const developer = app.transcriptView === "developer";
 
   const latestUserIndex = useMemo(() => {
@@ -55,33 +60,51 @@ export function MessageList() {
     return -1;
   }, [messages]);
 
-  const userMessageCount = useMemo(
-    () => messages.filter((message) => message.role === "user").length,
-    [messages],
-  );
+  // Every user row of the conversation, loaded or not (WP 2.2 ii).
+  const userRows = conv.userRows;
+  const scrollToRow = (rowId: string) => {
+    const container = containerRef.current;
+    const target = container?.querySelector(`[data-row="${CSS.escape(rowId)}"]`);
+    if (!container || !(target instanceof HTMLElement)) return false;
+    stickToBottomRef.current = false;
+    container.scrollTop = target.offsetTop - container.offsetTop - 8;
+    return true;
+  };
 
-  // Map a pointer position on the rail to a user message and scroll to it.
-  const scrubTo = (clientY: number) => {
+  // Map a pointer position on the rail to a user message: a loaded one
+  // scrolls into view while dragging; one not loaded yet shows only its
+  // preview, and loads (everything down to it) on release.
+  const scrubTo = (clientY: number, release = false) => {
     const rail = railRef.current;
     const container = containerRef.current;
-    if (!rail || !container || userMessageCount === 0) return;
+    if (!rail || !container || userRows.length === 0) return;
     const rect = rail.getBoundingClientRect();
     const ratio = Math.min(
       1,
       Math.max(0, (clientY - rect.top) / Math.max(1, rect.height)),
     );
     if (ratio >= 0.9) {
+      setScrubTip(null);
       stickToBottomRef.current = true;
       container.scrollTop = container.scrollHeight;
       return;
     }
-    stickToBottomRef.current = false;
-    const index = Math.round(ratio * (userMessageCount - 1));
-    const target = container.querySelector(`[data-uidx="${index}"]`);
-    if (target instanceof HTMLElement) {
-      container.scrollTop = target.offsetTop - container.offsetTop - 8;
+    const row = userRows[Math.round(ratio * (userRows.length - 1))];
+    setScrubTip(release ? null : { ...row, y: clientY - rect.top + rail.offsetTop });
+    if (scrollToRow(row.rowId)) return;
+    if (release) {
+      setJumpTo(row.rowId);
+      conv.loadEarlier(row.rowId);
     }
   };
+  // The jump's rows landed (after the anchor kept the view): go there. A
+  // page already in flight when the jump was asked delays it one round.
+  useLayoutEffect(() => {
+    if (!jumpTo) return;
+    if (scrollToRow(jumpTo)) setJumpTo(null);
+    else if (!conv.loadingEarlier && !conv.loadEarlier(jumpTo)) setJumpTo(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jumpTo, messages, conv.loadingEarlier]);
 
   // The callbacks read the latest conversation through a ref, so the settled
   // list's memo holds while the composer, run phase or queue move (perf plan
@@ -115,7 +138,7 @@ export function MessageList() {
       ref={containerRef}
       onScroll={(event) => {
         onScroll(event);
-        onScrollEarlier();
+        earlier.onScroll();
       }}
     >
       {conv.sessionId && !conv.selectors.soulSlug ? (
@@ -149,7 +172,7 @@ export function MessageList() {
 
       <TurnChangesCard />
     </div>
-    {userMessageCount > 1 ? (
+    {userRows.length > 1 ? (
       <div
         className={cn("scrub-rail", scrubbing && "dragging")}
         ref={railRef}
@@ -162,12 +185,23 @@ export function MessageList() {
         onPointerMove={(event) => {
           if (scrubbing) scrubTo(event.clientY);
         }}
-        onPointerUp={() => setScrubbing(false)}
-        onPointerCancel={() => setScrubbing(false)}
+        onPointerUp={(event) => {
+          setScrubbing(false);
+          scrubTo(event.clientY, true);
+        }}
+        onPointerCancel={() => {
+          setScrubbing(false);
+          setScrubTip(null);
+        }}
       >
-        {Array.from({ length: userMessageCount }, (_, tick) => (
-          <span key={tick} className="tick" />
+        {userRows.map((row) => (
+          <span key={row.rowId} className="tick" />
         ))}
+      </div>
+    ) : null}
+    {scrubbing && scrubTip?.preview ? (
+      <div className="scrub-tip" style={{ top: scrubTip.y }}>
+        {scrubTip.preview}
       </div>
     ) : null}
     </div>
@@ -239,10 +273,8 @@ export const SettledMessages = memo(function SettledMessages({
     }
     return result;
   }, [messages]);
-  let userOrdinal = -1;
   const entryAt = (index: number) => {
     const message = messages[index];
-    if (message.role === "user") userOrdinal += 1;
     return (
       <TranscriptEntry
         // The server's stable row id (one entry can make several rows); a
@@ -254,7 +286,6 @@ export const SettledMessages = memo(function SettledMessages({
         isLatestUser={index === latestUserIndex}
         isLatestAssistant={index === latestAssistantIndex}
         isDuplicateToolCall={duplicateToolCall[index]}
-        userIndex={message.role === "user" ? userOrdinal : undefined}
         isRunning={isRunning}
         actions={actions}
       />
@@ -434,10 +465,13 @@ function CollapseAnywhereDetails({
   children,
   defaultOpen = false,
   findSkip = false,
+  whenOpen,
 }: {
   className?: string;
   summary: ReactNode;
   children: ReactNode;
+  /** Drawn only while open (content that is not in the DOM otherwise). */
+  whenOpen?: () => ReactNode;
   defaultOpen?: boolean;
   /** Keep this block out of Ctrl+F (a thinking stream still growing). */
   findSkip?: boolean;
@@ -475,6 +509,7 @@ function CollapseAnywhereDetails({
     >
       <summary>{summary}</summary>
       {children}
+      {open && whenOpen ? whenOpen() : null}
     </details>
   );
 }
@@ -521,7 +556,6 @@ export function TranscriptEntry({
   developer,
   isLatestUser,
   isDuplicateToolCall = false,
-  userIndex,
   isRunning,
   actions,
 }: {
@@ -531,7 +565,6 @@ export function TranscriptEntry({
   isLatestAssistant?: boolean;
   /** Precomputed by SettledMessages: a later row for an already-shown call. */
   isDuplicateToolCall?: boolean;
-  userIndex?: number;
   isRunning: boolean;
   actions?: TranscriptActions;
 }) {
@@ -552,7 +585,6 @@ export function TranscriptEntry({
         onPrepareCompare={replacementEdit ? undefined : actions?.onPrepareCompare}
         onRetry={isLatestUser ? actions?.onRetry : undefined}
         replacementEdit={replacementEdit}
-        userIndex={userIndex}
       />
     );
   }
@@ -580,8 +612,18 @@ export function TranscriptEntry({
     if (isDuplicateToolCall) return null;
     const outcome = toolOutcome({ success: message.success });
     const approval = message.approval;
+    const resultText = toolResultText(message);
     return (
-      <SysLine tool tone={TOOL_TONE[outcome]} detail={message.toolDetail}>
+      <SysLine
+        tool
+        tone={TOOL_TONE[outcome]}
+        detail={message.toolDetail}
+        result={
+          resultText
+            ? { text: resultText, truncated: Boolean(message.truncated), toolCallId: message.toolCallId }
+            : undefined
+        }
+      >
         <i className={TOOL_ICON[outcome]} />
         {toolLabel(
           message.toolName || message.text || "tool",
@@ -655,7 +697,6 @@ function UserBubble({
   onPrepareCompare,
   onRetry,
   replacementEdit,
-  userIndex,
 }: {
   rowId?: string;
   text: string;
@@ -668,7 +709,6 @@ function UserBubble({
   onPrepareCompare?: (text: string, entryId: string | null) => boolean;
   onRetry?: () => boolean;
   replacementEdit: boolean;
-  userIndex?: number;
 }) {
   const trimmed = (text || "").trim();
   const [editing, setEditing] = useState(false);
@@ -684,7 +724,7 @@ function UserBubble({
   if (!trimmed) return null;
   const canEdit = isLatest || Boolean(entryId);
   return (
-    <div className="msg user" data-uidx={userIndex} data-row={rowId}>
+    <div className="msg user" data-row={rowId}>
       <div className="who" data-find-skip="">
         {t("You")}
         <PendingMark when={pending} />
@@ -856,12 +896,15 @@ function SysLine({
   children,
   tone,
   detail,
+  result,
   tool = false,
 }: {
   children: React.ReactNode;
   tone?: "danger" | "ok" | "running" | "pending";
   /** When present the line becomes expandable — see ToolDetailBody. */
   detail?: ToolDetail | null;
+  /** The call's result (B3): shown under the detail once expanded. */
+  result?: { text: string; truncated: boolean; toolCallId?: string };
   /** Tool rows are searchable with Ctrl+F; system lines (warnings,
    *  notices) are chrome and stay out (owner 2026-09-24). */
   tool?: boolean;
@@ -873,13 +916,44 @@ function SysLine({
     tone === "running" && "sys-running",
     tone === "pending" && "sys-pending",
   );
-  if (!detail || detail.kind === "skill") {
+  const shownDetail = detail && detail.kind !== "skill" ? detail : null;
+  if (!shownDetail && !result) {
     return <div className={className} data-find-skip={tool ? undefined : ""}>{children}</div>;
   }
   return (
-    <CollapseAnywhereDetails className={cn(className, "sys-detail")} summary={children} findSkip={!tool}>
-      <ToolDetailBody detail={detail} />
+    <CollapseAnywhereDetails
+      className={cn(className, "sys-detail")}
+      summary={children}
+      findSkip={!tool}
+      whenOpen={result ? () => <ToolResultBody {...result} /> : undefined}
+    >
+      {shownDetail ? <ToolDetailBody detail={shownDetail} /> : null}
     </CollapseAnywhereDetails>
+  );
+}
+
+/**
+ * What the tool returned: the row's bounded head and tail, and the whole
+ * text from the history on request (B3, following ZCode / PI-Desktop).
+ */
+function ToolResultBody({ text, truncated, toolCallId }: { text: string; truncated: boolean; toolCallId?: string }) {
+  const { sessionId } = useConversationContext();
+  const [full, setFull] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  return (
+    <div className="tool-result">
+      <pre className="tool-detail cmd">{full ?? text}</pre>
+      {truncated && full === null && sessionId && toolCallId ? (
+        <button
+          className="link-btn"
+          onClick={() =>
+            void fetchToolResult(sessionId, toolCallId).then(setFull, () => setFailed(true))
+          }
+        >
+          {failed ? t("Could not load the full result") : t("View full result")}
+        </button>
+      ) : null}
+    </div>
   );
 }
 

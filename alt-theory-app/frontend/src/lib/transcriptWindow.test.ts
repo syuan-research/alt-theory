@@ -79,3 +79,19 @@ test("a turn's rows replace what follows its predecessor; unknown predecessor â†
   // A prompt that never landed: nothing new, cut at the end.
   assert.deepEqual(turnRows(before, null), { rows: [], after: "a9:1" });
 });
+
+test("a jump loads everything from its row down to the window; \"start\" loads it all", () => {
+  const rows = conversation(40);
+  const state = openedWindow(transcriptWindow(rows, 12));
+  const before = state.messages[0].rowId!;
+  const jump = pageBefore(rows, before, 5, "u3:0")!;
+  assert.equal(jump.messages[0].rowId, "u3:0");
+  assert.equal(jump.hasMore, true);
+  assert.deepEqual(prependPage(state, jump).messages, rows.slice(9));
+  const all = pageBefore(rows, before, 5, "start")!;
+  assert.equal(all.hasMore, false);
+  assert.deepEqual(prependPage(state, all).messages, rows);
+  // A row below the cursor, or not a stable row, is refused.
+  assert.equal(pageBefore(rows, before, 5, rows.at(-1)!.rowId), null);
+  assert.equal(pageBefore(rows, before, 5, "live-user"), null);
+});

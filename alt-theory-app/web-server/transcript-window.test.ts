@@ -63,3 +63,28 @@ test("a long conversation opens with its tail, pages up to the start, and a turn
   detach();
   await service.disposeAll();
 });
+
+test("a tool row carries a bounded result; the whole result is read from the history on demand", async () => {
+  const { readToolResultText } = await import("./session-store.js");
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const { sessionId } = await service.createSession(SELECTORS);
+  const big = `${"head ".repeat(10_000)}MIDDLE${" tail".repeat(10_000)}`;
+  const managed = (service as unknown as {
+    sessions: Map<string, { session: { prompt(text: string): Promise<void>; sessionManager: { appendMessage(message: unknown): string } } }>;
+  }).sessions.get(sessionId)!;
+  managed.session.prompt = async (text: string) => {
+    const append = (message: unknown) => managed.session.sessionManager.appendMessage(message);
+    append({ role: "user", content: [{ type: "text", text }], timestamp: Date.now() });
+    append({ role: "assistant", content: [{ type: "toolCall", id: "call-1", name: "bash", arguments: { command: "cat big" } }], timestamp: Date.now() });
+    append({ role: "toolResult", toolCallId: "call-1", toolName: "bash", content: [{ type: "text", text: big }], isError: false, timestamp: Date.now() });
+    append({ role: "assistant", content: [{ type: "text", text: "done" }], timestamp: Date.now() });
+  };
+  await service.runPrompt(sessionId, "read it").completion;
+  const row = service.getTranscript(sessionId).find((message) => message.toolCallId === "call-1")!;
+  assert.equal(row.truncated, true);
+  assert.ok(row.text.length < big.length && !row.text.includes("MIDDLE"));
+  assert.equal(readToolResultText(fixture.dataDir, sessionId, "call-1"), big);
+  assert.equal(readToolResultText(fixture.dataDir, sessionId, "no-such-call"), null);
+  await service.disposeAll();
+});

@@ -14,6 +14,16 @@ export function fileName(path: string | null | undefined): string | null {
   return parts.length ? parts[parts.length - 1] : null;
 }
 
+/**
+ * The result text a tool row carries (bounded head and tail, WP 1.5): a call
+ * row takes its result's text when one arrived and keeps its tool name
+ * otherwise.
+ */
+export function toolResultText(row: { toolType?: "call" | "result"; text: string; toolName?: string; success?: boolean }): string {
+  if (row.toolType === "call" && (row.success === undefined || row.text === row.toolName)) return "";
+  return row.text.trim();
+}
+
 type ToolState = "running" | "finished" | "failed" | "pending";
 
 /**

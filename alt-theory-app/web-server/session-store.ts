@@ -1526,6 +1526,27 @@ export function readVisibleTranscript(dataDir: string, sessionId: string): Trans
   ).transcript;
 }
 
+/**
+ * One tool call's whole result text from the Pi history — the rows carry a
+ * bounded head and tail (WP 1.5); "View full" reads the rest here only.
+ */
+export function readToolResultText(
+  dataDir: string,
+  sessionId: string,
+  toolCallId: string,
+): string | null {
+  const parts = readSessionParts(dataDir, sessionId);
+  if (!parts?.sessionFile || statSync(parts.sessionFile).size === 0) return null;
+  const entries = SessionManager.open(parts.sessionFile, parts.historyDir).getEntries();
+  for (const entry of entries) {
+    const message = (entry as { type?: string; message?: { role?: string; toolCallId?: unknown; content?: unknown } }).message;
+    if (entry.type === "message" && message?.role === "toolResult" && message.toolCallId === toolCallId) {
+      return extractText(message.content).trim();
+    }
+  }
+  return null;
+}
+
 function readPiInfo(
   sessionFile: string | null,
   historyDir: string,

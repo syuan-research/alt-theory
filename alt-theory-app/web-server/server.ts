@@ -66,6 +66,7 @@ import {
   softDeleteSession,
   softDeleteSessionFamily,
   sweepExpiredDeletedSessions,
+  readToolResultText,
   writeSessionTextFile,
 } from "./session-store.js";
 import {
@@ -1650,6 +1651,16 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       }
     },
   );
+  app.get("/api/sessions/:sessionId/tool-result/:toolCallId", (req, res) => {
+    const { sessionId, toolCallId } = req.params;
+    if (!requireSessionRestContentAccess(req, res, sessionId)) return;
+    const text = readToolResultText(dataDir, sessionId, toolCallId);
+    if (text === null) {
+      res.status(404).json({ error: `No result for tool call ${toolCallId}` });
+      return;
+    }
+    res.json({ text });
+  });
   app.post(
     "/api/sessions/:sessionId/ab-comparisons/generate",
     async (req, res) => {
@@ -3014,7 +3025,12 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               });
               break;
             }
-            const page = sessionService.getTranscriptPage(attachedSessionId, before, msg.payload.limit);
+            const page = sessionService.getTranscriptPage(
+              attachedSessionId,
+              before,
+              msg.payload.limit,
+              msg.payload.from,
+            );
             if (!page) {
               fail(new Error("That part of the conversation is no longer there"));
               break;

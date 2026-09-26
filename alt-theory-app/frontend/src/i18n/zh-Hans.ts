@@ -898,6 +898,10 @@ const catalog: Record<string, string> = {
   "Auto-name": "自动命名",
   "{task}: {failed} did not answer ({reason}); trying {next}.": "{task}：{failed} 没有回应（{reason}），改用 {next}。",
   "this conversation's model": "本对话的模型",
+  "View full result": "查看完整结果",
+  "Could not load the full result": "无法读取完整结果",
+  "Search whole conversation": "搜索整段对话",
+  "Only the loaded part is searched; this loads the rest of the conversation": "目前只搜索已加载的部分；点这里加载整段对话再搜",
 };
 
 export default catalog;

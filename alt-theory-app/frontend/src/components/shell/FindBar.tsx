@@ -162,6 +162,8 @@ export function FindBar() {
         }
         search(host.el);
         show(Math.min(indexRef.current, rangesRef.current.length - 1), false);
+        // Same count, other content (the rest loaded): the bar reads the host again.
+        relayout();
       }, 150);
     });
     observer.observe(document.body, {
@@ -214,6 +216,16 @@ export function FindBar() {
         }}
       />
       <span className="n">{needle ? (count ? `${index + 1}/${count}${more ? "+" : ""}` : t("No results")) : ""}</span>
+      {host.unloaded?.has() ? (
+        <button
+          type="button"
+          className="find-more"
+          data-tip={t("Only the loaded part is searched; this loads the rest of the conversation")}
+          onClick={() => host.unloaded?.load()}
+        >
+          {t("Search whole conversation")}
+        </button>
+      ) : null}
       <button
         type="button"
         aria-label={t("Previous match")}

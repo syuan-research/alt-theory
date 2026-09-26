@@ -137,7 +137,11 @@ export function revealRange(range: Range): void {
 /** Two kinds (owner 2026-09-24): inside an opened conversation or file,
  *  full-text find in the floating bar (`{}`); in a pane that lists things
  *  to open (conversations, files, changes), its own filter box (`focus`). */
-export type FindSpec = { focus?: () => void };
+export type FindSpec = {
+  focus?: () => void;
+  /** Content not rendered yet (a conversation's older rows): the bar offers to load it. */
+  unloaded?: { has: () => boolean; load: () => void };
+};
 export type FindTarget = FindSpec & { el: HTMLElement };
 
 interface Entry {
