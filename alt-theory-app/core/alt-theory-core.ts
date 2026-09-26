@@ -19,6 +19,7 @@ import {
   ModelRuntime,
   type ResourceDiagnostic,
   SessionManager,
+  SettingsManager,
   type Skill,
   type ToolDefinition,
   type WriteOperations,
@@ -43,7 +44,10 @@ import {
   type SessionRootsInput,
 } from "./root-policy.js";
 import { createTurnContinuityExtension } from "./turn-continuity.js";
-import { createPromptCacheContinuityExtension } from "./prompt-cache-continuity.js";
+import {
+  createPromptCacheContinuityExtension,
+  createSystemHeadExtension,
+} from "./prompt-cache-continuity.js";
 import { createModelRemindersExtension } from "./model-reminders.js";
 import { createWebAccessToolDefinitions } from "./web-access-tools.js";
 import {
@@ -265,7 +269,8 @@ export interface AltTheoryConfig extends SessionDirectories {
 /** Static per-model reminder for non-GPT models. GPT reminders are per-turn. */
 const MODEL_HOOKS: Array<{ match: RegExp; section: string }> = [
   {
-    match: /deepseek-v4-flash/i,
+    // Pi 0.86 renamed the catalog id deepseek-v4-flash to deepseek-flash.
+    match: /deepseek-(v4(\.1)?-)?flash/i,
     section: [
       "## Model Reminder",
       "NON-COMMAND DISCIPLINE REMINDER — A correction, observation, judgement, or agreement is not an instruction. Preserve the user's wider purpose and earlier decisions while you clarify the next small move. Do not treat a non-command as permission to choose a route and start broad work.",
@@ -634,6 +639,7 @@ async function createAltTheorySessionWithManager(
       // assistant messages so preserved break-point context never sends a
       // tool_use without its tool_result (alpha.5 M0 continuity repair).
       createTurnContinuityExtension(),
+      createSystemHeadExtension(),
       createPromptCacheContinuityExtension(
         promptCacheFamilyId,
         // ADR 0004 D3: without a project and without a shell, the copied
@@ -720,10 +726,17 @@ async function createAltTheorySessionWithManager(
   await loader.reload();
 
   // --- 3. Create session ---
+  // Pi's cache warming (0.86+) stays off, as before the upgrade: Alt resumes
+  // turns with agent.continue(), which never settles Pi's warmer, so it kept
+  // sending billed refreshes every ~4.5 min for up to an hour. Set on this
+  // instance only; the user's settings file is not written.
+  const settingsManager = SettingsManager.create(cwd);
+  settingsManager.getCacheWarmingMode = () => "off";
   const sessionOpts: Parameters<typeof createAgentSession>[0] = {
     cwd,
     resourceLoader: loader,
     sessionManager,
+    settingsManager,
   };
 
   // Pi otherwise waits while searching provider defaults. The inert model is

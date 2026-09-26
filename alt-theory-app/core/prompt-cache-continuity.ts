@@ -1,3 +1,4 @@
+import { collapseSystemMessages } from "@earendil-works/pi-ai";
 import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
 
 const OPENAI_PROMPT_CACHE_KEY_MAX_LENGTH = 64;
@@ -43,5 +44,22 @@ export function createPromptCacheContinuityExtension(
     pi.on("before_provider_request", (event) =>
       preservePromptCacheFamily(event.payload, familyId),
     );
+  };
+}
+
+/**
+ * One current system prompt at the head of every request, as before Pi 0.86.
+ * Pi now keeps the prompt in the history and, on models that accept
+ * mid-conversation system messages, sends later changes in place: a
+ * conversation from before the upgrade or an import gets its whole prompt
+ * after the old history, and each permission/role/soul/KB switch leaves a
+ * ~56 KB patch (with the old persona) in every later request.
+ */
+export function createSystemHeadExtension(): ExtensionFactory {
+  return (pi) => {
+    pi.on("context_with_system", (event) => ({
+      messages: collapseSystemMessages({ messages: event.messages } as never)
+        .messages as unknown as typeof event.messages,
+    }));
   };
 }

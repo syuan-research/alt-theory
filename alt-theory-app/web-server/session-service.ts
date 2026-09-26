@@ -5403,8 +5403,9 @@ function reconcileInterruptedRunOnOpen(
  * every branch/resetLeaf/leaf-align on a LIVE session, or the model keeps
  * receiving the pre-branch context (stale edited/deleted turns).
  */
-/** After moving the Pi leaf: requests already follow the session file (Pi
- *  0.87); this refreshes the session's public messages to match. */
+/** After moving the Pi leaf, bring the session's live context to the new
+ *  leaf (Pi 0.87 builds requests from the file, but a continue or the next
+ *  prompt starts from this live state). */
 function resyncAgentContext(session: { refreshContext(): void }): void {
   session.refreshContext();
 }

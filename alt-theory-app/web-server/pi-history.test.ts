@@ -6,7 +6,7 @@
  * are where an upgrade can silently change what the model sees.
  */
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -88,7 +88,9 @@ test("turn flows keep one prompt history that the model actually receives", asyn
   const agentDir = join(root, "agent");
   mkdirSync(agentDir, { recursive: true });
   const port = (model.address() as { port: number }).port;
-  const models = ["test-model", "test-model-2"].map((id) => ({ id, name: id, reasoning: false, contextWindow: 200_000, maxTokens: 4_000 }));
+  // Like the frontier catalog models: later system messages may stay in place.
+  const compat = { supportsMidConvoSystemMessages: true };
+  const models = ["test-model", "test-model-2"].map((id) => ({ id, name: id, reasoning: false, contextWindow: 200_000, maxTokens: 4_000, compat }));
   writeFileSync(join(agentDir, "models.json"), JSON.stringify({ providers: { test: { baseUrl: `http://127.0.0.1:${port}/v1`, api: "openai-completions", apiKey: "test", models } } }));
   writeFileSync(join(agentDir, "auth.json"), JSON.stringify({ test: { type: "api_key", key: "test-local" } }));
   writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ defaultProvider: "test", defaultModel: "test-model", retry: { enabled: false } }));
@@ -139,6 +141,16 @@ test("turn flows keep one prompt history that the model actually receives", asyn
     assert.equal(patches.length, 1);
     assert.ok(patches[0].message?.toolsRemoved?.some((tool) => tool.name === "bash"));
     assert.ok(!(requests.at(-1)!.tools ?? []).some((tool) => tool.function?.name === "bash"));
+    // Back to Work (no forced prompt then): the patch still reaches the model
+    // as one current prompt at the head, not as a message after the history.
+    const back = c.wait(["request_done", "error"]);
+    c.send({ type: "switch_mode", payload: { mode: "work" }, requestId: "mode-back" });
+    assert.equal((await back).type, "request_done");
+    await turn("back in work [notool]");
+    const sent = requests.at(-1)!.messages;
+    assert.equal(sent[0].role, "system");
+    assert.equal(sent.filter((m) => m.role === "system").length, 1);
+    assert.ok((requests.at(-1)!.tools ?? []).some((tool) => tool.function?.name === "bash"));
 
     // The client never sees the prompt as a row.
     const window = c.wait(["session_transcript"]);
@@ -173,5 +185,6 @@ test("turn flows keep one prompt history that the model actually receives", asyn
     c.close();
     instance.httpServer.close();
     model.close();
+    rmSync(root, { recursive: true, force: true });
   }
 });
