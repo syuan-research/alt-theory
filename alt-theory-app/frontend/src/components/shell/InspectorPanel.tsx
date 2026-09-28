@@ -92,30 +92,39 @@ export function InspectorPanel() {
     const el = bodyRef.current;
     const saved = paneMemory.get<number>(scrollKey) ?? 0;
     if (!el) return;
-    el.scrollTop = saved;
+    // Since every preview mode scrolls inside its card (2026-09-28), the
+    // element that actually scrolls is the solo preview's card when one is
+    // open, the pane itself for lists. One key serves both.
+    const scroller = () =>
+      el.querySelector<HTMLElement>(":scope > .preview > .change-preview-body") ?? el;
+    scroller().scrollTop = saved;
     if (!saved) return;
     let resize: ResizeObserver | null = null;
-    let lastSet = el.scrollTop;
+    let lastSet = scroller().scrollTop;
     const restore = () => {
+      const s = scroller();
       // Someone else moved the view (the user, a Ctrl+F jump): their
       // position wins, stop restoring.
-      if (el.scrollTop !== lastSet) {
+      if (s.scrollTop !== lastSet) {
         mutations.disconnect();
         resize?.disconnect();
         return;
       }
-      el.scrollTop = saved;
-      lastSet = el.scrollTop;
-      if (Math.abs(el.scrollTop - saved) <= 1) {
+      s.scrollTop = saved;
+      lastSet = s.scrollTop;
+      if (Math.abs(s.scrollTop - saved) <= 1) {
         mutations.disconnect();
         resize?.disconnect();
         return;
       }
-      // The content element is replaced as views swap; follow it.
+      // The content element is replaced as views swap; follow it. The card
+      // keeps a fixed height while its content grows, so the content child
+      // is the height signal, not the card.
       resize?.disconnect();
-      if (el.firstElementChild) {
+      const content = (s === el ? el.firstElementChild : s.firstElementChild) ?? null;
+      if (content) {
         resize = new ResizeObserver(restore);
-        resize.observe(el.firstElementChild);
+        resize.observe(content);
       }
     };
     const mutations = new MutationObserver(restore);
@@ -150,7 +159,17 @@ export function InspectorPanel() {
         <div
           className="body"
           ref={bodyRef}
-          onScroll={(event) => paneMemory.set(scrollKey, event.currentTarget.scrollTop)}
+          onScrollCapture={(event) => {
+            // Memory follows whichever element actually scrolls: the pane
+            // for lists, the solo preview's card for file views. Inner
+            // scrollers (the edit textarea) are not recorded.
+            const t = event.target;
+            if (
+              t instanceof HTMLElement &&
+              (t === event.currentTarget || t.classList.contains("change-preview-body"))
+            )
+              paneMemory.set(scrollKey, t.scrollTop);
+          }}
         >
           {active === "chats" ? <RelatedConversations /> : null}
           {active === "changes" ? <ChangesPanel /> : null}

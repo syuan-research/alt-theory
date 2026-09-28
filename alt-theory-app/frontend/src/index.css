@@ -1238,6 +1238,16 @@
   button.folder-head-path:hover { color: var(--ink); text-decoration: underline; }
   .file-edit { width: 100%; min-height: 14rem; border: 0; outline: 0; resize: vertical; background: transparent; color: var(--ink); font-family: var(--mono); font-size: var(--fs-secondary); line-height: 1.45; }
   .file-edit-actions { display: flex; align-items: center; justify-content: space-between; gap: var(--space-tight); margin: var(--space-tight) 0; }
+  /* Every preview mode scrolls inside the white card (owner 2026-09-28): the
+     card is one fixed viewport filling the pane, so switching edit / source /
+     rendered / diff never moves the scrollbar. Scoped to a preview that is
+     the pane body's direct child (Changes, Files); Records nests the preview
+     under its list, where a full-height card would push the save row below
+     the fold. */
+  .rpanel .body > .preview { display: flex; flex-direction: column; height: 100%; }
+  .rpanel .body > .preview .change-preview-body { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; }
+  .rpanel .body > .preview .file-edit { flex: 1; min-height: 0; resize: none; }
+  .rpanel .body > .preview .file-html { flex: 1; min-height: 0; }
   .file-edit-actions .grow { flex: 1; min-width: 0; }
   .file-edit-actions .conflict-note { font-size: var(--fs-secondary); color: var(--text-2); }
   .file-edit-actions .conflict-note.danger { color: var(--danger); }
