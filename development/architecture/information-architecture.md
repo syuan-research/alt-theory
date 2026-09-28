@@ -316,7 +316,10 @@ surfaces remain designation-gated and absent for everyone else.
     It searches once typing pauses (never mid IME composition) and steps
     through at most 1000 matches; beyond that the count reads "1000+".
     Clicking a conversation row counts as touching the center. Nothing happens
-    in Settings or Review, while a modal dialog is open, or in the file editor.
+    in Settings or Review, while a modal dialog is open, or on a rendered HTML
+    file. The file editor is searched too (2026-09-28): while the bar is bound
+    to it, a transparent mirror of the text under the textarea carries the
+    matches, and closing the bar selects the current match in the editor.
   - Contextual menus stay open while unrelated panes receive output or scroll;
     scrolling the menu's own anchor pane still dismisses them.
 - **Settings**

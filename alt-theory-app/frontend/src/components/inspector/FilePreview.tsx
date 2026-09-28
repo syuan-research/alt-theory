@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { t } from "@/i18n";
 import { MarkdownBody } from "@/components/conversation/MarkdownBody";
 import { ApiError } from "@/api/http";
@@ -12,7 +12,7 @@ import {
   type PreviewMode,
 } from "@/lib/fileContent";
 import { useHotkey } from "@/lib/hotkeys";
-import { useFindTarget } from "@/lib/find";
+import { textPatch, useFindBound, useFindTarget } from "@/lib/find";
 import {
   clearDraft,
   draftKey,
@@ -90,6 +90,13 @@ export function FilePreview({
   fileFolderRef.current = file?.folderPath ?? null;
   const onSavedRef = useRef(onSaved);
   onSavedRef.current = onSaved;
+
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const mirrorRef = useRef<HTMLDivElement>(null);
+  const scrollSeen = useRef({ textarea: 0, card: 0 });
+  const editText = active === "edit" && file ? (draft ?? file.content) : null;
+  const mirrored = useFindBound(bodyRef) && editText !== null;
 
   useEffect(() => {
     setFile(null);
@@ -232,13 +239,22 @@ export function FilePreview({
     if (error) return <div className="rp-empty">{error}</div>;
     if (!file) return <div className="rp-empty">{t("Loading…")}</div>;
     if (active === "edit") {
+      // The mirror sits before the textarea so React never remounts it
+      // (undo, focus and selection live on that element).
       return (
-        <textarea
-          className="file-edit"
-          spellCheck={false}
-          value={draft ?? file.content}
-          onChange={(event) => onChangeDraft(event.target.value)}
-        />
+        <div className={`file-edit-wrap${mirrored ? " mirrored" : ""}`}>
+          {mirrored ? <div ref={mirrorRef} className="file-edit-mirror" aria-hidden="true" /> : null}
+          <textarea
+            ref={textareaRef}
+            className="file-edit"
+            spellCheck={false}
+            value={draft ?? file.content}
+            onChange={(event) => onChangeDraft(event.target.value)}
+            onScroll={(event) => {
+              scrollSeen.current.textarea = event.currentTarget.scrollTop;
+            }}
+          />
+        </div>
       );
     }
     if (active === "rendered") {
@@ -251,13 +267,43 @@ export function FilePreview({
     return <pre>{file.content}</pre>;
   };
 
-  // Ctrl+F searches what is shown as text; Edit (a textarea) and rendered
-  // HTML (a sandboxed iframe) are not searchable, so the bar closes there.
-  const bodyRef = useRef<HTMLDivElement>(null);
+  // Ctrl+F searches what is shown as text; rendered HTML (a sandboxed
+  // iframe) is not searchable, so the bar closes there.
   const searchable =
-    active === "diff" ||
-    (active !== "edit" && file !== null && !(active === "rendered" && /\.html?$/i.test(path)));
+    active === "diff" || (file !== null && !(active === "rendered" && /\.html?$/i.test(path)));
   useFindTarget(bodyRef, searchable ? {} : null);
+
+  // Edit is searched through a mirror (issue 2026-09-28): a transparent copy
+  // of the text under the textarea, in the same grid cell with the same
+  // typography, so find's DOM ranges paint behind the textarea's own
+  // glyphs. While the bar is bound here the mirror sizes the cell and the
+  // card scrolls both layers; otherwise the textarea scrolls itself as
+  // before, with no per-keystroke mirror cost.
+  useLayoutEffect(() => {
+    const mirror = mirrorRef.current;
+    if (!mirror || editText === null) return;
+    // The textarea's value normalizes line breaks; the mirror must match it
+    // offset for offset.
+    const next = editText.replace(/\r\n?/g, "\n");
+    const node = mirror.firstChild;
+    // One minimal replaceData: live match ranges shift instead of collapsing.
+    if (node instanceof Text) node.replaceData(...textPatch(node.data, next));
+    else mirror.append(next);
+  }, [mirrored, editText]);
+
+  // Hand the scroll position between the textarea and the card when the
+  // mirror comes or goes (both show the same content offset).
+  const handoff = useRef({ edit: false, mirrored: false });
+  useLayoutEffect(() => {
+    const prev = handoff.current;
+    handoff.current = { edit: active === "edit", mirrored };
+    if (!prev.edit || active !== "edit" || prev.mirrored === mirrored) return;
+    const textarea = textareaRef.current;
+    const card = bodyRef.current;
+    if (!textarea || !card) return;
+    if (mirrored) card.scrollTop = scrollSeen.current.textarea;
+    else textarea.scrollTop = scrollSeen.current.card;
+  }, [active, mirrored]);
 
   const tooLargeToEdit = file !== null && fileRef !== null && isEditable(fileRef) && !file.editable;
 
@@ -320,7 +366,15 @@ export function FilePreview({
           </span>
         ) : null}
       </div>
-      <div className="change-preview-body expanded" ref={bodyRef}>{body()}</div>
+      <div
+        className="change-preview-body expanded"
+        ref={bodyRef}
+        onScroll={(event) => {
+          scrollSeen.current.card = event.currentTarget.scrollTop;
+        }}
+      >
+        {body()}
+      </div>
       {actionsBar()}
       {footer}
     </div>

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import { t } from "@/i18n";
 import { useHotkey } from "@/lib/hotkeys";
 import {
+  bindFindHost,
   findRanges,
   isFindTarget,
   resolveFindTarget,
@@ -29,7 +30,7 @@ function paint(ranges: Range[], current: number): void {
 /**
  * The app's one Ctrl+F handler and its floating bar (WP 2026-09-24). The
  * bar is bound to one host element: it closes when the host unmounts, hides
- * or stops being a target (a preview switched to Edit); when the same host
+ * or stops being a target (a preview switched to rendered HTML); when the same host
  * swaps content (another conversation) the query stays and the count
  * refreshes without scrolling. Portaled to <body>, so touching the bar never
  * moves attention.
@@ -76,11 +77,26 @@ export function FindBar() {
     // Return the pre-open focus when the user is still inside the bar — the
     // input, but also a step button that took the click focus.
     if (back instanceof HTMLElement && back.isConnected && (active === inputRef.current || !!barRef.current?.contains(active))) {
-      back.focus();
+      // A searched editor is as tall as its file: a plain focus() would
+      // scroll the card back to its top.
+      back.focus({ preventScroll: true });
+      // Leaving find in the editor selects the current match (as Chrome and
+      // VS Code do), ready to type over. The mirror right before the
+      // textarea holds the same text, so the offsets carry over.
+      const range = rangesRef.current[indexRef.current];
+      if (
+        back instanceof HTMLTextAreaElement &&
+        range &&
+        !range.collapsed &&
+        range.startContainer.parentElement === back.previousElementSibling
+      ) {
+        back.setSelectionRange(range.startOffset, range.endOffset);
+      }
     }
     rangesRef.current = [];
     moreRef.current = false;
     paint([], 0);
+    bindFindHost(null);
     setHost(null);
   }, []);
 
@@ -93,7 +109,12 @@ export function FindBar() {
       return;
     }
     if (!hostRef.current) returnFocus.current = document.activeElement;
-    if (hostRef.current?.el !== target.el) setHost(target);
+    if (hostRef.current?.el !== target.el) {
+      // A file editor mounts its mirror on this; flushed so the text is in
+      // the DOM before the first search runs.
+      flushSync(() => bindFindHost(target.el));
+      setHost(target);
+    }
     window.setTimeout(() => {
       inputRef.current?.focus();
       inputRef.current?.select();

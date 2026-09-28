@@ -1236,7 +1236,21 @@
   .folder-head-path { display: block; max-width: calc(100% - 28px); margin: 0 0 var(--space-tight) 28px; padding: 0; border: 0; background: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; color: var(--text-3); font-family: var(--mono); font-size: var(--fs-micro); }
   button.folder-head-path { cursor: pointer; }
   button.folder-head-path:hover { color: var(--ink); text-decoration: underline; }
-  .file-edit { width: 100%; min-height: 14rem; border: 0; outline: 0; resize: vertical; background: transparent; color: var(--ink); font-family: var(--mono); font-size: var(--fs-secondary); line-height: 1.45; }
+  .file-edit { width: 100%; min-height: 14rem; outline: 0; resize: vertical; background: transparent; color: var(--ink); }
+  /* Find in Edit (issue 2026-09-28): the mirror under the textarea must lay
+     out glyph for glyph like it, so every property that moves text lives in
+     this one shared block. text-spacing-trim: the mirror's trailing ::after
+     space would otherwise stop line-end trimming of full-width punctuation. */
+  .file-edit, .file-edit-mirror { box-sizing: border-box; margin: 0; padding: 2px; border: 0; font-family: var(--mono); font-size: var(--fs-secondary); line-height: 1.45; letter-spacing: normal; tab-size: 8; white-space: pre-wrap; overflow-wrap: break-word; word-break: normal; text-spacing-trim: space-all; }
+  .file-edit-wrap { display: grid; grid-template-columns: minmax(0, 1fr); }
+  .file-edit-mirror { grid-area: 1 / 1; color: transparent; pointer-events: none; user-select: none; }
+  .file-edit-mirror::after { content: " "; }
+  .file-edit-mirror::highlight(find-current) { color: transparent; }
+  .file-edit-wrap.mirrored > .file-edit { grid-area: 1 / 1; min-height: 0; overflow: hidden; resize: none; }
+  /* Chromium reveals the caret before the mirror grows a line. */
+  .change-preview-body:has(> .file-edit-wrap.mirrored) { scroll-padding-block: 1.5rem; }
+  /* Records: the card is not a scroller, so a mirrored editor gets its own. */
+  .preview:not(.rpanel .body > .preview) > .change-preview-body:has(> .file-edit-wrap.mirrored) { max-height: 24rem; overflow: auto; }
   .file-edit-actions { display: flex; align-items: center; justify-content: space-between; gap: var(--space-tight); margin: var(--space-tight) 0; }
   /* Every preview mode scrolls inside the white card (owner 2026-09-28): the
      card is one fixed viewport filling the pane, so switching edit / source /
@@ -1247,6 +1261,8 @@
   .rpanel .body > .preview { display: flex; flex-direction: column; height: 100%; }
   .rpanel .body > .preview .change-preview-body { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; }
   .rpanel .body > .preview .file-edit { flex: 1; min-height: 0; resize: none; }
+  .rpanel .body > .preview .file-edit-wrap { flex: 1; min-height: 0; }
+  .rpanel .body > .preview .file-edit-wrap.mirrored { flex: 1 0 auto; }
   .rpanel .body > .preview .file-html { flex: 1; min-height: 0; }
   .file-edit-actions .grow { flex: 1; min-width: 0; }
   .file-edit-actions .conflict-note { font-size: var(--fs-secondary); color: var(--text-2); }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, type RefObject } from "react";
+import { useEffect, useRef, useSyncExternalStore, type RefObject } from "react";
 
 /**
  * Ctrl+F (WP 2026-09-24): find acts on what the user last touched. Three
@@ -177,6 +177,43 @@ export function isFindTarget(el: HTMLElement): boolean {
     if (entry.ref.current === el && live(entry)) return true;
   }
   return false;
+}
+
+// ---- bound host -----------------------------------------------------------
+
+/** The host the open bar is bound to. The file editor listens: it mounts
+ *  its searchable mirror only while bound (owner 2026-09-28), so typing
+ *  in a large file pays the mirror's relayout cost only during a search. */
+let bound: HTMLElement | null = null;
+const boundListeners = new Set<() => void>();
+
+export function bindFindHost(el: HTMLElement | null): void {
+  if (bound === el) return;
+  bound = el;
+  for (const listener of boundListeners) listener();
+}
+
+function subscribeBound(listener: () => void): () => void {
+  boundListeners.add(listener);
+  return () => {
+    boundListeners.delete(listener);
+  };
+}
+
+export function useFindBound(ref: RefObject<HTMLElement | null>): boolean {
+  return useSyncExternalStore(subscribeBound, () => bound !== null && bound === ref.current);
+}
+
+/** The one edit that turns `prev` into `next`: [start, removed, inserted].
+ *  Applied with replaceData, live Ranges after the edit shift instead of
+ *  collapsing, so highlights survive typing. */
+export function textPatch(prev: string, next: string): [number, number, string] {
+  const max = Math.min(prev.length, next.length);
+  let start = 0;
+  while (start < max && prev[start] === next[start]) start++;
+  let end = 0;
+  while (end < max - start && prev[prev.length - 1 - end] === next[next.length - 1 - end]) end++;
+  return [start, prev.length - start - end, next.slice(start, next.length - end)];
 }
 
 // ---- attention ------------------------------------------------------------

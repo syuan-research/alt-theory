@@ -1,6 +1,25 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { FIND_LIMIT, findSpans } from "./find.ts";
+import { FIND_LIMIT, findSpans, textPatch } from "./find.ts";
+
+test("textPatch is the one minimal edit between two strings", () => {
+  const apply = (prev: string, next: string) => {
+    const [start, removed, inserted] = textPatch(prev, next);
+    return prev.slice(0, start) + inserted + prev.slice(start + removed);
+  };
+  const cases: [string, string][] = [
+    ["hello world", "hello brave world"],
+    ["hello world", "hello"],
+    ["aaa", "aaaa"],
+    ["", "x"],
+    ["x", ""],
+    ["same", "same"],
+    ["中文 hello", "中文 hi hello"],
+  ];
+  for (const [prev, next] of cases) assert.equal(apply(prev, next), next);
+  // Typing one char in the middle touches only that char.
+  assert.deepEqual(textPatch("abcdef", "abcXdef"), [3, 0, "X"]);
+});
 
 test("find matches case-insensitively across formatting splits, never across blocks", () => {
   // "Alt" + <em>"Theo"</em> + "ry" in one paragraph, then a block break.
