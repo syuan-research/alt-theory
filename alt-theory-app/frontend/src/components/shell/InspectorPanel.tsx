@@ -31,7 +31,6 @@ import { copyText } from "@/lib/clipboard";
 import { hasNativeBridge, revealPath } from "@/lib/native";
 import { paneMemory, usePaneMemory } from "@/lib/paneMemory";
 import { downloadMarkdown, markdownFileName, sessionTranscriptToMarkdown } from "@/lib/sessionMarkdown";
-import { guardLeave } from "@/lib/fileEditGuard";
 import { useFindTarget } from "@/lib/find";
 
 const RAIL_META: Record<RailKey, { title: string; icon: string; adv?: boolean }> = {
@@ -68,12 +67,6 @@ export function InspectorPanel() {
   );
 
   const title = (shell.target && targetTitle(shell.target)) ?? (active ? RAIL_META[active].title : "");
-
-  const leaveRelated = () => {
-    // Leaving with an unsaved draft bounces once into the red bar (the
-    // guard saves and proceeds on a second click) — owner ruling 2026-09-15.
-    void guardLeave(shell.closeTarget);
-  };
 
   // Scroll memory per (conversation, rail, sub): saved on scroll, restored
   // when that view mounts again. Content (file text, lists) arrives after
@@ -145,12 +138,12 @@ export function InspectorPanel() {
                 edge is the first thing to go off-screen. */}
             <button
               className="rp-close"
-              onClick={() => void guardLeave(shell.closeRight)}
+              onClick={shell.closeRight}
               data-tip={t("Collapse")}
             >
               <i className="ph ph-sidebar-simple" style={{ transform: "scaleX(-1)" }} />
             </button>
-            <button className="back" onClick={leaveRelated} data-tip={t("Back")}>
+            <button className="back" onClick={shell.closeTarget} data-tip={t("Back")}>
               <i className="ph ph-arrow-left" />
             </button>
             <span>{title}</span>

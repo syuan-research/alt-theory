@@ -216,12 +216,14 @@ All three text roots share one size policy: preview reads stop at 5 MB
 truncates generated diffs at 160 lines. These are product-selected limits rather
 than measured performance thresholds.
 
-Unsaved preview edits live in an in-process map keyed by session, root, and
-path — not in pane memory or the session record. Rail and conversation switches
-restore that draft. Save, explicit discard, or app restart ends it. A direct
-file-to-file or close/back attempt first holds navigation and exposes the inline
-leave guard; a later attempt saves before leaving, while a save conflict keeps
-the current editor open for resolution.
+Preview edits save themselves (owner ruling 2026-09-28): one second after
+typing stops, and at once on blur, Ctrl+S, or leaving the file; there is no
+save button and no leave guard. Text not yet on disk lives in an in-process
+map keyed by session, root, and path — not in pane memory or the session
+record — with one ordered write chain per file, so a write in flight or one
+that failed outlives the editor and reopening the file restores and retries
+it. An app restart drops it (at most the last second of typing). A save
+conflict pauses autosave and keeps the editor open for resolution.
 
 The REST routes for content, upload, download, retry-extract, and deletion
 ask the access policy (`access-policy.ts`; locally the owner may read every
@@ -514,8 +516,9 @@ in
 - [`text-file-edit.test.ts`](../../alt-theory-app/web-server/text-file-edit.test.ts)
   covers the shared caps and text flags, stale saves, conflict-copy naming, and
   both session-root and working-root writes.
-- [`fileEditGuard.test.ts`](../../alt-theory-app/frontend/src/lib/fileEditGuard.test.ts)
-  covers the in-memory draft leave guard and its save/discard outcomes.
+- [`fileDrafts.test.ts`](../../alt-theory-app/frontend/src/lib/fileDrafts.test.ts)
+  covers the ordered write chain behind autosave: writes land in typing
+  order, newer typing survives a write, and a failed write keeps its text.
 - [`session-service.test.ts`](../../alt-theory-app/web-server/session-service.test.ts)
   covers workspace creation, main-folder persistence, missing-folder recovery,
   project re-point, family propagation, and reopen.

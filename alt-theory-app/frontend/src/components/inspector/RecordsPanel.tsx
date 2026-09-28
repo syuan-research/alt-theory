@@ -7,7 +7,6 @@ import { HintText, SectionTitle } from "@/components/ui/Typography";
 import { FilePreview } from "@/components/inspector/FilePreview";
 import { cn } from "@/lib/cn";
 import type { PreviewMode } from "@/lib/fileContent";
-import { guardLeave } from "@/lib/fileEditGuard";
 import { usePaneMemory } from "@/lib/paneMemory";
 import { useShell } from "@/context/ShellContext";
 
@@ -106,7 +105,7 @@ export function RecordsPanel({
                     ? "border-ink-soft bg-selected"
                     : "border-hairline bg-surface hover:bg-hover"
                 )}
-                onClick={() => void guardLeave(() => select(file))}
+                onClick={() => select(file)}
               >
                 <span className="truncate">{file.path}</span>
                 <span className="shrink-0 text-[length:var(--fs-secondary)] text-text-muted">
@@ -126,9 +125,10 @@ export function RecordsPanel({
           mode={mode}
           onModeChange={setMode}
           onSaved={(saved) => {
+            // Only a conflict copy (a new sibling) changes the list: follow it.
+            if (saved.path === selected.path) return;
             void refresh();
-            // A conflict copy saved to a sibling: follow it there.
-            if (saved.path !== selected.path) shell.openTarget({ ...selected, path: saved.path });
+            shell.openTarget({ ...selected, path: saved.path });
           }}
         />
       ) : null}

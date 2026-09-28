@@ -15,16 +15,38 @@ import { useHotkey } from "@/lib/hotkeys";
 import { textPatch, useFindBound, useFindTarget } from "@/lib/find";
 import {
   clearDraft,
+  afterWrites,
   draftKey,
+  flushDraft,
   getDraft,
   setDraft as cacheDraft,
 } from "@/lib/fileDrafts";
-import {
-  clearArmed,
-  onArmedChange,
-  registerGuardEditor,
-  resolveArmed,
-} from "@/lib/fileEditGuard";
+import { useConversationContext } from "@/context/ConversationContext";
+
+/** Typing pause before an edit saves itself (owner ruling 2026-09-28). */
+const AUTOSAVE_MS = 1000;
+
+/** The disk version each file's next write expects (409 when it moved).
+ *  Module scope, like the drafts: a write finishing after its editor left
+ *  still records what it wrote. */
+const bases = new Map<string, { updatedAt: string | null; folderPath: string | null }>();
+
+type SaveOptions = { force?: boolean; conflictCopy?: boolean };
+
+/** Write the file's draft, in order after any earlier write for it. */
+function persist(sessionId: string, ref: FileRef, key: string, options: SaveOptions = {}) {
+  return flushDraft(key, async (text) => {
+    const base = bases.get(key);
+    const saved = await saveFileContent(sessionId, ref, text, {
+      expectedUpdatedAt: base?.updatedAt ?? undefined,
+      expectedFolderPath: base?.folderPath ?? undefined,
+      ...options,
+    });
+    // A conflict copy went to a sibling; this file's disk version is unchanged.
+    if (!options.conflictCopy) bases.set(key, saved);
+    return saved;
+  });
+}
 
 /**
  * The ONE file renderer for the right pane (card 7): Changes, Files and
@@ -35,12 +57,13 @@ import {
  * loads by reference through the content route; nothing is inlined by the
  * caller.
  *
- * Edit extras, all owner-ruled 2026-09-15: the unsaved draft lives in
- * lib/fileDrafts (rail/session switches never lose it), a leave attempt
- * while dirty bounces once into the red bar (lib/fileEditGuard; a second
- * attempt saves and proceeds), a save that hits an externally changed file
- * shows the conflict bar (discard / save a copy / overwrite), and Ctrl+S
- * comes from the one hotkey table (lib/hotkeys).
+ * Edit saves itself (owner ruling 2026-09-28; the user's whole model: "edits
+ * save automatically; until you close the file, Ctrl+Z walks back to how it
+ * opened"): a second after typing stops, and at once on blur, Ctrl+S, or
+ * leaving the file. There is no save button and no leave guard. A save that
+ * hits a file changed on disk since it loaded shows the conflict bar
+ * (discard / save a copy / overwrite) — rare now: with no unsaved text, a
+ * changed file (say Alt rewrote it) just reloads when a run settles.
  */
 export function FilePreview({
   sessionId,
@@ -66,9 +89,8 @@ export function FilePreview({
   const [file, setFile] = useState<FileContent | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState<string | null>(null);
-  const [status, setStatus] = useState("");
+  const [status, setStatus] = useState<{ text: string; failed?: boolean }>({ text: "" });
   const [conflict, setConflict] = useState(false);
-  const [armed, setArmed] = useState(false);
 
   const key = sessionId && fileRef ? draftKey(sessionId, fileRef.root, fileRef.path) : "";
 
@@ -79,17 +101,15 @@ export function FilePreview({
   });
   const active: PreviewMode = modes.includes(mode) ? mode : (modes[0] ?? "source");
 
-  // Latest-value refs so stable callbacks (hotkey, guard) never go stale.
-  const draftRef = useRef(draft);
-  draftRef.current = draft;
+  // Latest-value refs so stable callbacks (hotkey, timer) never go stale.
   const keyRef = useRef(key);
   keyRef.current = key;
-  const fileUpdatedAtRef = useRef<string | null>(null);
-  fileUpdatedAtRef.current = file?.updatedAt ?? null;
-  const fileFolderRef = useRef<string | null>(null);
-  fileFolderRef.current = file?.folderPath ?? null;
+  const conflictRef = useRef(conflict);
+  conflictRef.current = conflict;
   const onSavedRef = useRef(onSaved);
   onSavedRef.current = onSaved;
+  const timer = useRef(0);
+  const editOpened = useRef(false);
 
   const bodyRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -98,129 +118,147 @@ export function FilePreview({
   const editText = active === "edit" && file ? (draft ?? file.content) : null;
   const mirrored = useFindBound(bodyRef) && editText !== null;
 
+  const save = useCallback(
+    async (options: SaveOptions = {}): Promise<void> => {
+      window.clearTimeout(timer.current);
+      if (!sessionId || !fileRef) return;
+      const saveKey = draftKey(sessionId, fileRef.root, fileRef.path);
+      try {
+        const done = await persist(sessionId, fileRef, saveKey, options);
+        if (!done || keyRef.current !== saveKey) return;
+        if (options.conflictCopy) {
+          // The text went to a sibling; this editor shows the original as it
+          // now is on disk (callers that follow the copy navigate on onSaved).
+          discardRef.current();
+          const name = done.result.path.split("/").at(-1) ?? done.result.path;
+          setStatus({ text: t("Saved as {name}.", { name }) });
+          onSavedRef.current?.(done.result);
+          return;
+        }
+        setConflict(false);
+        // Keep the very text the textarea shows, so React leaves its value
+        // — and with it the undo history — alone.
+        setFile({ ...done.result, content: done.text });
+        const newer = getDraft(saveKey); // typing went on during the write
+        setDraft(newer);
+        setStatus({ text: newer === null ? t("Saved.") : "" });
+        onSavedRef.current?.(done.result);
+      } catch (e) {
+        if (keyRef.current !== saveKey) return;
+        if (e instanceof ApiError && e.status === 409) {
+          // Changed on disk since it loaded: autosave pauses until the user
+          // picks discard / copy / overwrite. The text stays in the draft.
+          setConflict(true);
+          setStatus({ text: "" });
+          return;
+        }
+        setStatus({ text: e instanceof Error ? e.message : t("Could not save file."), failed: true });
+      }
+    },
+    [sessionId, fileRef?.root, fileRef?.path]
+  );
+  const saveRef = useRef(save);
+  saveRef.current = save;
+
   useEffect(() => {
+    editOpened.current = active === "edit";
     setFile(null);
     setError(null);
-    setStatus("");
+    setStatus({ text: "" });
     setConflict(false);
     setDraft(null);
     if (!sessionId || !fileRef) return;
-    const restoreKey = draftKey(sessionId, fileRef.root, fileRef.path);
+    const loadKey = draftKey(sessionId, fileRef.root, fileRef.path);
     let cancelled = false;
-    loadFileContent(sessionId, fileRef)
+    // Wait out a write from an earlier visit, so the load never reads the
+    // disk from before our own save.
+    afterWrites(loadKey)
+      .then(() => loadFileContent(sessionId, fileRef))
       .then((loaded) => {
         if (cancelled) return;
+        // Text still parked here means its write failed: it comes back and
+        // retries against the version it was written over (a changed file
+        // then shows the conflict bar instead of being overwritten).
+        const parked = getDraft(loadKey);
+        if (parked === null || !bases.has(loadKey)) bases.set(loadKey, loaded);
         setFile(loaded);
-        // A draft parked by an earlier visit (rail/session switch) comes
-        // back; the unsaved edit outlives its surface.
-        setDraft(getDraft(restoreKey));
+        setDraft(parked);
+        if (parked !== null) void saveRef.current();
       })
       .catch((e) => !cancelled && setError(e instanceof Error ? e.message : t("The current file is not available.")));
     return () => {
       cancelled = true;
+      window.clearTimeout(timer.current);
+      // Leaving the file (another file, conversation, closing the pane)
+      // saves at once; a failure keeps the draft for the next visit.
+      if (getDraft(loadKey) !== null) persist(sessionId, fileRef, loadKey).catch(() => undefined);
     };
   }, [sessionId, fileRef?.root, fileRef?.path]);
 
-  const doSave = useCallback(
-    async (options: { force?: boolean; conflictCopy?: boolean } = {}): Promise<boolean> => {
-      if (!sessionId || !fileRef || draftRef.current === null) return false;
-      setStatus(t("Saving…"));
-      try {
-        const saved = await saveFileContent(sessionId, fileRef, draftRef.current, {
-          expectedUpdatedAt: fileUpdatedAtRef.current ?? undefined,
-          expectedFolderPath: fileFolderRef.current ?? undefined,
-          ...options,
-        });
-        setConflict(false);
-        setFile(saved);
-        setDraft(null);
-        // The draft died by saving (also for a conflict copy: its text went
-        // to the sibling, so the parked draft must not come back on the
-        // original file as a phantom dirty edit).
-        clearDraft(draftKey(sessionId, fileRef.root, fileRef.path));
-        if (options.conflictCopy) {
-          const name = saved.path.split("/").at(-1) ?? saved.path;
-          setStatus(t("Saved as {name}.", { name }));
-        } else {
-          setStatus(t("Saved."));
-        }
-        onSavedRef.current?.(saved);
-        return true;
-      } catch (e) {
-        if (e instanceof ApiError && e.status === 409) {
-          // The file changed on disk since load: stop and let the user pick
-          // discard / copy / overwrite; the pending leave (if any) aborts.
-          setConflict(true);
-          setStatus("");
-          return false;
-        }
-        setStatus(e instanceof Error ? e.message : t("Could not save file."));
-        return false;
-      }
-    },
-    [sessionId, fileRef]
-  );
+  // Alt may rewrite the open file during a run: with no unsaved text, show
+  // the new version once the run settles (a changed text resets undo).
+  const settled = useConversationContext().runSettledCount;
+  const seenSettled = useRef(settled);
+  useEffect(() => {
+    if (settled === seenSettled.current) return;
+    seenSettled.current = settled;
+    if (!sessionId || !fileRef || getDraft(key) !== null) return;
+    const loadKey = key;
+    // (The trigger is the center conversation's runs; a file shown from
+    // another conversation reloads on those, which the version check makes
+    // harmless.)
+    afterWrites(loadKey)
+      .then(() => {
+        const before = bases.get(loadKey);
+        return loadFileContent(sessionId, fileRef).then((loaded) => ({ loaded, before }));
+      })
+      .then(({ loaded, before }) => {
+        if (keyRef.current !== loadKey || getDraft(loadKey) !== null) return;
+        // A save landed during the fetch: its version wins over this read.
+        if (bases.get(loadKey) !== before || loaded.updatedAt === before?.updatedAt) return;
+        bases.set(loadKey, loaded);
+        setFile(loaded);
+      })
+      .catch(() => undefined);
+  }, [settled]);
 
   const doDiscard = useCallback(() => {
-    clearArmed();
+    window.clearTimeout(timer.current);
     setConflict(false);
-    setStatus("");
+    setStatus({ text: "" });
     setDraft(null);
     if (!sessionId || !fileRef) return;
     const clearKey = draftKey(sessionId, fileRef.root, fileRef.path);
     clearDraft(clearKey);
     loadFileContent(sessionId, fileRef)
       .then((loaded) => {
-        // resolveArmed(false) navigates right after this fires; a late
-        // return must not clobber whatever file the pane shows now.
-        if (keyRef.current === clearKey) setFile(loaded);
+        // A late return must not clobber whatever file the pane shows now.
+        if (keyRef.current !== clearKey) return;
+        bases.set(clearKey, loaded);
+        setFile(loaded);
       })
       .catch(() => undefined);
-  }, [sessionId, fileRef]);
+  }, [sessionId, fileRef?.root, fileRef?.path]);
 
-  // The leave guard: this editor is the guard's one slot while mounted.
-  const saveRef = useRef(doSave);
-  saveRef.current = doSave;
   const discardRef = useRef(doDiscard);
   discardRef.current = doDiscard;
-  useEffect(() => {
-    if (!key) {
-      registerGuardEditor(null);
-      return;
-    }
-    registerGuardEditor({
-      key,
-      isDirty: () => draftRef.current !== null,
-      save: () => saveRef.current(),
-      discard: () => discardRef.current(),
-    });
-    return () => {
-      registerGuardEditor(null);
-    };
-  }, [key]);
-
-  // Which file's leave is blocked (red bar) — null/other key = hidden.
-  useEffect(() => {
-    if (!key) return;
-    return onArmedChange((armedKey) => setArmed(armedKey === key));
-  }, [key]);
 
   const onChangeDraft = (value: string) => {
     if (!key) return;
-    // Typing means "stay": a pending blocked leave dissolves, draft remains.
-    clearArmed();
     setDraft(value);
     cacheDraft(key, value);
+    setStatus({ text: "" });
+    window.clearTimeout(timer.current);
+    // During the conflict bar nothing saves until the user picks.
+    if (!conflictRef.current) timer.current = window.setTimeout(() => void saveRef.current(), AUTOSAVE_MS);
   };
 
-  const canSave = active === "edit" && draft !== null;
+  // Ctrl+S saves now. Registered in the conflict bar too, so it never falls
+  // through to the browser's save-page default; it does nothing there.
   const hotkeySave = useCallback(() => {
-    // Registered during the conflict bar too, so Ctrl+S never falls through
-    // to the browser's save-page default; it just does nothing there.
-    if (conflict) return;
-    void doSave();
-  }, [doSave, conflict]);
-  useHotkey("save", active === "edit" && (canSave || conflict) ? hotkeySave : null);
+    if (!conflictRef.current) void saveRef.current();
+  }, []);
+  useHotkey("save", active === "edit" ? hotkeySave : null);
 
   const label = (m: PreviewMode) =>
     m === "diff"
@@ -233,30 +271,38 @@ export function FilePreview({
             ? t("Source")
             : t("File");
 
+  // Once opened, the editor stays mounted (hidden) while another mode shows,
+  // so its undo history lasts until the file closes, as the user was told.
+  if (active === "edit") editOpened.current = true;
+  const showEditor = file !== null && !error && editOpened.current;
+
+  // The mirror sits before the textarea so React never remounts it (undo,
+  // focus and selection live on that element).
+  const editor = () =>
+    file ? (
+      <div className={`file-edit-wrap${mirrored ? " mirrored" : ""}`} hidden={active !== "edit"}>
+        {mirrored ? <div ref={mirrorRef} className="file-edit-mirror" aria-hidden="true" /> : null}
+        <textarea
+          ref={textareaRef}
+          className="file-edit"
+          spellCheck={false}
+          value={draft ?? file.content}
+          onChange={(event) => onChangeDraft(event.target.value)}
+          onBlur={() => {
+            if (getDraft(key) !== null && !conflictRef.current) void save();
+          }}
+          onScroll={(event) => {
+            scrollSeen.current.textarea = event.currentTarget.scrollTop;
+          }}
+        />
+      </div>
+    ) : null;
+
   const body = () => {
     if (active === "diff") return <DiffLines diff={diff ?? ""} />;
     if (!fileRef) return <div className="rp-empty">{t("The current file is not available.")}</div>;
     if (error) return <div className="rp-empty">{error}</div>;
     if (!file) return <div className="rp-empty">{t("Loading…")}</div>;
-    if (active === "edit") {
-      // The mirror sits before the textarea so React never remounts it
-      // (undo, focus and selection live on that element).
-      return (
-        <div className={`file-edit-wrap${mirrored ? " mirrored" : ""}`}>
-          {mirrored ? <div ref={mirrorRef} className="file-edit-mirror" aria-hidden="true" /> : null}
-          <textarea
-            ref={textareaRef}
-            className="file-edit"
-            spellCheck={false}
-            value={draft ?? file.content}
-            onChange={(event) => onChangeDraft(event.target.value)}
-            onScroll={(event) => {
-              scrollSeen.current.textarea = event.currentTarget.scrollTop;
-            }}
-          />
-        </div>
-      );
-    }
     if (active === "rendered") {
       return /\.html?$/i.test(path) ? (
         <iframe className="file-html" sandbox="" srcDoc={file.content} title={path} />
@@ -321,34 +367,19 @@ export function FilePreview({
           <button className="flat" onClick={() => doDiscard()}>
             {t("Discard changes")}
           </button>
-          <button className="flat" onClick={() => void doSave({ conflictCopy: true })}>
+          <button className="flat" onClick={() => void save({ conflictCopy: true })}>
             {t("Save a copy")}
           </button>
-          <button className="flat" onClick={() => void doSave({ force: true })}>
+          <button className="flat" onClick={() => void save({ force: true })}>
             {t("Overwrite")}
           </button>
         </div>
       );
     }
-    if (armed) {
-      return (
-        <div className="file-edit-actions">
-          <span className="grow conflict-note danger">{t("Unsaved changes.")}</span>
-          <button className="flat" onClick={() => resolveArmed(true)}>
-            {t("Save")}
-          </button>
-          <button className="flat" onClick={() => resolveArmed(false)}>
-            {t("Discard changes")}
-          </button>
-        </div>
-      );
-    }
+    // Autosave's only trace: a quiet line that says it happened (or why not).
     return (
       <div className="file-edit-actions">
-        <span className="wb-note">{status}</span>
-        <button className="flat" disabled={draft === null} onClick={() => void doSave()}>
-          {t("Save")}
-        </button>
+        <span className={status.failed ? "conflict-note danger" : "wb-note"}>{status.text}</span>
       </div>
     );
   };
@@ -378,7 +409,8 @@ export function FilePreview({
           scrollSeen.current.card = event.currentTarget.scrollTop;
         }}
       >
-        {body()}
+        {active === "edit" && showEditor ? null : body()}
+        {showEditor ? editor() : null}
       </div>
       {actionsBar()}
       {footer}

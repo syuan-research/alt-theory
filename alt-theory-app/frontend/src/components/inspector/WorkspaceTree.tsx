@@ -23,7 +23,6 @@ import { FilePreview } from "@/components/inspector/FilePreview";
 import { FolderHead, ListTools } from "@/components/inspector/FolderList";
 import { buildFileTreeModel, getFileTreeNode, withFolderEntries, type FileTreeNode } from "@/lib/fileTree";
 import type { PreviewMode } from "@/lib/fileContent";
-import { guardLeave } from "@/lib/fileEditGuard";
 import { usePaneMemory } from "@/lib/paneMemory";
 import { useFindTarget } from "@/lib/find";
 import { copyText } from "@/lib/clipboard";
@@ -181,22 +180,17 @@ export function WorkspaceTree() {
   };
   const clearSearch = () => { setQuery(""); setBrowsing(null); };
 
-  // Opening another file is a leave from a dirty editor: the guard bounces
-  // the first attempt into the red bar and saves-and-proceeds on the next
-  // (owner ruling 2026-09-15).
   const openFile = (entry: ManagedTreeEntry) => {
     if ("isDirectory" in entry && entry.isDirectory) return;
     if (!sessionId || !("kind" in entry) || entry.kind === "binary-original") return;
     setPreviewView("rendered");
-    void guardLeave(() => shell.openTarget({ kind: "file", sessionId, root: "workspace", path: entry.path }));
+    shell.openTarget({ kind: "file", sessionId, root: "workspace", path: entry.path });
   };
 
   const openWorkingFile = (entry: WorkingTreeEntry) => {
     if (!sessionId || !entry.previewable) return;
     setPreviewView("rendered");
-    void guardLeave(() =>
-      shell.openTarget({ kind: "file", sessionId, root: "working", path: `${entry.folderId}/${entry.path}` }),
-    );
+    shell.openTarget({ kind: "file", sessionId, root: "working", path: `${entry.folderId}/${entry.path}` });
   };
 
 

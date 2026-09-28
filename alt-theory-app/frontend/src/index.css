@@ -1245,6 +1245,7 @@
      space would otherwise stop line-end trimming of full-width punctuation. */
   .file-edit, .file-edit-mirror { box-sizing: border-box; margin: 0; padding: 2px; border: 0; font-family: var(--mono); font-size: var(--fs-secondary); line-height: 1.45; letter-spacing: normal; tab-size: 8; white-space: pre-wrap; overflow-wrap: break-word; word-break: normal; text-spacing-trim: space-all; }
   .file-edit-wrap { display: grid; grid-template-columns: minmax(0, 1fr); }
+  .file-edit-wrap[hidden] { display: none; }
   .file-edit-mirror { grid-area: 1 / 1; color: transparent; pointer-events: none; user-select: none; }
   .file-edit-mirror::after { content: " "; }
   .file-edit-mirror::highlight(find-current) { color: transparent; }

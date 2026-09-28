@@ -258,13 +258,18 @@ surfaces remain designation-gated and absent for everyone else.
   - An open preview is a reading snapshot. Refreshing the file tree, Changes,
     or conversation list does not remount it or replace an unchanged rendered
     body. Selecting or reopening a file reads the current content unless an
-    unsaved in-memory draft for that session/root/path resumes. This keeps text
+    in-memory draft for that session/root/path (text whose save had not
+    landed) resumes. This keeps text
     selection and edits stable during background conversation refreshes without
     adding a general live-file subscription.
-  - Saving uses the file's load-time modification timestamp as an optimistic
-    conflict check. A conflict stays in the editor and offers discard, save a
-    copy, or overwrite. Drafts survive rail and conversation switches in memory
-    but not an app restart. See
+  - Edits save automatically (2026-09-28): a second after typing stops, and
+    at once on blur, Ctrl+S, or leaving the file; a quiet line under the
+    editor says "Saved." (or why not). Until the file closes, Ctrl+Z walks
+    back to how it opened. With no unsaved text, the open file reloads when a
+    run settles if Alt changed it. Each save checks the file's last known
+    modification time; a conflict pauses autosave and offers discard, save a
+    copy, or overwrite. Unlanded text survives rail and conversation switches
+    in memory but not an app restart. See
     [ADR 0007](adr/0007-separate-user-file-edits-from-agent-write-permission.md).
   - Changes lists the whole conversation family's writes (subagents and
     branches included), merged on the resolved absolute path and grouped as
