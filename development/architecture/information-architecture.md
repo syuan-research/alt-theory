@@ -265,9 +265,9 @@ surfaces remain designation-gated and absent for everyone else.
   - Edits save automatically (2026-09-28): a second after typing stops, and
     at once on blur, Ctrl+S, or leaving the file; a quiet line under the
     editor says "Saved." (or why not). Until the file closes, Ctrl+Z walks
-    back to how it opened. With no unsaved text, the open file reloads when a
-    run settles if Alt changed it. Each save checks the file's last known
-    modification time; a conflict pauses autosave and offers discard, save a
+    back to how it opened. With no unsaved text, the open file reloads when
+    any conversation finishes a run, if its version changed. Each save checks
+    the file's last known modification time; a conflict pauses autosave and offers discard, save a
     copy, or overwrite. Unlanded text survives rail and conversation switches
     in memory but not an app restart. See
     [ADR 0007](adr/0007-separate-user-file-edits-from-agent-write-permission.md).

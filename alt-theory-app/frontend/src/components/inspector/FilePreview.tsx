@@ -21,7 +21,7 @@ import {
   getDraft,
   setDraft as cacheDraft,
 } from "@/lib/fileDrafts";
-import { useConversationContext } from "@/context/ConversationContext";
+import { useApp } from "@/context/AppProvider";
 
 /** Typing pause before an edit saves itself (owner ruling 2026-09-28). */
 const AUTOSAVE_MS = 1000;
@@ -63,7 +63,8 @@ function persist(sessionId: string, ref: FileRef, key: string, options: SaveOpti
  * leaving the file. There is no save button and no leave guard. A save that
  * hits a file changed on disk since it loaded shows the conflict bar
  * (discard / save a copy / overwrite) — rare now: with no unsaved text, a
- * changed file (say Alt rewrote it) just reloads when a run settles.
+ * changed file (say Alt rewrote it) just reloads when any conversation
+ * finishes a run.
  */
 export function FilePreview({
   sessionId,
@@ -195,18 +196,19 @@ export function FilePreview({
     };
   }, [sessionId, fileRef?.root, fileRef?.path]);
 
-  // Alt may rewrite the open file during a run: with no unsaved text, show
-  // the new version once the run settles (a changed text resets undo).
-  const settled = useConversationContext().runSettledCount;
-  const seenSettled = useRef(settled);
+  // Any conversation may rewrite the open file (they share project
+  // folders): whenever one finishes a run, with no unsaved text here, show
+  // the file's new version if it changed (a changed text resets undo).
+  const running = useApp()
+    .sessions.filter((row) => row.runStatus === "running" || row.runStatus === "awaiting-approval")
+    .map((row) => row.sessionId);
+  const runningKey = running.join("|");
+  const seenRunning = useRef(running);
   useEffect(() => {
-    if (settled === seenSettled.current) return;
-    seenSettled.current = settled;
-    if (!sessionId || !fileRef || getDraft(key) !== null) return;
+    const finished = seenRunning.current.some((id) => !running.includes(id));
+    seenRunning.current = running;
+    if (!finished || !sessionId || !fileRef || getDraft(key) !== null) return;
     const loadKey = key;
-    // (The trigger is the center conversation's runs; a file shown from
-    // another conversation reloads on those, which the version check makes
-    // harmless.)
     afterWrites(loadKey)
       .then(() => {
         const before = bases.get(loadKey);
@@ -220,7 +222,7 @@ export function FilePreview({
         setFile(loaded);
       })
       .catch(() => undefined);
-  }, [settled]);
+  }, [runningKey]);
 
   const doDiscard = useCallback(() => {
     window.clearTimeout(timer.current);
