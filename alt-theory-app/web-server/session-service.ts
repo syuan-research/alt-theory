@@ -71,6 +71,7 @@ import {
   type SessionCounters,
 } from "./session-metrics.js";
 import {
+  extendLeafPastRunRecords,
   forkFamilyIds,
   latestActiveLeafEntryId,
   listSessionSummaries,
@@ -5431,26 +5432,7 @@ function alignSessionManagerLeaf(
     );
   }
   sessionManager.branch(activeLeafEntryId);
-  // Keep agent-team mail injected beyond the last run's leaf in the active
-  // path (run records never claim custom entries; see session-store's
-  // transcript-side counterpart).
-  let advanced = true;
-  while (advanced) {
-    advanced = false;
-    const leafId = sessionManager.getLeafId();
-    for (const entry of sessionManager.getEntries()) {
-      const value = entry as { id?: string; parentId?: string; type?: string };
-      if (
-        value.parentId === leafId &&
-        value.type === "custom_message" &&
-        value.id
-      ) {
-        sessionManager.branch(value.id);
-        advanced = true;
-        break;
-      }
-    }
-  }
+  extendLeafPastRunRecords(sessionManager);
 }
 
 function alignSessionManagerToLatestRun(

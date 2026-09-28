@@ -550,6 +550,64 @@ test("SessionService restores the active Pi leaf after reopen for conversation a
   }
 });
 
+test("a compaction after the last run survives reopen", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  const selectors = {
+    rolePresetSlug: "role-conceptual-theory-companion",
+    kbDomain: "ep-core",
+    soulSlug: "soul-latest",
+  };
+  const created = await service.createSession(selectors);
+  const managed = (service as any).sessions.get(created.sessionId);
+  let firstUserId = "";
+  managed.session.prompt = async (text: string) => {
+    firstUserId = managed.session.sessionManager.appendMessage({
+      role: "user",
+      content: [{ type: "text", text }],
+      timestamp: Date.now(),
+    });
+    managed.session.sessionManager.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: `answer:${text}` }],
+      timestamp: Date.now(),
+    });
+  };
+  managed.session.compact = async () => {
+    managed.session.sessionManager.appendCompaction("kept summary", firstUserId, 1200);
+  };
+
+  try {
+    await service.runPrompt(created.sessionId, "long history").completion;
+    await service.compact(created.sessionId);
+    const compactionId = managed.session.sessionManager.getLeafId();
+    await service.disposeAll();
+
+    const reopenedService = createTestService(fixture);
+    try {
+      const reopened = await reopenedService.openSession(created.sessionId, selectors);
+      const sessionManager = (reopenedService as any).sessions.get(reopened.sessionId)
+        .session.sessionManager;
+      assert.equal(sessionManager.getLeafId(), compactionId);
+      assert.ok(
+        sessionManager
+          .buildSessionContext()
+          .messages.some((message: { role: string }) => message.role === "compactionSummary"),
+      );
+      const detail = readSessionDetail(fixture.dataDir, created.sessionId);
+      assert.ok(
+        detail?.transcript.some(
+          (message) => message.marker === "compaction" && message.text === "kept summary",
+        ),
+      );
+    } finally {
+      await reopenedService.disposeAll();
+    }
+  } finally {
+    await service.disposeAll();
+  }
+});
+
 test("SessionService revise and default fork use restored Pi leaf after reopen", async () => {
   const fixture = setupFixture();
   const service = createTestService(fixture);

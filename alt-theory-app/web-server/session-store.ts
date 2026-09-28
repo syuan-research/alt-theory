@@ -2134,10 +2134,22 @@ function alignSessionManagerLeaf(
     throw new Error("active Pi leaf is missing from Pi history");
   }
   sessionManager.branch(activeLeafEntryId);
-  // Agent-team mail injected while a session sat idle appends custom_message
-  // entries BEYOND the last run's leaf; they are active content, so extend
-  // the leaf through any trailing chain of them (run records never claim
-  // custom entries, so realignment alone would hide them).
+  extendLeafPastRunRecords(sessionManager);
+}
+
+/**
+ * Run records claim only user/assistant entries, so a leaf restored from them
+ * stops short of entries Pi appends after a run: agent-team mail injected
+ * while the session sat idle (custom_message) and a compaction boundary
+ * (manual, or threshold at the end of a turn). Both are active content —
+ * dropping the compaction silently restores the full pre-compaction context
+ * and the next prompt orphans it for good.
+ */
+export function extendLeafPastRunRecords(sessionManager: {
+  branch(entryId: string): void;
+  getEntries(): ReadonlyArray<unknown>;
+  getLeafId(): string | null;
+}): void {
   let advanced = true;
   while (advanced) {
     advanced = false;
@@ -2146,7 +2158,7 @@ function alignSessionManagerLeaf(
       const value = entry as { id?: string; parentId?: string; type?: string };
       if (
         value.parentId === leafId &&
-        value.type === "custom_message" &&
+        (value.type === "custom_message" || value.type === "compaction") &&
         value.id
       ) {
         sessionManager.branch(value.id);

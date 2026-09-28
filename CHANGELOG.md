@@ -113,6 +113,14 @@ detail lives in commit history and `development/`.
   or waiting for your approval shows at once, without the list checking
   every few seconds; it is complete again right after a reconnect.
 
+### Fixes
+
+- A compaction no longer disappears when the conversation is reopened
+  (after restarting Alt, or switching role, soul or mode) before the next
+  message. Before, the full earlier context quietly came back and every
+  later message sent all of it again. A conversation already hit by this
+  needs one more compaction.
+
 ## v1.7.0-beta.1 — 2026-09-24
 
 Finding earlier conversations and files is easier, including work outside the ordinary conversation list. You can also edit text in working folders and keep more control over a conversation while an agent is running.
