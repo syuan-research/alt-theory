@@ -392,6 +392,7 @@ const catalog: Record<string, string> = {
   "Knowledge folder added.": "知識庫資料夾已添加。",
   "Knowledge sets": "知識庫",
   "Language": "語言",
+  "Large file: typing is slower while searching": "大檔案：搜尋時打字會變慢",
   "lead": "主導",
   "Let a chatbot write the config": "讓聊天機械人編寫配置",
   "Light": "淺色",

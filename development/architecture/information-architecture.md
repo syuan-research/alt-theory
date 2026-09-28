@@ -320,6 +320,9 @@ surfaces remain designation-gated and absent for everyone else.
     file. The file editor is searched too (2026-09-28): while the bar is bound
     to it, a transparent mirror of the text under the textarea carries the
     matches, and closing the bar selects the current match in the editor.
+    Escape typed in that editor closes the bar (the caret stays); over about
+    200,000 characters the bar notes in grey that typing is slower while
+    searching.
   - Contextual menus stay open while unrelated panes receive output or scroll;
     scrolling the menu's own anchor pane still dismisses them.
 - **Settings**

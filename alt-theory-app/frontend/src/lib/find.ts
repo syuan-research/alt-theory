@@ -141,6 +141,8 @@ export type FindSpec = {
   focus?: () => void;
   /** Content not rendered yet (a conversation's older rows): the bar offers to load it. */
   unloaded?: { has: () => boolean; load: () => void };
+  /** A quiet line under the input (a large file in edit: typing is slower). */
+  note?: string;
 };
 export type FindTarget = FindSpec & { el: HTMLElement };
 
@@ -169,6 +171,14 @@ function live(entry: Entry): FindTarget | null {
   const el = entry.ref.current;
   const spec = entry.spec.current;
   return el && spec && el.isConnected && el.checkVisibility() ? { ...spec, el } : null;
+}
+
+/** The host's current note (its spec changes with the host's mode). */
+export function findNote(el: HTMLElement): string | undefined {
+  for (const entry of targets) {
+    if (entry.ref.current === el) return entry.spec.current?.note;
+  }
+  return undefined;
 }
 
 /** Still a registered, visible target (the bar closes when this goes false). */

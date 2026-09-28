@@ -1151,6 +1151,8 @@
   .find-bar button { display: inline-flex; padding: 2px; border: 0; border-radius: var(--r-sm); background: none; color: var(--text-2); cursor: pointer; }
   .find-bar button:hover:not(:disabled) { background: var(--hover); }
   .find-bar button:disabled { opacity: 0.4; cursor: default; }
+  .find-bar:has(.find-note) { flex-wrap: wrap; }
+  .find-bar .find-note { flex-basis: 100%; padding: 0 var(--space-hair); color: var(--text-3); font-size: var(--fs-micro); }
   ::highlight(find) { background-color: color-mix(in srgb, var(--color-warning) 28%, transparent); }
   ::highlight(find-current) { background-color: color-mix(in srgb, var(--color-warning) 70%, transparent); color: var(--ink); }
   .fsearch input, .inline-search input { width: 100%; min-width: 0; border: 0; border-bottom: 1px solid transparent; outline: 0; background: transparent; color: var(--ink); font: inherit; font-size: var(--fs-primary); padding: var(--space-hair) var(--space-hair); }

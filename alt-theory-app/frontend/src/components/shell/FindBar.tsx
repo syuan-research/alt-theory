@@ -4,6 +4,7 @@ import { t } from "@/i18n";
 import { useHotkey } from "@/lib/hotkeys";
 import {
   bindFindHost,
+  findNote,
   findRanges,
   isFindTarget,
   resolveFindTarget,
@@ -135,7 +136,10 @@ export function FindBar() {
       if (
         active instanceof HTMLElement &&
         !barRef.current?.contains(active) &&
-        active.closest("input, textarea, select, [contenteditable]")
+        active.closest("input, textarea, select, [contenteditable]") &&
+        // The file editor being searched has no Escape of its own: there it
+        // closes the bar and the caret stays where the user is typing.
+        !(active.matches(".file-edit") && host.el.contains(active))
       ) {
         return;
       }
@@ -206,6 +210,7 @@ export function FindBar() {
 
   if (!host) return null;
   const rect = (scrollerOf(host.el) ?? host.el).getBoundingClientRect();
+  const note = findNote(host.el);
   return createPortal(
     <div
       ref={barRef}
@@ -268,6 +273,7 @@ export function FindBar() {
       <button type="button" aria-label={t("Close")} data-tip={t("Close")} onClick={close}>
         <i className="ph ph-x" aria-hidden="true" />
       </button>
+      {note ? <div className="find-note">{note}</div> : null}
     </div>,
     document.body,
   );

@@ -271,7 +271,12 @@ export function FilePreview({
   // iframe) is not searchable, so the bar closes there.
   const searchable =
     active === "diff" || (file !== null && !(active === "rendered" && /\.html?$/i.test(path)));
-  useFindTarget(bodyRef, searchable ? {} : null);
+  // The mirror's relayout makes typing noticeably slower from about this size.
+  const slowMirror = editText !== null && editText.length > 200_000;
+  useFindTarget(
+    bodyRef,
+    searchable ? (slowMirror ? { note: t("Large file: typing is slower while searching") } : {}) : null
+  );
 
   // Edit is searched through a mirror (issue 2026-09-28): a transparent copy
   // of the text under the textarea, in the same grid cell with the same
