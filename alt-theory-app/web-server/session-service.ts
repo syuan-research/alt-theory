@@ -132,12 +132,14 @@ import {
   appendAgentMail,
   formatEnvelopeForContext,
   markAgentMailDelivered,
+  readAgentMail,
   undeliveredAgentMail,
   type AgentMailEnvelope,
 } from "./agent-mail.js";
 import { describeChildOutcome, type ChildOutcome } from "./child-outcome.js";
 import {
   clampSubagentMode,
+  spawnedSessionId,
   inheritsSmartApproval,
   createAgentTeamTools,
   LEAD_DELEGATION_PROMPT_SECTION,
@@ -1082,6 +1084,16 @@ export class SessionService implements AgentTeamBridge {
    * what it showed (a failed mark stays).
    */
   async reclaimIdleRuntimes(now = Date.now()): Promise<string[]> {
+    // A lead waiting on a working subagent stays loaded: the one it reports to.
+    const leadsOfActiveChildren = new Set(
+      [...this.sessions.values()]
+        .filter(
+          (child) =>
+            child.subagentParentId &&
+            this.subagentIsActive(child.manifest.sessionId),
+        )
+        .map((child) => this.subagentReplyTarget(child)),
+    );
     const views: RuntimeView[] = [...this.sessions.values()].map((managed) => {
       const sessionId = managed.manifest.sessionId;
       return {
@@ -1091,11 +1103,7 @@ export class SessionService implements AgentTeamBridge {
         hold: managed.hold,
         pendingApprovals: managed.approvalBridge.listPending().length,
         queuedSubagent: this.queuedSubagentIds.has(sessionId),
-        activeChildren: [...this.sessions.values()].some(
-          (child) =>
-            child.subagentParentId === sessionId &&
-            this.subagentIsActive(child.manifest.sessionId),
-        ),
+        activeChildren: leadsOfActiveChildren.has(sessionId),
         idleSince: managed.idleSince,
         onDisk: Boolean(managed.session.sessionFile && existsSync(managed.session.sessionFile)),
       };
@@ -3649,18 +3657,21 @@ export class SessionService implements AgentTeamBridge {
     return { ...result.value, model: result.step.label };
   }
 
-  /** A subagent's root conversation's latest user request (Codex worker-thread practice). */
+  /**
+   * A subagent's root conversation's latest user request (Codex worker-thread
+   * practice). Each hop follows whom the subagent reports to, so a task from
+   * a branch is reviewed against the branch's request.
+   */
   private leadUserRequest(managed: ManagedSession): string | null {
-    let header = readV4SessionHeader(managed.manifest.recordsDir);
-    if (header?.forkedFrom?.purpose !== "subagent") return null;
-    let lead: ManagedSession | undefined;
-    for (let depth = 0; header?.forkedFrom && depth < 8; depth++) {
-      lead = this.sessions.get(header.forkedFrom.sessionId);
-      if (!lead) return null;
-      header = readV4SessionHeader(lead.manifest.recordsDir);
-      if (header?.forkedFrom?.purpose !== "subagent") break;
+    let lead = managed;
+    for (let depth = 0; depth < 8; depth++) {
+      const leadId = this.subagentReplyTarget(lead);
+      if (!leadId) break;
+      const next = this.sessions.get(leadId);
+      if (!next) return null;
+      lead = next;
     }
-    if (!lead) return null;
+    if (lead === managed) return null;
     const entries = lead.session.sessionManager.getBranch();
     for (const entry of [...entries].reverse()) {
       const message = (entry as { type?: string; message?: { role?: string; content?: unknown } }).message;
@@ -3856,7 +3867,14 @@ export class SessionService implements AgentTeamBridge {
       delivered: true,
     };
     appendAgentMail(child.manifest.recordsDir, envelope);
-    const fragment = formatEnvelopeForContext(envelope, "lead");
+    // A branch sharing this subagent is a lead too; name it so the subagent
+    // can tell its leads apart.
+    const fragment = formatEnvelopeForContext(
+      envelope,
+      child.subagentParentId === parentSessionId
+        ? "lead"
+        : `lead ${this.sessionAlias(parentSessionId) ?? parentSessionId}`,
+    );
     if (!child.runState.isIdle()) {
       await child.session.steer(fragment);
       return "Delivered: the subagent sees your message at its next step.";
@@ -3978,7 +3996,7 @@ export class SessionService implements AgentTeamBridge {
     kind: "update" | "blocker",
   ): Promise<string> {
     const child = this.requireSession(childSessionId);
-    const parentId = child.subagentParentId;
+    const parentId = this.subagentReplyTarget(child);
     if (!parentId) {
       throw new Error("This conversation has no lead conversation to message");
     }
@@ -3996,22 +4014,35 @@ export class SessionService implements AgentTeamBridge {
   }
 
   /**
-   * Direct subagent children of a session, with their display aliases. Live
-   * sessions first: a just-spawned subagent has no persisted turn yet, so the
-   * durable catalog (which filters empty sessions) cannot be the only source.
+   * The subagents a session can address, with their display aliases: its own
+   * children plus any subagent whose spawn result sits on its active path — a
+   * branch shares the subagents its source spawned before the fork point,
+   * because its copied transcript already names them. This is the rule of
+   * one step, not a settled boundary (owner 2026-09-29): user-granted access
+   * to other conversations' agents is expected to widen it later.
+   * Live sessions count too: a just-spawned subagent has no persisted turn
+   * yet, so the durable catalog (which filters empty sessions) cannot be the
+   * only source.
    */
   private subagentChildren(
     parentSessionId: string,
   ): Array<{ sessionId: string; alias: string | null }> {
+    const onPath = this.subagentsSpawnedOnPath(parentSessionId);
     const ids = new Set<string>();
     for (const [sessionId, managed] of this.sessions) {
-      if (managed.subagentParentId === parentSessionId) ids.add(sessionId);
+      if (
+        managed.subagentParentId === parentSessionId ||
+        (managed.subagentParentId && onPath.has(sessionId))
+      ) {
+        ids.add(sessionId);
+      }
     }
     for (const summary of listSessionSummaries(this.config.dataDir).sessions) {
       if (
-        summary.forkedFrom?.sessionId === parentSessionId &&
-        summary.forkedFrom.purpose === "subagent" &&
-        !summary.deletedAt
+        summary.forkedFrom?.purpose === "subagent" &&
+        !summary.deletedAt &&
+        (summary.forkedFrom.sessionId === parentSessionId ||
+          onPath.has(summary.sessionId))
       ) {
         ids.add(summary.sessionId);
       }
@@ -4020,6 +4051,24 @@ export class SessionService implements AgentTeamBridge {
       sessionId,
       alias: this.sessionAlias(sessionId),
     }));
+  }
+
+  /**
+   * Session ids named by spawn_agent results on a session's active Pi path;
+   * the path survives compaction, so a branch keeps its subagents after one.
+   */
+  private subagentsSpawnedOnPath(sessionId: string): Set<string> {
+    const ids = new Set<string>();
+    const managed = this.sessions.get(sessionId);
+    if (!managed) return ids;
+    for (const entry of managed.session.sessionManager.getBranch()) {
+      const message = (entry as { message?: { role?: string; toolName?: string; content?: unknown } })
+        .message;
+      if (message?.role !== "toolResult" || message.toolName !== "spawn_agent") continue;
+      const id = spawnedSessionId(contentToText(message.content));
+      if (id) ids.add(id);
+    }
+    return ids;
   }
 
   private resolveSubagentId(parentSessionId: string, agent: string): string {
@@ -4143,15 +4192,53 @@ export class SessionService implements AgentTeamBridge {
     }
   }
 
+  /**
+   * Where a subagent reports (outcomes and message_parent): the lead that
+   * last gave it a task through send_to_agent — a branch sharing the
+   * subagent, say — else the lead that spawned it (this step's rule, owner
+   * 2026-09-29). Read from the child's own inbox, so it holds across
+   * restarts. Mail from the child's own subagents is skipped: those are
+   * reports to it, not tasks.
+   */
+  private subagentReplyTarget(child: ManagedSession): string | null {
+    const spawner = child.subagentParentId;
+    if (!spawner) return null;
+    const childId = child.manifest.sessionId;
+    const tasks = readAgentMail(child.manifest.recordsDir).filter(
+      (envelope) =>
+        envelope.kind === "message" &&
+        envelope.from !== "user" &&
+        envelope.from !== childId,
+    );
+    if (tasks.length === 0) return spawner;
+    // Listed = alive: a lead in Trash or purged no longer takes replies.
+    const listed = new Map(
+      listSessionSummaries(this.config.dataDir).sessions.map((summary) => [
+        summary.sessionId,
+        summary,
+      ]),
+    );
+    for (const envelope of [...tasks].reverse()) {
+      const sender = listed.get(envelope.from);
+      if (!sender) continue;
+      const own =
+        sender.forkedFrom?.purpose === "subagent" &&
+        sender.forkedFrom.sessionId === childId;
+      if (!own) return envelope.from;
+    }
+    return spawner;
+  }
+
   private deliverSubagentOutcome(
     child: ManagedSession,
     outcome: ChildOutcome,
   ): void {
-    if (!child.subagentParentId) return;
-    this.deliverEnvelope(child.subagentParentId, {
+    const leadId = this.subagentReplyTarget(child);
+    if (!leadId) return;
+    this.deliverEnvelope(leadId, {
       at: new Date().toISOString(),
       from: child.manifest.sessionId,
-      to: child.subagentParentId,
+      to: leadId,
       kind: "lifecycle",
       event: outcome.event,
       cause: outcome.cause,

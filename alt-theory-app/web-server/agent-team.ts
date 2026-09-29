@@ -92,6 +92,15 @@ export function inheritsSmartApproval(
   return childMode === "work" && (parent.getFullAccess() || parent.getSmartApproval());
 }
 
+/**
+ * The child session id named by a spawn_agent report (spawnSubagent in
+ * session-service.ts writes "Spawned subagent "<label>" (session <id>, …").
+ * Pinned against a real report in agent-team.test.ts.
+ */
+export function spawnedSessionId(report: string): string | null {
+  return report.match(/^Spawned subagent ".*" \(session ([^,]+),/s)?.[1] ?? null;
+}
+
 // ---------------------------------------------------------------------------
 // System-prompt sections
 // ---------------------------------------------------------------------------

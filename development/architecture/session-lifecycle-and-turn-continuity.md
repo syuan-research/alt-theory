@@ -358,6 +358,27 @@ normal notification turn; a closed parent receives the undelivered envelope on
 next open (`session-service.ts`, `deliverEnvelope` and `openSession`). The
 mail envelope is rendered as addressed context, not as an ordinary user bubble.
 
+Which subagents a conversation can address, and where a subagent reports,
+are two separate derivations (`session-service.ts`):
+
+- **Addressing** (`subagentChildren`): a conversation's own subagent
+  children, plus every subagent whose `spawn_agent` result sits on its active
+  Pi path (`subagentsSpawnedOnPath` parses the spawn report). A branch
+  therefore shares the subagents its source spawned before the fork point;
+  the path survives compaction. Shared means one child, not a copy.
+- **Reporting** (`subagentReplyTarget`): outcomes and `message_parent` go
+  to the last session that sent the child a task through `send_to_agent`
+  (read from the child's own inbox; senders in Trash or purged, and the
+  child's own subagents, are skipped), else to the spawner. A task from a
+  non-spawner is labelled `lead <alias>` in the child's context. The same
+  target keeps a waiting lead loaded (`reclaimIdleRuntimes`) and supplies
+  the user request that smart approval reviews a subagent against
+  (`leadUserRequest`).
+
+This is the rule of one step (owner 2026-09-29), not a settled boundary:
+granting a conversation access to agents outside its path is expected later
+(`agent-team.test.ts`, branch-sharing case).
+
 What the lead is told is composed in one place, `describeChildOutcome()`
 (`web-server/child-outcome.ts`): the envelope's `event`, its `cause`, the body,
 and the status word that `check_agent`, `wait_for_agents`, and `list_agents`

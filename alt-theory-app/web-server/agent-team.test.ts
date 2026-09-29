@@ -16,10 +16,11 @@ import {
 import {
   clampSubagentMode,
   createAgentTeamTools,
+  spawnedSessionId,
 } from "./agent-team.js";
 import { DEFAULT_SUBAGENT_CONFIG } from "./subagent-config.js";
 import { readV4SessionHeader } from "./session-records.js";
-import { listSessionSummaries, readSessionDetail } from "./session-store.js";
+import { listSessionSummaries, readSessionDetail, softDeleteSession } from "./session-store.js";
 import type { SessionServiceEvent } from "./session-service.js";
 import { describeFailure } from "../core/failure.js";
 
@@ -245,6 +246,8 @@ test("spawnSubagent creates a subagent child with its permission, alias, and spa
     });
     assert.match(spawned.report, /Spawned subagent "docs-subagent"/);
     assert.match(spawned.report, /read-only permission/);
+    // A branch finds shared subagents by parsing this report on its path.
+    assert.equal(spawnedSessionId(spawned.report), spawned.sessionId);
 
     const child = managedOf(service, spawned.sessionId);
     assert.equal(child.subagentParentId, parent.sessionId);
@@ -564,6 +567,99 @@ test("sendToSubagent makes an idle subagent act immediately (owner 2026-08-07: n
     assert.match(reply, /acting on your message now/);
     await waitFor(() => prompts.length === 2);
     assert.match(prompts[1], /chapter 2/);
+  } finally {
+    await service.disposeAll();
+  }
+});
+
+test("a branch shares the subagents spawned before its fork point, and they report back to it", async () => {
+  const fixture = setupFixture();
+  const service = createTestService(fixture);
+  try {
+    const parent = await service.createSession(SELECTORS);
+    const parentManaged = managedOf(service, parent.sessionId);
+    stubEchoPrompt(parentManaged, "planning");
+    await service.runPrompt(parent.sessionId, "plan the work").completion;
+
+    const spawnResult = (sessionId: string, label: string) =>
+      parentManaged.session.sessionManager.appendMessage({
+        role: "toolResult",
+        toolCallId: `call-${label}`,
+        toolName: "spawn_agent",
+        content: [{ type: "text", text: `Spawned subagent "${label}" (session ${sessionId}, general-medium, ask permission, model test/model). It is working in the background.` }],
+        isError: false,
+        timestamp: Date.now(),
+      });
+    const before = await service.createSession(SELECTORS, {
+      forkedFrom: { sessionId: parent.sessionId, purpose: "subagent" },
+    });
+    const forkPoint = spawnResult(before.sessionId, "Scout");
+    const after = await service.createSession(SELECTORS, {
+      forkedFrom: { sessionId: parent.sessionId, purpose: "subagent" },
+    });
+    spawnResult(after.sessionId, "Later");
+
+    const branch = await service.forkSession(parent.sessionId, "fork", forkPoint, undefined, {
+      exactForkPoint: true,
+    });
+    const branchManaged = managedOf(service, branch.sessionId);
+    stubEchoPrompt(branchManaged, "noted");
+
+    // Addressing: the branch knows the subagent its transcript names, not the later one.
+    const listed = await service.listSubagents(branch.sessionId);
+    assert.match(listed, new RegExp(before.sessionId));
+    assert.doesNotMatch(listed, new RegExp(after.sessionId));
+    const parentListed = await service.listSubagents(parent.sessionId);
+    assert.match(parentListed, new RegExp(after.sessionId));
+
+    // Routing: a task from the branch reports back to the branch, not the spawner.
+    const childManaged = managedOf(service, before.sessionId);
+    const childPrompts = stubEchoPrompt(childManaged, "scouted");
+    await service.sendToSubagent(branch.sessionId, before.sessionId, "scout the data");
+    await waitFor(() =>
+      readAgentMail(branchManaged.manifest.recordsDir).some(
+        (envelope) => envelope.event === "completed" && envelope.from === before.sessionId,
+      ),
+    );
+    assert.match(childPrompts[0], /from="lead /, "a branch lead is named, not a bare 'lead'");
+    assert.ok(
+      !readAgentMail(parentManaged.manifest.recordsDir).some(
+        (envelope) => envelope.from === before.sessionId,
+      ),
+      "the spawner must not be woken for the branch's task",
+    );
+
+    // A report from the subagent's own child is not a task: message_parent still reaches the branch.
+    const grandchild = await service.createSession(SELECTORS, {
+      forkedFrom: { sessionId: before.sessionId, purpose: "subagent" },
+    });
+    stubEchoPrompt(managedOf(service, grandchild.sessionId), "digging");
+    await service.runPrompt(grandchild.sessionId, "dig").completion;
+    appendAgentMail(childManaged.manifest.recordsDir, {
+      at: new Date().toISOString(),
+      from: grandchild.sessionId,
+      to: before.sessionId,
+      kind: "message",
+      body: "grandchild update",
+      delivered: true,
+    });
+    await waitFor(() => branchManaged.runState.isIdle() && childManaged.runState.isIdle());
+    await service.messageParent(before.sessionId, "found a gap", "update");
+    assert.ok(
+      readAgentMail(branchManaged.manifest.recordsDir).some(
+        (envelope) => envelope.body === "found a gap",
+      ),
+    );
+
+    // A lead in Trash takes no replies: they fall back to the spawner.
+    softDeleteSession(fixture.dataDir, grandchild.sessionId);
+    softDeleteSession(fixture.dataDir, branch.sessionId);
+    await service.messageParent(before.sessionId, "second gap", "update");
+    assert.ok(
+      readAgentMail(parentManaged.manifest.recordsDir).some(
+        (envelope) => envelope.body === "second gap",
+      ),
+    );
   } finally {
     await service.disposeAll();
   }

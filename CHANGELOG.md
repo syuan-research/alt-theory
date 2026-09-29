@@ -120,6 +120,10 @@ detail lives in commit history and `development/`.
   message. Before, the full earlier context quietly came back and every
   later message sent all of it again. A conversation already hit by this
   needs one more compaction.
+- A branch keeps the subagents its conversation had started before the
+  branch point: the agent in the branch can message and check them, and
+  when the branch gives one of them a task, the answer comes back to the
+  branch instead of waking the original conversation.
 
 ## v1.7.0-beta.1 — 2026-09-24
 
