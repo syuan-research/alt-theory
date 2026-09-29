@@ -116,6 +116,9 @@ agents mistake them for in-progress work.
 ### Current branch status
 
 - `main` — active product line.
+- `archive/branch-subagents` — merged into main (a branch shares the
+  subagents spawned before its fork point; outcomes and `message_parent` go
+  to the latest live task-giver; this version's rule, owner 2026-09-29).
 - `archive/wp-pnpm-hoisted` — merged into main (root dependencies move from
   npm to pnpm 10.34.5 with the hoisted linker, so Pi's shrinkwrap no longer
   nests a second copy of pi-ai, pi-agent-core, typebox, and the provider SDKs;
