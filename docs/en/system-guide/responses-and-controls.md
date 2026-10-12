@@ -39,8 +39,8 @@ A/B comparison surface rather than stacking branches.
 
 - BTW opens a side conversation carrying your current context, for a
   tangent that should not clutter the main line.
-- Helper starts fresh, with no view of your discussion, for questions
-  about the app ([details](helper-and-guidance.md)).
+- For questions about the app, use the help skill in an ordinary conversation
+  ([details](helper-and-guidance.md)).
 - A lead conversation can delegate a bounded task to a subagent, which runs
   as its own session ([details](agent-team-and-subagents.md)).
 

@@ -32,10 +32,9 @@ conversation. BTW, helper, and subagent stay in the narrow rail instead.
 current context, for tangents.
 [→ Responses and Controls](../system-guide/responses-and-controls.md)
 
-**Helper**: the built-in assistant for questions about Alt Theory
-itself. Starts fresh (does not read the current conversation) and
-answers from current documentation.
-[→ Helper and In-App Guidance](../system-guide/helper-and-guidance.md)
+**Help skill**: the bundled `alt-theory-help` skill for questions about Alt Theory
+itself. Runs in an ordinary conversation and answers from current documentation.
+[→ Help and In-App Guidance](../system-guide/helper-and-guidance.md)
 
 **Subagent**: a child conversation a lead delegates a bounded task to. It
 runs as its own session at a clamped mode and a model tier that can be

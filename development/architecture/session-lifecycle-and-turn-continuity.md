@@ -66,7 +66,7 @@ Prompt-cache behavior for copied session history is constrained by
 A WebSocket connection holds no draft: it greets with the new-conversation
 defaults (`session_draft`), and the draft itself — text, files and settings —
 lives in the client (`lib/draft.ts`, see the information architecture). The
-first prompt, skill invocation or root Helper carries the draft's settings in
+first prompt or skill invocation carries the draft's settings in
 `create`; the server checks them (`creationFrom` in `server.ts`) and calls
 `SessionService.createSession()` in `alt-theory-app/web-server/session-service.ts`,
 which allocates the readable session ID, creates the session directories,
@@ -337,7 +337,7 @@ evidence, so a fresh child is listed the moment its run starts under the same
 rule as every other session. A spawn rejected during validation, before the
 child exists, leaves nothing. On the client, a subagent birth never opens the
 right rail (owner 2026-09-18) — the Related row is the feedback — and it never
-consumes a pending Helper/BTW seed. The right rail's own status band sits at
+consumes a pending BTW seed. The right rail's own status band sits at
 its composer, the same seat as the center pane, and carries the idle Continue
 qualification (shared engine recovery + `continue_latest` over its own
 socket).

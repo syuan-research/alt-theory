@@ -310,7 +310,6 @@ export interface SessionSummary {
   updatedAt: string | null;
   deletedAt: string | null;
   trashDueAt?: string | null;
-  helper?: true;
   /** Root that ceded its list spot to a promoted branch (M4b role swap). */
   delisted?: boolean;
   /** The session that took the spot (set with delisted). */
@@ -331,7 +330,7 @@ export interface SessionSummary {
   /** Fork lineage (M5 substrate); null = a root conversation. */
   forkedFrom: {
     sessionId: string;
-    purpose: "fork" | "side" | "helper" | "ab-arm" | "subagent";
+    purpose: "fork" | "side" | "ab-arm" | "subagent";
     /** Added to the conversation list by the user, purpose kept (alpha.6). */
     listed?: boolean;
   } | null;
@@ -708,7 +707,7 @@ export type ClientMessageBody =
   | {
       type: "fork_session";
       payload: {
-        purpose: "fork" | "side" | "helper" | "ab-arm" | "subagent";
+        purpose: "fork" | "side" | "ab-arm" | "subagent";
         forkPointEntryId?: string;
         sourceSessionId?: string;
       };
@@ -716,7 +715,7 @@ export type ClientMessageBody =
   | {
       type: "create_related_session";
       payload: {
-        purpose: "side" | "helper";
+        purpose: "side";
         forkPointEntryId?: string;
       };
     }
@@ -731,12 +730,6 @@ export type ClientMessageBody =
   | { type: "new_session" }
   /** The defaults again, with the thinking level for the draft's model. */
   | { type: "describe_draft"; payload: { modelOverride: SessionModelOverride | null } }
-  | {
-      type: "create_helper_session";
-      payload: { parentSessionId?: string; question?: string };
-      /** A root Helper from the new-conversation draft takes its settings. */
-      create?: NewConversationSettings;
-    }
   | { type: "open_session"; payload: { sessionId: string } }
   /**
    * Rows above the stable row `before`: a page of `limit`, or everything from
@@ -779,7 +772,7 @@ export type ServerMessage =
   | { type: "transcript_page"; payload: { before: string; messages: TranscriptMessage[]; hasMore: boolean } }
   | {
       type: "related_session_created";
-      payload: { sessionId: string; purpose: "side" | "helper" | "subagent" };
+      payload: { sessionId: string; purpose: "side" | "subagent" };
     }
   | {
       type: "branch_created";

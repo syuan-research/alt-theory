@@ -23,7 +23,7 @@ a port of the application:
 | Approval UI and policy layer | The app's | Your harness's |
 | Search/fetch/convert tooling | Bundled CLI tools via skills | Your harness's native tools, or the same CLIs |
 | KB picker, roles UI | App UI | Manual |
-| Conversation list, branch/BTW/Helper UI | App UI | Your harness's |
+| Conversation list, branch/BTW UI | App UI | Your harness's |
 | Agent team and subagent sessions | App feature | Your harness's delegation |
 | Imports from other harnesses | App feature | Not included |
 

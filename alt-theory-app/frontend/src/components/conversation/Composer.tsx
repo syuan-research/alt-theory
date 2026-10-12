@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PRESET_TURNS, useApp } from "@/context/AppProvider";
 import { useConversationContext } from "@/context/ConversationContext";
 import { useMainView } from "@/context/MainView";
@@ -87,15 +87,7 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
     return () => document.removeEventListener("keydown", onEscape);
   }, [menu]);
 
-  const helper = useMemo(
-    () => ({
-      name: "helper",
-      description: t("Ask how Alt works, or get setup fixed — in a new conversation on the side"),
-      run: (args: string) => main.openHelper(args, variant === "live"),
-    }),
-    [main, variant],
-  );
-  const slashCommands = useSlashCommands({ live: variant === "live", helper });
+  const slashCommands = useSlashCommands({ live: variant === "live" });
 
   /** Put `/name ` in the box, focused, waiting for the user's actual request. */
   const armCommand = (name: string) => {

@@ -298,7 +298,7 @@ export function ShellProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // A side conversation sizes the pane as it opens: a branch/edit ≈ half of
-  // center+right, BTW/Helper/subagent the stored preference (≈480). The
+  // center+right, BTW/subagent the stored preference (≈480). The
   // stored preference is not rewritten (a user drag still does).
   const openTarget = useCallback(
     (target: ViewTarget, options?: { size?: RelatedPaneSize }) => {

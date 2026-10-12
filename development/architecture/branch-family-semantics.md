@@ -58,7 +58,8 @@ walks that stopped at deleted middles; do not reintroduce them.
 - `forkedFrom { sessionId, purpose, listed? }` on every child.
   **Lineage is immutable provenance** — promotion, deletion, restore, and
   moves never rewrite who forked from whom.
-- Purposes: `fork` (Branch), `side` (BTW), `helper`, `subagent`, `ab-arm`.
+- Purposes: `fork` (Branch), `side` (BTW), `subagent`, `ab-arm`.
+  Retired `helper` children normalize to `side` with `listed: true` on read.
 - Derived on every list build (never stored): `lineagePath: string[]`,
   `lineageMarker: string | null` (`withLineage` in session-store.ts).
   The walk goes THROUGH Trash; only a purged (permanently deleted)
@@ -66,7 +67,7 @@ walks that stopped at deleted middles; do not reintroduce them.
 - `delisted?: boolean` + `delistedFor?: string` exist on ROOTS only:
   a demoted old mainline and who took its spot.
 - `fork.listed === true` has TWO meanings by context:
-  - on side/helper/subagent: user added it to the conversation list
+  - on side/subagent: user added it to the conversation list
     (membership itself — never clear it as a side effect);
   - on a fork child: promotion anchor. Branches are list members by
     nature, so for them the flag only marks "user chose this one as the
@@ -102,7 +103,7 @@ walks that stopped at deleted middles; do not reintroduce them.
 - Display-layer only (`ui-alias.json` is never rewritten): the list title
   is `marker · base title`.
 - `lineageMarker` = one token segment per fork-child level, joined by
-  `-`: tokens `br` (branch), `btw`, `h` (helper), `sa` (subagent), `ab`
+  `-`: tokens `br` (branch), `btw`, `sa` (subagent), `ab`
   (ab-arm; not shown in UI). Example: `br1-btw2` = second BTW of the
   first branch. Every depth extends the path, so branch-of-btw vs
   btw-of-btw can never collide.
@@ -113,7 +114,7 @@ walks that stopped at deleted middles; do not reintroduce them.
   collapses to the marker, a real name is kept under the prefix.
 - Tokens are all-lowercase by ruling (owner 2026-08-06: consistency over
   word-vs-acronym casing like `Br`/`BTW`). The related pane's collapsible
-  kind heads (Branches / Subagents / BTW / Helpers) name the kinds; the
+  kind heads (Branches / Subagents / BTW) name the kinds; the
   former sticky token legend was removed with them (v1.5 part 2 M4).
 
 ## 4. Promotion ("Make this the main conversation" — role swap + coexist)
@@ -140,7 +141,7 @@ walks that stopped at deleted middles; do not reintroduce them.
 
 - Cascade (`attachedDeletionTargets`, owner 2026-08-06 — replaces the
   per-node living-branch walk): **Delete removes exactly the chosen
-  conversation.** Attached conversations (side/helper/subagent/ab-arm)
+  conversation.** Attached conversations (side/subagent/ab-arm)
   belong to the FAMILY, not to one parent: they survive any deletion
   that leaves a living anchor (`keepsFamilyAlive`: root — delisted
   counts —, branch, or listed child, at any depth), and the LAST anchor
@@ -170,8 +171,8 @@ walks that stopped at deleted middles; do not reintroduce them.
   carries `agentType` from the spawn record (`buildSummary`).
 - Scope `family` (the pane's "Whole family" card) adds the living family
   members the default view keeps out — sibling and cousin branches.
-  There is no wider scope. The kind filter (Branches / Subagents / BTW /
-  Helpers, counts from the current scope) and the search intersect; the
+  There is no wider scope. The kind filter (Branches / Subagents / BTW,
+  counts from the current scope) and the search intersect; the
   ancestor chain ignores the kind filter and obeys the unordered-word Quick
   Find search. Rows are
   grouped by kind under collapsible heads; a member whose working folder
@@ -215,7 +216,7 @@ walks that stopped at deleted middles; do not reintroduce them.
 6. Frontend predicate (`canTakeMainline`) and server behavior
    (`promoteToMainlineRecords`) must agree; `familyHead` is shared by
    tree building and the crown so they cannot disagree.
-7. Never clear `listed` on side/helper/subagent as a side effect.
+7. Never clear `listed` on side/subagent as a side effect.
 
 ## 9. Known trade-offs (accepted, owner 2026-08-06)
 

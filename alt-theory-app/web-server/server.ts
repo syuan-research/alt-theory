@@ -2520,8 +2520,7 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
         }
         if (
           attachedSessionId &&
-          msg.type !== "new_session" &&
-          msg.type !== "create_helper_session"
+          msg.type !== "new_session"
         ) {
           try {
             requireSessionWsContentAccess(attachedSessionId);
@@ -2981,9 +2980,9 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
               break;
             }
             try {
-              const related = await sessionService.createRelatedSession(
+              const related = await sessionService.forkSession(
                 attachedSessionId,
-                msg.payload.purpose,
+                "side",
                 msg.payload.forkPointEntryId,
               );
               if (!closed) {
@@ -2991,69 +2990,10 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
                   type: "related_session_created",
                   payload: {
                     sessionId: related.sessionId,
-                    purpose: msg.payload.purpose,
+                    purpose: "side",
                   },
                 });
               }
-            } catch (error) {
-              fail(error);
-            }
-            break;
-          }
-          case "create_helper_session": {
-            const parentSessionId = msg.payload.parentSessionId;
-            try {
-              // A root Helper takes the draft's settings (from the new-
-              // conversation screen), or its parent's when there is one.
-              // Full Access is never carried into a Helper. A draft setting
-              // that no longer holds must not make Help disappear: defaults.
-              let creation: ReturnType<typeof creationFrom>;
-              try {
-                creation = creationFrom(msg.create);
-              } catch {
-                creation = creationFrom();
-              }
-              let rootSelectors = creation.selectors;
-              let rootMode = creation.metadata.mode;
-              let rootModelOverride = creation.metadata.modelOverride;
-              let rootWorkspace = creation.metadata.workspace?.primaryDir ?? null;
-              if (parentSessionId) {
-                try {
-                  const parent = requireSessionWsContentAccess(parentSessionId);
-                  rootSelectors = sessionService.getSelectors(parentSessionId);
-                  const parentSnapshot = sessionService.getSnapshot(parentSessionId);
-                  rootMode = parentSnapshot.mode;
-                  rootModelOverride = parentSnapshot.modelOverride ?? null;
-                  rootWorkspace = parent.workspacePrimaryDir ?? null;
-                  const parentIsHelper =
-                    parent.helper || parent.forkedFrom?.purpose === "helper";
-                  if (!parentIsHelper) {
-                    const related = await sessionService.createRelatedSession(
-                      parentSessionId,
-                      "helper",
-                    );
-                    if (!closed) {
-                      send({
-                        type: "related_session_created",
-                        payload: { sessionId: related.sessionId, purpose: "helper" },
-                      });
-                    }
-                    break;
-                  }
-                } catch {
-                  // A stale, busy, trashed, or otherwise unusable parent must not
-                  // make Help disappear. The root Helper below is the fallback.
-                }
-              }
-              const root = await sessionService.createSession(rootSelectors, {
-                ...creation.metadata,
-                helper: true,
-                fullAccess: false,
-                mode: rootMode,
-                modelOverride: rootModelOverride,
-                workspace: rootWorkspace ? { primaryDir: rootWorkspace } : null,
-              });
-              if (!closed) attachToSession(root.sessionId);
             } catch (error) {
               fail(error);
             }

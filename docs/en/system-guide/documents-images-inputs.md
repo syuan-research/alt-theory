@@ -31,7 +31,7 @@ that an image was attached and say they cannot read it.
 
 The app tracks image capability per model in your model configuration. If
 you know your model reads images but the app treats it as text-only, ask
-Helper to check and record the model's image support. Its image-support
+help skill to check and record the model's image support. Its image-support
 procedure verifies this against the provider's current documentation rather
 than guessing from the model's name.
 

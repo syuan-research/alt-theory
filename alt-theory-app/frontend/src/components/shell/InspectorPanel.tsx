@@ -458,8 +458,8 @@ function RelatedConversations() {
               </button>
             </>
           ) : null}
-          <button onClick={() => main.openHelper(undefined, Boolean(conv.sessionId))}>
-            {t("Ask Helper")}
+          <button onClick={() => main.askAboutAlt()}>
+            {t("Ask Alt")}
           </button>
         </div>
       </div>
@@ -475,8 +475,6 @@ function RelatedConversations() {
         return t("Parent · {count} messages", { count });
       case "ancestor":
         return t("Ancestor · {count} messages", { count });
-      case "helper":
-        return t("How Alt works, and fixing setup · fresh context");
       case "subagent":
         return row.role
           ? t("Subagent · {role} · {count} messages", { role: row.role, count })

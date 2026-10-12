@@ -6,8 +6,8 @@ typing.
 
 ## The entries
 
-- Ask how Alt works opens the [Helper](helper-and-guidance.md), the
-  fresh-context assistant for questions about the app.
+- Ask Alt opens an ordinary draft with the [help skill](helper-and-guidance.md)
+  prefilled for questions about the app.
 - Align on a plan or decision invokes the
   [aligning skill](bundled-skills.md#adaptive-aligning): the agent
   interviews you to build shared understanding before direction-setting
@@ -26,8 +26,8 @@ typing.
 
 Clicking a skill in the Toolbox or palette arms the composer with
 `/name ` and focuses it, so you can type your question before it runs.
-Only commands that need no prompt (`/new`, `/branch`, `/btw`, `/compact`,
-`/helper`) fire on click.
+Only commands that need no prompt (`/new`, `/branch`, `/btw`, `/compact`)
+fire on click. The help skill waits for a question like other skills.
 
 ## What the Toolbox is not
 

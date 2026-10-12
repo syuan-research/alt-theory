@@ -11,14 +11,13 @@ export { isListMember };
 
 export type DisplayNames = Record<string, { alias: string; snippet: string }>;
 
-type RelatedPurpose = "fork" | "side" | "helper" | "subagent";
+type RelatedPurpose = "fork" | "side" | "subagent";
 
 /** Marker tokens (owner 2026-08-06): br / btw / h / sa, one segment per
  *  level, e.g. "br1-btw2" = second BTW of the first branch. */
 const LINEAGE_TOKEN: Record<RelatedPurpose, string> = {
   fork: "br",
   side: "btw",
-  helper: "h",
   subagent: "sa",
 };
 
@@ -80,7 +79,6 @@ export function relatedDisplayMarker(
   allSessions?: SessionSummary[],
 ): string | null {
   const fork = session.forkedFrom;
-  if (session.helper || fork?.purpose === "helper") return "Helper";
   if (!fork || fork.purpose === "ab-arm") return null;
   if (session.lineageMarker) return session.lineageMarker;
   const token = LINEAGE_TOKEN[fork.purpose as RelatedPurpose];
@@ -251,8 +249,6 @@ export function purposeIcon(session: SessionSummary): string {
   switch (session.forkedFrom?.purpose) {
     case "subagent":
       return "ph-robot";
-    case "helper":
-      return "ph-lifebuoy";
     case "side":
       return "ph-arrows-split";
     case "ab-arm":
@@ -263,8 +259,8 @@ export function purposeIcon(session: SessionSummary): string {
 }
 
 /** The kinds a related row can be grouped and filtered by. */
-export type RelatedKind = "fork" | "subagent" | "side" | "helper";
-export const RELATED_KINDS: RelatedKind[] = ["fork", "subagent", "side", "helper"];
+export type RelatedKind = "fork" | "subagent" | "side";
+export const RELATED_KINDS: RelatedKind[] = ["fork", "subagent", "side"];
 
 export interface RelatedRow {
   session: SessionSummary;
@@ -412,7 +408,6 @@ export function relatedKindLabel(kind: RelatedKind): string {
     fork: t("Branches"),
     subagent: t("Subagents"),
     side: t("BTW"),
-    helper: t("Helpers"),
   }[kind];
 }
 
@@ -422,7 +417,6 @@ export function listedOriginLabel(session: SessionSummary): string | null {
   if (fork.purpose === "fork") return "Branch";
   if (!fork.listed) return null;
   if (fork.purpose === "subagent") return "From subagent";
-  if (fork.purpose === "helper") return "From Helper";
   if (fork.purpose === "side") return "From BTW";
   return null;
 }

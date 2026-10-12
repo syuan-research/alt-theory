@@ -20,7 +20,7 @@ what is not obvious from opening it.
   locations, and project resources in attached working folders. Discovery,
   not sync.
 - A working folder contributes its context and skills while attached.
-- An existing Pi or other-harness setup can be migrated once. The Helper
+- An existing Pi or other-harness setup can be migrated once. The help skill
   inspects your config and brings across what is useful, visibly.
   Precedence:
   [Shared Configuration and Assets](../advanced/shared-configuration-and-assets.md).

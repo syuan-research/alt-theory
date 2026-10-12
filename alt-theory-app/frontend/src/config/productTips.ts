@@ -30,7 +30,6 @@ const general: ProductTip[] = [
   { id: "knowledge-set", condition: { kind: "general" }, text: localized("Pick a knowledge set above the composer to ground answers in your own material.") },
   { id: "role", condition: { kind: "general" }, text: localized("A role changes who Alt speaks as; you can change or clear it at any point.") },
   { id: "btw", condition: { kind: "general" }, text: localized("BTW opens a side question that doesn't clutter this conversation.") },
-  { id: "helper", condition: { kind: "general" }, text: localized("Open Helper from Help or Related — it answers from the current documentation, in its own conversation.") },
   { id: "permission", condition: { kind: "general" }, text: localized("The shield next to the message box sets what Alt may do; Read-only asks before every file change.") },
   { id: "no-project", condition: { kind: "general" }, text: localized("Start a conversation without a project to think from the question itself, not from a project's files.") },
   { id: "compact", condition: { kind: "general" }, text: localized("If a conversation gets long, /compact summarizes the early turns and shows you the summary.") },

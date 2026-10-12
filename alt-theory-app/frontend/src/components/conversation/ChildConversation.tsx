@@ -25,7 +25,7 @@ import { PendingMark } from "@/components/ui/PendingMark";
 
 /**
  * A conversation other than the one in the center: a branch shown beside it for
- * comparison, a BTW/Helper side chat, or a subagent. Same conversation module,
+ * comparison, a BTW side chat, or a subagent. Same conversation module,
  * same bubbles and shared composer pieces as the main conversation — only the
  * width and the header line differ. Per-message branching stays with the
  * center conversation; open this one from the list if you want to branch off it.
@@ -134,7 +134,7 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
       warn: true,
     });
 
-  // A Helper/BTW opened with a question already typed asks it straight away
+  // A BTW opened with a question already typed asks it straight away
   // instead of greeting the user with "what can I help with?".
   const seed = main.childSeed;
   const seedSentRef = useRef(false);
@@ -161,16 +161,7 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
     }
   };
 
-  const helper = useMemo(
-    () => ({
-      name: "helper",
-      description: t("Ask how Alt works, or get setup fixed — in a fresh Helper conversation"),
-      run: () => main.openHelper(undefined, true),
-      immediate: true,
-    }),
-    [main],
-  );
-  const commands = useSlashCommands({ live: true, helper });
+  const commands = useSlashCommands({ live: true });
   const palette = useSlashPalette({ draft, commands, setDraft });
 
   const latestUserIndex = useMemo(() => {
@@ -208,7 +199,7 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
             <i className="ph ph-crown-simple" aria-hidden="true" />{" "}
             {mainlineAction}
           </button>
-        ) : inList || purpose === "helper" ? null : (
+        ) : inList ? null : (
           <button
             className="flat promote-action"
             data-tip={t("Keep this conversation in your list, with where it came from.")}
@@ -340,9 +331,6 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
 
 /** One lowkey line saying what this pane is — not a repeat of the title. */
 function childBlurb(purpose: string): string {
-  if (purpose === "helper") {
-    return t("Questions about Alt itself, and setup fixes — fresh context.");
-  }
   if (purpose === "subagent") {
     return t("A subagent working on its own — you can join in.");
   }

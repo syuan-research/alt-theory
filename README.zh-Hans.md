@@ -55,7 +55,7 @@ Knowledge base（知识库）可以保留一个领域的范围、provenance（�
 | `search-policy` | 论断需要实时核验和清楚的来源标记 | 自动 |
 | `precise-edit` | 接近定稿的文本需要克制、精确的编辑 | 自动或明确调用 |
 | `imported-session-context` | 导入的对话需要恢复上下文 | 自动 |
-| `alt-theory-help` | 设置或产品使用需要帮助 | 通过 Helper（助手） |
+| `alt-theory-help` | 设置或产品使用需要帮助 | 在普通对话中调用 |
 
 当前可以通过 commands（命令）或输入区上方可切换的 [Steer card](docs/en/system-guide/steer-bar.md) 明确调用 Skill（技能）。
 
@@ -79,7 +79,7 @@ Subagent（子代理）可以同时与 Main agent（主代理）和用户沟通�
 
 Alt Theory 首先面向社会科学领域的学生与研究者：从正在形成第一个研究问题的硕士生，到判断 AI 工具是否应进入研究计划的资深研究者。它也支持更广泛的研究型知识工作。
 
-无需 Agent 工具经验。如果你主要需要讨论和有记录的反思，**Understand（理解）**会刻意限制 Agent 的操作范围，同时保留一个用于对话摘要和笔记的小型可写空间。产品和设置问题可以交给 **Helper（助手）**；详见[帮助与故障排除](#帮助与故障排除)。
+无需 Agent 工具经验。如果你主要需要讨论和有记录的反思，**Understand（理解）**会刻意限制 Agent 的操作范围，同时保留一个用于对话摘要和笔记的小型可写空间。产品和设置问题可在普通对话中使用 **alt-theory-help** Skill；详见[帮助与故障排除](#帮助与故障排除)。
 
 当研究需要实时来源、文件、分析或文档制作时，当前对话可以切换到 **Work（工作）**，而不丢弃此前讨论。例如，Alt 可以进行探索性的 R 或 Python 分析，处理文献和文档，制作表格、幻灯片或协作材料，然后回到解释与判断。
 
@@ -138,7 +138,7 @@ Alt Theory 会直接进入对话。在第一次运行对话前，请在 **Settin
 
 ## 帮助与故障排除
 
-从全局 Help 菜单、Related 中的低调入口或 `/helper` 打开 **Helper（小助手）**。每次打开都会创建新的、在对话列表可见的 Helper。中间已有对话时，它挂在该 family 下并在右栏打开；否则作为 root conversation 在中间打开。Helper 依据当前文档回答，并协助排查 Provider、API key、Model 与缺失工具。相同的 Help 菜单也能打开不创建对话的 Help center。
+在普通对话中调用 **alt-theory-help** Skill，可依据当前文档排查 Provider、API key、Model 与缺失工具。Help → 询问 Alt 打开预填帮助 Skill 的普通新对话草稿，补充问题后发送。相同的 Help 菜单也能打开不创建对话的 Help center。
 
 - [Common questions（常见问题）](docs/en/help/common-questions.md)
 - [Imports and cross-harness continuity（导入与跨工具连续性）](docs/en/system-guide/imports-and-continuity.md)

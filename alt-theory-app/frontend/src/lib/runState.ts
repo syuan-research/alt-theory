@@ -80,11 +80,7 @@ export function requestLabel(request: PendingRequest): string {
         ? t("Making a copy of this conversation…")
         : t("Branching conversation…");
     case "create_related_session":
-      return message.payload.purpose === "helper"
-        ? t("Starting a fresh helper…")
-        : t("Starting a related conversation…");
-    case "create_helper_session":
-      return t("Starting a fresh helper…");
+      return t("Starting a related conversation…");
     case "prepare_branch_revision":
       return t("Preparing comparison…");
     case "switch_role_preset":

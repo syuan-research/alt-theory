@@ -34,7 +34,7 @@ The Windows unpacked app is written to `dist/win-unpacked/`. See the repository 
 The first screen is the app itself: a conversation waiting to start. At least one model provider must be configured before a conversation can run. Alt Theory supplies the working folder and the methods; the model comes from the provider the user configures.
 
 - If the app came from the Alt Theory team, a provider may already be set up.
-- Otherwise the normal app remains open and the composer explains that a model is needed. Its action opens **Settings → Models**, where the user can add an API key or sign in with a supported subscription. See [Models, Providers, and Access](../system-guide/models-providers-access.md). The in-app [Helper](../system-guide/helper-and-guidance.md) can guide step by step.
+- Otherwise the normal app remains open and the composer explains that a model is needed. Its action opens **Settings → Models**, where the user can add an API key or sign in with a supported subscription. See [Models, Providers, and Access](../system-guide/models-providers-access.md). The in-app [help skill](../system-guide/helper-and-guidance.md) can guide step by step.
 
 ## Cost
 

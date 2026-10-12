@@ -1254,7 +1254,7 @@ test("SessionService reconciles a crash-interrupted accepted run and continues f
   }
 });
 
-test("related and root Helper sessions stay visible and invoke their skill once", async () => {
+test("help is explicitly invoked in an ordinary conversation", async () => {
   const fixture = setupFixture();
   writeFileSync(
     join(fixture.skillsDir, "alt-theory-help.md"),
@@ -1262,87 +1262,30 @@ test("related and root Helper sessions stay visible and invoke their skill once"
     "utf-8",
   );
   const service = createTestService(fixture, "internal");
-  const parent = await service.createSession({
+  const ordinary = await service.createSession({
     rolePresetSlug: "role-conceptual-theory-companion",
     kbDomain: "ep-core",
     soulSlug: "soul-latest",
   });
-  const managed = (service as any).sessions.get(parent.sessionId);
-  managed.session.sessionManager.appendMessage({
-    role: "user",
-    content: [{ type: "text", text: "parent-only context" }],
-    timestamp: Date.now(),
-  });
   try {
-    managed.busy = true;
-    const helper = await service.createRelatedSession(
-      parent.sessionId,
-      "helper",
-    );
-    managed.busy = false;
-    const helperDetail = readSessionDetail(fixture.dataDir, helper.sessionId);
-    const helperHeader = readV4SessionHeader(
-      service.getManifest(helper.sessionId).recordsDir,
-    );
-    assert.deepEqual(helperDetail?.transcript ?? [], []);
-    assert.deepEqual(helperHeader?.forkedFrom, {
-      sessionId: parent.sessionId,
-      purpose: "helper",
-    });
-    assert.equal(
-      service
-        .getManifest(helper.sessionId)
-        .skills?.some((skill) => skill.name === "alt-theory-help"),
-      true,
-    );
-    assert.equal(
-      latestRunSnapshots(service.getManifest(helper.sessionId).recordsDir)
-        .length,
-      0,
-    );
-
-    let helperPrompt = "";
-    const helperManaged = (service as any).sessions.get(helper.sessionId);
-    helperManaged.session.prompt = async (text: string) => {
-      helperPrompt = text;
-    };
-    await service.runPrompt(helper.sessionId, "How do I start locally?")
-      .completion;
-    assert.equal(
-      helperPrompt,
-      "/skill:alt-theory-help How do I start locally?",
-    );
-
-    await service.runPrompt(helper.sessionId, "Where is that button?")
-      .completion;
-    assert.equal(helperPrompt, "Where is that button?");
-
-    assert.equal(helperHeader?.forkedFrom?.purpose, "helper");
-
-    const rootHelper = await service.createSession(
-      {
-        rolePresetSlug: "role-conceptual-theory-companion",
-        kbDomain: "ep-core",
-        soulSlug: "soul-latest",
-      },
-      { helper: true },
-    );
+    await assert.rejects(service.forkSession(ordinary.sessionId, "helper" as any), /Unsupported conversation purpose/);
     let rootPrompt = "";
-    const rootManaged = (service as any).sessions.get(rootHelper.sessionId);
+    const rootManaged = (service as any).sessions.get(ordinary.sessionId);
     rootManaged.session.prompt = async (text: string) => {
       rootPrompt = text;
     };
-    await service.runPrompt(rootHelper.sessionId, "Help me configure a model.")
+    await service.invokeSkill(ordinary.sessionId, "alt-theory-help", "Help me configure a model.")
       .completion;
     assert.equal(
       rootPrompt,
       "/skill:alt-theory-help Help me configure a model.",
     );
     const rootHeader = readV4SessionHeader(
-      service.getManifest(rootHelper.sessionId).recordsDir,
+      service.getManifest(ordinary.sessionId).recordsDir,
     );
-    assert.equal(rootHeader?.helper, true);
     assert.equal(rootHeader?.forkedFrom, undefined);
+    await service.runPrompt(ordinary.sessionId, "Where is that button?").completion;
+    assert.equal(rootPrompt, "Where is that button?");
   } finally {
     await service.disposeAll();
   }

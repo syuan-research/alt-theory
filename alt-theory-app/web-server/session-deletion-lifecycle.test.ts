@@ -92,7 +92,7 @@ test("Delete follows attached conversations but stops at Branches and promoted c
   createSession(dataDir, "subagent", { sessionId: "side", purpose: "subagent" });
   createSession(dataDir, "promoted-helper", {
     sessionId: "root",
-    purpose: "helper",
+    purpose: "side",
     listed: true,
   });
   createSession(dataDir, "branch-side", { sessionId: "branch", purpose: "side" });
@@ -302,7 +302,7 @@ test("Delete reports every conversation it will bury, so a live run can be stopp
   createSession(dataDir, "branch", { sessionId: "root", purpose: "fork" });
   createSession(dataDir, "promoted-helper", {
     sessionId: "root",
-    purpose: "helper",
+    purpose: "side",
     listed: true,
   });
 
@@ -487,7 +487,7 @@ test("softDeleteSessionFamily trashes the whole tree from any member", () => {
   const dataDir = mkdtempSync(join(tmpdir(), "alt-theory-delete-family-"));
   createSession(dataDir, "root");
   createSession(dataDir, "branch", { sessionId: "root", purpose: "fork" });
-  createSession(dataDir, "helper", { sessionId: "branch", purpose: "helper" });
+  createSession(dataDir, "helper", { sessionId: "branch", purpose: "side", listed: true });
   createSession(dataDir, "other-root");
 
   assert.deepEqual(softDeleteSessionFamily(dataDir, "branch").sort(), [

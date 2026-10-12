@@ -2170,11 +2170,11 @@ function FeaturesPanel() {
         className="add-btn help-ask"
         onClick={() => {
           shell.openApp();
-          main.openHelper(undefined, false);
+          main.askAboutAlt();
         }}
       >
         <i className="ph ph-chats-circle" />
-        {t("Ask Helper")}
+        {t("Ask Alt")}
       </button>
       <div className="set-card">
         <h4>{t("Think through research questions with you")}</h4>
@@ -2209,7 +2209,7 @@ function FeaturesPanel() {
       <div className="set-card">
         <h4>{t("Keep side paths without losing the main conversation")}</h4>
         <p>
-          {t("Branch starts another direction from the current conversation. BTW opens a smaller related conversation. Helper is always a fresh conversation for questions about Alt or setup; it appears in your conversation list like any other conversation.")}
+          {t("Branch starts another direction from the current conversation. BTW opens a smaller related conversation. For questions about Alt or setup, use the help skill in an ordinary conversation.")}
         </p>
       </div>
       <div className="set-card">

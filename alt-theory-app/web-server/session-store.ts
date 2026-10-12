@@ -86,7 +86,6 @@ export interface SessionSummary {
   alias?: string;
   snippet?: string;
   visibility: SessionVisibility;
-  helper?: true;
   createdAt: string | null;
   /** Product recency: newest prompt accepted for execution, never read/open mtime. */
   lastPromptAcceptedAt: string | null;
@@ -256,7 +255,6 @@ function listSessionSummariesByDeletion(
 const LINEAGE_TOKEN: Record<ForkPurpose, string> = {
   fork: "br",
   side: "btw",
-  helper: "h",
   subagent: "sa",
   "ab-arm": "ab",
 };
@@ -1202,7 +1200,7 @@ export function sessionsAttachedToDeletion(
   return attachedDeletionTargets(sessionId, allSessionSummaries(dataDir));
 }
 
-/** A structural family anchor: a root (delisted or not), a branch, a Helper,
+/** A structural family anchor: a root (delisted or not), a branch,
  *  or a child the user listed — list membership, Trash and demotion aside. */
 function keepsFamilyAlive(s: SessionSummary): boolean {
   return isListMember(s);
@@ -1212,9 +1210,9 @@ function keepsFamilyAlive(s: SessionSummary): boolean {
  * Owner rule (v1.4.1, 2026-08-06 — replaces the per-node living-branch walk):
  * Delete removes exactly the chosen conversation. Attached conversations
  * (btw/subagent/ab-arm) belong to the FAMILY, not to one parent: they survive
- * any deletion that leaves a living anchor (root, branch, Helper, or listed
+ * any deletion that leaves a living anchor (root, branch, or listed
  * child — at any depth), and follow the last anchor out so no invisible
- * orphans remain. Helpers are ordinary visible anchors. One rule, no
+ * orphans remain. One rule, no
  * fork-time comparison, no chain special cases.
  */
 function attachedDeletionTargets(
@@ -1394,7 +1392,6 @@ function buildSummary(sessionId: string, parts: SessionParts): SessionSummary {
     alias,
     snippet,
     visibility: parts.v4Session?.visibility ?? "no-export",
-    ...(parts.v4Session?.helper ? { helper: true } : {}),
     createdAt: parts.manifest?.createdAt ?? parts.v4Session?.createdAt ?? null,
     lastPromptAcceptedAt:
       latestPromptAcceptedAt(parts.recordsDir) ??

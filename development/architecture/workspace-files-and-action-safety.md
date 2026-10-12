@@ -348,7 +348,7 @@ there asks for confirmation once) and each new draft starts from it again. A
 mode change mid-run is held until the turn ends, except that a pending switch
 to Read-only mediates at once (`holdReadOnly`): shell calls are refused, each
 write asks, and Full Access is off; the tool set follows at the turn's end. Derived conversations —
-subagents, branches, BTW, Helpers, A/B arms — inherit the parent's mode at
+subagents, branches, BTW, A/B arms — inherit the parent's mode at
 birth and never Full Access; a child of a smart-approval or Full parent
 starts on smart approval (`inheritsSmartApproval`), so the inherited
 permission is at most smart approval;
@@ -428,7 +428,7 @@ traced as a `full_access_changed` session event (creation records it in
 and the instance swap of a role/soul/instruction switch — takes it back from
 the header. Under Read-only a stored value is dormant rather than cleared
 (the composer's Read-only choice turns it off). Children never inherit it:
-branches, BTW, Helpers and subagents are written without the field and
+branches, BTW and subagents are written without the field and
 start on smart approval instead. Application-level boundaries outside
 agent-tool mediation (the access policy, REST file routes, trash and
 recoverable delete) are unaffected. See

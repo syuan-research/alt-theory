@@ -27,7 +27,7 @@ A conversation cannot start until at least one provider is valid and
 active. Configure several and choose per conversation. Keys belong in
 Settings, not in chat messages.
 
-If any of this is unfamiliar, the [Helper](helper-and-guidance.md) walks
+If any of this is unfamiliar, the [help skill](helper-and-guidance.md) walks
 through provider setup in plain language.
 
 Alt Theory does not automatically read Pi's provider configuration. Bringing
@@ -64,12 +64,12 @@ settings.json  { defaultProvider, defaultModel, ... }
 
 `apiKey` in `models.json` may be an environment-variable marker rather than
 the secret itself. Use Settings for ordinary edits; this shape is here so
-Helper and advanced users can inspect or migrate configuration without
+help skill and advanced users can inspect or migrate configuration without
 reverse-engineering the app.
 
 ### Configure models with a chatbot
 
-Settings is the ordinary route, and the [Helper](helper-and-guidance.md) can
+Settings is the ordinary route, and the [help skill](helper-and-guidance.md) can
 walk you through it inside the app. If you would rather hand the job to a
 chatbot you already use — ChatGPT, Kimi, DeepSeek, Gemini — open "Let a
 chatbot write the config" in Settings, copy the prompt there, and send it
@@ -159,5 +159,5 @@ far. Costs accrue only while the agent is responding or working.
    key) is stored but not usable.
 2. Reopen the conversation. Configuration changes apply to new and
    reopened conversations, not silently mid-turn.
-3. Still stuck: the [Helper](helper-and-guidance.md) can inspect your
+3. Still stuck: the [help skill](helper-and-guidance.md) can inspect your
    configuration, or see [Common Questions](../help/common-questions.md).

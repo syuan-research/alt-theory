@@ -22,11 +22,9 @@ export interface SlashCommand {
  */
 export function useSlashCommands({
   live,
-  helper,
 }: {
   /** A materialized conversation (the new-conversation page has no branch/compact). */
   live: boolean;
-  helper: SlashCommand;
 }): SlashCommand[] {
   const app = useApp();
   const main = useMainView();
@@ -34,7 +32,6 @@ export function useSlashCommands({
   return useMemo(() => {
     const idle = () => Boolean(conversation.sessionId) && !conversation.isRunning;
     return [
-      helper,
       ...(live
         ? [
             {
@@ -71,7 +68,7 @@ export function useSlashCommands({
           run: (args: string) => void conversation.invokeSkill(skill.name, args),
         })),
     ];
-  }, [app.discovery, conversation, helper, live, main]);
+  }, [app.discovery, conversation, live, main]);
 }
 
 /** Palette state over the editor text: matches, selection, run, keys. */

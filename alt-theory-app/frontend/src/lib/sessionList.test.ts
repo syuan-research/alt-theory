@@ -6,7 +6,7 @@ import { buildWorkspaceTree, canTakeMainline, contentRailMatchIds, familyKeyOf, 
 function child(
   sessionId: string,
   parentId: string,
-  purpose: "fork" | "side" | "helper" | "subagent",
+  purpose: "fork" | "side" | "subagent",
   createdAt: string,
 ): SessionSummary {
   return {
@@ -44,9 +44,10 @@ test("branch prefix is a token path 'brN · title', not a rename to branch1", ()
   assert.equal(sessionTitle(b, names, all), "br2 · Map-level notes on theory");
 });
 
-test("btw gets a numbered prefix and Helper keeps its full marker", () => {
+test("listed side chats keep their prefix and ordinary roots have no marker", () => {
   const btw = child("s", "parent", "side", "2026-07-01T00:00:00.000Z");
-  const help = child("h", "parent", "helper", "2026-07-01T00:00:00.000Z");
+  const help = child("h", "parent", "side", "2026-07-01T00:00:00.000Z");
+  help.forkedFrom!.listed = true;
   assert.equal(
     sessionTitle(btw, { s: { alias: "", snippet: "What is a skill?" } }, [btw]),
     "btw1 · What is a skill?",
@@ -57,14 +58,13 @@ test("btw gets a numbered prefix and Helper keeps its full marker", () => {
       { h: { alias: "", snippet: "How do I add a provider?" } },
       [help],
     ),
-    "Helper · How do I add a provider?",
+    "btw1 · How do I add a provider?",
   );
   assert.equal(isListMember(help), true);
 
   const rootHelper = {
-    ...child("root-help", "unused", "helper", "2026-07-02T00:00:00.000Z"),
+    ...child("root-help", "unused", "side", "2026-07-02T00:00:00.000Z"),
     forkedFrom: null,
-    helper: true,
   } as SessionSummary;
   assert.equal(
     sessionTitle(
@@ -72,7 +72,7 @@ test("btw gets a numbered prefix and Helper keeps its full marker", () => {
       { "root-help": { alias: "", snippet: "How do I begin?" } },
       [rootHelper],
     ),
-    "Helper · How do I begin?",
+    "How do I begin?",
   );
   assert.equal(isListMember(rootHelper), true);
 });
@@ -80,13 +80,13 @@ test("btw gets a numbered prefix and Helper keeps its full marker", () => {
 test("familyMembersOf includes hidden descendants from any selected member", () => {
   const root = { ...child("root", "unused", "fork", "2026-07-01T00:00:00.000Z"), forkedFrom: null } as SessionSummary;
   const branch = child("branch", "root", "fork", "2026-07-02T00:00:00.000Z");
-  const helper = child("helper", "branch", "helper", "2026-07-03T00:00:00.000Z");
+  const helper = child("side", "branch", "side", "2026-07-03T00:00:00.000Z");
   helper.lineagePath = ["root", "branch"];
   const other = { ...child("other", "unused", "fork", "2026-07-04T00:00:00.000Z"), forkedFrom: null } as SessionSummary;
   const all = [root, branch, helper, other];
   assert.deepEqual(
     familyMembersOf(helper, all).map((item) => item.sessionId),
-    ["root", "branch", "helper"],
+    ["root", "branch", "side"],
   );
 });
 

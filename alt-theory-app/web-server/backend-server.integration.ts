@@ -1550,7 +1550,7 @@ test("a local server serves every conversation, whatever an old header or accoun
   }
 });
 
-test("WebSocket open_session and Helper placement preserve the intended center state", async () => {
+test("WebSocket open_session and side-chat placement preserve the intended center state", async () => {
   const root = mkdtempSync(join(tmpdir(), "alt-theory-ws-open-session-"));
   const dataDir = join(root, "data");
   const rolePresets = join(root, "role-presets");
@@ -1759,12 +1759,12 @@ test("WebSocket open_session and Helper placement preserve the intended center s
     const childCreatedPromise = waitForType(ws, "related_session_created");
     ws.send(
       JSON.stringify({
-        type: "create_helper_session",
-        payload: { parentSessionId: "session-ws-open" },
+        type: "create_related_session",
+        payload: { purpose: "side" },
       }),
     );
     const childCreated = await childCreatedPromise;
-    assert.equal(childCreated.payload.purpose, "helper");
+    assert.equal(childCreated.payload.purpose, "side");
     const childHeader = JSON.parse(
       readFileSync(
         join(
@@ -1779,42 +1779,13 @@ test("WebSocket open_session and Helper placement preserve the intended center s
     );
     assert.deepEqual(childHeader.forkedFrom, {
       sessionId: "session-ws-open",
-      purpose: "helper",
+      purpose: "side",
     });
 
-    const rootOpenedPromise = waitForType(ws, "session_opened");
-    ws.send(
-      JSON.stringify({
-        type: "create_helper_session",
-        payload: { parentSessionId: childCreated.payload.sessionId },
-      }),
-    );
-    const rootOpened = await rootOpenedPromise;
-    assert.notEqual(rootOpened.payload.sessionId, childCreated.payload.sessionId);
-    const rootHeader = JSON.parse(
-      readFileSync(
-        join(
-          dataDir,
-          "sessions",
-          rootOpened.payload.sessionId,
-          "records",
-          "session.json",
-        ),
-        "utf-8",
-      ),
-    );
-    assert.equal(rootHeader.helper, true);
-    assert.equal(rootHeader.forkedFrom, undefined);
-
-    const fallbackOpenedPromise = waitForType(ws, "session_opened");
-    ws.send(
-      JSON.stringify({
-        type: "create_helper_session",
-        payload: { parentSessionId: "stale-helper-parent" },
-      }),
-    );
-    const fallbackOpened = await fallbackOpenedPromise;
-    assert.notEqual(fallbackOpened.payload.sessionId, rootOpened.payload.sessionId);
+    // Creating the child does not move the socket away from its parent.
+    const parentUpdated = waitForType(ws, "session_updated");
+    ws.send(JSON.stringify({ type: "set_full_access", payload: { enabled: false } }));
+    assert.equal((await parentUpdated).payload.sessionId, "session-ws-open");
   } finally {
     ws.close();
     await new Promise<void>((resolveClose) => {
@@ -1876,10 +1847,28 @@ test("every socket on a conversation keeps its events after an idle instance swa
       waitFor(ws1, (m) => m.type === "session_draft"),
       waitFor(ws2, (m) => m.type === "session_draft"),
     ]);
-    // A root Helper materializes a conversation without a model run.
+    // Seed an ordinary conversation without invoking a model.
+    const setup = new SessionService({
+      ...instance.config,
+      legacySoulPath: soulPath,
+    });
+    const seeded = await setup.createSession({
+      rolePresetSlug: "role-conceptual-theory-companion-latest",
+      kbDomain: "ep-core", soulSlug: "soul-latest",
+    });
+    const sessionId = seeded.sessionId;
+    // Pi flushes a new session file after the first assistant entry.
+    (setup as any).sessions.get(sessionId).session.sessionManager.appendMessage({
+      role: "assistant", content: [{ type: "text", text: "fixture" }],
+      api: "openai-completions", provider: "test", model: "test",
+      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+      stopReason: "stop", timestamp: Date.now(),
+    });
+    await setup.disposeAll();
     const created = waitFor(ws1, (m) => m.type === "session_opened");
-    ws1.send(JSON.stringify({ type: "create_helper_session", payload: {} }));
-    const sessionId = (await created).payload.sessionId;
+    ws1.send(JSON.stringify({ type: "open_session", payload: { sessionId } }));
+    await created;
     const opened2 = waitFor(ws2, (m) => m.type === "session_opened");
     ws2.send(JSON.stringify({ type: "open_session", payload: { sessionId } }));
     await opened2;

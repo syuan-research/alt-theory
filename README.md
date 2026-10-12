@@ -55,7 +55,7 @@ A selected knowledge base can preserve the scope, provenance, and internal tradi
 | `search-policy` | Claims need live verification and clear source labels | Automatic |
 | `precise-edit` | Near-final text needs restrained editing | Automatic or explicit |
 | `imported-session-context` | An imported conversation needs contextual recovery | Automatic |
-| `alt-theory-help` | Setup or product use needs assistance | Through Helper |
+| `alt-theory-help` | Setup or product use needs assistance | In an ordinary conversation |
 
 Explicit Skill invocation is available through commands and the switchable [Steer card](docs/en/system-guide/steer-bar.md) above the composer.
 
@@ -83,7 +83,7 @@ Subagents can communicate with both the main agent and the user. A promoted side
 
 Alt Theory is designed first for students and researchers in the social sciences: from a master's student framing a first question to a senior researcher deciding whether an AI tool belongs in a research plan. It also supports broader research-like knowledge work.
 
-No agent-tool experience is required. If you mainly want discussion and documented reflection, **Understand** keeps the agent's reach deliberately bounded while retaining a small writable space for conversation summaries and notes. Product and setup questions can be taken to **Helper**, a fresh-context conversation available from the global Help menu, Related, or `/helper`; see [Help and troubleshooting](#help-and-troubleshooting).
+No agent-tool experience is required. If you mainly want discussion and documented reflection, **Understand** keeps the agent's reach deliberately bounded while retaining a small writable space for conversation summaries and notes. For product and setup questions, use the **alt-theory-help** skill in an ordinary conversation, or open a prefilled draft from Help → Ask Alt; see [Help and troubleshooting](#help-and-troubleshooting).
 
 For research that needs live sources, files, analysis, or document production, the current conversation can use **Work** without discarding its earlier discussion. For example, Alt can run exploratory R or Python analysis, work with literature and documents, and produce tables, slides, or collaborator materials before returning to interpretation.
 
@@ -157,7 +157,7 @@ To update the folder app: close Alt Theory, extract the new release into a new f
 
 ## Help and troubleshooting
 
-Open **Helper** from the global Help menu, the quiet action in Related, or `/helper`. Every opening creates a new, list-visible Helper. With a center conversation open it belongs to that family and opens in the right rail; otherwise it opens as a root conversation in the center. Helper answers from current documentation and can help with provider, key, model, and missing-tool setup. The same Help menu also opens the non-conversational Help center.
+Use **alt-theory-help** in an ordinary conversation for provider, key, model, and missing-tool setup. Help → Ask Alt opens a new-conversation draft with the skill prefilled; add your question and send it. The skill answers from current documentation. The same Help menu also opens the non-conversational Help center.
 
 - [Common questions](docs/en/help/common-questions.md)
 - [Provider and model troubleshooting](docs/en/system-guide/models-providers-access.md)

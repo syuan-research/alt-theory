@@ -23,11 +23,11 @@ import { useShell } from "@/context/ShellContext";
 import { useConversation, type Conversation } from "@/hooks/useConversation";
 import { t } from "@/i18n";
 import { notifyBackground } from "@/lib/notify";
-import { discardDraft } from "@/lib/draft";
+import { discardDraft, NEW_DRAFT, updateDraft } from "@/lib/draft";
 
 /**
  * The main view: which conversation the center shows, and what follows from
- * that — its navigation (open, new, branch, helper, copy, delete), the list
+ * that — its navigation (open, new, branch, copy, delete), the list
  * highlight, the right-pane seeds, and the list's attention marks. The
  * conversation itself is a plain useConversation, bound to the subtree.
  */
@@ -41,8 +41,8 @@ export interface MainViewValue {
   openCatalogSession: (sessionId: string) => boolean;
   startNewSession: () => void;
   compactCurrentSession: () => void;
-  forkCurrentSession: (purpose: "fork" | "side" | "helper" | "ab-arm", seedPrompt?: string) => void;
-  openHelper: (question?: string, attachToCenter?: boolean) => void;
+  forkCurrentSession: (purpose: "fork" | "side" | "ab-arm", seedPrompt?: string) => void;
+  askAboutAlt: () => void;
   duplicateSession: (sessionId: string) => void;
   branchRevision: (text: string, entryId?: string) => boolean;
   prepareBranchRevision: (text: string, entryId: string) => boolean;
@@ -66,8 +66,6 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
   // navigation owner (ShellProvider is outside this provider).
   const shell = useShell();
   const [childSeed, setChildSeed] = useState<MainViewValue["childSeed"]>(null);
-  /** A root Helper opened in the center with a question: ask it once open. */
-  const [rootSeed, setRootSeed] = useState<{ sessionId: string; text: string } | null>(null);
   const [sessionAlerts, setSessionAlerts] = useState<Record<string, SessionAlert>>({});
   const [approvalMarkers, setApprovalMarkers] = useState<string[]>([]);
 
@@ -96,24 +94,13 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
         request.seed &&
         (request.message.type === "fork_session" ||
           request.message.type === "create_related_session" ||
-          request.message.type === "create_helper_session" ||
           request.message.type === "prepare_branch_revision"),
     )?.seed;
-
-  useEffect(() => {
-    if (!rootSeed || rootSeed.sessionId !== sessionId || !conv.sessionReady) return;
-    setRootSeed(null);
-    conv.prompt(rootSeed.text);
-  }, [conv, rootSeed, sessionId]);
 
   onMessageRef.current = (message) => {
     switch (message.type) {
       case "session_opened": {
         void app.refreshSessions();
-        const seed = creatingSeed();
-        if (seed && conv.requests.some((r) => r.status === "sent" && r.message.type === "create_helper_session")) {
-          setRootSeed({ sessionId: message.payload.sessionId, text: seed.text });
-        }
         break;
       }
       case "session_draft":
@@ -137,7 +124,7 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
         break;
       }
       case "related_session_created":
-        // btw / helper: keep the original compact default (~480), not 50%.
+        // BTW keeps the original compact default (~480), not 50%.
         // A spawned subagent never opens the rail (owner 2026-09-18); the
         // Related row is its feedback, and seeds belong to user creations.
         if (message.payload.purpose !== "subagent") {
@@ -212,7 +199,7 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
   }, [conv, sessionId]);
 
   const forkCurrentSession = useCallback(
-    (purpose: "fork" | "side" | "helper" | "ab-arm", seedPrompt?: string) => {
+    (purpose: "fork" | "side" | "ab-arm", seedPrompt?: string) => {
       if (!sessionId || conv.isRunning) return;
       // The child asks the question the user already typed, instead of
       // opening with "what can I help with?".
@@ -221,16 +208,15 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
     [conv, sessionId],
   );
 
-  const openHelper = useCallback(
-    (question?: string, attachToCenter = true) => {
-      const text = question?.trim();
-      const current = app.sessions.find((item) => item.sessionId === sessionId);
-      const currentIsHelper = current?.helper || current?.forkedFrom?.purpose === "helper";
-      const parent = attachToCenter && sessionId && !currentIsHelper ? sessionId : undefined;
-      conv.createHelper(parent, text ? { text, autoSend: true } : undefined);
-    },
-    [app.sessions, conv, sessionId],
-  );
+  const askAboutAlt = useCallback(() => {
+    if (!conv.startNew()) return;
+    updateDraft(NEW_DRAFT, (draft) => ({
+      ...draft,
+      text: draft.text.startsWith("/skill:alt-theory-help")
+        ? draft.text
+        : `/skill:alt-theory-help ${draft.text}`,
+    }));
+  }, [conv]);
 
   // Duplicate straight from the session list — no need to open the source
   // first. The server attaches to the copy, so the view follows it.
@@ -330,7 +316,7 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
       startNewSession,
       compactCurrentSession,
       forkCurrentSession,
-      openHelper,
+      askAboutAlt,
       duplicateSession,
       branchRevision,
       prepareBranchRevision,
@@ -351,7 +337,7 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
       startNewSession,
       compactCurrentSession,
       forkCurrentSession,
-      openHelper,
+      askAboutAlt,
       duplicateSession,
       branchRevision,
       prepareBranchRevision,

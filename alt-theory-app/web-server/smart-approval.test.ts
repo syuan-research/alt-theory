@@ -46,15 +46,13 @@ test("inheritance cap: a Full or smart parent's children start on smart approval
   const fixture = setupFixture();
   const service = createTestService(fixture);
   const full = await service.createSession(selectors, { mode: "work", fullAccess: true });
-  const side = await service.createRelatedSession(full.sessionId, "side");
+  const side = await service.forkSession(full.sessionId, "side");
   assert.equal(side.fullAccess, false);
   assert.equal(side.smartApproval, true, "Full → smart");
-  const helper = await service.createRelatedSession(full.sessionId, "helper");
-  assert.equal(helper.smartApproval, true);
   const smart = await service.createSession(selectors, { mode: "work", smartApproval: true });
   assert.equal((await service.forkSession(smart.sessionId, "fork")).smartApproval, true, "smart → smart");
   const ask = await service.createSession(selectors, { mode: "work" });
-  assert.equal((await service.createRelatedSession(ask.sessionId, "side")).smartApproval, false, "Ask → Ask");
+  assert.equal((await service.forkSession(ask.sessionId, "side")).smartApproval, false, "Ask → Ask");
   // Later parent changes do not reach existing children.
   await service.setFullAccess(full.sessionId, false);
   assert.equal(service.getSnapshot(side.sessionId).smartApproval, true);

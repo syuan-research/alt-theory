@@ -429,18 +429,13 @@ export function useConversation({ sessionId, enabled, onMessage }: ConversationO
         }
         return send({ type: "new_session" });
       },
-      /** Branch / BTW / Helper off this conversation; `seed` is what the child starts with. */
-      fork: (purpose: "fork" | "side" | "helper" | "ab-arm", seed?: PendingRequest["seed"]) =>
-        purpose === "side" || purpose === "helper"
+      /** Branch / BTW off this conversation; `seed` is what the child starts with. */
+      fork: (purpose: "fork" | "side" | "ab-arm", seed?: PendingRequest["seed"]) =>
+        purpose === "side"
           ? send({ type: "create_related_session", payload: { purpose } }, { seed })
           : send({ type: "fork_session", payload: { purpose } }, { seed }),
       duplicate: (sourceSessionId: string) =>
         send({ type: "fork_session", payload: { purpose: "fork", sourceSessionId } }),
-      createHelper: (parentSessionId?: string, seed?: PendingRequest["seed"]) =>
-        send(
-          { type: "create_helper_session", payload: parentSessionId ? { parentSessionId } : {}, ...create() },
-          { seed },
-        ),
       /** The next page above the loaded rows — or everything from the row
        *  `from` ("start" = all); false when there is none to ask for. */
       loadEarlier: (from?: string) => {

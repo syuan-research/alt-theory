@@ -88,7 +88,6 @@ export const REQUEST_BUSY: Record<ClientMessageBody["type"], boolean> = {
   new_session: true,
   fork_session: true,
   create_related_session: true,
-  create_helper_session: true,
   switch_role_preset: true,
   switch_soul: true,
   switch_instruction: true,
@@ -369,10 +368,10 @@ function onServer(state: ConversationState, message: ServerMessage): Conversatio
         next = switchedTo(state, opened);
         if (materialized) {
           // The draft's first send created this conversation: its requests
-          // (and bubble) now belong to it, and — unless it was a root Helper
-          // — the new-conversation draft's settings were used.
+          // (and bubble) now belong to it, and the new-conversation draft's
+          // settings were used.
           const used = state.requests.some(
-            (request) => request.from === null && request.message.type !== "create_helper_session" && "create" in request.message,
+            (request) => request.from === null && "create" in request.message,
           );
           const seq = next.seq + 1;
           next = {

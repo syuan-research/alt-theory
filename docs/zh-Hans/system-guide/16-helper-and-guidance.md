@@ -1,14 +1,14 @@
-# 助手与界面内引导
+# 帮助与界面内引导
 
-## 助手
+## 普通对话中的帮助
 
-一个用于 Alt Theory 自身问题的新对话：原理与机制、设置所在位置、提供方、密钥与工具的引导式配置。
+使用 `alt-theory-help` Skill 处理 Alt Theory 自身的问题：原理与机制、设置所在位置、提供方、密钥与工具的引导式配置。
 
-- 每次打开都会创建新的 Helper，不会暗中复用旧对话。中间已有对话时，新 Helper 挂在该 family 下并在右栏打开；没有中间对话时，它作为 root conversation 在中间打开。两种情况都会出现在对话列表，并保留完整的 `Helper` 标记。
-- 它从空白 transcript context 开始。需要复制当前对话上下文的旁支问题，用[顺带](05-responses-and-controls.md)。
+- Help → 询问 Alt 打开普通新对话草稿，预填 `/skill:alt-theory-help`。补充问题后发送。
+- 也可在已有对话中调用 `/alt-theory-help`，沿用该对话的上下文、审批模式和模型。
 - 助手按当前文档回答。具体或可变的内容会查阅产品文档，对无法核实的步骤宁愿承认而不编造。
 
-可从全局 Help 菜单、Related 空状态里的低调 Helper 入口、Help center 或 `/helper` 打开。Help 菜单也可以打开不创建对话的 Help center。Helper 是普通对话加内置 help Skill，不是单独的 agent 类型。
+Help 菜单也可以打开不创建对话的 Help center。不再有专用的 Helper 对话类型或自动帮助标记。
 
 ## 引导式配置
 

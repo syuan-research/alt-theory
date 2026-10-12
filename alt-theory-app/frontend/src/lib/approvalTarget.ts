@@ -9,7 +9,6 @@ export function approvalTarget(
   if (
     parent &&
     (parent.purpose === "side" ||
-      parent.purpose === "helper" ||
       parent.purpose === "subagent")
   ) {
     return { center: parent.sessionId, related: sessionId };

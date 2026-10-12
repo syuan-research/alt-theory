@@ -53,7 +53,7 @@ historical coupling to be removed.
 ## What the session substrate connects
 
 The managed session is the shared execution substrate used by ordinary,
-reopened, replaced, imported, related, helper, and subagent conversations.
+reopened, replaced, imported, related, and subagent conversations.
 The important current interfaces are:
 
 ```mermaid
@@ -261,7 +261,8 @@ The most relevant durable decisions are:
 - [`ADR 0001 — session-scoped security extension`](adr/0001-session-scoped-security-extension.md)
   — Pi-native interception with Alt-owned session roots, approvals, and audit.
 - [`ADR 0002 — mediated child-session substrate`](adr/0002-mediated-child-session-substrate.md)
-  — related, helper, and subagent work uses ordinary managed sessions.
+  — related and subagent work uses ordinary managed sessions. The retired
+  Helper conversation kind now reads as an ordinary root or listed side chat.
 - [`ADR 0003 — deterministic external-session import`](adr/0003-deterministic-external-session-import.md)
   — source-specific projection, provenance, and explicit loss/refusal.
 - [`ADR 0004 — prompt-cache safety`](adr/0004-prompt-cache-safety.md)

@@ -28,7 +28,7 @@ unresolvable tier falls back to same.
 
 ## Where subagents appear
 
-A subagent opens in the right rail, like a BTW or Helper side conversation,
+A subagent opens in the right rail, like a BTW side conversation,
 not in the comparison pane (that is for branch, edit, and same-prompt
 retry). Its streaming output renders as markdown as it types. Switch
 between children from the row of buttons above the side conversation.

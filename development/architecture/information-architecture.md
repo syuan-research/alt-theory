@@ -50,7 +50,7 @@ surfaces remain designation-gated and absent for everyone else.
 6. **Use the agent for complexity after a minimal bootstrap.** Before any model
    works, the product must offer a short deterministic path to one usable
    provider and model. Once Alt can run, complicated provider setup and
-   recovery should be assistable through the existing Helper capability rather
+   recovery should be assistable through the help skill rather
    than teaching protocol details in the settings UI.
 7. **Promises are statements, not features.** Stable assurances such as local
    storage belong in first-run/About copy, not as permanent controls.
@@ -194,21 +194,20 @@ surfaces remain designation-gated and absent for everyone else.
     member of the lineage tree to one recoverable Trash item; ordinary Delete
     keeps its existing single-conversation semantics.
   - Side chats, subagents, and provisional comparison arms do not become
-    ordinary list rows unless the user promotes them. Branches and Helpers are
+    ordinary list rows unless the user promotes them. Branches are
     list members by nature.
   - BTW and subagent conversations are attached to their family. **Show in
     conversation list** is an identity and lifecycle transition for those
-    children, not merely a display toggle. Helper needs no promotion: it is an
-    ordinary, independently retainable conversation carrying a help marker and
-    the bundled help Skill.
+    children, not merely a display toggle. Legacy Helper children read as listed
+    side conversations; legacy root Helpers read as ordinary roots.
   - Related children in the list or Related switcher show a **lineage-marker
     prefix plus the real title**, not a rename: the marker is the machine token
-    from `lineageMarker` — e.g. `br1 · …`, `br1-btw2 · …`, `sa1 · …` — and
-    `Helper · …` unnumbered. Numbering is per parent + purpose. Do not
+    from `lineageMarker` — e.g. `br1 · …`, `br1-btw2 · …`, `sa1 · …`.
+    Numbering is per parent + purpose. Do not
     overwrite `ui-alias` to a bare token like `branch1`.
 - **Right rail**
   - Holds files/changes and one selected related conversation (Branch, BTW,
-    Helper, or subagent). What it shows beyond a rail's list is a typed
+    or subagent). What it shows beyond a rail's list is a typed
     target (`lib/viewTarget.ts`): a conversation, a file (managed workspace or
     working folder), a changed file, or a record. Every target names the
     conversation it belongs to and is drawn against it: switching the center
@@ -221,14 +220,14 @@ surfaces remain designation-gated and absent for everyone else.
     show the same targets.
   - **Branch / edited comparisons (purpose `fork`)** open the child in this rail at roughly
     **half of the center+right work area** (not half the browser window).
-  - **BTW, Helper, and subagents** open at the ordinary default rail width
+  - **BTW and subagents** open at the ordinary default rail width
     (~480 or the user’s last dragged width).
   - Navigation has one owner, `ShellContext`, which changes one state only
     through `navigate` (`lib/viewTarget.ts`): open a target (on its own rail),
     Back, open a rail, a rail button, collapse, reopen the collapsed pane (drag
     or keyboard, on the rail open last), reveal-in-files, and forget deleted
     conversations. Side conversations open from the conversation module's
-    events (a branch, BTW or Helper created), the Related list and switcher,
+    events (a branch or BTW created), the Related list and switcher,
     search hits and the approval notice — each calls `openTarget`, which also
     sizes the pane (opening what is already on show keeps a dragged width).
     Deleting conversations drops their targets from the view (it shows the
@@ -240,7 +239,7 @@ surfaces remain designation-gated and absent for everyone else.
     460px and model labels below 360px, retaining their icons.
   - A pending approval in another conversation produces one global notice on
     every surface, including Settings. The notice does not approve in place: it
-    returns to the owner. Roots and Branches open in the center; BTW, Helper, and
+    returns to the owner. Roots and Branches open in the center; BTW and
     subagents open beside their parent in the right rail. The approval panel then
     appears in that owning pane. In the application shell the notice sits in the
     lower action area above the composer instead of covering transcript content.
@@ -353,7 +352,9 @@ surfaces remain designation-gated and absent for everyone else.
     registry (`knownWorkspaces`) is derived from projects.
   - Role & Knowledge: role, knowledge sets, and related paths when implemented.
   - Help center: a curated capability guide and the shipped localized tips.
-    The global Help menu opens either this surface or a new Helper conversation.
+    The global Help menu opens either this surface or an ordinary new-conversation
+    draft prefilled with `/skill:alt-theory-help`. The user adds a question and
+    sends it; the normal draft settings and first-send validation apply.
   - Trash: deleted conversations remain recoverable for 30 days. Restore and
     permanent-delete actions live here rather than in persistent conversation
     navigation. Permanent conversation deletion removes conversation/session
@@ -475,7 +476,7 @@ subscription login is not a supported product entry; Anthropic API-key
 providers remain possible.
 
 Once at least one usable model exists, complicated setup should offer an
-**Ask Alt to add a provider** path through Helper. Manual configuration remains
+**Ask Alt to add a provider** path through the help skill. Manual configuration remains
 available for users who deliberately seek it, but it is not the default
 teaching path.
 
@@ -576,14 +577,13 @@ Before the first message, model/effort, role, knowledge, permission (mode and
 Full Access), visibility, workspace, study tag, and attachments are one coherent draft —
 the new-conversation draft above, held in the client, restored after a
 restart. Changing one of them changes only the draft; nothing about it is held
-on the server connection. The first send (a prompt, a skill, or a root Helper)
+on the server connection. The first send (a prompt or a skill)
 carries the draft's settings, the server checks each one (knowledge domain,
 mode, export marker, folder exists;
 the assembly checks role, soul, instruction and model; under Native Pi the
 Alt selectors are recorded but inactive) and creates the conversation from
 exactly that state in one step; a refused creation leaves nothing behind and
-the text goes back to the draft. A root Helper whose draft settings no longer
-hold falls back to the defaults instead of failing. While the first send is
+the text goes back to the draft. While the first send is
 creating the conversation, a second send waits; text typed meanwhile moves
 into the new conversation's draft. The server still resolves the model chip's
 thinking level for the draft's model (`describe_draft`).
@@ -597,8 +597,8 @@ draft. Changing Settings > General > "New conversations start with" also sets
 the draft's permission.
 
 Actions that require an existing parent conversation, such as branching and
-side conversations, are not shown as active draft actions. Helper does have a
-parentless meaning: it creates a root Helper in the center. Draft-only
+side conversations, are not shown as active draft actions. Help uses an ordinary
+new-conversation draft. Draft-only
 affordances must not clear input or close a menu while doing nothing.
 
 The current **General knowledge work** starter is deliberately a temporary
@@ -609,14 +609,14 @@ a focused refactor rather than growing conditionals around the temporary label.
 
 ## Agent-assisted setup boundary
 
-Helper is part of the configuration architecture, not merely documentation.
+The help skill is part of the configuration architecture, not merely documentation.
 It can help a user understand what they are connecting, inspect relevant
 configuration and failure context, propose a change, apply it with normal user
 approval, and verify that the provider/model can actually run.
 
-Helper may receive the relevant configuration and failure context. Protocol
+The help skill may receive the relevant configuration and failure context. Protocol
 details do not become default user-facing explanations. If no model is
-available to run Helper, the deterministic OAuth/recommended-provider
+available to run it, the deterministic OAuth/recommended-provider
 bootstrap remains the fallback.
 
 After the public GitHub help documentation exists, the same setup Markdown
@@ -638,7 +638,7 @@ user's perspective and check:
 - Is this the correct surface for the object or action?
 - Does the intended user understand and control what is shown?
 - Is common information being repeated while the primary action is buried?
-- Can existing product or Helper capability handle the complexity instead?
+- Can existing product or help capability handle the complexity instead?
 - Does the change preserve visible draft/live state across navigation?
 
 Exact labels and layouts may evolve through prototype review and product discussion.

@@ -1,9 +1,9 @@
 ---
 name: alt-theory-help
-description: Help a user understand, use, and fix Alt Theory — how it works, where things are, and setup or configuration trouble (providers, API keys, models, missing tools, migrating a Pi config). Automatically used inside a Helper conversation.
+description: Help a user understand, use, and fix Alt Theory — how it works, where things are, and setup or configuration trouble (providers, API keys, models, missing tools, migrating a Pi config). Usable in an ordinary conversation.
 ---
 
-# Alt Theory Helper
+# Alt Theory Help
 
 Help with Alt Theory itself, not with the user's substantive research question.
 
@@ -15,8 +15,8 @@ Help with Alt Theory itself, not with the user's substantive research question.
   would put to the user; set its model in Settings → General), or Full
   access. Changing the permission does not move any folders.
 - Branch is a normal related conversation for another direction. BTW is a
-  side conversation. Helper starts with fresh context and stays visible in the
-  conversation list.
+  side conversation. Help is a skill usable in an ordinary conversation;
+  Help → Ask Alt opens a new draft with this skill prefilled.
 - `Conversation` is the ordinary user-facing term. `Session` is a technical
   runtime/storage term. `Task` is reserved for an actual agent work unit.
 

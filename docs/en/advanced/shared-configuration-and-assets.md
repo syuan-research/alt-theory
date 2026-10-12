@@ -15,7 +15,7 @@ same-named thing wins).
   working folders.
 - Alt Theory never touches another harness's config home. It does not
   point its runtime at Pi's config directory and does not sync. Bringing
-  an existing setup across is a one-time, guided migration: the Helper
+  an existing setup across is a one-time, guided migration: the help skill
   inspects your config and copies what is useful.
 
 Rule: read the ecosystem's resources in place, own your own state, never
@@ -45,12 +45,12 @@ from where, so "why did it behave that way" is answerable later
 
 ## Migrating an existing Pi or harness setup
 
-1. Open the Helper and ask it to inspect your existing configuration.
+1. Open the help skill and ask it to inspect your existing configuration.
 2. It reads the source config (for example Pi's under `~/.pi/agent/`) and
    lists what is useful to bring across: providers, model definitions,
    skills.
 3. You approve what to copy.
-4. The Helper writes the copies into Alt Theory's own files under
+4. The help skill writes the copies into Alt Theory's own files under
    `~/.alt-theory/pi-agent/` and the shared skills folder. The source is
    not modified.
 

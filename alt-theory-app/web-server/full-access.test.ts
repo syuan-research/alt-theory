@@ -268,7 +268,7 @@ test("full access follows the conversation across restart and instance swap, nev
   assert.equal(child.fullAccess, false, "a branch does not inherit");
   const childRecords = join(fixture.dataDir, "sessions", child.sessionId, "records");
   assert.equal(readV4SessionHeader(childRecords)?.fullAccess, undefined);
-  const side = await restarted.createRelatedSession(created.sessionId, "side");
+  const side = await restarted.forkSession(created.sessionId, "side");
   assert.equal(side.fullAccess, false, "BTW does not inherit");
 });
 

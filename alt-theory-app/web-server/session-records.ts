@@ -15,7 +15,7 @@ export const V4_SCHEMA_VERSION = 1;
  * from it: only roots and "fork" appear in the list; a chosen A/B arm is
  * rewritten to "fork" when it becomes the continuation.
  */
-export type ForkPurpose = "fork" | "side" | "helper" | "ab-arm" | "subagent";
+export type ForkPurpose = "fork" | "side" | "ab-arm" | "subagent";
 
 /** Pre-M7 records used the original two purposes; normalize on read. */
 const LEGACY_FORK_PURPOSE: Record<string, ForkPurpose> = {
@@ -78,8 +78,6 @@ export interface V4SessionHeader extends RecordEnvelope {
   };
   /** Recency before any prompt: creation, or an imported source's last update. */
   lastActivityAt?: string;
-  /** Root Helper launch. Child Helpers use forkedFrom.purpose instead. */
-  helper?: true;
   /** Per-session tool mode behind the permission control. */
   mode?: AltMode;
   /** Work/Native workspace (spec §5.1); absent = default session workspace only.
@@ -102,7 +100,7 @@ export interface V4SessionHeader extends RecordEnvelope {
   studyTag?: StudyTag;
   modelOverride?: SessionModelOverride;
   /** Full Access (M2, 2026-09-24): present only while on. Never copied to a
-   *  child — branches, BTW, Helpers and subagents start without it. */
+   *  child — branches, BTW and subagents start without it. */
   fullAccess?: true;
   /** Smart approval (2026-09-26): present only while on. Children inherit it
    *  at birth when the parent had it or Full (the inheritance cap). */
@@ -138,7 +136,6 @@ export function writeFoundationRecords(args: {
     privateOverride: boolean;
   } | null;
   lastActivityAt?: string;
-  helper?: boolean;
   mode?: AltMode;
   workspace?: {
     primaryDir: string;
@@ -168,7 +165,6 @@ export function writeFoundationRecords(args: {
       ? { consentSnapshot: { ...args.consentSnapshot } }
       : {}),
     lastActivityAt: args.lastActivityAt ?? createdAt,
-    ...(args.helper ? { helper: true } : {}),
     ...(args.mode ? { mode: args.mode } : {}),
     ...(args.workspace ? { workspace: { ...args.workspace } } : {}),
     ...(args.forkedFrom ? { forkedFrom: { ...args.forkedFrom } } : {}),
@@ -204,10 +200,16 @@ export function readV4SessionHeader(recordsDir: string): V4SessionHeader | null 
     header.recordType === "session"
   ) {
     if (header.forkedFrom) {
+      // Retired Helper children keep their list membership as ordinary side chats.
+      if ((header.forkedFrom.purpose as string) === "helper") {
+        header.forkedFrom.purpose = "side";
+        header.forkedFrom.listed = true;
+      }
       header.forkedFrom.purpose =
         LEGACY_FORK_PURPOSE[header.forkedFrom.purpose] ??
         header.forkedFrom.purpose;
     }
+    delete (header as unknown as Record<string, unknown>).helper;
     // Retired values (pure/full, understand) read as work (owner 2026-09-25).
     if (header.mode) header.mode = toAltMode(header.mode);
     const legacyVisibility = LEGACY_VISIBILITY[header.visibility as string];

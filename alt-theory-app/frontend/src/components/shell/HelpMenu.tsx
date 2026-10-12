@@ -4,10 +4,8 @@ import { t } from "@/i18n";
 
 export function HelpMenu({
   compact = false,
-  attachToCenter = true,
 }: {
   compact?: boolean;
-  attachToCenter?: boolean;
 }) {
   const main = useMainView();
   const shell = useShell();
@@ -30,12 +28,12 @@ export function HelpMenu({
           onClick={(event) => {
             close(event.currentTarget);
             shell.openApp();
-            main.openHelper(undefined, attachToCenter);
+            main.askAboutAlt();
           }}
         >
           <i className="ph ph-chats-circle" />
           <span>
-            {t("Ask Helper")}
+            {t("Ask Alt")}
             <small>{t("A fresh conversation about Alt and setup")}</small>
           </span>
         </button>

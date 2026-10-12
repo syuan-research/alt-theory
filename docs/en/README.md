@@ -64,7 +64,7 @@ Organized by the kind of work.
 - [Permissions, Approvals, and Agent Activity](system-guide/permissions-approvals-agent-activity.md)
 - [Agent Team and Subagent Sessions](system-guide/agent-team-and-subagents.md)
 - [Imports, Handoffs, and Cross-Harness Continuity](system-guide/imports-and-continuity.md)
-- [Helper and In-App Guidance](system-guide/helper-and-guidance.md)
+- [help skill and In-App Guidance](system-guide/helper-and-guidance.md)
 - [Settings and Configuration](system-guide/settings-and-configuration.md)
 
 ## Advanced Use, Integration, and Customization
@@ -94,7 +94,7 @@ policy](advanced/compatibility-updates-debugging.md).
 
 Getting help, in order of closeness:
 
-1. The in-app [Helper](system-guide/helper-and-guidance.md), for how-do-I
+1. The in-app [help skill](system-guide/helper-and-guidance.md), for how-do-I
    and where-is questions, guided setup, and plain-language explanation.
    It answers from current documentation and says what it cannot verify.
 2. These docs: canonical feature pages

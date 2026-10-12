@@ -214,7 +214,6 @@ export interface SessionSelectors {
 }
 
 export interface SessionCreationMetadata {
-  helper?: boolean;
   visibility?: SessionVisibility;
   consentSnapshot?: {
     researcherReadable: boolean;
@@ -1165,7 +1164,6 @@ export class SessionService implements AgentTeamBridge {
       : this.createManagedFromDirs(dirs, selectors, {
           visibility: header?.visibility,
           consentSnapshot: header?.consentSnapshot,
-          helper: header?.helper,
           mode: previous.getAltMode(),
           workspace: header?.workspace ?? null,
           forkedFrom: header?.forkedFrom ?? null,
@@ -1633,14 +1631,6 @@ export class SessionService implements AgentTeamBridge {
 
   runPrompt(sessionId: string, text: string, attachments?: string[],): RunHandle {
     const managed = this.requireSession(sessionId);
-    const header = readV4SessionHeader(managed.manifest.recordsDir);
-    if (
-      (header?.helper || header?.forkedFrom?.purpose === "helper") &&
-      latestRunSnapshots(managed.manifest.recordsDir).length === 0 &&
-      managed.manifest.skills?.some((skill) => skill.name === "alt-theory-help")
-    ) {
-      return this.invokeSkill(sessionId, "alt-theory-help", text);
-    }
     // Imported sessions (session-import-source.json in the records dir) get
     // the imported-session-context skill on their first Alt Theory run, so
     // the agent learns what the import preserved and lost before continuing.
@@ -2060,6 +2050,9 @@ export class SessionService implements AgentTeamBridge {
     selectorOverrides?: Partial<SessionSelectors>,
     options?: { exactForkPoint?: boolean; allowEmpty?: boolean },
   ): Promise<SessionSnapshot> {
+    if (!["fork", "side", "ab-arm", "subagent"].includes(purpose)) {
+      throw new Error(`Unsupported conversation purpose: ${purpose}`);
+    }
     const previous = this.requireSession(sessionId);
     this.assertIdle(previous);
     // The sub-session substrate (M5): a fork inherits the parent by default, but
@@ -2129,7 +2122,7 @@ export class SessionService implements AgentTeamBridge {
     // re-points the live parent's SessionManager at the new file, forcing a
     // dispose+restore of the parent that survives only one fork cycle. Copying
     // getBranch(leafId) keeps the parent untouched, so forking is N-repeatable
-    // and non-kicking (A/B arms, /btw, helper all fork the same live parent).
+    // and non-kicking (A/B arms and /btw fork the same live parent).
     const parentManager = previous.session.sessionManager;
     const parentHeader = parentManager.getHeader();
     if (!parentHeader) {
@@ -3391,7 +3384,6 @@ export class SessionService implements AgentTeamBridge {
       mode: result.getAltMode(),
       workspace: metadata.workspace ? result.manifest.workspace : null,
       forkedFrom: metadata.forkedFrom ?? null,
-      helper: metadata.helper,
       studyTag: metadata.studyTag ?? null,
       modelOverride: metadata.modelOverride ?? null,
       fullAccess: metadata.fullAccess,
@@ -3424,42 +3416,6 @@ export class SessionService implements AgentTeamBridge {
     return managed;
   }
 
-  async createRelatedSession(
-    sessionId: string,
-    purpose: "side" | "helper",
-    forkPointEntryId?: string,
-  ): Promise<SessionSnapshot> {
-    if (purpose === "side") {
-      return this.forkSession(sessionId, purpose, forkPointEntryId);
-    }
-
-    const parent = this.requireSession(sessionId);
-    // Helper is fresh: it reads only stable parent configuration and does not
-    // clone or mutate the live Pi path, so it remains available during a run.
-    const header = readV4SessionHeader(parent.manifest.recordsDir);
-    const child = await this.createSession(parent.selectors, {
-      visibility: header?.visibility ?? this.fallbackVisibility,
-      consentSnapshot: header?.consentSnapshot ?? null,
-      workspace: header?.workspace ?? null,
-      studyTag: header?.studyTag ?? null,
-      modelOverride: header?.modelOverride ?? null,
-      forkedFrom: { sessionId, purpose },
-      mode: parent.getAltMode(),
-      smartApproval: inheritsSmartApproval(parent, parent.getAltMode()),
-    });
-    appendSessionEvent(parent.manifest.recordsDir, {
-      sessionId,
-      type: "related_session_created",
-      details: { childSessionId: child.sessionId, purpose },
-    });
-    appendSessionEvent(this.requireSession(child.sessionId).manifest.recordsDir, {
-      sessionId: child.sessionId,
-      type: "session_forked_from",
-      details: { sourceSessionId: sessionId, purpose, freshContext: true },
-    },);
-    return child;
-  }
-
   /**
    * "Add to conversation list" (alpha.6): the child earns a place in the
    * session list while KEEPING its purpose, so the list can say where it came
@@ -3474,7 +3430,7 @@ export class SessionService implements AgentTeamBridge {
       throw new Error("Only a related child can be added to the list");
     }
     if (
-      !(["side", "helper", "subagent"] as ForkPurpose[]).includes(
+      !(["side", "subagent"] as ForkPurpose[]).includes(
         header.forkedFrom.purpose,
       )
     ) {
@@ -3517,7 +3473,7 @@ export class SessionService implements AgentTeamBridge {
   // Agent team (alpha.5 M2) — AgentTeamBridge implementation.
   //
   // Children are real sessions (forkedFrom purpose "subagent") on the same
-  // substrate as helper/side children: durable records, run lineage, M0
+  // substrate as side children: durable records, run lineage, M0
   // break-point continuity, the right-rail shell, promotion, and direct user
   // messaging all come for free. This block adds only: spawn, addressed
   // envelopes (agent-mail.jsonl), and wake delivery.

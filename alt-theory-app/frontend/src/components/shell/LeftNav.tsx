@@ -67,7 +67,6 @@ function originTitle(session: SessionSummary): string | undefined {
   return {
     Branch: t("Branch of another conversation"),
     "From subagent": t("Came from a subagent"),
-    "From Helper": t("Came from a Helper conversation"),
     "From BTW": t("Came from a BTW side conversation"),
   }[label];
 }

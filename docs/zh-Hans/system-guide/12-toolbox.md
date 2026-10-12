@@ -4,7 +4,7 @@
 
 ## 各条目
 
-- 询问 Alt 如何工作：打开[助手](16-helper-and-guidance.md)，一个用新上下文回答应用相关问题的助理。
+- 询问 Alt：打开普通新对话草稿，预填[帮助 Skill](16-helper-and-guidance.md)，补充问题后发送。
 - 在计划或决定上对齐：调用 [`adaptive-aligning`（自适应对齐）](09-bundled-skills.md#adaptive-aligning)，智能体在定方向工作前访谈你以建立共同理解。
 - 自适应规划：调用 [`adaptive-planning`（自适应规划）](09-bundled-skills.md#adaptive-planning)，用于地图、阶段与持久记录会跨对话发展的持续工作。
 - 在线查资料（工作模式）：调用[实时检索](06-search-sources-web.md)（技能侧为 `web-search` / `page-fetch`）。在理解模式下此项不是一个被禁用的按钮，而是一行说明，理解模式没有实时查核，需切换到工作模式才能搜索。
@@ -12,7 +12,7 @@
 
 ## 待发与即发
 
-在工具箱或面板中点击一个技能，会把输入框填充为 `/技能id `（英文 id，例如 `/adaptive-aligning `）并聚焦，以便在执行前输入问题。只有无需提示的命令（`/new`、`/branch`、`/btw`、`/compact`、`/helper`）在点击时立即执行。
+在工具箱或面板中点击一个技能，会把输入框填充为 `/技能id `（英文 id，例如 `/adaptive-aligning `）并聚焦，以便在执行前输入问题。只有无需提示的命令（`/new`、`/branch`、`/btw`、`/compact`）在点击时立即执行；帮助 Skill 和其他技能一样等待问题。
 
 ## 工具箱不是什么
 

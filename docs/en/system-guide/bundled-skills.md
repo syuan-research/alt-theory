@@ -50,7 +50,7 @@ readable file you can inspect. Your own skills can take precedence
 
 ## The app itself
 
-- alt-theory-help is the Helper's skill: answers from current
+- alt-theory-help answers questions about the app from current
   documentation, uses runtime state, and says what it could not verify. Its
   internal procedures also cover consent-based setup and checking a model's
   image support. Those are not separate user-facing skills.

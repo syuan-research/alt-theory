@@ -12,7 +12,7 @@ what can be invoked by name, self-documenting as you type.
   - `/new` starts a new conversation
   - `/compact` compacts this conversation now, at a resting point you
     choose
-  - `/helper` asks the Helper a question on the side
+  - `/alt-theory-help` arms the help skill for your question
 
 The palette filters as you type, and each entry shows what it does.
 

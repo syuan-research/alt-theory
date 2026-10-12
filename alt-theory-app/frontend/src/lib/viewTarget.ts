@@ -13,7 +13,7 @@
 export type RailKey = "chats" | "changes" | "workspace" | "records" | "provenance" | "runtime";
 
 export type ViewTarget =
-  /** A conversation of the family, shown on its own (BTW, Helper, branch, subagent). */
+  /** A conversation of the family, shown on its own (BTW, branch, subagent). */
   | { kind: "conversation"; sessionId: string }
   /** A file of a conversation: its managed workspace, or a working folder
    *  (`path` = "<folderId>/<path in folder>"). */

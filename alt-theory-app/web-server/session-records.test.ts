@@ -1,15 +1,26 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync } from "fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { readV4SessionHeader } from "./session-records.js";
+
+test("retired root help marker is ignored without changing the stored record", () => {
+  const dir = mkdtempSync(join(tmpdir(), "records-retired-root-"));
+  const raw = { schemaVersion: 1, recordType: "session", sessionId: "root", helper: true };
+  writeFileSync(join(dir, "session.json"), JSON.stringify(raw));
+  const header = readV4SessionHeader(dir);
+  assert.equal(header?.sessionId, "root");
+  assert.equal(header?.forkedFrom, undefined);
+  assert.equal((header as any).helper, undefined);
+  assert.deepEqual(JSON.parse(readFileSync(join(dir, "session.json"), "utf8")), raw);
+});
 
 test("readV4SessionHeader normalizes legacy fork purposes", () => {
   const cases: Array<[string, string]> = [
     ["collaboration", "side"],
     ["comparison", "ab-arm"],
-    ["helper", "helper"],
+    ["helper", "side"],
     ["fork", "fork"],
   ];
   for (const [stored, expected] of cases) {
@@ -26,6 +37,9 @@ test("readV4SessionHeader normalizes legacy fork purposes", () => {
       })
     );
     assert.equal(readV4SessionHeader(dir)?.forkedFrom?.purpose, expected);
+    if (stored === "helper") {
+      assert.equal(readV4SessionHeader(dir)?.forkedFrom?.listed, true);
+    }
   }
 });
 
