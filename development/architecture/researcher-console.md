@@ -65,8 +65,8 @@ Code: `frontend/src/components/shell/Workbench.tsx`.
 
 ## Researcher-only detail and review
 
-The shared right inspector contains researcher-only detail rails for Records,
-Provenance, and Runtime. The exact global pane placement is owned by the
+The shared right inspector contains researcher-only detail rails for Records
+and Provenance (the Runtime rail was removed 2026-10-12). The exact global pane placement is owned by the
 IA document; this file only records that these surfaces exist in the current
 shell.
 

@@ -233,7 +233,6 @@ function ChildPane({ sessionId, onClose }: { sessionId: string; onClose: () => v
         <ApprovalDock
           request={approval}
           onRespond={conversation.respondApproval}
-          onSessionAllow={() => undefined}
         />
       ) : null}
 

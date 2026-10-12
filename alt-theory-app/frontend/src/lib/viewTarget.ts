@@ -9,8 +9,8 @@
  * says "right pane" — a tab or a split could hold the same targets.
  */
 
-/** The side view's rails. Records, provenance and runtime are researcher-only. */
-export type RailKey = "chats" | "changes" | "workspace" | "records" | "provenance" | "runtime";
+/** The side view's rails. Records and provenance are researcher-only. */
+export type RailKey = "chats" | "changes" | "workspace" | "records" | "provenance";
 
 export type ViewTarget =
   /** A local interactive page; it can be opened before a conversation exists. */

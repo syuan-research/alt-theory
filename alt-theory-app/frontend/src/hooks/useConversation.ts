@@ -444,8 +444,6 @@ export function useConversation({ sessionId, enabled, onMessage }: ConversationO
           ? send({ type: "transcript_page", payload: from ? { before, from } : { before, limit: TRANSCRIPT_PAGE_ROWS } })
           : false;
       },
-      requestMetadata: () => send({ type: "get_session_metadata" }),
-      requestMetrics: () => send({ type: "get_session_metrics" }),
       /** Change this conversation's draft (any field of its lifetime, lib/draft). */
       editDraft: (change: (draft: Draft) => Draft) => updateDraft(key(), change),
       /** The editor's text (this conversation's draft). */

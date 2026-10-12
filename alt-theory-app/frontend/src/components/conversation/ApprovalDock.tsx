@@ -8,21 +8,18 @@ interface ApprovalDockProps {
     approvalId: string,
     response: { accept?: boolean; choice?: string | null; text?: string | null }
   ) => void;
-  /** Called with a marker label when the user grants a conversation-scoped allowance. */
-  onSessionAllow: (label: string) => void;
 }
 
 // Security-extension approval options (core/security-extension.ts), plus
 // the options of a message to another conversation (session-service.ts).
 const ALLOW_SESSION = "Allow for this conversation";
-const PEER_ALLOW_ALWAYS = "Always allow between these conversations";
 const DENY_LABELS = new Set(["Deny", "Block", "No", "Cancel"]);
 
 function approvalOption(option: string): string {
   if (option === "Allow once") return t("Allow once");
   if (option === ALLOW_SESSION) return t("Allow in this conversation, also after restart");
   if (option === "Allow 5 messages each way") return t("Allow 5 messages each way");
-  if (option === PEER_ALLOW_ALWAYS) return t("Always allow between these conversations");
+  if (option === "Always allow between these conversations") return t("Always allow between these conversations");
   if (option === "Deny") return t("Deny");
   return option;
 }
@@ -62,17 +59,14 @@ export function approvalParts(title: string): { note: string | null; label: stri
  * the security extension sends (Allow once / Allow for this conversation / Deny) for
  * select approvals; guard rail, not a sandbox.
  */
-export function ApprovalDock({ request, onRespond, onSessionAllow }: ApprovalDockProps) {
+export function ApprovalDock({ request, onRespond }: ApprovalDockProps) {
   const [text, setText] = useState("");
   useEffect(() => setText(""), [request.approvalId]);
 
   const deny = () =>
     onRespond(request.approvalId, { accept: false, choice: null, text: null });
 
-  const choose = (option: string) => {
-    if (option === ALLOW_SESSION || option === PEER_ALLOW_ALWAYS) onSessionAllow(request.title);
-    onRespond(request.approvalId, { choice: option });
-  };
+  const choose = (option: string) => onRespond(request.approvalId, { choice: option });
 
   const parts = approvalParts(request.title);
 

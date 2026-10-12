@@ -22,7 +22,6 @@ import {
 import { ChildConversation } from "@/components/conversation/ChildConversation";
 import { RecordsPanel } from "@/components/inspector/RecordsPanel";
 import { ProvenancePanel } from "@/components/inspector/ProvenancePanel";
-import { RuntimePanel } from "@/components/inspector/RuntimePanel";
 import { WorkspaceTree } from "@/components/inspector/WorkspaceTree";
 import { ChangesPanel } from "@/components/inspector/ChangesPanel";
 import { LocalPage } from "@/components/inspector/LocalPage";
@@ -40,16 +39,14 @@ const RAIL_META: Record<RailKey, { title: string; icon: string; adv?: boolean }>
   workspace: { title: t("Files"), icon: "ph-folder" },
   records: { title: t("Records"), icon: "ph-scroll", adv: true },
   provenance: { title: t("Provenance"), icon: "ph-tree-structure", adv: true },
-  runtime: { title: t("Runtime"), icon: "ph-pulse", adv: true },
 };
 
 const PRIMARY: RailKey[] = ["chats", "changes", "workspace"];
-const ADVANCED: RailKey[] = ["records", "provenance", "runtime"];
+const ADVANCED: RailKey[] = ["records", "provenance"];
 
 export function InspectorPanel() {
   const app = useApp();
   const conv = useConversationContext();
-  const main = useMainView();
   const shell = useShell();
   const advanced = app.viewMode === "researcher";
   const open = shell.rightPanel !== null;
@@ -181,22 +178,6 @@ export function InspectorPanel() {
               sessionReady={conv.sessionReady}
               discovery={app.discovery}
               tabActive
-            />
-          ) : null}
-          {active === "runtime" ? (
-            <RuntimePanel
-              sessionId={conv.sessionId}
-              runState={conv.runState}
-              manifest={conv.manifest}
-              currentDomain={conv.selectors.currentDomain}
-              metrics={conv.metrics}
-              approvalMarkers={main.approvalMarkers}
-              discovery={app.discovery}
-              onRefresh={() => {
-                conv.requestMetadata();
-                conv.requestMetrics();
-              }}
-              disabled={!conv.sessionReady || !conv.wsConnected}
             />
           ) : null}
         </div>

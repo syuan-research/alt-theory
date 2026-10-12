@@ -53,9 +53,6 @@ export interface MainViewValue {
   renameSession: (sessionId: string, name: string) => Promise<boolean>;
   deleteSession: (sessionId: string) => void;
   deleteSessionFamily: (sessionId: string) => void;
-  /** Conversation allowances granted in this view (M7 §3), for the inspector. */
-  approvalMarkers: string[];
-  addApprovalMarker: (text: string) => void;
 }
 
 const MainViewContext = createContext<MainViewValue | null>(null);
@@ -67,7 +64,6 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
   const shell = useShell();
   const [childSeed, setChildSeed] = useState<MainViewValue["childSeed"]>(null);
   const [sessionAlerts, setSessionAlerts] = useState<Record<string, SessionAlert>>({});
-  const [approvalMarkers, setApprovalMarkers] = useState<string[]>([]);
 
   const onMessageRef = useRef<(message: ServerMessage) => void>(() => {});
   const { conversation: conv, parts } = useConversation({
@@ -81,9 +77,6 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
   // else: a fresh app shows none (owner 2026-09-24); an open in flight shows
   // its target, a refused open falls back to what is shown.
   const selectedCatalogSessionId = conv.opening ?? sessionId;
-
-  // Conversation allowances belong to the conversation they were granted in.
-  useEffect(() => setApprovalMarkers([]), [sessionId]);
 
   // The seed of a created conversation rides on the request that creates
   // it; a refused or lost request takes its seed with it.
@@ -303,10 +296,6 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
     [app, conv, sessionId, shell.forgetConversations],
   );
 
-  const addApprovalMarker = useCallback((text: string) => {
-    setApprovalMarkers((prev) => (prev.includes(text) ? prev : [...prev, text]));
-  }, []);
-
   const value = useMemo<MainViewValue>(
     () => ({
       conversation: conv,
@@ -326,8 +315,6 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
       renameSession,
       deleteSession: (target) => void deleteSessions(target, false),
       deleteSessionFamily: (target) => void deleteSessions(target, true),
-      approvalMarkers,
-      addApprovalMarker,
     }),
     [
       conv,
@@ -346,8 +333,6 @@ export function MainViewProvider({ children }: { children: ReactNode }) {
       promoteRelatedSession,
       renameSession,
       deleteSessions,
-      approvalMarkers,
-      addApprovalMarker,
     ],
   );
 

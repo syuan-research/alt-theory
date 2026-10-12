@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { PRESET_TURNS, useApp } from "@/context/AppProvider";
 import { useConversationContext } from "@/context/ConversationContext";
-import { useMainView } from "@/context/MainView";
 import { useShell } from "@/context/ShellContext";
 import { PendingMark } from "@/components/ui/PendingMark";
 import { ApprovalDock } from "@/components/conversation/ApprovalDock";
@@ -29,7 +28,6 @@ const SHOW_HELP_STARTERS = false;
 /** Composer variant: `empty` = new-conversation (mode via cards, no switch). */
 export function Composer({ variant }: { variant: "empty" | "live" }) {
   const app = useApp();
-  const main = useMainView();
   const conv = useConversationContext();
   const shell = useShell();
   // The editor shows this conversation's draft (lib/draft, kept on this device).
@@ -242,7 +240,6 @@ export function Composer({ variant }: { variant: "empty" | "live" }) {
           <ApprovalDock
             request={approval}
             onRespond={conv.respondApproval}
-            onSessionAllow={main.addApprovalMarker}
           />
         ) : null}
 

@@ -214,7 +214,7 @@ surfaces remain designation-gated and absent for everyone else.
     conversation leaves an open target as it was, scroll position included —
     an open file is still that conversation's file, and attaching it adds it to
     that conversation's message. A rail's list (Files, Changes, Related,
-    Records), the Related switcher strip, and the Provenance and Runtime rails
+    Records), the Related switcher strip, and the Provenance rail
     show the center conversation. The rail is one global view for now (Owner
     2026-09-24); the target type does not name it, so a tab or a split could
     show the same targets.
