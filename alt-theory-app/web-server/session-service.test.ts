@@ -3244,7 +3244,7 @@ test("security extension escalates risky commands through the approval bridge", 
     // Escalated command: the user grants a session allowance.
     const first = managed.session.agent.beforeToolCall!({
       toolCall: { id: "sec-1", name: "bash", arguments: {} },
-      args: { command: "rm -rf scratch" },
+      args: { command: "git push origin main" },
     });
     for (let i = 0; i < 50 && requested().length === 0; i++) {
       await new Promise((r) => setTimeout(r, 10));
@@ -3252,7 +3252,7 @@ test("security extension escalates risky commands through the approval bridge", 
     const request = requested().at(-1)!;
     assert.ok(request.type === "approval_requested");
     assert.equal(request.payload.kind, "select");
-    assert.match(request.payload.title, /rm -rf scratch/);
+    assert.match(request.payload.title, /Needs approval: Push to: origin\nRun command: git push origin main/);
     assert.ok(request.payload.options?.includes(APPROVAL_ALLOW_SESSION));
     service.respondApproval(created.sessionId, request.payload.approvalId, {
       choice: APPROVAL_ALLOW_SESSION,
@@ -3263,7 +3263,7 @@ test("security extension escalates risky commands through the approval bridge", 
     assert.equal(
       await managed.session.agent.beforeToolCall!({
         toolCall: { id: "sec-2", name: "bash", arguments: {} },
-        args: { command: "rm -rf scratch" },
+        args: { command: "git push origin main" },
       }),
       undefined,
     );
@@ -3282,17 +3282,17 @@ test("security extension escalates risky commands through the approval bridge", 
     assert.equal(
       await managed.session.agent.beforeToolCall!({
         toolCall: { id: "sec-reload", name: "bash", arguments: {} },
-        args: { command: "rm -rf scratch" },
+        args: { command: "git push origin main" },
       }),
       undefined,
     );
     assert.equal(requested().length, 1);
 
-    // Network allowances are keyed per host: granting one host does not cover
+    // Upload allowances are keyed per host: granting one host does not cover
     // another.
     const grantHostA = managed.session.agent.beforeToolCall!({
       toolCall: { id: "net-1", name: "bash", arguments: {} },
-      args: { command: "curl https://example.com/data" },
+      args: { command: "curl -F file=@paper.pdf https://example.com/convert" },
     });
     for (let i = 0; i < 50 && requested().length < 2; i++) {
       await new Promise((r) => setTimeout(r, 10));
@@ -3307,7 +3307,7 @@ test("security extension escalates risky commands through the approval bridge", 
     assert.equal(
       await managed.session.agent.beforeToolCall!({
         toolCall: { id: "net-2", name: "bash", arguments: {} },
-        args: { command: "curl https://example.com/other" },
+        args: { command: "curl -T notes.pdf https://example.com/upload" },
       }),
       undefined,
     );
@@ -3316,7 +3316,7 @@ test("security extension escalates risky commands through the approval bridge", 
     // A different host re-prompts, and denying it blocks the tool.
     const denied = managed.session.agent.beforeToolCall!({
       toolCall: { id: "net-3", name: "bash", arguments: {} },
-      args: { command: "curl https://elsewhere.test/x" },
+      args: { command: "curl -F file=@paper.pdf https://elsewhere.test/x" },
     });
     for (let i = 0; i < 50 && requested().length < 3; i++) {
       await new Promise((r) => setTimeout(r, 10));

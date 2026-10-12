@@ -90,7 +90,7 @@ export interface NewConversationSettings {
   studyTag?: StudyTag | null;
   workspacePrimaryDir?: string | null;
   fullAccess?: boolean;
-  smartApproval?: boolean;
+  smartApproval?: SmartApprovalValue;
 }
 
 export type ThinkingLevel =
@@ -120,8 +120,13 @@ export interface SessionModelOverride {
  * "work" (Ask, or Full with Full Access on).
  */
 export type AltMode = "read-only" | "work";
-/** The permission control's three choices. */
-export type Permission = "read-only" | "ask" | "smart" | "full";
+/**
+ * The permission control's choices; "smart-strict" shows only with Settings'
+ * advanced approval modes (or on a conversation that already uses it).
+ */
+export type Permission = "read-only" | "ask" | "smart" | "smart-strict" | "full";
+/** Smart approval as a conversation stores it: off, on, or the strict profile (2026-10-12). */
+export type SmartApprovalValue = boolean | "strict";
 export type RuntimeMode = "alt-theory" | "native-pi";
 
 export type InterruptionCause =
@@ -197,8 +202,8 @@ export interface SessionSnapshot {
   mode?: AltMode;
   /** Full Access (v1.4.8): in-memory session state; undefined = not reported. */
   fullAccess?: boolean;
-  /** Smart approval (2026-09-26): the reviewer model answers approvals. */
-  smartApproval?: boolean;
+  /** Smart approval (2026-09-26): the reviewer model answers approvals; "strict" reviews more. */
+  smartApproval?: SmartApprovalValue;
   modelOverride?: SessionModelOverride | null;
   currentModel?: { provider: string; modelId: string };
   studyTag?: StudyTag | null;
@@ -715,7 +720,7 @@ export type ClientMessageBody =
     }
   | { type: "switch_mode"; payload: { mode: AltMode } }
   | { type: "set_full_access"; payload: { enabled: boolean } }
-  | { type: "set_smart_approval"; payload: { enabled: boolean } }
+  | { type: "set_smart_approval"; payload: { enabled: SmartApprovalValue } }
   | { type: "set_study_tag"; payload: { studyTag: StudyTag | null } }
   | {
       type: "set_session_model";

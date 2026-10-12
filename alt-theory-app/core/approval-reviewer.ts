@@ -13,7 +13,6 @@ import { parseAgentMailFrame } from "./agent-mail-frame.js";
 
 import { existsSync, readFileSync, statSync } from "fs";
 import { extname } from "path";
-import { splitCommands } from "./approval-boundary.js";
 
 export interface ReviewRequest {
   toolName: string;
@@ -101,27 +100,25 @@ function projected(entries: unknown[]): { latestUser: string | null; recent: str
   return { latestUser, recent: lines.slice(-RECENT_ENTRIES) };
 }
 
-/** Script files a shell command names, read within the readable roots. */
+/** Script files a shell command names (any word with a script extension), read within the readable roots. */
 function namedScripts(request: ReviewRequest): Array<{ path: string; content: string }> {
   if (request.toolName !== "bash") return [];
   const command = String(request.input.command ?? "");
   const scripts: Array<{ path: string; content: string }> = [];
   const seen = new Set<string>();
-  for (const segment of splitCommands(command)) {
-    for (const word of segment.split(/\s+/)) {
-      const raw = word.replace(/^["']|["']$/g, "");
-      if (!SCRIPT_EXTENSIONS.has(extname(raw).toLowerCase())) continue;
-      const path = request.readableFile(raw);
-      if (!path || seen.has(path) || !existsSync(path)) continue;
-      try {
-        if (!statSync(path).isFile()) continue;
-        seen.add(path);
-        scripts.push({ path, content: clip(readFileSync(path, "utf-8"), MAX_SCRIPT_CHARS) });
-      } catch {
-        // Unreadable: the reviewer judges without it.
-      }
-      if (scripts.length >= MAX_SCRIPTS) return scripts;
+  for (const word of command.split(/[\s;|&()<>`]+/)) {
+    const raw = word.replace(/^["']+|["']+$/g, "");
+    if (!SCRIPT_EXTENSIONS.has(extname(raw).toLowerCase())) continue;
+    const path = request.readableFile(raw);
+    if (!path || seen.has(path) || !existsSync(path)) continue;
+    try {
+      if (!statSync(path).isFile()) continue;
+      seen.add(path);
+      scripts.push({ path, content: clip(readFileSync(path, "utf-8"), MAX_SCRIPT_CHARS) });
+    } catch {
+      // Unreadable: the reviewer judges without it.
     }
+    if (scripts.length >= MAX_SCRIPTS) return scripts;
   }
   return scripts;
 }

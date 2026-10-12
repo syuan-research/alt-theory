@@ -185,6 +185,8 @@ test("project companion folders apply under every permission and extend guarded 
       globalFolders: [],
       projectSecondaryDirs: [dirA],
     }),
+    // Its "outside" paths live under the OS temp folder.
+    tempDirs: [],
   });
   const { session } = result;
   // Mode switches replace/reload the session; Pi 0.84 marks tool handles
@@ -245,6 +247,8 @@ test("security extension mediates tool calls at the policy boundary", async () =
     kbDomain: "none",
     altMode: "work",
     resourceDiscovery: "clean",
+    // Its "outside" paths live under the OS temp folder.
+    tempDirs: [],
     trustedReadRoots: [trustedReadRoot],
   });
   const { session } = result;
@@ -266,9 +270,11 @@ test("security extension mediates tool calls at the policy boundary", async () =
   assert.match((await call("bash", { command: "echo hi && nohup dd if=/dev/zero" }))?.reason ?? "", /can damage the system/);
   assert.match((await call("bash", { command: "su\u200bdo whoami" }))?.reason ?? "", /can damage the system/);
 
-  // Risky commands escalate; with no approval UI attached they fail closed.
-  assert.match((await call("bash", { command: "rm -rf build" }))?.reason ?? "", /requires user approval/);
+  // Visible significant actions escalate; with no approval UI attached they
+  // fail closed. Ordinary work in the folders runs (2026-10-12).
+  assert.match((await call("bash", { command: "git push origin main" }))?.reason ?? "", /requires user approval/);
   assert.match((await call("bash", { command: "cat ~/.ssh/id_rsa" }))?.reason ?? "", /requires user approval/);
+  assert.equal(await call("bash", { command: "rm -rf build && python analysis.py > out.txt" }), undefined);
 
   // Cloud-metadata / internal hosts are blocked on the bash network path too.
   assert.match(
@@ -335,6 +341,8 @@ test("read-only asks once per write, inside or outside the roots", async () => {
     altMode: "read-only",
     fullAccess: true,
     resourceDiscovery: "clean",
+    // Its "outside" paths live under the OS temp folder.
+    tempDirs: [],
   });
   const { session } = result;
   // Full Access is dormant under read-only.
@@ -468,6 +476,8 @@ test("a symlinked workspace read escalates like the matching write", async () =>
     kbDomain: "none",
     altMode: "work",
     resourceDiscovery: "clean",
+    // Its "outside" paths live under the OS temp folder.
+    tempDirs: [],
   });
   const { session } = result;
   const agent = session.agent as unknown as {
@@ -499,5 +509,41 @@ test("a symlinked workspace read escalates like the matching write", async () =>
     /resolves outside Alt Theory writable roots/
   );
 
+  await session.dispose();
+});
+
+test("the system temp folder is a working folder: written and read back without asking", async () => {
+  const root = mkdtempSync(join(tmpdir(), "alt-theory-core-temp-"));
+  const appContextPath = join(root, "ALTTHEORY.md");
+  const kbDir = join(root, "kb");
+  mkdirSync(kbDir, { recursive: true });
+  writeFileSync(appContextPath, "Temp app context", "utf-8");
+  const result = await createAltTheorySession({
+    ...createSessionDirs(join(root, "data"), "temp-test"),
+    appContextPath,
+    kbDir,
+    kbDomain: "none",
+    altMode: "work",
+    resourceDiscovery: "clean",
+  });
+  const { session } = result;
+  const agent = session.agent as unknown as {
+    beforeToolCall: (input: {
+      toolCall: { id: string; name: string; arguments: unknown };
+      args: Record<string, unknown>;
+    }) => Promise<{ block?: boolean; reason?: string } | undefined>;
+  };
+  const converted = join(root, "conversion", "paper.md");
+  assert.equal(
+    await agent.beforeToolCall({ toolCall: { id: "t-w", name: "write", arguments: {} }, args: { path: converted } }),
+    undefined,
+  );
+  const writeTool = session.agent.state.tools.find((tool) => tool.name === "write")!;
+  await writeTool.execute("t-write", { path: converted, content: "converted" });
+  assert.equal(readFileSync(converted, "utf-8"), "converted");
+  assert.equal(
+    await agent.beforeToolCall({ toolCall: { id: "t-r", name: "read", arguments: {} }, args: { path: converted } }),
+    undefined,
+  );
   await session.dispose();
 });

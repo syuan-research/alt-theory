@@ -104,7 +104,7 @@ export interface V4SessionHeader extends RecordEnvelope {
   fullAccess?: true;
   /** Smart approval (2026-09-26): present only while on. Children inherit it
    *  at birth when the parent had it or Full (the inheritance cap). */
-  smartApproval?: true;
+  smartApproval?: true | "strict";
   /** Spawn-time preset snapshot; each fallback keeps its own thinking level. */
   subagentExecution?: {
     agentType: string;
@@ -147,7 +147,7 @@ export function writeFoundationRecords(args: {
   studyTag?: StudyTag | null;
   modelOverride?: SessionModelOverride | null;
   fullAccess?: boolean;
-  smartApproval?: boolean;
+  smartApproval?: boolean | "strict";
   subagentExecution?: {
     agentType: string;
     modelChain: SessionModelOverride[];
@@ -171,7 +171,7 @@ export function writeFoundationRecords(args: {
     ...(args.studyTag ? { studyTag: { ...args.studyTag } } : {}),
     ...(args.modelOverride ? { modelOverride: { ...args.modelOverride } } : {}),
     ...(args.fullAccess ? { fullAccess: true as const } : {}),
-    ...(args.smartApproval ? { smartApproval: true as const } : {}),
+    ...(args.smartApproval ? { smartApproval: args.smartApproval === "strict" ? ("strict" as const) : (true as const) } : {}),
     ...(args.subagentExecution
       ? {
           subagentExecution: {

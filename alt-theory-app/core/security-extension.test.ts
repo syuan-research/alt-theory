@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import type { ReviewRequest, ReviewVerdict } from "./approval-reviewer.js";
+import type { Root } from "./root-policy.js";
 import {
   APPROVAL_ALLOW_ONCE,
   APPROVAL_ALLOW_SESSION,
@@ -12,12 +13,17 @@ import {
 
 type Result = { block?: boolean; reason?: string } | undefined;
 
+/** The approver's answer that never comes: the dialog times out. */
+const TIMEOUT = "\u0000timeout";
+
 /** The extension's tool_call handler over one project folder, with a scripted approver. */
 function harness(
   options: {
     full?: boolean;
     allowlist?: string[];
     reviewer?: (request: ReviewRequest) => ReviewVerdict;
+    strict?: boolean;
+    tempRoot?: string;
   } = {},
 ) {
   const root = mkdtempSync(join(tmpdir(), "alt-secext-"));
@@ -26,23 +32,26 @@ function harness(
   const workspace = join(dataDir, "sessions", "me", "workspace");
   mkdirSync(project, { recursive: true });
   mkdirSync(workspace, { recursive: true });
-  const writable = [
-    { path: workspace, reason: "session-write" as const },
-    { path: project, reason: "cwd" as const },
+  const writable: Root[] = [
+    { path: workspace, reason: "session-write" },
+    { path: project, reason: "cwd" },
+    ...(options.tempRoot ? [{ path: options.tempRoot, reason: "task-temp" as const }] : []),
   ];
   const handlers = new Map<string, (event: unknown, ctx: unknown) => Promise<unknown>>();
   const oncePaths: string[] = [];
   const reviewed: ReviewRequest[] = [];
+  let smart = options.reviewer !== undefined;
   createSecurityExtension({
     sessionCwd: project,
     getWritableRoots: () => writable,
     getReadableRoots: () => writable,
-    addWritableRoot: () => {},
+    addWritableRoot: (path) => writable.push({ path, reason: "approved" }),
     isFullAccess: () => options.full === true,
     protectedDirs: [dataDir],
     getCommandAllowlist: () => options.allowlist ?? [],
     allowWriteOnce: (path) => oncePaths.push(path),
-    isSmartApproval: () => options.reviewer !== undefined,
+    isSmartApproval: () => smart,
+    isStrictSmartApproval: () => options.strict === true,
     reviewAction: async (request) => {
       reviewed.push(request);
       return options.reviewer!(request);
@@ -59,19 +68,29 @@ function harness(
     signal: undefined,
     sessionManager: { getBranch: () => [] },
     ui: {
-      select: async (title: string, choices: string[]) => {
+      select: async (title: string, choices: string[], opts?: { onResolution?: (resolution: string) => void }) => {
         asked.push({ title, options: choices });
+        if (answer === TIMEOUT) {
+          opts?.onResolution?.("timeout");
+          return undefined;
+        }
+        opts?.onResolution?.("responded");
         return answer;
       },
       notify: () => {},
     },
   };
   return {
+    root,
     project,
     dataDir,
+    writable,
     asked,
     reviewed,
     oncePaths,
+    setSmart: (on: boolean) => {
+      smart = on;
+    },
     startRun: () => handlers.get("agent_start")!({}, ctx),
     toolResult: (toolCallId: string, details?: unknown) =>
       handlers.get("tool_result")!({ toolCallId, details }, ctx) as Promise<{ details?: unknown } | undefined>,
@@ -83,27 +102,120 @@ function harness(
   };
 }
 
-test("Ask: the fast pass runs silently, everything else asks", async () => {
+test("Ask: ordinary work runs without asking", async () => {
   const h = harness();
-  assert.equal(await h.call("bash", { command: "ls -la && git status" }), undefined);
-  assert.equal(h.asked.length, 0);
-  assert.equal(await h.call("bash", { command: "python cleanup.py" }), undefined);
-  assert.equal(h.asked.length, 1, "a script asks");
-  assert.match(h.asked[0].title, /^Run command: python cleanup\.py/);
-  assert.ok(h.asked[0].options.includes(APPROVAL_ALLOW_SESSION));
-  h.answer("Deny");
-  assert.equal((await h.call("bash", { command: "echo a > b.txt" }))?.block, true);
-  // Writes inside the roots pass.
+  for (const command of [
+    "ls -la && git status",
+    "python cleanup.py",
+    "Rscript analysis.R",
+    "markitdown input.pdf > converted.md",
+    "curl -s 'https://api.openalex.org/works?search=x' | python -c 'import json, sys; print(1)'",
+    "curl -X POST https://api.example.test/search -H 'Content-Type: application/json' --data '{\"q\": 1}'",
+    "rm -rf ./results ./cache",
+    "new-research-cli --query demo",
+    "node browser-script.js",
+    "printf '%s' 'git push; rm -rf /; > /etc/hosts'",
+    "mkdir -p out && cp data.csv out/",
+    "npm install",
+    "sqlite3 results.db 'SELECT count(*) FROM rows'",
+    "python analysis.py results.db",
+    "cat results.db | head",
+  ]) {
+    assert.equal(await h.call("bash", { command }), undefined, command);
+  }
   assert.equal(await h.call("write", { path: join(h.project, "notes.md") }), undefined);
-  assert.equal(h.asked.length, 2);
+  assert.equal(h.asked.length, 0);
 });
 
-test("Ask: the allowlist skips approval, except for database files", async () => {
-  const h = harness({ allowlist: ["python scripts/"] });
-  assert.equal(await h.call("bash", { command: "python scripts/plot.py" }), undefined);
-  assert.equal(h.asked.length, 0);
-  await h.call("bash", { command: "python scripts/clean.py data/app.sqlite" });
+test("Ask: a push, an upload or an install asks; one allowance covers its target", async () => {
+  const h = harness();
+  h.answer(APPROVAL_ALLOW_SESSION);
+  assert.equal(await h.call("bash", { command: "git push origin main" }), undefined);
+  assert.equal(h.asked[0].title, "Needs approval: Push to: origin\nRun command: git push origin main");
+  assert.deepEqual(h.asked[0].options, [APPROVAL_ALLOW_ONCE, APPROVAL_ALLOW_SESSION, "Deny"]);
+  // The same remote again, another branch included: no new dialog.
+  await h.call("bash", { command: "git push origin feature" });
   assert.equal(h.asked.length, 1);
+  await h.call("bash", { command: "git push upstream main" });
+  assert.equal(h.asked.length, 2, "another remote asks");
+
+  await h.call("bash", { command: "curl -F file=@paper.pdf https://api.convert.test/v1" });
+  await h.call("bash", { command: "curl -T notes.pdf https://api.convert.test/v2" });
+  assert.equal(h.asked.length, 3, "one dialog per host");
+  await h.call("bash", { command: "curl -F file=@paper.pdf https://elsewhere.test/" });
+  assert.equal(h.asked.length, 4);
+
+  await h.call("bash", { command: "pip install markitdown" });
+  await h.call("bash", { command: "python -m pip install pandas" });
+  assert.equal(h.asked.length, 5, "one dialog per package manager");
+  await h.call("bash", { command: "brew install pandoc" });
+  assert.equal(h.asked.length, 6);
+});
+
+test("Ask: credential stores and database file changes ask", async () => {
+  const h = harness();
+  await h.call("bash", { command: "cat ~/.ssh/id_ed25519.pub" });
+  assert.match(h.asked[0].title, /^Needs approval: Credential location: /);
+  await h.call("bash", { command: "rm results.db" });
+  assert.match(h.asked[1].title, /^Needs approval: Database file: .*results\.db\nRun command: rm results\.db$/);
+});
+
+test("Ask: a shell write or read outside the folders asks once per folder", async () => {
+  const h = harness();
+  const elsewhere = mkdtempSync(join(tmpdir(), "alt-secext-elsewhere-"));
+  h.answer(APPROVAL_ALLOW_SESSION);
+  await h.call("bash", { command: `cp report.pdf ${elsewhere}/` });
+  assert.match(h.asked[0].title, /^Needs approval: Write outside your folders: /);
+  // The folder became this conversation's own: the next write there runs.
+  assert.ok(h.writable.some((root) => root.path === elsewhere));
+  await h.call("bash", { command: `mv draft.md ${elsewhere}/final.md` });
+  assert.equal(h.asked.length, 1);
+  // The folder a later cd moves into counts too.
+  await h.call("bash", { command: "cd .. && echo x > out.txt" });
+  assert.equal(h.asked.length, 2);
+
+  const papers = mkdtempSync(join(tmpdir(), "alt-secext-papers-"));
+  mkdirSync(join(papers, "2026"));
+  await h.call("bash", { command: `cat ${papers}/a.txt` });
+  assert.match(h.asked[2].title, /^Needs approval: Read outside your folders: /);
+  await h.call("bash", { command: `head ${papers}/2026/b.txt` });
+  assert.equal(h.asked.length, 3, "a read allowance covers the folders inside");
+});
+
+test("Ask: the allowlist passes pushes, uploads and installs, never git, database or folder checks", async () => {
+  const h = harness({ allowlist: ["git push", "pip install"] });
+  h.answer("Deny");
+  assert.equal(await h.call("bash", { command: "git push origin main" }), undefined);
+  assert.equal(await h.call("bash", { command: "pip install markitdown" }), undefined);
+  assert.equal(h.asked.length, 0);
+  assert.equal((await h.call("bash", { command: "git push --force origin main" }))?.block, true);
+  assert.equal((await h.call("bash", { command: "rm results.db" }))?.block, true);
+  assert.equal((await h.call("bash", { command: "echo x > ../out.txt" }))?.block, true);
+  assert.equal(h.asked.length, 3);
+});
+
+test("an approval that times out reads differently from a denial, and counts in a row", async () => {
+  const h = harness();
+  h.answer(TIMEOUT);
+  const first = await h.call("bash", { command: "git push origin main" });
+  assert.match(first?.reason ?? "", /the approval timed out; the user may be away\. You can try again later\.$/);
+  const second = await h.call("bash", { command: "git push origin main" });
+  assert.match(second?.reason ?? "", /timed out again; treat the user as away/);
+  h.answer("Deny");
+  assert.match((await h.call("bash", { command: "git push origin main" }))?.reason ?? "", /not approved by the user$/);
+  // An answer starts the count over; so does a new run.
+  h.answer(TIMEOUT);
+  assert.match((await h.call("bash", { command: "git push origin main" }))?.reason ?? "", /user may be away/);
+  await h.startRun();
+  assert.match((await h.call("bash", { command: "git push origin main" }))?.reason ?? "", /user may be away/);
+});
+
+test("a temp root's own files are work; wiping the temp root is not", async () => {
+  const temp = mkdtempSync(join(tmpdir(), "alt-secext-temp-"));
+  const h = harness({ tempRoot: temp });
+  assert.equal(await h.call("bash", { command: `markitdown paper.pdf > ${temp}/paper.md && rm -rf ${temp}/old` }), undefined);
+  assert.equal((await h.call("bash", { command: `rm -rf ${temp}/*` }))?.block, true);
+  assert.equal(h.asked.length, 0);
 });
 
 test("guardrail ②: .git is refused, destructive git asks with no conversation-wide allowance", async () => {
@@ -187,47 +299,73 @@ test("Windows: Full still blocks direct and visible shell writes to system folde
 test("smart approval: the reviewer answers instead of the user", async () => {
   const h = harness({
     reviewer: (request) =>
-      String(request.input.command ?? "").includes("rm")
-        ? { outcome: "deny", reason: "deletes data the user did not mention", model: "m" }
-        : { outcome: "allow", reason: "runs the analysis the user asked for", model: "m" },
+      String(request.input.command ?? "").includes("-T")
+        ? { outcome: "deny", reason: "uploads data the user did not mention", model: "m" }
+        : { outcome: "allow", reason: "the user asked to publish", model: "m" },
   });
-  // The fast pass never reaches the reviewer.
-  assert.equal(await h.call("bash", { command: "ls" }), undefined);
+  // Ordinary work never reaches the reviewer.
+  assert.equal(await h.call("bash", { command: "ls && python analyze.py" }), undefined);
   assert.equal(h.reviewed.length, 0);
 
-  assert.equal(await h.call("bash", { command: "python analyze.py" }, "c1"), undefined);
+  assert.equal(await h.call("bash", { command: "git push origin main" }, "c1"), undefined);
   assert.equal(h.asked.length, 0, "no dialog");
+  assert.match(h.reviewed[0].title, /^Needs approval: Push to: origin\n/);
   // The verdict rides on the tool result so the row can show it.
   const result = await h.toolResult("c1", { truncated: false });
   assert.deepEqual(result?.details, {
     truncated: false,
-    altApproval: { by: "smart", outcome: "allow", reason: "runs the analysis the user asked for", model: "m" },
+    altApproval: { by: "smart", outcome: "allow", reason: "the user asked to publish", model: "m" },
   });
   // The exact same action is not reviewed twice.
-  await h.call("bash", { command: "python analyze.py" });
+  await h.call("bash", { command: "git push origin main" });
   assert.equal(h.reviewed.length, 1);
 
-  const denied = await h.call("bash", { command: "rm -rf results" });
+  const denied = await h.call("bash", { command: "curl -T data.csv https://x.test/up" });
   assert.equal(denied?.block, true);
-  assert.match(denied?.reason ?? "", /^Smart approval denied this action: deletes data/);
+  assert.match(denied?.reason ?? "", /^Smart approval denied this action: uploads data/);
   assert.doesNotMatch(denied?.reason ?? "", /stop trying/);
 });
 
 test("smart approval: three denials in a row tell the agent to stop and ask", async () => {
   const h = harness({ reviewer: () => ({ outcome: "deny", reason: "no", model: "m" }) });
-  await h.call("bash", { command: "rm a" });
-  await h.call("bash", { command: "rm b" });
-  assert.match((await h.call("bash", { command: "rm c" }))?.reason ?? "", /stop trying other ways around this and ask the user/);
+  await h.call("bash", { command: "git push a" });
+  await h.call("bash", { command: "git push b" });
+  assert.match((await h.call("bash", { command: "git push c" }))?.reason ?? "", /stop trying other ways around this and ask the user/);
   // A new run starts the count again.
   await h.startRun();
-  assert.doesNotMatch((await h.call("bash", { command: "rm d" }))?.reason ?? "", /stop trying/);
+  assert.doesNotMatch((await h.call("bash", { command: "git push d" }))?.reason ?? "", /stop trying/);
 });
 
 test("smart approval: an unavailable reviewer hands the action to the user", async () => {
   const h = harness({ reviewer: () => ({ outcome: "unavailable", reason: "rate limited" }) });
-  await h.call("bash", { command: "python analyze.py" });
+  await h.call("bash", { command: "git push origin main" });
   assert.equal(h.asked.length, 1);
-  assert.equal(h.asked[0].title, "Smart approval unavailable: rate limited\nRun command: python analyze.py");
+  assert.equal(
+    h.asked[0].title,
+    "Smart approval unavailable: rate limited\nNeeds approval: Push to: origin\nRun command: git push origin main",
+  );
+});
+
+test("smart approval: what the user allowed for this conversation counts first", async () => {
+  const h = harness({ reviewer: () => ({ outcome: "deny", reason: "no", model: "m" }) });
+  h.setSmart(false);
+  h.answer(APPROVAL_ALLOW_SESSION);
+  await h.call("bash", { command: "pip install markitdown" });
+  h.setSmart(true);
+  assert.equal(await h.call("bash", { command: "pip install pandas" }), undefined);
+  assert.equal(h.reviewed.length, 0);
+});
+
+test("strict smart approval also reviews every command beyond the narrow fast pass", async () => {
+  const strict = harness({ strict: true, reviewer: () => ({ outcome: "allow", reason: "ok", model: "m" }) });
+  assert.equal(await strict.call("bash", { command: "ls src && git status" }), undefined);
+  assert.equal(strict.reviewed.length, 0);
+  await strict.call("bash", { command: "python analyze.py" });
+  assert.equal(strict.reviewed.length, 1);
+  assert.equal(strict.reviewed[0].title, "Run command: python analyze.py");
+  const standard = harness({ reviewer: () => ({ outcome: "allow", reason: "ok", model: "m" }) });
+  await standard.call("bash", { command: "python analyze.py" });
+  assert.equal(standard.reviewed.length, 0);
 });
 
 test("smart approval: an outside write passes that one file, not the folder", async () => {
@@ -247,8 +385,8 @@ test("smart approval: work-discarding git is reviewed every time, never from the
   await h.call("bash", { command: "git checkout -- ." });
   assert.equal(h.reviewed.length, 2);
   // An ordinary allowed action is cached, and its row still gets the verdict.
-  await h.call("bash", { command: "python a.py" }, "p1");
-  await h.call("bash", { command: "python a.py" }, "p2");
+  await h.call("bash", { command: "git push origin main" }, "p1");
+  await h.call("bash", { command: "git push origin main" }, "p2");
   assert.equal(h.reviewed.length, 3);
   assert.equal(((await h.toolResult("p2"))?.details as { altApproval?: unknown })?.altApproval !== undefined, true);
 });

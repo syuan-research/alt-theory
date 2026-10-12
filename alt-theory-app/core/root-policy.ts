@@ -18,7 +18,8 @@ export type RootReason =
   | "trusted" // configured trusted-read roots (read)
   | "skills" // the discovered Alt Theory skills root (read)
   | "global-list" // a folder on the Working folders page's global list (read; write when ticked)
-  | "project-secondary"; // a companion folder of the project the session works in
+  | "project-secondary" // a companion folder of the project the session works in
+  | "task-temp"; // the system temp folder: task files written there are read back without asking (2026-10-12)
 
 export interface Root {
   path: string;
@@ -37,12 +38,15 @@ export interface SessionRootsInput {
   globalFolders?: Array<{ path: string; writable: boolean }>;
   /** The project's companion folders for this session's main folder (v1.5.1: the one folder mechanism). */
   projectSecondaryDirs?: string[];
+  /** The system temp folder, each spelling (`/tmp` and its real path). */
+  tempDirs?: string[];
 }
 
 /**
  * The session's readable and writable roots. Writable: the Alt roots, the
- * workspace (primary + project companions), ticked global folders, and
- * approved folders. Read-only permission keeps these roots and asks before
+ * workspace (primary + project companions), ticked global folders, approved
+ * folders, and the system temp folder (a download or conversion there reads
+ * back without a prompt). Read-only permission keeps these roots and asks before
  * each write instead (security extension). Readable: everything writable, plus the primary cwd in
  * every mode, the KB (which legitimately lives outside cwd), trusted-read
  * roots, and the skills root (bundled skills are runtime-read assets like the
@@ -79,12 +83,14 @@ export function sessionRoots(input: SessionRootsInput): {
     root: { path: resolve(folder.path), reason: "global-list" as const },
     writable: folder.writable,
   }));
+  const temp: Root[] = (input.tempDirs ?? []).map((path) => ({ path: resolve(path), reason: "task-temp" }));
   const writable: Root[] = [
     ...altWritable,
     cwdRoot,
     ...projectSecondary,
     ...global.filter((folder) => folder.writable).map((folder) => folder.root),
     ...approved,
+    ...temp,
   ];
   const readable: Root[] = [
     ...writable,

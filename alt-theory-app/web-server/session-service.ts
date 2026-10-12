@@ -18,6 +18,7 @@ import {
   APPROVAL_ALLOW_ONCE,
   APPROVAL_DENY,
   APPROVAL_TIMEOUT_MS,
+  approvalTimeoutText,
   type SecurityAuditEntry,
 } from "../core/security-extension.js";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
@@ -33,6 +34,7 @@ import {
   type AltMode,
   type ResourceDiscoveryMode,
   type RuntimeMode,
+  type SmartApprovalSetting,
 } from "../core/alt-theory-core.js";
 import {
   allocateReadableSessionId,
@@ -250,7 +252,7 @@ export interface SessionCreationMetadata {
    */
   fullAccess?: boolean;
   /** Smart approval at birth (inherited or chosen); dormant under read-only. */
-  smartApproval?: boolean;
+  smartApproval?: SmartApprovalSetting;
 }
 
 export type { ForkPurpose, StudyTag, SessionModelOverride };
@@ -399,8 +401,10 @@ interface ManagedSession {
   setNativePiScanAltSkills: (enabled: boolean) => Promise<void>;
   getFullAccess: () => boolean;
   setFullAccess: (enabled: boolean) => void;
-  getSmartApproval: () => boolean;
-  setSmartApproval: (enabled: boolean) => void;
+  getSmartApproval: () => SmartApprovalSetting;
+  setSmartApproval: (value: SmartApprovalSetting) => void;
+  approvalTimedOut: () => number;
+  approvalAnswered: () => void;
   /** Full Access in force (dormant under read-only). */
   isFullAccessEffective: () => boolean;
   /** Smart approval in force (not under Full or read-only). */
@@ -1311,23 +1315,24 @@ export class SessionService implements AgentTeamBridge {
    */
   async setSmartApproval(
     sessionId: string,
-    enabled: boolean,
+    value: SmartApprovalSetting,
   ): Promise<SessionSnapshot> {
     const managed = this.requireSession(sessionId);
-    if (managed.getSmartApproval() !== enabled) {
-      managed.setSmartApproval(enabled);
+    // Ordinary and strict are both "on": compare the value, not on/off.
+    if (managed.getSmartApproval() !== value) {
+      managed.setSmartApproval(value);
       const { recordsDir } = managed.manifest;
       const header = readV4SessionHeader(recordsDir);
       if (header) {
         const next = { ...header };
-        if (enabled) next.smartApproval = true;
+        if (value) next.smartApproval = value;
         else delete next.smartApproval;
         writeSessionHeader(recordsDir, next);
       }
       appendSessionEvent(recordsDir, {
         sessionId,
         type: "smart_approval_changed",
-        details: { enabled },
+        details: { enabled: value },
       });
     }
     return this.publish(managed);
@@ -3254,7 +3259,7 @@ export class SessionService implements AgentTeamBridge {
     /** The header's Full Access; absent (fork, child) = off. */
     fullAccess?: boolean;
     /** The header's smart approval; absent = off. */
-    smartApproval?: boolean;
+    smartApproval?: SmartApprovalSetting;
   }) {
     const appSettings = readAppSettings(this.config.dataDir);
     const subagentConfig = readSubagentConfig(this.config.dataDir).config;
@@ -3282,7 +3287,7 @@ export class SessionService implements AgentTeamBridge {
       ...input.modelArgs,
       altMode: input.altMode,
       fullAccess: input.fullAccess === true,
-      smartApproval: input.smartApproval === true,
+      smartApproval: input.smartApproval ?? false,
       reviewAction: (
         request: ReviewRequest,
         context: { toolCallId: string; priorDenials: number; signal?: AbortSignal },
@@ -4002,6 +4007,7 @@ export class SessionService implements AgentTeamBridge {
       signal,
       timeout: APPROVAL_TIMEOUT_MS,
     });
+    if (choice !== undefined) from.approvalAnswered();
     if (choice === APPROVAL_ALLOW_ONCE) {
       audit("approved-once", "one message");
       return null;
@@ -4022,9 +4028,9 @@ export class SessionService implements AgentTeamBridge {
     }
     if (signal?.aborted) return "The message was not sent: the run was stopped.";
     audit("blocked", "approval timed out");
-    // ponytail: a dialog cancelled because the runtime was replaced also
-    // lands here and reads as a timeout; a distinct timeout signal belongs
-    // to the approval-timeout issue (2026-10-12).
+    // A dialog cancelled because the runtime was replaced also lands here
+    // and reads as a timeout (owner 2026-10-12, plan §11).
+    const timeouts = from.approvalTimedOut();
     if (spent) {
       // The allowance ran out and nobody answered: the other side should
       // not wait for a reply that cannot come (owner 2026-10-12).
@@ -4037,7 +4043,7 @@ export class SessionService implements AgentTeamBridge {
         body: `${this.sessionAlias(fromId) ?? fromId} (Session ID ${fromId}) could not send you a message: its allowed messages to you are used up, and the user did not answer the approval in time.`,
       });
     }
-    return `The approval timed out, so the message was not sent; the user may be away.${
+    return `The message was not sent: ${approvalTimeoutText(timeouts)}${
       spent ? ` ${label} was told that your allowed messages are used up.` : ""
     }`;
   }
@@ -4853,7 +4859,7 @@ export class SessionService implements AgentTeamBridge {
     modelOverride?: SessionModelOverride | null;
     /** Fork flows call this before the child's header exists on disk. */
     forkPurpose?: ForkPurpose;
-    smartApproval?: boolean;
+    smartApproval?: SmartApprovalSetting;
   }): Promise<ManagedSession> {
     const persistedHeader = readV4SessionHeader(args.sessionDirs.recordsDir);
     const persistedMode = args.mode ?? toAltMode(persistedHeader?.mode);
@@ -4913,8 +4919,10 @@ export class SessionService implements AgentTeamBridge {
     setNativePiScanAltSkills: (enabled: boolean) => Promise<void>;
     getFullAccess: () => boolean;
     setFullAccess: (enabled: boolean) => void;
-    getSmartApproval: () => boolean;
-    setSmartApproval: (enabled: boolean) => void;
+    getSmartApproval: () => SmartApprovalSetting;
+    setSmartApproval: (value: SmartApprovalSetting) => void;
+    approvalTimedOut: () => number;
+    approvalAnswered: () => void;
     isFullAccessEffective: () => boolean;
     isSmartApprovalEffective: () => boolean;
     mediatesReadOnly: () => boolean;

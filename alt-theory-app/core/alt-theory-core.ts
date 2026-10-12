@@ -26,7 +26,8 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { Model } from "@earendil-works/pi-ai/compat";
-import { appendFileSync, existsSync, readFileSync } from "fs";
+import { appendFileSync, existsSync, readFileSync, realpathSync } from "fs";
+import { tmpdir } from "os";
 import { mkdir, writeFile } from "fs/promises";
 import { dirname, join, resolve, sep } from "path";
 import {
@@ -154,6 +155,8 @@ export type RuntimeMode = "alt-theory" | "native-pi";
  * permission modes are read-only / work (Ask) / work + Full Access.
  */
 export type AltMode = "read-only" | "work";
+/** Smart approval as a conversation stores it: off, on, or the strict profile. */
+export type SmartApprovalSetting = boolean | "strict";
 
 /** A stored mode as the runtime reads it: anything but "read-only" is work. */
 export function toAltMode(value: unknown): AltMode {
@@ -208,10 +211,11 @@ export interface AltTheoryConfig extends SessionDirectories {
   fullAccess?: boolean;
   /**
    * Smart approval this conversation holds (its header): the reviewer model
-   * answers where Ask would ask the user. Effective only in work mode
+   * answers where Ask would ask the user; "strict" also puts every command
+   * beyond the narrow read-only fast pass to it. Effective only in work mode
    * without Full Access.
    */
-  smartApproval?: boolean;
+  smartApproval?: SmartApprovalSetting;
   /** The reviewer behind smart approval (session service: model chain, notices). */
   reviewAction?: SecurityExtensionOptions["reviewAction"];
   resourceDiscovery?: ResourceDiscoveryMode;
@@ -225,6 +229,10 @@ export interface AltTheoryConfig extends SessionDirectories {
   dataDir?: string;
   /** The user's command-prefix allowlist (app settings), read live. */
   readCommandAllowlist?: () => string[];
+  /** Reads code a command hands to PowerShell (Windows: the native parser); the light reader when absent. */
+  parsePowerShell?: SecurityExtensionOptions["parsePowerShell"];
+  /** The system temp folder's spellings; default: the OS temp folder (and /tmp outside Windows). */
+  tempDirs?: string[];
   /**
    * User-enabled external skill paths (files or directories), resolved by the
    * app settings layer (spec §6.1). Snapshot at session open; settings
@@ -456,7 +464,7 @@ async function createAltTheorySessionWithManager(
     // Full Access follows the conversation (M2, 2026-09-24): the session
     // service persists it in the header and hands it back on every assembly.
     fullAccess: config.fullAccess === true,
-    smartApproval: config.smartApproval === true,
+    smartApproval: (config.smartApproval === "strict" ? "strict" : config.smartApproval === true) as SmartApprovalSetting,
     // A switch to read-only waiting for the turn to end already mediates
     // like read-only (turning permissions down mid-run is always safe).
     readOnlyHeld: false,
@@ -532,7 +540,10 @@ async function createAltTheorySessionWithManager(
   const isFullAccessEffective = () => runtimeState.fullAccess && !mediatesReadOnly();
   // Full wins when both are stored; read-only keeps both dormant.
   const isSmartApprovalEffective = () =>
-    runtimeState.smartApproval && !runtimeState.fullAccess && !mediatesReadOnly();
+    runtimeState.smartApproval !== false && !runtimeState.fullAccess && !mediatesReadOnly();
+  // Unanswered approvals in a row: the security extension's and the
+  // messages-between-conversations dialog's alike (plan §11).
+  const approvalTimeouts = { count: 0 };
   // Session-scoped audit sink, shared by the security extension and the
   // approvals of messages to other conversations (session-service).
   const recordAudit = (entry: SecurityAuditEntry) =>
@@ -560,6 +571,7 @@ async function createAltTheorySessionWithManager(
   const onceWritablePaths = new Set<string>();
   const projectSecondaryDirs = () =>
     config.readFolderPolicy?.().projectSecondaryDirs ?? [];
+  const taskTempDirs = config.tempDirs ?? systemTempDirs();
   const sessionRootsForMode = (): { readable: Root[]; writable: Root[] } => {
     const folderPolicy = config.readFolderPolicy?.();
     return sessionRoots({
@@ -572,6 +584,7 @@ async function createAltTheorySessionWithManager(
       skillsDir: resolvedSkillsDir,
       globalFolders: folderPolicy?.globalFolders ?? [],
       projectSecondaryDirs: folderPolicy?.projectSecondaryDirs ?? [],
+      tempDirs: taskTempDirs,
     });
   };
   const writableRootsForMode = () => sessionRootsForMode().writable;
@@ -671,7 +684,10 @@ async function createAltTheorySessionWithManager(
         protectedDirs: config.dataDir ? [resolve(config.dataDir)] : [],
         getCommandAllowlist: config.readCommandAllowlist,
         isSmartApproval: isSmartApprovalEffective,
+        isStrictSmartApproval: () => runtimeState.smartApproval === "strict",
         reviewAction: config.reviewAction,
+        parsePowerShell: config.parsePowerShell,
+        approvalTimeouts,
       }),
     ],
     noContextFiles: resourceDiscovery !== "dev-debug",
@@ -976,8 +992,14 @@ async function createAltTheorySessionWithManager(
     /** Read-only in force, including a switch waiting for the turn to end. */
     mediatesReadOnly,
     recordAudit,
-    setSmartApproval: (enabled: boolean): void => {
-      runtimeState.smartApproval = enabled;
+    setSmartApproval: (value: SmartApprovalSetting): void => {
+      runtimeState.smartApproval = value;
+    },
+    /** An approval went unanswered: how many in a row, this one included. */
+    approvalTimedOut: (): number => ++approvalTimeouts.count,
+    /** The user answered an approval: the count starts over. */
+    approvalAnswered: (): void => {
+      approvalTimeouts.count = 0;
     },
     getWorkspace: () => ({
       primaryDir: cwd,
@@ -1197,3 +1219,18 @@ function uniqueWarnings(warnings: string[]): string[] {
   return [...new Set(warnings)];
 }
 
+/** The OS temp folder in each spelling a command may use (`/tmp`, `/private/tmp`, $TMPDIR). */
+function systemTempDirs(): string[] {
+  const spellings = [tmpdir(), ...(process.platform === "win32" ? [] : ["/tmp"])];
+  return [
+    ...new Set(
+      spellings.flatMap((path) => {
+        try {
+          return [resolve(path), realpathSync(path)];
+        } catch {
+          return [];
+        }
+      }),
+    ),
+  ];
+}

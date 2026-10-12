@@ -452,10 +452,11 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
     res.json({
       reviewer: settings.approvalReviewer ?? null,
       hintDismissed: settings.smartApprovalHintDismissed === true,
+      showAllModes: settings.showAllApprovalModes === true,
     });
   });
   app.put("/api/settings/approval-reviewer", (req, res) => {
-    const body = req.body as { reviewer?: unknown; hintDismissed?: unknown };
+    const body = req.body as { reviewer?: unknown; hintDismissed?: unknown; showAllModes?: unknown };
     const settings = readAppSettings(dataDir);
     if ("reviewer" in body) {
       const reviewer = body.reviewer === null ? null : normalizeModelChain(body.reviewer);
@@ -467,10 +468,15 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
       else delete settings.approvalReviewer;
     }
     if (body.hintDismissed === true) settings.smartApprovalHintDismissed = true;
+    if (typeof body.showAllModes === "boolean") {
+      if (body.showAllModes) settings.showAllApprovalModes = true;
+      else delete settings.showAllApprovalModes;
+    }
     writeAppSettings(dataDir, settings);
     res.json({
       reviewer: settings.approvalReviewer ?? null,
       hintDismissed: settings.smartApprovalHintDismissed === true,
+      showAllModes: settings.showAllApprovalModes === true,
     });
   });
   // Separate from app/Pi settings so a broken optional agent preset file can
@@ -2874,8 +2880,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             break;
           }
           case "set_full_access": {
-            if (typeof msg.payload?.enabled !== "boolean") {
-              fail(new Error("enabled must be a boolean"));
+            if (typeof msg.payload?.enabled !== "boolean" && msg.payload?.enabled !== "strict") {
+              fail(new Error('enabled must be a boolean or "strict"'));
               break;
             }
             // Full Access is a local-only control (v1.4.8); under read-only
@@ -2892,8 +2898,8 @@ export function createAltTheoryServer(options: AltTheoryServerOptions = {}) {
             break;
           }
           case "set_smart_approval": {
-            if (typeof msg.payload?.enabled !== "boolean") {
-              fail(new Error("enabled must be a boolean"));
+            if (typeof msg.payload?.enabled !== "boolean" && msg.payload?.enabled !== "strict") {
+              fail(new Error('enabled must be a boolean or "strict"'));
               break;
             }
             if (!attachedSessionId) {

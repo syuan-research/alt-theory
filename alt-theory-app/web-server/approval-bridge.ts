@@ -40,6 +40,16 @@ export interface ApprovalResponse {
 
 export type ApprovalResolution = "responded" | "cancelled" | "timeout";
 
+/**
+ * Dialog options as Alt's own callers pass them: Pi's, plus a callback told
+ * how the dialog ended, so a caller can tell a timeout from the user's "no"
+ * (both read as undefined from select). Pi hands dialog options through to
+ * the UI context unchanged (ExtensionRunner.wrapUIPromptContext).
+ */
+export type AltDialogOptions = ExtensionUIDialogOptions & {
+  onResolution?: (resolution: ApprovalResolution) => void;
+};
+
 export interface ApprovalBridgeEvents {
   onRequest: (request: ApprovalRequest) => void;
   onResolve: (approvalId: string, resolution: ApprovalResolution) => void;
@@ -48,7 +58,7 @@ export interface ApprovalBridgeEvents {
 
 interface PendingApproval {
   request: ApprovalRequest;
-  resolve: (response: ApprovalResponse | null) => void;
+  resolve: (response: ApprovalResponse | null, resolution: ApprovalResolution) => void;
 }
 
 export class ApprovalBridge {
@@ -67,7 +77,7 @@ export class ApprovalBridge {
     }
     this.pending.delete(approvalId);
     this.events.onResolve(approvalId, "responded");
-    entry.resolve(response);
+    entry.resolve(response, "responded");
     return true;
   }
 
@@ -78,9 +88,9 @@ export class ApprovalBridge {
 
   /** Cancel all pending dialogs (session dispose/replacement). */
   disposeAll(): void {
-    for (const [approvalId, entry] of this.pending) {
-      this.events.onResolve(approvalId, "cancelled");
-      entry.resolve(null);
+    // Each entry's settle announces "cancelled" and removes it.
+    for (const entry of [...this.pending.values()]) {
+      entry.resolve(null, "cancelled");
     }
     this.pending.clear();
   }
@@ -88,23 +98,23 @@ export class ApprovalBridge {
   private request(
     kind: ApprovalRequest["kind"],
     fields: Pick<ApprovalRequest, "title" | "message" | "options" | "placeholder">,
-    opts: ExtensionUIDialogOptions | undefined
+    opts: AltDialogOptions | undefined
   ): Promise<ApprovalResponse | null> {
     if (opts?.signal?.aborted) {
+      opts.onResolution?.("cancelled");
       return Promise.resolve(null);
     }
     const approvalId = randomUUID();
     return new Promise((resolve) => {
       let timeoutId: NodeJS.Timeout | undefined;
-      const settle = (
-        response: ApprovalResponse | null,
-        resolution: Exclude<ApprovalResolution, "responded"> | null
-      ) => {
+      const settle = (response: ApprovalResponse | null, resolution: ApprovalResolution) => {
         if (timeoutId) clearTimeout(timeoutId);
         opts?.signal?.removeEventListener("abort", onAbort);
-        if (this.pending.delete(approvalId) && resolution) {
+        // respond() announces its own ending before settling.
+        if (this.pending.delete(approvalId) && resolution !== "responded") {
           this.events.onResolve(approvalId, resolution);
         }
+        opts?.onResolution?.(resolution);
         resolve(response);
       };
       const onAbort = () => settle(null, "cancelled");
@@ -120,7 +130,7 @@ export class ApprovalBridge {
       };
       this.pending.set(approvalId, {
         request,
-        resolve: (response) => settle(response, null),
+        resolve: (response, resolution) => settle(response, resolution),
       });
       this.events.onRequest(request);
     });

@@ -86,6 +86,8 @@ export interface AppSettings {
   approvalReviewer?: { model: string; fallbackModels: string[] };
   /** The Composer's reviewer-setup hint was dismissed for good. */
   smartApprovalHintDismissed?: boolean;
+  /** Advanced: the permission menu also offers strict smart approval (2026-10-12). */
+  showAllApprovalModes?: boolean;
   /** App-wide behavior runtime. Absent = Alt Theory. */
   runtimeMode?: RuntimeMode;
   /** Native Pi may add Alt Theory's bundled skills to Pi's own discovery. */
@@ -280,6 +282,7 @@ export function readAppSettingsWithWarning(dataDir: string): {
       ...(parsed.smartApprovalHintDismissed === true
         ? { smartApprovalHintDismissed: true }
         : {}),
+      ...(parsed.showAllApprovalModes === true ? { showAllApprovalModes: true } : {}),
       ...(Array.isArray(parsed.commandAllowlist)
         ? { commandAllowlist: normalizeCommandAllowlist(parsed.commandAllowlist) }
         : {}),

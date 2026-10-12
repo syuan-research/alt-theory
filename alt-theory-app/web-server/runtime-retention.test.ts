@@ -244,13 +244,19 @@ type ToolGate = {
 };
 
 /** Asks for `rm -rf scratch`; answers the dialog with `choice` when one comes. */
-async function askCommand(service: SessionService, sessionId: string, id: string, choice?: string) {
+async function askCommand(
+  service: SessionService,
+  sessionId: string,
+  id: string,
+  choice?: string,
+  command = "git push origin main",
+) {
   const asked: string[] = [];
   const detach = service.attachApprovals((event) => {
     if (event.type === "approval_requested") asked.push(event.payload.approvalId);
   });
   const gate = (service as unknown as ToolGate).sessions.get(sessionId)!.session.agent.beforeToolCall!;
-  const result = gate({ toolCall: { id, name: "bash", arguments: {} }, args: { command: "rm -rf scratch" } });
+  const result = gate({ toolCall: { id, name: "bash", arguments: {} }, args: { command } });
   for (let i = 0; i < 50 && asked.length === 0; i++) await new Promise((r) => setTimeout(r, 10));
   if (asked.length && choice) service.respondApproval(sessionId, asked[0], { choice });
   else if (asked.length) service.respondApproval(sessionId, asked[0], { accept: false });
@@ -294,11 +300,11 @@ test("moving a conversation to another folder drops path grants and keeps comman
   const dir = mkdtempSync(join(tmpdir(), "alt-theory-approvals-"));
   writeFileSync(
     join(dir, "approvals.json"),
-    JSON.stringify({ schemaVersion: 1, keys: ["bash:rm", "read:/x", "db:/y.sqlite"], writableRoots: ["/z"] }),
+    JSON.stringify({ schemaVersion: 1, keys: ["upload:example.com", "read:/x", "db:/y.sqlite"], writableRoots: ["/z"] }),
   );
   dropPathApprovals(dir);
   const after = JSON.parse(readFileSync(join(dir, "approvals.json"), "utf-8"));
-  assert.deepEqual(after, { schemaVersion: 1, keys: ["bash:rm"], writableRoots: [] });
+  assert.deepEqual(after, { schemaVersion: 1, keys: ["upload:example.com"], writableRoots: [] });
 });
 
 test("a lead whose subagent waits for a slot stays, and so does the subagent", async () => {
@@ -328,7 +334,7 @@ test("re-pointing a live conversation drops its path grants and keeps its comman
   await service.runPrompt(sessionId, "hello").completion;
   const { recordsDir } = service.getManifest(sessionId);
   await service.disposeAll();
-  const commandKey = "bash:rm";
+  const commandKey = "upload:example.com";
   writeFileSync(
     join(recordsDir, "approvals.json"),
     JSON.stringify({ schemaVersion: 1, keys: [commandKey, "read:/elsewhere"], writableRoots: ["/elsewhere"] }),
@@ -342,6 +348,9 @@ test("re-pointing a live conversation drops its path grants and keeps its comman
     writableRoots: [],
   });
   // The reopened runtime still honors the command grant.
-  assert.deepEqual(await askCommand(service, sessionId, "rp1"), { asked: false, result: undefined });
+  assert.deepEqual(
+    await askCommand(service, sessionId, "rp1", undefined, "curl -T notes.pdf https://example.com/upload"),
+    { asked: false, result: undefined },
+  );
   await service.disposeAll();
 });

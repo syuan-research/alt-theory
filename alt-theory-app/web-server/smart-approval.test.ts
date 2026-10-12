@@ -58,6 +58,36 @@ test("inheritance cap: a Full or smart parent's children start on smart approval
   assert.equal(service.getSnapshot(side.sessionId).smartApproval, true);
 });
 
+test("strict smart approval: stored as \"strict\", kept on reopen, passed on to children", async () => {
+  const fixture = setupFixture();
+  let service = createTestService(fixture);
+  const created = await service.createSession(selectors, { mode: "work", smartApproval: "strict" });
+  assert.equal(created.smartApproval, "strict");
+  const records = join(fixture.dataDir, "sessions", created.sessionId, "records");
+  assert.equal(readV4SessionHeader(records)?.smartApproval, "strict");
+  // Ordinary ↔ strict is a change even though both are "on".
+  assert.equal((await service.setSmartApproval(created.sessionId, true)).smartApproval, true);
+  assert.equal(readV4SessionHeader(records)?.smartApproval, true);
+  await service.setSmartApproval(created.sessionId, "strict");
+  // One finished turn, so the conversation can be reopened from disk.
+  const managed = (service as unknown as {
+    sessions: Map<string, { session: { prompt: (text: string) => Promise<void>; sessionManager: { appendMessage: (message: unknown) => void } } }>;
+  }).sessions.get(created.sessionId)!;
+  managed.session.prompt = async (text: string) => {
+    managed.session.sessionManager.appendMessage({ role: "user", content: [{ type: "text", text }], timestamp: Date.now() });
+    managed.session.sessionManager.appendMessage(reply("done"));
+  };
+  await service.runPrompt(created.sessionId, "hello").completion;
+  await service.disposeAll();
+  service = createTestService(fixture);
+  assert.equal((await service.openSession(created.sessionId, selectors)).smartApproval, "strict");
+  assert.equal((await service.forkSession(created.sessionId, "side")).smartApproval, "strict", "strict → strict");
+  // A Full parent's dormant strict profile is not inherited: its children start on ordinary smart approval.
+  const full = await service.createSession(selectors, { mode: "work", fullAccess: true, smartApproval: "strict" });
+  assert.equal((await service.forkSession(full.sessionId, "side")).smartApproval, true);
+  await service.disposeAll();
+});
+
 test("reviewer chain: model → fallback → conversation model at low, each fallback announced", async () => {
   const fixture = fixtureWithTwoModels();
   const service = createTestService(fixture);

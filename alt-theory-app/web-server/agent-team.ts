@@ -84,14 +84,16 @@ export function clampSubagentMode(
 
 /**
  * Smart approval at a child's birth (inheritance cap, 2026-09-26): a work
- * child of a parent on smart approval or Full starts on smart approval;
- * Full itself is never inherited.
+ * child of a parent on smart approval starts on the same profile, a child
+ * of a Full parent on ordinary smart approval; Full itself and, under Full,
+ * a dormant strict profile are never inherited (2026-10-12).
  */
 export function inheritsSmartApproval(
-  parent: { getFullAccess: () => boolean; getSmartApproval: () => boolean },
+  parent: { getFullAccess: () => boolean; getSmartApproval: () => boolean | "strict" },
   childMode: AltMode,
-): boolean {
-  return childMode === "work" && (parent.getFullAccess() || parent.getSmartApproval());
+): boolean | "strict" {
+  if (childMode !== "work") return false;
+  return parent.getFullAccess() ? true : parent.getSmartApproval();
 }
 
 /**
