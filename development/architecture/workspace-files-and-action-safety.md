@@ -131,6 +131,9 @@ the same module serve path comparisons outside containment: `samePath`
 `canonicalPathKey` (resolved, folded, symlink-collapsed through the nearest
 existing ancestor) as the merge key for the changes projection, so two
 spellings or an in-root alias of one file cannot split into two rows.
+On Windows the native realpath resolver also expands 8.3 short names. Critical
+folder deletion compares this physical identity on both sides, so a short name
+or junction cannot hide a protected root; lexical containment still bounds grants.
 
 Callers: the security extension (read and write mediation,
 [`security-extension.ts`](../../alt-theory-app/core/security-extension.ts)),
@@ -300,8 +303,19 @@ PowerShell (`powershell -Command`, `-EncodedCommand`) goes through
 [`powershell-evidence.ts`](../../alt-theory-app/core/powershell-evidence.ts):
 a parser seam (`PowerShellParser`) whose reading is mapped onto the same
 commands (Remove-Item → rm, Set-Content → a write, Invoke-WebRequest
--InFile → an upload, Set-Location → cd); the light reader there is used when
-no native parser is configured or it fails. `cmd /c` (and Git Bash's `cmd //c`) gets a light reading, redirects
+-InFile → an upload, Set-Location → cd). On Windows the security extension
+defaults to [`powershell-native.ts`](../../alt-theory-app/core/powershell-native.ts):
+`powershell` uses Windows PowerShell's parser and `pwsh` uses PowerShell 7's.
+A fixed driver runs asynchronously with `-NoProfile -NonInteractive -Command`;
+the text being checked is stdin JSON, never executed. Input and output use
+UTF-8; timeout, process failure or cancellation returns no native reading.
+Only statically available PowerShell text uses the native process. Dynamic
+handoffs, other platforms and unavailable parsers use the light reader. Neither
+reader opens Python/R/Node/PowerShell script files. Syntax results (up to 32
+small successful readings) may be reused; authorization is still checked for
+each call. After parsing, the extension rereads permissions and roots and
+checks cancellation. A conditional PowerShell folder change retains both
+the previous and new candidate folders. `cmd /c` (and Git Bash's `cmd //c`) gets a light reading, redirects
 included. A parse that runs out of budget is reviewed, and the brakes then
 read the command as plain words. The policy over these facts is
 [`approval-boundary.ts`](../../alt-theory-app/core/approval-boundary.ts).

@@ -57,6 +57,7 @@ import {
 import type { ReviewRequest, ReviewVerdict } from "./approval-reviewer.js";
 import { canonicalPathKey, isPathInside, verdict } from "./path-verdict.js";
 import type { PowerShellParser } from "./powershell-evidence.js";
+import { nativePowerShellParse } from "./powershell-native.js";
 import type { Root } from "./root-policy.js";
 import { shellEvidence } from "./shell-evidence.js";
 
@@ -293,7 +294,7 @@ export function createSecurityExtension(
     isSmartApproval,
     isStrictSmartApproval,
     reviewAction,
-    parsePowerShell,
+    parsePowerShell = process.platform === "win32" ? nativePowerShellParse : undefined,
     approvalTimeouts = { count: 0 },
     sessionAllowances = new Set<string>(),
     onAllowance,
@@ -496,6 +497,7 @@ export function createSecurityExtension(
           parsePowerShell,
           signal: ctx.signal,
         });
+        if (ctx.signal?.aborted) return blocked("run_cancelled", "Blocked — the run was stopped while checking the command.");
         // Read the permission and the folders after the parse: it may have
         // waited on PowerShell while the user switched.
         const writable = getWritableRoots();

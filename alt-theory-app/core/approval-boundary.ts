@@ -134,11 +134,13 @@ export function criticalDeletionTarget(
   roots: string[],
   resolvePath: Resolve,
 ): string | null {
-  const critical = [homedir(), ...criticalHomeFolders(), ...roots.map((root) => resolve(root))];
+  const critical = [homedir(), ...criticalHomeFolders(), ...roots.map((root) => resolve(root))].map(canonicalPathKey);
   // macOS volumes are case-insensitive by default (win32 folds in isPathInside).
   const fold = (path: string) => (process.platform === "darwin" ? path.toLowerCase() : path);
-  const isCritical = (target: string) =>
-    parse(target).root === target || critical.some((path) => isPathInside(fold(target), fold(path)));
+  const isCritical = (target: string) => {
+    const physical = canonicalPathKey(target);
+    return parse(physical).root === physical || critical.some((path) => isPathInside(fold(physical), fold(path)));
+  };
   for (const invocation of evidence.invocations) {
     const { program, args } = invocation;
     let named: Words = [];
@@ -221,7 +223,7 @@ const MODIFY_LAST = new Set(["cp", "ln", "install", "rsync", "scp"]);
 export function writeTargets(evidence: ShellEvidence, resolvePath: Resolve): string[] {
   const out = new Set<string>();
   for (const redirect of evidence.redirects) {
-    if (redirect.write) for (const path of resolveAll(redirect.target, redirect.cwds, resolvePath)) out.add(path);
+    if (redirect.write && !isDevice(redirect.target)) for (const path of resolveAll(redirect.target, redirect.cwds, resolvePath)) out.add(path);
   }
   // (Devices are dropped at the end.)
   for (const invocation of evidence.invocations) {
@@ -238,7 +240,7 @@ export function writeTargets(evidence: ShellEvidence, resolvePath: Resolve): str
     else if (program === "tar") found = optionValues(args, ["-C"], ["--directory"]);
     else if (program === "unzip") found = optionValues(args, ["-d"], []);
     else if (program === "git" && gitCommand(args).sub === "clone") found = operands(gitCommand(args).args).slice(1, 2);
-    for (const path of paths(found, invocation, resolvePath)) out.add(path);
+    for (const path of paths(found.filter((word) => word === null || !isDevice(word)), invocation, resolvePath)) out.add(path);
   }
   return [...out].filter((path) => !isDevice(path));
 }
@@ -255,11 +257,11 @@ const looksLikePath = (word: string | null): word is string =>
 export function readTargets(evidence: ShellEvidence, resolvePath: Resolve): string[] {
   const out = new Set<string>();
   for (const redirect of evidence.redirects) {
-    if (!redirect.write) for (const path of resolveAll(redirect.target, redirect.cwds, resolvePath)) out.add(path);
+    if (!redirect.write && !isDevice(redirect.target)) for (const path of resolveAll(redirect.target, redirect.cwds, resolvePath)) out.add(path);
   }
   for (const invocation of evidence.invocations) {
     if (!READERS.has(invocation.program)) continue;
-    for (const path of paths(readOperands(invocation).filter(looksLikePath), invocation, resolvePath)) out.add(path);
+    for (const path of paths(readOperands(invocation).filter((word) => looksLikePath(word) && !isDevice(word!)), invocation, resolvePath)) out.add(path);
   }
   return [...out].filter((path) => !isDevice(path));
 }

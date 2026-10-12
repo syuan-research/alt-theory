@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import type { ReviewRequest, ReviewVerdict } from "./approval-reviewer.js";
 import type { Root } from "./root-policy.js";
+import { lightPowerShellParse, type PowerShellParser } from "./powershell-evidence.js";
 import {
   APPROVAL_ALLOW_ONCE,
   APPROVAL_ALLOW_SESSION,
@@ -24,6 +25,7 @@ function harness(
     reviewer?: (request: ReviewRequest) => ReviewVerdict;
     strict?: boolean;
     tempRoot?: string;
+    parsePowerShell?: PowerShellParser;
   } = {},
 ) {
   const root = mkdtempSync(join(tmpdir(), "alt-secext-"));
@@ -41,17 +43,21 @@ function harness(
   const oncePaths: string[] = [];
   const reviewed: ReviewRequest[] = [];
   let smart = options.reviewer !== undefined;
+  let full = options.full === true;
+  let readOnly = false;
   createSecurityExtension({
     sessionCwd: project,
     getWritableRoots: () => writable,
     getReadableRoots: () => writable,
     addWritableRoot: (path) => writable.push({ path, reason: "approved" }),
-    isFullAccess: () => options.full === true,
+    isFullAccess: () => full,
+    isReadOnly: () => readOnly,
     protectedDirs: [dataDir],
     getCommandAllowlist: () => options.allowlist ?? [],
     allowWriteOnce: (path) => oncePaths.push(path),
     isSmartApproval: () => smart,
     isStrictSmartApproval: () => options.strict === true,
+    parsePowerShell: options.parsePowerShell,
     reviewAction: async (request) => {
       reviewed.push(request);
       return options.reviewer!(request);
@@ -65,7 +71,7 @@ function harness(
   let answer: string | undefined = APPROVAL_ALLOW_ONCE;
   const ctx = {
     hasUI: true,
-    signal: undefined,
+    signal: undefined as AbortSignal | undefined,
     sessionManager: { getBranch: () => [] },
     ui: {
       select: async (title: string, choices: string[], opts?: { onResolution?: (resolution: string) => void }) => {
@@ -91,6 +97,9 @@ function harness(
     setSmart: (on: boolean) => {
       smart = on;
     },
+    setFull: (on: boolean) => { full = on; },
+    setReadOnly: (on: boolean) => { readOnly = on; },
+    setSignal: (signal: AbortSignal) => { ctx.signal = signal; },
     startRun: () => handlers.get("agent_start")!({}, ctx),
     toolResult: (toolCallId: string, details?: unknown) =>
       handlers.get("tool_result")!({ toolCallId, details }, ctx) as Promise<{ details?: unknown } | undefined>,
@@ -125,6 +134,87 @@ test("Ask: ordinary work runs without asking", async () => {
   }
   assert.equal(await h.call("write", { path: join(h.project, "notes.md") }), undefined);
   assert.equal(h.asked.length, 0);
+});
+
+test("PowerShell parsing: only shell handoffs parse; ordinary work and fallback do not add approvals", async () => {
+  let calls = 0;
+  const h = harness({ parsePowerShell: async (code) => { calls++; return lightPowerShellParse(code); } });
+  for (const command of ["python analysis.py", "Rscript analysis.R", "node a.js", "cat notes.txt"]) {
+    assert.equal(await h.call("bash", { command }), undefined);
+  }
+  assert.equal(await h.call("write", { path: join(h.project, "notes.txt") }), undefined);
+  assert.equal(calls, 0);
+  assert.equal(await h.call("bash", { command: "pwsh -c 'python analysis.py'" }), undefined);
+  assert.equal(calls, 1);
+  assert.equal(h.asked.length, 0);
+  const fallback = harness({ parsePowerShell: async () => null });
+  assert.equal(await fallback.call("bash", { command: "pwsh -c 'python analysis.py'" }), undefined);
+  assert.equal(fallback.asked.length, 0);
+  assert.equal(await fallback.call("bash", { command: "pwsh -c 'git push origin main'" }), undefined);
+  assert.equal(fallback.asked.length, 1);
+  assert.equal(await h.call("bash", { command: "pwsh -c 'Get-ChildItem -Filter *.tmp | Remove-Item -Recurse'" }), undefined);
+  assert.equal(h.asked.length, 0);
+});
+
+test("PowerShell parsing: permission, roots and cancellation are read after the wait", async () => {
+  let finish!: (value: ReturnType<typeof lightPowerShellParse>) => void;
+  const h = harness({ parsePowerShell: () => new Promise((resolve) => { finish = resolve; }) });
+  const command = "pwsh -c 'git push origin main'";
+  const pending = h.call("bash", { command });
+  h.setFull(true);
+  finish(lightPowerShellParse("git push origin main"));
+  assert.equal(await pending, undefined);
+  assert.equal(h.asked.length, 0);
+  h.setFull(false);
+  const readonly = h.call("bash", { command });
+  h.setReadOnly(true);
+  finish(lightPowerShellParse("git push origin main"));
+  assert.equal((await readonly)?.block, true);
+  h.setReadOnly(false);
+  const outside = join(h.root, "outside");
+  const roots = h.call("bash", { command: "pwsh -c 'Set-Content x.txt x'" });
+  h.writable.push({ path: outside, reason: "approved" });
+  finish(lightPowerShellParse(`Set-Content '${join(outside, "x.txt")}' x`));
+  assert.equal(await roots, undefined);
+  assert.equal(h.asked.length, 0);
+  const controller = new AbortController();
+  h.setSignal(controller.signal);
+  const cancelled = h.call("bash", { command });
+  controller.abort();
+  finish(lightPowerShellParse("git push origin main"));
+  assert.match((await cancelled)?.reason ?? "", /run was stopped/);
+  assert.equal(h.asked.length, 0);
+});
+
+test("Windows native PowerShell: normal work passes, visible significant actions still ask or block", { skip: process.platform !== "win32" }, async () => {
+  const h = harness();
+  assert.equal(await h.call("bash", { command: "powershell -NoProfile -Command 'Set-Content -LiteralPath report.txt -Value 中文; python analysis.py'" }), undefined);
+  assert.equal(h.asked.length, 0);
+  assert.equal(await h.call("bash", { command: "powershell -NoProfile -Command 'git push origin main'" }), undefined);
+  assert.equal(h.asked.length, 1);
+  assert.equal((await h.call("bash", { command: "powershell -NoProfile -Command 'Set-Content -LiteralPath C:\\Windows\\alt-test.txt -Value x'" }))?.block, true);
+});
+
+test("Windows: Git Bash and native PowerShell agree on task Temp and protected drive paths", { skip: process.platform !== "win32" }, async () => {
+  const h = harness({ tempRoot: tmpdir() });
+  for (const command of [
+    "echo x > /tmp/alt-never-written.txt",
+    "cat /tmp/alt-never-written.txt",
+    'powershell -c \'Set-Content -LiteralPath "$env:TEMP/alt-never-written.txt" -Value x\'',
+    'powershell -c \'Get-Content -LiteralPath "$env:TEMP/alt-never-written.txt"\'',
+  ]) assert.equal(await h.call("bash", { command }), undefined, command);
+  assert.equal(h.asked.length, 0);
+  for (const command of [
+    "rm -rf /tmp",
+    'powershell -c \'Remove-Item -LiteralPath "$env:TEMP" -Recurse\'',
+    'powershell -c \'Remove-Item -LiteralPath:$env:TEMP -Recurse\'',
+    'powershell -c \'Remove-Item -Path:"$HOME/Documents" -Recurse\'',
+    "powershell -c 'Get-ChildItem | Remove-Item -Recurse'",
+    "echo x > /c/Windows/alt-never-written.txt",
+    'powershell -c \'Set-Content -LiteralPath "C:/Program Files/alt-never-written.txt" -Value x\'',
+  ]) assert.equal((await h.call("bash", { command }))?.block, true, command);
+  const fallback = harness({ parsePowerShell: async () => null });
+  assert.equal((await fallback.call("bash", { command: "pwsh -c 'Get-ChildItem | Remove-Item -Recurse'" }))?.block, true);
 });
 
 test("Ask: a push, an upload or an install asks; one allowance covers its target", async () => {

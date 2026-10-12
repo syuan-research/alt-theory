@@ -119,6 +119,20 @@ test("PowerShell: a native parser's reading is used; a failing one falls back", 
   assert.deepEqual((await read(`powershell -EncodedCommand ${encoded}`)).invocations.at(-1)?.args, ["-r", "enc"]);
 });
 
+test("PowerShell native handoff: static code only, with the shell edition", async () => {
+  const calls: Array<[string, string | undefined]> = [];
+  const parser = async (code: string, _signal?: AbortSignal, shell?: "powershell" | "pwsh") => {
+    calls.push([code, shell]);
+    return lightPowerShellParse(code);
+  };
+  await shellEvidence("powershell -c 'Write-Output x'", cwd, { resolvePath: toolPath, parsePowerShell: parser });
+  await shellEvidence("pwsh -c 'Write-Output y'", cwd, { resolvePath: toolPath, parsePowerShell: parser });
+  assert.deepEqual(calls, [["Write-Output x", "powershell"], ["Write-Output y", "pwsh"]]);
+  const dynamic = await shellEvidence('pwsh -c "Remove-Item -Recurse ~/Documents; $UNKNOWN"', cwd, { resolvePath: toolPath, parsePowerShell: parser });
+  assert.equal(calls.length, 2);
+  assert.ok(dynamic.invocations.some((invocation) => invocation.program === "rm"));
+});
+
 test("cmd /c: a light reading of its commands", async () => {
   const facts = await read("cmd /c \"del /s /q build & rd /s /q dist & robocopy empty out /MIR\"");
   assert.deepEqual(

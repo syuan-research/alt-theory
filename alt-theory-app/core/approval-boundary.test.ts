@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -213,6 +213,20 @@ test("Windows: a configured OneDrive root outside HOME is a critical deletion ta
   } finally {
     if (original === undefined) delete process.env.OneDriveCommercial;
     else process.env.OneDriveCommercial = original;
+  }
+});
+
+test("critical-root deletion checks the physical folder through an alias", async () => {
+  const base = mkdtempSync(join(tmpdir(), "alt-boundary-alias-"));
+  try {
+    const folder = join(base, "folder");
+    const alias = join(base, "alias");
+    mkdirSync(folder);
+    symlinkSync(folder, alias, process.platform === "win32" ? "junction" : "dir");
+    assert.ok(criticalDeletionTarget(await evidence(`rm -rf "${alias}"`), [folder], toolPath));
+    assert.equal(criticalDeletionTarget(await evidence(`rm -rf "${join(alias, "draft")}"`), [folder], toolPath), null);
+  } finally {
+    rmSync(base, { recursive: true, force: true });
   }
 });
 

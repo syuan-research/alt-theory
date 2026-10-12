@@ -21,19 +21,20 @@
  *   lower-cased, the full name when the binder knows it; `argument` for
  *   `-Path:x`); a constant string or number → `value` with `text`; an
  *   expandable string → `value` with `text: null` and `expandable` set to its
- *   content (the mapper reads `$HOME`/`$env:USERPROFILE`/`$env:HOME` at its
- *   start as home and gives up on anything else); an array (`a, b`, `@('a')`)
+ *   content (the mapper reads known home/temp prefixes and leaves other
+ *   expansions unknown); an array (`a, b`, `@('a')`)
  *   → one value per item, items after the first marked `continues`;
  *   anything else → `value` with `text: null`.
- * - redirects: FileRedirectionAst with a constant location; merging
+ * - redirects: FileRedirectionAst with a constant or expandable location; merging
  *   redirections (`2>&1`) are left out.
  */
 
+import { tmpdir } from "node:os";
 import { programName, resolveAll, type Invocation, type Redirect } from "./shell-evidence.js";
 
 /** One element after a command's name. */
 export type PowerShellElement =
-  | { kind: "parameter"; name: string; text: string; argument?: string | null }
+  | { kind: "parameter"; name: string; text: string; argument?: string | null; expandable?: string }
   | { kind: "value"; text: string | null; expandable?: string; continues?: true };
 
 /** One command, in source order. */
@@ -42,9 +43,11 @@ export interface PowerShellCommand {
   name: string | null;
   elements: PowerShellElement[];
   /** File redirections (`>`, `>>`, `2>`, `*>`) on the command or expression. */
-  redirects: Array<{ target: string | null; append: boolean }>;
+  redirects: Array<{ target: string | null; append: boolean; expandable?: string }>;
   /** Which statement (pipeline) it belongs to; parts of one pipeline share it. */
   pipeline?: number;
+  /** A branch/script block may change the folder, but need not run. */
+  conditional?: boolean;
 }
 
 export interface PowerShellParse {
@@ -54,15 +57,18 @@ export interface PowerShellParse {
 }
 
 /** Parses code for PowerShell; null (or a throw) falls back to the light reader. */
-export type PowerShellParser = (code: string, signal?: AbortSignal) => Promise<PowerShellParse | null>;
+export type PowerShellParser = (code: string, signal?: AbortSignal, shell?: "powershell" | "pwsh") => Promise<PowerShellParse | null>;
 
-/** `$HOME\x`, `$env:USERPROFILE/x` as a home path; null for any other expansion. */
+/** Known home/temp prefixes; null for any other expansion. */
 export function powerShellLiteral(expandable: string): string | null {
-  const home = expandable.match(/^\$(?:HOME|env:USERPROFILE|env:HOME|\{env:USERPROFILE\})(?=$|[\\/])/i);
-  const rest = home ? expandable.slice(home[0].length) : expandable;
+  const prefix = expandable.match(/^\$(?:HOME|env:(?:USERPROFILE|HOME|TEMP|TMP)|\{env:(?:USERPROFILE|HOME|TEMP|TMP)\})(?=$|[\\/])/i);
+  const rest = prefix ? expandable.slice(prefix[0].length) : expandable;
   if (/\$/.test(rest.replace(/`\$/g, ""))) return null;
   const literal = rest.replace(/`(.)/g, "$1");
-  return home ? (literal === "" ? "~" : `~/${literal.slice(1)}`) : literal;
+  if (!prefix) return literal;
+  const temp = prefix[0].match(/env:(TEMP|TMP)/i);
+  const root = temp ? (process.env[temp[1].toUpperCase()] ?? tmpdir()) : "~";
+  return literal === "" ? root : `${root.replace(/[\\/]$/, "")}/${literal.slice(1)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -121,7 +127,7 @@ function bind(elements: PowerShellElement[]): { named: Map<string, Items>; posit
     named.set(name, items);
     open = null;
     if (element.argument !== undefined) {
-      items.push(element.argument);
+      items.push(valueText({ text: element.argument, expandable: element.expandable }));
       open = items;
     } else if (VALUE_PARAMETERS.has(name) && elements[i + 1]?.kind === "value") {
       items.push(valueText(elements[++i] as { text: string | null; expandable?: string }));
@@ -144,11 +150,12 @@ export function powerShellInvocations(
   const out: Array<{ invocation: Invocation } | { redirect: Redirect }> = [];
   let here = cwds;
   // The folder the previous part of the same pipeline listed (`gci X | ri`).
-  let listed: { pipeline: number | undefined; path: string | null } | null = null;
+  let listed: { pipeline: number | undefined; targets: Items } | null = null;
   for (const command of reading.commands) {
     for (const redirect of command.redirects) {
-      if (redirect.target !== null && !/^(\$null|nul)$/i.test(redirect.target)) {
-        out.push({ redirect: { target: redirect.target, cwds: here, write: true } });
+      const target = valueText({ text: redirect.target, expandable: redirect.expandable });
+      if (target !== null && !/^(\$null|nul)$/i.test(target)) {
+        out.push({ redirect: { target, cwds: here, write: true } });
       }
     }
     if (command.name === null) {
@@ -174,7 +181,8 @@ export function powerShellInvocations(
       case "push-location": {
         const [target] = paths();
         if (target === undefined) break;
-        here = target === null ? [] : resolveAll(target, here, resolvePath);
+        const next = target === null ? [] : resolveAll(target, here, resolvePath);
+        here = command.conditional ? [...new Set([...here, ...next])] : next;
         break;
       }
       case "pop-location":
@@ -183,7 +191,7 @@ export function powerShellInvocations(
       case "remove-item": {
         const targets = paths();
         // `Get-ChildItem X | Remove-Item`: X's content.
-        if (targets.length === 0 && piped) targets.push(listed!.path === null ? null : `${listed!.path.replace(/[\\/]$/, "")}/*`);
+        if (targets.length === 0 && piped) targets.push(...listed!.targets);
         as("rm", ["-r", ...targets]);
         break;
       }
@@ -258,7 +266,16 @@ export function powerShellInvocations(
                 : `-${element.name}:${element.argument}`,
         ));
     }
-    listed = cmdlet === "get-childitem" ? { pipeline: command.pipeline, path: paths()[0] ?? null } : null;
+    const listedPaths = paths();
+    listed = cmdlet === "get-childitem" ? {
+      pipeline: command.pipeline,
+      targets: (listedPaths.length ? listedPaths : ["."]).map((path) => {
+        if (path === null) return null;
+        if (/[?*\[]/.test(path)) return path;
+        const filter = named.has("filter") ? items("filter")[0] : "*";
+        return filter === null || filter === undefined ? null : `${path.replace(/[\\/]$/, "")}/${filter}`;
+      }),
+    } : null;
   }
   return out;
 }

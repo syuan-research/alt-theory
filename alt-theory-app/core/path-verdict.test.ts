@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "fs";
 import { homedir, tmpdir } from "os";
 import { join } from "path";
@@ -145,6 +146,21 @@ test("isPathInside is containment with Windows case-insensitivity", () => {
   assert.ok(!isPathInside("/a/b", "/a/bc/d.txt"));
   assert.ok(!isPathInside("/a/b", "/a/../b/c.txt")); // resolved forms decide
   assert.equal(isPathInside("C:\\A\\B", "c:\\a\\b\\c.txt"), process.platform === "win32");
+});
+
+test("Windows 8.3 aliases share a canonical key, including a nonexistent tail", { skip: process.platform !== "win32" }, (t) => {
+  const base = mkdtempSync(join(tmpdir(), "alt-verdict-short-"));
+  try {
+    const folder = join(base, "A long directory name");
+    mkdirSync(folder);
+    const short = execFileSync("cmd.exe", ["/d", "/c", `for %I in ("${folder}") do @echo %~sI`], { encoding: "utf8", windowsHide: true }).trim();
+    if (!short.includes("~")) return t.skip("8.3 names are disabled for this test folder");
+    assert.equal(canonicalPathKey(short), canonicalPathKey(folder));
+    assert.equal(canonicalPathKey(join(short, "new", "file.txt")), canonicalPathKey(join(folder, "new", "file.txt")));
+    assert.equal(verdict(join(short, "file.txt"), "write", { writable: [root(folder)] }).outcome, "outside");
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
 });
 
 test("Working folders page: a listed folder reads everywhere, the Edit tick makes it writable, project companions join the workspace", () => {

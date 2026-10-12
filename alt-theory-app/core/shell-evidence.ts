@@ -103,7 +103,7 @@ export const UNKNOWN_FOLDER = String.fromCharCode(0) + "unknown";
 interface Walk {
   options: EvidenceOptions;
   out: ShellEvidence;
-  powerShell: Array<{ code: string; cwds: string[] }>;
+  powerShell: Array<{ code: string; cwds: string[]; shell: "powershell" | "pwsh"; static: boolean }>;
   depth: number;
 }
 
@@ -121,11 +121,11 @@ export async function shellEvidence(
   }
   // PowerShell code is read once the bash structure is known: the native
   // parser runs out of process.
-  for (const { code, cwds } of walk.powerShell) {
+  for (const { code, cwds, shell, static: isStatic } of walk.powerShell) {
     let parsed = null;
-    if (options.parsePowerShell) {
+    if (options.parsePowerShell && isStatic) {
       try {
-        parsed = await options.parsePowerShell(code, options.signal);
+        parsed = await options.parsePowerShell(code, options.signal, shell);
       } catch {
         parsed = null;
       }
@@ -329,7 +329,7 @@ function command(node: SyntaxNode, cwds: Cwds, walk: Walk): Cwds {
     const handoff = powerShellCode(program, args, looseArgs("$altUnknown"));
     if (handoff) {
       const where = handoff.workingDirectory ? resolveAll(handoff.workingDirectory, [...cwds], walk.options.resolvePath) : [...cwds];
-      walk.powerShell.push({ code: handoff.code, cwds: where });
+      walk.powerShell.push({ code: handoff.code, cwds: where, shell: program as "powershell" | "pwsh", static: handoff.static });
     }
   } else if (program === "cmd") {
     const at = args.findIndex((arg) => arg !== null && /^\/\/?[ck]$/i.test(arg));
@@ -507,7 +507,7 @@ function wordText(node: SyntaxNode, cwds: Cwds, placeholder: string | null): str
   switch (node.type) {
     case "word":
       // Git Bash users write Windows paths with backslashes: keep them there.
-      return process.platform === "win32" ? node.text : node.text.replace(/\\(.)/gs, "$1");
+      return process.platform === "win32" ? node.text.replace(/\\(\s)/g, "$1") : node.text.replace(/\\(.)/gs, "$1");
     case "number":
       return node.text;
     case "raw_string":
@@ -562,20 +562,20 @@ function powerShellCode(
   program: string,
   args: Array<string | null>,
   loose: string[],
-): { code: string; workingDirectory?: string } | null {
+): { code: string; static: boolean; workingDirectory?: string } | null {
   let workingDirectory: string | undefined;
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     const option = (arg ?? loose[i]).toLowerCase();
     if (/^[-/](c|co|com|comm|comma|comman|command)$/.test(option)) {
       const rest = loose.slice(i + 1);
-      return rest.length && rest[0] !== "-" ? { code: rest.join(" "), workingDirectory } : null;
+      return rest.length && rest[0] !== "-" ? { code: rest.join(" "), static: args.slice(i + 1).every((arg) => arg !== null), workingDirectory } : null;
     }
     if (/^[-/](e|ec|en|enc|enco|encod|encode|encoded|encodedc\w*)$/.test(option)) {
       const encoded = args[i + 1];
       if (typeof encoded !== "string") return null;
       try {
-        return { code: Buffer.from(encoded, "base64").toString("utf16le"), workingDirectory };
+        return { code: Buffer.from(encoded, "base64").toString("utf16le"), static: true, workingDirectory };
       } catch {
         return null;
       }
@@ -588,7 +588,7 @@ function powerShellCode(
       continue;
     }
     if (option.startsWith("-") || option.startsWith("/")) continue;
-    return program === "powershell" ? { code: loose.slice(i).join(" "), workingDirectory } : null;
+    return program === "powershell" ? { code: loose.slice(i).join(" "), static: args.slice(i).every((arg) => arg !== null), workingDirectory } : null;
   }
   return null;
 }

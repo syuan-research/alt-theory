@@ -122,7 +122,8 @@ function findSensitiveRoot(
 function realNearestExistingPath(path: string): string | null {
   const existing = nearestExistingPath(resolve(path));
   try {
-    return realpathSync(existing);
+    // Windows' native resolver expands 8.3 names as well as junctions.
+    return process.platform === "win32" ? realpathSync.native(existing) : realpathSync(existing);
   } catch {
     return null;
   }
