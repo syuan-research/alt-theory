@@ -31,21 +31,21 @@ export const DEFAULT_SUBAGENT_CONFIG: SubagentConfig = {
   agents: [
     {
       id: "general-medium",
-      description: "Default for most work and whenever the right level is uncertain",
+      description: "Most writing, implementation, and analysis; default when the appropriate level is unclear.",
       model: "inherit:medium",
       fallbackModels: [],
     },
     {
       id: "general-low",
       description:
-        "High-volume, error-tolerant extraction, web search, and simple checks with clear criteria",
+        "Extraction, search, and checks against supplied criteria, including checklist reviews.",
       model: "inherit:low",
       fallbackModels: [],
     },
     {
       id: "general-high",
       description:
-        "Review, strategic planning, and complex framework or architecture analysis with unknown unknowns",
+        "Strategic planning, difficult root-cause analysis, and complex architecture decisions. Finding facts or checking supplied criteria belongs to general-low.",
       model: "inherit:high",
       fallbackModels: [],
     },
@@ -184,7 +184,7 @@ export function formatSubagentConfigForPrompt(
     ...agents,
     `Default agent type when agent_type is omitted: ${config.defaultAgent}.`,
     `Model override candidates: ${subagentModelCandidates(config).join(", ")}.`,
-    "Use general-low for high-volume, error-tolerant extraction, web search, and simple checks with clear criteria. Use general-medium for most other work and whenever uncertain. Use general-high for review, strategic planning, and complex framework or architecture analysis with interdependent internals or unknown unknowns.",
+    "Use general-low for extraction, search, and checks against supplied criteria, including checklist reviews. Use general-medium for most writing, implementation, and analysis; default when the appropriate level is unclear. Use general-high for strategic planning, difficult root-cause analysis, and complex architecture decisions. Finding facts or checking supplied criteria belongs to general-low.",
     "Normally use the selected agent type's configured model chain. Use model overrides only when the user requests one; append :off|minimal|low|medium|high|xhigh|max to override thinking for this spawn.",
     `Available roles: ${roleIds.length ? roleIds.join(", ") : "(none)"}.`,
     "spawn_agent role names one of these; an unknown role fails and creates no child. Omit to inherit this conversation's role.",

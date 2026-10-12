@@ -439,9 +439,9 @@ function joinAgentModelRef(model: string, thinking: string): string {
 }
 
 function builtInAgentDescription(id: string, fallback: string): string {
-  if (id === "general-medium") return t("Default for most work and whenever the right level is uncertain");
-  if (id === "general-low") return t("High-volume, error-tolerant extraction, web search, and simple checks with clear criteria");
-  if (id === "general-high") return t("Review, strategic planning, and complex framework or architecture analysis with unknown unknowns");
+  if (id === "general-medium") return t("Most writing, implementation, and analysis; default when the appropriate level is unclear.");
+  if (id === "general-low") return t("Extraction, search, and checks against supplied criteria, including checklist reviews.");
+  if (id === "general-high") return t("Strategic planning, difficult root-cause analysis, and complex architecture decisions. Finding facts or checking supplied criteria belongs to general-low.");
   return fallback;
 }
 
