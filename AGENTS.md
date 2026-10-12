@@ -116,6 +116,15 @@ agents mistake them for in-progress work.
 ### Current branch status
 
 - `main` — active product line.
+- `archive/wp-approval-targets` — merged into main (Ask and smart approval
+  read a command's syntax tree — vendored Kimi bash parser, a PowerShell
+  seam with a light reader — and ask only about visible significant
+  actions: work-discarding git, writes and reads outside the folders,
+  database files, credentials, pushes, uploads, installs; grants per
+  target; the system temp folder as a root; timeouts read apart from
+  denials; strict smart approval behind an advanced switch; owner
+  2026-10-12). The native PowerShell parser is the Windows side's
+  follow-up on main.
 - `archive/approval-newlines` — merged into main (the approval check keeps
   tabs and newlines, so a multi-line command is checked and shown as the
   shell runs it; owner 2026-10-12); archived after the merge.
